@@ -16,10 +16,10 @@ const SERVICES_DIR = fileURLToPath(new URL("../..", import.meta.url));
  * Listed rather than skipped: fixing one makes this list wrong and the test
  * says so, instead of an exemption quietly outliving the defect.
  */
-const DOCKERFILE_BROKEN = new Set(["gateway-discord", "agent-server"]);
+const DOCKERFILE_BROKEN = new Set(["agent-server"]);
 
 /** Services still shipping a lockfile written before they gained a workspace dep. */
-const LOCKFILE_BLIND = new Set(["gateway-discord"]);
+const LOCKFILE_BLIND = new Set<string>();
 
 interface ServiceBuild {
   name: string;

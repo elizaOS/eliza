@@ -203,6 +203,10 @@ export interface VoiceSessionClient {
   start(): Promise<void>;
   /** Barge-in: flush local playback NOW + notify server. */
   bargeIn(): void;
+  /** Whether uplink audio is currently replaced with silence. */
+  readonly microphoneMuted: boolean;
+  /** Mute/unmute uplink audio without tearing down the realtime session. */
+  setMicrophoneMuted(muted: boolean): void;
   /** Unlock playback on a user gesture (iOS autoplay). */
   unlockPlayback(): Promise<void>;
   /** Send a clean `bye` and tear everything down. */
@@ -245,6 +249,7 @@ export function createVoiceSessionClient(
   let recoveryPromise: Promise<void> | null = null;
   let captureSocket: VoiceWebSocketLike | null = null;
   let captureAbort: AbortController | null = null;
+  let microphoneMuted = false;
   // Whether the caller explicitly stopped us (clean bye) — suppresses reconnect.
   let intentionalClose = false;
 
@@ -396,8 +401,13 @@ export function createVoiceSessionClient(
     if (!ws || connPhase !== "open") return;
     try {
       // Copy into a standalone ArrayBuffer so a shared/pooled backing store from
-      // the capture path is never observed mutated after send.
-      ws.send(bytes.slice().buffer);
+      // the capture path is never observed mutated after send. A muted session
+      // keeps its normal packet cadence but substitutes PCM silence, allowing
+      // server VAD to close a partial utterance without leaking microphone data.
+      const uplink = microphoneMuted
+        ? new Uint8Array(bytes.byteLength)
+        : bytes.slice();
+      ws.send(uplink.buffer);
     } catch (ignoredError) {
       // error-policy:J5 a dropped uplink frame on a dying socket is observed by the close handler's reconnect path.
       void ignoredError;
@@ -491,6 +501,7 @@ export function createVoiceSessionClient(
         }
         break;
       case "usage":
+      case "navigate_view":
       case "stt_partial":
       case "stt_eager_eot":
         break;
@@ -706,6 +717,7 @@ export function createVoiceSessionClient(
   async function stop(): Promise<void> {
     disposed = true;
     intentionalClose = true;
+    microphoneMuted = false;
     const stoppedGeneration = ++lifecycleGeneration;
     lifecycleAbort?.abort();
     lifecycleAbort = null;
@@ -769,6 +781,7 @@ export function createVoiceSessionClient(
       disposed = false;
       intentionalClose = false;
       reconnectsUsed = 0;
+      microphoneMuted = false;
       setState({ ...INITIAL_VOICE_SESSION_STATE, phase: "connecting" });
       // Create playback up front so an early user-gesture unlock is possible and
       // downlink frames after `ready` have a sink.
@@ -831,6 +844,16 @@ export function createVoiceSessionClient(
       setState(applyClientAction(state, { type: "client/local_barge_in" }));
       sendControl({ t: "barge_in" });
       mark("barge_in_sent", state.traceId);
+    },
+
+    get microphoneMuted() {
+      return microphoneMuted;
+    },
+
+    setMicrophoneMuted(muted) {
+      if (disposed || microphoneMuted === muted) return;
+      microphoneMuted = muted;
+      mark(muted ? "mic_muted" : "mic_unmuted", state.traceId);
     },
 
     async unlockPlayback() {

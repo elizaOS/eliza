@@ -414,16 +414,17 @@ export type EventEditorMutability =
  * Which edit affordances the owner-editor mutation pipeline can actually
  * honor for this event. The pipeline (client → route → owner-editor gateway →
  * trusted executor) performs etag-conditional writes and supports them only
- * for Google events; Microsoft mutations, ICS subscription feeds, and the
- * Apple native bridge are all rejected server-side. Rendering a Save/Delete
- * button for those events would dead-end on every click, so the drawer
- * derives its affordances from this capability instead.
+ * for Google and built-in Eliza events; Microsoft mutations, ICS subscription
+ * feeds, and the Apple native bridge are rejected server-side. Rendering a
+ * Save/Delete button for those events would dead-end on every click, so the
+ * drawer derives its affordances from this capability instead.
  */
 export function eventEditorMutability(
   event: LifeOpsCalendarEvent,
 ): EventEditorMutability {
   switch (event.provider) {
-    case "google": {
+    case "google":
+    case "eliza": {
       const etag = event.metadata.etag;
       return typeof etag === "string" && etag.trim().length > 0
         ? { kind: "editable", providerVersion: etag.trim() }

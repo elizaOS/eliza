@@ -1,10 +1,11 @@
-// Handles webhook gateway webhook handler behavior for authenticated connector fan-in.
+/** Handles authenticated connector webhooks from verification through reply delivery. */
 import type {
   ChatEvent,
   Platform,
   PlatformAdapter,
   WebhookConfig,
 } from "./adapters/types";
+import { reacquireAuthHeader } from "./auth";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
 import {
@@ -21,6 +22,7 @@ interface HandlerDeps {
   redis: GatewayRedis;
   cloudBaseUrl: string;
   getAuthHeader: () => { Authorization: string };
+  reacquireAuthHeader?: () => Promise<Record<string, string>>;
 }
 
 export async function handleWebhook(
@@ -31,6 +33,7 @@ export async function handleWebhook(
   agentId?: string,
 ): Promise<Response> {
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
+  const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
 
   const rawBody = await request.text();
@@ -44,6 +47,7 @@ export async function handleWebhook(
     adapter.platform,
     project,
     agentId,
+    reauth,
   );
   if (!config) {
     logger.warn("No webhook config found", {
@@ -111,6 +115,7 @@ async function processMessage(
   explicitAgentId?: string,
 ): Promise<void> {
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
+  const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
 
   const identity = await resolveIdentity(
@@ -120,6 +125,7 @@ async function processMessage(
     adapter.platform,
     event.senderId,
     event.senderName,
+    reauth,
   );
 
   if (!identity) {
@@ -245,34 +251,42 @@ async function sendOnboardingReply(
   deps: HandlerDeps,
 ): Promise<void> {
   const { cloudBaseUrl, getAuthHeader } = deps;
+  const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
+
+  const postOnboarding = (authHeader: Record<string, string>) =>
+    fetch(`${cloudBaseUrl}/api/eliza-app/onboarding/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // The onboarding route and its session coordinator both keep a replay
+        // ledger on this header. Without it the only protection against a
+        // platform redelivering a message is the 5-minute dedup key, and a
+        // later retry would append the message to the transcript twice and
+        // re-enter provisioning.
+        "Idempotency-Key": event.messageId,
+        ...authHeader,
+      },
+      body: JSON.stringify({
+        sessionId: `platform:${adapter.platform}:${event.senderId}`,
+        message: event.text,
+        platform: adapter.platform,
+        platformUserId: event.senderId,
+        platformDisplayName: event.senderName,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
 
   try {
-    const response = await fetch(
-      `${cloudBaseUrl}/api/eliza-app/onboarding/chat`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // The onboarding route and its session coordinator both keep a replay
-          // ledger on this header. Without it the only protection against a
-          // platform redelivering a message is the 5-minute dedup key, and a
-          // later retry would append the message to the transcript twice and
-          // re-enter provisioning.
-          "Idempotency-Key": event.messageId,
-          ...getAuthHeader(),
-        },
-        body: JSON.stringify({
-          sessionId: `platform:${adapter.platform}:${event.senderId}`,
-          message: event.text,
-          platform: adapter.platform,
-          platformUserId: event.senderId,
-          platformDisplayName: event.senderName,
-        }),
-        signal: AbortSignal.timeout(30_000),
-      },
-    );
+    let response = await postOnboarding(getAuthHeader());
+    // A Worker redeploy strands the cached token until its scheduled refresh;
+    // the Idempotency-Key above makes this replay safe. One retry, then the
+    // normal error path.
+    if (response.status === 401) {
+      response = await postOnboarding(await reauth());
+    }
 
     if (!response.ok) {
+      // error-policy:J1 Preserve optional upstream diagnostics at this boundary.
       const body = await response.text().catch(() => "");
       throw new Error(
         `onboarding chat failed (${response.status}) ${body.slice(0, 200)}`,

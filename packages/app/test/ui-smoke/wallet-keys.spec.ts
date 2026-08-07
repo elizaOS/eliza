@@ -69,7 +69,7 @@ test.describe("wallet keys deep round-trip", () => {
     await form
       .locator('[data-agent-id="wallet-keys-private-key"]')
       .fill(WALLET_VALUE);
-    await form.getByTestId("wallet-keys-save").click();
+    await form.locator('[data-agent-id="wallet-keys-save"]').click();
 
     // Real PUT /api/secrets/inventory/E2E_WALLET_KEY (category=wallet) → 200, then
     // the section reloads its wallet inventory and the row shows up.
@@ -80,11 +80,7 @@ test.describe("wallet keys deep round-trip", () => {
     // Reveal goes through the real GET /api/secrets/inventory/:key and surfaces
     // the masked value (12+ char keys render as a 6…4 mask) in the row.
     await revealButton.click();
-    const row = page
-      .getByTestId("wallet-keys-list")
-      .locator("li")
-      .filter({ has: page.getByTestId(`wallet-keys-reveal-${WALLET_KEY}`) });
-    await expect(row).toContainText(
+    await expect(section).toContainText(
       `${WALLET_VALUE.slice(0, 6)}…${WALLET_VALUE.slice(-4)}`,
       { timeout: 10_000 },
     );

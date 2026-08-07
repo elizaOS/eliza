@@ -79,25 +79,76 @@ const elizaCloudSkill: FakeSkill = {
   tags: ["cloud", "payments", "x402", "payouts"],
 };
 
-describe("recommendSkillsForTask", () => {
-  it("forces paired Cloud build and backend skills for normal app prompts", async () => {
-    const recommendations = await recommendSkillsForTask(
-      createRuntime({
-        skills: [...genericSkills, cloudAppSkill, elizaCloudSkill],
-      }),
-      {
-        taskText: "build me a simple wellness buddy chat app",
-        max: 5,
-        disableLlmPass: true,
-      },
-    );
+/** Run `fn` with ELIZA_FORCE_CLOUD_APP_SKILLS set to `value` (deleted when
+ * undefined), restoring the previous process.env state afterwards. */
+async function withForceCloudAppSkillsEnv(
+  value: string | undefined,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const previous = process.env.ELIZA_FORCE_CLOUD_APP_SKILLS;
+  if (value === undefined) {
+    delete process.env.ELIZA_FORCE_CLOUD_APP_SKILLS;
+  } else {
+    process.env.ELIZA_FORCE_CLOUD_APP_SKILLS = value;
+  }
+  try {
+    await fn();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.ELIZA_FORCE_CLOUD_APP_SKILLS;
+    } else {
+      process.env.ELIZA_FORCE_CLOUD_APP_SKILLS = previous;
+    }
+  }
+}
 
-    expect(recommendations.slice(0, 2).map((skill) => skill.slug)).toEqual([
-      "build-monetized-app",
-      "eliza-cloud",
-    ]);
-    expect(recommendations[0]?.score).toBe(1);
-    expect(recommendations[1]?.score).toBe(1);
+describe("recommendSkillsForTask", () => {
+  it("forces paired Cloud build and backend skills for app prompts when explicitly enabled", async () => {
+    await withForceCloudAppSkillsEnv("1", async () => {
+      const recommendations = await recommendSkillsForTask(
+        createRuntime({
+          skills: [...genericSkills, cloudAppSkill, elizaCloudSkill],
+        }),
+        {
+          taskText: "build me a simple wellness buddy chat app",
+          max: 5,
+          disableLlmPass: true,
+        },
+      );
+
+      expect(recommendations.slice(0, 2).map((skill) => skill.slug)).toEqual([
+        "build-monetized-app",
+        "eliza-cloud",
+      ]);
+      expect(recommendations[0]?.score).toBe(1);
+      expect(recommendations[1]?.score).toBe(1);
+    });
+  });
+
+  it("does not force Cloud skills for app prompts by default", async () => {
+    await withForceCloudAppSkillsEnv(undefined, async () => {
+      const recommendations = await recommendSkillsForTask(
+        createRuntime({
+          skills: [...genericSkills, cloudAppSkill, elizaCloudSkill],
+        }),
+        {
+          taskText: "build me a simple wellness buddy chat app",
+          max: 5,
+          disableLlmPass: true,
+        },
+      );
+
+      // Without the explicit opt-in the keyword ranking wins: no skill gets
+      // the forced score-1 promotion to the head of the list.
+      expect(
+        recommendations.find(
+          (skill) =>
+            (skill.slug === "build-monetized-app" ||
+              skill.slug === "eliza-cloud") &&
+            skill.score === 1,
+        ),
+      ).toBeUndefined();
+    });
   });
 
   it("does not force the Cloud app-build skill when it is disabled", async () => {

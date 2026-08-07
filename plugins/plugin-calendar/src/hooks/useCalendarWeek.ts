@@ -47,6 +47,7 @@ export interface UseCalendarWeekResult {
   windowStart: Date;
   windowEnd: Date;
   refresh: () => Promise<void>;
+  goToDate: (date: Date) => void;
   goToToday: () => void;
   goPrevious: () => void;
   goNext: () => void;
@@ -131,6 +132,13 @@ export function useCalendarWeek(
   );
 
   const goToToday = useCallback(() => setBaseDate(new Date()), []);
+  const goToDate = useCallback((date: Date) => {
+    const next = new Date(date);
+    if (!Number.isFinite(next.getTime())) {
+      throw new RangeError("Calendar date must be valid.");
+    }
+    setBaseDate(next);
+  }, []);
   const goPrevious = useCallback(() => shiftBase(-1), [shiftBase]);
   const goNext = useCallback(() => shiftBase(1), [shiftBase]);
 
@@ -207,6 +215,7 @@ export function useCalendarWeek(
     windowStart,
     windowEnd,
     refresh: fetch,
+    goToDate,
     goToToday,
     goPrevious,
     goNext,

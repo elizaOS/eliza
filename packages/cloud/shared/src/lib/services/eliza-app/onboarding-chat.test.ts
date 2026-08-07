@@ -1,4 +1,7 @@
-// Exercises onboarding chat behavior with deterministic cloud-shared lib fixtures.
+/**
+ * Exercises onboarding chat behavior with deterministic cloud-shared fixtures,
+ * including trusted gateway continuations and authenticated identity matching.
+ */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realCloudBindings from "../../runtime/cloud-bindings";
 import type { OnboardingChatMessage, OnboardingSession } from "./onboarding-chat";
@@ -142,6 +145,82 @@ describe("runOnboardingChat", () => {
     expect(result.reply).toContain(result.loginUrl);
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
+  });
+
+  test("requires Telegram OAuth when continuing a trusted Telegram session", async () => {
+    const result = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+
+    const loginUrl = new URL(result.loginUrl);
+    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.searchParams.get("method")).toBe("telegram");
+    expect(loginUrl.searchParams.get("link")).toBe("true");
+    expect(loginUrl.searchParams.get("onboardingSession")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    expect(result.loginUrl).not.toContain("123456789");
+  });
+
+  test("rejects an authenticated continuation without the gateway Telegram identity", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-1",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+    });
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("continues when the signed session matches the gateway Telegram identity", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    ensureElizaAppProvisioning.mockResolvedValue({
+      status: "pending",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+
+    const continued = await runOnboardingChat({
+      sessionId: continuationToken(gatewayTurn),
+      platform: "web",
+      authenticatedUser: {
+        userId: "user-1",
+        organizationId: "org-1",
+        telegramId: "123456789",
+      },
+    });
+
+    expect(continued.session.userId).toBe("user-1");
+    expect(continued.session.organizationId).toBe("org-1");
+    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
   });
 
   test("stays deterministic and model-free even when a Cerebras key is configured", async () => {

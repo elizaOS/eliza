@@ -963,17 +963,50 @@ const USE_CORE_SOURCE_BROWSER_ENTRY =
   process.env.ELIZA_DESKTOP_VITE_FAST_DIST === "1" ||
   process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1";
 
+/**
+ * Returns the cleartext origins available to local and native app shells.
+ * iOS store builds prohibit them; other shells support owner-selected remote
+ * agents, whose REST calls use native transport while WebSockets use CSP.
+ */
+export function resolveAppShellLocalCspSources(
+  capacitorBuildTarget: string,
+  isIosStoreBuild: boolean,
+): {
+  localHttpSources: string;
+  localConnectSources: string;
+} {
+  if (isIosStoreBuild) {
+    return { localHttpSources: "", localConnectSources: "" };
+  }
+
+  const loopbackHttpSources = " http://localhost:* http://127.0.0.1:*";
+  if (capacitorBuildTarget === "android") {
+    // Paired Android shells discover the host at runtime, so its private-LAN
+    // address cannot be enumerated at build time. API-base validation still
+    // limits accepted cleartext hosts to loopback/private addresses, while the
+    // CSP must permit the resulting REST/EventSource and WebSocket transports.
+    return {
+      localHttpSources: loopbackHttpSources,
+      localConnectSources: " http: ws:",
+    };
+  }
+
+  return {
+    localHttpSources: loopbackHttpSources,
+    // Remote-agent URLs are explicitly chosen by the owner and authenticated.
+    // Capacitor's native HTTP bridge handles their REST traffic, while browser
+    // WebSockets still pass through this CSP and must accept the same LAN host.
+    localConnectSources: `${loopbackHttpSources} ws: ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:*`,
+  };
+}
+
 function appShellMetadataPlugin(): Plugin {
   const isIosStoreBuild =
     CAPACITOR_BUILD_TARGET === "ios" &&
     (process.env.ELIZA_BUILD_VARIANT === "store" ||
       process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store");
-  const localHttpSources = isIosStoreBuild
-    ? ""
-    : " http://localhost:* http://127.0.0.1:*";
-  const localConnectSources = isIosStoreBuild
-    ? ""
-    : " http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:*";
+  const { localHttpSources, localConnectSources } =
+    resolveAppShellLocalCspSources(CAPACITOR_BUILD_TARGET, isIosStoreBuild);
   const manifest = `${JSON.stringify(
     {
       name: APP_SHELL_METADATA.appName,
@@ -1369,6 +1402,9 @@ function elizaCoreBrowserEntryFallbackPlugin(): Plugin {
 // The dev script sets the branded API port env; default to 31337 for standalone vite dev.
 const apiPort = resolveDesktopApiPort(process.env);
 const uiPort = resolveDesktopUiPort(process.env);
+const localVoiceGatewayPort = resolveOptionalLocalVoiceGatewayPort(
+  process.env.ELIZA_LOCAL_VOICE_GATEWAY_PORT,
+);
 const viteDevServerRuntime = resolveViteDevServerRuntime(
   process.env,
   uiPort,
@@ -1377,6 +1413,19 @@ const viteDevServerRuntime = resolveViteDevServerRuntime(
 const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
 /** Set by eliza/packages/app-core/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
+
+function resolveOptionalLocalVoiceGatewayPort(
+  raw: string | undefined,
+): number | null {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const port = Number(raw.trim());
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(
+      "ELIZA_LOCAL_VOICE_GATEWAY_PORT must be an integer TCP port",
+    );
+  }
+  return port;
+}
 
 export function appDevWsBasePlugin(): Plugin {
   const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
@@ -3186,6 +3235,30 @@ export const INVALID_TRACER_PROVIDER = {};
       credentials: true,
     },
     proxy: {
+      ...(localVoiceGatewayPort
+        ? {
+            "/api/v1/voice": {
+              target: `http://127.0.0.1:${localVoiceGatewayPort}`,
+              changeOrigin: true,
+              xfwd: true,
+              ws: true,
+              configure: (proxy) => {
+                proxy.on("error", (_err, _req, res) => {
+                  if ("headersSent" in res && !res.headersSent) {
+                    res.writeHead(502, {
+                      "Content-Type": "application/json",
+                    });
+                    res.end(
+                      JSON.stringify({
+                        error: "Local voice gateway unavailable",
+                      }),
+                    );
+                  }
+                });
+              },
+            },
+          }
+        : {}),
       "/api": {
         target: `http://127.0.0.1:${apiPort}`,
         changeOrigin: true,

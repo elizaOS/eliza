@@ -380,9 +380,10 @@ export class RuntimeMigrator {
       }
 
       // pgcrypto is only needed for real PostgreSQL — PGlite has native gen_random_uuid.
+      // pg_trgm accelerates MessageSearch partial-word / typo fallback (GIN + similarity).
       const extensions = isRealPostgres
-        ? ["vector", "fuzzystrmatch", "pgcrypto"]
-        : ["vector", "fuzzystrmatch"];
+        ? ["vector", "fuzzystrmatch", "pgcrypto", "pg_trgm"]
+        : ["vector", "fuzzystrmatch", "pg_trgm"];
       await this.extensionManager.installRequiredExtensions(extensions);
 
       const currentSnapshot = await generateSnapshot(schema);

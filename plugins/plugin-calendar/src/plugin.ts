@@ -65,7 +65,10 @@ export const calendarPlugin: Plugin = {
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven
       // fills/clicks (#13452 manifest gate).
-      surface: { capabilities: ["agent-surface"] },
+      surface: {
+        header: "fullscreen",
+        capabilities: ["agent-surface"],
+      },
       componentExport: "CalendarView",
       tags: ["calendar", "schedule", "events"],
       relatedActions: ["CALENDAR", "CALENDAR_SOURCES", "CONFLICT_DETECT"],

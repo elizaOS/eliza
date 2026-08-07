@@ -72,7 +72,7 @@ gate's `sites`). `Coverage` = the levels with a real test today.
 | 3 | Long-press copy on message (420 ms, move-cancel) | overlay row | `ChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` |
 | 4 | Tap-reveal action row (touch) / hover rail (desktop) | chat-message | `chat-message.tsx` | L2 `chat-message.tap-reveal.test.tsx` |
 | 5 | Long-press conversation item → context menu (450 ms) | chat-conversation-item | `usePressAndHold.ts` (spread by `chat-conversation-item.tsx`) | L2 `chat-conversation-item.test.tsx`, `gestures.test.ts` |
-| 6 | Push-to-talk hold (composer + overlay + ChatSurface mic) | composer + overlay + ChatSurface mic | `usePushToTalk.ts` (pointer-capture hold) | L2 `chat-composer.test.tsx`, `ChatSurface.test.tsx`, `usePushToTalk.test.tsx` |
+| 6 | Push-to-talk hold (composer + ChatSurface mic) | composer + ChatSurface mic | `usePushToTalk.ts` (pointer-capture hold) | L2 `chat-composer.test.tsx`, `ChatSurface.test.tsx`, `usePushToTalk.test.tsx` |
 | 7 | Tap-outside collapse; drag-vs-tap slop; scrim click-through | overlay | `ChatOverlay.tsx` | L3 `gesture-matrix.spec.ts` |
 | 8 | Home↔launcher pager swipe, nested-pager arbitration (#12179) | pager | `useHorizontalPager.ts`, `HomeLauncherSurface.tsx`, `state/rail-gesture-store.ts` | L1 `useHorizontalPager.test.ts`; L3 `gesture-matrix.spec.ts` + `run-home-screen-e2e.mjs` (video) + `HomeLauncherSurface.test.tsx`; L4 Android |
 | 9 | Topic group flick collapse/expand | TopicGroup | `TopicGroup.tsx` | L3 `run-chatux-gesture-e2e.mjs` (video) |

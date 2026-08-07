@@ -1,7 +1,7 @@
 /**
  * Opus <-> PCM transcode seam (contract §10, Phase-4-ready, stubbed in P1).
  *
- * The canonical uplink/downlink codec is PCM16 (matches Deepgram Flux ingest
+ * The canonical uplink/downlink codec is PCM16 (matches Cartesia Ink ingest
  * and Cartesia output exactly, zero transcode). Opus is the FUTURE codec for
  * the BLE wearable mic uplink and for bandwidth-constrained cellular downlink.
  * Those paths are documented seams, not implemented in Phase 1 — the capture
@@ -23,7 +23,7 @@ export class OpusTranscodeNotImplementedError extends Error {
   }
 }
 
-/** Decode inbound Opus packets to PCM16 for Deepgram Flux. Phase-4 seam. */
+/** Decode inbound Opus packets to PCM16 for Cartesia Ink. Phase-4 seam. */
 export function decodeOpusToPcm16(_opus: Uint8Array): never {
   throw new OpusTranscodeNotImplementedError("opus_to_pcm");
 }

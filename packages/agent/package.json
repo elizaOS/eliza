@@ -38,6 +38,7 @@
     "build:ios-bun": "bun run scripts/build-mobile-bundle.mjs --target=ios",
     "build:ios-jsc": "bun run scripts/build-mobile-bundle.mjs --target=ios-jsc",
     "perf:cerebras-chat": "bun --conditions=eliza-source scripts/cerebras-chat-flow-latency.ts",
+    "perf:relevant-conversations": "bun --conditions=eliza-source scripts/bench-relevant-conversations.ts",
     "verify:mobile-workspace-resolution": "bun run scripts/build-mobile-bundle.mjs --verify-workspace-resolution",
     "build:docker-dist": "bun run build:dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
