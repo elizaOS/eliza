@@ -16,7 +16,10 @@ import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
 import { isBlockedObjectKey } from "./server-helpers-config.ts";
 
-const z = zod.z;
+// Use the namespace itself, not `zod.z`: the `z` property lookup off the
+// namespace resolves to undefined under this package's test config (see
+// zod-schema.core.ts), but the namespace re-exports the same API directly.
+const z = zod;
 
 export interface ConnectorAccountRouteContext {
   req: http.IncomingMessage;

@@ -7,12 +7,15 @@ import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes";
 let servers: http.Server[] = [];
 
 afterEach(async () => {
+  // Not closeAllConnections(): on Bun/Windows it has the side effect of
+  // fully stopping the server (server.listening becomes false), so the
+  // subsequent close() call throws ERR_SERVER_NOT_RUNNING. closeIdleConnections()
+  // alone is sufficient to drop lingering sockets for these short-lived servers.
   await Promise.all(
     servers.map(
       (server) =>
         new Promise<void>((resolve, reject) => {
           server.closeIdleConnections?.();
-          server.closeAllConnections?.();
           server.close((error) => (error ? reject(error) : resolve()));
         }),
     ),

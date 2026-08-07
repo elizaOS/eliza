@@ -34,7 +34,9 @@ import {
   type LinkedAccountProviderId,
   type ServiceRouteAccountStrategy,
 } from "@elizaos/shared";
-import { z } from "zod";
+// Default import — see zod-schema.core.ts for why (named import resolves to
+// undefined under this package's test config).
+import z from "zod";
 import {
   type AccountCredentialRecord,
   deleteAccount,

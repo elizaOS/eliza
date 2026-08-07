@@ -175,29 +175,35 @@ describe("applySubscriptionCredentials", () => {
     expect(config.agents?.defaults?.model?.primary).toBeUndefined();
   });
 
-  it("stores account credentials with secret-grade filesystem permissions", () => {
-    const home = useTempElizaHome();
-    const now = Date.now();
+  // Windows has no POSIX permission bits: chmod there only toggles the
+  // read-only attribute, so statSync().mode never reflects the requested
+  // 0o700/0o600 - it comes back as a fixed 0o666-family value regardless.
+  it.skipIf(process.platform === "win32")(
+    "stores account credentials with secret-grade filesystem permissions",
+    () => {
+      const home = useTempElizaHome();
+      const now = Date.now();
 
-    saveAccount({
-      id: "personal",
-      providerId: "openai-codex",
-      label: "Personal",
-      source: "oauth",
-      credentials: {
-        access: "access",
-        refresh: "refresh",
-        expires: now + 60_000,
-      },
-      createdAt: now,
-      updatedAt: now,
-    });
+      saveAccount({
+        id: "personal",
+        providerId: "openai-codex",
+        label: "Personal",
+        source: "oauth",
+        credentials: {
+          access: "access",
+          refresh: "refresh",
+          expires: now + 60_000,
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
 
-    const providerDir = path.join(home, "auth", "openai-codex");
-    const accountFile = path.join(providerDir, "personal.json");
-    expect(fs.statSync(providerDir).mode & 0o777).toBe(0o700);
-    expect(fs.statSync(accountFile).mode & 0o777).toBe(0o600);
-  });
+      const providerDir = path.join(home, "auth", "openai-codex");
+      const accountFile = path.join(providerDir, "personal.json");
+      expect(fs.statSync(providerDir).mode & 0o777).toBe(0o700);
+      expect(fs.statSync(accountFile).mode & 0o777).toBe(0o600);
+    },
+  );
 
   it("skips malformed and provider-mismatched credential files", () => {
     const home = useTempElizaHome();

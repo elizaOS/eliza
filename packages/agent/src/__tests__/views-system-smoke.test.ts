@@ -340,6 +340,7 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
   });
 
   it("getBundleDiskPath resolves correctly given a pluginDir", async () => {
+    const pluginDir = path.resolve("/some/plugin/dir");
     await registerPluginViews(
       {
         name: SMOKE_PLUGIN,
@@ -347,14 +348,14 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
         actions: [],
         views: [SMOKE_VIEW],
       },
-      "/some/plugin/dir",
+      pluginDir,
     );
 
     const entry = getView("smoke.main");
     expect(entry).toBeDefined();
     if (!entry) throw new Error("Expected smoke.main to be registered");
     const diskPath = getBundleDiskPath(entry);
-    expect(diskPath).toBe("/some/plugin/dir/dist/views/bundle.js");
+    expect(diskPath).toBe(path.join(pluginDir, "dist", "views", "bundle.js"));
   });
 
   it("serves relative chunks emitted beside the root bundle", async () => {
