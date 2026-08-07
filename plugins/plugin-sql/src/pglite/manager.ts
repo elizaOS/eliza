@@ -20,6 +20,7 @@ import {
 } from "node:fs";
 import { PGlite, type PGliteOptions } from "@electric-sql/pglite";
 import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
+import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
 import { live } from "@electric-sql/pglite/live";
 import { vector } from "@electric-sql/pglite/vector";
 import { electricSync } from "@electric-sql/pglite-sync";
@@ -321,6 +322,10 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       ...(options.extensions ?? {}),
       vector,
       fuzzystrmatch,
+      // Message-search partial-word / typo fallback (`similarity`, `gin_trgm_ops`).
+      // Without this WASM contrib bundle, `CREATE EXTENSION pg_trgm` fails and
+      // MessageSearch degrades to FTS-only (#13534).
+      pg_trgm,
       // Only load the `live` extension when Electric sync is configured — its
       // live-query namespace is only used by the sync/dashboard paths, so the
       // default local-dev PGlite boot pays nothing for it.

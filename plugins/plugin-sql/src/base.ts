@@ -2592,15 +2592,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const allowLexicalFallback = !usesWebsearchSyntax(params.query);
       // `similarity()` only exists when pg_trgm is installed; degrade to 0 so the
       // ORDER BY and DTO carry a real (extension-absent) signal, not a fake rank.
-      const trigramExpr =
-        trigramAvailable && allowLexicalFallback
-          ? sql<number>`GREATEST(similarity(${document}, ${foldedQuery}), word_similarity(${foldedQuery}, ${document}))`
-          : sql<number>`0`;
+      const trigramExpr = trigramAvailable
+        ? sql<number>`GREATEST(similarity(${document}, ${foldedQuery}), word_similarity(${foldedQuery}, ${document}))`
+        : sql<number>`0`;
       const literalMatch = allowLexicalFallback
         ? sql`${document} LIKE eliza_search_like_pattern(${params.query})`
         : sql`FALSE`;
+      // Bag-of-terms trigram AND would treat `"alpha beta"` as two independent
+      // tokens and match non-adjacent rows — websearch phrase quotes must stay
+      // FTS-only so adjacency is preserved.
+      const hasWebsearchPhrase = params.query.includes('"');
       const trigramMatch =
-        trigramAvailable && allowLexicalFallback
+        trigramAvailable && !hasWebsearchPhrase
           ? sql`NOT EXISTS (
             SELECT 1
             FROM unnest(regexp_split_to_array(${foldedQuery}, '[[:space:]]+')) AS query_terms(term)
