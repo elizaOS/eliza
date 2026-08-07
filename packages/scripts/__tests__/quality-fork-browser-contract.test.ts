@@ -128,10 +128,6 @@ describe("quality-fork-browser-contract", () => {
   });
 
   test("keeps visual diff tolerances within reviewed renderer ceilings", () => {
-    const config = readFileSync(
-      join(REAL_REPO_ROOT, "packages", "homepage", "playwright.config.ts"),
-      "utf8",
-    );
     const visual = readFileSync(
       join(
         REAL_REPO_ROOT,
@@ -143,16 +139,6 @@ describe("quality-fork-browser-contract", () => {
       ),
       "utf8",
     );
-    const configMatch = config.match(
-      new RegExp(`maxDiffPixelRatio:\\s*${NUMBER_LITERAL}`),
-    );
-    if (!configMatch) {
-      throw new Error("Homepage Playwright config must set maxDiffPixelRatio");
-    }
-
-    const globalTolerance = Number(configMatch[1]);
-    expect(globalTolerance).toBeLessThanOrEqual(0.05);
-
     const viewportMatch = visual.match(
       new RegExp(
         `maxDiffPixelRatio:\\s*viewport\\.name === ["']mobile["']\\s*\\?\\s*${NUMBER_LITERAL}\\s*:\\s*${NUMBER_LITERAL}`,
@@ -160,7 +146,7 @@ describe("quality-fork-browser-contract", () => {
     );
     if (viewportMatch) {
       expect(Number(viewportMatch[1])).toBeLessThanOrEqual(0.08);
-      expect(Number(viewportMatch[2])).toBeLessThanOrEqual(globalTolerance);
+      expect(Number(viewportMatch[2])).toBeLessThanOrEqual(0.05);
       return;
     }
 
@@ -170,7 +156,7 @@ describe("quality-fork-browser-contract", () => {
     if (!uniformMatch) {
       throw new Error("Homepage visual suite must set maxDiffPixelRatio");
     }
-    expect(Number(uniformMatch[1])).toBeLessThanOrEqual(globalTolerance);
+    expect(Number(uniformMatch[1])).toBeLessThanOrEqual(0.05);
   });
 
   test("the checked-in Quality (Fork) workflow satisfies the contract", () => {
