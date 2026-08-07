@@ -1,0 +1,17 @@
+{
+  "package": "@zeromodern/eliza-plugin-0mod",
+  "repository": "github:zeromodern/eliza-plugin-0mod",
+  "kind": "plugin",
+  "description": "ElizaOS plugin for 0mod HTTP 402 API Gateway (stealth-dom, airgap-scrub, rag-shrink) using x402 micropayments on Base USDC",
+  "homepage": "https://github.com/zeromodern/eliza-plugin-0mod",
+  "version": "1.0.0",
+  "tags": [
+    "x402",
+    "payments",
+    "base",
+    "usdc",
+    "micropayments",
+    "0mod",
+    "stealth-dom"
+  ]
+}
