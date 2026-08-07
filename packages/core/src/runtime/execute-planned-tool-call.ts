@@ -541,58 +541,70 @@ export async function executePlannedToolCall(
 					);
 				}
 			: executorCtx.callback;
-	let resultForEvent = await settleActionHandler({
+	let resultForEvent = await runWithMessageTrajectoryContext(
 		runtime,
-		action,
-		callback: protectedCallback,
-		invoke: (actionCallback) =>
-			runWithMessageTrajectoryContext(
+		executorCtx.message,
+		() =>
+			withActionStep(
 				runtime,
-				executorCtx.message,
-				async () => {
-					options.abortSignal?.throwIfAborted();
-					// Egress (#10469): this is the true execution boundary. Restore real
-					// secrets into the handler args ONLY here — the model, transcripts, logs,
-					// and trajectory upstream kept the placeholders. Fail loud if the model
-					// emitted a this-turn placeholder we cannot resolve, so a placeholder is
-					// never sent to a real command/connector/endpoint. No-op (and zero cost)
-					// when secret-swap is disabled: there is no turn session on the context.
-					const secretSwapSession = getTrajectoryContext()?.secretSwapSession;
-					if (secretSwapSession && handlerOptions.parameters !== undefined) {
-						handlerOptions.parameters = secretSwapSession.restoreInValue(
-							handlerOptions.parameters,
-							{ failOnUnresolved: true },
-						);
-					}
-					// Egress (#10469 / #7007): restore real named-entity PII here too —
-					// including the REPLY action's own text, so the tool call runs against the
-					// real recipient and the user sees their real contacts, while the model,
-					// trajectory, and logs kept the surrogates. Best-effort (no failOnUnresolved):
-					// a surrogate the model rewrote, or a genuinely new name it introduced, is
-					// simply left as-is.
-					const piiSwapSession = getTrajectoryContext()?.piiSwapSession;
-					if (piiSwapSession && handlerOptions.parameters !== undefined) {
-						handlerOptions.parameters = piiSwapSession.restoreInValue(
-							handlerOptions.parameters,
-						);
-					}
-					return runWithActionRoutingContext(
-						{ actionName: action.name, modelClass: action.modelClass },
-						() =>
-							withActionStep(runtime, action.name, () =>
-								action.handler(
-									runtime,
-									executorCtx.message,
-									executorCtx.state,
-									handlerOptions,
-									actionCallback,
-									executorCtx.responses,
-								),
-							),
-					);
+				action.name,
+				() =>
+					settleActionHandler({
+						runtime,
+						action,
+						callback: protectedCallback,
+						invoke: async (actionCallback) => {
+							options.abortSignal?.throwIfAborted();
+							// Egress (#10469): this is the true execution boundary. Restore real
+							// secrets into the handler args ONLY here — the model, transcripts, logs,
+							// and trajectory upstream kept the placeholders. Fail loud if the model
+							// emitted a this-turn placeholder we cannot resolve, so a placeholder is
+							// never sent to a real command/connector/endpoint. No-op (and zero cost)
+							// when secret-swap is disabled: there is no turn session on the context.
+							const secretSwapSession =
+								getTrajectoryContext()?.secretSwapSession;
+							if (
+								secretSwapSession &&
+								handlerOptions.parameters !== undefined
+							) {
+								handlerOptions.parameters = secretSwapSession.restoreInValue(
+									handlerOptions.parameters,
+									{ failOnUnresolved: true },
+								);
+							}
+							// Egress (#10469 / #7007): restore real named-entity PII here too —
+							// including the REPLY action's own text, so the tool call runs against the
+							// real recipient and the user sees their real contacts, while the model,
+							// trajectory, and logs kept the surrogates. Best-effort (no failOnUnresolved):
+							// a surrogate the model rewrote, or a genuinely new name it introduced, is
+							// simply left as-is.
+							const piiSwapSession = getTrajectoryContext()?.piiSwapSession;
+							if (piiSwapSession && handlerOptions.parameters !== undefined) {
+								handlerOptions.parameters = piiSwapSession.restoreInValue(
+									handlerOptions.parameters,
+								);
+							}
+							return runWithActionRoutingContext(
+								{ actionName: action.name, modelClass: action.modelClass },
+								() =>
+									action.handler(
+										runtime,
+										executorCtx.message,
+										executorCtx.state,
+										handlerOptions,
+										actionCallback,
+										executorCtx.responses,
+									),
+							);
+						},
+					}),
+				{
+					parameters: isContentRecord(validation.args) ? validation.args : {},
+					projectResult: (result) =>
+						projectSettledResultForObserver(action, result),
 				},
 			),
-	});
+	);
 	// The handler result is the completion barrier. Publish it before event
 	// emission or disclosure revalidation can strand a committed side effect.
 	publishSettledResult(runtime, action, resultForEvent, onSettledResult);

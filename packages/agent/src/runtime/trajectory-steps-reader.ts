@@ -1,26 +1,19 @@
 /**
  * Trajectory steps — read operations.
  *
- * CQRS reader for the dedicated `trajectory_steps` table. Returns plain
- * domain `PersistedStep` records, never mutates state.
- *
- * The `trajectory_steps` table replaces the JSONB blob previously stored in
- * `trajectories.steps_json`. Scripts are no longer capped at 4096 chars.
+ * CQRS reader for the agent-owned `trajectory_steps` table. Dedicated rows
+ * are canonical when present and retain complete script text.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { PersistedStep } from "./trajectory-internals.ts";
 import {
   asRecord,
   executeRawSql,
-  extractRows,
+  extractRequiredRows,
   hasRuntimeDb,
-  parseJsonValue,
-  readRecordValue,
   sqlQuote,
-  toNumber,
-  toOptionalNumber,
-  toText,
+  stepRowToPersistedStep,
 } from "./trajectory-internals.ts";
 
 export interface TrajectoryStepsPage {
@@ -37,67 +30,12 @@ export interface TrajectoryStepsPage {
 export const DEFAULT_GET_STEPS_LIMIT = 100;
 export const MAX_GET_STEPS_LIMIT = 1000;
 
-function rowToPersistedStep(row: Record<string, unknown>): PersistedStep {
-  const payload = parseJsonValue(readRecordValue(row, ["payload"]));
-  const payloadRecord = asRecord(payload) ?? {};
-  const llmCalls = Array.isArray(payloadRecord.llmCalls)
-    ? (payloadRecord.llmCalls as PersistedStep["llmCalls"])
-    : [];
-  const providerAccesses = Array.isArray(payloadRecord.providerAccesses)
-    ? (payloadRecord.providerAccesses as PersistedStep["providerAccesses"])
-    : [];
-  const childSteps = Array.isArray(payloadRecord.childSteps)
-    ? (payloadRecord.childSteps as string[])
-    : undefined;
-  const usedSkills = Array.isArray(payloadRecord.usedSkills)
-    ? (payloadRecord.usedSkills as string[])
-    : undefined;
-
-  const stepNumber = toNumber(readRecordValue(row, ["ordinal"]), 0);
-  const startedAt = toOptionalNumber(readRecordValue(row, ["started_at"]));
-  const endedAt = toOptionalNumber(readRecordValue(row, ["ended_at"]));
-  const kindRaw = toText(readRecordValue(row, ["step_type"]), "");
-  const kind =
-    kindRaw === "llm" || kindRaw === "action" || kindRaw === "evaluator"
-      ? kindRaw
-      : undefined;
-  const scriptValue = readRecordValue(row, ["script"]);
-  const script =
-    typeof scriptValue === "string" && scriptValue.length > 0
-      ? scriptValue
-      : undefined;
-  const scriptHash =
-    typeof payloadRecord.scriptHash === "string"
-      ? payloadRecord.scriptHash
-      : undefined;
-  const evaluatorName =
-    typeof payloadRecord.evaluatorName === "string" &&
-    payloadRecord.evaluatorName.length > 0
-      ? payloadRecord.evaluatorName
-      : undefined;
-
-  return {
-    stepId: toText(readRecordValue(row, ["id"]), ""),
-    stepNumber,
-    timestamp: startedAt ?? endedAt ?? Date.now(),
-    llmCalls,
-    providerAccesses,
-    ...(kind !== undefined ? { kind } : {}),
-    ...(childSteps !== undefined ? { childSteps } : {}),
-    ...(script !== undefined ? { script } : {}),
-    ...(scriptHash !== undefined ? { scriptHash } : {}),
-    ...(usedSkills !== undefined ? { usedSkills } : {}),
-    ...(evaluatorName !== undefined ? { evaluatorName } : {}),
-  };
-}
-
 /**
  * Paginated reader for trajectory steps. Returns steps in ordinal order
  * (the order they were appended to the trajectory).
  *
- * Returns an empty page when the runtime has no database or the table
- * does not exist. The caller is responsible for ensuring the table is
- * created (via `ensureTrajectoriesTable`) before calling.
+ * Storage and row failures throw; an empty page means the owned trajectory
+ * genuinely has no dedicated steps.
  */
 export async function getSteps(
   runtime: IAgentRuntime,
@@ -110,38 +48,79 @@ export async function getSteps(
     1,
     Math.min(MAX_GET_STEPS_LIMIT, Math.trunc(limit)),
   );
-  const empty: TrajectoryStepsPage = {
-    steps: [],
-    total: 0,
-    offset: normalizedOffset,
-    limit: normalizedLimit,
-  };
-  if (!hasRuntimeDb(runtime)) return empty;
+  if (!hasRuntimeDb(runtime)) {
+    throw new ElizaError("Trajectory step storage is unavailable", {
+      code: "TRAJECTORY_DATABASE_UNAVAILABLE",
+    });
+  }
   const normalizedId = trajectoryId.trim();
-  if (!normalizedId) return empty;
+  if (!normalizedId) {
+    throw new ElizaError("Trajectory id is required", {
+      code: "TRAJECTORY_ID_INVALID",
+    });
+  }
 
   const safeId = sqlQuote(normalizedId);
   const countResult = await executeRawSql(
     runtime,
-    `SELECT count(*) AS total FROM trajectory_steps WHERE trajectory_id = ${safeId}`,
+    `SELECT count(*) AS total
+     FROM trajectory_steps s
+     JOIN trajectories t ON t.id = s.trajectory_id
+     WHERE s.trajectory_id = ${safeId}
+       AND t.agent_id = ${sqlQuote(runtime.agentId)}`,
   );
-  const countRow = asRecord(extractRows(countResult)[0]);
-  const total = toNumber(countRow?.total, 0);
+  const countRow = asRecord(
+    extractRequiredRows(countResult, {
+      operation: "count trajectory steps",
+      trajectoryId: normalizedId,
+    })[0],
+  );
+  const rawTotal = countRow?.total;
+  const total =
+    typeof rawTotal === "number"
+      ? rawTotal
+      : typeof rawTotal === "string" && rawTotal.trim() !== ""
+        ? Number(rawTotal)
+        : Number.NaN;
+  if (!Number.isInteger(total) || total < 0) {
+    throw new ElizaError("Trajectory step count row is invalid", {
+      code: "TRAJECTORY_STEP_ROW_INVALID",
+      context: { trajectoryId: normalizedId, field: "total" },
+    });
+  }
 
-  if (total === 0) return empty;
+  if (total === 0) {
+    return {
+      steps: [],
+      total,
+      offset: normalizedOffset,
+      limit: normalizedLimit,
+    };
+  }
 
   const pageResult = await executeRawSql(
     runtime,
-    `SELECT * FROM trajectory_steps
-       WHERE trajectory_id = ${safeId}
-       ORDER BY ordinal ASC
+    `SELECT s.* FROM trajectory_steps s
+       JOIN trajectories t ON t.id = s.trajectory_id
+       WHERE s.trajectory_id = ${safeId}
+         AND t.agent_id = ${sqlQuote(runtime.agentId)}
+       ORDER BY s.ordinal ASC
        LIMIT ${normalizedLimit} OFFSET ${normalizedOffset}`,
   );
-  const rows = extractRows(pageResult);
-  const steps = rows
-    .map((row) => asRecord(row))
-    .filter((row): row is Record<string, unknown> => Boolean(row))
-    .map(rowToPersistedStep);
+  const rows = extractRequiredRows(pageResult, {
+    operation: "list trajectory steps",
+    trajectoryId: normalizedId,
+  });
+  const steps = rows.map((row, index) => {
+    const record = asRecord(row);
+    if (!record) {
+      throw new ElizaError("Trajectory step row is invalid", {
+        code: "TRAJECTORY_STEP_ROW_INVALID",
+        context: { trajectoryId: normalizedId, index },
+      });
+    }
+    return stepRowToPersistedStep(record);
+  });
 
   return {
     steps,

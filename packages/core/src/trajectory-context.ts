@@ -40,6 +40,8 @@ export interface TrajectoryContext {
 	turnMemo?: Map<string, Promise<unknown>>;
 	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
 	purpose?: string;
+	/** Evaluator owner for an evaluation child step. */
+	evaluatorName?: string;
 	/**
 	 * Latest composed provider contribution snapshot for the active step.
 	 * `providerAttributionState` retains provider text so model-call writers can

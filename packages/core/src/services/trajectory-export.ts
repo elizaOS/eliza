@@ -327,6 +327,20 @@ export function iterateTrajectoryLlmCalls(
 				cacheReadInputTokens: toFiniteNumber(call.cacheReadInputTokens),
 				cacheCreationInputTokens: toFiniteNumber(call.cacheCreationInputTokens),
 				tokenUsageEstimated: call.tokenUsageEstimated === true,
+				trajectoryMetrics: trajectory.metrics,
+				stepData: {
+					...(step.parentStepId ? { parentStepId: step.parentStepId } : {}),
+					...(step.action ? { action: step.action } : {}),
+					...(step.kind ? { kind: step.kind } : {}),
+					...(step.childSteps ? { childSteps: step.childSteps } : {}),
+					...(step.script ? { script: step.script } : {}),
+					...(step.scriptHash ? { scriptHash: step.scriptHash } : {}),
+					...(step.usedSkills ? { usedSkills: step.usedSkills } : {}),
+					...(step.skillInvocations
+						? { skillInvocations: step.skillInvocations }
+						: {}),
+					...(step.evaluatorName ? { evaluatorName: step.evaluatorName } : {}),
+				},
 			});
 		}
 	}
@@ -553,6 +567,10 @@ export function buildElizaNativeTrajectoryRows(
 						? { source_execution_trace_id: call.executionTraceId }
 						: {}),
 					trajectory_source: call.source,
+					...(call.trajectoryMetrics
+						? { trajectory_metrics: call.trajectoryMetrics }
+						: {}),
+					...(call.stepData ? { trajectory_step: call.stepData } : {}),
 					...(call.scenarioId ? { scenario_id: call.scenarioId } : {}),
 					...(call.batchId ? { batch_id: call.batchId } : {}),
 					source_call_purpose: call.purpose,

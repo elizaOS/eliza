@@ -153,10 +153,10 @@ describe("RECENT_ERRORS provider", () => {
 	it("never narrates diagnostic-only persistence failures into chat", async () => {
 		const entries: ReportedError[] = [
 			{
-				scope: "AgentRuntime.modelCallLog",
-				code: "DB_INSERT_FAILED",
-				message: "log insert failed",
-				context: { model: "TEXT_SMALL", diagnosticOnly: true },
+				scope: "TrajectoryStorage.write",
+				code: "TRAJECTORY_SAVE_FAILED",
+				message: "Could not save trajectory",
+				context: { stepId: "step-failed", diagnosticOnly: true },
 				at: Date.now(),
 			},
 		];
