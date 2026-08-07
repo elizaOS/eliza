@@ -140,6 +140,27 @@ function containsExpectedText(haystack: string, label: string): boolean {
   );
 }
 
+/**
+ * Returns true only when a declared positive semantic contract is fully
+ * visible. This may rescue a readable, label-bearing transcript whose global
+ * confidence is diluted by decorative glyphs; it never bypasses the word or
+ * blank-pixel floors, and forbid-only policies cannot manufacture confidence.
+ */
+function positiveExpectationMatches(
+  haystack: string,
+  expectation?: OcrExpectation,
+): boolean {
+  if (!expectation) return false;
+  const allLabels = expectation.requireAll ?? [];
+  const anyLabels = expectation.requireAny ?? [];
+  if (allLabels.length === 0 && anyLabels.length === 0) return false;
+  return (
+    allLabels.every((label) => containsExpectedText(haystack, label)) &&
+    (anyLabels.length === 0 ||
+      anyLabels.some((label) => containsExpectedText(haystack, label)))
+  );
+}
+
 export function detectErrorLeaks(text: string): string[] {
   const out: string[] = [];
   for (const re of DEVELOPER_LEAK_PATTERNS) {
@@ -202,11 +223,13 @@ export function evaluateOcrContent({
 
   const hay = normalize(ocr.text);
   const blankPixels = !exemptFromBlank && ocr.pixelBlank === true;
+  const semanticAnchorsMatched = positiveExpectationMatches(hay, expectation);
   const ocrInconclusive =
     !exemptFromBlank &&
     !blankPixels &&
     (ocr.words < OCR_RELIABLE_WORD_FLOOR ||
-      ocr.meanConfidence < OCR_RELIABLE_CONFIDENCE_FLOOR);
+      (ocr.meanConfidence < OCR_RELIABLE_CONFIDENCE_FLOOR &&
+        !semanticAnchorsMatched));
   const errorLeaks = ocrInconclusive ? [] : detectErrorLeaks(ocr.text);
   const placeholderLeaks = ocrInconclusive
     ? []

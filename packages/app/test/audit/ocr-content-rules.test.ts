@@ -130,6 +130,63 @@ describe("evaluateOcrContent", () => {
     expect(f.verdict).toBe("needs-eyeball");
   });
 
+  it.each([
+    [
+      "builtin-inventory",
+      `< Wallet
+$1,650.50 OO0C0 . ac
+B laa
+OOOO em onzs..5678 [©
+© sot som.mz ©
+EE ——
+© EH osOL USDC
+(A eee W——
+[+ as Able)
+-`,
+      0.43,
+    ],
+    [
+      "plugin-wallet-gui",
+      `8 $1,650.50 CCO00 we
+oem esol
+CO00 ew oazs.ser8 © Oso som.mz ©
+CE —
+oem esol usc
+£2 Tokens < DeFi (3 NFTs
+$900.00
+ETH
+0250000 en a
+- Tea
+[4 Ask ape)
+ph eg`,
+      0.39,
+    ],
+  ])(
+    "verifies %s when declared anchors survive globally noisy OCR",
+    (slug, text, meanConfidence) => {
+      const f = evaluateOcrContent({
+        ocr: ocr(text, { meanConfidence, pixelBlank: false }),
+        expectation: expectationFor(slug),
+      });
+      expect(f.ocrInconclusive).toBe(false);
+      expect(f.missingRequired).toHaveLength(0);
+      expect(f.verdict).toBe("verified");
+    },
+  );
+
+  it("keeps the word floor even when a one-word semantic anchor matches", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("Tasks", {
+        words: 1,
+        meanConfidence: 0.99,
+        pixelBlank: false,
+      }),
+      expectation: { requireAll: ["Tasks"] },
+    });
+    expect(f.ocrInconclusive).toBe(true);
+    expect(f.verdict).toBe("needs-eyeball");
+  });
+
   it("exempts TUI/canvas surfaces from the blank floor", () => {
     const f = evaluateOcrContent({
       ocr: ocr("", { words: 0 }),
