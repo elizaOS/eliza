@@ -27,6 +27,8 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
+const PREVIOUS_CACHE_ENABLED = process.env.CACHE_ENABLED;
+
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -200,7 +202,15 @@ beforeAll(async () => {
 }, PGLITE_TIMEOUT);
 
 afterAll(async () => {
-  if (closeDb) await closeDb();
+  try {
+    if (closeDb) await closeDb();
+  } finally {
+    if (PREVIOUS_CACHE_ENABLED === undefined) {
+      delete process.env.CACHE_ENABLED;
+    } else {
+      process.env.CACHE_ENABLED = PREVIOUS_CACHE_ENABLED;
+    }
+  }
 });
 
 describe("admitInferenceChargeViaLedger — atomic admission gate", () => {

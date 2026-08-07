@@ -2,9 +2,19 @@
  * Registry-driven pre-ready boot hooks shared by every agent host. The registry
  * declares optional hook modules; this module resolves and invokes them without
  * coupling startup to any specific plugin.
+ *
+ * Two absences are designed rather than exceptional, and both are load-bearing
+ * for voice. A packaged bundle that does not stage `generated.json` makes
+ * `loadRegistry()` return an empty set on purpose
+ * (`packages/registry/src/first-party/index.ts` marks that `error-policy:J4`), so
+ * the registry alone cannot be the only source of the local-inference hook —
+ * nothing else installs the local TEXT/EMBEDDING/TRANSCRIPTION/TTS handlers, and
+ * without them voice reports not-ready with no failure at the boot site. And a
+ * host may legitimately ship without the optional plugin at all, which must skip
+ * rather than abort startup.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   getApps,
   getPlugins,
@@ -25,13 +35,56 @@ export interface BootHookContributor {
 type BootHookModule = Record<string, unknown>;
 type BootHook = (runtime: AgentRuntime) => void | Promise<void>;
 
+/**
+ * Host-owned declarations appended when the registry does not supply one for the
+ * same id. These are not a duplicate source of truth: a registry declaration
+ * always wins, and this only covers the packaged-build case where the registry
+ * is empty by design.
+ */
+const FALLBACK_BOOT_HOOK_DECLARATIONS: readonly BootHookDeclaration[] = [
+  {
+    id: "@elizaos/plugin-local-inference",
+    specifier: "@elizaos/plugin-local-inference/runtime",
+    exportName: "registerLocalInferenceBoot",
+  },
+];
+
+/**
+ * True only when `specifier` itself could not be resolved — not when the hook
+ * module loaded and one of *its* imports was missing. Skipping on the latter
+ * would turn a genuinely broken plugin into a silent no-op.
+ */
+function isMissingModule(error: unknown, specifier: string): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
+  if (code !== "ERR_MODULE_NOT_FOUND" && code !== "MODULE_NOT_FOUND") {
+    return false;
+  }
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" && message.includes(specifier);
+}
+
 async function loadAndInvokeBootHook(
   declaration: BootHookDeclaration,
   runtime: AgentRuntime,
 ): Promise<void> {
-  const module = (await import(
-    /* webpackIgnore: true */ declaration.specifier
-  )) as BootHookModule;
+  let module: BootHookModule;
+  try {
+    module = (await import(
+      /* webpackIgnore: true */ declaration.specifier
+    )) as BootHookModule;
+  } catch (error) {
+    // error-policy:J4 a host that ships without an optional hook module is a
+    // supported deployment, so its absence degrades to "no hook". Anything else,
+    // including a broken import inside the hook module, still fails the boot.
+    if (isMissingModule(error, declaration.specifier)) {
+      logger.debug(
+        `[eliza] boot hook ${declaration.id} not installed (${declaration.specifier}); skipping`,
+      );
+      return;
+    }
+    throw error;
+  }
   const hook = module[declaration.exportName];
   if (typeof hook !== "function") {
     throw new Error(
@@ -46,7 +99,11 @@ export function resolveBootHookContributors(
   declarations: BootHookDeclaration[],
 ): BootHookContributor[] {
   const contributors = new Map<string, BootHookContributor>();
-  for (const declaration of declarations) {
+  for (const declaration of [
+    ...declarations,
+    ...FALLBACK_BOOT_HOOK_DECLARATIONS,
+  ]) {
+    if (contributors.has(declaration.id)) continue;
     contributors.set(declaration.id, {
       id: declaration.id,
       invoke: (runtime) => loadAndInvokeBootHook(declaration, runtime),

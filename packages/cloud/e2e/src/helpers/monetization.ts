@@ -2,10 +2,22 @@
  * Shared helpers for the creator-monetization e2e specs.
  */
 
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+
 export interface AuthedResponse<T> {
   status: number;
   json: T;
 }
+
+export type AuthedClient = ReturnType<typeof authedClient>;
+
+const INFERENCE_WARMING_MESSAGES = new Set([
+  "Authorization cache is warming. Retry shortly.",
+  "Rate-limit authorization cache is warming. Retry shortly.",
+  "Application authorization cache is warming. Retry shortly.",
+  "Moderation authorization cache is warming. Retry shortly.",
+  "Billing authorization is warming. Retry shortly.",
+]);
 
 /**
  * Build an authenticated JSON fetch bound to a stack API base + API key.
@@ -32,6 +44,75 @@ export function authedClient(api: string, apiKey: string) {
     const json = (await res.json().catch(() => ({}) as T)) as T;
     return { status: res.status, json };
   };
+}
+
+/**
+ * Open the app review gate after a monetization spec has proved drafts are
+ * rejected. Use the service boundary so its read caches cannot retain the
+ * draft row after this deterministic test-only approval.
+ */
+export async function approveAppForMonetizationTest(
+  appId: string,
+  client: AuthedClient,
+): Promise<void> {
+  const approved = await appsService.update(appId, {
+    review_status: "approved",
+    review_content_hash: null,
+    reviewed_at: new Date(),
+  });
+
+  if (!approved) {
+    throw new Error(`Cannot approve missing monetization test app: ${appId}`);
+  }
+
+  // The e2e test and API Worker are separate processes. Cross the API boundary
+  // with a benign update so the Worker's appsService evicts its cached draft.
+  const cacheBust = await client("PATCH", `/api/v1/apps/${appId}`, {
+    logo_url: "https://example.com/monetization-test-app.png",
+  });
+  if (cacheBust.status !== 200) {
+    throw new Error(
+      `Cannot invalidate monetization test app cache: ${appId} (${cacheBust.status})`,
+    );
+  }
+}
+
+/**
+ * Retry only the gateway's explicit cache-warming response. A cold Worker can
+ * hydrate several independent inference caches in sequence; provider failures
+ * and every other 503 remain immediate test failures.
+ */
+export async function retryInferenceCacheWarming<T>(
+  request: () => Promise<AuthedResponse<T>>,
+  maxAttempts = 8,
+): Promise<AuthedResponse<T>> {
+  let response = await request();
+  for (let attempt = 1; attempt < maxAttempts; attempt += 1) {
+    if (!isInferenceCacheWarming(response)) return response;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    response = await request();
+  }
+  return response;
+}
+
+function isInferenceCacheWarming(response: AuthedResponse<unknown>): boolean {
+  if (
+    response.status !== 503 ||
+    !response.json ||
+    typeof response.json !== "object"
+  ) {
+    return false;
+  }
+  const body = response.json as {
+    type?: unknown;
+    error?: { type?: unknown; message?: unknown };
+  };
+  return (
+    body.type === "error" &&
+    body.error?.type === "api_error" &&
+    typeof body.error.message === "string" &&
+    INFERENCE_WARMING_MESSAGES.has(body.error.message)
+  );
 }
 
 /**

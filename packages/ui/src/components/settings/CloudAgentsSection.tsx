@@ -27,6 +27,7 @@ import { getBootConfig } from "../../config/boot-config";
 import { useBranding } from "../../config/branding";
 import { useAppSelector } from "../../state";
 import { upsertAndActivateAgentProfile } from "../../state/agent-profiles";
+import { clearStalePairCredentialsForAgent } from "../../state/cloud-pair-token";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
@@ -381,6 +382,11 @@ export function CloudAgentsSection() {
           }
         }
         setAgents((prev) => prev.filter((a) => a.agent_id !== agent.agent_id));
+        // Purge this agent's persisted pair credentials (durable pair key,
+        // active-server token, profile accessTokens) so a deleted agent's
+        // at-rest credentials are never re-adopted on a later boot. Scoped
+        // to the deleted agent — other agents' credentials stay untouched.
+        clearStalePairCredentialsForAgent(agent.agent_id);
         setActionNotice(`Deleted ${agent.agent_name}.`, "success", 3000);
       } catch (err) {
         setActionNotice(

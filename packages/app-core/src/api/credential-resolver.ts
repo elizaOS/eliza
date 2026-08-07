@@ -12,6 +12,8 @@
  * Codex / Gemini / Claude subscription credentials are intentionally not
  * exposed by this resolver as API keys.
  */
+
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
 import {
   getAccessToken,
   listProviderAccounts,
@@ -28,6 +30,7 @@ import {
   logger,
   MODEL_PROVIDER_SECRETS,
   normalizeFirstRunProviderId,
+  resolveStateDir,
   SECRET_KEY_ALIASES,
 } from "@elizaos/core";
 import { getDefaultAccountPool } from "../account-pool.js";
@@ -164,7 +167,9 @@ export async function resolveProviderCredentialMulti(
         exclude: opts?.exclude,
       });
       if (account) {
-        const token = await getAccessToken(directProvider, account.id);
+        const token = await getAccessToken(directProvider, account.id, {
+          storagePolicy: createRuntimeAccountStoragePolicy(resolveStateDir()),
+        });
         if (token) {
           const envVar = DIRECT_ACCOUNT_PROVIDER_ENV[directProvider];
           logger.info(

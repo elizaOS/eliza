@@ -24,8 +24,11 @@ import {
   waitForOnboardingClearance,
 } from "./audit-views-soak-boundary.mjs";
 import {
+  ExpectedBrowserResponseConsoleMatcher,
+  isExpectedDevSmokeResponseCandidate,
+  isExpectedEmbeddedBrowserConsoleError,
   isExpectedInactiveLifeOpsActivitySignalsResponse,
-  isLifeOpsActivitySignals503,
+  isExpectedUnavailableBrowserBridgeCompanionsResponse,
 } from "./browser-failure-policy.mjs";
 
 const UI = process.env.UI || "http://127.0.0.1:2138";
@@ -220,7 +223,7 @@ release.
 - Render-guard errors: ${summary.renderErrors}
 - Module/view evictions attributed in scorecard: ${summary.moduleEvicts}
 - Module cleanups attributed in scorecard: ${summary.moduleCleanups}
-- Network log classification: ${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total (${networkSummary.expectedAbortCount} navigation aborts, ${networkSummary.expectedOptionalRoute404Count} optional-route 404s, ${networkSummary.expectedProtectedRoute401Count} protected-route 401s, ${networkSummary.expectedInactiveLifeOps503Count} inactive-LifeOps 503s)
+- Network log classification: ${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total (${networkSummary.expectedAbortCount} navigation aborts, ${networkSummary.expectedOptionalRoute404Count} optional-route 404s, ${networkSummary.expectedProtectedRoute401Count} protected-route 401s, ${networkSummary.expectedInactiveLifeOps503Count} inactive-LifeOps 503s, ${networkSummary.expectedUnavailableBrowserBridge503Count} unavailable-Browser-Bridge 503s)
 - Heap series: ${heapSamples.map((sample) => `${(sample / 1e6).toFixed(1)}MB`).join(" -> ")} (${heapRatio.toFixed(2)}x)
 - Raw artifacts: \`audit-views-render-telemetry.json\`, \`audit-views-runtime-telemetry.json\`, \`audit-views-module-cache-telemetry.json\`, \`audit-views-heap-series.json\`, \`audit-views-frontend-log.json\`, \`audit-views-network-log.json\`, \`audit-views-network-summary.json\`
 - Video: ${videoArtifact ? `\`${videoArtifact}\`` : "N/A (VIDEO=0)"}
@@ -302,6 +305,21 @@ function classifyNetworkEntry(entry) {
     };
   }
 
+  if (
+    entry.kind === "response" &&
+    isExpectedUnavailableBrowserBridgeCompanionsResponse(
+      entry.status,
+      entry.url,
+      entry.body,
+    )
+  ) {
+    return {
+      expected: true,
+      reason: "browser_bridge_service_unavailable",
+      note: "The companion inventory route is installed but intentionally unavailable while the optional Browser Bridge service is inactive.",
+    };
+  }
+
   return {
     expected: false,
     reason: "unexpected_network_failure",
@@ -330,6 +348,8 @@ function summarizeNetworkLog(networkLog) {
       byReason.protected_route_without_session ?? 0,
     expectedInactiveLifeOps503Count:
       byReason.lifeops_activity_signals_inactive ?? 0,
+    expectedUnavailableBrowserBridge503Count:
+      byReason.browser_bridge_service_unavailable ?? 0,
     unexpectedCount: unexpected.length,
     byReason,
     unexpected,
@@ -513,7 +533,9 @@ async function main() {
   });
   page.on("response", (response) => {
     if (response.status() < 400) return;
-    if (!isLifeOpsActivitySignals503(response.status(), response.url())) {
+    if (
+      !isExpectedDevSmokeResponseCandidate(response.status(), response.url())
+    ) {
       networkLog.push({
         kind: "response",
         status: response.status(),
@@ -740,13 +762,50 @@ async function main() {
     pageErrors.length === 0,
     `no uncaught page errors during the soak (${JSON.stringify(pageErrors.slice(0, 3))})`,
   );
-  const consoleErrors = consoleLog.filter((entry) => entry.type === "error");
-  assert(
-    consoleErrors.length === 0,
-    `no console errors during the soak (${JSON.stringify(consoleErrors.slice(0, 3))})`,
-  );
 
   await Promise.allSettled([...pendingNetworkResponses]);
+
+  const expectedConsoleMatcher = new ExpectedBrowserResponseConsoleMatcher();
+  for (const entry of networkLog) {
+    if (entry.kind !== "response") continue;
+    if (classifyNetworkEntry(entry).expected) {
+      expectedConsoleMatcher.recordResponse(entry.status, entry.url);
+    }
+  }
+  const expectedConsoleErrors = [];
+  const consoleErrors = [];
+  for (const entry of consoleLog) {
+    if (entry.type !== "error") continue;
+    if (
+      isExpectedEmbeddedBrowserConsoleError(
+        entry.text,
+        entry.location?.url ?? "",
+      )
+    ) {
+      expectedConsoleErrors.push(entry);
+      continue;
+    }
+    if (
+      expectedConsoleMatcher.consumeConsoleError(
+        entry.text,
+        entry.location?.url ?? "",
+      )
+    ) {
+      expectedConsoleErrors.push(entry);
+    } else {
+      consoleErrors.push(entry);
+    }
+  }
+  assert(
+    consoleErrors.length === 0,
+    `no unexpected console errors during the soak (${JSON.stringify(consoleErrors.slice(0, 3))}; matched optional-service errors=${expectedConsoleErrors.length})`,
+  );
+
+  const networkSummary = summarizeNetworkLog(networkLog);
+  assert(
+    networkSummary.unexpectedCount === 0,
+    `no unexpected network failures during the soak (${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total; expected navigation aborts=${networkSummary.expectedAbortCount}, expected optional-route 404s=${networkSummary.expectedOptionalRoute404Count}, expected protected-route 401s=${networkSummary.expectedProtectedRoute401Count}, expected inactive-LifeOps 503s=${networkSummary.expectedInactiveLifeOps503Count}, expected unavailable-Browser-Bridge 503s=${networkSummary.expectedUnavailableBrowserBridge503Count})`,
+  );
 
   // Closing the context owns page teardown and video finalization as one
   // operation. Closing the page first can deadlock Playwright's ffmpeg recorder
@@ -765,12 +824,6 @@ async function main() {
   await browser.close();
   activeBrowser = null;
 
-  const networkSummary = summarizeNetworkLog(networkLog);
-  assert(
-    networkSummary.unexpectedCount === 0,
-    `no unexpected network failures during the soak (${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total; expected navigation aborts=${networkSummary.expectedAbortCount}, expected optional-route 404s=${networkSummary.expectedOptionalRoute404Count}, expected protected-route 401s=${networkSummary.expectedProtectedRoute401Count}, expected inactive-LifeOps 503s=${networkSummary.expectedInactiveLifeOps503Count})`,
-  );
-
   const finalRaw = afterReleaseSnapshot.raw;
   writeJson("audit-views-render-telemetry.json", finalRaw.render);
   writeJson("audit-views-runtime-telemetry.json", finalRaw.viewRuntime);
@@ -785,6 +838,7 @@ async function main() {
   writeJson("audit-views-frontend-log.json", {
     console: consoleLog,
     consoleErrors,
+    expectedConsoleErrors,
     pageErrors,
   });
   writeJson("audit-views-network-log.json", networkLog);

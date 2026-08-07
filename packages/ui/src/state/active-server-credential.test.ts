@@ -7,7 +7,10 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { persistActiveServerCredential } from "./active-server-credential";
+import {
+  persistActiveServerCredential,
+  scrubRejectedActiveServerCredential,
+} from "./active-server-credential";
 import { getActiveProfile } from "./agent-profiles";
 import {
   createPersistedActiveServer,
@@ -34,5 +37,25 @@ describe("persistActiveServerCredential", () => {
 
     expect(loadPersistedActiveServer()?.accessToken).toBe("session-token");
     expect(getActiveProfile()?.accessToken).toBe("session-token");
+  });
+
+  it("scrubs a rejected active credential without dropping the target", () => {
+    savePersistedActiveServer(
+      createPersistedActiveServer({
+        kind: "remote",
+        apiBase: "https://runtime.example.test",
+        accessToken: "stale-token",
+      }),
+    );
+    persistActiveServerCredential("stale-token");
+
+    scrubRejectedActiveServerCredential("stale-token");
+
+    expect(loadPersistedActiveServer()).toMatchObject({
+      kind: "remote",
+      apiBase: "https://runtime.example.test",
+    });
+    expect(loadPersistedActiveServer()?.accessToken).toBeUndefined();
+    expect(getActiveProfile()?.accessToken).toBeUndefined();
   });
 });

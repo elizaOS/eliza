@@ -21,6 +21,13 @@ import { ProvisioningJobService } from "./provisioning-jobs";
 const JOB_ID = "00000000-0000-4000-8000-000000000001";
 const GENERATION_ID = "00000000-0000-4000-8000-000000000002";
 const ORG_ID = "00000000-0000-4000-8000-000000000003";
+const EMPTY_RECOVERY = {
+  scanned: 0,
+  retried: 0,
+  permanentlyFailed: 0,
+  unchanged: 0,
+  failures: [],
+};
 
 function claimedJob(type: ProvisioningJobType = JOB_TYPES.AGENT_LOGS): Job {
   const now = new Date("2026-07-29T00:00:00.000Z");
@@ -60,7 +67,7 @@ function claimedJob(type: ProvisioningJobType = JOB_TYPES.AGENT_LOGS): Job {
 
 function stubLaneClaim(job: Job | undefined) {
   const claim = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue(job ? [job] : []);
-  spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+  spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
   return claim;
 }
 

@@ -92,25 +92,10 @@ interface ValidatedMigrationLedger {
   lastAppliedJournalIndex: number;
 }
 
-// The old runner selected pending work by timestamp rather than journal index.
-// These seven historical entries moved backward relative to an earlier journal
-// timestamp, so an incrementally migrated database may legitimately omit any
-// of them. Keep the exception closed over the known immutable history; a new
-// backward timestamp is still treated as a broken ledger.
-const LEGACY_TIMESTAMP_SKIPPABLE_TAGS = new Set([
-  "0017_add_organization_encryption_keys",
-  "0044_seed_chain_data_pricing",
-  "0048_00_elite_rumiko_fujikawa_drops",
-  "0048_01_elite_rumiko_fujikawa_creates",
-  "0048_02_elite_rumiko_fujikawa_alters",
-  "0048_03_elite_rumiko_fujikawa_indexes",
-  "0065_add_generations_is_public",
-]);
-
 // Historical SQL files were edited after deployment, so their stored hashes
-// cannot truthfully authenticate the current checkout. The catalog-guard
-// migration is the first immutable checkpoint owned by this runner; hashes
-// from this entry forward are enforced on every subsequent invocation.
+// and some deployed schemas have no matching ledger row. The catalog-guard
+// migration is the first immutable checkpoint owned by this runner; hash,
+// order, and completeness identity are enforced from this entry forward.
 const HASH_IDENTITY_ENFORCEMENT_TAG =
   "0194_job_execution_interruptions_catalog_guard";
 
@@ -256,7 +241,7 @@ async function getAppliedMigrations(
   return result.rows;
 }
 
-function validateAppliedMigrationLedger(
+export function validateAppliedMigrationLedger(
   applied: AppliedMigration[],
   migrations: Migration[],
 ): ValidatedMigrationLedger {
@@ -344,9 +329,8 @@ function validateAppliedMigrationLedger(
     );
   }
 
-  let runningTimestampMaximum = Number.NEGATIVE_INFINITY;
   for (
-    let journalIndex = 0;
+    let journalIndex = hashIdentityEnforcementIndex;
     journalIndex <= lastAppliedJournalIndex;
     journalIndex++
   ) {
@@ -354,20 +338,11 @@ function validateAppliedMigrationLedger(
     if (!migration) {
       throw new Error(`Migration journal is missing index ${journalIndex}`);
     }
-    const timestampMovedBackward =
-      migration.entry.when <= runningTimestampMaximum;
-    const isKnownLegacySkip =
-      timestampMovedBackward &&
-      LEGACY_TIMESTAMP_SKIPPABLE_TAGS.has(migration.entry.tag);
-    if (!appliedJournalIndexes.has(journalIndex) && !isKnownLegacySkip) {
+    if (!appliedJournalIndexes.has(journalIndex)) {
       throw new Error(
         `Migration ledger is missing required journal entry ${migration.entry.tag}`,
       );
     }
-    runningTimestampMaximum = Math.max(
-      runningTimestampMaximum,
-      migration.entry.when,
-    );
   }
 
   return { lastAppliedJournalIndex };

@@ -29,6 +29,13 @@ const COLD_BOOT_TYPES = [
 const FAST_TYPES = [JOB_TYPES.AGENT_DELETE, JOB_TYPES.AGENT_SUSPEND] as const;
 
 const COLD_BOOT_WORST_CASE_MS = 11 * 60 * 1000; // PULL 5m + HEALTH_CHECK 6m
+const EMPTY_RECOVERY = {
+  scanned: 0,
+  retried: 0,
+  permanentlyFailed: 0,
+  unchanged: 0,
+  failures: [],
+};
 
 describe("recoverStaleJobs threshold by job type", () => {
   test("cold-boot types outlast the ~11min cold provision; fast ops keep the 5min backstop", async () => {
@@ -36,14 +43,14 @@ describe("recoverStaleJobs threshold by job type", () => {
     const spy = spyOn(jobsRepository, "recoverStaleJobs").mockImplementation(
       async (filters: { type: string; staleThresholdMs: number }) => {
         seen.set(filters.type, filters.staleThresholdMs);
-        return 0;
+        return EMPTY_RECOVERY;
       },
     );
 
     try {
       await (
         provisioningJobService as unknown as {
-          recoverStaleJobs(types: readonly ProvisioningJobType[]): Promise<number>;
+          recoverStaleJobs(types: readonly ProvisioningJobType[]): Promise<typeof EMPTY_RECOVERY>;
         }
       ).recoverStaleJobs([...COLD_BOOT_TYPES, ...FAST_TYPES]);
 
@@ -81,7 +88,7 @@ describe("recoverStaleJobs threshold by job type", () => {
     const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockImplementation(
       async (filters: { type: string; staleThresholdMs: number }) => {
         seen.set(filters.type, filters.staleThresholdMs);
-        return 0;
+        return EMPTY_RECOVERY;
       },
     );
     try {

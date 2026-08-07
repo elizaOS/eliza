@@ -2,9 +2,20 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadAccount, saveAccount } from "./account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  loadAccount,
+  saveAccount as saveAccountWithPolicy,
+} from "./account-storage";
 import { refreshAnthropicToken } from "./anthropic";
-import { getAccessToken, saveCredentials } from "./credentials";
+import {
+  type AccessTokenOutcome,
+  type GetAccessTokenOptions,
+  type GetAccessTokenOutcomeOptions,
+  getAccessToken as getAccessTokenWithPolicy,
+  saveCredentials as saveCredentialsWithPolicy,
+} from "./credentials";
+import type { AccountCredentialProvider } from "./types";
 
 // Only the refresh function is mocked; the rest of anthropic.ts is untouched so
 // this test does not overlap #16090's anthropic OAuth changes.
@@ -17,10 +28,54 @@ const savedEnv: Record<string, string | undefined> = {};
 function useTempElizaHome(): void {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-auth-minrem-"));
   tempHomes.push(dir);
-  for (const key of ["ELIZA_HOME", "HOME", "USERPROFILE"]) {
+  for (const key of ["ELIZA_HOME", "ELIZA_STATE_DIR", "HOME", "USERPROFILE"]) {
     if (!(key in savedEnv)) savedEnv[key] = process.env[key];
     process.env[key] = dir;
   }
+}
+
+function storagePolicy() {
+  const root = process.env.ELIZA_HOME;
+  if (!root) throw new Error("test storage root is not initialized");
+  return createIsolatedAccountStoragePolicy(root);
+}
+
+function saveAccount(record: Parameters<typeof saveAccountWithPolicy>[0]) {
+  return saveAccountWithPolicy(record, storagePolicy());
+}
+
+function saveCredentials(
+  provider: Parameters<typeof saveCredentialsWithPolicy>[0],
+  credentials: Parameters<typeof saveCredentialsWithPolicy>[1],
+  accountId: string,
+) {
+  return saveCredentialsWithPolicy(
+    provider,
+    credentials,
+    accountId,
+    storagePolicy(),
+  );
+}
+
+function getAccessToken(
+  provider: AccountCredentialProvider,
+  accountId: string,
+  opts: GetAccessTokenOutcomeOptions,
+): Promise<AccessTokenOutcome>;
+function getAccessToken(
+  provider: AccountCredentialProvider,
+  accountId?: string,
+  opts?: GetAccessTokenOptions,
+): Promise<string | null>;
+function getAccessToken(
+  provider: AccountCredentialProvider,
+  accountId = "default",
+  opts?: GetAccessTokenOptions | GetAccessTokenOutcomeOptions,
+): Promise<string | null | AccessTokenOutcome> {
+  return getAccessTokenWithPolicy(provider, accountId, {
+    ...opts,
+    storagePolicy: storagePolicy(),
+  } as GetAccessTokenOutcomeOptions);
 }
 
 const MIN = 60 * 1000;
@@ -235,7 +290,7 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
         typeof vi.fn
       >;
       refreshMock.mockRejectedValue(new Error(message));
-      await saveCredentials(
+      saveCredentials(
         "anthropic-subscription",
         {
           access: "still-valid-access",

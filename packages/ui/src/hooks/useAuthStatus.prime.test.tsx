@@ -10,6 +10,12 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setBootConfig } from "../config/boot-config-store";
+import {
+  createPersistedActiveServer,
+  loadPersistedActiveServer,
+  savePersistedActiveServer,
+} from "../state/persistence";
 import {
   __resetAuthStatusForTests,
   __setAuthStatusForTests,
@@ -39,7 +45,9 @@ describe("primeAuthStatusProbe + activation reuse", () => {
 
   beforeEach(() => {
     localStorage.clear();
+    setBootConfig({ branding: {} });
     __resetAuthStatusForTests();
+    setBootConfig({ branding: {} });
     fetchMock = vi.fn();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
   });
@@ -95,6 +103,50 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       }),
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes a rejected remote bearer before retrying the primed auth probe", async () => {
+    setBootConfig({
+      branding: {},
+      apiBase: "https://runtime.example.test",
+      apiToken: "stale-token",
+    });
+    savePersistedActiveServer(
+      createPersistedActiveServer({
+        kind: "remote",
+        apiBase: "https://runtime.example.test",
+        accessToken: "stale-token",
+      }),
+    );
+    const unauthorized = {
+      reason: "remote_auth_required",
+      access: {
+        mode: "remote",
+        passwordConfigured: true,
+        ownerConfigured: false,
+      },
+    };
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, unauthorized))
+      .mockResolvedValueOnce(jsonResponse(401, unauthorized));
+
+    await act(async () => {
+      primeAuthStatusProbe();
+    });
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() =>
+      expect(result.current.state).toMatchObject({
+        phase: "unauthenticated",
+        reason: "remote_auth_required",
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    const retryHeaders = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
+    expect(firstHeaders.get("Authorization")).toBe("Bearer stale-token");
+    expect(retryHeaders.has("Authorization")).toBe(false);
+    expect(loadPersistedActiveServer()?.accessToken).toBeUndefined();
   });
 
   it("discards a mid-boot 503 prime and the activation fetch re-probes", async () => {

@@ -582,7 +582,7 @@ describe("processPendingPiiScrubJobs — retry and failure classification", () =
       type: svc.PII_SCRUB_JOB_TYPE,
       staleThresholdMs: 0,
     });
-    expect(recovered).toBe(0);
+    expect(recovered).toMatchObject({ retried: 0, permanentlyFailed: 0, failures: [] });
     expect((await jobRow(job.id))?.status).toBe("completed");
   });
 });
