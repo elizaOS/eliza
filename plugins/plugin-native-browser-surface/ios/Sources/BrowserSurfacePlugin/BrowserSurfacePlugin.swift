@@ -1,8 +1,9 @@
 /**
  * Native iOS half of `ElizaSurfaceManager` (#15245): layers one `WKWebView` per
  * Browser tab above the Capacitor host webview, each in its OWN renderer process
- * and storage partition. Rounded occlusion holes expose host-rendered chrome
- * without resizing or hiding the live page.
+ * and storage partition. A computed outer clip follows the rounded React host
+ * while independent rounded occlusion holes expose host-rendered chrome without
+ * resizing or hiding the live page.
  *
  * An `isolated` process gets a fresh `WKProcessPool`; isolated storage gets a
  * non-persistent `WKWebsiteDataStore`. `shared` reuses a plugin-owned pool and
@@ -102,18 +103,50 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("setBounds requires an id")
             return
         }
-        let x = call.getDouble("x") ?? 0
-        let y = call.getDouble("y") ?? 0
-        let width = call.getDouble("width") ?? 0
-        let height = call.getDouble("height") ?? 0
+        guard let x = call.getDouble("x"), let y = call.getDouble("y"),
+              let width = call.getDouble("width"), let height = call.getDouble("height"),
+              let rawOuterClip = call.getObject("outerClip"),
+              let rawCornerRadii = rawOuterClip["cornerRadii"] as? [String: Any],
+              let clipX = (rawOuterClip["x"] as? NSNumber)?.doubleValue,
+              let clipY = (rawOuterClip["y"] as? NSNumber)?.doubleValue,
+              let clipWidth = (rawOuterClip["width"] as? NSNumber)?.doubleValue,
+              let clipHeight = (rawOuterClip["height"] as? NSNumber)?.doubleValue,
+              let topLeft = (rawCornerRadii["topLeft"] as? NSNumber)?.doubleValue,
+              let topRight = (rawCornerRadii["topRight"] as? NSNumber)?.doubleValue,
+              let bottomRight = (rawCornerRadii["bottomRight"] as? NSNumber)?.doubleValue,
+              let bottomLeft = (rawCornerRadii["bottomLeft"] as? NSNumber)?.doubleValue else {
+            call.reject("setBounds requires page bounds and an outerClip with cornerRadii")
+            return
+        }
+        let outerClip = HostOuterClip(
+            x: clipX,
+            y: clipY,
+            width: clipWidth,
+            height: clipHeight,
+            topLeftRadius: topLeft,
+            topRightRadius: topRight,
+            bottomRightRadius: bottomRight,
+            bottomLeftRadius: bottomLeft
+        )
+        guard x.isFinite, y.isFinite, width.isFinite, height.isFinite,
+              width >= 0, height >= 0, outerClip.hasValidGeometry else {
+            call.reject("setBounds has invalid page or outer clip geometry")
+            return
+        }
         DispatchQueue.main.async {
             guard let surface = self.surfaces[id] else {
                 call.reject("no surface \(id)")
                 return
             }
             // CSS px map 1:1 to UIKit points, so no density conversion is needed.
-            surface.container.frame = CGRect(x: x, y: y, width: width, height: height)
-            surface.container.setSurfaceOrigin(CGPoint(x: x, y: y))
+            let frame = CGRect(x: x, y: y, width: width, height: height)
+            if surface.container.frame != frame {
+                surface.container.frame = frame
+            }
+            surface.container.setSurfaceGeometry(
+                origin: CGPoint(x: x, y: y),
+                outerClip: outerClip
+            )
             call.resolve()
         }
     }
@@ -260,6 +293,25 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 }
 
+private struct HostOuterClip: Equatable {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
+    let topLeftRadius: Double
+    let topRightRadius: Double
+    let bottomRightRadius: Double
+    let bottomLeftRadius: Double
+
+    var hasValidGeometry: Bool {
+        x.isFinite && y.isFinite && width.isFinite && height.isFinite &&
+            topLeftRadius.isFinite && topRightRadius.isFinite &&
+            bottomRightRadius.isFinite && bottomLeftRadius.isFinite &&
+            width >= 0 && height >= 0 && topLeftRadius >= 0 &&
+            topRightRadius >= 0 && bottomRightRadius >= 0 && bottomLeftRadius >= 0
+    }
+}
+
 private struct HostOcclusionRect {
     let x: Double
     let y: Double
@@ -268,13 +320,27 @@ private struct HostOcclusionRect {
     let cornerRadius: Double
 }
 
-/// Masks native page pixels around host-rendered chrome and lets UIKit continue
-/// hit-testing the Capacitor host for touches that begin inside those holes.
+/// Clips native page pixels to the rounded React host, then subtracts overlay
+/// holes so UIKit can continue hit-testing the Capacitor host in either region.
 private final class OccludingSurfaceView: UIView {
     private var hostOcclusions: [HostOcclusionRect] = []
+    private var hostOuterClip: HostOuterClip?
     private var surfaceOrigin: CGPoint = .zero
     private var maskContainers: [OcclusionMaskContainerView] = []
     private var contentView: UIView?
+    private let outerClipMask = CAShapeLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        outerClipMask.fillColor = UIColor.white.cgColor
+        outerClipMask.frame = bounds
+        outerClipMask.path = UIBezierPath(rect: bounds).cgPath
+        layer.mask = outerClipMask
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     func installContentView(_ view: UIView) {
         guard contentView !== view else { return }
@@ -283,8 +349,10 @@ private final class OccludingSurfaceView: UIView {
         rebuildMaskHierarchy()
     }
 
-    func setSurfaceOrigin(_ origin: CGPoint) {
+    func setSurfaceGeometry(origin: CGPoint, outerClip: HostOuterClip) {
+        if surfaceOrigin == origin, hostOuterClip == outerClip { return }
         surfaceOrigin = origin
+        hostOuterClip = outerClip
         layoutMaskHierarchy()
     }
 
@@ -300,7 +368,26 @@ private final class OccludingSurfaceView: UIView {
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         guard super.point(inside: point, with: event) else { return false }
+        guard localOuterClipPath()?.contains(point) != false else { return false }
         return !localOcclusionPaths().contains { $0.contains(point) }
+    }
+
+    private func localOuterClipPath() -> UIBezierPath? {
+        guard let clip = hostOuterClip else { return nil }
+        return roundedOuterClipPath(
+            rect: CGRect(
+                x: CGFloat(clip.x) - surfaceOrigin.x,
+                y: CGFloat(clip.y) - surfaceOrigin.y,
+                width: CGFloat(clip.width),
+                height: CGFloat(clip.height)
+            ),
+            radii: (
+                topLeft: CGFloat(clip.topLeftRadius),
+                topRight: CGFloat(clip.topRightRadius),
+                bottomRight: CGFloat(clip.bottomRightRadius),
+                bottomLeft: CGFloat(clip.bottomLeftRadius)
+            )
+        )
     }
 
     private func localOcclusionPaths() -> [UIBezierPath] {
@@ -339,12 +426,88 @@ private final class OccludingSurfaceView: UIView {
     }
 
     private func layoutMaskHierarchy() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        outerClipMask.frame = bounds
+        outerClipMask.path = (localOuterClipPath() ?? UIBezierPath(rect: bounds)).cgPath
+        CATransaction.commit()
         maskContainers.forEach { $0.frame = bounds }
         contentView?.frame = bounds
         for (container, path) in zip(maskContainers, localOcclusionPaths()) {
             container.setOcclusionPath(path)
         }
     }
+}
+
+private func roundedOuterClipPath(
+    rect: CGRect,
+    radii: (topLeft: CGFloat, topRight: CGFloat, bottomRight: CGFloat, bottomLeft: CGFloat)
+) -> UIBezierPath {
+    let raw = [
+        max(0, radii.topLeft),
+        max(0, radii.topRight),
+        max(0, radii.bottomRight),
+        max(0, radii.bottomLeft),
+    ]
+    func edgeScale(_ length: CGFloat, _ first: CGFloat, _ second: CGFloat) -> CGFloat {
+        let total = first + second
+        return total > 0 ? max(0, length) / total : 1
+    }
+    let scale = [
+        CGFloat(1),
+        edgeScale(rect.width, raw[0], raw[1]),
+        edgeScale(rect.width, raw[3], raw[2]),
+        edgeScale(rect.height, raw[0], raw[3]),
+        edgeScale(rect.height, raw[1], raw[2]),
+    ].min() ?? 1
+    let topLeft = raw[0] * scale
+    let topRight = raw[1] * scale
+    let bottomRight = raw[2] * scale
+    let bottomLeft = raw[3] * scale
+    let path = UIBezierPath()
+    path.move(to: CGPoint(x: rect.minX + topLeft, y: rect.minY))
+    path.addLine(to: CGPoint(x: rect.maxX - topRight, y: rect.minY))
+    if topRight > 0 {
+        path.addArc(
+            withCenter: CGPoint(x: rect.maxX - topRight, y: rect.minY + topRight),
+            radius: topRight,
+            startAngle: -.pi / 2,
+            endAngle: 0,
+            clockwise: true
+        )
+    }
+    path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - bottomRight))
+    if bottomRight > 0 {
+        path.addArc(
+            withCenter: CGPoint(x: rect.maxX - bottomRight, y: rect.maxY - bottomRight),
+            radius: bottomRight,
+            startAngle: 0,
+            endAngle: .pi / 2,
+            clockwise: true
+        )
+    }
+    path.addLine(to: CGPoint(x: rect.minX + bottomLeft, y: rect.maxY))
+    if bottomLeft > 0 {
+        path.addArc(
+            withCenter: CGPoint(x: rect.minX + bottomLeft, y: rect.maxY - bottomLeft),
+            radius: bottomLeft,
+            startAngle: .pi / 2,
+            endAngle: .pi,
+            clockwise: true
+        )
+    }
+    path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + topLeft))
+    if topLeft > 0 {
+        path.addArc(
+            withCenter: CGPoint(x: rect.minX + topLeft, y: rect.minY + topLeft),
+            radius: topLeft,
+            startAngle: .pi,
+            endAngle: .pi * 1.5,
+            clockwise: true
+        )
+    }
+    path.close()
+    return path
 }
 
 /// Each wrapper subtracts exactly one rounded hole. Nesting wrappers composes

@@ -100,6 +100,9 @@ class BrowserSurfaceIsolationInstrumentedTest {
         val surface = OccludingSurfaceLayout(context)
         val page = View(context).apply { setBackgroundColor(Color.RED) }
         surface.addView(page, FrameLayout.LayoutParams(100, 100))
+        surface.setOuterClip(
+            RoundedOuterClip(0f, 0f, 100f, 100f, 20f, 20f, 20f, 20f),
+        )
         surface.setOcclusions(
             listOf(
                 RoundedOcclusionRect(
@@ -117,9 +120,61 @@ class BrowserSurfaceIsolationInstrumentedTest {
         val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
         surface.draw(Canvas(bitmap))
 
-        assertEquals(Color.RED, bitmap.getPixel(10, 10))
+        assertEquals(Color.TRANSPARENT, bitmap.getPixel(0, 0))
+        assertEquals(Color.RED, bitmap.getPixel(10, 20))
         assertEquals(Color.RED, bitmap.getPixel(21, 21))
         assertEquals(Color.TRANSPARENT, bitmap.getPixel(50, 50))
+    }
+
+    @Test
+    fun outerClipStillRoundsThePageWithZeroOcclusionHoles() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val surface = OccludingSurfaceLayout(context)
+        surface.addView(
+            View(context).apply { setBackgroundColor(Color.RED) },
+            FrameLayout.LayoutParams(100, 100),
+        )
+        surface.setOuterClip(
+            RoundedOuterClip(0f, 0f, 100f, 100f, 20f, 20f, 20f, 20f),
+        )
+        surface.setOcclusions(emptyList())
+        val exact = View.MeasureSpec.makeMeasureSpec(100, View.MeasureSpec.EXACTLY)
+        surface.measure(exact, exact)
+        surface.layout(0, 0, 100, 100)
+        val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+        surface.draw(Canvas(bitmap))
+
+        assertEquals(Color.TRANSPARENT, bitmap.getPixel(0, 0))
+        assertEquals(Color.RED, bitmap.getPixel(50, 50))
+    }
+
+    @Test
+    fun overlappingOcclusionHolesRemainAUnionInsideTheOuterClip() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val surface = OccludingSurfaceLayout(context)
+        surface.addView(
+            View(context).apply { setBackgroundColor(Color.RED) },
+            FrameLayout.LayoutParams(100, 100),
+        )
+        surface.setOuterClip(
+            RoundedOuterClip(0f, 0f, 100f, 100f, 16f, 16f, 16f, 16f),
+        )
+        surface.setOcclusions(
+            listOf(
+                RoundedOcclusionRect(20f, 20f, 60f, 70f, 0f),
+                RoundedOcclusionRect(40f, 30f, 80f, 80f, 0f),
+            ),
+        )
+        val exact = View.MeasureSpec.makeMeasureSpec(100, View.MeasureSpec.EXACTLY)
+        surface.measure(exact, exact)
+        surface.layout(0, 0, 100, 100)
+        val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+        surface.draw(Canvas(bitmap))
+
+        assertEquals(Color.TRANSPARENT, bitmap.getPixel(30, 40))
+        assertEquals(Color.TRANSPARENT, bitmap.getPixel(50, 40))
+        assertEquals(Color.TRANSPARENT, bitmap.getPixel(70, 40))
+        assertEquals(Color.RED, bitmap.getPixel(90, 50))
     }
 
     @Test
@@ -130,6 +185,9 @@ class BrowserSurfaceIsolationInstrumentedTest {
             setOnTouchListener { _, _ -> true }
         }
         surface.addView(page, FrameLayout.LayoutParams(100, 100))
+        surface.setOuterClip(
+            RoundedOuterClip(0f, 0f, 100f, 100f, 20f, 20f, 20f, 20f),
+        )
         surface.setOcclusions(
             listOf(RoundedOcclusionRect(20f, 20f, 80f, 80f, 0f)),
         )
@@ -137,11 +195,14 @@ class BrowserSurfaceIsolationInstrumentedTest {
         surface.measure(exact, exact)
         surface.layout(0, 0, 100, 100)
         val inside = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 50f, 50f, 0)
-        val outside = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 10f, 10f, 0)
+        val pageTouch = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 10f, 50f, 0)
+        val outside = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 0f, 0f, 0)
 
         assertFalse(surface.dispatchTouchEvent(inside))
-        assertTrue(surface.dispatchTouchEvent(outside))
+        assertTrue(surface.dispatchTouchEvent(pageTouch))
+        assertFalse(surface.dispatchTouchEvent(outside))
         inside.recycle()
+        pageTouch.recycle()
         outside.recycle()
     }
 }
