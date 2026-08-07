@@ -42,10 +42,6 @@ import { BootTimer } from "./boot-timer.ts";
 // is armed, and it refuses to arm in production — see crash-injection.ts.
 import { maybeInjectFault } from "./crash-injection.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
-import {
-  applySandboxCharacterFromEnv,
-  resolveSandboxRouteAgentId,
-} from "./sandbox-character.ts";
 import { startMemoryWatchdog } from "./memory-watchdog.ts";
 import {
   isVaultRef,
@@ -91,6 +87,10 @@ import {
   buildRuntimeSettingsProjection,
   type RuntimeSettingsProjectionOptions,
 } from "./runtime-settings.ts";
+import {
+  applySandboxCharacterFromEnv,
+  resolveSandboxRouteAgentId,
+} from "./sandbox-character.ts";
 
 export { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 export {
@@ -4318,7 +4318,7 @@ export async function startEliza(
   }
 
   // 3. Build elizaOS Character from Eliza config (override applied at 1a).
-  let sandboxRouteAgentId: string | null = resolveSandboxRouteAgentId();
+  const sandboxRouteAgentId: string | null = resolveSandboxRouteAgentId();
 
   // 3b. Canonical file boot (sovereign identity): when configured via
   // ELIZA_CANONICAL_BOOT_ROOT / ELIZA_CANONICAL_BOOT_MANIFEST, read the
@@ -4887,9 +4887,17 @@ export async function startEliza(
       await registerLocalInferenceBoot(runtime);
       bootTimer.lap("svc:local-inference-boot");
     } catch (err) {
+      // error-policy:J4 user-facing degrade — the hook is optional: the plugin
+      // is not installed on every target, and a host without it must still
+      // boot. Voice/ASR readiness then reports `ready:false` through its own
+      // route, which is the visibly distinct unavailable state; report it so
+      // the failure is agent-visible rather than only a log line.
       logger.warn(
         `[eliza] Local inference pre-ready boot hook failed: ${formatError(err)}`,
       );
+      runtime.reportError("local-inference-boot-hook", err, {
+        phase: "pre-ready",
+      });
     }
     // runtime.initialize() survives a total TEXT_EMBEDDING dimension-probe
     // failure (EmbeddingDimensionProbeError is caught in core, which flips the
@@ -5463,7 +5471,8 @@ export async function startEliza(
     ]);
 
     const timeoutMs = (() => {
-      const raw = process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS?.trim();
+      const raw =
+        process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS?.trim();
       if (!raw) return 30_000;
       const parsed = Number.parseInt(raw, 10);
       return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
@@ -5477,23 +5486,33 @@ export async function startEliza(
       const startedAt = Date.now();
       try {
         abortSignal.throwIfAborted();
-        logger.info(
-          `[eliza] deferred: Registering plugin: ${plugin.name}...`,
-        );
-        await Promise.race([
-          runtime.registerPlugin(plugin),
-          new Promise<never>((_resolve, reject) =>
-            setTimeout(
-              () =>
-                reject(
-                  new Error(
-                    `Timed out after ${registrationTimeoutMs / 1000}s`,
+        logger.info(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
+        // The deadline only bounds how long boot WAITS — `registerPlugin` has
+        // no cancellation channel, so the registration keeps running and may
+        // still land later. The timer is cleared (and unref'd) so a slow
+        // plugin cannot hold the event loop open past process exit, and a
+        // late rejection stays observed by the race rather than surfacing as
+        // an unhandled rejection.
+        let registrationTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            runtime.registerPlugin(plugin),
+            new Promise<never>((_resolve, reject) => {
+              registrationTimer = setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `Timed out after ${registrationTimeoutMs / 1000}s`,
+                    ),
                   ),
-                ),
-              registrationTimeoutMs,
-            ),
-          ),
-        ]);
+                registrationTimeoutMs,
+              );
+              registrationTimer.unref?.();
+            }),
+          ]);
+        } finally {
+          if (registrationTimer) clearTimeout(registrationTimer);
+        }
         logger.info(
           `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
         );
@@ -5543,10 +5562,7 @@ export async function startEliza(
     await Promise.all(
       Array.from(
         {
-          length: Math.min(
-            registrationConcurrency,
-            remainingPlugins.length,
-          ),
+          length: Math.min(registrationConcurrency, remainingPlugins.length),
         },
         async () => {
           while (nextPluginIndex < remainingPlugins.length) {
