@@ -69,7 +69,12 @@ jobs:
           set -euo pipefail
           RANGE_ARGS=()
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            RANGE_ARGS=(--log-opts "${PR_BASE_SHA}..${PR_HEAD_SHA}")
+            # Three-dot: scan merge-base(base,head)..head, i.e. only what THIS
+            # PR added. `pull_request.base.sha` is the base branch tip at event
+            # time, not the merge base, so a two-dot range also scans commits the
+            # branch merely inherited by merging develop — re-flagging fixtures
+            # the PR never touched (#17971).
+            RANGE_ARGS=(--log-opts "${PR_BASE_SHA}...${PR_HEAD_SHA}")
           elif [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
             RANGE_ARGS=(--log-opts "${BEFORE_SHA}..${CURRENT_SHA}")
           elif ! git rev-parse -q --verify "${CURRENT_SHA}^" >/dev/null 2>&1; then
