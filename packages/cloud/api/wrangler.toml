@@ -392,8 +392,13 @@ ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
 # not secrets: the issuer string is byte-compared by every relying party, so it
 # must survive a redeploy that wipes secrets rather than silently disappear.
 # OIDC_ENABLED is the kill switch; the provider serves nothing until it is "true".
-# The issuer MUST be a host this Worker is routed for (see `routes` above) —
-# the apex elizacloud.ai is the SPA and never reaches the Worker.
+# The issuer MUST be a bare origin on a host this Worker is routed for (see
+# `routes` above) — the apex elizacloud.ai is the SPA and never reaches the
+# Worker, and a path on the issuer is refused because every endpoint is served
+# from the host root. The console SPA must be built with the same string as
+# VITE_OIDC_ISSUER_URL or signed-out relying-party logins cannot resume; the
+# `build:web` env blocks in .github/workflows/cloud-cf-deploy.yml carry it, and
+# `packages/cloud/shared/src/lib/oidc/config.test.ts` fails if the two drift.
 OIDC_ENABLED = "false"
 OIDC_ISSUER_URL = "https://api-staging.elizacloud.ai"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)

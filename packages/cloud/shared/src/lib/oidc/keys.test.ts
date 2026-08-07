@@ -158,3 +158,39 @@ describe("fail-closed parsing", () => {
     expect(signer.kid).toMatch(/^[A-Za-z0-9_-]{16}$/);
   });
 });
+
+/**
+ * `alg` is operator-supplied and is published as
+ * `id_token_signing_alg_values_supported`, so a value the key cannot actually
+ * sign with would advertise a capability this provider does not have.
+ */
+describe("algorithm validation", () => {
+  test("`alg: none` is refused", async () => {
+    setRing([{ ...rsaJwk("unsigned"), alg: "none" }]);
+    await expect(getOidcSigner()).rejects.toThrow(/alg "none"/);
+    await expect(getOidcSigningAlgorithms()).rejects.toThrow(/alg "none"/);
+  });
+
+  test("a MAC algorithm on an asymmetric key is refused", async () => {
+    setRing([{ ...rsaJwk("mac"), alg: "HS256" }]);
+    await expect(getOidcSigner()).rejects.toThrow(/alg "HS256"/);
+  });
+
+  test("an encryption algorithm is refused", async () => {
+    setRing([{ ...rsaJwk("enc"), alg: "RSA-OAEP" }]);
+    await expect(getOidcSigner()).rejects.toThrow(/alg "RSA-OAEP"/);
+  });
+
+  test("an algorithm from the wrong curve is refused", async () => {
+    // P-256 signs under ES256 alone; ES384 here would be advertised and then
+    // fail at signing time, after the document was already cached by an RP.
+    setRing([{ ...ecJwk("wrong-curve"), alg: "ES384" }]);
+    await expect(getOidcSigner()).rejects.toThrow(/alg "ES384"/);
+  });
+
+  test("an RSA-PSS algorithm is accepted and advertised as itself", async () => {
+    setRing([{ ...rsaJwk("pss"), alg: "PS256" }]);
+    expect((await getOidcSigner()).alg).toBe("PS256");
+    expect(await getOidcSigningAlgorithms()).toEqual(["PS256"]);
+  });
+});

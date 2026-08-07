@@ -40,8 +40,6 @@ export const oidcAuthorizationCodes = pgTable(
     /** PKCE challenge (base64url of sha256(verifier)); method is S256 only. */
     code_challenge: text("code_challenge"),
     code_challenge_method: text("code_challenge_method"),
-    /** Feeds the `auth_time` claim. */
-    auth_time: timestamp("auth_time", { withTimezone: true }).notNull(),
     /** iat of the authorizing Steward session — logout-marker ordering input. */
     token_issued_at: timestamp("token_issued_at", { withTimezone: true }).notNull(),
     /** Code TTL (~60s); enforced in the claim's WHERE clause, purged opportunistically. */
@@ -59,6 +57,9 @@ export const oidcAuthorizationCodes = pgTable(
  * RP request cannot be carried through it as an absolute URL; it is stored
  * here and resumed by opaque id instead. Storing the ALREADY-VALIDATED request
  * also means the resume leg never re-parses attacker-controlled input.
+ *
+ * The id travels in a URL, so it cannot be the only thing `/resume` trusts:
+ * `binding_hash` is what ties the row to one browser.
  */
 export const oidcAuthorizationRequests = pgTable(
   "oidc_authorization_requests",
@@ -73,6 +74,13 @@ export const oidcAuthorizationRequests = pgTable(
     nonce: text("nonce"),
     code_challenge: text("code_challenge"),
     code_challenge_method: text("code_challenge_method"),
+    /**
+     * sha256 of the originating browser's binding (`lib/oidc/request-binding.ts`):
+     * its per-request cookie secret plus its user agent. `/resume` recomputes
+     * this from the presenting browser and refuses a mismatch, so a leaked
+     * request id cannot complete somebody else's pending authorization.
+     */
+    binding_hash: text("binding_hash").notNull(),
     /** Reserved for future request parameters (`prompt`, `max_age`, …). */
     extra: jsonb("extra").$type<Record<string, unknown>>(),
     /** Parking-lot TTL (~10 min) — one login round trip, not a session. */

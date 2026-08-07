@@ -10,6 +10,10 @@
  * the whole point of the endpoint: access tokens are stateless and cannot be
  * revoked before they expire, so `/userinfo` is where a deactivated account or
  * a changed role becomes visible within seconds.
+ *
+ * Every refusal is an RFC 6750 challenge, never a bare status: the client's
+ * next move — retry, re-authorize with a wider scope, or give up — is decided
+ * from `WWW-Authenticate` alone.
  */
 
 import { Hono } from "hono";
@@ -21,6 +25,7 @@ import {
 import { buildOidcClaims } from "@/lib/oidc/claims";
 import { getOidcClient } from "@/lib/oidc/clients";
 import {
+  describeOidcConfigFailure,
   isOidcEnabled,
   type OidcConfig,
   resolveOidcConfig,
@@ -44,10 +49,80 @@ app.use(
   }),
 );
 
+/** RFC 7235 §2.1: the auth-scheme token is matched case-insensitively. */
+const BEARER_SCHEME = /^bearer[ \t]+/i;
+
+/**
+ * The presented bearer token, or null when the header names another scheme.
+ *
+ * The scheme comparison is case-insensitive because RFC 7235 defines it that
+ * way and clients rely on it — `bearer <token>` is what several HTTP libraries
+ * and hand-written shell callers send, and rejecting it produces a 401 that
+ * looks like an expired token and sends the caller off to re-authenticate a
+ * credential that was never wrong.
+ */
+function readBearerToken(c: AppContext): string | null {
+  const header = c.req.header("authorization");
+  const scheme = header ? BEARER_SCHEME.exec(header) : null;
+  if (!header || !scheme) return null;
+  const token = header.slice(scheme[0].length).trim();
+  return token.length > 0 ? token : null;
+}
+
+/** RFC 7230 §3.2.6 quoted-string escaping for a challenge parameter. */
+function quoteChallengeValue(value: string): string {
+  return value.replace(/[\\"]/g, "\\$&");
+}
+
+/**
+ * RFC 6750 §3: EVERY 401 and 403 from a bearer-protected resource carries a
+ * challenge. It is the only machine-readable part of the refusal — a client
+ * that cannot see `invalid_token` versus `insufficient_scope` cannot tell "get
+ * a new token" from "that token will never be enough", and retries forever.
+ */
+function bearerChallenge(
+  error: "invalid_token" | "insufficient_scope",
+  description: string,
+  scope?: string,
+): string {
+  const parameters = [
+    `error="${error}"`,
+    `error_description="${quoteChallengeValue(description)}"`,
+  ];
+  if (scope) parameters.push(`scope="${quoteChallengeValue(scope)}"`);
+  return `Bearer ${parameters.join(", ")}`;
+}
+
 function unauthorized(c: AppContext, description: string) {
   return c.json(oidcErrorBody("invalid_token", description), 401, {
     "Cache-Control": "no-store",
-    "WWW-Authenticate": `Bearer error="invalid_token", error_description="${description}"`,
+    "WWW-Authenticate": bearerChallenge("invalid_token", description),
+  });
+}
+
+/** RFC 6750 §3.1: the scope the token would have needed is named in the challenge. */
+function insufficientScope(c: AppContext, description: string, scope: string) {
+  return c.json(oidcErrorBody("insufficient_scope", description), 403, {
+    "Cache-Control": "no-store",
+    "WWW-Authenticate": bearerChallenge(
+      "insufficient_scope",
+      description,
+      scope,
+    ),
+  });
+}
+
+/**
+ * The provider cannot answer right now. RFC 6750 §3.1 gives a bearer-protected
+ * resource three error codes and none of them means "retry later", so the
+ * availability signal is carried by 503 plus `Retry-After` and the body has no
+ * `error` member: a client must not read this as `invalid_token` and throw away
+ * a session that is still perfectly valid.
+ */
+function serviceUnavailable(c: AppContext, description: string) {
+  return c.json({ error_description: description }, 503, {
+    "Cache-Control": "no-store",
+    "Retry-After": "5",
   });
 }
 
@@ -56,21 +131,20 @@ function requireConfig(c: AppContext): OidcConfig | Response {
     return c.json({ error: "not_found" }, 404);
   }
   const config = resolveOidcConfig(c.env);
-  if (!config || new URL(c.req.url).host.toLowerCase() !== config.issuerHost) {
+  if (!config) {
+    logger.error("[oidc] userinfo unavailable", {
+      reason: describeOidcConfigFailure(c.env),
+    });
+    return c.json({ error: "not_found" }, 404);
+  }
+  if (new URL(c.req.url).host.toLowerCase() !== config.issuerHost) {
     return c.json({ error: "not_found" }, 404);
   }
   if (!isOidcSigningConfigured()) {
     logger.error(
       "[oidc] userinfo unavailable: OIDC_SIGNING_JWKS is not configured",
     );
-    return c.json(
-      oidcErrorBody(
-        "temporarily_unavailable",
-        "The identity provider is not configured.",
-      ),
-      503,
-      { "Cache-Control": "no-store" },
-    );
+    return serviceUnavailable(c, "The identity provider is not configured.");
   }
   return config;
 }
@@ -79,8 +153,7 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
   const config = requireConfig(c);
   if (config instanceof Response) return config;
 
-  const header = c.req.header("authorization");
-  const token = header?.startsWith("Bearer ") ? header.slice(7).trim() : null;
+  const token = readBearerToken(c);
   if (!token) return unauthorized(c, "A bearer access token is required.");
 
   try {
@@ -88,11 +161,7 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
     if (!verified)
       return unauthorized(c, "The access token is invalid or expired.");
     if (!verified.scopes.includes("openid")) {
-      return c.json(
-        oidcErrorBody("insufficient_scope", "The openid scope is required."),
-        403,
-        { "Cache-Control": "no-store" },
-      );
+      return insufficientScope(c, "The openid scope is required.", "openid");
     }
 
     const client = getOidcClient(verified.clientId);
@@ -134,14 +203,7 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
     logger.error("[oidc] userinfo failed", {
       error: error instanceof Error ? error.message : String(error),
     });
-    return c.json(
-      oidcErrorBody(
-        "temporarily_unavailable",
-        "Userinfo is temporarily unavailable.",
-      ),
-      503,
-      { "Cache-Control": "no-store" },
-    );
+    return serviceUnavailable(c, "Userinfo is temporarily unavailable.");
   }
 }
 

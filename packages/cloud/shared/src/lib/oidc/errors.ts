@@ -13,19 +13,43 @@
 import { escapeHtml } from "../utils/html";
 
 export type OidcErrorCode =
+  // RFC 6749 4.1.2.1 and OpenID Connect Core 3.1.2.6 — authorization response.
   | "invalid_request"
   | "unauthorized_client"
   | "access_denied"
   | "unsupported_response_type"
   | "invalid_scope"
-  | "login_required"
   | "server_error"
   | "temporarily_unavailable"
+  | "login_required"
+  | "consent_required"
+  | "account_selection_required"
+  // RFC 6749 5.2 — token response.
   | "invalid_client"
   | "invalid_grant"
   | "unsupported_grant_type"
+  // RFC 6750 3.1 — bearer-token-protected resource.
   | "invalid_token"
   | "insufficient_scope";
+
+/**
+ * RFC 6749 5.2 enumerates the token-endpoint error codes and that set is
+ * CLOSED. The authorization-response codes are NOT in it — a relying party
+ * matching a token error against the 5.2 list treats `temporarily_unavailable`
+ * or `server_error` as an unrecognized, permanent failure and gives up on a
+ * login that would have succeeded on retry. This type is the enforcement:
+ * `oidcTokenErrorBody` is the only way the token route builds a protocol error,
+ * so a code outside the set cannot be emitted by accident.
+ */
+export type OidcTokenErrorCode = Extract<
+  OidcErrorCode,
+  | "invalid_request"
+  | "invalid_client"
+  | "invalid_grant"
+  | "unauthorized_client"
+  | "unsupported_grant_type"
+  | "invalid_scope"
+>;
 
 export interface OidcErrorBody {
   error: OidcErrorCode;
@@ -33,6 +57,11 @@ export interface OidcErrorBody {
 }
 
 export function oidcErrorBody(error: OidcErrorCode, description: string): OidcErrorBody {
+  return { error, error_description: description };
+}
+
+/** An RFC 6749 5.2 token error response, restricted to that section's set. */
+export function oidcTokenErrorBody(error: OidcTokenErrorCode, description: string): OidcErrorBody {
   return { error, error_description: description };
 }
 

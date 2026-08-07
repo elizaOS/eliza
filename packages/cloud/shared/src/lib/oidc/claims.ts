@@ -14,6 +14,12 @@
  *     `users.organization_id` FK plus the scalar `users.role`, so a user
  *     belongs to exactly one organization. Emitting the honest one-org shape
  *     is better than inventing team structure an RP would trust.
+ *   - Account kind is a GROUP as well as its own claim. A relying party that
+ *     admits agent-owned accounts on different terms expresses that as group
+ *     membership — Forgejo's `--restricted-group` is the only knob it has — and
+ *     a claim it does not read cannot drive it. `eliza-cloud:agents` and
+ *     `eliza-cloud:services` are the native values an operator maps onto that
+ *     configured name.
  *   - The implicit verified-`@elizalabs.ai` platform grant is emitted under its
  *     OWN role value (`platform_super_admin_implicit`), so a relying party can
  *     allowlist the wallet-backed grant without inheriting the email-domain
@@ -25,13 +31,20 @@
  *     on one fixed claim value — Forgejo's `--required-claim-name/-value` pair
  *     accepts exactly one — needs `constant_claims` instead, which emits an
  *     operator-chosen name/value verbatim for every token issued to that client.
+ *     Its value comes from the organization row, then the deployment default,
+ *     and from nothing session-derived: `/userinfo` is reached with an access
+ *     token and no session at all, so such a tier could only ever reach the ID
+ *     token, and a tenant that changes between the two is how a relying party
+ *     admits a login and then re-reads it as a different account.
  *
  * Provider-native `roles`/`groups` values are Eliza Cloud's own vocabulary. A
  * relying party almost never shares it, so each client may declare a
  * `claims_mapping` that translates those values into the names that RP is
  * configured to require. Mapping runs AFTER `roles_allowlist`, which still
  * filters the NATIVE vocabulary — allowlisting a mapped output name matches
- * nothing.
+ * nothing. Both sides of that translation are closed enough to check, so the
+ * registry validates mapping keys against `OIDC_ROLE_VALUES` and
+ * `isEmittableOidcGroup` and refuses a key nothing here can produce.
  *
  * Nothing here reads request state; callers pass an already-resolved snapshot
  * so `/authorize`, `/token`, and `/userinfo` all produce identical claims from
@@ -63,12 +76,34 @@ export const OIDC_ROLE_VALUES = [
 ] as const;
 
 /**
- * The group values that do not depend on a specific organization row. The full
- * vocabulary is open — `org:<uuid>`, `org:<slug>`, and `org:<uuid>:<role>` are
- * per-tenant — so group-mapping keys cannot be validated against a closed set
- * the way role keys can.
+ * The group values that do not depend on a specific organization row.
+ * `eliza-cloud:admins` and `eliza-cloud:agents` are the two an operator maps
+ * onto a relying party's privileged and restricted group names.
  */
-export const OIDC_STATIC_GROUP_VALUES = ["eliza-cloud:users", "eliza-cloud:admins"] as const;
+export const OIDC_STATIC_GROUP_VALUES = [
+  "eliza-cloud:users",
+  "eliza-cloud:admins",
+  "eliza-cloud:agents",
+  "eliza-cloud:services",
+] as const;
+
+/** Prefix of the per-organization values `org:<uuid>`, `org:<slug>`, `org:<uuid>:<role>`. */
+export const OIDC_ORG_GROUP_PREFIX = "org:";
+
+/**
+ * Whether `buildOidcGroups` can ever produce this value, and therefore whether
+ * a `claims_mapping.groups` key naming it can ever match.
+ *
+ * The organization half stays open (a uuid, a slug, and a role are all runtime
+ * values), so this is a prefix test there and an exact test everywhere else.
+ * It exists because a group mapping that matches nothing is invisible: the
+ * relying party receives a well-formed token missing exactly the group its own
+ * configuration gates on.
+ */
+export function isEmittableOidcGroup(value: string): boolean {
+  if ((OIDC_STATIC_GROUP_VALUES as readonly string[]).includes(value)) return true;
+  return value.startsWith(OIDC_ORG_GROUP_PREFIX) && value.length > OIDC_ORG_GROUP_PREFIX.length;
+}
 
 export interface OidcAdminStatus {
   isAdmin: boolean;
@@ -84,9 +119,7 @@ export interface OidcClaimsInput {
   /** The frozen username; passed separately so allocation can happen at authorize. */
   username: string;
   adminStatus: OidcAdminStatus;
-  /** Verified Steward tenant of the authorizing session (may be `personal-<id>`). */
-  sessionTenantId?: string | null;
-  /** Deployment-level tenant, used only when nothing more specific exists. */
+  /** Deployment-level tenant, used only when the organization carries none. */
   deploymentTenantId?: string | null;
   /** Live agent-sandbox ids owned by this user / org. Only read when policy allows. */
   agentIds?: string[];
@@ -118,15 +151,46 @@ function orgRoleName(role: string): string {
 }
 
 /**
- * `["eliza-cloud:users", "org:<uuid>", "org:<slug>", "org:<uuid>:<role>"]`.
+ * Narrow the free-text `oidc_user_profiles.account_kind` column, failing CLOSED.
+ *
+ * An absent profile is `human` — that is the column default and the state every
+ * console account starts in. A value that is present but unrecognized is read as
+ * `service` instead, and never as `human`: `human` is the UNRESTRICTED answer at
+ * a relying party (absence of a kind group is what Forgejo's `--restricted-group`
+ * reads as "not restricted"), so guessing it would hand a non-human account the
+ * terms a person gets. `service` is the conservative half of that choice — it
+ * asserts only "not a person", where `agent` would additionally assert a bound
+ * Eliza agent this row gives no evidence of — and both non-human kinds emit a
+ * group from the restricted vocabulary an operator maps.
+ *
+ * Throwing was the wrong shape for the same fault. Nothing calls this before a
+ * code is issued: claims are built at `/token` and `/userinfo`, so a raised error
+ * would burn the authorization code and answer the relying party with a 5xx on
+ * every retry — an account locked out of sign-in with no self-service repair,
+ * for a stored value that is by construction not the user's doing.
+ */
+export function readOidcAccountKind(value: string | null | undefined): OidcAccountKind {
+  if (value === undefined || value === null) return "human";
+  if (value === "human" || value === "agent" || value === "service") return value;
+  return "service";
+}
+
+/**
+ * `["eliza-cloud:users", "org:<uuid>", "org:<slug>", "org:<uuid>:<role>"]`, plus
+ * `eliza-cloud:admins` for a platform admin and `eliza-cloud:agents` /
+ * `eliza-cloud:services` for a non-human account.
  *
  * The uuid-keyed entries are the stable ones — `organizations.slug` is mutable,
- * so an RP that maps teams from the slug silently breaks on a rename.
+ * so an RP that maps teams from the slug silently breaks on a rename. A human
+ * account gets no kind group at all: absence is what a relying party reads as
+ * "not restricted", and emitting a `eliza-cloud:humans` value everybody carries
+ * would only grow every token.
  */
 export function buildOidcGroups(
   user: User,
   organization: Organization | null,
   adminStatus: OidcAdminStatus,
+  accountKind: OidcAccountKind,
 ): string[] {
   const groups = ["eliza-cloud:users"];
   if (organization) {
@@ -135,6 +199,8 @@ export function buildOidcGroups(
     groups.push(`org:${organization.id}:${user.role}`);
   }
   if (adminStatus.isAdmin) groups.push("eliza-cloud:admins");
+  if (accountKind === "agent") groups.push("eliza-cloud:agents");
+  if (accountKind === "service") groups.push("eliza-cloud:services");
   return groups;
 }
 
@@ -185,14 +251,9 @@ export function applyOidcClaimMapping(
   return out;
 }
 
-/** `organizations.steward_tenant_id` → verified session tenant → deployment tenant. */
+/** `organizations.steward_tenant_id` → deployment tenant. Both are stored rows. */
 export function resolveOidcTenantId(input: OidcClaimsInput): string | null {
-  return (
-    input.organization?.steward_tenant_id ??
-    input.sessionTenantId ??
-    input.deploymentTenantId ??
-    null
-  );
+  return input.organization?.steward_tenant_id ?? input.deploymentTenantId ?? null;
 }
 
 /**
@@ -209,6 +270,7 @@ export function buildOidcClaims(input: OidcClaimsInput): OidcProfileClaims {
   // collision. The registry already refuses to load a reserved name, so this is
   // the second of two independent guards rather than the only one.
   const claims: OidcProfileClaims = { ...client.constant_claims, sub: user.id };
+  const accountKind = readOidcAccountKind(profile?.account_kind);
 
   if (scopes.has("email")) {
     if (user.email) claims.email = user.email;
@@ -229,7 +291,7 @@ export function buildOidcClaims(input: OidcClaimsInput): OidcProfileClaims {
   if (scopes.has("groups")) {
     if (policy.groups) {
       claims.groups = applyOidcClaimMapping(
-        buildOidcGroups(user, input.organization, input.adminStatus),
+        buildOidcGroups(user, input.organization, input.adminStatus, accountKind),
         mapping.groups,
         mapping.mode,
       );
@@ -252,7 +314,6 @@ export function buildOidcClaims(input: OidcClaimsInput): OidcProfileClaims {
     if (tenantId) claims.tenant_id = tenantId;
   }
 
-  const accountKind: OidcAccountKind = (profile?.account_kind as OidcAccountKind) ?? "human";
   claims.eliza_account_kind = accountKind;
   claims.eliza_actor_id = profile?.actor_id ?? user.id;
 

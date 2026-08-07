@@ -305,11 +305,13 @@ function isFrontendAliasBackendPath(url: URL): boolean {
     url.pathname.startsWith("/api/") ||
     url.pathname === "/steward" ||
     url.pathname.startsWith("/steward/") ||
-    // Root-mounted backend surfaces: the JWKS document, and OIDC discovery +
-    // its key set. These are served at the issuer origin's root by protocol
-    // requirement, so without this they would be swallowed by the hosted
-    // frontend rewrite the moment ELIZA_FRONTEND_HOST_SUFFIX matched this host.
-    url.pathname.startsWith("/.well-known/")
+    // OIDC requires discovery and its key set at the issuer origin's root, so
+    // those two documents must reach this Worker rather than the hosted
+    // frontend. Match them exactly: a `/.well-known/` prefix would also move
+    // every other well-known path on the alias hosts off the SPA, including
+    // publishing the internal-service JWKS where it is not published today.
+    url.pathname === "/.well-known/openid-configuration" ||
+    url.pathname === "/.well-known/oidc/jwks.json"
   );
 }
 

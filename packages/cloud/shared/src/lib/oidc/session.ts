@@ -14,6 +14,18 @@
  * `*.elizacloud.ai` hosts serve user content and JS there can PLANT a
  * parent-domain cookie — the explicit-logout marker check below is load-bearing
  * rather than optional.
+ *
+ * The session's Steward tenant is deliberately NOT carried into the claim
+ * builder. `/userinfo` runs with an access token and no session, so a
+ * session-derived claim would exist in the ID token and vanish on the next read;
+ * `tenant_id` therefore comes from stored rows only (see `./claims.ts`).
+ *
+ * NOTHING HERE IS AN AUTHENTICATION TIME. A Steward access token is re-minted
+ * on every refresh from already-verified claims (`auth/steward-refresh`), so
+ * its `iat` moves without the user authenticating; a session established weeks
+ * ago carries an `iat` from minutes ago. `issuedAt` is therefore used ONLY to
+ * order this token against the explicit-logout marker, and no `auth_time` claim
+ * is derived from it — see `./tokens.ts`.
  */
 
 import type { AppContext } from "../../types/cloud-worker-env";
@@ -25,12 +37,8 @@ import { usersService } from "../services/users";
 export interface OidcSession {
   stewardUserId: string;
   userId: string;
-  /** Verified tenant of this session; may be `personal-<userId>`. */
-  tenantId: string | null;
   /** `iat` of the session token — logout-marker ordering input. */
   issuedAt: number;
-  /** Best available `auth_time`: when this session was established. */
-  authTime: Date;
 }
 
 export type OidcSessionOutcome =
@@ -72,9 +80,7 @@ export async function resolveOidcSession(c: AppContext): Promise<OidcSessionOutc
     session: {
       stewardUserId: claims.userId,
       userId: user.id,
-      tenantId: claims.tenantId ?? null,
       issuedAt: claims.issuedAt,
-      authTime: new Date(claims.issuedAt * 1000),
     },
   };
 }

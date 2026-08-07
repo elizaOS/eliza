@@ -20,16 +20,22 @@
  * Parsing is strict in one further direction: an entry whose knobs contradict
  * each other REFUSES TO LOAD. A `claims_policy` that grants `roles` while
  * `allowed_scopes` withholds the `groups` scope that gates it, an allowlist or
- * mapping keyed on a role this provider cannot produce, a mapping for a claim
- * the policy denies — each of those emits a token that is well-formed, verifies
+ * mapping keyed on a role or group this provider cannot produce, a mapping for a
+ * claim the policy denies — each of those emits a token that is well-formed, verifies
  * cleanly, and is then rejected by the relying party for a reason no log here
  * would explain. Failing the whole registry (503 `oidc_not_configured`) makes
  * the misconfiguration visible at deploy time instead.
+ *
+ * One of those contradictions is a privilege boundary rather than a usability
+ * one: a `client_id` that is also a `resource_audiences` value anywhere in the
+ * registry. An ID token's `aud` IS the client id, so that registration hands the
+ * resource server behind the audience a token its client already holds. It is
+ * refused across the whole registry, not per entry.
  */
 
 import { timingSafeEqualSecret } from "../auth/cron";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
-import { OIDC_ROLE_VALUES } from "./claims";
+import { isEmittableOidcGroup, OIDC_ROLE_VALUES, OIDC_STATIC_GROUP_VALUES } from "./claims";
 import { sha256Hex } from "./crypto";
 import { OIDC_SUPPORTED_CLAIMS } from "./metadata";
 
@@ -106,9 +112,14 @@ const CLAIM_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/;
  * spread before the derived ones, so shadowing is already impossible at
  * build time; refusing the name here means the operator learns at deploy time
  * that the value would never have been used.
+ *
+ * `auth_time` is listed even though the provider no longer emits it: a fixed
+ * constant would assert one authentication instant for every user forever,
+ * which is the misrepresentation dropping the claim exists to avoid.
  */
 const RESERVED_CLAIM_NAMES = new Set<string>([
   ...OIDC_SUPPORTED_CLAIMS,
+  "auth_time",
   "nbf",
   "jti",
   "typ",
@@ -249,11 +260,20 @@ function parseClaimsMapping(value: unknown, clientId: string): OidcClaimsMapping
       );
     }
   }
-  return {
-    roles,
-    groups: parseValueMap(raw.groups, "claims_mapping.groups", clientId),
-    mode,
-  };
+  const groups = parseValueMap(raw.groups, "claims_mapping.groups", clientId);
+  for (const nativeGroup of Object.keys(groups)) {
+    // A group mapping is how an operator reaches a relying party's configured
+    // admin or restricted group name. A key this provider never emits produces
+    // no error at login time — the token simply lacks that group — and at
+    // Forgejo an absent admin group DEMOTES the user signing in, which fails
+    // outright when they are the last administrator.
+    if (!isEmittableOidcGroup(nativeGroup)) {
+      throw new Error(
+        `OIDC_CLIENTS[${clientId}].claims_mapping.groups["${nativeGroup}"] is not a group this provider emits; keys are ${OIDC_STATIC_GROUP_VALUES.join(", ")} or an "org:" value`,
+      );
+    }
+  }
+  return { roles, groups, mode };
 }
 
 function parseConstantClaims(value: unknown, clientId: string): Record<string, string> {
@@ -333,6 +353,39 @@ function assertClientIsCoherent(client: OidcClient): void {
       `OIDC_CLIENTS[${id}] sets claims_mapping.mode "replace" with no mapping, which would emit empty roles and groups`,
     );
   }
+  if (client.resource_audiences.includes(id)) {
+    throw new Error(
+      `OIDC_CLIENTS[${id}].resource_audiences may not contain its own client_id: an ID token is minted with aud=client_id, so the resource server would accept it as an access token`,
+    );
+  }
+}
+
+/**
+ * Refuse a registry where one client's id is another's resource audience.
+ *
+ * `aud` is the only thing a resource server has to tell "a token minted FOR me"
+ * from "a token minted for somebody else". An ID token's `aud` is its client
+ * id, so registering client `X` while some client declares `X` as a resource
+ * audience makes every ID token issued to `X` — a token `X` itself holds and
+ * logs — verify as an access token at the resource server behind `X`. The token
+ * class check in `./tokens.ts` blocks that for consumers who use this
+ * provider's verifier; this blocks it for the ones who do not.
+ */
+function assertNoAudienceCollisions(clients: Map<string, OidcClient>): void {
+  const audienceOwners = new Map<string, string>();
+  for (const client of clients.values()) {
+    for (const audience of client.resource_audiences) {
+      if (!audienceOwners.has(audience)) audienceOwners.set(audience, client.client_id);
+    }
+  }
+  for (const clientId of clients.keys()) {
+    const owner = audienceOwners.get(clientId);
+    if (owner) {
+      throw new Error(
+        `OIDC_CLIENTS registers client_id "${clientId}", which OIDC_CLIENTS[${owner}] also declares as a resource audience; an ID token issued to "${clientId}" would verify as an access token for that resource`,
+      );
+    }
+  }
 }
 
 function parseClient(raw: unknown, index: number): OidcClient {
@@ -405,6 +458,7 @@ function loadClients(): Map<string, OidcClient> {
   if (map.size === 0) {
     throw new Error("OIDC_CLIENTS must register at least one client");
   }
+  assertNoAudienceCollisions(map);
 
   cachedClients = map;
   cachedClientsSource = source;

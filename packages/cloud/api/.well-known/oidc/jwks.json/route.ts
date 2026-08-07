@@ -15,7 +15,11 @@
  */
 
 import { Hono } from "hono";
-import { isOidcEnabled, resolveOidcConfig } from "@/lib/oidc/config";
+import {
+  describeOidcConfigFailure,
+  isOidcEnabled,
+  resolveOidcConfig,
+} from "@/lib/oidc/config";
 import { getOidcPublicJwks, isOidcSigningConfigured } from "@/lib/oidc/keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -28,7 +32,15 @@ app.get("/", async (c) => {
   }
 
   const config = resolveOidcConfig(c.env);
-  if (!config || new URL(c.req.url).host.toLowerCase() !== config.issuerHost) {
+  if (!config) {
+    // Every relying party fetches this URL to verify a token; a silent 404 for
+    // a bad issuer would read as "this provider signs nothing".
+    logger.error("[oidc] JWKS unavailable", {
+      reason: describeOidcConfigFailure(c.env),
+    });
+    return c.json({ error: "not_found" }, 404);
+  }
+  if (new URL(c.req.url).host.toLowerCase() !== config.issuerHost) {
     return c.json({ error: "not_found" }, 404);
   }
 

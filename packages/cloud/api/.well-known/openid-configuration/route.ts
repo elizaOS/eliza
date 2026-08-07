@@ -19,7 +19,11 @@ import {
   isOidcClientRegistryConfigured,
   listOidcClients,
 } from "@/lib/oidc/clients";
-import { isOidcEnabled, resolveOidcConfig } from "@/lib/oidc/config";
+import {
+  describeOidcConfigFailure,
+  isOidcEnabled,
+  resolveOidcConfig,
+} from "@/lib/oidc/config";
 import {
   getOidcSigningAlgorithms,
   isOidcSigningConfigured,
@@ -37,9 +41,9 @@ app.get("/", async (c) => {
 
   const config = resolveOidcConfig(c.env);
   if (!config) {
-    logger.error(
-      "[oidc] discovery unavailable: OIDC_ISSUER_URL is missing or unusable",
-    );
+    logger.error("[oidc] discovery unavailable", {
+      reason: describeOidcConfigFailure(c.env),
+    });
     return c.json({ error: "oidc_not_configured" }, 503);
   }
 

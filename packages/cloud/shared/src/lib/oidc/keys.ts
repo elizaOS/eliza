@@ -64,16 +64,49 @@ function decodeSource(source: string): unknown {
   return JSON.parse(text) as unknown;
 }
 
-/** Default `alg` when a JWK omits it, chosen from the key type/curve. */
-function inferAlgorithm(jwk: JWK): string {
-  if (jwk.kty === "RSA") return "RS256";
+/** Signature algorithms an RSA key may carry; the first is the default. */
+const RSA_ALGORITHMS = ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512"] as const;
+/** Each EC curve signs under exactly one JWS algorithm. */
+const EC_CURVE_ALGORITHMS: Record<string, string> = {
+  "P-256": "ES256",
+  "P-384": "ES384",
+  "P-521": "ES512",
+};
+
+/**
+ * The JWS signature algorithms this key can actually be used with, most
+ * preferred first, or an empty list for a key type this provider cannot sign
+ * with. `alg` on a JWK is operator-supplied and reaches relying parties through
+ * `id_token_signing_alg_values_supported`, so it is checked against the key
+ * rather than trusted: `none`, a MAC algorithm, an encryption algorithm, and a
+ * curve/algorithm mismatch all have to fail here, at load, instead of being
+ * advertised as something this provider will sign an ID token with.
+ */
+function signatureAlgorithms(jwk: JWK): string[] {
+  if (jwk.kty === "RSA") return [...RSA_ALGORITHMS];
   if (jwk.kty === "EC") {
-    if (jwk.crv === "P-256") return "ES256";
-    if (jwk.crv === "P-384") return "ES384";
-    if (jwk.crv === "P-521") return "ES512";
+    const alg = typeof jwk.crv === "string" ? EC_CURVE_ALGORITHMS[jwk.crv] : undefined;
+    return alg ? [alg] : [];
   }
-  if (jwk.kty === "OKP" && jwk.crv === "Ed25519") return "EdDSA";
-  throw new Error(`OIDC_SIGNING_JWKS: cannot infer alg for kty=${String(jwk.kty)}`);
+  if (jwk.kty === "OKP" && jwk.crv === "Ed25519") return ["EdDSA"];
+  return [];
+}
+
+/** The declared `alg`, or the key's default when the JWK omits one. */
+function resolveAlgorithm(jwk: JWK, index: number): string {
+  const supported = signatureAlgorithms(jwk);
+  if (supported.length === 0) {
+    throw new Error(
+      `OIDC_SIGNING_JWKS[${index}]: cannot sign with kty=${String(jwk.kty)} crv=${String(jwk.crv)}`,
+    );
+  }
+  if (typeof jwk.alg !== "string" || !jwk.alg) return supported[0];
+  if (!supported.includes(jwk.alg)) {
+    throw new Error(
+      `OIDC_SIGNING_JWKS[${index}]: alg "${jwk.alg}" cannot sign with this key (expected one of ${supported.join(", ")})`,
+    );
+  }
+  return jwk.alg;
 }
 
 function toPublicJwk(jwk: JWK): JWK {
@@ -116,7 +149,7 @@ async function parseRing(source: string): Promise<ParsedRing> {
     if (typeof jwk.d !== "string") {
       throw new Error(`OIDC_SIGNING_JWKS[${index}] is a public key; a private JWK is required`);
     }
-    const alg = typeof jwk.alg === "string" && jwk.alg ? jwk.alg : inferAlgorithm(jwk);
+    const alg = resolveAlgorithm(jwk, index);
     const publicJwk = toPublicJwk(jwk);
     const kid =
       typeof jwk.kid === "string" && jwk.kid
@@ -193,7 +226,11 @@ export async function getOidcPublicJwks(): Promise<{ keys: JWK[] }> {
   return { keys: ring.entries.map((entry) => ({ ...entry.publicJwk })) };
 }
 
-/** Distinct `alg` values, for `id_token_signing_alg_values_supported`. */
+/**
+ * Distinct `alg` values, active signer first — the input to
+ * `id_token_signing_alg_values_supported`. Each was checked against its key at
+ * load, so `none`, a MAC algorithm, and a key/curve mismatch cannot appear.
+ */
 export async function getOidcSigningAlgorithms(): Promise<string[]> {
   const ring = await getRing();
   return [...new Set(ring.entries.map((entry) => entry.alg))];

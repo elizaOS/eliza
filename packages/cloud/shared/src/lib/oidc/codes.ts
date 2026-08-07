@@ -1,6 +1,10 @@
 /**
  * Authorization-code and parked-request lifecycle for the OIDC provider.
  *
+ * A parked request additionally carries the digest that binds it to the browser
+ * it was parked for (`./request-binding.ts`); the id alone travels in a URL and
+ * is therefore not an identity.
+ *
  * Codes are opaque 256-bit values with a 60-second TTL, stored ONLY as their
  * sha256, optionally bound to a PKCE challenge, and carrying NO claim snapshot
  * — just the user id the token endpoint rebuilds claims from. That divergence
@@ -39,7 +43,6 @@ export interface OidcCodeGrant {
   nonce: string | null;
   codeChallenge: string | null;
   codeChallengeMethod: string | null;
-  authTime: Date;
   tokenIssuedAt: number;
 }
 
@@ -51,6 +54,8 @@ export interface OidcPendingRequest {
   nonce: string | null;
   codeChallenge: string | null;
   codeChallengeMethod: string | null;
+  /** sha256 of the browser binding; `/resume` refuses anything else. */
+  bindingHash: string;
 }
 
 export function looksLikeOidcCode(value: unknown): value is string {
@@ -87,7 +92,6 @@ export async function issueOidcAuthorizationCode(
     nonce: grant.nonce,
     code_challenge: grant.codeChallenge,
     code_challenge_method: grant.codeChallengeMethod,
-    auth_time: grant.authTime,
     token_issued_at: new Date(grant.tokenIssuedAt * 1000),
     expires_at: new Date(now.getTime() + OIDC_CODE_TTL_SECONDS * 1000),
   });
@@ -115,12 +119,14 @@ export async function consumeOidcAuthorizationCode(code: string): Promise<OidcCo
     nonce: row.nonce,
     codeChallenge: row.code_challenge,
     codeChallengeMethod: row.code_challenge_method,
-    authTime: row.auth_time,
     tokenIssuedAt: Math.floor(row.token_issued_at.getTime() / 1000),
   };
 }
 
-/** Park an ALREADY-VALIDATED request across the login round trip. */
+/**
+ * Park an ALREADY-VALIDATED request across the login round trip, bound to the
+ * browser whose `bindingHash` is supplied.
+ */
 export async function parkOidcAuthorizationRequest(
   request: OidcPendingRequest,
 ): Promise<{ requestId: string; expiresIn: number }> {
@@ -137,13 +143,18 @@ export async function parkOidcAuthorizationRequest(
     nonce: request.nonce,
     code_challenge: request.codeChallenge,
     code_challenge_method: request.codeChallengeMethod,
+    binding_hash: request.bindingHash,
     expires_at: new Date(now.getTime() + OIDC_REQUEST_TTL_SECONDS * 1000),
   });
 
   return { requestId, expiresIn: OIDC_REQUEST_TTL_SECONDS };
 }
 
-/** Single-use resume: the parked request is destroyed whether or not it is usable. */
+/**
+ * Single-use resume: the parked request is destroyed whether or not it is
+ * usable — including when the browser binding turns out not to match, so a
+ * leaked id cannot be probed twice.
+ */
 export async function resumeOidcAuthorizationRequest(
   requestId: string,
 ): Promise<OidcPendingRequest | null> {
@@ -159,5 +170,6 @@ export async function resumeOidcAuthorizationRequest(
     nonce: row.nonce,
     codeChallenge: row.code_challenge,
     codeChallengeMethod: row.code_challenge_method,
+    bindingHash: row.binding_hash,
   };
 }

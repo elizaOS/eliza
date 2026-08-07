@@ -1,5 +1,6 @@
 /**
- * Proves migration `0189_oidc_provider.sql` against the repository that uses it.
+ * Proves migrations `0189_oidc_provider.sql` and `0190_oidc_request_binding.sql`
+ * against the repository that uses them.
  *
  * The migration SQL is what production runs; the Drizzle schema is what the
  * code compiles against. Nothing else in the repo checks that the two agree —
@@ -8,6 +9,10 @@
  * the REAL migration file to PGlite and then drives every repository operation
  * over it. A column name, type, default, constraint, or index that drifts
  * between the two fails here.
+ *
+ * 0190 is applied over a table that already holds a 0189-era row, because that
+ * is the only state a real staging or production deploy can be in and the state
+ * a NOT NULL column with no default fails on.
  *
  * It also pins the concurrency behavior the OIDC flow depends on: `claimCode`
  * hands the row to exactly one of N concurrent callers, and `allocateUsername`
@@ -27,7 +32,16 @@ process.env.MOCK_REDIS = "1";
 
 setDefaultTimeout(90_000);
 
-const MIGRATION_PATH = join(import.meta.dir, "../migrations/0189_oidc_provider.sql");
+/** Applied in order: 0190 drops and adds columns 0189 created. */
+const MIGRATION_0189 = join(import.meta.dir, "../migrations/0189_oidc_provider.sql");
+const MIGRATION_0190 = join(import.meta.dir, "../migrations/0190_oidc_request_binding.sql");
+
+/**
+ * A request parked by the 0189-era code, seeded BETWEEN the two migrations so
+ * 0190 runs against a non-empty table. Adding a NOT NULL column with no default
+ * fails outright in that state, which is the deploy this proves cannot happen.
+ */
+const LEGACY_REQUEST_HASH = "legacy-request-parked-before-0190";
 
 let repository: typeof import("./oidc").oidcRepository;
 let dbWrite: typeof import("../client").dbWrite;
@@ -56,7 +70,6 @@ function codeRow(userId: string, codeHash: string, expiresAt: Date) {
     nonce: "n-1",
     code_challenge: "challenge",
     code_challenge_method: "S256",
-    auth_time: new Date(),
     token_issued_at: new Date(),
     expires_at: expiresAt,
   };
@@ -76,11 +89,21 @@ beforeAll(async () => {
   await apply();
 
   const { sql } = await import("drizzle-orm");
-  const migration = readFileSync(MIGRATION_PATH, "utf8");
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    const trimmed = statement.trim();
-    if (trimmed) await dbWrite.execute(sql.raw(trimmed));
-  }
+  const applyMigration = async (path: string): Promise<void> => {
+    for (const statement of readFileSync(path, "utf8").split("--> statement-breakpoint")) {
+      const trimmed = statement.trim();
+      if (trimmed) await dbWrite.execute(sql.raw(trimmed));
+    }
+  };
+
+  await applyMigration(MIGRATION_0189);
+  await dbWrite.execute(
+    sql`INSERT INTO "oidc_authorization_requests"
+        ("request_hash", "client_id", "redirect_uri", "scope", "expires_at")
+        VALUES (${LEGACY_REQUEST_HASH}, 'elizahub-forgejo', 'https://hub.example/callback',
+                'openid', ${futureDate(600)})`,
+  );
+  await applyMigration(MIGRATION_0190);
 
   ({ oidcRepository: repository } = await import("./oidc"));
 });
@@ -153,7 +176,20 @@ describe("authorization codes", () => {
 });
 
 describe("parked authorization requests", () => {
-  test("a parked request round-trips and is single use", async () => {
+  test("0190 applies over a populated table and discards the unbound rows", async () => {
+    // The migration ran in `beforeAll` with a 0189-era row present. Reaching
+    // this assertion at all proves the ADD COLUMN did not fail; the row being
+    // gone proves an unbound request cannot survive into a schema whose
+    // `/resume` leg trusts `binding_hash`.
+    const { sql } = await import("drizzle-orm");
+    const survivors = await dbWrite.execute(
+      sql`SELECT "request_hash" FROM "oidc_authorization_requests"
+          WHERE "request_hash" = ${LEGACY_REQUEST_HASH}`,
+    );
+    expect(survivors.rows).toHaveLength(0);
+  });
+
+  test("a parked request round-trips with its browser binding and is single use", async () => {
     await repository.insertRequest({
       request_hash: "req-1",
       client_id: "elizahub-forgejo",
@@ -163,12 +199,28 @@ describe("parked authorization requests", () => {
       nonce: null,
       code_challenge: null,
       code_challenge_method: null,
+      binding_hash: "b".repeat(64),
       expires_at: futureDate(600),
     });
 
     const claimed = await repository.claimRequest("req-1");
     expect(claimed?.state).toBe("s-1");
+    expect(claimed?.binding_hash).toBe("b".repeat(64));
     expect(await repository.claimRequest("req-1")).toBeUndefined();
+  });
+
+  test("a request with no browser binding cannot be parked at all", async () => {
+    // The column is NOT NULL in the migration, so an unbound request is a
+    // write error rather than a row `/resume` would have to decide about.
+    await expect(
+      repository.insertRequest({
+        request_hash: "req-unbound",
+        client_id: "elizahub-forgejo",
+        redirect_uri: "https://hub.example/callback",
+        scope: "openid",
+        expires_at: futureDate(600),
+      } as never),
+    ).rejects.toThrow();
   });
 
   test("an expired request is not resumable", async () => {
@@ -177,6 +229,7 @@ describe("parked authorization requests", () => {
       client_id: "elizahub-forgejo",
       redirect_uri: "https://hub.example/callback",
       scope: "openid",
+      binding_hash: "c".repeat(64),
       expires_at: futureDate(-1),
     });
     expect(await repository.claimRequest("req-expired")).toBeUndefined();

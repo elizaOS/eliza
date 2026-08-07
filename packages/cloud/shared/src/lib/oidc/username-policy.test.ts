@@ -14,7 +14,41 @@ import { deriveUsernameCandidates, normalizeUsernameCandidate } from "./username
 
 describe("normalization", () => {
   test("lowercases and keeps the safe character set", () => {
-    expect(normalizeUsernameCandidate("Ada.Lovelace-1")).toBe("ada.lovelace-1");
+    expect(normalizeUsernameCandidate("Ada_Lovelace-1")).toBe("ada_lovelace-1");
+  });
+
+  test("a dot becomes a dash, because Forgejo reserves whole dotted suffixes", () => {
+    // `*.keys`, `*.gpg`, `*.rss`, `*.atom` and `*.png` are refused by
+    // Forgejo's reservedUserPatterns. The name is frozen before the relying
+    // party ever sees it, so one of those would lock the user out for good.
+    expect(normalizeUsernameCandidate("Ada.Lovelace")).toBe("ada-lovelace");
+    for (const raw of ["ada.keys", "ada.gpg", "ada.rss", "ada.atom", "ada.png"]) {
+      const value = normalizeUsernameCandidate(raw) as string;
+      expect(value).not.toContain(".");
+      expect(value).toBe(`ada-${raw.split(".")[1]}`);
+    }
+  });
+
+  test("the result satisfies Forgejo's own username validator", () => {
+    // models/user/user.go: validUsernamePattern minus invalidUsernamePattern.
+    const valid = /^[\da-zA-Z][-.\w]*$/;
+    const invalid = /[-._]{2,}|[-._]$/;
+    for (const raw of [
+      "Ada.Lovelace",
+      "ada..lovelace",
+      "ada__lovelace",
+      "ada._-lovelace",
+      "ada.",
+      "ada-",
+      "ada_",
+      "Ada 🦋 the Countess",
+      `${"a".repeat(31)}.bcdefg`,
+    ]) {
+      const value = normalizeUsernameCandidate(raw);
+      if (value === null) continue;
+      expect(valid.test(value)).toBe(true);
+      expect(invalid.test(value)).toBe(false);
+    }
   });
 
   test("folds accents to their ASCII base rather than dropping the letter", () => {
@@ -59,6 +93,40 @@ describe("normalization", () => {
       "api",
       "oauth",
       "well-known",
+    ]) {
+      expect(normalizeUsernameCandidate(reserved)).toBeNull();
+    }
+  });
+
+  test("refuses the names Forgejo itself reserves, which it would refuse to create", () => {
+    for (const reserved of [
+      "assets",
+      "attachments",
+      "avatar",
+      "avatars",
+      "captcha",
+      "commits",
+      "debug",
+      "devtest",
+      "error",
+      "ghost",
+      "issues",
+      "login",
+      "metrics",
+      "milestones",
+      "new",
+      "notifications",
+      "org",
+      "pulls",
+      "raw",
+      "repo",
+      "repo-avatars",
+      "search",
+      "ssh_info",
+      "user",
+      "v2",
+      "gitea-actions",
+      "forgejo-actions",
     ]) {
       expect(normalizeUsernameCandidate(reserved)).toBeNull();
     }

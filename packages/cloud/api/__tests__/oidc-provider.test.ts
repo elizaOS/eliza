@@ -49,6 +49,14 @@ const FORGEJO_CLIENT_ID = "elizahub-forgejo";
 const FORGEJO_SECRET = "forgejo-client-secret-value-0123456789";
 const LOWTRUST_CLIENT_ID = "lowtrust-app";
 const LOWTRUST_SECRET = "lowtrust-client-secret-value-0123456789";
+const PERCENT_CLIENT_ID = "percent-secret-app";
+/**
+ * A secret containing a `%` that reads as a valid escape. RFC 6749 §2.3.1 says
+ * `client_secret_basic` halves are form-encoded, so this text has two possible
+ * readings and the provider has to accept the one the client meant.
+ */
+const PERCENT_SECRET = "percent-secret-100%2Fvalue-0123456789";
+const PERCENT_REDIRECT = "https://percent.example/callback";
 const STEWARD_AUDIENCE = "eliza-cloud-steward";
 const CONSOLE_CLIENT_ID = "eliza-steward-console";
 const CONSOLE_SECRET = "steward-console-secret-value-0123456789";
@@ -62,6 +70,9 @@ const CONSOLE_REDIRECT = "https://console.elizacloud.test/oidc/callback";
  * what `constant_claims` and `claims_mapping` exist to bridge.
  */
 const FORGEJO_REQUIRED_CLAIM = { name: "tenant", value: "eliza" } as const;
+/** `--admin-group` / `--restricted-group` on the hub's Forgejo login source. */
+const FORGEJO_ADMIN_GROUP = "eliza-admins";
+const FORGEJO_RESTRICTED_GROUP = "eliza-agents";
 const MERGE_STEWARD_AUDIENCE = "eliza-merge-steward";
 const MERGE_STEWARD_REQUIRED_ROLES = ["steward", "maintainer"];
 const MERGE_STEWARD_REQUIRED_GROUPS = ["eliza-team"];
@@ -335,8 +346,73 @@ async function verifyLikeConsumer(
     jwks,
     issuer: metadata.issuer,
     audience,
+    tokenClass: "id_token",
   });
   return payload as Record<string, unknown>;
+}
+
+/** The published JWKS, fetched the way a consumer fetches it. */
+async function publishedJwks(): Promise<PublishedJwks> {
+  const res = await call("/.well-known/oidc/jwks.json");
+  expect(res.status).toBe(200);
+  return (await res.json()) as PublishedJwks;
+}
+
+const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15";
+
+interface ParkedRequest {
+  rid: string;
+  /** `name=value` of the binding cookie the provider handed this browser. */
+  bindingCookie: string;
+  userAgent: string;
+}
+
+/**
+ * Drive the signed-out leg and keep BOTH halves of what the browser was given:
+ * the request id (which travels in the URL) and the binding cookie (which does
+ * not). A test that presents only the first is a different browser.
+ */
+async function parkRequest(
+  overrides: Record<string, string | undefined> = {},
+  userAgent = BROWSER_UA,
+): Promise<ParkedRequest> {
+  const bounce = await call(authorizeUrl(overrides), {
+    headers: { "user-agent": userAgent },
+  });
+  expect(bounce.status).toBe(302);
+  const returnTo = new URL(
+    bounce.headers.get("location") as string,
+  ).searchParams.get("returnTo") as string;
+  const rid = new URLSearchParams(returnTo.split("?")[1]).get("rid") as string;
+  const bindingCookie = (bounce.headers.get("set-cookie") as string).split(
+    ";",
+  )[0];
+  return { rid, bindingCookie, userAgent };
+}
+
+/**
+ * Resume as the parking browser by default. `bindingCookie: null` is another
+ * browser holding only the leaked id; a different `userAgent` is another client
+ * holding both.
+ */
+async function resumeRequest(
+  parked: ParkedRequest,
+  options: {
+    cookie?: string;
+    bindingCookie?: string | null;
+    userAgent?: string;
+  },
+): Promise<Response> {
+  const binding =
+    options.bindingCookie === undefined
+      ? parked.bindingCookie
+      : options.bindingCookie;
+  const cookies = [options.cookie, binding].filter(Boolean).join("; ");
+  return call(`/api/oidc/authorize/resume?rid=${parked.rid}`, {
+    ...(cookies ? { cookie: cookies } : {}),
+    headers: { "user-agent": options.userAgent ?? parked.userAgent },
+  });
 }
 
 beforeAll(async () => {
@@ -362,14 +438,17 @@ beforeAll(async () => {
         tenant_id: true,
         eliza_agents: false,
       },
-      // Forgejo maps teams from the native org groups AND gates admin on its
-      // own `eliza-admins` name, so both vocabularies have to survive.
+      // Forgejo maps teams from the native org groups AND decides administrator
+      // and restricted status from its own two configured names, so both
+      // vocabularies have to survive.
       claims_mapping: {
         mode: "extend",
         roles: {},
         groups: {
           "eliza-cloud:users": ["eliza-team"],
-          "eliza-cloud:admins": ["eliza-admins"],
+          "eliza-cloud:admins": [FORGEJO_ADMIN_GROUP],
+          "eliza-cloud:agents": [FORGEJO_RESTRICTED_GROUP],
+          "eliza-cloud:services": [FORGEJO_RESTRICTED_GROUP],
         },
       },
       constant_claims: {
@@ -424,6 +503,23 @@ beforeAll(async () => {
       claims_policy: {
         groups: false,
         roles: true,
+        tenant_id: false,
+        eliza_agents: false,
+      },
+    },
+    {
+      client_id: PERCENT_CLIENT_ID,
+      name: "Percent Secret App",
+      client_secret_sha256: sha256Hex(PERCENT_SECRET),
+      redirect_uris: [PERCENT_REDIRECT],
+      allowed_scopes: ["openid", "email"],
+      resource_audiences: [],
+      require_pkce: false,
+      require_verified_email: false,
+      roles_allowlist: [],
+      claims_policy: {
+        groups: false,
+        roles: false,
         tenant_id: false,
         eliza_agents: false,
       },
@@ -701,7 +797,9 @@ describe("authorize — protocol errors redirect to the validated URI", () => {
 
 describe("authorize — session gating", () => {
   test("a signed-out browser parks the request and bounces through the console login", async () => {
-    const res = await call(authorizeUrl());
+    const res = await call(authorizeUrl(), {
+      headers: { "user-agent": BROWSER_UA },
+    });
     expect(res.status).toBe(302);
     const location = new URL(res.headers.get("location") as string);
     expect(location.origin).toBe(CONSOLE_ORIGIN);
@@ -712,6 +810,15 @@ describe("authorize — session gating", () => {
     expect(returnTo.startsWith("/")).toBe(true);
     expect(returnTo.startsWith("//")).toBe(false);
     expect(returnTo).toMatch(/^\/oidc\/continue\?rid=eoq_[0-9a-f]{64}$/);
+
+    // The parked request is bound to THIS browser by a cookie only it holds,
+    // scoped to the resume path and unreadable from script.
+    const setCookie = res.headers.get("set-cookie") as string;
+    expect(setCookie).toMatch(/^eliza-oidc-bind_[0-9a-f]{16}=[0-9a-f]{64}/);
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Lax");
+    expect(setCookie).toContain("Path=/api/oidc/authorize/resume");
+    expect(setCookie).toContain("Max-Age=600");
   });
 
   test("a garbage cookie is treated as signed out, not as an error", async () => {
@@ -746,19 +853,11 @@ describe("authorize — session gating", () => {
   });
 
   test("the resume leg completes a parked request once the session exists", async () => {
-    const bounce = await call(authorizeUrl({ state: "resume-state" }));
-    const returnTo = new URL(
-      bounce.headers.get("location") as string,
-    ).searchParams.get("returnTo") as string;
-    const rid = new URLSearchParams(returnTo.split("?")[1]).get(
-      "rid",
-    ) as string;
+    const parked = await parkRequest({ state: "resume-state" });
 
     await seedUser({ stewardUserId: "u-resume" });
     const cookie = await sessionCookie("u-resume");
-    const resumed = await call(`/api/oidc/authorize/resume?rid=${rid}`, {
-      cookie,
-    });
+    const resumed = await resumeRequest(parked, { cookie });
     expect(resumed.status).toBe(302);
     const location = new URL(resumed.headers.get("location") as string);
     expect(location.origin + location.pathname).toBe(FORGEJO_REDIRECT);
@@ -766,23 +865,105 @@ describe("authorize — session gating", () => {
     expect(location.searchParams.get("state")).toBe("resume-state");
 
     // Parked requests are single use.
-    const replay = await call(`/api/oidc/authorize/resume?rid=${rid}`, {
-      cookie,
-    });
+    const replay = await resumeRequest(parked, { cookie });
     expect(replay.status).toBe(400);
   });
 
   test("resuming while still signed out shows a terminal page rather than looping", async () => {
-    const bounce = await call(authorizeUrl());
-    const returnTo = new URL(
-      bounce.headers.get("location") as string,
-    ).searchParams.get("returnTo") as string;
-    const rid = new URLSearchParams(returnTo.split("?")[1]).get(
-      "rid",
-    ) as string;
-    const res = await call(`/api/oidc/authorize/resume?rid=${rid}`);
+    const parked = await parkRequest();
+    const res = await resumeRequest(parked, {});
     expect(res.status).toBe(400);
     expect(res.headers.get("location")).toBeNull();
+  });
+});
+
+describe("authorize — the parked request is bound to one browser", () => {
+  test("a leaked rid is useless to a browser that never parked it", async () => {
+    // The whole attack this binding exists for: the id travels in a URL —
+    // through returnTo, history, a Referer, an access log — so a second browser
+    // that learns it must not be able to finish the first one's sign-in.
+    const parked = await parkRequest({ state: "victim-state" });
+    await seedUser({ stewardUserId: "u-bind-attacker" });
+    const attackerCookie = await sessionCookie("u-bind-attacker");
+
+    const stolen = await resumeRequest(parked, {
+      cookie: attackerCookie,
+      bindingCookie: null,
+    });
+    expect(stolen.status).toBe(400);
+    expect(stolen.headers.get("location")).toBeNull();
+    // No code was minted for anybody.
+    expect(await stolen.text()).not.toContain("eoc_");
+  });
+
+  test("a guessed or borrowed binding cookie does not help either", async () => {
+    const parked = await parkRequest();
+    await seedUser({ stewardUserId: "u-bind-guess" });
+    const cookie = await sessionCookie("u-bind-guess");
+
+    const forged = `${parked.bindingCookie.split("=")[0]}=${"9".repeat(64)}`;
+    const res = await resumeRequest(parked, { cookie, bindingCookie: forged });
+    expect(res.status).toBe(400);
+  });
+
+  test("the same cookie from a different client is refused: the user agent is bound too", async () => {
+    const parked = await parkRequest();
+    await seedUser({ stewardUserId: "u-bind-ua" });
+    const cookie = await sessionCookie("u-bind-ua");
+
+    const res = await resumeRequest(parked, {
+      cookie,
+      userAgent: "curl/8.7.1",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("a refused resume burns the parked request, so the id cannot be probed twice", async () => {
+    const parked = await parkRequest();
+    await seedUser({ stewardUserId: "u-bind-burn" });
+    const cookie = await sessionCookie("u-bind-burn");
+
+    expect(
+      (await resumeRequest(parked, { cookie, bindingCookie: null })).status,
+    ).toBe(400);
+    // Even the rightful browser now gets nothing: the row is gone.
+    expect((await resumeRequest(parked, { cookie })).status).toBe(400);
+  });
+
+  test("two sign-ins started in one browser both resume: the cookie is per request", async () => {
+    const first = await parkRequest({ state: "first" });
+    const second = await parkRequest({ state: "second" });
+    expect(first.bindingCookie.split("=")[0]).not.toBe(
+      second.bindingCookie.split("=")[0],
+    );
+
+    await seedUser({ stewardUserId: "u-bind-parallel" });
+    const cookie = await sessionCookie("u-bind-parallel");
+    // Both binding cookies are present, exactly as a real browser would send
+    // them; each resume must pick its own.
+    const both = `${first.bindingCookie}; ${second.bindingCookie}`;
+    for (const [parked, state] of [
+      [second, "second"],
+      [first, "first"],
+    ] as const) {
+      const res = await resumeRequest(parked, { cookie, bindingCookie: both });
+      expect(res.status).toBe(302);
+      const location = new URL(res.headers.get("location") as string);
+      expect(location.searchParams.get("state")).toBe(state);
+      expect(location.searchParams.get("code")).toMatch(/^eoc_[0-9a-f]{64}$/);
+    }
+  });
+
+  test("a successful resume clears the binding cookie it consumed", async () => {
+    const parked = await parkRequest();
+    await seedUser({ stewardUserId: "u-bind-clear" });
+    const res = await resumeRequest(parked, {
+      cookie: await sessionCookie("u-bind-clear"),
+    });
+    expect(res.status).toBe(302);
+    const cleared = res.headers.get("set-cookie") as string;
+    expect(cleared).toContain(parked.bindingCookie.split("=")[0]);
+    expect(cleared).toContain("Max-Age=0");
   });
 });
 
@@ -888,8 +1069,15 @@ describe("code redemption", () => {
     expect(idClaims.tenant_id).toBe("tenant-u-happy");
     expect(idClaims.eliza_account_kind).toBe("human");
     expect(idClaims.eliza_actor_id).toBe(userId);
-    expect(idClaims.auth_time).toBeNumber();
     expect(idClaims.azp).toBe(FORGEJO_CLIENT_ID);
+    // No auth_time: this provider never authenticates anyone and the Steward
+    // token's `iat` moves on every refresh, so any value here would claim an
+    // authentication that did not happen. It is also absent from discovery.
+    expect(idClaims).not.toHaveProperty("auth_time");
+    const discovery = (await (
+      await call("/.well-known/openid-configuration")
+    ).json()) as { claims_supported: string[] };
+    expect(discovery.claims_supported).not.toContain("auth_time");
 
     const userinfo = await call("/api/oidc/userinfo", {
       headers: { authorization: `Bearer ${body.access_token}` },
@@ -1097,6 +1285,64 @@ describe("PKCE", () => {
     const res = await redeem(code);
     expect(res.status).toBe(400);
   });
+
+  test("a challenge that is not a SHA-256 digest is refused at authorize", async () => {
+    // Declaring S256 does not make the value one. Redemption compares it to
+    // `base64url(sha256(verifier))`, so any other shape can only fail there —
+    // after the user has signed in and the code is already burned. The relying
+    // party must learn while it still has an error it can act on.
+    const challenge = await challengeFor(VERIFIER);
+    for (const bad of [
+      "abc",
+      challenge.slice(0, 42),
+      `${challenge}A`,
+      `${challenge.slice(0, 42)}=`,
+      `${challenge.slice(0, 42)}+`,
+      `${challenge.slice(0, 42)}/`,
+      `${challenge.slice(0, 41)}%20`,
+      "A".repeat(128),
+    ]) {
+      const res = await call(
+        authorizeUrl({ code_challenge: bad, code_challenge_method: "S256" }),
+      );
+      expect(res.status).toBe(302);
+      const location = new URL(res.headers.get("location") as string);
+      expect(location.origin + location.pathname).toBe(FORGEJO_REDIRECT);
+      expect(location.searchParams.get("error")).toBe("invalid_request");
+      expect(location.searchParams.get("code")).toBeNull();
+    }
+  });
+
+  test("a require_pkce client cannot satisfy the requirement with junk", async () => {
+    // Otherwise the flag reads as satisfied while the code is bound to a
+    // challenge no verifier can ever produce.
+    const res = await call(
+      `/api/oidc/authorize?${new URLSearchParams({
+        client_id: LOWTRUST_CLIENT_ID,
+        redirect_uri: "https://lowtrust.example/callback",
+        response_type: "code",
+        scope: "openid",
+        state: "s",
+        code_challenge: "not-a-digest",
+        code_challenge_method: "S256",
+      })}`,
+    );
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.searchParams.get("error")).toBe("invalid_request");
+    expect(location.searchParams.get("code")).toBeNull();
+  });
+
+  test("the 43-character digest a real client sends is still accepted", async () => {
+    const challenge = await challengeFor(VERIFIER);
+    expect(challenge).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    await seedUser({ stewardUserId: "u-pkce-shape-ok" });
+    const { code } = await getAuthorizationCode(
+      await sessionCookie("u-pkce-shape-ok"),
+      { code_challenge: challenge, code_challenge_method: "S256" },
+    );
+    const res = await redeem(code, { code_verifier: VERIFIER });
+    expect(res.status).toBe(200);
+  });
 });
 
 /**
@@ -1203,9 +1449,53 @@ describe("Forgejo login gate", () => {
     const body = (await (await redeem(code)).json()) as TokenResponse;
     const claims = await verifyLikeConsumer(body.id_token, FORGEJO_CLIENT_ID);
 
-    expect(claims.groups).toContain("eliza-admins");
+    expect(claims.groups).toContain(FORGEJO_ADMIN_GROUP);
     // `extend` keeps the native vocabulary the team-sync job reads.
     expect(claims.groups).toContain("eliza-cloud:admins");
+  });
+
+  test("the restricted group is emitted for an agent account and for nobody else", async () => {
+    // `--restricted-group eliza-agents` is the only knob Forgejo has for
+    // admitting a non-human account on narrower terms, and it reads a GROUP —
+    // `eliza_account_kind` is a claim it never looks at.
+    const agent = await seedUser({
+      stewardUserId: "u-fj-agent",
+      orgSlug: "fj-agent-org",
+    });
+    await dbWrite.insert(schemas.oidcUserProfiles).values({
+      user_id: agent.userId,
+      username: "u-fj-agent",
+      account_kind: "agent",
+      agent_id: "agent-7",
+    });
+
+    const agentCode = await getAuthorizationCode(
+      await sessionCookie("u-fj-agent"),
+    );
+    const agentTokens = (await (
+      await redeem(agentCode.code)
+    ).json()) as TokenResponse;
+    const agentClaims = await verifyLikeConsumer(
+      agentTokens.id_token,
+      FORGEJO_CLIENT_ID,
+    );
+    expect(agentClaims.groups).toContain(FORGEJO_RESTRICTED_GROUP);
+    expect(agentClaims.groups).not.toContain(FORGEJO_ADMIN_GROUP);
+    expect(agentClaims.eliza_account_kind).toBe("agent");
+
+    await seedUser({ stewardUserId: "u-fj-human", orgSlug: "fj-human-org" });
+    const humanCode = await getAuthorizationCode(
+      await sessionCookie("u-fj-human"),
+    );
+    const humanTokens = (await (
+      await redeem(humanCode.code)
+    ).json()) as TokenResponse;
+    const humanClaims = await verifyLikeConsumer(
+      humanTokens.id_token,
+      FORGEJO_CLIENT_ID,
+    );
+    expect(humanClaims.groups).toContain("eliza-team");
+    expect(humanClaims.groups).not.toContain(FORGEJO_RESTRICTED_GROUP);
   });
 
   test("the discovery document advertises the constant claim", async () => {
@@ -1231,6 +1521,7 @@ describe("Merge Steward consumer contract", () => {
       jwks,
       issuer: ISSUER,
       audience: MERGE_STEWARD_AUDIENCE,
+      tokenClass: "access_token",
     });
 
     expect(intersects(payload.roles, MERGE_STEWARD_REQUIRED_ROLES)).toBe(true);
@@ -1301,6 +1592,7 @@ describe("Merge Steward consumer contract", () => {
         jwks,
         issuer: ISSUER,
         audience: MERGE_STEWARD_AUDIENCE,
+        tokenClass: "access_token",
       }),
     ).rejects.toThrow();
   });
@@ -1321,6 +1613,7 @@ describe("token audiences", () => {
       jwks,
       issuer: ISSUER,
       audience: FORGEJO_CLIENT_ID,
+      tokenClass: "access_token",
     });
     expect(payload.aud).toEqual([FORGEJO_CLIENT_ID]);
 
@@ -1331,6 +1624,7 @@ describe("token audiences", () => {
         jwks,
         issuer: ISSUER,
         audience: STEWARD_AUDIENCE,
+        tokenClass: "access_token",
       }),
     ).rejects.toThrow();
   });
@@ -1385,6 +1679,7 @@ describe("token audiences", () => {
       jwks,
       issuer: ISSUER,
       audience: STEWARD_AUDIENCE,
+      tokenClass: "access_token",
     });
     expect(payload.aud).toEqual([LOWTRUST_CLIENT_ID, STEWARD_AUDIENCE]);
 
@@ -1397,6 +1692,115 @@ describe("token audiences", () => {
     expect(idClaims).not.toHaveProperty("groups");
     expect(idClaims).not.toHaveProperty("tenant_id");
     expect(idClaims.roles).toEqual(["org_member"]);
+  });
+});
+
+describe("token classes are not interchangeable", () => {
+  test("an ID token is refused where an access token is expected, and the reverse", async () => {
+    // Both tokens carry aud=client_id, so `{issuer, audience}` alone accepts
+    // either one. The class is what separates them: the `typ` header and the
+    // access-token-only `client_id`/`scope` members.
+    await seedUser({ stewardUserId: "u-class" });
+    const cookie = await sessionCookie("u-class");
+    const { code } = await getAuthorizationCode(cookie);
+    const body = (await (await redeem(code)).json()) as TokenResponse;
+    const jwks = await publishedJwks();
+
+    await expect(
+      verifyOidcTokenAgainstJwks(body.id_token, {
+        jwks,
+        issuer: ISSUER,
+        audience: FORGEJO_CLIENT_ID,
+        tokenClass: "access_token",
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      verifyOidcTokenAgainstJwks(body.access_token, {
+        jwks,
+        issuer: ISSUER,
+        audience: FORGEJO_CLIENT_ID,
+        tokenClass: "id_token",
+      }),
+    ).rejects.toThrow();
+
+    // Each still verifies as what it is.
+    expect(
+      (
+        await verifyOidcTokenAgainstJwks(body.id_token, {
+          jwks,
+          issuer: ISSUER,
+          audience: FORGEJO_CLIENT_ID,
+          tokenClass: "id_token",
+        })
+      ).azp,
+    ).toBe(FORGEJO_CLIENT_ID);
+    expect(
+      (
+        await verifyOidcTokenAgainstJwks(body.access_token, {
+          jwks,
+          issuer: ISSUER,
+          audience: FORGEJO_CLIENT_ID,
+          tokenClass: "access_token",
+        })
+      ).client_id,
+    ).toBe(FORGEJO_CLIENT_ID);
+  });
+
+  test("the two classes are separated in the header a bare JWT reader sees", async () => {
+    await seedUser({ stewardUserId: "u-class-typ" });
+    const cookie = await sessionCookie("u-class-typ");
+    const { code } = await getAuthorizationCode(cookie);
+    const body = (await (await redeem(code)).json()) as TokenResponse;
+
+    const header = (token: string) =>
+      JSON.parse(Buffer.from(token.split(".")[0], "base64url").toString());
+    expect(header(body.id_token).typ).toBe("JWT");
+    expect(header(body.access_token).typ).toBe("at+jwt");
+  });
+
+  test("a registry whose client_id is another client's resource audience refuses to load", async () => {
+    // The collision that would make the class check moot for a consumer that
+    // pins only {issuer, audience}: the ID token of client X is a token for
+    // audience X, and X is somebody's resource server.
+    const colliding = { ...ENV };
+    colliding.OIDC_CLIENTS = JSON.stringify([
+      {
+        client_id: MERGE_STEWARD_AUDIENCE,
+        client_secret_sha256: sha256Hex(CONSOLE_SECRET),
+        redirect_uris: [CONSOLE_REDIRECT],
+        allowed_scopes: ["openid", "email", "profile", "groups"],
+        resource_audiences: [],
+        claims_policy: {
+          groups: true,
+          roles: true,
+          tenant_id: true,
+          eliza_agents: false,
+        },
+      },
+      {
+        client_id: CONSOLE_CLIENT_ID,
+        client_secret_sha256: sha256Hex(CONSOLE_SECRET),
+        redirect_uris: [CONSOLE_REDIRECT],
+        allowed_scopes: ["openid", "email", "profile", "groups"],
+        resource_audiences: [MERGE_STEWARD_AUDIENCE],
+        claims_policy: {
+          groups: true,
+          roles: true,
+          tenant_id: true,
+          eliza_agents: false,
+        },
+      },
+    ]);
+
+    const res = await harness.request(
+      `${ISSUER}${authorizeUrl()}`,
+      { headers: { "x-forwarded-for": "10.8.8.8" } },
+      colliding,
+    );
+    // The registry refuses to load, so sign-in is unavailable rather than
+    // silently issuing cross-audience tokens.
+    expect(res.status).toBe(503);
   });
 });
 
@@ -1541,6 +1945,38 @@ describe("username allocation", () => {
     expect(claims.preferred_username).not.toBe("eliza-merge-steward");
     expect(claims.preferred_username).toBe("u-reserved");
   });
+
+  test("a name Forgejo itself reserves is never frozen for a user", async () => {
+    // Frozen here, created there: a name Forgejo refuses would leave the
+    // account uncreatable and the user permanently unable to sign in.
+    await seedUser({ stewardUserId: "u-gitea-reserved", nickname: "ssh_info" });
+    const body = (await (
+      await redeem(
+        (
+          await getAuthorizationCode(await sessionCookie("u-gitea-reserved"))
+        ).code,
+      )
+    ).json()) as TokenResponse;
+    const claims = await verifyLikeConsumer(body.id_token, FORGEJO_CLIENT_ID);
+    expect(claims.preferred_username).not.toBe("ssh_info");
+    expect(claims.preferred_username).toBe("u-gitea-reserved");
+  });
+
+  test("a dotted nickname freezes as a dashed name Forgejo will accept", async () => {
+    // `ada.rss` matches Forgejo's `*.rss` reserved pattern; the dot never
+    // survives normalization, so no candidate can reach that class at all.
+    await seedUser({ stewardUserId: "u-dotted", nickname: "Ada.RSS" });
+    const body = (await (
+      await redeem(
+        (
+          await getAuthorizationCode(await sessionCookie("u-dotted"))
+        ).code,
+      )
+    ).json()) as TokenResponse;
+    const claims = await verifyLikeConsumer(body.id_token, FORGEJO_CLIENT_ID);
+    expect(claims.preferred_username).toBe("ada-rss");
+    expect(claims.preferred_username).not.toContain(".");
+  });
 });
 
 describe("kill switch", () => {
@@ -1559,5 +1995,674 @@ describe("kill switch", () => {
       );
       expect(res.status).toBe(404);
     }
+  });
+});
+
+describe("issuer configuration", () => {
+  test("an issuer carrying a path serves nothing rather than URLs that drop it", async () => {
+    // Every endpoint path is concatenated onto the issuer, so
+    // `https://api.elizacloud.test/oidc` would advertise
+    // `https://api.elizacloud.test/api/oidc/token` — the path silently gone.
+    // Refusing the whole configuration is the only answer that cannot mislead
+    // a relying party that caches the document.
+    const pathIssuer = { ...ENV, OIDC_ISSUER_URL: `${ISSUER}/oidc` };
+    for (const [path, expected] of [
+      ["/.well-known/openid-configuration", 503],
+      ["/.well-known/oidc/jwks.json", 404],
+      ["/api/oidc/userinfo", 404],
+    ] as const) {
+      const res = await harness.request(
+        `${ISSUER}${path}`,
+        { headers: { "x-forwarded-for": "10.9.8.7" } },
+        pathIssuer,
+      );
+      expect(res.status).toBe(expected);
+    }
+
+    const authorizeRes = await harness.request(
+      `${ISSUER}${authorizeUrl()}`,
+      { headers: { "x-forwarded-for": "10.9.8.6" } },
+      pathIssuer,
+    );
+    expect(authorizeRes.status).toBe(503);
+  });
+
+  test("a loopback issuer serves the whole flow over http", async () => {
+    // The local stack has no TLS, and the console SPA sends the signed-out
+    // login bounce to this same origin: a provider that refused http here could
+    // not be run locally at all.
+    const loopbackIssuer = "http://127.0.0.1:8787";
+    const loopbackEnv = { ...ENV, OIDC_ISSUER_URL: loopbackIssuer };
+
+    const discoveryRes = await harness.request(
+      `${loopbackIssuer}/.well-known/openid-configuration`,
+      { headers: { "x-forwarded-for": "10.9.7.5" } },
+      loopbackEnv,
+    );
+    expect(discoveryRes.status).toBe(200);
+    const document = (await discoveryRes.json()) as {
+      issuer: string;
+      token_endpoint: string;
+      jwks_uri: string;
+    };
+    expect(document.issuer).toBe(loopbackIssuer);
+    expect(document.token_endpoint).toBe(`${loopbackIssuer}/api/oidc/token`);
+
+    const jwksRes = await harness.request(
+      new URL(document.jwks_uri).toString(),
+      { headers: { "x-forwarded-for": "10.9.7.4" } },
+      loopbackEnv,
+    );
+    expect(jwksRes.status).toBe(200);
+
+    // …and only on the loopback name it was configured with: the same document
+    // must not be served on the https host, or two issuers would answer at once.
+    const otherHostRes = await harness.request(
+      `${ISSUER}/.well-known/openid-configuration`,
+      { headers: { "x-forwarded-for": "10.9.7.3" } },
+      loopbackEnv,
+    );
+    expect(otherHostRes.status).toBe(404);
+  });
+});
+
+/**
+ * OpenID Connect Core 3.1.2.1 requires BOTH methods at the authorization
+ * endpoint. A relying party that picks POST — to keep parameters out of proxy
+ * logs, or because its request outgrew a URL limit — would otherwise get a 404
+ * from a provider whose discovery document told it the endpoint exists.
+ */
+describe("authorize — POST", () => {
+  function authorizeForm(overrides: Record<string, string | undefined> = {}): {
+    body: BodyInit;
+    headers: Record<string, string>;
+  } {
+    const fields: Record<string, string | undefined> = {
+      client_id: FORGEJO_CLIENT_ID,
+      redirect_uri: FORGEJO_REDIRECT,
+      response_type: "code",
+      scope: "openid email profile groups",
+      state: "post-state-value",
+      ...overrides,
+    };
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) params.set(key, value);
+    }
+    return {
+      body: params.toString(),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    };
+  }
+
+  test("a form-serialized POST issues a code the token endpoint accepts", async () => {
+    await seedUser({ stewardUserId: "u-post-authorize" });
+    const cookie = await sessionCookie("u-post-authorize");
+    const res = await call("/api/oidc/authorize", {
+      method: "POST",
+      cookie,
+      ...authorizeForm(),
+    });
+    expect(res.status).toBe(302);
+
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.origin + location.pathname).toBe(FORGEJO_REDIRECT);
+    expect(location.searchParams.get("state")).toBe("post-state-value");
+    const code = location.searchParams.get("code") as string;
+    expect(code).toMatch(/^eoc_[0-9a-f]{64}$/);
+    // Proof it is a real grant, not just a well-shaped redirect.
+    expect((await redeem(code)).status).toBe(200);
+  });
+
+  test("POST validation is the same validation — an unregistered redirect_uri never redirects", async () => {
+    await seedUser({ stewardUserId: "u-post-openredirect" });
+    const cookie = await sessionCookie("u-post-openredirect");
+    const res = await call("/api/oidc/authorize", {
+      method: "POST",
+      cookie,
+      ...authorizeForm({ redirect_uri: "https://evil.example/steal" }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  test("POST protocol errors still redirect to the validated URI", async () => {
+    const res = await call("/api/oidc/authorize", {
+      method: "POST",
+      ...authorizeForm({ response_type: "token" }),
+    });
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.searchParams.get("error")).toBe(
+      "unsupported_response_type",
+    );
+  });
+
+  test("a POST that is not form-serialized is refused in place", async () => {
+    // Form Serialization is the only encoding 3.1.2.1 defines for the POST
+    // leg; a JSON body names no client, so there is no proven URI to answer to.
+    const res = await call("/api/oidc/authorize", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ client_id: FORGEJO_CLIENT_ID }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  test("query parameters are ignored on the POST leg", async () => {
+    // Reading both would let a link's query string override the body a relying
+    // party posted.
+    const res = await call(
+      `/api/oidc/authorize?${new URLSearchParams({
+        client_id: FORGEJO_CLIENT_ID,
+        redirect_uri: FORGEJO_REDIRECT,
+        response_type: "code",
+        scope: "openid",
+        state: "from-query",
+      })}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "",
+      },
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  test("an oversized POST body is refused before anything is parsed or stored", async () => {
+    // The GET leg is bounded by the edge's URL limit; the POST leg has none of
+    // its own, and a signed-out request is PERSISTED — so an unauthenticated
+    // caller could otherwise park rows of arbitrary size.
+    const res = await call("/api/oidc/authorize", {
+      method: "POST",
+      ...authorizeForm({ nonce: "n".repeat(64 * 1024) }),
+    });
+    expect(res.status).toBe(413);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  test("an oversized body is refused even when its length is not declared", async () => {
+    const { headers } = authorizeForm();
+    const params = new URLSearchParams({
+      client_id: FORGEJO_CLIENT_ID,
+      redirect_uri: FORGEJO_REDIRECT,
+      response_type: "code",
+      scope: "openid",
+      state: "s".repeat(32 * 1024),
+    });
+    const res = await call("/api/oidc/authorize", {
+      method: "POST",
+      headers,
+      // A ReadableStream body is sent chunked, so there is no content-length
+      // to check and the decoded text has to be re-measured.
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(params.toString()));
+          controller.close();
+        },
+      }),
+    });
+    expect(res.status).toBe(413);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  test("a body under the cap still parks a signed-out request", async () => {
+    // The bound must not cost the ordinary flow: this is the same signed-out
+    // POST a relying party makes, with a realistically sized state.
+    const res = await call("/api/oidc/authorize", {
+      method: "POST",
+      ...authorizeForm({ state: "s".repeat(512) }),
+    });
+    expect(res.status).toBe(302);
+    const login = new URL(res.headers.get("location") as string);
+    expect(login.origin).toBe(CONSOLE_ORIGIN);
+    expect(login.pathname).toBe("/login");
+    expect(
+      (login.searchParams.get("returnTo") as string).startsWith(
+        "/oidc/continue?rid=eoq_",
+      ),
+    ).toBe(true);
+  });
+});
+
+/**
+ * Every free-text parameter reaches the parked-request row verbatim, so each one
+ * an unauthenticated caller controls is bounded once the destination is proven.
+ */
+describe("authorize — parameter bounds", () => {
+  test("an over-long state or nonce is an invalid_request the relying party sees", async () => {
+    for (const parameter of ["state", "nonce", "scope", "prompt", "max_age"]) {
+      const res = await call(authorizeUrl({ [parameter]: "x".repeat(4096) }));
+      expect(res.status).toBe(302);
+      const location = new URL(res.headers.get("location") as string);
+      // Proven-registered destination, so this redirects rather than
+      // terminating: the relying party gets an error it can act on.
+      expect(location.origin + location.pathname).toBe(FORGEJO_REDIRECT);
+      expect(location.searchParams.get("error")).toBe("invalid_request");
+      expect(location.searchParams.get("code")).toBeNull();
+    }
+  });
+
+  test("an over-long parameter never parks a row, even signed out", async () => {
+    const res = await call(authorizeUrl({ state: "x".repeat(4096) }));
+    const location = new URL(res.headers.get("location") as string);
+    // The signed-out leg would otherwise bounce to /login and store the value.
+    expect(location.origin).not.toBe(CONSOLE_ORIGIN);
+    expect(location.searchParams.get("error")).toBe("invalid_request");
+  });
+
+  test("an oversized client_id or redirect_uri is simply unregistered", async () => {
+    // Both are exact-matched against the registry, so neither needs a length
+    // rule — and neither may redirect, because no destination is proven.
+    const bigClient = await call(authorizeUrl({ client_id: "c".repeat(8192) }));
+    expect(bigClient.status).toBe(400);
+    expect(bigClient.headers.get("location")).toBeNull();
+
+    const bigRedirect = await call(
+      authorizeUrl({ redirect_uri: `https://hub.example/${"p".repeat(8192)}` }),
+    );
+    expect(bigRedirect.status).toBe(400);
+    expect(bigRedirect.headers.get("location")).toBeNull();
+  });
+
+  test("a state at the documented ceiling is still accepted", async () => {
+    await seedUser({ stewardUserId: "u-bound-ok" });
+    const cookie = await sessionCookie("u-bound-ok");
+    const state = "s".repeat(2048);
+    const res = await call(authorizeUrl({ state }), { cookie });
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.searchParams.get("state")).toBe(state);
+    expect(location.searchParams.get("code")).toMatch(/^eoc_[0-9a-f]{64}$/);
+  });
+});
+
+/**
+ * `prompt` and `max_age` are how a relying party asks for a FRESH login. This
+ * provider cannot run one, so the only two acceptable outcomes are honoring the
+ * request or refusing it — never a 302 carrying a code minted from the session
+ * the relying party asked to bypass.
+ */
+describe("authorize — forced re-authentication", () => {
+  async function authorizeWith(
+    stewardUserId: string,
+    overrides: Record<string, string>,
+  ): Promise<URL> {
+    await seedUser({ stewardUserId });
+    const cookie = await sessionCookie(stewardUserId);
+    const res = await call(authorizeUrl(overrides), { cookie });
+    expect(res.status).toBe(302);
+    return new URL(res.headers.get("location") as string);
+  }
+
+  test("prompt=login is refused with login_required and issues NO code", async () => {
+    const location = await authorizeWith("u-prompt-login", {
+      prompt: "login",
+    });
+    expect(location.origin + location.pathname).toBe(FORGEJO_REDIRECT);
+    expect(location.searchParams.get("error")).toBe("login_required");
+    expect(location.searchParams.get("code")).toBeNull();
+    expect(location.searchParams.get("state")).toBe("rp-state-value");
+  });
+
+  test("prompt=consent and prompt=select_account name what is missing", async () => {
+    const consent = await authorizeWith("u-prompt-consent", {
+      prompt: "consent",
+    });
+    expect(consent.searchParams.get("error")).toBe("consent_required");
+
+    const chooser = await authorizeWith("u-prompt-chooser", {
+      prompt: "select_account",
+    });
+    expect(chooser.searchParams.get("error")).toBe(
+      "account_selection_required",
+    );
+  });
+
+  test("max_age is refused with login_required rather than silently ignored", async () => {
+    // Nothing this provider reads says when the user authenticated, so an
+    // answer here would be a freshness claim it cannot support.
+    const location = await authorizeWith("u-maxage", { max_age: "300" });
+    expect(location.searchParams.get("error")).toBe("login_required");
+    expect(location.searchParams.get("code")).toBeNull();
+  });
+
+  test("a malformed prompt or max_age is invalid_request", async () => {
+    const badPrompt = await authorizeWith("u-prompt-typo", {
+      prompt: "Login",
+    });
+    expect(badPrompt.searchParams.get("error")).toBe("invalid_request");
+
+    const combined = await authorizeWith("u-prompt-combined", {
+      prompt: "none login",
+    });
+    expect(combined.searchParams.get("error")).toBe("invalid_request");
+
+    const badMaxAge = await authorizeWith("u-maxage-bad", {
+      max_age: "-30",
+    });
+    expect(badMaxAge.searchParams.get("error")).toBe("invalid_request");
+  });
+
+  test("prompt=none still completes against a live session", async () => {
+    // The one value this provider CAN satisfy must keep working: nothing about
+    // an existing session requires interaction.
+    const location = await authorizeWith("u-prompt-none-ok", {
+      prompt: "none",
+    });
+    expect(location.searchParams.get("code")).toMatch(/^eoc_[0-9a-f]{64}$/);
+  });
+
+  test("the discovery document says which prompt values are honored", async () => {
+    const doc = (await (
+      await call("/.well-known/openid-configuration")
+    ).json()) as { prompt_values_supported: string[] };
+    expect(doc.prompt_values_supported).toEqual(["none"]);
+  });
+});
+
+describe("authorize — response caching", () => {
+  test("the 302 carrying the code is not storable", async () => {
+    // The authorization code is IN the Location URL. A shared cache or a
+    // back-forward replay that retains it hands out a live credential.
+    await seedUser({ stewardUserId: "u-nostore" });
+    const cookie = await sessionCookie("u-nostore");
+    const res = await call(authorizeUrl(), { cookie });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toContain("code=eoc_");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("pragma")).toBe("no-cache");
+  });
+
+  test("the error redirect is not storable either", async () => {
+    const res = await call(authorizeUrl({ response_type: "token" }));
+    expect(res.status).toBe(302);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+});
+
+/**
+ * RFC 6749 §5.2 gives `invalid_request` and `invalid_grant` opposite meanings:
+ * one says the relying party's own call is malformed, the other says the code
+ * it holds is dead and it should start over at /authorize. Answering a missing
+ * parameter with `invalid_grant` sends a client round that loop forever.
+ */
+describe("token — RFC 6749 5.2 error codes", () => {
+  async function codeFor(stewardUserId: string): Promise<string> {
+    await seedUser({ stewardUserId });
+    return (await getAuthorizationCode(await sessionCookie(stewardUserId)))
+      .code;
+  }
+
+  async function post(
+    fields: Record<string, string>,
+    clientId = FORGEJO_CLIENT_ID,
+    secret = FORGEJO_SECRET,
+  ): Promise<Response> {
+    const { body, headers } = form(fields);
+    return call("/api/oidc/token", {
+      method: "POST",
+      body,
+      headers: { ...headers, authorization: basicAuth(clientId, secret) },
+    });
+  }
+
+  test("a missing grant_type is invalid_request, not unsupported_grant_type", async () => {
+    const res = await post({
+      code: "eoc_x",
+      redirect_uri: FORGEJO_REDIRECT,
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "invalid_request",
+    );
+  });
+
+  test("a missing code is invalid_request and leaves the grant alive", async () => {
+    const code = await codeFor("u-missing-code");
+    const res = await post({
+      grant_type: "authorization_code",
+      redirect_uri: FORGEJO_REDIRECT,
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "invalid_request",
+    );
+    // A malformed call must not destroy a pending authorization.
+    expect((await redeem(code)).status).toBe(200);
+  });
+
+  test("a missing redirect_uri is invalid_request while a WRONG one stays invalid_grant", async () => {
+    const code = await codeFor("u-missing-redirect");
+    const missing = await post({ grant_type: "authorization_code", code });
+    expect(missing.status).toBe(400);
+    expect(((await missing.json()) as { error: string }).error).toBe(
+      "invalid_request",
+    );
+
+    // The code survived the malformed call…
+    const wrong = await redeem(code, {
+      redirect_uri: "https://lowtrust.example/callback",
+    });
+    // …and a mismatch is still the opaque binding failure, because that answer
+    // is about a code the caller may have stolen.
+    expect(((await wrong.json()) as { error: string }).error).toBe(
+      "invalid_grant",
+    );
+  });
+
+  test("a present but unsupported grant_type is still unsupported_grant_type", async () => {
+    const res = await post({
+      grant_type: "refresh_token",
+      code: "eoc_x",
+      redirect_uri: FORGEJO_REDIRECT,
+    });
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "unsupported_grant_type",
+    );
+  });
+
+  test("an unavailable provider answers 503 with no OAuth error code at all", async () => {
+    // RFC 6749 §5.2 closes the token-endpoint code set and none of its members
+    // means "retry later". A relying party matching that set against
+    // `temporarily_unavailable` treats a transient outage as permanent.
+    const { body, headers } = form({
+      grant_type: "authorization_code",
+      code: "eoc_x",
+      redirect_uri: FORGEJO_REDIRECT,
+    });
+    const res = await harness.request(
+      `${ISSUER}/api/oidc/token`,
+      {
+        method: "POST",
+        body,
+        headers: {
+          ...headers,
+          "x-forwarded-for": "10.8.8.1",
+          authorization: basicAuth(FORGEJO_CLIENT_ID, FORGEJO_SECRET),
+        },
+      },
+      { ...ENV, OIDC_SIGNING_JWKS: "" },
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("5");
+    const payload = (await res.json()) as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("error");
+    expect(payload.error_description).toBeString();
+  });
+});
+
+/**
+ * RFC 6749 §2.3.1 form-encodes both halves of `client_secret_basic`, but only
+ * some clients do it. A secret containing `%` therefore arrives in one of two
+ * readings, and decoding unconditionally corrupts the other one into a
+ * permanent `invalid_client`.
+ */
+describe("token — client_secret_basic decoding", () => {
+  async function percentCode(stewardUserId: string): Promise<string> {
+    await seedUser({ stewardUserId });
+    const cookie = await sessionCookie(stewardUserId);
+    const res = await call(
+      `/api/oidc/authorize?${new URLSearchParams({
+        client_id: PERCENT_CLIENT_ID,
+        redirect_uri: PERCENT_REDIRECT,
+        response_type: "code",
+        scope: "openid email",
+        state: "percent-state",
+      })}`,
+      { cookie },
+    );
+    expect(res.status).toBe(302);
+    return new URL(res.headers.get("location") as string).searchParams.get(
+      "code",
+    ) as string;
+  }
+
+  async function redeemWithHeader(
+    code: string,
+    authorization: string,
+  ): Promise<Response> {
+    const { body, headers } = form({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: PERCENT_REDIRECT,
+    });
+    return call("/api/oidc/token", {
+      method: "POST",
+      body,
+      headers: { ...headers, authorization },
+    });
+  }
+
+  test("a secret containing % authenticates when sent verbatim", async () => {
+    // curl and most shell clients base64 the raw text. Decoding it would turn
+    // `…100%2Fvalue…` into `…100/value…` and never match the stored hash.
+    const code = await percentCode("u-percent-raw");
+    const header = `Basic ${btoa(`${PERCENT_CLIENT_ID}:${PERCENT_SECRET}`)}`;
+    expect((await redeemWithHeader(code, header)).status).toBe(200);
+  });
+
+  test("the same secret authenticates when form-encoded, as Go's oauth2 sends it", async () => {
+    const code = await percentCode("u-percent-encoded");
+    const header = `Basic ${btoa(
+      `${encodeURIComponent(PERCENT_CLIENT_ID)}:${encodeURIComponent(PERCENT_SECRET)}`,
+    )}`;
+    expect((await redeemWithHeader(code, header)).status).toBe(200);
+  });
+
+  test("the scheme is matched case-insensitively, per RFC 7235", async () => {
+    const code = await percentCode("u-percent-lowercase");
+    const header = `basic ${btoa(`${PERCENT_CLIENT_ID}:${PERCENT_SECRET}`)}`;
+    expect((await redeemWithHeader(code, header)).status).toBe(200);
+  });
+
+  test("a wrong secret is still refused under both readings", async () => {
+    const code = await percentCode("u-percent-wrong");
+    const header = `Basic ${btoa(`${PERCENT_CLIENT_ID}:not-the-secret`)}`;
+    const res = await redeemWithHeader(code, header);
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "invalid_client",
+    );
+  });
+});
+
+/**
+ * `/userinfo` is a bearer-protected resource, so RFC 6750 governs it: the
+ * scheme is case-insensitive and every refusal carries a challenge naming the
+ * error. Those two are what let a client tell "get a new token" apart from
+ * "that token will never be enough".
+ */
+describe("userinfo — RFC 6750 conformance", () => {
+  async function accessTokenFor(stewardUserId: string): Promise<string> {
+    await seedUser({ stewardUserId });
+    const cookie = await sessionCookie(stewardUserId);
+    const { code } = await getAuthorizationCode(cookie);
+    const body = (await (await redeem(code)).json()) as TokenResponse;
+    return body.access_token;
+  }
+
+  test("a lowercase bearer scheme is accepted", async () => {
+    const token = await accessTokenFor("u-lowercase-bearer");
+    for (const scheme of ["Bearer", "bearer", "BEARER", "BeArEr"]) {
+      const res = await call("/api/oidc/userinfo", {
+        headers: { authorization: `${scheme} ${token}` },
+      });
+      expect(res.status).toBe(200);
+    }
+  });
+
+  test("extra whitespace between scheme and token is tolerated", async () => {
+    const token = await accessTokenFor("u-bearer-spaces");
+    const res = await call("/api/oidc/userinfo", {
+      headers: { authorization: `Bearer   ${token}` },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("another scheme is refused with a challenge, not accepted as a token", async () => {
+    const token = await accessTokenFor("u-basic-scheme");
+    const res = await call("/api/oidc/userinfo", {
+      headers: { authorization: `Basic ${token}` },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get("www-authenticate")).toContain(
+      'error="invalid_token"',
+    );
+  });
+
+  test("a token without the openid scope gets 403 WITH a challenge naming the scope", async () => {
+    // RFC 6750 §3: a 403 with no WWW-Authenticate leaves the client unable to
+    // distinguish an authorization failure from a missing scope, so it retries
+    // the same token forever.
+    const { runWithCloudBindingsAsync } = await import(
+      "@/lib/runtime/cloud-bindings"
+    );
+    const { mintOidcAccessToken } = await import("@/lib/oidc/tokens");
+    const { userId } = await seedUser({ stewardUserId: "u-no-openid-scope" });
+
+    const token = await runWithCloudBindingsAsync(ENV, () =>
+      mintOidcAccessToken({
+        issuer: ISSUER,
+        clientId: FORGEJO_CLIENT_ID,
+        subject: userId,
+        audiences: [],
+        scope: "email",
+        ttlSeconds: 300,
+        claims: { sub: userId },
+        now: new Date(),
+      }),
+    );
+
+    const res = await call("/api/oidc/userinfo", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "insufficient_scope",
+    );
+    const challenge = res.headers.get("www-authenticate") as string;
+    expect(challenge.startsWith("Bearer ")).toBe(true);
+    expect(challenge).toContain('error="insufficient_scope"');
+    expect(challenge).toContain('scope="openid"');
+  });
+
+  test("an unavailable provider answers 503 without claiming the token is bad", async () => {
+    const token = await accessTokenFor("u-userinfo-unavailable");
+    const res = await harness.request(
+      `${ISSUER}/api/oidc/userinfo`,
+      {
+        headers: {
+          "x-forwarded-for": "10.8.8.2",
+          authorization: `Bearer ${token}`,
+        },
+      },
+      { ...ENV, OIDC_SIGNING_JWKS: "" },
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("5");
+    expect(await res.json()).not.toHaveProperty("error");
   });
 });

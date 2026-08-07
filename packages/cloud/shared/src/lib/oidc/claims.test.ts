@@ -13,7 +13,14 @@ import { describe, expect, test } from "bun:test";
 
 import type { Organization } from "../../db/schemas/organizations";
 import type { User } from "../../db/schemas/users";
-import { buildOidcClaims, type OidcAdminStatus, type OidcClaimsInput } from "./claims";
+import {
+  buildOidcClaims,
+  isEmittableOidcGroup,
+  type OidcAdminStatus,
+  type OidcClaimsInput,
+  readOidcAccountKind,
+  resolveOidcTenantId,
+} from "./claims";
 import type { OidcClient } from "./clients";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -209,6 +216,81 @@ describe("groups", () => {
     expect(claims).not.toHaveProperty("groups");
     expect(claims).toHaveProperty("roles");
   });
+
+  test("an agent account carries its kind as a group; a human carries none", () => {
+    // Forgejo's restricted group is a group name, not a claim it reads — an
+    // agent account can only be admitted on different terms through this.
+    const agent = build({
+      profile: { username: "agent-7", account_kind: "agent", actor_id: null, agent_id: "agent-7" },
+    }).groups as string[];
+    expect(agent).toContain("eliza-cloud:agents");
+    expect(agent).not.toContain("eliza-cloud:services");
+
+    const service = build({
+      profile: {
+        username: "eliza-merge-steward",
+        account_kind: "service",
+        actor_id: null,
+        agent_id: null,
+      },
+    }).groups as string[];
+    expect(service).toContain("eliza-cloud:services");
+
+    const human = build().groups as string[];
+    expect(human).not.toContain("eliza-cloud:agents");
+    expect(human).not.toContain("eliza-cloud:services");
+  });
+
+  test("an unknown account_kind reads as the restricted kind, never as a human", () => {
+    // A legacy or hand-written value must not be admitted on a person's terms,
+    // and must not lock the account out of sign-in either: claims are built at
+    // `/token`, after the code is issued, so throwing here would answer the
+    // relying party with a 5xx on every retry.
+    for (const kind of ["bot", "HUMAN", "", "agent "]) {
+      const claims = build({
+        profile: { username: "mystery", account_kind: kind, actor_id: null, agent_id: null },
+      });
+      expect(claims.eliza_account_kind).toBe("service");
+      const groups = claims.groups as string[];
+      expect(groups).toContain("eliza-cloud:services");
+      expect(groups).not.toContain("eliza-cloud:agents");
+    }
+  });
+
+  test("readOidcAccountKind keeps the three known values and the absent-profile default", () => {
+    expect(readOidcAccountKind(undefined)).toBe("human");
+    expect(readOidcAccountKind(null)).toBe("human");
+    expect(readOidcAccountKind("human")).toBe("human");
+    expect(readOidcAccountKind("agent")).toBe("agent");
+    expect(readOidcAccountKind("service")).toBe("service");
+  });
+});
+
+describe("the group vocabulary a mapping key may name", () => {
+  test("every static value this provider emits is mappable", () => {
+    for (const group of [
+      "eliza-cloud:users",
+      "eliza-cloud:admins",
+      "eliza-cloud:agents",
+      "eliza-cloud:services",
+    ]) {
+      expect(isEmittableOidcGroup(group)).toBe(true);
+    }
+  });
+
+  test("organization values stay open because uuid, slug, and role are runtime data", () => {
+    expect(isEmittableOidcGroup(`org:${ORG_ID}`)).toBe(true);
+    expect(isEmittableOidcGroup("org:analytical-engines")).toBe(true);
+    expect(isEmittableOidcGroup(`org:${ORG_ID}:owner`)).toBe(true);
+  });
+
+  test("a name nothing here produces is not mappable", () => {
+    // Including the RP-side names an operator might key the mapping on by
+    // mistake: those are mapping TARGETS, never sources.
+    for (const group of ["eliza-admins", "eliza-agents", "eliza-cloud:admin", "org:", ""]) {
+      expect(isEmittableOidcGroup(group)).toBe(false);
+    }
+  });
 });
 
 describe("roles", () => {
@@ -254,20 +336,32 @@ describe("roles", () => {
 
 describe("tenant_id", () => {
   test("prefers the organization's Steward tenant", () => {
-    expect(
-      build({ sessionTenantId: "personal-x", deploymentTenantId: "elizacloud" }).tenant_id,
-    ).toBe("tenant-analytical");
+    expect(build({ deploymentTenantId: "elizacloud" }).tenant_id).toBe("tenant-analytical");
   });
 
-  test("falls back to the verified session tenant, then the deployment tenant", () => {
+  test("falls back to the deployment tenant", () => {
     const org = makeOrg({ steward_tenant_id: null });
-    expect(
-      build({ organization: org, sessionTenantId: "personal-x", deploymentTenantId: "elizacloud" })
-        .tenant_id,
-    ).toBe("personal-x");
     expect(build({ organization: org, deploymentTenantId: "elizacloud" }).tenant_id).toBe(
       "elizacloud",
     );
+  });
+
+  test("resolves from stored rows alone, so /token and /userinfo agree", () => {
+    // Both inputs are readable without a session. `/userinfo` is reached with
+    // an access token and nothing else, so a tier that needed one would appear
+    // in the ID token and vanish on the relying party's next read.
+    const inputs: OidcClaimsInput = {
+      user: makeUser(),
+      organization: makeOrg({ steward_tenant_id: null }),
+      profile: null,
+      username: "ada",
+      adminStatus: NO_ADMIN,
+      deploymentTenantId: "elizacloud",
+      scopes: ["openid", "email", "profile", "groups"],
+      client: makeClient(),
+    };
+    expect(buildOidcClaims(inputs)).toEqual(buildOidcClaims({ ...inputs }));
+    expect(resolveOidcTenantId(inputs)).toBe("elizacloud");
   });
 
   test("is omitted, never fabricated, when no tenant exists anywhere", () => {
@@ -443,6 +537,45 @@ describe("claims_mapping", () => {
     });
     expect(claims.groups).toContain("org:constructor");
     expect(claims.groups).toContain("eliza-team");
+  });
+
+  test("both groups a Forgejo login source is configured with are reachable", () => {
+    // `forgejo admin auth add-oauth --admin-group eliza-admins
+    // --restricted-group eliza-agents` decides administrator and restricted
+    // status from these two names alone. An admin group it never receives makes
+    // Forgejo DEMOTE the user signing in, which fails outright on the last
+    // administrator — so the mapping has to be able to produce it.
+    const forgejo = makeClient({
+      claims_mapping: {
+        roles: {},
+        groups: {
+          "eliza-cloud:users": ["eliza-team"],
+          "eliza-cloud:admins": ["eliza-admins"],
+          "eliza-cloud:agents": ["eliza-agents"],
+          "eliza-cloud:services": ["eliza-agents"],
+        },
+        mode: "extend",
+      },
+    });
+
+    const admin = build({
+      adminStatus: { isAdmin: true, role: "super_admin", implicit: false },
+      client: forgejo,
+    }).groups as string[];
+    expect(admin).toContain("eliza-admins");
+    expect(admin).not.toContain("eliza-agents");
+
+    const agent = build({
+      profile: { username: "agent-7", account_kind: "agent", actor_id: null, agent_id: "agent-7" },
+      client: forgejo,
+    }).groups as string[];
+    expect(agent).toContain("eliza-agents");
+    expect(agent).not.toContain("eliza-admins");
+
+    const human = build({ client: forgejo }).groups as string[];
+    expect(human).toContain("eliza-team");
+    expect(human).not.toContain("eliza-admins");
+    expect(human).not.toContain("eliza-agents");
   });
 
   test("two native values mapping onto one target emit it once", () => {

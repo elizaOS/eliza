@@ -10,9 +10,9 @@
  * reason nothing here would log, so each must fail at parse time instead.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
-import { parseOidcClientEntry } from "./clients";
+import { _resetOidcClientCacheForTests, getOidcClient, parseOidcClientEntry } from "./clients";
 
 const SECRET_HASH = "a".repeat(64);
 
@@ -26,6 +26,22 @@ function entry(overrides: Record<string, unknown> = {}): Record<string, unknown>
     ...overrides,
   };
 }
+
+/**
+ * Load a whole registry the way the Worker does. `getCloudAwareEnv()` falls
+ * through to `process.env` outside a request, so this is the real load path —
+ * memoized parse included, which is why the cache is dropped after each case.
+ */
+function loadRegistry(entries: Record<string, unknown>[]): void {
+  process.env.OIDC_CLIENTS = JSON.stringify(entries);
+  _resetOidcClientCacheForTests();
+  getOidcClient(entries[0]?.client_id as string);
+}
+
+afterEach(() => {
+  delete process.env.OIDC_CLIENTS;
+  _resetOidcClientCacheForTests();
+});
 
 describe("defaults", () => {
   test("an entry with no mapping or constants parses to the identity behavior", () => {
@@ -129,6 +145,39 @@ describe("claims_mapping", () => {
     ).toThrow(/not a role this provider emits/);
   });
 
+  test("a mapping keyed on a group this provider cannot produce is refused", () => {
+    // The failure mode this prevents: the key is the RP-side name (a target,
+    // never a source) or a typo, the mapping matches nothing, and the token
+    // arrives missing exactly the group the RP gates on. At Forgejo an absent
+    // admin group demotes the user signing in.
+    for (const key of ["eliza-admins", "eliza-agents", "eliza-cloud:admin"]) {
+      expect(() =>
+        parseOidcClientEntry(
+          entry({ claims_mapping: { roles: {}, groups: { [key]: ["eliza-admins"] } } }),
+        ),
+      ).toThrow(/not a group this provider emits/);
+    }
+  });
+
+  test("the group keys this provider does emit are accepted", () => {
+    const client = parseOidcClientEntry(
+      entry({
+        claims_mapping: {
+          roles: {},
+          groups: {
+            "eliza-cloud:users": ["eliza-team"],
+            "eliza-cloud:admins": ["eliza-admins"],
+            "eliza-cloud:agents": ["eliza-agents"],
+            "eliza-cloud:services": ["eliza-agents"],
+            "org:analytical-engines": ["engines"],
+          },
+        },
+      }),
+    );
+    expect(client.claims_mapping.groups["eliza-cloud:agents"]).toEqual(["eliza-agents"]);
+    expect(client.claims_mapping.groups["org:analytical-engines"]).toEqual(["engines"]);
+  });
+
   test("a mapping for a claim the policy denies is refused", () => {
     expect(() =>
       parseOidcClientEntry(
@@ -193,6 +242,51 @@ describe("constant_claims", () => {
     expect(() => parseOidcClientEntry(entry({ constant_claims: { tenant: 7 } }))).toThrow(
       /non-empty string/,
     );
+  });
+});
+
+describe("client_id must never collide with a resource audience", () => {
+  test("an entry that lists its own client_id as a resource audience is refused", () => {
+    // aud on an ID token IS the client id, so this registration would make the
+    // client's own ID token verify as an access token for that resource.
+    expect(() => parseOidcClientEntry(entry({ resource_audiences: ["elizahub-forgejo"] }))).toThrow(
+      /its own client_id/,
+    );
+  });
+
+  test("a client_id that another entry declares as a resource audience is refused", () => {
+    expect(() =>
+      loadRegistry([
+        entry({ client_id: "eliza-steward-console", resource_audiences: ["eliza-merge-steward"] }),
+        entry({
+          client_id: "eliza-merge-steward",
+          redirect_uris: ["https://steward.example/oidc/callback"],
+        }),
+      ]),
+    ).toThrow(/also declares as a resource audience/);
+  });
+
+  test("the registry order does not matter: the collision is refused either way", () => {
+    expect(() =>
+      loadRegistry([
+        entry({
+          client_id: "eliza-merge-steward",
+          redirect_uris: ["https://steward.example/oidc/callback"],
+        }),
+        entry({ client_id: "eliza-steward-console", resource_audiences: ["eliza-merge-steward"] }),
+      ]),
+    ).toThrow(/also declares as a resource audience/);
+  });
+
+  test("distinct client ids and resource audiences still load", () => {
+    loadRegistry([
+      entry({ client_id: "eliza-steward-console", resource_audiences: ["eliza-merge-steward"] }),
+      entry({ client_id: "elizahub-forgejo" }),
+    ]);
+    expect(getOidcClient("eliza-steward-console")?.resource_audiences).toEqual([
+      "eliza-merge-steward",
+    ]);
+    expect(getOidcClient("eliza-merge-steward")).toBeNull();
   });
 });
 
