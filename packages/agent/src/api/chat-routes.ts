@@ -3404,6 +3404,7 @@ async function generateChatResponseWithTiming(
           >
         >
       | undefined;
+    let trajectoryTerminalOwner: "run" | undefined;
     const settledActionResults: ActionResult[] = [];
     let capturedUsage: CapturedModelUsage | null = null;
     const recordActionCallback = (
@@ -3698,6 +3699,9 @@ async function generateChatResponseWithTiming(
                     onSettledActionResult: (actionResult) => {
                       settledActionResults.push(actionResult);
                     },
+                    onTrajectoryTerminalOwner: (owner) => {
+                      trajectoryTerminalOwner = owner;
+                    },
                     onStreamChunk: opts?.onChunk
                       ? async (
                           chunk: string,
@@ -3745,6 +3749,7 @@ async function generateChatResponseWithTiming(
               responseMessages: [],
               actionResults: recovery.actionResults,
               mode: "actions",
+              ...(trajectoryTerminalOwner ? { trajectoryTerminalOwner } : {}),
             } as typeof result;
             runtime.logger.warn(
               {
@@ -3816,6 +3821,10 @@ async function generateChatResponseWithTiming(
                 await runtime.emitEvent(EventType.MESSAGE_SENT, {
                   message: memoryLike,
                   source: messageSource,
+                  ...((result?.trajectoryTerminalOwner ??
+                    trajectoryTerminalOwner) === "run"
+                    ? { trajectoryTerminalOwner: "run" as const }
+                    : {}),
                 });
               }
             }
