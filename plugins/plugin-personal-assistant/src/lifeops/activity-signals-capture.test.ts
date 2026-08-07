@@ -6,8 +6,8 @@
  * three device shapes (web, desktop/Electrobun, native mobile). Proves it
  * posts presence once the runtime reports running, re-emits on
  * lifecycle/visibility events, dedupes rapid repeats, maps native mobile
- * snapshots, degrades quietly on runtime-unavailable/network/signed-out (401)
- * errors, surfaces
+ * snapshots, degrades quietly on runtime-unavailable/network/signed-out
+ * (401)/agent-gone (structural 404) errors, surfaces
  * unexpected failures observably, is idempotent across repeated starts,
  * enforces the permission consent gate, survives stop() racing any awaited
  * native operation without leaking handles/monitors/intervals, and fully
@@ -55,6 +55,24 @@ const h = vi.hoisted(() => {
       signal: { id: "sig-1" },
     })),
     isApiError: vi.fn((_error: unknown) => false),
+    isCloudAgentGoneError: vi.fn((error: unknown) => {
+      let current: unknown = error;
+      for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
+        const { status, code } = current as Error & {
+          status?: unknown;
+          code?: unknown;
+        };
+        if (
+          status === 404 &&
+          (code === "agent_not_found" ||
+            current.message.includes("agent not found or not running"))
+        ) {
+          return true;
+        }
+        current = (current as Error & { cause?: unknown }).cause;
+      }
+      return false;
+    }),
     isElectrobunRuntime: vi.fn(() => false),
     loadDesktopWorkspaceSnapshot: vi.fn(async () => ({ supported: false })),
     dispatchStatus: vi.fn(),
@@ -66,13 +84,14 @@ const h = vi.hoisted(() => {
 
 // The four @elizaos/ui subpath specifiers (/api, /bridge, /browser, /events)
 // all alias to the same stub file under this package's vitest config, so each
-// mock returns the same combined shape: client + isApiError + ElizaClient
+// mock returns the same combined shape: client + error classifiers + ElizaClient
 // (/api), isElectrobunRuntime (/bridge), loadDesktopWorkspaceSnapshot
 // (/browser), lifecycle event names (/events). The object literal is inlined
 // per call and reads only the hoisted `h` — any module-scope const would sit
 // in its TDZ when the hoisted `vi.mock` and source import run.
 vi.mock("@elizaos/ui/api", () => ({
   isApiError: h.isApiError,
+  isCloudAgentGoneError: h.isCloudAgentGoneError,
   ElizaClient: h.ElizaClient,
   isElectrobunRuntime: h.isElectrobunRuntime,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
@@ -92,6 +111,7 @@ vi.mock("@elizaos/ui/bridge", () => ({
   },
   isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
+  isCloudAgentGoneError: h.isCloudAgentGoneError,
   ElizaClient: h.ElizaClient,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
 }));
@@ -104,6 +124,7 @@ vi.mock("@elizaos/ui/events", () => ({
   },
   isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
+  isCloudAgentGoneError: h.isCloudAgentGoneError,
   ElizaClient: h.ElizaClient,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
 }));
@@ -111,6 +132,7 @@ vi.mock("@elizaos/ui/browser", () => ({
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
   isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
+  isCloudAgentGoneError: h.isCloudAgentGoneError,
   ElizaClient: h.ElizaClient,
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
@@ -679,6 +701,74 @@ describe("startLifeOpsActivitySignalCapture", () => {
 
     expect(h.captureLifeOpsActivitySignal).toHaveBeenCalled();
     expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+  });
+
+  it("treats a structural agent-gone status probe (stale binding to a deleted agent) as an expected stand-down", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    // The cloud router's code-less shape for a deleted agent's origin.
+    h.getStatus.mockRejectedValue(
+      Object.assign(new Error("agent not found or not running"), {
+        kind: "http",
+        status: 404,
+      }),
+    );
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await settle();
+
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
+    expect(h.dispatchStatus).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("swallows an agent_not_found capture failure (agent deleted mid-session) without a capture_error", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.captureLifeOpsActivitySignal.mockRejectedValue(
+      Object.assign(new Error("agent not found"), {
+        kind: "http",
+        status: 404,
+        code: "agent_not_found",
+      }),
+    );
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await settle();
+
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalled();
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("still surfaces an ordinary 404 (missing route, no agent-gone shape) as a capture_error", async () => {
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.captureLifeOpsActivitySignal.mockRejectedValue({
+      kind: "http",
+      status: 404,
+      message: "Not Found",
+    });
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await settle();
+
+    expect(h.dispatchStatus).toHaveBeenCalledWith(
       expect.objectContaining({ status: "capture_error" }),
     );
   });
