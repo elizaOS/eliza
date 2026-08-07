@@ -1194,6 +1194,7 @@
   "cloud.apps.overview.statusActive": "Active",
   "cloud.apps.overview.statusInactive": "Inactive",
   "cloud.apps.stat.activeApps": "Active Apps",
+  "cloud.apps.signInRequired": "Sign in to Eliza Cloud to manage Cloud Apps.",
   "cloud.apps.stat.totalApps": "Total Apps",
   "cloud.apps.stat.totalRequests": "Total Requests",
   "cloud.apps.stat.totalUsers": "Total Users",
