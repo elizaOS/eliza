@@ -148,6 +148,12 @@ const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/g;
 // hyphen U+2010, non-breaking hyphen U+2011, figure dash U+2012, en dash
 // U+2013, em dash U+2014, horizontal bar U+2015, minus sign U+2212.
 const UNICODE_DASHES_RE = /[\u2010-\u2015\u2212]/g;
+
+// Well-known XML namespace URIs (xmlns values). They are identifiers pasted
+// inside markup, not hyperlinks a sub-agent claimed as live \u2014 probing them
+// can only manufacture a false "dead" for a healthy build.
+const XML_NAMESPACE_URL_RE =
+  /^https?:\/\/(?:www\.)?w3\.org\/(?:2000\/svg|1999\/xhtml|1999\/xlink|2000\/xmlns|XML\/1998\/namespace|1998\/Math\/MathML|2001\/XMLSchema|2005\/Atom)(?:\/|$)/i;
 // A URL (mentioned by a sub-agent, or a page sub-resource) that did not
 // verify as reachable. Shared by the verification pass and the retry path.
 interface DeadUrl {
@@ -192,6 +198,28 @@ function collectVerifiableUrlCandidates(
     // Trimmed only at end-of-token; interior `!`/`?` (query strings, bang
     // routes) are untouched.
     const url = raw.replace(/[.,;:!?]+$/, "");
+    // Phantom candidates can never verify live, and a single one counted
+    // "dead" flips a live build's verdict to failed (and burns the whole
+    // verify-retry budget re-building an app that is up). Drop, structurally:
+    //  - truncated relay links ("http://…") the WHATWG parser rejects;
+    //  - single-label hostnames ("https://fonts") left by mid-token clipping
+    //    — they never resolve publicly, and loopback stays allowed;
+    //  - XML namespace URIs quoted in pasted markup (xmlns="…/2000/svg").
+    let parsedCandidate: URL;
+    try {
+      parsedCandidate = new URL(url);
+    } catch {
+      continue;
+    }
+    const candidateHost = parsedCandidate.hostname;
+    if (
+      !candidateHost.includes(".") &&
+      candidateHost !== "localhost" &&
+      !candidateHost.startsWith("[")
+    ) {
+      continue;
+    }
+    if (XML_NAMESPACE_URL_RE.test(url)) continue;
     // Raw `curl -i` output includes CDN reporting endpoints in `report-to`
     // headers. They are not part of the built app, and letting them into the
     // bounded verifier list crowds out real page/assets.
@@ -2010,12 +2038,19 @@ export class SubAgentRouter extends Service {
     resumeContext?: ResumeContext,
   ): Promise<boolean> {
     const meta = (session.metadata ?? {}) as Record<string, unknown>;
-    // The original task is stashed on metadata by TASKS op=spawn_agent —
+    // The original task is stashed on metadata by the TASKS spawn paths —
     // SessionInfo itself doesn't carry it. Without it we can't reconstruct the
     // work, so surface the failure honestly instead of respawning a blank one.
     const originalTask =
       typeof meta.initialTask === "string" ? meta.initialTask.trim() : "";
-    if (!originalTask) return false;
+    if (!originalTask) {
+      this.log(
+        "warn",
+        "state-lost respawn unavailable: session metadata has no initialTask",
+        { sessionId: session.id, reason },
+      );
+      return false;
+    }
 
     const service =
       this.acp ??
@@ -2307,11 +2342,20 @@ export class SubAgentRouter extends Service {
       return false;
     }
 
-    // The original task is stashed on metadata by TASKS op=spawn_agent —
-    // SessionInfo itself doesn't carry it.
+    // The original task is stashed on metadata by the TASKS spawn paths —
+    // SessionInfo itself doesn't carry it. Log the miss: a session without
+    // the stamp silently loses its verify-retry valve, and that gap has
+    // previously read as "verification posted a failure instead of retrying".
     const originalTask =
       typeof meta.initialTask === "string" ? meta.initialTask.trim() : "";
-    if (!originalTask) return false;
+    if (!originalTask) {
+      this.log(
+        "warn",
+        "verify-retry unavailable: session metadata has no initialTask",
+        { sessionId: session.id },
+      );
+      return false;
+    }
 
     const service =
       this.acp ??
