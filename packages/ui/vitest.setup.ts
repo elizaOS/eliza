@@ -12,6 +12,8 @@ import {
 } from "node:stream/web";
 import { TextDecoder } from "node:util";
 import { afterEach, beforeEach, expect } from "vitest";
+// @ts-expect-error — plain-JS sibling that owns the shared message fingerprint.
+import { normalizeConsoleMessage } from "./scripts/console-warning-baseline.mjs";
 
 const nativeConsoleWarn = console.warn.bind(console);
 const nativeConsoleError = console.error.bind(console);
@@ -49,7 +51,11 @@ function recordUnexpectedConsoleMessage(
     (level === "warn" ? nativeConsoleWarn : nativeConsoleError)(...arguments_);
     return;
   }
-  const message = arguments_.map(stringifyConsoleArgument).join(" ");
+  // Fingerprint without color so the baseline matches in either color mode;
+  // the console re-emission below still carries the original bytes.
+  const message = normalizeConsoleMessage(
+    arguments_.map(stringifyConsoleArgument).join(" "),
+  );
   unexpectedConsoleMessages.push(`${level}: ${message}`);
   (level === "warn" ? nativeConsoleWarn : nativeConsoleError)(...arguments_);
 }
