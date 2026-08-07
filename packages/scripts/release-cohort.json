@@ -109,6 +109,7 @@
     "@elizaos/plugin-workflow",
     "@elizaos/plugin-x",
     "@elizaos/plugin-zai",
+    "@elizaos/plugin-zerollama",
     "@elizaos/prompts",
     "@elizaos/registry",
     "@elizaos/scenario-runner",
