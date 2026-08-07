@@ -187,14 +187,25 @@ describe("AgentRuntime.stop", () => {
 		}
 
 		await runtime.registerService(FailingStartService);
-		await expect(
-			runtime.getServiceLoadPromise(FailingStartService.serviceType),
-		).rejects.toMatchObject({
+		let startupError: unknown;
+		try {
+			await runtime.getServiceLoadPromise(FailingStartService.serviceType);
+		} catch (error) {
+			startupError = error;
+		}
+		expect(startupError).toMatchObject({
 			code: "SERVICE_START_FAILED",
-			cause: expect.objectContaining({
-				message: "startup dependency unavailable",
-			}),
 		});
+		const aggregate = (startupError as { cause?: unknown }).cause;
+		expect(aggregate).toBeInstanceOf(AggregateError);
+		expect((aggregate as AggregateError).errors).toEqual([
+			expect.objectContaining({
+				code: "SERVICE_START_FAILED",
+				cause: expect.objectContaining({
+					message: "startup dependency unavailable",
+				}),
+			}),
+		]);
 		await runtime.stop();
 	});
 
