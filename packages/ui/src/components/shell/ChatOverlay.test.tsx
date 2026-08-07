@@ -106,6 +106,13 @@ import {
 beforeAll(() => {
   // jsdom has no scrollIntoView; the overlay calls it when the thread grows.
   Element.prototype.scrollIntoView = vi.fn();
+  // The realtime status orb is a real Canvas component. The component still
+  // mounts and exposes its semantic state in jsdom; pixel drawing belongs to
+  // the browser evidence lane rather than a synthetic Canvas implementation.
+  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+    configurable: true,
+    value: vi.fn(() => null),
+  });
 });
 
 // Unmount between tests so renders don't accumulate in the shared document.
@@ -240,6 +247,8 @@ describe("ChatOverlay", () => {
   it("shows the mic and no send button when the draft is empty", () => {
     render(<ChatOverlay controller={makeController()} />);
     expect(screen.getByLabelText("talk")).toBeTruthy();
+    expect(screen.getAllByTestId("chat-composer-mic")).toHaveLength(1);
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
     expect(screen.queryByLabelText("send")).toBeNull();
   });
 
@@ -255,10 +264,8 @@ describe("ChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-trailing-controls")).toBe(
       controls,
     );
-    expect(controls.className).toContain("grid-cols-2");
-    expect(
-      screen.getByTestId("chat-composer-control-slot-left").className,
-    ).toContain("size-10");
+    expect(controls.className).toContain("grid-cols-1");
+    expect(screen.queryByTestId("chat-composer-control-slot-left")).toBeNull();
     expect(
       screen.getByTestId("chat-composer-control-slot-right").className,
     ).toContain("size-10");
@@ -896,7 +903,7 @@ describe("ChatOverlay", () => {
 
   // #14331: the waveform reflects only spoken-conversation capture. Dedicated
   // transcription replaces it with the neutral activity presentation below.
-  describe("waveform + pill pulse while capture is hot (#14331)", () => {
+  describe("voice activity cues while capture is hot (#14331)", () => {
     it("does not pulse the mic while idle (neutral resting, no motion)", () => {
       render(<ChatOverlay controller={makeController()} />);
       const mic = screen.getByTestId("chat-composer-mic");
@@ -904,16 +911,20 @@ describe("ChatOverlay", () => {
       expect(mic.className).not.toContain("text-accent");
     });
 
-    it("pulses the accent waveform while hands-free conversation is active", () => {
-      render(<ChatOverlay controller={makeController({ handsFree: true })} />);
-      const waveform = screen.getByTestId("chat-composer-mic");
-      expect(waveform.className).toContain("animate-pulse");
-      expect(waveform.className).toContain("motion-reduce:animate-none");
-      expect(waveform.className).toContain("text-accent");
-      expect(waveform.className).toContain("hover:text-accent");
+    it("keeps the hands-free stop glyph static while the activity surface owns motion", () => {
+      render(
+        <ChatOverlay
+          controller={makeController({ handsFree: true, recording: true })}
+        />,
+      );
+      const stop = screen.getByTestId("chat-composer-mic");
+      expect(stop.className).not.toContain("animate-pulse");
+      expect(stop.className).toContain("text-white");
+      expect(stop.className).not.toContain("text-accent");
+      expect(stop.getAttribute("aria-label")).toBe("end conversation");
     });
 
-    it("keeps the pulsing waveform neutral during push-to-talk recording", () => {
+    it("keeps the pulsing waveform neutral during voice capture", () => {
       render(<ChatOverlay controller={makeController({ recording: true })} />);
       const waveform = screen.getByTestId("chat-composer-mic");
       expect(waveform.className).toContain("animate-pulse");
@@ -1313,17 +1324,13 @@ describe("ChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
   });
 
-  it("renders composer controls icon-only — no capsule/border/fill, accent when active (#10711)", () => {
-    // Resting: the +, transcribe, and voice controls carry only the icon — no
+  it("renders composer controls icon-only — no capsule/border/fill, neutral when active (#10711)", () => {
+    // Resting: the + and one primary Talk control carry only the icon — no
     // round capsule, no border, no translucent white fill. The visible box is
     // 40px with a 20px mark (the "icons slightly too big" fix); the shared
     // Button primitive raises the real box to 44×44 on coarse pointers.
     const { unmount } = render(<ChatOverlay controller={makeController()} />);
-    for (const id of [
-      "chat-composer-plus",
-      "chat-composer-transcribe",
-      "chat-composer-mic",
-    ]) {
+    for (const id of ["chat-composer-plus", "chat-composer-mic"]) {
       const cls = screen.getByTestId(id).className;
       expect(cls).not.toMatch(/rounded-full/);
       expect(cls).not.toMatch(/\bborder\b/);
@@ -1341,14 +1348,14 @@ describe("ChatOverlay", () => {
     }
     unmount();
 
-    // Active (hands-free): distinguishable via accent icon color + pulse — never
-    // by reintroducing a background/border fill on the resting-style control.
+    // Active (hands-free): distinguishable via its stop glyph and pressed state,
+    // never by reintroducing a background/border fill or competing animation.
     render(<ChatOverlay controller={makeController({ handsFree: true })} />);
     const mic = screen.getByTestId("chat-composer-mic");
     expect(mic.getAttribute("aria-pressed")).toBe("true");
-    expect(mic.className).toContain("text-accent");
-    expect(mic.className).toContain("animate-pulse");
-    expect(mic.className).toContain("motion-reduce:animate-none");
+    expect(mic.className).toContain("text-white");
+    expect(mic.className).not.toContain("text-accent");
+    expect(mic.className).not.toContain("animate-pulse");
     expect(mic.className).not.toMatch(/bg-white/);
     expect(mic.className).not.toMatch(/\bborder\b/);
   });
@@ -2113,6 +2120,172 @@ describe("ChatOverlay", () => {
     expect(grabberCue?.className).not.toContain("animate-pulse");
   });
 
+  it.each(["listening", "transcribing", "thinking", "speaking"] as const)(
+    "renders the realtime %s phase and live Ink transcript",
+    (status) => {
+      render(
+        <ChatOverlay
+          controller={makeController({
+            handsFree: true,
+            recording: status === "listening" || status === "transcribing",
+            transcript: "live words from Ink",
+            realtimeVoice: {
+              enabled: true,
+              active: true,
+              connecting: false,
+              paused: false,
+              status,
+              error: null,
+            },
+          })}
+        />,
+      );
+
+      const activity = screen.getByTestId("chat-composer-realtime-voice");
+      expect(activity.getAttribute("data-status")).toBe(status);
+      const waveform = screen.getByTestId("chat-composer-realtime-waveform");
+      expect(waveform.getAttribute("data-phase")).toBe(status);
+      const expectedOrbState = {
+        listening: "listening",
+        transcribing: "listening",
+        thinking: "working",
+        speaking: "composing",
+      }[status];
+      expect(waveform.getAttribute("data-orb-state")).toBe(expectedOrbState);
+      const orb = screen.getByTestId("chat-composer-thinking-orb");
+      expect(orb.tagName).toBe("CANVAS");
+      expect(orb.getAttribute("aria-hidden")).toBe("true");
+      expect(orb.getAttribute("style")).toContain("width: 20px");
+      expect(orb.getAttribute("style")).toContain("height: 20px");
+      expect(activity.querySelector(".rounded-full.size-2")).toBeNull();
+      const expectedCopy =
+        status === "listening" || status === "transcribing"
+          ? "live words from Ink"
+          : `${status[0]?.toUpperCase()}${status.slice(1)}…`;
+      expect(
+        screen.getByTestId("chat-composer-realtime-copy").textContent,
+      ).toBe(expectedCopy);
+      const copy = screen.getByTestId("chat-composer-realtime-copy");
+      if (status === "thinking" || status === "speaking") {
+        expect(copy.className).toContain("shimmer");
+      } else {
+        expect(copy.className).not.toContain("shimmer");
+      }
+      expect(screen.queryByTestId("chat-overlay-voice-status")).toBeNull();
+      expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "half",
+      );
+    },
+  );
+
+  it("keeps the newest wrapped Ink transcript visible without resizing the composer", () => {
+    const firstTranscript =
+      "This is a longer spoken thought with a manual line break\nand-a-single-unbroken-token-that-must-wrap-on-a-narrow-phone";
+    const realtimeVoice = {
+      enabled: true,
+      active: true,
+      connecting: false,
+      paused: false,
+      status: "listening" as const,
+      error: null,
+    };
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          handsFree: true,
+          recording: true,
+          transcript: firstTranscript,
+          realtimeVoice,
+        })}
+      />,
+    );
+
+    const activity = screen.getByTestId("chat-composer-realtime-voice");
+    const copy = screen.getByTestId("chat-composer-realtime-copy");
+    expect(copy.textContent).toBe(firstTranscript);
+    expect(copy.getAttribute("title")).toBe(firstTranscript);
+    expect(copy.className).not.toContain("truncate");
+    expect(copy.className).toContain("whitespace-pre-wrap");
+    expect(copy.className).toContain("max-h-10");
+    expect(copy.className).toContain("[overflow-wrap:anywhere]");
+    expect(copy.parentElement?.className).toContain("h-10");
+    expect(activity.getAttribute("aria-label")).toBe(
+      `Listening…: ${firstTranscript}`,
+    );
+
+    let observedScrollTop = -1;
+    Object.defineProperty(copy, "scrollHeight", {
+      configurable: true,
+      value: 96,
+    });
+    Object.defineProperty(copy, "scrollTop", {
+      configurable: true,
+      get: () => observedScrollTop,
+      set: (value: number) => {
+        observedScrollTop = value;
+      },
+    });
+
+    const nextTranscript = `${firstTranscript} plus the newest words`;
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          handsFree: true,
+          recording: true,
+          transcript: nextTranscript,
+          realtimeVoice,
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("chat-composer-realtime-copy")).toBe(copy);
+    expect(copy.textContent).toBe(nextTranscript);
+    expect(observedScrollTop).toBe(96);
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          handsFree: true,
+          recording: false,
+          transcript: nextTranscript,
+          realtimeVoice: { ...realtimeVoice, status: "thinking" },
+        })}
+      />,
+    );
+    expect(copy.textContent).toBe("Thinking…");
+    expect(observedScrollTop).toBe(0);
+  });
+
+  it("keeps a retryable Cartesia error out of the text input surface", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({
+          handsFree: false,
+          needsAudioUnlock: true,
+          realtimeVoice: {
+            enabled: true,
+            active: false,
+            connecting: false,
+            paused: false,
+            status: "idle",
+            error: "Cartesia voice could not connect. Tap Talk to retry.",
+          },
+        })}
+      />,
+    );
+
+    const input = screen.getByTestId("chat-composer-textarea");
+    expect(input).toBeTruthy();
+    expect(input.hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByTestId("chat-composer-realtime-voice")).toBeNull();
+    expect(screen.queryByTestId("chat-overlay-voice-status")).toBeNull();
+    expect(screen.queryByTestId("overlay-voice-audio-unlock")).toBeNull();
+    expect(
+      screen.getByTestId("chat-composer-mic").getAttribute("aria-label"),
+    ).toContain("retry talk");
+  });
+
   it("exposes the canonical chat composer test id on the overlay input only", () => {
     render(<ChatOverlay controller={makeController()} />);
 
@@ -2122,7 +2295,7 @@ describe("ChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
-  it("keeps the chat-actions menu focused on search and upload", () => {
+  it("keeps chat actions focused on search and upload", () => {
     render(<ChatOverlay controller={makeController()} />);
     const plus = screen.getByTestId("chat-composer-plus");
     expect(screen.getByLabelText("chat actions")).toBeTruthy();
@@ -2140,8 +2313,8 @@ describe("ChatOverlay", () => {
 
     expect(screen.getByText("Search chat…")).toBeTruthy();
     expect(screen.getByText("Upload file")).toBeTruthy();
+    expect(screen.queryByText("Record long-form transcript…")).toBeNull();
     expect(screen.queryByText("Enable camera")).toBeNull();
-    expect(screen.queryByText("Transcribe")).toBeNull();
     expect(screen.queryByText("Stop transcribing")).toBeNull();
   });
 
@@ -2761,33 +2934,17 @@ describe("ChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
   });
 
-  it("keeps spoken conversation before the rightmost transcription mic at rest", () => {
-    // Resting composer: both controls stay available, with spoken conversation
-    // first and dictation rightmost so that mic can morph directly into Stop.
+  it("keeps exactly one primary Talk control in the rightmost trailing slot", () => {
     render(<ChatOverlay controller={makeController()} />);
     const voice = screen.getByTestId("chat-composer-mic");
-    const transcribe = screen.getByTestId("chat-composer-transcribe");
-    expect(transcribe.getAttribute("aria-label")).toBe("start transcription");
-    expect(
-      voice.compareDocumentPosition(transcribe) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const rightSlot = screen.getByTestId("chat-composer-control-slot-right");
+    expect(rightSlot.contains(voice)).toBe(true);
+    expect(screen.getAllByTestId("chat-composer-mic")).toHaveLength(1);
+    expect(screen.queryByTestId("chat-composer-control-slot-left")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
   });
 
-  it("resting transcribe tap starts a transcription session", () => {
-    const toggleTranscriptionMode = vi.fn();
-    render(
-      <ChatOverlay
-        controller={makeController({
-          toggleTranscriptionMode,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("chat-composer-transcribe"));
-    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
-  });
-
-  it("hides BOTH trailing voice controls while a draft exists (send owns the slot)", () => {
+  it("replaces the trailing Talk control while a draft exists", () => {
     render(<ChatOverlay controller={makeController()} />);
     fireEvent.change(screen.getByLabelText("message"), {
       target: { value: "typing…" },
@@ -2799,7 +2956,7 @@ describe("ChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-action")).toBeTruthy();
   });
 
-  it("shows the transcribe button in voice mode, next to the mic (#10699)", () => {
+  it("keeps one Talk control while realtime voice is active", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -2809,13 +2966,9 @@ describe("ChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    // Idle dictation and spoken-conversation controls remain independently
-    // available when neither mode owns capture.
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
-    expect(screen.getByTestId("chat-composer-transcribe")).toBeTruthy();
-    expect(
-      screen.getByTestId("chat-composer-transcribe").getAttribute("aria-label"),
-    ).toBe("start transcription");
+    expect(screen.getAllByTestId("chat-composer-mic")).toHaveLength(1);
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
   });
 
   it("gives transcription one exclusive stop control", async () => {
@@ -2974,55 +3127,37 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("push-to-talk dictates into the composer on release; the label matches (never 'send')", () => {
+  it("treats a held Talk pointer as the same Cartesia toggle, never hidden batch dictation", () => {
     vi.useFakeTimers();
     try {
-      const sinkRef: { fn: ((text: string) => void) | null } = { fn: null };
-      const send = vi.fn();
       const startRecording = vi.fn();
       const stopRecording = vi.fn();
-      const setDictationSink = vi.fn(
-        (sink: ((text: string) => void) | null) => {
-          sinkRef.fn = sink;
-        },
-      );
+      const toggleHandsFree = vi.fn();
       render(
         <ChatOverlay
           controller={makeController({
-            send,
             startRecording,
             stopRecording,
-            setDictationSink,
+            toggleHandsFree,
           } as unknown as Partial<ShellController>)}
         />,
       );
 
       const mic = screen.getByTestId("chat-composer-mic");
-      // Hold past the 200ms arm → dictation capture begins (intent "dictate").
       fireEvent.pointerDown(mic, { button: 0, pointerId: 1 });
       act(() => {
-        vi.advanceTimersByTime(220);
+        vi.advanceTimersByTime(500);
       });
-      expect(startRecording).toHaveBeenCalledWith("dictate");
-
-      // The label must match the behavior: release inserts the dictation into
-      // the composer, it does NOT send. (Regression: it read "release to send",
-      // but the handler only fills the draft — see setDictationSink below.)
-      const label = mic.getAttribute("aria-label") ?? "";
-      expect(label).not.toContain("send");
-      expect(label).toBe("release to insert");
-
-      // Release ends the capture; the final transcript arrives via the
-      // dictation sink and lands in the composer draft — nothing is sent.
       fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
-      expect(stopRecording).toHaveBeenCalledTimes(1);
-      act(() => {
-        sinkRef.fn?.("hello from voice");
-      });
-      expect(send).not.toHaveBeenCalled();
-      expect(
-        (screen.getByLabelText("message") as HTMLTextAreaElement).value,
-      ).toBe("hello from voice");
+      expect(startRecording).not.toHaveBeenCalled();
+      expect(stopRecording).not.toHaveBeenCalled();
+      expect(toggleHandsFree).not.toHaveBeenCalled();
+
+      // A browser's click follows the release. There is one action regardless
+      // of hold duration, and it is the Cartesia-owned Talk toggle.
+      fireEvent.click(mic);
+      expect(toggleHandsFree).toHaveBeenCalledTimes(1);
+      expect(mic.getAttribute("aria-label")).toBe("talk");
     } finally {
       vi.useRealTimers();
     }
@@ -4477,7 +4612,7 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     ).toEqual(["Stop", "Play audio"]);
   });
 
-  it("places automatic speaking shimmer on only the latest settled assistant", () => {
+  it("keeps automatic speaking in the composer without revealing message actions", () => {
     openThreadWith({
       messages: [
         { id: "a", role: "assistant", content: "first answer", createdAt: 1 },
@@ -4485,14 +4620,19 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
         { id: "b", role: "assistant", content: "second answer", createdAt: 3 },
       ],
       speaking: true,
+      responding: true,
+      turnStatus: { kind: "speaking" },
     });
 
-    const accessory = screen.getByTestId("speaking-status-accessory");
+    expect(screen.queryByTestId("speaking-status-accessory")).toBeNull();
+    const rails = screen.getAllByTestId("thread-line-actions");
     expect(
-      accessory.closest('[data-testid="thread-line"]')?.textContent,
-    ).toContain("second answer");
-    expect(screen.getAllByTestId("speaking-status-accessory")).toHaveLength(1);
-    expect(accessory.textContent).toContain("Speaking");
+      rails.every((rail) => rail.getAttribute("aria-hidden") === "true"),
+    ).toBe(true);
+    expect(rails.every((rail) => rail.className.includes("invisible"))).toBe(
+      true,
+    );
+    expect(screen.getByTestId("chat-composer-stop")).toBeTruthy();
   });
 
   it("moves speaking shimmer to the exact assistant selected for playback", () => {
@@ -4515,10 +4655,11 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     ).toContain("first answer");
     expect(screen.getAllByTestId("speaking-status-accessory")).toHaveLength(1);
     expect(screen.queryByTestId("chat-composer-stop")).toBeNull();
-    expect(screen.getByLabelText("start transcription")).toBeTruthy();
+    expect(screen.getByLabelText("talk")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
   });
 
-  it("adds and removes speaking shimmer without replacing the stable action lane", () => {
+  it("does not alter a message action lane when automatic speaking starts", () => {
     const messages = [
       {
         id: "a",
@@ -4537,10 +4678,20 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     expect(screen.queryByTestId("speaking-status-accessory")).toBeNull();
 
     rerender(
-      <ChatOverlay controller={makeController({ messages, speaking: true })} />,
+      <ChatOverlay
+        controller={makeController({
+          messages,
+          speaking: true,
+          responding: true,
+          turnStatus: { kind: "speaking" },
+        })}
+      />,
     );
     expect(screen.getByTestId("thread-line-actions")).toBe(actions);
-    expect(screen.getByTestId("speaking-status-accessory")).toBeTruthy();
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.className).toContain("invisible");
+    expect(screen.queryByTestId("speaking-status-accessory")).toBeNull();
+    expect(screen.getByTestId("chat-composer-stop")).toBeTruthy();
 
     rerender(
       <ChatOverlay
