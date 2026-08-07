@@ -258,7 +258,7 @@ const requiredElectrobunPrWorkflowSnippets = [
   "contents: read",
   'BUN_VERSION: "1.3.14"',
   "name: Release Workflow Contract",
-  "bun install --ignore-scripts",
+  "bun install --frozen-lockfile --ignore-scripts",
   'run-postinstall: "true"',
   "bun run test:regression-matrix:release-contract",
   "bun run test:release:contract",
@@ -1340,10 +1340,14 @@ function assertStartApiServerCatchBlockSafety() {
       catchBlock.includes("opts?.serverOnly") ||
       catchBlock.includes("options?.serverOnly")
     ) ||
-    !catchBlock.includes("process.exit(1)")
+    !catchBlock.includes(
+      'throw new ElizaError("API server is required in server-only mode"',
+    ) ||
+    !catchBlock.includes('code: "AGENT_API_START_FAILED"') ||
+    !catchBlock.includes('severity: "fatal"')
   ) {
     console.error(
-      "release-check: eliza.ts startApiServer catch block must call process.exit(1) when opts?.serverOnly is true.",
+      "release-check: eliza.ts startApiServer catch block must throw a fatal AGENT_API_START_FAILED ElizaError in server-only mode.",
     );
     process.exit(1);
   }
