@@ -4,10 +4,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
-import {
-  cutoverResumeWindowAllows,
-  msWindowTimestampMatch,
-} from "./job-timestamp-fence";
+import { cutoverResumeWindowAllows, msWindowTimestampMatch } from "./job-timestamp-fence";
 
 describe("cutover audit timestamp units (#17919)", () => {
   test("ms-window SQL fragment truncates the column before comparing", () => {

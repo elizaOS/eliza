@@ -14,10 +14,7 @@ function normalizedTimestamp(value: Date | string | null): Date | null {
   return value === null ? null : value instanceof Date ? value : new Date(value);
 }
 
-export function msWindowTimestampMatch(
-  column: AnyColumn | SQL,
-  value: Date | string | null,
-): SQL {
+export function msWindowTimestampMatch(column: AnyColumn | SQL, value: Date | string | null): SQL {
   return sql`date_trunc('milliseconds', ${column}) IS NOT DISTINCT FROM ${normalizedTimestamp(value)}`;
 }
 

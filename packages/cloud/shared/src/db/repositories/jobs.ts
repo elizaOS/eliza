@@ -26,16 +26,13 @@ import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { jobExecutionLeases } from "../schemas/job-execution-leases";
 import type { Job, NewJob } from "../schemas/jobs";
 import { jobs } from "../schemas/jobs";
-import {
-  cutoverResumeWindowAllows,
-  msWindowTimestampMatch,
-} from "./job-timestamp-fence";
+import { cutoverResumeWindowAllows, msWindowTimestampMatch } from "./job-timestamp-fence";
 
-export type { Job, NewJob };
 export {
   cutoverResumeWindowAllows,
   msWindowTimestampMatch,
 } from "./job-timestamp-fence";
+export type { Job, NewJob };
 
 /**
  * Settles the rows that depend on a job the recovery sweep just flipped to
@@ -149,10 +146,6 @@ function timestampMillis(value: Date | string | null): number | null {
 
 function sameTimestamp(left: Date | string | null, right: Date | string | null): boolean {
   return timestampMillis(left) === timestampMillis(right);
-}
-
-function normalizedTimestamp(value: Date | string | null): Date | null {
-  return value === null ? null : value instanceof Date ? value : new Date(value);
 }
 
 function hasValidTimestamp(value: string): boolean {
@@ -1162,10 +1155,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
-            msWindowTimestampMatch(
-              jobs.execution_quiesced_at,
-              params.job.execution_quiesced_at,
-            ),
+            msWindowTimestampMatch(jobs.execution_quiesced_at, params.job.execution_quiesced_at),
             lt(jobs.started_at, params.startedBefore),
             params.recoveryFence,
           ),
@@ -1203,10 +1193,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
-            msWindowTimestampMatch(
-              jobs.execution_quiesced_at,
-              params.job.execution_quiesced_at,
-            ),
+            msWindowTimestampMatch(jobs.execution_quiesced_at, params.job.execution_quiesced_at),
             lt(jobs.started_at, params.startedBefore),
             params.recoveryFence,
             requiresExecutionLease && params.job.execution_generation
