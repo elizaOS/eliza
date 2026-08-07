@@ -65,7 +65,7 @@ const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-app-manager",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-inbox/plugin",
-  "@elizaos/plugin-ollama",
+  "@elizaos/plugin-zerollama",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ]);

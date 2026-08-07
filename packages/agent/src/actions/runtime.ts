@@ -27,6 +27,7 @@ import type {
 import { logger } from "@elizaos/core";
 import {
   type AwarenessRegistry,
+  createSelfApiRequestHeaders,
   getValidationKeywordTerms,
   isSelfEditEnabled,
   requestRestart,
@@ -290,7 +291,10 @@ async function reloadConfigOp(): Promise<ActionResult> {
   try {
     const resp = await fetch(`${getApiBase()}/api/config/reload`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...createSelfApiRequestHeaders(),
+      },
       body: "{}",
       signal: AbortSignal.timeout(15_000),
     });

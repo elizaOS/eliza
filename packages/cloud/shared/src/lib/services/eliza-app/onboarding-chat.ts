@@ -79,6 +79,11 @@ export interface OnboardingChatInput {
   idempotencyKey?: string;
 }
 
+export interface OnboardingChatCta {
+  label: string;
+  url: string;
+}
+
 export interface OnboardingChatResult {
   session: OnboardingSession;
   reply: string;
@@ -88,6 +93,13 @@ export interface OnboardingChatResult {
   launchUrl: string | null;
   provisioning: ElizaAppProvisioningStatus;
   handoffComplete: boolean;
+  /**
+   * Login handoff rendered as a platform affordance (for example a Discord
+   * link button). When present, the reply text intentionally omits the raw
+   * loginUrl; transports without button support keep the inline URL and get
+   * null here. Same loginUrl either way - presentation only.
+   */
+  cta?: OnboardingChatCta | null;
 }
 
 const SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
@@ -100,8 +112,14 @@ const MAX_HISTORY_MESSAGES = 200;
 const MAX_MESSAGE_LENGTH = 4000;
 const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
 const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
-const ELIZA_APP_PRICING_SUMMARY =
-  "Eliza Cloud is usage-based: your agent runs in a private cloud container and spends credits only as it works.";
+/** Label for platforms that render the login link as a UI affordance. */
+const ONBOARDING_CTA_LABEL = "Connect";
+/**
+ * Discord rejects button URLs longer than 512 characters. Enforced here so a
+ * too-long login URL falls back to inline-URL copy instead of producing a CTA
+ * the transport would refuse (which would drop the whole reply).
+ */
+const MAX_CTA_URL_LENGTH = 512;
 
 function sessionCacheKey(sessionId: string): string {
   return `eliza-app:onboarding:${sessionId}`;
@@ -475,33 +493,71 @@ function onboardingAppPath(path: string): string {
   return `${getOnboardingAppUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+/**
+ * Platforms whose transports render the login handoff as a link button. The
+ * reply text on these platforms drops the raw URL; everything else (SMS,
+ * iMessage, web fallback) keeps the URL inline because it has no buttons.
+ */
+function rendersLoginAsButton(platform: OnboardingPlatform | undefined): boolean {
+  return platform === "discord";
+}
+
+/**
+ * Builds the login CTA, or null when the login URL cannot ride a link button
+ * (non-https scheme - possible via ELIZA_ONBOARDING_APP_URL and friends, which
+ * are read from env without scheme validation - or over Discord's 512-char
+ * button URL cap). The caller chooses the reply copy from whether this
+ * returned a CTA, so "text says tap below" and "button actually renders" are
+ * the same decision and cannot disagree.
+ */
+function buildLoginCta(loginUrl: string): OnboardingChatCta | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(loginUrl);
+  } catch {
+    // error-policy:J3 Environment-derived login URLs are untrusted; malformed
+    // values disable the button and preserve the inline-link reply variant.
+    return null;
+  }
+  if (parsed.protocol !== "https:") return null;
+  if (loginUrl.length > MAX_CTA_URL_LENGTH) return null;
+  return { label: ONBOARDING_CTA_LABEL, url: loginUrl };
+}
+
 function fallbackReply(args: {
   session: OnboardingSession;
   provisioning: ElizaAppProvisioningStatus;
   requiresLogin: boolean;
   loginUrl: string;
   handoffComplete: boolean;
+  cta: OnboardingChatCta | null;
 }): string {
   const name = hasPreferredName(args.session) ? args.session.name : undefined;
   if (!name) {
-    return `Hey, I'm Eliza — I can get you set up with your own private Eliza Cloud agent that texts, remembers context, and works for you. ${ELIZA_APP_PRICING_SUMMARY} New users get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it. To get you started, what should I call you?`;
+    return `hey, I'm Eliza. I can get you set up with your own agent. it chats right here, remembers everything you talk about, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
   }
   if (args.requiresLogin) {
-    return `Nice to meet you, ${name}. I can set up your private Eliza Cloud agent next. ${ELIZA_APP_PRICING_SUMMARY} When you connect, you get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it. Connect Eliza Cloud here: ${args.loginUrl}`;
+    // "tap below" copy only when a CTA will actually render; otherwise the
+    // URL stays inline (SMS/iMessage, or a button-capable platform whose
+    // login URL could not become a valid button - see buildLoginCta).
+    if (args.cta) {
+      return `nice to meet you, ${name}. tap below to connect your account and I'll spin up your agent. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me.`;
+    }
+    return `nice to meet you, ${name}. connect your account here and I'll spin up your agent, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
   }
   if (args.handoffComplete) {
-    return `You're live, ${name}. Your private agent is running, and I copied this onboarding chat into its memory so you can continue with context. Your ${ELIZA_APP_INITIAL_CREDIT_USD} starter credit is on your account.`;
+    return `you're in, ${name}. your agent is live and already knows everything from this chat. just keep talking here.`;
   }
   if (args.provisioning.status === "running") {
-    return `Your container is running, ${name}. I'm finishing the handoff now.`;
+    return `almost there, ${name}. finishing setup now.`;
   }
   if (args.provisioning.status === "error") {
-    return `I hit a provisioning issue, ${name}. Your control panel has the latest status, and the team can inspect it there.`;
+    return `hit a snag on my end, ${name}. your dashboard has the details and the team is on it.`;
   }
   if (args.provisioning.status === "insufficient_credits") {
-    return `You're out of credits, ${name}. ${ELIZA_APP_PRICING_SUMMARY} Add credits at ${onboardingAppPath("/dashboard/billing")} and I'll start your private agent.`;
+    return `you're out of credits, ${name}. top up at ${onboardingAppPath("/dashboard/billing")} and I'll get your agent going.`;
   }
-  return `Good, ${name}. Your private Eliza container is provisioning now. Keep chatting here while it starts up.`;
+  return `on it, ${name}. your agent is spinning up now, takes a minute or two. keep chatting here in the meantime.`;
 }
 
 function sanitizeReplyText(reply: string): string {
@@ -524,6 +580,7 @@ function generateOnboardingReply(args: {
   requiresLogin: boolean;
   loginUrl: string;
   handoffComplete: boolean;
+  cta: OnboardingChatCta | null;
 }): string {
   // This is a finite product state machine, not an open-ended generation task.
   // Deterministic copy prevents model latency, cost amplification, invented
@@ -770,12 +827,22 @@ export async function runOnboardingChatWithStore(
   }
   const loginUrl = onboardingAppPath(`/get-started/?${loginParams.toString()}`);
   const panelUrl = controlPanelUrl(session.agentId);
+  // The CTA is derived FIRST and the copy chosen from whether it exists, so
+  // "tap below" text without a button is unrepresentable: the button CTA is
+  // present exactly when the reply is the login handoff on a button-capable
+  // platform AND the login URL is button-eligible (https, within Discord's
+  // URL bound). The text omits the URL only when the CTA carries it.
+  const cta =
+    requiresLogin && hasPreferredName(session) && rendersLoginAsButton(session.platform)
+      ? buildLoginCta(loginUrl)
+      : null;
   const reply = generateOnboardingReply({
     session,
     provisioning,
     requiresLogin,
     loginUrl,
     handoffComplete,
+    cta,
   });
 
   session = appendMessage(session, "assistant", reply);
@@ -790,6 +857,7 @@ export async function runOnboardingChatWithStore(
     launchUrl,
     provisioning,
     handoffComplete,
+    cta,
   };
 }
 

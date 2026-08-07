@@ -104,7 +104,7 @@ const PROVIDER_CONFIG: Record<LiveProviderId, ProviderConfig> = {
   },
   ollama: {
     pluginPath: "../../../../plugins/plugin-ollama/index.ts",
-    bareSpecifier: "@elizaos/plugin-ollama",
+    bareSpecifier: "@elizaos/plugin-zerollama",
     pluginExportNames: ["ollamaPlugin", "default"],
     defaultRequiredEnv: ["OLLAMA_API_ENDPOINT"],
   },

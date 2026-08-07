@@ -1,15 +1,16 @@
 /**
  * Security guards that stand between untrusted message/channel content and
  * on-chain financial writes. `assertWalletFinancialActionAllowed` blocks
- * transfer/swap/bridge/pump_fun_buy subactions when core has flagged the
- * inbound message as suspected prompt injection (GHSA-gh63-5vpj-39qp).
+ * transfer/swap/bridge/pump_fun_buy subactions, governance votes, and
+ * steward TRADE order submission when core has flagged the inbound message
+ * as suspected prompt injection (GHSA-gh63-5vpj-39qp).
  * `assertEvmTransferRecipientAuthorized` and `messageAuthorizesEvmRecipient`
  * enforce that an EVM transfer recipient was explicitly stated by the user
  * (in message text or structured action parameters) rather than inferred from
  * token metadata, prior session context, or other embedded addresses
  * (GHSA-7qxr-x6cg-r9cc). `sanitizeWalletDisplayLabel` strips embedded
  * addresses and routing-hint phrases before untrusted labels are ever shown
- * back to the user. These are load-bearing security checks — do not weaken or
+ * back to the user. These are load-bearing security checks. Do not weaken or
  * bypass them from calling code.
  */
 import type { Memory } from "@elizaos/core";
@@ -22,6 +23,12 @@ const FINANCIAL_WRITE_SUBACTIONS = new Set([
   "swap",
   "bridge",
   "pump_fun_buy",
+  // governance votes/delegations are on-chain writes; an injected message must not
+  // drive them any more than it may drive a transfer
+  "gov",
+  // steward TRADE order submission routes through trade-action.ts, not the wallet
+  // router, but is the same class of financial write
+  "trade",
 ]);
 
 function messageHasPromptInjectionFlag(message: Memory): boolean {
@@ -115,7 +122,7 @@ export function assertWalletFinancialActionAllowed(
   }
   if (messageHasPromptInjectionFlag(message)) {
     throw new Error(
-      "Wallet transfer, swap, and bridge are blocked for this message (GHSA-gh63-5vpj-39qp): suspected prompt injection in untrusted channel content.",
+      "Wallet transfers, swaps, bridges, pump.fun buys, governance votes, and trade orders are blocked for this message (GHSA-gh63-5vpj-39qp): suspected prompt injection in untrusted channel content.",
     );
   }
 }

@@ -10,6 +10,7 @@ import type {
 import {
 	KOKORO_MOBILE_TTFA_BUDGET_MS,
 	KokoroTtsBackend,
+	prepareKokoroSpeakText,
 } from "../kokoro-backend";
 import type { KokoroRuntime, KokoroRuntimeInputs } from "../kokoro-runtime";
 import { KokoroMockRuntime } from "../kokoro-runtime";
@@ -68,6 +69,32 @@ function makeBackend(opts?: { totalSamples?: number; chunkCount?: number }): {
 }
 
 describe("KokoroTtsBackend", () => {
+	it("contracts only grammatically safe I am forms for Kokoro", () => {
+		expect(prepareKokoroSpeakText("I am ready.")).toBe("I'm ready.");
+		expect(prepareKokoroSpeakText("Yes, I am here.")).toBe("Yes, I'm here.");
+		expect(prepareKokoroSpeakText("Tell me who I am and I am done.")).toBe(
+			"Tell me who I am and I'm done.",
+		);
+		expect(prepareKokoroSpeakText("I AM READY.")).toBe("I'M READY.");
+		expect(prepareKokoroSpeakText("yes, i am ready.")).toBe("yes, i'm ready.");
+	});
+
+	it("does not contract a stranded am or infer a clause from a following adjunct", () => {
+		expect(prepareKokoroSpeakText("Yes, I am.")).toBe("Yes, I am.");
+		expect(prepareKokoroSpeakText("Here I am at last.")).toBe(
+			"Here I am at last.",
+		);
+		expect(prepareKokoroSpeakText("That is who I am today.")).toBe(
+			"That is who I am today.",
+		);
+		expect(prepareKokoroSpeakText("I know who I am now.")).toBe(
+			"I know who I am now.",
+		);
+		expect(prepareKokoroSpeakText("Wherever I am is home.")).toBe(
+			"Wherever I am is home.",
+		);
+	});
+
 	it("streams PCM chunks and emits a zero-length final tail", async () => {
 		const { backend, runtime } = makeBackend({
 			totalSamples: 9600,
@@ -103,8 +130,9 @@ describe("KokoroTtsBackend", () => {
 		expect(totalBody).toBe(9600);
 	});
 
-	it("passes the raw phrase text — never the IPA string — to the runtime (#10726)", async () => {
+	it("passes Kokoro-prepared prose — never IPA — without mutating the phrase", async () => {
 		const seen: Array<{ text: string; phonemes: string }> = [];
+		let phonemizedText = "";
 		class RecordingRuntime implements KokoroRuntime {
 			readonly id = "mock" as const;
 			readonly sampleRate = 24000;
@@ -130,20 +158,29 @@ describe("KokoroTtsBackend", () => {
 				sampleRate: 24000,
 			},
 			defaultVoiceId: KOKORO_DEFAULT_VOICE_ID,
-			phonemizer: fixedPhonemizer(),
+			phonemizer: {
+				id: "recording",
+				async phonemize(text) {
+					phonemizedText = text;
+					return { ids: Int32Array.from([1, 43, 60, 2]), phonemes: "ab" };
+				},
+			},
 		});
+		const phrase = makePhrase("I am ready");
 		await backend.synthesizeStream({
-			phrase: makePhrase("hello there"),
+			phrase,
 			preset: makePreset(KOKORO_DEFAULT_VOICE_ID),
 			cancelSignal: { cancelled: false },
 			onChunk: () => undefined,
 		});
 		expect(seen).toHaveLength(1);
+		expect(phonemizedText).toBe("I'm ready");
 		// The fused engine phonemizes internally; handing it the JS-side IPA
 		// string double-phonemizes into unintelligible audio (#10726).
-		expect(seen[0]?.text).toBe("hello there");
+		expect(seen[0]?.text).toBe("I'm ready");
 		expect(seen[0]?.phonemes).toBe("ab");
 		expect(seen[0]?.text).not.toBe(seen[0]?.phonemes);
+		expect(phrase.text).toBe("I am ready");
 	});
 
 	it("propagates cancelSignal at chunk boundaries", async () => {

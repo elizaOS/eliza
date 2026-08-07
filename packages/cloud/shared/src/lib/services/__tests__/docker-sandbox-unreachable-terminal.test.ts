@@ -23,9 +23,9 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 // Fake SSH client: getClient() returns an object whose exec() rejects with a
 // caller-controlled error. Registered BEFORE importing the provider so the
 // provider binds to this mock. This is the only thing we need to stub — the
-// container meta is pre-seeded in memory (no DB lookup) and the post-stop
-// decrementAllocated is best-effort (its DB call fails gracefully via .catch
-// in the provider, which itself exercises the fall-through path).
+// container meta is pre-seeded in memory (no DB lookup), and the provider no
+// longer touches `allocated_count` at all, so no database is involved in the
+// stop path (#17185).
 let nextExecError: Error = new Error("unset");
 mock.module("../docker-ssh", () => ({
   DockerSSHClient: {

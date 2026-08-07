@@ -22,7 +22,10 @@ import {
   isPrivateIpAddress,
   normalizeHostLike,
 } from "@elizaos/core";
-import { resolveApiToken, resolveServerOnlyPort } from "@elizaos/shared";
+import {
+  createSelfApiRequestHeaders,
+  resolveServerOnlyPort,
+} from "@elizaos/shared";
 import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
 import type {
   CustomActionDef,
@@ -856,18 +859,10 @@ function buildHandler(
           `http://localhost:${getApiPort()}/api/terminal/run`,
           {
             method: "POST",
-            headers: (() => {
-              const headers: Record<string, string> = {
-                "Content-Type": "application/json",
-              };
-              const token = resolveApiToken(process.env);
-              if (token) {
-                headers.Authorization = /^Bearer\s+/i.test(token)
-                  ? token
-                  : `Bearer ${token}`;
-              }
-              return headers;
-            })(),
+            headers: {
+              "Content-Type": "application/json",
+              ...createSelfApiRequestHeaders(),
+            },
             body: JSON.stringify({
               command,
               clientId: "runtime-shell-action",
