@@ -1054,6 +1054,76 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
     });
   }, 60_000);
 
+  it("persists and replays a readable receipt from the built-in Eliza calendar", async () => {
+    const elizaCalendar: LifeOpsCalendarSummary = {
+      ...ownerCalendar,
+      provider: "eliza",
+      grantId: "eliza-calendar",
+      connectorAccountId: "eliza-calendar",
+      accountEmail: null,
+      summary: "Eliza Calendar",
+    };
+    const createdEvent = calendarEvent({
+      id: "eliza-calendar-row-1",
+      externalId: "eliza-event-1",
+      provider: "eliza",
+      grantId: elizaCalendar.grantId,
+      connectorAccountId: elizaCalendar.connectorAccountId,
+      accountEmail: undefined,
+      metadata: { etag: '"eliza-1"', version: 1 },
+    });
+    const elizaService: CalendarMutationService = {
+      ...loopbackService(),
+      async listCalendars() {
+        return [elizaCalendar];
+      },
+      async createCalendarEventMutation() {
+        return {
+          outcome: "event" as const,
+          event: createdEvent,
+          writeOnlyReceipt: null,
+        };
+      },
+    };
+    const request = await approved(
+      createPayload({
+        grantId: elizaCalendar.grantId,
+        attendees: [],
+      }),
+    );
+    const mutationPort = createLifeOpsCalendarMutationPort(
+      runtime,
+      elizaService,
+    );
+    const result = await executeCalendarMutationApproval({
+      runtime,
+      request,
+      port: mutationPort,
+    });
+
+    expect(result).toMatchObject({
+      kind: "succeeded",
+      duplicateSuppressed: false,
+      receipt: {
+        provider: "eliza",
+        sourceId: "eliza-calendar",
+        eventId: createdEvent.id,
+        providerEventId: createdEvent.externalId,
+      },
+    });
+    const replay = await executeCalendarMutationApproval({
+      runtime,
+      request:
+        (await approvals.byId(request.id, request.subjectUserId)) ?? request,
+      port: mutationPort,
+    });
+    expect(replay).toMatchObject({
+      kind: "succeeded",
+      duplicateSuppressed: true,
+      receipt: { provider: "eliza" },
+    });
+  }, 60_000);
+
   it("canonicalizes Apple add-only aliases without listing or fabricating readable events", async () => {
     let listCalls = 0;
     let createRequest: Record<string, unknown> | null = null;

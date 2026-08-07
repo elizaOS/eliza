@@ -2329,7 +2329,7 @@ describe("ChatOverlay", () => {
     expect(screen.queryByText("Stop transcribing")).toBeNull();
   });
 
-  it("returns to the launcher from the chat-actions menu", () => {
+  it("returns to Home from the chat-actions menu", () => {
     const navigateHome = vi.fn();
     render(<ChatOverlay controller={makeController({ navigateHome })} />);
 
