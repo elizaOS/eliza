@@ -133,7 +133,6 @@ export class AppsRepository {
     });
   }
 
-
   /** Reads and publishes a slug lookup under the same durable slug fence used by invalidation. */
   async hydrateBySlugForCache(
     slug: string,
