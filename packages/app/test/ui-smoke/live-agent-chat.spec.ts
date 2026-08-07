@@ -351,6 +351,17 @@ async function createAndActivateLiveConversation(
   await installOptionalLiveChromeRoutes(page);
   await openAppPath(page, "/chat");
   await expect(chatComposer(page)).toBeVisible({ timeout: 60_000 });
+  const chatSheet = page.getByTestId("chat-sheet");
+  await expect(chatSheet).toHaveAttribute(
+    "data-conversation-id",
+    conversationId,
+    { timeout: 60_000 },
+  );
+  await expect(chatSheet).toHaveAttribute(
+    "data-conversation-index",
+    /^(?:0|[1-9]\d*)$/,
+    { timeout: 60_000 },
+  );
 }
 
 test("app chat sends a message to the deterministic keyless agent and renders parseable JSON", async ({
