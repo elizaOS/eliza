@@ -1965,15 +1965,25 @@ async function runSpawnAgent(
   } catch (error) {
     // error-policy:J1 spawn action boundary → structured failure to the
     // planner; no visible callback (see runSend's catch) — the evaluator
-    // reports the failure in voice instead of a raw canned bubble.
+    // reports the failure in voice instead of a raw canned bubble. The
+    // planner echoes `text` toward chat, so producers must keep their
+    // messages human (ElizaError with technical fields in `context`);
+    // that context is preserved here in the action's error data.
     const messageTextValue = failureMessage(error);
-    const code = isAuthError(error) ? "INVALID_CREDENTIALS" : messageTextValue;
+    const code = isAuthError(error)
+      ? "INVALID_CREDENTIALS"
+      : error instanceof ElizaError
+        ? error.code
+        : messageTextValue;
     return {
       success: false,
       error: code,
       text: isAuthError(error)
         ? "Task-agent credentials are invalid; tell the user the coding agent could not authenticate."
         : `Failed to spawn agent: ${messageTextValue}`,
+      ...(error instanceof ElizaError && error.context
+        ? { data: { errorCode: error.code, errorContext: error.context } }
+        : {}),
       continueChain: false,
     };
   }

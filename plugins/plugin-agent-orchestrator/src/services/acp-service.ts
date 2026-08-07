@@ -138,6 +138,7 @@ import {
   getSharedWorkspaceRegistry,
   resolveDiskBudgetConfig,
   type WorkspaceRegistry,
+  workspaceDiskBudgetError,
 } from "./workspace-registry.js";
 
 export {
@@ -1253,11 +1254,9 @@ export class AcpService extends Service {
       });
     }
     if (!decision.allowed) {
-      throw new Error(
-        `workspace disk budget exceeded (${decision.reason}): ` +
-          `used=${decision.usedBytes} free=${decision.freeBytes} ` +
-          `cap=${config.capBytes} minFree=${config.minFreeBytes} root=${targetRoot}`,
-      );
+      // Human message; byte-level fields ride the error context and the
+      // registry's refusal warn log, never chat-bound prose.
+      throw workspaceDiskBudgetError(decision, config, targetRoot);
     }
   }
 
