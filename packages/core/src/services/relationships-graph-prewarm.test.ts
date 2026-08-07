@@ -11,9 +11,7 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function mockRuntime(options: {
-	onWorlds: () => void;
-}): IAgentRuntime {
+function mockRuntime(options: { onWorlds: () => void }): IAgentRuntime {
 	let worldsCalls = 0;
 	return {
 		agentId: "11111111-1111-4111-8111-111111111111",
