@@ -306,10 +306,10 @@ export function resolveUiPort(env: RuntimeEnvRecord = process.env): number {
 }
 
 /** Removes an optional leading `Bearer ` so stored and sent forms compare equal. */
-function stripBearerPrefix(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
+function stripBearerPrefix(value: string | null | undefined): string | null {
+  if (value == null) return null;
   const stripped = value.replace(/^Bearer\s+/i, "").trim();
-  return stripped || undefined;
+  return stripped || null;
 }
 
 export function resolveApiSecurityConfig(
@@ -365,7 +365,7 @@ export function resolveSelfApiCredential(
   const token =
     firstWinningEnvString(env, API_TOKEN_KEYS)?.value ??
     firstWinningEnvString(env, LEGACY_SELF_API_TOKEN_KEYS)?.value;
-  return stripBearerPrefix(token) ?? null;
+  return stripBearerPrefix(token);
 }
 
 /**
