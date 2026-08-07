@@ -11,10 +11,12 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.webkit.WebView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.Profile
 import androidx.webkit.ProfileStore
+import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -79,6 +81,36 @@ class BrowserSurfaceIsolationInstrumentedTest {
         // A second read of the default profile sees the shared write.
         val again = store.getOrCreateProfile(Profile.DEFAULT_PROFILE_NAME).cookieManager
         assertEquals(true, again.getCookie(urlShared)?.contains("shared=value"))
+    }
+
+    @Test
+    fun isolatedProfileAndRendererAreReleasedAfterTheSurfaceWebViewIsDestroyed() {
+        assumeTrue(
+            "multi-profile unsupported on this system WebView",
+            WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE),
+        )
+        assumeTrue(
+            "renderer introspection unsupported on this system WebView",
+            WebViewFeature.isFeatureSupported(WebViewFeature.GET_WEB_VIEW_RENDERER),
+        )
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val profileName = "eliza-surface-release-${System.nanoTime()}"
+        val store = ProfileStore.getInstance()
+        instrumentation.runOnMainSync {
+            val profile = store.getOrCreateProfile(profileName)
+            val webView = WebView(context)
+            WebViewCompat.setProfile(webView, profile.name)
+            webView.loadUrl("about:blank")
+            assertTrue(WebViewCompat.getWebViewRenderProcess(webView) != null)
+            webView.stopLoading()
+            webView.destroy()
+        }
+        instrumentation.waitForIdleSync()
+        instrumentation.runOnMainSync {
+            assertTrue(store.deleteProfile(profileName))
+            assertNull(store.getProfile(profileName))
+        }
     }
 
     @Test
