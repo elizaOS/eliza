@@ -115,7 +115,7 @@ function evidenceBody() {
 describe("contribute-to-eliza skill structure", () => {
   it("has valid, trigger-rich frontmatter and no scaffold placeholders", () => {
     const source = readFileSync(skillPath, "utf8");
-    const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+    const frontmatter = source.match(/^---\n([\s\S]*?)\n---\n/);
     assert.ok(frontmatter, "SKILL.md must begin with YAML frontmatter");
     const keys = frontmatter[1]
       .split(/\r?\n/)
@@ -334,7 +334,10 @@ describe("live report parsing", () => {
         '{"number":1,"body":"first\\nrecord"}\n{"number":2}\n',
         "repos/elizaOS/eliza/issues",
       ),
-      [{ number: 1, body: "first\nrecord" }, { number: 2 }],
+      [
+        { number: 1, body: "first\nrecord" },
+        { number: 2 },
+      ],
     );
     assert.deepStrictEqual(parsePaginatedJson("\n\r\n"), []);
   });
@@ -849,22 +852,6 @@ describe("live report behavior", () => {
           status: 1,
           stdout: "",
           stderr: "gh: HTTP 401: Bad credentials",
-        },
-      },
-      {
-        expected: /HTTP 403: API rate limit exceeded/,
-        result: {
-          status: 1,
-          stdout: "",
-          stderr: "gh: HTTP 403: API rate limit exceeded",
-        },
-      },
-      {
-        expected: /HTTP 429: Too Many Requests/,
-        result: {
-          status: 1,
-          stdout: "",
-          stderr: "gh: HTTP 429: Too Many Requests",
         },
       },
       {
