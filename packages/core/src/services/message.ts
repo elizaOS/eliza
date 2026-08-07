@@ -10981,17 +10981,18 @@ export class DefaultMessageService implements IMessageService {
 												voiceId?: string;
 										  }
 										| undefined;
-									const model = voiceSettings?.model || "en_US-male-medium";
-									const voiceId =
-										voiceSettings?.url || voiceSettings?.voiceId || "nova";
+									// `settings.voice.model` is a historical Piper *voice*
+									// tag, not a provider model id — pass as `voice` only.
+									const voiceHint =
+										voiceSettings?.voiceId ||
+										voiceSettings?.url ||
+										voiceSettings?.model ||
+										"af_nicole";
 
 									let audioBuffer: Buffer | null = null;
-									const params: TextToSpeechParams & {
-										model?: string;
-									} = {
+									const params: TextToSpeechParams = {
 										text: rest,
-										voice: voiceId,
-										model: model,
+										voice: voiceHint,
 										...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
 									};
 									const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
