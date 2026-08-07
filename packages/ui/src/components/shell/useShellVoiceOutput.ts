@@ -66,6 +66,8 @@ export interface ShellVoiceOutputOptions {
   toggleAgentVoiceMute: () => void;
   uiLanguage: string;
   cloudConnected: boolean;
+  /** Route manual shell playback through the active realtime voice provider. */
+  realtimeVoiceEnabled: boolean;
 }
 
 /**
@@ -91,9 +93,17 @@ export function useShellVoiceOutput(
     toggleAgentVoiceMute,
     uiLanguage,
     cloudConnected,
+    realtimeVoiceEnabled,
   } = options;
 
   const { voiceConfig, voiceBootstrapTick } = useVoiceConfig(uiLanguage);
+  const playbackVoiceConfig = React.useMemo(
+    () =>
+      realtimeVoiceEnabled
+        ? { ...voiceConfig, provider: "eliza-cloud" as const }
+        : voiceConfig,
+    [realtimeVoiceEnabled, voiceConfig],
+  );
 
   const {
     queueAssistantSpeech,
@@ -103,8 +113,9 @@ export function useShellVoiceOutput(
     needsAudioUnlock,
     unlockAudio,
   } = useVoiceChat({
-    voiceConfig,
+    voiceConfig: playbackVoiceConfig,
     cloudConnected,
+    ...(realtimeVoiceEnabled ? { ttsRouteOverride: "/api/v1/voice/tts" } : {}),
     // Output-only here: the overlay's capture owns the mic, so `useVoiceChat`'s
     // own speech-interrupt path is unused — barge-in is driven by `recording`.
     interruptOnSpeech: false,
@@ -161,8 +172,18 @@ export function useShellVoiceOutput(
     // A new assistant message replaces prior playback; a streaming continuation
     // of the same message appends. `queueAssistantSpeech` dedupes the prefix.
     const replace = previous?.id !== latest.id;
+    const continuationOfMessageId =
+      previous &&
+      previous.id !== latest.id &&
+      !conversationMessages.some((message) => message.id === previous.id) &&
+      (latest.text === previous.text || latest.text.startsWith(previous.text))
+        ? previous.id
+        : undefined;
     spokenRef.current = latest;
-    queueAssistantSpeech(latest.id, latest.text, !chatSending, { replace });
+    queueAssistantSpeech(latest.id, latest.text, !chatSending, {
+      replace,
+      ...(continuationOfMessageId ? { continuationOfMessageId } : {}),
+    });
   }, [
     agentVoiceMuted,
     voiceBootstrapTick,

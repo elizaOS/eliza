@@ -105,33 +105,11 @@ declare module "@elizaos/plugin-task-coordinator" {
   export * from "@elizaos/app-task-coordinator";
 }
 
-declare module "@elizaos/app-training" {
-  import type { FineTuningViewProps } from "@elizaos/ui/config";
-
-  export const FineTuningView: ComponentType<FineTuningViewProps>;
-}
-
-declare module "@elizaos/plugin-training" {
-  export * from "@elizaos/app-training";
-}
-
 declare module "@elizaos/app-feed" {
   export {};
 }
 
 declare module "@elizaos/app-trajectory-logger" {
-  export {};
-}
-
-declare module "@elizaos/app-shopify" {
-  export {};
-}
-
-declare module "@elizaos/app-hyperliquid" {
-  export {};
-}
-
-declare module "@elizaos/app-polymarket" {
   export {};
 }
 

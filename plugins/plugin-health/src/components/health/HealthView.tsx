@@ -22,7 +22,7 @@
  * fetcher seams so they stay offline.
  */
 
-import { client } from "@elizaos/ui";
+import { client } from "@elizaos/ui/api";
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

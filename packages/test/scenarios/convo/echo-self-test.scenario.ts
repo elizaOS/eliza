@@ -18,23 +18,23 @@ import { echoTestPlugin } from "./_fixtures/echo-test-plugin.ts";
 
 const ECHO_INPUT = "Please echo this message back to me: hello world";
 
-type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
-  scenarioLlmFixtures?: {
+type RuntimeWithScenarioModelFixtures = AgentRuntime & {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
 
-function asRuntime(value: unknown): RuntimeWithScenarioLlmFixtures {
+function asRuntime(value: unknown): RuntimeWithScenarioModelFixtures {
   if (!value || typeof value !== "object" || !("registerPlugin" in value)) {
     throw new Error(
       "echo-self-test seed: runtime did not expose registerPlugin",
     );
   }
-  return value as RuntimeWithScenarioLlmFixtures;
+  return value as RuntimeWithScenarioModelFixtures;
 }
 
 /**
- * Under the deterministic LLM proxy (`SCENARIO_USE_LLM_PROXY=1`) the proxy has
+ * Under the deterministic model provider (`SCENARIO_USE_DETERMINISTIC_MODEL=1`) the provider has
  * no model intelligence to pick `ECHO_TEST` over a plain reply, so we register
  * the two routing fixtures that force the selection: the stage-1 response
  * handler nominates `ECHO_TEST` as the only candidate, and the action planner
@@ -93,8 +93,8 @@ export default scenario({
   domain: "convo",
   // Keyless-deterministic: the trivial ECHO_TEST plugin runs in-memory and the
   // routing fixtures registered below force the action selection under the
-  // deterministic LLM proxy. No external service, no secret. Verified passing
-  // under SCENARIO_USE_LLM_PROXY=1.
+  // deterministic model provider. No external service, no secret. Verified passing
+  // under SCENARIO_USE_DETERMINISTIC_MODEL=1.
   lane: "pr-deterministic",
   tags: ["smoke", "convo", "self-test"],
   description:
@@ -112,7 +112,7 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(echoTestPlugin satisfies Plugin);
-        runtime.scenarioLlmFixtures?.register(...echoRouteFixtures());
+        runtime.scenarioModelFixtures?.register(...echoRouteFixtures());
       },
     },
   ],

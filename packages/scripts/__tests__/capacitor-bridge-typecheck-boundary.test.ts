@@ -6,7 +6,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { dispatchRoute as dispatchApiRoute } from "../../../plugins/plugin-capacitor-bridge/src/type-shims/agent-api.ts";
+import { dispatchRoute as dispatchApiRoute } from "@elizaos/plugin-capacitor-bridge/type-shims/agent-api";
 import {
   configFileExists,
   dispatchRoute as dispatchRootRoute,
@@ -14,7 +14,7 @@ import {
   loadElizaConfig,
   saveElizaConfig,
   startEliza,
-} from "../../../plugins/plugin-capacitor-bridge/src/type-shims/agent-root.ts";
+} from "@elizaos/plugin-capacitor-bridge/type-shims/agent-root";
 
 const repoRoot = resolve(import.meta.dir, "../../..");
 

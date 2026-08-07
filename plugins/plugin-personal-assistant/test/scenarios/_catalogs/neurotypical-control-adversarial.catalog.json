@@ -36,7 +36,7 @@
       "tier": "T3",
       "surface": "scenario-runner",
       "status": "verified",
-      "notes": "pr-deterministic keyless (SCENARIO_USE_LLM_PROXY=1, TZ=UTC): plain daily cron habit fires once per day at its literal 09:00 UTC occurrence across three days; canary that B1 wake-window re-anchoring and E1 quiet-streak softening do not leak into a neutral owner."
+      "notes": "pr-deterministic keyless (SCENARIO_USE_DETERMINISTIC_MODEL=1, TZ=UTC): plain daily cron habit fires once per day at its literal 09:00 UTC occurrence across three days; canary that B1 wake-window re-anchoring and E1 quiet-streak softening do not leak into a neutral owner."
     },
     {
       "id": "f1-cross-persona-quiet-hours-respected-baseline",

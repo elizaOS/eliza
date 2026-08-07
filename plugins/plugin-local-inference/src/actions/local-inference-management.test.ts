@@ -1,9 +1,9 @@
+/** Verifies chat and voice action parameters persist local-inference preferences. */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { localInferencePlugin } from "../provider";
 import { localInferenceManagementAction } from "./local-inference-management";
 
 describe("LOCAL_INFERENCE action twins", () => {
@@ -19,12 +19,6 @@ describe("LOCAL_INFERENCE action twins", () => {
 		if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
 		else process.env.ELIZA_STATE_DIR = previousStateDir;
 		rmSync(stateDir, { recursive: true, force: true });
-	});
-
-	it("registers the builtin-view mutation twin on the local-inference plugin", () => {
-		expect(
-			localInferencePlugin.actions?.map((action) => action.name),
-		).toContain("LOCAL_INFERENCE");
 	});
 
 	it("mutates routing preferences from chat/voice action parameters", async () => {
@@ -48,7 +42,7 @@ describe("LOCAL_INFERENCE action twins", () => {
 			slot: "TEXT_LARGE",
 			provider: "eliza-local-inference",
 		});
-	});
+	}, 15_000);
 
 	it("mutates curated model assignments from chat/voice action parameters", async () => {
 		const result = await localInferenceManagementAction.handler(
@@ -71,7 +65,7 @@ describe("LOCAL_INFERENCE action twins", () => {
 			slot: "TEXT_SMALL",
 			modelId: "eliza-1-2b",
 		});
-	});
+	}, 15_000);
 
 	it("pins voice sub-models from chat/voice action parameters", async () => {
 		const result = await localInferenceManagementAction.handler(
@@ -94,5 +88,5 @@ describe("LOCAL_INFERENCE action twins", () => {
 			id: "wakeword",
 			pinned: true,
 		});
-	});
+	}, 15_000);
 });

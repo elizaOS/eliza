@@ -1,17 +1,14 @@
 // Provider-switch round-trip against the REAL live stack.
 //
-// Settings → Providers (the `ai-model` section) lists every AI provider as a
-// selectable card. Selecting a non-active provider surfaces its API-key panel
-// with a "Use provider" button that calls client.switchProvider() →
-// POST /api/provider/switch, which the real app-core runtime services by
-// persisting the provider config and restarting the agent. The keyless stub does
-// not actually restart or re-derive the active provider, so the "active provider
-// moved" read-back only holds against the real runtime (ELIZA_UI_SMOKE_LIVE_STACK=1).
-// Classified LIVE_ONLY. It NEVER stubs the route under test — POST
-// /api/provider/switch hits the real backend.
+// Settings → Models & Providers (the `ai-model` section) exposes connected
+// direct-provider accounts with a primary "Use for chat" action. That action
+// calls client.switchProvider() → POST /api/provider/switch, which the real
+// app-core runtime services. Classified LIVE_ONLY. It NEVER stubs the route
+// under test — POST /api/provider/switch hits the real backend.
 //
-// Flow: open Providers → pick the first non-active provider card → "Use provider"
-// → assert the real POST /api/provider/switch fired carrying that provider id.
+// Flow: open Models & Providers → click the first enabled "Use for chat"
+// account action → assert the real POST /api/provider/switch fired with a
+// concrete provider id.
 
 import { expect, type Page, test } from "@playwright/test";
 import { openAppPath, openSettingsSection, seedAppStorage } from "./helpers";
@@ -55,44 +52,19 @@ test.describe("provider config deep round-trip", () => {
     const switches = captureProviderSwitches(page);
 
     await openAppPath(page, "/settings");
-    await openSettingsSection(page, /Providers/);
+    await openSettingsSection(page, /Models & Providers/);
     await expect(page.locator("#ai-model")).toBeVisible({ timeout: 30_000 });
 
-    // Provider cards are buttons labelled "<Provider>, <state>". The active one
-    // reads "<Provider>, Active". Wait for the grid, then resolve a concrete
-    // non-active card by reading aria-labels directly: any card whose label does
-    // not end in ", Active" is a switch target.
-    await expect(
-      page.locator("#ai-model button[aria-label]").first(),
-    ).toBeVisible({ timeout: 15_000 });
-    const labels = await page
-      .locator("#ai-model button[aria-label]")
-      .evaluateAll((els) =>
-        (els as HTMLButtonElement[]).map(
-          (el) => el.getAttribute("aria-label") ?? "",
-        ),
-      );
-    const targetLabel = labels.find(
-      (label) => label.length > 0 && !/,\s*Active$/.test(label),
-    );
-    expect(
-      targetLabel,
-      "Providers section must offer a non-active provider to switch to",
-    ).toBeTruthy();
-
-    await page
+    // Connected direct-provider rows expose this as their primary routing
+    // action. The active provider instead renders a disabled "Chat" button, so
+    // the first enabled match is necessarily a real switch target.
+    const useForChat = page
       .locator("#ai-model")
-      .getByRole("button", { name: targetLabel as string })
-      .first()
-      .click();
-
-    // The selected provider's API-key panel exposes the "Use provider" switch.
-    const useProvider = page
-      .locator("#ai-model")
-      .getByRole("button", { name: /Use provider/i })
+      .getByRole("button", { name: /^Use for chat$/i })
       .first();
-    await expect(useProvider).toBeVisible({ timeout: 15_000 });
-    await useProvider.click();
+    await expect(useForChat).toBeVisible({ timeout: 15_000 });
+    await expect(useForChat).toBeEnabled();
+    await useForChat.click();
 
     // Real POST /api/provider/switch carrying a concrete provider id — the
     // load-bearing contract, independent of whether the restart later succeeds
@@ -105,12 +77,7 @@ test.describe("provider config deep round-trip", () => {
       ),
     ).toBe(true);
 
-    // The clicked card is now the selected panel (aria-current="true").
-    await expect(
-      page
-        .locator("#ai-model")
-        .getByRole("button", { name: targetLabel as string })
-        .first(),
-    ).toHaveAttribute("aria-current", "true", { timeout: 10_000 });
+    // The clicked account action becomes the active, disabled "Chat" state.
+    await expect(useForChat).toHaveCount(0, { timeout: 10_000 });
   });
 });

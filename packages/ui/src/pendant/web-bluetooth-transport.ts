@@ -1,20 +1,10 @@
-/// <reference path="./web-bluetooth.d.ts" />
 /**
- * WebBluetoothPendantTransport — the `navigator.bluetooth` implementation of
- * {@link PendantTransport}.
- *
- * This is the exact GATT bring-up that shipped in the original pendant bridge,
- * factored out of `PendantConnection` so the audio pipeline is platform-agnostic
- * and a native Capacitor transport can slot in beside it. Behaviour is byte-for-
- * byte identical to the previous inline Web Bluetooth path:
- *   - request by name prefix OR audio service
- *   - GATT connect → audio service → codec read → audio char → notifications
- *   - best-effort standard Battery Service subscription
- *   - a remote `gattserverdisconnected` fires {@link onDisconnected}
- *
- * Available on Chrome/Edge desktop + Android Chrome; NOT iOS Safari / installed
- * PWA (there the native transport is used instead).
+ * Implements the pendant audio transport over Web Bluetooth GATT. It keeps the
+ * audio pipeline platform-neutral while preserving disconnect and optional
+ * battery notifications on browsers that expose `navigator.bluetooth`.
  */
+
+/// <reference path="./web-bluetooth.d.ts" />
 
 import { ElizaError, logger } from "@elizaos/core";
 import {

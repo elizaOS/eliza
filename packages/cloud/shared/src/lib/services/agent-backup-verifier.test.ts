@@ -24,7 +24,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
-import { KmsError, StewardKmsAdapter } from "@elizaos/security/kms";
+import { KmsError, StewardKmsAdapter } from "@elizaos/core/security/kms";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   SnapshotPayloadTooLargeError,

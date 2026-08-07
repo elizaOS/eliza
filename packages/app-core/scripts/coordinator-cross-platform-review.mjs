@@ -1,4 +1,9 @@
-/** Supports app-core build, packaging, or development orchestration for coordinator cross platform review mjs. */
+/**
+ * Cross-platform QA sweep for the task-coordinator stack: probes codex/claude
+ * CLI availability, runs the orchestrator-integration, task-policy/discord
+ * unit, and startup-contract suites, and writes per-check logs plus a
+ * markdown/JSON report under .tmp/qa.
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

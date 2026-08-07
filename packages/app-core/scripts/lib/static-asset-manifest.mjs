@@ -1,4 +1,9 @@
-/** Supports app-core build, packaging, or development orchestration for static asset manifest mjs. */
+/**
+ * Static asset manifest for the public/ trees (app + homepage, plus
+ * consumer-wrapper paths): enumerates assets, writes/reads/validates the
+ * generated manifest JSON, and lists the bootstrap assets the app dist must
+ * keep locally when heavy assets move to the CDN.
+ */
 import fs from "node:fs";
 import path from "node:path";
 

@@ -236,6 +236,8 @@ export class PiiScrubService extends Service {
 			escalated = result.escalated;
 			modelId = result.escalation?.modelId ?? "tier0";
 		} catch (error) {
+			// error-policy:J2 Queue retry policy owns recovery; this layer adds job
+			// diagnostics and rethrows without manufacturing a scrubbed result.
 			// Fail-closed: a seam throw (no handler for residue, fabricated
 			// result, model error) must NOT mark the item done. Rethrow so the
 			// queue retries; if retries exhaust, `onExhausted` reports + emits
@@ -279,27 +281,11 @@ export class PiiScrubService extends Service {
 		item: PiiScrubQueueItem,
 		error: Error,
 	): Promise<void> {
-		try {
-			this.runtime.reportError("pii-scrub", error, {
-				jobId: item.jobId,
-				itemRef: item.itemRef,
-				rulesetVersion: item.rulesetVersion,
-			});
-		} catch (reportError) {
-			// reportError is best-effort; never let it mask the failure event.
-			this.runtime.logger.warn(
-				{
-					src: SRC,
-					agentId: this.runtime.agentId,
-					itemRef: item.itemRef,
-					error:
-						reportError instanceof Error
-							? reportError.message
-							: String(reportError),
-				},
-				"Failed to report exhausted PII scrub error",
-			);
-		}
+		this.runtime.reportError("pii-scrub", error, {
+			jobId: item.jobId,
+			itemRef: item.itemRef,
+			rulesetVersion: item.rulesetVersion,
+		});
 		await this.runtime.emitEvent(EventType.PII_SCRUB_FAILED, {
 			runtime: this.runtime,
 			content: item.content,

@@ -1,13 +1,4 @@
-/**
- * Text chunking utilities for markdown-aware splitting.
- *
- * Provides functions to split text into chunks while respecting:
- * - Fenced code blocks
- * - Paragraph boundaries
- * - Word boundaries
- *
- * @module markdown/chunk
- */
+/** Splits Markdown text at fence, paragraph, and word-safe boundaries. */
 
 import {
 	findFenceSpanAt,

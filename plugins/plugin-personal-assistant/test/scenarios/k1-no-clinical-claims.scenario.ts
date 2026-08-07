@@ -3,8 +3,9 @@
  * friend, so the assistant must draft supportive language without diagnosing or
  * labeling the friend.
  */
+
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action-assertions.ts";
 
 export default scenario({
   lane: "live-only",

@@ -57,7 +57,12 @@ export const Default: Story = {
 export const WithScrollableList: Story = {
   args: {
     children: (
-      <div style={{ overflowY: "auto", padding: 12, color: "#fff" }}>
+      <section
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: this fixture exercises keyboard scrolling
+        tabIndex={0}
+        aria-label="Recent threads"
+        style={{ overflowY: "auto", padding: 12, color: "#fff" }}
+      >
         {THREAD_ROWS.map((row) => (
           <div
             key={row.id}
@@ -72,7 +77,7 @@ export const WithScrollableList: Story = {
             {row.label}
           </div>
         ))}
-      </div>
+      </section>
     ),
   },
 };

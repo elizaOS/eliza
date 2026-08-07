@@ -2,7 +2,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../packages/test/vitest/default.config";
+import appCoreConfig from "./vitest.config";
 
 // Real developer environment (real $HOME, network, disk) for the through-the-UI
 // real e2e suite — same rationale as vitest.e2e.config.ts.
@@ -23,13 +23,13 @@ const here = path.dirname(fileURLToPath(import.meta.url));
  * script; wired into the nightly real lane.
  */
 export default defineConfig({
-  ...baseConfig,
+  ...appCoreConfig,
   resolve: {
-    ...baseConfig.resolve,
+    ...appCoreConfig.resolve,
     preserveSymlinks: false,
   },
   test: {
-    ...baseConfig.test,
+    ...appCoreConfig.test,
     setupFiles: [path.join(here, "test/setup.ts")],
     include: [
       "test/app/**/*.real.e2e.test.ts",
@@ -44,6 +44,9 @@ export default defineConfig({
       // and the token-gated remote connect. Keyless (deterministic LLM proxy),
       // so it runs on every nightly invocation with no provider gate.
       "test/live-agent/auth-pairing-remote-connect.real.e2e.test.ts",
+      // Full HTTP conversation path with the fixture-driven text provider.
+      // Embeddings remain explicitly disabled instead of being fabricated.
+      "test/live-agent/conversation-deterministic.real.e2e.test.ts",
     ],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 600_000,

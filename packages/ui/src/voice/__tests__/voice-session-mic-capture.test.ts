@@ -1,3 +1,4 @@
+/** Verifies voice-session mic capture (ScriptProcessor fallback path — WebView 113) through the package's configured test harness. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resolveAudioWorkletModuleUrl } from "../audio-worklet-module-urls";

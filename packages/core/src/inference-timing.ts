@@ -483,6 +483,8 @@ function initContextManager(): IInferenceTimingContextManager {
 				},
 			};
 		} catch {
+			// error-policy:J4 browser and edge runtimes intentionally use the
+			// single-slot timing store when AsyncLocalStorage is unavailable.
 			// AsyncLocalStorage unavailable — fall back to a single-slot store.
 		}
 	}
@@ -917,6 +919,8 @@ export function emitInferenceTiming(
 		}
 		return summary;
 	} catch (err) {
+		// error-policy:J7 timing diagnostics must never terminate the inference
+		// path whose failure they are intended to help diagnose.
 		logger.warn(
 			`[InferenceTiming] emit failed: ${err instanceof Error ? err.message : String(err)}`,
 		);

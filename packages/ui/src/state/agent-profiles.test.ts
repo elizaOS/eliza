@@ -1,3 +1,4 @@
+/** Verifies Agent profile token scrub through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

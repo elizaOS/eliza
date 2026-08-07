@@ -238,10 +238,8 @@ Implemented safe findings:
 - The main app root is wrapped in `RenderTelemetryProfiler id="AppRoot"`,
   gated by the existing render-telemetry enablement path, so whole-shell commit
   storms are observable without profiler overhead in normal sessions.
-- Remaining static app-shell page registrations in Phone Companion, Facewear,
-  and Model Tester now register metadata-first lazy loaders. Facewear keeps
-  lightweight deferred compatibility exports for fallback hosts that import
-  named view components directly.
+- Remaining static app-shell page registrations in Phone Companion and Model
+  Tester now register metadata-first lazy loaders.
 - The wallet side-effect registration now imports the explicit register subpath
   instead of the package root/inventory barrel.
 - Bulk side-effect app-module imports now run through a two-at-a-time idle
@@ -305,26 +303,20 @@ Validation run:
   retained wrappers.
 - `bun run --cwd packages/ui typecheck`
   passed again after app-pause pruning and telemetry exports.
-- `bun run --cwd packages/ui typecheck`
-  passed after the Facewear loader type adjustment.
 - `bun run --cwd packages/app test -- plugin-registrations.test.ts`
   passed: 1 file, 3 tests.
 - `bun run --cwd packages/app test -- plugin-registrations.test.ts`
   passed again after the explicit wallet register import and side-effect loader
   scheduler changes.
-- `bun run --cwd plugins/plugin-facewear typecheck`
-  passed after converting Facewear app-shell registrations to loaders.
-- `bun run --cwd plugins/app-model-tester test -- model-tester-app.test.ts`
-  passed after converting Model Tester shell pages to loaders.
 - `bun run --cwd plugins/plugin-phone test -- PhoneCompanionApp.test.tsx`
   passed after converting Phone Companion shell registration to a loader.
 - `bun run --cwd plugins/plugin-task-coordinator test`
   passed: 15 files, 177 tests.
 - `bunx tsc --noEmit -p plugins/plugin-task-coordinator/tsconfig.build.json`
   passed.
-- `bun run --cwd plugins/plugin-wallet-ui test`
+- `bun run --cwd plugins/plugin-wallet test`
   passed: 7 files, 36 tests.
-- `bunx tsc --noEmit -p plugins/plugin-wallet-ui/tsconfig.build.json`
+- `bunx tsc --noEmit -p plugins/plugin-wallet/tsconfig.ui.json`
   passed.
 - `bun run --cwd plugins/plugin-companion test`
   passed: 9 files, 44 tests.
@@ -332,7 +324,7 @@ Validation run:
   passed.
 - `bunx tsc --noEmit -p plugins/plugin-task-coordinator/tsconfig.build.json`
   passed after the retained slot wrapper change.
-- `bunx tsc --noEmit -p plugins/plugin-wallet-ui/tsconfig.build.json`
+- `bunx tsc --noEmit -p plugins/plugin-wallet/tsconfig.ui.json`
   passed after the retained app-shell loader declaration change.
 
 Validation limitation from the previous round:

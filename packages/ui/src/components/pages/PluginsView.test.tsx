@@ -1,3 +1,4 @@
+/** Verifies PluginsView through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Renders the real PluginsView against mocked state + api to cover the plugin

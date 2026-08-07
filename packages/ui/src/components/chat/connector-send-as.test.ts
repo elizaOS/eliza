@@ -1,3 +1,4 @@
+/** Verifies connector send-as helpers through the package's configured test harness. */
 // Unit tests for the connector-send-as helpers (account usability, picker-show
 // gating, send-as metadata build/merge, account-required error detection).
 // Pure functions over fixture records — no model, no network.

@@ -171,10 +171,6 @@ export function shouldForwardEnv(
     // container-runtime secret via the owner-approved credential bridge. Only the
     // explicit ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS opt-in restores raw forwarding.
     (forwardCloudKey && key.startsWith("ELIZAOS_CLOUD")) ||
-    // Parent-context bridge session id (ELIZA_HOOK_PORT already passes via the
-    // ELIZA_ prefix). Without this the loopback /api/coding-agents/<id>/* bridge
-    // is unreachable from an ACP-spawned sub-agent.
-    key === "PARALLAX_SESSION_ID" ||
     PROVIDER_ENV.has(key)
   );
 }

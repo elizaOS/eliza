@@ -32,8 +32,8 @@ side is a build-matrix change, not a real port.
 Electrobun bundles a **Bun** binary as the main-process runtime. There is no
 riscv64 Bun release, so a linux-riscv64 electrobun must embed a self-built
 riscv64 Bun — i.e. it is **gated on the Bun-riscv64 build**:
-`../../../scripts/bun-riscv64/` (Zig v1.3.14 build today; Rust-core port in
-`../../../scripts/bun-riscv64/rust-core/`). Wire electrobun's bun-download step
+`elizaOS/os:packages/os/toolchains/bun-riscv64/` (Zig v1.3.14 build today;
+Rust-core port in its `rust-core/` directory). Wire electrobun's bun-download step
 to consume that artifact for `linux-riscv64` instead of fetching a (nonexistent)
 upstream Bun riscv64 release.
 
@@ -41,7 +41,7 @@ upstream Bun riscv64 release.
 
 The riscv64 cross-build was driven all the way to a populated `dist-linux-riscv64`
 (fork branch `shaw/riscv64-gui-headless` @ `dadfd0ee` + the riscv64 Bun at
-`../../../scripts/bun-riscv64/dist/bun-linux-riscv64-musl.zip`, in the
+`elizaOS/os:packages/os/toolchains/bun-riscv64/dist/bun-linux-riscv64-musl.zip`, in the
 `eliza/bun-riscv64-builder` image with the Alpine riscv64 GTK/WebKitGTK sysroot).
 
 **RESULT: the linux `nativeWrapper.cpp` COMPILES and LINKS for riscv64.** The WGPU
@@ -169,7 +169,7 @@ build-from-local-branch only.
   self-contained binary); the launcher/extractor are real riscv64 ELF executables
   but were not runtime-tested on actual riscv64 hardware.
 - **Lower priority for the OS image:** the riscv64 elizaOS image does **not** use
-  electrobun. `packages/os/linux/elizaos/.../start-kiosk` stages no Electrobun
+  electrobun. `elizaOS/os:packages/os/linux/elizaos/.../start-kiosk` stages no Electrobun
   binary on riscv64 and falls back to **cage + Epiphany (WebKitGTK) + the Node
   agent** — proven working. Electrobun-riscv64 only matters for a riscv64
   *desktop* (non-kiosk) shell, and is blocked on the Bun-riscv64 runtime above.

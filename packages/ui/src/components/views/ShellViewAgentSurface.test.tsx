@@ -1,3 +1,4 @@
+/** Verifies ShellViewAgentSurface through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // ShellViewAgentSurface: a wrapped shell page answers list-elements / agent-click

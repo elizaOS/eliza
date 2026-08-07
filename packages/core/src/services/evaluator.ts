@@ -8,7 +8,10 @@
  * a json_object request so a doomed schema round-trip is not repaid every turn.
  */
 import { v4 as uuidv4 } from "uuid";
-import { logger } from "../logger.ts";
+import {
+	stringifyForDiagnostics,
+	stringifyForModel,
+} from "../runtime/json-output.ts";
 import { isMobilePlatform } from "../runtime-env.ts";
 import { setTrajectoryPurpose } from "../trajectory-context.ts";
 import type {
@@ -41,11 +44,7 @@ const EMPTY_STATE: State = {
 
 function stringifyForPrompt(value: unknown): string {
 	if (typeof value === "string") return value;
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
-	}
+	return stringifyForModel(value);
 }
 
 function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
@@ -55,6 +54,8 @@ function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
 		const parsed = JSON.parse(raw);
 		return isRecord(parsed) ? parsed : null;
 	} catch {
+		// error-policy:J3 evaluator model output is untrusted input; malformed
+		// JSON is an explicit invalid result.
 		return null;
 	}
 }
@@ -496,6 +497,8 @@ async function generateEvaluationOutput(params: {
 		try {
 			return await requestJsonObject();
 		} catch (fallbackError) {
+			// error-policy:J1 Both evaluator protocol variants failed; return the
+			// explicit invalid evaluator result from the boundary helper.
 			return afterJsonObjectRejected(fallbackError);
 		}
 	}
@@ -513,6 +516,8 @@ async function generateEvaluationOutput(params: {
 		return result;
 	} catch (error) {
 		if (!schemaRequestLooksUnsupported(error)) throw error;
+		// error-policy:J4 Provider schema incompatibility degrades to the
+		// JSON-object protocol and is memoized only after stable evidence.
 		// Decide whether this rejection is structural enough to PERMANENTLY skip
 		// the schema attempt from now on. A schema-specific message arms the memo
 		// immediately; a generic "bad request" must recur THRESHOLD times in a row
@@ -538,6 +543,8 @@ async function generateEvaluationOutput(params: {
 		try {
 			return await requestJsonObject();
 		} catch (fallbackError) {
+			// error-policy:J1 Both evaluator protocol variants failed; return the
+			// explicit invalid evaluator result from the boundary helper.
 			return afterJsonObjectRejected(fallbackError);
 		}
 	}
@@ -589,6 +596,8 @@ export class EvaluatorService extends BaseService {
 				try {
 					if (await evaluator.shouldRun(context)) active.push(evaluator);
 				} catch (error) {
+					// error-policy:J1 shouldRun failures join the evaluator
+					// pipeline's explicit error collection.
 					const messageText =
 						error instanceof Error ? error.message : String(error);
 					errors.push({ evaluatorName: evaluator.name, error: messageText });
@@ -601,6 +610,9 @@ export class EvaluatorService extends BaseService {
 						},
 						"Evaluator shouldRun failed",
 					);
+					this.runtime.reportError("EvaluatorService.shouldRun", error, {
+						evaluator: evaluator.name,
+					});
 				}
 			}),
 		);
@@ -643,6 +655,8 @@ export class EvaluatorService extends BaseService {
 						: undefined;
 					preparedEntries.push({ evaluator, prepared });
 				} catch (error) {
+					// error-policy:J1 Preparation failures join the evaluator
+					// pipeline's explicit error collection.
 					const messageText =
 						error instanceof Error ? error.message : String(error);
 					errors.push({ evaluatorName: evaluator.name, error: messageText });
@@ -655,6 +669,9 @@ export class EvaluatorService extends BaseService {
 						},
 						"Evaluator prepare failed",
 					);
+					this.runtime.reportError("EvaluatorService.prepare", error, {
+						evaluator: evaluator.name,
+					});
 				}
 			}),
 		);
@@ -702,6 +719,8 @@ export class EvaluatorService extends BaseService {
 				schema,
 			});
 		} catch (error) {
+			// error-policy:J1 Evaluator execution returns an explicit failed
+			// result and emits its completion failure.
 			const messageText =
 				error instanceof Error ? error.message : String(error);
 			await this.emitEvaluatorCompleted(
@@ -709,6 +728,9 @@ export class EvaluatorService extends BaseService {
 				false,
 				error instanceof Error ? error : new Error(messageText),
 			);
+			this.runtime.reportError("EvaluatorService.evaluate", error, {
+				evaluatorId,
+			});
 			return { output: null, error: messageText };
 		}
 
@@ -757,7 +779,7 @@ export class EvaluatorService extends BaseService {
 						src: "service:evaluator",
 						agentId: this.runtime.agentId,
 						evaluator: evaluator.name,
-						rawSection: stringifyForPrompt(rawSection).slice(0, 500),
+						rawSection: stringifyForDiagnostics(rawSection).slice(0, 500),
 					},
 					"Evaluator output section did not validate",
 				);
@@ -822,6 +844,8 @@ export class EvaluatorService extends BaseService {
 				});
 				if (result) results.push(result);
 			} catch (error) {
+				// error-policy:J1 Processor failures join the evaluator
+				// pipeline's explicit error collection.
 				const messageText =
 					error instanceof Error ? error.message : String(error);
 				errors.push({
@@ -839,6 +863,10 @@ export class EvaluatorService extends BaseService {
 					},
 					"Evaluator processor failed",
 				);
+				this.runtime.reportError("EvaluatorService.processor", error, {
+					evaluator: evaluator.name,
+					processor: processor.name,
+				});
 			}
 		}
 	}
@@ -1046,14 +1074,11 @@ export async function runPostTurnEvaluators(
 			phase: options.phase ?? "post_turn",
 		});
 	} catch (error) {
-		logger.debug(
-			{
-				src: "service:evaluator",
-				agentId: runtime.agentId,
-				err: error instanceof Error ? error.message : String(error),
-			},
-			"Post-turn evaluator service unavailable",
-		);
+		// error-policy:J4 post-turn evaluation is optional, but initialization
+		// failure is surfaced to the agent before evaluation becomes unavailable.
+		runtime.reportError("EvaluatorService.postTurn", error, {
+			agentId: runtime.agentId,
+		});
 		return null;
 	}
 }

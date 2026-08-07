@@ -1,3 +1,4 @@
+/** Verifies FollowupsWidget — reply chip through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

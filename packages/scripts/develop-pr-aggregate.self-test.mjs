@@ -22,6 +22,11 @@ import {
   TRUSTED_BASE_REF_LINE,
   validateAggregateWorkflow,
 } from "./develop-pr-aggregate-workflow-contract.mjs";
+import {
+  actionRequiredWorkflowPaths,
+  awaitingApprovalMessage,
+  loadActionRequiredWorkflowPaths,
+} from "./github-actions-approval.mjs";
 
 const NOW_MS = Date.parse("2026-07-14T01:00:00Z");
 const HEAD_SHA = "a".repeat(40);
@@ -51,7 +56,7 @@ function resultFor(evaluation, context) {
 
 const allGreen = evaluate(successRuns());
 assert.equal(allGreen.verdict, "success");
-assert.deepEqual(allGreen.counts, { passed: 7, waiting: 0, failed: 0 });
+assert.deepEqual(allGreen.counts, { passed: 8, waiting: 0, failed: 0 });
 
 const missingBeforeDeadline = evaluate(buildCanaryCheckRuns("missing", NOW_MS));
 assert.equal(missingBeforeDeadline.verdict, "waiting");
@@ -73,6 +78,144 @@ const pendingAtDeadline = evaluate(
 );
 assert.equal(pendingAtDeadline.verdict, "failure");
 assert.equal(resultFor(pendingAtDeadline, "gitleaks").code, "pending-timeout");
+
+const heldWorkflowPath = ".github/workflows/gitleaks.yml";
+const heldBeforeDeadline = evaluate(buildCanaryCheckRuns("missing", NOW_MS), {
+  actionRequiredWorkflowPaths: [heldWorkflowPath],
+});
+assert.equal(heldBeforeDeadline.verdict, "failure");
+assert.equal(
+  resultFor(heldBeforeDeadline, "gitleaks").code,
+  "awaiting-approval",
+);
+assert.match(
+  resultFor(heldBeforeDeadline, "gitleaks").detail,
+  /required workflows awaiting maintainer approval: \.github\/workflows\/gitleaks\.yml; approve the listed workflows, then rerun this gate/,
+);
+
+assert.deepEqual(
+  actionRequiredWorkflowPaths(
+    [
+      {
+        id: 10,
+        path: heldWorkflowPath,
+        event: "pull_request",
+        head_sha: HEAD_SHA,
+        status: "completed",
+        conclusion: "action_required",
+      },
+      {
+        id: 11,
+        path: ".github/workflows/wrong-head.yml",
+        event: "pull_request",
+        head_sha: "b".repeat(40),
+        conclusion: "action_required",
+      },
+      {
+        id: 12,
+        path: ".github/workflows/wrong-event.yml",
+        event: "workflow_dispatch",
+        head_sha: HEAD_SHA,
+        conclusion: "action_required",
+      },
+    ],
+    HEAD_SHA,
+  ),
+  [heldWorkflowPath],
+);
+
+assert.deepEqual(
+  actionRequiredWorkflowPaths(
+    [
+      {
+        id: 20,
+        path: heldWorkflowPath,
+        event: "pull_request",
+        head_sha: HEAD_SHA,
+        conclusion: "action_required",
+      },
+      {
+        id: 21,
+        path: heldWorkflowPath,
+        event: "pull_request",
+        head_sha: HEAD_SHA,
+        status: "completed",
+        conclusion: "success",
+      },
+    ],
+    HEAD_SHA,
+  ),
+  [],
+);
+assert.equal(
+  awaitingApprovalMessage([heldWorkflowPath]),
+  `required workflows awaiting maintainer approval: ${heldWorkflowPath}; approve the listed workflows, then rerun this gate`,
+);
+
+const approvalPages = [];
+const pagedHeldPaths = await loadActionRequiredWorkflowPaths({
+  repository: "elizaOS/eliza",
+  headSha: HEAD_SHA,
+  requestJson: async (url) => {
+    approvalPages.push(url);
+    return {
+      workflow_runs:
+        approvalPages.length === 1
+          ? Array.from({ length: 100 }, (_, index) => ({
+              id: 30 + index,
+              path: `.github/workflows/completed-${index}.yml`,
+              event: "pull_request",
+              head_sha: HEAD_SHA,
+              conclusion: "success",
+            }))
+          : [
+              {
+                id: 130,
+                path: heldWorkflowPath,
+                event: "pull_request",
+                head_sha: HEAD_SHA,
+                conclusion: "action_required",
+              },
+            ],
+    };
+  },
+});
+assert.deepEqual(pagedHeldPaths, [heldWorkflowPath]);
+assert.equal(approvalPages.length, 2);
+assert.match(approvalPages[0], /[?&]page=1$/);
+assert.match(approvalPages[1], /[?&]page=2$/);
+
+for (const [label, payload] of [
+  ["non-object payload", null],
+  ["missing workflow_runs", {}],
+  ["null workflow_runs", { workflow_runs: null }],
+  ["non-array workflow_runs", { workflow_runs: {} }],
+]) {
+  await assert.rejects(
+    loadActionRequiredWorkflowPaths({
+      repository: "elizaOS/eliza",
+      headSha: HEAD_SHA,
+      requestJson: async () => payload,
+    }),
+    (error) => {
+      assert.match(
+        error.message,
+        /invalid GitHub Actions workflow-runs response/,
+      );
+      assert.match(error.message, /page 1/);
+      assert.match(
+        error.message,
+        /https:\/\/api\.github\.com\/repos\/elizaOS\/eliza\/actions\/runs/,
+      );
+      assert.match(
+        error.message,
+        /expected an object with a workflow_runs array/,
+      );
+      return true;
+    },
+    label,
+  );
+}
 
 for (const [scenario, code] of [
   ["cancelled", "terminal-cancelled"],

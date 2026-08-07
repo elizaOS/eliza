@@ -1,3 +1,4 @@
+/** Verifies MemoryViewerView people sidebar three-state rendering through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Three-state guard for the Memories people sidebar (#12784): a failed

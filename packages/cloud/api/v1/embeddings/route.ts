@@ -17,10 +17,6 @@ import {
   OrgRateLimitCacheNotReadyError,
 } from "@/lib/middleware/rate-limit";
 import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
   estimateTokens,
   getProviderFromModel,
   normalizeModelName,
@@ -34,6 +30,8 @@ import {
 } from "@/lib/providers/language-model";
 import { billUsage, InsufficientCreditsError } from "@/lib/services/ai-billing";
 import type { CreditReservation } from "@/lib/services/credits";
+import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
+import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
 import { isPassthroughEmbeddingsEnabled } from "@/lib/services/inference-passthrough";
@@ -59,15 +57,6 @@ interface EmbeddingsRequest {
 
 const app = new Hono<AppEnv>();
 
-// Embeddings use RELAXED to match chat completions and responses — embeddings
-// are typically issued in batches for RAG ingestion.
-app.use(
-  "*",
-  rateLimit(RateLimitPresets.RELAXED, {
-    bindingName: "CHAT_ROUTE_RATE_LIMITER",
-  }),
-);
-
 app.post("/", async (c) => {
   let settleReservation: OrganizationInferenceAdmission["settle"] | undefined;
   let settleUnknown:
@@ -78,6 +67,7 @@ app.post("/", async (c) => {
     | undefined;
   let billingReservation: CreditReservation | undefined;
   let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
+  let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
   try {
     const candidate = c.executionCtx;
     executionCtx =
@@ -173,6 +163,7 @@ app.post("/", async (c) => {
         organization_id: resolution.ctx.orgId,
       };
       apiKeyId = resolution.ctx.apiKeyId;
+      admissionSnapshot = resolution.ctx.admission;
     } else {
       if (executionCtx) {
         return c.json(
@@ -197,6 +188,7 @@ app.post("/", async (c) => {
       ? enforceOrgRateLimit(user.organization_id, "embeddings", {
           cacheOnly: Boolean(executionCtx),
           executionCtx,
+          config: inferenceRateLimitConfig(admissionSnapshot, "embeddings"),
         })
       : Promise.resolve(null);
 
@@ -323,6 +315,7 @@ app.post("/", async (c) => {
         estimatedOutputTokens: 0,
         affiliateCode,
         executionCtx,
+        admissionSnapshot,
       });
       settleReservation = admission.settle;
       settleUnknown = admission.settleUnknown;
@@ -390,8 +383,6 @@ app.post("/", async (c) => {
     // untouched — no AI-SDK decode/validate/re-encode of the float arrays.
     // Usage is parsed once from the same buffer so the settle chain below
     // bills exactly what the provider reported, identical to the SDK path.
-    // The Vercel AI Gateway fallback keeps the SDK path (resolver returns it
-    // only for the direct-OpenAI source).
     let passthroughBody: ArrayBuffer | null = null;
     const passthroughUpstream =
       isPassthroughEmbeddingsEnabled() &&

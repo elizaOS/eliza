@@ -30,7 +30,7 @@ describe("provider latency report process", () => {
 			import.meta.dirname,
 			"provider-latency-report.ts",
 		);
-		const result = spawnSync("bun", [script], {
+		const result = spawnSync("bun", ["--conditions=eliza-source", script], {
 			cwd: path.resolve(import.meta.dirname, "../../.."),
 			encoding: "utf8",
 			env: {
@@ -56,7 +56,7 @@ describe("provider latency report process", () => {
 			path.join(tmpdir(), "provider-latency-report-"),
 		);
 		const reportPath = path.join(reportDirectory, "report.json");
-		const result = spawnSync("bun", [script], {
+		const result = spawnSync("bun", ["--conditions=eliza-source", script], {
 			cwd: path.resolve(import.meta.dirname, "../../.."),
 			encoding: "utf8",
 			env: {

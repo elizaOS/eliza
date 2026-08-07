@@ -15,26 +15,6 @@
     "aliases": []
   },
   {
-    "slug": "feed",
-    "canonicalName": "@elizaos/plugin-feed",
-    "aliases": []
-  },
-  {
-    "slug": "hyperliquid",
-    "canonicalName": "@elizaos/plugin-hyperliquid",
-    "aliases": []
-  },
-  {
-    "slug": "polymarket",
-    "canonicalName": "@elizaos/plugin-polymarket",
-    "aliases": []
-  },
-  {
-    "slug": "screenshare",
-    "canonicalName": "@elizaos/plugin-screenshare",
-    "aliases": []
-  },
-  {
     "slug": "trajectory-logger",
     "canonicalName": "@elizaos/plugin-trajectory-logger",
     "aliases": []

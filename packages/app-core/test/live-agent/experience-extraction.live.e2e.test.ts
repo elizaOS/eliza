@@ -16,9 +16,9 @@ import {
   ExperienceType,
   OutcomeType,
 } from "../../../core/src/features/advanced-capabilities/experience/types.ts";
-import { itIf } from "../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../test/helpers/live-provider";
+import { itIf } from "../helpers/conditional-tests.ts";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
+import { selectLiveProvider } from "../helpers/live-provider";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
 const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";

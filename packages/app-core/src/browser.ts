@@ -20,10 +20,6 @@ export {
   type AppRunSummary,
   type AppSessionJsonValue,
   client,
-  type FeedActivityItem,
-  type FeedAgentStatus,
-  type FeedChatMessage,
-  type FeedTeamAgent,
 } from "@elizaos/ui/api";
 export * from "@elizaos/ui/browser";
 export { ErrorBoundary } from "@elizaos/ui/browser";

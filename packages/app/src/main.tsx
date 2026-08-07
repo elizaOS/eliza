@@ -11,8 +11,8 @@ import "./web-ws-base-fix";
  * view importers, and resolves cloud-only branding from the injected API base
  * / desktop runtime mode.
  *
- * `main()` drives the boot pipeline — embed-iframe session handshake, app-window
- * and model-tester route shortcuts, managed cloud launch connection, the
+ * `main()` drives the boot pipeline — embed-iframe session handshake,
+ * app-window route shortcuts, managed cloud launch connection, the
  * headless iOS full-Bun backend smoke gate, popout and detached/overlay window
  * shells, then the per-platform bridge stack (storage + Capacitor bridges, iOS
  * local-agent fetch/native-request bridges, Android native agent fetch bridge,
@@ -83,7 +83,6 @@ import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
-  FineTuningViewProps,
 } from "@elizaos/ui/config";
 import {
   type AppBootConfig,
@@ -277,13 +276,6 @@ function importAppTaskCoordinatorRegister() {
   );
 }
 
-function importAppTraining() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-training",
-    () => import("@elizaos/plugin-training"),
-  );
-}
-
 function lazyNamedComponent<TProps>(
   load: () => Promise<ComponentType<TProps>>,
 ): ComponentType<TProps> {
@@ -309,10 +301,6 @@ const CodingAgentSettingsSection = lazyNamedComponent<Record<string, never>>(
 const CodingAgentTasksPanel = lazyNamedComponent<CodingAgentTasksPanelProps>(
   async () => (await importAppTaskCoordinator()).CodingAgentTasksPanel,
 );
-const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
-  async () => (await importAppTraining()).FineTuningView,
-);
-
 const BRANDED_WINDOW_KEYS = {
   apiBase: `__${APP_ENV_PREFIX}_API_BASE__`,
   shareQueue: `__${APP_ENV_PREFIX}_SHARE_QUEUE__`,
@@ -619,7 +607,7 @@ function installRendererServiceHost(): void {
   // host is what starts eligible services in THIS window's shell and retains
   // their disposers for pagehide/replacement teardown. Scope resolution reuses
   // the exact boot inputs the shell branches on, so a popout/detached/
-  // companion/app-window/model-tester/embed renderer never runs main-scoped
+  // companion/app-window/embed renderer never runs main-scoped
   // background services like LifeOps activity capture.
   startRendererServiceHost({
     shell: resolveRendererShellKind({
@@ -627,7 +615,6 @@ function installRendererServiceHost(): void {
       isPopout: isPopoutWindow(),
       isPhoneCompanion: isPhoneCompanionMode(),
       appWindowSlug: resolveAppWindowSlug(),
-      isModelTesterRoute: shouldLoadModelTesterShellRoute(),
       isEmbedRoute: isEmbedPath(window.location.pathname),
     }),
     reportError: (serviceId, error, phase) => {
@@ -670,7 +657,6 @@ function buildAppBootConfig(): AppBootConfig {
     codingAgentTasksPanel: CodingAgentTasksPanel,
     codingAgentSettingsSection: CodingAgentSettingsSection,
     codingAgentControlChip: CodingAgentControlChip,
-    fineTuningView: FineTuningView,
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
     appBlockerSettingsCard: AppBlockerSettingsCard,
@@ -704,7 +690,6 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
       load: importAppTaskCoordinatorRegister,
     },
     { key: "@elizaos/plugin-phone", load: importAppPhone },
-    { key: "@elizaos/plugin-training", load: importAppTraining },
   ];
 
 function initializeAppModules(): Promise<void> {
@@ -2356,11 +2341,6 @@ function resolveAppWindowSlug(): string | null {
   return slug.length > 0 ? slug : null;
 }
 
-function shouldLoadModelTesterShellRoute(): boolean {
-  const path = getWindowNavigationPath().replace(/[?#].*$/, "");
-  return path === "/model-tester";
-}
-
 /**
  * Top-level cloud/public/auth router shell. Web build only — lazy so the chunk
  * (and its react-router / Steward / cloud-provider transitive deps) never lands
@@ -2374,20 +2354,14 @@ const CloudRouterShell = lazy(async () => {
   }
   // Populate the cloud-route + settings-section registries before the shell
   // mounts and reads `listCloudRoutes()`; without this the registry is empty and
-  // no cloud/auth/payment route resolves. Cloud product surfaces come from two
-  // sources that register into the SAME process-global registries: the trunk
-  // `@elizaos/ui` cloud modules and the standalone `@elizaos/cloud-ui` package
-  // (arch #12092 item 23 — the cloud UI's own home). Both imports live inside
-  // this `__ELIZA_WEB_SHELL__`-guarded factory, so a cloud-free build drops
-  // them statically with no stub alias.
-  const [{ registerAllCloudSurfaces }, { registerCloudUiSurfaces }, mod] =
-    await Promise.all([
-      import("@elizaos/ui/cloud/register-all"),
-      import("@elizaos/cloud-ui"),
-      import("@elizaos/ui/cloud/shell/CloudRouterShell"),
-    ]);
+  // no cloud/auth/payment route resolves. Both imports live inside this
+  // `__ELIZA_WEB_SHELL__`-guarded factory, so a cloud-free build drops them
+  // statically.
+  const [{ registerAllCloudSurfaces }, mod] = await Promise.all([
+    import("@elizaos/ui/cloud/register-all"),
+    import("@elizaos/ui/cloud/shell/CloudRouterShell"),
+  ]);
   registerAllCloudSurfaces();
-  registerCloudUiSurfaces();
   return { default: mod.CloudRouterShell };
 });
 
@@ -3131,30 +3105,6 @@ async function main(): Promise<void> {
     })
   ) {
     return;
-  }
-
-  const appWindowSlug = window.location.pathname.startsWith("/apps/")
-    ? window.location.pathname.slice("/apps/".length).split("/")[0]
-    : resolveAppWindowSlug();
-  if (appWindowSlug === "model-tester") {
-    await importSideEffectAppModule(
-      "@elizaos/app-model-tester",
-      () => import("@elizaos/app-model-tester"),
-    );
-    setupPlatformStyles();
-    // This early-return path never schedules the deferred side-effect loads,
-    // but the service host still needs to exist so any model-tester-scoped
-    // renderer service can run — and main-scoped ones observably cannot.
-    installRendererServiceHost();
-    mountReactApp();
-    return;
-  }
-
-  if (shouldLoadModelTesterShellRoute()) {
-    await importSideEffectAppModule(
-      "@elizaos/app-model-tester",
-      () => import("@elizaos/app-model-tester"),
-    );
   }
 
   markStartup("app-modules:start");

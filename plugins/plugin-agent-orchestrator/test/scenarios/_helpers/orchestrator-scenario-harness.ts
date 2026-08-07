@@ -45,7 +45,7 @@ export const ORCHESTRATOR_REFLEXION_RESPAWN = "ORCHESTRATOR_REFLEXION_RESPAWN";
 
 type ScenarioRuntime = IAgentRuntime & {
   registerPlugin?: (plugin: Plugin) => Promise<void>;
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
   plugins?: Array<{ name?: string }>;
@@ -55,7 +55,7 @@ type RuntimeWithServices = ScenarioRuntime & {
   getService: <T = unknown>(name: string) => T | null;
 };
 
-type LlmProxyCall = {
+type DeterministicModelCall = {
   params: {
     prompt?: string;
   };
@@ -270,7 +270,7 @@ class OrchestratorScenarioHarness {
     await this.taskService.start();
   }
 
-  captureVerifierPrompt(call: LlmProxyCall): void {
+  captureVerifierPrompt(call: DeterministicModelCall): void {
     this.verifierPrompts.push(call.params.prompt ?? "");
   }
 
@@ -933,13 +933,13 @@ export function registerVerifierFixtures(
   responses: VerifierResponse[],
 ): void {
   let index = 0;
-  runtime.scenarioLlmFixtures?.register({
+  runtime.scenarioModelFixtures?.register({
     name: `${actionName.toLowerCase()}-goal-verifier`,
     match: {
       modelType: ModelType.TEXT_SMALL,
       prompt: /You are a demanding engineering manager/,
     },
-    response: (call: LlmProxyCall) => {
+    response: (call: DeterministicModelCall) => {
       const harness = harnessByRuntime.get(runtime);
       harness?.captureVerifierPrompt(call);
       const response = responses[Math.min(index, responses.length - 1)];
@@ -970,7 +970,7 @@ export function registerCalibratedJudgeFixture(
       `calibrated judge fixture for ${actionName} requires at least one trace-evidence string`,
     );
   }
-  runtime.scenarioLlmFixtures?.register({
+  runtime.scenarioModelFixtures?.register({
     name: `${actionName.toLowerCase()}-final-judge`,
     match: {
       modelType: ModelType.TEXT_LARGE,
@@ -978,7 +978,7 @@ export function registerCalibratedJudgeFixture(
         value.includes("Score the candidate response against the rubric") &&
         value.includes("Respond with ONLY a compact JSON object"),
     },
-    response: (call: LlmProxyCall) => {
+    response: (call: DeterministicModelCall) => {
       const prompt = call.params.prompt ?? "";
       // The judge prompt embeds the rubric before the candidate; scanning the
       // whole prompt would let rubric wording satisfy the evidence check.

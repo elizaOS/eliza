@@ -1,3 +1,0 @@
-# Nested
-
-Nested OpenClaw fixture.

@@ -27,7 +27,7 @@ const PanelContent = ({
     >
       <div className="text-center">
         <div className="font-medium">{label}</div>
-        <div className="mt-1 text-xs text-white/40">
+        <div className="mt-1 text-xs text-white/60">
           Drag the gutter to resize
         </div>
       </div>

@@ -3,148 +3,172 @@
   <h1>elizaOS</h1>
   <p><strong>Your agentic operating system.</strong></p>
   <p>
-    <a href="https://eliza.app">Homepage</a> ·
-    <a href="https://app.elizacloud.ai">Web app</a> ·
-    <a href="https://os.elizacloud.ai">Install the OS</a> ·
-    <a href="https://docs.elizaos.ai/">Docs</a> ·
+    <a href="https://eliza.app">Eliza</a> ·
+    <a href="https://app.elizacloud.ai">Eliza Cloud</a> ·
+    <a href="https://os.elizacloud.ai">elizaOS downloads</a> ·
+    <a href="https://docs.elizaos.ai/">Documentation</a> ·
     <a href="https://plugins.elizacloud.ai">App catalog</a>
   </p>
 </div>
 
-## What is this?
+elizaOS is an open-source TypeScript framework and product stack for autonomous
+AI agents. This monorepo contains the core runtime, the Eliza app, the CLI,
+cloud services, native bridges, and first-party plugins. The bootable Linux and
+Android distributions live in the separate
+[`elizaOS/os`](https://github.com/elizaOS/os) repository.
 
-elizaOS is an open-source, local-first operating system for AI agents. Two parts:
+## Choose a starting point
 
-- **Eliza** — the app. An AI assistant for **desktop, mobile, and web**: chat, voice, your messaging accounts, a personal-assistant brain, a non-custodial wallet, browser automation, and on-device models.
-- **elizaOS** — the runtime and the OS underneath it. The same runtime can take over the whole machine — boot a **Linux** desktop or run on **Android** as the system assistant.
+| Goal | Start here |
+| --- | --- |
+| Use Eliza | [Open the web app](https://app.elizacloud.ai), visit [Eliza downloads](https://eliza.app/downloads), or use a published [GitHub release](https://github.com/elizaOS/eliza/releases) |
+| Run this repository | Follow [Run Eliza from source](#run-eliza-from-source) |
+| Build an agent or plugin | Install the [`elizaos`](#build-with-elizaos) CLI and read the [developer docs](https://docs.elizaos.ai/) |
+| Contribute | Read [CONTRIBUTING.md](CONTRIBUTING.md) and the repository guide in [AGENTS.md](AGENTS.md) |
+| Run a whole device as elizaOS | Use the installers and target guides in [`elizaOS/os`](https://github.com/elizaOS/os) |
 
-The agent, your data, and the models all run on your device. [Eliza Cloud](#eliza-cloud-optional) is optional — add it for hosted inference, sync, and deploys.
+## Run Eliza from source
 
-## Get Eliza
-
-| Platform                              | How                                                                 |
-| ------------------------------------- | ------------------------------------------------------------------- |
-| **Web**                               | Open [app.elizacloud.ai](https://app.elizacloud.ai)                 |
-| **Desktop** — macOS · Windows · Linux | Download from [GitHub Releases](https://github.com/elizaOS/eliza/releases) |
-| **iOS · Android**                     | App Store · Play · sideload                                         |
-
-Run from source:
+The repository pins Bun and Node versions in [`package.json`](package.json).
+Install those versions, then:
 
 ```bash
 git clone --filter=blob:none https://github.com/elizaos/eliza.git
 cd eliza
 bun install
-bun run dev          # API + the Eliza app UI
+bun run dev
 ```
 
-To run a whole device as elizaOS instead, see [elizaOS — the operating system](#elizaos-the-operating-system).
+`bun install` also prepares submodules, patches, and runtime artifacts. For a
+smaller development install that skips the large artifact bundle, use
+`bun run install:light`.
 
-## What Eliza does
-
-The app ships with:
-
-- 💬 **Chat** — one inbox for your agent and your accounts (iMessage, Discord, Telegram, WhatsApp, Slack, Farcaster, X).
-- 🎙️ **Voice** — hands-free voice with on-device transcription and natural speech.
-- 📇 **Phone · Messages · Contacts** — telephony and SMS surfaces (native on Android).
-- 🧠 **Personal assistant** — calendar, reminders, inbox triage, tasks, daily brief, and owner-approved actions.
-- 🌐 **Browser & computer use** — the agent drives a real browser and desktop.
-- 👛 **Wallet** — non-custodial EVM + Solana: transfers, swaps, bridges, LP. Every spend needs your OK.
-- 📄 **Documents** — ask questions over your files (RAG).
-- 📷 **Camera & vision** — capture and reason over images.
-- ⚙️ **Automations** — schedule recurring work; pick models and routing.
-
-## Private by default
-
-Eliza can run the whole pipeline on your device via **Eliza-1**, the on-device model family (Gemma-4):
-
-- **Text** generation and embeddings, from ~2B (phone) to ~27B (desktop).
-- **Voice** — local speech-to-text and text-to-speech; audio never leaves the device.
-- **Vision & images** — on-device description and generation.
-
-Pick a model in **Settings → Model Routing** and it downloads and pins; from then on it works with no network.
-
-## Apps on elizaOS
-
-elizaOS runs **apps**, not just an agent. An app is a plugin that adds a surface inside Eliza; the runtime installs, launches, and tracks it like real software, and it survives restarts.
-
-- **Browse & install** — catalog at [plugins.elizacloud.ai](https://plugins.elizacloud.ai); curated entries in [`packages/registry`](packages/registry), plus any npm package tagged `elizaos`.
-- **First-party apps** — [`plugin-browser`](plugins/plugin-browser), [`plugin-documents`](plugins/plugin-documents), [`plugin-phone`](plugins/plugin-phone), [`plugin-task-coordinator`](plugins/plugin-task-coordinator).
-- **Earn** — apps deployed through Eliza Cloud can be metered and monetized.
-
-## elizaOS — the operating system
-
-[`packages/os`](packages/os) is the real, bootable distribution. Downloads and hardware are at **[os.elizacloud.ai](https://os.elizacloud.ai)**.
-
-- **Linux** ([`packages/os/linux`](packages/os/linux)) — boots a full desktop with Eliza built in from a USB stick. amd64 · arm64 · riscv64.
-- **Android** ([`packages/os/android`](packages/os/android)) — Eliza is the system launcher and assistant, on Pixel-class devices.
-
-The OS is bootable today; full device certification and production update channels are in progress — see the per-target READMEs for status.
-
-## Eliza Cloud (optional)
-
-Optional managed backend for going beyond one device. Never required — local-only is first-class. It adds:
-
-- **Auth** — accounts and sign-in (OAuth/SIWS).
-- **Hosted inference** — model routing across providers, billed per use.
-- **Deploy** — push an agent or app to a container with its own domain.
-- **Sync & bridge** — state across devices; drive a local agent from the cloud dashboard.
-- **Monetization** — metering and creator earnings for published apps, agents, and MCPs.
-
-## Build on elizaOS
-
-The runtime is open source and yours to extend. Start with the CLI:
+Common repository commands:
 
 ```bash
-bun add -g elizaos@beta
-elizaos create my-app --template project   # a deployable app workspace
-elizaos create my-plugin -t plugin         # a runtime plugin (action/provider/service)
+bun run build       # build the workspace with Turbo
+bun run verify      # package parity, dependency, type, lint, and audit gates
+bun run test        # repository unit/integration test lane
+bun run test:e2e    # end-to-end lane
+bun run cloud:mock  # local Eliza Cloud stack with mocks
 ```
 
-The runtime is **model-agnostic** (OpenAI, Anthropic, Gemini, Grok, Llama, local Eliza-1, …) and extended through a small set of primitives:
+See [AGENTS.md](AGENTS.md) for package scoping, shared development servers, and
+the evidence required before a change is considered complete.
 
-- **`@elizaos/core`** ([packages/core](packages/core)) — the agent loop, plugin model, and message/memory/state primitives.
-- **`@elizaos/agent`** ([packages/agent](packages/agent)) — `AgentRuntime`, the plugin loader, and the default plugin map.
-- **`@elizaos/app-core`** ([packages/app-core](packages/app-core)) — the API + dashboard host that runs agents.
-- **`elizaos`** ([packages/elizaos](packages/elizaos)) — the CLI: `create`, `info`, `upgrade`.
+## What is in the stack?
 
-A **plugin** exports a `Plugin` that registers **actions** (what the agent does), **providers** (prompt context), **services** (long-lived singletons), and **evaluators** (post-response work). Import `@elizaos/core` directly to use the runtime with no CLI or UI — see [`packages/examples`](packages/examples) and the evaluation suites in [`packages/benchmarks`](packages/benchmarks). Full guides: **[docs.elizaos.ai](https://docs.elizaos.ai/)**.
+### Eliza
 
-## Working in the monorepo
+Eliza is the user-facing agent app for web, desktop, and mobile targets. Its
+capabilities are supplied by the runtime and installed plugins, including:
+
+- chat, voice, memory, knowledge, and document workflows;
+- messaging and workspace connectors;
+- calendar, reminders, inbox, goals, health, and other personal-assistant
+  domains;
+- browser and desktop automation;
+- camera, phone, messages, contacts, location, and other native device bridges;
+- non-custodial EVM and Solana wallet operations with approval boundaries; and
+- scheduled workflows, coding-agent orchestration, and installable app views.
+
+Availability depends on the operating system, installed plugins, granted
+permissions, and configured model or service providers. Package-level READMEs
+document the exact support and setup for each capability.
+
+### The framework
+
+The framework is model-agnostic and extended through plugins:
+
+- [`@elizaos/core`](packages/core) defines `AgentRuntime`, the canonical types,
+  the message loop, memory and state primitives, and plugin contracts.
+- [`@elizaos/agent`](packages/agent) assembles a standalone agent and HTTP
+  backend around the core runtime.
+- [`@elizaos/app-core`](packages/app-core) provides shared application hosting,
+  API, and platform orchestration for Eliza app targets.
+- [`@elizaos/ui`](packages/ui) contains the shared React UI used by app
+  surfaces.
+- [`elizaos`](packages/elizaos) is the project and plugin scaffolding, upgrade,
+  and deployment CLI.
+
+A plugin exports a `Plugin` object. Plugins can register actions, providers,
+evaluators, services, model handlers, routes, events, tests, and app views. See
+the [plugin component guide](https://docs.elizaos.ai/plugins/components) and
+the first-party implementations under `plugins/`.
+
+### Local inference
+
+[`@elizaos/plugin-local-inference`](plugins/plugin-local-inference) provides the
+Eliza-1 on-device path. The current Eliza-1 registry contains 2B, 4B, 9B, and
+27B text tiers based on Gemma 4, plus local embeddings, speech, vision, and
+image-generation assets. Hardware detection and model routing select supported
+backends; after the required assets are downloaded, eligible operations can run
+without a network connection.
+
+Local inference is not forced on hardware that cannot support it. Eliza can
+route each model capability to local, direct-provider, or Eliza Cloud backends.
+
+### Eliza Cloud
+
+[Eliza Cloud](https://app.elizacloud.ai) is optional. It provides account and
+authentication services, hosted model routing, application and agent
+deployment, remote connectivity, and cross-device product services. The local
+runtime and direct model-provider configuration remain first-class paths.
+
+### elizaOS distributions
+
+The standalone [`elizaOS/os`](https://github.com/elizaOS/os) repository owns
+bootable Linux and AOSP distributions, installers, release manifests, and OS
+toolchains. This monorepo retains the Eliza application shells and native
+runtime bridges used by desktop, iOS, Android, and device integrations.
+
+## Build with `elizaos`
+
+The beta CLI published from this branch uses the unscoped `elizaos` package:
 
 ```bash
-bun install            # workspace install
-bun run install:light  # skip the large artifact download when disk or time is tight
-bun run dev            # API + Vite UI for apps/app
-bun run build          # turbo build across the workspace
-bun run test           # full test suite
-bun run cloud:mock     # boot the local cloud backend stack with mocks
+bun add --global elizaos@beta
+elizaos create my-project --template project
+elizaos create plugin-example --template plugin
 ```
 
-The repo is self-contained — runtime, CLI, dashboard, native OS forks, cloud backend, and first-party plugins all live here. Every package carries its own `README.md`; read it before working inside. Tree map: [`AGENTS.md`](AGENTS.md).
+Projects are deployable workspaces; plugins are reusable capability packages.
+The packaged templates and their scaffold contracts live in
+`packages/elizaos/templates/`.
+
+To embed the runtime directly without the CLI or application host, import
+`@elizaos/core`. The scenario runner provides executable integration coverage
+against a real runtime and, when configured, live models.
+
+## Repository map
+
+```text
+packages/        runtime, hosts, UI, CLI, docs, cloud, native code, and tooling
+plugins/         first-party model, connector, domain, app, and device plugins
+scripts/         repository-wide checks, test orchestration, and release tools
+patches/         dependency patches applied during installation
+```
+
+Every maintained package or plugin should explain its public surface, scripts,
+configuration, and local constraints in its own `README.md` and paired
+`CLAUDE.md` / `AGENTS.md`. Read the nearest package guide before making changes.
 
 ## Contributing
 
-Contributions welcome. Open an issue before sending a non-trivial PR. Before
-opening a PR, read [CONTRIBUTING.md](CONTRIBUTING.md) and the evidence standard
-in [AGENTS.md](AGENTS.md); frontend-testable changes need screenshots (JPG), an
-MP4 video walkthrough, logs, and any relevant real-LLM trajectories attached
-inline in the PR itself. Agents and maintainers working from a GitHub Project
-board use the coordination workflow in [CONTRIBUTING.md](CONTRIBUTING.md) before
-claiming kanban work. Active MVP work is coordinated on the
-[LifeOps Personal Assistant MVP board](https://github.com/orgs/elizaOS/projects/15)
-and in [Discussions](https://github.com/elizaOS/eliza/discussions); in-flight
-design docs live in
-[`packages/docs/ongoing-development/`](packages/docs/ongoing-development/README.md).
+Open an issue before a non-trivial change and submit work through a pull request
+against `develop`. [CONTRIBUTING.md](CONTRIBUTING.md) defines the coordination,
+testing, synchronization, and human-verifiable evidence requirements.
 
-- [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
-- [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
-- [Agent Work Item](.github/ISSUE_TEMPLATE/agent_work_item.md)
-- [Security Policy](SECURITY.md)
-- [Windows Setup](WINDOWS.md)
+- [Bug report](.github/ISSUE_TEMPLATE/bug_report.md)
+- [Feature request](.github/ISSUE_TEMPLATE/feature_request.md)
+- [Agent work item](.github/ISSUE_TEMPLATE/agent_work_item.md)
+- [Windows setup](WINDOWS.md)
+- [Product security documentation](packages/docs/security.md)
 
-To report a security vulnerability, follow [SECURITY.md](SECURITY.md); do not
-open a public issue.
+Report vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/elizaOS/eliza/security/advisories/new),
+not a public issue.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE)

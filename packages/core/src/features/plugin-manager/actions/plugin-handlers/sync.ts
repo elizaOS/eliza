@@ -1,9 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/sync
- *
- * `sync` sub-mode of the PLUGIN action. Pulls upstream changes
- * for an ejected plugin.
- */
+/** Pulls upstream changes into a managed local plugin checkout. */
 
 import type {
 	ActionResult,

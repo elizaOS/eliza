@@ -1,3 +1,4 @@
+/** Verifies TranscriptEventView through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Renderer tests: the web/DOM view paints one row per reduced item and exposes

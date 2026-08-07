@@ -26,9 +26,3 @@ declare module "@elizaos/plugin-task-coordinator" {
     import("@elizaos/ui").CodingAgentTasksPanelProps
   >;
 }
-
-declare module "@elizaos/plugin-training" {
-  export const FineTuningView: import("react").ComponentType<
-    import("@elizaos/ui").FineTuningViewProps
-  >;
-}

@@ -269,12 +269,11 @@ export function collectReferencedMedia(
 }
 
 /**
- * Register the orphan-media GC: a daily task that diffs every live message
- * attachment URL against the store and deletes files no message references
- * (respecting the store's grace window). Runs wherever the agent runs —
- * desktop/server (Node), Android, and iOS on-device.
+ * Register the orphan-media GC worker. Queue-row creation happens after SQL
+ * migrations at the awaited startup-maintenance boundary so plugin
+ * initialization never launches an unowned database operation.
  */
-export function registerMediaGcTask(runtime: IAgentRuntime): void {
+export function registerMediaGcWorker(runtime: IAgentRuntime): void {
   runtime.registerTaskWorker({
     name: MEDIA_GC_TASK_NAME,
     execute: async (rt) => {
@@ -282,39 +281,31 @@ export function registerMediaGcTask(runtime: IAgentRuntime): void {
         const memories = await rt.getAllMemories();
         gcUnreferencedMedia(collectReferencedMedia(memories, rt));
       } catch (err) {
-        rt.logger.warn(
-          `[media-gc] sweep failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+        // error-policy:J7 TaskService records the rejected run and backs off the
+        // repeat task; reportError also makes the retained-media leak visible.
+        rt.reportError("media-gc.sweep", err);
+        throw err;
       }
       return undefined;
     },
   });
+}
 
-  void (async () => {
-    try {
-      const existing = await runtime.getTasks({
-        agentIds: [runtime.agentId],
-        tags: MEDIA_GC_TAGS,
-      });
-      if (existing.some((task) => task.name === MEDIA_GC_TASK_NAME)) return;
-      await runtime.createTask({
-        name: MEDIA_GC_TASK_NAME,
-        description: "Garbage-collect unreferenced local media files",
-        tags: [...MEDIA_GC_TAGS],
-        agentId: runtime.agentId,
-        metadata: {
-          updateInterval: MEDIA_GC_INTERVAL_MS,
-          updatedAt: Date.now(),
-        },
-      });
-    } catch (err) {
-      runtime.logger.warn(
-        `[media-gc] failed to schedule GC task: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-  })();
+/** Ensure the daily media GC has one queue row after SQL is ready. */
+export async function scheduleMediaGc(runtime: IAgentRuntime): Promise<void> {
+  const existing = await runtime.getTasks({
+    agentIds: [runtime.agentId],
+    tags: MEDIA_GC_TAGS,
+  });
+  if (existing.some((task) => task.name === MEDIA_GC_TASK_NAME)) return;
+  await runtime.createTask({
+    name: MEDIA_GC_TASK_NAME,
+    description: "Garbage-collect unreferenced local media files",
+    tags: [...MEDIA_GC_TAGS],
+    agentId: runtime.agentId,
+    metadata: {
+      updateInterval: MEDIA_GC_INTERVAL_MS,
+      updatedAt: Date.now(),
+    },
+  });
 }

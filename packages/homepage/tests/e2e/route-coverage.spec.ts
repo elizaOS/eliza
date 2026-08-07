@@ -39,6 +39,8 @@ test("homepage route matrices cover every routed page", () => {
     "/login",
     "/connected",
     "/get-started",
+    "/profile/edit",
+    "*",
   ]);
 
   const missingLiveRoutes = appRoutes.filter((route) => !liveRoutes.has(route));

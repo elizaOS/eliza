@@ -1,5 +1,5 @@
 /**
- * Source-level smoke test for the marketing page export without importing the React tree.
+ * Homepage asset, caching, and build-configuration contracts exercised without importing the React tree.
  *
  * The package test script runs under node:test, so this avoids pulling three.js
  * or adding Vitest just to confirm the entry component remains exportable.
@@ -17,7 +17,6 @@ const pruneAssetsPath = resolve(
   __dirname,
   "../scripts/prune-unused-static-assets.mjs",
 );
-const marketingPath = resolve(__dirname, "../src/pages/marketing.tsx");
 const landingPath = resolve(__dirname, "../src/pages/landing.tsx");
 const modelViewerPath = resolve(
   __dirname,
@@ -40,15 +39,6 @@ const profileImagePath = resolve(
 const headersPath = resolve(__dirname, "../public/_headers");
 const viteConfigPath = resolve(__dirname, "../vite.config.ts");
 const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
-
-test("marketing.tsx exports a default function component", () => {
-  const src = readFileSync(marketingPath, "utf8");
-  assert.match(
-    src,
-    /export\s+default\s+function\s+\w+/,
-    "expected `export default function ...` in marketing.tsx",
-  );
-});
 
 test("landing ships compressed iPhone and WebP profile assets", () => {
   const model = readFileSync(iphoneModelPath);

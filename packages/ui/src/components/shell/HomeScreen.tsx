@@ -20,13 +20,13 @@ import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 
-// A gentle staggered fade-up as the home settles in - iOS-style, calm, and
-// fully stilled under prefers-reduced-motion. Each block carries a small
-// animation-delay (set inline) so the cards/tiles cascade in.
+// A gentle staggered rise as the home settles in. Foregrounds stay fully opaque
+// throughout so slow paints and screenshot tooling never expose unreadable
+// intermediate content. Reduced-motion users see the settled layout directly.
 const HOME_SCREEN_CSS = `
 @keyframes home-enter {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: none; }
+  from { transform: translateY(10px); }
+  to   { transform: none; }
 }
 .home-enter { animation: home-enter 460ms cubic-bezier(0.22,1,0.36,1) both; }
 
@@ -79,7 +79,11 @@ const HOME_SCREEN_CSS = `
    space on the same velocity-aware duration as the notification cards. */
 [data-home-notification-region] {
   flex-grow: 0;
-  max-height: 40%;
+  /* Content owns only the block size it needs, up to a readable desktop cap.
+     On short phones flex-shrink uses the actual remainder below the editorial
+     header; an arbitrary percentage otherwise strands usable space while
+     clipping the next notification. */
+  max-height: min(20rem, 100%);
   transition:
     flex-grow var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1),
     max-height var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1);
@@ -103,7 +107,7 @@ const HOME_SCREEN_CSS = `
   [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
 ) [data-home-notification-region],
 [data-testid="home-content-column"][data-home-has-notifications]:has(
-  [data-testid="home-notification-list"][data-shade-mode="expanded"]:not([data-shade-settling])
+  [data-testid="home-notification-list"][data-shade-occupies-home]:not([data-shade-settling])
 ) [data-home-notification-region] {
   flex-grow: 1;
   max-height: 100%;
@@ -112,7 +116,7 @@ const HOME_SCREEN_CSS = `
   [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
 ) [data-home-below-notifications],
 [data-testid="home-content-column"][data-home-has-notifications]:has(
-  [data-testid="home-notification-list"][data-shade-mode="expanded"]:not([data-shade-settling])
+  [data-testid="home-notification-list"][data-shade-occupies-home]:not([data-shade-settling])
 ) [data-home-below-notifications] {
   flex-grow: 0;
   grid-template-rows: 0fr;
@@ -128,25 +132,26 @@ const HOME_SCREEN_CSS = `
 `;
 
 /**
- * The entrance fade-up must play exactly ONCE, on first mount - not on every
- * re-render or resize (which would re-apply the `opacity 0→1` animation and
- * flash the cards). This hook returns the `home-enter` class only for the first
- * commit, then permanently empty: after the initial paint the cards keep their
- * settled (fully opaque) state and a parent re-render / resize can never replay
- * the fade. Pure CSS `forwards` doesn't protect against the class being
- * re-evaluated, so we drop it from the tree once it has run (issue 9304).
+ * The entrance rise belongs to app launch, not to route entry. Remembering it
+ * outside the component prevents a view round-trip from replaying layout
+ * motion when HomeScreen mounts again (issue 9304).
  */
+let homeEntrancePlayed = false;
+
+export function __resetHomeEntranceForTests(): void {
+  homeEntrancePlayed = false;
+}
+
 function useEnterOnceClass(): string {
-  // `played` is set in a layout effect after the first commit so the very first
-  // render still carries `home-enter` (the animation runs), and every render
-  // after that omits it.
-  const [played, setPlayed] = useState(false);
-  const ranRef = useRef(false);
+  const shouldPlayRef = useRef(!homeEntrancePlayed);
+  const [played, setPlayed] = useState(!shouldPlayRef.current);
+  useLayoutEffect(() => {
+    if (shouldPlayRef.current) homeEntrancePlayed = true;
+  }, []);
   useEffect(() => {
-    if (ranRef.current) return;
-    ranRef.current = true;
-    // Defer one frame so the entrance animation is committed before we strip the
-    // class; stripping immediately could cancel it mid-flight on slow paints.
+    if (!shouldPlayRef.current) return;
+    // Keep the class through the complete transition; stripping it earlier can
+    // cancel the rise midway through a slow first paint.
     const id = window.setTimeout(() => setPlayed(true), 700);
     return () => window.clearTimeout(id);
   }, []);
@@ -201,7 +206,7 @@ export interface HomeScreenProps {
 export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   // The live activity stream feeds the home ranker's attention signals.
   const { events, clearEvents } = useActivityEvents();
-  // The entrance fade plays once, on first mount only - never re-triggered by a
+  // The entrance rise plays once, on first mount only - never re-triggered by a
   // re-render or resize (issue 9304).
   const enterClass = useEnterOnceClass();
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
@@ -331,9 +336,10 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
           <DefaultHomeWidgets />
         </div>
 
-        {/* Rested notifications are content-sized and capped so apps retain
-            the usable remainder. Expansion gives the shade the full remainder
-            and pushes the mounted app region out of interaction. */}
+        {/* Rested notifications are content-sized and flex-shrink into the
+            actual remainder below the header. The desktop cap leaves useful
+            room for ranked widgets on taller screens; explicit expansion still
+            gives the shade the full remainder and displaces that region. */}
         <div
           data-home-notification-region=""
           className={cn(
@@ -345,7 +351,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
           <NotificationsHomeCenter
             emptyGestureTargetRef={homeScreenRef}
             shadeLayoutTargetRef={homeContentColumnRef}
-            onShadeExpandedChange={handleShadeExpandedChange}
+            onShadeOccupancyChange={handleShadeExpandedChange}
           />
         </div>
 

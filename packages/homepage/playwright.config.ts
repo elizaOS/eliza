@@ -13,6 +13,9 @@ const baseURL = resolveHomepageE2eBaseUrl();
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
+  // The homepage's WebGL scenes contend for one software GPU on hosted CI.
+  // Serial CI execution keeps terminal canvas frames reproducible.
+  workers: process.env.CI ? 1 : undefined,
   retries: process.env.CI ? 2 : 1,
   reporter: "list",
   timeout: 60_000,

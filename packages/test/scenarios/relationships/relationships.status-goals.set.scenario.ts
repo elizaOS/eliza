@@ -5,7 +5,7 @@ import {
   callPayloadBlob,
   describeCalls,
   successfulCalls,
-} from "../_helpers/effect-assertions.ts";
+} from "@elizaos/scenario-runner/scenario-assertions";
 
 function expectRelationshipGoalPayload(
   ctx: ScenarioContext,

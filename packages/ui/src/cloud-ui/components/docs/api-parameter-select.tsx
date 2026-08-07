@@ -22,6 +22,7 @@ export interface ApiParameterSelectProps {
   onValueChange?: (value: string) => void;
   options: ApiParameterSelectOption[];
   placeholder?: string;
+  ariaLabel?: string;
   className?: string;
 }
 
@@ -30,11 +31,13 @@ export function ApiParameterSelect({
   onValueChange,
   options,
   placeholder = "Select...",
+  ariaLabel = placeholder,
   className,
 }: ApiParameterSelectProps) {
   return (
     <Select value={value} onValueChange={onValueChange}>
       <SelectTrigger
+        aria-label={ariaLabel}
         className={cn(
           "h-10 rounded-none border-border bg-background/80 text-foreground hover:bg-muted ",
           className,

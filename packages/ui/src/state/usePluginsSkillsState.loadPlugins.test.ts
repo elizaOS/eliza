@@ -1,3 +1,4 @@
+/** Verifies loadPlugins boot-race retry through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Covers the boot-race retry contract of loadPlugins (usePluginsSkillsState):

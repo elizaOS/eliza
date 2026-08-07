@@ -4,7 +4,7 @@
  *
  * Nothing between the component and the database is mocked-of-the-subject:
  * this boots the actual Cloud API Hono route graph
- * (`packages/scripts/cloud/admin/dev/cloud-api-hono-dev.ts`) on a real port
+ * (`packages/cloud/scripts/admin/dev/cloud-api-hono-dev.ts`) on a real port
  * with PGlite + MOCK_REDIS + the in-memory R2 `BLOB` binding, performs a real
  * headless SIWE signup (viem-signed message → real `eliza_*` API key row),
  * creates a real app, and then drives the REAL `<AppFrontendHosting>` tree
@@ -152,7 +152,7 @@ beforeAll(async () => {
 
   server = spawn(
     "bun",
-    ["run", "packages/scripts/cloud/admin/dev/cloud-api-hono-dev.ts"],
+    ["run", "packages/cloud/scripts/admin/dev/cloud-api-hono-dev.ts"],
     { cwd: REPO_ROOT, env: serverEnv(), stdio: ["ignore", "inherit", "inherit"] },
   );
 

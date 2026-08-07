@@ -10,8 +10,6 @@ const ORIGINAL_FETCH = globalThis.fetch;
 // provider. OPENROUTER_API_KEY is set on purpose to prove the cerebras branch
 // never routes to OpenRouter even when an OpenRouter key is available.
 delete process.env.BITROUTER_API_KEY;
-delete process.env.AI_GATEWAY_API_KEY;
-delete process.env.AIGATEWAY_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.OPENAI_API_KEY;
 delete process.env.GROQ_API_KEY;

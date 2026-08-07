@@ -325,6 +325,21 @@ afterEach(() => {
 });
 
 describe("DiscordAccountClientPool", () => {
+	it("keeps the account facade ready promise live after manager construction", () => {
+		const { service } = makeService();
+		const state = service.accountPool.get("work");
+		if (!state) throw new Error("work account state missing");
+		state.clientReadyPromise = null;
+		const facade = service.createAccountServiceFacade(state) as {
+			clientReadyPromise: Promise<void> | null;
+		};
+
+		const assignedAfterFacadeConstruction = new Promise<void>(() => {});
+		state.clientReadyPromise = assignedAfterFacadeConstruction;
+
+		expect(facade.clientReadyPromise).toBe(assignedAfterFacadeConstruction);
+	});
+
 	it("normalizes ids, falls back to the first configured state, and clears state", () => {
 		const pool = new DiscordAccountClientPool(" Primary ");
 		const first = makeState(" Work ", null);

@@ -37,7 +37,10 @@ import {
 import { useNavigate } from "react-router-dom";
 import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
-import type { ModelBHandle } from "@/components/ModelViewers/ModelB";
+import type {
+  ChatRenderState,
+  ModelBHandle,
+} from "@/components/ModelViewers/ModelB";
 import { useT } from "@/providers/I18nProvider";
 
 // Heavy WebGL bundles stay behind Suspense so the interactive route chrome can
@@ -171,9 +174,15 @@ function AnimatedLetters({
 }
 
 export default function Leaderboard() {
-  const navigate = useNavigate();
   const t = useT();
+  const navigate = useNavigate();
   const modelRef = useRef<ModelBHandle>(null);
+  const [phoneSettled, setPhoneSettled] = useState(false);
+  const [chatRenderState, setChatRenderState] = useState<ChatRenderState>({
+    phase: "animating",
+    renderedMessages: 0,
+    totalMessages: 0,
+  });
   const [platform, setPlatform] = useState<Platform>("imessage");
   const [tryPlatform, setTryPlatform] = useState<Platform>("imessage");
   const [showUI, setShowUI] = useState(false);
@@ -656,16 +665,21 @@ export default function Leaderboard() {
     const oldIndex = prevIndex.current;
     if (newIndex === oldIndex) return;
 
+    prevIndex.current = newIndex;
     setPlatform(newPlatform);
     if (newPlatform !== "try") setTryPlatform(newPlatform);
     setSquishing(true);
     if (newPlatform !== "try") {
       modelRef.current?.spin(newIndex > oldIndex ? -1 : 1);
-      setTimeout(() => modelRef.current?.restartMessages(), 200);
+      setChatRenderState((state) => ({
+        ...state,
+        phase: "animating",
+        renderedMessages: 0,
+      }));
+      modelRef.current?.restartMessages(newPlatform, 200);
     }
     setTimeout(() => {
       setSquishing(false);
-      prevIndex.current = newIndex;
     }, 100);
 
     if (newIndex === 0) {
@@ -751,6 +765,21 @@ export default function Leaderboard() {
         aria-hidden="true"
         className="fixed inset-0 pointer-events-none mix-blend-overlay bg-[url('/grain.webp')]"
       />
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 pointer-events-none"
+        data-phone-model={
+          phoneSettled &&
+          chatRenderState.phase === "terminal" &&
+          chatRenderState.totalMessages > 0 &&
+          chatRenderState.renderedMessages === chatRenderState.totalMessages
+            ? "settled"
+            : "loading"
+        }
+        data-chat-phase={chatRenderState.phase}
+        data-chat-rendered-messages={chatRenderState.renderedMessages}
+        data-chat-total-messages={chatRenderState.totalMessages}
+      />
       <Suspense fallback={null}>
         <ModelB
           ref={modelRef}
@@ -758,6 +787,8 @@ export default function Leaderboard() {
           switcherOpen={switcherOpen}
           onWaitingChange={setWaiting}
           onVideoClick={handleVideoClick}
+          onReady={() => setPhoneSettled(true)}
+          onChatRenderStateChange={setChatRenderState}
           onBackClick={handleLoginClick}
           onSwitcherDone={handleSwitcherDone}
           onSwitcherOpen={handleSwitcherOpen}

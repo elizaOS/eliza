@@ -1,5 +1,5 @@
 // Wraps the shared PTY console in a full terminal pane.
-import { client } from "@elizaos/ui";
+import { client } from "@elizaos/ui/api";
 import { useEffect, useRef } from "react";
 
 /**

@@ -1,11 +1,4 @@
-/**
- * Inline code span detection for markdown.
- *
- * Handles backtick-delimited inline code spans with proper
- * tracking of state across streaming chunks.
- *
- * @module markdown/code-spans
- */
+/** Detects backtick-delimited inline code while preserving state across streamed chunks. */
 
 import { type FenceSpan, parseFenceSpans } from "./fences.js";
 

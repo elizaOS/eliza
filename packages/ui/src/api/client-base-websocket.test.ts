@@ -1,3 +1,4 @@
+/** Verifies ElizaClient websocket connection policy through the package's configured test harness. */
 // @vitest-environment jsdom
 // @vitest-environment-options {"url":"https://localhost/"}
 
@@ -6,6 +7,7 @@
  * network-status-change event it emits. WebSocket stubbed, no live server.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NETWORK_STATUS_CHANGE_EVENT } from "../events";
 import { __resetNetworkStatusForTests, ElizaClient } from "./client-base";
@@ -80,8 +82,32 @@ function stubWindowProtocol(protocol: string): void {
   );
 }
 
+// Stub the page origin (protocol + host) the same-origin WS derivation reads
+// when the client has no explicit base — the self-hosted "nginx in front of
+// the agent on a portless HTTPS domain" shape.
+function stubWindowOrigin(protocol: string, host: string): void {
+  const jsdomWindow = window;
+  const location = new Proxy(jsdomWindow.location, {
+    get(target, property) {
+      if (property === "protocol") return protocol;
+      if (property === "host") return host;
+      return Reflect.get(target, property, target);
+    },
+  });
+  vi.stubGlobal(
+    "window",
+    new Proxy(jsdomWindow, {
+      get(target, property) {
+        if (property === "location") return location;
+        return Reflect.get(target, property, target);
+      },
+    }),
+  );
+}
+
 describe("ElizaClient websocket connection policy", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     __resetNetworkStatusForTests();
   });
@@ -131,6 +157,36 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls[0]).toContain("token=agent-token");
   });
 
+  it("opens a same-origin websocket from a portless HTTPS host in a plain browser", () => {
+    // Regression (sol-dev 2026-08-05): the Capacitor synthetic-host guard was
+    // unconditional, so a browser served same-origin from `https://host/` (no
+    // port — nginx terminating TLS in front of the agent) silently never
+    // opened /ws. REST kept working, so server-pushed WS events
+    // (proactive-message: voice-turn mirrors, proactive sends) never rendered
+    // live in the open thread.
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("https:", "sol-dev.example.test");
+
+    const client = new ElizaClient("", "agent-token");
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("wss://sol-dev.example.test/ws?");
+    expect(createdUrls[0]).toContain("token=agent-token");
+  });
+
+  it("still skips the synthetic-host websocket on Capacitor native", () => {
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("https:", "myapp.app");
+    vi.stubGlobal("Capacitor", { isNativePlatform: () => true });
+
+    const client = new ElizaClient("", "agent-token");
+    client.connectWs();
+
+    // Native WebView bundle host has no server behind it — no socket attempt.
+    expect(createdUrls).toEqual([]);
+  });
+
   it("does not open mixed-content ws from an https origin", () => {
     const createdUrls = stubWebSocket();
 
@@ -163,6 +219,39 @@ describe("ElizaClient websocket connection policy", () => {
       maxReconnectAttempts: 15,
       disconnectedAt: null,
     });
+  });
+
+  it("opens loopback ws from a local Android sideload renderer", () => {
+    const createdUrls = stubWebSocket();
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    const client = new ElizaClient("http://127.0.0.1:31338", "agent-token");
+
+    client.connectWs();
+
+    expect(window.location.protocol).toBe("https:");
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://127.0.0.1:31338/ws?");
+  });
+
+  it("opens trusted private-LAN ws from a local Android sideload renderer", () => {
+    const createdUrls = stubWebSocket();
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    const client = new ElizaClient("http://192.168.1.10:31338", "agent-token");
+
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://192.168.1.10:31338/ws?");
+  });
+
+  it("still blocks public cleartext ws from a local Android sideload renderer", () => {
+    const createdUrls = stubWebSocket();
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    const client = new ElizaClient("http://203.0.113.10:31338", "agent-token");
+
+    client.connectWs();
+
+    expect(createdUrls).toEqual([]);
   });
 
   it("still opens cleartext ws from an HTTP page", () => {

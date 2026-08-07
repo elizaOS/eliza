@@ -1,6 +1,6 @@
 /** Scenario fixture for reminder alarm sets macos alarm; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectCalendarResultData } from "../_helpers/calendar-assertions.ts";
+import { expectCalendarResultData } from "@elizaos/scenario-runner/scenario-assertions";
 
 export default scenario({
   lane: "live-only",

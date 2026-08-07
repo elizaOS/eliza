@@ -162,6 +162,7 @@ async function loadNodePinnedFetchDefaults(): Promise<NodePinnedFetchDefaults | 
 	try {
 		return await nodePinnedFetchDefaults;
 	} catch (error) {
+		// error-policy:J2 Fail closed with transport context and preserve the import cause.
 		// Keep the rejected import memoized. In a Node-like runtime the pinned
 		// transport is the DNS-rebinding defense; once it is known unavailable,
 		// guarded fetches must keep failing closed for this process.
@@ -173,6 +174,7 @@ async function loadNodePinnedFetchDefaults(): Promise<NodePinnedFetchDefaults | 
 			"SSRF guard: pinned DNS transport (node-pinned-fetch) failed to load on a Node-like runtime. " +
 				"Refusing to fall back to unpinned fetch (DNS rebinding risk). " +
 				`Underlying error: ${error instanceof Error ? error.message : String(error)}`,
+			{ cause: error },
 		);
 	}
 }
@@ -300,9 +302,11 @@ export async function fetchWithSsrfGuard(
 		let parsedUrl: URL;
 		try {
 			parsedUrl = new URL(currentUrl);
-		} catch {
+		} catch (error) {
+			// error-policy:J3 URL text is untrusted input; release resources and
+			// return an explicit invalid-URL failure.
 			await release();
-			throw new Error("Invalid URL: must be http or https");
+			throw new Error("Invalid URL: must be http or https", { cause: error });
 		}
 		if (!["http:", "https:"].includes(parsedUrl.protocol)) {
 			await release();
@@ -429,6 +433,7 @@ export async function fetchWithSsrfGuard(
 				release,
 			};
 		} catch (err) {
+			// error-policy:J2 Release per-request resources before preserving the failure.
 			await release();
 			throw err;
 		}

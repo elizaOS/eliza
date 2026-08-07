@@ -192,9 +192,8 @@ export class SecretsService extends Service {
 
 		// E4 precedence: when the broker backend is active it is consulted FIRST.
 		// A hit returns a serialized non-decrypting handle (never plaintext); a
-		// miss falls through to the local composite default. Under strict mode a
-		// broker error throws (SecretsBrokerUnavailableError) rather than silently
-		// degrading to the plaintext-capable local store — the store enforces this.
+		// miss falls through to the local composite default. Broker errors always
+		// throw rather than silently degrading to the plaintext-capable local store.
 		if (this.broker) {
 			const handle = await this.broker.get(key, context);
 			if (handle !== null) {

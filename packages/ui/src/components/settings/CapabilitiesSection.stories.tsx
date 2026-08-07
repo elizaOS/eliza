@@ -18,9 +18,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// No backend in Storybook: the auto-training fetch on mount rejects, so the
-// Auto-training row settles into its "unavailable" state. The capability
-// toggles and the Capability Router connection form render fully.
 export const Default: Story = {};
 
 export const AllCapabilitiesEnabled: Story = {

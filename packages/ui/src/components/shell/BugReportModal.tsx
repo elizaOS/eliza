@@ -71,10 +71,10 @@ const modalContentClassName =
   "w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,52rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0";
 
 const modalInputClassName =
-  "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted/70";
+  "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted";
 
 const modalTextareaClassName =
-  "min-h-[88px] rounded-sm border-border bg-bg-hover px-4 py-3 text-sm text-txt placeholder:text-muted/70";
+  "min-h-[88px] rounded-sm border-border bg-bg-hover px-4 py-3 text-sm text-txt placeholder:text-muted";
 
 function environmentOptionLabel(
   t: ReturnType<typeof useApp>["t"],

@@ -12,13 +12,7 @@
  * - webview.messages: Messages the webview receives (Bun sends these)
  */
 
-import type {
-  InstalledRemotePluginSnapshot,
-  JsonValue,
-  RemotePluginListEntry,
-  RemotePluginPermissionGrant,
-  RemotePluginStoreSnapshot,
-} from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import type { RPCSchema } from "electrobun/bun";
 import type {
   DatabaseBackupResult,
@@ -849,68 +843,6 @@ export interface CorePluginsSnapshot {
   optional: CorePluginEntry[];
 }
 
-export type RemotePluginWorkerState =
-  | "stopped"
-  | "starting"
-  | "running"
-  | "error";
-
-export interface RemotePluginWorkerStatus {
-  id: string;
-  state: RemotePluginWorkerState;
-  startedAt: number | null;
-  stoppedAt: number | null;
-  error: string | null;
-}
-
-export interface RemotePluginInstallFromDirectoryRequest {
-  sourceDir: string;
-  devMode?: boolean;
-  permissionsGranted?: RemotePluginPermissionGrant;
-  currentHash?: string | null;
-}
-
-export interface RemotePluginUninstallResult {
-  removed: boolean;
-  remotePlugin: RemotePluginListEntry | null;
-}
-
-export interface RemotePluginLogsSnapshot {
-  id: string;
-  path: string;
-  text: string;
-  truncated: boolean;
-}
-
-export interface RemotePluginInvokeWorkerRequest {
-  id: string;
-  method: string;
-  params?: JsonValue;
-  windowId?: string;
-}
-
-export interface RemotePluginTailWorkerEventsRequest {
-  id: string;
-  afterSequence?: number;
-  limit?: number;
-}
-
-export interface RemotePluginWorkerEventRecord {
-  remotePluginId: string;
-  sequence: number;
-  name: string;
-  payload: JsonValue | null;
-  timestamp: string;
-}
-
-export interface RemotePluginWorkerEventsTailSnapshot {
-  id: string;
-  events: RemotePluginWorkerEventRecord[];
-  nextSequence: number;
-  minimumSequence: number | null;
-  gapBeforeSequence: number | null;
-}
-
 export interface DesktopStartupDiagnostics {
   state: "not_started" | "starting" | "running" | "stopped" | "error";
   phase: string;
@@ -1179,58 +1111,6 @@ export type ElizaDesktopRPCSchema = {
       getCorePlugins: {
         params: undefined;
         response: CorePluginsSnapshot;
-      };
-      remotePluginGetStoreRoot: {
-        params: undefined;
-        response: { storeRoot: string };
-      };
-      remotePluginList: {
-        params: undefined;
-        response: { remotePlugins: RemotePluginListEntry[] };
-      };
-      remotePluginGetStoreSnapshot: {
-        params: undefined;
-        response: RemotePluginStoreSnapshot;
-      };
-      remotePluginGet: {
-        params: { id: string };
-        response: InstalledRemotePluginSnapshot | null;
-      };
-      remotePluginInstallFromDirectory: {
-        params: RemotePluginInstallFromDirectoryRequest;
-        response: InstalledRemotePluginSnapshot;
-      };
-      remotePluginUninstall: {
-        params: { id: string };
-        response: RemotePluginUninstallResult;
-      };
-      remotePluginStartWorker: {
-        params: { id: string };
-        response: RemotePluginWorkerStatus;
-      };
-      remotePluginStopWorker: {
-        params: { id: string };
-        response: RemotePluginWorkerStatus;
-      };
-      remotePluginGetWorkerStatus: {
-        params: { id: string };
-        response: RemotePluginWorkerStatus | null;
-      };
-      remotePluginListWorkerStatuses: {
-        params: undefined;
-        response: { workers: RemotePluginWorkerStatus[] };
-      };
-      remotePluginGetLogs: {
-        params: { id: string; maxBytes?: number };
-        response: RemotePluginLogsSnapshot;
-      };
-      remotePluginInvokeWorker: {
-        params: RemotePluginInvokeWorkerRequest;
-        response: JsonValue | null;
-      };
-      remotePluginTailWorkerEvents: {
-        params: RemotePluginTailWorkerEventsRequest;
-        response: RemotePluginWorkerEventsTailSnapshot;
       };
       dynamicViewRegister: {
         params: DynamicViewRegisterParams;
@@ -2339,8 +2219,6 @@ export type ElizaDesktopRPCSchema = {
       desktopManagedWindowsChanged: {
         windows: DesktopManagedWindowSnapshot[];
       };
-      remotePluginStoreChanged: { snapshot: RemotePluginStoreSnapshot };
-      remotePluginWorkerChanged: { status: RemotePluginWorkerStatus };
 
       // Canvas: Window events
       canvasWindowEvent: {
@@ -2575,19 +2453,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:setManagedWindowAlwaysOnTop": "desktopSetManagedWindowAlwaysOnTop",
 
   // Remote Plugins
-  "remote-plugin:getStoreRoot": "remotePluginGetStoreRoot",
-  "remote-plugin:list": "remotePluginList",
-  "remote-plugin:getStoreSnapshot": "remotePluginGetStoreSnapshot",
-  "remote-plugin:get": "remotePluginGet",
-  "remote-plugin:installFromDirectory": "remotePluginInstallFromDirectory",
-  "remote-plugin:uninstall": "remotePluginUninstall",
-  "remote-plugin:startWorker": "remotePluginStartWorker",
-  "remote-plugin:stopWorker": "remotePluginStopWorker",
-  "remote-plugin:getWorkerStatus": "remotePluginGetWorkerStatus",
-  "remote-plugin:listWorkerStatuses": "remotePluginListWorkerStatuses",
-  "remote-plugin:getLogs": "remotePluginGetLogs",
-  "remote-plugin:invokeWorker": "remotePluginInvokeWorker",
-  "remote-plugin:tailWorkerEvents": "remotePluginTailWorkerEvents",
   "dynamic-view:register": "dynamicViewRegister",
   "dynamic-view:unregister": "dynamicViewUnregister",
   "dynamic-view:list": "dynamicViewList",
@@ -2810,8 +2675,6 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
   "desktop:windowClose": "desktopWindowClose",
   "desktop:shutdownStarted": "desktopShutdownStarted",
   "desktop:managedWindowsChanged": "desktopManagedWindowsChanged",
-  "remote-plugin:storeChanged": "remotePluginStoreChanged",
-  "remote-plugin:workerChanged": "remotePluginWorkerChanged",
   "canvas:windowEvent": "canvasWindowEvent",
   "kiosk:viewEvent": "kioskViewEvent",
   "talkmode:audioChunkPush": "talkmodeAudioChunkPush",

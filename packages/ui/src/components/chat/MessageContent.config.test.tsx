@@ -1,3 +1,4 @@
+/** Verifies [CONFIG] marker parsing through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Coverage for the `[CONFIG:<pluginId>]` chat marker (#9304): the parser side

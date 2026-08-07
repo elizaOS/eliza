@@ -1,6 +1,6 @@
 /**
  * McpService — owns the lifecycle of every MCP server connection: validates each
- * config through @elizaos/security, builds the stdio or HTTP-SSE transport,
+ * config through the core security boundary, builds the stdio or HTTP-SSE transport,
  * connects the SDK client, and discovers its tools, resources, and resource
  * templates.
  *
@@ -10,11 +10,12 @@
  * restartConnection to the action and route layers. Tool input schemas are
  * rewritten per model provider via the tool-compatibility layer.
  */
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { validateMcpServerConfig } from "@elizaos/security/mcp-server-config";
+import { ElizaError, fetchWithSsrfGuard, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type {
   CallToolResult,
   Resource,
@@ -46,6 +47,16 @@ import {
   type StdioMcpServerConfig,
 } from "./types";
 import { buildMcpProviderData } from "./utils/mcp";
+
+/** Route every MCP HTTP request through core's DNS-pinned SSRF transport. */
+export async function guardedMcpFetch(input: string | URL, init?: RequestInit): Promise<Response> {
+  const guarded = await fetchWithSsrfGuard({
+    url: input.toString(),
+    ...(init ? { init } : {}),
+  });
+  await guarded.release();
+  return guarded.response;
+}
 
 export class McpService extends Service {
   static serviceType: string = MCP_SERVICE_NAME;
@@ -112,45 +123,43 @@ export class McpService extends Service {
 
   private getMcpSettings(): McpSettings | undefined {
     const rawSettings = this.runtime.getSetting("mcp");
-    let settings: McpSettings | null | undefined = null;
-
-    if (isMcpSettings(rawSettings)) {
-      settings = rawSettings;
-    }
-
-    if (!settings?.servers) {
-      const characterSettings = this.runtime.character.settings;
-      if (
-        characterSettings &&
-        typeof characterSettings === "object" &&
-        "mcp" in characterSettings
-      ) {
-        const characterMcpSettings = characterSettings.mcp;
-        if (isMcpSettings(characterMcpSettings)) {
-          settings = characterMcpSettings;
-        }
+    if (rawSettings !== undefined && rawSettings !== null) {
+      if (!isMcpSettings(rawSettings)) {
+        throw new ElizaError("MCP settings are malformed", {
+          code: "MCP_SETTINGS_INVALID",
+          severity: "fatal",
+        });
       }
+      return rawSettings;
     }
 
-    if (settings && typeof settings === "object" && settings.servers) {
-      return settings;
+    const characterSettings = this.runtime.character.settings;
+    if (characterSettings && typeof characterSettings === "object" && "mcp" in characterSettings) {
+      const characterMcpSettings = characterSettings.mcp;
+      if (!isMcpSettings(characterMcpSettings)) {
+        throw new ElizaError("Character MCP settings are malformed", {
+          code: "MCP_SETTINGS_INVALID",
+          severity: "fatal",
+        });
+      }
+      return characterMcpSettings;
     }
 
     return undefined;
   }
 
-  private async filterValidatedServerConfigs(
+  private async validateServerConfigs(
     serverConfigs: Readonly<Record<string, McpServerConfig>>
   ): Promise<Record<string, McpServerConfig>> {
     const validated: Record<string, McpServerConfig> = {};
     for (const [name, config] of Object.entries(serverConfigs)) {
       const rejection = await validateMcpServerConfig(config as unknown as Record<string, unknown>);
       if (rejection) {
-        logger.error(
-          { server: name, rejection },
-          "Skipping MCP server with invalid or unsafe config"
-        );
-        continue;
+        throw new ElizaError(`MCP server "${name}" has an invalid or unsafe config`, {
+          code: "MCP_SERVER_CONFIG_REJECTED",
+          context: { server: name, rejection },
+          severity: "fatal",
+        });
       }
       validated[name] = config;
     }
@@ -160,7 +169,7 @@ export class McpService extends Service {
   private async updateServerConnections(
     serverConfigs: Readonly<Record<string, McpServerConfig>>
   ): Promise<void> {
-    const safeConfigs = await this.filterValidatedServerConfigs(serverConfigs);
+    const safeConfigs = await this.validateServerConfigs(serverConfigs);
     const currentNames = new Set(this.connections.keys());
     const newNames = new Set(Object.keys(safeConfigs));
 
@@ -180,7 +189,7 @@ export class McpService extends Service {
       }
     });
 
-    await Promise.allSettled(connectionPromises);
+    await Promise.all(connectionPromises);
   }
 
   private async initializeConnection(name: string, config: McpServerConfig): Promise<void> {
@@ -193,7 +202,7 @@ export class McpService extends Service {
     this.connectionStates.set(name, state);
 
     const client = new Client({ name: "elizaOS", version: "1.0.0" }, { capabilities: {} });
-    const transport: StdioClientTransport | SSEClientTransport =
+    const transport: McpConnection["transport"] =
       config.type === "stdio"
         ? await this.buildStdioClientTransport(name, config)
         : await this.buildHttpClientTransport(name, config);
@@ -409,7 +418,7 @@ export class McpService extends Service {
   private async buildHttpClientTransport(
     name: string,
     config: HttpMcpServerConfig
-  ): Promise<SSEClientTransport> {
+  ): Promise<SSEClientTransport | StreamableHTTPClientTransport> {
     if (!config.url) {
       throw new Error(`Missing URL for HTTP MCP server ${name}`);
     }
@@ -422,7 +431,11 @@ export class McpService extends Service {
       throw new Error(`MCP remote server "${name}" rejected at connect: ${rejection}`);
     }
 
-    return new SSEClientTransport(new URL(config.url));
+    const url = new URL(config.url);
+    if (config.type === "streamable-http") {
+      return new StreamableHTTPClientTransport(url, { fetch: guardedMcpFetch });
+    }
+    return new SSEClientTransport(url, { fetch: guardedMcpFetch });
   }
 
   private appendErrorMessage(connection: McpConnection, error: string): void {

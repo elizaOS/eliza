@@ -59,31 +59,21 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const LINKED_WORKSPACE_PACKAGES = [
   "packages/agent",
   "packages/core",
-  "packages/contracts",
   "packages/cloud/routing",
   "packages/app-core",
   "packages/cloud/sdk",
   "packages/shared",
   "packages/skills",
   "packages/vault",
-  // Compatibility package for remote workers that still import the historical
-  // @elizaos/plugin-worker-runtime entrypoint. It wraps
-  // @elizaos/plugin-remote-manifest/worker-runtime but still needs a linked
-  // workspace package in Docker images.
-  "packages/plugin-worker-runtime",
   "plugins/plugin-documents",
   "plugins/plugin-personal-assistant",
   "plugins/plugin-task-coordinator",
-  "plugins/plugin-training",
   "packages/registry",
-  "plugins/plugin-edge-tts",
   "plugins/plugin-agent-orchestrator",
   "plugins/plugin-app-control",
   "plugins/plugin-commands",
-  "packages/plugin-remote-manifest",
   "packages/auth",
   "packages/logger",
-  "packages/security",
   "plugins/plugin-agent-skills",
   "plugins/plugin-app-manager",
   "plugins/plugin-browser",
@@ -98,8 +88,7 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-pdf",
   "plugins/plugin-registry",
   "plugins/plugin-signal",
-  "plugins/plugin-simple-views",
-  "plugins/plugin-streaming",
+  "plugins/plugin-notes",
   "plugins/plugin-native-activity-tracker",
   "plugins/plugin-sql",
   "plugins/plugin-telegram",
@@ -107,7 +96,6 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-wallet",
   "plugins/plugin-whatsapp",
   "plugins/plugin-workflow",
-  "plugins/plugin-x402",
 ];
 
 // Native / desktop / GPU packages that the image deliberately removes or that

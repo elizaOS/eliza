@@ -1,6 +1,6 @@
 /**
  * Keyless coverage of per-view voice-transcript navigation. Runs on the
- * pr-deterministic lane under the LLM proxy.
+ * pr-deterministic lane under the model provider.
  */
 import type {
   CapturedAction,

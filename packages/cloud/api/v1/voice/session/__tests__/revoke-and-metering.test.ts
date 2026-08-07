@@ -1,6 +1,6 @@
 /**
  * Revoke-to-silence (SEC-6) and metering-enforcement (SEC-15) against the REAL
- * VoiceSession + registry + Deepgram Flux adapter. Fakes are transports only.
+ * VoiceSession + registry + Cartesia Ink adapter. Fakes are transports only.
  */
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
@@ -27,7 +27,7 @@ import {
   getVoiceSessionRegistry,
 } from "../../../../../shared/src/lib/voice-session/session-registry";
 import type { VoiceSessionDownlink } from "../../../../../shared/src/lib/voice-session/ws-handler";
-import type { DeepgramFluxWebSocket } from "../../stt/providers/deepgram-flux";
+import type { CartesiaInkWebSocket } from "../../stt/providers/cartesia-ink";
 import { VoiceSession } from "../lib/session";
 
 beforeAll(() => {
@@ -35,8 +35,8 @@ beforeAll(() => {
 });
 afterEach(() => __resetVoiceSessionRegistryForTests());
 
-class FakeFluxSocket implements DeepgramFluxWebSocket {
-  static instances: FakeFluxSocket[] = [];
+class FakeInkSocket implements CartesiaInkWebSocket {
+  static instances: FakeInkSocket[] = [];
   readyState = 1;
   binaryType: BinaryType = "arraybuffer";
   closed = false;
@@ -44,7 +44,7 @@ class FakeFluxSocket implements DeepgramFluxWebSocket {
   sentChunks: number[] = [];
   private listeners = new Map<string, Set<(e: unknown) => void>>();
   constructor() {
-    FakeFluxSocket.instances.push(this);
+    FakeInkSocket.instances.push(this);
     queueMicrotask(() => this.fire("open", {}));
   }
   send(data: string | ArrayBuffer | ArrayBufferView) {
@@ -123,7 +123,7 @@ function buildSession(opts: {
   usageStore: VoiceUsageStore;
   usageLimits?: VoiceUsageLimits;
   downlink: VoiceSessionDownlink;
-  flux: () => FakeFluxSocket;
+  ink: () => FakeInkSocket;
 }): VoiceSession {
   return new VoiceSession({
     sessionId: "sess-r",
@@ -133,8 +133,7 @@ function buildSession(opts: {
     agentId: "agent-1",
     conversationId: "conv-1",
     tokenExpSeconds: Math.floor(Date.now() / 1000) + 120,
-    deepgramApiKey: "dg",
-    deepgramWebSocketFactory: opts.flux as never,
+    cartesiaInkWebSocketFactory: opts.ink as never,
     cartesiaApiKey: "ct",
     cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
     cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
@@ -153,7 +152,7 @@ function buildSession(opts: {
 const flush = () => new Promise((r) => setTimeout(r, 15));
 
 describe("revoke-to-silence (SEC-6)", () => {
-  test("registry sever closes the live Flux socket well under 500ms", async () => {
+  test("registry sever closes the live Ink socket well under 500ms", async () => {
     const dl = collectDownlink();
     const usageStore: VoiceUsageStore = {
       async checkAndRecord() {
@@ -169,12 +168,12 @@ describe("revoke-to-silence (SEC-6)", () => {
     const session = buildSession({
       usageStore,
       downlink: dl.downlink,
-      flux: () => new FakeFluxSocket(),
+      ink: () => new FakeInkSocket(),
     });
     session.start();
     await flush();
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    expect(flux.closed).toBe(false);
+    const ink = FakeInkSocket.instances.at(-1)!;
+    expect(ink.closed).toBe(false);
 
     const t0 = Date.now();
     const severed = getVoiceSessionRegistry().severBySessionId(
@@ -184,7 +183,7 @@ describe("revoke-to-silence (SEC-6)", () => {
     const elapsed = Date.now() - t0;
 
     expect(severed).toBe(true);
-    expect(flux.closed).toBe(true);
+    expect(ink.closed).toBe(true);
     expect(elapsed).toBeLessThanOrEqual(500);
     expect(dl.ref.closed).not.toBeNull();
   });
@@ -211,8 +210,7 @@ describe("revoke-to-silence (SEC-6)", () => {
       agentId: "agent-1",
       conversationId: "conv-1",
       tokenExpSeconds: Math.floor(Date.now() / 1000) + 120,
-      deepgramApiKey: "dg",
-      deepgramWebSocketFactory: (() => new FakeFluxSocket()) as never,
+      cartesiaInkWebSocketFactory: (() => new FakeInkSocket()) as never,
       cartesiaApiKey: "ct",
       cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
       cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
@@ -226,12 +224,12 @@ describe("revoke-to-silence (SEC-6)", () => {
     });
     session.start();
     await flush();
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    expect(flux.closed).toBe(false);
+    const ink = FakeInkSocket.instances.at(-1)!;
+    expect(ink.closed).toBe(false);
     // Simulate the revoke landing on ANOTHER worker (durable store flips).
     revoked = true;
     await new Promise((r) => setTimeout(r, 500));
-    expect(flux.closed).toBe(true);
+    expect(ink.closed).toBe(true);
   });
 
   test("client disconnect self-severs the provider socket", async () => {
@@ -250,13 +248,13 @@ describe("revoke-to-silence (SEC-6)", () => {
     const session = buildSession({
       usageStore,
       downlink: dl.downlink,
-      flux: () => new FakeFluxSocket(),
+      ink: () => new FakeInkSocket(),
     });
     session.start();
     await flush();
-    const flux = FakeFluxSocket.instances.at(-1)!;
+    const ink = FakeInkSocket.instances.at(-1)!;
     session.sever("client_disconnect");
-    expect(flux.closed).toBe(true);
+    expect(ink.closed).toBe(true);
   });
 });
 
@@ -283,24 +281,24 @@ describe("metering enforcement (SEC-15)", () => {
     const session = buildSession({
       usageStore: denyingStore,
       downlink: dl.downlink,
-      flux: () => new FakeFluxSocket(),
+      ink: () => new FakeInkSocket(),
     });
     session.start();
     await flush();
-    const flux = FakeFluxSocket.instances.at(-1)!;
+    const ink = FakeInkSocket.instances.at(-1)!;
 
     // A single small chunk triggers the fail-closed admission check BEFORE any
     // audio is forwarded. The denying store rejects it -> quota_exhausted.
-    session.pushUplinkAudio(new Uint8Array(2560));
+    session.pushUplinkAudio(new Uint8Array(3200));
     await flush();
 
     const codes = dl.control
       .filter((f) => f.t === "error")
       .map((f) => (f as { code: string }).code);
     expect(codes).toContain("quota_exhausted");
-    expect(flux.closed).toBe(true);
+    expect(ink.closed).toBe(true);
     // Fail-closed: the denied audio was NEVER forwarded to the provider.
-    expect(flux.sentChunks.length).toBe(0);
+    expect(ink.sentChunks.length).toBe(0);
   });
 
   test("metering uses server-derived byte count, never a client claim", async () => {
@@ -321,13 +319,13 @@ describe("metering enforcement (SEC-15)", () => {
     const session = buildSession({
       usageStore: store,
       downlink: dl.downlink,
-      flux: () => new FakeFluxSocket(),
+      ink: () => new FakeInkSocket(),
     });
     session.start();
     await flush();
     // A small admission chunk records the server-derived nominal window; the
     // amount is derived by the SERVER, never taken from any client claim.
-    session.pushUplinkAudio(new Uint8Array(2560));
+    session.pushUplinkAudio(new Uint8Array(3200));
     await flush();
     expect(recorded.length).toBeGreaterThan(0);
     // The admission charge is the server's nominal window (5s == 5/60 min).

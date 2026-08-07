@@ -2,11 +2,19 @@
  * Full-viewport WebGL shader background for the homepage onboarding flow.
  */
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import "./gradientWaveMaterial";
 
-function ShaderPlane({ interactive }: { interactive: boolean }) {
+function ShaderPlane({
+  interactive,
+  reducedMotion,
+  onRendered,
+}: {
+  interactive: boolean;
+  reducedMotion: boolean;
+  onRendered: () => void;
+}) {
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const mouseRaw = useRef(new THREE.Vector2(0.5, 0.5));
   const mouseSmooth = useRef(new THREE.Vector2(0.5, 0.5));
@@ -15,7 +23,13 @@ function ShaderPlane({ interactive }: { interactive: boolean }) {
   const previousMouse = useRef(new THREE.Vector2(0.5, 0.5));
   const clickPos = useRef(new THREE.Vector2(0.5, 0.5));
   const clickTime = useRef(100);
+  const renderedFrame = useRef(false);
+  const readinessFrame = useRef(0);
   const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    return () => cancelAnimationFrame(readinessFrame.current);
+  }, []);
 
   useEffect(() => {
     if (!interactive) return;
@@ -47,27 +61,41 @@ function ShaderPlane({ interactive }: { interactive: boolean }) {
     const mat = matRef.current;
     if (!mat) return;
 
-    mat.uniforms.uTime.value = _state.clock.elapsedTime;
     mat.uniforms.uResolution.value.set(
       _state.gl.domElement.clientWidth,
       _state.gl.domElement.clientHeight,
     );
-    mat.uniforms.uClickPos.value.copy(clickPos.current);
 
-    previousMouse.current.copy(mouseSmooth.current);
-    mouseSmooth.current.lerp(mouseRaw.current, 0.08);
-    mat.uniforms.uMouse.value.copy(mouseSmooth.current);
+    if (reducedMotion) {
+      mat.uniforms.uTime.value = 0;
+      mat.uniforms.uMouse.value.set(0.5, 0.5);
+      mat.uniforms.uMouseVel.value.set(0, 0);
+      mat.uniforms.uClickPos.value.set(0.5, 0.5);
+      mat.uniforms.uClickTime.value = 100;
+    } else {
+      mat.uniforms.uTime.value = _state.clock.elapsedTime;
+      mat.uniforms.uClickPos.value.copy(clickPos.current);
 
-    const safeDelta = Math.max(delta, 0.001);
-    mouseVel.current.set(
-      (mouseSmooth.current.x - previousMouse.current.x) / safeDelta,
-      (mouseSmooth.current.y - previousMouse.current.y) / safeDelta,
-    );
-    velSmooth.current.lerp(mouseVel.current, 0.1);
-    mat.uniforms.uMouseVel.value.copy(velSmooth.current);
+      previousMouse.current.copy(mouseSmooth.current);
+      mouseSmooth.current.lerp(mouseRaw.current, 0.08);
+      mat.uniforms.uMouse.value.copy(mouseSmooth.current);
 
-    clickTime.current += delta;
-    mat.uniforms.uClickTime.value = clickTime.current;
+      const safeDelta = Math.max(delta, 0.001);
+      mouseVel.current.set(
+        (mouseSmooth.current.x - previousMouse.current.x) / safeDelta,
+        (mouseSmooth.current.y - previousMouse.current.y) / safeDelta,
+      );
+      velSmooth.current.lerp(mouseVel.current, 0.1);
+      mat.uniforms.uMouseVel.value.copy(velSmooth.current);
+
+      clickTime.current += delta;
+      mat.uniforms.uClickTime.value = clickTime.current;
+    }
+
+    if (!renderedFrame.current) {
+      renderedFrame.current = true;
+      readinessFrame.current = requestAnimationFrame(onRendered);
+    }
   });
 
   return (
@@ -105,19 +133,28 @@ function ShaderFrameDriver({ reducedMotion }: { reducedMotion: boolean }) {
 }
 
 export default function ShaderBackground() {
+  const [renderState, setRenderState] = useState<"loading" | "settled">(
+    "loading",
+  );
   const [reducedMotion, setReducedMotion] = useState(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReducedMotion(query.matches);
+    const update = () => {
+      setRenderState("loading");
+      setReducedMotion(query.matches);
+    };
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
 
+  const handleRendered = useCallback(() => setRenderState("settled"), []);
+
   return (
     <div
+      data-shader-background={renderState}
       style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none" }}
     >
       <Canvas
@@ -132,7 +169,12 @@ export default function ShaderBackground() {
         }}
         style={{ pointerEvents: reducedMotion ? "none" : "auto" }}
       >
-        <ShaderPlane interactive={!reducedMotion} />
+        <ShaderPlane
+          key={reducedMotion ? "reduced" : "animated"}
+          interactive={!reducedMotion}
+          reducedMotion={reducedMotion}
+          onRendered={handleRendered}
+        />
         <ShaderFrameDriver reducedMotion={reducedMotion} />
       </Canvas>
     </div>

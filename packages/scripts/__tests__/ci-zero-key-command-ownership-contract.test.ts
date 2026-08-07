@@ -54,11 +54,11 @@ function buildRepo(overrides: Record<string, string>): string {
       jobName: "Zero-Key scenario",
       commands: ["bun run --cwd packages/scenario-runner test"],
     }),
-    "keyless-harness-e2e.yml": workflow({
-      name: "Keyless harness",
-      jobName: "Keyless harness",
+    "keyless-model-provider-e2e.yml": workflow({
+      name: "Deterministic model provider",
+      jobName: "Deterministic model provider",
       commands: [
-        "bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/",
+        "bunx vitest run --config packages/scenario-runner/test/mocks/vitest.config.ts",
       ],
     }),
     "ui-fixture-e2e.yml": workflow({

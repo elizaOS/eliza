@@ -1,0 +1,36 @@
+{
+  "name": "@elizaos/plugin-fish-audio",
+  "description": "Fish Audio realtime text-to-speech provider for elizaOS.",
+  "version": "0.1.0",
+  "type": "plugin",
+  "capabilities": ["text-to-speech"],
+  "settings": {
+    "ELIZA_TTS_FISH_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "default": false
+    },
+    "FISH_AUDIO_API_KEY": {
+      "type": "string",
+      "required": true,
+      "sensitive": true
+    },
+    "FISH_AUDIO_MODEL": {
+      "type": "string",
+      "required": false,
+      "default": "s2.1-pro"
+    },
+    "FISH_AUDIO_REFERENCE_ID": { "type": "string", "required": false },
+    "FISH_AUDIO_VOICE_ID": { "type": "string", "required": false },
+    "FISH_AUDIO_FORMAT": {
+      "type": "string",
+      "required": false,
+      "default": "pcm"
+    },
+    "FISH_AUDIO_SAMPLE_RATE": {
+      "type": "number",
+      "required": false,
+      "default": 24000
+    }
+  }
+}

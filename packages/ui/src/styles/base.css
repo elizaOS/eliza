@@ -11,6 +11,8 @@
      Warmth belongs in accents/gradients, never the base surface token. */
   --brand-black: #000000;
   --brand-white: #fdfaf7;
+  --launch-bg: var(--brand-black);
+  --launch-foreground: var(--brand-white);
   --brand-gray: #d1d0d4;
   --sky-0: rgba(0, 0, 0, 0.6);
   --sky-1: rgba(0, 0, 0, 0.74);
@@ -186,7 +188,7 @@
 [data-theme="dark"],
 .dark {
   --bg: var(--brand-black);
-  --bg-accent: var(--brand-black);
+  --bg-accent: rgba(255, 255, 255, 0.08);
   --bg-elevated: rgba(255, 255, 255, 0.04);
   --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-muted: rgba(255, 255, 255, 0.06);

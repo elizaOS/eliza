@@ -1,3 +1,4 @@
+/** Verifies StewardLoginSection passkey capability gating through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -40,6 +41,22 @@ const emailLoginSpies = vi.hoisted(() => ({
   verify: vi.fn(),
   poll: vi.fn(),
 }));
+
+const sessionSpies = vi.hoisted(() => ({
+  recover: vi.fn(),
+  hasCookie: false,
+}));
+
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@elizaos/shared/steward-session-client")
+    >();
+  return {
+    ...actual,
+    hasStewardAuthedCookie: () => sessionSpies.hasCookie,
+  };
+});
 
 vi.mock("@stwd/sdk", () => ({
   StewardAuth: class {
@@ -88,6 +105,7 @@ vi.mock("../../lib/steward-session", () => ({
   consumeStewardCodeFromQuery: () => null,
   consumeStewardTokensFromHash: () => null,
   exchangeStewardCodeViaApi: vi.fn(),
+  recoverStewardSessionViaCookie: sessionSpies.recover,
   refreshStewardSessionViaCookie: vi.fn(),
   syncStewardSessionCookie: vi.fn(() => Promise.resolve()),
 }));
@@ -143,11 +161,23 @@ describe("StewardLoginSection passkey capability gating", () => {
       token: "session-token",
       refreshToken: null,
     });
+    sessionSpies.recover.mockResolvedValue(null);
+    sessionSpies.hasCookie = false;
   });
 
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+  });
+
+  it("cleans a rejected cookie-only session and leaves a usable sign-in form", async () => {
+    sessionSpies.hasCookie = true;
+
+    renderSection();
+
+    await waitFor(() => expect(sessionSpies.recover).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: /Google/i })).toBeTruthy();
+    expect(screen.queryByText("Refresh token rejected")).toBeNull();
   });
 
   it("hides passkey, omits webauthn autocomplete, and routes Enter to Magic Link when unsupported", async () => {

@@ -380,6 +380,13 @@ function describeEmbeddingConfig(config: {
 }
 
 export class DocumentService extends Service {
+	reportError(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void {
+		this.runtime.reportError(scope, error, context);
+	}
 	static readonly serviceType = "documents";
 	public override config: Metadata = {};
 	capabilityDescription =
@@ -416,7 +423,11 @@ export class DocumentService extends Service {
 				logger.info(`Loaded ${result.successful} documents on startup`);
 			}
 		} catch (error) {
+			// error-policy:J7 Startup document loading is detached so service
+			// registration is not delayed; failures remain observable.
 			logger.error({ error }, "Error loading documents on startup");
+			this.runtime.reportError("DocumentService.loadInitialDocuments", error);
+			throw error;
 		}
 	}
 
@@ -452,24 +463,17 @@ export class DocumentService extends Service {
 
 		if (service.config.LOAD_DOCS_ON_STARTUP) {
 			service.loadInitialDocuments().catch((error) => {
+				// error-policy:J5 loadInitialDocuments reports the failure before
+				// this detached startup task suppresses its rejection.
 				logger.error({ error }, "Error loading initial documents");
 			});
 		}
 
-		await service.migratePreDocumentsPartition().catch((err) => {
-			logger.error({ error: err }, "Error migrating pre-documents rows");
-		});
-
-		await service.backfillDocumentScopes().catch((err) => {
-			logger.error({ error: err }, "Error backfilling document scopes");
-		});
+		await service.migratePreDocumentsPartition();
+		await service.backfillDocumentScopes();
 
 		if (characterDocuments.length > 0) {
-			await service
-				.processCharacterDocuments(characterDocuments)
-				.catch((err) => {
-					logger.error({ error: err }, "Error processing character documents");
-				});
+			await service.processCharacterDocuments(characterDocuments);
 		}
 
 		return service;
@@ -896,36 +900,29 @@ export class DocumentService extends Service {
 			`Processing "${options.originalFilename}" (${options.contentType})`,
 		);
 
-		try {
-			const existingDocument = await this.runtime.getMemoryById(contentBasedId);
-			if (
-				existingDocument &&
-				(existingDocument.metadata?.type === MemoryType.DOCUMENT ||
-					existingDocument.metadata?.type === MemoryType.CUSTOM)
-			) {
-				const fragmentCount =
-					await this.getDocumentFragmentCount(contentBasedId);
-				if (fragmentCount === 0) {
-					logger.warn(
-						`"${options.originalFilename}" already exists with 0 fragments; deleting stale document stub and reprocessing`,
-					);
-					await this.runtime.deleteMemory(contentBasedId);
-				} else {
-					logger.info(
-						`"${options.originalFilename}" already exists with ${fragmentCount} fragments - skipping`,
-					);
+		const existingDocument = await this.runtime.getMemoryById(contentBasedId);
+		if (
+			existingDocument &&
+			(existingDocument.metadata?.type === MemoryType.DOCUMENT ||
+				existingDocument.metadata?.type === MemoryType.CUSTOM)
+		) {
+			const fragmentCount = await this.getDocumentFragmentCount(contentBasedId);
+			if (fragmentCount === 0) {
+				logger.warn(
+					`"${options.originalFilename}" already exists with 0 fragments; deleting stale document stub and reprocessing`,
+				);
+				await this.runtime.deleteMemory(contentBasedId);
+			} else {
+				logger.info(
+					`"${options.originalFilename}" already exists with ${fragmentCount} fragments - skipping`,
+				);
 
-					return {
-						clientDocumentId: contentBasedId,
-						storedDocumentMemoryId: existingDocument.id as UUID,
-						fragmentCount,
-					};
-				}
+				return {
+					clientDocumentId: contentBasedId,
+					storedDocumentMemoryId: existingDocument.id as UUID,
+					fragmentCount,
+				};
 			}
-		} catch (error) {
-			logger.debug(
-				`Document ${contentBasedId} not found or error checking existence, proceeding with processing: ${error instanceof Error ? error.message : String(error)}`,
-			);
 		}
 
 		return this.processDocument({
@@ -972,12 +969,19 @@ export class DocumentService extends Service {
 				try {
 					fileBuffer = Buffer.from(content, "base64");
 				} catch (e) {
+					// error-policy:J2 Preserve the decoder failure as the cause of
+					// a document-specific validation error.
 					logger.error(
 						{ error: e },
 						`Failed to convert base64 to buffer for ${originalFilename}`,
 					);
-					throw new Error(
+					throw new ElizaError(
 						`Invalid base64 content for PDF file ${originalFilename}`,
+						{
+							code: "DOCUMENT_BASE64_INVALID",
+							context: { originalFilename, contentType },
+							cause: e,
+						},
 					);
 				}
 				extractedText = await extractTextFromDocument(
@@ -990,12 +994,19 @@ export class DocumentService extends Service {
 				try {
 					fileBuffer = Buffer.from(content, "base64");
 				} catch (e) {
+					// error-policy:J2 Preserve the decoder failure as the cause of
+					// a document-specific validation error.
 					logger.error(
 						{ error: e },
 						`Failed to convert base64 to buffer for ${originalFilename}`,
 					);
-					throw new Error(
+					throw new ElizaError(
 						`Invalid base64 content for binary file ${originalFilename}`,
+						{
+							code: "DOCUMENT_BASE64_INVALID",
+							context: { originalFilename, contentType },
+							cause: e,
+						},
 					);
 				}
 				extractedText = await extractTextFromDocument(
@@ -1026,12 +1037,19 @@ export class DocumentService extends Service {
 						extractedText = decodedText;
 						documentContentToStore = decodedText;
 					} catch (e) {
+						// error-policy:J2 Preserve the decoding failure as the cause
+						// of a document-specific validation error.
 						logger.error(
 							{ error: e instanceof Error ? e : new Error(String(e)) },
 							`Failed to decode base64 for ${originalFilename}`,
 						);
-						throw new Error(
+						throw new ElizaError(
 							`File ${originalFilename} appears to be corrupted or incorrectly encoded`,
+							{
+								code: "DOCUMENT_ENCODING_INVALID",
+								context: { originalFilename, contentType },
+								cause: e,
+							},
 						);
 					}
 				} else {
@@ -1124,8 +1142,13 @@ export class DocumentService extends Service {
 				fragmentCount,
 			};
 		} catch (error) {
+			// error-policy:J2 Attach document identity while preserving the cause.
 			logger.error({ error }, `Error processing document ${originalFilename}`);
-			throw error;
+			throw new ElizaError(`Failed to process document ${originalFilename}`, {
+				code: "DOCUMENT_PROCESSING_FAILED",
+				context: { originalFilename, contentType },
+				cause: error,
+			});
 		}
 	}
 
@@ -1477,10 +1500,17 @@ export class DocumentService extends Service {
 				metadata: updatedMetadata,
 			});
 		} catch (error) {
+			// error-policy:J7 RAG usage metadata is diagnostic enrichment; the
+			// conversation memory remains valid and the failure is reported.
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			logger.warn(
 				`Failed to enrich conversation memory ${memoryId} with RAG data: ${errorMessage}`,
+			);
+			this.runtime.reportError(
+				"DocumentService.enrichConversationMemory",
+				error,
+				{ memoryId },
 			);
 		}
 	}
@@ -1565,11 +1595,14 @@ export class DocumentService extends Service {
 				}
 			}
 		} catch (error) {
+			// error-policy:J7 Pending RAG metadata is diagnostic enrichment; the
+			// underlying conversation remains valid and failure is reported.
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			logger.warn(
 				`Error enriching recent memories with RAG data: ${errorMessage}`,
 			);
+			this.runtime.reportError("DocumentService.enrichRecentMemories", error);
 		}
 	}
 
@@ -1738,8 +1771,6 @@ export class DocumentService extends Service {
 						worldId: this.runtime.agentId,
 					},
 				);
-			} catch (error) {
-				logger.error({ error }, "Error processing character documents");
 			} finally {
 				this.documentProcessingSemaphore.release();
 			}
@@ -2031,8 +2062,16 @@ export class DocumentService extends Service {
 
 			await this.runtime.createMemory(fragment, DOCUMENT_FRAGMENTS_TABLE);
 		} catch (error) {
+			// error-policy:J2 Attach fragment identity while preserving the cause.
 			logger.error({ error }, `Error processing fragment ${fragment.id}`);
-			throw error;
+			throw new ElizaError(
+				`Failed to process document fragment ${fragment.id}`,
+				{
+					code: "DOCUMENT_FRAGMENT_PROCESSING_FAILED",
+					context: { fragmentId: fragment.id },
+					cause: error,
+				},
+			);
 		}
 	}
 
@@ -2113,9 +2152,18 @@ export class DocumentService extends Service {
 				);
 			}
 		} catch (error) {
+			// error-policy:J4 Batch embedding has an explicit serial fallback;
+			// report the degraded path before retrying each fragment.
 			logger.warn(
 				{ error },
 				"[DocumentService] Batch fragment embedding failed; falling back to serial per-fragment embedding",
+			);
+			this.runtime.reportError(
+				"DocumentService.batchFragmentEmbedding",
+				error,
+				{
+					fragmentCount: fragments.length,
+				},
 			);
 			await this.processDocumentFragmentsSerial(fragments, options);
 			return;
@@ -2137,6 +2185,13 @@ export class DocumentService extends Service {
 				if (!options.continueOnError) {
 					throw error;
 				}
+				// error-policy:J4 continueOnError explicitly requests partial
+				// persistence; every omitted fragment is reported.
+				this.runtime.reportError(
+					"DocumentService.persistDocumentFragment",
+					error,
+					{ fragmentId: fragment.id },
+				);
 			}
 		}
 	}
@@ -2156,9 +2211,16 @@ export class DocumentService extends Service {
 				if (!options.continueOnError) {
 					throw error;
 				}
+				// error-policy:J4 continueOnError explicitly requests partial
+				// persistence; every omitted fragment is reported.
 				logger.error(
 					{ error },
 					`[DocumentService] Error processing fragment ${fragment.id} during serial fallback`,
+				);
+				this.runtime.reportError(
+					"DocumentService.processDocumentFragment",
+					error,
+					{ fragmentId: fragment.id },
 				);
 			}
 		}

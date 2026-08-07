@@ -10,6 +10,10 @@ import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
 import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
 import type { SharedRuntimeHistoryStore } from "@/lib/services/shared-runtime/shared-runtime-chat";
+import {
+  MAX_HISTORY_MESSAGES,
+  mergeSharedRuntimeHistoryMessages,
+} from "@/lib/services/shared-runtime/shared-runtime-history-policy";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 // The agent row crosses the Durable Object boundary as JSON, so its Drizzle
@@ -146,39 +150,14 @@ export class SharedRuntimeConversation {
   ): Promise<void> {
     try {
       await this.runWithBindings(async () => {
-        const [{ sharedRuntimeHistoryRepository }, { MAX_HISTORY_MESSAGES }] =
-          await Promise.all([
-            import("@/db/repositories/shared-runtime-history"),
-            import("@/lib/services/shared-runtime/shared-runtime-chat"),
-          ]);
-        // Non-destructive mirror: uncoordinated writers (the Node daemon's
-        // patron-chat job, inbound gateway turns) still upsert this row
-        // directly, so a blind overwrite would permanently erase their turns.
-        // Union by message identity keeps Postgres a superset; the Durable
-        // Object copy stays authoritative for the turns it ran.
-        const existing = await sharedRuntimeHistoryRepository.get(
+        const { sharedRuntimeHistoryRepository } = await import(
+          "@/db/repositories/shared-runtime-history"
+        );
+        await sharedRuntimeHistoryRepository.merge(
           snapshot.agentId,
           snapshot.channelId,
-        );
-        const identity = (message: SharedTurnMessage) =>
-          `${message.role}\u0000${message.createdAt ?? ""}\u0000${message.content}`;
-        const seen = new Set(snapshot.history.map(identity));
-        const external = existing.filter(
-          (message) =>
-            (message?.role === "user" || message?.role === "assistant") &&
-            typeof message?.content === "string" &&
-            message.content.trim().length > 0 &&
-            !seen.has(identity(message)),
-        );
-        const merged = external.length
-          ? [...snapshot.history, ...external]
-              .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-              .slice(-MAX_HISTORY_MESSAGES)
-          : snapshot.history;
-        await sharedRuntimeHistoryRepository.upsert(
-          snapshot.agentId,
-          snapshot.channelId,
-          merged,
+          snapshot.history,
+          MAX_HISTORY_MESSAGES,
         );
       });
       const current =
@@ -218,20 +197,28 @@ export class SharedRuntimeConversation {
     return {
       load: async (agentId, channelId) =>
         (await this.loadConversation(agentId, channelId)).history,
-      save: async (agentId, channelId, history) => {
+      merge: async (agentId, channelId, messages) => {
+        const current = await this.loadConversation(agentId, channelId);
         const snapshot: StoredConversation = {
           agentId,
           channelId,
-          history: boundSnapshotHistory(history),
+          history: boundSnapshotHistory(
+            mergeSharedRuntimeHistoryMessages(
+              current.history,
+              messages,
+              MAX_HISTORY_MESSAGES,
+            ),
+          ),
           dirty: true,
           version: (this.conversation?.version ?? 0) + 1,
         };
-        // Durable write FIRST: adopting the snapshot before a failed put would
-        // leave phantom turns in the in-memory prompt window that were never
-        // persisted or mirrored.
+        // Durable write FIRST: cancellation finalizers must be retryable. A
+        // failed put leaves the prior in-memory state untouched so the same
+        // response-body cancel/finalize path can attempt the write again.
         await this.state.storage.put(CONVERSATION_KEY, snapshot);
         this.conversation = snapshot;
         this.scheduleMirror(snapshot);
+        return snapshot.history;
       },
     };
   }
@@ -265,6 +252,7 @@ export class SharedRuntimeConversation {
       };
       if (payload.operation === "stream") {
         return await sharedRuntimeChatService.stream(agent, payload.rpc, {
+          abortSignal: request.signal,
           executionCtx,
           historyStore,
         });

@@ -2,7 +2,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../packages/test/vitest/default.config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const realTestExcludes = new Set([

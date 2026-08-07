@@ -12,7 +12,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime.ts";
 import type { Character } from "../../types/agent.ts";
 import {
@@ -144,6 +144,46 @@ describe("basic-capabilities registration through the declaring plugin", () => {
 			enableExtendedCapabilities: false,
 		});
 		expect(actionNames(runtime).has(ADVANCED_ACTION)).toBe(false);
+	});
+
+	it("registers extended and native relationship components exactly once", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "cap-extended-native-relationships" } as Character,
+			enableExtendedCapabilities: true,
+			logLevel: "fatal",
+		});
+		const warn = vi.spyOn(runtime.logger, "warn");
+
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+
+		for (const name of ["MESSAGE", "MESSAGE_SEND", "POST", "POST_SEND"]) {
+			expect(
+				runtime.actions.filter((action) => action.name === name),
+			).toHaveLength(1);
+		}
+		for (const name of ["CONTACTS", "FACTS", "FOLLOW_UPS", "RELATIONSHIPS"]) {
+			expect(
+				runtime.providers.filter((provider) => provider.name === name),
+			).toHaveLength(1);
+		}
+		for (const name of [
+			"factMemory",
+			"relationships",
+			"identities",
+			"success",
+			"preferences",
+			"skillProposal",
+			"skillRefinement",
+		]) {
+			expect(
+				runtime.evaluators.filter((evaluator) => evaluator.name === name),
+			).toHaveLength(1);
+		}
+		expect(
+			warn.mock.calls.some((call) =>
+				String(call[1]).includes("name collision"),
+			),
+		).toBe(false);
 	});
 
 	it("drops basic actions when disableBasic is requested via character settings", async () => {

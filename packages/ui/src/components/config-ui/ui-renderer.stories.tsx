@@ -134,7 +134,14 @@ const meta = {
   title: "ConfigUi/UiRenderer",
   component: UiRenderer,
   tags: ["autodocs"],
-  decorators: [withMockApp],
+  decorators: [
+    withMockApp,
+    (Story) => (
+      <div className="w-full max-w-xl">
+        <Story />
+      </div>
+    ),
+  ],
   argTypes: {
     loading: { control: "boolean" },
     onAction: { action: "action" },

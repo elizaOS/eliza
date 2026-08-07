@@ -52,7 +52,6 @@ import {
 import { desktopHttpRequest } from "./desktop-http-request";
 import { formatRendererDiagnosticLine } from "./diagnostic-format";
 import {
-  createDynamicViewHostForRuntime,
   getDynamicViewRegistry,
   getDynamicViewSessionManager,
   registerBuiltInDynamicViews,
@@ -62,10 +61,6 @@ import {
   composeExtensionStatusSnapshot,
   readExtensionStatusViaHttp,
 } from "./extension-rpc";
-import {
-  getFirstPartyRemotePluginDefinitions,
-  setFirstPartyRemotePluginDisabled,
-} from "./first-party-remotes";
 import {
   composeFirstRunOptionsSnapshot,
   composeFirstRunStatusSnapshot,
@@ -108,10 +103,6 @@ import { getLocationManager } from "./native/location";
 import { getMusicPlayerManager } from "./native/music-player";
 import { getPermissionManager } from "./native/permissions";
 import type { AllPermissionsState } from "./native/permissions-shared";
-import {
-  configureRemotePluginHostEvents,
-  getRemotePluginHost,
-} from "./native/remote-plugin-host";
 import { getScreenCaptureManager } from "./native/screencapture";
 import {
   getStewardStatus,
@@ -155,13 +146,13 @@ import {
   composeSubscriptionStatusSnapshot,
   readSubscriptionStatusViaHttp,
 } from "./subscription-rpc";
-import { createTraceHostForRuntime, getTraceService } from "./trace";
+import { getTraceService } from "./trace";
 import type { SendToWebview } from "./types.js";
 import {
   composeUpdateStatusSnapshot,
   readUpdateStatusViaHttp,
 } from "./update-rpc";
-import { createVoiceHostForRuntime, VoiceService } from "./voice";
+import { VoiceService } from "./voice";
 
 function createStewardStoppedStatus(error: string): StewardRpcStatus {
   return {
@@ -318,7 +309,6 @@ export function buildBunRpcHandlers({
   const talkmode = getTalkModeManager();
   const musicPlayer = getMusicPlayerManager();
   const browserWorkspace = getBrowserWorkspaceManager();
-  const remotePluginHost = getRemotePluginHost();
   registerBuiltInDynamicViews();
   const dynamicViewRegistry = getDynamicViewRegistry();
   // In kiosk mode the OS runs a single fullscreen toplevel under a
@@ -328,9 +318,6 @@ export function buildBunRpcHandlers({
   const dynamicViewSessions = getDynamicViewSessionManager({
     registry: dynamicViewRegistry,
     canvas: kioskMode ? new KioskCanvas(sendToWebview) : canvas,
-    workerStatusProvider: {
-      getWorkerStatus: (id) => remotePluginHost.getWorkerStatus(id),
-    },
     ...(kioskMode
       ? {
           supportedPlacements: [
@@ -343,16 +330,11 @@ export function buildBunRpcHandlers({
         }
       : {}),
   });
-  remotePluginHost.setDynamicViewHost(
-    createDynamicViewHostForRuntime(dynamicViewSessions),
-  );
   const traceService = getTraceService({
     dynamicViewRegistry,
     dynamicViewSessions,
   });
-  remotePluginHost.setTraceHost(createTraceHostForRuntime(traceService));
   const voiceService = getRpcVoiceService(traceService);
-  remotePluginHost.setVoiceHost(createVoiceHostForRuntime(voiceService));
   const launchOrchestrator = getRpcLaunchOrchestrator({
     agent,
     readBootProgress: async () => {
@@ -367,23 +349,10 @@ export function buildBunRpcHandlers({
     readDiagnostics: getStartupDiagnosticsSnapshot,
     readDatabaseStatus: () => agent.getDatabaseSnapshot(),
     readDiagnosticLogTail: getStartupDiagnosticLogTail,
-    listRemoteStatuses: () =>
-      getFirstPartyRemotePluginDefinitions({ includeDev: true }).map(
-        (definition) => {
-          const status = remotePluginHost.getWorkerStatus(definition.id);
-          return {
-            id: definition.id,
-            state: status?.state ?? "stopped",
-            error: status?.error ?? null,
-            required: definition.kind === "required",
-          };
-        },
-      ),
     createBugReportBundle: (params) => desktop.createBugReportBundle(params),
     dynamicViewRegistry,
     dynamicViewSessions,
   });
-  configureRemotePluginHostEvents(sendToWebview);
 
   return {
     // ---- Agent ----
@@ -853,41 +822,6 @@ export function buildBunRpcHandlers({
       desktop,
       appName: getBrandConfig().appName,
     }),
-
-    // ---- Remote Plugins ----
-    remotePluginGetStoreRoot: async () => ({
-      storeRoot: remotePluginHost.getStoreRoot(),
-    }),
-    remotePluginList: async () => ({
-      remotePlugins: remotePluginHost.listRemotePlugins(),
-    }),
-    remotePluginGetStoreSnapshot: async () =>
-      remotePluginHost.getStoreSnapshot(),
-    remotePluginGet: async (params: { id: string }) =>
-      remotePluginHost.getRemotePlugin(params.id),
-    remotePluginInstallFromDirectory: async (params) =>
-      remotePluginHost.installFromDirectory(params),
-    remotePluginUninstall: async (params: { id: string }) =>
-      remotePluginHost.uninstall(params.id),
-    remotePluginStartWorker: async (params: { id: string }) => {
-      setFirstPartyRemotePluginDisabled(params.id, false, remotePluginHost);
-      return remotePluginHost.startWorker(params.id);
-    },
-    remotePluginStopWorker: async (params: { id: string }) => {
-      setFirstPartyRemotePluginDisabled(params.id, true, remotePluginHost);
-      return remotePluginHost.stopWorker(params.id);
-    },
-    remotePluginGetWorkerStatus: async (params: { id: string }) =>
-      remotePluginHost.getWorkerStatus(params.id),
-    remotePluginListWorkerStatuses: async () => ({
-      workers: remotePluginHost.listWorkerStatuses(),
-    }),
-    remotePluginGetLogs: async (params) =>
-      remotePluginHost.getLogs(params.id, params.maxBytes),
-    remotePluginInvokeWorker: async (params) =>
-      remotePluginHost.invokeWorker(params),
-    remotePluginTailWorkerEvents: async (params) =>
-      remotePluginHost.tailWorkerEvents(params),
     ...buildDynamicViewRpcHandlers({
       registry: dynamicViewRegistry,
       sessions: dynamicViewSessions,

@@ -27,7 +27,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/test/helpers/real-runtime.ts";
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
 // The inbox-triage tables were carved into this plugin's own `app_inbox`
 // schema; we register just the two triage table defs so the SQL plugin's
 // migration runner materializes them — the exact tables the inbox plugin reads

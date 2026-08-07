@@ -1,6 +1,6 @@
 /**
  * Keyless catalog coverage for the plugin-github action and route surface against
- * a mocked GitHub API. Runs on the pr-deterministic lane under the LLM proxy.
+ * a mocked GitHub API. Runs on the pr-deterministic lane under the model provider.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,9 +16,9 @@ import githubPlugin, {
   GitHubService,
 } from "../../../../plugins/plugin-github/src/index.ts";
 import {
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";
@@ -34,7 +34,7 @@ const ISSUE_CREATE_PREVIEW =
 type JsonRecord = Record<string, unknown>;
 
 type RuntimeWithGithubScenario = IAgentRuntime &
-  RuntimeWithScenarioLlmFixtures & {
+  RuntimeWithScenarioModelFixtures & {
     getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
     plugins?: Plugin[];
     registerPlugin?: (plugin: Plugin) => Promise<void>;
@@ -410,7 +410,7 @@ function registerGithubStrictFixtures(
   runtime: RuntimeWithGithubScenario,
 ): void {
   registerStrictActionRouteFixtures(runtime, strictGithubRoutes);
-  runtime.scenarioLlmFixtures?.register({
+  runtime.scenarioModelFixtures?.register({
     name: "route-github-issue-create-preview-evaluator",
     match: {
       modelType: ModelType.RESPONSE_HANDLER,

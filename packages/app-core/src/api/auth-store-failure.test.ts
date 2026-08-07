@@ -7,10 +7,8 @@
  * surface it — a silent `.catch(() => null)` turned a broken auth DB into an
  * indistinguishable stream of 401s. These tests drive the real guard with a
  * store whose `findSession` throws and assert the request is denied 401. The
- * helper test below asserts the failure reaches the structured logger; keeping
- * that assertion at helper scope avoids fighting app-core's `isolate:false`
- * route-test mocks while still covering the real route guard and real logger
- * boundary.
+ * helper test below asserts the failure reaches the structured logger while
+ * still covering the real route guard and real logger boundary.
  */
 import http from "node:http";
 import { Socket } from "node:net";

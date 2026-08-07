@@ -36,7 +36,27 @@ function getRepoLocalWorkspaceRoot(
 			"../eliza/packages/app-core",
 		],
 		"@elizaos/shared": ["eliza/packages/shared", "../eliza/packages/shared"],
+		"@elizaos/ui": ["packages/ui", "eliza/packages/ui", "../eliza/packages/ui"],
 	};
+
+	// Workspace plugins live under plugins/ (or eliza/plugins/ when this repo
+	// is embedded as a consumer's subrepo). Prefer the live checkout over an
+	// installed copy so tests never run against a stale published dist.
+	if (packageName.startsWith("@elizaos/plugin-")) {
+		const dirName = packageName.slice("@elizaos/".length);
+		const pluginCandidates = [
+			`plugins/${dirName}`,
+			`eliza/plugins/${dirName}`,
+			`../eliza/plugins/${dirName}`,
+		];
+		for (const relativeRoot of pluginCandidates) {
+			const candidate = path.resolve(repoRoot, relativeRoot);
+			if (existsSync(path.join(candidate, "package.json"))) {
+				return candidate;
+			}
+		}
+		return undefined;
+	}
 
 	for (const relativeRoot of relativeRoots[packageName] ?? []) {
 		const candidate = path.resolve(repoRoot, relativeRoot);
@@ -62,6 +82,7 @@ function getRepoLocalElizaCoreRoot(
 	}
 
 	const elizaRoots = [
+		path.resolve(repoRoot),
 		path.resolve(repoRoot, "eliza"),
 		path.resolve(repoRoot, "..", "eliza"),
 	];
@@ -71,7 +92,7 @@ function getRepoLocalElizaCoreRoot(
 			continue;
 		}
 
-		const candidate = path.join(elizaRoot, "packages", "typescript");
+		const candidate = path.join(elizaRoot, "packages", "core");
 		if (!existsSync(path.join(candidate, "package.json"))) {
 			continue;
 		}
@@ -407,11 +428,15 @@ export function getSharedSourceRoot(repoRoot: string): string | undefined {
 }
 
 export function getUiSourceRoot(repoRoot: string): string | undefined {
-	const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
-	if (!appCoreSourceRoot) {
+	const packageRoot = getInstalledPackageRoot("@elizaos/ui", repoRoot);
+	if (!packageRoot) {
 		return undefined;
 	}
 
-	const sourceRoot = path.join(appCoreSourceRoot, "ui");
+	if (path.basename(packageRoot) === "src") {
+		return packageRoot;
+	}
+
+	const sourceRoot = path.join(packageRoot, "src");
 	return existsSync(path.join(sourceRoot, "index.ts")) ? sourceRoot : undefined;
 }

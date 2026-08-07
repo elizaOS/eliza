@@ -49,6 +49,7 @@ import {
   type CharacterEditorVoiceConfig,
   DEFAULT_ELEVEN_FAST_MODEL,
 } from "./character-voice-config";
+import { persistCharacterVoiceSelection } from "./character-voice-persistence";
 
 /* Inline SVG icon helpers – avoids adding lucide-react as a dependency. */
 const svgBase = {
@@ -109,7 +110,7 @@ import { Input } from "../ui/input";
 const accentGradientStyle = {
   background:
     "linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white 8%) 0%, var(--accent) 100%)",
-  color: "var(--accent-foreground, #1a1f26)",
+  color: "var(--accent-foreground)",
   borderColor: "rgba(var(--accent-rgb, 240, 185, 11), 0.5)",
 } as const;
 
@@ -638,6 +639,7 @@ export function CharacterEditor({
   /* Load voice config from server — but don't overwrite a roster-derived
      voice preset that was already applied by auto-select. */
   const voicePresetAppliedRef = useRef(false);
+  const voiceConfigReadyRef = useRef(false);
   useEffect(() => {
     void (async () => {
       setVoiceLoading(true);
@@ -681,8 +683,14 @@ export function CharacterEditor({
             setSelectedVoicePresetId(preset?.id ?? null);
           }
         }
+        voiceConfigReadyRef.current = true;
+        setVoiceSaveError(null);
       } catch {
-        // non-fatal: voice config load failure leaves voice section empty
+        // error-policy:J4 Config/auth startup failure keeps writes disabled and
+        // leaves an explicit unavailable state instead of fabricating readiness.
+        setVoiceSaveError(
+          "Voice settings are unavailable until configuration finishes loading.",
+        );
       }
       setVoiceLoading(false);
     })();
@@ -736,18 +744,21 @@ export function CharacterEditor({
           // error-policy:J4 immediate persist is an optimization — Save
           // remains the durable write path; error log keeps a failed early
           // sync observable instead of silently speaking with the old voice.
-          void client
-            .updateConfig({
-              messages: {
-                tts: persistedVoiceConfig,
-              },
-            })
-            .catch((err: unknown) => {
-              logger.error(
-                { err },
-                "[CharacterEditor] voice config early persist failed",
-              );
-            });
+          void persistCharacterVoiceSelection({
+            configReady: voiceConfigReadyRef.current,
+            voiceConfig: persistedVoiceConfig,
+            writer: client,
+          }).catch((err: unknown) => {
+            // error-policy:J4 A required early persist failure stays visible;
+            // the explicit Save action remains available as the retry boundary.
+            setVoiceSaveError(
+              "Could not save the selected character voice. Use Save to retry.",
+            );
+            logger.warn(
+              { err },
+              "[CharacterEditor] voice config early persist failed",
+            );
+          });
         }
       }
       if (applyDefaults) {

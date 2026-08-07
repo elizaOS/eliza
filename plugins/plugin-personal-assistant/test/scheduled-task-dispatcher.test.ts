@@ -30,6 +30,7 @@ import {
   registerChannelRegistry,
 } from "../src/lifeops/channels/index.js";
 import type { DispatchResult } from "../src/lifeops/connectors/contract.js";
+import { SCHEDULED_TASK_DELIVERY_BINDING_KEY } from "../src/lifeops/scheduled-task/delivery-binding.js";
 import { createProductionScheduledTaskDispatcher } from "../src/lifeops/scheduled-task/runtime-wiring.js";
 import {
   createSendPolicyRegistry,
@@ -357,6 +358,164 @@ describe("scheduled task production dispatcher", () => {
       ok: false,
       reason: "auth_expired",
       userActionable: true,
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("revalidates a persisted chat destination and preserves privacy metadata on egress", async () => {
+    let participants = [
+      "00000000-0000-0000-0000-0000000000aa",
+      "00000000-0000-0000-0000-0000000000bb",
+    ];
+    const runtime = {
+      ...(makeDispatchRuntime() as unknown as Record<string, unknown>),
+      getRoom: vi.fn(async () => ({
+        id: "00000000-0000-0000-0000-0000000000cc",
+        source: "telegram",
+        channelId: "owner-chat-42",
+        metadata: { accountId: "personal" },
+      })),
+      getParticipantsForRoom: vi.fn(async () => participants),
+      sendMessageToTarget: vi
+        .fn()
+        .mockResolvedValueOnce({
+          kind: "delivered" as const,
+          receipt: {
+            providerMessageIds: ["telegram-provider-1"],
+            acceptedAt: Date.parse("2026-05-10T12:00:01.000Z"),
+            persistence: { status: "persisted" as const, memoryIds: [] },
+          },
+          memories: [],
+        })
+        .mockResolvedValueOnce({
+          kind: "duplicate" as const,
+          priorDelivery: "delivered" as const,
+          receipt: {
+            providerMessageIds: ["telegram-provider-1"],
+            acceptedAt: Date.parse("2026-05-10T12:00:01.000Z"),
+            persistence: { status: "persisted" as const, memoryIds: [] },
+          },
+        }),
+    } as unknown as IAgentRuntime;
+    const send = vi.fn(async () => ({
+      ok: true as const,
+      messageId: "legacy-should-not-send",
+    }));
+    const registry = createChannelRegistry();
+    registry.register(sendCapableChannel(send));
+    registerChannelRegistry(runtime, registry);
+    const metadata = {
+      [SCHEDULED_TASK_DELIVERY_BINDING_KEY]: {
+        version: 1,
+        source: "telegram",
+        roomId: "00000000-0000-0000-0000-0000000000cc",
+        channelId: "owner-chat-42",
+        accountId: "personal",
+        audience: {
+          kind: "direct",
+          provenance: "canonical_room",
+          ownerEntityId: "00000000-0000-0000-0000-0000000000aa",
+          agentEntityId: "00000000-0000-0000-0000-0000000000bb",
+          participantEntityIds: participants,
+          membershipVersion: participants.join("\u0000"),
+        },
+      },
+    };
+    const dispatcher = createProductionScheduledTaskDispatcher({
+      runtime,
+      persistDispatchAttempt: async (dispatchRecord, message, key) => {
+        Object.assign(dispatchRecord.metadata ?? {}, {
+          dispatchPreparedMessage: message,
+          dispatchIdempotencyKey: key,
+        });
+      },
+    });
+    const record = {
+      taskId: "task_bound",
+      firedAtIso: "2026-05-10T12:00:00.000Z",
+      channelKey: "telegram",
+      promptInstructions: "private request",
+      contextRequest: undefined,
+      output: {
+        destination: "channel" as const,
+        target: "telegram:owner-chat-42",
+      },
+      metadata,
+    };
+
+    await expect(dispatcher.dispatch(record)).resolves.toMatchObject({
+      ok: true,
+      channelKey: "telegram",
+      target: "owner-chat-42",
+    });
+    expect(runtime.sendMessageToTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "telegram",
+        accountId: "personal",
+        channelId: "owner-chat-42",
+        roomId: "00000000-0000-0000-0000-0000000000cc",
+      }),
+      expect.objectContaining({
+        text: RENDERED_MESSAGE,
+        agentVoiced: true,
+        metadata: expect.objectContaining({
+          scheduledDispatchKey: "task_bound:2026-05-10T12:00:00.000Z",
+        }),
+      }),
+    );
+    expect(send).not.toHaveBeenCalled();
+    expect(await dispatcher.dispatch(record)).toMatchObject({
+      ok: true,
+      messageId: "telegram-provider-1",
+      receipt: {
+        provider: "telegram",
+        providerMessageId: "telegram-provider-1",
+        idempotencyKey: "task_bound:2026-05-10T12:00:00.000Z",
+        metadata: expect.objectContaining({ replayed: true }),
+      },
+    });
+
+    vi.mocked(runtime.sendMessageToTarget).mockClear();
+    await expect(
+      dispatcher.dispatch({
+        ...record,
+        output: { destination: "channel", target: "telegram:other-chat" },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "auth_expired",
+      message: "delivery_channel_changed",
+    });
+    expect(send).not.toHaveBeenCalled();
+
+    participants = [...participants, "00000000-0000-0000-0000-0000000000dd"];
+    await expect(dispatcher.dispatch(record)).resolves.toMatchObject({
+      ok: false,
+      reason: "auth_expired",
+      message: "delivery_audience_changed",
+    });
+    expect(send).not.toHaveBeenCalled();
+
+    // The audience can change while composition or an async send policy runs.
+    // The final canonical read must catch that race before connector egress.
+    participants = metadata.chatDeliveryBinding.audience.participantEntityIds;
+    const policies = createSendPolicyRegistry();
+    policies.register({
+      kind: "audience_changes_during_policy",
+      describe: { label: "Audience changes during policy" },
+      evaluate: async () => {
+        participants = [
+          ...participants,
+          "00000000-0000-0000-0000-0000000000ee",
+        ];
+        return { kind: "allow" as const };
+      },
+    });
+    registerSendPolicyRegistry(runtime, policies);
+    await expect(dispatcher.dispatch(record)).resolves.toMatchObject({
+      ok: false,
+      reason: "auth_expired",
+      message: "delivery_audience_changed",
     });
     expect(send).not.toHaveBeenCalled();
   });

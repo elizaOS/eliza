@@ -9,16 +9,23 @@
  *   timeCost:   2 iterations
  *   parallelism: 1
  *
- * `verifyPassword` delegates to `@node-rs/argon2`'s `verify`, which is
- * timing-safe by construction. We never short-circuit on hash shape or
- * length comparison — every verify runs through the full KDF.
+ * The native module is loaded only when a password operation runs so API
+ * startup and unauthenticated health checks do not depend on native-library
+ * initialization. `verifyPassword` delegates to its timing-safe `verify`;
+ * every verification runs through the full KDF.
  *
  * Hard rule: this module fails closed. Any error during `hash` or `verify`
  * propagates to the caller. We do NOT swallow exceptions and pretend the
  * password matched.
  */
 
-import { hash, verify } from "@node-rs/argon2";
+let argon2ModulePromise: Promise<typeof import("@node-rs/argon2")> | null =
+  null;
+
+function loadArgon2(): Promise<typeof import("@node-rs/argon2")> {
+  argon2ModulePromise ??= import("@node-rs/argon2");
+  return argon2ModulePromise;
+}
 
 // Inline the value of @node-rs/argon2's `Algorithm.Argon2id` const enum.
 // `isolatedModules` cannot read ambient const enum members across module
@@ -84,6 +91,7 @@ export function assertPasswordStrong(plain: string): void {
  * Errors propagate to the caller — fail-fast policy.
  */
 export async function hashPassword(plain: string): Promise<string> {
+  const { hash } = await loadArgon2();
   return hash(plain, ARGON2_PARAMS);
 }
 
@@ -100,5 +108,6 @@ export async function verifyPassword(
   plain: string,
   encodedHash: string,
 ): Promise<boolean> {
+  const { verify } = await loadArgon2();
   return verify(encodedHash, plain);
 }

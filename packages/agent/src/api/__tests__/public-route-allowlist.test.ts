@@ -333,18 +333,6 @@ const ALLOWLIST: Record<string, string> = {
   "bluebubbles-webhook":
     "BlueBubbles webhook delivery must bypass auth (path is a runtime const)",
 
-  // plugin-music — public radio surface, any listener, no auth.
-  "/now-playing (Now Playing)": "public radio: now-playing",
-  "/now-playing/:guildId (Now Playing (with guildId param))":
-    "public radio: now-playing (per guild)",
-  "/queue (Queue)": "public radio: queue",
-  "/queue/:guildId (Queue (with guildId param))":
-    "public radio: queue (per guild)",
-  "/status (Playback Status)": "public radio: playback status",
-  "/stream (Stream Audio)": "public radio: audio stream",
-  "/stream/:guildId (Stream Audio (with guildId param))":
-    "public radio: audio stream (per guild)",
-
   // @elizaos/ui cloud public pages — reachable by external/unauthenticated users.
   "payment/:paymentRequestId":
     "cloud public page: external payer; the request id is the capability link",
@@ -368,6 +356,8 @@ const ALLOWLIST: Record<string, string> = {
   "auth/cli-login": "cloud public page: CLI auth flow, pre-authentication",
   "auth/callback/email":
     "cloud public page: email auth callback, pre-authentication",
+  "auth/bridge":
+    "cloud public page: sso bridge leg between the dashboard and app origins; must render pre-auth to carry the one-time code, and every privileged step happens server-side behind Origin, referrer, and PKCE checks",
   "app-auth/authorize": "cloud public page: app-auth flow, pre-authentication",
   "terms-of-service": "cloud public page: legal page, no auth",
   "privacy-policy": "cloud public page: legal page, no auth",
@@ -381,7 +371,7 @@ describe("public:true route allowlist (#9948)", () => {
     expect(fs.existsSync(path.join(REPO_ROOT, "packages"))).toBe(true);
     expect(fs.existsSync(path.join(REPO_ROOT, "plugins"))).toBe(true);
     // Guard against a silently-broken scanner reporting nothing.
-    expect(discovered.length).toBeGreaterThan(40);
+    expect(discovered.length).toBeGreaterThan(30);
   });
 
   it("every public:true route is enumerated in the allowlist", () => {

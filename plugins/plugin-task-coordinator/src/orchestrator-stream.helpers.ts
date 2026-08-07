@@ -6,7 +6,7 @@
 import type {
   CodingAgentTaskEventRecord,
   CodingAgentTaskMessageRecord,
-} from "@elizaos/ui";
+} from "@elizaos/ui/api/client-types-cloud";
 import {
   Check,
   Circle,

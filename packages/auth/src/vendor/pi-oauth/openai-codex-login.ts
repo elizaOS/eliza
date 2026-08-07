@@ -46,6 +46,16 @@ export interface OAuthPrompt {
   placeholder?: string;
 }
 
+async function readOAuthFailureBody(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch (cause) {
+    // error-policy:J4 explicit diagnostic degrade — the non-2xx status remains
+    // authoritative when the optional response body cannot be read.
+    return `[response body unavailable: ${cause instanceof Error ? cause.message : String(cause)}]`;
+  }
+}
+
 async function createState(): Promise<string> {
   if (!isNodeLikeRuntime()) {
     throw new Error(
@@ -69,7 +79,8 @@ function parseAuthorizationInput(input: string): {
       state: url.searchParams.get("state") ?? undefined,
     };
   } catch {
-    /* not a URL */
+    // error-policy:J3 manual authorization input is untrusted and may be a raw
+    // code rather than a URL; parsing continues through the explicit formats.
   }
   if (value.includes("#")) {
     const [code, state] = value.split("#", 2);
@@ -98,6 +109,8 @@ function decodeJwt(
       Record<string, string> | undefined
     >;
   } catch {
+    // error-policy:J3 JWT payloads are untrusted; null is the explicit invalid
+    // claim signal consumed by account-id extraction.
     return null;
   }
 }
@@ -131,7 +144,7 @@ async function exchangeAuthorizationCode(
     }),
   });
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
+    const text = await readOAuthFailureBody(response);
     logger.error(
       `[openai-codex] code->token failed: ${response.status} ${text}`,
     );
@@ -176,7 +189,7 @@ async function refreshAccessToken(
       }),
     });
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
+      const text = await readOAuthFailureBody(response);
       logger.error(
         `[openai-codex] Token refresh failed: ${response.status} ${text}`,
       );
@@ -207,6 +220,8 @@ async function refreshAccessToken(
       ...(json.id_token ? { idToken: json.id_token } : {}),
     };
   } catch (error) {
+    // error-policy:J1 provider boundary translation — refresh transport and
+    // parse failures become the explicit failed token outcome.
     logger.error(`[openai-codex] Token refresh error: ${String(error)}`);
     return { type: "failed" };
   }
@@ -275,6 +290,8 @@ async function startLocalOAuthServer(
       res.end(SUCCESS_HTML);
       lastCode = code;
     } catch {
+      // error-policy:J1 HTTP callback boundary translation — malformed callback
+      // requests receive a structured 500 and never escape the server handler.
       res.statusCode = 500;
       res.end("Internal error");
     }
@@ -308,7 +325,8 @@ async function startLocalOAuthServer(
             try {
               server.close();
             } catch {
-              /* ignore */
+              // error-policy:J6 best-effort teardown — bind already failed and
+              // manual-paste fallback is active.
             }
           },
           cancelWait: () => {},
@@ -355,6 +373,8 @@ export async function loginOpenAICodex(options: {
           server.cancelWait();
         })
         .catch((err) => {
+          // error-policy:J5 the error is observed after `waitForCode`; this
+          // branch cancels the competing callback wait and preserves the cause.
           manualError = err instanceof Error ? err : new Error(String(err));
           server.cancelWait();
         });

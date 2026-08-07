@@ -17,12 +17,11 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `release-orchestrator.yml` | Manual on protected `develop` | Sole full-cohort npm/GitHub Release entry; exact-SHA gate before distribution fan-out |
 | `release.yaml` | Reusable call only | Exact-SHA transactional npm, tag, and GitHub release |
 | `release-candidate-pr.yml` | PRs changing release authority | Credential-free candidate plus real local transport receipts |
-| `elizaos-os-full-release.yml` | Release created, manual | Configured automatic OS artifact/manifest path; currently startup-invalid |
-| `update-os-release-manifest.yml` | Manual only | SHA- and exact-asset-bound OS manifest recovery through a draft pull request |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
 | `claude-code-review.yml` | PR opened | Automated code review |
 | `claude-security-review.yml` | PR opened | Security-focused review |
 | `docs-ci.yml` | PR (docs paths), Manual | Documentation quality checks |
+| `skill-review.yml` | PRs changing `SKILL.md` | Secretless deterministic validation with the trusted canonical validator |
 | `build-agent-image.yml` | Push develop/main, Release, Manual | Docker image builds (`:develop`, `:stable`, `:latest`, release tags) |
 | `build-llama-ffi-android.yml` | Native-source push to develop, tag, manual, reusable | Canonical fused Android producer: arm64-v8a Vulkan and x86_64 CPU artifacts |
 | `build-android.yml` | Manual | Android app build; finds an input-compatible native producer run through the Actions API |
@@ -33,15 +32,11 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 
 ## Release Workflows
 
-The retained automated graph has three distinct responsibilities:
+The retained automated graph has two distinct responsibilities:
 `release-orchestrator.yml` is the sole full-cohort entry point,
-`release.yaml` performs the transactional npm/tag/GitHub Release operation,
-and `elizaos-os-full-release.yml` is the only configured automatic OS
-artifact/manifest path. The manual
-`update-os-release-manifest.yml` recovery workflow is intentionally outside
-that graph: it can only propose a SHA-bound checksum repair through a pull
-request. Do not add another automatic aggregate or direct protected-branch
-manifest writer.
+and `release.yaml` performs the transactional npm/tag/GitHub Release operation.
+Operating-system images and manifests are released from
+[`elizaOS/os`](https://github.com/elizaOS/os).
 
 The orchestrator waits for complete npm registry, annotated tag, and GitHub
 Release readback before passing those exact outputs to enabled downstream
@@ -79,29 +74,6 @@ Coordinates npm, Android, Apple, desktop, Homebrew, and homepage release jobs.
 Every enabled distribution requires the transactional npm result; homepage
 publication additionally waits for every enabled distribution to succeed.
 
-### OS artifact manifest (`elizaos-os-full-release.yml`)
-
-This is intended to build and verify Linux OS artifacts, populate their release
-manifest, generate canonical checksums, validate publishability, and upload the
-result. It is the only automatic workflow configured to do so, but its recorded
-runs are startup failures, so it is not a working release authority. Its
-reusable-workflow permissions and end-to-end repair remain in #16279.
-
-### Manual OS manifest recovery (`update-os-release-manifest.yml`)
-
-This manual-only workflow preserves the separate recovery operation needed when
-release assets already exist. Operators must provide the current full
-`origin/develop` SHA and the release tag's full commit SHA. The workflow refuses
-stale or mismatched identities, captures every stable asset database/node ID,
-filename, size, and available GitHub SHA-256, then downloads each asset by its
-captured database ID. It rejects missing or extra files, size/digest mismatches,
-asset replacements, and any
-pre/post API inventory drift before regenerating publishable checksums. The only
-output is a dedicated draft pull request containing all seven evidence rows and
-the exact base, tag, asset, downloaded-byte, and workflow-log receipts. It has no
-`release`, `push`, or `workflow_call` trigger and never pushes to `develop`
-directly.
-
 ## Test Workflows
 
 ### Linux Runner Policy
@@ -134,13 +106,16 @@ unconditional lint, format, typecheck, gitleaks, and script-test execution plus
 their final-gate dependency edges. The develop PR lint job also runs pinned,
 checksum-verified `actionlint` and `zizmor` binaries.
 
-The self-hosted test lanes retain the `HETZNER_FLEET_ONLINE=false` hosted-runner
-fallback for outages. Pull-request lint, format, typecheck, build, and secret
+The self-hosted test lanes require `HETZNER_FLEET_ONLINE=true` to opt into the
+Hetzner fleet. Missing, empty, and false values route to GitHub-hosted runners;
+this fail-safe default is required because repository variables are unavailable
+to fork pull requests. Pull-request lint, format, typecheck, build, and secret
 checks are the only quality checks for the proposed change; the post-merge
 workflow concentrates on running the broader test surface.
 
-GPU / KVM / macOS jobs (labels `gpu-cuda-12.6`, `kvm`, `eliza-e2e-macos`) are a
-separate purpose-built fleet and are unaffected by this policy.
+GPU and macOS jobs (labels `gpu-cuda-12.6` and `eliza-e2e-macos`) are a separate
+purpose-built fleet and are unaffected by this policy. OS-image KVM runners are
+owned by the standalone `elizaOS/os` repository.
 
 The retired `gpu-bench-nightly.yml` scaffold never ran substantive work on its
 schedule: both jobs required an opt-in manual dispatch and invoked removed
@@ -257,7 +232,6 @@ Runs on PRs and pushes to main:
 - Linting and formatting checks
 - Build verification
 - Dev startup + HMR propagation
-- Interop TypeScript tests (`packages/interop`)
 
 The broader `test.yml` orchestrator runs after pushes to `develop` to avoid
 duplicating the main-branch CI surface on every PR. The lightweight develop PR
@@ -289,7 +263,13 @@ Dedicated security-focused review for code changes.
 
 ### Claude Interactive (`claude.yml`)
 
-Responds to `@claude` mentions in issues and PRs.
+Responds to authenticated maintainer and collaborator `@claude` mentions in
+issues and PRs. This lane is disabled by default; a repository administrator
+must set `CLAUDE_INTERACTIVE_ENABLED=true` only after accepting the pinned
+third-party action's broad runner filesystem-read boundary, which is not
+confined to the repository. When enabled, the workflow uses an ephemeral
+runner, signed GitHub file operations, no shell or web tools, and a separate
+read-only attribution audit.
 
 ## Documentation Workflows
 
@@ -299,6 +279,8 @@ Documentation quality workflow:
 
 - **Dead Link Checking:** Scans for broken internal/external links
 - **Quality Checks:** Double headers, missing frontmatter, heading hierarchy
+- **Failure policy:** Model failures fail closed, even when no partial edit was
+  written
 
 Automatically creates PRs with fixes when issues are found.
 
@@ -340,8 +322,8 @@ may only use the manual PR boundary documented above.
 | `PHALA_CLOUD_API_KEY` | TEE deployment |
 | `GH_PAT` | Cross-repo operations |
 
-Turbo caching is GitHub-native (`.github/actions/turbo-cache-github` via
-`setup-bun-workspace`) — no Vercel SaaS remote cache, so `TURBO_TOKEN` /
+Turbo caching is GitHub-native through `setup-bun-workspace` — no Vercel SaaS
+remote cache, so `TURBO_TOKEN` /
 `TURBO_TEAM` are no longer used and are banned by
 `ci-workflow-dedup-contract.mjs` (#12341).
 

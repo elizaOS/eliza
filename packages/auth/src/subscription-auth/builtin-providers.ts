@@ -43,6 +43,8 @@ function parseCodexCliAuthJson(raw: string): CodexCliAuthJson | null {
     if (!data || typeof data !== "object") return null;
     return data;
   } catch {
+    // error-policy:J3 the CLI-owned file is untrusted input; null is the
+    // descriptor's explicit invalid/unavailable signal.
     return null;
   }
 }
@@ -63,6 +65,8 @@ function hasCodexCliSubscriptionAuth(): boolean {
         data.auth_mode.trim().toLowerCase() !== "api-key",
     );
   } catch {
+    // error-policy:J4 optional external credential discovery returns false when
+    // the CLI file is absent or unreadable.
     return false;
   }
 }
@@ -79,6 +83,8 @@ function hasCommandOnPath(commandName: string): boolean {
     });
     return true;
   } catch {
+    // error-policy:J4 optional binary discovery returns false when PATH lookup
+    // cannot execute or find the command.
     return false;
   }
 }

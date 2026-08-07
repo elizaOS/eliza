@@ -1,7 +1,5 @@
 /**
- * @module features/plugin-manager/actions/plugin
- *
- * Unified MANAGE_PLUGINS action with subactions (`install`, `eject`,
+ * Unified plugin-management action with subactions (`install`, `eject`,
  * `sync`, `reinject`, `list`, `list_ejected`, `search`, `details`,
  * `status`, `enable`, `disable`, `core_status`, `create`).
  *
@@ -21,6 +19,7 @@ import {
 	type SubactionsMap,
 } from "../../../actions/resolve-action-args.ts";
 import { logger } from "../../../logger.ts";
+import { unwrapUserMessageText } from "../../../security/incoming-message-security.ts";
 import type {
 	Action,
 	ActionParameters,
@@ -440,7 +439,10 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 		params: PluginActionParams,
 	): Promise<ActionResult> => {
 		logger.info(`[plugin-manager] MANAGE_PLUGINS mode=${subaction}`);
-		const text = message.content.text ?? "";
+		// On hardened connectors content.text is the whole external-content
+		// security envelope; unwrap so the search-query fallback is the user's
+		// actual words, not ~2KB of armor echoed back to chat.
+		const text = unwrapUserMessageText(message);
 		const name = params.name;
 
 		switch (subaction) {
@@ -582,7 +584,9 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			options?: ActionOptions,
 		): Promise<boolean> => {
 			if (!(await canManagePlugins(runtime, message))) return false;
-			const text = message.content.text ?? "";
+			// Unwrapped so a hardened message's "new"/"edit-N" choice reply still
+			// matches (the raw text would be the whole security envelope).
+			const text = unwrapUserMessageText(message);
 			const hasStructuredMode = Boolean(
 				readStringOption(options, "action") ||
 					readStringOption(options, "subaction") ||
@@ -630,7 +634,10 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 				};
 			}
 
-			const text = message.content.text ?? "";
+			// User's words, not the external-content envelope: this text seeds the
+			// resolver's name/query extraction and the search-query fallback, both
+			// of which can be echoed back to the user.
+			const text = unwrapUserMessageText(message);
 
 			if (isPluginCreateChoiceReply(text)) {
 				const roomId =
@@ -715,12 +722,12 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: { text: "eject @elizaos/plugin-shopify" },
+					content: { text: "eject @elizaos/plugin-pdf" },
 				},
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Ejected @elizaos/plugin-shopify to /…/plugins/ejected/@elizaos_plugin-shopify (commit 1234abcd)\nRestart required to load the local copy.",
+						text: "Ejected @elizaos/plugin-pdf to /…/plugins/ejected/@elizaos_plugin-pdf (commit 1234abcd)\nRestart required to load the local copy.",
 						action: "MANAGE_PLUGINS",
 					},
 				},
@@ -728,12 +735,12 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: { text: "sync plugin-shopify" },
+					content: { text: "sync plugin-pdf" },
 				},
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Synced @elizaos/plugin-shopify: 3 new upstream commit(s) at deadbeef\nRestart required.",
+						text: "Synced @elizaos/plugin-pdf: 3 new upstream commit(s) at deadbeef\nRestart required.",
 						action: "MANAGE_PLUGINS",
 					},
 				},
@@ -741,12 +748,12 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: { text: "reinject plugin-shopify" },
+					content: { text: "reinject plugin-pdf" },
 				},
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Reinjected plugin-shopify (removed /…/plugins/ejected/plugin-shopify)\nRestart required.",
+						text: "Reinjected plugin-pdf (removed /…/plugins/ejected/plugin-pdf)\nRestart required.",
 						action: "MANAGE_PLUGINS",
 					},
 				},
@@ -772,7 +779,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Ejected plugins (1):\n  - @elizaos/plugin-shopify (v2.0.0) at /…/plugins/ejected/@elizaos_plugin-shopify",
+						text: "Ejected plugins (1):\n  - @elizaos/plugin-pdf (v2.0.0) at /…/plugins/ejected/@elizaos_plugin-pdf",
 						action: "MANAGE_PLUGINS",
 					},
 				},

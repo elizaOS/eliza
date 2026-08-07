@@ -1,3 +1,8 @@
+/**
+ * Declares host-owned tabs and resolves their shared render and background
+ * policies so the app shell does not maintain parallel routing tables.
+ */
+
 import {
   type AppShellBackgroundPolicy,
   IMMERSIVE_WALLPAPER_SURFACE,
@@ -21,8 +26,8 @@ import {
  *
  * A tab present in one chain but absent (or aliased differently) in the other
  * was an unobservable drift bug: e.g. a builtin surface that renders fine but
- * paints the wrong background layer, or an alias (`advanced` -> `fine-tuning`)
- * honored by the router but not the background resolver.
+ * paints the wrong background layer, or an alias honored by the router but not
+ * the background resolver.
  *
  * This module is the single source of truth for builtin-tab METADATA: the
  * canonical id, any legacy aliases that resolve onto it, and its background
@@ -62,8 +67,8 @@ export interface BuiltinTabMetadata {
   readonly id: string;
   /**
    * Legacy tab ids that resolve onto this canonical id. Kept as an explicit,
-   * tested host-owned alias table (e.g. `advanced` -> `fine-tuning`,
-   * `triggers` -> `automations`) rather than duplicated if-branches.
+   * tested host-owned alias table (e.g. `triggers` -> `automations`) rather
+   * than duplicated if-branches.
    */
   readonly aliases?: readonly string[];
   /**
@@ -115,7 +120,6 @@ export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] = [
   },
   // ── Aliases (canonical id + legacy id that routes onto it) ──
   { id: "automations", aliases: ["triggers"] },
-  { id: "fine-tuning", aliases: ["advanced"] },
 ] as const;
 
 /** Fast id -> metadata lookup, including alias ids. */

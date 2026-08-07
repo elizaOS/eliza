@@ -385,6 +385,11 @@ async function emitSkillNotice(
 		};
 		await runtime.createMemory(noticeMemory, "messages");
 	} catch (err) {
+		// error-policy:J7 Proposal notices are diagnostic/user-attention records;
+		// preserve evaluator progress while surfacing a failed notice write.
+		runtime.reportError("SkillItemsEvaluator.proposalNotice", err, {
+			roomId: message.roomId,
+		});
 		logger.warn(
 			{
 				src: LOG_SRC,

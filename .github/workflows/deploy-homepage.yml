@@ -1,13 +1,24 @@
-# Deploy packages/homepage to the eliza-app-home Cloudflare Pages project.
+# Deploy the eliza.app waitlist to the eliza-app-home Cloudflare Pages project.
+#
+# CONTEXT (2026-08-04): eliza.app was switched to a graceful waitlist
+# (deployment d562e1eb-9c39-4644-9b8b-4f53fea90257) because the previous
+# packages/homepage Vite app exposed a stale phone/channel demo (hard-coded
+# +14159611510, client-only mock OTP, dead download routes). This workflow now
+# deploys the canonical waitlist source in packages/homepage/waitlist so a
+# develop push can no longer resurrect the stale surface. See
+# ELIZA-APP-WAITLIST-DEPLOY-RECEIPT-2026-08-04 (ops receipts) for the audit.
+#
+# The full Vite app remains in packages/homepage for the relaunch; restoring it
+# to production is an explicit decision (revert this workflow), not a side
+# effect of a push.
 #
 # What this does:
-#   1. Builds packages/homepage (Vite static site) — the `prebuild` script in
-#      packages/homepage/package.json regenerates
-#      src/generated/release-data.ts from the GitHub Releases API before vite
-#      runs, so download buttons always reflect the latest published assets.
-#   2. Runs the browser route and visual suites against that static build.
-#   3. Publishes dist/ to Cloudflare Pages as the production deployment serving
-#      eliza.app and www.eliza.app.
+#   1. Runs the waitlist unit tests (Pages Function: validation, dedupe,
+#      honeypot, rate limiting, origin checks).
+#   2. Publishes packages/homepage/waitlist/site (static page) together with
+#      the Pages Function in packages/homepage/waitlist/functions to
+#      Cloudflare Pages as the production deployment serving eliza.app and
+#      www.eliza.app.
 #
 # Required secrets on elizaOS/eliza:
 #   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
@@ -22,30 +33,28 @@ on:
   push:
     branches: [develop]
     paths:
-      - "packages/homepage/**"
-      - "packages/app-core/scripts/write-homepage-release-data.mjs"
-      - "packages/app-core/scripts/lib/asset-cdn.mjs"
+      - "packages/homepage/waitlist/**"
       - ".github/workflows/deploy-homepage.yml"
   workflow_call:
     inputs:
       ref:
-        description: "Git ref to build the homepage from (defaults to the calling workflow ref)"
+        description: "Git ref to deploy the waitlist from (defaults to the calling workflow ref)"
         required: false
         type: string
   workflow_dispatch:
     inputs:
       ref:
-        description: "Git ref to build the homepage from"
+        description: "Git ref to deploy the waitlist from"
         required: false
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-and-deploy:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 20
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 15
     steps:
       - name: Checkout source repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -56,108 +65,24 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "canary"
+          bun-version: "1.3.14"
 
-      - name: Install homepage dependencies
-        working-directory: packages/homepage
-        run: bun install --no-save --ignore-scripts
+      - name: Test waitlist function
+        working-directory: packages/homepage/waitlist
+        run: node --test tests/waitlist.test.mjs
 
-      - name: Refresh homepage release data
-        working-directory: packages/homepage
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node ../app-core/scripts/write-homepage-release-data.mjs
-
-      - name: Check homepage release data
-        id: release_data_check
-        working-directory: packages/homepage
-        shell: bash
+      - name: Verify deploy artifact completeness
+        working-directory: packages/homepage/waitlist
         run: |
-          if bun run check:release-data; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          for f in site/index.html site/styles.css site/waitlist.js site/_redirects site/_headers functions/api/waitlist.js; do
+            [ -s "$f" ] || { echo "::error::missing or empty deploy artifact: $f"; exit 1; }
+          done
+          # The stale demo surface must never ship from this pipeline.
+          if grep -R "14159611510" site functions; then
+            echo "::error::stale phone demo content detected in waitlist artifacts"; exit 1
           fi
-
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "::error::Release-triggered homepage deploys require published release data."
-            exit 1
-          fi
-
-          echo "::warning::No complete published release data is available; skipping homepage deploy for this develop push."
-          echo "available=false" >> "$GITHUB_OUTPUT"
-
-      # Vite inlines these identifiers into the public bundle. Verifying them
-      # at the deploy boundary prevents publishing inactive channel controls.
-      - name: Verify channel build config
-        if: steps.release_data_check.outputs.available == 'true'
-        working-directory: packages/homepage
-        env:
-          ELIZA_REQUIRE_CHANNEL_CONFIG: "1"
-          VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
-          VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
-          VITE_DISCORD_CLIENT_ID: ${{ vars.VITE_DISCORD_CLIENT_ID }}
-          VITE_WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
-        run: node scripts/verify-channel-build-config.mjs
-
-      - name: Build homepage
-        if: steps.release_data_check.outputs.available == 'true'
-        working-directory: packages/homepage
-        run: bun run build
-        env:
-          ELIZA_REQUIRE_CHANNEL_CONFIG: "1"
-          VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
-          VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
-          VITE_DISCORD_CLIENT_ID: ${{ vars.VITE_DISCORD_CLIENT_ID }}
-          VITE_WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
-
-      - name: Install homepage browser
-        if: steps.release_data_check.outputs.available == 'true'
-        working-directory: packages/homepage
-        run: ./node_modules/.bin/playwright install --with-deps chromium
-
-      - name: Generate missing snapshot baselines
-        if: steps.release_data_check.outputs.available == 'true'
-        id: gen-baselines
-        working-directory: packages/homepage
-        run: |
-          SNAP_DIR="tests/e2e/visual.spec.ts-snapshots"
-          # 6 routes × 2 viewports × 1 browser project = 12 expected snapshots
-          EXPECTED=12
-          ACTUAL=$(ls "$SNAP_DIR"/*.png 2>/dev/null | wc -l || echo 0)
-          if [ "$ACTUAL" -lt "$EXPECTED" ]; then
-            echo "Found $ACTUAL of $EXPECTED snapshot baselines — regenerating all."
-            rm -f "$SNAP_DIR"/*.png 2>/dev/null || true
-            bun run test:e2e -- --update-snapshots || true
-            echo "generated=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "generated=false" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Commit new snapshot baselines
-        if: steps.release_data_check.outputs.available == 'true' && steps.gen-baselines.outputs.generated == 'true'
-        continue-on-error: true
-        run: |
-          SNAP_DIR="packages/homepage/tests/e2e/visual.spec.ts-snapshots"
-          if [ -n "$(git status --porcelain $SNAP_DIR)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add $SNAP_DIR
-            git commit -m "chore: generate visual regression snapshot baselines [skip ci]"
-            git push origin HEAD:${{ github.ref_name }} || (git pull --rebase origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }})
-            echo "Pushed new snapshot baselines."
-          fi
-
-      - name: Test homepage downloads
-        if: steps.release_data_check.outputs.available == 'true' && steps.gen-baselines.outputs.generated == 'false'
-        working-directory: packages/homepage
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bun run test:e2e
 
       - name: Verify Cloudflare credentials
-        if: steps.release_data_check.outputs.available == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -165,14 +90,13 @@ jobs:
           [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::CLOUDFLARE_API_TOKEN is required"; exit 1; }
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::CLOUDFLARE_ACCOUNT_ID is required"; exit 1; }
 
-      - name: Deploy production homepage to Cloudflare Pages
-        if: steps.release_data_check.outputs.available == 'true'
-        working-directory: packages/homepage
+      - name: Deploy production waitlist to Cloudflare Pages
+        working-directory: packages/homepage/waitlist
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          bunx wrangler@4.116.0 pages deploy dist \
+          bunx wrangler@4.116.0 pages deploy site \
             --project-name eliza-app-home \
             --branch main \
             --commit-hash "$GITHUB_SHA" \

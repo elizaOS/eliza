@@ -20,7 +20,6 @@
 import { listSubactionsFromParameters } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
-import { runSchedulingNegotiationHandler } from "../src/actions/lib/scheduling-handler.js";
 
 const REMOVED_CALENDAR_SUBACTIONS = [
   "calendly_availability",
@@ -82,16 +81,5 @@ describe("W2-C: CALENDAR umbrella narrowing", () => {
     expect(description).not.toMatch(
       /\bnegotiate_(start|propose|respond|finalize|cancel|list_active|list_proposals)\b/,
     );
-  });
-});
-
-describe("W2-C: SCHEDULING_NEGOTIATION lifecycle handler", () => {
-  it("scheduling negotiation lifecycle is exposed as an internal handler", () => {
-    // SCHEDULING_NEGOTIATION is no longer a planner-visible Action; the
-    // 7-verb lifecycle (start → propose → respond → finalize / cancel /
-    // list_active / list_proposals) is delegated to via the registered
-    // PERSONAL_ASSISTANT umbrella in owner-surfaces.ts. The handler must
-    // remain importable so that umbrella can call into it.
-    expect(typeof runSchedulingNegotiationHandler).toBe("function");
   });
 });

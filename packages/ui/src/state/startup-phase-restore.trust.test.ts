@@ -1,3 +1,4 @@
+/** Verifies isTrustedRestoreApiBaseUrl through the package's configured test harness. */
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { isTrustedRestoreApiBaseUrl } from "./runtime-url-trust";

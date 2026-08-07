@@ -42,6 +42,10 @@ import {
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
 import {
+  beginPendingHandoff,
+  settlePendingHandoff,
+} from "./handoff-pending.js";
+import {
   readSessionRetryCount,
   resolveStateLostRespawnCap,
   SESSION_RETRY_METADATA_KEY,
@@ -103,6 +107,25 @@ const SHARED_SUB_AGENT_ENTITY_NAME = "sub-agents";
 // the successor's sessionId (for traceability); presence is what matters. Kept
 // as a matching local literal in swarm-coordinator-service.ts (no cross-import).
 const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
+// Metadata marker stamped on a session at the MOMENT the router decides to
+// hand its work to a successor (verify-retry or state-lost/failover respawn),
+// BEFORE the successor spawn is awaited. The successor stamp above only lands
+// after spawnSession resolves — seconds later when the subprocess is slow to
+// boot — and the original session's teardown `stopped` can be processed inside
+// that window, where every swarm-coordinator guard reads pre-stamp state and
+// synthesizes a false "stopped before completion" into the origin room. This
+// marker makes the in-flight decision observable. It is meant to exist ONLY
+// between the handoff decision and spawn settlement: markSessionHandedOff
+// replaces it with the successor stamp on success, and the spawn-failure catch
+// clears it so the surfaced failure and any later genuine stop still
+// synthesize. Because the persisted value can nonetheless outlive the handoff
+// (crash between stamp and settle, swallowed best-effort clear), presence
+// alone is NOT authority: the value is the handoff's generation token
+// (handoff-pending.ts), and the coordinator honors it only while that exact
+// token is registered in-flight — stale persisted markers are ignored and
+// cleared, so they can never suppress a later legitimate stop. Matching local
+// key literal in swarm-coordinator-service.ts (no cross-import).
+const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 // Metadata marker the router stamps on a successor session (verify-retry,
 // state-lost respawn, account failover) when it re-points the forwarded
 // `roomId` away from the origin session's raw value. Presence tells downstream
@@ -125,6 +148,12 @@ const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/g;
 // hyphen U+2010, non-breaking hyphen U+2011, figure dash U+2012, en dash
 // U+2013, em dash U+2014, horizontal bar U+2015, minus sign U+2212.
 const UNICODE_DASHES_RE = /[\u2010-\u2015\u2212]/g;
+
+// Well-known XML namespace URIs (xmlns values). They are identifiers pasted
+// inside markup, not hyperlinks a sub-agent claimed as live \u2014 probing them
+// can only manufacture a false "dead" for a healthy build.
+const XML_NAMESPACE_URL_RE =
+  /^https?:\/\/(?:www\.)?w3\.org\/(?:2000\/svg|1999\/xhtml|1999\/xlink|2000\/xmlns|XML\/1998\/namespace|1998\/Math\/MathML|2001\/XMLSchema|2005\/Atom)(?:\/|$)/i;
 // A URL (mentioned by a sub-agent, or a page sub-resource) that did not
 // verify as reachable. Shared by the verification pass and the retry path.
 interface DeadUrl {
@@ -163,7 +192,34 @@ function collectVerifiableUrlCandidates(
     // the template stem as if the sub-agent claimed that directory is live.
     if (suffix.startsWith("<") || suffix.startsWith("&lt;")) continue;
 
-    const url = raw.replace(/[.,;:]+$/, "");
+    // Trailing sentence punctuation is prose delimiting, not part of the URL
+    // ("live at https://host/app/!" probed the literal `/!` path, got a 404,
+    // and declared a live app dead — triggering a pointless verify-retry).
+    // Trimmed only at end-of-token; interior `!`/`?` (query strings, bang
+    // routes) are untouched.
+    const url = raw.replace(/[.,;:!?]+$/, "");
+    // Phantom candidates can never verify live, and a single one counted
+    // "dead" flips a live build's verdict to failed (and burns the whole
+    // verify-retry budget re-building an app that is up). Drop, structurally:
+    //  - truncated relay links ("http://…") the WHATWG parser rejects;
+    //  - single-label hostnames ("https://fonts") left by mid-token clipping
+    //    — they never resolve publicly, and loopback stays allowed;
+    //  - XML namespace URIs quoted in pasted markup (xmlns="…/2000/svg").
+    let parsedCandidate: URL;
+    try {
+      parsedCandidate = new URL(url);
+    } catch {
+      continue;
+    }
+    const candidateHost = parsedCandidate.hostname;
+    if (
+      !candidateHost.includes(".") &&
+      candidateHost !== "localhost" &&
+      !candidateHost.startsWith("[")
+    ) {
+      continue;
+    }
+    if (XML_NAMESPACE_URL_RE.test(url)) continue;
     // Raw `curl -i` output includes CDN reporting endpoints in `report-to`
     // headers. They are not part of the built app, and letting them into the
     // bounded verifier list crowds out real page/assets.
@@ -1982,12 +2038,19 @@ export class SubAgentRouter extends Service {
     resumeContext?: ResumeContext,
   ): Promise<boolean> {
     const meta = (session.metadata ?? {}) as Record<string, unknown>;
-    // The original task is stashed on metadata by TASKS op=spawn_agent —
+    // The original task is stashed on metadata by the TASKS spawn paths —
     // SessionInfo itself doesn't carry it. Without it we can't reconstruct the
     // work, so surface the failure honestly instead of respawning a blank one.
     const originalTask =
       typeof meta.initialTask === "string" ? meta.initialTask.trim() : "";
-    if (!originalTask) return false;
+    if (!originalTask) {
+      this.log(
+        "warn",
+        "state-lost respawn unavailable: session metadata has no initialTask",
+        { sessionId: session.id, reason },
+      );
+      return false;
+    }
 
     const service =
       this.acp ??
@@ -2013,6 +2076,10 @@ export class SubAgentRouter extends Service {
     const resumeMeta = resumeContext
       ? { [RESUME_CONTEXT_METADATA_KEY]: resumeContext }
       : {};
+    // Pre-stamp the respawn decision BEFORE awaiting the spawn — same race as
+    // the verify-retry path: the dead session's teardown `stopped` can be
+    // processed while the replacement spawn is still in flight.
+    const pendingToken = await this.markHandoffPending(session.id);
     try {
       const result = await service.spawnSession({
         agentType: session.agentType,
@@ -2071,9 +2138,16 @@ export class SubAgentRouter extends Service {
       }
       // Same handoff stamp as verify-retry (#11711): the old session's teardown
       // `stopped` is plumbing, not a user-facing completion — the respawn posts.
-      await this.markSessionHandedOff(session.id, result.sessionId);
+      await this.markSessionHandedOff(
+        session.id,
+        result.sessionId,
+        pendingToken,
+      );
       return true;
     } catch (err) {
+      // Clear the pending marker: no successor exists, so the honest failure
+      // path (and any later genuine stop) must synthesize normally.
+      await this.clearHandoffPending(session.id, pendingToken);
       this.log(
         "warn",
         `${reason} respawn spawn failed; surfacing the failure instead`,
@@ -2174,15 +2248,70 @@ export class SubAgentRouter extends Service {
   private async markSessionHandedOff(
     oldSessionId: string,
     successorSessionId: string,
+    pendingToken: string,
+  ): Promise<void> {
+    await this.patchHandoffMetadata(oldSessionId, {
+      [HANDED_OFF_SUCCESSOR_META_KEY]: successorSessionId,
+      // Same update: the pending decision marker is superseded by the real
+      // successor stamp, so no window exists where both are absent.
+      [HANDOFF_PENDING_META_KEY]: null,
+    });
+    // Registry retire AFTER the successor stamp lands: a stop processed in
+    // between reads the successor stamp, so no window opens where the marker
+    // is current-but-unstamped. If the patch was swallowed, the persisted
+    // marker is now stale (registry retired) and the coordinator ignores and
+    // clears it — failing toward the prior duplicate-post, never suppression.
+    settlePendingHandoff(oldSessionId, pendingToken);
+  }
+
+  /**
+   * Stamp the pending-handoff marker on a session whose successor spawn is
+   * about to be awaited, so its teardown `stopped` — which can be processed
+   * while the spawn is still in flight — is recognized by swarm-synthesis as
+   * handoff plumbing rather than a genuine terminal. Must be called BEFORE
+   * `spawnSession` is awaited. Returns the generation token that scopes the
+   * marker to THIS handoff: the coordinator only honors the marker while the
+   * token is registered in-flight, so a persisted marker that outlives its
+   * handoff (crash, swallowed clear) can never suppress a later legitimate
+   * stop. Pair with {@link clearHandoffPending} in the spawn-failure path and
+   * pass the token to {@link markSessionHandedOff} on success. Best-effort on
+   * the metadata write, same contract as markSessionHandedOff.
+   */
+  private async markHandoffPending(sessionId: string): Promise<string> {
+    const token = beginPendingHandoff(sessionId);
+    await this.patchHandoffMetadata(sessionId, {
+      [HANDOFF_PENDING_META_KEY]: token,
+    });
+    return token;
+  }
+
+  /**
+   * Remove the pending-handoff marker after a FAILED successor spawn, so the
+   * caller's surfaced-failure post and any later genuine stop synthesize
+   * exactly as before the decision was made. The registry retire comes first
+   * and is unconditional: even when the metadata clear is swallowed, the
+   * persisted marker is no longer current and cannot suppress anything.
+   */
+  private async clearHandoffPending(
+    sessionId: string,
+    pendingToken: string,
+  ): Promise<void> {
+    settlePendingHandoff(sessionId, pendingToken);
+    await this.patchHandoffMetadata(sessionId, {
+      [HANDOFF_PENDING_META_KEY]: null,
+    });
+  }
+
+  private async patchHandoffMetadata(
+    sessionId: string,
+    patch: Record<string, unknown>,
   ): Promise<void> {
     const service =
       this.acp ??
       (this.runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService | null);
     if (typeof service?.updateSessionMetadata !== "function") return;
     try {
-      await service.updateSessionMetadata(oldSessionId, {
-        [HANDED_OFF_SUCCESSOR_META_KEY]: successorSessionId,
-      });
+      await service.updateSessionMetadata(sessionId, patch);
     } catch {
       // error-policy:J6 best-effort handoff marker; a missed stamp only risks the
       // prior duplicate-post, never a dropped terminal.
@@ -2213,11 +2342,20 @@ export class SubAgentRouter extends Service {
       return false;
     }
 
-    // The original task is stashed on metadata by TASKS op=spawn_agent —
-    // SessionInfo itself doesn't carry it.
+    // The original task is stashed on metadata by the TASKS spawn paths —
+    // SessionInfo itself doesn't carry it. Log the miss: a session without
+    // the stamp silently loses its verify-retry valve, and that gap has
+    // previously read as "verification posted a failure instead of retrying".
     const originalTask =
       typeof meta.initialTask === "string" ? meta.initialTask.trim() : "";
-    if (!originalTask) return false;
+    if (!originalTask) {
+      this.log(
+        "warn",
+        "verify-retry unavailable: session metadata has no initialTask",
+        { sessionId: session.id },
+      );
+      return false;
+    }
 
     const service =
       this.acp ??
@@ -2247,9 +2385,21 @@ export class SubAgentRouter extends Service {
       cachedDead.length > 0
         ? `\nThese URL(s) are stale cached 404s. Their exact filenames are unavailable for this retry; do not recreate them and do not leave any HTML reference pointing to them. Create fresh asset filenames in the same app directory (for example, add a version suffix), update every HTML reference to the fresh filenames, then verify the fresh public URLs:\n${formatDeadLines(cachedDead)}\n`
         : "";
+    // A root-absolute asset path under a sub-path deploy is the dominant
+    // real-world cause of a dead sub-resource (vite base "/" emitting
+    // /assets/... for a page served at /apps/<slug>/). Name that diagnosis
+    // explicitly — the generic "files missing, create them" framing sent
+    // every retry rebuilding fresh files without ever touching the base,
+    // burning the whole retry budget on an unfixable path.
+    const rootAbsoluteDead = missingDead.some((d) =>
+      /^https?:\/\/[^/]+\/(?:assets|static)\//.test(d.url),
+    );
+    const basePathHint = rootAbsoluteDead
+      ? `\nAt least one dead URL is a ROOT-absolute asset path (e.g. /assets/…) while the page is served under a sub-path. This is a build base-path problem, NOT a missing file: rebuild with a relative base (vite: \`--base ./\` or base: "./" in vite.config), redeploy the build output, and verify the page's referenced asset URLs resolve UNDER the page's own path.\n`
+      : "";
     const missingFeedback =
       missingDead.length > 0
-        ? `\nThese URL(s) are not reachable, which means the corresponding files are missing, empty, or served from the wrong path. Create or fix every one of these files in the location the task specifies, then verify each file exists and is non-empty:\n${formatDeadLines(missingDead)}\n`
+        ? `\nThese URL(s) are not reachable:\n${formatDeadLines(missingDead)}\n${basePathHint || "\nThe corresponding files are missing, empty, or served from the wrong path. Create or fix every one of these files in the location the task specifies, then verify each file exists and is non-empty.\n"}`
         : "";
     const retryTask = `--- VERIFICATION FEEDBACK (retry ${nextRetry}/${maxRetries}) ---
 The previous attempt reported the task complete, but verification failed. This feedback overrides conflicting filename or URL instructions in the original task.${cachedFeedback}${missingFeedback}
@@ -2258,6 +2408,12 @@ ${originalTask}
 
 Do not report done until every referenced URL in the final page resolves without verification errors.`;
 
+    // Pre-stamp the retry decision BEFORE awaiting the spawn: the retry
+    // subprocess can take seconds to become ready, and the original session's
+    // teardown `stopped` fires inside that window — a post-spawn-only stamp
+    // (the prior shape) let synthesis post a false "stopped before
+    // completion" for a build whose retry was already in flight.
+    const pendingToken = await this.markHandoffPending(session.id);
     try {
       const result = await service.spawnSession({
         agentType: session.agentType,
@@ -2287,13 +2443,21 @@ Do not report done until every referenced URL in the final page resolves without
         maxRetries,
         deadCount: dead.length,
       });
-      // Mark the old session as handed off BEFORE its teardown `stopped` fires
-      // so synthesis treats that stop as plumbing, not a second completion
-      // (#11711). Best-effort: a missed stamp only risks the prior duplicate
-      // post, never a dropped genuine terminal.
-      await this.markSessionHandedOff(session.id, result.sessionId);
+      // Record the real successor id (#11711) — lineage-continuation readers
+      // consume it. The teardown-`stopped` race itself is closed by the
+      // pending marker stamped before the spawn, not by this call: the stop
+      // can land while spawnSession is still in flight.
+      await this.markSessionHandedOff(
+        session.id,
+        result.sessionId,
+        pendingToken,
+      );
       return true;
     } catch (err) {
+      // The decision did not survive: clear the pending marker BEFORE
+      // returning so the caller's surfaced verification failure and any later
+      // genuine stop synthesize normally.
+      await this.clearHandoffPending(session.id, pendingToken);
       this.log(
         "warn",
         "verify-retry spawn failed; surfacing the failure instead",
@@ -3185,9 +3349,16 @@ function composeNarration(
     requestedType !== session.agentType
       ? ` Requested agent type was ${requestedType}; actual agent type was ${session.agentType}.`
       : "";
+  // The header is the planner's operating instruction for this turn, and the
+  // planner echoes what it is told into its user-facing reply. An earlier
+  // revision said "state the actual workdir (<abs path>)" to stop the planner
+  // claiming files landed at a user-requested location — and the planner
+  // obediently recited the absolute internal workspace path into chat. The
+  // directive now bans internal paths/ids outright while keeping the
+  // anti-substitution intent: files by bare name, never a claimed location.
   const header =
     event === "task_complete"
-      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer, state the actual workdir (${session.workdir}), do NOT substitute or repeat a requested path unless it matches the actual workdir, and do NOT start another sub-agent for it.${agentTypeNote}]`
+      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer and do NOT start another sub-agent for it. Summarize like a human: never repeat absolute filesystem paths or internal ids (session/task uuids, workspace dirs) in the reply — refer to files by bare name. The files live in the agent's own internal workspace, NOT in any folder the user asked for, so never claim a user-requested path.${agentTypeNote}]`
       : `[sub-agent: ${label} (${session.agentType}) — ${event}]`;
   if (event === QUESTION_FOR_TASK_CREATOR) {
     const message =
@@ -3241,9 +3412,10 @@ function composeNarration(
     // "verified" body line would pollute the completion body that downstream
     // consumers (notification preview, verified-URL fallback, the completion
     // evaluator's reply) read from, regressing existing narration tests. The
-    // authoritative workdir + requested-vs-actual-agent note lives in the
-    // planner-only header (stripped by every `[sub-agent:`-prefix reader), so
-    // it never leaks into the user-facing body.
+    // requested-vs-actual-agent note lives in the planner-only header
+    // (stripped by every `[sub-agent:`-prefix reader), so it never leaks into
+    // the user-facing body; the actual workdir stays out of both header and
+    // body — it is internal infrastructure available in session metadata.
     const missing = artifactVerification?.missingFiles ?? [];
     const unverifiedLine =
       artifactVerification &&
@@ -3260,8 +3432,8 @@ function composeNarration(
     ].filter((line) => typeof line === "string" && line.trim().length > 0);
     return `${header}\n${lines.join("\n")}`;
   }
-  // Genuinely no captured output — keep the explicit note. The workdir lives
-  // in the planner-only header, not the body.
+  // Genuinely no captured output — keep the explicit note. The workdir stays
+  // out of the narration entirely (internal path; session metadata carries it).
   if (response === undefined) {
     return `${header}\nsub-agent reports task complete (no captured output).`;
   }

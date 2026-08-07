@@ -28,18 +28,14 @@ describe("LifeOps package boundaries", () => {
     const guide = readPackageFile("CLAUDE.md");
 
     expect(guide).toContain(
-      "LifeOps is the personal and executive assistant interface.",
+      "Chat-first owner operations and cross-domain LifeOps orchestration",
     );
     expect(guide).toContain(
-      "Health / sleep / circadian / screen-time planning",
+      "Domain implementations remain with their owning plugins.",
     );
-    expect(guide).toContain("belongs in `@elizaos/plugin-health`");
     expect(guide).toContain(
-      "Connector, adapter, bridge, and transport clients",
+      "Connector credentials and domain-specific settings belong to their owning plugin.",
     );
-    expect(guide).toContain("belong in their relevant plugins");
-    expect(guide).toContain("Native Apple Calendar / Reminders bridge policy");
-    expect(guide).toContain("belongs in native packages");
   });
 
   it("keeps health and screen-time actions as plugin-health wrappers", () => {
@@ -345,15 +341,16 @@ describe("LifeOps package boundaries", () => {
     );
   });
 
-  it("imports Calendly message triage from plugin-calendly instead of owning a transport adapter", () => {
+  it("does not retain the removed Calendly connector or a local transport adapter", () => {
     const pluginSource = readPackageFile("src/plugin.ts");
     const messagingIndex = readPackageFile("src/lifeops/messaging/index.ts");
+    const manifest = readPackageFile("package.json");
 
-    expect(pluginSource).toContain(
-      'import { CalendlyAdapter } from "@elizaos/plugin-calendly"',
-    );
+    expect(pluginSource).not.toContain("CalendlyAdapter");
+    expect(pluginSource).not.toContain("@elizaos/plugin-calendly");
     expect(messagingIndex).not.toContain("CalendlyAdapter");
     expect(messagingIndex).not.toContain("@elizaos/plugin-calendly");
+    expect(manifest).not.toContain("@elizaos/plugin-calendly");
     expect(
       existsSync(
         resolve(
@@ -364,15 +361,15 @@ describe("LifeOps package boundaries", () => {
     ).toBe(false);
   });
 
-  it("imports Gmail message triage from plugin-google instead of owning a transport adapter", () => {
+  it("imports Gmail message triage from plugin-google-workspace instead of owning a transport adapter", () => {
     const pluginSource = readPackageFile("src/plugin.ts");
     const messagingIndex = readPackageFile("src/lifeops/messaging/index.ts");
 
     expect(pluginSource).toContain(
-      'import { GoogleGmailAdapter } from "@elizaos/plugin-google"',
+      'import { GoogleGmailAdapter } from "@elizaos/plugin-google-workspace"',
     );
     expect(messagingIndex).not.toContain("GoogleGmailAdapter");
-    expect(messagingIndex).not.toContain("@elizaos/plugin-google");
+    expect(messagingIndex).not.toContain("@elizaos/plugin-google-workspace");
     expect(
       existsSync(
         resolve(packageRoot, "src/lifeops/messaging/adapters/gmail-adapter.ts"),
@@ -396,7 +393,6 @@ describe("LifeOps package boundaries", () => {
     expect(messagingIndex).toContain("createOwnerSendPolicy");
     for (const adapterSymbol of [
       "BrowserBridgeAdapter",
-      "CalendlyAdapter",
       "GoogleGmailAdapter",
       "XDmAdapter",
     ]) {
@@ -404,8 +400,7 @@ describe("LifeOps package boundaries", () => {
     }
     for (const connectorPackage of [
       "@elizaos/plugin-browser",
-      "@elizaos/plugin-calendly",
-      "@elizaos/plugin-google",
+      "@elizaos/plugin-google-workspace",
       "@elizaos/plugin-x",
     ]) {
       expect(messagingIndex).not.toContain(connectorPackage);

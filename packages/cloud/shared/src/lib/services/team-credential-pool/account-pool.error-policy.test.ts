@@ -6,7 +6,7 @@
  * distinguishable — a broken pipeline must never read as "no eligible account".
  * Deterministic in-memory deps (the injected seam), no DB.
  */
-import type { LinkedAccountConfig } from "@elizaos/contracts";
+import type { LinkedAccountConfig } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { TeamCredentialAccountPool } from "./account-pool";
 import type { AccountPoolDeps } from "./account-pool-contract";

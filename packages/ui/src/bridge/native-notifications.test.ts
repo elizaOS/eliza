@@ -1,3 +1,4 @@
+/** Verifies showNativeNotification (android channels) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Native notification bridge: per-priority Android channel routing, the

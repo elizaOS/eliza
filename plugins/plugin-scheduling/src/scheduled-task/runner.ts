@@ -508,7 +508,11 @@ export interface ScheduledTaskRunnerExtras {
    */
   fire(
     taskId: string,
-    args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
+    args?: {
+      eventPayload?: unknown;
+      allowTerminalRefire?: boolean;
+      recoverFiredAtIso?: string;
+    },
   ): Promise<ScheduledTask>;
   /**
    * Strict fire-attempt. Returns the {@link ScheduledTaskFireResult}
@@ -519,7 +523,11 @@ export interface ScheduledTaskRunnerExtras {
    */
   fireWithResult(
     taskId: string,
-    args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
+    args?: {
+      eventPayload?: unknown;
+      allowTerminalRefire?: boolean;
+      recoverFiredAtIso?: string;
+    },
   ): Promise<ScheduledTaskFireResult>;
   /**
    * Re-evaluate completion for a fired task (e.g. user_replied_within
@@ -1150,7 +1158,11 @@ export function createScheduledTaskRunner(
 
   async function fire(
     taskId: string,
-    args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
+    args?: {
+      eventPayload?: unknown;
+      allowTerminalRefire?: boolean;
+      recoverFiredAtIso?: string;
+    },
   ): Promise<ScheduledTask> {
     const result = await fireWithResult(taskId, args);
     switch (result.kind) {
@@ -1218,7 +1230,11 @@ export function createScheduledTaskRunner(
 
   async function fireWithResult(
     taskId: string,
-    args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
+    args?: {
+      eventPayload?: unknown;
+      allowTerminalRefire?: boolean;
+      recoverFiredAtIso?: string;
+    },
   ): Promise<ScheduledTaskFireResult> {
     const task = await deps.store.get(taskId);
     if (!task) throw new Error(`fire: task ${taskId} not found`);
@@ -1237,6 +1253,14 @@ export function createScheduledTaskRunner(
     // (see {@link ScheduledTaskClaimExpectation}); the winner rewrites
     // `firedAt`, which invalidates the loser's expectation even when both
     // observed the same status.
+    const recoveryClaim = args?.recoverFiredAtIso !== undefined;
+    if (
+      recoveryClaim &&
+      (task.state.status !== "fired" ||
+        task.state.firedAt !== args.recoverFiredAtIso)
+    ) {
+      return { kind: "raced", taskId: task.taskId };
+    }
     const refireClaim =
       args?.allowTerminalRefire === true &&
       task.state.status !== "scheduled" &&
@@ -1355,7 +1379,7 @@ export function createScheduledTaskRunner(
     const claim = await deps.store.claimForFire({
       taskId: task.taskId,
       firedAtIso: fireAtIso,
-      ...(refireClaim
+      ...(refireClaim || recoveryClaim
         ? {
             expected: {
               status: task.state.status,
@@ -1368,6 +1392,22 @@ export function createScheduledTaskRunner(
       return { kind: "raced", taskId: task.taskId };
     }
     const claimed = claim.task;
+    if (recoveryClaim && args?.recoverFiredAtIso) {
+      const persistedDispatchKey = claimed.metadata?.dispatchIdempotencyKey;
+      const dispatchIdempotencyKey =
+        typeof persistedDispatchKey === "string" &&
+        persistedDispatchKey.trim().length > 0
+          ? persistedDispatchKey.trim()
+          : `${claimed.taskId}:${args.recoverFiredAtIso}`;
+      claimed.metadata = {
+        ...(claimed.metadata ?? {}),
+        dispatchIdempotencyKey,
+        recoveredDispatchAtIso: fireAtIso,
+      };
+      await logger.log(claimed.taskId, "reopened", {
+        reason: "stale bound dispatch recovery",
+      });
+    }
     if (refireClaim) {
       // Fresh occurrence: drop the previous occurrence's response state and
       // any dispatch continuation — the new occurrence starts at the initial

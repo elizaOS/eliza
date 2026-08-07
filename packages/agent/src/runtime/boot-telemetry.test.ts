@@ -9,7 +9,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { recordBootEvent, recordBootTelemetry } from "./boot-telemetry.ts";
+import {
+  recordBootEvent,
+  recordBootTelemetry,
+  startMemorySampler,
+  stopMemorySampler,
+} from "./boot-telemetry.ts";
 import type { BootSummary } from "./boot-timer.ts";
 
 const ENV_KEYS = [
@@ -38,6 +43,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await stopMemorySampler();
   for (const key of ENV_KEYS) {
     const value = previousEnv[key];
     if (value === undefined) delete process.env[key];
@@ -109,5 +115,41 @@ describe("boot telemetry startup trace id", () => {
       label: "[test-watch]",
       watch: true,
     });
+  });
+
+  it("flushes once without taking ownership of termination signals", async () => {
+    const beforeExitListeners = process.listenerCount("beforeExit");
+    const sigtermListeners = process.listenerCount("SIGTERM");
+    const existingBeforeExitListeners = new Set(
+      process.listeners("beforeExit"),
+    );
+
+    startMemorySampler({ intervalMs: 60_000 });
+
+    expect(process.listenerCount("beforeExit")).toBe(beforeExitListeners + 1);
+    expect(process.listenerCount("SIGTERM")).toBe(sigtermListeners);
+
+    const samplerBeforeExitListener = process
+      .listeners("beforeExit")
+      .find((listener) => !existingBeforeExitListeners.has(listener));
+    if (!samplerBeforeExitListener) {
+      throw new Error(
+        "memory sampler did not register its beforeExit listener",
+      );
+    }
+    samplerBeforeExitListener(0);
+    await stopMemorySampler();
+
+    expect(process.listenerCount("beforeExit")).toBe(beforeExitListeners);
+    if (!stateDir) {
+      throw new Error("stateDir was not initialized");
+    }
+    const record = JSON.parse(
+      await readFile(
+        path.join(stateDir, "telemetry", "memory", "latest.json"),
+        "utf8",
+      ),
+    ) as { samples?: unknown[] };
+    expect(record.samples?.length).toBe(1);
   });
 });

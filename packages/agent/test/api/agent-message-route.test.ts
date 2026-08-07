@@ -18,11 +18,8 @@
  *     handlers registered via `runtime.registerModel`) is shared.
  *   - Compatibility transports never expose assistant turns explicitly
  *     marked internal, while ordinary visible summaries remain unchanged.
- *   - `AgentRuntime.useModel(TEXT_LARGE)` dispatches to handlers
- *     registered via `runtime.registerModel` — the layer-2 check from the
- *     issue. Confirms the suspected "useModel doesn't fire the registered
- *     handler" claim was incorrect: when a TEXT_LARGE handler is
- *     registered, `useModel` invokes it.
+ *   - `AgentRuntime.useModel(TEXT_LARGE)` dispatches to handlers registered
+ *     through `runtime.registerModel`.
  */
 
 import crypto from "node:crypto";
@@ -968,9 +965,9 @@ describe("AgentRuntime model dispatch (layer-2 verification from #7680)", () => 
    * We exercise the `registerModel` method directly (private member of
    * `AgentRuntime` instance). Constructing a fully wired `AgentRuntime`
    * for this unit test would pull in a database adapter; instead we use
-   * the public `registerModel`/`getModel` methods bound to a minimal
-   * stub that owns just `this.models` — the exact shape the prototype
-   * methods need.
+   * the public `registerModel`/`getModel` methods bound to a
+   * prototype-backed fixture. This keeps the real registration guards in
+   * the path while supplying only the state those methods consume.
    */
   it("resolves TEXT_LARGE handler from the same Map that registerModel writes", async () => {
     const { AgentRuntime } = await import("@elizaos/core");
@@ -984,28 +981,20 @@ describe("AgentRuntime model dispatch (layer-2 verification from #7680)", () => 
       priority: number;
       registrationOrder: number;
     }
-    const stub = {
-      models: new Map<string, ModelEntry[]>(),
-      logger: { debug: () => {}, info: () => {}, warn: () => {} },
-      agentId: stringToUuid("model-routing-agent"),
-      emitEvent: vi.fn(async () => undefined),
-    };
-
-    const proto = AgentRuntime.prototype as unknown as Record<
-      string,
-      (this: typeof stub, ...args: unknown[]) => unknown
-    >;
+    const models = new Map<string, ModelEntry[]>();
+    const stub = Object.assign(
+      Object.create(AgentRuntime.prototype) as AgentRuntime,
+      {
+        models,
+        logger: { debug: () => {}, info: () => {}, warn: () => {} },
+        agentId: stringToUuid("model-routing-agent"),
+        emitEvent: vi.fn(async () => undefined),
+        getSetting: vi.fn(() => undefined),
+      },
+    );
 
     const handler = vi.fn(async () => "from-local-inference");
-    (
-      proto.registerModel as unknown as (
-        this: typeof stub,
-        modelType: string,
-        handler: ModelHandler,
-        provider: string,
-        priority?: number,
-      ) => void
-    ).call(
+    AgentRuntime.prototype.registerModel.call(
       stub,
       ModelType.TEXT_LARGE,
       handler as never,
@@ -1015,7 +1004,7 @@ describe("AgentRuntime model dispatch (layer-2 verification from #7680)", () => 
 
     // The Map is populated as the runtime expects — verify the row shape
     // matches what `resolveModelRegistration` reads inside `useModel`.
-    const entries = stub.models.get(ModelType.TEXT_LARGE);
+    const entries = models.get(ModelType.TEXT_LARGE);
     expect(entries?.length).toBe(1);
     expect(entries?.[0].handler).toBe(handler);
     expect(entries?.[0].provider).toBe("eliza-local-inference");
@@ -1023,7 +1012,7 @@ describe("AgentRuntime model dispatch (layer-2 verification from #7680)", () => 
 
     // Calling the resolved handler directly proves the registered closure
     // is what would fire — no separate "slot assignments" indirection.
-    const result = await entries?.[0].handler(stub as unknown as AgentRuntime, {
+    const result = await entries?.[0].handler(stub, {
       prompt: "test",
       maxTokens: 16,
     });
@@ -1031,5 +1020,4 @@ describe("AgentRuntime model dispatch (layer-2 verification from #7680)", () => 
     expect(handler).toHaveBeenCalledTimes(1);
   });
 });
-
 void ChannelType;

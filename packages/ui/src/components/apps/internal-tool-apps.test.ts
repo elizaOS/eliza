@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
-import { pathForTab, tabFromPath } from "../../navigation";
+import { tabFromPath } from "../../navigation";
 import {
   getInternalToolAppDescriptors,
   getInternalToolAppHasDetailsPage,
@@ -18,8 +18,8 @@ import {
 } from "./internal-tool-apps";
 
 describe("internal tool app descriptors", () => {
-  it("bridges the Fine Tuning app route to the training tool tab", () => {
-    const appName = "@elizaos/plugin-training";
+  it("bridges the Automations app route to the task tool tab", () => {
+    const appName = "@elizaos/plugin-task-coordinator";
     const descriptor = getInternalToolAppDescriptors().find(
       (item) => item.name === appName,
     );
@@ -27,28 +27,20 @@ describe("internal tool app descriptors", () => {
       (item) => item.name === appName,
     );
 
-    expect(getInternalToolAppWindowPath(appName)).toBe("/apps/fine-tuning");
-    expect(getInternalToolAppTargetTab(appName)).toBe("fine-tuning");
-    expect(getInternalToolAppHasDetailsPage(appName)).toBe(true);
-    expect(pathForTab("fine-tuning")).toBe("/apps/fine-tuning");
-    expect(tabFromPath("/apps/fine-tuning")).toBe("fine-tuning");
+    expect(getInternalToolAppWindowPath(appName)).toBe("/apps/tasks");
+    expect(getInternalToolAppTargetTab(appName)).toBe("tasks");
+    expect(getInternalToolAppHasDetailsPage(appName)).toBe(false);
     expect(descriptor).toMatchObject({
-      displayName: "Fine Tuning",
+      displayName: "Automations",
     });
     expect(catalogApp).toMatchObject({
-      displayName: "Fine Tuning",
+      displayName: "Automations",
       description:
-        "Collect training data, inspect trajectories, run Eliza harness evals, benchmark model tiers, and manage fine-tuned models.",
+        "Create, inspect, and manage workflows, triggers, and scheduled items.",
       capabilities: expect.arrayContaining([
-        "training",
-        "fine-tuning",
-        "trajectories",
-        "datasets",
-        "models",
-        "evals",
-        "benchmarks",
-        "analysis",
-        "data-collection",
+        "tasks",
+        "workflows",
+        "automations",
       ]),
     });
   });
@@ -62,42 +54,41 @@ describe("internal tool app descriptors", () => {
   });
 
   it("routes nested app view paths through the dynamic view renderer", () => {
-    expect(tabFromPath("/apps/facewear/status")).toBe("views");
     expect(tabFromPath("/apps/custom-panel/detail")).toBe("views");
   });
 
   it("overlays a plugin's live /api/views ViewDeclaration onto the catalog", () => {
     // Renaming a plugin app's displayName in its ViewDeclaration must update the
     // UI catalog with no edit to the static internal-tool declarations.
-    const trainingView: ViewRegistryEntry = {
-      id: "training",
-      label: "Model Studio",
+    const automationsView: ViewRegistryEntry = {
+      id: "task-coordinator",
+      label: "Workflow Studio",
       description: "Renamed via ViewDeclaration",
-      path: "/apps/fine-tuning",
-      tags: ["training", "renamed"],
+      path: "/apps/tasks",
+      tags: ["automations", "renamed"],
       available: true,
-      pluginName: "@elizaos/plugin-training",
+      pluginName: "@elizaos/plugin-task-coordinator",
       hasHeroImage: true,
-      heroImageUrl: "/api/views/training/hero",
+      heroImageUrl: "/api/views/task-coordinator/hero",
     };
 
     const staticApp = getInternalToolApps().find(
-      (app) => app.name === "@elizaos/plugin-training",
+      (app) => app.name === "@elizaos/plugin-task-coordinator",
     );
-    expect(staticApp?.displayName).toBe("Fine Tuning");
+    expect(staticApp?.displayName).toBe("Automations");
 
-    const overlaid = getInternalToolApps([trainingView]).find(
-      (app) => app.name === "@elizaos/plugin-training",
+    const overlaid = getInternalToolApps([automationsView]).find(
+      (app) => app.name === "@elizaos/plugin-task-coordinator",
     );
-    expect(overlaid?.displayName).toBe("Model Studio");
+    expect(overlaid?.displayName).toBe("Workflow Studio");
     expect(overlaid?.description).toBe("Renamed via ViewDeclaration");
-    expect(overlaid?.capabilities).toEqual(["training", "renamed"]);
-    expect(overlaid?.heroImage).toBe("/api/views/training/hero");
+    expect(overlaid?.capabilities).toEqual(["automations", "renamed"]);
+    expect(overlaid?.heroImage).toBe("/api/views/task-coordinator/hero");
   });
 
   it("maps window paths back to their internal-tool app name", () => {
-    expect(getInternalToolAppNameForPath("/apps/fine-tuning")).toBe(
-      "@elizaos/plugin-training",
+    expect(getInternalToolAppNameForPath("/apps/tasks")).toBe(
+      "@elizaos/plugin-task-coordinator",
     );
     expect(getInternalToolAppNameForPath("/apps/plugins")).toBe(
       "@elizaos/app-plugin-viewer",
@@ -107,7 +98,6 @@ describe("internal tool app descriptors", () => {
 
   it("derives the pinnable list from declared pinnable flags", () => {
     const pinnable = getPinnableInternalAppNames();
-    expect(pinnable).toContain("@elizaos/plugin-training");
     expect(pinnable).toContain("@elizaos/plugin-task-coordinator");
     // Files is a non-pinnable internal tool.
     expect(pinnable).not.toContain("@elizaos/app-files-viewer");

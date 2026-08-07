@@ -128,6 +128,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       viewPath: "/settings",
       viewLabel: "Settings",
       viewType: "gui",
+      source: "agent",
     });
     // No action / alwaysOnTop keys when the body omits them.
     const frame = broadcastWs.mock.calls[0][0] as Record<string, unknown>;
@@ -145,6 +146,24 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     );
   });
 
+  it("records originating-client navigation without broadcasting to unrelated shells", async () => {
+    const { ctx, json, broadcastWs } = makeNavigateCtx("notes", {
+      delivery: "originating-client",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).not.toHaveBeenCalled();
+    expect(getCurrentViewState()).toMatchObject({
+      viewId: "notes",
+      source: "agent",
+    });
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ ok: true, viewId: "notes" }),
+    );
+  });
+
   it("includes action and alwaysOnTop in the frame only when present in the body", async () => {
     const { ctx, broadcastWs } = makeNavigateCtx("settings", {
       action: "pin-tab",
@@ -159,6 +178,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       viewPath: "/settings",
       viewLabel: "Settings",
       viewType: "gui",
+      source: "agent",
       action: "pin-tab",
       alwaysOnTop: true,
     });
@@ -180,6 +200,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       viewPath: "/settings",
       viewLabel: "Settings",
       viewType: "gui",
+      source: "agent",
       subview: "permissions",
       payload,
     });
@@ -207,6 +228,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       viewPath: "/settings",
       viewLabel: "Settings",
       viewType: "gui",
+      source: "agent",
       action: "close",
     });
   });
@@ -269,6 +291,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       viewPath: "/apps/ghost-view",
       viewLabel: "ghost-view",
       viewType: "gui",
+      source: "agent",
     });
   });
 

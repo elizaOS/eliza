@@ -31,6 +31,7 @@ import type {
 	DiscordAudioSinkPlayOptions,
 	IDiscordAudioSink,
 } from "./audio-sink";
+import type { StatusReactionController } from "./status-reactions";
 import type {
 	DiscordVoicePlaybackOptions,
 	DiscordVoiceTarget,
@@ -225,6 +226,11 @@ export interface BuildMemoryFromMessageOptions {
 export interface IDiscordService {
 	accountId?: string;
 	client: DiscordJsClient | null;
+	/**
+	 * Resolves only after connector startup has hydrated privileged identity
+	 * aliases and the rest of the ready-time state used by message ingestion.
+	 */
+	clientReadyPromise?: Promise<void> | null;
 	character: Character;
 	discordSettings?: DiscordSettings;
 	getChannelType: (channel: Channel) => Promise<ChannelType>;
@@ -259,6 +265,21 @@ export interface IDiscordService {
 		status: string,
 		options?: { accountId?: string | null },
 	) => Promise<boolean>;
+	/**
+	 * Register an in-flight `handleMessage` turn so shutdown can drain it
+	 * (bounded) instead of tearing the client down mid-turn. Optional: a
+	 * minimal `IDiscordService` test double may omit it, in which case the
+	 * turn is simply not tracked for drain purposes.
+	 */
+	trackInFlightTurn?: (messageId: string, promise: Promise<unknown>) => void;
+	/**
+	 * Attach the status-reaction controller for a tracked turn so a drain
+	 * timeout can reconcile it instead of leaving it on its last emoji.
+	 */
+	trackStatusReaction?: (
+		messageId: string,
+		controller: StatusReactionController,
+	) => void;
 }
 
 export type {

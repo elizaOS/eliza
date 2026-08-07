@@ -2,10 +2,11 @@
  * Trajectory export helpers: flatten persisted trajectory steps into per-LLM-call
  * records, summarize token and cache usage, and serialize a batch of
  * trajectories to eliza-native JSON/JSONL rows, CSV, or ART message rows. Reads
- * either the in-memory `steps` array or the persisted `stepsJson` string, and
- * tolerates missing or malformed fields by coercing to finite numbers and
- * skipping unparseable rows.
+ * either the in-memory `steps` array or the persisted `stepsJson` string.
+ * Missing steps represent an empty trajectory; malformed persisted steps fail
+ * export so corrupt diagnostics are never presented as a valid empty run.
  */
+import { ElizaError } from "../errors.ts";
 import { textFromChatMessageContent } from "../runtime/system-prompt";
 
 export {
@@ -150,12 +151,25 @@ function listTrajectorySteps(
 	) {
 		return [];
 	}
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(trajectory.stepsJson) as unknown;
-		return Array.isArray(parsed) ? (parsed as TrajectoryStepRecord[]) : [];
-	} catch {
-		return [];
+		parsed = JSON.parse(trajectory.stepsJson) as unknown;
+	} catch (error) {
+		// error-policy:J2 persisted diagnostic data must remain distinguishable
+		// from an empty trajectory; attach its identity and preserve the cause.
+		throw new ElizaError("Trajectory steps contain malformed JSON", {
+			code: "TRAJECTORY_STEPS_INVALID",
+			cause: error,
+			context: { trajectoryId: trajectory.trajectoryId },
+		});
 	}
+	if (!Array.isArray(parsed)) {
+		throw new ElizaError("Trajectory steps must be an array", {
+			code: "TRAJECTORY_STEPS_INVALID",
+			context: { trajectoryId: trajectory.trajectoryId },
+		});
+	}
+	return parsed as TrajectoryStepRecord[];
 }
 
 function listStepLlmCalls(
@@ -456,6 +470,7 @@ function buildNativeResponse(
 	const cacheCreationInputTokens = toOptionalFiniteNumber(
 		call.cacheCreationInputTokens,
 	);
+	const reasoningTokens = toOptionalFiniteNumber(call.reasoningTokens);
 	const usage: NonNullable<ElizaNativeModelResponseRecord["usage"]> = {};
 	if (promptTokens !== undefined) usage.promptTokens = promptTokens;
 	if (completionTokens !== undefined) usage.completionTokens = completionTokens;
@@ -467,6 +482,9 @@ function buildNativeResponse(
 	}
 	if (cacheCreationInputTokens !== undefined) {
 		usage.cacheCreationInputTokens = cacheCreationInputTokens;
+	}
+	if (reasoningTokens !== undefined) {
+		usage.reasoningTokens = reasoningTokens;
 	}
 
 	const response: ElizaNativeModelResponseRecord = {

@@ -105,6 +105,32 @@ describe("setupDiscordEventListeners — DM dispatch", () => {
 		vi.clearAllMocks();
 	});
 
+	it("holds every gateway ingress branch until ready-time identity hydration completes", async () => {
+		const service = makeService();
+		let releaseReady!: () => void;
+		service.clientReadyPromise = new Promise<void>((resolve) => {
+			releaseReady = resolve;
+		});
+		const { channelDebouncer } = setupDiscordEventListeners(service as never);
+		service.channelDebouncer = channelDebouncer as never;
+
+		service.client.emit(
+			"messageCreate",
+			makeMessage(DiscordChannelType.DM, "dm-ready-gate"),
+		);
+		await tick();
+
+		expect(service.buildMemoryFromMessage).not.toHaveBeenCalled();
+		expect(service.messageManager.noteHumanEdge).not.toHaveBeenCalled();
+		expect(service.messageManager.handleMessage).not.toHaveBeenCalled();
+		expect(debouncerState.channelEnqueue).not.toHaveBeenCalled();
+
+		releaseReady();
+		await tick();
+		await tick();
+		expect(service.messageManager.handleMessage).toHaveBeenCalledTimes(1);
+	});
+
 	it("dispatches DMs directly to handleMessage, bypassing the channel debouncer", async () => {
 		const service = makeService();
 		const { channelDebouncer } = setupDiscordEventListeners(service as never);

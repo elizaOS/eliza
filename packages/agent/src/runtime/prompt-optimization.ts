@@ -89,6 +89,22 @@ const ELIZA_CAPTURE_PROMPTS =
 
 let promptCaptureSeq = 0;
 
+async function writePromptCapture(
+  runtime: AgentRuntime,
+  capturePath: string,
+  content: string,
+): Promise<boolean> {
+  try {
+    await mkdir(path.dirname(capturePath), { recursive: true });
+    await writeFile(capturePath, content);
+    return true;
+  } catch (error) {
+    // error-policy:J7 optional prompt diagnostics must not block model calls.
+    runtime.reportError("PromptOptimization.capture", error, { capturePath });
+    return false;
+  }
+}
+
 // Track which runtimes have been wrapped to prevent double-installation.
 const installedRuntimes = new WeakSet<AgentRuntime>();
 const usageCaptureInstalledRuntimes = new WeakSet<AgentRuntime>();
@@ -692,13 +708,24 @@ function compactorMessagesToPayloadMessages(
   });
 }
 
+/**
+ * Inject the Active View awareness block into the *current* (last) user
+ * message. Using findIndex (first user) broke multi-turn planners: turn 2+
+ * either rewrote history or hit the idempotent early-return on a prior turn's
+ * already-annotated message, so the live user turn never received the block
+ * and deterministic fixtures looking at latestUserText failed closed (#17918).
+ */
 function applyActiveViewAwarenessToMessages(
   messages: CompactorMessage[],
   view: Parameters<typeof applyActiveViewAwareness>[1],
 ): CompactorMessage[] {
-  const userMessageIndex = messages.findIndex(
-    (message) => message.role === "user",
-  );
+  let userMessageIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === "user") {
+      userMessageIndex = index;
+      break;
+    }
+  }
   if (userMessageIndex === -1) return messages;
 
   const message = messages[userMessageIndex];
@@ -1413,14 +1440,17 @@ export function installPromptOptimizations(
       const seq = String(++promptCaptureSeq).padStart(4, "0");
       const filename = `${seq}-${modelType}.txt`;
       const capturePath = path.join(captureDir, filename);
-      await mkdir(captureDir, { recursive: true }).catch(() => {});
-      await writeFile(
-        capturePath,
-        `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${originalPrompt.length} ---\n\n${originalPrompt}`,
-      ).catch(() => {});
-      promptOptimizationTelemetry.transformations.push(
-        `capture:original:${capturePath}`,
-      );
+      if (
+        await writePromptCapture(
+          runtime,
+          capturePath,
+          `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${originalPrompt.length} ---\n\n${originalPrompt}`,
+        )
+      ) {
+        promptOptimizationTelemetry.transformations.push(
+          `capture:original:${capturePath}`,
+        );
+      }
     }
 
     let rewrittenArgs = args;
@@ -1493,38 +1523,9 @@ export function installPromptOptimizations(
       }
     }
 
-    // Inject the "# Active View" awareness block into planner prompts so the
-    // model knows which surface the user is looking at and that it can drive
-    // every element through the view-interact capabilities. Applies regardless
-    // of prompt size (small planner prompts skip compaction above), and only to
-    // prompts that carry an action catalogue so non-planner calls are untouched.
-    if (
-      activeView &&
-      (nextPrompt.includes("# Available Actions") ||
-        modelType === "ACTION_PLANNER")
-    ) {
-      if (promptKey) {
-        const awarePrompt = applyActiveViewAwareness(nextPrompt, activeView);
-        if (awarePrompt !== nextPrompt) {
-          promptOptimizationTelemetry.transformations.push(
-            `active-view-awareness:${activeView.viewId}`,
-          );
-          nextPrompt = awarePrompt;
-        }
-      } else if (nextMessages) {
-        const awareMessages = applyActiveViewAwarenessToMessages(
-          nextMessages,
-          activeView,
-        );
-        if (awareMessages !== nextMessages) {
-          nextMessages = awareMessages;
-          nextPrompt = renderMessagesForTelemetry(nextMessages);
-          promptOptimizationTelemetry.transformations.push(
-            `active-view-awareness:${activeView.viewId}`,
-          );
-        }
-      }
-    }
+    // Active View awareness is applied *after* budget/compaction below so
+    // conversation compaction and fitPromptToTokenBudget cannot strip the
+    // addressable-element block from multi-turn planner prompts (#17918).
 
     if (shouldApplyPromptBudget(modelType)) {
       const budget = resolvePromptBudget(runtime, modelType, {
@@ -1631,6 +1632,39 @@ export function installPromptOptimizations(
       }
     }
 
+    // Inject the "# Active View" awareness block into planner prompts so the
+    // model knows which surface the user is looking at and that it can drive
+    // every element through the view-interact capabilities. Runs after budget
+    // compaction so multi-turn history shrinkage cannot erase the element
+    // snapshot. Only applied to planner / action-catalogue prompts.
+    if (
+      activeView &&
+      (nextPrompt.includes("# Available Actions") ||
+        modelType === "ACTION_PLANNER")
+    ) {
+      if (promptKey) {
+        const awarePrompt = applyActiveViewAwareness(nextPrompt, activeView);
+        if (awarePrompt !== nextPrompt) {
+          promptOptimizationTelemetry.transformations.push(
+            `active-view-awareness:${activeView.viewId}`,
+          );
+          nextPrompt = awarePrompt;
+        }
+      } else if (nextMessages) {
+        const awareMessages = applyActiveViewAwarenessToMessages(
+          nextMessages,
+          activeView,
+        );
+        if (awareMessages !== nextMessages) {
+          nextMessages = awareMessages;
+          nextPrompt = renderMessagesForTelemetry(nextMessages);
+          promptOptimizationTelemetry.transformations.push(
+            `active-view-awareness:${activeView.viewId}`,
+          );
+        }
+      }
+    }
+
     const finalPromptForTelemetry = promptKey
       ? nextPrompt
       : renderMessagesForTelemetry(nextMessages ?? []);
@@ -1645,29 +1679,32 @@ export function installPromptOptimizations(
       const seq = String(promptCaptureSeq).padStart(4, "0");
       const filename = `${seq}-${modelType}-rewritten.txt`;
       const capturePath = path.join(captureDir, filename);
-      await writeFile(
-        capturePath,
-        `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${finalPromptForTelemetry.length} | rewritten ---\n\n${finalPromptForTelemetry}`,
-      ).catch(() => {});
-      promptOptimizationTelemetry.transformations.push(
-        `capture:rewritten:${capturePath}`,
-      );
+      if (
+        await writePromptCapture(
+          runtime,
+          capturePath,
+          `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${finalPromptForTelemetry.length} | rewritten ---\n\n${finalPromptForTelemetry}`,
+        )
+      ) {
+        promptOptimizationTelemetry.transformations.push(
+          `capture:rewritten:${capturePath}`,
+        );
+      }
     }
 
     const shouldSetMaxOutputTokens =
       outputReserveTokens !== undefined &&
       toOptionalNumber(promptRecord.maxOutputTokens) !== undefined;
-    const messagesChanged =
-      nextMessages !== null &&
-      renderMessagesForTelemetry(nextMessages) !== originalPrompt;
     const mergedProviderOptions = providerOptionsWithPromptOptimization(
       promptRecord,
       promptOptimizationTelemetry,
     );
+    // Always write nextMessages when present so post-budget Active View
+    // re-injection is not dropped (#17918).
     const rewrittenPayload = {
       ...(payload as Record<string, unknown>),
       ...(promptKey ? { [promptKey]: nextPrompt } : {}),
-      ...(!promptKey && nextMessages && messagesChanged
+      ...(!promptKey && nextMessages
         ? { messages: compactorMessagesToPayloadMessages(nextMessages) }
         : {}),
       providerOptions: mergedProviderOptions,

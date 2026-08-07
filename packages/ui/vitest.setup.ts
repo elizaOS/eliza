@@ -3,12 +3,107 @@
  * environment fixups the suite relies on.
  */
 import { Buffer } from "node:buffer";
+import { appendFileSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   ReadableStream,
   TransformStream,
   WritableStream,
 } from "node:stream/web";
 import { TextDecoder } from "node:util";
+import { afterEach, beforeEach, expect } from "vitest";
+// @ts-expect-error — plain-JS sibling that owns the shared message fingerprint.
+import { normalizeConsoleMessage } from "./scripts/console-warning-baseline.mjs";
+
+const nativeConsoleWarn = console.warn.bind(console);
+const nativeConsoleError = console.error.bind(console);
+let unexpectedConsoleMessages: string[] = [];
+const consoleBaselinePath = resolve(
+  process.cwd(),
+  "test/console-warning-baseline.json",
+);
+const consoleBaseline = JSON.parse(
+  readFileSync(consoleBaselinePath, "utf8"),
+) as Record<string, number>;
+const consoleBaselineCapture = process.env.UPDATE_TEST_CONSOLE_BASELINE;
+
+function stringifyConsoleArgument(argument: unknown): string {
+  if (argument instanceof Error) return argument.stack ?? argument.message;
+  if (typeof argument === "string") return argument;
+  try {
+    return JSON.stringify(argument);
+  } catch {
+    return String(argument);
+  }
+}
+
+function recordUnexpectedConsoleMessage(
+  level: "warn" | "error",
+  arguments_: unknown[],
+): void {
+  // Structured application logs are already asserted at the logger boundary;
+  // this guard targets raw browser-console output and React/jsdom warnings.
+  if (
+    typeof arguments_[0] === "string" &&
+    arguments_[0].startsWith("%c") &&
+    /\b(?:Info|Warn|Error)\b/u.test(arguments_[0])
+  ) {
+    (level === "warn" ? nativeConsoleWarn : nativeConsoleError)(...arguments_);
+    return;
+  }
+  // Fingerprint without color so the baseline matches in either color mode;
+  // the console re-emission below still carries the original bytes.
+  const message = normalizeConsoleMessage(
+    arguments_.map(stringifyConsoleArgument).join(" "),
+  );
+  unexpectedConsoleMessages.push(`${level}: ${message}`);
+  (level === "warn" ? nativeConsoleWarn : nativeConsoleError)(...arguments_);
+}
+
+/**
+ * Unexpected warnings and errors fail the owning test. Tests that intentionally
+ * exercise a logging boundary must spy on that console method and assert the
+ * expected call, which makes the exception local and reviewable.
+ */
+beforeEach(() => {
+  unexpectedConsoleMessages = [];
+  console.warn = (...arguments_: unknown[]) =>
+    recordUnexpectedConsoleMessage("warn", arguments_);
+  console.error = (...arguments_: unknown[]) =>
+    recordUnexpectedConsoleMessage("error", arguments_);
+});
+
+afterEach(() => {
+  const messages = unexpectedConsoleMessages;
+  unexpectedConsoleMessages = [];
+  console.warn = nativeConsoleWarn;
+  console.error = nativeConsoleError;
+  const testName = expect.getState().currentTestName ?? "<unknown test>";
+  if (consoleBaselineCapture && messages.length > 0) {
+    appendFileSync(
+      `${consoleBaselineCapture}.${process.pid}.jsonl`,
+      `${JSON.stringify({ testName, messages })}\n`,
+    );
+    return;
+  }
+  const observed: Record<string, number> = {};
+  for (const message of messages) {
+    observed[message] = (observed[message] ?? 0) + 1;
+  }
+  const regressions = Object.entries(observed).filter(
+    ([message, count]) => count > (consoleBaseline[message] ?? 0),
+  );
+  if (regressions.length > 0) {
+    throw new Error(
+      `Unexpected console output:\n${regressions
+        .map(
+          ([message, count]) =>
+            `- ${message}${count > 1 ? ` (x${count})` : ""}`,
+        )
+        .join("\n")}`,
+    );
+  }
+});
 
 // Deterministic timezone for any test that renders a localized date/number.
 // Set (overridably) so `toLocale*` / `Intl` output is identical on every

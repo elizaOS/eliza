@@ -48,6 +48,12 @@ const workflowReadmePath = fileURLToPath(
 const defaultScenarioRoot = fileURLToPath(
   new URL("../../test/scenarios/", import.meta.url),
 );
+const orchestratorScenarioRoot = fileURLToPath(
+  new URL(
+    "../../../plugins/plugin-agent-orchestrator/test/scenarios/",
+    import.meta.url,
+  ),
+);
 
 function captureLogger(): {
   logger: {
@@ -92,7 +98,7 @@ test("pins an authoritative, bounded shard catalog", () => {
   const { manifest, shard } = loadShard(manifestPath, "plugin-health");
   expect(manifest.authority).toBe(".github/workflows/live-scenarios.yml");
   expect(manifest.costCeiling).toMatchObject({
-    maxConcurrentShards: 4,
+    maxConcurrentShards: 5,
     maxWorkflowMinutes: 330,
   });
   // Every shard's ceiling must stay inside the 6-hour GitHub-hosted job cap,
@@ -105,6 +111,7 @@ test("pins an authoritative, bounded shard catalog", () => {
     "lifeops-connectors",
     "plugin-health",
     "app-control",
+    "agent-orchestrator",
     "scenario-runner-view-chat",
   ]);
   expect(shard.artifactContract).toEqual([
@@ -221,9 +228,9 @@ test("exempts the live lane from the zombie janitor's age+idle reaper", () => {
     ),
     "utf8",
   );
-  expect(janitor).toContain(
-    "'ElizaOS Cuttlefish,ElizaOS OpenAgent E1 (RISC-V AI SoC),Live Scenarios'",
-  );
+  expect(janitor).toContain("'Live Scenarios'");
+  expect(janitor).not.toContain("ElizaOS Cuttlefish");
+  expect(janitor).not.toContain("ElizaOS OpenAgent E1");
 });
 
 test("fans every requested shard out of the manifest and rejects ambiguity", () => {
@@ -241,6 +248,7 @@ test("fans every requested shard out of the manifest and rejects ambiguity", () 
     "lifeops-connectors",
     "plugin-health",
     "app-control",
+    "agent-orchestrator",
     "scenario-runner-view-chat",
   ]);
   const viewChat = scheduled.include.find(
@@ -410,7 +418,7 @@ test("reports uncovered live-only scenarios as explicit deferrals", () => {
 
 test("discovers the orchestrator live evidence in the scheduled catalog", async () => {
   const metadata = await listScenarioMetadata(
-    defaultScenarioRoot,
+    orchestratorScenarioRoot,
     undefined,
     undefined,
     false,

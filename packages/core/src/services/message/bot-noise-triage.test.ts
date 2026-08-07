@@ -69,6 +69,7 @@ function makeRuntime(args: {
 		getSetting: (key: string) => args.settings?.[key],
 		useModel,
 		getMemories,
+		reportError: vi.fn(),
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn() },
 	} as unknown as IAgentRuntime & { useModel: ReturnType<typeof vi.fn> };
 }

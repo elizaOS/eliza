@@ -19,7 +19,6 @@ import { ServiceType } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
-  APPROVAL_SERVICE,
   type ApprovalEnqueueInput,
   ApprovalNotFoundError,
   ApprovalService,
@@ -300,11 +299,6 @@ function messageInput(
 }
 
 describe("ApprovalService", () => {
-  it("exposes the canonical serviceType literal", () => {
-    expect(ApprovalService.serviceType).toBe("eliza_approval");
-    expect(APPROVAL_SERVICE).toBe("eliza_approval");
-  });
-
   it("resolveApprovalService returns null when unregistered", () => {
     const runtime = createMockRuntime({ getService: () => null });
     expect(resolveApprovalService(runtime)).toBeNull();
@@ -559,6 +553,53 @@ describe("ApprovalService", () => {
       timeZone: "America/Los_Angeles",
       durationMinutes: 45,
       windowPreset: "tomorrow_morning",
+    });
+  });
+
+  it("preserves the built-in calendar provider version for conditional writes", async () => {
+    const runtime = createApprovalTableRuntime("agent-eliza-calendar-approval");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+
+    const confirmed = await queue.enqueueConfirmed(
+      {
+        requestedBy: "OWNER_CALENDAR_EDITOR",
+        subjectUserId: "owner-123",
+        action: "modify_event",
+        payload: {
+          action: "modify_event",
+          side: "owner",
+          grantId: "eliza-calendar",
+          calendarId: "primary",
+          eventId: "built-in-event-1",
+          expectedProvider: "eliza",
+          expectedProviderVersion: '"eliza-1"',
+          expectedEventUpdatedAt: "2027-10-01T00:00:00.000Z",
+          expectedEventStartAtMs: Date.parse("2027-10-15T16:00:00.000Z"),
+          patch: {
+            title: "Pickup moved",
+            startsAtMs: Date.parse("2027-10-15T17:00:00.000Z"),
+            endsAtMs: Date.parse("2027-10-15T18:00:00.000Z"),
+            attendees: [],
+            location: null,
+            description: null,
+          },
+        },
+        channel: "internal",
+        reason: "Authenticated owner editor gesture",
+        idempotencyKey: "calendar-editor-eliza-1",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+      {
+        resolvedBy: "owner-123",
+        resolutionReason: "Authenticated owner editor gesture",
+      },
+    );
+
+    expect(confirmed.payload).toMatchObject({
+      action: "modify_event",
+      grantId: "eliza-calendar",
+      expectedProvider: "eliza",
+      expectedProviderVersion: '"eliza-1"',
     });
   });
 

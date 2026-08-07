@@ -1,9 +1,54 @@
 package ai.eliza.plugins.talkmode
 
 import com.getcapacitor.JSObject
+import org.json.JSONObject
 
 internal object TalkModeAndroidBridgeContract {
     const val FINAL_TRANSCRIPT_DEDUP_WINDOW_MS = 2000L
+    const val LOCAL_AGENT_SOCKET_NAME = "eliza_local_agent_v1"
+
+    fun localAgentTtsFrame(
+        requestId: String,
+        token: String,
+        body: JSONObject
+    ): String = JSONObject().apply {
+        put("id", requestId)
+        put("method", "http_request")
+        put("payload", JSONObject().apply {
+            put("method", "POST")
+            put("path", "/api/tts/local-inference")
+            put("headers", JSONObject().apply {
+                put("Authorization", "Bearer $token")
+                put("Content-Type", "application/json")
+                put("Accept", "audio/wav")
+            })
+            put("body", body)
+        })
+    }.toString()
+
+    fun decodeLocalAgentWavResponse(
+        line: String,
+        decodeBase64: (String) -> ByteArray
+    ): ByteArray {
+        val frame = JSONObject(line)
+        if (!frame.optBoolean("ok", false)) {
+            throw IllegalStateException("Local agent TTS request failed")
+        }
+        val result = frame.optJSONObject("result")
+            ?: throw IllegalStateException("Local agent TTS returned no result")
+        val status = result.optInt("status", 0)
+        if (status !in 200..299) {
+            throw IllegalStateException("Local agent TTS error: $status")
+        }
+        if (result.optString("bodyEncoding") != "base64") {
+            throw IllegalStateException("Local agent TTS returned an unsupported body encoding")
+        }
+        val bytes = decodeBase64(result.optString("bodyBase64"))
+        if (bytes.isEmpty()) {
+            throw IllegalStateException("Local agent TTS returned no audio")
+        }
+        return bytes
+    }
 
     fun audioFramesStartedPayload(
         sampleRate: Int,

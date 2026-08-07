@@ -10,7 +10,7 @@
 import { readFile } from "node:fs/promises";
 import { ModelType, type Route } from "@elizaos/core";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
-import { createDeterministicLlmProxyPlugin } from "../../test/mocks/helpers/llm-proxy-plugin.ts";
+import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
@@ -192,8 +192,7 @@ async function main(): Promise<void> {
   process.env.ELIZA_PAIRING_DISABLED ??= "1";
 
   const configEnv = useIsolatedConfigEnv("eliza-device-e2e-host-agent-");
-  const proxy = createDeterministicLlmProxyPlugin({
-    failOnUnhandledAction: false,
+  const proxy = createDeterministicModelPlugin({
     stream: deterministicStream,
     resolve(call) {
       if (call.modelType !== ModelType.RESPONSE_HANDLER) return null;

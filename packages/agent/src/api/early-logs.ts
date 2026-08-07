@@ -1,107 +1,84 @@
 /**
- * Early log capture — split out from server.ts to avoid pulling in the entire
- * API server dependency graph when only the log-buffer init is needed
- * (e.g. during headless `startEliza()`).
- *
- * @module api/early-logs
+ * Buffers structured logs emitted before the API server can expose them.
+ * The logger listener API preserves logger ownership and provides an explicit
+ * handoff when the server installs its long-lived capture listener.
  */
 
-import { logger } from "@elizaos/core";
+import {
+  addLogListener,
+  type LogEntry as StructuredLogEntry,
+} from "@elizaos/core";
 import type { LogEntry } from "@elizaos/shared";
 
-// EarlyLogEntry is structurally identical to LogEntry. Using the canonical
-// shared type avoids a redundant local definition.
 export type { LogEntry as EarlyLogEntry };
 
-// ---------------------------------------------------------------------------
-// Module-level state (shared via the exported accessors)
-// ---------------------------------------------------------------------------
+const LEVEL_NAMES: Record<number, string> = {
+  10: "trace",
+  20: "debug",
+  27: "success",
+  28: "progress",
+  29: "log",
+  30: "info",
+  40: "warn",
+  50: "error",
+  60: "fatal",
+};
+const ADZE_PRETTY_PREFIX =
+  /^\s*(?:trace|debug|verbose|success|progress|log|info|warn|error|fatal|alert)\s{2,}/i;
 
 let earlyLogBuffer: LogEntry[] | null = null;
-let earlyPatchCleanup: (() => void) | null = null;
+let stopEarlyCapture: (() => void) | null = null;
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
+/** Converts logger-package entries into the API's stable transport shape. */
+export function formatStructuredLogEntry(entry: StructuredLogEntry): LogEntry {
+  const metadata = entry as StructuredLogEntry & Record<string, unknown>;
+  const bracketSource = /^\[([^\]]+)\]\s*/.exec(entry.msg)?.[1];
+  const source =
+    typeof metadata.src === "string"
+      ? metadata.src
+      : (bracketSource ?? "agent");
+  const structuredTags = Array.isArray(metadata.tags)
+    ? metadata.tags.filter((tag): tag is string => typeof tag === "string")
+    : [];
 
-/**
- * Start capturing logs from the global @elizaos/core logger before the API
- * server is up.  Call this once, early in the startup flow (e.g. before
- * `startEliza`).  When `startApiServer` runs it will flush and take over.
- */
-export function captureEarlyLogs(): void {
-  if (earlyLogBuffer) return; // already capturing
-  // If the global logger is already fully patched (e.g. dev-server started
-  // the API server before calling startEliza), skip early capture entirely.
-  if ((logger as typeof logger & Record<string, unknown>).__elizaLogPatched)
-    return;
-  earlyLogBuffer = [];
-  const EARLY_PATCHED = "__elizaEarlyPatched";
-  if ((logger as typeof logger & Record<string, unknown>)[EARLY_PATCHED])
-    return;
-
-  const LEVELS = ["debug", "info", "warn", "error"] as const;
-  const originals = new Map<string, (...args: unknown[]) => void>();
-
-  for (const lvl of LEVELS) {
-    const original = logger[lvl].bind(logger);
-    originals.set(lvl, original as (...args: unknown[]) => void);
-    const earlyPatched: (typeof logger)[typeof lvl] = (
-      ...args: Parameters<typeof original>
-    ) => {
-      let msg = "";
-      let source = "agent";
-      const tags = ["agent"];
-      if (typeof args[0] === "string") {
-        msg = args[0];
-      } else if (args[0] && typeof args[0] === "object") {
-        const obj = args[0] as Record<string, unknown>;
-        if (typeof obj.src === "string") source = obj.src;
-        msg = typeof args[1] === "string" ? args[1] : JSON.stringify(obj);
-      }
-      const bracketMatch = /^\[([^\]]+)\]\s*/.exec(msg);
-      if (bracketMatch && source === "agent") source = bracketMatch[1];
-      if (source !== "agent" && !tags.includes(source)) tags.push(source);
-      earlyLogBuffer?.push({
-        timestamp: Date.now(),
-        level: lvl,
-        message: msg,
-        source,
-        tags,
-      });
-      return original(...args);
-    };
-    logger[lvl] = earlyPatched;
-  }
-
-  (logger as typeof logger & Record<string, unknown>)[EARLY_PATCHED] = true;
-
-  earlyPatchCleanup = () => {
-    // Restore originals so `patchLogger` inside `startApiServer` can re-patch
-    for (const lvl of LEVELS) {
-      const orig = originals.get(lvl);
-      if (orig) logger[lvl] = orig as (typeof logger)[typeof lvl];
-    }
-    delete (logger as typeof logger & Record<string, unknown>)[EARLY_PATCHED];
-    // Don't set the main PATCHED_MARKER — `patchLogger` will do that
-    delete (logger as typeof logger & Record<string, unknown>)
-      .__elizaLogPatched;
+  return {
+    timestamp: entry.time,
+    level: LEVEL_NAMES[entry.level ?? 30] ?? "info",
+    message: entry.msg,
+    source,
+    tags: [...new Set(["agent", ...structuredTags, source])],
   };
 }
 
 /**
- * Drain the early log buffer and clean up the early logger patch.
- * Called by `startApiServer` to flush buffered entries into the main log
- * buffer, then hand control to the server's own logger patch.
- *
- * Returns the buffered entries (empty array if none).
+ * Subscribes to one logical entry per logger call. The logger currently emits
+ * both its invocation entry and Adze's rendered mirror to the global listener;
+ * only the invocation entry belongs in the API transport.
  */
+export function listenForUiLogs(
+  onEntry: (entry: LogEntry) => void,
+): () => void {
+  return addLogListener((entry) => {
+    if (ADZE_PRETTY_PREFIX.test(entry.msg)) return;
+    onEntry(formatStructuredLogEntry(entry));
+  });
+}
+
+/** Starts idempotent capture for the pre-server portion of agent startup. */
+export function captureEarlyLogs(): void {
+  if (earlyLogBuffer) return;
+
+  earlyLogBuffer = [];
+  stopEarlyCapture = listenForUiLogs((entry) => {
+    earlyLogBuffer?.push(entry);
+  });
+}
+
+/** Drains captured entries and releases the pre-server logger listener. */
 export function flushEarlyLogs(): LogEntry[] {
   const entries = earlyLogBuffer ? [...earlyLogBuffer] : [];
-  if (earlyPatchCleanup) {
-    earlyPatchCleanup();
-    earlyPatchCleanup = null;
-  }
+  stopEarlyCapture?.();
+  stopEarlyCapture = null;
   earlyLogBuffer = null;
   return entries;
 }

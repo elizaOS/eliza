@@ -397,7 +397,7 @@ describe("MEDIA_GC task end-to-end (real runtime sweep)", () => {
     // sweep did not include the "transcripts" partition, so the collector
     // never saw the row and the WAV was deleted after the grace window.
     const { AgentRuntime } = await import("@elizaos/core");
-    const { registerMediaGcTask } = await import("./media-runtime.ts");
+    const { registerMediaGcWorker } = await import("./media-runtime.ts");
     type Character = import("@elizaos/core").Character;
     type IDatabaseAdapter = import("@elizaos/core").IDatabaseAdapter;
     type Task = import("@elizaos/core").Task;
@@ -426,7 +426,7 @@ describe("MEDIA_GC task end-to-end (real runtime sweep)", () => {
         params.tableName === "transcripts" ? transcriptRows : [],
     } as unknown as IDatabaseAdapter);
 
-    registerMediaGcTask(runtime);
+    registerMediaGcWorker(runtime);
     const worker = runtime.getTaskWorker("MEDIA_GC");
     expect(worker).toBeDefined();
 
@@ -439,6 +439,27 @@ describe("MEDIA_GC task end-to-end (real runtime sweep)", () => {
     transcriptRows = [];
     await worker?.execute(runtime, {}, undefined as unknown as Task);
     expect(fs.existsSync(mediaPath(audio.fileName))).toBe(false);
+  });
+
+  it("propagates sweep failure so TaskService records repeat-task backoff", async () => {
+    const { AgentRuntime } = await import("@elizaos/core");
+    const { registerMediaGcWorker } = await import("./media-runtime.ts");
+    type Character = import("@elizaos/core").Character;
+    type Task = import("@elizaos/core").Task;
+    const failure = new Error("memory sweep failed");
+    const runtime = new AgentRuntime({
+      character: { name: "media-gc-failure-test" } as Character,
+    });
+    vi.spyOn(runtime, "getAllMemories").mockRejectedValue(failure);
+    const reportError = vi.spyOn(runtime, "reportError");
+    registerMediaGcWorker(runtime);
+
+    await expect(
+      runtime
+        .getTaskWorker("MEDIA_GC")
+        ?.execute(runtime, {}, undefined as unknown as Task),
+    ).rejects.toBe(failure);
+    expect(reportError).toHaveBeenCalledWith("media-gc.sweep", failure);
   });
 });
 

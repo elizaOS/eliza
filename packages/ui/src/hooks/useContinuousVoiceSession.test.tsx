@@ -1,3 +1,4 @@
+/** Verifies useContinuousVoiceSession through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 /**
@@ -72,6 +73,7 @@ function makeRealtime(
     agentSpeaking: false,
     needsUnlock: false,
     paused: false,
+    microphoneMuted: false,
     error: null,
     fallbackReason: null,
     reportFallback: vi.fn(),
@@ -79,6 +81,7 @@ function makeRealtime(
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
     bargeIn: vi.fn(),
+    toggleMicrophoneMute: vi.fn(),
     unlock: vi.fn().mockResolvedValue(undefined),
     ...over,
   };

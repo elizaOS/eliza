@@ -38,13 +38,30 @@ import { describe, expect, it } from "vitest";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaSource = readFileSync(path.join(here, "eliza.ts"), "utf8");
 
+describe("early local embedding ownership policy", () => {
+  const start = elizaSource.indexOf(
+    "export async function configureLocalEmbeddingEnvEarlyIfNeeded(",
+  );
+  const end = elizaSource.indexOf(
+    "// ---------------------------------------------------------------------------",
+    start,
+  );
+  const body = elizaSource.slice(start, end);
+
+  it("does not confuse packaged prefetch skipping with remote provider ownership", () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(body).toContain("shouldUseLocalEmbeddingModel");
+    expect(body).not.toContain("shouldWarmupLocalEmbeddingModel");
+  });
+});
+
 /**
  * Slice out the body of the `runDeferredBoot` arrow closure so the ordering
  * assertions cannot be satisfied by an unrelated earlier/later occurrence of
  * the same identifier elsewhere in the (very large) eliza.ts file.
  */
 function extractRunDeferredBootBody(source: string): string {
-  const marker = "const runDeferredBoot = async (): Promise<void> => {";
+  const marker = "const runDeferredBoot = async (";
   const start = source.indexOf(marker);
   expect(
     start,
@@ -102,11 +119,11 @@ describe("runDeferredBoot embedding-dimension ordering (#8769)", () => {
 
   it("configures local-embedding env BEFORE the dimension probe (#16630 follow-up fix a)", () => {
     // Root cause: warmEmbeddingModel() (which owns configureLocalEmbeddingPlugin)
-    // is fired fire-and-forget by startEmbeddingWarmup() AFTER this probe, so
-    // without an early call EMBEDDING_PROVIDER is unset here and a remote handler
-    // (e.g. Google text-embedding-004) wins the probe and 404s, permanently
-    // choosing the remote route. The early guarded config must therefore run
-    // before both the probe and the bundled-doc seed.
+    // runs as deferred runtime-owned work AFTER this probe, so without an early
+    // call EMBEDDING_PROVIDER is unset here and a remote handler (e.g. Google
+    // text-embedding-004) wins the probe and 404s, permanently choosing the
+    // remote route. The early guarded config must therefore run before both the
+    // probe and the bundled-doc seed.
     expect(
       earlyLocalEnvIdx,
       "early local-embedding env config must run in runDeferredBoot",

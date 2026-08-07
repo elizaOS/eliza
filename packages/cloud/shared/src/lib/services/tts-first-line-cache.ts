@@ -2,7 +2,7 @@
  * Eliza Cloud first-line TTS cache.
  *
  * Mirrors the local `FirstLineCache` in
- * `plugins/plugin-local-inference/src/services/voice/first-line-cache.ts`
+ * `/plugin-local-inference/services/voice/first-line-cache.ts`
  * for byte-equal cache-key compatibility (`hashCacheKey`). The cloud side
  * is keyed identically:
  *   sha256(algoVersion|provider|voiceId|voiceRevision|sampleRate|codec|

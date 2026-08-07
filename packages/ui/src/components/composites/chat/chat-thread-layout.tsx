@@ -105,6 +105,10 @@ export const ChatThreadLayout = React.forwardRef<
       {...props}
     >
       <div
+        role="log"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: the scrollable message log needs keyboard access
+        tabIndex={0}
+        aria-label="Chat messages"
         ref={(node) => assignRef(messagesRef, node)}
         data-testid={messagesTestId}
         data-no-window-drag={false}

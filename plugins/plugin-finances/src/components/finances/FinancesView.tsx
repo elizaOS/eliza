@@ -23,7 +23,7 @@
  * the wire DTOs below are declared locally to match the JSON shape PA emits.
  */
 
-import { client } from "@elizaos/ui";
+import { client } from "@elizaos/ui/api";
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -328,9 +328,12 @@ function requestConnectSource(): void {
   // The connect-a-source affordance routes through the assistant chat. `client`
   // does not type `sendChatMessage`, so read it through a narrow optional-method
   // view and call it only when present — no fabricated balances.
-  const send = (client as { sendChatMessage?: (text: string) => void })
-    .sendChatMessage;
-  send?.("Connect a payment source so you can track my money.");
+  const chatClient = client as {
+    sendChatMessage?: (text: string) => void;
+  };
+  chatClient.sendChatMessage?.(
+    "Connect a payment source so you can track my money.",
+  );
 }
 
 export function FinancesView(props: FinancesViewProps = {}): ReactNode {
@@ -424,9 +427,10 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
       // `txn-<id>` / `bill-<id>` open affordances route to chat; PA owns the
       // detail surface, so this view never fabricates a drill-down.
       if (action.startsWith("txn-") || action.startsWith("bill-")) {
-        const send = (client as { sendChatMessage?: (text: string) => void })
-          .sendChatMessage;
-        send?.(`Show me the details for ${action}.`);
+        const chatClient = client as {
+          sendChatMessage?: (text: string) => void;
+        };
+        chatClient.sendChatMessage?.(`Show me the details for ${action}.`);
       }
     },
     [load],

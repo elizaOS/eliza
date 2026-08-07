@@ -10,8 +10,8 @@ three artifacts for review:
 2. A feature/similarity matrix showing how close each source is to the runtime
    stages we need to train.
 3. Reference trajectories for simple, wallet, email, and calendar tasks,
-   including the provider request/response envelope used by Cerebras and the
-   Vercel AI Gateway adapter.
+   including the provider request/response envelopes used by Cerebras and the
+   shared AI SDK model boundary.
 
 When CEREBRAS_API_KEY is present and --run-cerebras is set, the reference model
 stages call the configured Cerebras-compatible chat-completions endpoint. The
@@ -972,7 +972,7 @@ def runtime_params_to_cerebras_payload(
     return payload
 
 
-def runtime_params_to_vercel_gateway_common(
+def runtime_params_to_ai_sdk_common(
     *,
     model: str,
     prompt: str,
@@ -1152,7 +1152,7 @@ def build_model_call_shape(
             response_schema=response_schema,
             prompt_cache_key=f"eliza-v5-{scenario_name}",
         ),
-        "vercelGatewayCommon": runtime_params_to_vercel_gateway_common(
+        "aiSdkCommon": runtime_params_to_ai_sdk_common(
             model=model,
             prompt=prompt,
             tools=tools,
@@ -1408,7 +1408,7 @@ def recorded_model_stage(
         "providerEnvelope": {
             "runtimeUseModelParams": compact(shape["runtimeUseModelParams"]),
             "cerebrasChatCompletionsPayload": compact(shape["cerebrasChatCompletionsPayload"]),
-            "vercelGatewayCommon": compact(shape["vercelGatewayCommon"]),
+            "aiSdkCommon": compact(shape["aiSdkCommon"]),
         },
         "rawProviderResponse": compact(raw_response),
     }
@@ -1586,7 +1586,7 @@ def write_model_call_shapes(path: Path, trajectories: list[dict[str, Any]]) -> N
             "notes": [
                 "runtimeUseModelParams is the eliza runtime abstraction.",
                 "cerebrasChatCompletionsPayload mirrors plugin-openai with OPENAI_BASE_URL=https://api.cerebras.ai/v1.",
-                "vercelGatewayCommon mirrors cloud/packages/lib/providers/vercel-ai-gateway.ts before generateText/streamText.",
+                "aiSdkCommon mirrors the shared AI SDK request shape before generateText/streamText.",
             ],
             "shapes": shapes,
         },

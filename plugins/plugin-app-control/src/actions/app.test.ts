@@ -40,11 +40,102 @@ describe("APP action role policy", () => {
 		expect(result).toEqual(
 			expect.objectContaining({
 				success: false,
-				text: expect.stringContaining("only the owner"),
+				text: expect.stringContaining("only my owner"),
 			}),
 		);
 		expect(client.listInstalledApps).not.toHaveBeenCalled();
 		expect(client.stopApp).not.toHaveBeenCalled();
+	});
+});
+
+describe("APP delete refusal", () => {
+	function ownerAction(client: AppControlClient) {
+		return createAppAction({ client, hasOwnerAccess: async () => true });
+	}
+
+	function untouchedClient(): AppControlClient {
+		return {
+			listInstalledApps: vi.fn(),
+			listAppRuns: vi.fn(),
+			launchApp: vi.fn(),
+			stopApp: vi.fn(),
+			stopAppRun: vi.fn(),
+		};
+	}
+
+	it.each([
+		["delete all my apps", "can't bulk-delete"],
+		["uninstall the chess app", "can't uninstall apps through APP"],
+	])(
+		"answers %j with the designed refusal owning user-facing prose",
+		async (text, expectedText) => {
+			const client = untouchedClient();
+			const result = await ownerAction(client).handler(
+				{ agentId: "agent-1" } as IAgentRuntime,
+				{ entityId: "owner-1", content: { text } } as Memory,
+				undefined,
+				undefined,
+				undefined,
+			);
+
+			expect(result).toEqual(
+				expect.objectContaining({
+					success: false,
+					userFacingText: expect.stringContaining(expectedText),
+					data: expect.objectContaining({ error: "DELETE_UNSUPPORTED" }),
+				}),
+			);
+			// The refusal is terminal for APP: no loopback calls are made.
+			expect(client.listInstalledApps).not.toHaveBeenCalled();
+			expect(client.stopApp).not.toHaveBeenCalled();
+		},
+	);
+
+	it("keeps 'kill the chess app' routed to stop, not the delete refusal", async () => {
+		const stopApp = vi.fn(async () => ({
+			success: true,
+			appName: "chess",
+			runId: null,
+			stoppedAt: "2026-07-31T00:00:00.000Z",
+			pluginUninstalled: false,
+			needsRestart: false,
+			stopScope: "viewer-session" as const,
+			message: "Chess stopped.",
+		}));
+		const client: AppControlClient = {
+			listInstalledApps: async () => [
+				{
+					name: "chess",
+					displayName: "Chess",
+					pluginName: "@test/chess",
+					version: "1.0.0",
+					installedAt: "2026-07-31T00:00:00.000Z",
+				},
+			],
+			listAppRuns: async () => [],
+			launchApp: vi.fn(),
+			stopApp,
+			stopAppRun: vi.fn(),
+		};
+
+		const result = await ownerAction(client).handler(
+			{ agentId: "agent-1" } as IAgentRuntime,
+			{
+				entityId: "owner-1",
+				content: { text: "kill the chess app" },
+			} as Memory,
+			undefined,
+			undefined,
+			undefined,
+		);
+
+		expect(stopApp).toHaveBeenCalledWith("chess");
+		expect(result).toEqual(
+			expect.objectContaining({
+				success: true,
+				values: expect.objectContaining({ mode: "stop" }),
+			}),
+		);
 	});
 });
 

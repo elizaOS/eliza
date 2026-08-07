@@ -19,7 +19,7 @@ interface CallMetricProps {
 function CallMetric({ label, value, meta }: CallMetricProps) {
   return (
     <PagePanel.SummaryCard compact className="px-4 py-3">
-      <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+      <div className="text-xs-tight uppercase tracking-[0.14em] text-muted">
         {label}
       </div>
       <div className="mt-2 text-sm font-semibold text-txt">{value}</div>

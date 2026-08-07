@@ -440,6 +440,7 @@ const SelectComponent: ComponentFn = (props, _children, ctx, el) => {
         }}
       >
         <SelectTrigger
+          aria-label={props.label ? String(props.label) : "Select an option"}
           className={getConfigInputClassName({
             density: "compact",
             hasError: !!errors?.length,
@@ -479,6 +480,7 @@ const CheckboxComponent: ComponentFn = (props, _children, ctx) => {
   return (
     <div className="flex items-center gap-2 text-xs cursor-pointer">
       <Checkbox
+        aria-label={String(props.label ?? "Option")}
         checked={!!value}
         onCheckedChange={(checked: boolean | "indeterminate") =>
           setValue(!!checked)
@@ -532,6 +534,7 @@ const SwitchComponent: ComponentFn = (props, _children, ctx) => {
   return (
     <span className="flex items-center gap-2 cursor-pointer">
       <Button
+        aria-label={String(props.label ?? "Toggle option")}
         type="button"
         variant="ghost"
         role="switch"
@@ -1693,13 +1696,16 @@ export function UiRenderer({
     ],
   );
 
-  // Loading skeleton when no elements
   if (loading && Object.keys(spec.elements).length === 0) {
     return (
-      <div className="flex flex-col gap-3 animate-pulse">
-        <div className="h-4 bg-[var(--bg-hover)] w-3/4" />
-        <div className="h-3 bg-[var(--bg-hover)] w-1/2" />
-        <div className="h-3 bg-[var(--bg-hover)] w-5/6" />
+      <div
+        role="status"
+        aria-label="Loading interface"
+        className="flex min-h-24 flex-col gap-3 rounded-md border border-border bg-card p-4 animate-pulse"
+      >
+        <div className="h-4 w-3/4 rounded-sm bg-bg-muted" />
+        <div className="h-3 w-1/2 rounded-sm bg-bg-muted" />
+        <div className="h-3 w-5/6 rounded-sm bg-bg-muted" />
       </div>
     );
   }

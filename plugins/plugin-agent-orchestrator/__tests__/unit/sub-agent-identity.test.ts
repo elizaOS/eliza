@@ -74,6 +74,7 @@ describe("writeWorkspaceIdentity", () => {
 
   it("advertises the skills bridge endpoints and originatingTask read-back", () => {
     const manual = buildSubAgentIdentityMd();
+    expect(manual).toContain("ORCHESTRATOR_SESSION_ID");
     expect(manual).toMatch(/\/skills\b/);
     expect(manual).toMatch(/skills\/<slug>/);
     expect(manual).toMatch(/originatingTask/);
@@ -95,6 +96,18 @@ describe("writeWorkspaceIdentity", () => {
     expect(SUB_AGENT_IDENTITY_MD).toMatch(/Do NOT narrate your process/);
     // and to not go hunting for context files a bare workspace lacks
     expect(SUB_AGENT_IDENTITY_MD).toMatch(/SOUL\.md/);
+  });
+
+  it("bans absolute paths and internal ids from the final message", () => {
+    // The final message is relayed into user chat; internal workspace paths
+    // (task-<uuid> dirs) and session/task ids must stay in logs/trajectories.
+    expect(SUB_AGENT_IDENTITY_MD).toMatch(
+      /NEVER include absolute filesystem paths/,
+    );
+    expect(SUB_AGENT_IDENTITY_MD).toMatch(/workspace\/session ids/);
+    expect(SUB_AGENT_IDENTITY_MD).toMatch(
+      /bare name or workspace-relative path/,
+    );
   });
 
   it("does NOT clobber a real project's existing AGENTS.md", async () => {

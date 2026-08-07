@@ -50,7 +50,10 @@ function citedFilePaths(doc: string): string[] {
  * home↔launcher interaction. A new consumer of the hook is a new launcher
  * gesture surface and must earn a matrix row.
  */
-const LAUNCHER_GESTURE_MARKERS: readonly RegExp[] = [/\buseHorizontalPager\b/];
+const LAUNCHER_GESTURE_MARKERS: readonly RegExp[] = [
+  /\buseHorizontalPager\b/,
+  /export function beginRailGesture\b/,
+];
 
 function isSiteCandidate(fileName: string): boolean {
   if (!/\.(ts|tsx)$/.test(fileName)) return false;

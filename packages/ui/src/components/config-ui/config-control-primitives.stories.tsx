@@ -36,12 +36,14 @@ export const SingleError: Story = {
 };
 
 export const EmptyErrors: Story = {
+  tags: ["story-gate-expect-blank"],
   args: {
     errors: [],
   },
 };
 
 export const Undefined: Story = {
+  tags: ["story-gate-expect-blank"],
   args: {
     errors: undefined,
   },

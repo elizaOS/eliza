@@ -1,3 +1,4 @@
+/** Verifies notification-store through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * The notification store (`notification-store`): list/read/remove/clear flows,

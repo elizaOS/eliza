@@ -97,14 +97,7 @@ export async function getCachedImageDescription(
 			runtime.reportError("ImageDescriptionCache.get", err, { imageUrl });
 			return undefined;
 		});
-	if (cached && (cached.description || cached.text)) {
-		return {
-			title: cached.title || "Image",
-			description: cached.description ?? "",
-			text: cached.text ?? cached.description ?? "",
-		};
-	}
-	return undefined;
+	return cached ? (normalizeImageDescription(cached) ?? undefined) : undefined;
 }
 
 export async function setCachedImageDescription(
@@ -148,13 +141,11 @@ export async function describeImageCached(
 			stream: false,
 		});
 	} catch (error) {
-		runtime.logger.warn(
-			{
-				src: "media:image-description-cache",
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Image description model call failed",
-		);
+		// error-policy:J4 callers explicitly render image-description
+		// unavailability; report the model failure before returning that state.
+		runtime.reportError("ImageDescriptionCache.describe", error, {
+			imageUrl: url,
+		});
 		return null;
 	}
 

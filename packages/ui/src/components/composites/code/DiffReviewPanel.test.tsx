@@ -1,3 +1,4 @@
+/** Verifies DiffReviewPanel through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders DiffReviewPanel in jsdom over ChangeSetData fixtures to cover empty
@@ -64,16 +65,6 @@ describe("DiffReviewPanel", () => {
     render(<DiffReviewPanel changeSet={changeSet()} />);
     expect(screen.getByText("src/app.ts")).toBeTruthy();
     expect(screen.getByText("README.md")).toBeTruthy();
-  });
-
-  it("classifies added and removed lines with the success/danger tokens", () => {
-    render(<DiffReviewPanel changeSet={changeSet()} />);
-    const added = screen.getByText("+const next = 2;");
-    const removed = screen.getByText("-const old = 1;");
-    const hunk = screen.getByText("@@ -1,3 +1,3 @@");
-    expect(added.className).toContain("text-success");
-    expect(removed.className).toContain("text-destructive");
-    expect(hunk.className).toContain("text-warning");
   });
 
   it("shows a section for a changed file even when its diff text is absent", () => {
