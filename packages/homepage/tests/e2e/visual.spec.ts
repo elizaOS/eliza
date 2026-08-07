@@ -4,7 +4,7 @@
  * Every route and viewport is compared against committed baselines using the
  * exact capture the quality-and-stability gate validated: blank or
  * half-painted frames are rejected, and the gate requires two consecutive
- * byte-identical captures so a mid-composite WebGL frame is never diffed.
+ * visually-stable captures so a mid-composite WebGL frame is never diffed.
  * Baselines regenerate per platform through scripts/regenerate-baselines.sh.
  */
 

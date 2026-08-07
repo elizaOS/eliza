@@ -59,12 +59,17 @@ The capture gate guarantees two things before any pixel diff happens:
 
 1. **Quality** — blank or effectively single-color frames are rejected
    (`ScreenshotQualityError`).
-2. **Stability** — two consecutive captures must be byte-identical. This
-   replaces the settling loop `toHaveScreenshot` provided internally; without
-   it a colorful mid-composite WebGL frame would be diffed once and fail.
-   A page that never settles inside the attempt budget throws
-   `ScreenshotUnstableError` naming the byte delta between the last two
-   captures, which is a far better diagnostic than a pixel-ratio failure.
+2. **Stability** — two consecutive captures must be visually stable:
+   byte-identical, or differing in at most the same 2% pixel ratio the
+   snapshot comparison allows. This replaces (and mirrors) the settling loop
+   `toHaveScreenshot` provided internally, which also re-captured until two
+   consecutive frames matched under the pixel tolerance — never under byte
+   equality, since PNG compression turns a handful of changed pixels into a
+   mostly rewritten byte stream. Without this gate a colorful mid-composite
+   WebGL frame would be diffed once and fail. A page that never settles
+   inside the attempt budget throws `ScreenshotUnstableError` naming the
+   pixel and byte delta between the last two captures, a far better
+   diagnostic than a bare pixel-ratio failure.
 
 The artifact suites (`aesthetic-audit`, `contact-sheet-capture`,
 `live-routes`) photograph deliberately live pages for human review and opt
