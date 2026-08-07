@@ -25,6 +25,17 @@ test("cleanup navigates through the shell event instead of raw History", () => {
   expect(source).not.toContain("window.history.replaceState");
 });
 
+test("navigation uses an independent cold-load timeout with target diagnostics", () => {
+  expect(source).toContain(
+    "const NAV_TIMEOUT_MS = Number(process.env.NAV_TIMEOUT_MS || 10_000);",
+  );
+  expect(source).toContain(
+    "{ timeout: Math.max(NAV_TIMEOUT_MS, NAV_WAIT_MS * 3) }",
+  );
+  expect(source).toContain("navigation to view");
+  expect(source).toContain("did not reach");
+});
+
 test("context teardown owns video finalization without swallowed failures", () => {
   expect(source).not.toContain("ctx.close().catch");
   expect(source).not.toContain("await page.close()");

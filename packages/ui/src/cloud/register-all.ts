@@ -67,14 +67,8 @@ export function registerAllCloudSurfaces(): void {
   // 40's `import "./applications"` chain), but the console no longer surfaces
   // Apps — management moved into the Eliza app. Override both paths (later
   // same-path registration wins) so a stale /dashboard/apps link redirects to
-  // the dashboard. The applications components stay for the native eliza app.
+  // the dashboard. The Applications components stay in the tab/view app.
   const AppsMovedRoute = lazy(() => import("./applications/AppsMovedRoute"));
-  const CloudAppsRoute = lazy(() => import("./applications/ApplicationsPage"));
-  registerCloudRoute({
-    path: "cloud-apps",
-    element: CloudAppsRoute,
-    group: "dashboard",
-  });
   registerCloudRoute({
     path: APPLICATIONS_LIST_ROUTE_PATH,
     element: AppsMovedRoute,

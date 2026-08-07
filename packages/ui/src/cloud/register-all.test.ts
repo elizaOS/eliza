@@ -39,7 +39,6 @@ describe("registerAllCloudSurfaces", () => {
       "dashboard/connectors",
       "dashboard/organization",
       "dashboard/api-explorer",
-      "cloud-apps",
       "dashboard/apps",
       "dashboard/admin",
       "approve/:approvalId",
@@ -55,16 +54,13 @@ describe("registerAllCloudSurfaces", () => {
     }
   });
 
-  it("keeps the web Cloud Apps handoff on the live Applications surface", () => {
+  it("leaves the web Cloud Apps handoff in the tab/view app", () => {
     registerAllCloudSurfaces();
     const cloudApps = getCloudRoute("cloud-apps");
-    const retiredConsoleApps = getCloudRoute("dashboard/apps");
 
-    expect(cloudApps).toMatchObject({
-      path: "cloud-apps",
-      group: "dashboard",
-    });
-    expect(cloudApps?.element).not.toBe(retiredConsoleApps?.element);
+    // Registering this as a top-level cloud route unmounts App and therefore
+    // its navigate-view listener, stranding the user on the handoff surface.
+    expect(cloudApps).toBeUndefined();
   });
 
   it("keeps legacy-only spellings as redirects, not routes", () => {
