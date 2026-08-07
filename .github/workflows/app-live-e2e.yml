@@ -55,6 +55,7 @@ env:
   # @napi-rs/keyring can terminate the runtime before JavaScript can report it.
   ELIZA_VAULT_DISABLE_KEYCHAIN: "1"
   ELIZA_VAULT_PASSPHRASE: app-live-e2e-headless-vault-only
+  ELIZA_UI_SMOKE_BACKEND_LOG_PATH: e2e-recordings/app-live/backend.log
 
 jobs:
   # Real LOCAL chat turn through the live stack: a real app-core runtime + a real
@@ -130,6 +131,7 @@ jobs:
           path: |
             packages/app/playwright-report/
             packages/app/test-results/
+            e2e-recordings/app-live/backend.log
           if-no-files-found: ignore
           retention-days: 7
 

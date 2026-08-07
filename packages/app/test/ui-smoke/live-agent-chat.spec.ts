@@ -8,6 +8,10 @@
 import { expect, type Page, test } from "@playwright/test";
 import { selectLiveProviderAsync } from "../../../app-core/test/helpers/live-provider";
 import {
+  ExpectedDevSmokeFailureMatcher,
+  isExpectedDevSmokeResponseCandidate,
+} from "../dev-smoke/browser-failure-policy";
+import {
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -86,6 +90,10 @@ type LivePromptTiming = {
   sendToAssistantMarkerMs: number;
 };
 
+type LiveFailureCollector = {
+  settle(): Promise<string[]>;
+};
+
 function isOptionalLiveEndpoint(url: string): boolean {
   return OPTIONAL_LIVE_ENDPOINTS.some((pattern) => pattern.test(url));
 }
@@ -108,10 +116,14 @@ function parseAssistantFixtureText(
   ) as DeterministicAssistantFixture;
 }
 
-function installFailureCollectors(page: Page): string[] {
-  const failures: string[] = [];
+function installFailureCollectors(page: Page): LiveFailureCollector {
+  const pageFailures: string[] = [];
+  const responseFailures: string[] = [];
+  const consoleErrors: Array<{ locationUrl: string; text: string }> = [];
+  const pendingResponses = new Set<Promise<void>>();
+  const expectedFailureMatcher = new ExpectedDevSmokeFailureMatcher();
   page.on("pageerror", (error) => {
-    failures.push(`pageerror: ${error.message}`);
+    pageFailures.push(`pageerror: ${error.message}`);
   });
   page.on("console", (message) => {
     if (message.type() !== "error") return;
@@ -124,7 +136,10 @@ function installFailureCollectors(page: Page): string[] {
     ) {
       return;
     }
-    failures.push(`console.error: ${text}`);
+    consoleErrors.push({
+      locationUrl: message.location().url,
+      text,
+    });
   });
   page.on("response", (response) => {
     if (response.status() < 400) return;
@@ -132,9 +147,51 @@ function installFailureCollectors(page: Page): string[] {
     if (response.status() < 500 && isOptionalLiveEndpoint(response.url())) {
       return;
     }
-    failures.push(`${response.status()} ${response.url()}`);
+    if (
+      !isExpectedDevSmokeResponseCandidate(response.status(), response.url())
+    ) {
+      responseFailures.push(`${response.status()} ${response.url()}`);
+      return;
+    }
+
+    const capture = response
+      .text()
+      .then((body) => {
+        if (
+          !expectedFailureMatcher.recordResponse(
+            response.status(),
+            response.url(),
+            body,
+          )
+        ) {
+          responseFailures.push(`${response.status()} ${response.url()}`);
+        }
+      })
+      .catch((error) => {
+        // error-policy:J7 An unreadable candidate remains an explicit smoke
+        // failure; response diagnostics must not create an unhandled rejection.
+        responseFailures.push(
+          `${response.status()} ${response.url()} (body read failed: ${String(error)})`,
+        );
+      });
+    pendingResponses.add(capture);
+    void capture.finally(() => pendingResponses.delete(capture));
   });
-  return failures;
+  return {
+    async settle() {
+      while (pendingResponses.size > 0) {
+        await Promise.allSettled([...pendingResponses]);
+      }
+      const failures = [...pageFailures, ...responseFailures];
+      for (const { locationUrl, text } of consoleErrors) {
+        if (expectedFailureMatcher.consumeConsoleError(text, locationUrl)) {
+          continue;
+        }
+        failures.push(`console.error: ${text}`);
+      }
+      return failures;
+    },
+  };
 }
 
 async function installOptionalLiveChromeRoutes(page: Page): Promise<void> {
@@ -380,7 +437,7 @@ test.describe("live agent chat", () => {
   test("app chat sends a message to the live agent and renders the response", async ({
     page,
   }) => {
-    const failures = installFailureCollectors(page);
+    const failureCollector = installFailureCollectors(page);
     await createAndActivateLiveConversation(page, "live-agent-marker");
 
     const prompt = `For a Playwright end-to-end smoke test, reply with exactly ${LIVE_AGENT_RESPONSE_MARKER} and no other words.`;
@@ -392,19 +449,22 @@ test.describe("live agent chat", () => {
       ),
     );
 
-    expect(failures, "live agent chat browser/runtime failures").toEqual([]);
+    expect(
+      await failureCollector.settle(),
+      "live agent chat browser/runtime failures",
+    ).toEqual([]);
   });
 
   for (const { marker, prompt } of LIVE_GENERAL_PROMPTS) {
     test(`app chat handles live general prompt ${marker}`, async ({ page }) => {
-      const failures = installFailureCollectors(page);
+      const failureCollector = installFailureCollectors(page);
       await createAndActivateLiveConversation(page, `live-agent-${marker}`);
       reportLiveTiming(
         await sendPromptAndExpectAssistantMarker(page, prompt, marker),
       );
 
       expect(
-        failures,
+        await failureCollector.settle(),
         `live prompt ${marker} browser/runtime failures`,
       ).toEqual([]);
     });
