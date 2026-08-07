@@ -928,6 +928,18 @@ function isViewNavigationRequest(
 		readStringOption(options, "action") ?? readStringOption(options, "mode");
 	const source = `${text} ${explicit ?? ""}`;
 	if (mode === "open") return true;
+	const normalizedExplicit = explicit?.trim().toLowerCase().replace(/-/g, "_");
+	const explicitTarget = readViewTargetOption(options);
+	// A schema-valid planner decision owns the operation boundary. Text scoring
+	// may infer a capability only when the planner did not explicitly choose
+	// navigation to a named target; target validity belongs to the navigation
+	// boundary so stale ids fail honestly instead of becoming mutations.
+	if (
+		(normalizedExplicit === "show" || normalizedExplicit === "open") &&
+		explicitTarget
+	) {
+		return true;
+	}
 	if (
 		/\b(open|launch|switch to|go to|navigate to|pull up|bring up)\b/i.test(
 			source,
@@ -940,7 +952,6 @@ function isViewNavigationRequest(
 	// capabilities), so a request that targets it can never be a foreground-view
 	// capability read (#17299).
 	if (matchViewCommand(viewRequestText(text)) === "chat") return true;
-	const explicitTarget = readViewTargetOption(options);
 	if (explicitTarget && matchViewCommand(explicitTarget) === "chat") {
 		return true;
 	}
@@ -2826,10 +2837,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 
 				if (shouldResolveModeAsCapability(effectiveMode, text, actionOptions)) {
-					const views = await getViews().catch(() => []);
+					const capabilityResolutionViews = await getViews();
 					const currentView = await getCurrentView();
 					forcedResolvedCapability = resolveViewCapability({
-						views,
+						views: capabilityResolutionViews,
 						text,
 						options: actionOptions,
 						viewType,
