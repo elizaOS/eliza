@@ -3,24 +3,31 @@
  * onboarding or connected state.
  */
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { rememberReturnTo, safeReturnTo } from "@/lib/auth-return";
 import { useAuth } from "@/lib/context/auth-context";
 import { useT } from "@/providers/I18nProvider";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const t = useT();
   const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
     if (!isLoading) {
+      const returnTo = safeReturnTo(searchParams.get("returnTo"));
       if (isAuthenticated) {
-        navigate("/connected", { replace: true });
+        navigate(returnTo ?? "/connected", { replace: true });
       } else {
-        navigate("/get-started", { replace: true });
+        rememberReturnTo(returnTo);
+        const query = returnTo
+          ? `?returnTo=${encodeURIComponent(returnTo)}`
+          : "";
+        navigate(`/get-started${query}`, { replace: true });
       }
     }
-  }, [isAuthenticated, isLoading, navigate]);
+  }, [isAuthenticated, isLoading, navigate, searchParams]);
 
   return (
     <main className="theme-app app-shell">
