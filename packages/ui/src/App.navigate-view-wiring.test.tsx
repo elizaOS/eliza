@@ -7,6 +7,7 @@
  * config + desktop tabs mocked, no runtime.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { createNavigateViewEvent } from "@elizaos/shared/events";
 import {
   act,
@@ -57,6 +58,10 @@ const desktopTabsState = vi.hoisted(() => ({
 
 const mediaQueryState = vi.hoisted(() => ({
   matches: false,
+}));
+
+const electrobunRuntimeState = vi.hoisted(() => ({
+  enabled: true,
 }));
 
 const desktopBridgeMock = vi.hoisted(() => ({
@@ -245,7 +250,7 @@ vi.mock("@capacitor/keyboard", () => ({
 vi.mock("./bridge/electrobun-rpc", () => desktopBridgeMock);
 
 vi.mock("./bridge/electrobun-runtime", () => ({
-  isElectrobunRuntime: () => true,
+  isElectrobunRuntime: () => electrobunRuntimeState.enabled,
 }));
 
 vi.mock("./platform/init", () => ({
@@ -534,6 +539,7 @@ describe("App navigate-view event wiring", () => {
     authStatusMock.phase = "authenticated";
     cloudOriginMock.agentless = false;
     mediaQueryState.matches = false;
+    electrobunRuntimeState.enabled = true;
     desktopTabsState.tabs = [];
     resetMockAvailableViews();
     appState.setTab.mockClear();
@@ -789,6 +795,34 @@ describe("App navigate-view event wiring", () => {
       expect(appState.setTab).not.toHaveBeenCalled();
     },
   );
+
+  it("mounts an exact signed native renderer when stale registry metadata still advertises a remote bundle", async () => {
+    electrobunRuntimeState.enabled = false;
+    const platform = vi
+      .spyOn(Capacitor, "getPlatform")
+      .mockReturnValue("android");
+    mockAvailableViews.push(notesFullscreenView);
+    registerAppShellPage({
+      id: "notes",
+      pluginId: "@elizaos/plugin-notes",
+      label: "Notes",
+      path: "/notes",
+      surface: { header: "fullscreen" },
+      Component: () => <div data-testid="signed-notes" />,
+    });
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/notes");
+
+    try {
+      const { getByTestId, queryByTestId } = render(<App />);
+
+      await waitFor(() => getByTestId("signed-notes"));
+      expect(queryByTestId("dynamic-view-loader")).toBeNull();
+      expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();
+    } finally {
+      platform.mockRestore();
+    }
+  });
 
   it("lets a fullscreen plugin view fill behind the floating composer", async () => {
     mockAvailableViews.push(notesFullscreenView);

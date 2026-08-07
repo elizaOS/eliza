@@ -17,6 +17,7 @@
  */
 
 import { buildAppContainerSecurityFlags } from "./app-network-utils";
+import { shellQuote } from "./docker-sandbox-utils";
 
 /**
  * Build the ordered `docker create` capability/security flags for a hosted-agent
@@ -31,4 +32,29 @@ export function buildAgentContainerSecurityFlags(opts: {
     ...buildAppContainerSecurityFlags({ pidsLimit: opts.pidsLimit }),
     ...(opts.headscaleEnabled ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"] : []),
   ];
+}
+
+/**
+ * Ordered `docker create` memory flags for a hosted-agent container.
+ *
+ * Why this exists: agent containers historically ran with no `--memory` flag
+ * at all (`HostConfig.Memory=0`, unlimited) while also carrying
+ * `--restart unless-stopped`. One agent stuck in a boot loop — each attempt
+ * spiking ~2GB of anon RSS before dying — could drive a node's available
+ * memory to single-digit MB and get the kernel to OOM-kill unrelated HEALTHY
+ * co-tenant agents (observed fleet-wide on staging, 2026-08-05). A ceiling
+ * turns that failure from "node-wide outage" into "the one broken agent gets
+ * OOM-killed inside its own cgroup".
+ *
+ * `memoryMb <= 0` (or non-finite) disables the ceiling and emits no flags —
+ * the pre-2026-08 behavior, selectable via CONTAINERS_AGENT_MEMORY_LIMIT_MB=0.
+ *
+ * Swap is pinned to the same value (i.e. no swap headroom) so the ceiling
+ * cannot be escaped via swap on the shared node — the same hardening the app
+ * container lane applies in app-docker-cmd.ts.
+ */
+export function buildAgentContainerMemoryFlags(memoryMb: number | undefined): string[] {
+  if (!memoryMb || !Number.isFinite(memoryMb) || memoryMb <= 0) return [];
+  const mb = Math.ceil(memoryMb);
+  return [`--memory ${shellQuote(`${mb}m`)}`, `--memory-swap ${shellQuote(`${mb}m`)}`];
 }
