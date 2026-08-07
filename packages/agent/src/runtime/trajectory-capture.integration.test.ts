@@ -1234,6 +1234,7 @@ describe("trajectory capture -> DB -> viewer", () => {
   it("retries terminal durability once, claims concurrent endings, and rejects late or malformed capture", async () => {
     const logger = runtime.getService("trajectories") as unknown as TrajLogger;
     const reportError = vi.spyOn(runtime, "reportError");
+    reportError.mockClear();
     const message = {
       id: crypto.randomUUID(),
       agentId: runtime.agentId,
