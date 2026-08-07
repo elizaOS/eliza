@@ -46,6 +46,7 @@ describe("local runtime conversation fetch", () => {
           metadata: {
             clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
           },
+          streamProtocol: "delta-v2",
         }),
       },
     );
@@ -61,6 +62,7 @@ describe("local runtime conversation fetch", () => {
       metadata: {
         clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
       },
+      streamProtocol: "delta-v2",
     });
     const headers = new Headers(calls[0]?.init?.headers);
     expect(headers.has("Authorization")).toBe(false);
@@ -117,6 +119,18 @@ describe("local runtime conversation fetch", () => {
       bridge(url, {
         method: "POST",
         body: JSON.stringify({ text: "hello" }),
+      }),
+    ).rejects.toThrow(LocalRuntimeConversationFetchError);
+    await expect(
+      bridge(url, {
+        method: "POST",
+        body: JSON.stringify({
+          text: "hello",
+          metadata: {
+            clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+          },
+          streamProtocol: "legacy",
+        }),
       }),
     ).rejects.toThrow(LocalRuntimeConversationFetchError);
   });
