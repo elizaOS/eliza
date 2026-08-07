@@ -69,6 +69,7 @@ import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headsca
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
 import type {
   SandboxCreateConfig,
+  SandboxDeletionStopOutcome,
   SandboxHandle,
   SandboxHealthOutcome,
   SandboxProvider,
@@ -571,7 +572,7 @@ const DOCKER_CMD_TIMEOUT_MS = 60_000;
  */
 const STOP_CMD_TIMEOUT_MS = 25_000;
 
-/** Cap on the best-effort headscale VPN cleanup during stop(). */
+/** Cap on best-effort Headscale VPN cleanup during sandbox teardown. */
 const HEADSCALE_CLEANUP_TIMEOUT_MS = 15_000;
 
 /** Autoscaled node readiness polling. */
@@ -2306,12 +2307,13 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
   }
 
-  async stop(sandboxId: string): Promise<void> {
+  async stopForDeletion(sandboxId: string): Promise<SandboxDeletionStopOutcome> {
     // Deletion is the one teardown whose capacity is owned elsewhere: the
     // caller's deletion generation releases the slot exactly once via
     // `tryReleaseDeletionAllocation`, because this path is retryable and
-    // treats "already gone" as success (#17185).
-    await this.stopWithPolicy(sandboxId, true, false);
+    // treats either a successful stop or "already gone" as proof that the
+    // workload no longer consumes compute (#17185).
+    return this.stopWithPolicy(sandboxId, true, false);
   }
 
   /**
@@ -2332,7 +2334,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     sandboxId: string,
     allowUnreachableAbandon: boolean,
     releaseCapacity: boolean,
-  ): Promise<void> {
+  ): Promise<SandboxDeletionStopOutcome> {
     const meta = await this.resolveContainer(sandboxId);
 
     logger.info(
@@ -2376,6 +2378,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
 
+    let outcome: SandboxDeletionStopOutcome = { kind: "not-running-proven" };
     if (stopErr && rmErr) {
       const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
       const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
@@ -2397,16 +2400,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       // cloud-api fails closed (agents API hangs).
       //
       // TRADE-OFF / HONEST LIMITATION: completing the delete here ABANDONS the
-      // container. There is currently NO automatic reclaimer — no orphan-sweep /
-      // node-reconcile job exists that lists actual containers on a node and
-      // removes ones with no DB row. So if the node later returns, the container
-      // (and its headscale registration, if deletion was skipped) can leak until
-      // such a sweeper is built or it is reclaimed by hand. We accept that leak
-      // to keep the work cycle bounded; the lifecycle/capacity owner should add
-      // a node-reconcile sweep when one lands. Do NOT claim a reconciler already
-      // reclaims it. The abandoned container's node slot is still released once
-      // by the caller's deletion generation — an abandoned container leaks on
-      // the box, not in `allocated_count`.
+      // container. The orphan reconciler retains the deletion generation's
+      // capacity ownership until it can inspect the node and prove the workload
+      // absent. This prevents the scheduler from packing against capacity that
+      // an abandoned container may still consume.
       const unreachable = isNodeUnreachableMessage(stopMsg) && isNodeUnreachableMessage(rmMsg);
       if (!stopIsGone && !rmIsGone && (!unreachable || !allowUnreachableAbandon)) {
         throw new Error(
@@ -2415,10 +2412,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
       if (unreachable) {
+        outcome = { kind: "not-running-unresolved", reason: "node-unreachable" };
         logger.warn(
           `[docker-sandbox] Node ${meta.hostname} unreachable during stop of ${meta.containerName}; ` +
-            `completing delete and ABANDONING the container — it will LEAK until reclaimed ` +
-            `(no automatic orphan-sweep / node-reconcile job exists yet) — ` +
+            `completing delete while retaining its capacity until reconciliation — ` +
             `docker stop -> ${stopMsg}; docker rm -f -> ${rmMsg}`,
           { nodeId: meta.nodeId, containerName: meta.containerName },
         );
@@ -2436,6 +2433,8 @@ export class DockerSandboxProvider implements SandboxProvider {
     // times for one allocation and free a live sibling's slot (#17185).
     if (releaseCapacity) {
       await dockerNodesRepository.decrementAllocated(meta.nodeId).catch((err) => {
+        // error-policy:J6 best-effort teardown — the workload is already not
+        // running; the logged overcount is safe and the periodic recount heals it.
         logger.warn(
           `[docker-sandbox] Failed to decrement allocated_count for node ${meta.nodeId}: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -2463,6 +2462,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       if (cleanup) {
         await withTimeout(cleanup, HEADSCALE_CLEANUP_TIMEOUT_MS, "headscale cleanup").catch(
           (err) => {
+            // error-policy:J6 best-effort teardown — compute teardown is already
+            // complete, so VPN cleanup failure is observable without reviving it.
             logger.warn(
               `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
             );
@@ -2477,6 +2478,7 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // Remove from in-memory registry
     this.containers.delete(meta.containerName);
+    return outcome;
   }
 
   // ------------------------------------------------------------------
@@ -2882,7 +2884,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     };
 
     // Docker handles use the container name as sandboxId, so the refreshed row
-    // updates the same cache key used by create(), stop(), and runCommand().
+    // updates the same cache key used by create, teardown, and runCommand.
     this.containers.set(sandboxId, meta);
     logger.info(
       `[docker-sandbox] Hydrated container "${sandboxId}" from DB -> node ${meta.nodeId} (${meta.hostname})`,

@@ -183,7 +183,7 @@ const AGENT_ARMS: Array<{
     type: JOB_TYPES.AGENT_DELETE,
     data: {},
     method: "executeDeletion",
-    success: { success: true, containerStopped: true },
+    success: { success: true, containerStopped: true, rowDeleted: true },
   },
   {
     name: "suspend",
@@ -617,6 +617,32 @@ describe("executeJob dispatch — failure path per job type retries (increments 
 });
 
 describe("executeJob dispatch — type-specific disposition rules", () => {
+  test("an unresolved delete completes the hot queue attempt with rowDeleted false", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE));
+    stub("executeDeletion", {
+      success: true,
+      containerStopped: false,
+      rowDeleted: false,
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      const completed = completedCall(ctx);
+      expect(completed?.[2]?.result).toMatchObject({
+        containerStopped: false,
+        rowDeleted: false,
+      });
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("agent_provision retryable transport → requeued without burning an attempt", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
     stub("provision", {

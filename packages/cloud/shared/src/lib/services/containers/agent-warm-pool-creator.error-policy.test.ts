@@ -81,7 +81,7 @@ afterAll(() => {
 describe("destroyPoolContainer fail-closed", () => {
   test("a DB error on the final deletePoolEntry PROPAGATES — not swallowed into a phantom leaked row", async () => {
     repo.findById.mockResolvedValue({ id: "p1", organization_id: WARM_POOL_ORG_ID });
-    sandbox.deleteAgent.mockResolvedValue({ success: true });
+    sandbox.deleteAgent.mockResolvedValue({ success: true, rowDeleted: true });
     // The removed slop was `.catch(() => undefined)` here: a genuine DB failure
     // would read as a successful destroy while the pool row leaks. It must throw.
     repo.deletePoolEntry.mockRejectedValue(new Error("connection terminated"));
@@ -92,12 +92,21 @@ describe("destroyPoolContainer fail-closed", () => {
 
   test("row already gone (deletePoolEntry returns false) resolves — a designed idempotent no-op, not a failure", async () => {
     repo.findById.mockResolvedValue({ id: "p2", organization_id: WARM_POOL_ORG_ID });
-    sandbox.deleteAgent.mockResolvedValue({ success: true });
+    sandbox.deleteAgent.mockResolvedValue({ success: true, rowDeleted: true });
     repo.deletePoolEntry.mockResolvedValue(false);
 
     const creator = getHetznerPoolContainerCreator();
     await expect(creator.destroyPoolContainer("p2")).resolves.toBeUndefined();
     expect(repo.deletePoolEntry).toHaveBeenCalledWith("p2");
+  });
+
+  test("unresolved teardown preserves the capacity tombstone", async () => {
+    repo.findById.mockResolvedValue({ id: "p-pending", organization_id: WARM_POOL_ORG_ID });
+    sandbox.deleteAgent.mockResolvedValue({ success: true, rowDeleted: false });
+
+    const creator = getHetznerPoolContainerCreator();
+    await expect(creator.destroyPoolContainer("p-pending")).resolves.toBeUndefined();
+    expect(repo.deletePoolEntry).not.toHaveBeenCalled();
   });
 
   test("unknown poolId (findById null) is an idempotent no-op — no destroy attempted", async () => {

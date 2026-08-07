@@ -4,7 +4,8 @@
  * The exactly-once CAS is covered elsewhere; what these pin is the policy that
  * decides whether the CAS is reached at all. Two paths must NOT release: a
  * reachable stop failure (the container is still there and the teardown will be
- * retried) and a bounded-timeout abandon (the container may still be running).
+ * retried) and a bounded-timeout or unreachable-node abandon (the container may
+ * still be running).
  * Releasing on either hands a live container's slot back to the scheduler, which
  * then packs a new container onto a node still running the old one — a worse
  * failure than the double-free this feature closes, because it is invisible
@@ -18,7 +19,7 @@
  * stop past `SANDBOX_DELETE_STOP_TIMEOUT_MS` (120s, not env-tunable): that would
  * make the suite two minutes slower and timing-dependent for no added coverage.
  * The timer itself is exercised by the provider suites; what is under test here
- * is what `deleteAgent` DOES with a `timedOut` verdict, which is exactly the
+ * is what `deleteAgent` does with a tagged timeout, which is exactly the
  * branch a future refactor could silently drop.
  */
 
@@ -37,6 +38,12 @@ import { dockerNodes } from "../../../db/schemas/docker-nodes";
 import { organizations } from "../../../db/schemas/organizations";
 import { users } from "../../../db/schemas/users";
 import { apiKeysService } from "../api-keys";
+import { AGENT_ORPHAN_RECONCILER_CONFIG } from "../docker-node-workloads";
+import {
+  type OrphanReconcilerNode,
+  reconcileOrphanContainers,
+} from "../orphan-container-reconciler";
+import type { SandboxDeletionStopOutcome } from "../sandbox-provider-types";
 import { PROVISIONING_JOB_TEST_TABLES } from "./tier-upgrade-pglite-schema";
 
 const PGLITE_TIMEOUT = 60_000;
@@ -138,9 +145,13 @@ async function seedPlacedAgent(): Promise<{
 function scriptProvider(
   service: InstanceType<typeof ElizaSandboxService>,
   stop: () => Promise<void>,
+  outcome: SandboxDeletionStopOutcome = { kind: "not-running-proven" },
 ): void {
   (service as unknown as { _provider: unknown })._provider = {
-    stop,
+    stopForDeletion: async () => {
+      await stop();
+      return outcome;
+    },
     stopForReplacement: stop,
   };
 }
@@ -161,7 +172,7 @@ async function ownership(agentId: string): Promise<boolean | null> {
   return row?.owned ?? null;
 }
 
-describe("deleteAgent releases the node slot only on proven absence", () => {
+describe("deleteAgent releases the node slot only when the workload is proven not running", () => {
   test(
     "a clean teardown releases exactly one slot",
     async () => {
@@ -208,13 +219,84 @@ describe("deleteAgent releases the node slot only on proven absence", () => {
       (
         service as unknown as { runBoundedSandboxStop: () => Promise<unknown> }
       ).runBoundedSandboxStop = async () => ({
+        kind: "stop-timed-out" as const,
         error: new Error("agent-delete stop timed out"),
-        timedOut: true as const,
       });
 
-      await service.deleteAgent(agentId, orgId);
+      const result = await service.deleteAgent(agentId, orgId);
 
+      expect(result).toMatchObject({ success: true, rowDeleted: false });
       expect(await nodeCount(nodeId)).toBe(2);
+      expect(await ownership(agentId)).toBe(true);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an unreachable-node abandon completes deletion without releasing its slot",
+    async () => {
+      if (!pgliteReady) return;
+      const { service, agentId, orgId, nodeId } = await seedPlacedAgent();
+      scriptProvider(service, async () => {}, {
+        kind: "not-running-unresolved",
+        reason: "node-unreachable",
+      });
+
+      const result = await service.deleteAgent(agentId, orgId);
+
+      expect(result).toMatchObject({ success: true, rowDeleted: false });
+      expect(await nodeCount(nodeId)).toBe(2);
+      expect(await ownership(agentId)).toBe(true);
+      const retained = await dbWrite.query.agentSandboxes.findFirst({
+        where: eq(agentSandboxes.id, agentId),
+      });
+      expect(retained?.status).toBe("deletion_failed");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an unresolved tombstone survives until the real orphan reaper releases and retry finalizes it",
+    async () => {
+      if (!pgliteReady) return;
+      const { service, agentId, orgId, nodeId } = await seedPlacedAgent();
+      scriptProvider(service, async () => {}, {
+        kind: "not-running-unresolved",
+        reason: "node-unreachable",
+      });
+      const pending = await service.deleteAgent(agentId, orgId);
+      expect(pending).toMatchObject({ success: true, rowDeleted: false });
+
+      const removed: string[] = [];
+      const node: OrphanReconcilerNode = {
+        node_id: nodeId,
+        hostname: "reaper.test.invalid",
+        status: "healthy",
+        listContainers: async () => [
+          { id: "immutable-container-id", name: `agent-${agentId}`, createdAtMs: 1 },
+        ],
+        removeContainer: async (containerId) => {
+          removed.push(containerId);
+        },
+      };
+      const reaped = await reconcileOrphanContainers([node], {
+        ...AGENT_ORPHAN_RECONCILER_CONFIG,
+        rowlessGraceMs: 0,
+      });
+
+      expect(reaped.reaped).toBe(1);
+      expect(removed).toEqual(["immutable-container-id"]);
+      expect(await nodeCount(nodeId)).toBe(1);
+      expect(await ownership(agentId)).toBe(false);
+
+      scriptProvider(service, async () => {});
+      const finalized = await service.deleteAgent(agentId, orgId);
+      expect(finalized).toMatchObject({ success: true, rowDeleted: true });
+      const row = await dbWrite.query.agentSandboxes.findFirst({
+        where: eq(agentSandboxes.id, agentId),
+      });
+      expect(row).toBeUndefined();
+      expect(await nodeCount(nodeId)).toBe(1);
     },
     PGLITE_TIMEOUT,
   );

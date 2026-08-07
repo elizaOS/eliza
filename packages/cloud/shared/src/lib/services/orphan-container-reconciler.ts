@@ -572,10 +572,10 @@ export async function reconcileOrphanContainers(
           // error-policy:J6 best-effort teardown bookkeeping. Not J7: this is not
           // diagnostics — a swallowed failure holds a real node slot. It is
           // survivable only because the retry contract is explicit: the reap is
-          // already counted, the remaining reaps must still run, and the next
-          // sweep re-attempts the release against a CAS that is idempotent by
-          // construction, so a missed release costs one sweep interval of
-          // capacity rather than leaking it permanently.
+          // already counted and the remaining reaps must still run. Agent
+          // deletion keeps a durable terminal tombstone, so its independent
+          // low-frequency delete retry can observe container absence and spend
+          // the idempotent release CAS after a bookkeeping failure here.
           await config.onReaped(orphan.key, node.node_id).catch((error: unknown) => {
             logger.warn(`[${config.logScope}] Post-reap bookkeeping failed`, {
               nodeId: node.node_id,
