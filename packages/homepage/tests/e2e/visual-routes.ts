@@ -15,6 +15,7 @@ export const VISUAL_ROUTES = [
   { path: "/connected", name: "connected" },
   { path: "/get-started", name: "get-started" },
   { path: "/leaderboard", name: "leaderboard" },
+  { path: "/profile/edit", name: "profile-edit", authed: true },
   // "*" is the App.tsx catch-all; exercised via a representative unknown path.
   { path: "*", name: "not-found", goto: "/this-page-does-not-exist" },
 ] as const;

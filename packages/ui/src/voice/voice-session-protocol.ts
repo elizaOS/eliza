@@ -107,6 +107,7 @@ export interface ServerSpeakingEndEvent {
 export interface ServerNavigateViewEvent {
   t: "navigate_view";
   viewId: string;
+  viewPath?: string;
   subview?: string;
   traceId: string;
 }
@@ -201,15 +202,24 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
     const traceId = readBoundedString(
       (parsed as { traceId?: unknown }).traceId,
     );
+    const rawViewPath = (parsed as { viewPath?: unknown }).viewPath;
+    const viewPath =
+      rawViewPath === undefined ? null : readBoundedString(rawViewPath);
     const rawSubview = (parsed as { subview?: unknown }).subview;
     const subview =
       rawSubview === undefined ? null : readBoundedString(rawSubview);
-    if (!viewId || !traceId || (rawSubview !== undefined && !subview)) {
+    if (
+      !viewId ||
+      !traceId ||
+      (rawViewPath !== undefined && !viewPath) ||
+      (rawSubview !== undefined && !subview)
+    ) {
       return null;
     }
     return {
       t,
       viewId,
+      ...(viewPath ? { viewPath } : {}),
       ...(subview ? { subview } : {}),
       traceId,
     };

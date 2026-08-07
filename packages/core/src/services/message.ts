@@ -8952,6 +8952,7 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 			completionTokens: number;
 			cacheReadInputTokens?: number;
 			cacheCreationInputTokens?: number;
+			reasoningTokens?: number;
 			totalTokens: number;
 	  }
 	| undefined {
@@ -8965,6 +8966,7 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 		completionTokens: number;
 		cacheReadInputTokens?: number;
 		cacheCreationInputTokens?: number;
+		reasoningTokens?: number;
 		totalTokens: number;
 	} = { promptTokens, completionTokens, totalTokens };
 	if (typeof usage.cacheReadInputTokens === "number") {
@@ -8978,6 +8980,9 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 	}
 	if (typeof usage.cacheCreationInputTokens === "number") {
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
+	}
+	if (typeof usage.reasoningTokens === "number") {
+		out.reasoningTokens = usage.reasoningTokens;
 	}
 	return out;
 }
@@ -9803,6 +9808,30 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 }
 
 /**
+ * Builds provider-neutral TTS input from character settings.
+ *
+ * Only `voiceId` is a provider voice identifier. The historical `model`
+ * field contains Piper voice tags and `url` contains an endpoint, so forwarding
+ * either as `voice` breaks OpenAI and cloud provider selection. Omitting
+ * `voice` lets the active provider apply its own valid default.
+ */
+function buildTextToSpeechParams(
+	runtime: Pick<IAgentRuntime, "character">,
+	text: string,
+	signal?: AbortSignal,
+): TextToSpeechParams {
+	const voiceSettings = runtime.character.settings?.voice as
+		| { voiceId?: string }
+		| undefined;
+	const voiceId = voiceSettings?.voiceId?.trim();
+	return {
+		text,
+		...(voiceId ? { voice: voiceId } : {}),
+		...(signal ? { signal } : {}),
+	};
+}
+
+/**
  * First-sentence cloud-TTS delivery for streaming turns: synthesize the
  * sentence and hand the audio to the callback as a data-URI attachment. The
  * local-inference voice loop uses VoiceScheduler/PhraseChunker instead
@@ -9833,26 +9862,8 @@ export async function deliverFirstSentenceVoice(
 		return;
 	}
 	try {
-		const voiceSettings = runtime.character.settings?.voice as
-			| {
-					model?: string;
-					url?: string;
-					voiceId?: string;
-			  }
-			| undefined;
-
-		const model = voiceSettings?.model || "en_US-male-medium";
-		const voiceId = voiceSettings?.url || voiceSettings?.voiceId || "nova";
-
 		let audioBuffer: Buffer | null = null;
-		const params: TextToSpeechParams & {
-			model?: string;
-		} = {
-			text: first,
-			voice: voiceId,
-			model: model,
-			...(abortSignal ? { signal: abortSignal } : {}),
-		};
+		const params = buildTextToSpeechParams(runtime, first, abortSignal);
 		const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
 			? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
 			: undefined;
@@ -10974,26 +10985,12 @@ export class DefaultMessageService implements IMessageService {
 							// (Async immediately)
 							(async () => {
 								try {
-									const voiceSettings = runtime.character.settings?.voice as
-										| {
-												model?: string;
-												url?: string;
-												voiceId?: string;
-										  }
-										| undefined;
-									const model = voiceSettings?.model || "en_US-male-medium";
-									const voiceId =
-										voiceSettings?.url || voiceSettings?.voiceId || "nova";
-
 									let audioBuffer: Buffer | null = null;
-									const params: TextToSpeechParams & {
-										model?: string;
-									} = {
-										text: rest,
-										voice: voiceId,
-										model: model,
-										...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
-									};
+									const params = buildTextToSpeechParams(
+										runtime,
+										rest,
+										opts.abortSignal,
+									);
 									const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
 										? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
 										: undefined;
@@ -12981,7 +12978,15 @@ export class DefaultMessageService implements IMessageService {
 			ModelType.TEXT_NANO,
 		] as const) {
 			try {
-				const response = await runtime.useModel(modelType, { prompt });
+				// Bound reasoning on reasoning models (#16394): the failure-reply
+				// path is a plain-text fallback that must stay low-latency, so every
+				// slot carries thinking="off" like Stage-1, the evaluator, and every
+				// planner iteration. Without it a drained/failed turn can still spend
+				// hundreds of hidden reasoning tokens before producing visible text.
+				const response = await runtime.useModel(modelType, {
+					prompt,
+					providerOptions: { eliza: { thinking: "off" } },
+				});
 				if (typeof response !== "string") {
 					continue;
 				}

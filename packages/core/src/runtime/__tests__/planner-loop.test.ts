@@ -2379,6 +2379,14 @@ describe("v5 planner loop skeleton", () => {
 							arguments: { command: "curl https://backup.example.com" },
 						},
 					],
+				})
+				// Failure-aware synthesis pass (#17948): the evaluator's
+				// success-claiming reply was discarded by the failure authority, so
+				// the loop asks the model for an honest failure reply instead of
+				// shipping the generic failed-step sentence.
+				.mockResolvedValueOnce({
+					text: "The primary lookup failed on a DNS error; the backup source did return a result.",
+					toolCalls: [],
 				}),
 		};
 		const executeToolCall = vi
@@ -2413,7 +2421,7 @@ describe("v5 planner loop skeleton", () => {
 			evaluate,
 		});
 
-		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
@@ -2429,8 +2437,21 @@ describe("v5 planner loop skeleton", () => {
 			},
 			expect.objectContaining({ iteration: 2 }),
 		);
+		// The uncorrelated success still cannot launder the failure — but the
+		// reply is now the model's own failure-aware synthesis, primed with the
+		// failed step and its cause, not the fixed canned sentence (#17948).
+		const synthesisParams = runtime.useModel.mock.calls[2]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const synthesisPrompt = (synthesisParams.messages ?? [])
+			.map((message) =>
+				typeof message.content === "string" ? message.content : "",
+			)
+			.join("\n");
+		expect(synthesisPrompt).toContain("The SHELL step failed");
+		expect(synthesisPrompt).toContain("DNS lookup failed");
 		expect(result.finalMessage).toBe(
-			"I tried to complete that, but the available runtime step failed before it produced a usable result.",
+			"The primary lookup failed on a DNS error; the backup source did return a result.",
 		);
 	});
 
@@ -2761,8 +2782,11 @@ describe("v5 planner loop skeleton", () => {
 		});
 
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		// A FINISH that declares success:false is a structural failure
+		// acknowledgment, so the evaluator's own diagnosis ships instead of
+		// being replaced by the generic failed-step sentence (#17948).
 		expect(result.finalMessage).toBe(
-			"I tried to complete that, but the available runtime step failed before it produced a usable result.",
+			"I could not retrieve that from the available sources.",
 		);
 	});
 

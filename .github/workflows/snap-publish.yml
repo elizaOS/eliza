@@ -37,7 +37,12 @@ on:
       channel:
         description: Snap Store channel (edge | beta | candidate | stable)
         required: false
-        type: string
+        type: choice
+        options:
+          - stable
+          - candidate
+          - beta
+          - edge
         default: stable
       tag:
         description: Git tag e.g. v2.0.1
@@ -78,9 +83,14 @@ jobs:
         run: sudo snap install snapcraft --classic
 
       - name: Update snap version
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
+          case "$VERSION" in
+            *[!0-9.]*|.*|*..*|*.) echo "::error::version must be numeric dotted, got: $VERSION"; exit 1 ;;
+          esac
           # Update the version in snapcraft.yaml to match the release
-          sed -i "s/^version: .*/version: \"${{ inputs.version }}\"/" packages/app-core/packaging/snap/snapcraft.yaml
+          sed -i "s/^version: .*/version: \"${VERSION}\"/" packages/app-core/packaging/snap/snapcraft.yaml
 
       - name: Build snap
         run: |
@@ -93,10 +103,16 @@ jobs:
 
       - name: Publish to Snap Store
         if: steps.creds_check.outputs.can_publish == 'true'
+        env:
+          CHANNEL: ${{ inputs.channel }}
         run: |
+          case "$CHANNEL" in
+            stable|candidate|beta|edge) ;;
+            *) echo "::error::channel must be stable|candidate|beta|edge, got: $CHANNEL"; exit 1 ;;
+          esac
           cd packages/app-core/packaging/snap
-          snapcraft upload "$SNAP_FILE" --release ${{ inputs.channel }}
-          echo "Published snap to channel: ${{ inputs.channel }}"
+          snapcraft upload "$SNAP_FILE" --release "$CHANNEL"
+          echo "Published snap to channel: $CHANNEL"
 
       - name: Upload snap artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

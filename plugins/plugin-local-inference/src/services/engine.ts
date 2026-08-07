@@ -1683,6 +1683,7 @@ export class LocalInferenceEngine {
 	async synthesizeSpeech(
 		text: string,
 		signal?: AbortSignal,
+		voiceId?: string,
 	): Promise<Uint8Array> {
 		this.markActivity();
 		const bridge = this.requireVoiceBridge("synthesize speech");
@@ -1692,7 +1693,7 @@ export class LocalInferenceEngine {
 				"[voice] Cannot synthesize speech with StubTtsBackend (it emits silence). Start voice with useFfiBackend:true or inject a real backend.",
 			);
 		}
-		return bridge.synthesizeTextToWav(text, signal);
+		return bridge.synthesizeTextToWav(text, signal, voiceId);
 	}
 
 	async prewarmVoicePhrases(

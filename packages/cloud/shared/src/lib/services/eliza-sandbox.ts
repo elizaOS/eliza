@@ -2566,8 +2566,18 @@ export class ElizaSandboxService {
               // chain is intact, only too large — booting empty would silently
               // drop every byte of it. The one consent path is wake's
               // forceFreshBoot.
-              throw new Error(
+              throw new ElizaError(
                 `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
+                {
+                  code: "SNAPSHOT_RESTORE_REQUIRES_FRESH_BOOT_CONSENT",
+                  cause: error,
+                  context: {
+                    agentId: rec.id,
+                    payloadBytes: error.payloadBytes,
+                    limitBytes: error.limitBytes,
+                  },
+                  severity: "fatal",
+                },
               );
             }
             if (restoreOverride?.kind === "from-backup") throw error;
@@ -2603,8 +2613,18 @@ export class ElizaSandboxService {
               // Ordered before the from-backup rethrow for the same reason as
               // the fetch branch: a gated wake would otherwise never see the
               // consent sentence.
-              throw new Error(
+              throw new ElizaError(
                 `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
+                {
+                  code: "SNAPSHOT_RESTORE_REQUIRES_FRESH_BOOT_CONSENT",
+                  cause: error,
+                  context: {
+                    agentId: rec.id,
+                    payloadBytes: error.payloadBytes,
+                    limitBytes: error.limitBytes,
+                  },
+                  severity: "fatal",
+                },
               );
             } else if (restoreOverride?.kind === "from-backup") {
               // Same no-silent-fresh-boot rule as the fetch above: an explicit
@@ -6878,6 +6898,8 @@ export class ElizaSandboxService {
       try {
         preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource);
       } catch (error) {
+        // error-policy:J1 the shutdown command boundary translates capture
+        // failures into an explicit refusal while leaving the agent running.
         const message = error instanceof Error ? error.message : String(error);
         if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
           // The deployed image cannot snapshot by construction; requiring a

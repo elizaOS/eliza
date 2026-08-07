@@ -68,6 +68,7 @@ export * from "./llm-trajectories";
 export * from "./managed-domains";
 export * from "./model-pricing";
 export * from "./moderation-violations";
+export * from "./oidc";
 export * from "./org-rate-limit-overrides";
 export * from "./org-storage-quota";
 export * from "./organization-billing";

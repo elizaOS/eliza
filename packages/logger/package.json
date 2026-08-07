@@ -30,11 +30,11 @@
     "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/logger",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
-    "lint": "find src -name '*.ts' ! -name '*.d.ts' -print0 | xargs -0 bunx @biomejs/biome check",
-    "lint:check": "find src -name '*.ts' ! -name '*.d.ts' -print0 | xargs -0 bunx @biomejs/biome check",
-    "lint:fix": "find src -name '*.ts' ! -name '*.d.ts' -print0 | xargs -0 bunx @biomejs/biome check --write",
-    "format": "find src -name '*.ts' ! -name '*.d.ts' -print0 | xargs -0 bunx @biomejs/biome format",
-    "format:fix": "find src -name '*.ts' ! -name '*.d.ts' -print0 | xargs -0 bunx @biomejs/biome format --write",
+    "lint": "node ../scripts/run-biome-typescript.mjs src check",
+    "lint:check": "node ../scripts/run-biome-typescript.mjs src check",
+    "lint:fix": "node ../scripts/run-biome-typescript.mjs src check --write",
+    "format": "node ../scripts/run-biome-typescript.mjs src format",
+    "format:fix": "node ../scripts/run-biome-typescript.mjs src format --write",
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },
   "exports": {

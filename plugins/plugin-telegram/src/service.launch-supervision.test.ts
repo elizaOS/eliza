@@ -88,7 +88,7 @@ describe("TelegramService.launchPollerSupervised", () => {
     // must proceed off the connect callback, not off loop completion.
     expect(bot.launch).toHaveBeenCalledTimes(1);
     expect(calls[0].config).toEqual({
-      dropPendingUpdates: true,
+      dropPendingUpdates: false,
       allowedUpdates: ["message", "message_reaction", "callback_query"],
     });
 
@@ -99,6 +99,7 @@ describe("TelegramService.launchPollerSupervised", () => {
   it("self-heals a post-connect poll failure with a bounded, backed-off relaunch and then gives up", async () => {
     const { bot, calls } = makeBot();
     const { service, runtime } = makeService();
+    const loggerError = vi.spyOn(logger, "error").mockImplementation(() => {});
 
     const launched = callLaunch(service, bot, "tok-heal", "acct");
     calls[0].onLaunch();
@@ -123,17 +124,16 @@ describe("TelegramService.launchPollerSupervised", () => {
     // Sixth failure exceeds the relaunch budget: give up, do not relaunch.
     calls[5].reject(new Error(CONFLICT));
     await flushMicrotasks();
-    expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ maxPollRelaunches: 5 }),
-      expect.stringContaining("gave up"),
-    );
-
     await vi.advanceTimersByTimeAsync(60_000);
     expect(bot.launch).toHaveBeenCalledTimes(6);
     expect(runtime.reportError).toHaveBeenCalledTimes(6);
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.objectContaining({ maxPollRelaunches: 5 }),
+      expect.stringContaining("gave up"),
+    );
   });
 
-  it("does not relaunch after a newer runtime takes over the bot token", async () => {
+  it("fails loudly instead of replacing a poller that already owns the token", async () => {
     const first = makeBot();
     const second = makeBot();
     const { service } = makeService();
@@ -147,24 +147,11 @@ describe("TelegramService.launchPollerSupervised", () => {
     first.calls[0].onLaunch();
     await firstLaunched;
 
-    // A newer runtime launches on the same token and connects: its connect
-    // registers it as the active poller, superseding the first.
-    const secondLaunched = callLaunch(
-      service,
-      second.bot,
-      "tok-takeover",
-      "acct",
-    );
-    second.calls[0].onLaunch();
-    await secondLaunched;
+    await expect(
+      callLaunch(service, second.bot, "tok-takeover", "acct"),
+    ).rejects.toThrow(/already has an active/i);
 
-    // The first poller's loop now dies. Because it no longer owns the token,
-    // the failure is surfaced but no relaunch is scheduled.
-    first.calls[0].reject(new Error(CONFLICT));
-    await flushMicrotasks();
-    await vi.advanceTimersByTimeAsync(60_000);
-
-    expect(first.bot.launch).toHaveBeenCalledTimes(1);
-    expect(second.bot.launch).toHaveBeenCalledTimes(1);
+    expect(first.bot.stop).not.toHaveBeenCalled();
+    expect(second.bot.launch).not.toHaveBeenCalled();
   });
 });

@@ -23,6 +23,9 @@ import {
  */
 const METADATA_ALLOWLIST: Record<string, ReadonlySet<string>> = {
   "auth.": new Set(["ip", "ua", "email_hash", "method", "provider", "reason"]),
+  // Never `code`, `state`, a token, or a client secret — only the identifiers
+  // needed to reconstruct which relying party asked for what, and why it failed.
+  "oidc.": new Set(["ip", "ua", "client_id", "reason", "scope", "error"]),
   "api_key.": new Set(["key_id", "scopes", "reason", "name"]),
   "secret.": new Set(["secret_id", "key_path", "reason"]),
   "plugin.": new Set([

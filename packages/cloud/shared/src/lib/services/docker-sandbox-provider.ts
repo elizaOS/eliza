@@ -8,6 +8,7 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
+import { ElizaError } from "@elizaos/core";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
@@ -21,7 +22,10 @@ import { signStewardMutatingRequest } from "../steward/sign";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
-import { buildAgentContainerSecurityFlags } from "./agent-container-security";
+import {
+  buildAgentContainerMemoryFlags,
+  buildAgentContainerSecurityFlags,
+} from "./agent-container-security";
 import { ensureRegistryAccess } from "./containers/hetzner-client/registry";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { resolveImageDigest } from "./containers/registry-probe";
@@ -30,7 +34,11 @@ import {
   isContainerAbsentMessage,
   isNodeUnreachableMessage,
 } from "./docker-error-classifier";
-import { dockerNodeManager } from "./docker-node-manager";
+import {
+  clearPlacementCommandFailures,
+  dockerNodeManager,
+  notePlacementCommandFailure,
+} from "./docker-node-manager";
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
   allocatePort,
@@ -160,7 +168,9 @@ const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
 
 class ReplacementPlacementPersistenceError extends Error {
   constructor(cause: unknown) {
-    super("[docker-sandbox] Failed to persist replacement placement", { cause });
+    super("[docker-sandbox] Failed to persist replacement placement", {
+      cause,
+    });
     this.name = "ReplacementPlacementPersistenceError";
   }
 }
@@ -1067,6 +1077,22 @@ export class DockerSandboxProvider implements SandboxProvider {
         await dockerNodesRepository.incrementAllocated(nodeId);
       }
     } else {
+      const registeredNodes = await dockerNodesRepository.findAll();
+      if (registeredNodes.length > 0) {
+        throw new ElizaError(
+          "[docker-sandbox] Registered Docker nodes exist but none are available for placement; refusing CONTAINERS_DOCKER_NODES seed fallback",
+          {
+            code: "DOCKER_PLACEMENT_UNAVAILABLE",
+            context: {
+              registeredNodeCount: registeredNodes.length,
+              excludedNodeId: config.excludeNodeId ?? null,
+              requiredPlatform: imagePlatform ?? null,
+            },
+            severity: "ephemeral",
+          },
+        );
+      }
+
       // Fallback: seed-only path for initial setup before nodes are registered via Admin API.
       // Uses random selection (no least-loaded placement or capacity checks).
       // Operators should register nodes via POST /admin/docker-nodes for production use.
@@ -1416,9 +1442,13 @@ export class DockerSandboxProvider implements SandboxProvider {
         "--health-timeout 5s",
         "--health-start-period 15s",
         "--health-retries 6",
-        ...(config.container?.memoryMb
-          ? [`--memory ${shellQuote(`${Math.ceil(config.container.memoryMb)}m`)}`]
-          : []),
+        // Per-container memory ceiling (see buildAgentContainerMemoryFlags):
+        // an explicit per-agent `container.memory` wins; otherwise the
+        // env-tunable fleet default applies so a boot-looping agent can never
+        // OOM-starve its co-tenants again (staging fleet incident 2026-08-05).
+        ...buildAgentContainerMemoryFlags(
+          config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb(),
+        ),
         // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
         // privilege escalation, and bound the process count — then, under
         // headscale only, re-add exactly NET_ADMIN + /dev/net/tun for the VPN.
@@ -1603,6 +1633,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
     } catch (err) {
+      // Recorded before any rethrow branching below so every failure shape on
+      // this node feeds the placement breaker (only timeouts count inside).
+      notePlacementCommandFailure(nodeId, err);
       // Best-effort Steward deregistration — the agent was registered but the
       // container failed to start, so the Steward record is deleted here.
       try {
@@ -1681,6 +1714,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       hostKeyFingerprint,
     };
     this.containers.set(containerName, meta);
+    // The container exists on the node — clear its breaker history so a
+    // recovered node is not one stale timeout away from re-quarantine.
+    clearPlacementCommandFailures(nodeId);
 
     // 8. Wait for Headscale VPN registration if enabled
     if (headscaleEnabled) {

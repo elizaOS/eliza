@@ -44,8 +44,15 @@ describe("appDevWsBasePlugin", () => {
 });
 
 describe("app shell local connection policy", () => {
+  test("permits paired Android transports whose private-LAN host is selected at runtime", () => {
+    expect(resolveAppShellLocalCspSources("android", false)).toEqual({
+      localHttpSources: " http://localhost:* http://127.0.0.1:*",
+      localConnectSources: " http: ws:",
+    });
+  });
+
   test("allows an owner-selected LAN WebSocket outside iOS store builds", () => {
-    const sources = resolveAppShellLocalCspSources(false);
+    const sources = resolveAppShellLocalCspSources("ios", false);
 
     expect(sources.localConnectSources).toContain("ws:");
     expect(sources.localConnectSources).toContain("http://localhost:*");
@@ -53,7 +60,7 @@ describe("app shell local connection policy", () => {
   });
 
   test("keeps cleartext local transports out of iOS store builds", () => {
-    expect(resolveAppShellLocalCspSources(true)).toEqual({
+    expect(resolveAppShellLocalCspSources("ios", true)).toEqual({
       localHttpSources: "",
       localConnectSources: "",
     });

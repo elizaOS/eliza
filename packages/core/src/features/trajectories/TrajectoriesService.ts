@@ -525,6 +525,7 @@ function normalizeLlmCall(value: unknown): LLMCall | null {
 		"latencyMs",
 		"cacheReadInputTokens",
 		"cacheCreationInputTokens",
+		"reasoningTokens",
 	] as const) {
 		const numericValue = numberValue(value[key]);
 		if (numericValue !== null) {

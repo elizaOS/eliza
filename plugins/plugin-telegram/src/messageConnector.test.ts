@@ -6,6 +6,12 @@
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import {
+  claimTelegramPollerToken,
+  getTelegramPollerClaim,
+  markTelegramPollerConnected,
+  releaseTelegramPollerToken,
+} from "./poller-lock";
 import { TelegramService } from "./service";
 
 function createRuntime() {
@@ -459,5 +465,113 @@ describe("Telegram message connector adapter", () => {
 
     initializeBot.mockRestore();
     createAccountRuntime.mockRestore();
+  });
+
+  it("does not launch the full poller when standalone mode owns Telegram", async () => {
+    const originalPassive = process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS;
+    const originalStandalone = process.env.ELIZA_TELEGRAM_STANDALONE_BOT;
+    process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS = "false";
+    process.env.ELIZA_TELEGRAM_STANDALONE_BOT = "true";
+    const runtime = {
+      ...createRuntime(),
+      character: {
+        name: "Agent One",
+        settings: {
+          telegram: {
+            accounts: {
+              default: { enabled: true, botToken: "standalone-token" },
+            },
+          },
+        },
+      },
+      getSetting: vi.fn().mockReturnValue(undefined),
+    } as IAgentRuntime;
+    const initializeBot = vi
+      .spyOn(
+        TelegramService.prototype as TelegramService & {
+          initializeBot: (state: unknown) => Promise<void>;
+        },
+        "initializeBot",
+      )
+      .mockResolvedValue(undefined);
+
+    try {
+      const service = await TelegramService.start(runtime);
+
+      expect(service.getBot()).not.toBeNull();
+      expect(initializeBot).not.toHaveBeenCalled();
+    } finally {
+      initializeBot.mockRestore();
+      if (originalPassive === undefined) {
+        delete process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS;
+      } else {
+        process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS = originalPassive;
+      }
+      if (originalStandalone === undefined) {
+        delete process.env.ELIZA_TELEGRAM_STANDALONE_BOT;
+      } else {
+        process.env.ELIZA_TELEGRAM_STANDALONE_BOT = originalStandalone;
+      }
+    }
+  });
+
+  it("reports a live standalone claim through the canonical Telegram service health", () => {
+    const runtime = createRuntime();
+    const service = createTelegramService({
+      runtime,
+      defaultAccountId: "default",
+      accountStates: new Map(),
+    });
+    const bot = {} as never;
+    claimTelegramPollerToken("standalone-health-token", {
+      bot,
+      mode: "standalone",
+      ownerId: String(runtime.agentId),
+      accountId: "default",
+    });
+
+    try {
+      markTelegramPollerConnected("standalone-health-token", bot);
+      expect(service.getPollerHealth()).toMatchObject({
+        ok: true,
+        connected: true,
+        mode: "standalone",
+        accountId: "default",
+      });
+    } finally {
+      releaseTelegramPollerToken("standalone-health-token", bot);
+    }
+  });
+
+  it("releases poller ownership even when Telegraf stop throws", async () => {
+    const runtime = createRuntime();
+    const bot = {
+      stop: vi.fn(() => {
+        throw new Error("already stopped");
+      }),
+    } as never;
+    claimTelegramPollerToken("teardown-token", {
+      bot,
+      mode: "full",
+      ownerId: String(runtime.agentId),
+      accountId: "default",
+    });
+    const service = createTelegramService({
+      runtime,
+      accountStates: new Map([
+        [
+          "default",
+          {
+            accountId: "default",
+            account: { accountId: "default", botToken: "teardown-token" },
+            bot,
+          },
+        ],
+      ]),
+    });
+
+    await service.stop();
+
+    expect(getTelegramPollerClaim("teardown-token")).toBeUndefined();
   });
 });

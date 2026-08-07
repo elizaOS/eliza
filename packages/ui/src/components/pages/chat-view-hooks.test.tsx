@@ -62,6 +62,7 @@ const realtimeHarness = vi.hoisted(() => {
     agentSpeaking: false,
     needsUnlock: false,
     paused: false,
+    microphoneMuted: false,
     error: null as RealtimeVoiceError | null,
     fallbackReason: null,
     reportFallback: vi.fn(),
@@ -71,6 +72,7 @@ const realtimeHarness = vi.hoisted(() => {
     })),
     stop: vi.fn(async () => {}),
     bargeIn: vi.fn(),
+    toggleMicrophoneMute: vi.fn(),
     unlock: vi.fn(async () => {}),
   };
   return { state };
