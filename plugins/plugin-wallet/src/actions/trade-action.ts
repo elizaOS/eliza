@@ -607,6 +607,7 @@ export const tradeRouterAction: Action = {
     if (parsed.operation === "inspect_session") {
       return inspectSession(service, parsed.sessionId);
     }
+    // error-policy:J1
     try {
       assertWalletFinancialActionAllowed(message, "trade");
     } catch (error) {
