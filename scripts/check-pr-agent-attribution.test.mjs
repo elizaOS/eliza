@@ -346,6 +346,59 @@ describe("PR agent attribution", () => {
     assert.equal(noSkill.ok, true);
   });
 
+  it("keeps a value's own colon when the row omits the optional label", () => {
+    // The label ("Skill revision: ") is optional, and a contributor who writes
+    // the format the failure message prescribes omits it. Stripping to the
+    // first colon then consumed the value itself, so the documented
+    // `owner/repo@<40-hex>:path` was rejected by the message prescribing it.
+    const unlabelled = [
+      "<!-- contribution-attribution:v1 -->",
+      "<!-- attribution-row:ai-assistance --> yes",
+      "<!-- attribution-row:models --> `openai/gpt-5.6-sol`",
+      "<!-- attribution-row:client --> Codex Desktop",
+      "<!-- attribution-row:skill-revision --> `elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza`",
+      "<!-- attribution-row:status --> self-reported",
+    ].join("\n");
+    const result = evaluatePrAttribution(unlabelled);
+    assert.equal(
+      result.ok,
+      true,
+      result.findings.map((finding) => finding.message).join("; "),
+    );
+    assert.equal(
+      result.attribution.skillRevision,
+      "elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza",
+    );
+
+    // The same hazard one row over: a routed identifier may carry a colon, and
+    // an unlabelled one was truncated to the trailing segment and then read as
+    // a placeholder rather than as a model.
+    assert.deepEqual(
+      evaluatePrAttribution(
+        unlabelled.replace(
+          "`openai/gpt-5.6-sol`",
+          "`bedrock/anthropic.claude-3:1`",
+        ),
+      ).attribution.modelIds,
+      ["bedrock/anthropic.claude-3:1"],
+    );
+  });
+
+  it("still drops a human label, including one containing a slash", () => {
+    // The strip exists for the documented template, so refusing to run past a
+    // value's colon must not stop it removing a genuine label. `Client / agent
+    // tooling:` is the repository's own, and it carries a slash.
+    const labelled = evaluatePrAttribution(body());
+    assert.equal(labelled.ok, true);
+    assert.equal(labelled.attribution.client, "Codex Desktop");
+    assert.equal(
+      labelled.attribution.status,
+      "self-reported",
+      "a labelled status row must still reduce to the bare keyword",
+    );
+    assert.deepEqual(labelled.attribution.modelIds, ["openai/gpt-5.6-sol"]);
+  });
+
   it("rejects missing markers and rows even when prose names a model", () => {
     const result = evaluatePrAttribution(
       "Built with openai/gpt-5.6-sol using Codex Desktop.",

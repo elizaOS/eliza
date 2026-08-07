@@ -85,11 +85,12 @@ afterEach(async () => {
 });
 
 describe("run-turbo Windows init-crash retry", () => {
-  test("waits for output stream closure before evaluating captured crash output", async () => {
+  test("bounds output draining after exit before evaluating captured crash output", async () => {
     const source = await readFile(runTurbo, "utf8");
 
-    expect(source).toContain('child.on("close"');
-    expect(source).not.toContain('child.on("exit"');
+    expect(source).toContain('child.on("exit"');
+    expect(source).toContain("setTimeout(finish, TURBO_OUTPUT_DRAIN_GRACE_MS)");
+    expect(source).toContain('child.once("close", finish)');
   });
 
   test("retries exactly once on the 0xC0000142 signature and succeeds from the second attempt", async () => {

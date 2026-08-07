@@ -82,9 +82,6 @@ jobs:
       - name: Validate GitHub-native turbo cache contract
         run: node packages/scripts/ci-turbo-cache-contract.mjs
 
-      - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.mjs
-
       # Source-catalog completeness is the enforceable i18n invariant (no new
       # key ships uncataloged); translation gaps print as warnings (#17605 —
       # this checker previously ran in no lane and en.json drifted 705 keys).
@@ -170,6 +167,16 @@ jobs:
       - name: Test-runner vacuous-green guard
         run: bun test packages/scripts/__tests__/run-all-tests-vacuous-green-guard.test.ts
 
+      - name: Validate CI Bun version pin contract
+        run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+
+      - name: Upload Bun runtime resolution inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: bun-runtime-inventory
+          path: ${{ runner.temp }}/bun-runtime-inventory.json
+          retention-days: 30
+
   server-tests:
     name: Server Tests
     needs: changes
@@ -201,7 +208,9 @@ jobs:
         run: bun run build:views
 
       - name: Views system tests
-        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts
+        # views-registry.integration.test.ts is discovered by the agent
+        # integration lane (pattern), not hand-enumerated here (#17778 / #17838).
+        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts
 
       - name: Remote capability router tests
         run: bun run test:remote-capabilities
@@ -404,9 +413,11 @@ jobs:
   # the src-integration lane (scheduler/recurrence/global-pause real-DB
   # suites) plus the repo config over the package's named test/ files —
   # keyless. Burn down the remaining plugins/*/test integration suites from
-  # here.
+  # here. packages/agent joined the lane in #17778: its own lanes exclude the
+  # `.integration.test.` suffix, so without a step here a suite under
+  # packages/agent ran in no lane at all.
   integration-tests:
-    name: Integration Lane (personal-assistant)
+    name: Integration Lane (personal-assistant + agent)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.server == 'true'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -442,6 +453,15 @@ jobs:
       - name: Run personal-assistant integration lanes
         timeout-minutes: 35
         run: bun run --cwd plugins/plugin-personal-assistant test:integration
+
+      # Discovery is by pattern (no file list), so a new
+      # packages/agent/**/*.integration.test.ts is picked up without editing
+      # this workflow. The renamed views-registry.integration.test.ts is discovered by pattern;
+      # packages/scripts/__tests__/vitest-integration-config-agent-subpath-alias.test.ts
+      # guards the include globs and alias.
+      - name: Run agent integration lane
+        timeout-minutes: 20
+        run: bun run --cwd packages/agent test:integration
 
   desktop-contract:
     name: Electrobun Desktop Contract

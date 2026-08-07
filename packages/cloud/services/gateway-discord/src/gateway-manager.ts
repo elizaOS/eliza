@@ -1,4 +1,4 @@
-// Coordinates Discord gateway gateway manager behavior for multi-tenant bot pods.
+/** Coordinates multi-tenant Discord gateway connections and event routing. */
 import { Redis } from "@upstash/redis";
 import {
   type Attachment,
@@ -1377,6 +1377,16 @@ export class GatewayManager {
         conn.characterId,
         userId,
         message.content,
+        {
+          senderName:
+            message.member?.displayName ??
+            message.author.globalName ??
+            message.author.username,
+          accountId: connectionId,
+          platformRecordId: message.id,
+          chatId: message.channelId,
+          chatType: message.guildId ? "group" : "dm",
+        },
       );
 
       if (response) {

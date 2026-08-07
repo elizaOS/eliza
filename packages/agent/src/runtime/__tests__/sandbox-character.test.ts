@@ -15,9 +15,9 @@ vi.mock("@elizaos/core", () => ({
 }));
 
 describe("applySandboxCharacterFromEnv", () => {
-  it("is a no-op when ELIZA_AGENT_CHARACTER_JSON is absent", () => {
+  it("is a no-op when no character override is present", () => {
     const config = { agents: { list: [] } } as never;
-    const out = applySandboxCharacterFromEnv(config, {});
+    const out = applySandboxCharacterFromEnv(config, { NODE_ENV: "test" });
     expect(out).toBe(config);
     expect((out as { agents?: { list?: unknown[] } }).agents?.list).toEqual([]);
   });
@@ -58,6 +58,7 @@ describe("applySandboxCharacterFromEnv", () => {
   it("survives malformed JSON without throwing and keeps the config unchanged", () => {
     const config = { agents: { list: [] } } as never;
     const out = applySandboxCharacterFromEnv(config, {
+      NODE_ENV: "test",
       ELIZA_AGENT_CHARACTER_JSON: "{ not json",
     });
     expect((out as { agents: { list: unknown[] } }).agents.list).toEqual([]);

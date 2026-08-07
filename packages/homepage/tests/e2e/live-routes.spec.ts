@@ -12,6 +12,10 @@ const ROUTES = [
   { path: "/login", url: /\/get-started$/ },
   { path: "/get-started", heading: /Anywhere you want her to be/i },
   { path: "/connected", url: /\/get-started$/ },
+  {
+    path: "/profile/edit",
+    url: /\/get-started\?returnTo=%2Fprofile%2Fedit$/,
+  },
   // "*" is the App.tsx catch-all; exercised via a representative unknown path.
   {
     path: "*",

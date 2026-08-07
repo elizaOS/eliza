@@ -1,4 +1,4 @@
-// Exercises the gateway-webhook redis mock path with deterministic cloud service fixtures.
+/** Exercises the gateway Redis mock adapter with deterministic service fixtures. */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 const PREV_MOCK = process.env.MOCK_REDIS;
@@ -16,7 +16,7 @@ afterAll(() => {
 });
 
 describe("MemoryRedisAdapter (MOCK_REDIS=1)", () => {
-  test("set/get round-trip and respects expire/ex/lpush/ltrim", async () => {
+  test("supports the gateway's string, list, expiry, and deletion operations", async () => {
     // intentionally no top-level timeout override; harness default is generous
     const { createRedis } = await import("../redis");
     const redis = createRedis();
@@ -33,6 +33,9 @@ describe("MemoryRedisAdapter (MOCK_REDIS=1)", () => {
     await redis.set("once", "first", { nx: true });
     await redis.set("once", "second", { nx: true });
     expect(await redis.get<string>("once")).toBe("first");
+
+    expect(Number(await redis.del("once"))).toBe(1);
+    expect(await redis.get("once")).toBeNull();
 
     // lpush + ltrim
     await redis.lpush("list", "a");

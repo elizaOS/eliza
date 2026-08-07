@@ -21,21 +21,26 @@
  *
  * 3. {@link searchCanonicalConversationMemories} — the production retrieval
  *    for conversation-mode message search. It runs, in order: provenance
- *    validation, the mandatory scope ladder (`./filter.ts`), and same-room
- *    containment. Cross-room recall is DENIED here unconditionally: deciding
- *    that a recalled item may cross into a different destination is audience
- *    policy, and audience policy is owned by the trusted-delivery-audience
- *    layer (PR #17206), which attests the destination from `runtime.getRoom` +
- *    `getParticipantsForRoom` rather than anything a caller declares. When
- *    that layer wants to authorize a wider audience it does so at its own
- *    seams; this module never grows a policy knob for callers to widen.
+ *    validation, the mandatory scope ladder (`./filter.ts`), and destination
+ *    containment. Cross-room recall is denied unless this module revalidates
+ *    the actual inbound delivery message against the trusted delivery-audience
+ *    seam; callers cannot pass a policy boolean or request-body room claim.
  *
  * Composes with — never duplicates — `./filter.ts`: that ladder gates a single
- * memory's {@link MemoryScope} against the requester's role; the same-room rule
- * here additionally pins the item to the room it already lives in, so recall
- * discloses nothing a destination does not already hold.
+ * memory's {@link MemoryScope} against the requester's role; this module then
+ * pins disclosure to the destination unless the trusted delivery-audience layer
+ * has revalidated the live room type and participants for owner-only recall.
  */
+
+import { buildAccessContext } from "../access-context";
 import { normalizeConnectorSource } from "../connectors";
+import {
+	INTERNAL_AGENT_TURN_DISCLOSURE_BASIS,
+	markOwnerExclusiveDisclosureUsed,
+	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+	type OwnerExclusiveDisclosureDecision,
+	revalidateOwnerExclusiveDisclosure,
+} from "../security/trusted-delivery-audience";
 import type {
 	AccessContext,
 	IAgentRuntime,
@@ -340,21 +345,59 @@ export interface CanonicalRecallInput {
 	destinationRoomId: UUID;
 }
 
+interface CanonicalRecallEvaluationInput extends CanonicalRecallInput {
+	/** Derived only inside this module from process-local trusted audience evidence. */
+	crossRoomGate: CrossRoomRecallGate;
+}
+
+type CrossRoomRecallGate =
+	| { allowed: true }
+	| { allowed: false; reason: string };
+
+function assertNever(value: never): never {
+	throw new Error(`Unhandled owner-exclusive disclosure basis: ${value}`);
+}
+
+function deniedCrossRoomGateReason(
+	decision: OwnerExclusiveDisclosureDecision,
+): string {
+	if (!decision.allowed) {
+		return `cross-room recall denied by trusted delivery audience: ${decision.reason}`;
+	}
+	switch (decision.basis) {
+		case OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS:
+			return "cross-room recall is allowed";
+		case INTERNAL_AGENT_TURN_DISCLOSURE_BASIS:
+			return "cross-room recall requires a verified owner-private destination, not an internal agent turn";
+		default:
+			return assertNever(decision.basis);
+	}
+}
+
+function crossRoomRecallGate(
+	decision: OwnerExclusiveDisclosureDecision,
+): CrossRoomRecallGate {
+	return decision.allowed &&
+		decision.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+		? { allowed: true }
+		: { allowed: false, reason: deniedCrossRoomGateReason(decision) };
+}
+
 /**
  * Normalize, authorize, contain, and de-duplicate a set of candidate memories
  * into one canonical recall result.
  *
  * Order is load-bearing: provenance validation, then the MANDATORY scope
- * ladder, then same-room containment, then dedupe. There is no policy object
- * to swap and therefore no way for a caller to widen the audience; cross-room
- * authorization belongs to the trusted-delivery-audience layer (#17206).
+ * ladder, then destination containment, then dedupe. Cross-room authorization
+ * must be proved by the trusted-delivery-audience layer before this function is
+ * called; absent that proof, same-room containment is the fail-closed default.
  *
  * De-duplication keeps the earliest-created member of each
  * {@link canonicalDedupeKey} group, so a redelivered webhook does not
  * double-count and does not reorder the transcript.
  */
-export function buildCanonicalRecall(
-	input: CanonicalRecallInput,
+function evaluateCanonicalRecall(
+	input: CanonicalRecallEvaluationInput,
 ): Omit<CanonicalRecallResult, "availability"> {
 	const actor = actorFromAccessContext(input.requester, input.agentId);
 
@@ -394,13 +437,15 @@ export function buildCanonicalRecall(
 			continue;
 		}
 
-		if (provenance.roomId !== input.destinationRoomId) {
+		if (
+			!input.crossRoomGate.allowed &&
+			provenance.roomId !== input.destinationRoomId
+		) {
 			withholdOnce({
 				dedupeKey,
 				source: provenance.source,
 				code: "cross_room_denied",
-				reason:
-					"cross-room recall requires the trusted delivery-audience layer; this envelope only recalls into the item's own room",
+				reason: input.crossRoomGate.reason,
 			});
 			continue;
 		}
@@ -418,19 +463,51 @@ export function buildCanonicalRecall(
 	return { items, withheld };
 }
 
-export interface CanonicalMemorySearchInput {
+export function buildCanonicalRecall(
+	input: CanonicalRecallInput,
+): Omit<CanonicalRecallResult, "availability"> {
+	return evaluateCanonicalRecall({
+		...input,
+		crossRoomGate: {
+			allowed: false,
+			reason: "cross-room recall is disabled for direct canonical evaluation",
+		},
+	});
+}
+
+interface CanonicalMemorySearchBaseInput {
 	runtime: IAgentRuntime;
 	embedding: number[];
 	query?: string;
 	agentId: UUID;
-	requester: AccessContext;
-	destinationRoomId: UUID;
 	count: number;
 	matchThreshold?: number;
 	entityId?: UUID;
 	/** Optional connector-source filter, normalized through the registry. */
 	source?: string;
 }
+
+/**
+ * Search either from an exact delivery turn (which may earn revalidated
+ * owner-private cross-room access) or through the compatibility shape, which
+ * remains strictly same-room and cannot widen audience policy.
+ */
+export type CanonicalMemorySearchInput = CanonicalMemorySearchBaseInput &
+	(
+		| {
+				/** Exact in-memory delivery turn the recalled context will render into. */
+				deliveryMessage: Memory;
+				requester?: never;
+				destinationRoomId?: never;
+		  }
+		| {
+				deliveryMessage?: never;
+				/** Compatibility requester used only by the same-room path. */
+				requester: AccessContext;
+				/** Compatibility destination; cross-room recall remains denied. */
+				destinationRoomId: UUID;
+		  }
+	);
 
 /**
  * Production retrieval for canonical conversation recall: owns the adapter
@@ -442,6 +519,25 @@ export interface CanonicalMemorySearchInput {
 export async function searchCanonicalConversationMemories(
 	input: CanonicalMemorySearchInput,
 ): Promise<CanonicalRecallResult> {
+	const deliveryMessage = input.deliveryMessage;
+	const requester = deliveryMessage
+		? await buildAccessContext(input.runtime, deliveryMessage)
+		: input.requester;
+	const destinationRoomId = deliveryMessage
+		? deliveryMessage.roomId
+		: input.destinationRoomId;
+	const crossRoomGate: CrossRoomRecallGate = deliveryMessage
+		? crossRoomRecallGate(
+				await revalidateOwnerExclusiveDisclosure(
+					input.runtime,
+					deliveryMessage,
+				),
+			)
+		: {
+				allowed: false,
+				reason: "cross-room recall requires an exact trusted delivery message",
+			};
+
 	const candidates = await input.runtime.searchMemories({
 		embedding: input.embedding,
 		tableName: "messages",
@@ -449,14 +545,15 @@ export async function searchCanonicalConversationMemories(
 		count: input.count,
 		...(input.query ? { query: input.query } : {}),
 		...(input.entityId ? { entityId: input.entityId } : {}),
-		accessContext: input.requester,
+		accessContext: requester,
 	});
 
-	const evaluated = buildCanonicalRecall({
+	const evaluated = evaluateCanonicalRecall({
 		candidates,
 		agentId: input.agentId,
-		requester: input.requester,
-		destinationRoomId: input.destinationRoomId,
+		requester,
+		destinationRoomId,
+		crossRoomGate,
 	});
 
 	// A source filter narrows what the caller asked to see; it never narrows
@@ -474,6 +571,12 @@ export async function searchCanonicalConversationMemories(
 				(item) => item.source === undefined || item.source === normalizedSource,
 			)
 		: evaluated.withheld;
+	if (
+		deliveryMessage &&
+		items.some((item) => item.provenance.roomId !== deliveryMessage.roomId)
+	) {
+		markOwnerExclusiveDisclosureUsed(deliveryMessage);
+	}
 
 	const availability: RecallAvailability =
 		withheld.length > 0
