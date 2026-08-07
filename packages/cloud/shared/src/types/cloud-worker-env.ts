@@ -257,6 +257,30 @@ export interface Bindings {
   STEWARD_REQUEST_SIGNING_SECRET?: string;
   STEWARD_REQUEST_SIGNING_SECRETS?: string;
   STEWARD_REQUEST_SIGNING_KEY_ID?: string;
+
+  // ---- OpenID Connect provider (Eliza Cloud as the OP for Eliza Hub) ----
+  /** Kill switch. The provider serves nothing unless this is exactly "true". */
+  OIDC_ENABLED?: string;
+  /**
+   * Issuer string, emitted VERBATIM into the discovery document and every
+   * token, and the only host the OIDC endpoints answer on. Relying parties
+   * byte-compare it, so a trailing slash or host change invalidates every
+   * existing account link. Must be a host this Worker is routed for — the
+   * apex `elizacloud.ai` is the SPA and never reaches the Worker.
+   */
+  OIDC_ISSUER_URL?: string;
+  /**
+   * Secret: JSON array of PRIVATE JWKs (optionally base64-wrapped). Element 0
+   * signs; every element is published at `jwks_uri`, which is what makes an
+   * overlapping key rotation possible.
+   */
+  OIDC_SIGNING_JWKS?: string;
+  /**
+   * Secret: JSON array of relying-party registry entries (optionally
+   * base64-wrapped). Client secrets are stored as sha256 hex only.
+   */
+  OIDC_CLIENTS?: string;
+
   RPC_URL?: string;
   CHAIN_ID?: string;
 

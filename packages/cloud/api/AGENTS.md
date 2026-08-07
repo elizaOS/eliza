@@ -41,7 +41,9 @@ src/
                            v1/, auth/, agents/, billing/, stripe/, mcp/, mcps/, a2a/,
                            analytics/, admin/, training/, webhooks/, organizations/, etc.
                            Each route.ts exports a Hono app (default export).
-.well-known/               jwks.json/route.ts, agent-card.json/route.ts.
+.well-known/               jwks.json/route.ts, agent-card.json/route.ts,
+                           openid-configuration/route.ts, oidc/jwks.json/route.ts
+                           (the last two are ALSO root-mounted by bootstrap-app).
 wrangler.toml              Worker config: bindings, routes, aliases, [define], queues, cron.
 __tests__/                 bun test unit suites.
 test/                      e2e harness (test/e2e/), coverage/inventory audit scripts.
@@ -101,7 +103,7 @@ Add an endpoint:
 - `/api/health` is answered directly in `index.ts` (never boots the full app) — keep it dependency-free.
 - The global auth middleware allowlists public paths in `middleware/auth.ts`; programmatic auth (`X-API-Key`, `Bearer eliza_*`) passes through and is validated per-route, not by the gate.
 - `src/stubs/*` exist because workerd lacks some node-only deps; they are wired via `wrangler.toml` aliases/`[define]`, not by direct import. Don't import node-only modules in route code.
-- Special-cased routes registered manually in `bootstrap-app.ts` (root `/`, `/steward*`, blooio/bluebubbles webhooks, legacy birdeye 308 redirect, jwks) bypass the codegen tree — keep that list in sync when touching those surfaces.
+- Special-cased routes registered manually in `bootstrap-app.ts` (root `/`, `/steward*`, blooio/bluebubbles webhooks, legacy birdeye 308 redirect, jwks, OIDC discovery + OIDC jwks) bypass the codegen tree — keep that list in sync when touching those surfaces. The OIDC pair must stay root-mounted: relying parties derive `/.well-known/openid-configuration` from the issuer origin and never look under `/api`.
 - This is the only `@elizaos/*` package with no published consumers; treat `wrangler.toml` + `index.ts` as the contract.
 
 ## Verification

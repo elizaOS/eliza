@@ -364,9 +364,10 @@ describe("TASKS create lane planner integration", () => {
     expect(taskService.createTask).toHaveBeenCalledTimes(1);
     const spawnMetadata = acp.spawnSession.mock.calls[0]?.[0]?.metadata;
     expect(spawnMetadata).not.toHaveProperty("lane");
-    expect(taskService.createTask.mock.calls[0]?.[0]).not.toHaveProperty(
-      "metadata",
-    );
+    const createMetadata = taskService.createTask.mock.calls[0]?.[0]?.metadata;
+    expect(createMetadata).not.toHaveProperty("lane");
+    expect(createMetadata).not.toHaveProperty("waveId");
+    expect(createMetadata).toHaveProperty("source", "test");
   });
 
   it("spawns one durable create path per lane when the gate is on", async () => {
@@ -758,9 +759,10 @@ describe("TASKS create lane planner integration", () => {
     expect(acp.spawnSession.mock.calls[0]?.[0]?.metadata).not.toHaveProperty(
       "lane",
     );
-    expect(taskService.createTask.mock.calls[0]?.[0]).not.toHaveProperty(
-      "metadata",
-    );
+    const createMetadata = taskService.createTask.mock.calls[0]?.[0]?.metadata;
+    expect(createMetadata).not.toHaveProperty("lane");
+    expect(createMetadata).not.toHaveProperty("waveId");
+    expect(createMetadata).toHaveProperty("source", "test");
   });
 
   it("falls back to legacy single-task behavior when planning fails", async () => {
@@ -788,9 +790,10 @@ describe("TASKS create lane planner integration", () => {
     expect(acp.spawnSession).toHaveBeenCalledTimes(2);
     const spawnMetadata = acp.spawnSession.mock.calls[0]?.[0]?.metadata;
     expect(spawnMetadata).not.toHaveProperty("lane");
-    expect(taskService.createTask.mock.calls[0]?.[0]).not.toHaveProperty(
-      "metadata",
-    );
+    const createMetadata = taskService.createTask.mock.calls[0]?.[0]?.metadata;
+    expect(createMetadata).not.toHaveProperty("lane");
+    expect(createMetadata).not.toHaveProperty("waveId");
+    expect(createMetadata).toHaveProperty("source", "test");
   });
 
   it("preserves the legacy too-many-agents error when requests exceed both caps", async () => {
