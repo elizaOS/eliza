@@ -2256,8 +2256,20 @@ export class ElizaSandboxService {
     // characters do not pile up when the deletion completes outside of an
     // HTTP request context. Best-effort: a failure here leaves an orphan
     // character but does not reverse the agent's logical deletion.
+    //
+    // Only once the sandbox row is actually gone. On the `deletion_failed`
+    // tombstone path the row survives for the recovery sweep, and
+    // `agent_sandboxes.character_id` is `onDelete: "set null"` — so deleting
+    // the character here would strip the tombstone's identity while it is
+    // still visible as an agent, leaving the sweep nothing to reconcile
+    // against. Mirrors the shared-runtime history drop above, which already
+    // gates on `result.rowDeleted`.
     const characterId = result.deletedSandbox.character_id;
-    if (characterId && !reusesExistingElizaCharacter(result.deletedSandbox.agent_config)) {
+    if (
+      result.rowDeleted &&
+      characterId &&
+      !reusesExistingElizaCharacter(result.deletedSandbox.agent_config)
+    ) {
       try {
         await userCharactersRepository.delete(characterId);
         logger.info("[agent-sandbox] Cleaned up linked character after delete", {
