@@ -600,7 +600,7 @@ function removeLocalPathReferences(
   let cleaned = replaceAttachedArtifactMarkdownLinks(text, attachments);
   const titles: string[] = [];
   for (const attachment of attachments) {
-    if (!attachment.url.startsWith("/")) continue;
+    if (!path.isAbsolute(attachment.url)) continue;
     const title = attachment.title || path.basename(attachment.url);
     titles.push(title);
     const escapedPath = escapeRegExp(attachment.url);
@@ -659,12 +659,22 @@ function replaceAttachedArtifactMarkdownLinks(
   );
 }
 
+// Matches a POSIX absolute path ("/...") or a Windows drive-letter absolute
+// path ("C:\..." / "C:/..."). Local artifact paths can be either depending
+// on the host OS, so a leading "/" alone isn't a reliable "looks absolute"
+// check here.
+const LOCAL_PATH_START = String.raw`(?:\/|[A-Za-z]:[\\/])`;
+
 function extractLocalArtifactPaths(text: string): string[] {
   const paths = new Set<string>();
-  for (const match of text.matchAll(/`(\/[^`\n]+)`/gu)) {
+  for (const match of text.matchAll(
+    new RegExp(`\`(${LOCAL_PATH_START}[^\`\n]+)\``, "gu"),
+  )) {
     paths.add(match[1]);
   }
-  for (const match of text.matchAll(/(?:^|\s)(\/[^\s"'`<>|]+)/gmu)) {
+  for (const match of text.matchAll(
+    new RegExp(`(?:^|\\s)(${LOCAL_PATH_START}[^\\s"'\`<>|]+)`, "gmu"),
+  )) {
     paths.add(match[1].replace(/[),.;:!?]+$/u, ""));
   }
   return [...paths];
