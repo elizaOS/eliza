@@ -81,7 +81,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             container.isHidden = true
             let webView = WKWebView(frame: container.bounds, configuration: config)
             webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            container.addSubview(webView)
+            container.installContentView(webView)
             hostView.addSubview(container)
 
             if let urlString = urlString, let url = URL(string: urlString) {
@@ -273,20 +273,29 @@ private struct HostOcclusionRect {
 private final class OccludingSurfaceView: UIView {
     private var hostOcclusions: [HostOcclusionRect] = []
     private var surfaceOrigin: CGPoint = .zero
+    private var maskContainers: [OcclusionMaskContainerView] = []
+    private var contentView: UIView?
+
+    func installContentView(_ view: UIView) {
+        guard contentView !== view else { return }
+        contentView?.removeFromSuperview()
+        contentView = view
+        rebuildMaskHierarchy()
+    }
 
     func setSurfaceOrigin(_ origin: CGPoint) {
         surfaceOrigin = origin
-        updateMask()
+        layoutMaskHierarchy()
     }
 
     func setHostOcclusions(_ rects: [HostOcclusionRect]) {
         hostOcclusions = rects
-        updateMask()
+        rebuildMaskHierarchy()
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        updateMask()
+        layoutMaskHierarchy()
     }
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
@@ -308,19 +317,70 @@ private final class OccludingSurfaceView: UIView {
         }
     }
 
+    private func rebuildMaskHierarchy() {
+        let paths = localOcclusionPaths()
+        if maskContainers.count != paths.count {
+            contentView?.removeFromSuperview()
+            maskContainers.forEach { $0.removeFromSuperview() }
+            maskContainers = paths.map { _ in OcclusionMaskContainerView(frame: bounds) }
+
+            var parent: UIView = self
+            for container in maskContainers {
+                parent.addSubview(container)
+                parent = container
+            }
+            if let contentView {
+                parent.addSubview(contentView)
+            }
+        }
+
+        for (container, path) in zip(maskContainers, paths) {
+            container.setOcclusionPath(path)
+        }
+        layoutMaskHierarchy()
+    }
+
+    private func layoutMaskHierarchy() {
+        maskContainers.forEach { $0.frame = bounds }
+        contentView?.frame = bounds
+        for (container, path) in zip(maskContainers, localOcclusionPaths()) {
+            container.setOcclusionPath(path)
+        }
+    }
+}
+
+/// Each wrapper subtracts exactly one rounded hole. Nesting wrappers composes
+/// their alpha masks by intersection, so partially overlapping holes remain a
+/// union instead of the XOR produced by one even-odd path.
+private final class OcclusionMaskContainerView: UIView {
+    private let shapeMask = CAShapeLayer()
+    private var occlusionPath = UIBezierPath()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        shapeMask.fillColor = UIColor.white.cgColor
+        shapeMask.fillRule = .evenOdd
+        layer.mask = shapeMask
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func setOcclusionPath(_ path: UIBezierPath) {
+        occlusionPath = path
+        updateMask()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateMask()
+    }
+
     private func updateMask() {
-        guard !hostOcclusions.isEmpty else {
-            layer.mask = nil
-            return
-        }
-        let path = UIBezierPath(rect: bounds)
-        for occlusionPath in localOcclusionPaths() {
-            path.append(occlusionPath)
-        }
-        let mask = CAShapeLayer()
-        mask.frame = bounds
-        mask.path = path.cgPath
-        mask.fillRule = .evenOdd
-        layer.mask = mask
+        let visiblePath = UIBezierPath(rect: bounds)
+        visiblePath.append(occlusionPath)
+        shapeMask.frame = bounds
+        shapeMask.path = visiblePath.cgPath
     }
 }
