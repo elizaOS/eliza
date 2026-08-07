@@ -85,7 +85,8 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     // The glass material of the fullscreen pattern: translucent card fill +
     // backdrop blur, expressed as utility classes on the toolbar panel.
     expect(toolbar.className).toContain("backdrop-blur");
-    expect(toolbar.className).toContain("rounded-[22px]");
+    // 24px (rounded-3xl) — the token-scale radius the Calendar panel uses.
+    expect(toolbar.className).toContain("rounded-3xl");
     // The address bar lives inside the floating toolbar, not a page header.
     expect(
       toolbar.contains(screen.getByTestId("browser-workspace-address-input")),

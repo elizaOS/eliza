@@ -2380,7 +2380,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const browserSurface = (
     <div
       ref={browserSurfaceRef}
-      className="relative flex-1 min-h-0 overflow-hidden bg-bg"
+      className="relative flex-1 min-h-0 overflow-hidden"
     >
       {watchBannerLabel ? (
         <div
@@ -2769,11 +2769,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     >
       <div
         data-testid="browser-workspace-toolbar"
-        className="shrink-0 rounded-[22px] bg-[color-mix(in_srgb,var(--card)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.10),0_18px_48px_rgba(0,0,0,.20)] backdrop-blur-[24px] backdrop-saturate-[1.45]"
+        className="shrink-0 rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.10),0_18px_48px_rgba(0,0,0,.20)] backdrop-blur-[24px] backdrop-saturate-[1.45]"
       >
         {navNode}
       </div>
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[22px] shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_18px_48px_rgba(0,0,0,.20)]">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_18px_48px_rgba(0,0,0,.20)]">
         {browserSurface}
       </div>
     </main>
