@@ -201,6 +201,47 @@ function invalidGrant(c: AppContext) {
   );
 }
 
+/**
+ * A failed client authentication, audited. The wire response stays the single
+ * opaque `invalid_client`; the audit event carries WHICH check refused, because
+ * a run of these against one client id is a secret being brute-forced and the
+ * uniform response deliberately hides that from everyone but this trail.
+ * Metadata is names only — never the presented secret, never a code.
+ */
+async function refuseClient(c: AppContext, reason: string): Promise<Response> {
+  await emitOidcAudit(c, {
+    action: "oidc.token",
+    result: "failure",
+    metadata: { error: "invalid_client", reason },
+  });
+  return invalidClient(c);
+}
+
+/**
+ * A failed grant redemption, audited. Same shape as `refuseClient`: the relying
+ * party sees one opaque `invalid_grant` for every binding failure, and the
+ * audit trail keeps the real reason — a replayed code and a redirect_uri
+ * mismatch are different incidents. The `code` itself is never recorded.
+ */
+async function refuseGrant(
+  c: AppContext,
+  reason: string,
+  context: { clientId: string; userId?: string; orgId?: string },
+): Promise<Response> {
+  await emitOidcAudit(c, {
+    action: "oidc.token",
+    result: "failure",
+    userId: context.userId,
+    orgId: context.orgId,
+    metadata: {
+      error: "invalid_grant",
+      reason,
+      client_id: context.clientId,
+    },
+  });
+  return invalidGrant(c);
+}
+
 /** RFC 6749 §5.2: a parameter the grant cannot be processed without is absent. */
 function invalidRequest(c: AppContext, description: string) {
   return c.json(
@@ -302,7 +343,7 @@ app.post("/", async (c) => {
     // client (under Forgejo/goth) auto-detects: it probes Basic first and
     // retries with form parameters, so supporting only one fails intermittently.
     const client = await authenticateClient(c, body);
-    if (!client) return invalidClient(c);
+    if (!client) return await refuseClient(c, "client_authentication_failed");
 
     // RFC 6749 §5.2 separates a request that is MALFORMED from a grant that is
     // bad, and the difference is actionable: `invalid_request` tells a relying
@@ -334,10 +375,22 @@ app.post("/", async (c) => {
     // Atomic burn. Exactly one of any concurrent set of presenters gets the
     // row; replays and race losers get null.
     const grant = await consumeOidcAuthorizationCode(code);
-    if (!grant) return invalidGrant(c);
+    // Every refusal below the burn is audited with the client and (once known)
+    // the user, so a replayed code or a probing client leaves a trail even
+    // though the wire answer stays uniform.
+    const refusal = { clientId: client.client_id };
+    if (!grant) return await refuseGrant(c, "code_unknown_or_expired", refusal);
 
-    if (grant.clientId !== client.client_id) return invalidGrant(c);
-    if (grant.redirectUri !== redirectUri) return invalidGrant(c);
+    if (grant.clientId !== client.client_id) {
+      return await refuseGrant(c, "client_mismatch", refusal);
+    }
+    const bound = {
+      clientId: client.client_id,
+      userId: grant.userId,
+    };
+    if (grant.redirectUri !== redirectUri) {
+      return await refuseGrant(c, "redirect_uri_mismatch", bound);
+    }
 
     if (grant.codeChallenge) {
       // `code_verifier` stays inside invalid_grant even when it is absent:
@@ -345,9 +398,12 @@ app.post("/", async (c) => {
       // distinct error here would tell a stolen-code holder that the code it
       // just destroyed was PKCE-bound.
       const verifier = formValue(body, "code_verifier");
-      if (!verifier) return invalidGrant(c);
-      if ((await sha256Base64Url(verifier)) !== grant.codeChallenge)
-        return invalidGrant(c);
+      if (!verifier) {
+        return await refuseGrant(c, "pkce_verifier_missing", bound);
+      }
+      if ((await sha256Base64Url(verifier)) !== grant.codeChallenge) {
+        return await refuseGrant(c, "pkce_verifier_mismatch", bound);
+      }
     }
 
     // The user could have signed out inside the code's 60-second window; a
@@ -356,14 +412,20 @@ app.post("/", async (c) => {
     if (
       await isBlockedBySsoBridgeLogout(grant.stewardUserId, grant.tokenIssuedAt)
     ) {
-      return invalidGrant(c);
+      return await refuseGrant(c, "signed_out_after_authorize", bound);
     }
 
     // Claims are rebuilt from LIVE rows rather than a snapshot taken at
     // authorize, so a mid-window deactivation fails the exchange.
     const subject = await loadOidcSubject(grant.userId);
-    if (!subject) return invalidGrant(c);
-    if (assertOidcSubjectEligible(subject, client)) return invalidGrant(c);
+    if (!subject) return await refuseGrant(c, "subject_missing", bound);
+    const ineligible = assertOidcSubjectEligible(subject, client);
+    if (ineligible) {
+      return await refuseGrant(c, ineligible, {
+        ...bound,
+        orgId: subject.user.organization_id ?? undefined,
+      });
+    }
 
     const username = await resolveOidcUsername({
       id: subject.user.id,

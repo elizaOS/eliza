@@ -19,7 +19,9 @@
 
 import {
   afterAll,
+  afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   setDefaultTimeout,
@@ -2739,5 +2741,104 @@ describe("userinfo — RFC 6750 conformance", () => {
     expect(res.status).toBe(503);
     expect(res.headers.get("retry-after")).toBe("5");
     expect(await res.json()).not.toHaveProperty("error");
+  });
+});
+
+/**
+ * The token endpoint's refusals are deliberately opaque on the wire — one
+ * `invalid_client`, one `invalid_grant` — so the audit trail is the ONLY place
+ * a brute-forced client secret or a replayed authorization code is visible as
+ * what it is. These cases pin that trail: each failure class emits one
+ * `oidc.token` failure event whose metadata names the real reason, and nothing
+ * secret (the code, the presented secret) ever reaches the sink.
+ */
+describe("token endpoint failures are audited", () => {
+  let sink: import("@/api-app/services/audit/testing").InMemorySink;
+
+  beforeEach(async () => {
+    const { AuditDispatcher } = await import("@/api-app/services/audit");
+    const { InMemorySink } = await import("@/api-app/services/audit/testing");
+    const { setAuditDispatcher } = await import(
+      "../src/services/audit-dispatcher-singleton"
+    );
+    sink = new InMemorySink();
+    setAuditDispatcher(
+      new AuditDispatcher({ sinks: [sink], onSinkError: () => undefined }),
+    );
+  });
+
+  afterEach(async () => {
+    const { initAuditDispatcher } = await import(
+      "../src/services/audit-dispatcher-singleton"
+    );
+    initAuditDispatcher();
+  });
+
+  function tokenFailures() {
+    return sink
+      .snapshot()
+      .filter((e) => e.action === "oidc.token" && e.result === "failure");
+  }
+
+  test("a wrong client secret is audited as invalid_client with its real reason", async () => {
+    await seedUser({ stewardUserId: "u-audit-badsecret" });
+    const cookie = await sessionCookie("u-audit-badsecret");
+    const { code } = await getAuthorizationCode(cookie);
+
+    const res = await redeem(code, {}, FORGEJO_CLIENT_ID, "wrong-secret");
+    expect(res.status).toBe(401);
+
+    const failures = tokenFailures();
+    expect(failures).toHaveLength(1);
+    expect(failures[0].metadata).toMatchObject({
+      error: "invalid_client",
+      reason: "client_authentication_failed",
+    });
+    // Never the presented secret, never the still-live code.
+    const serialized = JSON.stringify(failures[0]);
+    expect(serialized).not.toContain("wrong-secret");
+    expect(serialized).not.toContain(code);
+  });
+
+  test("a replayed code is audited as invalid_grant naming the client", async () => {
+    const { userId } = await seedUser({ stewardUserId: "u-audit-replay" });
+    const cookie = await sessionCookie("u-audit-replay");
+    const { code } = await getAuthorizationCode(cookie);
+
+    expect((await redeem(code)).status).toBe(200);
+    const replay = await redeem(code);
+    expect(replay.status).toBe(400);
+
+    const failures = tokenFailures();
+    expect(failures).toHaveLength(1);
+    expect(failures[0].metadata).toMatchObject({
+      error: "invalid_grant",
+      reason: "code_unknown_or_expired",
+      client_id: FORGEJO_CLIENT_ID,
+    });
+    expect(JSON.stringify(failures[0])).not.toContain(code);
+    // The success that preceded the replay is still recorded as one.
+    const successes = sink
+      .snapshot()
+      .filter((e) => e.action === "oidc.token" && e.result === "success");
+    expect(successes).toHaveLength(1);
+    expect(successes[0].actor.id).toBe(userId);
+  });
+
+  test("a code stolen across clients is audited with the binding that failed", async () => {
+    await seedUser({ stewardUserId: "u-audit-crossclient" });
+    const cookie = await sessionCookie("u-audit-crossclient");
+    const { code } = await getAuthorizationCode(cookie);
+
+    const res = await redeem(code, {}, CONSOLE_CLIENT_ID, CONSOLE_SECRET);
+    expect(res.status).toBe(400);
+
+    const failures = tokenFailures();
+    expect(failures).toHaveLength(1);
+    expect(failures[0].metadata).toMatchObject({
+      error: "invalid_grant",
+      reason: "client_mismatch",
+      client_id: CONSOLE_CLIENT_ID,
+    });
   });
 });

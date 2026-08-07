@@ -1,5 +1,5 @@
 /**
- * Proves migrations `0189_oidc_provider.sql` and `0190_oidc_request_binding.sql`
+ * Proves migrations `0191_oidc_provider.sql` and `0192_oidc_request_binding.sql`
  * against the repository that uses them.
  *
  * The migration SQL is what production runs; the Drizzle schema is what the
@@ -10,7 +10,7 @@
  * over it. A column name, type, default, constraint, or index that drifts
  * between the two fails here.
  *
- * 0190 is applied over a table that already holds a 0189-era row, because that
+ * 0192 is applied over a table that already holds a 0191-era row, because that
  * is the only state a real staging or production deploy can be in and the state
  * a NOT NULL column with no default fails on.
  *
@@ -32,16 +32,16 @@ process.env.MOCK_REDIS = "1";
 
 setDefaultTimeout(90_000);
 
-/** Applied in order: 0190 drops and adds columns 0189 created. */
-const MIGRATION_0189 = join(import.meta.dir, "../migrations/0189_oidc_provider.sql");
-const MIGRATION_0190 = join(import.meta.dir, "../migrations/0190_oidc_request_binding.sql");
+/** Applied in order: 0192 drops and adds columns 0191 created. */
+const MIGRATION_0191 = join(import.meta.dir, "../migrations/0191_oidc_provider.sql");
+const MIGRATION_0192 = join(import.meta.dir, "../migrations/0192_oidc_request_binding.sql");
 
 /**
- * A request parked by the 0189-era code, seeded BETWEEN the two migrations so
- * 0190 runs against a non-empty table. Adding a NOT NULL column with no default
+ * A request parked by the 0191-era code, seeded BETWEEN the two migrations so
+ * 0192 runs against a non-empty table. Adding a NOT NULL column with no default
  * fails outright in that state, which is the deploy this proves cannot happen.
  */
-const LEGACY_REQUEST_HASH = "legacy-request-parked-before-0190";
+const LEGACY_REQUEST_HASH = "legacy-request-parked-before-0192";
 
 let repository: typeof import("./oidc").oidcRepository;
 let dbWrite: typeof import("../client").dbWrite;
@@ -83,7 +83,7 @@ beforeAll(async () => {
   ({ users } = await import("../schemas/users"));
   const { organizations } = await import("../schemas/organizations");
 
-  // Only the tables migration 0189 depends on; the OIDC tables themselves come
+  // Only the tables migration 0191 depends on; the OIDC tables themselves come
   // from the committed SQL below, which is the point of this suite.
   const { apply } = await pushSchema({ users, organizations } as never, dbWrite as never);
   await apply();
@@ -96,14 +96,14 @@ beforeAll(async () => {
     }
   };
 
-  await applyMigration(MIGRATION_0189);
+  await applyMigration(MIGRATION_0191);
   await dbWrite.execute(
     sql`INSERT INTO "oidc_authorization_requests"
         ("request_hash", "client_id", "redirect_uri", "scope", "expires_at")
         VALUES (${LEGACY_REQUEST_HASH}, 'elizahub-forgejo', 'https://hub.example/callback',
                 'openid', ${futureDate(600)})`,
   );
-  await applyMigration(MIGRATION_0190);
+  await applyMigration(MIGRATION_0192);
 
   ({ oidcRepository: repository } = await import("./oidc"));
 });
@@ -176,8 +176,8 @@ describe("authorization codes", () => {
 });
 
 describe("parked authorization requests", () => {
-  test("0190 applies over a populated table and discards the unbound rows", async () => {
-    // The migration ran in `beforeAll` with a 0189-era row present. Reaching
+  test("0192 applies over a populated table and discards the unbound rows", async () => {
+    // The migration ran in `beforeAll` with a 0191-era row present. Reaching
     // this assertion at all proves the ADD COLUMN did not fail; the row being
     // gone proves an unbound request cannot survive into a schema whose
     // `/resume` leg trusts `binding_hash`.
