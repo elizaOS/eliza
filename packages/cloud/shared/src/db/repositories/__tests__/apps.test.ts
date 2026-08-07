@@ -28,8 +28,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
   AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
+const PREVIOUS_CACHE_ENABLED = process.env.CACHE_ENABLED;
+const PREVIOUS_MOCK_REDIS = process.env.MOCK_REDIS;
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
+process.env.CACHE_ENABLED = "true";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
@@ -139,7 +142,15 @@ beforeAll(async () => {
 }, PGLITE_TIMEOUT);
 
 afterAll(async () => {
-  await closeDatabaseConnectionsForTests();
+  try {
+    await closeDatabaseConnectionsForTests();
+  } finally {
+    if (PREVIOUS_CACHE_ENABLED === undefined) delete process.env.CACHE_ENABLED;
+    else process.env.CACHE_ENABLED = PREVIOUS_CACHE_ENABLED;
+
+    if (PREVIOUS_MOCK_REDIS === undefined) delete process.env.MOCK_REDIS;
+    else process.env.MOCK_REDIS = PREVIOUS_MOCK_REDIS;
+  }
 });
 
 /** Insert an app row directly through the repository with sane defaults. */
