@@ -328,12 +328,14 @@ export async function embedRecallQuery(
  * recall caller presenting `aliasText` resolves to `sourceText`'s vector from
  * the per-turn cache instead of issuing its own embed round-trip.
  *
- * The one producer is document augmentation: after it rewrites the turn's
- * message text into the contextual-documents envelope, the in-run recall
- * callers (TTFT prefetch, relevant-conversations, FACTS) all present the
- * envelope text. Without the alias each turn with a document match pays a
- * second serial embed for a query that is strictly WORSE (the injected
- * document snippets drown the user's request); with it, one embed of the clean
+ * The producers are the turn-text rewriters: document augmentation (the
+ * contextual-documents envelope on the API chat path) and the message
+ * service's incoming-hook seam (the external-content security envelope every
+ * untrusted-source message gets). After a rewrite, the in-run recall callers
+ * (relevant-conversations, document recall, experience recall) all present
+ * the envelope text. Without the alias each rewritten turn pays a second
+ * serial embed for a query that is strictly WORSE (injected snippets or
+ * security armor drown the user's request); with it, one embed of the clean
  * prompt serves the whole turn.
  *
  * The alias joins an in-flight source embed rather than waiting for it, so it
