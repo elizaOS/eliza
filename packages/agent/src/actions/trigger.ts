@@ -716,6 +716,7 @@ async function opDelete(
 
 async function opRun(
   runtime: IAgentRuntime,
+  message: Memory,
   params: TriggerParameters,
 ): Promise<ActionResult> {
   const loaded = await resolveTriggerRef(runtime, "run", params);
@@ -723,6 +724,7 @@ async function opRun(
   const result = await executeTriggerTask(runtime, loaded.task, {
     source: "manual",
     force: true,
+    roomHandlerLease: runtime.roomHandlerQueue.currentLease(message.roomId),
   });
   if (result.status === "error") {
     return failed(
@@ -829,7 +831,7 @@ export const triggerAction: Action = {
       case "delete":
         return opDelete(runtime, params);
       case "run":
-        return opRun(runtime, params);
+        return opRun(runtime, message, params);
       case "toggle":
         return opToggle(runtime, params);
     }
