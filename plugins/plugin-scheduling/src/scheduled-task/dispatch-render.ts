@@ -58,29 +58,24 @@ const SCHEDULED_TASK_TITLE_BASELINE = [
 
 /**
  * Build a deterministic owner-facing message from the dispatch record when no
- * model is available. voice-policy:V1 — the fallback extracts the action
- * clause from the instruction (everything after the first verb-phrase lead)
- * and wraps it as a direct statement to the owner, never quoting the raw
- * instruction-voice verbatim.
+ * model is available. voice-policy:V1 — the fallback is a neutral
+ * intensity-keyed canned message that NEVER echoes the raw
+ * `promptInstructions`. The instruction is model prompt input, not
+ * user-facing copy; a model-free host cannot compose it into owner voice, so
+ * the deterministic path delivers a generic nudge instead. This is the
+ * lowest-quality fallback — it signals that a scheduled task fired without
+ * attempting to paraphrase instruction text, which was the #14874 bug.
  */
 export function buildDeterministicDispatchBody(
-  record: Pick<ScheduledTaskDispatchRecord, "promptInstructions" | "intensity">,
+  record: Pick<ScheduledTaskDispatchRecord, "intensity">,
 ): string {
-  const instruction = record.promptInstructions.trim();
-  // Strip common instruction-voice prefixes ("Send a ...", "Remind the owner
-  // to ...", "Check in with ...") to extract the action clause. This is
-  // intentionally simple — the deterministic path is the lowest-quality
-  // fallback, not a replacement for the model.
-  const stripped = instruction
-    .replace(/^(send|deliver|notify|remind|check in with|tell|ask|give|share)\s+(the owner\s+)?(to\s+)?/i, "")
-    .replace(/^(a|an)\s+/i, "")
-    .trim();
-  const clause = stripped.length > 0 ? stripped : instruction;
-  const prefix =
-    record.intensity === "urgent"
-      ? "Action needed: "
-      : "";
-  return `${prefix}${clause.charAt(0).toUpperCase()}${clause.slice(1)}`;
+  if (record.intensity === "urgent") {
+    return "You have a time-sensitive item that needs your attention.";
+  }
+  if (record.intensity === "soft") {
+    return "A gentle nudge — something's ready for you when you have a moment.";
+  }
+  return "You have a new update from your assistant.";
 }
 
 /**

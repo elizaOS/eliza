@@ -90,9 +90,7 @@ export type OptimizedPromptTask =
 	// surface. Each named slot identifies one dispatch surface so the
 	// optimizer can tune voices independently.
 	| "scheduled_task_dispatch"
-	| "scheduled_task_title"
-	| "checkin_followup"
-	| "approval_notice";
+	| "scheduled_task_title";
 
 function nodeErrorCode(error: unknown): string | undefined {
 	if (typeof error !== "object" || error === null) return undefined;
@@ -127,8 +125,6 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	// Scheduled-task dispatch voicing tasks (#14874).
 	"scheduled_task_dispatch",
 	"scheduled_task_title",
-	"checkin_followup",
-	"approval_notice",
 ] as const;
 
 /**
@@ -147,11 +143,6 @@ export const LIFEOPS_OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"health_checkin",
 	"screentime_recap",
 	"creative_draft",
-	// Scheduled-task dispatch voicing tasks (#14874).
-	"scheduled_task_dispatch",
-	"scheduled_task_title",
-	"checkin_followup",
-	"approval_notice",
 ] as const;
 
 export type OptimizerName =

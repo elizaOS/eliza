@@ -8,6 +8,8 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  buildDeterministicDispatchBody,
+  buildDeterministicDispatchTitle,
   buildScheduledDispatchRenderPrompt,
   buildScheduledDispatchTitlePrompt,
   RENDER_FAILURE_RETRY_MINUTES,
@@ -253,6 +255,57 @@ describe("default scheduled-task dispatcher (model host)", () => {
     expect(reported).toHaveLength(1);
     expect(reported[0]?.scope).toBe(
       "scheduling:scheduled-task:dispatch-render",
+    );
+  });
+});
+
+describe("buildDeterministicDispatchBody", () => {
+  it("returns neutral canned copy keyed on intensity, never echoing the instruction", () => {
+    const instruction = "Run a fast delegation pass and flag stale threads.";
+    // Normal intensity
+    const normal = buildDeterministicDispatchBody({ intensity: "normal" });
+    expect(normal.length).toBeGreaterThan(0);
+    expect(normal).not.toContain(instruction);
+    expect(normal).not.toContain("Run a fast");
+    // Urgent intensity
+    const urgent = buildDeterministicDispatchBody({ intensity: "urgent" });
+    expect(urgent).not.toContain(instruction);
+    expect(urgent.length).toBeGreaterThan(0);
+    // Soft intensity
+    const soft = buildDeterministicDispatchBody({ intensity: "soft" });
+    expect(soft).not.toContain(instruction);
+    expect(soft.length).toBeGreaterThan(0);
+  });
+
+  it("never leaks instruction text even with non-matching instruction verbs", () => {
+    // Instructions from real persona packs that start with verbs outside any
+    // prefix-stripping pattern.
+    const instructions = [
+      "Assemble the morning brief from overnight events.",
+      "Scan the inbox for unanswered items.",
+      "The owner did not respond to the previous reminder.",
+    ];
+    for (const instruction of instructions) {
+      const body = buildDeterministicDispatchBody({ intensity: "normal" });
+      expect(body).not.toContain(instruction);
+      expect(body).not.toContain(instruction.split(" ")[0]);
+    }
+  });
+});
+
+describe("buildDeterministicDispatchTitle", () => {
+  it("returns a neutral title keyed on intensity, never the raw instruction", () => {
+    expect(buildDeterministicDispatchTitle({ intensity: "urgent" })).not.toBe(
+      "Reminder",
+    );
+    expect(
+      buildDeterministicDispatchTitle({ intensity: "urgent" }),
+    ).not.toBe("Approval needed");
+    expect(
+      buildDeterministicDispatchTitle({ intensity: "normal" }),
+    ).not.toBe("Reminder");
+    expect(buildDeterministicDispatchTitle({ intensity: "normal" })).not.toBe(
+      "Approval needed",
     );
   });
 });
