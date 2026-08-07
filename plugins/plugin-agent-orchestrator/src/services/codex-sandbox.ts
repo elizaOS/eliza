@@ -61,7 +61,11 @@ export const CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV =
 export function resolveNoLandlockSandboxMode(
   value: string | undefined,
 ): CodexSandboxMode | undefined {
-  return normalizeCodexSandboxMode(value);
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return undefined;
+  return CODEX_SANDBOX_MODES.has(normalized as CodexSandboxMode)
+    ? (normalized as CodexSandboxMode)
+    : undefined;
 }
 
 export function noLandlockFallbackRequiredMessage(): string {

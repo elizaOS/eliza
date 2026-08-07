@@ -18,13 +18,25 @@ describe("resolveNoLandlockSandboxMode fail-closed policy", () => {
     expect(resolveNoLandlockSandboxMode("   ")).toBeUndefined();
   });
 
-  it("returns an explicit danger-full-access operator override", () => {
+  it("returns only explicit documented operator overrides", () => {
+    expect(resolveNoLandlockSandboxMode("read-only")).toBe("read-only");
+    expect(resolveNoLandlockSandboxMode("workspace-write")).toBe(
+      "workspace-write",
+    );
     expect(resolveNoLandlockSandboxMode("danger-full-access")).toBe(
       "danger-full-access",
     );
   });
 
-  it("returns undefined for garbage rather than inventing a default", () => {
+  it("rejects legacy disabled aliases instead of widening to host access", () => {
+    for (const value of ["off", "false", "0", "none", "disabled"]) {
+      expect(resolveNoLandlockSandboxMode(value)).toBeUndefined();
+    }
+  });
+
+  it("returns undefined for aliases and garbage rather than inventing a default", () => {
+    expect(resolveNoLandlockSandboxMode("readonly")).toBeUndefined();
+    expect(resolveNoLandlockSandboxMode("workspace")).toBeUndefined();
     expect(resolveNoLandlockSandboxMode("totally-not-a-mode")).toBeUndefined();
     expect(resolveNoLandlockSandboxMode("host-access")).toBeUndefined();
   });

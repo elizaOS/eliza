@@ -44,8 +44,8 @@ import { isAndroidMobile } from "@elizaos/shared";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
-  type CodexSandboxMode,
   CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV,
+  type CodexSandboxMode,
   detectLandlockAvailability,
   isCodexLandlockPanic,
   noLandlockFallbackRequiredMessage,
@@ -2790,6 +2790,8 @@ export class AcpService extends Service {
       const updated = await this.store.get(id);
       return toSpawnResult(updated ?? { ...session, status: "ready" });
     } catch (err) {
+      // error-policy:J2 persist and emit the failed session boundary, then
+      // preserve typed failures or wrap unknown failures with session context.
       // error-policy:J6 best-effort teardown of the failed client; the spawn
       // failure `err` is rethrown/handled below.
       await client?.close().catch(() => undefined);
@@ -2803,7 +2805,12 @@ export class AcpService extends Service {
         message,
         ...this.authFailureFields(message, session.agentType),
       });
-      throw new Error(message);
+      if (err instanceof ElizaError) throw err;
+      throw new ElizaError(message, {
+        code: "ACP_NATIVE_SESSION_SPAWN_FAILED",
+        cause: err,
+        context: { sessionId: id, agentType: session.agentType },
+      });
     }
   }
 
