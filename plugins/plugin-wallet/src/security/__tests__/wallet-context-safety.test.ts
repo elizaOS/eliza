@@ -10,10 +10,13 @@ import {
   assertEvmTransferRecipientAuthorized,
   assertSolanaTransferRecipientAuthorized,
   assertWalletFinancialActionAllowed,
+  FINANCIAL_WRITE_SUBACTIONS,
   messageAuthorizesEvmRecipient,
   messageAuthorizesSolanaRecipient,
+  ON_CHAIN_WRITE_SUBACTIONS,
   sanitizeWalletDisplayLabel,
 } from "../wallet-context-safety.js";
+import { ON_CHAIN_SUBACTIONS } from "../wallet-financial-confirmation.js";
 
 describe("wallet-context-safety", () => {
   it("blocks injection-flagged governance votes and steward trade orders", () => {
@@ -235,5 +238,21 @@ describe("wallet-context-safety", () => {
         recipient,
       ),
     ).toBe(true);
+  });
+});
+
+describe("ON_CHAIN_WRITE_SUBACTIONS single source", () => {
+  it("FINANCIAL_WRITE_SUBACTIONS contains every ON_CHAIN_SUBACTIONS member plus trade", () => {
+    for (const subaction of ON_CHAIN_SUBACTIONS) {
+      expect(FINANCIAL_WRITE_SUBACTIONS.has(subaction)).toBe(true);
+    }
+    expect(FINANCIAL_WRITE_SUBACTIONS.has("trade")).toBe(true);
+    expect(FINANCIAL_WRITE_SUBACTIONS.size).toBe(ON_CHAIN_SUBACTIONS.size + 1);
+  });
+
+  it("ON_CHAIN_SUBACTIONS equals ON_CHAIN_WRITE_SUBACTIONS", () => {
+    expect([...ON_CHAIN_SUBACTIONS].sort()).toEqual(
+      [...ON_CHAIN_WRITE_SUBACTIONS].sort(),
+    );
   });
 });

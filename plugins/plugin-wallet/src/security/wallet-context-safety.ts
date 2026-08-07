@@ -20,7 +20,13 @@ import type { Memory } from "@elizaos/core";
 /** GHSA-7qxr-x6cg-r9cc: embedded addresses in token metadata must not become transfer recipients. */
 /** GHSA-gh63-5vpj-39qp: block financial writes on injection-flagged channel messages. */
 
-const FINANCIAL_WRITE_SUBACTIONS = new Set([
+// Single source of truth for on-chain write subactions. Every on-chain write
+// subaction must be in this set: the confirmation gate in
+// wallet-financial-confirmation.ts fires for exactly these subactions, and the
+// injection guard below adds "trade" (which carries its own confirmation
+// prompt in trade-action.ts), so a newly added subaction can never be covered
+// by one gate and missed by the other again.
+export const ON_CHAIN_WRITE_SUBACTIONS: ReadonlySet<string> = new Set([
   "transfer",
   "swap",
   "bridge",
@@ -28,6 +34,10 @@ const FINANCIAL_WRITE_SUBACTIONS = new Set([
   // governance votes/delegations are on-chain writes; an injected message must not
   // drive them any more than it may drive a transfer
   "gov",
+]);
+
+export const FINANCIAL_WRITE_SUBACTIONS: ReadonlySet<string> = new Set([
+  ...ON_CHAIN_WRITE_SUBACTIONS,
   // steward TRADE order submission routes through trade-action.ts, not the wallet
   // router, but is the same class of financial write
   "trade",
