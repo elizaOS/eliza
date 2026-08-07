@@ -355,6 +355,12 @@ export type WalletRecentTransaction = {
   blockHeight?: number;
   blockTime?: number | null;
   status: "success" | "failed" | "unknown";
+  // Optional: only computed on EVM chains today (Ethereum/BSC/Base) via
+  // Moralis's possible_spam flag + the null-address-mint pattern - Solana
+  // has no equivalent yet (deferred, separate follow-up). Undefined means
+  // "not classified," not "confirmed clean" - never treat it as a
+  // negative signal.
+  likelySpam?: boolean;
 };
 
 export type WalletTokenHolding = {
