@@ -17,6 +17,8 @@ import {
 } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
+import { isAndroidLocalSideloadBuild } from "../platform/android-runtime";
+import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   clearElizaApiBase,
@@ -497,11 +499,44 @@ function getInjectedWsBase(): string | undefined {
 
 function shouldUseRestOnlyForInsecureWebSocket(
   wsProtocol: "ws:" | "wss:",
+  host: string,
 ): boolean {
   if (wsProtocol !== "ws:") return false;
   if (typeof window === "undefined") return false;
   const rendererProtocol = window.location?.protocol;
-  return rendererProtocol === "https:" || rendererProtocol === "capacitor:";
+  if (rendererProtocol !== "https:" && rendererProtocol !== "capacitor:") {
+    return false;
+  }
+
+  // Direct Android builds enable mixed content so their packaged
+  // https://localhost renderer can keep the paired runtime's backchannel
+  // alive. The same trust gate that protects persisted API bases restricts
+  // this exception to loopback/private-LAN hosts; store and public cleartext
+  // endpoints retain the browser's stricter boundary.
+  const isTrustedPairedHost = isTrustedRestoreApiBaseUrl(`http://${host}`);
+  if (isTrustedPairedHost && isAndroidLocalSideloadBuild()) return false;
+
+  return true;
+}
+
+/**
+ * True only inside a Capacitor NATIVE app (iOS/Android WebView), where the
+ * page origin is a synthetic bundle host with no server behind it. A plain
+ * browser (including one loading a Capacitor-built web bundle over HTTP) has
+ * no `Capacitor.isNativePlatform()` → false, so same-origin deployments keep
+ * their realtime WebSocket.
+ */
+function isCapacitorNativeRuntime(): boolean {
+  try {
+    const cap = (globalThis as Record<string, unknown>).Capacitor as
+      | { isNativePlatform?: () => boolean }
+      | undefined;
+    return Boolean(cap?.isNativePlatform?.());
+  } catch {
+    // error-policy:J4 an unanswerable platform probe reads as "not native",
+    // preserving the browser's WebSocket path.
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1419,7 +1454,7 @@ export class ElizaClient {
     // renderer also cannot use that cleartext WebView socket even though its
     // native HTTP bridge keeps REST healthy. Both origins therefore use the
     // same REST-only state instead of reporting a dead backend (#16843).
-    if (shouldUseRestOnlyForInsecureWebSocket(wsProtocol)) {
+    if (shouldUseRestOnlyForInsecureWebSocket(wsProtocol, host)) {
       this.backoffMs = 500;
       this.reconnectAttempt = 0;
       this.disconnectedAt = null;
@@ -1432,9 +1467,21 @@ export class ElizaClient {
 
     // On Capacitor native (iosScheme/androidScheme = "https"), the origin host
     // is a synthetic bundle host (e.g. "localhost" with no server behind it).
-    // Skip WS if we have no explicit baseUrl and the host doesn't look like a
-    // real backend (no port, not an IP, not a known API domain).
-    if (!this.baseUrl && typeof host === "string") {
+    // Skip WS there when we have no explicit baseUrl and the host doesn't look
+    // like a real backend (no port, not an IP, not a known API domain).
+    //
+    // The skip is gated on the Capacitor native runtime: a plain BROWSER served
+    // same-origin from a portless HTTPS host (nginx terminating TLS in front of
+    // the agent — the standard self-hosted deployment shape) is a real backend
+    // whose /ws must connect. Ungated, this guard silently disabled the
+    // realtime WebSocket (proactive-message, conversation-updated, agent
+    // events) for every such deployment while REST kept working, so live
+    // server-pushed messages never rendered until a manual reload.
+    if (
+      !this.baseUrl &&
+      isCapacitorNativeRuntime() &&
+      typeof host === "string"
+    ) {
       const hasPort = host.includes(":");
       const isLoopback =
         host.startsWith("127.") || host.startsWith("localhost:");
@@ -2018,12 +2065,12 @@ export class ElizaClient {
       }
     }
 
+    const rawReplyText = streamState.doneText ?? streamState.fullText;
     const resolvedText =
-      streamState.doneNoResponseReason === "ignored"
+      streamState.doneNoResponseReason === "ignored" ||
+      (!streamState.receivedDone && rawReplyText.trim().length === 0)
         ? ""
-        : this.normalizeAssistantText(
-            streamState.doneText ?? streamState.fullText,
-          );
+        : this.normalizeAssistantText(rawReplyText);
     return {
       text: resolvedText,
       agentName: streamState.doneAgentName ?? "Eliza",

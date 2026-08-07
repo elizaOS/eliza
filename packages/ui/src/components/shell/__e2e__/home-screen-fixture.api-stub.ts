@@ -27,6 +27,15 @@ export const client = {
   // Empty base → widgets fetch `/api/lifeops/...` which the window.fetch mock
   // (installed in the fixture) intercepts.
   getBaseUrl: () => "",
+  // This fixture represents a local runtime whose text route is Cerebras. The
+  // model-download widget must therefore skip the unrelated local text slot.
+  getModelsConfig: async () => ({
+    activeChat: {
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "https://api.cerebras.ai/v1",
+    },
+  }),
   getRelationshipsPeople: async () => ({ data: [], stats: {} }),
   getRelationshipsCandidates: async () => [],
   getWalletBalances: async () => walletBalancesResponse(),

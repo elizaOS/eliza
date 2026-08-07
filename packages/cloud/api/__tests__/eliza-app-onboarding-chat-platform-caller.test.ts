@@ -112,6 +112,17 @@ async function dataOf(response: Response): Promise<Record<string, unknown>> {
   return body.data;
 }
 
+function continuationFromReply(reply: unknown): string {
+  if (typeof reply !== "string") {
+    throw new Error("Expected the onboarding reply to contain a login URL");
+  }
+  const match = reply.match(/https:\/\/\S+/);
+  if (!match) throw new Error("Expected a login URL in the onboarding reply");
+  const token = new URL(match[0]).searchParams.get("onboardingSession");
+  if (!token) throw new Error("Expected an onboarding continuation token");
+  return token;
+}
+
 describe("onboarding chat — trusted platform gateway caller", () => {
   let resolveIdentity: Mock<typeof usersRepository.resolveIdentity>;
 
@@ -206,6 +217,51 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     expect(data).toHaveProperty("controlPanelUrl");
     expect(data).toHaveProperty("messages");
     expect(Array.isArray(data.messages)).toBe(true);
+  });
+
+  test("requires a matching signed Telegram session before browser handoff", async () => {
+    resolveIdentity.mockResolvedValue(null);
+    const gatewayData = await dataOf(
+      await post({
+        sessionId: "platform:telegram:9913",
+        message: "My name is Ada",
+        platform: "telegram",
+        platformUserId: "9913",
+        platformDisplayName: "Ada",
+      }),
+    );
+    const continuation = continuationFromReply(gatewayData.reply);
+
+    spyOn(elizaAppSessionService, "validateAuthHeader").mockResolvedValue({
+      userId: "user-9",
+      organizationId: "org-9",
+      telegramId: "different-telegram-user",
+    });
+    const mismatch = await post(
+      { sessionId: continuation, platform: "web" },
+      "Bearer browser-session",
+    );
+    expect(mismatch.status).toBe(403);
+    expect(await mismatch.json()).toMatchObject({
+      success: false,
+      code: "access_denied",
+    });
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+
+    spyOn(elizaAppSessionService, "validateAuthHeader").mockResolvedValue({
+      userId: "user-9",
+      organizationId: "org-9",
+      telegramId: "9913",
+    });
+    const matched = await post(
+      { sessionId: continuation, platform: "web" },
+      "Bearer browser-session",
+    );
+    expect(matched.status).toBe(200);
+    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
+      userId: "user-9",
+      organizationId: "org-9",
+    });
   });
 
   test("maps twilio and blooio onto the phone identity provider", async () => {

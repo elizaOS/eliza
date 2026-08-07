@@ -174,8 +174,11 @@ describe("TASKS:history", () => {
     });
     expect(result?.success).toBe(true);
     expect(result?.text).toContain(
-      'The orchestrator task containing session session-older is "Long-running migration" [active].',
+      'The orchestrator task for that session is "Long-running migration" [active].',
     );
+    // The raw session uuid is planner/log detail — user-bound text never
+    // carries it (it stays in data.filters below).
+    expect(result?.text).not.toContain("session-older");
     expect(result?.text).toContain("Latest session: newest-agent");
     expect(result?.text).not.toContain("Unrelated work");
     expect(result?.data?.taskIds).toEqual(["task-target"]);
@@ -212,11 +215,95 @@ describe("TASKS:history", () => {
     expect(taskService.listTasks).not.toHaveBeenCalled();
     expect(result?.success).toBe(true);
     expect(result?.text).toContain(
-      "I did not find any orchestrator task threads matching session session-missing.",
+      "I did not find any orchestrator task threads matching that session.",
     );
+    // The raw session uuid stays out of user-bound text; the structural
+    // filter value remains available in the action data.
+    expect(result?.text).not.toContain("session-missing");
+    expect(result?.data?.filters).toMatchObject({
+      sessionId: "session-missing",
+    });
     expect(result?.data?.count).toBe(0);
     expect(result?.data?.taskIds).toEqual([]);
     expect(historyCallback).not.toHaveBeenCalled();
+  });
+
+  it("names the in-flight task instead of claiming nothing was found when filters exclude a running build", async () => {
+    const tasks = [
+      task({
+        id: "task-building",
+        title: "color-pop",
+        status: "active",
+        activeSessionCount: 1,
+      }),
+    ];
+    const taskService = { listTasks: vi.fn(async () => tasks) };
+
+    const result = await taskHistoryAction.handler(
+      runtimeWithServices({ taskService }),
+      memory({ text: "what did you just change?" }),
+      state,
+      {
+        parameters: {
+          action: "history",
+          metric: "list",
+          statuses: ["done"],
+        },
+      },
+      callback(),
+    );
+
+    expect(result?.success).toBe(true);
+    expect(result?.text).toContain('still working on "color-pop"');
+    expect(result?.text).not.toContain("did not find");
+    expect(result?.data?.count).toBe(0);
+    expect(result?.data?.inFlight).toEqual({ taskId: "task-building" });
+  });
+
+  it("falls back to a running ACP session for the in-flight answer on a session-index miss", async () => {
+    const taskService = {
+      getTaskForSession: vi.fn(async () => null),
+      listTasks: vi.fn(async () => []),
+    };
+    const acpService = serviceMock({
+      listSessions: vi.fn(() => [
+        {
+          id: "01234567-89ab-cdef-0123-456789abcdef",
+          name: "agent-one",
+          agentType: "codex",
+          workdir: "/repo/a",
+          status: "running",
+          approvalPreset: "standard",
+          createdAt: new Date("2026-08-07T10:00:00.000Z"),
+          lastActivityAt: new Date("2026-08-07T10:00:00.000Z"),
+          metadata: { label: "color-pop" },
+        },
+      ]),
+    });
+
+    const result = await taskHistoryAction.handler(
+      runtimeWithServices({ taskService, acpService }),
+      memory({ text: "what did you just change?" }),
+      state,
+      {
+        parameters: {
+          action: "history",
+          sessionId: "session-missing",
+        },
+      },
+      callback(),
+    );
+
+    expect(taskService.listTasks).not.toHaveBeenCalled();
+    expect(result?.success).toBe(true);
+    expect(result?.text).toContain('still working on "color-pop"');
+    // Neither the queried session uuid nor the running session's uuid may
+    // reach user-bound text; the running session id rides the action data.
+    expect(result?.text).not.toContain("session-missing");
+    expect(result?.text).not.toContain("01234567-89ab-cdef");
+    expect(result?.data?.inFlight).toEqual({
+      sessionId: "01234567-89ab-cdef-0123-456789abcdef",
+    });
   });
 
   it("applies the active window before the requested result limit", async () => {

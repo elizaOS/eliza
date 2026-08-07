@@ -7,6 +7,8 @@
  */
 
 declare module "@elizaos/shared" {
+  export const REALTIME_VOICE_CLIENT_TRANSPORT: "realtime_voice";
+
   export interface CoinGeckoMarketRecord {
     id: string;
     symbol: string;
