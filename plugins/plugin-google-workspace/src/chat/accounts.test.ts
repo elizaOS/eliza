@@ -25,6 +25,19 @@ function runtime(
 }
 
 describe("Google Chat account config", () => {
+  it("does not fabricate a default account when Google Chat is unconfigured", () => {
+    const rt = runtime();
+
+    expect(listGoogleChatAccountIds(rt)).toEqual([]);
+    expect(resolveDefaultGoogleChatAccountId(rt)).toBe("default");
+  });
+
+  it("keeps an explicitly enabled but incomplete default account visible for validation", () => {
+    const rt = runtime({ GOOGLE_CHAT_ENABLED: "true" });
+
+    expect(listGoogleChatAccountIds(rt)).toEqual(["default"]);
+  });
+
   it("fails closed for malformed GOOGLE_CHAT_ACCOUNTS", () => {
     const rt = runtime({
       GOOGLE_CHAT_ACCOUNTS: "{not json",
