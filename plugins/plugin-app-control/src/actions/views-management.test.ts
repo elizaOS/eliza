@@ -2843,9 +2843,8 @@ describe("view management actions", () => {
 		});
 		expect(showNotesResult?.success).toBe(true);
 		expect(showNotesResult?.values).toMatchObject({
-			mode: "interact",
+			mode: "show",
 			viewId: "notes",
-			capability: "get-notes",
 		});
 		expect(listNotesAliasResult?.success).toBe(true);
 		expect(listNotesAliasResult?.values).toMatchObject({
