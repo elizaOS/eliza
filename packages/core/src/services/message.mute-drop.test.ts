@@ -13,6 +13,7 @@ import type { Room, World } from "../types/environment";
 import { EventType } from "../types/events";
 import type { IAgentRuntime, Memory, UUID } from "../types/index";
 import { DefaultMessageService } from "./message";
+import { drainPostDeliveryTasks } from "./post-delivery-task-tracker.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const USER_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
@@ -100,7 +101,12 @@ function room(extra?: Partial<Room>): Room {
 	} as Room;
 }
 
-function runEndedStatuses(emitEvent: ReturnType<typeof vi.fn>): string[] {
+async function runEndedStatuses(
+	runtime: IAgentRuntime,
+	emitEvent: ReturnType<typeof vi.fn>,
+): Promise<string[]> {
+	// RUN_ENDED is detached onto the post-delivery tracker; drain before assert.
+	await drainPostDeliveryTasks(runtime);
 	return emitEvent.mock.calls
 		.filter(([event]) => event === EventType.RUN_ENDED)
 		.map(([, payload]) => (payload as { status: string }).status);
@@ -118,7 +124,7 @@ describe("DefaultMessageService — muted room drops even a direct mention", () 
 		expect(result.didRespond).toBe(false);
 		expect(result.mode).toBe("none");
 		expect(useModel).not.toHaveBeenCalled();
-		expect(runEndedStatuses(emitEvent)).toContain("muted");
+		expect(await runEndedStatuses(runtime, emitEvent)).toContain("muted");
 	});
 
 	it("server-level mute: a mention in an unmuted room of a muted guild drops too", async () => {
@@ -137,7 +143,7 @@ describe("DefaultMessageService — muted room drops even a direct mention", () 
 		const result = await service.handleMessage(runtime, mentionMessage());
 		expect(result.didRespond).toBe(false);
 		expect(useModel).not.toHaveBeenCalled();
-		expect(runEndedStatuses(emitEvent)).toContain("muted");
+		expect(await runEndedStatuses(runtime, emitEvent)).toContain("muted");
 	});
 
 	it("expired timed mute: auto-unmutes at the ISO time and the turn proceeds past the gate", async () => {
@@ -153,7 +159,7 @@ describe("DefaultMessageService — muted room drops even a direct mention", () 
 		// the turn NOT ending with status "muted" (it fails deeper instead).
 		await service.handleMessage(runtime, mentionMessage()).catch(() => {});
 		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBeNull();
-		expect(runEndedStatuses(emitEvent)).not.toContain("muted");
+		expect(await runEndedStatuses(runtime, emitEvent)).not.toContain("muted");
 	});
 
 	it("unmuted room: the same mention proceeds past the mute gate", async () => {
@@ -163,6 +169,6 @@ describe("DefaultMessageService — muted room drops even a direct mention", () 
 		});
 		const service = new DefaultMessageService();
 		await service.handleMessage(runtime, mentionMessage()).catch(() => {});
-		expect(runEndedStatuses(emitEvent)).not.toContain("muted");
+		expect(await runEndedStatuses(runtime, emitEvent)).not.toContain("muted");
 	});
 });

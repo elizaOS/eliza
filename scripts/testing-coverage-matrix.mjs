@@ -9,8 +9,7 @@
  *
  * "In CI" is a heuristic: a package is swept by the root runner when it is a
  * workspace member with a `test` script and is not excluded from the root
- * workspace. packages/feed is excluded from the root workspace and runs through
- * its own path-gated feed-test.yml lane instead.
+ * workspace.
  *
  * Usage:
  *   node scripts/testing-coverage-matrix.mjs
@@ -162,12 +161,6 @@ function main() {
   lines.push(`- Total skipped tests: **${totals.skips}**`);
   lines.push(
     `- Packages with a \`test\` script but zero test files: **${totals.zeroTestWithScript}**`,
-  );
-  lines.push("");
-  lines.push(
-    "> Known dark corner: `packages/feed` is excluded from the root workspace " +
-      "(`!packages/feed`) and runs via its own path-gated `feed-test.yml` lane " +
-      "(`test:unit`). Its ~227 skips still need triage (#9943 follow-up).",
   );
   lines.push("");
   lines.push("## Matrix");

@@ -162,11 +162,11 @@ describe("lookupModelContextWindow", () => {
 });
 
 describe("computeCallCostUsd", () => {
-	it("returns 0 when usage is undefined", () => {
-		expect(computeCallCostUsd("claude-opus-4-7", undefined)).toBe(0);
+	it("returns undefined when usage is unavailable", () => {
+		expect(computeCallCostUsd("claude-opus-4-7", undefined)).toBeUndefined();
 	});
 
-	it("returns 0 and warns when the model is unknown on a hosted provider", () => {
+	it("returns undefined and warns when the model is unknown on a hosted provider", () => {
 		const warn = vi.fn();
 		const cost = computeCallCostUsd(
 			"never-heard-of-this-model",
@@ -177,7 +177,7 @@ describe("computeCallCostUsd", () => {
 			},
 			{ provider: "openai", logger: { warn } },
 		);
-		expect(cost).toBe(0);
+		expect(cost).toBeUndefined();
 		expect(warn).toHaveBeenCalledTimes(1);
 		const [context, message] = warn.mock.calls[0] ?? [];
 		expect(message).toContain("[pricing]");
@@ -244,7 +244,7 @@ describe("computeCallCostUsd", () => {
 				{ promptTokens: 100, completionTokens: 100, totalTokens: 200 },
 				{ provider: "ollama", local: false, logger: { warn } },
 			),
-		).toBe(0);
+		).toBeUndefined();
 		expect(warn).toHaveBeenCalledTimes(1);
 	});
 
@@ -446,17 +446,15 @@ describe("env overrides (MODEL_PRICES_JSON / MODEL_CONTEXT_WINDOWS_JSON)", () =>
 		).toBe(400_000);
 	});
 
-	it("malformed override JSON degrades safely (static table still serves, no throw)", () => {
+	it("malformed override JSON fails fast", () => {
 		vi.stubEnv("MODEL_PRICES_JSON", "{not json");
 		vi.stubEnv("MODEL_CONTEXT_WINDOWS_JSON", "[1,2,3]");
-		expect(() => lookupModelPrice("claude-opus-4-8")).not.toThrow();
-		expect(lookupModelPrice("claude-opus-4-8")?.price.input).toBe(5.0);
-		expect(
-			lookupModelContextWindow("claude-opus-4-8")?.contextWindowTokens,
-		).toBe(1_000_000);
+		expect(() => lookupModelPrice("claude-opus-4-8")).toThrow(
+			"MODEL_PRICES_JSON is not valid JSON",
+		);
 	});
 
-	it("invalid entries are skipped while valid siblings apply", () => {
+	it("an invalid entry rejects the whole override", () => {
 		vi.stubEnv(
 			"MODEL_PRICES_JSON",
 			JSON.stringify({
@@ -464,11 +462,12 @@ describe("env overrides (MODEL_PRICES_JSON / MODEL_CONTEXT_WINDOWS_JSON)", () =>
 				"good-entry": { input: 1.0, output: 2.0 },
 			}),
 		);
-		expect(lookupModelPrice("bad-entry")).toBeNull();
-		expect(lookupModelPrice("good-entry")?.price.output).toBe(2.0);
+		expect(() => lookupModelPrice("good-entry")).toThrow(
+			"MODEL_PRICES_JSON entry needs numeric input and output rates",
+		);
 	});
 
-	it("a truly unknown id still degrades to cost 0 + warn and no window", () => {
+	it("a truly unknown id has unknown cost, warns, and has no window", () => {
 		vi.stubEnv(
 			"MODEL_PRICES_JSON",
 			JSON.stringify({ "some-other-model": { input: 1.0, output: 2.0 } }),
@@ -479,7 +478,7 @@ describe("env overrides (MODEL_PRICES_JSON / MODEL_CONTEXT_WINDOWS_JSON)", () =>
 			{ promptTokens: 1000, completionTokens: 1000, totalTokens: 2000 },
 			{ provider: "anthropic", logger: { warn } },
 		);
-		expect(cost).toBe(0);
+		expect(cost).toBeUndefined();
 		expect(warn).toHaveBeenCalledTimes(1);
 		expect(lookupModelContextWindow("claude-unknown-test-9")).toBeNull();
 	});

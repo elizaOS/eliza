@@ -2,10 +2,13 @@
  * Deterministic unit tests for the channel-topics search capability (#8927): the
  * SEARCH_CHANNEL_TOPICS action and the GET /api/channel-topics/search route. The
  * `channel_topics` service is a vi.fn stub, covering validate gating on service
- * presence, param-vs-message-text query resolution, and the route's 200/400/503
- * status contract.
+ * presence, param-vs-message-text query resolution, the external-content
+ * envelope unwrap/echo-clamp regression, and the route's 200/400/503 status
+ * contract.
  */
 import { describe, expect, it, vi } from "vitest";
+import { hardenIncomingUserMessage } from "../../security/incoming-message-security.ts";
+import type { Memory } from "../../types/memory.ts";
 import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { CHANNEL_TOPICS_SEARCH_ROUTE } from "./channel-topics-routes.ts";
 
@@ -59,6 +62,47 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
 			undefined,
 		);
 		expect(searchTopics).toHaveBeenCalledWith("billing", 10);
+	});
+
+	it("unwraps a hardened message and never echoes the security envelope", async () => {
+		const searchTopics = vi.fn(() => []);
+		// A message as a hardened connector delivers it: content.text is core's
+		// external-content envelope with the user's sentence as payload.
+		const memory = {
+			content: { text: "billing dashboards", source: "discord" },
+		} as unknown as Memory;
+		hardenIncomingUserMessage(memory);
+		expect(memory.content.text).toContain("SECURITY NOTICE");
+		expect(memory.content.text).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
+
+		const res = await channelTopicSearchAction.handler(
+			runtimeWith({ searchTopics }),
+			memory as never,
+			undefined,
+			undefined,
+		);
+		// Matching runs on the user's words, not the envelope.
+		expect(searchTopics).toHaveBeenCalledWith("billing dashboards", 10);
+		expect(res.text).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
+		expect(res.text).not.toContain("SECURITY NOTICE");
+		expect(res.text).toContain('"billing dashboards"');
+		const query = (res.data as { query: string }).query;
+		expect(query).not.toContain("\n");
+		expect(query.length).toBeLessThanOrEqual(121);
+	});
+
+	it("renders a blob-shaped planner query as a neutral noun", async () => {
+		const blob = `first line of a pasted document\n${"lorem ipsum ".repeat(30)}`;
+		const res = await channelTopicSearchAction.handler(
+			runtimeWith({ searchTopics: vi.fn(() => []) }),
+			{ content: { text: "" } } as never,
+			undefined,
+			{ parameters: { query: blob } },
+		);
+		expect(res.text).toBe("No channels found discussing that topic.");
+		const query = (res.data as { query: string }).query;
+		expect(query).not.toContain("\n");
+		expect(query.length).toBeLessThanOrEqual(121);
 	});
 });
 

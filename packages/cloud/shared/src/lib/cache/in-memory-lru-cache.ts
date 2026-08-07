@@ -55,6 +55,10 @@ export class InMemoryLRUCache<V> {
     }
   }
 
+  clear(): void {
+    this.cache.clear();
+  }
+
   private evict(): void {
     const now = Date.now();
     for (const [key, entry] of this.cache) {

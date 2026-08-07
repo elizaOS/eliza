@@ -661,7 +661,7 @@ test.describe
       });
     });
 
-    test("push-to-talk hold arms dictation without toggling hands-free", async ({
+    test("a held press on Talk never arms dictation and stays the talk toggle", async ({
       page,
       device,
     }, testInfo) => {
@@ -687,8 +687,10 @@ test.describe
         page,
         '[data-testid="chat-composer-mic"]',
       );
-      // Press-and-hold ~700ms (> the 200ms PTT arm threshold), polling the label
-      // mid-hold for the "release to insert" dictation state.
+      // Press-and-hold ~700ms (well past the former 200ms push-to-talk arm
+      // threshold). The Cartesia Talk rework removed the hold machine: a held
+      // pointer has exactly the same talk action as a tap, so the mid-hold
+      // "release to insert" dictation state must never appear.
       const press = androidTouchPressBackground(
         adb,
         serial,
@@ -696,33 +698,43 @@ test.describe
         point.startY,
         700,
       );
-      let holdingLabel: string | null = null;
+      let dictationLabel: string | null = null;
       for (let i = 0; i < 8; i++) {
         await page.waitForTimeout(90);
         const label = await mic.getAttribute("aria-label").catch(() => null);
         if (label && /release to insert/i.test(label)) {
-          holdingLabel = label;
+          dictationLabel = label;
           break;
         }
       }
       await press;
       await page.waitForTimeout(400);
 
-      const pttTouch = await assertRealTouch(page, "push-to-talk");
+      const pttTouch = await assertRealTouch(page, "talk-hold");
       const micTargeted = pttTouch.events.some(
         (e) => e.targetTestId === "chat-composer-mic",
       );
       expect(micTargeted, "the hold landed on the composer mic").toBe(true);
+      expect(
+        dictationLabel,
+        "a held press must not arm the removed push-to-talk dictation state",
+      ).toBeNull();
 
-      // After release, PTT must NOT have latched a hands-free loop. Hands-free is
-      // exposed on the mic's own aria-label ("end conversation" / "stop
-      // listening"); push-to-talk's release path (finishPushToTalkPress) suppresses
-      // the follow-on click, so the label must return to the idle "talk".
+      // After release, the control remains the talk toggle in one of its known
+      // states: idle ("talk"), an engaged conversation ("end conversation" /
+      // "stop listening"), a connecting realtime session, or a surfaced retry.
       const afterLabel = await mic.getAttribute("aria-label").catch(() => null);
       expect(
         afterLabel ?? "",
-        "a push-to-talk hold must not toggle the always-on hands-free loop (the release-click suppress guard)",
-      ).not.toMatch(/end conversation/i);
+        "the composer control must remain the talk toggle after a held press",
+      ).toMatch(
+        /^(talk|end conversation|stop listening|cancel voice connection|retry talk)/i,
+      );
+      // If the release toggled a conversation on, tap it back off so later legs
+      // observe the same idle composer this leg started from.
+      if (afterLabel && !/^talk$/i.test(afterLabel)) {
+        await mic.click();
+      }
 
       captureAndroidScreenshot({
         adb,
@@ -731,14 +743,18 @@ test.describe
         filename: "gesture-30-push-to-talk.png",
       });
       matrixLog.push({
-        leg: "push-to-talk",
+        leg: "talk-hold",
         idleLabel,
-        holdingLabel,
+        dictationLabel,
         afterLabel,
-        armedDictation: Boolean(holdingLabel),
+        armedDictation: Boolean(dictationLabel),
       });
-      await testInfo.attach("push-to-talk leg", {
-        body: JSON.stringify({ idleLabel, holdingLabel, afterLabel }, null, 2),
+      await testInfo.attach("talk-hold leg", {
+        body: JSON.stringify(
+          { idleLabel, dictationLabel, afterLabel },
+          null,
+          2,
+        ),
         contentType: "application/json",
       });
     });

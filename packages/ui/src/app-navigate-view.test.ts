@@ -1,3 +1,4 @@
+/** Verifies App navigate-view shell handler through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -186,6 +187,28 @@ describe("App navigate-view shell handler", () => {
     );
 
     expect(fixture.setTab).toHaveBeenCalledWith("plugins");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/plugins");
+  });
+
+  it("lets the shell activate a route tab without rewriting its exact path", () => {
+    const fixture = createHandlerFixture();
+    const setTabForPath = vi.fn();
+    const handler = createNavigateViewHandler({
+      availableViewsForDesktopTabs: [view()],
+      invokeDesktopBridgeRequest: fixture.invokeDesktopBridgeRequest,
+      navigatePath: fixture.navigatePath,
+      openDesktopTab: fixture.openDesktopTab,
+      setActiveDesktopTabId: fixture.setActiveDesktopTabId,
+      setTab: fixture.setTab,
+      setTabForPath,
+    });
+
+    handler(navigateEvent({ viewId: "plugins", viewPath: "/apps/plugins" }));
+
+    expect(setTabForPath).toHaveBeenCalledOnce();
+    expect(setTabForPath).toHaveBeenCalledWith("plugins");
+    expect(fixture.setTab).not.toHaveBeenCalled();
+    expect(fixture.navigatePath).toHaveBeenCalledOnce();
     expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/plugins");
   });
 

@@ -1,12 +1,12 @@
+/** Verifies orderDashboardNotifications through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Dashboard notification center behavior against the real notification store
 // (driven via the test-only ingest; HTTP mutations mocked at the API client).
-// Pins the shade spec: priority-only triage, liquid-glass Z-stacked groups
+// Pins the shade spec: a control-free full inbox, liquid-glass Z-stacked groups
 // with no headers/dividers, DIRECTIONAL pull/wheel expand-collapse (down
 // expands, up collapses — never a toggle, so trailing trackpad momentum can't
-// snap the shade back shut), an interactive notification total, direct-tap
-// activation, and swipe-to-dismiss.
+// snap the shade back shut), direct-tap activation, and swipe-to-dismiss.
 
 import {
   act,
@@ -55,20 +55,52 @@ import {
   notificationGroupKey,
   notificationGroupLabel,
   notificationPullRevealProgress,
+  notificationScrollFadeEdges,
   orderDashboardNotifications,
   PULL_COMMIT_PX,
   STACK_FOLD_SETTLE_MS,
 } from "./NotificationsHomeCenter";
 import { NOTIFICATION_ROW_SETTLE_MS } from "./notification-shade-content";
 import {
-  notificationGroupContainerOffset,
   notificationPullOvershootOffset,
-  notificationPullPresentation,
   PULL_TRAVEL_PX,
 } from "./notification-shade-presentation";
 
 let seq = 0;
 let restoreMatchMediaForTest: (() => void) | null = null;
+
+describe("notificationScrollFadeEdges", () => {
+  it("reports only edges with hidden content across the full scroll range", () => {
+    expect(
+      notificationScrollFadeEdges({
+        scrollTop: 0,
+        scrollHeight: 100,
+        clientHeight: 100,
+      }),
+    ).toEqual({ overflow: false, top: false, bottom: false });
+    expect(
+      notificationScrollFadeEdges({
+        scrollTop: 0,
+        scrollHeight: 300,
+        clientHeight: 100,
+      }),
+    ).toEqual({ overflow: true, top: false, bottom: true });
+    expect(
+      notificationScrollFadeEdges({
+        scrollTop: 80,
+        scrollHeight: 300,
+        clientHeight: 100,
+      }),
+    ).toEqual({ overflow: true, top: true, bottom: true });
+    expect(
+      notificationScrollFadeEdges({
+        scrollTop: 199.5,
+        scrollHeight: 300,
+        clientHeight: 100,
+      }),
+    ).toEqual({ overflow: true, top: true, bottom: false });
+  });
+});
 
 function staticMediaQuery(media: string, matches: boolean): MediaQueryList {
   return {
@@ -176,6 +208,16 @@ function finishStackFold(): void {
   act(() => vi.advanceTimersByTime(STACK_FOLD_SETTLE_MS + 40));
 }
 
+/** Starts gesture-specific scenarios from the user-collapsed shade state. */
+function renderRestedNotifications(): ReturnType<typeof render> {
+  const result = render(<NotificationsHomeCenter />);
+  const list = screen.queryByTestId("home-notification-list");
+  if (list?.getAttribute("data-shade-mode") === "expanded") {
+    collapseShade();
+  }
+  return result;
+}
+
 function setOverflowingListGeometry(list: HTMLElement): void {
   Object.defineProperties(list, {
     scrollHeight: { configurable: true, value: 900 },
@@ -233,13 +275,6 @@ describe("orderDashboardNotifications", () => {
     const twice = orderDashboardNotifications([b, a]).map((n) => n.id);
     expect(once).toEqual(twice);
   });
-
-  it("is priority-only: there is no alternate sort mode parameter", () => {
-    // Regression for the removed priority/recent toggle: the order function
-    // takes exactly one argument — the shade cannot be put into a "recent"
-    // mode at all.
-    expect(orderDashboardNotifications.length).toBe(1);
-  });
 });
 
 describe("interrupt priority projection", () => {
@@ -287,7 +322,7 @@ describe("interrupt priority projection", () => {
         title: "Quiet mail",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
 
     const list = screen.getByTestId("home-notification-list");
     const topRow = screen.getByTestId("notification-row");
@@ -359,7 +394,7 @@ describe("interrupt priority projection", () => {
         title: "Calendar summary",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
 
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(1);
@@ -379,9 +414,6 @@ describe("interrupt priority projection", () => {
 
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(list.scrollTop).toBe(0);
-    const clearAll = screen.getByTestId("notifications-clear-all");
-    expect(clearAll).toBeTruthy();
-    expect(clearAll.closest("li")?.className).toContain("shrink-0");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
     expect(screen.getByTestId("notification-stack-controls")).toBeTruthy();
     expect(screen.getByText("Calendar summary")).toBeTruthy();
@@ -439,7 +471,7 @@ describe("interrupt priority projection", () => {
         title: "Calendar summary",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
 
     fireEvent.touchStart(list, {
@@ -479,14 +511,12 @@ describe("interrupt priority projection", () => {
         }),
       );
     }
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
 
     expect(screen.getAllByTestId("notification-row")).toHaveLength(50);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(50);
     expect(screen.getAllByTestId("notification-source-count")).toHaveLength(50);
-    expect(screen.getByTestId("notifications-count").textContent).toBe(
-      "100 Notifications",
-    );
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
 
     const list = screen.getByTestId("home-notification-list");
     fireEvent.pointerDown(list, {
@@ -530,7 +560,7 @@ describe("interrupt priority projection", () => {
         }),
       );
     }
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
 
@@ -614,28 +644,6 @@ describe("dampenPull", () => {
     expect(notificationPullOvershootOffset(overpull)).toBeCloseTo(9.8, 1);
     expect(notificationPullOvershootOffset(-overpull)).toBeCloseTo(-9.8, 1);
   });
-
-  it("fades the count before upward overpull reaches its clipping boundary", () => {
-    const atCloseDetent = notificationPullPresentation(
-      -PULL_TRAVEL_PX,
-      true,
-      false,
-    );
-    const midwayThroughBoundaryFade = notificationPullPresentation(
-      -(PULL_TRAVEL_PX + 4),
-      true,
-      false,
-    );
-    const pastBoundaryFade = notificationPullPresentation(
-      -(PULL_TRAVEL_PX + 8),
-      true,
-      false,
-    );
-
-    expect(atCloseDetent.notificationCountVisibility).toBe(1);
-    expect(midwayThroughBoundaryFade.notificationCountVisibility).toBe(0.5);
-    expect(pastBoundaryFade.notificationCountVisibility).toBe(0);
-  });
 });
 
 describe("notificationPullRevealProgress", () => {
@@ -651,13 +659,13 @@ describe("notificationPullRevealProgress", () => {
 
 describe("NotificationsHomeCenter", () => {
   it("renders nothing while the empty inbox is still hydrating", () => {
-    const { container } = render(<NotificationsHomeCenter />);
+    const { container } = renderRestedNotifications();
     expect(container.firstChild).toBeNull();
   });
 
   it("renders terminal hydration failure with a working retry", async () => {
     __setHydrationFailureForTests("private transport detail");
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
 
     const unavailable = screen.getByTestId("notifications-unavailable");
     expect(unavailable.getAttribute("role")).toBe("alert");
@@ -683,9 +691,45 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.queryByTestId("notifications-empty")).not.toBeNull();
   });
 
+  it("applies directional fades only where notification content is hidden", () => {
+    __ingestNotificationForTests(makeNotification());
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    Object.defineProperties(list, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 300 },
+    });
+
+    list.scrollTop = 0;
+    fireEvent.scroll(list);
+    expect(list.hasAttribute("data-scroll-overflow")).toBe(true);
+    expect(list.hasAttribute("data-scroll-fade-top")).toBe(false);
+    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(true);
+    expect(list.className).not.toContain("scroll-fade");
+
+    list.scrollTop = 80;
+    fireEvent.scroll(list);
+    expect(list.hasAttribute("data-scroll-fade-top")).toBe(true);
+    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(true);
+
+    list.scrollTop = 200;
+    fireEvent.scroll(list);
+    expect(list.hasAttribute("data-scroll-fade-top")).toBe(true);
+    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(false);
+
+    Object.defineProperty(list, "scrollHeight", {
+      configurable: true,
+      value: 100,
+    });
+    fireEvent.scroll(list);
+    expect(list.hasAttribute("data-scroll-overflow")).toBe(false);
+    expect(list.hasAttribute("data-scroll-fade-top")).toBe(false);
+    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(false);
+  });
+
   it("reveals a subtle empty status through the normal pull gesture", () => {
     __setHydratedForTests(true);
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const center = screen.getByTestId("home-notification-center");
     const list = screen.getByTestId("home-notification-list");
     const empty = screen.getByTestId("notifications-empty");
@@ -817,7 +861,7 @@ describe("NotificationsHomeCenter", () => {
 
   it("supports the native touch path while the hydrated inbox is empty", () => {
     __setHydratedForTests(true);
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
 
     fireEvent.touchStart(list, {
@@ -847,7 +891,7 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
   });
 
-  it("shows interrupt rows above the total and folds quieter rows", () => {
+  it("folds quieter rows after the user hides the full inbox", () => {
     __ingestNotificationForTests(
       makeNotification({
         title: "Reminder fired",
@@ -863,17 +907,14 @@ describe("NotificationsHomeCenter", () => {
         source: "workflow",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expect(screen.getByTestId("home-notification-center")).toBeTruthy();
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getByText("Reminder fired")).toBeTruthy();
     expect(screen.queryByText("Deploy approved")).toBeNull();
-    expect(screen.getByTestId("notifications-count").textContent).toBe(
-      "2 Notifications",
-    );
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
     expandShade();
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     // The header is a bare eyebrow: no numeric unread badge next to the label.
     expect(screen.queryByTestId("notifications-unread-badge")).toBeNull();
     expect(screen.getByText("Deploy approved")).toBeTruthy();
@@ -883,7 +924,7 @@ describe("NotificationsHomeCenter", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "urgent", title: "Disk almost full" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     // Platform-shade model: presence in the list IS the state; rows never
     // restyle on read.
@@ -896,7 +937,7 @@ describe("NotificationsHomeCenter", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Open settings" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     fireEvent.click(screen.getByTestId("notification-row"));
     expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
@@ -908,7 +949,7 @@ describe("NotificationsHomeCenter", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "javascript:alert(1)" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     fireEvent.click(screen.getByTestId("notification-row"));
     expect(navigateDeepLink).not.toHaveBeenCalled();
@@ -930,7 +971,7 @@ describe("NotificationsHomeCenter", () => {
         source: "agent",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     const rows = screen.getAllByTestId("notification-row");
     expect(rows).toHaveLength(2);
@@ -941,57 +982,6 @@ describe("NotificationsHomeCenter", () => {
     );
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.queryByText("Dismiss me")).toBeNull();
-  });
-
-  it("keeps the clear command mounted while its shade slot reveals", () => {
-    __ingestNotificationForTests(makeNotification());
-    __ingestNotificationForTests(makeNotification());
-    render(<NotificationsHomeCenter />);
-    const restingClear = screen.getByTestId("notifications-clear-all");
-    expect(restingClear.closest("li")?.style.opacity).toBe("0");
-    expect(restingClear.closest("li")?.getAttribute("aria-hidden")).toBe(
-      "true",
-    );
-    expandShade();
-    const clear = screen.getByTestId("notifications-clear-all");
-    expect(clear).toBe(restingClear);
-    expect(clear.parentElement?.className).not.toContain("sticky");
-    expect(clear.parentElement?.className).toContain("px-2");
-    expect(clear.parentElement).toBe(
-      screen.getByTestId("home-notification-list").firstElementChild,
-    );
-    expect(screen.queryByTestId("notifications-mark-all-read")).toBeNull();
-  });
-
-  it("the inbox CONTAINER has no chrome — glass lives on the cards", () => {
-    __ingestNotificationForTests(makeNotification());
-    render(<NotificationsHomeCenter />);
-    const card = screen.getByTestId("home-notification-center");
-    expect(card.className).not.toContain("backdrop-blur");
-    expect(card.className).not.toContain("border");
-    expect(card.className).not.toMatch(/bg-black|bg-white/);
-  });
-
-  it("rows are liquid-glass cards (shared recipe on the swipe surface)", () => {
-    __ingestNotificationForTests(makeNotification({ title: "Glass" }));
-    render(<NotificationsHomeCenter />);
-    expandShade();
-    const surface = screen.getByTestId("notification-row-swipe");
-    expect(surface.className).toContain("eliza-notif-glass");
-    expect(surface.className).toContain("rounded-2xl");
-    // The recipe itself ships in the component's style block (fill + sheen +
-    // inset edge + blur), so the class is the single source of the look.
-    const css = document.querySelector("style")?.textContent ?? "";
-    expect(css).toContain(".eliza-notif-glass");
-    expect(css).toContain("backdrop-filter");
-    expect(css).toContain("box-shadow");
-    const focusedGlassRule = css.match(
-      /\.eliza-notif-glass:focus-within\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(focusedGlassRule).toContain("box-shadow:");
-    expect(focusedGlassRule).toContain("!important");
-    expect(css).toContain(".eliza-notif-row-inner[data-swipe-dragging]");
-    expect(surface.getAttribute("data-swipe-dragging")).toBeNull();
   });
 
   it("acting on a row removes it; surviving rows keep their stable order", () => {
@@ -1005,7 +995,7 @@ describe("NotificationsHomeCenter", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "urgent", title: "First", source: "agent" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     const titles = () =>
       screen
@@ -1030,7 +1020,7 @@ describe("NotificationsHomeCenter", () => {
     });
     __ingestNotificationForTests(urgentOld);
     __ingestNotificationForTests(highNew);
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     const titles = () =>
       screen
@@ -1047,7 +1037,7 @@ describe("NotificationsHomeCenter", () => {
     __ingestNotificationForTests(
       makeNotification({ category: "reminder", title: "Water the plants" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     expect(screen.queryByText("Notifications")).toBeNull();
     // The producer-group eyebrow headers (and their counts) are gone: groups are
@@ -1060,7 +1050,7 @@ describe("NotificationsHomeCenter", () => {
     for (let i = 0; i < 120; i++) {
       __ingestNotificationForTests(makeNotification({ priority: "high" }));
     }
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     expect(screen.getByTestId("notification-source-count").textContent).toBe(
       "99+",
@@ -1077,7 +1067,7 @@ describe("NotificationsHomeCenter", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "normal", title: "Quiet one" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
     // A notification is its glass card - no leading edge highlight even for
@@ -1091,7 +1081,7 @@ describe("NotificationsHomeCenter", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "3 new files", data: { count: 3 } }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     // Coalesced arrivals speak through their title/body; no bare number rides
     // the notification header.
@@ -1111,7 +1101,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Top urgent", priority: "urgent" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
     expandShade();
@@ -1158,7 +1148,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     for (let i = 0; i < 5; i++) {
       __ingestNotificationForTests(makeNotification({ priority: "high" }));
     }
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
@@ -1166,7 +1156,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
 
   it("a single-row group renders flat — no stack, no peeks", () => {
     __ingestNotificationForTests(makeNotification({ title: "Solo" }));
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expect(screen.getByTestId("notification-row")).toBeTruthy();
     expandShade();
     expect(screen.getByTestId("notification-row")).toBeTruthy();
@@ -1188,7 +1178,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
         deepLink: "/settings",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     fireEvent.click(screen.getByTestId("notification-row"));
     expect(navigateDeepLink).not.toHaveBeenCalled();
@@ -1211,15 +1201,13 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "C", priority: "urgent" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
     // Pulling the shade open reveals more groups but never flattens a stack.
     expandShade();
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
-    const collapseFooter = screen.getByTestId("notifications-collapse-footer");
-    expect(collapseFooter.style.opacity).toBe("1");
     // Tapping the peeked card below the top one fans the stack out.
     const openingPeek = screen.getAllByTestId("notification-stack-peek")[0];
     openingPeek.focus();
@@ -1267,7 +1255,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(
       screen.getByTestId("notification-stack-clear").dataset.confirming,
     ).toBeUndefined();
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
     const controls = screen.getByTestId("notification-stack-controls");
     expect(controls.parentElement?.firstElementChild).toBe(controls);
     expect(
@@ -1275,21 +1263,9 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
         screen.getAllByTestId("notification-row")[0],
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.getByTestId("notifications-collapse-footer")).toBe(
-      collapseFooter,
-    );
-    expect(collapseFooter.style.opacity).toBe("1");
-    expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
-    expect(collapseFooter.hasAttribute("inert")).toBe(false);
     fireEvent.click(screen.getByTestId("notification-stack-collapse"), {
       detail: 0,
     });
-    expect(screen.getByTestId("notifications-collapse-footer")).toBe(
-      collapseFooter,
-    );
-    expect(collapseFooter.style.opacity).toBe("1");
-    expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
-    expect(collapseFooter.hasAttribute("inert")).toBe(false);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
     expect(enteringControls.style.height).toBe("0px");
     expect(enteringControls.style.opacity).toBe("0");
@@ -1322,15 +1298,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
     expect(screen.queryByTestId("notification-stack-collapse")).toBeNull();
     expect(document.activeElement).toBe(openingPeek);
-    expect(screen.getByTestId("notifications-collapse-footer")).toBe(
-      collapseFooter,
-    );
-    expect(collapseFooter.style.opacity).toBe("1");
-    expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
-    expect(collapseFooter.hasAttribute("inert")).toBe(false);
-    expect(screen.getByTestId("notifications-collapse").textContent).toContain(
-      "Collapse",
-    );
+    expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     expect(
       screen
         .getByTestId("home-notification-list")
@@ -1348,7 +1316,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "C", priority: "urgent" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
 
     const peek = screen.getAllByTestId("notification-stack-peek")[0];
@@ -1375,7 +1343,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "C", priority: "urgent" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
@@ -1400,7 +1368,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "B newest", source: "mail" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const groupA = screen
       .getByText("A newest")
       .closest<HTMLElement>("[data-notification-group]");
@@ -1456,7 +1424,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     __ingestNotificationForTests(makeNotification({ title: "A" }));
     __ingestNotificationForTests(makeNotification({ title: "B" }));
     __ingestNotificationForTests(makeNotification({ title: "C" }));
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
     act(() => vi.advanceTimersByTime(40));
@@ -1497,7 +1465,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Keep", source: "calendar" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     const stack = screen.getByTestId("notification-stack");
     fireEvent.click(
@@ -1534,7 +1502,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
         source: "system",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expandShade();
     const stack = screen.getByTestId("notification-stack");
@@ -1579,7 +1547,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       __ingestNotificationForTests(
         makeNotification({ title: "On top", priority: "urgent" }),
       );
-      render(<NotificationsHomeCenter />);
+      renderRestedNotifications();
       expandShade();
       const swipe = screen.getByTestId("notification-row-swipe");
       const peek = screen.getByTestId("notification-stack-peek");
@@ -1650,7 +1618,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       __ingestNotificationForTests(
         makeNotification({ title: "On top", priority: "urgent" }),
       );
-      render(<NotificationsHomeCenter />);
+      renderRestedNotifications();
       expandShade();
       fireEvent.click(screen.getByTestId("notification-row"));
       const rows = screen.getAllByTestId("notification-row-swipe");
@@ -1705,199 +1673,81 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
   }
 
-  it("renders interrupt triage with the total while closed and a bottom collapse command while open", () => {
+  it("shows all notifications by default without expand or collapse controls", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
-    expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
-    const priorityRow = screen.getByTestId("notification-row");
-    const count = screen.getByTestId("notifications-count");
-    const countButton = screen.getByTestId("notifications-count-button");
-    expect(count.textContent).toBe("3 Notifications");
-    expect(countButton.parentElement).toBe(count);
-    expect(countButton.getAttribute("aria-expanded")).toBe("false");
-    expect(count.style.opacity).toBe("1");
-    expect(count.getAttribute("aria-hidden")).toBeNull();
-    expect(count.className).toContain("shrink-0");
+    const onShadeOccupancyChange = vi.fn();
+    render(
+      <NotificationsHomeCenter
+        onShadeOccupancyChange={onShadeOccupancyChange}
+      />,
+    );
+
     const list = screen.getByTestId("home-notification-list");
-    expect(count.parentElement).toBe(list);
-    expect(
-      count.previousElementSibling?.querySelector(
-        '[data-testid="notification-row"]',
-      ),
-    ).toBeTruthy();
-    const chevron = screen.getByTestId("notifications-count-chevron");
-    expect(chevron.classList.contains("h-3")).toBe(true);
-    expect(chevron.classList.contains("w-3")).toBe(true);
-    expect(screen.queryByTestId("notifications-expand-toggle")).toBeNull();
-    expect(screen.queryByText(/more|show less/i)).toBeNull();
-    expect(list.className).toContain("flex-1");
-    expect(list.className).not.toContain("flex-[0_1_auto]");
-    expandShade();
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
-    const collapse = screen.getByTestId("notifications-collapse");
-    const clearSlot = screen
-      .getByTestId("notifications-clear-all")
-      .closest("li") as HTMLElement;
-    expect(clearSlot.style.height).toBe("32px");
-    expect(clearSlot.style.marginBottom).toBe("0px");
-    expect(collapse.textContent).toContain("Collapse");
-    const collapseFooter = screen.getByTestId("notifications-collapse-footer");
-    expect(collapseFooter.parentElement).toBe(
-      screen.getByTestId("home-notification-center"),
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-occupies-home")).toBe(false);
+    expect(onShadeOccupancyChange).toHaveBeenLastCalledWith(false);
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
+    expect(screen.getByTestId("notification-source-count").textContent).toBe(
+      "3",
     );
-    expect(collapseFooter.contains(collapse)).toBe(true);
-    expect(list.contains(collapse)).toBe(false);
-    expect(collapseFooter.className).toContain("shrink-0");
-    expect(collapseFooter.className).not.toContain("absolute");
-    expect(list.className).toContain("flex-[0_1_auto]");
-    expect(list.className).toContain("pb-1");
-    expect(list.className).toContain("scroll-fade");
-    expect(list.className).toContain("scroll-fade-b-[1.5rem]");
-    collapse.focus();
-    fireEvent.click(collapse, { detail: 0 });
-    // The total crossfades in while expanded rows settle, so release does not
-    // leave an empty beat before the rested count appears.
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
-    expect(clearSlot.style.height).toBe("0px");
-    expect(clearSlot.style.marginBottom).toBe("-8px");
-    expect(screen.getAllByTestId("notification-row")[0]).toBe(priorityRow);
-    expect(
-      priorityRow.closest<HTMLElement>("[data-notification-group]")?.style
-        .opacity,
-    ).not.toBe("0");
-    expect(document.activeElement).toBe(
-      screen.getByTestId("notifications-count-button"),
-    );
-    expect(
-      screen
-        .getByTestId("notifications-count-button")
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
-    expect(screen.getByTestId("notifications-collapse")).toBeTruthy();
-    finishShadeCollapse();
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
+    expect(screen.queryByTestId("notifications-count-button")).toBeNull();
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
-    expect(screen.getByTestId("notification-row")).toBe(priorityRow);
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
-    expect(document.activeElement).toBe(
-      screen.getByTestId("notifications-count-button"),
-    );
+    expect(screen.queryByTestId("notifications-collapse-footer")).toBeNull();
   });
 
-  it("suppresses a drag release click without blocking keyboard activation", () => {
-    seedTriage();
+  it("opens notifications that arrive after an initially empty render", () => {
+    __setHydratedForTests(true);
     render(<NotificationsHomeCenter />);
+
+    act(() => {
+      __ingestNotificationForTests(
+        makeNotification({ priority: "normal", title: "Hydrated alert" }),
+      );
+    });
+
     const list = screen.getByTestId("home-notification-list");
-    let countButton = screen.getByTestId("notifications-count-button");
-
-    countButton.focus();
-    fireEvent.click(countButton);
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(countButton.getAttribute("aria-expanded")).toBe("true");
-    expect(document.activeElement).toBe(
-      screen.getByTestId("notifications-collapse"),
-    );
-    collapseShade();
-    expect(document.activeElement).toBe(countButton);
-
-    countButton = screen.getByTestId("notifications-count-button");
-    fireEvent.pointerDown(countButton, {
-      pointerType: "mouse",
-      isPrimary: true,
-      pointerId: 82,
-      clientX: 10,
-      clientY: 10,
-    });
-    fireEvent.pointerMove(countButton, {
-      pointerType: "mouse",
-      pointerId: 82,
-      clientX: 10,
-      clientY: 30,
-    });
-    fireEvent.pointerUp(countButton, {
-      pointerType: "mouse",
-      pointerId: 82,
-      clientX: 10,
-      clientY: 30,
-    });
-    fireEvent.click(countButton, { detail: 1 });
-
-    expect(list.getAttribute("data-shade-mode")).toBe("rested");
-
-    fireEvent.pointerDown(countButton, {
-      pointerType: "mouse",
-      isPrimary: true,
-      pointerId: 83,
-      clientX: 10,
-      clientY: 10,
-    });
-    fireEvent.pointerMove(countButton, {
-      pointerType: "mouse",
-      pointerId: 83,
-      clientX: 10,
-      clientY: 30,
-    });
-    fireEvent.pointerUp(countButton, {
-      pointerType: "mouse",
-      pointerId: 83,
-      clientX: 10,
-      clientY: 30,
-    });
-    fireEvent.click(countButton, { detail: 0 });
-
-    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByText("Hydrated alert")).toBeTruthy();
   });
 
-  it("animates groups that mount when the notification total opens the shade", () => {
-    __ingestNotificationForTests(
-      makeNotification({ priority: "normal", title: "Quiet thing" }),
-    );
-    render(<NotificationsHomeCenter />);
-
-    const countButton = screen.getByTestId("notifications-count-button");
-    countButton.focus();
-    fireEvent.click(countButton, { detail: 0 });
-    const groupContent = document.querySelector(
-      "[data-notification-group-content]",
-    ) as HTMLElement;
-    expect(groupContent.style.opacity).toBe("0");
-    expect(groupContent.style.transform).toContain("-8px");
-    expect(
-      screen.getByTestId("notifications-collapse-footer").style.opacity,
-    ).toBe("0");
-
-    act(() => vi.advanceTimersByTime(40));
-    expect(groupContent.style.opacity).toBe("1");
-    expect(groupContent.style.transform).toContain("0px");
-    expect(
-      screen.getByTestId("notifications-collapse-footer").style.opacity,
-    ).toBe("1");
-    expect(document.activeElement).toBe(
-      screen.getByTestId("notifications-collapse"),
-    );
-  });
-
-  it("does not restore the notification total over focus moved into chat", () => {
+  it("ignores a chat pull release over the notification area", () => {
     seedTriage();
     render(
       <>
-        <input aria-label="Chat composer" />
         <NotificationsHomeCenter />
+        <button
+          type="button"
+          data-chat-gesture-surface=""
+          data-testid="chat-pull-handle"
+        >
+          Chat pull handle
+        </button>
       </>,
     );
-    const countButton = screen.getByTestId("notifications-count-button");
-    countButton.focus();
-    fireEvent.click(countButton);
-    expect(document.activeElement).toBe(
-      screen.getByTestId("notifications-collapse"),
-    );
+    const list = screen.getByTestId("home-notification-list");
+    const chatHandle = screen.getByTestId("chat-pull-handle");
 
-    const chatComposer = screen.getByRole("textbox", {
-      name: "Chat composer",
+    fireEvent.pointerDown(chatHandle, {
+      pointerType: "touch",
+      pointerId: 31,
+      clientY: 600,
     });
-    chatComposer.focus();
-    collapseShade();
+    fireEvent.pointerMove(chatHandle, {
+      pointerType: "touch",
+      pointerId: 31,
+      clientY: 240,
+    });
+    fireEvent.pointerUp(chatHandle, {
+      pointerType: "touch",
+      pointerId: 31,
+      clientY: 240,
+    });
+    fireEvent.click(chatHandle, { detail: 1, clientY: 240 });
 
-    expect(document.activeElement).toBe(chatComposer);
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-settling")).toBe(false);
   });
 
   it("keeps the priority row mounted while an outside tap fades quiet groups", () => {
@@ -1915,7 +1765,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         title: "Files updated",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     const priorityRow = screen.getByTestId("notification-row");
     expandShade();
@@ -1940,16 +1790,16 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         ) ?? "1",
       ),
     ).toBeLessThan(1);
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
     expect(screen.queryByText("Files updated")).toBeNull();
   });
 
-  it("fades expanded cards while retaining the resting priority stack", () => {
+  it("closes every card while retaining priority shells for stable geometry", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     const priorityRow = screen.getByTestId("notification-row");
     expandShade();
@@ -1986,10 +1836,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         ) ?? "1",
       ),
     ).toBeLessThan(1);
-    const overpullCountOpacity = Number.parseFloat(
-      screen.getByTestId("notifications-count").style.opacity,
-    );
-    expect(overpullCountOpacity).toBe(0);
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
     const peeks = screen.getAllByTestId("notification-stack-peek");
     expect(Number.parseFloat(peeks[0].style.opacity)).toBeLessThan(1);
     expect(Number.parseFloat(peeks[1].style.opacity)).toBeLessThan(1);
@@ -2018,27 +1865,33 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(settledContentRule).not.toContain(
       "--eliza-notif-group-content-visibility",
     );
-    const settledSurfaceRule = [
-      ...(list.parentElement
-        ?.querySelector("style")
-        ?.textContent?.matchAll(
-          /\.eliza-notif-scroll:is\(\[data-shade-dragging\], \[data-shade-settling\]\)[^{}]*\.eliza-notif-row-surface\s*\{([^}]*)\}/g,
-        ) ?? []),
-    ]
-      .map((match) => match[1])
-      .find((rule) => rule.includes("opacity:"));
-    expect(settledSurfaceRule).toContain("opacity:");
-    expect(settledSurfaceRule).toContain("!important");
-    expect(settledSurfaceRule).toContain("transition:");
+    const settledMaterialRule = list.parentElement
+      ?.querySelector("style")
+      ?.textContent?.match(
+        /\.eliza-notif-scroll\[data-shade-mode="expanded"\]\[data-shade-settling\][^{}]*\.eliza-notif-glass::after\s*\{([^}]*)\}/,
+      )?.[1];
+    expect(settledMaterialRule).toContain("transition: opacity");
     expect(list.parentElement?.querySelector("style")?.textContent).toContain(
-      ".eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-surface",
+      '.eliza-notif-scroll[data-shade-mode="expanded"]:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-glass',
     );
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+    expect(priorityGroupContent?.style.opacity).toBe("0");
+    expect(priorityGroupContent?.style.transition).toBe("none");
+    expect(
+      priorityGroupContent
+        ?.closest("[data-notification-group]")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(
+      priorityGroupContent
+        ?.closest("[data-notification-group]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
   });
 
-  it("keeps card material fully opaque through a reversible upward drag", () => {
+  it("keeps the same card material through a reversible upward drag", () => {
     __ingestNotificationForTests(
       makeNotification({
         priority: "urgent",
@@ -2060,7 +1913,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         title: "Agent summary",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = expandShade();
     const filesGroup = screen
       .getByText("Files updated")
@@ -2076,6 +1929,13 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const agentSurface = screen
       .getByText("Agent summary")
       .closest<HTMLElement>('[data-testid="notification-row-swipe"]');
+    const mailGroup = screen
+      .getByText("Urgent mail")
+      .closest("[data-notification-group]")
+      ?.querySelector<HTMLElement>("[data-notification-group-content]");
+    const filesContent = filesSurface?.querySelector<HTMLElement>(
+      ".eliza-notif-row-content",
+    );
 
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
@@ -2084,6 +1944,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientX: 12,
       clientY: 160,
     });
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(filesSurface?.style.transform).toBe("");
+    expect(filesContent?.style.transform).toBe("");
+    expect(filesContent?.className).not.toContain("active:scale");
     fireEvent.pointerMove(list, {
       pointerType: "mouse",
       pointerId: 83,
@@ -2092,12 +1956,32 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
 
     expect(list.hasAttribute("data-shade-dragging")).toBe(true);
+    // Count and clear controls own no layout space, so gesture presentation
+    // must never move an already-visible priority stack to compensate for them.
+    expect(mailGroup?.style.transform).toBe("translate3d(0, 0px, 0)");
     const css = list.parentElement?.querySelector("style")?.textContent ?? "";
     const activeDragRule = css.match(
       /\.eliza-notif-scroll\[data-shade-dragging\]\s*\{([^}]*)\}/,
     )?.[1];
-    expect(activeDragRule).toContain("-webkit-mask-image: none");
-    expect(activeDragRule).toContain("mask-image: none");
+    expect(activeDragRule).not.toContain("mask-image");
+    const releaseSettleRule = css.match(
+      /\.eliza-notif-scroll\[data-shade-release-settling\]\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(releaseSettleRule).not.toContain("mask-image");
+    // A pull may animate compositor properties, but changing which element
+    // paints the fill produces a visible first-frame color/rim discontinuity.
+    const gestureMaterialRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(
+        (match) =>
+          match[1]?.includes("data-shade-dragging") ||
+          match[1]?.includes("data-shade-settling") ||
+          match[1]?.includes("data-notification-shade-cancelling"),
+      )
+      .map((match) => match[2] ?? "")
+      .join("\n");
+    expect(gestureMaterialRules).not.toMatch(
+      /background-(?:color|image)|backdrop-filter|mask-image/,
+    );
 
     let filesOpacity = Number.parseFloat(filesGroup?.style.opacity ?? "1");
     let agentOpacity = Number.parseFloat(agentGroup?.style.opacity ?? "1");
@@ -2118,18 +2002,14 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(filesContentOpacity).toBeGreaterThan(0);
     expect(filesContentOpacity).toBeLessThan(1);
     expect(agentContentOpacity).toBeLessThan(filesContentOpacity);
-    let countOpacity = Number.parseFloat(
-      screen.getByTestId("notifications-count").style.opacity,
+    const filesSurfaceOpacity = Number.parseFloat(
+      filesGroup?.style.getPropertyValue(
+        "--eliza-notif-group-surface-visibility",
+      ) ?? "0",
     );
-    let collapseOpacity = Number.parseFloat(
-      screen.getByTestId("notifications-collapse-footer").style.opacity,
-    );
-    expect(countOpacity).toBeGreaterThan(0);
-    expect(countOpacity).toBeLessThan(1);
-    expect(collapseOpacity).toBeGreaterThan(0);
-    expect(collapseOpacity).toBeLessThan(1);
-    expect(countOpacity).toBeLessThan(filesOpacity);
-    expect(screen.getByTestId("notifications-count").style.clipPath).toBe("");
+    expect(filesSurfaceOpacity).toBeCloseTo(filesContentOpacity, 6);
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
+    expect(screen.queryByTestId("notifications-collapse-footer")).toBeNull();
 
     fireEvent.pointerMove(list, {
       pointerType: "mouse",
@@ -2140,12 +2020,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     act(() => vi.advanceTimersByTime(20));
     filesOpacity = Number.parseFloat(filesGroup?.style.opacity ?? "1");
     agentOpacity = Number.parseFloat(agentGroup?.style.opacity ?? "1");
-    countOpacity = Number.parseFloat(
-      screen.getByTestId("notifications-count").style.opacity,
-    );
-    collapseOpacity = Number.parseFloat(
-      screen.getByTestId("notifications-collapse-footer").style.opacity,
-    );
     expect(filesOpacity).toBe(1);
     expect(agentOpacity).toBe(1);
     filesContentOpacity = Number.parseFloat(
@@ -2162,10 +2036,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(filesContentOpacity).toBeLessThan(1);
     expect(agentContentOpacity).toBeGreaterThan(0);
     expect(agentContentOpacity).toBeLessThan(filesContentOpacity);
-    expect(countOpacity).toBeGreaterThan(0);
-    expect(countOpacity).toBeLessThan(1);
-    expect(collapseOpacity).toBeGreaterThan(0);
-    expect(collapseOpacity).toBeLessThan(1);
 
     fireEvent.pointerMove(list, {
       pointerType: "mouse",
@@ -2182,14 +2052,17 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       ),
     ).toBe("");
     expect(
+      filesGroup?.style.getPropertyValue(
+        "--eliza-notif-group-surface-visibility",
+      ),
+    ).toBe("");
+    expect(
       agentGroup?.style.getPropertyValue(
         "--eliza-notif-group-content-visibility",
       ),
     ).toBe("");
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
-    expect(
-      screen.getByTestId("notifications-collapse-footer").style.opacity,
-    ).toBe("1");
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
+    expect(screen.queryByTestId("notifications-collapse-footer")).toBeNull();
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
       pointerId: 83,
@@ -2221,7 +2094,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         title: "Agent summary",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = expandShade();
     const center = screen.getByTestId("home-notification-center");
     const agentGroup = screen
@@ -2318,6 +2191,156 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
   });
 
+  it("clears gesture-owned visibility before a reopened shade starts its next close", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "urgent",
+        source: "mail",
+        title: "Urgent mail",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "normal",
+        source: "files",
+        title: "Files updated",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "low",
+        source: "agent",
+        title: "Agent summary",
+      }),
+    );
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    const priorityRow = screen
+      .getByText("Urgent mail")
+      .closest<HTMLElement>('[data-testid="notification-row"]');
+    if (!priorityRow) throw new Error("Expected the urgent notification row");
+    const priorityGroup = priorityRow.closest<HTMLElement>(
+      "[data-notification-group-content]",
+    );
+    const prioritySurface = priorityRow.closest<HTMLElement>(
+      '[data-testid="notification-row-swipe"]',
+    );
+    const initialMaterial = {
+      groupOpacity: priorityGroup?.style.opacity,
+      groupTransform: priorityGroup?.style.transform,
+      surfaceOpacity: prioritySurface?.style.opacity,
+      surfaceTransform: prioritySurface?.style.transform,
+    };
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 87,
+      clientX: 12,
+      clientY: 160,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 87,
+      clientX: 12,
+      clientY: 20,
+    });
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 87,
+      clientX: 12,
+      clientY: 20,
+    });
+    expect(list.hasAttribute("data-shade-settling")).toBe(true);
+    finishShadeCollapse();
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(
+      priorityGroup?.style.getPropertyValue(
+        "--eliza-notif-group-content-visibility",
+      ),
+    ).toBe("");
+    expect(
+      priorityGroup?.style.getPropertyValue(
+        "--eliza-notif-group-surface-visibility",
+      ),
+    ).toBe("");
+    expect(
+      priorityGroup
+        ?.querySelector<HTMLElement>("[data-notification-disposable-row]")
+        ?.style.getPropertyValue("--eliza-notif-row-content-visibility") ?? "",
+    ).toBe("");
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 88,
+      clientX: 12,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 88,
+      clientX: 12,
+      clientY: 160,
+    });
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 88,
+      clientX: 12,
+      clientY: 160,
+    });
+    act(() => vi.advanceTimersByTime(500));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(
+      priorityGroup?.style.getPropertyValue(
+        "--eliza-notif-group-content-visibility",
+      ),
+    ).toBe("");
+    expect({
+      groupOpacity: priorityGroup?.style.opacity,
+      groupTransform: priorityGroup?.style.transform,
+      surfaceOpacity: prioritySurface?.style.opacity,
+      surfaceTransform: prioritySurface?.style.transform,
+    }).toEqual(initialMaterial);
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 89,
+      clientX: 12,
+      clientY: 160,
+    });
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(
+      priorityGroup?.style.getPropertyValue(
+        "--eliza-notif-group-content-visibility",
+      ),
+    ).toBe("");
+    expect({
+      groupOpacity: priorityGroup?.style.opacity,
+      groupTransform: priorityGroup?.style.transform,
+      surfaceOpacity: prioritySurface?.style.opacity,
+      surfaceTransform: prioritySurface?.style.transform,
+    }).toEqual(initialMaterial);
+
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 89,
+      clientX: 12,
+      clientY: 116,
+    });
+    expect(list.hasAttribute("data-shade-dragging")).toBe(true);
+    expect(prioritySurface?.style.opacity).toBe("1");
+    expect(
+      Number.parseFloat(
+        priorityGroup?.style.getPropertyValue(
+          "--eliza-notif-group-content-visibility",
+        ) ?? "0",
+      ),
+    ).toBeGreaterThan(0);
+  });
+
   it("fades fanned contents without dimming their card material", () => {
     __ingestNotificationForTests(
       makeNotification({
@@ -2333,7 +2356,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         title: "Calendar summary",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const priorityRow = screen.getByTestId("notification-row");
     fireEvent.click(priorityRow);
     act(() => vi.advanceTimersByTime(40));
@@ -2415,7 +2438,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "urgent", title: "Top priority" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const priorityRow = screen.getByTestId("notification-row");
     fireEvent.click(priorityRow);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
@@ -2440,7 +2463,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("gestures expand to all priorities and compress back", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
@@ -2455,82 +2478,12 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
-    expect(screen.getByTestId("notifications-count").textContent).toBe(
-      "3 Notifications",
-    );
-  });
-
-  it("requires X, Clear all, and Confirm? clicks before bulk clearing", () => {
-    seedTriage();
-    render(<NotificationsHomeCenter />);
-    expandShade();
-    const clear = screen.getByTestId("notifications-clear-all");
-    expect(clear.className).toContain("h-8");
-    expect(clear.className).not.toContain("min-h-touch");
-    expect(clear.className).toContain("eliza-notif-clear-all");
-    expect(clear.closest("li")?.className).toContain("justify-end");
-    expect(clear.closest("li")?.className).toContain("px-2");
-    const clearCss = clear
-      .closest("section")
-      ?.querySelector("style")?.textContent;
-    expect(clearCss).toContain(".eliza-notif-clear-all {");
-    expect(clearCss).not.toContain(
-      ".eliza-notif-clear-all:not([data-confirming]):hover",
-    );
-    expect(clear.dataset.confirming).toBeUndefined();
-    expect(clear.dataset.clearStage).toBe("0");
-
-    fireEvent.click(clear);
-
-    expect(clear.dataset.confirming).toBe("true");
-    expect(clear.dataset.clearStage).toBe("1");
-    expect(clear.getAttribute("aria-label")).toBe(
-      "Continue clearing all notifications",
-    );
-    expect(
-      clear.querySelector("[data-notification-clear-arming-label]")
-        ?.textContent,
-    ).toBe("Clear all");
-    expect(__getStateForTests().notifications).toHaveLength(3);
-
-    fireEvent.click(clear);
-
-    expect(clear.dataset.confirming).toBe("true");
-    expect(clear.dataset.clearStage).toBe("2");
-    expect(clear.getAttribute("aria-label")).toBe(
-      "Confirm clear all notifications",
-    );
-    expect(
-      clear.querySelector("[data-notification-clear-confirming-label]")
-        ?.textContent,
-    ).toBe("Confirm?");
-    expect(__getStateForTests().notifications).toHaveLength(3);
-
-    fireEvent.click(clear);
-    expect(__getStateForTests().notifications).toHaveLength(0);
-  });
-
-  it("resets clear confirmation after five seconds or an outside press", () => {
-    seedTriage();
-    render(<NotificationsHomeCenter />);
-    expandShade();
-    const clear = screen.getByTestId("notifications-clear-all");
-
-    fireEvent.click(clear);
-    expect(clear.dataset.confirming).toBe("true");
-    act(() => vi.advanceTimersByTime(5_000));
-    expect(clear.dataset.confirming).toBeUndefined();
-
-    fireEvent.click(clear);
-    expect(clear.dataset.confirming).toBe("true");
-    fireEvent.pointerDown(document.body);
-    expect(clear.dataset.confirming).toBeUndefined();
-    expect(__getStateForTests().notifications).toHaveLength(3);
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
   });
 
   it("a mouse pull-down past the commit travel expands the shade", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
@@ -2561,7 +2514,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("keeps an owned pull open when preview insertion changes scrollTop", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     Object.defineProperty(list, "scrollTop", {
       configurable: true,
@@ -2619,7 +2572,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         source: "agent",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
 
@@ -2640,11 +2593,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(list.getAttribute("data-shade-preview")).toBe("expanding");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
-    const countOpacity = Number.parseFloat(
-      screen.getByTestId("notifications-count").style.opacity,
-    );
-    expect(countOpacity).toBeGreaterThan(0);
-    expect(countOpacity).toBeLessThan(1);
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
     const revealedGroups = list.querySelectorAll(
       ":scope > [data-notification-pull-reveal]",
     );
@@ -2665,28 +2614,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientY: 80,
     });
     act(() => vi.advanceTimersByTime(20));
-    expect(
-      Number.parseFloat(
-        screen.getByTestId("notifications-count").style.opacity,
-      ),
-    ).toBeGreaterThan(0);
-    const expectedCountOffset = notificationGroupContainerOffset(
-      dampenPull(70),
-      false,
-      false,
-    );
-    expect(screen.getByTestId("notifications-count").style.transform).toBe(
-      `translate3d(0, ${expectedCountOffset}px, 0)`,
-    );
-    const clear = screen.getByTestId("notifications-clear-all");
-    const clearReveal = clear.closest("li") as HTMLElement;
-    expect(Number.parseFloat(clearReveal.style.opacity)).toBeGreaterThan(0);
-    expect(Number.parseFloat(clearReveal.style.opacity)).toBeLessThan(1);
-    const collapseReveal = Number.parseFloat(
-      screen.getByTestId("notifications-collapse-footer").style.opacity,
-    );
-    expect(collapseReveal).toBeGreaterThan(0);
-    expect(collapseReveal).toBeLessThan(1);
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
+    expect(screen.queryByTestId("notifications-collapse-footer")).toBeNull();
     for (const group of revealedGroups) {
       const content = group.querySelector<HTMLElement>(
         "[data-notification-group-content]",
@@ -2701,7 +2630,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "normal", source: "files" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
@@ -2732,11 +2661,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const groupContent = list.querySelector<HTMLElement>(
       "[data-notification-group-content]",
     );
-    const clearSlot = list.querySelector<HTMLElement>(
-      "[data-notification-clear-slot]",
-    );
-    const count = screen.getByTestId("notifications-count");
-    const collapse = screen.getByTestId("notifications-collapse-footer");
 
     expect(list.style.transform).toBe("");
     expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
@@ -2744,24 +2668,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
     expect(list.getAttribute("data-shade-preview")).toBe("expanding");
     expect(list.hasAttribute("data-shade-dragging")).toBe(true);
-    const css = list.parentElement?.querySelector("style")?.textContent ?? "";
-    expect(css).toContain(".eliza-notif-scroll[data-shade-dragging]");
-    const releaseRule = css.match(
-      /\.eliza-notif-scroll\[data-shade-release-settling\]\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(releaseRule).toContain("animation: none");
-    expect(releaseRule).toContain("-webkit-mask-image: none");
-    expect(releaseRule).toContain("mask-image: none");
-    const rowAnimationGuard = css
-      .match(/[^{}]+\{\s*animation: none !important;\s*\}/g)
-      ?.find((rule) => rule.includes("data-shade-release-settling"));
-    expect(rowAnimationGuard).toContain(
-      '.eliza-notif-scroll[data-shade-mode="expanded"] .eliza-notif-row',
-    );
     expect(groupContent?.style.transform).toBe(expectedTransform);
-    expect(clearSlot?.style.transform).toBe(expectedTransform);
-    expect(count.style.transform).toBe(expectedTransform);
-    expect(collapse.style.transform).toBe("translateY(0px)");
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
+    expect(screen.queryByTestId("notifications-collapse-footer")).toBeNull();
 
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
@@ -2785,7 +2694,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("finishes a deep-pull release transaction before an outside close", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
 
     fireEvent.pointerDown(list, {
@@ -2841,10 +2750,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         title: "Agent summary",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
-    const restingClear = screen.getByTestId("notifications-clear-all");
-    expect(restingClear.closest("li")?.style.opacity).toBe("0");
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
       isPrimary: true,
@@ -2861,9 +2768,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const previewGroups = Array.from(
       list.querySelectorAll<HTMLElement>("[data-notification-pull-reveal]"),
     );
-    expect(previewGroups).toHaveLength(2);
-    expect(screen.getByTestId("notifications-clear-all")).toBe(restingClear);
-    expect(screen.getByTestId("notifications-collapse")).toBeTruthy();
+    expect(previewGroups).toHaveLength(3);
+    expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
       pointerId: 9,
@@ -2893,12 +2799,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         );
       }),
     ).toBe(true);
-    expect(screen.getByTestId("notifications-clear-all")).toBeTruthy();
-    expect(screen.getByTestId("notifications-collapse")).toBeTruthy();
+    expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     act(() => vi.advanceTimersByTime(100));
     expect(previewGroups.every((group) => group.isConnected)).toBe(true);
-    expect(screen.getByTestId("notifications-clear-all")).toBeTruthy();
-    expect(screen.getByTestId("notifications-collapse")).toBeTruthy();
+    expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     act(() => vi.advanceTimersByTime(393));
     expect(center.hasAttribute("data-notification-shade-cancelling")).toBe(
       true,
@@ -2908,12 +2812,15 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(center.hasAttribute("data-notification-shade-cancelling")).toBe(
       false,
     );
-    expect(previewGroups.every((group) => !group.isConnected)).toBe(true);
-    expect(screen.getByTestId("notifications-clear-all")).toBe(restingClear);
-    expect(restingClear.closest("li")?.style.opacity).toBe("0");
-    expect(restingClear.closest("li")?.getAttribute("aria-hidden")).toBe(
-      "true",
-    );
+    const retainedGroups = previewGroups.filter((group) => group.isConnected);
+    expect(retainedGroups).toHaveLength(1);
+    expect(retainedGroups[0]?.getAttribute("aria-hidden")).toBe("true");
+    expect(retainedGroups[0]?.hasAttribute("inert")).toBe(true);
+    expect(
+      retainedGroups[0]?.querySelector<HTMLElement>(
+        "[data-notification-group-content]",
+      )?.style.opacity,
+    ).toBe("0");
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
   });
@@ -2925,7 +2832,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "normal", source: "files" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
@@ -2986,45 +2893,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(preview?.isConnected).toBe(true);
   });
 
-  it("clears a cancelled-pull settle before starting a committed collapse", () => {
-    seedTriage();
-    render(<NotificationsHomeCenter />);
-    const list = expandShade();
-    fireEvent.pointerDown(list, {
-      pointerType: "mouse",
-      isPrimary: true,
-      pointerId: 110,
-      clientX: 10,
-      clientY: 160,
-    });
-    fireEvent.pointerMove(list, {
-      pointerType: "mouse",
-      pointerId: 110,
-      clientX: 10,
-      clientY: 130,
-    });
-    fireEvent.pointerUp(list, {
-      pointerType: "mouse",
-      pointerId: 110,
-      clientX: 10,
-      clientY: 130,
-    });
-    const center = screen.getByTestId("home-notification-center");
-    expect(center.hasAttribute("data-notification-shade-cancelling")).toBe(
-      true,
-    );
-
-    act(() => vi.advanceTimersByTime(100));
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
-    expect(center.hasAttribute("data-notification-shade-cancelling")).toBe(
-      false,
-    );
-    act(() => vi.advanceTimersByTime(459));
-    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    act(() => vi.advanceTimersByTime(1));
-    expect(list.getAttribute("data-shade-mode")).toBe("rested");
-  });
-
   it("clears a cancelled-pull settle before a stack opens", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "urgent", source: "calendar" }),
@@ -3032,7 +2900,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "normal", source: "calendar" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
@@ -3073,7 +2941,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("a touch pull-down expands the shade (native non-passive listener path)", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     fireEvent.touchStart(list, {
       touches: [{ clientX: 10, clientY: 10 }],
@@ -3086,52 +2954,12 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     // Stacks persist through the pull; the peeks carry the revealed rows.
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
-  });
-
-  it("keeps preview Collapse inert and ignores its deep-pull release click", () => {
-    seedTriage();
-    render(<NotificationsHomeCenter />);
-    const list = screen.getByTestId("home-notification-list");
-
-    fireEvent.touchStart(list, {
-      touches: [{ identifier: 15, clientX: 180, clientY: 120 }],
-    });
-    fireEvent.touchMove(list, {
-      touches: [{ identifier: 15, clientX: 180, clientY: 620 }],
-    });
-    const collapseFooter = screen.getByTestId("notifications-collapse-footer");
-    expect(collapseFooter.getAttribute("aria-hidden")).toBe("true");
-
-    act(() => vi.advanceTimersByTime(700));
-    fireEvent.touchEnd(list, {
-      touches: [],
-      changedTouches: [{ identifier: 15, clientX: 180, clientY: 620 }],
-    });
-    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(collapseFooter.getAttribute("aria-hidden")).toBe("true");
-    expect(list.hasAttribute("data-shade-release-settling")).toBe(true);
-    expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
-      "0px",
-    );
-    expect(collapseFooter.style.transform).toBe("translateY(0px)");
-
-    fireEvent.click(screen.getByTestId("notifications-collapse"), {
-      detail: 1,
-    });
-    expect(list.hasAttribute("data-shade-settling")).toBe(false);
-
-    act(() => vi.advanceTimersByTime(700));
-    expect(list.hasAttribute("data-shade-release-settling")).toBe(false);
-    expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
-
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
-    expect(list.hasAttribute("data-shade-settling")).toBe(true);
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
   });
 
   it("keeps an owned touch pull after preview scroll anchoring", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     Object.defineProperty(list, "scrollTop", {
       configurable: true,
@@ -3157,7 +2985,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("retains a native pull when a notification arrives mid-gesture", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
 
     fireEvent.touchStart(list, {
@@ -3190,6 +3018,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         <NotificationsHomeCenter emptyGestureTargetRef={surfaceRef} />
       </div>,
     );
+    collapseShade();
     const surface = screen.getByTestId("home-gesture-surface");
     const list = screen.getByTestId("home-notification-list");
     Object.defineProperty(surface, "scrollTop", {
@@ -3242,6 +3071,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         <NotificationsHomeCenter emptyGestureTargetRef={surfaceRef} />
       </div>,
     );
+    collapseShade();
     const surface = screen.getByTestId("home-gesture-surface");
     const list = screen.getByTestId("home-notification-list");
     Object.defineProperty(surface, "scrollTop", {
@@ -3295,6 +3125,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         <NotificationsHomeCenter emptyGestureTargetRef={surfaceRef} />
       </div>,
     );
+    collapseShade();
     const surface = screen.getByTestId("home-gesture-surface");
     const list = screen.getByTestId("home-notification-list");
 
@@ -3315,9 +3146,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
       "0px",
     );
-    expect(
-      screen.getByTestId("notifications-collapse-footer").style.transform,
-    ).toBe("translateY(0px)");
+    expect(screen.queryByTestId("notifications-collapse-footer")).toBeNull();
 
     act(() => vi.advanceTimersByTime(700));
     expect(list.hasAttribute("data-shade-release-settling")).toBe(false);
@@ -3331,7 +3160,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("a continuous drag that scrolls the expanded list back to the top does NOT collapse (re-base at the crossing)", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
@@ -3371,7 +3200,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         title: "Normal thing",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
@@ -3387,7 +3216,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("the wheel gesture is DIRECTIONAL: trailing same-direction momentum never collapses what it just expanded", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
@@ -3403,7 +3232,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("trackpad fingers-up (wheel deltaY > 0) at the top collapses the expanded shade", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
@@ -3418,16 +3247,16 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
     finishShadeCollapse();
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
   });
 
   it("a mouse drag UP collapses the expanded shade; drag down while expanded is a no-op", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
@@ -3480,7 +3309,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("a touch drag UP collapses the expanded shade when the list has no scroll overflow", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
@@ -3509,7 +3338,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
     const list = expandShade();
     const center = screen.getByTestId("home-notification-center");
-    expect(list.className).toContain("flex-[0_1_auto]");
+    expect(list.className).toContain("flex-1");
 
     fireEvent.touchStart(center, {
       touches: [{ clientX: 150, clientY: 420 }],
@@ -3525,7 +3354,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("an upward mouse drag on the empty notification region collapses the shade", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = expandShade();
     const center = screen.getByTestId("home-notification-center");
 
@@ -3555,7 +3384,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("collapses a fanned shade from empty space below its cards", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = expandShade();
     fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
     act(() => vi.advanceTimersByTime(40));
@@ -3588,10 +3417,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("ignores empty-region drags while the shade close is settling", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = expandShade();
     const center = screen.getByTestId("home-notification-center");
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     expect(list.hasAttribute("data-shade-settling")).toBe(true);
 
     // Neither an aborted nudge nor a commit-distance swipe may start a second
@@ -3664,7 +3494,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
     const list = expandShade();
     const center = screen.getByTestId("home-notification-center");
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     expect(list.hasAttribute("data-shade-settling")).toBe(true);
 
     fireEvent.touchStart(center, {
@@ -3688,7 +3519,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("a bottom-edge touch drag closes an overflowing expanded shade", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expandShade();
     setOverflowingListGeometry(list);
@@ -3704,7 +3535,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("an upward touch in the middle of overflowing content scrolls instead of collapsing", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expandShade();
     setOverflowingListGeometry(list);
@@ -3718,7 +3549,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("rebases an upward close when an overflowing touch reaches the list end", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expandShade();
     setOverflowingListGeometry(list);
@@ -3738,7 +3569,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("a touch drag DOWN while expanded never collapses (directional, not a toggle)", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
@@ -3750,7 +3581,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("the pull is inert while the list is scrolled away from the top", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
     Object.defineProperty(list, "scrollTop", {
       configurable: true,
@@ -3781,21 +3612,18 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
   });
 
-  it("a single notification stays closed behind its total and can expand", () => {
+  it("a single notification shows by default without a total control", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "urgent", title: "Only one" }),
     );
     render(<NotificationsHomeCenter />);
     expect(screen.queryByTestId("notifications-pull-hint")).toBeNull();
     expect(screen.queryByTestId("notifications-expand-toggle")).toBeNull();
-    expect(screen.getByTestId("notifications-count").textContent).toBe(
-      "1 Notification",
-    );
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
     const list = screen.getByTestId("home-notification-list");
-    fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(screen.getByTestId("notification-row")).toBeTruthy();
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+    expect(screen.queryByTestId("notifications-collapse")).toBeNull();
   });
 });
 
@@ -3832,7 +3660,7 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Tap me" }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     const swipe = screen.getByTestId("notification-row-swipe");
     const button = screen.getByTestId("notification-row");
@@ -3861,7 +3689,7 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
         source: "agent",
       }),
     );
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
     const li = screen.getByText("Swipe away").closest("li") as HTMLElement;
@@ -3894,7 +3722,7 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
       __ingestNotificationForTests(
         makeNotification({ title: "Hold me", deepLink: "/x" }),
       );
-      render(<NotificationsHomeCenter />);
+      renderRestedNotifications();
       expandShade();
       const swipe = screen.getByTestId("notification-row-swipe");
       pointer(swipe, "pointerDown", { x: 10, y: 10 });
@@ -3911,7 +3739,7 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
 
   it("a vertical drag on a row never doubles as an open", () => {
     __ingestNotificationForTests(makeNotification({ title: "Draggy" }));
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     const swipe = screen.getByTestId("notification-row-swipe");
     const button = screen.getByTestId("notification-row");
@@ -3926,7 +3754,7 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
 
   it("marks the row + its center with the overlay-exemption hooks the collapse-swallower reads", () => {
     __ingestNotificationForTests(makeNotification({ title: "Exempt" }));
-    render(<NotificationsHomeCenter />);
+    renderRestedNotifications();
     expandShade();
     // The ContinuousChatOverlay outside-tap collapse-swallower exempts anything
     // under [data-testid="home-notification-center"] or [data-notif-row]; both

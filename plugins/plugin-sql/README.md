@@ -66,7 +66,7 @@ The Caddyfile at `plugins/plugin-sql/caddy/electric-proxy.Caddyfile` forwards ev
 | `ELIZA_CLOUD_SERVICE_KEY` | No | — | Service key for authenticating write-back requests. |
 | `ELECTRIC_CLOUD_SOURCE_ID` | Test-only | — | Electric Cloud source ID (consumed by Caddy, not the runtime). |
 | `ELECTRIC_CLOUD_SECRET` | Test-only | — | Electric Cloud JWT secret (consumed by Caddy, not the runtime). |
-| `ELIZA_PGLITE_DISABLE_EXTENSIONS` | No | `false` | Set to `1` to disable PGlite extensions (vector, live, fuzzystrmatch, Electric sync). |
+| `ELIZA_PGLITE_DISABLE_EXTENSIONS` | No | `false` | Set to `1` to disable PGlite extensions (vector, live, fuzzystrmatch, pg_trgm, Electric sync). |
 | `ENABLE_DATA_ISOLATION` | No | `false` | When `true`, enables PostgreSQL Row Level Security per-server isolation. |
 | `ELIZA_SERVER_ID` | Conditional | — | Required when `ENABLE_DATA_ISOLATION=true`; becomes the RLS server UUID. |
 | `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS` | No | `false` | Allow column drops and other destructive schema changes at startup. |

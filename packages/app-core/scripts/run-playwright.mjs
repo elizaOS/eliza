@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for run playwright mjs. */
+/**
+ * Runs Playwright in a given cwd via Bun with color-forcing env vars stripped
+ * (usage: <cwd> <playwright args...>), resolving the Bun binary from $BUN or
+ * the running executable.
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

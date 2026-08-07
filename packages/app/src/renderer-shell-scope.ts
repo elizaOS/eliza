@@ -3,13 +3,13 @@
  * renderer services (`@elizaos/ui/platform/renderer-services`). The app boots
  * one renderer per window — the primary dashboard plus special shells like
  * popouts, detached surface/settings windows, the phone companion, app
- * windows, the model tester, and the /embed iframe — and background services
+ * windows, and the /embed iframe — and background services
  * (e.g. LifeOps activity capture) must run only in the shells they declare,
  * not in every window that happens to import their registration module.
  *
  * The classification is a pure function of the boot inputs main.tsx already
  * resolves, so the precedence here (companion > popout > detached window
- * shells > app windows > model tester > embed > main) is unit-testable without
+ * shells > app windows > embed > main) is unit-testable without
  * a browser boot.
  */
 import type { RendererShellKind } from "@elizaos/ui/platform/renderer-services";
@@ -20,7 +20,6 @@ export interface RendererShellScopeInputs {
   isPopout: boolean;
   isPhoneCompanion: boolean;
   appWindowSlug: string | null;
-  isModelTesterRoute: boolean;
   isEmbedRoute: boolean;
 }
 
@@ -39,9 +38,6 @@ export function resolveRendererShellKind(
       return "detached";
     case "main":
       break;
-  }
-  if (inputs.appWindowSlug === "model-tester" || inputs.isModelTesterRoute) {
-    return "model-tester";
   }
   if (inputs.appWindowSlug !== null) return "app-window";
   if (inputs.isEmbedRoute) return "embed";

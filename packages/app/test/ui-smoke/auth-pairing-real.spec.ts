@@ -181,6 +181,11 @@ test("remote pairing against real app-core mints a machine session and survives 
     expect(authRequests).toContain("POST /api/auth/pair auth=none");
     expect(authRequests).toContain("GET /api/auth/status auth=bearer");
   } finally {
+    // Close the browser-owned WebSocket before awaiting server shutdown. The
+    // real app reconnect loop otherwise keeps an upgraded socket alive and can
+    // make `server.close()` consume the test's entire timeout after every
+    // assertion has already passed.
+    await page.close();
     await api.close();
   }
 });

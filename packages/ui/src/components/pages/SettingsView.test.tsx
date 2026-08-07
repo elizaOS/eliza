@@ -1,3 +1,4 @@
+/** Verifies SettingsView through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Renders the real SettingsView against mocked state + stub sections to cover
@@ -156,7 +157,8 @@ vi.mock("../settings/settings-sections", () => {
         .sort((a, b) => a.order - b.order)
         .map(({ group, label, items }) => ({ group, label, items }));
     },
-    readSettingsHashSection: () => null,
+    readSettingsHashSection: () =>
+      window.location.hash.length > 1 ? window.location.hash.slice(1) : null,
     replaceSettingsHash: vi.fn(),
     settingsSectionLabel: (section: { defaultLabel: string }) =>
       section.defaultLabel,
@@ -191,6 +193,7 @@ function hubRow(id: string): HTMLButtonElement {
 }
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/settings");
   appMock.value = makeContext();
   permissionPrimingMock.calls = [];
   crashControl.shouldThrow = true;
@@ -250,6 +253,17 @@ describe("SettingsView", () => {
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
     expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
+  });
+
+  it("synchronizes same-page settings navigation dispatched through popstate", () => {
+    render(<SettingsView initialSection="identity" />);
+    expect(screen.getByTestId("stub-identity")).toBeTruthy();
+
+    window.history.pushState(null, "", "/settings#runtime");
+    fireEvent(window, new PopStateEvent("popstate"));
+
+    expect(screen.getByTestId("stub-runtime")).toBeTruthy();
+    expect(screen.queryByTestId("stub-identity")).toBeNull();
   });
 
   it("opens a targeted permission priming modal from a settings navigate payload", async () => {

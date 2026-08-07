@@ -14,7 +14,7 @@ import {
   test,
 } from "bun:test";
 import { readFileSync } from "node:fs";
-import { KeyNotFoundError, KmsError, orgKey } from "@elizaos/security/kms";
+import { KeyNotFoundError, KmsError, orgKey } from "@elizaos/core/security/kms";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -40,7 +40,7 @@ import { provisioningJobService } from "./provisioning-jobs";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
 
-// Drive the REAL @elizaos/security crypto stack so the errors the snapshot-degrade
+// Drive the real core KMS stack so the errors the snapshot-degrade
 // path classifies are genuine (`AeadError`, `KeyNotFoundError`) — not hand-rolled
 // stand-ins. In NODE_ENV=test, getKmsClient() resolves the in-process memory
 // backend, which is exactly what orphans keys across a restart in prod.
@@ -571,6 +571,7 @@ function customSandbox(): AgentSandbox {
     error_count: 0,
     environment_vars: { ELIZA_API_TOKEN: "agent-token" },
     environment_revision: 0,
+    lifecycle_revision: 0,
     node_id: "node-1",
     container_name: "agent-e06bb509",
     bridge_port: 18923,
@@ -1020,9 +1021,7 @@ describe("ElizaSandboxService shared runtime bridge", () => {
         "findRunningSandbox",
       ).mockResolvedValue(sandbox);
       const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
-      const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
-        undefined,
-      );
+      const historyMergeSpy = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
 
       try {
         const response = await runWithCloudBindings(
@@ -1053,11 +1052,11 @@ describe("ElizaSandboxService shared runtime bridge", () => {
           },
         });
         expect(historyGetSpy).toHaveBeenCalled();
-        expect(historyUpsertSpy).not.toHaveBeenCalled();
+        expect(historyMergeSpy).not.toHaveBeenCalled();
       } finally {
         findRunningSandboxSpy.mockRestore();
         historyGetSpy.mockRestore();
-        historyUpsertSpy.mockRestore();
+        historyMergeSpy.mockRestore();
       }
     },
   );
@@ -1072,9 +1071,7 @@ describe("ElizaSandboxService shared runtime bridge", () => {
         "findRunningSandbox",
       ).mockResolvedValue(sandbox);
       const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
-      const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
-        undefined,
-      );
+      const historyMergeSpy = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
 
       try {
         const response = await runWithCloudBindings(
@@ -1098,11 +1095,11 @@ describe("ElizaSandboxService shared runtime bridge", () => {
         expect(body).toContain("no shared model configured");
         expect(body).toContain("event: done");
         expect(historyGetSpy).toHaveBeenCalled();
-        expect(historyUpsertSpy).not.toHaveBeenCalled();
+        expect(historyMergeSpy).not.toHaveBeenCalled();
       } finally {
         findRunningSandboxSpy.mockRestore();
         historyGetSpy.mockRestore();
-        historyUpsertSpy.mockRestore();
+        historyMergeSpy.mockRestore();
       }
     },
   );
@@ -1115,9 +1112,7 @@ describe("ElizaSandboxService shared runtime bridge", () => {
       "findRunningSandbox",
     ).mockResolvedValue(sandbox);
     const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
-    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
-      undefined,
-    );
+    const historyMergeSpy = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
 
     try {
       const response = await runWithCloudBindings(
@@ -1156,11 +1151,11 @@ describe("ElizaSandboxService shared runtime bridge", () => {
         },
       });
       expect(historyGetSpy).toHaveBeenCalled();
-      expect(historyUpsertSpy).toHaveBeenCalledTimes(1);
+      expect(historyMergeSpy).toHaveBeenCalledTimes(1);
     } finally {
       findRunningSandboxSpy.mockRestore();
       historyGetSpy.mockRestore();
-      historyUpsertSpy.mockRestore();
+      historyMergeSpy.mockRestore();
     }
   });
 });
@@ -2237,7 +2232,7 @@ describe("ElizaSandboxService heartbeat", () => {
         sandboxId: sandbox.sandbox_id,
         nodeId: sandbox.node_id,
         containerName: sandbox.container_name,
-        updatedAt: sandbox.updated_at,
+        lifecycleRevision: sandbox.lifecycle_revision,
       });
     } finally {
       findSpy.mockRestore();
@@ -3714,6 +3709,80 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     }
   });
 
+  test("(d) a missing-node-metadata hydration failure (node purged from docker_nodes) → ignorable, delete proceeds", async () => {
+    const svc = await makeSvc();
+    const deletedSandbox = { ...customSandbox(), id: AGENT, organization_id: ORG };
+    const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+      ok: true,
+      sandboxId: SANDBOX_ID,
+      status: "running",
+      sourcePoolId: null,
+    });
+    // The exact shape hydrateContainerFromDb throws when the sandbox row
+    // points at a node that no longer has a docker_nodes record: the host is
+    // gone, so there is nothing left to stop.
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      error: new Error(
+        '[docker-sandbox] Missing persisted docker node metadata for node "node-decommissioned"',
+      ),
+    });
+    const commit = spyOn(svc, "commitAgentRowDelete").mockResolvedValue({
+      success: true,
+      deletedSandbox,
+    });
+    const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
+    const historySpy = spyOn(sharedRuntimeHistoryRepository, "deleteByAgent").mockResolvedValue(0);
+    const infoSpy = spyOn(logger, "info").mockImplementation(() => {});
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const res = (await svc.deleteAgent(AGENT, ORG)) as { success: boolean };
+      expect(res.success).toBe(true);
+      expect(commit).toHaveBeenCalledTimes(1);
+      const infoed = infoSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(infoed).toContain("already absent");
+      const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(warned).not.toContain("ABANDONING");
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      commit.mockRestore();
+      apiKeySpy.mockRestore();
+      historySpy.mockRestore();
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("(e) an unrelated hydration failure (missing port data) → still NOT ignorable, delete aborts", async () => {
+    const svc = await makeSvc();
+    const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+      ok: true,
+      sandboxId: SANDBOX_ID,
+      status: "running",
+      sourcePoolId: null,
+    });
+    // A sibling hydrateContainerFromDb failure that does NOT mean the host is
+    // gone — the container may still be running, so the delete must escalate.
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      error: new Error(
+        '[docker-sandbox] Missing port data for "sandbox-e06bb509": bridge=null, webUi=null',
+      ),
+    });
+    const commit = spyOn(svc, "commitAgentRowDelete");
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const res = (await svc.deleteAgent(AGENT, ORG)) as { success: boolean; error?: string };
+      expect(res.success).toBe(false);
+      expect(res.error).toBe("Failed to delete sandbox");
+      expect(commit).not.toHaveBeenCalled();
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      commit.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
   test("the bounded teardown runs OUTSIDE the row-delete phase (sequenced, not nested)", async () => {
     const svc = await makeSvc();
     const order: string[] = [];
@@ -5170,7 +5239,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
   // the pre-upgrade snapshot it wrote — decrypt then throws KeyNotFoundError on
   // resume. That must degrade to a FRESH boot (agent comes up without prior
   // in-memory state), NOT brick the whole provision closed. Drives the REAL
-  // provision() body; the thrown error is the REAL @elizaos/security
+  // provision() body; the thrown error is from the real core KMS
   // KeyNotFoundError.
   test("(10) an orphaned snapshot (KeyNotFoundError on getLatestBackup) degrades to a fresh boot", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
@@ -5983,7 +6052,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
 });
 
 // Snapshot-degrade error classification (`isUnrecoverableSnapshotError`), proven
-// against REAL @elizaos/security errors produced by the crypto stack — the
+// against real core KMS errors produced by the crypto stack — the
 // precise crypto-vs-transient distinction the degrade path keys on.
 describe("isUnrecoverableSnapshotError (permanent-vs-transient classification)", () => {
   test("classifies a real KeyNotFoundError (memory-KMS key rotated away) as unrecoverable", async () => {
@@ -8434,7 +8503,8 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       const sql = new PgDialect().sqlToQuery(whereClause).sql.toLowerCase();
       expect(sql).toContain("deletion_attempt_id");
       expect(sql).toContain("environment_revision");
-      expect(sql).toContain("updated_at");
+      expect(sql).toContain("lifecycle_revision");
+      expect(sql).not.toContain("updated_at");
       expect(sql).toContain("claimed_at");
     } finally {
       upgradeTransactionImpl = null;

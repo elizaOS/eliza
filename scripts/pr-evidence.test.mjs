@@ -17,6 +17,7 @@ import {
   fetchPrEvidenceReleases,
   isReleaseFullError,
   MAX_ASSETS_PER_RELEASE,
+  patchEvidenceHead,
   patchRow,
   prEvidenceReleaseIndex,
   prEvidenceTagForIndex,
@@ -421,5 +422,16 @@ describe("row rendering and body patching", () => {
       appended,
       /<!-- evidence-row:llm-trajectory -->\n- \[x\] t\n$/,
     );
+  });
+
+  it("sets and refreshes the exact evidence head marker", () => {
+    const first = "a".repeat(40);
+    const next = "b".repeat(40);
+    const inserted = patchEvidenceHead("# Evidence Gate\n\nRows", first);
+    assert.match(inserted, new RegExp(`<!-- evidence-head:${first} -->`));
+    const refreshed = patchEvidenceHead(inserted, next);
+    assert.match(refreshed, new RegExp(`<!-- evidence-head:${next} -->`));
+    assert.ok(!refreshed.includes(first));
+    assert.throws(() => patchEvidenceHead(inserted, "short"), /full 40/);
   });
 });

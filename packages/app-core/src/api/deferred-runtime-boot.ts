@@ -46,6 +46,9 @@ let bootInFlight: Promise<void> | null = null;
  * deferral would be a regression, not an optimization.
  */
 function hasConfiguredProviderEnv(): boolean {
+  if (process.env.OLLAMA_BASE_URL?.trim()) {
+    return true;
+  }
   return Object.keys(PROVIDER_PLUGIN_MAP).some((envKey) =>
     Boolean(process.env[envKey]?.trim()),
   );

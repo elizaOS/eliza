@@ -262,9 +262,19 @@ export interface StartupCoordinatorView {
     probeForExistingInstall: boolean;
     defaultTarget: "embedded-local" | "remote-backend" | "cloud-managed" | null;
   };
-  legacyPhase: StartupPhase;
   loading: boolean;
   terminal: boolean;
+  isShellPaintable: boolean;
+  isInteractive: boolean;
+  statusMessageKey:
+    | "startupshell.Starting"
+    | "startupshell.InitializingAgent"
+    | "startupshell.Loading";
+  error: {
+    reason: StartupErrorReason;
+    message: string;
+    timedOut: boolean;
+  } | null;
   target: "embedded-local" | "remote-backend" | "cloud-managed" | null;
   phase: StartupCoordinatorView["state"]["phase"];
 }
@@ -314,7 +324,6 @@ export interface AppState {
   /** Incremented on agent reset so first-run UI shows immediately (not stuck behind VRM reveal). */
   firstRunUiRevealNonce: number;
   firstRunLoading: boolean;
-  startupPhase: StartupPhase;
   startupError: StartupErrorState | null;
   /** StartupCoordinator handle — the sole startup authority. */
   startupCoordinator: StartupCoordinatorView;
@@ -566,9 +575,6 @@ export interface AppState {
   importError: string | null;
   importSuccess: string | null;
 
-  // Startup
-  startupStatus: string | null;
-
   // First-run (the in-chat conductor owns flow state; these are the surviving
   // cross-surface fields: finish-port + CONNECT_EVENT writes, content-pack and
   // character-editor reads, and the cloud-provisioned skip guard)
@@ -683,9 +689,14 @@ export type LoadConversationMessagesResult =
 export const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 export const AGENT_READY_TIMEOUT_MS = 120_000;
 
+export interface SetTabOptions {
+  /** Preserve an exact route already owned by the caller instead of pushing the tab's canonical path. */
+  history?: "push" | "preserve";
+}
+
 export interface AppActions {
   // Navigation
-  setTab: (tab: Tab) => void;
+  setTab: (tab: Tab, options?: SetTabOptions) => void;
   setUiShellMode: (mode: UiShellMode) => void;
   switchUiShellMode: (mode: UiShellMode) => void;
   switchShellView: (view: ShellView) => void;

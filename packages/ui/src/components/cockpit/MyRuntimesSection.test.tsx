@@ -1,3 +1,4 @@
+/** Verifies MyRuntimesSection through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Interaction tests for MyRuntimesSection: it lists the runtimes, marks the

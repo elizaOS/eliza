@@ -47,7 +47,8 @@ export function startCodexLogin(): Promise<CodexFlow> {
             const parsed = new URL(url);
             flowState = parsed.searchParams.get("state") || "";
           } catch {
-            /* */
+            // error-policy:J3 the authorization URL is vendor input; an invalid
+            // URL yields an explicit empty state rather than a fabricated value.
           }
 
           resolveFlow({
@@ -71,6 +72,8 @@ export function startCodexLogin(): Promise<CodexFlow> {
         ...(creds.idToken ? { idToken: creds.idToken } : {}),
       }));
       void credentials.catch((err) => {
+        // error-policy:J5 this rejection is also exposed on `flow.credentials`;
+        // observe it here so pre-onAuth failures reject the outer flow promise.
         // If the flow fails before `onAuth` runs (e.g. the local callback
         // server can't bind), resolveFlow was never called and the outer
         // Promise<CodexFlow> would hang forever. Reject it so the caller of
@@ -80,6 +83,8 @@ export function startCodexLogin(): Promise<CodexFlow> {
         logger.warn(`[auth] OpenAI Codex credential flow failed: ${err}`);
       });
     } catch (err) {
+      // error-policy:J1 OAuth construction boundary translation — synchronous
+      // vendor setup failures reject the public flow immediately.
       rejectFlow(err);
       return;
     }

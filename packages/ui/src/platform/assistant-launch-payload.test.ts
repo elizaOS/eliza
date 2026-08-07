@@ -1,3 +1,4 @@
+/** Verifies assistant launch payloads through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

@@ -1,3 +1,4 @@
+/** Verifies BackgroundSettingsSection through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders BackgroundSettingsSection against a seeded in-memory App store and

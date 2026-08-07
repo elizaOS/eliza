@@ -1,12 +1,4 @@
-/**
- * Security utilities for elizaOS.
- *
- * Provides:
- * - Sensitive text redaction (pattern-based and secrets-based)
- * - External content wrapping for prompt injection protection
- *
- * @module security
- */
+/** Public surface for redaction, untrusted-content handling, and runtime security primitives. */
 
 export { mnemonicValid } from "./bip39-wordlist.js";
 export {
@@ -34,6 +26,8 @@ export {
 } from "./entity-recognizer.js";
 export {
 	buildSafeExternalPrompt,
+	containsExternalEnvelopeMarkers,
+	containsExternalEnvelopeMaterial,
 	detectSuspiciousPatterns,
 	type ExternalContentSource,
 	getHookType,
@@ -53,7 +47,12 @@ export {
 	messageHasPromptInjectionFlag,
 	registerCoreIncomingMessageSecurityHook,
 	scrubIncomingMessageTextForStorage,
+	unwrapUserMessageText,
 } from "./incoming-message-security.js";
+export {
+	ENVELOPE_LEAK_NOTICE,
+	guardOutboundEnvelopeText,
+} from "./outbound-envelope-guard.js";
 export {
 	type AssembleContextPackRequest,
 	assembleContextPack,

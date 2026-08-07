@@ -21,7 +21,7 @@
  * barrels would otherwise collide on a shared global key and one barrel's
  * anchor would overwrite the other's.
  *
- * Verified STILL PRESENT on `bun@1.4.0` (the version pinned in the repo's
+ * Verified STILL PRESENT on `bun@1.3.14` (the version pinned in the repo's
  * `packageManager`, 2026-07): a minimal `Bun.build --target=browser`
  * reproduction drops an unused re-export-only barrel binding, and the anchor
  * (inline or via this helper, minified or not) retains it. Delete this helper

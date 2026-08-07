@@ -7,7 +7,7 @@
 import { type Content, EventType, type HandlerCallback, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
-// The vitest @elizaos/core shim (packages/test/vitest/shims) is a curated subset
+// The vitest @elizaos/core shim (packages/scripts/vitest/shims) is a curated subset
 // and omits lifeOpsPassiveConnectorsEnabled, which service.ts imports. The real
 // runtime export exists; mirror its semantics here (default ON; explicit-false
 // disables via the ELIZA_LIFEOPS_PASSIVE_CONNECTORS / LIFEOPS_PASSIVE_CONNECTORS

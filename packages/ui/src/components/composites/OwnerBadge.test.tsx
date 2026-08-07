@@ -1,3 +1,4 @@
+/** Verifies OwnerBadge through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders OwnerBadge in jsdom (real component, no model/network) to assert the

@@ -11,8 +11,13 @@ import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import type { AffiliateBillingAttribution } from "./affiliate-billing-attribution";
 import { AFFILIATE_PAYOUT_CONTRACT_VERSION } from "./affiliate-payout-outbox";
-import type { BillingContext } from "./ai-billing";
-import { getAffiliatePayoutSourceId, InsufficientCreditsError, reserveCredits } from "./ai-billing";
+import type { BillingContext, FlatBillingCost } from "./ai-billing";
+import {
+  getAffiliatePayoutSourceId,
+  InsufficientCreditsError,
+  reserveCredits,
+  reserveFlatUsageCredits,
+} from "./ai-billing";
 import { AiPricingCacheUnavailableError, AiPricingCacheWarmingError } from "./ai-pricing/cache";
 import {
   COST_BUFFER,
@@ -35,6 +40,7 @@ import {
   InferenceAffiliateCacheWarmingError as AffiliateCacheWarmingError,
   getCachedInferenceAffiliateAttribution,
 } from "./inference-affiliate-cache";
+import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
 import { isDeferredAdmissionEnabled, isOrgAdmissionRefused } from "./inference-billing-deferred";
 import {
   createOptimisticDebitSettler,
@@ -88,8 +94,12 @@ export interface OrganizationInferenceAdmissionParams {
   apiKeyId?: string | null;
   estimatedInputTokens: number;
   estimatedOutputTokens: number;
+  /** Fixed provider-priced operation; skips token-price calculation. */
+  flatCost?: FlatBillingCost;
   affiliateCode?: string | null;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  /** Combined auth-cache projection; skips the separate balance KV read. */
+  admissionSnapshot?: InferenceAdmissionSnapshot;
 }
 
 /** Retryable signal preserving route compatibility while identifying pricing hydration. */
@@ -135,14 +145,15 @@ export class InferenceAdmissionUnavailableError extends InferenceBalanceCacheWar
 async function reserveSynchronously(
   params: OrganizationInferenceAdmissionParams,
 ): Promise<OrganizationInferenceAdmission> {
-  const reservation = await reserveCredits(
-    {
-      ...params.context,
-      affiliateCode: params.affiliateCode ?? undefined,
-    },
-    params.estimatedInputTokens,
-    params.estimatedOutputTokens,
-  );
+  const context = {
+    ...params.context,
+    affiliateCode: params.affiliateCode ?? undefined,
+  };
+  const reservation = params.flatCost
+    ? await reserveFlatUsageCredits(context, params.flatCost, {
+        idempotencyKey: params.context.requestId,
+      })
+    : await reserveCredits(context, params.estimatedInputTokens, params.estimatedOutputTokens);
   const settle = createCreditReservationSettler(reservation);
   return {
     mode: "synchronous_reservation",
@@ -258,21 +269,25 @@ export async function admitOrganizationInference(
   let affiliateAttribution: AffiliateBillingAttribution | null = null;
   try {
     const [cost, gateBalance, resolvedAffiliateAttribution] = await Promise.all([
-      calculateCost(
-        normalizedModel,
-        params.context.provider,
-        params.estimatedInputTokens,
-        params.estimatedOutputTokens,
-        params.context.billingSource,
-        {
-          cacheOnly: canDefer,
-          executionCtx: params.executionCtx,
-        },
-      ),
-      getGateBalanceHint(params.context.organizationId, {
-        executionCtx: params.executionCtx,
-        cacheOnly: canDefer,
-      }),
+      params.flatCost
+        ? Promise.resolve(params.flatCost)
+        : calculateCost(
+            normalizedModel,
+            params.context.provider,
+            params.estimatedInputTokens,
+            params.estimatedOutputTokens,
+            params.context.billingSource,
+            {
+              cacheOnly: canDefer,
+              executionCtx: params.executionCtx,
+            },
+          ),
+      params.admissionSnapshot
+        ? Promise.resolve(params.admissionSnapshot.balance)
+        : getGateBalanceHint(params.context.organizationId, {
+            executionCtx: params.executionCtx,
+            cacheOnly: canDefer,
+          }),
       affiliateMarked && params.executionCtx
         ? getCachedInferenceAffiliateAttribution({
             affiliateCode: params.affiliateCode,
@@ -285,9 +300,10 @@ export async function admitOrganizationInference(
     affiliateAttribution = resolvedAffiliateAttribution;
     const affiliateMarkupPercent = affiliateAttribution?.markupPercent ?? 0;
     const markedUpEstimate = cost.totalCost * (1 + affiliateMarkupPercent);
-    estimatedCostUsd = affiliateMarked
-      ? Math.max(markedUpEstimate * COST_BUFFER, MIN_RESERVATION)
-      : markedUpEstimate;
+    estimatedCostUsd =
+      affiliateMarked && !params.flatCost
+        ? Math.max(markedUpEstimate * COST_BUFFER, MIN_RESERVATION)
+        : markedUpEstimate;
     balanceHint = gateBalance;
   } catch (error) {
     if (error instanceof AiPricingCacheWarmingError) {

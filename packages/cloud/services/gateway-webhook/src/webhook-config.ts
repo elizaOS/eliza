@@ -1,18 +1,26 @@
-// Handles webhook gateway webhook config behavior for authenticated connector fan-in.
+/** Resolves shared and per-agent webhook configuration for connector fan-in. */
 import type { Platform, WebhookConfig } from "./adapters/types";
+import { reacquireAuthHeader } from "./auth";
 import { logger } from "./logger";
 import { getProjectEnv } from "./project-config";
 import type { GatewayRedis } from "./redis";
 
 const CONFIG_CACHE_TTL_SECONDS = 300;
+// An agent id that resolves to no config is cached too, briefly. Without it
+// every request naming an unknown agent pays a fresh authenticated round trip
+// to the cloud API, on a route reachable without a signature since Meta's
+// verification handshake became exempt — an amplifier with caller-chosen cache
+// keys. The TTL stays short so a config created seconds later is picked up,
+// matching the transient identity cache in `server-router.ts`.
+const CONFIG_MISS_CACHE_TTL_SECONDS = 15;
+
+type CachedWebhookConfig = WebhookConfig | { notFound: true };
 
 function buildSharedWebhookConfig(
   platform: Platform,
   project: string,
 ): WebhookConfig {
-  const base: WebhookConfig = {
-    agentId: getProjectEnv(project, "DEFAULT_AGENT_ID"),
-  };
+  const base: WebhookConfig = {};
 
   switch (platform) {
     case "telegram":
@@ -50,14 +58,15 @@ export async function resolveWebhookConfig(
   platform: Platform,
   project: string,
   agentId?: string,
+  reauth: () => Promise<Record<string, string>> = reacquireAuthHeader,
 ): Promise<WebhookConfig | null> {
   if (!agentId) {
     return buildSharedWebhookConfig(platform, project);
   }
 
   const cacheKey = `webhook-config:${platform}:agent:${agentId}`;
-  const cached = await redis.get<WebhookConfig>(cacheKey);
-  if (cached) return cached;
+  const cached = await redis.get<CachedWebhookConfig>(cacheKey);
+  if (cached) return "notFound" in cached ? null : cached;
 
   try {
     const url = `${cloudBaseUrl}/api/internal/webhook/config?agentId=${encodeURIComponent(agentId)}&platform=${encodeURIComponent(platform)}`;
@@ -65,12 +74,25 @@ export async function resolveWebhookConfig(
     const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
     try {
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         headers: authHeader,
         signal: controller.signal,
       });
+      // Same 401 shape as resolveIdentity: a Worker redeploy strands the
+      // cached token until the scheduled refresh. One re-bootstrapped retry.
+      if (res.status === 401) {
+        res = await fetch(url, {
+          headers: await reauth(),
+          signal: controller.signal,
+        });
+      }
 
-      if (res.status === 404) return null;
+      if (res.status === 404) {
+        await redis.set(cacheKey, JSON.stringify({ notFound: true }), {
+          ex: CONFIG_MISS_CACHE_TTL_SECONDS,
+        });
+        return null;
+      }
       if (!res.ok) {
         logger.error("Webhook config fetch failed", {
           status: res.status,

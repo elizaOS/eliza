@@ -20,7 +20,7 @@ import {
 } from "@elizaos/core";
 import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
+import { createRealTestRuntime } from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import type {
   ApprovalEnqueueInput,

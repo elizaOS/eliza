@@ -17,7 +17,7 @@ import type {
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
   CodingAgentTaskTimelineItem,
-} from "@elizaos/ui";
+} from "@elizaos/ui/api/client-types-cloud";
 import { describe, expect, it } from "vitest";
 import type {
   TaskThreadDetailDto,

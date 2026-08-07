@@ -83,6 +83,7 @@ class ViewSearchIndex {
         text,
       });
     } catch (err) {
+      // error-policy:J4 semantic search explicitly degrades to keyword ranking.
       logger.debug(
         { src: "ViewSearchIndex", viewId: view.id, err },
         "[ViewSearchIndex] Could not embed view — falling back to keyword search",
@@ -131,6 +132,7 @@ class ViewSearchIndex {
       });
       queryEmbedding = Array.isArray(result) ? (result as number[]) : [];
     } catch (err) {
+      // error-policy:J4 semantic search explicitly degrades to keyword ranking.
       logger.debug(
         { src: "ViewSearchIndex", err },
         "[ViewSearchIndex] Could not embed query — semantic search unavailable",

@@ -1,3 +1,4 @@
+/** Verifies useCloudState — handleCloudLogin with a stale Steward token and no launcher through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // `useCloudState.handleCloudLogin` sign-in first-click behavior. With a

@@ -123,13 +123,13 @@ function readFloat32Vector(file) {
  */
 async function synthesizeSeedPhrases({ bundleRoot, concurrency }) {
   const { DEFAULT_PHRASE_CACHE_SEED } = await import(
-    "../../../../plugins/plugin-local-inference/src/services/voice/phrase-cache.ts"
+    "@elizaos/plugin-local-inference/services/voice/phrase-cache"
   );
   const { LocalInferenceEngine } = await import(
-    "../../../../plugins/plugin-local-inference/src/services/engine.ts"
+    "@elizaos/plugin-local-inference/services/engine"
   );
   const { decodeMonoPcm16Wav } = await import(
-    "../../../../plugins/plugin-local-inference/src/services/voice/engine-bridge.ts"
+    "@elizaos/plugin-local-inference/services/voice/engine-bridge"
   );
   const engine = new LocalInferenceEngine();
   engine.startVoice({ bundleRoot, useFfiBackend: true });
@@ -232,7 +232,7 @@ async function main() {
   }
 
   const { writeVoicePresetFile } = await import(
-    "../../../../plugins/plugin-local-inference/src/services/voice/voice-preset-format.ts"
+    "@elizaos/plugin-local-inference/services/voice/voice-preset-format"
   );
   const blob = writeVoicePresetFile({ embedding, phrases });
   const outPath = defaultOutPath(args);

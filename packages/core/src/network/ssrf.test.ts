@@ -7,9 +7,11 @@ import { describe, expect, it } from "vitest";
 import {
 	createPinnedLookup,
 	isBlockedHostname,
+	isLoopbackHost,
 	isPrivateIpAddress,
 	type LookupAddress,
 	type LookupFn,
+	normalizeHostLike,
 	resolvePinnedHostnameWithPolicy,
 	SsrfBlockedError,
 } from "./ssrf.ts";
@@ -85,6 +87,16 @@ describe("createPinnedLookup", () => {
 });
 
 describe("SSRF policy enforcement", () => {
+	it("normalizes host literals and recognizes only actual loopback targets", () => {
+		expect(normalizeHostLike("  [::1] ")).toBe("::1");
+		expect(normalizeHostLike("EXAMPLE.COM.")).toBe("example.com");
+		expect(isLoopbackHost("localhost")).toBe(true);
+		expect(isLoopbackHost("127.5.6.7")).toBe(true);
+		expect(isLoopbackHost("::ffff:127.0.0.1")).toBe(true);
+		expect(isLoopbackHost("127somehost.example.com")).toBe(false);
+		expect(isLoopbackHost("8.8.8.8")).toBe(false);
+	});
+
 	it("classifies private and link-local address forms", () => {
 		expect(isPrivateIpAddress("127.0.0.1")).toBe(true);
 		expect(isPrivateIpAddress("169.254.169.254")).toBe(true);
@@ -92,12 +104,20 @@ describe("SSRF policy enforcement", () => {
 		expect(isPrivateIpAddress("172.20.0.1")).toBe(true);
 		expect(isPrivateIpAddress("192.168.1.1")).toBe(true);
 		expect(isPrivateIpAddress("100.64.0.1")).toBe(true);
+		expect(isPrivateIpAddress("100.127.255.254")).toBe(true);
 		expect(isPrivateIpAddress("::1")).toBe(true);
 		expect(isPrivateIpAddress("::ffff:127.0.0.1")).toBe(true);
 		expect(isPrivateIpAddress("::ffff:7f00:0001")).toBe(true);
+		expect(isPrivateIpAddress("0:0:0:0:0:ffff:7f00:0001")).toBe(true);
 		expect(isPrivateIpAddress("fc00::1")).toBe(true);
 		expect(isPrivateIpAddress("fd00::1")).toBe(true);
+		expect(isPrivateIpAddress("fe9f::1")).toBe(true);
+		expect(isPrivateIpAddress("febf::1")).toBe(true);
+		expect(isPrivateIpAddress("fec0::1")).toBe(true);
+		expect(isPrivateIpAddress("feff::1")).toBe(true);
+		expect(isPrivateIpAddress("ff02::1")).toBe(true);
 		expect(isPrivateIpAddress("203.0.113.10")).toBe(false);
+		expect(isPrivateIpAddress("2001:4860:4860::8888")).toBe(false);
 	});
 
 	it("blocks localhost and internal hostnames after normalization", () => {

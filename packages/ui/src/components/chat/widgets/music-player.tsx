@@ -200,7 +200,7 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
             <span className="min-w-0 flex-1 truncate text-3xs font-semibold text-txt">
               {player.title}
             </span>
-            <span className="shrink-0 text-3xs uppercase tracking-wider text-muted/70">
+            <span className="shrink-0 text-3xs uppercase tracking-wider text-muted">
               {statusLabel(player)}
             </span>
           </div>

@@ -1,3 +1,4 @@
+/** Verifies isFirstRunTranscriptMessage through the package's configured test harness. */
 import { describe, expect, it } from "vitest";
 import type { ConversationMessage } from "../api";
 import {

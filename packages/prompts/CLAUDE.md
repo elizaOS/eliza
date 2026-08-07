@@ -1,6 +1,9 @@
-# @elizaos/prompts
+# `@elizaos/prompts`
 
 Single source of truth for the LLM prompt templates the elizaOS runtime uses, plus the action/provider spec + docs codegen that derives compressed action descriptions from those templates.
+
+Repository-wide engineering and evidence requirements are inherited from the
+root [`CLAUDE.md`](../../CLAUDE.md).
 
 ## Purpose / role
 
@@ -19,7 +22,7 @@ Single source of truth for the LLM prompt templates the elizaOS runtime uses, pl
 
 ```
 packages/prompts/
-  src/index.ts        ~40 prompt templates; each exported twice:
+  src/index.ts        Shared prompt templates; each exported twice:
                       camelCaseTemplate + UPPER_SNAKE_CASE_TEMPLATE alias.
                       Also re-exports compressPromptDescription.
   src/prompt-compression.ts  deterministic action/provider description compressor
@@ -32,6 +35,7 @@ packages/prompts/
                                      merges with core.json → specs/actions/plugins.generated.json
     generate-action-docs.js         reads specs/* → writes packages/core/src/generated/action-docs.ts
                                      (imports compressPromptDescription from this package)
+    registered-action-inventory.js  shared discovery inventory used by action codegen
     check-secrets.js                scans prompt .ts files for embedded secrets/PII
     file-utils.js                   readJson/readText/ensureDirectory helpers for the scripts
   test/prompts.test.js  regression assertions on template wording (bun test)
@@ -80,46 +84,13 @@ Regenerate the plugin action spec after adding or renaming a plugin `Action`:
 - The doc generator writes OUTSIDE this package, into `packages/core/src/generated/action-docs.ts`. That is intentional codegen, not a layering break — `build:action-docs` owns it.
 - Plugin-local `prompts/*.json` (e.g. `actions.json`) under `plugins/**` are hand-edited inputs to each plugin's own codegen and are NOT read by `generate-plugin-action-spec.js`, which only scans `*.ts`.
 - Never embed secrets or PII in templates (they are source-controlled); use placeholders. `check:secrets` enforces this over prompt `.ts` files — see the path/regex list in `scripts/check-secrets.js`.
-- Repo-wide rules (logger-only, ESM, naming, architecture) live in the root [AGENTS.md](../../AGENTS.md); not repeated here.
+- The generated action inventory is a public-surface audit, not a substitute
+  for runtime action-registration tests.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Package completion evidence
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — runtime / framework:**
-- A **live-LLM** scenario trajectory for the runtime path you touched — provider → model → action → evaluator — with the raw `<response>` XML and every tool/action call visible and **read**.
-- Backend `[ClassName]` logs proving the message loop, task scheduler, or service actually fired end to end.
-- The memory/state artifacts produced — rows written, embeddings, room/world/entity records, scheduled-task rows — inspected, not assumed.
-- For shared modules: `build:node` vs full `build` so the browser/edge bundles still compile.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide definition of done in the root guide. For prompt or
+spec changes, regenerate every owned artifact, inspect the diff, run prompt and
+secret tests, and execute affected behavior against a live model. Review the
+full trajectory—including rendered prompt, raw output, validation, action
+selection, and result—rather than approving a string diff alone.

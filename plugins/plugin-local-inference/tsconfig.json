@@ -62,41 +62,15 @@
 			"@elizaos/plugin-health/screen-time/mobile-signal-setup": [
 				"../plugin-health/src/screen-time/mobile-signal-setup.ts"
 			],
-			"@elizaos/plugin-remote-manifest": [
-				"../../packages/plugin-remote-manifest/src/index.ts"
-			],
-			"@elizaos/plugin-remote-manifest/*": [
-				"../../packages/plugin-remote-manifest/src/*"
-			],
-			"@elizaos/plugin-worker-runtime": [
-				"../../packages/plugin-worker-runtime/src/index.ts"
-			],
-			"@elizaos/plugin-worker-runtime/*": [
-				"../../packages/plugin-worker-runtime/src/*"
-			],
 			"@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.node.ts"],
 			"@elizaos/plugin-elizacloud/*": ["../plugin-elizacloud/src/*"],
 			"@elizaos/plugin-workflow": ["../plugin-workflow/src/index.ts"],
-			"@elizaos/plugin-training": [
-				"../../packages/ui/src/types/host-external-modules.ts"
-			],
 			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
 			"@elizaos/ui/*": ["../../packages/ui/src/*"],
-			"@elizaos/import-conversations": [
-				"../../packages/import-conversations/src/index.ts"
-			],
-			"@elizaos/import-conversations/*": [
-				"../../packages/import-conversations/src/*"
-			],
-			"@elizaos/import-conversations/browser": [
-				"../../packages/import-conversations/src/browser.ts"
-			],
 			"@elizaos/vault": ["../../packages/vault/src/index.ts"],
 			"@elizaos/vault/*": ["../../packages/vault/src/*"],
-			"@elizaos/security": ["../../packages/security/src/index.ts"],
-			"@elizaos/security/*": ["../../packages/security/src/*"],
 			"@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
 			"@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
 			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],

@@ -26,6 +26,7 @@ import type {
 import {
   ElizaError,
   logger,
+  NoModelProviderConfiguredError,
   normalizeEffectReceipt,
   resolveActionArgs,
   type SubactionsMap,
@@ -466,33 +467,47 @@ async function routeLifeSubaction(args: {
       shouldAct: true,
     };
   }
-  const resolved = await resolveActionArgs<LifeOwnedOperation, LifeParams>({
-    runtime,
-    message,
-    state,
-    options,
-    actionName: ownerSurfaceActionNameFromOptions(options),
-    subactions: SUBACTIONS,
-    intentHint: intent,
-  });
+  try {
+    const resolved = await resolveActionArgs<LifeOwnedOperation, LifeParams>({
+      runtime,
+      message,
+      state,
+      options,
+      actionName: ownerSurfaceActionNameFromOptions(options),
+      subactions: SUBACTIONS,
+      intentHint: intent,
+    });
 
-  if (resolved.ok) {
-    return {
-      operation: resolved.subaction,
-      confidence: 1,
-      missing: [],
-      shouldAct: true,
-      params: resolved.params,
-    };
+    if (resolved.ok) {
+      return {
+        operation: resolved.subaction,
+        confidence: 1,
+        missing: [],
+        shouldAct: true,
+        params: resolved.params,
+      };
+    }
+
+    return await resolveLifeOperationPlan({
+      runtime,
+      message,
+      state,
+      intent,
+      explicitOperation: explicitSubaction,
+    });
+  } catch (error) {
+    // error-policy:J4 A zero-key runtime cannot classify an unstructured LIFE
+    // request; surface the existing reply-only state instead of a false action.
+    if (error instanceof NoModelProviderConfiguredError) {
+      return {
+        operation: null,
+        confidence: null,
+        missing: [],
+        shouldAct: false,
+      };
+    }
+    throw error;
   }
-
-  return resolveLifeOperationPlan({
-    runtime,
-    message,
-    state,
-    intent,
-    explicitOperation: explicitSubaction,
-  });
 }
 
 function resolveDeferredLifeDraftReuseMode(args: {
@@ -4159,21 +4174,30 @@ async function runLifeOperationHandlerInner(
         (!deferredDefinitionDraft || editingDeferredDefinitionDraft) &&
         !hasCompleteNativeDefinitionCreatePlan
       ) {
-        llmPlan = await extractTaskCreatePlanWithLlm({
-          runtime,
-          intent,
-          state: state ?? undefined,
-          message: message,
-          timeZone:
-            normalizeLifeTimeZoneToken(
-              detailString(details, "timeZone") ??
-                deferredDefinitionDraft?.request.timezone ??
-                windowPolicy?.timezone,
-            ) ?? undefined,
-        });
+        try {
+          llmPlan = await extractTaskCreatePlanWithLlm({
+            runtime,
+            intent,
+            state: state ?? undefined,
+            message: message,
+            timeZone:
+              normalizeLifeTimeZoneToken(
+                detailString(details, "timeZone") ??
+                  deferredDefinitionDraft?.request.timezone ??
+                  windowPolicy?.timezone,
+              ) ?? undefined,
+          });
+        } catch (error) {
+          // error-policy:J4 Explicit create parameters remain usable without a
+          // model; missing fields fall through to the visible clarifications.
+          if (!(error instanceof NoModelProviderConfiguredError)) {
+            throw error;
+          }
+        }
+        const plannerResponse =
+          llmPlan?.mode === "respond" ? llmPlan.response : undefined;
         const shouldHonorPlannerResponse =
-          llmPlan.mode === "respond" &&
-          Boolean(llmPlan.response) &&
+          Boolean(plannerResponse) &&
           !editingDeferredDefinitionDraft &&
           !params.title &&
           !explicitCadenceDetail &&
@@ -4181,8 +4205,8 @@ async function runLifeOperationHandlerInner(
           !detailString(details, "goalId") &&
           !detailString(details, "goalTitle") &&
           !detailString(details, "kind");
-        if (shouldHonorPlannerResponse && llmPlan.response) {
-          const text = llmPlan.response;
+        if (shouldHonorPlannerResponse && plannerResponse) {
+          const text = plannerResponse;
           return {
             success: true as const,
             text,

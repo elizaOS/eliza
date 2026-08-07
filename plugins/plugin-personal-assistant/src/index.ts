@@ -23,7 +23,6 @@ export {
   handleTravelProviderRelayRoute,
   type TravelProviderRelayRouteState,
 } from "@elizaos/plugin-elizacloud/routes/travel-provider-relay-routes";
-export { detectRemoteDesktopBackend } from "@elizaos/plugin-remote-desktop";
 // External consumers that still import `websiteBlockAction` get the canonical
 // BLOCK umbrella.
 export {
@@ -35,7 +34,6 @@ export { connectorAction } from "./actions/connector.js";
 export { credentialsAction } from "./actions/credentials.js";
 export { entityAction } from "./actions/entity.js";
 export { householdCoordinationAction } from "./actions/household-coordination.js";
-export { calendlyAction } from "./actions/lib/calendly-handler.js";
 export {
   ownerAlarmsAction,
   ownerFinancesAction,
@@ -47,7 +45,6 @@ export {
   ownerTodosAction,
   personalAssistantAction,
 } from "./actions/owner-surfaces.js";
-export { remoteDesktopAction } from "./actions/remote-desktop.js";
 export { resolveReferentAction } from "./actions/resolve-referent.js";
 export { resolveRequestAction } from "./actions/resolve-request.js";
 export { voiceCallAction } from "./actions/voice-call.js";

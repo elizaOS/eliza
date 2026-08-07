@@ -24,6 +24,7 @@ function makeRuntime(respond: (prompt: string) => string): IAgentRuntime {
       info: vi.fn(),
       warn: vi.fn(),
     },
+    reportError: vi.fn(),
   } as unknown as IAgentRuntime;
 }
 
@@ -211,7 +212,7 @@ describe("extractTaskCreatePlanWithLlm requestKind trust", () => {
     expect(plan.requestKind).toBeNull();
   });
 
-  it("returns the respond failure plan when the model call throws", async () => {
+  it("reports and propagates model failures instead of fabricating a response plan", async () => {
     const runtime = {
       useModel: vi.fn(async () => {
         throw new Error("model unavailable");
@@ -222,14 +223,19 @@ describe("extractTaskCreatePlanWithLlm requestKind trust", () => {
         info: vi.fn(),
         warn: vi.fn(),
       },
+      reportError: vi.fn(),
     } as unknown as IAgentRuntime;
-    const plan = await extractTaskCreatePlanWithLlm({
-      runtime,
-      intent: "remind me friday at 5pm to call mom",
-      state: undefined,
-    });
-    expect(plan.mode).toBe("respond");
-    expect(plan.requestKind).toBeNull();
-    expect(plan.dueWeekday).toBeNull();
+    await expect(
+      extractTaskCreatePlanWithLlm({
+        runtime,
+        intent: "remind me friday at 5pm to call mom",
+        state: undefined,
+      }),
+    ).rejects.toThrow("model unavailable");
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "ExtractorPipeline.model",
+      expect.objectContaining({ message: "model unavailable" }),
+      expect.any(Object),
+    );
   });
 });

@@ -50,6 +50,7 @@ function TabButton({
       </span>
       <Button
         variant="ghost"
+        aria-pressed={active}
         title={tab.label}
         onClick={onClick}
         className="h-auto min-w-0 truncate rounded-none bg-transparent p-0 text-xs font-medium leading-none hover:bg-transparent"
@@ -89,9 +90,9 @@ export function DesktopTabBar({
 
   return (
     <div
-      className="flex shrink-0 items-center gap-1 border-b border-border/50 bg-bg/80 px-2 py-1.5"
-      role="tablist"
+      role="toolbar"
       aria-label="Desktop view tabs"
+      className="flex shrink-0 items-center gap-1 border-b border-border/50 bg-bg/80 px-2 py-1.5"
     >
       {tabs.map((tab) => (
         <TabButton

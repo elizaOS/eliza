@@ -1,8 +1,5 @@
 /**
- * trycua/cua parity tooling (#9170 M14) — public surface.
- *
- * The machine-checkable capability matrix + its validator, and the ScreenSpot
- * grounding harness. The OSWorld benchmark adapter lives under `src/osworld/`.
+ * Exposes the machine-checkable computer-use capability matrix and validator.
  */
 
 export {
@@ -19,11 +16,3 @@ export {
   validateParityCoverage,
   validateParityMatrix,
 } from "./parity-matrix.js";
-export {
-  pointInBbox,
-  type ScreenSpotPrediction,
-  type ScreenSpotSample,
-  type ScreenSpotSampleResult,
-  type ScreenSpotScore,
-  scoreScreenSpot,
-} from "./screenspot.js";

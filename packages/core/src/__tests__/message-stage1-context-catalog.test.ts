@@ -108,6 +108,8 @@ function makeRuntimeWithContexts(
 		character: { name: "Test Agent", system: "You are concise." },
 		actions: [],
 		providers: [],
+		getRoom: vi.fn(async () => null),
+		reportError: vi.fn(),
 		contexts: registry,
 		responseHandlerFieldRegistry,
 		responseHandlerFieldEvaluators: [
@@ -237,6 +239,8 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 			character: { name: "Test Agent", system: "You are concise." },
 			actions: [],
 			providers: [],
+			getRoom: vi.fn(async () => null),
+			reportError: vi.fn(),
 			contexts: undefined,
 			responseHandlerFieldRegistry,
 			responseHandlerFieldEvaluators: [

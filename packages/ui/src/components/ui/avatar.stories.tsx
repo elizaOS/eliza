@@ -23,7 +23,7 @@ export const Default: Story = {
 export const Fallback: Story = {
   render: (args) => (
     <Avatar {...args}>
-      <AvatarImage src="" alt="Broken" />
+      <AvatarImage src="/storybook/missing-avatar.png" alt="Broken" />
       <AvatarFallback>EL</AvatarFallback>
     </Avatar>
   ),
@@ -47,7 +47,7 @@ export const Group: Story = {
         <AvatarFallback>EL</AvatarFallback>
       </Avatar>
       <Avatar {...args}>
-        <AvatarImage src="" alt="Broken" />
+        <AvatarImage src="/storybook/missing-avatar.png" alt="Broken" />
         <AvatarFallback>AB</AvatarFallback>
       </Avatar>
       <Avatar {...args} className="size-16">

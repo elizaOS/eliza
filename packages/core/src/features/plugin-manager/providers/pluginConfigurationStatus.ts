@@ -177,6 +177,9 @@ export const pluginConfigurationStatusProvider: Provider & {
 				},
 			};
 		} catch (error) {
+			// error-policy:J4 plugin configuration status is explicitly unavailable
+			// and the provider failure remains observable to the agent.
+			runtime.reportError("PluginConfigurationStatusProvider.get", error);
 			return {
 				text: "Plugin configuration status unavailable",
 				data: {

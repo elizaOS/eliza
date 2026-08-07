@@ -3,4 +3,4 @@ export {
   mapServerTasksToSessions,
   type ServerTask,
   TERMINAL_STATUSES,
-} from "@elizaos/ui";
+} from "@elizaos/ui/chat";

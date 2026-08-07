@@ -29,7 +29,7 @@ import type { TeeEvidencePolicy } from "./tee-policy.ts";
  * patched out. This mirrors the confidential-inference `model-key` unseal
  * pattern (`tee-confidential-inference.ts`).
  *
- * NOT IN SCOPE — the OS layer (`packages/os/docs/tee-os-implementation-plan.md`
+ * NOT IN SCOPE — the OS layer (`elizaOS/os:packages/os/docs/tee-os-implementation-plan.md`
  * §3.4): the dm-crypt/LUKS2 plumbing itself. A mount hook in the confidential
  * guest calls {@link unsealStateVolumeKey} BEFORE mounting the state dir,
  * hands the released key (or the LUKS passphrase recovered from the

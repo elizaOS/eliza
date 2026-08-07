@@ -4,12 +4,13 @@
  * The broad cloud aesthetic audit (cloud-surfaces-aesthetic-audit.spec.ts)
  * walks every registered cloud route at desktop + mobile but only captures the
  * rest + primary-button-hover states — it never OPENS the touched
- * `SelectContent` popovers, so the flagged dropdown surface was never actually
- * rendered as proof.
+ * `SelectContent` popovers. Applications now lives in the native app shell, so
+ * this proof enters the registered `cloud-apps` studio before opening the real
+ * detail tabs and their dropdowns.
  *
- * IMPORTANT theme note: the Applications/MCPs page bodies render inside
- * `CloudRouterShell`'s `theme-cloud` surface (dark cloud console). The Radix
- * SelectContent, however, PORTALS to document.body — outside that wrapper — so
+ * IMPORTANT theme note: the Applications page body renders inside
+ * `NativeAppsStudio`'s `theme-cloud` surface. The Radix SelectContent, however,
+ * PORTALS to document.body — outside that wrapper — so
  * the opened popover resolves its `bg-card`/`text-txt` tokens against the ROOT
  * app theme (`eliza:ui-theme-mode`). The real correctness invariant is
  * therefore: the opened popover must be OPAQUE (not the transparent
@@ -35,6 +36,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { installDefaultAppRoutes, openAppPath } from "./helpers";
 import {
   installCloudApiStubs,
   SMOKE_APP_UUID,
@@ -204,16 +206,41 @@ for (const theme of THEMES) {
 
       await seedTheme(page, theme);
       await seedStewardToken(page);
-      // Order matters: the app-detail tab stubs must register before the shared
-      // catch-all `**/api/**` route so they win for the analytics/earnings
-      // endpoints (Playwright matches later-registered routes first).
+      // Desktop-platform signal before boot registers the native Applications
+      // studio. The web cloud route intentionally redirects to Overview now.
+      await page.addInitScript(() => {
+        (
+          window as unknown as { __electrobunWindowId?: number }
+        ).__electrobunWindowId = 1;
+      });
+      await installDefaultAppRoutes(page);
       await installCloudApiStubs(page);
+      // Playwright checks later-registered routes first, so these app-detail
+      // responses override the shared cloud stub for their narrower endpoints.
       await installAppDetailTabStubs(page);
 
       await page.setViewportSize({ width: 1440, height: 900 });
-      await page.goto(`/dashboard/apps/${SMOKE_APP_UUID}?tab=${surface.tab}`, {
-        waitUntil: "domcontentloaded",
+      await openAppPath(page, "/");
+      await page.evaluate(() => {
+        window.dispatchEvent(
+          new CustomEvent("eliza:navigate:view", {
+            detail: { viewId: "cloud-apps", viewPath: "/cloud-apps" },
+          }),
+        );
       });
+      const appCard = page.getByText("Smoke App", { exact: true }).first();
+      await expect(appCard).toBeVisible({ timeout: 30_000 });
+      const setupDialog = page.getByRole("dialog", { name: "Set up Eliza" });
+      if (await setupDialog.isVisible()) {
+        await setupDialog.getByRole("button", { name: "Skip for now" }).click();
+        await expect(setupDialog).toBeHidden();
+      }
+      await appCard.click();
+      await page
+        .getByRole("button", {
+          name: new RegExp(`^${surface.tab}$`, "i"),
+        })
+        .click();
       await waitForPaint(page);
 
       // Wait for the app-detail route to leave its session-not-ready /

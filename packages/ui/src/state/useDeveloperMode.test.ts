@@ -1,3 +1,4 @@
+/** Verifies useDeveloperMode content policy through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Content-policy seam: Developer Mode must default OFF in ALL builds —

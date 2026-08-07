@@ -6,6 +6,9 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  // Relative base: scaffolded apps deploy under sub-paths (/apps/<slug>/);
+  // vite's default "/" emits root-absolute /assets/... URLs that 404 there.
+  base: "./",
   plugins: [react()],
   server: {
     port: 5173,

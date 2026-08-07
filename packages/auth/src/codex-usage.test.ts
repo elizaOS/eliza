@@ -109,16 +109,19 @@ describe("fetchCodexUsage — success parsing", () => {
       "secondary",
       { primary_window: { used_percent: 88 }, secondary_window: null },
     ],
-  ])("treats a null %s window exactly like an absent optional window", async (name, rateLimit) => {
-    const usage = await fetchCodexUsage(
-      "tok",
-      "a",
-      fetchReturning(jsonResponse({ rate_limit: rateLimit })),
-    );
-    expect(usage).toEqual(
-      name === "primary" ? { weeklyPct: 25 } : { sessionPct: 88 },
-    );
-  });
+  ])(
+    "treats a null %s window exactly like an absent optional window",
+    async (name, rateLimit) => {
+      const usage = await fetchCodexUsage(
+        "tok",
+        "a",
+        fetchReturning(jsonResponse({ rate_limit: rateLimit })),
+      );
+      expect(usage).toEqual(
+        name === "primary" ? { weeklyPct: 25 } : { sessionPct: 88 },
+      );
+    },
+  );
 
   it("sends bearer + account id + codex-cli UA; omits the account header when absent", async () => {
     const seen: Array<Record<string, string>> = [];
@@ -136,23 +139,22 @@ describe("fetchCodexUsage — success parsing", () => {
 });
 
 describe("fetchCodexUsage — typed failures (never fabricated data)", () => {
-  it.each([
-    [401],
-    [429],
-    [503],
-  ])("throws a typed http_error carrying status %s in context and message", async (status) => {
-    const err = await fetchCodexUsage(
-      "tok",
-      "a",
-      fetchReturning(new Response("denied", { status })),
-    ).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(ElizaError);
-    const typed = err as ElizaError;
-    expect(typed.code).toBe("codex_usage.http_error");
-    expect(typed.context?.status).toBe(status);
-    // Callers (rate-limit regexes, dashboards) read the status from the message.
-    expect(typed.message).toContain(String(status));
-  });
+  it.each([[401], [429], [503]])(
+    "throws a typed http_error carrying status %s in context and message",
+    async (status) => {
+      const err = await fetchCodexUsage(
+        "tok",
+        "a",
+        fetchReturning(new Response("denied", { status })),
+      ).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ElizaError);
+      const typed = err as ElizaError;
+      expect(typed.code).toBe("codex_usage.http_error");
+      expect(typed.context?.status).toBe(status);
+      // Callers (rate-limit regexes, dashboards) read the status from the message.
+      expect(typed.message).toContain(String(status));
+    },
+  );
 
   it("throws a typed request_failed on transport errors, preserving the cause", async () => {
     const boom = new TypeError("network down");

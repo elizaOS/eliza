@@ -369,8 +369,10 @@ describe("auto goal verification on task_complete", () => {
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done" });
-    // Give the fire-and-forget hook a tick to run.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await until(async () => {
+      const task = await store.getTask(taskId);
+      return task?.task.status === "validating";
+    });
     const doc = await store.getTask(taskId);
     expect(doc?.task.status).toBe("validating");
     expect(useModel).not.toHaveBeenCalled();
@@ -398,7 +400,10 @@ describe("auto goal verification on task_complete", () => {
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done" });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await until(async () => {
+      const task = await store.getTask(taskId);
+      return task?.task.status === "validating";
+    });
     const doc = await store.getTask(taskId);
     expect(doc?.task.status).toBe("validating");
     expect(useModel).not.toHaveBeenCalled();

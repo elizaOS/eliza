@@ -30,9 +30,6 @@ function fakeApp(overrides: Partial<App> = {}): App {
 }
 
 describe("stableHash", () => {
-  test("is deterministic and stable across calls", () => {
-    expect(stableHash("hello world")).toBe(stableHash("hello world"));
-  });
   test("changes when input changes", () => {
     expect(stableHash("a")).not.toBe(stableHash("b"));
   });

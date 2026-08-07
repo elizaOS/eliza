@@ -1,5 +1,5 @@
 ---
-title: Create a Plugin
+title: Create a plugin with the CLI
 description: "Scaffold a new Eliza plugin package."
 ---
 
@@ -22,11 +22,11 @@ npx elizaos create [name] --template plugin
 
 The `plugin` template scaffolds an elizaOS plugin starter:
 
-- `src/plugin.ts` — the `Plugin` export.
-- `src/actions/`, `src/providers/`, `src/services/` — starter implementations.
-- `src/__tests__/` — unit tests with a runtime fixture.
-- `e2e/` — end-to-end tests against a real agent.
-- `build.ts` — Bun.build + tsc d.ts build script producing `dist/`.
+- `src/index.ts` — the package entry point.
+- `src/plugin.ts` — starter action, provider, service, route, event, model, and test registrations.
+- `src/__tests__/` and `src/e2e/` — component and end-to-end harnesses.
+- `src/frontend/` — optional plugin UI.
+- `build.ts` — Bun build plus declaration output into `dist/`.
 - `package.json` — scoped under your namespace, ready for `npm publish`.
 
 ## Next steps

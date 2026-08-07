@@ -1,3 +1,4 @@
+/** Verifies hidden keep-alive views stay paused across resume signals through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Hidden keep-alive views must STAY paused across app-resume / tab refocus;

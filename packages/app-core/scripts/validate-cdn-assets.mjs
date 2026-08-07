@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for validate cdn assets mjs. */
+/**
+ * Validates that published release assets are reachable on the CDN: reads the
+ * static asset manifest, builds asset URLs for the resolved release tag, and
+ * probes them with a retry/concurrency policy tuned for CI flakiness.
+ */
 
 import { execFileSync } from "node:child_process";
 import path from "node:path";

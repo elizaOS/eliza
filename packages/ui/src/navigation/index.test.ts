@@ -27,7 +27,7 @@ describe("navigation tabFromPath", () => {
   it("uses app-shell tab affinity for registered plugin pages", () => {
     registerAppShellPage({
       id: "test.wallet.inventory",
-      pluginId: "@elizaos/plugin-wallet-ui",
+      pluginId: "@elizaos/plugin-wallet:ui",
       label: "Wallet",
       path: "/test/inventory",
       tabAffinity: "inventory",
@@ -108,9 +108,6 @@ describe("navigation prefix sub-tab resolution is registry-derived", () => {
     expect(tabFromPath("/apps/database")).toBe("database");
     expect(tabFromPath("/apps/logs")).toBe("logs");
     expect(tabFromPath("/apps/tasks")).toBe("tasks");
-    // advanced + fine-tuning share /apps/fine-tuning; the registry resolves it
-    // to the canonical fine-tuning tab exactly as the old record did.
-    expect(tabFromPath("/apps/fine-tuning")).toBe("fine-tuning");
   });
 
   it("resolves /character/<sub> hub routes from the TAB_PATHS registry", () => {

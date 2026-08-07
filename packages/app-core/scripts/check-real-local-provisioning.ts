@@ -8,8 +8,7 @@
  * provider/cloud key and no native llama (`withLLM:false` skips the local
  * embedding plugin), it runs and passes in CI without secrets.
  *
- * Run via the repo's tsx runner (real module resolution — vitest's aliasing
- * stubs out plugin handlers like edge-tts and breaks runtime.start):
+ * Run via the repo's tsx runner so the check uses production module resolution:
  *   node packages/app-core/scripts/run-node-tsx.mjs \
  *     packages/app-core/scripts/check-real-local-provisioning.ts
  *

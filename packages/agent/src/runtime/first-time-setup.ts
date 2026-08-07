@@ -453,13 +453,6 @@ export async function runFirstTimeSetup(
       hint: "sk-or-...",
     },
     {
-      id: "vercel-ai-gateway",
-      label: "Vercel AI Gateway",
-      envKey: "AI_GATEWAY_API_KEY",
-      detectKeys: ["AI_GATEWAY_API_KEY", "AIGATEWAY_API_KEY"],
-      hint: "aigw_...",
-    },
-    {
       id: "gemini",
       label: "Google Gemini",
       envKey: "GOOGLE_GENERATIVE_AI_API_KEY",

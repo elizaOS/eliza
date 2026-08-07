@@ -1,3 +1,4 @@
+/** Verifies ActiveProviderSummary — honest active-state copy through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Honest "Active" copy in the AI Model summary row. Selecting a coding-plan

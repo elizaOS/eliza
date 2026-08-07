@@ -7,12 +7,17 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
-import { runWithTrajectoryContext } from "../../trajectory-context";
+import {
+	getTrajectoryContext,
+	runWithTrajectoryContext,
+	type TrajectoryContext,
+} from "../../trajectory-context";
 import {
 	logActiveTrajectoryLlmCall,
 	recordLlmCall,
 	type TrajectoryRuntimeLlmCallParams,
 } from "../../trajectory-utils";
+import { SECRET_SWAP_ENABLED_SETTING } from "../../security/secret-swap";
 import { type Character, ModelType, Service } from "../../types";
 
 class CapturingTrajectoryService extends Service {
@@ -122,6 +127,42 @@ describe("AgentRuntime.useModel trajectory accounting", () => {
 			actionType: "provider.wire",
 			response: "provider-result",
 		});
+	});
+
+
+	// Regression: the recording scope used to run the model body under a spread
+	// clone of the trajectory context. `useModel` mints the turn's swap sessions
+	// by assigning onto the context object, so the clone stranded those writes;
+	// the action-execution boundary then read `undefined` and *skipped* the
+	// restore rather than failing it, shipping raw placeholders onward.
+	it("mints the turn's secret swap session on the caller's own context object", async () => {
+		const { runtime } = await makeRuntime();
+		runtime.setSetting(SECRET_SWAP_ENABLED_SETTING, "true");
+		const seenSessions: unknown[] = [];
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async () => {
+				seenSessions.push(getTrajectoryContext()?.secretSwapSession);
+				return "swapped";
+			},
+			"generic-provider",
+		);
+
+		const turnContext: TrajectoryContext = { trajectoryStepId: "step-swap" };
+		await runWithTrajectoryContext(turnContext, async () => {
+			await runtime.useModel(ModelType.TEXT_SMALL, { prompt: "one" });
+			// The write must land on the very object the caller passed in, not on
+			// a per-call copy.
+			expect(turnContext.secretSwapSession).toBeDefined();
+			await runtime.useModel(ModelType.TEXT_SMALL, { prompt: "two" });
+		});
+
+		expect(turnContext.secretSwapSession).toBeDefined();
+		expect(seenSessions).toHaveLength(2);
+		// One session for the whole turn, so both calls share a nonce and
+		// placeholders minted by the first stay resolvable by the second.
+		expect(seenSessions[0]).toBe(turnContext.secretSwapSession);
+		expect(seenSessions[1]).toBe(turnContext.secretSwapSession);
 	});
 
 	it("retains generic telemetry when the handler has no wire recorder", async () => {

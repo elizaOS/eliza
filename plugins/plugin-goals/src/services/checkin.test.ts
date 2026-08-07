@@ -13,7 +13,7 @@
  *    (America/Denver), not the UTC hour, and fires through the dispatcher.
  *
  * `recordCheckinResponse` needs the goals DB and is covered by
- * `checkin.harness.test.ts`.
+ * `checkin.real.test.ts`.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";

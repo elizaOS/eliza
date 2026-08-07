@@ -1,7 +1,15 @@
 /**
- * Shared voice-related types and data used by VoiceConfigView, CharacterView,
- * and any other app that provides ElevenLabs / Edge voice selection.
+ * Shared voice contracts and voice-selection data consumed across runtime,
+ * cloud, plugins, and UI surfaces.
  */
+
+/**
+ * Client-transport marker for turns owned by a realtime voice WebSocket
+ * session. It travels in message metadata so normal client-chat role and
+ * response policy remain unchanged while side effects can return through the
+ * originating session.
+ */
+export const REALTIME_VOICE_CLIENT_TRANSPORT = "realtime_voice" as const;
 
 export interface VoicePreset {
   id: string;

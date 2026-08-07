@@ -1,3 +1,4 @@
+/** Verifies useCloudState — Steward refresh arms on stored-token presence through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // #10231 launch-blocker #4 — the Cloud=Steward token-lifecycle refresh must arm

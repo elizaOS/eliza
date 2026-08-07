@@ -116,21 +116,6 @@
       "textDensity": 7.7166,
       "whitespaceRatio": 0.7487
     },
-    "plugin-screenshare-gui@ipad-portrait": {
-      "borderDividerDensity": 51.6742,
-      "textDensity": 3.7205,
-      "whitespaceRatio": 0.7545
-    },
-    "plugin-screenshare-gui@mobile-landscape": {
-      "borderDividerDensity": 115.4454,
-      "textDensity": 9.7825,
-      "whitespaceRatio": 0.6712
-    },
-    "plugin-screenshare-gui@mobile-portrait": {
-      "borderDividerDensity": 151.9018,
-      "textDensity": 10.7546,
-      "whitespaceRatio": 0.517
-    },
     "plugin-trajectory-logger-gui@mobile-portrait": {
       "borderDividerDensity": 48.6086,
       "textDensity": 7.6559,

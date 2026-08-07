@@ -71,8 +71,9 @@ export function bindPluginPackageDirectory(
   boundPluginPackageDirectories.set(plugin, path.resolve(pluginDir));
 }
 
-/** View ids already warned about for oversized bundles — warn once per process. */
-const warnedLargeBundles = new Set<string>();
+/** Bundle files already warned about for oversized output — warn once per process. */
+const warnedLargeBundlePaths = new Set<string>();
+const VIEW_BUNDLE_WARNING_BYTES = 1024 * 1024;
 
 /**
  * Package names to probe for a plugin, in preference order. The canonical
@@ -585,12 +586,12 @@ async function buildEntry(
         if (stat) bundleSize = stat.size;
 
         // buildEntry runs on every (re-)registration, so a plugin loaded into
-        // multiple runtimes logs this repeatedly. Keep the per-view size at
-        // debug and warn at most once per registry key about oversized bundles.
+        // multiple views/runtimes logs this repeatedly. Keep ordinary bundle
+        // sizes at debug and warn once per physical file for truly large output.
         const sizeKb = stat ? stat.size / 1024 : 0;
-        if (stat && stat.size > 512 * 1024) {
-          if (!warnedLargeBundles.has(registryKey)) {
-            warnedLargeBundles.add(registryKey);
+        if (stat && stat.size > VIEW_BUNDLE_WARNING_BYTES) {
+          if (!warnedLargeBundlePaths.has(bundleAbs)) {
+            warnedLargeBundlePaths.add(bundleAbs);
             logger.warn(
               {
                 src: "ViewRegistry",

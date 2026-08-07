@@ -1,3 +1,4 @@
+/** Verifies useThreadAutoScroll through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Unit coverage for the shared thread auto-scroll engine (#12348): first-growth

@@ -20,6 +20,8 @@ export interface FormSelectProps extends React.ComponentProps<typeof Select> {
   placeholder?: string;
   triggerClassName?: string;
   contentClassName?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
   value?: string;
   onValueChange?: (value: string) => void;
 }
@@ -29,11 +31,15 @@ export function FormSelect({
   contentClassName,
   placeholder,
   triggerClassName,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
   ...props
 }: FormSelectProps) {
   return (
     <Select {...props}>
       <SelectTrigger
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
         className={cn(
           "h-11 w-full rounded-sm border border-border bg-bg px-4 py-2 text-sm text-txt outline-none transition-colors   data-[placeholder]:text-muted",
           triggerClassName,

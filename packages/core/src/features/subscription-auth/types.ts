@@ -8,8 +8,6 @@
  * generic: the host drains the registry to discover and report subscription
  * credentials and never branches on a vendor id. Host `auth/` keeps only the
  * generic account store, credential storage, and refresh mutex.
- *
- * @module features/subscription-auth
  */
 
 /**

@@ -20,13 +20,13 @@ import path from "node:path";
 import { promisify } from "node:util";
 import fs from "fs-extra";
 import { createUniqueUuid } from "../../../entities.ts";
+import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import type { EventPayload } from "../../../types/events.ts";
 import type { Plugin as ElizaPlugin } from "../../../types/plugin.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import type { ServiceTypeName } from "../../../types/service.ts";
 import { Service } from "../../../types/service.ts";
-import { formatError } from "../../../utils/format-error.ts";
 import {
 	applyRuntimeExtensions,
 	type ExtendedRuntime,
@@ -80,25 +80,33 @@ function assertSafeForShell(
 	}
 }
 
-// Function to reset cache for testing
-export function resetRegistryCache(): void {
-	// Pass through if needed, or import directly in tests
-}
-
 /**
  * Detect the best available package manager (bun > npm).
  * Returns the command name to use for install operations.
  */
 async function detectPackageManager(): Promise<string> {
+	let lastError: unknown;
 	for (const cmd of ["bun", "npm"]) {
 		try {
 			await execAsync(`${cmd} --version`);
 			return cmd;
-		} catch {
-			// not available, try next
+		} catch (error) {
+			// error-policy:J2 retain the final probe failure as the cause if no
+			// supported package manager is available.
+			lastError = error;
 		}
 	}
-	return "npm"; // fallback — will likely fail if npm isn't available either
+	throw new ElizaError("No supported package manager is available", {
+		code: "PLUGIN_MANAGER_PACKAGE_MANAGER_UNAVAILABLE",
+		cause: lastError,
+		context: { attempted: ["bun", "npm"] },
+		severity: "fatal",
+	});
+}
+
+async function readOptionalJson<T>(filePath: string): Promise<T | null> {
+	if (!(await fs.pathExists(filePath))) return null;
+	return (await fs.readJson(filePath)) as T;
 }
 
 export class PluginManagerService extends Service implements PluginRegistry {
@@ -571,6 +579,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
 						`[PluginManagerService] Unloaded dynamic plugin: ${pluginState.name}`,
 					);
 				} catch (error) {
+					// error-policy:J6 Shutdown continues across independent dynamic plugins;
+					// every failed teardown is warned with its plugin identity.
 					logger.warn(
 						{ src: "plugin-manager", error },
 						`[PluginManagerService] Failed to unload ${pluginState.name} during shutdown`,
@@ -696,8 +706,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				return {
 					success: false,
 					pluginName,
-					version: "",
-					installPath: "",
 					requiresRestart: false,
 					error: `Plugin "${pluginName}" not found in the registry`,
 				};
@@ -721,7 +729,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			}
 
 			let installedVersion = npmVersion;
-			let installed = false;
 
 			if (shouldClone) {
 				try {
@@ -738,14 +745,22 @@ export class PluginManagerService extends Service implements PluginRegistry {
 						"junction" as fs.SymlinkType,
 					);
 
-					installed = true;
 					installedVersion = "git-clone";
 				} catch (err) {
-					logger.warn(`Failed to clone ${canonicalName}: ${err}`);
+					await fs.remove(targetDir);
+					// error-policy:J1 local-clone installation is a service boundary that
+					// returns an explicit failed install after cleaning partial output.
+					return {
+						success: false,
+						pluginName: canonicalName,
+						installPath: targetDir,
+						requiresRestart: false,
+						error: `Local clone failed: ${err instanceof Error ? err.message : String(err)}`,
+					};
 				}
 			}
 
-			if (!installed) {
+			if (!shouldClone) {
 				try {
 					await this.installFromNpm(
 						canonicalName,
@@ -753,48 +768,24 @@ export class PluginManagerService extends Service implements PluginRegistry {
 						targetDir,
 						onProgress,
 					);
-					installed = true;
 				} catch (err) {
-					logger.warn(`npm install failed, falling back to clone: ${err}`);
-					if (!shouldClone) {
-						try {
-							await this.installFromGit(
-								info.gitUrl,
-								info.git.v2Branch || "main",
-								targetDir,
-								info.directory,
-								onProgress,
-							);
-							installed = true;
-							installedVersion = "git-fallback";
-						} catch (gitErr) {
-							return {
-								success: false,
-								pluginName: canonicalName,
-								version: "",
-								installPath: targetDir,
-								requiresRestart: false,
-								error: `Installation failed: ${gitErr instanceof Error ? gitErr.message : String(gitErr)}`,
-							};
-						}
-					}
+					await fs.remove(targetDir);
+					// error-policy:J1 npm installation is the selected service boundary;
+					// preserve its failure instead of masking it with a different source.
+					return {
+						success: false,
+						pluginName: canonicalName,
+						installPath: targetDir,
+						requiresRestart: false,
+						error: `Installation failed: ${err instanceof Error ? err.message : String(err)}`,
+					};
 				}
-			}
-
-			if (!installed) {
-				return {
-					success: false,
-					pluginName: canonicalName,
-					version: "",
-					installPath: targetDir,
-					requiresRestart: false,
-					error: `Failed to install plugin "${canonicalName}"`,
-				};
 			}
 
 			onProgress?.({ phase: "validating", message: "Verifying plugin..." });
 			const entryPoint = await this.resolveEntryPoint(targetDir, canonicalName);
 			if (!entryPoint) {
+				await fs.remove(targetDir);
 				return {
 					success: false,
 					pluginName: canonicalName,
@@ -849,68 +840,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			phase: "installing-deps",
 			message: `${pm} install complete.`,
 		});
-	}
-
-	private async installFromGit(
-		gitUrl: string,
-		branch: string,
-		targetDir: string,
-		directory?: string | null,
-		onProgress?: (progress: InstallProgress) => void,
-	): Promise<void> {
-		assertSafeForShell(gitUrl, "git URL", VALID_GIT_URL);
-		assertSafeForShell(branch, "branch", VALID_BRANCH);
-
-		const tempDir = path.join(path.dirname(targetDir), `temp-${Date.now()}`);
-		await fs.ensureDir(tempDir);
-
-		try {
-			onProgress?.({
-				phase: "downloading",
-				message: `Cloning ${gitUrl}#${branch}...`,
-			});
-			await execAsync(
-				`git clone --branch "${branch}" --single-branch --depth 1 "${gitUrl}" "${tempDir}"`,
-			);
-
-			onProgress?.({
-				phase: "installing-deps",
-				message: "Installing dependencies...",
-			});
-			const pm = await detectPackageManager();
-			await execAsync(`${pm} install`, { cwd: tempDir });
-
-			const registrySourceDir = this.resolveRegistrySourceDir(
-				tempDir,
-				directory,
-			);
-			if (registrySourceDir !== tempDir) {
-				await execAsync(`${pm} run build`, { cwd: registrySourceDir }).catch(
-					(err) =>
-						this.runtime.reportError("PluginManager", err, {
-							targetDir: registrySourceDir,
-							step: "build",
-						}),
-				);
-				await fs.copy(registrySourceDir, targetDir);
-				return;
-			}
-
-			const tsDir = path.join(tempDir, "typescript");
-			if (await fs.pathExists(tsDir)) {
-				await execAsync(`${pm} run build`, { cwd: tsDir }).catch((err) =>
-					this.runtime.reportError("PluginManager", err, {
-						targetDir: tsDir,
-						step: "build",
-					}),
-				);
-				await fs.copy(tsDir, targetDir);
-			} else {
-				await fs.copy(tempDir, targetDir);
-			}
-		} finally {
-			await fs.remove(tempDir);
-		}
 	}
 
 	private resolveRegistrySourceDir(
@@ -976,9 +905,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					tempDir,
 					info.directory,
 				);
-				await execAsync(`${pm} run build`, { cwd: registrySourceDir }).catch(
-					() => {},
-				);
+				await execAsync(`${pm} run build`, { cwd: registrySourceDir });
 				await fs.copy(registrySourceDir, targetDir);
 				return;
 			} finally {
@@ -1005,18 +932,9 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		const pm = await detectPackageManager();
 		await execAsync(`${pm} install`, { cwd: targetDir });
 
-		try {
+		const packageJson = await fs.readJson(path.join(targetDir, "package.json"));
+		if (typeof packageJson.scripts?.build === "string") {
 			await execAsync(`${pm} run build`, { cwd: targetDir });
-		} catch (err) {
-			// A plugin may legitimately have no build script; surface a real build
-			// failure observably instead of silently masking it as a healthy install.
-			logger.warn(
-				`[PluginManager] build step did not complete for ${targetDir}: ${formatError(err)}`,
-			);
-			this.runtime.reportError("PluginManager", err, {
-				targetDir,
-				step: "build",
-			});
 		}
 	}
 
@@ -1066,6 +984,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					requiresRestart: true,
 				};
 			} catch (err) {
+				// error-policy:J1 uninstall is a service boundary that returns a
+				// structured failed result while preserving the filesystem error.
 				return {
 					success: false,
 					pluginName,
@@ -1085,13 +1005,14 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		for (const e of entries) {
 			const p = path.join(base, e);
 			if ((await fs.stat(p)).isDirectory()) {
-				const pkg = await fs
-					.readJson(path.join(p, "package.json"))
-					.catch(() => ({}));
+				const pkg = await readOptionalJson<{
+					name?: unknown;
+					version?: unknown;
+				}>(path.join(p, "package.json"));
 				results.push({
-					name: pkg.name || e,
+					name: typeof pkg?.name === "string" ? pkg.name : e,
 					path: p,
-					version: pkg.version || "unknown",
+					version: typeof pkg?.version === "string" ? pkg.version : "unknown",
 					upstream: null,
 				});
 			}
@@ -1143,8 +1064,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				return {
 					success: false,
 					pluginName: pluginId,
-					ejectedPath: "",
-					upstreamCommit: "",
 					requiresRestart: false,
 					error: `Plugin "${pluginId}" not found`,
 				};
@@ -1162,7 +1081,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					success: false,
 					pluginName: canonicalName,
 					ejectedPath: targetDir,
-					upstreamCommit: "",
 					requiresRestart: false,
 					error: `Refusing to write outside ${base}`,
 				};
@@ -1173,7 +1091,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					success: false,
 					pluginName: canonicalName,
 					ejectedPath: targetDir,
-					upstreamCommit: "",
 					requiresRestart: false,
 					error: "Already ejected",
 				};
@@ -1192,18 +1109,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 
 				const pm = await detectPackageManager();
 				await execAsync(`${pm} install`, { cwd: targetDir });
-				try {
-					await execAsync(`${pm} run build`, { cwd: targetDir });
-				} catch (err) {
-					// Surface a real build failure observably instead of masking it (see above).
-					logger.warn(
-						`[PluginManager] build step did not complete for ${targetDir}: ${formatError(err)}`,
-					);
-					this.runtime.reportError("PluginManager", err, {
-						targetDir,
-						step: "build",
-					});
-				}
+				await execAsync(`${pm} run build`, { cwd: targetDir });
 
 				const commitHash = (
 					await execAsync("git rev-parse HEAD", { cwd: targetDir })
@@ -1234,11 +1140,12 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				};
 			} catch (err) {
 				await fs.remove(targetDir);
+				// error-policy:J1 plugin ejection cleans partial output and returns a
+				// structured failure to its caller.
 				return {
 					success: false,
 					pluginName: canonicalName,
 					ejectedPath: targetDir,
-					upstreamCommit: "",
 					requiresRestart: false,
 					error: String(err),
 				};
@@ -1253,11 +1160,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				return {
 					success: false,
 					pluginName: pluginId,
-					ejectedPath: "",
-					upstreamCommits: 0,
-					localChanges: false,
-					conflicts: [],
-					commitHash: "",
 					requiresRestart: false,
 					error: "No ejected plugins",
 				};
@@ -1275,11 +1177,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				return {
 					success: false,
 					pluginName: pluginId,
-					ejectedPath: "",
-					upstreamCommits: 0,
-					localChanges: false,
-					conflicts: [],
-					commitHash: "",
 					requiresRestart: false,
 					error: "Plugin not found in ejected directory",
 				};
@@ -1291,10 +1188,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					success: false,
 					pluginName: pluginId,
 					ejectedPath: targetDir,
-					upstreamCommits: 0,
-					localChanges: false,
-					conflicts: [],
-					commitHash: "",
 					requiresRestart: false,
 					error: "Missing upstream metadata",
 				};
@@ -1313,7 +1206,16 @@ export class PluginManagerService extends Service implements PluginRegistry {
 						},
 					)
 				).stdout.trim();
-				const count = parseInt(upstreamCount, 10) || 0;
+				const count = Number.parseInt(upstreamCount, 10);
+				if (!Number.isSafeInteger(count) || count < 0) {
+					throw new ElizaError(
+						"Git returned an invalid upstream commit count",
+						{
+							code: "PLUGIN_MANAGER_INVALID_COMMIT_COUNT",
+							context: { pluginId, upstreamCount },
+						},
+					);
+				}
 
 				if (count > 0) {
 					await execAsync(`git merge --no-edit origin/${metadata.branch}`, {
@@ -1339,14 +1241,12 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					requiresRestart: count > 0,
 				};
 			} catch (err) {
+				// error-policy:J1 plugin sync returns a structured failure with the
+				// target path and sync state visible to its caller.
 				return {
 					success: false,
 					pluginName: pluginId,
 					ejectedPath: targetDir,
-					upstreamCommits: 0,
-					localChanges: false,
-					conflicts: [],
-					commitHash: "",
 					requiresRestart: false,
 					error: String(err),
 				};
@@ -1370,7 +1270,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				return {
 					success: false,
 					pluginName: pluginId,
-					removedPath: "",
 					requiresRestart: false,
 					error: "Plugin not found",
 				};
@@ -1394,16 +1293,17 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		for (const e of entries) {
 			const p = path.join(base, e);
 			if ((await fs.stat(p)).isDirectory()) {
-				const pkg = await fs
-					.readJson(path.join(p, "package.json"))
-					.catch(() => ({}));
-				const upstream = await fs
-					.readJson(path.join(p, ".upstream.json"))
-					.catch(() => null);
+				const pkg = await readOptionalJson<{
+					name?: unknown;
+					version?: unknown;
+				}>(path.join(p, "package.json"));
+				const upstream = await readOptionalJson<UpstreamMetadata>(
+					path.join(p, ".upstream.json"),
+				);
 				results.push({
-					name: pkg.name || e,
+					name: typeof pkg?.name === "string" ? pkg.name : e,
 					path: p,
-					version: pkg.version || "unknown",
+					version: typeof pkg?.version === "string" ? pkg.version : "unknown",
 					upstream,
 				});
 			}

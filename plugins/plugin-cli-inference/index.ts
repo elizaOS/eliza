@@ -40,11 +40,7 @@ import { flattenPrompt } from "./src/prompt-flatten";
  *   - `codex exec`      (reads ~/.codex/auth.json itself).
  *
  * eliza never sees/forwards/logs the subscription token — the child env is
- * filtered (allowlist + secret blocklist) and the CLI loads its own creds. This
- * is the develop-shippable peer to the two never-commit, TOS-gray bypass paths
- * (the claude-code-stealth fetch interceptor in
- * `packages/agent/src/auth/credentials.ts` and plugin-codex-cli `postResponses`)
- * which replay the consumer-subscription token in-process.
+ * filtered (allowlist + secret blocklist) and the CLI loads its own creds.
  *
  * The whole models map is INERT unless `ELIZA_CHAT_VIA_CLI` is `claude`,
  * `claude-sdk`, or `codex`. We register TEXT_LARGE / TEXT_MEGA /
@@ -686,18 +682,6 @@ export const cliInferencePlugin: Plugin = {
     if (!backend) {
       logger.info("[cli-inference] ELIZA_CHAT_VIA_CLI unset — plugin inert (no models registered)");
       return;
-    }
-    // Double-activation guard: the in-process claude-code-stealth interceptor and
-    // this CLI-spawn path are two colliding claude routes. This guard lives HERE
-    // (not in credentials.ts, which is skip-worktree on the live branch).
-    const stealth = readEnv("ELIZA_ENABLE_CLAUDE_STEALTH")?.trim().toLowerCase();
-    const stealthOn =
-      stealth === "1" || stealth === "true" || stealth === "yes" || stealth === "on";
-    if ((backend === "claude" || backend === "claude-sdk") && stealthOn) {
-      throw new Error(
-        `[cli-inference] ELIZA_CHAT_VIA_CLI=${backend} collides with ELIZA_ENABLE_CLAUDE_STEALTH. ` +
-          "Pick one claude inference route (CLI/SDK spawn vs in-process stealth interceptor)."
-      );
     }
     logger.info(
       backend === "claude-sdk"

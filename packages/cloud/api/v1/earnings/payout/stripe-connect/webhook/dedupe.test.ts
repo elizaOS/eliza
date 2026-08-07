@@ -19,9 +19,17 @@ import {
 } from "bun:test";
 import { Hono } from "hono";
 
-process.env.DATABASE_URL ||= "pglite://memory";
-process.env.NODE_ENV ||= "test";
-process.env.MOCK_REDIS ||= "1";
+const savedTestEnv = {
+  DATABASE_URL: process.env.DATABASE_URL,
+  TEST_DATABASE_URL: process.env.TEST_DATABASE_URL,
+  NODE_ENV: process.env.NODE_ENV,
+  MOCK_REDIS: process.env.MOCK_REDIS,
+};
+
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
+process.env.NODE_ENV = "test";
+process.env.MOCK_REDIS = "1";
 
 const CONNECT_EVENT = {
   id: "evt_conn_1",
@@ -114,6 +122,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (closeDb) await closeDb();
+  for (const [key, value] of Object.entries(savedTestEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 });
 
 describe("Stripe-Connect webhook — replay dedupe (L5)", () => {

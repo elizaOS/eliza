@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for sync desktop renderer mjs. */
+/**
+ * Fast desktop-renderer iteration: builds the app's Vite dist (unless
+ * --skip-build) and copies it into an installed Eliza .app's Contents/Resources
+ * renderer dir, re-syncing on changes with --watch.
+ */
 
 import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, statSync, watch } from "node:fs";

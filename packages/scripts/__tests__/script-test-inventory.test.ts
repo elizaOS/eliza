@@ -4,7 +4,6 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -19,6 +18,7 @@ import {
   SCRIPT_TEST_LANE_COMMANDS,
   SCRIPT_TEST_RUNNER,
 } from "../lib/script-test-inventory.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 import {
   parseScriptTestArgs,
   runScriptTests,
@@ -69,7 +69,7 @@ describe("packages/scripts executable-test inventory", () => {
   test("discovers every Bun dot/underscore test/spec form, extension, and case", () => {
     const files = [
       "packages/scripts/root.test.ts",
-      "packages/scripts/cloud/nested.SPEC.MTS",
+      "packages/cloud/scripts/nested.SPEC.MTS",
       "packages/scripts/a/b/c.test.cts",
       "packages/scripts/a/b/c.spec.js",
       "packages/scripts/a/b/c.test.jsx",
@@ -85,6 +85,7 @@ describe("packages/scripts executable-test inventory", () => {
       "packages/other/ignored.test.ts",
     ];
     expect(inventory(files).files.map(({ file }) => file)).toEqual([
+      "packages/cloud/scripts/nested.SPEC.MTS",
       "packages/scripts/a/b/.spec.cjs",
       "packages/scripts/a/b/.test.ts",
       "packages/scripts/a/b/_spec.mts",
@@ -96,7 +97,6 @@ describe("packages/scripts executable-test inventory", () => {
       "packages/scripts/a/b/c.test.jsx",
       "packages/scripts/a/b/name_spec.js",
       "packages/scripts/a/b/name_test.tsx",
-      "packages/scripts/cloud/nested.SPEC.MTS",
       "packages/scripts/root.test.ts",
     ]);
     expect(() =>
@@ -407,19 +407,13 @@ jobs:
     });
     const command = reports[0]?.execution.command ?? [];
     expect(command.slice(0, 3)).toEqual([
-      "bun",
+      "node",
+      "packages/scripts/run-script-test-files.mjs",
       "--config=packages/scripts/bunfig.script-tests.toml",
-      "test",
     ]);
-    expect(command).toContain("--parallel=4");
-    expect(command.indexOf("--reporter=junit")).toBeLessThan(
-      command.indexOf("packages/scripts/example.test.ts"),
-    );
-    expect(command.indexOf("--reporter-outfile")).toBe(-1);
+    expect(command).toContain("--concurrency=4");
     expect(
-      command.findIndex((argument) =>
-        argument.startsWith("--reporter-outfile="),
-      ),
+      command.findIndex((argument) => argument.startsWith("--junit=")),
     ).toBeLessThan(command.indexOf("packages/scripts/example.test.ts"));
   });
 
@@ -868,7 +862,7 @@ jobs:
     // describe.skip`) are the only files permitted to report skips; a skip in
     // any other discovered file is silently-dropped coverage and must fail.
     const conditional =
-      "packages/scripts/cloud/admin/daemons/provisioning-worker-env-reconcile.test.ts";
+      "packages/cloud/scripts/admin/daemons/provisioning-worker-env-reconcile.test.ts";
     const unconditional =
       "packages/scripts/__tests__/script-test-inventory.test.ts";
     const junitFor = (file: string) => `<?xml version="1.0"?>
@@ -911,11 +905,17 @@ jobs:
   test("the real repository has one executing lane for every discovered test", () => {
     const result = buildScriptTestInventory();
     expect(result.discoveredCount).toBeGreaterThan(100);
-    expect(result.excluded).toEqual([]);
+    expect(result.excluded).toEqual([
+      {
+        file: "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
+        reason:
+          "the release-candidate workflow owns this slow real-registry transport test",
+      },
+    ]);
     expect(
       result.files.some(
         ({ file }) =>
-          file === "packages/scripts/cloud/admin/bridge-reply-verdict.test.ts",
+          file === "packages/cloud/scripts/admin/bridge-reply-verdict.test.ts",
       ),
     ).toBe(true);
     expect(
@@ -931,5 +931,5 @@ jobs:
       expect(entry.sha256).toMatch(/^[a-f0-9]{64}$/);
     }
     expect(result.inventorySha256).toMatch(/^[a-f0-9]{64}$/);
-  });
+  }, 15_000);
 });

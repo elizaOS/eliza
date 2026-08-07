@@ -24,10 +24,7 @@ export type AgentAutomationMode = "connectors-only" | "full";
 
 // ── Stream event types ────────────────────────────────────────────────────────
 
-export type StreamEventType =
-  | "agent_event"
-  | "heartbeat_event"
-  | "training_event";
+export type StreamEventType = "agent_event" | "heartbeat_event";
 
 export interface StreamEventEnvelope {
   type: StreamEventType;

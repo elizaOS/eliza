@@ -32,13 +32,13 @@ describe("app-deploy-guidance", () => {
       for (const p of NORMIE) expect(isMonetizedAppTask(p)).toBe(false);
     });
 
-    it("eliza-cloud: signal forces the edad/register monetized contract", () => {
+    it("eliza-cloud: signal forces the skill/register monetized contract", () => {
       for (const p of NORMIE) {
         const out = augmentTaskWithDeployGuidance(p, cloud, {
           monetized: true,
         });
         expect(out).toContain("App Deployment (Eliza Cloud)");
-        expect(out).toContain("packages/examples/cloud/edad");
+        expect(out).toContain("build-monetized-app");
         // Broker-first (#14118): register via the parent broker command, not a
         // raw POST /api/v1/apps with an owner key the child no longer has.
         expect(out).toContain('"command":"apps.create"');
@@ -53,7 +53,7 @@ describe("app-deploy-guidance", () => {
       const out = augmentTaskWithDeployGuidance(NORMIE[1], cloud, {
         monetized: true,
       });
-      expect(out).toContain("packages/examples/cloud/edad");
+      expect(out).toContain("build-monetized-app");
     });
 
     it("custom host: signal turns the weak conditional into a firm directive", () => {
@@ -65,7 +65,7 @@ describe("app-deploy-guidance", () => {
         monetized: true,
       });
       expect(monetized).toContain("THIS APP IS MONETIZED");
-      expect(monetized).toContain("packages/examples/cloud/edad");
+      expect(monetized).toContain("build-monetized-app");
       expect(monetized).toContain("x-app-id");
     });
 
@@ -75,7 +75,7 @@ describe("app-deploy-guidance", () => {
         cloud,
       );
       expect(out).toContain("App Deployment (Eliza Cloud)");
-      expect(out).not.toContain("packages/examples/cloud/edad");
+      expect(out).not.toContain("THIS APP IS MONETIZED");
     });
 
     it("signal only ADDS detection — a keyword match still works without it", () => {
@@ -83,7 +83,7 @@ describe("app-deploy-guidance", () => {
         cloud,
         "build a monetized app that charges $2 per use",
       );
-      expect(out).toContain("packages/examples/cloud/edad");
+      expect(out).toContain("build-monetized-app");
     });
   });
 
@@ -157,7 +157,7 @@ describe("app-deploy-guidance", () => {
       // "Do NOT use Eliza Cloud for this one") is gone — the note is now a
       // single structural capability description the model applies by judgment.
       expect(out).not.toContain("App Deployment (Eliza Cloud)");
-      expect(out).not.toContain("packages/examples/cloud/edad");
+      expect(out).not.toContain("START FROM THE TEMPLATE");
       expect(out).not.toContain("cloud.json");
       expect(out).not.toContain("Do NOT use Eliza Cloud for this one");
     });
@@ -233,24 +233,23 @@ describe("app-deploy-guidance", () => {
   });
 
   describe("buildAppDeployGuidance", () => {
-    it("a MONETIZED Eliza-Cloud build starts from the edad template (no from-scratch)", () => {
+    it("a monetized Eliza Cloud build follows the canonical skill", () => {
       const out = buildAppDeployGuidance(
         { target: "eliza-cloud" },
         "build a monetized app that charges $2 per use",
       );
-      expect(out).toContain("packages/examples/cloud/edad");
-      expect(out).toContain("START FROM THE TEMPLATE");
+      expect(out).toContain("build-monetized-app");
       // forwards to the org-balance endpoint, not the stranded per-app pool
       expect(out).toContain("/api/v1/messages");
       expect(out).not.toContain("/api/v1/apps/<appId>/chat");
     });
-    it("a NON-monetized build keeps the generic Cloud contract (no edad)", () => {
+    it("a non-monetized build keeps the generic Cloud contract", () => {
       const out = buildAppDeployGuidance(
         { target: "eliza-cloud" },
         "build a website about cats",
       );
       expect(out).toContain("App Deployment (Eliza Cloud)");
-      expect(out).not.toContain("packages/examples/cloud/edad");
+      expect(out).not.toContain("THIS APP IS MONETIZED");
     });
     it("defaults to Eliza Cloud for an unspecified/empty config", () => {
       expect(buildAppDeployGuidance({ target: "eliza-cloud" })).toContain(

@@ -58,6 +58,11 @@ export interface VoiceWorkbenchScenarioReport {
 	verdict: VoiceWorkbenchVerdict;
 	caseCount: number;
 	failedCaseKinds: string[];
+	measurementCoverage: Array<{
+		metric: string;
+		count: number;
+		passed: boolean;
+	}>;
 	skipReason?: string;
 }
 
@@ -158,6 +163,13 @@ export function buildVoiceWorkbenchReport(
 			verdict,
 			caseCount: run.cases.length,
 			failedCaseKinds: run.cases.filter((c) => !c.passed).map((c) => c.kind),
+			measurementCoverage: run.cases
+				.filter((entry) => entry.kind === "measurement-coverage")
+				.map((entry) => ({
+					metric: entry.metric,
+					count: entry.count,
+					passed: entry.passed,
+				})),
 			skipReason: run.skipReason,
 		};
 	});
@@ -302,15 +314,24 @@ export function formatVoiceWorkbenchMarkdown(
 		"",
 		"## Scenarios",
 		"",
-		"| Scenario | Classes | Verdict | Cases | Failed |",
-		"| --- | --- | --- | --- | --- |",
+		"| Scenario | Classes | Verdict | Cases | Coverage | Failed |",
+		"| --- | --- | --- | --- | --- | --- |",
 	];
 	for (const s of report.scenarios) {
 		const failed =
 			s.failedCaseKinds.length > 0 ? s.failedCaseKinds.join(", ") : "—";
 		const skip = s.skipReason ? ` (${s.skipReason})` : "";
+		const coverage =
+			s.measurementCoverage.length > 0
+				? s.measurementCoverage
+						.map(
+							(entry) =>
+								`${entry.metric}=${entry.count}${entry.passed ? "" : "!"}`,
+						)
+						.join(", ")
+				: "—";
 		lines.push(
-			`| ${s.scenarioId} | ${s.classes.join(", ")} | ${s.verdict}${skip} | ${s.caseCount} | ${failed} |`,
+			`| ${s.scenarioId} | ${s.classes.join(", ")} | ${s.verdict}${skip} | ${s.caseCount} | ${coverage} | ${failed} |`,
 		);
 	}
 	return lines.join("\n");

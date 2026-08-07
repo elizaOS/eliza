@@ -4,11 +4,11 @@ Health, sleep, circadian-regularity, and screen-time domain plugin for elizaOS.
 
 ## Purpose / role
 
-Provides the health and sleep domain layer for Eliza agents — connector registrations (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity inference engines, screen-time type contracts, owner-telemetry routing, wake/bedtime anchor contributions, `ActivitySignalBus` family declarations, and default scheduled-task packs (bedtime, wake-up, sleep-recap). Loaded as `healthPlugin` (package `@elizaos/plugin-health`). Opt-in; consumed by plugins such as `@elizaos/plugin-personal-assistant`. All registry contributions are soft-dependency: if `connectorRegistry`, `anchorRegistry`, `busFamilyRegistry`, or `defaultPackRegistry` are absent on the runtime, the plugin logs a one-line skip and continues without error.
+Provides the health and sleep domain layer for Eliza agents — connector registrations (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity inference engines, screen-time type contracts, wake/bedtime anchor contributions, `ActivitySignalBus` family declarations, and default scheduled-task packs (bedtime, wake-up, sleep-recap). Loaded as `healthPlugin` (package `@elizaos/plugin-health`). Opt-in; consumed by plugins such as `@elizaos/plugin-personal-assistant`. All registry contributions are soft-dependency: if `connectorRegistry`, `anchorRegistry`, `busFamilyRegistry`, or `defaultPackRegistry` are absent on the runtime, the plugin logs a one-line skip and continues without error.
 
 ## Plugin surface
 
-The plugin object (`healthPlugin`) registers no runtime actions or providers directly. It registers one response-handler evaluator for explicit owner telemetry reads. Health owns the reusable action/provider/route/service surfaces (`createOwnerHealthAction`, `createOwnerScreenTimeAction`, `createHealthActionRunner`, `createScreenTimeActionRunner`, `createHealthProvider`, `createHealthSleepRouteHandler`, `createHealthSleepServiceMethods`) so host plugins inject access checks, route context, and storage/service adapters instead of duplicating health metadata. Its `init` function calls four registration helpers:
+The plugin object (`healthPlugin`) registers no runtime actions, providers, or text-routing evaluators directly. Health owns the reusable action/provider/route/service surfaces (`createOwnerHealthAction`, `createOwnerScreenTimeAction`, `createHealthActionRunner`, `createScreenTimeActionRunner`, `createHealthProvider`, `createHealthSleepRouteHandler`, `createHealthSleepServiceMethods`) so host plugins inject access checks, route context, and storage/service adapters instead of duplicating health metadata. Natural owner requests stay model-owned through the host-registered `OWNER_HEALTH` action. Its `init` function calls four registration helpers:
 
 | Registration call | What it contributes |
 |---|---|
@@ -17,7 +17,7 @@ The plugin object (`healthPlugin`) registers no runtime actions or providers dir
 | `registerHealthBusFamilies(runtime)` | 8 `BusFamilyContribution`s: `health.sleep.detected`, `health.sleep.ended`, `health.wake.observed`, `health.wake.confirmed`, `health.nap.detected`, `health.bedtime.imminent`, `health.regularity.changed`, `health.workout.completed` |
 | `registerHealthDefaultPacks(runtime)` | 3 `DefaultPack`s: `bedtime`, `wake-up`, `sleep-recap` |
 
-`init` also calls `registerCircadianInsightContract(runtime, createDefaultCircadianInsightContract())` to attach the `CircadianInsightContract` seam on the runtime symbol `Symbol.for("@elizaos/plugin-health:circadian-insight-contract")`. The `health.owner-telemetry-routing` response-handler evaluator routes explicit first-person sleep, recovery, activity, and wearable reads to a host-registered `OWNER_HEALTH` action; it stays inactive when that action is absent and excludes clinical-advice requests.
+`init` also calls `registerCircadianInsightContract(runtime, createDefaultCircadianInsightContract())` to attach the `CircadianInsightContract` seam on the runtime symbol `Symbol.for("@elizaos/plugin-health:circadian-insight-contract")`.
 
 ### Key exported constants
 
@@ -42,7 +42,7 @@ src/
   actions/
     index.ts                    Health/screen-time action factories and runner adapters for host plugins
     health.ts                   Health action implementation
-    owner-health-routing.ts     Deterministic Stage-1 routing for owner telemetry reads
+    owner-health-routing.ts     Compatibility classifier/evaluator export; not registered by the plugin
     owner-health.ts             Owner health action factory
     owner-screentime.ts         Owner screen-time action factory
     screen-time.ts              Screen-time action implementation
@@ -179,46 +179,12 @@ Create `src/default-packs/<name>.ts` implementing `DefaultPack`, add it to `HEAL
 - **CircadianInsightContract is the canonical seam.** Any code that needs circadian state or scheduling-window inference resolves it via `getCircadianInsightContract(runtime)` — never deep-imports `src/sleep/*` from outside the plugin.
 - **screen-time aggregation ownership.** `src/screen-time/` owns taxonomy/classification, range/window helpers, mobile signal parsing/status helpers, pure summary/breakdown/metrics builders, system-inactivity filtering, and shared payload contracts. The repository-backed aggregator lives in `@elizaos/plugin-personal-assistant` while signal-bus ownership remains split across the two plugins.
 - **Token encryption.** `src/util/token-encryption.ts` encrypts OAuth tokens at rest using a per-runtime key; do not store raw tokens elsewhere.
-- See root `AGENTS.md` for global architecture rules, logger conventions, and ESM/naming requirements.
+- See root `CLAUDE.md` for global architecture rules, logger conventions, and ESM/naming requirements.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — agent behavior / app plugin:**
-- A **live-LLM** scenario trajectory showing the behavior end to end and asserting the **outcome**, not just that routing/an action was selected (see #9970).
-- The artifacts the behavior creates — memories, knowledge, scheduled-task rows, relationships, documents, outputs — inspected after the run.
-- Backend `[ClassName]` logs of the action/service/runner firing, plus error/edge/permission paths.
-- The empty-state and adversarial-input behavior, not just one happy scenario.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

@@ -1,3 +1,4 @@
+/** Verifies desktop stories smoke through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Portable-stories smoke test for the desktop surface. Composes every desktop

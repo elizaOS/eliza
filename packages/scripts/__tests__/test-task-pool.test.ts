@@ -1,7 +1,7 @@
 // Exercises tests test task pool.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 import {
   isParallelSafeTask,
@@ -159,23 +159,6 @@ describe("runPool", () => {
   test("concurrency is clamped to at least 1 and at most item count", async () => {
     const results = await runPool([1, 2], async (n) => n, 99);
     expect(results.map((r) => r.value)).toEqual([1, 2]);
-  });
-});
-
-describe("process supervision boundary", () => {
-  test("documents why dev supervisors and the test pool stay split", () => {
-    const doc = readFileSync(
-      new URL("../process-supervision.md", import.meta.url),
-      "utf8",
-    );
-
-    expect(doc).toContain("keep the seams separate");
-    expect(doc).toContain("api-supervisor.mjs");
-    expect(doc).toContain("dev-all.mjs");
-    expect(doc).toContain("run-all-tests.mjs");
-    expect(doc).toContain("long-lived single-child supervisor");
-    expect(doc).toContain("bounded batch runner");
-    expect(doc).toContain("digest.readUInt32BE(0)");
   });
 });
 

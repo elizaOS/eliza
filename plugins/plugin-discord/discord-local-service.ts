@@ -3,7 +3,9 @@
  *
  * Connects to the Discord desktop app via the local RPC socket, enabling
  * message ingestion and macOS UI-automation-based replies without a bot token.
- * Registered as the `discord-local` service.
+ * Registered as the `discord-local` service by the main Discord plugin; the
+ * service is dormant unless `DISCORD_LOCAL_CLIENT_ID` and
+ * `DISCORD_LOCAL_CLIENT_SECRET` are configured (local mode).
  */
 
 import { execFile } from "node:child_process";
@@ -24,7 +26,6 @@ import {
 	type Media,
 	type Memory,
 	type MemoryMetadata,
-	type Plugin,
 	resolveStateDir,
 	Service,
 	stringToUuid,
@@ -34,7 +35,6 @@ import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "./accounts";
 
 const execFileAsync = promisify(execFile);
 
-export const DISCORD_LOCAL_PLUGIN_NAME = "@elizaos/plugin-discord-local";
 export const DISCORD_LOCAL_SERVICE_NAME = "discord-local";
 export const DISCORD_LOCAL_ACCOUNT_ID = DEFAULT_ACCOUNT_ID;
 const DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/v10/oauth2/token";
@@ -1262,20 +1262,3 @@ export class DiscordLocalService extends Service {
 		await execFileAsync("/usr/bin/osascript", ["-e", script]);
 	}
 }
-
-const discordLocalPlugin: Plugin = {
-	name: DISCORD_LOCAL_PLUGIN_NAME,
-	description:
-		"Local Discord desktop integration for Eliza via Discord RPC and macOS UI automation",
-	connectorSources: [
-		{
-			source: "discord",
-			aliases: ["discord", "discord-local"],
-			sourceKind: "passive",
-			isPassive: true,
-		},
-	],
-	services: [DiscordLocalService],
-};
-
-export default discordLocalPlugin;

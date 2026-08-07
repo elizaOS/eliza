@@ -1,3 +1,8 @@
+---
+title: Shared Development Server
+description: "Run collision-free app preview servers across concurrent worktrees."
+---
+
 # Shared dev server for concurrent lanes
 
 Parallel worktrees should not all bind the default app UI port (`2138`). The app Vite config uses `strictPort: true`, so a second server on the same port fails instead of auto-incrementing. Use the shared dev-server scripts when multiple agents or lanes are active on the same VPS.

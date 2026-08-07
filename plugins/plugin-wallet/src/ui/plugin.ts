@@ -1,0 +1,77 @@
+/**
+ * `walletAppPlugin` — the plugin descriptor registering the wallet inventory
+ * shell page, the shared GUI wallet view, and the chat-sidebar wallet
+ * status widget.
+ */
+import type { Plugin } from "@elizaos/core";
+
+export const walletAppPlugin: Plugin = {
+  name: "@elizaos/plugin-wallet:ui",
+  packageName: "@elizaos/plugin-wallet",
+  description: "Non-custodial wallet inventory UI",
+  app: {
+    displayName: "Wallet",
+    category: "wallet",
+    icon: "Wallet",
+    visibleInAppStore: true,
+    viewKind: "system",
+    developerOnly: false,
+    navTabs: [
+      {
+        id: "wallet.inventory",
+        viewKind: "system",
+        label: "Wallet",
+        icon: "Wallet",
+        path: "/inventory",
+        tabAffinity: "inventory",
+        group: "wallet",
+        order: 50,
+        componentExport: "@elizaos/plugin-wallet/ui#InventoryView",
+      },
+    ],
+  },
+  views: [
+    // One shipped GUI declaration drawn from InventoryView. The modality enum is
+    // retained in the contract for future alternate view entries.
+    {
+      id: "wallet",
+      viewKind: "system",
+      label: "Wallet",
+      description: "Non-custodial wallet inventory and token balances",
+      icon: "Wallet",
+      path: "/wallet",
+      modalities: ["gui"],
+      bundlePath: "dist/views/bundle.js",
+      // First-party instrumented view (data-agent-id controls): grant the
+      // agent-surface capability so the view broker admits agent-driven
+      // fills/clicks (#13452 manifest gate).
+      surface: { capabilities: ["agent-surface"] },
+      componentExport: "InventoryView",
+      tags: ["finance", "crypto", "wallet"],
+      anticipatoryIntent:
+        "Offer a portfolio summary and a fund/swap next step, grounded in balances, readiness, and recent wallet activity.",
+      relatedActions: [
+        "WALLET",
+        "EVM_SWAP",
+        "EVM_TRANSFER",
+        "SOLANA_SWAP",
+        "SOLANA_TRANSFER",
+        "CROSS_CHAIN_TRANSFER",
+        "BIRDEYE_WALLET_PORTFOLIO",
+      ],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
+  widgets: [
+    {
+      id: "wallet.status",
+      pluginId: "wallet",
+      slot: "chat-sidebar",
+      label: "Wallet Status",
+      icon: "Wallet",
+      order: 70,
+      defaultEnabled: true,
+    },
+  ],
+};

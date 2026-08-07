@@ -1,52 +1,94 @@
 ---
 title: Eliza-1
-description: "Open-weight Eliza models — Gemma 4-based, APOLLO-trained, multi-stage quantized."
+description: "The current Eliza-1 model family, training pipeline, and release artifacts."
 ---
 
-**Eliza-1** is the model family Eliza agents run locally by default. Built on Gemma 4 base models, fine-tuned for native tool-calling and agent loops, then put through a three-stage quantization pipeline for on-device inference.
+Eliza-1 is the open-weight model line developed for native Eliza agent
+trajectories and tool calls. The canonical training and release contract lives
+in [`packages/training/`](https://github.com/elizaOS/eliza/tree/develop/packages/training);
+the runtime and model downloader live outside that package.
 
-## Shipping sizes
+## Model tiers
 
-| Tier        | Model           | Base                  | Audience                          |
-| ----------- | --------------- | --------------------- | --------------------------------- |
-| Mobile / Laptop | `eliza-1-2b` | Gemma-4-E2B           | Phone / edge / laptop CPU + small GPU (smallest tier). |
-| Workstation | `eliza-1-4b`    | Gemma-4-E4B           | Single consumer GPU.              |
-| Workstation | `eliza-1-9b`    | Gemma-4-12B           | Mid-range workstation GPU.        |
-| Cloud       | `eliza-1-27b`   | Gemma-4-31B           | Server-class GPU.                 |
+The current registry maps four Gemma 4 bases to public Eliza-1 tiers:
 
-All sizes are published under the [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) HuggingFace repo with per-tier bundles. Legacy Qwen3 dense bases (0.6B / 1.7B / 4B) were dropped 2026-05-12 — they're incompatible with the mtp speculative-decode path.
+| Registry key | Eliza-1 tier | Base | Intended target |
+| --- | --- | --- | --- |
+| `gemma4-e2b` | `eliza-1-2b` | `google/gemma-4-E2B` | Local and entry hardware |
+| `gemma4-e4b` | `eliza-1-4b` | `google/gemma-4-E4B` | Local workstation |
+| `gemma4-12b` | `eliza-1-9b` | `google/gemma-4-12B` | Workstation GPU |
+| `gemma4-31b` | `eliza-1-27b` | `google/gemma-4-31B` | Cloud GPU |
 
-## Optimizer
+`elizaos/eliza-1-2b` is the locked real model used by the continuous-RL
+configuration. Release bundles are published under
+[`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1), while training
+data and pipeline snapshots use `elizaos/eliza-1-training`.
 
-**APOLLO is locked.** Memory-efficient, no alternatives ship.
+## Training and evaluation
 
-- 2B / 4B — `apollo_mini` (rank=1)
-- 9B / 27B — `apollo`
+The pipeline fine-tunes text and the matching speculative-decoding drafter.
+Voice and ASR weights are frozen and evaluated as release assets rather than
+retrained. APOLLO is the required optimizer; the smaller tiers use the
+low-rank `apollo_mini` profile.
+
+The release graph is:
+
+```text
+base benchmark
+  -> APOLLO supervised fine-tuning
+  -> fine-tuned benchmark
+  -> GGUF K-quant artifacts and MTP manifest
+  -> quantized benchmark
+  -> gated bundle publication
+```
+
+Continuous training data comes from the native trajectory recorder under the
+resolved Eliza state directory. Recording is opt-in in production and test;
+the scenario runner enables it for evaluation runs.
 
 ## Quantization
 
-Three real, shipping methods. The post-SFT pipeline runs all three:
+The shipping Gemma path uses llama.cpp GGUF K-quants, currently Q4_K_M for the
+local release tier with Q6_K and Q8_0 where a tier requires them.
 
-| Method        | Target           | Technique                                                                 |
-| ------------- | ---------------- | ------------------------------------------------------------------------- |
-| **PolarQuant**| 4-bit weights    | Hadamard rotation ([arXiv:2603.29078](https://arxiv.org/abs/2603.29078)). fp16 norms in a sidecar safetensors file. |
-| **TurboQuant**| 4-bit V-cache    | Online KV-cache quantization ([arXiv:2504.19874](https://arxiv.org/abs/2504.19874)). Pure-PyTorch reference plus a Triton-fused fast path. |
-| **QJL**       | 1-bit K-cache    | JL-projected K-cache ([arXiv:2406.03482](https://arxiv.org/abs/2406.03482)). Vendored CUDA C++ extension. Gemma 4's MQA geometry uses dual head dims (512 global / 256 SWA), so the head_dim=128 QJL/Polar KV kernels don't apply — Gemma tiers run stock q8_0 KV. |
+The package also contains specialized recipes with different roles:
 
-GGUF variants (`q3_k_m`, `q4_k_m`, `q5_k_m`, `q6_k`, `q8_0`) are also produced for llama.cpp consumption.
+| Recipe | Role in the current pipeline |
+| --- | --- |
+| TurboQuant | Runtime V-cache compression; it does not quantize model weights. |
+| QJL | Runtime K-cache compression using JL projection. |
+| PolarQuant | Linear-weight quantization with sidecar artifacts. |
 
-## Pipeline order
+Those recipes are optional for the current Gemma release line unless a tier
+explicitly enables them and carries real verification evidence. Their presence
+in the source tree does not mean every published bundle uses them.
 
-`base_bench → APOLLO SFT → fine_tuned_bench → PolarQuant + TurboQuant + QJL → quantized_bench`
+## Run locally with Ollama
 
-Every stage emits a benchmark report so regressions land with evidence.
+The training package includes Ollama Modelfiles for released tiers. After
+obtaining the referenced GGUF artifact, create a local model from the repository
+root:
 
-## Loading in an agent
+```bash
+ollama create eliza-1-2b \
+  -f packages/training/cloud/ollama/Modelfile.eliza-1-2b-q4_k_m
+```
 
-Eliza-1 models load through the standard model-provider plugin surface (`@elizaos/plugin-llamacpp`, `@elizaos/plugin-ollama`, or direct FFI). Set the model id in your character's `settings.model`.
+Ollama integration is an explicitly installed provider path; it is not part of
+the current environment-variable auto-detection map. Embedded packaged builds
+use `@elizaos/plugin-local-inference` and their platform-specific model catalog.
 
-## See also
+## Release guarantees
 
+The publisher refuses a bundle when required model, kernel, hardware, or
+evaluation evidence is missing. Published manifests bind the text checkpoint,
+drafter, quantized files, licenses, and evaluation results so a runtime can
+verify that it is loading one coherent bundle.
+
+## Source references
+
+- [Training package README](https://github.com/elizaOS/eliza/blob/develop/packages/training/README.md)
+- [Model registry](https://github.com/elizaOS/eliza/blob/develop/packages/training/scripts/training/model_registry.py)
+- [Ollama assets](https://github.com/elizaOS/eliza/tree/develop/packages/training/cloud/ollama)
 - [Model providers](/model-providers)
 - [Benchmarks](/tracks/training/benchmarks)
-- [Local models guide](/model-providers#local-models-with-ollama)

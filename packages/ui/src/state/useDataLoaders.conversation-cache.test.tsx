@@ -1,3 +1,4 @@
+/** Verifies useDataLoaders — conversation message prefetch cache through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Unit coverage for the conversation-message prefetch cache + abortable load

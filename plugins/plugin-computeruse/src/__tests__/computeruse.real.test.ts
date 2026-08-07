@@ -1,7 +1,7 @@
 /**
- * Real computer-use lane: drives useComputerAction/windowAction through a live
- * ComputerUseService and the real platform driver, asserting non-blank
- * screenshots. Skips where no headful display is available.
+ * Real computer-use lane drives a live ComputerUseService and the real platform
+ * driver, asserting non-blank screenshots. Skips where no headful display is
+ * available.
  */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
@@ -9,9 +9,6 @@ import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assertScreenshotBase64NotBlank } from "../../test/helpers/screenshot-quality.ts";
-import { useComputerAction } from "../actions/use-computer.js";
-import { windowAction } from "../actions/window.js";
-import computerUsePlugin from "../index.js";
 import { ComputerUseService } from "../services/computer-use-service.js";
 
 function createRuntime(settings: Record<string, string> = {}): IAgentRuntime {
@@ -53,58 +50,6 @@ describe("computer-use live parity", () => {
   afterEach(async () => {
     await service.stop();
     await rm(workspaceDir, { recursive: true, force: true });
-  });
-
-  it("exports the full public action surface", () => {
-    const actionNames = computerUsePlugin.actions?.map((action) => action.name);
-    expect(actionNames).toContain("COMPUTER_USE");
-    expect(actionNames).toContain("WINDOW");
-    expect(actionNames).not.toContain("DESKTOP");
-    expect(useComputerAction.similes).toContain("USE_COMPUTER");
-    expect(useComputerAction.roleGate).toMatchObject({ minRole: "OWNER" });
-    expect(windowAction.similes).toEqual(
-      expect.arrayContaining(["MANAGE_WINDOW", "WINDOW", "USE_WINDOW"]),
-    );
-  });
-
-  it("publishes the COMPUTER_USE desktop action surface and WINDOW action enum", () => {
-    const desktopActions = useComputerAction.parameters?.find(
-      (parameter) => parameter.name === "action",
-    );
-    expect(desktopActions?.schema).toMatchObject({
-      enum: expect.arrayContaining([
-        "screenshot",
-        "click",
-        "click_with_modifiers",
-        "double_click",
-        "right_click",
-        "mouse_move",
-        "type",
-        "key",
-        "key_combo",
-        "scroll",
-        "drag",
-        "detect_elements",
-        "ocr",
-      ]),
-    });
-
-    const windowOp = windowAction.parameters?.find(
-      (parameter) => parameter.name === "action",
-    );
-    expect(windowOp?.schema).toMatchObject({
-      enum: expect.arrayContaining([
-        "list",
-        "focus",
-        "switch",
-        "arrange",
-        "move",
-        "minimize",
-        "maximize",
-        "restore",
-        "close",
-      ]),
-    });
   });
 
   it("supports file commands and upstream path/edit aliases live", async () => {

@@ -358,38 +358,22 @@ describe("toOpenAiFinishReason", () => {
 });
 
 describe("getRecoverableProviderErrorStatus", () => {
-  function gatewayError(name: string, statusCode?: number) {
-    return Object.assign(new Error(`${name} from gateway`), {
+  function providerError(name: string, statusCode?: number) {
+    return Object.assign(new Error(`${name} from provider`), {
       name,
       ...(statusCode === undefined ? {} : { statusCode }),
     });
   }
 
-  test("preserves gateway caller-fault statuses from stable error names", () => {
+  test("preserves explicit provider caller-fault status fields", () => {
     expect(
-      getRecoverableProviderErrorStatus(
-        gatewayError("GatewayInvalidRequestError"),
-      ),
+      getRecoverableProviderErrorStatus(providerError("ProviderError", 400)),
     ).toBe(400);
     expect(
-      getRecoverableProviderErrorStatus(
-        gatewayError("GatewayModelNotFoundError"),
-      ),
+      getRecoverableProviderErrorStatus(providerError("ProviderError", 404)),
     ).toBe(404);
     expect(
-      getRecoverableProviderErrorStatus(gatewayError("GatewayRateLimitError")),
-    ).toBe(429);
-  });
-
-  test("preserves explicit gateway caller-fault status fields", () => {
-    expect(
-      getRecoverableProviderErrorStatus(gatewayError("GatewayError", 400)),
-    ).toBe(400);
-    expect(
-      getRecoverableProviderErrorStatus(gatewayError("GatewayError", 404)),
-    ).toBe(404);
-    expect(
-      getRecoverableProviderErrorStatus(gatewayError("GatewayError", 429)),
+      getRecoverableProviderErrorStatus(providerError("ProviderError", 429)),
     ).toBe(429);
   });
 
@@ -398,9 +382,7 @@ describe("getRecoverableProviderErrorStatus", () => {
       getRecoverableProviderErrorStatus(new Error("provider quota exceeded")),
     ).toBe(429);
     expect(
-      getRecoverableProviderErrorStatus(
-        gatewayError("GatewayResponseError", 500),
-      ),
+      getRecoverableProviderErrorStatus(providerError("ProviderError", 500)),
     ).toBeNull();
   });
 });

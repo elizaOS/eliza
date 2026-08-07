@@ -30,7 +30,6 @@ export interface PlatformAdapter {
 }
 
 export interface WebhookConfig {
-  agentId: string;
   // Telegram
   botToken?: string;
   webhookSecret?: string;

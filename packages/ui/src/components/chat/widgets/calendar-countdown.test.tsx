@@ -1,3 +1,4 @@
+/** Verifies formatCountdown through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // CalendarCountdown leaf (§C.4, issue #14564): the "in 40 min" countdown owns

@@ -155,9 +155,10 @@ function Harness(): React.JSX.Element {
   // storm". A rejected fetch propagates to useLoadOlderOnScroll's boundary
   // WITHOUT bumping the counter — matching the guard's bounded re-arm.
   const onLoadOlder = useCallback(async () => {
-    await renderWindow.onLoadOlder();
+    const result = await renderWindow.onLoadOlder();
     const win = window as Win;
     win.__loadResolves = (win.__loadResolves ?? 0) + 1;
+    return result;
   }, [renderWindow.onLoadOlder]);
 
   const visible =

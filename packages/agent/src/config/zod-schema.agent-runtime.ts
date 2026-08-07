@@ -508,7 +508,6 @@ export const AgentEntrySchema = z
     advancedMemory: z.boolean().optional(),
     agentOrchestrator: z.boolean().optional(),
     gitpathologist: z.boolean().optional(),
-    birdclaw: z.boolean().optional(),
     humanDelay: HumanDelaySchema.optional(),
     heartbeat: HeartbeatSchema,
     identity: IdentitySchema,
@@ -747,7 +746,6 @@ export const AgentDefaultsSchema = z
     advancedMemory: z.boolean().optional(),
     agentOrchestrator: z.boolean().optional(),
     gitpathologist: z.boolean().optional(),
-    birdclaw: z.boolean().optional(),
     contextPruning: z
       .object({
         mode: z.union([z.literal("off"), z.literal("cache-ttl")]).optional(),

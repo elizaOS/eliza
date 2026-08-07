@@ -3,8 +3,9 @@
  * must ask before including sensitive memories and must not send anything while
  * the owner is still deciding.
  */
+
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action-assertions.ts";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

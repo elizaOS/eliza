@@ -351,10 +351,6 @@ export function applyWindowsNativeInferenceDefaults(
 ): void {
   if (platform !== "win32") return;
 
-  // node-llama-cpp crashes Bun on Windows during packaged startup.
-  // Disable local embeddings until upstream fix lands.
-  childEnv.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
-
   // The fused elizaOS llama.cpp / OmniVoice runtime can trip GGML's
   // uncaught-exception backtrace guard inside packaged Bun unless this is set
   // before any native GGML library is loaded.

@@ -8,9 +8,8 @@
  * the fork build step to fail fast on broken binaries.
  *
  * Exit-code contract:
- *   0  no targets found, or every target produced a recognizable version line.
- *   1  at least one target's binary failed to execute or did not print a
- *      recognizable version line.
+ *   0  at least one host-compatible target passed every executable probe.
+ *   1  no compatible target exists, or any compatible executable probe fails.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -134,10 +133,11 @@ function main() {
   const root = mtpRoot();
   const targets = listTargets(root);
   if (targets.length === 0) {
-    console.log(`no targets found under ${root}, skipping`);
-    process.exit(0);
+    console.log(`FAIL no targets found under ${root}`);
+    process.exit(1);
   }
   let allOk = true;
+  let compatibleTargets = 0;
   for (const target of targets) {
     if (!targetMatchesHost(target)) {
       console.log(
@@ -145,9 +145,14 @@ function main() {
       );
       continue;
     }
+    compatibleTargets += 1;
     const targetDir = path.join(root, target);
     const ok = probeTarget(targetDir, target);
     if (!ok) allOk = false;
+  }
+  if (compatibleTargets === 0) {
+    console.log(`FAIL no target matches ${process.platform}-${process.arch}`);
+    allOk = false;
   }
   process.exit(allOk ? 0 : 1);
 }

@@ -51,7 +51,7 @@ export function ChatMessageActionSurface({
       className={cn(
         "inline-flex items-center text-white",
         bare
-          ? "gap-0.5"
+          ? "gap-0"
           : "gap-0.5 rounded-xl border border-white/25 bg-black/55 p-0.5 transition-colors duration-150",
         className,
       )}
@@ -100,7 +100,7 @@ function MessageActionButton({
         onClick();
       }}
       className={cn(
-        "keyboard-focus-emphasis bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:text-white active:scale-95 pointer-coarse:h-11 pointer-coarse:w-11",
+        "keyboard-focus-emphasis bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:text-white active:scale-95 max-md:h-8 max-md:w-8 pointer-coarse:h-8 pointer-coarse:w-8",
         bare
           ? "h-5 w-5 rounded-none hover:bg-transparent active:bg-transparent"
           : "h-6 w-6 rounded-lg transition-[background-color,color,transform] hover:bg-white/10 active:bg-white/10",
@@ -233,7 +233,7 @@ export function ChatMessageActions({
       {trailingAccessory ? (
         <div
           data-testid="thread-line-action-accessory"
-          className="ml-1 min-w-0 shrink-0"
+          className="ml-0.5 min-w-0 shrink-0"
         >
           {trailingAccessory}
         </div>

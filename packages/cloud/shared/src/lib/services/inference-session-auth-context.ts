@@ -21,6 +21,7 @@ import { cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
+import { loadInferenceAdmissionSnapshot } from "./inference-admission-snapshot";
 import {
   INFERENCE_AUTH_CONTEXT_VERSION,
   type InferenceSessionAuthContext,
@@ -31,6 +32,7 @@ import {
 import { usersService } from "./users";
 
 const sessionHydrations = new Map<string, Promise<InferenceSessionAuthDecision>>();
+const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
 
 export interface ResolveInferenceSessionAuthOptions {
   cacheOnly?: boolean;
@@ -142,7 +144,14 @@ async function hydrateAndCache(
   },
   persistDecision: boolean,
 ): Promise<InferenceSessionAuthDecision> {
-  const decision = await hydrateAuthoritativeDecision(params);
+  const authoritative = await hydrateAuthoritativeDecision(params);
+  const decision =
+    persistDecision && "apiKeyId" in authoritative
+      ? {
+          ...authoritative,
+          admission: await loadInferenceAdmissionSnapshot(authoritative.orgId),
+        }
+      : authoritative;
   if (persistDecision) await writeInferenceSessionAuthDecision(decision);
   return decision;
 }
@@ -197,7 +206,10 @@ export async function resolveInferenceSessionAuthContext(
       STEWARD_TENANT_ID: env.STEWARD_TENANT_ID,
     },
     token,
-    { executionCtx: options.executionCtx },
+    {
+      executionCtx: options.executionCtx,
+      skipDistributedCache: true,
+    },
   );
   if (!claims) return { kind: "rejected", status: 401 };
 
@@ -210,7 +222,29 @@ export async function resolveInferenceSessionAuthContext(
       });
       return null;
     });
-    if (cached) return toResolution(cached, "cache");
+    if (cached) {
+      if (options.executionCtx && Date.now() - cached.cachedAt >= AUTH_CONTEXT_REFRESH_AFTER_MS) {
+        const refresh = getOrCreateHydration(
+          {
+            stewardUserId: claims.userId,
+            email: claims.email,
+            walletAddress: claims.walletAddress,
+            walletChain: claims.walletChain,
+          },
+          true,
+        )
+          .then(() => undefined)
+          .catch((error) => {
+            // error-policy:J7 the cached decision already resolved this request;
+            // authoritative refresh failure is observed without adding latency.
+            logger.warn("[InferenceSessionAuth] Background refresh failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        options.executionCtx.waitUntil(refresh);
+      }
+      return toResolution(cached, "cache");
+    }
   }
 
   if (options.useAuthCache && options.cacheOnly) {

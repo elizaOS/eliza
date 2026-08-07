@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for sync dod gap issues lib mjs. */
+/**
+ * Pure parsing/formatting helpers for syncing INTEGRATION_DOD_MAP.md issue
+ * drafts to GitHub: extracts the drafts section, parses inline lists, builds
+ * issue titles/bodies/labels, and recognizes managed-issue markers.
+ */
 export const MANAGED_LABEL = "integration-dod-gap";
 export const MARKER_PREFIX = "integration-dod-gap-id:";
 export const DRAFTS_SECTION_HEADER = "## 9) GitHub Issue Drafts";

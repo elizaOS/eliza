@@ -1,3 +1,4 @@
+/** Verifies connector-setup card — minimal + Advanced split through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

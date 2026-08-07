@@ -1,3 +1,4 @@
+/** Verifies ContinuousChatToggle through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders ContinuousChatToggle in jsdom and asserts the three-segment mode

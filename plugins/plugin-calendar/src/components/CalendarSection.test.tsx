@@ -236,6 +236,7 @@ function makeResult(
     windowStart,
     windowEnd,
     refresh,
+    goToDate: vi.fn(),
     goToToday,
     goPrevious,
     goNext,

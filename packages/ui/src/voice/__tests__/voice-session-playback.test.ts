@@ -1,3 +1,4 @@
+/** Verifies voice-session streaming PCM playback sink (ScriptProcessor path) through the package's configured test harness. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resolveAudioWorkletModuleUrl } from "../audio-worklet-module-urls";

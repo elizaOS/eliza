@@ -1,7 +1,7 @@
 /**
  * Keyless coverage of the sub-agent credential-request bridge: a sub-agent's
  * credential request relays back to its origin. Runs on the pr-deterministic lane
- * under the LLM proxy; live-sub-agent-credential-request is the real-model twin.
+ * under the model provider; live-sub-agent-credential-request is the real-model twin.
  */
 import type http from "node:http";
 import {
@@ -172,7 +172,6 @@ function registerOwnerAppSendHandler(runtime: RuntimeWithScenarioRoutes): void {
         agentId: agentRuntime.agentId,
         roomId: (target.roomId ?? ROOM_ID) as UUID,
         content,
-        embedding: new Array(1024).fill(0),
       });
       await agentRuntime.createMemory(memory, "messages");
       return memory;

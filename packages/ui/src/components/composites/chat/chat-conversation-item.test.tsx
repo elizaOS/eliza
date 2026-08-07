@@ -1,3 +1,4 @@
+/** Verifies ChatConversationItem through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders ChatConversationItem in jsdom and asserts row selection, the

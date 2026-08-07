@@ -1,3 +1,4 @@
+/** Verifies DocumentViewer detail load through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

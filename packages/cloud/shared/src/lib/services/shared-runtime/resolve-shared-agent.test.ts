@@ -99,11 +99,18 @@ mock.module("../../services/api-keys", () => ({
   apiKeysService: { validateApiKey },
 }));
 
+const warmInferenceAdmissionSnapshot = mock(async () => undefined);
+mock.module("../inference-admission-snapshot", () => ({
+  warmInferenceAdmissionSnapshot,
+}));
+
 mock.module("../../utils/logger", () => ({
   logger: { debug: () => {}, warn: () => {}, error: () => {}, info: () => {} },
 }));
 
-const { resolveSharedAgent } = await import("./resolve-shared-agent");
+const { resolveSharedAgent, resetSharedAgentScopeMemoryCacheForTests } = await import(
+  "./resolve-shared-agent"
+);
 const { CacheTTL, CacheKeys } = await import("../../cache/keys");
 
 function contextWithAgentId(agentId?: string, headers: Record<string, string> = {}) {
@@ -147,6 +154,7 @@ function agent(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  resetSharedAgentScopeMemoryCacheForTests();
   requireUserOrApiKeyWithOrgLookup.mockReset();
   requireUserOrApiKeyWithOrgLookup.mockImplementation(
     async <T>(_: unknown, lookup: (organizationId: string) => Promise<T>) => ({
@@ -162,6 +170,7 @@ beforeEach(() => {
   cacheGetOrSet.mockClear();
   inFlight.clear();
   validateApiKey.mockClear();
+  warmInferenceAdmissionSnapshot.mockClear();
   cacheStore.clear();
   sessionScopeHashPrefix.mockClear();
   revalidateSessionScope.mockClear();
@@ -222,6 +231,42 @@ describe("resolveSharedAgent", () => {
     ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
     expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
     expect(validateApiKey).not.toHaveBeenCalled();
+  });
+
+  test("warm isolate performs only the credential-validity cache read", async () => {
+    const scopeKey = CacheKeys.sharedAgentScope.resolve("keyhashpref0000", "agent-1");
+    const validationKey = CacheKeys.apiKey.validation(
+      createHash("sha256").update("eliza_testkey").digest("hex").substring(0, 16),
+    );
+    cacheStore.set(scopeKey, {
+      orgId: "org-1",
+      agent: agent(),
+      firstWrittenAtMs: Date.now(),
+    });
+    cacheStore.set(validationKey, {
+      is_active: true,
+      organization_id: "org-1",
+      expires_at: null,
+    });
+    const waited: Promise<unknown>[] = [];
+    const options = {
+      cacheOnly: true,
+      executionCtx: { waitUntil: (promise: Promise<unknown>) => waited.push(promise) },
+    };
+
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, options),
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    await Promise.all(waited.splice(0));
+    cacheGet.mockClear();
+
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, options),
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+
+    expect(cacheGet).toHaveBeenCalledTimes(1);
+    expect(cacheGet).toHaveBeenCalledWith(validationKey);
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
   });
 
   test("cache-only does not freeze a non-shared decision after the agent becomes shared", async () => {

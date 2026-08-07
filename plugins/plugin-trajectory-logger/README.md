@@ -24,7 +24,9 @@ The view also exports an interact handler for agent-driven operations such as `l
 
 ## Requirements
 
-- **`@elizaos/plugin-training`** must be loaded alongside this plugin. It serves the `/api/trajectories` and `/api/trajectories/:id` routes that this inspector reads from. Without it, the view shows a fetch error.
+The plugin needs a running agent API with core trajectory capture enabled. The
+agent serves `/api/trajectories` and `/api/trajectories/:id` directly from
+`TrajectoriesService`; an unavailable service is shown as a fetch error.
 
 ## Installation
 

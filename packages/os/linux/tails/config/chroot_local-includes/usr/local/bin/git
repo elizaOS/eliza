@@ -1,2 +1,0 @@
-#!/bin/sh
-exec /usr/bin/torsocks --isolate /usr/bin/git "$@"

@@ -1,5 +1,5 @@
 /**
- * Unit coverage for the post-ready boot tail phase split in `eliza.ts`:
+ * Unit coverage for the post-ready boot tail phase split:
  * `getDeferAppRoutesEnabled` (deferred-by-default; explicit falsy tokens opt out) and
  * `runPostReadyBootTail`, which runs the post-ready-safe boot steps — TTS, app
  * routes, runtime hooks, sensitive-request adapters, credential bridge, trigger
@@ -11,12 +11,12 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { getDeferAppRoutesEnabled } from "./startup/app-contributors.ts";
 import {
-  __setLatestBootTailRuntimeForTest,
-  getDeferAppRoutesEnabled,
+  createRuntimeBootResources,
   type PostReadyBootSteps,
   runPostReadyBootTail,
-} from "./eliza.ts";
+} from "./startup/post-ready.ts";
 
 // A minimal stand-in: the post-ready tail only ever passes the runtime through
 // to the injected step stubs, so identity is all that matters here.
@@ -36,7 +36,6 @@ function makeSteps(): { steps: PostReadyBootSteps; order: string[] } {
       return result;
     };
   const steps: PostReadyBootSteps = {
-    ensureTextToSpeechHandler: vi.fn(record("tts", Promise.resolve())),
     registerAppRoutePlugins: vi.fn(record("appRoutes", Promise.resolve())),
     registerRuntimeHooks: vi.fn(record("runtimeHooks", Promise.resolve())),
     registerCoreSensitiveRequestAdapters: vi.fn(record("sensitive", undefined)),
@@ -91,22 +90,21 @@ describe("getDeferAppRoutesEnabled (parser truth table)", () => {
 
 describe("runPostReadyBootTail — phase split", () => {
   afterEach(() => {
-    __setLatestBootTailRuntimeForTest(null);
     vi.restoreAllMocks();
   });
 
   it("(default-unset ordering) awaits every tail step in declared order", async () => {
     const runtime = makeFakeRuntime();
-    __setLatestBootTailRuntimeForTest(runtime);
+    const resources = createRuntimeBootResources();
+    resources.tailRuntime = runtime;
     const { steps, order } = makeSteps();
 
-    await runPostReadyBootTail(runtime, steps);
+    await runPostReadyBootTail(runtime, steps, resources);
 
     // ensureLocalInferenceHandler + autonomy are PRE-ready (inline in
     // repairRuntimeAfterBoot) and intentionally absent from the tail; the tail
     // owns exactly these post-ready-safe steps, in this order.
     expect(order).toEqual([
-      "tts",
       "appRoutes",
       "runtimeHooks",
       "sensitive",
@@ -120,7 +118,8 @@ describe("runPostReadyBootTail — phase split", () => {
 
   it("(deferred dispatch) the tail does not resolve until the hung app-route load settles, but the caller that voids it returns immediately", async () => {
     const runtime = makeFakeRuntime();
-    __setLatestBootTailRuntimeForTest(runtime);
+    const resources = createRuntimeBootResources();
+    resources.tailRuntime = runtime;
     const { steps } = makeSteps();
 
     // Make registerAppRoutePlugins hang on a never-auto-resolving deferred to
@@ -133,7 +132,7 @@ describe("runPostReadyBootTail — phase split", () => {
     steps.registerAppRoutePlugins = vi.fn(() => appRoutesGate);
 
     let tailResolved = false;
-    const tail = runPostReadyBootTail(runtime, steps).then(() => {
+    const tail = runPostReadyBootTail(runtime, steps, resources).then(() => {
       tailResolved = true;
     });
 
@@ -151,11 +150,11 @@ describe("runPostReadyBootTail — phase split", () => {
   it("(torn-down guard) skips all mutations and logs when the runtime is superseded", async () => {
     const supersededRuntime = makeFakeRuntime();
     const liveRuntime = makeFakeRuntime();
-    // A newer boot has claimed the slot.
-    __setLatestBootTailRuntimeForTest(liveRuntime);
+    const resources = createRuntimeBootResources();
+    resources.tailRuntime = liveRuntime;
     const { steps, order } = makeSteps();
 
-    await runPostReadyBootTail(supersededRuntime, steps);
+    await runPostReadyBootTail(supersededRuntime, steps, resources);
 
     expect(order).toEqual([]);
     expect(steps.registerAppRoutePlugins).not.toHaveBeenCalled();
@@ -170,25 +169,31 @@ describe("runPostReadyBootTail — phase split", () => {
 
   it("(error isolation) an app-route loader that resolves quietly does not reject the tail", async () => {
     const runtime = makeFakeRuntime();
-    __setLatestBootTailRuntimeForTest(runtime);
+    const resources = createRuntimeBootResources();
+    resources.tailRuntime = runtime;
     const { steps } = makeSteps();
     // registerAppRoutePlugins isolates per-loader failures internally and
     // resolves (never rejects), so the tail completes normally.
     steps.registerAppRoutePlugins = vi.fn(() => Promise.resolve());
 
-    await expect(runPostReadyBootTail(runtime, steps)).resolves.toBeUndefined();
+    await expect(
+      runPostReadyBootTail(runtime, steps, resources),
+    ).resolves.toBeUndefined();
     expect(steps.ensureConnectorTargetCatalog).toHaveBeenCalledOnce();
   });
 
-  it("(error isolation) a throwing pre-ready-class step (TTS / runtime hooks) rejects the tail", async () => {
+  it("(error isolation) a throwing runtime hook rejects the tail", async () => {
     const runtime = makeFakeRuntime();
-    __setLatestBootTailRuntimeForTest(runtime);
+    const resources = createRuntimeBootResources();
+    resources.tailRuntime = runtime;
     const { steps } = makeSteps();
-    const boom = new Error("tts handler registration failed");
-    steps.ensureTextToSpeechHandler = vi.fn(() => Promise.reject(boom));
+    const boom = new Error("runtime hook registration failed");
+    steps.registerRuntimeHooks = vi.fn(() => Promise.reject(boom));
 
-    await expect(runPostReadyBootTail(runtime, steps)).rejects.toThrow(boom);
+    await expect(
+      runPostReadyBootTail(runtime, steps, resources),
+    ).rejects.toThrow(boom);
     // The throw short-circuits the remaining tail steps.
-    expect(steps.registerAppRoutePlugins).not.toHaveBeenCalled();
+    expect(steps.registerCoreSensitiveRequestAdapters).not.toHaveBeenCalled();
   });
 });

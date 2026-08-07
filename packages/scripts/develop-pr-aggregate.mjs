@@ -56,6 +56,11 @@ export const REQUIRED_CHECKS = Object.freeze([
     triggerActions: DEVELOP_PR_ACTIONS,
   },
   {
+    context: "plugin-tests",
+    workflowPath: ".github/workflows/develop-pr.yml",
+    triggerActions: DEVELOP_PR_ACTIONS,
+  },
+  {
     context: "gitleaks",
     workflowPath: ".github/workflows/gitleaks.yml",
     triggerActions: DEFAULT_PULL_REQUEST_ACTIONS,

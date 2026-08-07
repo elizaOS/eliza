@@ -460,6 +460,13 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
       prepared: false,
       phase: null,
     },
+    blank: {
+      expected: Boolean(
+        story.tags?.includes("story-gate-expect-blank") ||
+          story.tags?.includes("story-gate-expect-single-color"),
+      ),
+      detected: false,
+    },
   };
 
   try {
@@ -600,9 +607,15 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
         animations: "disabled",
       });
       const blank = await detectBlank(buf, opts.sharp);
-      if (blank) {
+      result.blank.detected = Boolean(blank);
+      if (blank && !result.blank.expected) {
         result.verdict = "broken";
         result.issues.push(`blank-render: ${blank}`);
+      } else if (!blank && result.blank.expected) {
+        result.verdict = "broken";
+        result.issues.push(
+          "expected-single-color-render: story tagged as intentionally empty or solid rendered varied content",
+        );
       }
     }
 
@@ -611,8 +624,16 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
       try {
         await page.addScriptTag({ content: axeSource });
         const violations = await page.evaluate(async () => {
+          const storyRoot = document.querySelector("#storybook-root");
+          const context =
+            storyRoot?.getAttribute("aria-hidden") === "true"
+              ? {
+                  include: [["body"]],
+                  exclude: [["#storybook-root"]],
+                }
+              : "#storybook-root";
           // @ts-expect-error - axe injected above
-          const res = await window.axe.run("#storybook-root", {
+          const res = await window.axe.run(context, {
             resultTypes: ["violations"],
             rules: { "color-contrast": { enabled: true } },
           });
@@ -620,6 +641,11 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
             id: v.id,
             impact: v.impact,
             nodes: v.nodes.length,
+            samples: v.nodes.slice(0, 5).map((node) => ({
+              target: node.target,
+              html: node.html.slice(0, 500),
+              failureSummary: node.failureSummary?.slice(0, 1_000) ?? null,
+            })),
           }));
         });
         result.a11y = violations.filter(

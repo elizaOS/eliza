@@ -1,6 +1,6 @@
 # BUN_BASE selects the Bun base image. Default targets linux/amd64 + linux/arm64
 # via upstream oven/bun. For linux/riscv64 (no upstream image — oven-sh/bun#6266,
-# #21923), build a local Bun image via packages/app-core/scripts/bun-riscv64/build.sh
+# #21923), build a local Bun image via elizaOS/os packages/os/toolchains/bun-riscv64/build.sh
 # and pass --build-arg BUN_BASE=<local-tag>.
 ARG BUN_BASE=oven/bun:canary-alpine
 

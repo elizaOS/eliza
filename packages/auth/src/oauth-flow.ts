@@ -420,6 +420,8 @@ async function startGenericFlow(args: {
     try {
       vendor.cancel("timeout");
     } catch (cancelErr) {
+      // error-policy:J6 best-effort teardown — timeout is already terminal and
+      // observable; cancellation failure is diagnostic only.
       logger.debug(
         `[oauth-flow] cancel during timeout failed: ${String(cancelErr)}`,
       );
@@ -470,6 +472,8 @@ async function startGenericFlow(args: {
           await opts.onAccountSaved(record);
         }
       } catch (cause) {
+        // error-policy:J2 context-adding rethrow — restore the prior account
+        // before surfacing adoption failure with its original cause.
         if (previous) {
           saveAccount(previous);
           await opts.onReplacementRollback?.(previous);
@@ -487,6 +491,8 @@ async function startGenericFlow(args: {
       setTerminal({ status: "success", account: accountSummary });
       resolveCompletion({ account: record });
     } catch (err) {
+      // error-policy:J1 async OAuth boundary translation — publish the terminal
+      // error to registry/SSE observers and reject in-process consumers.
       clearTimeout(timer);
       const message = err instanceof Error ? err.message : String(err);
       setTerminal({ status: "error", error: message });
@@ -514,6 +520,8 @@ async function startGenericFlow(args: {
       try {
         vendor.cancel(reason);
       } catch (err) {
+        // error-policy:J6 best-effort teardown — cancellation is already the
+        // terminal state; the vendor cleanup failure is logged for diagnosis.
         logger.debug(`[oauth-flow] vendor cancel failed: ${String(err)}`);
       }
       clearTimeout(timer);
@@ -576,6 +584,8 @@ export function submitFlowCode(sessionId: string, code: string): boolean {
     entry.handle.submitCode(code);
     return true;
   } catch {
+    // error-policy:J3 submitted callback data is untrusted; rejection is an
+    // explicit invalid signal to the route boundary.
     return false;
   }
 }
@@ -681,6 +691,8 @@ function extractCodexAccountId(accessToken: string): string | null {
       ? accountId
       : null;
   } catch {
+    // error-policy:J3 JWT claims are untrusted optional identity metadata; an
+    // undecodable token has no usable account id.
     return null;
   }
 }

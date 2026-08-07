@@ -1,15 +1,13 @@
-/** Vitest config for the Instagram plugin; aliases provider SDKs to test shims. */
+/** Runs Instagram plugin tests against workspace source packages. */
 import { defineConfig } from "vitest/config";
-import {
-  providerSdkAliases,
-  providerSdkShimPlugin,
-} from "../../packages/test/vitest/provider-sdk-aliases";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
+
+const workspaceAliases = buildWorkspaceSourceAliases();
 
 export default defineConfig({
   resolve: {
-    alias: providerSdkAliases,
+    alias: workspaceAliases,
   },
-  plugins: [providerSdkShimPlugin()],
   test: {
     include: ["__tests__/**/*.test.ts", "src/**/__tests__/**/*.test.ts", "src/**/*.test.ts"],
     environment: "node",

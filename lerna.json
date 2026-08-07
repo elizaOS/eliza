@@ -3,7 +3,6 @@
   "packages": [
     "packages/*",
     "packages/app-core/platforms/*",
-    "packages/examples/code",
     "plugins/*",
     "packages/cloud/sdk"
   ],

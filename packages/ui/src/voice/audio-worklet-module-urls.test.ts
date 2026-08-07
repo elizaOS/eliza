@@ -1,3 +1,4 @@
+/** Verifies AudioWorklet module assets through the package's configured test harness. */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

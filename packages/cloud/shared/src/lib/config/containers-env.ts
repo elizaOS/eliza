@@ -114,6 +114,66 @@ export const containersEnv = {
     return pick(env.CONTAINERS_DOCKER_NETWORK, env.AGENT_DOCKER_NETWORK) ?? "containers-isolated";
   },
 
+  /**
+   * Image for the per-node local-embedding sidecar (text-embeddings-inference,
+   * CPU build). Pinned to a known tag rather than `latest` so every node in the
+   * fleet runs the same server; bump deliberately via this env.
+   */
+  embeddingSidecarImage(): string {
+    const env = getCloudAwareEnv();
+    return (
+      pick(env.CONTAINERS_EMBEDDING_SIDECAR_IMAGE, env.ELIZA_EMBEDDING_SIDECAR_IMAGE) ??
+      "ghcr.io/huggingface/text-embeddings-inference:cpu-1.8"
+    );
+  },
+
+  /**
+   * Model the embedding sidecar serves. gte-small is the platform's local
+   * embedding standard (384-dim, ~50ms on node CPU) — the same model the
+   * on-device `plugin-local-inference` path uses, so a per-agent cutover to the
+   * sidecar never changes vector width.
+   */
+  embeddingSidecarModelId(): string {
+    const env = getCloudAwareEnv();
+    return (
+      pick(env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID, env.ELIZA_EMBEDDING_SIDECAR_MODEL_ID) ??
+      "thenlper/gte-small"
+    );
+  },
+
+  /**
+   * Loopback host port the sidecar publishes on each node (127.0.0.1 only —
+   * the node-side health probe curls it; agents use the bridge network, and
+   * nothing is reachable off-node). Default 8290. Clamped to [1, 65535].
+   */
+  embeddingSidecarHostPort(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(
+      env.CONTAINERS_EMBEDDING_SIDECAR_HOST_PORT,
+      env.ELIZA_EMBEDDING_SIDECAR_HOST_PORT,
+    );
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : 8290;
+  },
+
+  /**
+   * Whether the node health loop may (re)install a missing embedding sidecar.
+   *
+   * DEFAULT: ON — the durable remediation this exists for: nodes provisioned
+   * before the sidecar shipped in bootstrap converge on the next health cycle
+   * instead of waiting for a hand-install (the failure mode that lost the
+   * fleet's sidecars in the first place). The health verdict is persisted
+   * either way, so disabling self-heal (`false`/`0`) still surfaces absence.
+   */
+  embeddingSidecarSelfHealEnabled(): boolean {
+    const env = getCloudAwareEnv();
+    const raw = pick(
+      env.CONTAINERS_EMBEDDING_SIDECAR_SELF_HEAL,
+      env.ELIZA_EMBEDDING_SIDECAR_SELF_HEAL,
+    );
+    return raw !== "false" && raw !== "0";
+  },
+
   /** Username used for Docker registry pulls on container nodes. */
   registryUsername(): string | undefined {
     const env = getCloudAwareEnv();
@@ -283,11 +343,9 @@ export const containersEnv = {
    * user repo) at create time, so create -> deploy resolves to a prebuilt,
    * allowlisted image instead of failing with "no image to deploy".
    *
-   * Defaults to the published example-app image at the `:showcase` tag that
-   * `.github/workflows/build-example-app-images.yml` publishes (and gates on a
-   * working container before pushing). It sits under `ghcr.io/elizaos/*`, so the
-   * apps-deploy allowlist permits it unchanged. Override the whole ref via
-   * `APP_DEFAULT_TEMPLATE_IMAGE`.
+   * Defaults to the retained `:showcase` template image. It sits under
+   * `ghcr.io/elizaos/*`, so the apps-deploy allowlist permits it unchanged.
+   * Override the whole ref via `APP_DEFAULT_TEMPLATE_IMAGE`.
    *
    * TODO(ops, digest-pin): `:showcase` is a MUTABLE tag — the registry could
    * re-point it after the deploy-time allowlist check. Once a stable showcase
@@ -343,6 +401,33 @@ export const containersEnv = {
         env.ELIZA_CONTAINERS_PREPULL_SELF_HEAL_RESTART,
       ) === "true"
     );
+  },
+
+  /**
+   * Default per-agent container memory ceiling in MiB, applied by the docker
+   * provisioner whenever a sandbox has no explicit `container.memory` of its
+   * own. `0` disables the ceiling entirely (pre-2026-08 behavior).
+   *
+   * Why a default exists at all: agent containers previously ran with
+   * `HostConfig.Memory=0` (unlimited) plus `--restart unless-stopped`. One
+   * agent stuck in a boot loop — each boot attempt spiking ~2GB before dying —
+   * could starve an entire node and get HEALTHY co-tenant agents OOM-killed
+   * (observed fleet-wide on staging 2026-08-05: node `available` memory driven
+   * to 4MB, kernel OOM killing unrelated agents every ~10-30s).
+   *
+   * Default: 3072 MiB — comfortably above the observed ~2.1GB boot-time RSS
+   * spike of the current agent image, and aligned with the ~4GB/agent budget
+   * the ccx33 + capacity-8 sizing was designed around (see
+   * defaultAutoscaleNodeCapacity). Clamped to [0, 65536].
+   */
+  agentContainerMemoryLimitMb(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AGENT_MEMORY_LIMIT_MB, env.ELIZA_AGENT_MEMORY_LIMIT_MB);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.min(65536, Math.floor(parsed));
+    }
+    return 3072;
   },
 
   /** Explicit operator-pinned agent image, without the hardcoded fallback. */

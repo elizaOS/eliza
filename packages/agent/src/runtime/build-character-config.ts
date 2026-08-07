@@ -116,15 +116,6 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "GROQ_API_KEY",
     "XAI_API_KEY",
     "OPENROUTER_API_KEY",
-    "AI_GATEWAY_API_KEY",
-    "AIGATEWAY_API_KEY",
-    "AI_GATEWAY_BASE_URL",
-    "AI_GATEWAY_SMALL_MODEL",
-    "AI_GATEWAY_LARGE_MODEL",
-    "AI_GATEWAY_EMBEDDING_MODEL",
-    "AI_GATEWAY_EMBEDDING_DIMENSIONS",
-    "AI_GATEWAY_IMAGE_MODEL",
-    "AI_GATEWAY_TIMEOUT_MS",
     "OLLAMA_BASE_URL",
     "DISCORD_API_TOKEN",
     "DISCORD_APPLICATION_ID",
@@ -265,10 +256,18 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   capabilityHints.push(
     "You have a persistent task manager and can create scheduled or one-off tasks when the user asks; do not claim you lack tasks, memory, persistence, or scheduling when those actions are available.",
   );
+  // Config can be rebuilt from a previously materialized Character during a
+  // runtime restart. Normalize these runtime-owned lines before appending so
+  // each rebuild is idempotent instead of growing the system prompt forever.
+  const systemWithoutCapabilityHints = systemPrompt
+    .split("\n")
+    .filter((line) => !capabilityHints.includes(line.trim()))
+    .join("\n")
+    .trim();
   const effectiveSystemPrompt =
     capabilityHints.length > 0
-      ? `${systemPrompt}\n\n${capabilityHints.join("\n")}`
-      : systemPrompt;
+      ? `${systemWithoutCapabilityHints}\n\n${capabilityHints.join("\n")}`
+      : systemWithoutCapabilityHints;
   const mergedSettings = {
     ...(agentEntry?.settings ?? {}),
     ...settings,

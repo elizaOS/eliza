@@ -124,7 +124,7 @@ const ABI_TARGETS = [
     // Upstream Bun has no riscv64-linux-musl release as of this writing,
     // so this ABI only succeeds when `ELIZA_BUN_RISCV64_FILE` or
     // `ELIZA_BUN_RISCV64_URL` points at a self-built canary zip produced
-    // by `packages/app-core/scripts/bun-riscv64/build.sh`. Objective AOSP
+    // by the elizaOS/os Bun RISC-V toolchain. Objective AOSP
     // builds fail closed by default; local native-library iteration can
     // opt out with ELIZA_BUN_RISCV64_OPTIONAL=1.
     androidAbi: "riscv64",
@@ -446,8 +446,7 @@ async function fetchWithRetry(
       const retryable =
         !(error instanceof DownloadHttpError) || error.retryable === true;
       if (!retryable || attempt === maxAttempts) {
-        const details =
-          error instanceof Error ? error.message : String(error);
+        const details = error instanceof Error ? error.message : String(error);
         throw new Error(
           `${details}; Failed to download ${url} after ${attempt} attempt${attempt === 1 ? "" : "s"}`,
           { cause: error },
@@ -519,9 +518,15 @@ function riscv64BunSha256() {
 }
 
 function defaultRiscv64BunArtifactPath() {
-  return path.resolve(
-    __dirname,
-    "..",
+  const osRepositoryRoot = path.resolve(
+    process.env.ELIZAOS_OS_REPO_ROOT?.trim() ||
+      path.join(ELIZA_REPO_ROOT, "..", "os"),
+  );
+  return path.join(
+    osRepositoryRoot,
+    "packages",
+    "os",
+    "toolchains",
     "bun-riscv64",
     "dist",
     RISCV64_BUN_ARTIFACT_FILENAME,
@@ -723,7 +728,7 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
         "Bun riscv64 artifact not available: upstream Bun has no riscv64-linux-musl release. " +
           "Set ELIZA_BUN_RISCV64_FILE to a local " +
           "self-built zip, or set ELIZA_BUN_RISCV64_URL " +
-          "to a hosted zip produced by packages/app-core/scripts/bun-riscv64/build.sh, " +
+          "to a hosted zip produced by elizaOS/os packages/os/toolchains/bun-riscv64/build.sh, " +
           "or set ELIZA_BUN_RISCV64_OPTIONAL=1 for local non-objective builds.",
       );
     }
@@ -1257,7 +1262,7 @@ export async function stageAndroidAgentRuntime({
     const { androidAbi, bunArch, alpineArch, ldName } = target;
     // Objective builds fail closed on riscv64. Upstream Bun has no
     // riscv64-linux-musl release, so provide ELIZA_BUN_RISCV64_FILE or
-    // ELIZA_BUN_RISCV64_URL from packages/app-core/scripts/bun-riscv64/build.sh.
+    // ELIZA_BUN_RISCV64_URL from the elizaOS/os Bun RISC-V toolchain.
     // Local native-library iteration may opt out with
     // ELIZA_BUN_RISCV64_OPTIONAL=1, but that build is not valid AOSP/chip
     // objective evidence.
@@ -1277,7 +1282,7 @@ export async function stageAndroidAgentRuntime({
         tlog(
           `Skipping ABI ${androidAbi}: no ELIZA_BUN_RISCV64_FILE or URL is set ` +
             `(upstream Bun has no riscv64-linux-musl release). Build with ` +
-            `packages/app-core/scripts/bun-riscv64/build.sh and re-run for AOSP/chip evidence.`,
+            `elizaOS/os packages/os/toolchains/bun-riscv64/build.sh and re-run for AOSP/chip evidence.`,
         );
         continue;
       }
@@ -1597,8 +1602,11 @@ export async function stageAndroidAgentRuntime({
   );
 
   const bunRiscv64VersionPath = path.resolve(
-    __dirname,
-    "..",
+    process.env.ELIZAOS_OS_REPO_ROOT?.trim() ||
+      path.join(ELIZA_REPO_ROOT, "..", "os"),
+    "packages",
+    "os",
+    "toolchains",
     "bun-riscv64",
     "bun-version.json",
   );
@@ -1654,7 +1662,6 @@ export const __testables = {
   LLAMA_KERNEL_DIAGNOSTIC_SCRIPT,
   RISCV64_BUN_ARTIFACT_FILENAME,
   RUNTIME_PROVENANCE_FILENAME,
-  downloadFile,
   downloadRetryDelayMs,
   defaultRiscv64BunArtifactPath,
   riscv64BunFilePath,

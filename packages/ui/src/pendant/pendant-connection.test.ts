@@ -524,6 +524,43 @@ describe("PendantConnection connect orchestration", () => {
     expect(conn.getState().paused).toBe(false);
   });
 
+  it("invalidates in-flight and queued ASR generations when paused", async () => {
+    asrControl.mode = "deferred";
+    const transport = new FakeTransport({});
+    const segments: PendantTranscriptSegmentDetail[] = [];
+    const voice = vi.fn();
+    window.addEventListener("eliza:pendant:voice-transcript", voice);
+    const conn = new PendantConnection({
+      onState: collectStates().onState,
+      createTransport: () => transport,
+      onSegment: (detail) => segments.push(detail),
+    });
+    await conn.connect();
+
+    emitStoppedUtterance(transport, 0);
+    await flushMicrotasks();
+    emitStoppedUtterance(transport, 2);
+    expect(asrControl.calls).toBe(1);
+    expect(segments.map((item) => item.status)).toEqual(["pending", "pending"]);
+
+    conn.pause();
+    asrControl.resolvers.shift()?.({
+      text: "must not commit",
+      words: [{ text: "must", startMs: 0, endMs: 80 }],
+    });
+    await flushMicrotasks();
+
+    expect(asrControl.calls).toBe(1);
+    expect(segments.filter((item) => item.status === "resolved")).toHaveLength(
+      0,
+    );
+    expect(segments.filter((item) => item.status === "discarded")).toHaveLength(
+      2,
+    );
+    expect(voice).not.toHaveBeenCalled();
+    window.removeEventListener("eliza:pendant:voice-transcript", voice);
+  });
+
   it("does not emit a frame buffered before or during pause into VAD after resume", async () => {
     const transport = new FakeTransport({});
     const { onState } = collectStates();

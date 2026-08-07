@@ -67,7 +67,7 @@ export function PanelHeader({
           {eyebrow ? (
             <div
               className={cn(
-                "text-2xs font-medium text-muted/70",
+                "text-2xs font-medium text-muted",
                 eyebrowClassName,
               )}
             >

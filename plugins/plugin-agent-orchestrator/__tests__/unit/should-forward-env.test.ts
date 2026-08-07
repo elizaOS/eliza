@@ -15,9 +15,8 @@ import {
 
 // Guards buildEnv's sealed-env allowlist. It is an allowlist (anything not
 // matched is denied), so the risk is twofold: a needed var silently dropped, or
-// a secret silently forwarded. The load-bearing case is PARALLAX_SESSION_ID —
-// without it the loopback /api/coding-agents/<id>/* parent-context bridge is
-// unreachable from an ACP-spawned sub-agent (it does NOT ride the ELIZA_ prefix).
+// a secret silently forwarded. The session-scoped bridge id is deliberately not
+// inherited from the host: buildEnv injects the current child id after filtering.
 describe("isCloudKeyForwardingOptIn", () => {
   it("accepts only explicit truthy values", () => {
     for (const value of ["1", "true", "TRUE", " yes ", "on"]) {
@@ -30,8 +29,8 @@ describe("isCloudKeyForwardingOptIn", () => {
 });
 
 describe("shouldForwardEnv", () => {
-  it("forwards PARALLAX_SESSION_ID (the parent-context bridge id)", () => {
-    expect(shouldForwardEnv("PARALLAX_SESSION_ID")).toBe(true);
+  it("does not inherit a parent orchestrator session id", () => {
+    expect(shouldForwardEnv("ORCHESTRATOR_SESSION_ID")).toBe(false);
   });
 
   it("forwards every ELIZA_-prefixed var (e.g. ELIZA_HOOK_PORT)", () => {
@@ -145,8 +144,8 @@ describe("isEnvForwardableToSubAgent (deny-then-allow)", () => {
     expect(isEnvForwardableToSubAgent("ELIZA_TERMINAL_RUN_TOKEN")).toBe(false);
   });
 
-  it("still forwards the bridge id and the vars a sub-agent legitimately needs", () => {
-    expect(isEnvForwardableToSubAgent("PARALLAX_SESSION_ID")).toBe(true);
+  it("forwards the vars a sub-agent legitimately needs", () => {
+    expect(isEnvForwardableToSubAgent("ORCHESTRATOR_SESSION_ID")).toBe(false);
     expect(isEnvForwardableToSubAgent("ELIZA_HOOK_PORT")).toBe(true);
     for (const key of SUB_AGENT_PROVIDER_ENV_KEYS) {
       expect(isEnvForwardableToSubAgent(key), key).toBe(true);
@@ -171,8 +170,8 @@ describe("canonicalForwardedEnvKey", () => {
     expect(canonicalForwardedEnvKey("ANTHROPIC_API_KEY")).toBe(
       "ANTHROPIC_API_KEY",
     );
-    expect(canonicalForwardedEnvKey("PARALLAX_SESSION_ID")).toBe(
-      "PARALLAX_SESSION_ID",
+    expect(canonicalForwardedEnvKey("ORCHESTRATOR_SESSION_ID")).toBe(
+      "ORCHESTRATOR_SESSION_ID",
     );
   });
 });
@@ -208,6 +207,7 @@ describe("forwardableSubAgentEnv", () => {
   it("keeps prefix/allowlist vars verbatim and drops denied + non-allowlisted", () => {
     const out = forwardableSubAgentEnv({
       ELIZA_HOOK_PORT: "2138",
+      ORCHESTRATOR_SESSION_ID: "parent-session",
       ANTHROPIC_API_KEY: "sk-x",
       ANTHROPIC_BASE_URL: "http://127.0.0.1:8787/v1",
       ANTHROPIC_SMALL_MODEL: "proxy-small",
@@ -219,6 +219,7 @@ describe("forwardableSubAgentEnv", () => {
       MISSING: undefined, // non-string skipped
     });
     expect(out.ELIZA_HOOK_PORT).toBe("2138");
+    expect(out.ORCHESTRATOR_SESSION_ID).toBeUndefined();
     expect(out.ANTHROPIC_API_KEY).toBe("sk-x");
     expect(out.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:8787/v1");
     expect(out.ANTHROPIC_SMALL_MODEL).toBe("proxy-small");

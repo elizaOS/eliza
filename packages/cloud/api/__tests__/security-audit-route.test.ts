@@ -14,7 +14,8 @@ import {
   mock,
   test,
 } from "bun:test";
-import { AuditDispatcher, InMemorySink } from "@elizaos/security/audit";
+import { AuditDispatcher } from "@/api-app/services/audit";
+import { InMemorySink } from "@/api-app/services/audit/testing";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as loggerActual from "@/lib/utils/logger";
 import { setAuditDispatcher } from "../src/services/audit-dispatcher-singleton";
@@ -85,7 +86,7 @@ describe("POST /api/v1/security/audit", () => {
   test("emits a server-stamped audit event for valid client input", async () => {
     const res = await auditRoute.default.fetch(
       makeRequest({
-        action: "secret.access",
+        action: "plugin.denied",
         result: "deny",
         resource: { type: "secret", id: "secret-1" },
         metadata: { reason: "org_mismatch", resource_org_id: "org-2" },
@@ -101,7 +102,7 @@ describe("POST /api/v1/security/audit", () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       actor: { type: "user", id: "user-1" },
-      action: "secret.access",
+      action: "plugin.denied",
       result: "denied",
       resource: { type: "secret", id: "secret-1" },
       ip: "203.0.113.10",
@@ -114,14 +115,15 @@ describe("POST /api/v1/security/audit", () => {
   test("rejects malformed client audit payloads without emitting", async () => {
     const badPayloads: unknown[] = [
       { action: "not.allowed", result: "allow" },
-      { action: "secret.access", result: "success" },
+      { action: "admin.action", result: "allow" },
+      { action: "plugin.denied", result: "success" },
       {
-        action: "secret.access",
+        action: "plugin.denied",
         result: "allow",
         resource: { type: "", id: "x" },
       },
       {
-        action: "secret.access",
+        action: "plugin.denied",
         result: "allow",
         metadata: { nested: { nope: true } },
       },

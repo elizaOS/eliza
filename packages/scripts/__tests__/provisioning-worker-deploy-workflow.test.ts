@@ -8,13 +8,13 @@ const workflow = readFileSync(
   "utf8",
 );
 const provisioningService = readFileSync(
-  join(root, "packages/scripts/cloud/admin/eliza-provisioning-worker.service"),
+  join(root, "packages/cloud/scripts/admin/eliza-provisioning-worker.service"),
   "utf8",
 );
 const services = [
   provisioningService,
   readFileSync(
-    join(root, "packages/scripts/cloud/admin/eliza-agent-router.service"),
+    join(root, "packages/cloud/scripts/admin/eliza-agent-router.service"),
     "utf8",
   ),
 ];
@@ -60,11 +60,11 @@ describe("provisioning worker deployment contract", () => {
 
   it("regenerates before deploy and self-heals both services", () => {
     expect(workflow).toContain(
-      "bash packages/scripts/cloud/admin/ensure-generated-keywords.sh",
+      "bash packages/cloud/scripts/admin/ensure-generated-keywords.sh",
     );
     for (const service of services) {
       expect(service).toContain(
-        "ExecStartPre=/opt/eliza/packages/scripts/cloud/admin/ensure-generated-keywords.sh",
+        "ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.sh",
       );
     }
   });

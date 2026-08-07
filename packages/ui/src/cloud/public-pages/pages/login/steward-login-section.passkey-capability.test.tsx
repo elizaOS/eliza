@@ -1,3 +1,4 @@
+/** Verifies StewardLoginSection passkey capability gating through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

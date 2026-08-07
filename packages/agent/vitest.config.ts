@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../packages/test/vitest/default.config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
@@ -27,6 +27,10 @@ export default defineConfig({
   root: here,
   resolve: {
     ...baseConfig.resolve,
+    // Plugin-resolution tests import the same workspace packages the runtime
+    // loads through Bun. Canonicalizing their symlinks keeps each third-party
+    // package beside its own isolated transitive dependencies.
+    preserveSymlinks: false,
     alias: [
       // Resolve Octokit from its physical Bun store path so its own transitive
       // dependencies remain visible while workspace source aliases preserve symlinks.
@@ -41,24 +45,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/(.+)$/,
         replacement: path.join(srcRoot, "$1"),
-      },
-      {
-        find: /^@elizaos\/app-core\/account-pool$/,
-        replacement: path.join(
-          monorepoRoot,
-          "packages/app-core/src/account-pool.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/app-core\/ui-compat$/,
-        replacement: path.join(
-          monorepoRoot,
-          "packages/app-core/src/ui-compat.ts",
-        ),
-      },
-      {
-        find: "@elizaos/app-core",
-        replacement: path.join(monorepoRoot, "packages/app-core/src/index.ts"),
       },
       {
         find: /^@elizaos\/ui$/,
@@ -132,6 +118,21 @@ export default defineConfig({
         find: /^@elizaos\/plugin-wallet\/(.+)$/,
         replacement: path.join(monorepoRoot, "plugins/plugin-wallet/src/$1.ts"),
       },
+      {
+        find: /^@elizaos\/core\/atomic-json$/,
+        replacement: path.join(
+          monorepoRoot,
+          "packages/core/src/utils/atomic-json.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/core\/node$/,
+        replacement: path.join(monorepoRoot, "packages/core/src/index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/security\/(.+)$/,
+        replacement: path.join(monorepoRoot, "packages/core/src/security/$1"),
+      },
       ...baseAliases,
       {
         find: /^@elizaos\/vault$/,
@@ -140,13 +141,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/vault\/(.+)$/,
         replacement: path.join(monorepoRoot, "packages/vault/src/$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-worker-runtime$/,
-        replacement: path.join(
-          monorepoRoot,
-          "packages/plugin-worker-runtime/src/index.ts",
-        ),
       },
       {
         find: /^@elizaos\/plugin-cli$/,
@@ -183,7 +177,11 @@ export default defineConfig({
         inline: [/@elizaos\//, /\/plugins\/plugin-/],
       },
     },
-    include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
+    include: [
+      "src/**/*.test.{ts,tsx}",
+      "test/**/*.test.{ts,tsx}",
+      "scripts/**/*.test.{ts,tsx}",
+    ],
     exclude: [
       "dist/**",
       "**/node_modules/**",

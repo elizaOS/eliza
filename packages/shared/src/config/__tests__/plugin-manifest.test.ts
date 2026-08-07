@@ -78,9 +78,7 @@ describe("pluginShortId", () => {
     expect(pluginShortId("custom-plugin")).toBe("custom-plugin");
   });
   it("handles @scope/app- (does not match the /plugin- guard)", () => {
-    expect(pluginShortId("@elizaos/app-model-tester")).toBe(
-      "@elizaos/app-model-tester",
-    );
+    expect(pluginShortId("@elizaos/app-example")).toBe("@elizaos/app-example");
   });
 });
 

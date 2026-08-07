@@ -122,7 +122,7 @@ function getMobileDeviceBridgeApi(): Promise<MobileDeviceBridgeApi> {
 
 function getAospLocalInferenceApi(): Promise<AospLocalInferenceApi> {
 	aospLocalInferenceApiPromise ??= import(
-		"@elizaos/plugin-aosp-local-inference"
+		"@elizaos/plugin-native-inference"
 	) as Promise<AospLocalInferenceApi>;
 	return aospLocalInferenceApiPromise;
 }
@@ -842,7 +842,7 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 	) {
 		// aosp-active.json is the authoritative "a local chat model is loaded and
 		// serving in-process" signal for the agent-side path (ELIZA_LOCAL_LLAMA),
-		// written by plugin-aosp-local-inference when it loads the GGUF. Report
+		// written by plugin-native-inference when it loads the GGUF. Report
 		// ready off that file directly — do NOT gate it on the installed-models
 		// registry: a device can stage the GGUF without registering it (e.g. a
 		// pushed smoke model, or any direct install), and the model is loaded

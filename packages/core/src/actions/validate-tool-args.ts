@@ -18,6 +18,7 @@ export interface ValidateToolArgsResult {
 	valid: boolean;
 	args: Record<string, unknown> | undefined;
 	errors: string[];
+	invalidParameterNames?: string[];
 }
 
 /**
@@ -44,6 +45,8 @@ export function testSchemaPattern(
 	try {
 		regex = new RegExp(pattern);
 	} catch (err) {
+		// error-policy:J3 tool schemas are untrusted plugin input; an invalid
+		// pattern becomes a structured validation failure.
 		return {
 			ok: false,
 			reason: `has an invalid pattern ${pattern}: ${
@@ -359,10 +362,14 @@ export function validateToolArgs(
 	}
 
 	const validatedArgs = validateObject(schema, args, "", errors);
+	const invalidParameterNames = Object.keys(args).filter(
+		(name) => !Object.hasOwn(validatedArgs, name),
+	);
 
 	return {
 		valid: errors.length === 0,
 		args: errors.length === 0 ? validatedArgs : undefined,
 		errors,
+		...(invalidParameterNames.length > 0 ? { invalidParameterNames } : {}),
 	};
 }

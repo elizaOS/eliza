@@ -27,6 +27,12 @@ vi.mock("@elizaos/core", async () => {
     "../../../packages/core/src/features/messaging/triage/triage-service"
   );
 
+  // The LifeOps passive-connectors gate is pure env/settings inspection; the
+  // standalone-mode tests exercise its real truth table, so delegate.
+  const { lifeOpsPassiveConnectorsEnabled } = await import(
+    "../../../packages/core/src/lifeops-passive-connectors"
+  );
+
   const logger = {
     debug: vi.fn(),
     error: vi.fn(),
@@ -130,7 +136,7 @@ vi.mock("@elizaos/core", async () => {
       baseUserId === runtime.agentId
         ? runtime.agentId
         : stringToUuid(`${baseUserId}:${runtime.agentId}`),
-    lifeOpsPassiveConnectorsEnabled: () => true,
+    lifeOpsPassiveConnectorsEnabled,
     logger,
     stringToUuid,
   };

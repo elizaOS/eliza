@@ -1,28 +1,33 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for write homepage release data mjs. */
+/**
+ * Regenerates the homepage's generated release-data.ts from the GitHub releases
+ * of elizaos/eliza and elizaOS/os: resolves per-platform download artifacts, OS
+ * image manifest entries, and install-script URLs for the download surface.
+ */
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildRawGitHubAssetBase } from "./lib/asset-cdn.mjs";
 
 const REPOSITORY = "elizaos/eliza";
+const OS_REPOSITORY = "elizaOS/os";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 // SCRIPT_DIR is packages/app-core/scripts; the repo root is three levels up.
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");
-const OS_MANIFEST_PATH = path.resolve(
-  REPO_ROOT,
-  "packages/os/release/beta-2026-05-16/manifest.json",
-);
-const GITHUB_RELEASES_BASE = `https://github.com/${REPOSITORY}/releases/download`;
+const OS_MANIFEST_URL =
+  process.env.ELIZAOS_OS_MANIFEST_URL ??
+  `https://raw.githubusercontent.com/${OS_REPOSITORY}/develop/packages/os/release/beta-2026-05-16/manifest.json`;
+const OS_GITHUB_RELEASES_BASE = `https://github.com/${OS_REPOSITORY}/releases/download`;
 const ELIZAOS_DOWNLOADS_BASE = "https://downloads.elizaos.ai/os";
 const OUTPUT_PATH = path.resolve(
   REPO_ROOT,
   "packages/homepage/src/generated/release-data.ts",
 );
 const RELEASES_URL = `https://api.github.com/repos/${REPOSITORY}/releases?per_page=20`;
+const OS_RELEASES_URL = `https://api.github.com/repos/${OS_REPOSITORY}/releases?per_page=20`;
 const RELEASES_PAGE_URL = `https://github.com/${REPOSITORY}/releases`;
 
 const installBaseUrl = "https://eliza.app";
@@ -388,7 +393,7 @@ function buildOsArtifactsFromManifest(manifest, channel, version) {
 
 function buildStaticOsArtifacts(channel, version) {
   const releaseTag = `v${version}`;
-  const githubBase = `${GITHUB_RELEASES_BASE}/${releaseTag}`;
+  const githubBase = `${OS_GITHUB_RELEASES_BASE}/${releaseTag}`;
   return [
     {
       id: `elizaos-linux-live-${channel}`,
@@ -579,11 +584,18 @@ const STATIC_ARTIFACT_ASSET_PATTERNS = {
   "elizaos-vm-ova": /^elizaos.*\.(ova|qcow2\.zst)$/i,
 };
 
-async function buildOsArtifacts(release) {
+async function buildOsArtifacts(osRelease, appRelease) {
   let manifest = null;
   try {
-    const raw = await readFile(OS_MANIFEST_PATH, "utf8");
-    manifest = JSON.parse(raw);
+    const response = await fetch(OS_MANIFEST_URL, {
+      headers: { "User-Agent": "eliza-homepage-release-data" },
+    });
+    if (!response.ok) {
+      throw new Error(
+        `OS manifest returned ${response.status} ${response.statusText}`,
+      );
+    }
+    manifest = await response.json();
   } catch {
     // Manifest not available — use static artifacts only.
   }
@@ -600,7 +612,7 @@ async function buildOsArtifacts(release) {
   const staticArtifacts = buildStaticOsArtifacts(channel, version);
 
   // Populate the elizaos-android-apk entry from the published release APK if present.
-  const apkAsset = pickAndroidApkAsset(release);
+  const apkAsset = pickAndroidApkAsset(appRelease);
   if (apkAsset) {
     const apkEntry = staticArtifacts.find(
       (a) => a.id === "elizaos-android-apk",
@@ -614,7 +626,7 @@ async function buildOsArtifacts(release) {
   // Populate USB installer / AOSP Flasher / Debian / ISO / OVA entries from
   // matching release assets when present.
   for (const [id, pattern] of Object.entries(STATIC_ARTIFACT_ASSET_PATTERNS)) {
-    const asset = pickAssetByNamePattern(release, pattern);
+    const asset = pickAssetByNamePattern(osRelease, pattern);
     if (!asset) continue;
     const entry = staticArtifacts.find((a) => a.id === id);
     if (!entry) continue;
@@ -749,7 +761,7 @@ function toModule(payload) {
   return `${TYPE_HEADER}export const releaseData: ReleaseDataPayload = ${JSON.stringify(payload, null, 2)};\n`;
 }
 
-async function fetchReleases() {
+async function fetchReleases(url = RELEASES_URL) {
   const headers = {
     Accept: "application/vnd.github+json",
     "User-Agent": "eliza-homepage-release-data",
@@ -760,7 +772,7 @@ async function fetchReleases() {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(RELEASES_URL, { headers });
+  const response = await fetch(url, { headers });
   if (!response.ok) {
     throw new Error(
       `GitHub API returned ${response.status} ${response.statusText}`,
@@ -793,13 +805,15 @@ async function writePayload(payload) {
 async function main() {
   try {
     const releases = await fetchReleases();
+    const osReleases = await fetchReleases(OS_RELEASES_URL);
     const stableRelease = pickStableRelease(releases);
     const canaryRelease = pickCanaryRelease(releases);
     // Use stable release as primary; fall back to any release if no stable exists
     const primaryRelease = stableRelease ?? pickRelease(releases);
-    // Prefer canary for android-apk lookup since it consistently ships APK assets.
-    const apkSourceRelease = canaryRelease ?? primaryRelease;
-    const osArtifacts = await buildOsArtifacts(apkSourceRelease);
+    const osArtifacts = await buildOsArtifacts(
+      pickRelease(osReleases),
+      canaryRelease ?? primaryRelease,
+    );
     await writePayload(
       buildPayload(primaryRelease, canaryRelease, stableRelease, osArtifacts),
     );
@@ -816,7 +830,7 @@ async function main() {
       return;
     }
 
-    const fallbackOsArtifacts = await buildOsArtifacts(null);
+    const fallbackOsArtifacts = await buildOsArtifacts(null, null);
     await writePayload(buildPayload(null, null, null, fallbackOsArtifacts));
     console.warn(
       `homepage release data refresh failed, wrote fallback file: ${error instanceof Error ? error.message : String(error)}`,

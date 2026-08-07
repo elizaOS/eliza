@@ -1,7 +1,7 @@
 /**
  * stable-diffusion.cpp image-gen backend (WS3) — Linux + Windows
  * (CPU/CUDA/Vulkan), and Android NDK builds reuse the same binary via
- * `plugin-aosp-local-inference`'s JNI bridge.
+ * `plugin-native-inference`'s JNI bridge.
  *
  * Why a child-process backend (and not a Node binding):
  *
@@ -60,7 +60,7 @@
  *   Windows x86_64 (Vulkan, CPU): mirror the CUDA build with the matching
  *     cmake -DSD_VULKAN=ON / -DCMAKE_BUILD_TYPE=Release flags.
  *   Android (arm64-v8a JNI): cross-compile through the NDK against the
- *     same upstream; not consumed directly here — `plugin-aosp-local-inference`
+ *     same upstream; not consumed directly here — `plugin-native-inference`
  *     wraps it as `libstable-diffusion-jni.so` and the AOSP backend (see
  *     `aosp-unavailable.ts`) calls into it via the eliza-llama-shim FFI surface.
  *   macOS (Metal): cmake -B build -DSD_METAL=ON; codesign with the Eliza

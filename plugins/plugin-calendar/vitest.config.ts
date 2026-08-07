@@ -13,7 +13,12 @@ const groundedActionReply = path.join(
   "actions",
   "grounded-action-reply.ts",
 );
-const pluginGoogleSrc = path.join(elizaRoot, "plugins", "plugin-google", "src");
+const pluginGoogleSrc = path.join(
+  elizaRoot,
+  "plugins",
+  "plugin-google-workspace",
+  "src",
+);
 const pluginSqlSrc = path.join(elizaRoot, "plugins", "plugin-sql", "src");
 const pluginSchedulingSrc = path.join(
   elizaRoot,
@@ -21,6 +26,7 @@ const pluginSchedulingSrc = path.join(
   "plugin-scheduling",
   "src",
 );
+const sharedSrc = path.join(elizaRoot, "packages", "shared", "src");
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
 const loggerSrc = path.join(elizaRoot, "packages", "logger", "src");
@@ -35,7 +41,7 @@ const appCoreNativeLibraryPolicy = path.join(
 
 /**
  * Unit-test config. UI / service suites that need inlined core/agent/ui or
- * plugin-google stubs are layered in alongside their specs; the base here keeps
+ * plugin-google-workspace stubs are layered in alongside their specs; the base here keeps
  * node-environment domain tests fast.
  */
 export default defineConfig({
@@ -75,11 +81,11 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: /^@elizaos\/plugin-google$/,
+        find: /^@elizaos\/plugin-google-workspace$/,
         replacement: path.join(pluginGoogleSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/plugin-google\/(.+)$/,
+        find: /^@elizaos\/plugin-google-workspace\/(.+)$/,
         replacement: path.join(pluginGoogleSrc, "$1"),
       },
       {
@@ -101,6 +107,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent$/,
         replacement: groundedActionReply,
+      },
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.join(sharedSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: path.join(sharedSrc, "$1"),
       },
       {
         find: /^@elizaos\/app-core\/platform\/native-library-policy$/,

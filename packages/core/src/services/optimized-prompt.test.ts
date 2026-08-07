@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "../logger";
+import type { IAgentRuntime } from "../types";
 import {
 	_computeOptimizedPromptMacForTest,
 	OPTIMIZED_PROMPT_CURRENT_LINK,
@@ -34,6 +35,22 @@ import {
 	parseDisabledTasksEnv,
 	parseOptimizedPromptArtifact,
 } from "./optimized-prompt";
+
+const TEST_INTEGRITY_KEY = Buffer.alloc(32, 0x5a).toString("base64");
+
+function createService(): OptimizedPromptService {
+	return new OptimizedPromptService({
+		reportError: vi.fn(),
+	} as unknown as IAgentRuntime);
+}
+
+beforeEach(() => {
+	process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY = TEST_INTEGRITY_KEY;
+});
+
+afterEach(() => {
+	delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+});
 
 /**
  * Helper for legacy-store tests: writes the artifact payload AND its `.mac`
@@ -70,7 +87,7 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 
 	beforeEach(async () => {
 		storeRoot = await mkdtemp(join(tmpdir(), "optimized-prompt-test-"));
-		service = new OptimizedPromptService();
+		service = createService();
 		service.setStoreRoot(storeRoot);
 	});
 
@@ -349,12 +366,19 @@ describe("OptimizedPromptService — HMAC integrity (SOC2 CC6.8)", () => {
 
 	beforeEach(async () => {
 		storeRoot = await mkdtemp(join(tmpdir(), "optimized-prompt-hmac-"));
-		service = new OptimizedPromptService();
+		service = createService();
 		service.setStoreRoot(storeRoot);
 	});
 
 	afterEach(async () => {
 		await rm(storeRoot, { recursive: true, force: true });
+	});
+
+	it("fails closed when no vault-hydrated integrity key is available", () => {
+		delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+		expect(() => _computeOptimizedPromptMacForTest("payload")).toThrow(
+			/ integrity key is unavailable/i,
+		);
 	});
 
 	it("writes a `.mac` sidecar next to every artifact and loads when intact", async () => {
@@ -407,7 +431,7 @@ describe("OptimizedPromptService — per-task error isolation (#8795)", () => {
 
 	beforeEach(async () => {
 		storeRoot = await mkdtemp(join(tmpdir(), "optimized-prompt-isolation-"));
-		service = new OptimizedPromptService();
+		service = createService();
 		service.setStoreRoot(storeRoot);
 	});
 
@@ -464,7 +488,7 @@ describe("OptimizedPromptService — concurrent setPrompt version claims (#8795)
 
 	beforeEach(async () => {
 		storeRoot = await mkdtemp(join(tmpdir(), "optimized-prompt-concurrent-"));
-		service = new OptimizedPromptService();
+		service = createService();
 		service.setStoreRoot(storeRoot);
 	});
 
@@ -476,9 +500,8 @@ describe("OptimizedPromptService — concurrent setPrompt version claims (#8795)
 	 * Fire N setPrompt calls concurrently against the same task dir and assert
 	 * that every claimed vN.json is intact: distinct version per write, a
 	 * matching valid .mac for every artifact, no clobbered/orphaned file. The
-	 * same taxonomy is registered by both basicServices and plugin-training
-	 * register-runtime, and trigger/CLI train also call setPrompt — so two
-	 * concurrent claims for one task are a real production scenario.
+	 * Multiple artifact producers can call setPrompt, so concurrent claims for
+	 * one task are a real production scenario.
 	 */
 	async function assertConcurrentClaimsIntact(concurrency: number) {
 		// concurrency <= retention so the final count is exactly N (no pruning).
@@ -617,7 +640,7 @@ describe("OptimizedPromptService — OPTIMIZED_PROMPT_DISABLE unknown-token warn
 	});
 
 	it("does not disable the real task a typo was meant to name", () => {
-		const service = new OptimizedPromptService();
+		const service = createService();
 		service.setDisabledTasksFromEnv("should_respnose");
 		// `should_respond` must NOT have been disabled by the typo.
 		expect(service.isTaskDisabled("should_respond")).toBe(false);

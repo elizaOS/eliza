@@ -120,8 +120,14 @@ function ensureWin32DllSearchDir(dir: string): void {
  *     describe) is the main-lineage vision surface; the develop-pinned fork
  *     lineage advances 12 -> 14 for the Kokoro IPA surface (fork-sync #11386)
  *     so the two independent bumps stay collision-free.
+ *
+ * v15: Kokoro adds exact-size, library-owned PCM allocation entrypoints. The
+ *     change is additive: every v14 symbol and function shape used by this
+ *     binding is unchanged. Until the JS Kokoro path adopts the allocation
+ *     entries it intentionally keeps using the v14 caller-buffer functions;
+ *     v14 libraries therefore remain valid at that degraded capability.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 14 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 15 as const;
 
 /** One transcribed word with playback-synced timing (ms from utterance start). */
 export interface AsrWordTiming {
@@ -1996,6 +2002,10 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
+		// ABI v15 only adds optional exact-size Kokoro PCM allocation symbols.
+		// The binding still uses the unchanged v14 caller-owned-buffer surface,
+		// so a v14 library is explicitly compatible at degraded capability.
+		reported === "14" ||
 		(reported === "13" && !kokoroG2pSymbolsAvailable) ||
 		(reported === "12" &&
 			!kokoroG2pSymbolsAvailable &&

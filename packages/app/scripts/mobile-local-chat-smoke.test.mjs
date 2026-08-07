@@ -25,7 +25,12 @@ process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES = "4";
 
 const originalArgv = process.argv;
 const originalPath = process.env.PATH;
+const originalCommandProxy = process.env.ELIZA_SMOKE_COMMAND_PROXY;
 process.env.PATH = `${fakeDirectory}:${originalPath}`;
+process.env.ELIZA_SMOKE_COMMAND_PROXY = path.resolve(
+  import.meta.dirname,
+  "../test/fixtures/mobile-command-proxy.cjs",
+);
 process.argv = [
   "bun",
   "mobile-local-chat-smoke.test.mjs",
@@ -106,86 +111,9 @@ beforeAll(() => {
   fs.mkdirSync(fakeIosAppContainer, { recursive: true });
   fs.mkdirSync(fakeIosDataContainer, { recursive: true });
   fs.mkdirSync(path.dirname(fakeAdb), { recursive: true });
+  fs.writeFileSync(fakeAdb, "");
   fs.writeFileSync(fakeDefaultsState, "{}\n");
   fs.writeFileSync(fakeModel, "gguf");
-
-  const fakeXcrun = path.join(fakeDirectory, "xcrun");
-  fs.writeFileSync(
-    fakeXcrun,
-    `#!/usr/bin/env node
-const fs = require("node:fs");
-const args = process.argv.slice(2);
-const statePath = process.env.FAKE_DEFAULTS_STATE;
-const load = () => JSON.parse(fs.readFileSync(statePath, "utf8"));
-const save = (state) => fs.writeFileSync(statePath, JSON.stringify(state));
-if (args[0] !== "simctl") process.exit(2);
-if (args[1] === "list") {
-  process.stdout.write("    iPhone Unit (11111111-1111-1111-1111-111111111111) (Booted)\\n");
-  process.exit(0);
-}
-if (args[1] === "get_app_container") {
-  process.stdout.write(args[4] === "data" ? process.env.FAKE_IOS_DATA_CONTAINER : process.env.FAKE_IOS_APP_CONTAINER);
-  process.exit(0);
-}
-if (args[1] === "spawn" && args[3] === "defaults") {
-  const operation = args[4];
-  const key = args[6];
-  const state = load();
-  if (operation === "export") {
-    process.stdout.write(JSON.stringify(state));
-    process.exit(0);
-  }
-  if (operation === "write") {
-    state[key] = args[8];
-    save(state);
-    process.exit(0);
-  }
-  if (operation === "read") {
-    if (!(key in state)) process.exit(1);
-    process.stdout.write(String(state[key]));
-    process.exit(0);
-  }
-  if (operation === "delete") {
-    delete state[key];
-    save(state);
-    process.exit(0);
-  }
-}
-if (args[1] === "io" && args[3] === "screenshot") {
-  fs.writeFileSync(args[4], "screenshot");
-}
-process.exit(0);
-`,
-    { mode: 0o755 },
-  );
-
-  const fakePlutil = path.join(fakeDirectory, "plutil");
-  fs.writeFileSync(
-    fakePlutil,
-    `#!/usr/bin/env node
-const fs = require("node:fs");
-const source = process.argv.at(-1);
-process.stdout.write(source === "-" ? fs.readFileSync(0, "utf8") : fs.readFileSync(source, "utf8"));
-`,
-    { mode: 0o755 },
-  );
-
-  fs.writeFileSync(
-    fakeAdb,
-    `#!/usr/bin/env node
-const args = process.argv.slice(2);
-if (args[0] === "devices") {
-  process.stdout.write("List of devices attached\\nemulator-unit\\tdevice\\n");
-} else if (args.includes("pm") && args.includes("path")) {
-  process.stdout.write("package:/data/app/ai.elizaos.app/base.apk\\n");
-} else if (args.includes("files/auth/local-agent-token")) {
-  process.stdout.write("unit-token\\n");
-} else if (args.includes("tcp:0")) {
-  process.stdout.write("42000\\n");
-}
-`,
-    { mode: 0o755 },
-  );
 
   process.env.FAKE_DEFAULTS_STATE = fakeDefaultsState;
   process.env.FAKE_IOS_DATA_CONTAINER = fakeIosDataContainer;
@@ -269,6 +197,11 @@ if (args[0] === "devices") {
 afterAll(() => {
   server.stop(true);
   process.env.PATH = originalPath;
+  if (originalCommandProxy === undefined) {
+    delete process.env.ELIZA_SMOKE_COMMAND_PROXY;
+  } else {
+    process.env.ELIZA_SMOKE_COMMAND_PROXY = originalCommandProxy;
+  }
   fs.rmSync(fakeDirectory, { recursive: true, force: true });
 });
 
@@ -310,20 +243,6 @@ describe("mobile smoke filesystem and encoding helpers", () => {
 
 describe("mobile smoke native command boundaries", () => {
   it("seeds, stages, reads, and verifies the iOS full-Bun handshake through simulator defaults", async () => {
-    const probe = Bun.spawnSync(
-      ["xcrun", "simctl", "list", "devices", "booted"],
-      { env: process.env },
-    );
-    expect({
-      exitCode: probe.exitCode,
-      stdout: probe.stdout.toString(),
-      stderr: probe.stderr.toString(),
-    }).toEqual({
-      exitCode: 0,
-      stdout:
-        "    iPhone Unit (11111111-1111-1111-1111-111111111111) (Booted)\n",
-      stderr: "",
-    });
     const launched = smoke.launchIosSimulatorApp();
     expect(launched).toMatchObject({
       udid: "11111111-1111-1111-1111-111111111111",

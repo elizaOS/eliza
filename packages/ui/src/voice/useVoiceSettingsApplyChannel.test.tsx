@@ -1,3 +1,4 @@
+/** Verifies useVoiceSettingsApplyChannel through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * jsdom coverage for the chat-to-voice view event bridge. The hook runs against
@@ -6,7 +7,6 @@
  * values the running shell/capture path reads — no stubbed setters.
  */
 
-import { VOICE_SETTINGS_APPLY_EVENT as SHARED_VOICE_SETTINGS_APPLY_EVENT } from "@elizaos/shared/events";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -42,10 +42,6 @@ afterEach(() => {
 });
 
 describe("useVoiceSettingsApplyChannel", () => {
-  it("uses the shared voice-settings apply event contract", () => {
-    expect(VOICE_SETTINGS_APPLY_EVENT).toBe(SHARED_VOICE_SETTINGS_APPLY_EVENT);
-  });
-
   it("re-seeds the continuous-chat and VAD mirrors the shell reads", () => {
     render(<Channel />);
     apply({

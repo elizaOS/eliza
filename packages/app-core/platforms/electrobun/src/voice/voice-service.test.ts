@@ -1,5 +1,5 @@
 /** Exercises voice service behavior with deterministic app-core test fixtures. */
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { DynamicViewRegistry } from "../dynamic-views/registry";
 import { DynamicViewSessionManager } from "../dynamic-views/session-manager";
@@ -41,12 +41,6 @@ class FakeCanvas {
 
   async a2uiPush(options: { id: string; payload: JsonValue }): Promise<void> {
     this.pushes.push(options);
-  }
-}
-
-class FakeWorkerStatusProvider {
-  getWorkerStatus(id: string): { state: string } | null {
-    return id === "eliza.runtime" ? { state: "running" } : null;
   }
 }
 
@@ -233,7 +227,6 @@ function harness(env: Record<string, string | undefined> = {}): {
   const dynamicViewSessions = new DynamicViewSessionManager({
     registry,
     canvas,
-    workerStatusProvider: new FakeWorkerStatusProvider(),
     now,
     sessionIdFactory: () => "view-session-1",
   });

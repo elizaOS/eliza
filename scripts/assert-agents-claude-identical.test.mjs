@@ -13,19 +13,13 @@ describe("assert-agents-claude-identical guide filtering", () => {
   it("excludes fixture, test, and archived sample trees", () => {
     assert.equal(
       shouldCheckGuideFile(
-        "packages/import-conversations/src/parsers/fixtures/openclaw-home/AGENTS.md",
+        "packages/elizaos/src/migrate/__tests__/fixtures/oc-home/AGENTS.md",
       ),
       false,
     );
     assert.equal(
       shouldCheckGuideFile(
         "packages/elizaos/src/migrate/__tests__/fixtures/oc-home/CLAUDE.md",
-      ),
-      false,
-    );
-    assert.equal(
-      shouldCheckGuideFile(
-        "packages/benchmarks/openclaw-benchmark/.archived/opencode_setup/AGENTS.md",
       ),
       false,
     );

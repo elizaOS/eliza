@@ -10,7 +10,6 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { createCalendlyConnectorContribution } from "./calendly.js";
 import type { ConnectorContribution, ConnectorRegistry } from "./contract.js";
 import { createDiscordConnectorContribution } from "./discord.js";
 import { createDuffelConnectorContribution } from "./duffel.js";
@@ -42,7 +41,6 @@ export const DEFAULT_CONNECTOR_CONTRIBUTIONS: ReadonlyArray<ConnectorContributio
     createIMessageConnectorContribution,
     createXConnectorContribution,
     createTwilioConnectorContribution,
-    createCalendlyConnectorContribution,
     createDuffelConnectorContribution,
   ];
 

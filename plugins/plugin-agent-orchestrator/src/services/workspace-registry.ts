@@ -20,6 +20,7 @@
 import type { Dirent } from "node:fs";
 import { readdir, rm, stat, statfs } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { ElizaError } from "@elizaos/core";
 
 export type WorkspaceKind = "acp-scratch" | "git-workspace";
 
@@ -331,6 +332,38 @@ export class WorkspaceRegistry {
       usedBytes: used,
     };
   }
+}
+
+/**
+ * The one place a refused {@link BudgetDecision} becomes a throwable error.
+ * The message is deliberately human — an action-boundary catch relays
+ * `error.message` toward chat, so byte counts, caps, and filesystem paths
+ * must never ride in it. The technical fields live in the structured
+ * `context` (for the action's error data / `reportError`) and are already
+ * warn-logged by `checkDiskBudget` at refusal time.
+ */
+export function workspaceDiskBudgetError(
+  decision: BudgetDecision,
+  config: DiskBudgetConfig,
+  targetRoot: string,
+): ElizaError {
+  return new ElizaError(
+    "the workspace disk is nearly full, so a new coding workspace cannot be created right now",
+    {
+      code: "WORKSPACE_DISK_BUDGET_EXCEEDED",
+      severity: "ephemeral",
+      context: {
+        reason: decision.reason ?? "unknown",
+        usedBytes: decision.usedBytes,
+        freeBytes: decision.freeBytes,
+        capBytes: config.capBytes,
+        minFreeBytes: config.minFreeBytes,
+        reclaimedBytes: decision.reclaimedBytes,
+        reclaimedCount: decision.reclaimedCount,
+        targetRoot,
+      },
+    },
+  );
 }
 
 /**

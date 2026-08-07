@@ -1,3 +1,4 @@
+/** Verifies bindCloudAgent clears the durable force-fresh flag on completion through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

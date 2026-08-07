@@ -27,7 +27,7 @@ This document describes the security architecture and hardening measures impleme
 
 ## SSRF Protection
 
-**File:** `src/security/network-policy.ts`
+**Canonical implementation:** `packages/core/src/network/ssrf.ts`
 
 All user-supplied URLs (e.g. knowledge ingestion, web fetches) are validated through a multi-layer SSRF defense:
 
@@ -35,32 +35,35 @@ All user-supplied URLs (e.g. knowledge ingestion, web fetches) are validated thr
 Only `http:` and `https:` protocols are permitted. This blocks `file:`, `ftp:`, `gopher:`, `data:`, and other protocol-based attacks.
 
 ### IP Address Blocklist
-The `isBlockedPrivateOrLinkLocalIp()` function blocks access to:
+The `isPrivateIpAddress()` policy blocks access to:
 
 | Range | Purpose |
 |-------|---------|
 | `0.0.0.0/8` | "This" network |
 | `10.0.0.0/8` | RFC 1918 private |
 | `127.0.0.0/8` | Loopback |
+| `100.64.0.0/10` | Carrier-grade NAT / shared address space |
 | `169.254.0.0/16` | Link-local / cloud metadata |
 | `172.16.0.0/12` | RFC 1918 private |
 | `192.168.0.0/16` | RFC 1918 private |
 | `::` | IPv6 unspecified |
 | `::1` | IPv6 loopback |
 | `fc00::/7` | IPv6 unique local |
+| `fec0::/10` | Deprecated IPv6 site-local |
 | `fe80::/10` | IPv6 link-local |
+| `ff00::/8` | IPv6 multicast |
 | `::ffff:` mapped | IPv4-mapped IPv6 addresses (decoded and rechecked) |
 
 ### DNS Resolution Verification
-**File:** `src/runtime/custom-actions.ts` (`isBlockedUrl()`)
+**File:** `packages/core/src/network/ssrf.ts` (`fetchWithSsrfGuard()`)
 
-After hostname validation, the `isBlockedUrl()` function performs DNS resolution (via `node:dns/promises` `lookup`) and checks **every resolved IP address** against the blocklist using `isBlockedPrivateOrLinkLocalIp()` from `network-policy.ts`. This prevents DNS rebinding and split-horizon DNS attacks where a hostname resolves to a private IP.
+After hostname validation, guarded fetch resolves and checks **every resolved IP address**, then pins the connection to the approved address. Redirects are revalidated. This prevents DNS rebinding and split-horizon DNS attacks where a hostname resolves to a private IP.
 
 ### Hostname Blocklist
 Literal hostnames like `localhost`, `metadata.google.internal`, and cloud metadata service hostnames are explicitly blocked.
 
 ### Test Coverage
-See `src/security/network-policy.test.ts` for comprehensive tests including IPv4, IPv6, mapped addresses, and edge cases.
+See `packages/core/src/network/ssrf.test.ts` for IPv4, IPv6, mapped/non-canonical addresses, DNS pinning, and edge cases.
 
 ---
 

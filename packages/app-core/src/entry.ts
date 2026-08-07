@@ -2,11 +2,10 @@
 /**
  * CLI entry point for Eliza.
  *
- * This file is built by tsdown into dist/entry.js and invoked by the app entry script.
+ * This file is compiled into dist/entry.js and invoked by the app entry script.
  * It bootstraps the CLI: normalizes env, applies profile settings,
  * and delegates to the Commander-based CLI.
  */
-import "@elizaos/shared";
 import process from "node:process";
 import { formatErrorWithStack, getLogPrefix } from "@elizaos/shared";
 import { bootLap } from "./boot-profile";

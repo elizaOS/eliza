@@ -27,6 +27,15 @@ const SAFE_AREA_TOP_BUFFER = 8;
 // of visual viewport, a 200px panel, and every message bubble unhittable).
 const MIN_PANEL_HEIGHT = 200;
 
+// SheetGrabber sits 2px below the panel top and extends its invisible hit zone
+// 24px upward. Keeping 22px above a keyboard-constrained panel therefore keeps
+// the complete 44px drag target on-screen instead of clipping the close gesture
+// against the device edge. The composer itself wins if the visible viewport is
+// even tighter than that contract.
+export const SHEET_GRABBER_TOP_CLEARANCE = 22;
+const MIN_COMPOSER_PANEL_HEIGHT = 52;
+const SHEET_HALF_VIEWPORT_FRACTION = 0.46;
+
 export interface ChatPanelLayoutInput {
   /** The visual-viewport height (px) the chat sizes itself to. */
   viewportH: number;
@@ -55,6 +64,23 @@ export interface ChatPanelLayout {
   topMargin: number;
   /** The panel's maximum height (px); the thread scrolls to fit under this. */
   panelMaxH: number;
+}
+
+/**
+ * Resolve the HALF detent without allowing its resting target to exceed the
+ * current panel ceiling. Native keyboards can lift an overlay while leaving
+ * the layout viewport unchanged, so a viewport-relative target alone can be
+ * taller than every pixel actually available above the keyboard.
+ */
+export function resolveChatPanelHalfDetentHeight(
+  viewportH: number,
+  panelMaxH: number,
+): number {
+  const nominalHalf = Math.max(
+    0,
+    Math.round(viewportH * SHEET_HALF_VIEWPORT_FRACTION),
+  );
+  return Math.min(nominalHalf, Math.max(0, panelMaxH));
 }
 
 /**
@@ -113,8 +139,21 @@ export function resolveChatPanelLayout(
     viewportH - (fullBleed ? 0 : bottomPad) - unreportedKeyboardLift,
   );
 
+  // A raised keyboard turns the top grabber into the only direct close gesture.
+  // Preserve its whole hit zone whenever the composer can still retain its
+  // minimum footprint. The MIN_PANEL_HEIGHT preference must not consume these
+  // final pixels because a negative-y grabber cannot own a reliable close drag.
+  const grabberTopClearance =
+    !fullBleed && effectiveKeyboardInset > 0
+      ? Math.min(
+          SHEET_GRABBER_TOP_CLEARANCE,
+          Math.max(0, availableH - MIN_COMPOSER_PANEL_HEIGHT),
+        )
+      : 0;
+  const panelAvailableH = Math.max(0, availableH - grabberTopClearance);
+
   const panelMaxH = Math.min(
-    availableH,
+    panelAvailableH,
     Math.max(MIN_PANEL_HEIGHT, availableH - topMargin),
   );
 

@@ -1,3 +1,4 @@
+/** Verifies AuthTokenSync 401 handling through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -150,6 +151,42 @@ describe("AuthTokenSync 401 handling", () => {
       expect(postsTo("steward-session").length).toBeGreaterThan(before),
     );
     expect(storage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
+  });
+
+  it("clears a STILL-VALID token when session-sync 401s with session_ended — an explicit cross-host logout is a real revocation, not a stale proxy", async () => {
+    // Far outside the refresh-ahead window: only the session-sync POST fires,
+    // isolating the session_ended handling from the refresh path.
+    const token = makeJwt({
+      sub: "u1",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    storage.setItem(STEWARD_TOKEN_KEY, token);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        calls.push({ url, method });
+        if (method === "DELETE") return new Response(null, { status: 200 });
+        if (url.includes("steward-session")) {
+          return new Response(
+            JSON.stringify({
+              error: "Session was signed out",
+              code: "session_ended",
+            }),
+            { status: 401 },
+          );
+        }
+        return new Response(JSON.stringify({}), { status: 401 });
+      }),
+    );
+
+    mount();
+
+    // Unlike the bare-401 stale-proxy keep above, the distinct code clears the
+    // stored session even though the token itself is still unexpired — this is
+    // what propagates a logout performed on the PAIRED origin to this one.
+    await waitFor(() => expect(storage.getItem(STEWARD_TOKEN_KEY)).toBeNull());
   });
 
   it("clears an expired token on a refresh 401 (genuine end-of-session still self-heals)", async () => {

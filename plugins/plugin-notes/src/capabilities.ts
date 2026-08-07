@@ -1,0 +1,101 @@
+/**
+ * Planner-visible server capabilities for the managed Cloud Notes view. Each
+ * declaration maps one-to-one to `interact.ts`, which is the supported
+ * server-side control plane for the view.
+ */
+
+import type { ViewCapability, ViewCapabilityParameter } from "@elizaos/core";
+
+const CONTENT_PARAM: ViewCapabilityParameter = {
+  type: "string",
+  description:
+    "The complete note exactly as the user wants it written. Put an optional short label on the first line and details on later lines; never invent a separate title or summary.",
+  minLength: 1,
+  maxLength: 20_000,
+  pattern: "\\S",
+};
+
+const QUERY_PARAM: ViewCapabilityParameter = {
+  type: "string",
+  description: "Unique text contained anywhere in the note.",
+  minLength: 1,
+  maxLength: 20_000,
+  pattern: "\\S",
+};
+
+const COLOR_PARAM: ViewCapabilityParameter = {
+  type: "string",
+  description: "Optional color: yellow, green, rose, or slate.",
+  enum: ["yellow", "green", "rose", "slate"],
+};
+
+const ID_PARAM = {
+  id: {
+    type: "string",
+    description: "Stable entity id returned by a prior read or create.",
+    required: true,
+    minLength: 3,
+    maxLength: 128,
+    pattern: "^[a-z][a-z0-9-]{2,127}$",
+  },
+} satisfies NonNullable<ViewCapability["params"]>;
+
+export const NOTES_CAPABILITIES: ViewCapability[] = [
+  {
+    id: "get-notes",
+    description:
+      "List notes as structured data, optionally narrowed by unique text they contain.",
+    params: {
+      query: { ...QUERY_PARAM, description: "Optional unique note text." },
+    },
+  },
+  {
+    id: "get-note",
+    description: "Read one note by id or unique text it contains.",
+    params: {
+      id: { ...ID_PARAM.id, required: false },
+      query: QUERY_PARAM,
+    },
+  },
+  {
+    id: "create-note",
+    description:
+      "Create a durable note from one user-authored content field. Preserve the user's wording; never invent a separate title or description. Dates and times remain note content unless the user also asks to schedule them.",
+    params: {
+      content: { ...CONTENT_PARAM, required: true },
+      color: COLOR_PARAM,
+    },
+  },
+  {
+    id: "update-note",
+    description:
+      "Replace a note's complete user-authored content, change its color, or both. Identify it by id or unique existing text; never synthesize a separate title.",
+    params: {
+      id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
+      query: {
+        ...QUERY_PARAM,
+        description: "Unique existing text identifying the note to update.",
+      },
+      content: {
+        ...CONTENT_PARAM,
+        description: "Replacement complete note content.",
+      },
+      color: {
+        ...COLOR_PARAM,
+        description: "Replacement color: yellow, green, rose, or slate.",
+      },
+    },
+  },
+  {
+    id: "delete-note",
+    description: "Delete one note by id or unique text it contains.",
+    params: {
+      id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
+      query: QUERY_PARAM,
+    },
+  },
+  {
+    id: "clear-notes",
+    description: "Delete every sticky note.",
+  },
+];
