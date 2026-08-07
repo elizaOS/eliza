@@ -22,14 +22,27 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadAccount } from "../account-storage.ts";
 import {
-  adoptCodexCliLogin,
+  createIsolatedAccountStoragePolicy,
+  loadAccount,
+} from "../account-storage.ts";
+import {
+  type AdoptCodexOptions,
+  adoptCodexCliLogin as adoptCodexCliLoginWithPolicy,
   restoreRetiredSource,
 } from "./adopt-codex-cli-login.ts";
 
 let home: string;
 const savedEnv: Record<string, string | undefined> = {};
+
+function adoptCodexCliLogin(
+  options: Omit<AdoptCodexOptions, "storagePolicy"> = {},
+) {
+  return adoptCodexCliLoginWithPolicy({
+    ...options,
+    storagePolicy: createIsolatedAccountStoragePolicy(home),
+  });
+}
 
 function makeJwt(expSeconds: number): string {
   const b = (o: unknown) =>
@@ -77,11 +90,12 @@ function retiredFilesIn(dir: string): string[] {
 
 beforeEach(() => {
   home = mkdtempSync(path.join(tmpdir(), "adopt-codex-"));
-  for (const key of ["HOME", "ELIZA_HOME", "CODEX_HOME"]) {
+  for (const key of ["HOME", "ELIZA_HOME", "ELIZA_STATE_DIR", "CODEX_HOME"]) {
     savedEnv[key] = process.env[key];
   }
   process.env.HOME = home;
   process.env.ELIZA_HOME = home; // authRoot() → <ELIZA_HOME>/auth
+  process.env.ELIZA_STATE_DIR = home;
   delete process.env.CODEX_HOME;
 });
 

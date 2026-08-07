@@ -104,6 +104,7 @@ describe("job lanes — completeness invariant", () => {
         JOB_TYPES.CONTAINER_LOGS,
         JOB_TYPES.APP_DEPLOY,
         JOB_TYPES.APP_DB_DEPROVISION,
+        JOB_TYPES.APP_CACHE_INVALIDATE,
       ].sort(),
     );
   });

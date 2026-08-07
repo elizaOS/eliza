@@ -156,9 +156,9 @@ test("the soak recognizes unavailable optional services and protected boundaries
 });
 
 test("the soak fails on console errors as well as uncaught page errors (#15922)", () => {
-  expect(source).toContain(
-    'const consoleErrors = consoleLog.filter((entry) => entry.type === "error")',
-  );
+  expect(source).toContain("const consoleErrors = [];");
+  expect(source).toContain('if (entry.type !== "error") continue;');
+  expect(source).toContain("expectedConsoleMatcher.consumeConsoleError(");
   expect(source).toContain("consoleErrors.length === 0");
-  expect(source).toContain("no console errors during the soak");
+  expect(source).toContain("no unexpected console errors during the soak");
 });

@@ -190,6 +190,9 @@ for (const viewport of VIEWPORTS) {
             mask: dynamicMask(page),
             animations: "disabled",
           },
+          // Human-reviewed audit artifact, never pixel-diffed; the quality
+          // gate alone is the contract here.
+          { requireStable: false },
         );
 
         // ── Logo presence on the chrome'd pages (not the marketing landing). ──

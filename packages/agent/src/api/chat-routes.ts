@@ -2510,8 +2510,12 @@ function stampAppConversationProvenance(
       context: { roomId: memory.roomId },
     });
   }
-  const existingMetadata = memory.metadata as MessageMetadata;
-  const metadataRecord = existingMetadata as Record<string, unknown>;
+  const metadataRecord =
+    memory.metadata &&
+    typeof memory.metadata === "object" &&
+    !Array.isArray(memory.metadata)
+      ? (memory.metadata as Record<string, unknown>)
+      : {};
   const readMetadataString = (key: string): string | undefined => {
     const value = metadataRecord[key];
     return typeof value === "string" && value.trim() ? value : undefined;
@@ -2521,7 +2525,7 @@ function stampAppConversationProvenance(
   const platformMessageId =
     readMetadataString("platformMessageId") ?? memory.id;
   memory.metadata = {
-    ...existingMetadata,
+    ...metadataRecord,
     type: "message",
     provider,
     accountId,

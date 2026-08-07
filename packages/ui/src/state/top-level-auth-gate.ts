@@ -63,3 +63,28 @@ export function authProbeShouldHoldShell(
     !firstRunOwnsLoginSurface(coordinatorPhase, firstRunComplete)
   );
 }
+
+/** Access metadata from GET /api/auth/me 401 bodies. */
+export interface RemoteAuthGateAccess {
+  mode?: "local" | "session" | "remote" | "bearer";
+  passwordConfigured?: boolean;
+  ownerConfigured?: boolean;
+}
+
+/**
+ * Standalone agents (`bun run start`) reached over a private LAN authenticate
+ * via a one-time pairing code that mints a bearer token — not the owner
+ * password session LoginView expects from app-core.
+ */
+export function shouldShowRemoteAgentPairingGate(args: {
+  reason?: "remote_auth_required" | "remote_password_not_configured";
+  access?: RemoteAuthGateAccess;
+}): boolean {
+  const access = args.access;
+  return (
+    args.reason === "remote_auth_required" &&
+    access?.mode === "remote" &&
+    access.passwordConfigured === true &&
+    access.ownerConfigured === false
+  );
+}

@@ -5,6 +5,7 @@
  * short-lived access tokens but never refresh tokens or display identities.
  */
 import { createHash, randomBytes } from "node:crypto";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
 import { getAccessToken } from "@elizaos/auth/credentials";
 import type {
   AccountPoolBrokerAccountSnapshot,
@@ -13,7 +14,7 @@ import type {
   AccountPoolBrokerProviderSnapshot,
   AccountPoolBrokerSnapshot,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import type { LinkedAccountUsage } from "@elizaos/shared/contracts/service-routing";
 import { isLinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {
@@ -339,7 +340,10 @@ export async function resolveBrokerAccessToken(
           outcome: true as const,
         }
       : { outcome: true as const };
-  const outcome = await getAccessToken(providerId, accountId, opts);
+  const outcome = await getAccessToken(providerId, accountId, {
+    ...opts,
+    storagePolicy: createRuntimeAccountStoragePolicy(resolveStateDir()),
+  });
   if (!outcome.ok) {
     throw new Error(`token_resolve_failed:${outcome.kind}`);
   }
