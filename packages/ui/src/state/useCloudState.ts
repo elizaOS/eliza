@@ -38,6 +38,7 @@ import { clearStaleStewardSession } from "../cloud/shell/StewardProviderShared";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
+import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import {
   closeExternalBrowser,
   confirmDesktopAction,
@@ -120,8 +121,7 @@ function isSameOriginLocalHttpBackend(): boolean {
 }
 
 function isDevUiPortWithoutEmbeddedBackend(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.location.port === "2138";
+  return isViteDevUiShell();
 }
 
 function isTrustedCloudAuthMessageOrigin(
