@@ -193,6 +193,8 @@ describe("CALENDAR_SOURCES action", () => {
       awaitingUserAction: true,
       awaitingUserInput: true,
     });
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain("not connected until");
     expect(result?.text).toContain("not connected until");
     expect(result?.effectReceipts).toEqual([
       expect.objectContaining({
@@ -246,6 +248,15 @@ describe("CALENDAR_SOURCES action", () => {
       reason: "microsoft OAuth is not registered in this runtime.",
       completion: "configuration_required",
     });
+    // Card marker + verified handoff so the planner cannot paraphrase away
+    // [CONFIG:microsoft] into a vague authentication error.
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain("[CONFIG:microsoft]");
+    expect(result?.text).toContain("[CONFIG:microsoft]");
+    expect(result?.data).toMatchObject({
+      awaitingUserAction: true,
+      awaitingUserInput: true,
+    });
   });
 
   it("rejects reconnect when the grant and account identities disagree", async () => {
@@ -296,6 +307,10 @@ describe("CALENDAR_SOURCES action", () => {
     });
     expect(result?.success).toBe(false);
     expect(result?.text).toContain('"action":"permission_request"');
+    // Permission JSON must be verified user-facing so voice rewrite cannot
+    // strip the card marker into plain prose.
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain('"action":"permission_request"');
   });
 
   it("offers no URL parameter on the agent surface", () => {
