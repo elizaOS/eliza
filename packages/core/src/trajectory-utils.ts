@@ -98,6 +98,7 @@ export type TrajectoryLlmCallDetails = {
 	completionTokens?: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
+	reasoningTokens?: number;
 	providerOrder?: string[];
 	providerAttributions?: TrajectoryProviderAttribution[];
 };

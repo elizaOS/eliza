@@ -8952,6 +8952,7 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 			completionTokens: number;
 			cacheReadInputTokens?: number;
 			cacheCreationInputTokens?: number;
+			reasoningTokens?: number;
 			totalTokens: number;
 	  }
 	| undefined {
@@ -8965,6 +8966,7 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 		completionTokens: number;
 		cacheReadInputTokens?: number;
 		cacheCreationInputTokens?: number;
+		reasoningTokens?: number;
 		totalTokens: number;
 	} = { promptTokens, completionTokens, totalTokens };
 	if (typeof usage.cacheReadInputTokens === "number") {
@@ -8978,6 +8980,9 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 	}
 	if (typeof usage.cacheCreationInputTokens === "number") {
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
+	}
+	if (typeof usage.reasoningTokens === "number") {
+		out.reasoningTokens = usage.reasoningTokens;
 	}
 	return out;
 }
@@ -12973,7 +12978,15 @@ export class DefaultMessageService implements IMessageService {
 			ModelType.TEXT_NANO,
 		] as const) {
 			try {
-				const response = await runtime.useModel(modelType, { prompt });
+				// Bound reasoning on reasoning models (#16394): the failure-reply
+				// path is a plain-text fallback that must stay low-latency, so every
+				// slot carries thinking="off" like Stage-1, the evaluator, and every
+				// planner iteration. Without it a drained/failed turn can still spend
+				// hundreds of hidden reasoning tokens before producing visible text.
+				const response = await runtime.useModel(modelType, {
+					prompt,
+					providerOptions: { eliza: { thinking: "off" } },
+				});
 				if (typeof response !== "string") {
 					continue;
 				}

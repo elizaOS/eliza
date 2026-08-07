@@ -33,6 +33,11 @@ export interface TrajectoryUsageTotals {
 	completionTokens: number;
 	cacheReadTokens: number;
 	cacheCreationTokens: number;
+	/** Sum of per-trajectory reasoning tokens (thinking/chain-of-thought spend),
+	 * mirroring `cacheCreationTokens`. Reported separately from
+	 * `totalTokens` because reasoning tokens are billed independently and
+	 * must be attributable (#16394). */
+	reasoningTokens: number;
 	/** prompt + completion (cache tokens reported separately, mirroring the
 	 * orchestrator's `TaskUsageSummary.totalTokens` convention). */
 	totalTokens: number;
@@ -55,6 +60,7 @@ function emptyTotals(): TrajectoryUsageTotals {
 		completionTokens: 0,
 		cacheReadTokens: 0,
 		cacheCreationTokens: 0,
+		reasoningTokens: 0,
 		totalTokens: 0,
 		costUsd: 0,
 		trajectoryCount: 0,
@@ -74,6 +80,7 @@ function addMetrics(
 	into.completionTokens += n(metrics.totalCompletionTokens);
 	into.cacheReadTokens += n(metrics.totalCacheReadTokens);
 	into.cacheCreationTokens += n(metrics.totalCacheCreationTokens);
+	into.reasoningTokens += n(metrics.totalReasoningTokens);
 	into.costUsd += n(metrics.totalCostUsd);
 	into.totalTokens +=
 		n(metrics.totalPromptTokens) + n(metrics.totalCompletionTokens);

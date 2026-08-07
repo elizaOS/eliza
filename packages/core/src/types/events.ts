@@ -292,6 +292,7 @@ export interface ModelEventPayload extends EventPayload {
 		total: number;
 		cacheReadInputTokens?: number;
 		cacheCreationInputTokens?: number;
+		reasoningTokens?: number;
 		cachedInputTokens?: number;
 		/** @deprecated Use `cachedInputTokens` or `cacheReadInputTokens`. */
 		cached?: number;
