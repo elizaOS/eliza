@@ -400,7 +400,7 @@ async function navigateToView(
 	requestedViewType?: ViewType,
 	subview?: string,
 	navigationLabel = view.label,
-	delivery?: "originating-client",
+	delivery?: "originating-client" | "completed-action",
 	originatingClientId?: string,
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
@@ -572,7 +572,11 @@ export async function runViewsShow({
 		viewType,
 		subview ?? undefined,
 		navigationLabel,
-		isRealtimeVoiceTurn(message) ? "originating-client" : undefined,
+		isRealtimeVoiceTurn(message)
+			? "originating-client"
+			: originatingClientId
+				? "completed-action"
+				: undefined,
 		originatingClientId,
 	);
 

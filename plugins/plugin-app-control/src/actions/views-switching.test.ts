@@ -432,6 +432,7 @@ describe("view switching — VIEWS action resolver", () => {
 			const [, init] = lastCall;
 			expect(JSON.parse(String(init?.body))).toMatchObject({
 				clientId: "seeker-client",
+				delivery: "completed-action",
 			});
 		});
 
