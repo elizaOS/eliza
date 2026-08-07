@@ -24,6 +24,7 @@ const ROUTES = [
   { path: "/get-started", name: "get-started", authed: false },
   { path: "/login", name: "login", authed: true },
   { path: "/connected", name: "connected", authed: true },
+  { path: "/profile/edit", name: "profile-edit", authed: true },
 ] as const;
 
 const VIEWPORTS = [

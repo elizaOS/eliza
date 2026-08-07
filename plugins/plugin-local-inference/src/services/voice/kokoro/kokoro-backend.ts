@@ -35,6 +35,34 @@ import type {
 } from "./types";
 import { resolveKokoroVoiceOrDefault } from "./voices";
 
+const I_AM = /\bi am\b/gi;
+const CLAUSE_OPENING_PREFIX =
+	/(?:^|[.!?;:,]\s*|\b(?:and|or|but|nor|yet|so|that|because|if|when|while|although|though|since|unless|until|once|whether|after|before|as)\s+)["']?$/i;
+const PREDICATE_FOLLOWS = /^\s+(?!(?:and|or|but|nor|yet)\b)(?=[^\s.,;:!?])/i;
+
+/**
+ * Prepares only Kokoro's private synthesis copy for espeak-ng phonemization.
+ *
+ * Kokoro can render clause-opening "I am" as /jæm/ ("yam"). Contracting it
+ * avoids that defect, but English forbids contraction when `am` is stranded.
+ * Without a parser, this intentionally favors precision: the subject must open
+ * a sentence or an explicit clause boundary and a predicate must follow. The
+ * original `Phrase.text` remains unchanged for transcripts and other engines.
+ */
+export function prepareKokoroSpeakText(text: string): string {
+	return text.replace(I_AM, (match, offset: number, source: string) => {
+		const prefix = source.slice(0, offset);
+		const suffix = source.slice(offset + match.length);
+		if (
+			!CLAUSE_OPENING_PREFIX.test(prefix) ||
+			!PREDICATE_FOLLOWS.test(suffix)
+		) {
+			return match;
+		}
+		return `${match[0]}'${match[match.length - 1]}`;
+	});
+}
+
 export interface KokoroTtsBackendDeps extends KokoroBackendOptions {
 	/** The concrete model runner. Wire `KokoroFfiRuntime` (in-process fused
 	 *  libelizainference) in production and `KokoroMockRuntime` in tests. */
@@ -139,7 +167,8 @@ export class KokoroTtsBackend implements TtsBackend, StreamingTtsBackend {
 		const voice = this.resolveVoice(args.preset);
 		const phonemizer = await this.ensurePhonemizer();
 		args.onKernelTick?.();
-		const phonemes = await phonemizer.phonemize(args.phrase.text, voice.lang);
+		const speakText = prepareKokoroSpeakText(args.phrase.text);
+		const phonemes = await phonemizer.phonemize(speakText, voice.lang);
 		if (args.cancelSignal.cancelled) {
 			args.onChunk({
 				pcm: new Float32Array(0),
@@ -157,7 +186,7 @@ export class KokoroTtsBackend implements TtsBackend, StreamingTtsBackend {
 		const limit = this.streamingChunkSamples;
 		let cancelled = false;
 		const result = await this.runtime.synthesize({
-			text: args.phrase.text,
+			text: speakText,
 			phonemes,
 			phonemizerId: phonemizer.id,
 			voice,

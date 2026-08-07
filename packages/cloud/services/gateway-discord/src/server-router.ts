@@ -1,4 +1,4 @@
-// Coordinates Discord gateway server router behavior for multi-tenant bot pods.
+/** Routes Discord messages to registered cloud agent servers. */
 import { readFileSync } from "node:fs";
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";
@@ -152,8 +152,26 @@ export async function forwardToServer(
   agentId: string,
   userId: string,
   text: string,
+  options?: {
+    senderName?: string;
+    accountId?: string;
+    platformRecordId?: string;
+    chatId?: string;
+    chatType?: string;
+  },
 ): Promise<string> {
-  const body = JSON.stringify({ userId, text });
+  const body = JSON.stringify({
+    userId,
+    text,
+    platformName: "discord",
+    ...(options?.senderName ? { senderName: options.senderName } : {}),
+    ...(options?.accountId ? { accountId: options.accountId } : {}),
+    ...(options?.platformRecordId
+      ? { platformRecordId: options.platformRecordId }
+      : {}),
+    ...(options?.chatId ? { chatId: options.chatId } : {}),
+    ...(options?.chatType ? { chatType: options.chatType } : {}),
+  });
 
   let lastError: Error | null = null;
   let woken = false;

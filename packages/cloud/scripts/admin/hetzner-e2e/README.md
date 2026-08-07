@@ -82,7 +82,8 @@ intend to create a real billable server.
   operator summary rendering
 - `hetzner-e2e-wait-ready.ts` — SSH-poll for cloud-init + Docker
 - `hetzner-e2e-deploy-agent.ts` — create + provision a trivial agent
-- `hetzner-e2e-healthcheck.ts` — single `status.get` bridge ping
+- `hetzner-e2e-healthcheck.ts` — bounded `status.get` bridge polling across
+  explicit Cloud cache-warming responses
 - `hetzner-e2e-chat.ts` — one real `message.send` chat turn, judged by
   `../bridge-reply-verdict.ts` (#15616): the reply must echo the
   per-run proof token within the retry budget and must not be

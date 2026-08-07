@@ -168,6 +168,12 @@ export class VoiceScheduler {
 	readonly sink: AudioSink;
 	readonly preset: SpeakerPreset;
 	/**
+	 * Voice id the phrase cache was seeded for. Cache hits are only valid for
+	 * this speaker — otherwise Replay with a different dropdown voice would
+	 * return the wrong (default) clip.
+	 */
+	private readonly phraseCacheVoiceId: string;
+	/**
 	 * Prefix-preserving barge-in queue. When the streaming TTS path is active,
 	 * each audio chunk is enqueued here tagged with its token range. On
 	 * hard-stop (barge-in), `rollbackAt(divergencePoint)` partitions the
@@ -206,6 +212,7 @@ export class VoiceScheduler {
 			deps.phonemeTokenizer ?? null,
 		);
 		this.preset = config.preset;
+		this.phraseCacheVoiceId = config.preset.voiceId;
 		this.backend = deps.backend;
 		this.phraseCache = deps.phraseCache ?? new PhraseCache();
 		this.sampleRate = config.sampleRate;
@@ -291,7 +298,12 @@ export class VoiceScheduler {
 	async synthesizeText(
 		text: string,
 		signal?: AbortSignal,
+		voiceId?: string,
 	): Promise<AudioChunk> {
+		const requestedVoiceId = voiceId?.trim();
+		const preset = requestedVoiceId
+			? { ...this.preset, voiceId: requestedVoiceId }
+			: this.preset;
 		const phrase: Phrase = {
 			id: this.nextStandalonePhraseId--,
 			text,
@@ -304,7 +316,8 @@ export class VoiceScheduler {
 			throw new Error("[voice-scheduler] synthesis cancelled by abort signal");
 		}
 
-		const cached = this.phraseCache.get(text);
+		const cacheEligible = preset.voiceId === this.phraseCacheVoiceId;
+		const cached = cacheEligible ? this.phraseCache.get(text) : undefined;
 		if (cached) {
 			this.emitTelemetry({
 				type: "phrase-cache-hit",
@@ -356,7 +369,7 @@ export class VoiceScheduler {
 			});
 			const chunk = await this.backend.synthesize({
 				phrase,
-				preset: this.preset,
+				preset,
 				cancelSignal,
 				onKernelTick: () => this.tickKernel(),
 			});
@@ -372,11 +385,13 @@ export class VoiceScheduler {
 				samples: chunk.pcm.length,
 				sampleRate: chunk.sampleRate,
 			});
-			this.phraseCache.put({
-				text,
-				pcm: chunk.pcm,
-				sampleRate: chunk.sampleRate,
-			});
+			if (cacheEligible) {
+				this.phraseCache.put({
+					text,
+					pcm: chunk.pcm,
+					sampleRate: chunk.sampleRate,
+				});
+			}
 			return chunk;
 		} finally {
 			detach();

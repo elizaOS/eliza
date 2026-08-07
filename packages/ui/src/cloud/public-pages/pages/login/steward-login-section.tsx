@@ -76,6 +76,7 @@ import {
   consumeStewardTokensFromHash,
   exchangeStewardCodeViaApi,
   hasStewardOAuthCallbackInUrl,
+  recoverStewardSessionViaCookie,
   refreshStewardSessionViaCookie,
   syncStewardSessionCookie,
 } from "../../lib/steward-session";
@@ -496,7 +497,7 @@ export default function StewardLoginSection() {
 
         const storedToken = readStoredStewardToken();
         if (!storedToken && hasStewardAuthedCookie()) {
-          const refreshed = await refreshStewardSessionViaCookie();
+          const refreshed = await recoverStewardSessionViaCookie();
           if (cancelled) return;
           if (refreshed?.token) {
             writeStoredStewardToken(refreshed.token);
