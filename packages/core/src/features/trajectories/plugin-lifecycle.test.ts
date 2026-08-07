@@ -13,7 +13,7 @@ import { TrajectoriesService } from "./TrajectoriesService";
 type Handler = (payload: Record<string, unknown>) => Promise<void>;
 
 function handler(
-	event: "MESSAGE_RECEIVED" | "MESSAGE_SENT" | "RUN_ENDED",
+	event: "MESSAGE_RECEIVED" | "RUN_STARTED" | "MESSAGE_SENT" | "RUN_ENDED",
 ): Handler {
 	const registered = (trajectoriesPlugin.events as Record<string, Handler[]>)[
 		event
@@ -132,6 +132,7 @@ describe("trajectoriesPlugin lifecycle ownership", () => {
 		const { runtime, logger } = makeHarness();
 		const input = message(runtime);
 		await handler("MESSAGE_RECEIVED")({ runtime, message: input });
+		await handler("RUN_STARTED")({ runtime, messageId: input.id });
 		const reply = {
 			...message(runtime),
 			content: {
@@ -140,11 +141,9 @@ describe("trajectoriesPlugin lifecycle ownership", () => {
 			},
 		};
 
-		await handler("MESSAGE_SENT")({
-			runtime,
-			message: reply,
-			trajectoryTerminalOwner: "run",
-		});
+		// Structural RUN_STARTED ownership is authoritative even if a transport
+		// reconstructs the delivery payload without the optional capability marker.
+		await handler("MESSAGE_SENT")({ runtime, message: reply });
 		expect(logger.endTrajectory).not.toHaveBeenCalled();
 
 		await handler("RUN_ENDED")({
@@ -185,12 +184,45 @@ describe("trajectoriesPlugin lifecycle ownership", () => {
 		);
 	});
 
+	it("honors the payload capability when RUN_STARTED listener dispatch is partial", async () => {
+		const { runtime, logger } = makeHarness();
+		const input = message(runtime);
+		await handler("MESSAGE_RECEIVED")({ runtime, message: input });
+		const reply = {
+			...message(runtime),
+			content: {
+				text: "recovered delivery",
+				inReplyTo: createUniqueUuid(runtime, input.id as string),
+			},
+		};
+
+		await handler("MESSAGE_SENT")({
+			runtime,
+			message: reply,
+			trajectoryTerminalOwner: "run",
+		});
+		expect(logger.endTrajectory).not.toHaveBeenCalled();
+
+		await handler("RUN_ENDED")({
+			runtime,
+			messageId: input.id,
+			status: "error",
+		});
+		expect(logger.endTrajectory).toHaveBeenCalledOnce();
+		expect(logger.endTrajectory).toHaveBeenCalledWith(
+			expect.stringContaining(runtime.agentId),
+			"terminated",
+		);
+	});
+
 	it("keeps concurrent rooms independent until each run reaches its own terminal", async () => {
 		const { runtime, logger } = makeHarness();
 		const first = message(runtime);
 		const second = message(runtime);
 		await handler("MESSAGE_RECEIVED")({ runtime, message: first });
 		await handler("MESSAGE_RECEIVED")({ runtime, message: second });
+		await handler("RUN_STARTED")({ runtime, messageId: first.id });
+		await handler("RUN_STARTED")({ runtime, messageId: second.id });
 
 		for (const input of [first, second]) {
 			await handler("MESSAGE_SENT")({
@@ -203,7 +235,6 @@ describe("trajectoriesPlugin lifecycle ownership", () => {
 						inReplyTo: createUniqueUuid(runtime, input.id as string),
 					},
 				},
-				trajectoryTerminalOwner: "run",
 			});
 		}
 		expect(logger.endTrajectory).not.toHaveBeenCalled();
