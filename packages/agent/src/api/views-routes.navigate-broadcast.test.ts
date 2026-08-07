@@ -168,6 +168,30 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     );
   });
 
+  it("records completed-action navigation without requiring a WebSocket client", async () => {
+    const { ctx, json, broadcastWs, broadcastWsToClientId } = makeNavigateCtx(
+      "calendar",
+      {
+        clientId: "seeker-rest-client",
+        delivery: "completed-action",
+      },
+    );
+    broadcastWsToClientId.mockReturnValue(0);
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).not.toHaveBeenCalled();
+    expect(broadcastWsToClientId).not.toHaveBeenCalled();
+    expect(getCurrentViewState()).toMatchObject({
+      viewId: "calendar",
+      source: "agent",
+    });
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ ok: true, viewId: "calendar" }),
+    );
+  });
+
   it("delivers app-chat navigation only to its originating client", async () => {
     const { ctx, broadcastWs, broadcastWsToClientId } = makeNavigateCtx(
       "browser",
