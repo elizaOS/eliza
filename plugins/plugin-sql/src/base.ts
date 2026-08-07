@@ -2598,12 +2598,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const literalMatch = allowLexicalFallback
         ? sql`${document} LIKE eliza_search_like_pattern(${params.query})`
         : sql`FALSE`;
-      // Bag-of-terms trigram AND would treat `"alpha beta"` as two independent
-      // tokens and match non-adjacent rows — websearch phrase quotes must stay
-      // FTS-only so adjacency is preserved.
-      const hasWebsearchPhrase = params.query.includes('"');
+      // The trigram fallback is a bag-of-terms AND: it has no notion of phrase
+      // adjacency, term exclusion, or union. Every websearch operator would be
+      // silently relaxed by it — `"alpha beta"` would match non-adjacent rows,
+      // `alpha -far` would match rows containing `far`, and `alpha OR zephyr`
+      // would degrade to a conjunction. Any websearch syntax therefore stays
+      // FTS-only, matching the `literalMatch` gate above.
       const trigramMatch =
-        trigramAvailable && !hasWebsearchPhrase
+        trigramAvailable && allowLexicalFallback
           ? sql`NOT EXISTS (
             SELECT 1
             FROM unnest(regexp_split_to_array(${foldedQuery}, '[[:space:]]+')) AS query_terms(term)
