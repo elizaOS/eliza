@@ -8,6 +8,10 @@ import { AlertCircle, CheckCircle2, Key, Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  publishCloudAuthComplete,
+  subscribeCloudAuthComplete,
+} from "../../../auth/cloud-auth-complete-signal";
 import { Button } from "../../../../components/primitives";
 import { ApiError, apiFetch } from "../../../lib/api-client";
 import { useSessionAuth } from "../../../lib/use-session-auth";
@@ -84,6 +88,43 @@ function resolveCliLoginMessageTargetOrigin(returnTo: string | null): string {
   if (typeof window === "undefined") return "https://elizacloud.ai";
   if (!returnTo) return window.location.origin;
   return new URL(returnTo).origin;
+}
+
+function hasLiveOpener(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const opener = window.opener as Window | null;
+    return Boolean(opener && !opener.closed);
+  } catch (error) {
+    void error;
+    return false;
+  }
+}
+
+function notifyCliLoginComplete(
+  sessionId: string,
+  launchReturnTo: string | null,
+): void {
+  const targetOrigin = resolveCliLoginMessageTargetOrigin(launchReturnTo);
+  try {
+    window.opener?.postMessage(
+      { type: "eliza-cloud-auth-complete", sessionId },
+      targetOrigin,
+    );
+  } catch (error) {
+    void error;
+    // error-policy:J6 cross-origin opener policies can reject postMessage.
+  }
+  publishCloudAuthComplete(sessionId);
+}
+
+function tryCloseAuthWindow(): void {
+  try {
+    window.close();
+  } catch (error) {
+    void error;
+    // Some browsers reject script-close for normal tabs; success UI remains.
+  }
 }
 
 function getPageState({
@@ -186,6 +227,21 @@ export default function CliLoginPage() {
     setCompletion({ status: "idle" });
   }, [sessionId]);
 
+  // Another Cloud tab already finished this session — stop showing a live
+  // sign-in / completing state on this orphan surface. Ignore events after
+  // this tab has already started completion (avoids same-tab BroadcastChannel
+  // self-echo double-close).
+  useEffect(() => {
+    if (!sessionId) return;
+    return subscribeCloudAuthComplete((message) => {
+      if (message.sessionId !== sessionId) return;
+      if (completionFiredRef.current) return;
+      completionFiredRef.current = true;
+      setCompletion({ status: "success", apiKeyPrefix: "" });
+      tryCloseAuthWindow();
+    });
+  }, [sessionId]);
+
   useEffect(() => {
     if (!sessionId || !ready || !authenticated) return;
     if (completionFiredRef.current) return;
@@ -202,19 +258,20 @@ export default function CliLoginPage() {
           { method: "POST", json: {}, signal: abort.signal },
         );
         const data = (await response.json()) as { keyPrefix: string };
-        window.opener?.postMessage(
-          { type: "eliza-cloud-auth-complete", sessionId },
-          resolveCliLoginMessageTargetOrigin(launchReturnTo),
-        );
+        notifyCliLoginComplete(sessionId, launchReturnTo);
+
+        // Live opener: the app tab owns continuation (poll / postMessage).
+        // Close this surface and never navigate returnTo — that would open a
+        // second app shell when window.close() is ignored (#18001).
+        if (hasLiveOpener()) {
+          tryCloseAuthWindow();
+          setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
+          return;
+        }
+
         if (launchReturnTo) {
           setCompletion({ status: "redirecting" });
-          try {
-            window.close();
-          } catch (error) {
-            void error;
-            // Some browsers reject script-close for normal tabs; redirect below
-            // still lands the user back in the app that started sign-in.
-          }
+          tryCloseAuthWindow();
           window.location.replace(launchReturnTo);
           return;
         }

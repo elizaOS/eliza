@@ -1,11 +1,16 @@
 /**
  * Login page (public) — Steward is the sole auth provider. Renders the lazy
- * Steward login section with the terms/privacy links.
+ * Steward login section with the terms/privacy links. Listens for device-code
+ * auth completion on same-origin tabs so an orphaned sign-in form does not
+ * stay live after the session already finished (#18001).
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import { lazy, Suspense } from "react";
-import { Link } from "react-router-dom";
+import { CheckCircle2 } from "lucide-react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
+import { Button } from "../../../../components/primitives";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
 
@@ -68,11 +73,79 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
   );
 }
 
+function sessionIdFromLoginReturnTo(returnTo: string | null): string | null {
+  if (!returnTo?.trim()) return null;
+  try {
+    const url = new URL(returnTo, window.location.origin);
+    if (!url.pathname.includes("/auth/cli-login")) return null;
+    const session = url.searchParams.get("session")?.trim();
+    return session || null;
+  } catch (error) {
+    void error;
+    return null;
+  }
+}
+
 export default function LoginPage() {
   const t = useCloudT();
+  const [searchParams] = useSearchParams();
+  const handoffSessionId = sessionIdFromLoginReturnTo(
+    searchParams.get("returnTo"),
+  );
+  const [handoffComplete, setHandoffComplete] = useState(false);
+
   usePageTitle(
     t("cloud.login.metaTitle", { defaultValue: "Sign In | Eliza Cloud" }),
   );
+
+  useEffect(() => {
+    if (!handoffSessionId) return;
+    return subscribeCloudAuthComplete((message) => {
+      if (message.sessionId !== handoffSessionId) return;
+      setHandoffComplete(true);
+      try {
+        window.close();
+      } catch (error) {
+        void error;
+      }
+    });
+  }, [handoffSessionId]);
+
+  if (handoffComplete) {
+    return (
+      <LoginBackground>
+        <div className="space-y-6 text-center">
+          <CheckCircle2 className="mx-auto h-10 w-10 text-status-success" />
+          <div className="space-y-1.5">
+            <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
+              {t("cloud.login.handoffCompleteTitle", {
+                defaultValue: "You're signed in",
+              })}
+            </h1>
+            <p className="text-sm text-muted">
+              {t("cloud.login.handoffCompleteBody", {
+                defaultValue:
+                  "Return to the Eliza app tab to continue. You can close this window.",
+              })}
+            </p>
+          </div>
+          <Button
+            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+            onClick={() => {
+              try {
+                window.close();
+              } catch (error) {
+                void error;
+              }
+            }}
+          >
+            {t("cloud.login.closeWindow", { defaultValue: "Close window" })}
+          </Button>
+        </div>
+      </LoginBackground>
+    );
+  }
+
   return (
     <LoginBackground>
       <div className="space-y-8">
