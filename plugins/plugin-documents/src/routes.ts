@@ -25,7 +25,6 @@ import {
   type DocumentFilter as SharedDocumentFilter,
   trimString,
 } from "@elizaos/agent/api/document-access";
-import { actorFromAccessContext } from "@elizaos/core";
 import type {
   AccessContext,
   AgentRuntime,
@@ -37,6 +36,7 @@ import type {
 } from "@elizaos/core";
 import {
   __setDocumentUrlFetchImplForTests,
+  actorFromAccessContext,
   fetchDocumentFromUrl,
   isYouTubeUrl,
   ServiceType,
@@ -184,9 +184,18 @@ export function resolveRouteActor(
   // never be satisfied and the agent lost access to its own agent-private
   // documents. actorFromAccessContext is the single definition of that mapping.
   const scopeActor = actorFromAccessContext(accessContext, agentId);
+  // actorFromAccessContext only ever yields OWNER/USER/AGENT, but its static
+  // ActorRole type is wider (full RoleName). Narrow explicitly and fail closed
+  // to USER for anything outside the route-actor role set.
+  const role: RouteActorRole =
+    scopeActor.role === "OWNER" ||
+    scopeActor.role === "AGENT" ||
+    scopeActor.role === "RUNTIME"
+      ? scopeActor.role
+      : "USER";
   return {
     entityId: scopeActor.entityId,
-    role: scopeActor.role,
+    role,
     ownerEntityId,
   };
 }
