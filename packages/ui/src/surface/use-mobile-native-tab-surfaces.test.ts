@@ -108,6 +108,26 @@ class DropFirstBoundsShell extends RecordingShell {
   }
 }
 
+class KeyedFailingBoundsShell extends RecordingShell {
+  private readonly failingIds = new Set<string>();
+
+  fail(id: string): void {
+    this.failingIds.add(id);
+  }
+
+  recover(id: string): void {
+    this.failingIds.delete(id);
+  }
+
+  override setBounds(id: string, bounds: SurfaceBounds): Promise<void> {
+    if (this.failingIds.has(id)) {
+      this.commands.push(`bounds-rejected:${id}`);
+      return Promise.reject(new Error(`bounds unavailable for ${id}`));
+    }
+    return super.setBounds(id, bounds);
+  }
+}
+
 class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
   [key: string]: unknown;
   readonly states = new Map<
@@ -116,10 +136,16 @@ class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
   >();
   creates = 0;
   destroys = 0;
+  private activeOwner: {
+    owner: string;
+    session: string;
+    epoch: number;
+  } | null = null;
 
   async createSurface(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string;
     url?: string;
     process: "isolated" | "shared";
@@ -129,7 +155,8 @@ class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
     if (current) {
       if (
         current.owner !== options.owner ||
-        current.session !== options.session
+        current.session !== options.session ||
+        current.epoch !== options.epoch
       ) {
         throw new Error("stale native identity");
       }
@@ -146,6 +173,7 @@ class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
       storage: options.storage,
       owner: options.owner,
       session: options.session,
+      epoch: options.epoch,
     });
   }
 
@@ -156,6 +184,7 @@ class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
   async navigate(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string;
     url: string;
   }): Promise<void> {
@@ -167,10 +196,12 @@ class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
   async presentSurface(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string | null;
   }): Promise<void> {
     for (const state of this.states.values()) {
       if (state.owner === options.owner && state.session === options.session) {
+        if (state.epoch !== options.epoch) continue;
         state.foregrounded = state.id === options.id;
       }
     }
@@ -179,6 +210,7 @@ class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
   async destroySurface(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string;
   }): Promise<void> {
     this.destroys += 1;
@@ -188,6 +220,7 @@ class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
   async getSurfaceState(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string;
   }): Promise<ElizaSurfaceManagerState> {
     return (
@@ -199,6 +232,7 @@ class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
         storage: null,
         owner: null,
         session: null,
+        epoch: null,
       }
     );
   }
@@ -206,11 +240,14 @@ class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
   async listSurfaceStates(options: {
     owner: string;
     session: string;
+    epoch: number;
   }): Promise<unknown> {
     return {
       surfaces: [...this.states.values()].filter(
         (state) =>
-          state.owner === options.owner && state.session === options.session,
+          state.owner === options.owner &&
+          state.session === options.session &&
+          state.epoch === options.epoch,
       ),
     };
   }
@@ -218,13 +255,30 @@ class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
   async reconcileOwner(options: {
     owner: string;
     session: string;
+    epoch: number;
     desiredIds: readonly string[];
   }): Promise<void> {
+    const current = this.activeOwner;
+    if (
+      current?.owner === options.owner &&
+      (options.epoch < current.epoch ||
+        (options.epoch === current.epoch &&
+          options.session !== current.session))
+    ) {
+      throw new Error("retired native owner");
+    }
+    this.activeOwner = {
+      owner: options.owner,
+      session: options.session,
+      epoch: options.epoch,
+    };
     const desired = new Set(options.desiredIds);
     for (const [id, state] of this.states) {
       if (
         state.owner === options.owner &&
-        (state.session !== options.session || !desired.has(id))
+        (state.session !== options.session ||
+          state.epoch !== options.epoch ||
+          !desired.has(id))
       ) {
         this.states.delete(id);
       }
@@ -374,6 +428,7 @@ describe("useMobileNativeTabSurfaces", () => {
     const shell = new CapacitorNativeSurfaceShell(() => manager, {
       owner: "browser-hook-test",
       session: "strict-realm",
+      epoch: 1,
     });
     const wrapper = ({ children }: { children: ReactNode }) =>
       createElement(StrictMode, null, children);
@@ -392,6 +447,7 @@ describe("useMobileNativeTabSurfaces", () => {
       currentUrl: "https://a.example",
       owner: "browser-hook-test",
       session: "strict-realm",
+      epoch: 1,
     });
     expect(manager.states.size).toBe(1);
   });
@@ -536,6 +592,43 @@ describe("useMobileNativeTabSurfaces", () => {
     });
   });
 
+  it("keeps every keyed failure visible and gates presentation until all recover", async () => {
+    const shell = new KeyedFailingBoundsShell();
+    shell.fail("browser-tab:a");
+    shell.fail("browser-tab:b");
+    const twoTabs = { ...base, tabs: [tab("a"), tab("b")] };
+    const { result } = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...twoTabs, shell }),
+    );
+    act(() => {
+      result.current.registerSurfaceElement(
+        "a",
+        elementAt({ left: 0, top: 0, width: 300, height: 500 }),
+      );
+      result.current.registerSurfaceElement(
+        "b",
+        elementAt({ left: 0, top: 0, width: 300, height: 500 }),
+      );
+    });
+    await act(async () => Promise.resolve());
+
+    expect(result.current.error?.key).toBe("browser-tab:a:bounds");
+    expect(shell.presentedId).toBeNull();
+
+    shell.recover("browser-tab:b");
+    act(() => result.current.retry());
+    await act(async () => Promise.resolve());
+    expect(result.current.error?.key).toBe("browser-tab:a:bounds");
+    expect(shell.bounds.has("browser-tab:b")).toBe(true);
+    expect(shell.presentedId).toBeNull();
+
+    shell.recover("browser-tab:a");
+    act(() => result.current.retry());
+    await act(async () => Promise.resolve());
+    expect(result.current.error).toBeNull();
+    expect(shell.presentedId).toBe("browser-tab:a");
+  });
+
   it("prevents an older overlapping hook from destroying a newer owner of the same tab", async () => {
     const shell = new RecordingShell();
     const older = renderHook(() =>
@@ -566,6 +659,79 @@ describe("useMobileNativeTabSurfaces", () => {
     await act(async () => Promise.resolve());
     expect(shell.commands).toContain("destroy:browser-tab:a");
     expect(shell.commands).toContain("present:host");
+  });
+
+  it("prevents an older overlapping hook from overwriting the newer URL intent", async () => {
+    const shell = new RecordingShell();
+    const older = renderHook(
+      (props: typeof base) => useMobileNativeTabSurfaces({ ...props, shell }),
+      { initialProps: base },
+    );
+    const newer = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell }),
+    );
+    await act(async () => Promise.resolve());
+    shell.commands.length = 0;
+
+    older.rerender({
+      ...base,
+      tabs: [tab("a", "https://stale-old-hook.example")],
+    });
+    act(() =>
+      older.result.current.navigateSurface(
+        "a",
+        "https://stale-imperative.example",
+      ),
+    );
+    expect(shell.navigations).toEqual([]);
+    expect(shell.created.get("browser-tab:a")?.url).toBe("https://a.example");
+
+    older.unmount();
+    await act(async () => Promise.resolve());
+    expect(shell.commands).not.toContain("destroy:browser-tab:a");
+    act(() =>
+      newer.result.current.navigateSurface("a", "https://current.example"),
+    );
+    expect(shell.navigations).toEqual([
+      { id: "browser-tab:a", url: "https://current.example" },
+    ]);
+  });
+
+  it("replays the surviving hook's intent when a newer overlapping authority unmounts", async () => {
+    const shell = new RecordingShell();
+    const older = renderHook(() =>
+      useMobileNativeTabSurfaces({
+        ...base,
+        tabs: [tab("a", "https://older.example")],
+        shell,
+      }),
+    );
+    const newer = renderHook(() =>
+      useMobileNativeTabSurfaces({
+        ...base,
+        tabs: [tab("a", "https://newer.example")],
+        shell,
+      }),
+    );
+    await act(async () => Promise.resolve());
+    expect(shell.created.get("browser-tab:a")?.url).toBe(
+      "https://newer.example",
+    );
+    shell.commands.length = 0;
+    shell.navigations.length = 0;
+
+    newer.unmount();
+    await act(async () => Promise.resolve());
+
+    expect(shell.commands).not.toContain("destroy:browser-tab:a");
+    expect(shell.created.get("browser-tab:a")?.url).toBe(
+      "https://older.example",
+    );
+    expect(shell.navigations).toContainEqual({
+      id: "browser-tab:a",
+      url: "https://older.example",
+    });
+    older.unmount();
   });
 
   it("atomically presents the selected surface on tab switch", () => {
@@ -625,6 +791,19 @@ describe("useMobileNativeTabSurfaces", () => {
     rerender({ ...twoTabs, selectedTabId: "a", overlayOpen: false });
     expect(shell.commands).not.toContain("present:browser-tab:a");
     expect(shell.presentedId).toBeNull();
+
+    act(() => document.dispatchEvent(new Event(APP_RESUME_EVENT)));
+    await act(async () => Promise.resolve());
+    expect(shell.presentedId).toBe("browser-tab:a");
+  });
+
+  it("honors a process pause that occurs before the first hook mounts", async () => {
+    act(() => document.dispatchEvent(new Event(APP_PAUSE_EVENT)));
+    const shell = new RecordingShell();
+    renderHook(() => useMobileNativeTabSurfaces({ ...base, shell }));
+    await act(async () => Promise.resolve());
+    expect(shell.presentedId).toBeNull();
+    expect(shell.commands).not.toContain("present:browser-tab:a");
 
     act(() => document.dispatchEvent(new Event(APP_RESUME_EVENT)));
     await act(async () => Promise.resolve());

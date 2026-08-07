@@ -9,7 +9,11 @@ import { BrowserSurfaceWeb } from "./web";
 
 describe("BrowserSurfaceWeb", () => {
   const web = new BrowserSurfaceWeb();
-  const identity = { owner: "browser", session: "test-realm" } as const;
+  const identity = {
+    owner: "browser",
+    session: "test-realm",
+    epoch: 1,
+  } as const;
 
   it("rejects createSurface even with a full explicit policy", async () => {
     await expect(
