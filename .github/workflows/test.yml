@@ -195,7 +195,9 @@ jobs:
         run: bun run build:views
 
       - name: Views system tests
-        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts
+        # views-registry.integration.test.ts is discovered by the agent
+        # integration lane (pattern), not hand-enumerated here (#17778 / #17838).
+        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts
 
       - name: Remote capability router tests
         run: bun run test:remote-capabilities
@@ -441,9 +443,9 @@ jobs:
 
       # Discovery is by pattern (no file list), so a new
       # packages/agent/**/*.integration.test.ts is picked up without editing
-      # this workflow. The lane matches no file on develop today and passes on
-      # that basis; packages/scripts/__tests__/vitest-integration-config-agent-globs.test.ts
-      # is what fails if either agent root stops being covered.
+      # this workflow. The renamed views-registry.integration.test.ts is discovered by pattern;
+      # packages/scripts/__tests__/vitest-integration-config-agent-subpath-alias.test.ts
+      # guards the include globs and alias.
       - name: Run agent integration lane
         timeout-minutes: 20
         run: bun run --cwd packages/agent test:integration
