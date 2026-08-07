@@ -985,7 +985,10 @@ export function resolveAppShellLocalCspSources(
     // address cannot be enumerated at build time. API-base validation still
     // limits accepted cleartext hosts to loopback/private addresses, while the
     // CSP must permit the resulting REST/EventSource and WebSocket transports.
-    return { localHttpSources: loopbackHttpSources, localConnectSources: " http: ws:" };
+    return {
+      localHttpSources: loopbackHttpSources,
+      localConnectSources: " http: ws:",
+    };
   }
 
   return {
