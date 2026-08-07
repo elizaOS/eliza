@@ -6,10 +6,11 @@
  *
  * The plugin owns the trajectory lifecycle by listening to runtime events: it
  * opens a trajectory + first step on `MESSAGE_RECEIVED` (enriching metadata from
- * room state / web-conversation context) and closes it on `MESSAGE_SENT`,
- * `RUN_ENDED`, or `RUN_TIMEOUT`. Because event ordering is not guaranteed, the
- * per-runtime maps correlate a message/reply id to its open step so whichever
- * terminal event fires first can atomically claim and end it exactly once;
+ * room state / web-conversation context) and closes it on `RUN_ENDED` or
+ * `RUN_TIMEOUT`. `MESSAGE_SENT` remains the fallback for delivery-only producers
+ * that have no enclosing run owner. Because event ordering is not guaranteed,
+ * the per-runtime maps correlate a message/reply id to its open step so whichever
+ * applicable terminal event fires first can atomically claim and end it once;
  * `cleanupPendingTrajectory` tears down every index entry to avoid leaks.
  * Trajectory capture is best-effort — every failure is logged and swallowed so
  * it never blocks the message loop, and the whole subsystem no-ops when
@@ -445,8 +446,12 @@ export const trajectoriesPlugin: Plugin = {
 		],
 		MESSAGE_SENT: [
 			async (payload: MessagePayload) => {
-				const { runtime, message } = payload;
+				const { runtime, message, trajectoryTerminalOwner } = payload;
 				if (!message || !runtime) return;
+				// A live message-service run owns terminalization through RUN_ENDED so
+				// its post-turn evaluator child can finish first. Delivery-only emitters
+				// omit this capability and retain MESSAGE_SENT as their terminal fallback.
+				if (trajectoryTerminalOwner === "run") return;
 
 				const meta = message.metadata as Record<string, unknown> | undefined;
 				const inReplyTo =
