@@ -24,6 +24,10 @@ import {
   buildAccessContext,
   embedRecallQuery,
   filterByAccessContext,
+  markOwnerExclusiveDisclosureUsed,
+  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  revalidateOwnerExclusiveDisclosure,
+  searchCanonicalConversationMemories,
   stringToUuid,
 } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
@@ -144,6 +148,8 @@ export const relevantConversationsProvider: Provider = {
       try {
         accessContext = await buildAccessContext(runtime, message);
       } catch (error) {
+        // error-policy:J4 Access-context failure degrades to the explicit
+        // least-privileged requester scope and is surfaced through diagnostics.
         runtime.logger.warn(
           {
             error: error instanceof Error ? error.message : String(error),
@@ -152,34 +158,53 @@ export const relevantConversationsProvider: Provider = {
           },
           "[RelevantConversationsProvider] Access context resolution failed; using least-privileged requester scope",
         );
+        runtime.reportError(
+          "RelevantConversationsProvider.accessContext",
+          error,
+          {
+            entityId: message.entityId,
+            roomId: message.roomId,
+          },
+        );
         accessContext = { requesterEntityId: message.entityId };
       }
 
-      // The two recall sources are independent, so they run concurrently
-      // instead of serially: the lexical hash-memory scan (which mirrors the
-      // /api/memory/remember writer and works even when no TEXT_EMBEDDING
-      // model is registered) overlaps the embed await + semantic search
-      // instead of adding to the compose critical path. A failure in either
-      // branch rejects into the outer catch — the same wholesale degrade the
-      // serial form had.
-      //
-      // Semantic branch: routes through the one shared per-turn recall-query
-      // embed so this provider, document recall, and experience recall reuse
-      // a single embed round-trip per turn. `null` means the embed timed
-      // out/failed (or no embedding model) — fail open and rely on lexical
-      // hash memories alone.
+      // This provider deliberately excludes the current room below, so every
+      // result it could render is a cross-room disclosure. Fail closed before
+      // lexical reads or embedding work unless the live destination is a
+      // revalidated owner-private audience. The canonical search repeats this
+      // check as defense in depth at the storage boundary.
+      const disclosure = await revalidateOwnerExclusiveDisclosure(
+        runtime,
+        message,
+      );
+      if (
+        !disclosure.allowed ||
+        disclosure.basis !== OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+      ) {
+        return { text: "", values: {}, data: {} };
+      }
+
+      // The two recall sources are independent, so they run concurrently:
+      // the lexical hash-memory scan overlaps the shared recall-query embed
+      // and canonical semantic search instead of adding to the reply critical
+      // path. Either branch still fails into the same wholesale outer degrade.
       const [hashMemories, results] = await Promise.all([
         loadHashMemories(runtime, text, accessContext),
         (async (): Promise<Memory[]> => {
           const embedding = await embedRecallQuery(runtime, text);
           if (!embedding || embedding.length === 0) return [];
-          return runtime.searchMemories({
-            embedding,
-            tableName: "messages",
-            match_threshold: MATCH_THRESHOLD,
-            limit: MAX_RELEVANT_RESULTS + 5, // fetch extra to filter current room
-            accessContext,
-          });
+          return (
+            await searchCanonicalConversationMemories({
+              runtime,
+              embedding,
+              query: text,
+              agentId: runtime.agentId,
+              deliveryMessage: message,
+              count: MAX_RELEVANT_RESULTS + 5,
+              matchThreshold: MATCH_THRESHOLD,
+            })
+          ).items.map((item) => item.memory);
         })(),
       ]);
 
@@ -199,6 +224,16 @@ export const relevantConversationsProvider: Provider = {
             all.findIndex((candidate) => candidate.id === memory.id) === index,
         )
         .slice(0, MAX_RELEVANT_RESULTS);
+
+      if (
+        filtered.some(
+          (memory) =>
+            (memory.content as { source?: string } | undefined)?.source ===
+            HASH_MEMORY_SOURCE,
+        )
+      ) {
+        markOwnerExclusiveDisclosureUsed(message);
+      }
 
       if (filtered.length === 0) {
         return { text: "", values: {}, data: {} };
@@ -220,10 +255,12 @@ export const relevantConversationsProvider: Provider = {
         for (const room of await runtime.getRoomsByIds(roomIds)) {
           if (room.id) roomCache.set(room.id, room);
         }
-      } catch {
-        // error-policy:J4 room source tags degrade to untagged; the outer
-        // catch reports a wholesale recall failure, this lookup miss is
-        // cosmetic and must not abort the whole provider.
+      } catch (error) {
+        // error-policy:J4 room source tags degrade to untagged, but the
+        // cosmetic lookup failure remains visible through diagnostics.
+        runtime.reportError("RelevantConversationsProvider.roomTags", error, {
+          roomIds,
+        });
       }
 
       const lines: string[] = ["Relevant past conversations:"];

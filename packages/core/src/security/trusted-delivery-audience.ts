@@ -105,6 +105,10 @@ export type OwnerExclusiveDisclosureDenial =
 	| "audience_changed"
 	| "audience_lookup_failed";
 
+export const OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS =
+	"owner_private_destination";
+export const INTERNAL_AGENT_TURN_DISCLOSURE_BASIS = "internal_agent_turn";
+
 /**
  * Why an allowed decision is allowed: a verified owner-only destination, or an
  * agent-internal turn whose visible egress is separately re-validated. Kept as
@@ -112,8 +116,8 @@ export type OwnerExclusiveDisclosureDenial =
  * to a visible delivery can tell the two apart.
  */
 export type OwnerExclusiveDisclosureBasis =
-	| "owner_private_destination"
-	| "internal_agent_turn";
+	| typeof OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+	| typeof INTERNAL_AGENT_TURN_DISCLOSURE_BASIS;
 
 export type OwnerExclusiveDisclosureDecision =
 	| {
@@ -435,7 +439,11 @@ function decisionFromAudience(
 			audience.participantEntityIds.includes(audience.actorEntityId) &&
 			audience.participantEntityIds.includes(audience.agentEntityId)
 		) {
-			return { allowed: true, basis: "internal_agent_turn", audience };
+			return {
+				allowed: true,
+				basis: INTERNAL_AGENT_TURN_DISCLOSURE_BASIS,
+				audience,
+			};
 		}
 		return { allowed: false, reason: "destination_not_private", audience };
 	}
@@ -472,7 +480,11 @@ function decisionFromAudience(
 	) {
 		return { allowed: false, reason: "destination_not_private", audience };
 	}
-	return { allowed: true, basis: "owner_private_destination", audience };
+	return {
+		allowed: true,
+		basis: OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+		audience,
+	};
 }
 
 /**
