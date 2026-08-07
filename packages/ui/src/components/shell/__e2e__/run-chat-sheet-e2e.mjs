@@ -2810,9 +2810,9 @@ try {
     await p.close();
   }
 
-  // PUSH-TO-TALK: press-and-hold the mic (>200ms, no drag) starts a "dictate"
-  // capture; release stops it — and it must NOT toggle hands-free (the
-  // suppress-click guard). Asserted via the fixture intent log.
+  // The primary Talk control has one action regardless of press duration. A
+  // held release must enter realtime conversation exactly once and must never
+  // revive the hidden batch-dictation path removed from this surface.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2830,23 +2830,24 @@ try {
     await p.mouse.up();
     await p.waitForTimeout(200);
     assert(
-      sink.logs.slice(n).some((l) => l.includes("startRecording(dictate)")),
-      "PTT: press-and-hold starts a DICTATE capture",
+      !sink.logs.slice(n).some((l) => l.includes("startRecording(dictate)")),
+      "TALK HOLD: does not start hidden batch dictation",
     );
     assert(
-      sink.logs.slice(n).some((l) => l.includes("stopRecording")),
-      "PTT: release stops the capture",
+      !sink.logs.slice(n).some((l) => l.includes("stopRecording")),
+      "TALK HOLD: does not stop a batch capture that never started",
     );
     assert(
-      !sink.logs.slice(n).some((l) => l.includes("toggleHandsFree")),
-      "PTT: a held press does NOT toggle hands-free (suppress-click guard)",
+      sink.logs
+        .slice(n)
+        .filter((l) => l.includes("toggleHandsFree")).length === 1,
+      "TALK HOLD: release toggles realtime conversation exactly once",
     );
     await p.close();
   }
 
-  // PTT CANCEL must NOT leak the click-suppress (the "next tap eaten" bug): a
-  // held press ended by pointercancel (not pointerup) stops dictation but leaves
-  // the NEXT quick tap free to toggle hands-free.
+  // Cancelling a held pointer is inert, and the next deliberate tap must still
+  // toggle realtime conversation exactly once.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2856,23 +2857,27 @@ try {
     const mic = p.getByTestId("chat-composer-mic");
     const n0 = sink.logs.length;
     await mic.dispatchEvent("pointerdown", { pointerId: 7, button: 0 });
-    await p.waitForTimeout(280); // > 200ms → dictation starts
+    await p.waitForTimeout(280);
     await mic.dispatchEvent("pointercancel", { pointerId: 7 });
     await p.waitForTimeout(150);
     assert(
-      sink.logs.slice(n0).some((l) => l.includes("startRecording(dictate)")),
-      "PTT-CANCEL: the hold started dictation",
+      !sink.logs.slice(n0).some((l) => l.includes("startRecording(dictate)")),
+      "TALK CANCEL: does not start hidden batch dictation",
     );
     assert(
-      sink.logs.slice(n0).some((l) => l.includes("stopRecording")),
-      "PTT-CANCEL: pointercancel stops the capture",
+      !sink.logs.slice(n0).some((l) => l.includes("stopRecording")),
+      "TALK CANCEL: does not stop a batch capture that never started",
+    );
+    assert(
+      !sink.logs.slice(n0).some((l) => l.includes("toggleHandsFree")),
+      "TALK CANCEL: pointercancel does not trigger realtime conversation",
     );
     const n1 = sink.logs.length;
     await mic.click();
     await p.waitForTimeout(150);
     assert(
       sink.logs.slice(n1).some((l) => l.includes("toggleHandsFree")),
-      "PTT-CANCEL: the NEXT tap still toggles hands-free (suppress did not leak)",
+      "TALK CANCEL: the next tap still toggles realtime conversation",
     );
     await p.close();
   }
