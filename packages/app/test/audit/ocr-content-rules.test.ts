@@ -358,4 +358,28 @@ ph eg`,
     });
     expect(f.verdict).toBe("verified");
   });
+
+  it("verifies the chat home when mobile OCR misses weather but reads a task anchor", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr(
+        "og °F\n2:25 #68\n[1 PM\nFri, Aug 7 [VERT\n© Learn conversational Spanish | ised attention\n(© Submit the quarterly report | bus taday\nJ —————\n+ AskEliza Af",
+        { meanConfidence: 0.63, pixelBlank: false },
+      ),
+      expectation: expectationFor("builtin-chat"),
+    });
+    expect(f.ocrInconclusive).toBe(false);
+    expect(f.missingRequired).toHaveLength(0);
+    expect(f.verdict).toBe("verified");
+  });
+
+  it("does not certify the chat home from its generic Today label alone", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("Today\nAsk Eliza"),
+      expectation: expectationFor("builtin-chat"),
+    });
+    expect(f.missingRequired).toEqual([
+      "Mostly clear | Learn conversational Spanish | Submit the quarterly report",
+    ]);
+    expect(f.verdict).toBe("broken");
+  });
 });
