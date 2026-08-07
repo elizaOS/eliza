@@ -78,6 +78,7 @@ function selectRecentErrors(
 	const newestByCode = new Map<string, ReportedError>();
 	for (const entry of entries) {
 		if (now - entry.at > ERROR_MAX_AGE_MS) continue;
+		if (entry.context?.diagnosticOnly === true) continue;
 		// Internal scheduler plumbing is self-healing / operator-facing, never
 		// narrated into chat (#SHADOW-ACCOUNT-DEBUG). Still logged + escalated.
 		if (QUIET_ERROR_CODES.has(entry.code)) continue;
