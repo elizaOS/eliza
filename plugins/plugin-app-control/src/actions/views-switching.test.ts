@@ -12,6 +12,7 @@
  * registry and a captured navigate fetch.
  */
 
+import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CURATED_MULTILINGUAL } from "./view-matrix.fixtures.js";
 import { createViewsAction } from "./views.js";
@@ -41,15 +42,19 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	return {
 		...coreMock,
 		getUserMessageText: actual.getUserMessageText,
+		unwrapUserMessageText: actual.unwrapUserMessageText,
 	};
 });
 
-function message(text: string, roomId = "room-1") {
+function message(text: string, roomId = "room-1", clientTransport?: string) {
 	return {
 		entityId: "user-1",
 		roomId,
 		agentId: "agent-1",
-		content: { text },
+		content: {
+			text,
+			...(clientTransport ? { metadata: { clientTransport } } : {}),
+		},
 	};
 }
 
@@ -209,6 +214,31 @@ const REGISTRY: ViewSummary[] = [
 	},
 ];
 
+const SIMPLE_CALENDAR_VIEW: ViewSummary = {
+	id: "simple-calendar",
+	label: "Calendar",
+	description:
+		"A durable Cloud calendar for agent-driven events and view switching.",
+	path: "/simple-calendar",
+	pluginName: "@elizaos/plugin-simple-views",
+	available: true,
+	viewType: "gui",
+	tags: [
+		"calendar",
+		"calender",
+		"simple calendar",
+		"events",
+		"schedule",
+		"view switching",
+	],
+	visibleInManager: true,
+};
+
+const REGISTRY_WITH_SIMPLE_CALENDAR: ViewSummary[] = [
+	...REGISTRY,
+	SIMPLE_CALENDAR_VIEW,
+];
+
 function clientFor(views: ViewSummary[]): ViewsClient {
 	return {
 		listViews: vi.fn(async () => views),
@@ -345,6 +375,36 @@ describe("view switching — VIEWS action resolver", () => {
 			);
 		});
 
+		it("routes realtime voice navigation back through the originating client", async () => {
+			installNavigateCapture();
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			await action.handler(
+				{ agentId: "agent-1" } as never,
+				message(
+					"open calendar",
+					"room-1",
+					REALTIME_VOICE_CLIENT_TRANSPORT,
+				) as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			const lastCall = vi.mocked(globalThis.fetch).mock.calls.at(-1);
+			expect(lastCall).toBeDefined();
+			if (!lastCall) {
+				throw new Error("expected the view navigation request");
+			}
+			const [, init] = lastCall;
+			expect(JSON.parse(String(init?.body))).toMatchObject({
+				delivery: "originating-client",
+			});
+		});
+
 		it("resolves an explicit view option without verb parsing", async () => {
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(REGISTRY, "do it", {
@@ -372,6 +432,7 @@ describe("view switching — VIEWS action resolver", () => {
 				values: {
 					mode: "show",
 					viewId: "calendar",
+					viewPath: "/calendar",
 					viewType: "gui",
 					label: "Calendar",
 				},
@@ -404,6 +465,73 @@ describe("view switching — VIEWS action resolver", () => {
 				text: "Opened Messages.",
 				values: { viewId: "chat", label: "Messages" },
 			});
+		});
+	});
+
+	describe("semantic Calendar preference", () => {
+		it.each([
+			{ phrase: "open calendar", kind: "explicit English command" },
+			{ phrase: "what's on my calendar", kind: "passive English intent" },
+			{ phrase: "muéstrame mi calendario", kind: "multilingual command" },
+		])(
+			"opens Simple Calendar for a $kind when both Calendar views are registered",
+			async ({ phrase }) => {
+				const { navigated } = installNavigateCapture();
+				const { result } = await runShow(REGISTRY_WITH_SIMPLE_CALENDAR, phrase);
+
+				expect(result).toMatchObject({
+					success: true,
+					text: "Opened Calendar.",
+					values: {
+						viewId: "simple-calendar",
+						label: "Calendar",
+					},
+				});
+				expect(navigated).toEqual(["simple-calendar"]);
+			},
+		);
+
+		it("falls back to the connected Calendar when Simple Calendar is absent", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, "open calendar");
+
+			expect(result).toMatchObject({
+				success: true,
+				values: { viewId: "calendar", label: "Calendar" },
+			});
+			expect(navigated).toEqual(["calendar"]);
+		});
+
+		it("falls back to the connected Calendar when Simple Calendar is unavailable", async () => {
+			const { navigated } = installNavigateCapture();
+			const unavailableRegistry = [
+				...REGISTRY,
+				{ ...SIMPLE_CALENDAR_VIEW, available: false },
+			];
+			const { result } = await runShow(
+				unavailableRegistry,
+				"muéstrame mi calendario",
+			);
+
+			expect(result).toMatchObject({
+				success: true,
+				values: { viewId: "calendar", label: "Calendar" },
+			});
+			expect(navigated).toEqual(["calendar"]);
+		});
+
+		it("keeps the connected Calendar addressable by exact id", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY_WITH_SIMPLE_CALENDAR, "do it", {
+				action: "show",
+				view: "calendar",
+			});
+
+			expect(result).toMatchObject({
+				success: true,
+				values: { viewId: "calendar", label: "Calendar" },
+			});
+			expect(navigated).toEqual(["calendar"]);
 		});
 	});
 

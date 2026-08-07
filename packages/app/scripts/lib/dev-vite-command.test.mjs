@@ -98,7 +98,7 @@ describe("development Vite process commands", () => {
         ...viteCommand.args.slice(0, 2),
         "--input-type=module",
         "--eval",
-        'await import("@elizaos/cloud-routing")',
+        'await import("./packages/core/src/cloud-routing.ts")',
       ],
       {
         cwd: repoRoot,

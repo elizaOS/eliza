@@ -54,6 +54,8 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   "@elizaos/plugin-scheduling",
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-app-control",
+  "@elizaos/plugin-notes",
+  "@elizaos/plugin-calendar",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ];
@@ -69,6 +71,7 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
  */
 export const UNBUNDLED_OPTIONAL_PLUGINS: readonly string[] = [
   "@elizaos/plugin-gitpathologist",
+  "@elizaos/plugin-zerollama",
 ];
 
 /**
@@ -156,6 +159,9 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   // deferred-plugin timeout before being skipped. Skip it up front on
   // android/ios (it is a desktop dev tool, already gated in plugin-collector).
   "@elizaos/plugin-gitpathologist": { skipOnMobile: true },
+  // Ollama is a desktop/server HTTP daemon; never spend a mobile boot timeout
+  // trying to import a provider that cannot run on the phone itself.
+  "@elizaos/plugin-zerollama": { skipOnMobile: true },
   // Root barrel exports the InboxView React components; the runtime plugin
   // object lives at the ./plugin subpath (src/plugin.ts). Bundling the root
   // would drag react/.tsx into the bun-target mobile agent bundle. (In
@@ -167,6 +173,14 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
     importSubpath: "./plugin",
     suppressTypeResolutionReason:
       "runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.",
+  },
+  "@elizaos/plugin-notes": {
+    importSubpath: "./plugin",
+  },
+  "@elizaos/plugin-calendar": {
+    importSubpath: "./plugin",
+    suppressTypeResolutionReason:
+      "calendar is peer-linked to avoid the calendar -> agent runtime dependency cycle; the deferred import runs after agent module initialization.",
   },
   // This plugin is optional and peer-linked for mobile bundleability. Sibling
   // package source typechecks import @elizaos/agent without depending on this

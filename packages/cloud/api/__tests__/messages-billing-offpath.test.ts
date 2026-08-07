@@ -86,12 +86,13 @@ const resolveInferenceAuthContext = mock(
   async (): Promise<InferenceAuthResolution> => ({
     kind: "authorized",
     ctx: {
-      v: 1,
+      v: 2,
       cachedAt: 0,
       userId: USER,
       orgId: ORG,
       apiKeyId: API_KEY_ID,
       keyHash: "messages-billing-test-key",
+      appScopeId: null,
     },
     source: "cache",
   }),
@@ -336,12 +337,13 @@ beforeEach(() => {
   resolveInferenceAuthContext.mockResolvedValue({
     kind: "authorized",
     ctx: {
-      v: 1,
+      v: 2,
       cachedAt: 0,
       userId: USER,
       orgId: ORG,
       apiKeyId: API_KEY_ID,
       keyHash: "messages-billing-test-key",
+      appScopeId: null,
     },
     source: "cache",
   });

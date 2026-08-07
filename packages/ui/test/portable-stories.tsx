@@ -14,7 +14,7 @@
  *   smokeStoryModules("primitive", mods);
  */
 import { composeStories } from "@storybook/react";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import type { ComponentType, ReactElement, ReactNode } from "react";
 import {
   afterAll,
@@ -82,15 +82,43 @@ export function smokeStoryModules(
      * browser story gate's `needs-runtime` path and the live `audit:app`.
      */
     skip?: string[];
+    /**
+     * `"<Module>/<Story>"` keys whose render deliberately exercises a React
+     * error boundary. React reports caught errors through `onCaughtError`; the
+     * harness consumes that expected diagnostic while leaving the global
+     * fail-on-console guard intact for every other story.
+     */
+    expectCaughtError?: string[];
   } = {},
 ): void {
   const wrap =
     options.wrap ??
     ((node: ReactNode) => <TooltipProvider>{node}</TooltipProvider>);
   const skip = new Set(options.skip ?? []);
+  const expectCaughtError = new Set(options.expectCaughtError ?? []);
+  const restoreMediaMethods: Array<() => void> = [];
 
   beforeAll(() => {
     installJsdomUiPolyfills();
+    // jsdom exposes the media-element methods but implements them by reporting
+    // an error. Stories exercise component lifecycle, not browser codecs, so
+    // provide the real DOM contracts: play resolves; pause/load are synchronous.
+    if (typeof HTMLMediaElement !== "undefined") {
+      const play = vi
+        .spyOn(HTMLMediaElement.prototype, "play")
+        .mockResolvedValue(undefined);
+      const pause = vi
+        .spyOn(HTMLMediaElement.prototype, "pause")
+        .mockImplementation(() => {});
+      const load = vi
+        .spyOn(HTMLMediaElement.prototype, "load")
+        .mockImplementation(() => {});
+      restoreMediaMethods.push(
+        () => play.mockRestore(),
+        () => pause.mockRestore(),
+        () => load.mockRestore(),
+      );
+    }
     // This smoke is offline (no backend behind jsdom), but components still
     // fire real on-mount fetches whose socket errors settle on the network's
     // schedule — on a loaded CI worker that can be AFTER vitest tore down the
@@ -102,6 +130,7 @@ export function smokeStoryModules(
     vi.stubGlobal("fetch", () => new Promise<Response>(() => {}));
   });
   afterAll(() => {
+    for (const restore of restoreMediaMethods) restore();
     vi.unstubAllGlobals();
   });
   afterEach(cleanup);
@@ -129,7 +158,8 @@ export function smokeStoryModules(
     if (!stories.length) continue;
     describe(`${label}: ${name}`, () => {
       for (const [storyName, Story] of stories) {
-        const testFn = skip.has(`${name}/${storyName}`) ? it.skip : it;
+        const storyKey = `${name}/${storyName}`;
+        const testFn = skip.has(storyKey) ? it.skip : it;
         testFn(`${storyName} renders without throwing`, async () => {
           // The coverage here IS the absence of a throw: composing the story
           // (above) and mounting it must not error. There is intentionally no
@@ -139,7 +169,26 @@ export function smokeStoryModules(
           // ShortcutsOverlay/Open, …). Blank-render detection that needs that
           // runtime lives in the browser story gate (its needs-runtime path) and
           // the live audit:app — not this fast offline smoke.
-          const { container } = render(wrap(<Story />) as ReactElement);
+          const caughtErrors: unknown[] = [];
+          const { container } = render(
+            wrap(<Story />) as ReactElement,
+            expectCaughtError.has(storyKey)
+              ? {
+                  onCaughtError: (error) => {
+                    caughtErrors.push(error);
+                  },
+                }
+              : undefined,
+          );
+          if (expectCaughtError.has(storyKey)) {
+            expect(caughtErrors).not.toHaveLength(0);
+          }
+          // Immediate async story state must settle inside React's act boundary
+          // so the smoke observes the mounted state rather than leaking work.
+          await act(async () => {
+            await Promise.resolve();
+            await Promise.resolve();
+          });
           // If the story defines an interaction (`play`), run it — so authoring a
           // play function automatically gets it exercised in this lane, with no
           // per-component test to wire up.

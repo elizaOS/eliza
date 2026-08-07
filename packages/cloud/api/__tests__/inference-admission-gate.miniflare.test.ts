@@ -181,6 +181,8 @@ describe("Miniflare Durable Object integration", () => {
     };
   }
 
+  // Match the cloud test lane's budget because Miniflare startup can be delayed
+  // when this integration test runs alongside the rest of the batched suite.
   test("real Durable Object serialization prevents concurrent overspend", async () => {
     expect(
       (
@@ -239,5 +241,5 @@ describe("Miniflare Durable Object integration", () => {
       );
     }
     expect([first.status, second.status].sort()).toEqual([200, 402]);
-  }, 30_000);
+  }, 120_000);
 });

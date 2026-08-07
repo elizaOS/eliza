@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   canary,
@@ -6,6 +7,29 @@ import {
   evaluate,
   waitForRequiredChecks,
 } from "./security-advisory-gate.mjs";
+
+describe("base-trusted workflow contract", () => {
+  it("grants the read-only Actions authority required by the production query", () => {
+    const workflow = readFileSync(
+      new URL(
+        "../../.github/workflows/security-advisory-gate.yml",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const permissions = workflow.match(
+      /^permissions:\r?\n((?:^ {2}[a-z-]+: [^\r\n]+\r?\n)+)/m,
+    )?.[1];
+
+    assert(permissions, "workflow must declare an explicit permissions block");
+    assert.match(permissions, /^ {2}actions: read$/m);
+    assert.doesNotMatch(permissions, /:\s*write\s*$/m);
+    assert.match(
+      workflow,
+      /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.sha \}\}/,
+    );
+  });
+});
 
 describe("security advisory classification", () => {
   it("protects a sensitive previous_filename on rename", () => {
@@ -179,6 +203,33 @@ describe("delayed fork-workflow approval", () => {
       now: clock.now,
       sleep: clock.sleep,
     });
+  });
+
+  it("fails immediately with the held workflow path when approval is required", async () => {
+    const clock = fakeClock();
+    let checkLoads = 0;
+    let sleeps = 0;
+
+    await assert.rejects(
+      waitForRequiredChecks({
+        loadChecks: async () => {
+          checkLoads += 1;
+          return [];
+        },
+        loadActionRequiredPaths: async () => [".github/workflows/gitleaks.yml"],
+        timeoutMs: 1_200_000,
+        completionGraceMs: 240_000,
+        intervalMs: 30_000,
+        now: clock.now,
+        sleep: async () => {
+          sleeps += 1;
+        },
+      }),
+      /required workflows awaiting maintainer approval: \.github\/workflows\/gitleaks\.yml; approve the listed workflows, then rerun this gate/,
+    );
+
+    assert.equal(checkLoads, 0);
+    assert.equal(sleeps, 0);
   });
 
   it("does not extend the deadline for a missing or unapproved check", async () => {

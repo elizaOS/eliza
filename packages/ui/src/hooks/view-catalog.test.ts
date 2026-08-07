@@ -319,6 +319,33 @@ describe("viewToEntry uses packaged icons (native 404 fix)", () => {
     expect(entries.map((entry) => entry.id)).toEqual(["visible-plugin"]);
   });
 
+  it("shows Simple Calendar without the hidden connected-calendar catalog card", () => {
+    const entries = merge({
+      views: [
+        makeView("calendar", {
+          label: "Calendar",
+          pluginName: "@elizaos/plugin-calendar",
+          visibleInManager: false,
+        }),
+        makeView("simple-calendar", {
+          label: "Calendar",
+          pluginName: "@elizaos/plugin-simple-views",
+        }),
+      ],
+      catalog: [
+        makeApp({
+          name: "@elizaos/plugin-calendar",
+          displayName: "Calendar",
+          visibleInAppStore: false,
+        }),
+      ],
+      installed: [{ name: "@elizaos/plugin-calendar" }],
+    });
+
+    expect(entries.map((entry) => entry.id)).toEqual(["simple-calendar"]);
+    expect(entries[0]?.label).toBe("Calendar");
+  });
+
   it("on a non-GUI surface lists only loaded views of that modality, no catalog", () => {
     const entries = merge({
       activeModality: "xr",

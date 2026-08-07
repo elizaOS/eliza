@@ -330,7 +330,10 @@ describe(CLAIM_EVALUATOR_NAME, () => {
 		)) as ResponseHandlerPatch;
 		expect(patch.requiresTool).toBe(true);
 		expect(patch.addCandidateActions).toBeUndefined();
-		expect(patch.reply).toBe("On it.");
+		// The escalation is a routing decision: the fabricated claim is cleared,
+		// never replaced with synthesized ack text.
+		expect(patch.clearReply).toBe(true);
+		expect(patch.reply).toBeUndefined();
 	});
 
 	it("reroutes to the planner with backstop-rule candidates and an honest ack", async () => {
@@ -350,9 +353,10 @@ describe(CLAIM_EVALUATOR_NAME, () => {
 			"SCHEDULED_TASKS",
 			"SCHEDULED_TASKS_CREATE",
 		]);
-		// The fabricated confirmation must never ship — replaced by a plain ack
-		// the planner path then supersedes with a tool-grounded reply.
-		expect(patch.reply).toBe("On it.");
+		// The fabricated confirmation must never ship — cleared outright; the
+		// planner path owns whatever the user eventually sees.
+		expect(patch.clearReply).toBe(true);
+		expect(patch.reply).toBeUndefined();
 	});
 });
 
@@ -647,6 +651,34 @@ describe("evaluatePlannedReplyEgress", () => {
 			evaluatePlannedReplyEgress({
 				reply: FABRICATED_ALL_SET_REPLY,
 				actionResults: [created],
+				actions: [reminderSurface],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+
+	it("allows a completion claim grounded by a replayed no-op (already exists)", () => {
+		// The idempotent-duplicate outcome: the handler verified this turn that
+		// an equivalent committed item already satisfies the request. A truthful
+		// "already covered" ack must pass, while the non-replayed no-op case in
+		// the table below stays rejected.
+		const replayedNoop: EffectReceipt = {
+			...effectBase,
+			idempotency: { key: "request-1", replayed: true },
+			outcome: "noop",
+			reason: "an equivalent reminder already exists",
+		};
+		const deduped: ActionResult = {
+			success: true,
+			userFacingText: FABRICATED_ALL_SET_REPLY,
+			verifiedUserFacing: true,
+			effectReceipts: [replayedNoop],
+			userFacingEffectReceiptIds: [replayedNoop.receiptId],
+			data: { actionName: "OWNER_REMINDERS", action: "create" },
+		};
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: FABRICATED_ALL_SET_REPLY,
+				actionResults: [deduped],
 				actions: [reminderSurface],
 			}),
 		).toEqual({ verdict: "allow" });

@@ -15,6 +15,8 @@ import {
   AiPricingCacheUnavailableError,
   AiPricingCacheWarmingError,
 } from "@/lib/services/ai-pricing/cache";
+import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+import type { EndpointType } from "@/lib/services/org-rate-limits";
 import type { OrganizationInferenceAdmission } from "@/lib/services/organization-inference-admission";
 import type { AppContext } from "@/types/cloud-worker-env";
 
@@ -25,6 +27,8 @@ export interface GenerativeRouteCaller {
   };
   apiKeyId: string | null;
   authSource: "combined_cache" | "compatibility";
+  admissionSnapshot?: InferenceAdmissionSnapshot;
+  appScopeId: string | null;
 }
 
 export function getGenerativeExecutionContext(
@@ -71,6 +75,7 @@ export async function admitFlatGenerativeOperation(params: {
   apiKeyId: string | null;
   cost: FlatBillingCost;
   idempotencyKey?: string;
+  admissionSnapshot?: InferenceAdmissionSnapshot;
 }): Promise<OrganizationInferenceAdmission> {
   const executionCtx = getGenerativeExecutionContext(params.c);
   const { provider, billingSource, requestId } = params.context;
@@ -122,6 +127,7 @@ export async function admitFlatGenerativeOperation(params: {
       affiliateCode: params.context.affiliateCode,
       executionCtx,
       flatCost: params.cost,
+      admissionSnapshot: params.admissionSnapshot,
     });
   } catch (error) {
     if (
@@ -147,7 +153,10 @@ export async function admitFlatGenerativeOperation(params: {
  */
 export async function requireGenerativeRouteCaller(
   c: AppContext,
-  options: { compatibility?: "hono" | "raw" } = {},
+  options: {
+    compatibility?: "hono" | "raw";
+    rateLimitEndpoint?: EndpointType;
+  } = {},
 ): Promise<GenerativeRouteCaller> {
   const executionCtx = getGenerativeExecutionContext(c);
   if (!executionCtx) {
@@ -157,6 +166,7 @@ export async function requireGenerativeRouteCaller(
         user: { id: user.id, organization_id: user.organization_id },
         apiKeyId: apiKey?.id ?? null,
         authSource: "compatibility",
+        appScopeId: null,
       };
     }
     const { requireUserOrApiKeyWithOrg } = await import(
@@ -167,6 +177,7 @@ export async function requireGenerativeRouteCaller(
       user: { id: user.id, organization_id: user.organization_id },
       apiKeyId: c.get("apiKeyId") ?? null,
       authSource: "compatibility",
+      appScopeId: null,
     };
   }
   const { resolveInferenceAuthContext } = await import(
@@ -188,10 +199,47 @@ export async function requireGenerativeRouteCaller(
     if (resolution.ctx.apiKeyId) {
       c.set("apiKeyId", resolution.ctx.apiKeyId);
     }
+    if (options.rateLimitEndpoint) {
+      const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
+        await Promise.all([
+          import("@/lib/middleware/rate-limit"),
+          import("@/lib/services/inference-admission-snapshot"),
+        ]);
+      const limited = await enforceOrgRateLimit(
+        resolution.ctx.orgId,
+        options.rateLimitEndpoint,
+        {
+          // The combined decision carries the rate policy only when the hot
+          // cache is enabled. Development and integration Workers still have
+          // an execution context, but their authoritative origin decision has
+          // no snapshot and must retain the compatibility limiter path.
+          cacheOnly: Boolean(resolution.ctx.admission),
+          executionCtx,
+          config: inferenceRateLimitConfig(
+            resolution.ctx.admission,
+            options.rateLimitEndpoint,
+          ),
+        },
+      );
+      if (limited) {
+        throw new ApiError(
+          limited.status,
+          limited.status === 429
+            ? "rate_limit_exceeded"
+            : "service_unavailable",
+          limited.status === 429
+            ? "Rate limit exceeded"
+            : "Rate limiter is unavailable",
+        );
+      }
+    }
     return {
       user,
       apiKeyId: resolution.ctx.apiKeyId,
       authSource: "combined_cache",
+      admissionSnapshot: resolution.ctx.admission,
+      appScopeId:
+        "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null,
     };
   }
 
@@ -223,6 +271,7 @@ export async function requireGenerativeRouteCaller(
       user: { id: user.id, organization_id: user.organization_id },
       apiKeyId: apiKey?.id ?? null,
       authSource: "compatibility",
+      appScopeId: null,
     };
   }
   const { requireUserOrApiKeyWithOrg } = await import(
@@ -233,5 +282,6 @@ export async function requireGenerativeRouteCaller(
     user: { id: user.id, organization_id: user.organization_id },
     apiKeyId: c.get("apiKeyId") ?? null,
     authSource: "compatibility",
+    appScopeId: null,
   };
 }

@@ -8,6 +8,11 @@ export const AUDIT_ACTIONS = [
   "auth.login",
   "auth.session.revoke",
 
+  // OpenID Connect provider (Eliza Cloud issuing identity to relying parties)
+  "oidc.authorize",
+  "oidc.authorize.denied",
+  "oidc.token",
+
   // api keys
   "api_key.revoke",
   "api_key.use",

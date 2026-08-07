@@ -38,6 +38,7 @@ import type http from "node:http";
 
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
 import {
+  createSelfApiRequestHeaders,
   DEFAULT_ELIGIBLE_MODEL_IDS,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   FIRST_RUN_DEFAULT_MODEL_ID,
@@ -124,7 +125,10 @@ async function loopbackJson(
 ): Promise<LoopbackResult> {
   const response = await fetchImpl(`${loopbackBase()}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...createSelfApiRequestHeaders(),
+    },
     ...(body ? { body: JSON.stringify(body) } : {}),
     signal: AbortSignal.timeout(timeoutMs),
   });

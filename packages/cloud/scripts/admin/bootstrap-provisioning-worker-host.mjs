@@ -33,7 +33,16 @@ import { warnMissingUpstash as warnMissingUpstashImpl } from "./bootstrap-warn-m
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const cloudRoot = resolve(scriptDir, "..", "..");
 const repoRoot = resolve(cloudRoot, "..");
-const rmRecursiveScript = join(cloudRoot, "rm-path-recursive.mjs");
+// The recursive-delete helper is a workspace-level script under
+// packages/scripts; packages/cloud has never carried its own copy, so
+// resolving it against cloudRoot spawned a missing module and turned every
+// cleanup into a hard failure at the end of a successful provisioning run.
+const rmRecursiveScript = resolve(
+  cloudRoot,
+  "..",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 const { values } = parseArgs({
   options: {
@@ -428,7 +437,7 @@ async function deployWorker(host) {
       'git fetch origin "$DEPLOY_BRANCH"',
       'git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"',
       "sudo chown -R deploy:deploy /opt/eliza",
-      "if ! command -v bun >/dev/null 2>&1; then",
+      "if ! command -v bun >/dev/null 2>&1 || [ \"$(bun --version)\" != \"1.3.14\" ]; then",
       '  curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"',
       "fi",
       'export BUN_INSTALL="$HOME/.bun"',

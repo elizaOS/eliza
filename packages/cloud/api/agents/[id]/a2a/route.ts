@@ -13,15 +13,20 @@ import { calculateCreditMarkup } from "@elizaos/cloud-shared/billing";
 import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { UserCharacter } from "@/db/repositories/characters";
+import {
+  getGenerativeExecutionContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { UntrustedA2AChatMessagesSchema } from "@/lib/api/a2a/chat-messages";
 import {
   A2AJsonRpcRequestSchema,
   type JsonRpcId,
   jsonRpcIdFromUnknown,
 } from "@/lib/api/a2a/request-validation";
-import { safeUnknownErrorMessage } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@/lib/api/cloud-worker-errors";
 import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
 import {
   RateLimitPresets,
@@ -38,14 +43,18 @@ import {
   parseThinkingBudgetFromCharacterSettings,
   resolveAnthropicThinkingBudgetTokens,
 } from "@/lib/providers/anthropic-thinking";
-import { getLanguageModel } from "@/lib/providers/language-model";
-import { agentMonetizationService } from "@/lib/services/agent-monetization";
-import { charactersService } from "@/lib/services/characters/characters";
-import type { CreditReservation } from "@/lib/services/credits";
 import {
-  creditsService,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
+  getLanguageModel,
+  resolveAiProviderSource,
+} from "@/lib/providers/language-model";
+import { agentMonetizationService } from "@/lib/services/agent-monetization";
+import {
+  charactersService,
+  type UserCharacter,
+} from "@/lib/services/characters/characters";
+import { InsufficientCreditsError } from "@/lib/services/credits";
+import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -161,11 +170,44 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   });
 });
 
-app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
+app.post("/", async (c) => {
   const id = c.req.param("id");
   if (!id) return c.json({ error: "Missing id" }, 400);
 
-  const character = await charactersService.getById(id);
+  const executionCtx = getGenerativeExecutionContext(c);
+  const characterResolution = executionCtx
+    ? await charactersService.getByIdCacheOnly(id, { executionCtx })
+    : {
+        kind: "ready" as const,
+        character: (await charactersService.getById(id)) ?? null,
+      };
+  if (characterResolution.kind !== "ready") {
+    // A cache-only miss cannot distinguish a real agent from an unknown id.
+    // Confirm only the negative case authoritatively; an existing cold agent
+    // still gets the retryable response and never joins Postgres to dispatch.
+    if (!(await charactersService.getById(id))) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32001, message: "Agent not found" },
+          id: null,
+        },
+        404,
+      );
+    }
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: {
+          code: -32004,
+          message: "Agent cache is warming; retry shortly",
+        },
+        id: null,
+      },
+      503,
+    );
+  }
+  const character = characterResolution.character;
   if (!character) {
     return c.json(
       {
@@ -216,24 +258,63 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 
   const { method, params, id: rpcId } = validation.data;
 
-  let user: Awaited<ReturnType<typeof requireUserOrApiKeyWithOrg>>;
+  let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
-    user = await requireUserOrApiKeyWithOrg(c);
-  } catch {
-    // error-policy:J1 the public JSON-RPC boundary translates authentication
-    // failures without exposing session or API-key internals.
+    caller = await requireGenerativeRouteCaller(c, {
+      compatibility: "hono",
+      rateLimitEndpoint: "standard",
+    });
+  } catch (error) {
+    // error-policy:J1 the public JSON-RPC boundary preserves retryable
+    // admission failures while translating credential failures without
+    // exposing session or API-key internals.
+    if (error instanceof ApiError && error.status === 429) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32005, message: "Rate limit exceeded" },
+          id: rpcId,
+        },
+        429,
+      );
+    }
+    if (error instanceof ApiError && error.status === 503) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: {
+            code: -32004,
+            message: "Authorization cache unavailable; retry shortly",
+          },
+          id: rpcId,
+        },
+        503,
+      );
+    }
+    if (
+      !(error instanceof ApiError) ||
+      (error.status !== 401 && error.status !== 403)
+    ) {
+      throw error;
+    }
     return c.json(
       {
         jsonrpc: "2.0",
         error: { code: -32002, message: "Authentication required" },
         id: rpcId,
       },
-      401,
+      error.status,
     );
   }
 
   if (method === "chat") {
-    return handleChat(c, character, params ?? {}, rpcId, user);
+    return handleChat(c, character, params ?? {}, rpcId, {
+      id: caller.user.id,
+      organization_id: caller.user.organization_id,
+      apiKeyId: caller.apiKeyId,
+      admissionSnapshot: caller.admissionSnapshot,
+      executionCtx,
+    });
   }
 
   if (method === "getAgentInfo") {
@@ -276,7 +357,13 @@ async function handleChat(
   },
   params: Record<string, unknown>,
   rpcId: JsonRpcId,
-  authUser: { id: string; organization_id: string },
+  authUser: {
+    id: string;
+    organization_id: string;
+    apiKeyId: string | null;
+    admissionSnapshot?: InferenceAdmissionSnapshot;
+    executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  },
 ): Promise<Response> {
   const parsedParams = A2AChatParamsSchema.safeParse(params);
   if (!parsedParams.success) {
@@ -326,13 +413,30 @@ async function handleChat(
     markupPercent: character.monetization_enabled ? markupPct : 0,
   });
 
-  let reservation: CreditReservation;
+  const requestId = `agent-a2a:${character.id}:${crypto.randomUUID()}`;
+  let admission: Awaited<ReturnType<typeof admitOrganizationInference>>;
   try {
-    reservation = await creditsService.reserve({
-      organizationId: authUser.organization_id,
-      amount: totalCost,
-      userId: authUser.id,
-      description: `Agent: ${character.name} (${model})`,
+    admission = await admitOrganizationInference({
+      context: {
+        organizationId: authUser.organization_id,
+        userId: authUser.id,
+        apiKeyId: authUser.apiKeyId,
+        model,
+        provider,
+        billingSource: resolveAiProviderSource(model) ?? "gateway",
+        requestId,
+        description: `Agent: ${character.name} (${model})`,
+      },
+      apiKeyId: authUser.apiKeyId,
+      estimatedInputTokens: 0,
+      estimatedOutputTokens: 0,
+      flatCost: {
+        baseTotalCost: baseCost,
+        platformMarkup: totalCost - baseCost,
+        totalCost,
+      },
+      executionCtx: authUser.executionCtx,
+      admissionSnapshot: authUser.admissionSnapshot,
     });
   } catch (error) {
     // error-policy:J1 the route boundary translates the expected credit
@@ -351,6 +455,7 @@ async function handleChat(
   }
 
   try {
+    await admission.markProviderDispatched?.();
     const result = await streamText({
       model: getLanguageModel(model),
       messages: fullMessages,
@@ -383,35 +488,19 @@ async function handleChat(
         markupPercent: character.monetization_enabled ? markupPct : 0,
       });
 
-    const reconciliation = await reservation.reconcile(actualTotal);
-    if (reconciliation?.adjustmentType === "uncollected_overage") {
-      logger.error("[Agent A2A] Final usage overage was not collected", {
-        agentId: character.id,
-        ownerId: character.user_id,
-        consumerOrgId: authUser.organization_id,
-        reserved: reconciliation.reservedAmount,
-        actual: reconciliation.actualCost,
-      });
-      return c.json({
-        jsonrpc: "2.0",
-        error: {
-          code: -32003,
-          message: "Insufficient credits for final usage cost",
-        },
-        id: rpcId,
-      });
-    }
-
-    let creatorEarningsWarning:
-      | { code: "CREATOR_EARNINGS_UNAVAILABLE"; message: string }
-      | undefined;
-    if (character.monetization_enabled && actualCreatorMarkup > 0) {
-      // Earnings recording is a NON-CRITICAL post-settlement step. The consumer
-      // was already settled above (reconcile(actualTotal)); if this throws it
-      // must NOT propagate to the outer catch, whose reconcile(0) is
-      // non-idempotent and would refund the WHOLE reservation a second time →
-      // free inference + a net credit grant. Log and swallow.
-      try {
+    const settlementTask = (async () => {
+      const reconciliation = await admission.settle(actualTotal);
+      if (reconciliation?.adjustmentType === "uncollected_overage") {
+        logger.error("[Agent A2A] Final usage overage was not collected", {
+          agentId: character.id,
+          ownerId: character.user_id,
+          consumerOrgId: authUser.organization_id,
+          reserved: reconciliation.reservedAmount,
+          actual: reconciliation.actualCost,
+        });
+        return;
+      }
+      if (character.monetization_enabled && actualCreatorMarkup > 0) {
         await agentMonetizationService.recordCreatorEarnings({
           agentId: character.id,
           agentName: character.name,
@@ -430,27 +519,20 @@ async function handleChat(
             earnings: actualCreatorMarkup,
           },
         );
-      } catch (earningsError) {
-        // error-policy:J4 inference is already purchased and settled, so the
-        // response degrades explicitly with a machine-readable warning while
-        // the structured error log raises the accounting failure to operators.
-        logger.error(
-          "[Agent A2A] Failed to record creator earnings (settlement already applied — not rolling back)",
-          {
-            agentId: character.id,
-            ownerId: character.user_id,
-            error:
-              earningsError instanceof Error
-                ? earningsError.message
-                : String(earningsError),
-          },
-        );
-        creatorEarningsWarning = {
-          code: "CREATOR_EARNINGS_UNAVAILABLE",
-          message: "Creator earnings could not be recorded",
-        };
       }
-    }
+    })().catch((settlementError) => {
+      // error-policy:J7 the response is already complete; durable admission
+      // recovery retains the lease while operators receive the accounting error.
+      logger.error("[Agent A2A] Deferred settlement failed", {
+        agentId: character.id,
+        error:
+          settlementError instanceof Error
+            ? settlementError.message
+            : String(settlementError),
+      });
+    });
+    if (authUser.executionCtx) authUser.executionCtx.waitUntil(settlementTask);
+    else await settlementTask;
 
     return c.json({
       jsonrpc: "2.0",
@@ -467,16 +549,15 @@ async function handleChat(
           markup: actualCreatorMarkup,
           total: actualTotal,
         },
-        ...(creatorEarningsWarning
-          ? { warnings: [creatorEarningsWarning] }
-          : {}),
       },
       id: rpcId,
     });
   } catch (error) {
     // error-policy:J1 the JSON-RPC boundary refunds a failed generation and
     // returns a redacted structured failure instead of partial model output.
-    await reservation.reconcile(0);
+    const release = admission.settle(0);
+    if (authUser.executionCtx) authUser.executionCtx.waitUntil(release);
+    else await release;
     logger.error("[Agent A2A] Error generating response", {
       error: error instanceof Error ? error.message : "Unknown error",
       agentId: character.id,

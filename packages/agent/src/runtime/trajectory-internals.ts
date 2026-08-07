@@ -844,6 +844,15 @@ function isDuplicateColumnError(error: unknown): boolean {
   ]);
 }
 
+function isMissingCurrentTrajectoryColumnError(error: unknown): boolean {
+  return databaseErrorMatches(error, [
+    /column ["'`]?(?:metadata_json|metrics_json|reward_components_json)["'`]?.*does not exist/i,
+    /no column named ["'`]?(?:metadata_json|metrics_json|reward_components_json)["'`]?/i,
+    /has no column named ["'`]?(?:metadata_json|metrics_json|reward_components_json)["'`]?/i,
+    /unknown column ["'`]?(?:metadata_json|metrics_json|reward_components_json)["'`]?/i,
+  ]);
+}
+
 async function addColumnIfMissing(
   runtime: IAgentRuntime,
   table: string,
@@ -905,6 +914,13 @@ async function initializeTrajectoriesTable(
       const optionalColumns = [
         { name: "trajectory_id", def: "TEXT" },
         { name: "metadata", def: "TEXT NOT NULL DEFAULT '{}'" },
+        // Canonical Core columns (#17730): prefer these for primary writes.
+        { name: "metadata_json", def: "TEXT NOT NULL DEFAULT '{}'" },
+        { name: "metrics_json", def: "TEXT NOT NULL DEFAULT '{}'" },
+        {
+          name: "reward_components_json",
+          def: "TEXT NOT NULL DEFAULT '{}'",
+        },
         { name: "steps_json", def: "TEXT NOT NULL DEFAULT '[]'" },
         { name: "scenario_id", def: "TEXT" },
         { name: "batch_id", def: "TEXT" },
@@ -957,6 +973,9 @@ async function initializeTrajectoriesTable(
         batch_id TEXT,
         steps_json TEXT NOT NULL DEFAULT '[]',
         metadata TEXT NOT NULL DEFAULT '{}',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        metrics_json TEXT NOT NULL DEFAULT '{}',
+        reward_components_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         episode_length INTEGER,
@@ -1921,7 +1940,11 @@ export async function saveTrajectory(
     trajectory.updatedAt || new Date(endTime ?? summary.endTime).toISOString();
   const serializedSteps = sqlQuote(JSON.stringify(trajectory.steps));
   const serializedMetadata = sqlQuote(JSON.stringify(trajectory.metadata));
-  const serializedCompatMetrics = sqlQuote(
+  // Canonical metrics_json shape required by Core validators and the viewer
+  // duck contract. Primary write targets the current schema; legacy
+  // metadata/episode_length is only a fallback when those columns are absent
+  // (#17730).
+  const serializedMetrics = sqlQuote(
     JSON.stringify({
       episodeLength: trajectory.steps.length,
       finalStatus: trajectory.status,
@@ -1933,8 +1956,89 @@ export async function saveTrajectory(
       totalCacheCreationInputTokens: summary.totalCacheCreationInputTokens,
     }),
   );
+  const serializedRewardComponents = sqlQuote(
+    JSON.stringify({ environmentReward: trajectory.totalReward }),
+  );
 
-  const sql = `INSERT INTO trajectories (
+  // Current schema (Core TrajectoriesService): metrics_json / metadata_json /
+  // reward_components_json. Prefer this so active/completed metrics are always
+  // valid for strict Core readers that share the table.
+  const currentSchemaSql = `INSERT INTO trajectories (
+      id,
+      agent_id,
+      source,
+      status,
+      start_time,
+      end_time,
+      duration_ms,
+      step_count,
+      llm_call_count,
+      provider_access_count,
+      total_prompt_tokens,
+      total_completion_tokens,
+      total_cache_read_input_tokens,
+      total_cache_creation_input_tokens,
+      total_reward,
+      scenario_id,
+      batch_id,
+      steps_json,
+      metadata_json,
+      metrics_json,
+      reward_components_json,
+      created_at,
+      updated_at
+    ) VALUES (
+      ${sqlQuote(trajectory.id)},
+      ${sqlQuote(runtime.agentId)},
+      ${sqlQuote(trajectory.source)},
+      ${sqlQuote(trajectory.status)},
+      ${sqlNumber(summary.startTime)},
+      ${sqlNumber(endTime)},
+      ${sqlNumber(durationMs)},
+      ${sqlNumber(trajectory.steps.length)},
+      ${sqlNumber(summary.llmCallCount)},
+      ${sqlNumber(summary.providerAccessCount)},
+      ${sqlNumber(summary.totalPromptTokens)},
+      ${sqlNumber(summary.totalCompletionTokens)},
+      ${sqlNumber(summary.totalCacheReadInputTokens)},
+      ${sqlNumber(summary.totalCacheCreationInputTokens)},
+      ${sqlNumber(trajectory.totalReward)},
+      ${trajectory.scenarioId ? sqlQuote(trajectory.scenarioId) : "NULL"},
+      ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
+      ${serializedSteps},
+      ${serializedMetadata},
+      ${serializedMetrics},
+      ${serializedRewardComponents},
+      ${sqlQuote(createdAt)},
+      ${sqlQuote(updatedAt)}
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      agent_id = EXCLUDED.agent_id,
+      source = EXCLUDED.source,
+      status = EXCLUDED.status,
+      start_time = EXCLUDED.start_time,
+      end_time = EXCLUDED.end_time,
+      duration_ms = EXCLUDED.duration_ms,
+      step_count = EXCLUDED.step_count,
+      llm_call_count = EXCLUDED.llm_call_count,
+      provider_access_count = EXCLUDED.provider_access_count,
+      total_prompt_tokens = EXCLUDED.total_prompt_tokens,
+      total_completion_tokens = EXCLUDED.total_completion_tokens,
+      total_cache_read_input_tokens = EXCLUDED.total_cache_read_input_tokens,
+      total_cache_creation_input_tokens = EXCLUDED.total_cache_creation_input_tokens,
+      total_reward = EXCLUDED.total_reward,
+      scenario_id = EXCLUDED.scenario_id,
+      batch_id = EXCLUDED.batch_id,
+      steps_json = EXCLUDED.steps_json,
+      metadata_json = EXCLUDED.metadata_json,
+      metrics_json = EXCLUDED.metrics_json,
+      reward_components_json = EXCLUDED.reward_components_json,
+      created_at = EXCLUDED.created_at,
+      updated_at = EXCLUDED.updated_at`;
+
+  // Legacy Eliza schema (metadata TEXT + episode_length) when canonical
+  // JSONB columns are missing on the adapter.
+  const legacySchemaSql = `INSERT INTO trajectories (
       id,
       agent_id,
       source,
@@ -2004,90 +2108,32 @@ export async function saveTrajectory(
       updated_at = EXCLUDED.updated_at,
       episode_length = EXCLUDED.episode_length`;
 
-  const compatSql = `INSERT INTO trajectories (
-      id,
-      agent_id,
-      source,
-      status,
-      start_time,
-      end_time,
-      duration_ms,
-      step_count,
-      llm_call_count,
-      provider_access_count,
-      total_prompt_tokens,
-      total_completion_tokens,
-      total_cache_read_input_tokens,
-      total_cache_creation_input_tokens,
-      total_reward,
-      scenario_id,
-      batch_id,
-      steps_json,
-      metadata_json,
-      metrics_json,
-      created_at,
-      updated_at
-    ) VALUES (
-      ${sqlQuote(trajectory.id)},
-      ${sqlQuote(runtime.agentId)},
-      ${sqlQuote(trajectory.source)},
-      ${sqlQuote(trajectory.status)},
-      ${sqlNumber(summary.startTime)},
-      ${sqlNumber(endTime)},
-      ${sqlNumber(durationMs)},
-      ${sqlNumber(trajectory.steps.length)},
-      ${sqlNumber(summary.llmCallCount)},
-      ${sqlNumber(summary.providerAccessCount)},
-      ${sqlNumber(summary.totalPromptTokens)},
-      ${sqlNumber(summary.totalCompletionTokens)},
-      ${sqlNumber(summary.totalCacheReadInputTokens)},
-      ${sqlNumber(summary.totalCacheCreationInputTokens)},
-      ${sqlNumber(trajectory.totalReward)},
-      ${trajectory.scenarioId ? sqlQuote(trajectory.scenarioId) : "NULL"},
-      ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
-      ${serializedSteps},
-      ${serializedMetadata},
-      ${serializedCompatMetrics},
-      ${sqlQuote(createdAt)},
-      ${sqlQuote(updatedAt)}
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      agent_id = EXCLUDED.agent_id,
-      source = EXCLUDED.source,
-      status = EXCLUDED.status,
-      start_time = EXCLUDED.start_time,
-      end_time = EXCLUDED.end_time,
-      duration_ms = EXCLUDED.duration_ms,
-      step_count = EXCLUDED.step_count,
-      llm_call_count = EXCLUDED.llm_call_count,
-      provider_access_count = EXCLUDED.provider_access_count,
-      total_prompt_tokens = EXCLUDED.total_prompt_tokens,
-      total_completion_tokens = EXCLUDED.total_completion_tokens,
-      total_cache_read_input_tokens = EXCLUDED.total_cache_read_input_tokens,
-      total_cache_creation_input_tokens = EXCLUDED.total_cache_creation_input_tokens,
-      total_reward = EXCLUDED.total_reward,
-      scenario_id = EXCLUDED.scenario_id,
-      batch_id = EXCLUDED.batch_id,
-      steps_json = EXCLUDED.steps_json,
-      metadata_json = EXCLUDED.metadata_json,
-      metrics_json = EXCLUDED.metrics_json,
-      created_at = EXCLUDED.created_at,
-      updated_at = EXCLUDED.updated_at`;
-
   let saved = false;
   try {
-    await executeRawSql(runtime, sql);
+    await executeRawSql(runtime, currentSchemaSql);
     saved = true;
-  } catch (err) {
+  } catch (currentSchemaError) {
+    // error-policy:J3 Only an explicit missing canonical column selects the
+    // legacy shape; connectivity, constraints, and malformed data fail closed.
+    if (!isMissingCurrentTrajectoryColumnError(currentSchemaError)) {
+      // error-policy:J2 Preserve the canonical write failure for its caller.
+      throw new ElizaError("Could not save trajectory", {
+        code: "TRAJECTORY_SAVE_FAILED",
+        cause: currentSchemaError,
+        context: { trajectoryId: trajectory.id },
+      });
+    }
+    // Agent-only deployments may still own the legacy table shape; use it only
+    // when the canonical service schema explicitly lacks its columns.
     try {
-      await executeRawSql(runtime, compatSql);
+      await executeRawSql(runtime, legacySchemaSql);
       saved = true;
-    } catch (compatErr) {
+    } catch (legacySchemaError) {
       // error-policy:J2 both supported SQL shapes failed; surface both causes
       // rather than returning a false value that downstream code may ignore.
       throw new ElizaError("Could not save trajectory", {
         code: "TRAJECTORY_SAVE_FAILED",
-        cause: new AggregateError([err, compatErr]),
+        cause: new AggregateError([currentSchemaError, legacySchemaError]),
         context: { trajectoryId: trajectory.id },
       });
     }

@@ -480,7 +480,7 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
     id: "ollama",
     name: "Ollama",
     envKey: null,
-    pluginName: "@elizaos/plugin-ollama",
+    pluginName: "@elizaos/plugin-zerollama",
     keyPrefix: null,
     description: "Local models, no API key needed.",
     family: "ollama",
@@ -1335,11 +1335,14 @@ export function resolveServiceRoutingInConfig(
   config: Record<string, unknown> | null | undefined,
 ): ServiceRoutingConfig | null {
   const root = asConfigRecord(config);
+  const hasCanonicalRouting = Boolean(
+    root && Object.hasOwn(root, "serviceRouting"),
+  );
   const explicit = normalizeServiceRoutingConfig(root?.serviceRouting) ?? {};
   const next: ServiceRoutingConfig = { ...explicit };
   const deploymentTarget = resolveDeploymentTargetInConfig(config);
 
-  if (!next.llmText) {
+  if (!next.llmText && !hasCanonicalRouting) {
     if (
       deploymentTarget.runtime === "remote" &&
       deploymentTarget.remoteApiBase

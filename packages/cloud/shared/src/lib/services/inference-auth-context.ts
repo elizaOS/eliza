@@ -30,7 +30,9 @@ import { logger } from "../utils/logger";
 import { adminService } from "./admin";
 import { apiKeysService } from "./api-keys";
 import { contentModerationService } from "./content-moderation";
+import { loadInferenceAdmissionSnapshot } from "./inference-admission-snapshot";
 import { requireInferenceApiKeyWithOrg } from "./inference-api-key-auth";
+import { loadInferenceAppKeyScope } from "./inference-app-key-scope";
 import {
   hashApiKey,
   INFERENCE_AUTH_CONTEXT_VERSION,
@@ -498,6 +500,12 @@ export async function resolveInferenceAuthContext(
       return { kind: "suspended", userId: user.id };
     }
 
+    const [admission, appScopeId] = authCacheEnabled
+      ? await Promise.all([
+          loadInferenceAdmissionSnapshot(user.organization_id),
+          loadInferenceAppKeyScope(apiKey.id),
+        ])
+      : [undefined, null];
     const ctx: InferenceAuthContext = {
       v: INFERENCE_AUTH_CONTEXT_VERSION,
       cachedAt: Date.now(),
@@ -505,6 +513,8 @@ export async function resolveInferenceAuthContext(
       orgId: user.organization_id,
       apiKeyId: apiKey.id,
       keyHash,
+      appScopeId,
+      ...(admission ? { admission } : {}),
     };
     trace.authoritative = "authorized";
     trace.result = "authorized_origin";

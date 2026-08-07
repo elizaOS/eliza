@@ -144,16 +144,26 @@ export function CloudOverviewSection() {
       >
         <SettingsRow
           icon={Rocket}
-          label={t("settings.cloudOverview.localModeLabel", {
-            defaultValue: elizaCloudConnected
-              ? "Cloud is connected"
-              : "Local mode is active",
-          })}
-          description={t("settings.cloudOverview.localModeDescription", {
-            defaultValue: elizaCloudConnected
-              ? "Eliza can use Cloud account features while keeping this local runtime available."
-              : "This build keeps agent runtime and local connectors on your machine unless you choose to connect Cloud.",
-          })}
+          label={
+            elizaCloudConnected
+              ? t("settings.cloudOverview.cloudConnectedLabel", {
+                  defaultValue: "Cloud is connected",
+                })
+              : t("settings.cloudOverview.localModeActiveLabel", {
+                  defaultValue: "Local mode is active",
+                })
+          }
+          description={
+            elizaCloudConnected
+              ? t("settings.cloudOverview.cloudConnectedDescription", {
+                  defaultValue:
+                    "Eliza can use Cloud account features while keeping this local runtime available.",
+                })
+              : t("settings.cloudOverview.localModeActiveDescription", {
+                  defaultValue:
+                    "This build keeps agent runtime and local connectors on your machine unless you choose to connect Cloud.",
+                })
+          }
         />
         {elizaCloudConnected ? (
           <SettingsRow

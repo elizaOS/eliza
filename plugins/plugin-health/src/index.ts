@@ -20,7 +20,6 @@
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { ownerHealthRoutingEvaluator } from "./actions/owner-health-routing.js";
 import {
   HEALTH_ANCHORS,
   HEALTH_BUS_FAMILIES,
@@ -71,7 +70,7 @@ export const healthPlugin: Plugin = {
   // are provided by the host (currently plugin-personal-assistant).
   actions: [],
   providers: [],
-  responseHandlerEvaluators: [ownerHealthRoutingEvaluator],
+  responseHandlerEvaluators: [],
   tests: [],
   views: [
     {

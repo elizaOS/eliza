@@ -31,6 +31,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { stage1ResponseHandlerFixture } from "@elizaos/core/testing";
 import type { DeterministicModelCall } from "@elizaos/core/testing";
 import {
+  finalMessageUserText,
   matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
 } from "@elizaos/core/testing";
@@ -237,13 +238,22 @@ function plannerFixture({
 }) {
   return {
     name: `active-view-planner-${capability}-${elementId}`,
-    match: (call: DeterministicModelCall) =>
-      call.modelType === ModelType.ACTION_PLANNER &&
-      matchesScenarioInput(input)(call.latestUserText) &&
-      call.toolNames.includes("VIEWS") &&
-      promptHasActiveViewElements(
+    match: (call: DeterministicModelCall) => {
+      if (call.modelType !== ModelType.ACTION_PLANNER) return false;
+      if (!call.toolNames.includes("VIEWS")) return false;
+      // On the messages-path planner, Active View is prepended into the last
+      // user message content, so latestUserText is no longer an exact match
+      // for the bare scenario input. Accept exact or suffix match.
+      const userText = finalMessageUserText(call.latestUserText);
+      if (userText !== input && !userText.endsWith(input)) return false;
+      // Certifies the agent-addressable surface reaches the planner on every
+      // turn (fill + click). Depends on product fixes in #17918: preserve
+      // elements on same-viewId re-publish, inject into the *last* user
+      // message, re-inject after budget compaction.
+      return promptHasActiveViewElements(
         `${call.params.prompt ?? ""}\n${call.latestUserText}`,
-      ),
+      );
+    },
     response: {
       text: "",
       thought: `Use the active-view element id ${elementId}.`,
@@ -527,6 +537,9 @@ export default scenario({
       name: "planner clicks active-view element by id",
       text: CLICK_TEXT,
       expectedActions: ["VIEWS"],
+      // Prefer completed-state copy once the planner + interact path runs. If
+      // the planner fixture fails to match, the runtime synthesizes Stage-1's
+      // progressive "Saving…" reply and the cert lane goes red (#17918).
       responseIncludesAny: ["Saved the active ledger."],
       assertTurn: (execution) =>
         expectViewsInteract(execution, {

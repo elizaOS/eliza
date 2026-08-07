@@ -13,10 +13,6 @@ import {
   failureResponse,
   jsonError,
 } from "@/lib/api/cloud-worker-errors";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getImageProvider } from "@/lib/providers/image/registry";
 import { getAiProviderConfigurationError } from "@/lib/providers/language-model";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
@@ -27,12 +23,14 @@ import {
   getSupportedImageModelDefinition,
   SUPPORTED_IMAGE_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
+import { admitAppInferenceCacheOnly } from "@/lib/services/app-inference-admission";
+import { appsService } from "@/lib/services/apps";
 import { contentSafetyService } from "@/lib/services/content-safety";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_IMAGES = 4;
@@ -84,8 +82,6 @@ async function deleteStoredImages(
 }
 
 const app = new Hono<AppEnv>();
-
-app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 function extensionForMimeType(mimeType: string): string {
   if (mimeType === "image/jpeg") return "jpg";
@@ -168,15 +164,53 @@ async function generateOneImage(request: ImageRequest): Promise<{
   }
 }
 
-app.post("/", async (c) => {
+export async function handleGenerateImagePOST(
+  c: AppContext,
+  options: { requiredAppId?: string } = {},
+): Promise<Response> {
   let admission:
     | Awaited<ReturnType<typeof admitFlatGenerativeOperation>>
+    | Awaited<ReturnType<typeof admitAppInferenceCacheOnly>>
     | undefined;
   let chargeSettled = false;
   const images: GeneratedImage[] = [];
 
   try {
-    const { user, apiKeyId } = await requireGenerativeRouteCaller(c);
+    const { user, apiKeyId, admissionSnapshot, appScopeId } =
+      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
+    const executionCtx = getGenerativeExecutionContext(c);
+    let inferenceApp: Awaited<ReturnType<typeof appsService.getById>> | null =
+      null;
+    if (options.requiredAppId) {
+      if (appScopeId && appScopeId !== options.requiredAppId) {
+        return jsonError(c, 403, "Access denied to this app", "access_denied");
+      }
+      const resolution = executionCtx
+        ? await appsService.getByIdCacheOnly(options.requiredAppId, {
+            executionCtx,
+          })
+        : {
+            kind: "ready" as const,
+            app: (await appsService.getById(options.requiredAppId)) ?? null,
+          };
+      if (resolution.kind !== "ready") {
+        throw new ApiError(
+          503,
+          "service_unavailable",
+          "App cache is warming; retry shortly",
+        );
+      }
+      inferenceApp = resolution.app;
+      if (!inferenceApp) {
+        return jsonError(c, 404, "App not found", "resource_not_found");
+      }
+      if (
+        !inferenceApp.monetization_enabled &&
+        inferenceApp.organization_id !== user.organization_id
+      ) {
+        return jsonError(c, 403, "Access denied to this app", "access_denied");
+      }
+    }
     if (!c.env.BLOB) {
       return jsonError(
         c,
@@ -250,19 +284,49 @@ app.post("/", async (c) => {
       model: request.model,
       provider: definition.provider,
       billingSource: definition.billingSource,
-      requestId: `generate-image:${crypto.randomUUID()}`,
+      requestId:
+        options.requiredAppId && c.req.header("Idempotency-Key")?.trim()
+          ? `app-image:${options.requiredAppId}:${user.id}:${c.req
+              .header("Idempotency-Key")!
+              .trim()
+              .slice(0, 200)}`
+          : `generate-image:${crypto.randomUUID()}`,
       affiliateCode: c.req.header("X-Affiliate-Code"),
       description: `Image generation: ${request.model} x${request.numImages}`,
     };
 
     try {
-      admission = await admitFlatGenerativeOperation({
-        c,
-        context: billingContext,
-        apiKeyId,
-        cost,
-      });
-      await admission.markProviderDispatched?.();
+      admission =
+        inferenceApp && options.requiredAppId && executionCtx
+          ? await admitAppInferenceCacheOnly({
+              app: inferenceApp,
+              appId: options.requiredAppId,
+              userId: user.id,
+              organizationId: user.organization_id,
+              estimatedBaseCostUsd: cost.totalCost,
+              description: billingContext.description ?? "Image generation",
+              idempotencyKey:
+                c.req.header("Idempotency-Key") ?? billingContext.requestId!,
+              requestId: billingContext.requestId!,
+              model: request.model,
+              provider: definition.provider,
+              billingSource: definition.billingSource,
+              affiliateCode: billingContext.affiliateCode,
+              executionCtx,
+              admissionSnapshot,
+              metadata: {
+                endpoint: "apps.generate-image",
+                numImages: request.numImages,
+              },
+            })
+          : await admitFlatGenerativeOperation({
+              c,
+              context: billingContext,
+              apiKeyId,
+              cost,
+              admissionSnapshot,
+            });
+      await admission?.markProviderDispatched?.();
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return c.json(
@@ -329,7 +393,16 @@ app.post("/", async (c) => {
 
     let billingApplied = false;
     const persistenceTask = (async () => {
-      await billFlatUsage(billingContext, cost, admission?.reservation);
+      if (inferenceApp) await admission?.settle(cost.totalCost);
+      else {
+        await billFlatUsage(
+          billingContext,
+          cost,
+          admission && "reservation" in admission
+            ? admission.reservation
+            : undefined,
+        );
+      }
       billingApplied = true;
       chargeSettled = true;
       await Promise.all(
@@ -386,12 +459,12 @@ app.post("/", async (c) => {
         error: error instanceof Error ? error.message : String(error),
       });
     });
-    const executionCtx = getGenerativeExecutionContext(c);
     if (executionCtx) executionCtx.waitUntil(persistenceTask);
     else void persistenceTask;
 
     return c.json({
       success: true,
+      ...(options.requiredAppId ? { appId: options.requiredAppId } : {}),
       model: request.model,
       images: images.map(({ image, url, text }) => ({ image, url, text })),
       cost,
@@ -428,7 +501,9 @@ app.post("/", async (c) => {
     }
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
-});
+}
+
+app.post("/", (c) => handleGenerateImagePOST(c));
 
 app.all("*", (c) =>
   c.json({ success: false, error: "Method not allowed" }, 405),

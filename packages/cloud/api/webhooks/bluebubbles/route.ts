@@ -18,7 +18,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 const DEFAULT_GATEWAY_ORG_ID = "00000000-0000-4000-8000-000000000000";
 const DEFAULT_GATEWAY_PHONE_NUMBER = "+14159611510";
 const FIRST_CONTACT_REPLY =
-  "Hey, I'm Eliza. I set up private Eliza Cloud agents that can text, remember context, and work for you. Eliza Cloud is usage-based: your agent runs in a private cloud container and spends credits only as it works. New users get $5 free credit to try it. What should I call you?";
+  "hey, I'm Eliza. I can get you set up with your own agent. it texts right here, remembers everything you talk about, and your first $5 is on me. what should I call you?";
 
 const BlueBubblesHandleSchema = z
   .object({

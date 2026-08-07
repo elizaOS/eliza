@@ -6,11 +6,15 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbRead, dbWrite } from "../../db/helpers";
+import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
+import { logger } from "../utils/logger";
 import {
   countAllocatedWorkloadsOnNodeWithDatabase,
+  TERMINAL_SANDBOX_STATUS_SET,
   TERMINAL_SANDBOX_STATUSES,
 } from "./docker-node-workload-queries";
 import { AGENT_CONTAINER_NAME_PREFIX } from "./docker-sandbox-utils";
@@ -47,7 +51,6 @@ async function countRows(query: Promise<Array<{ count: number }>>): Promise<numb
  * agent_delete job is actively in flight and owns the teardown; reaping under
  * it would race the worker.
  */
-const TERMINAL_SANDBOX_STATUS_SET = new Set<string>(TERMINAL_SANDBOX_STATUSES);
 
 /**
  * Active compute slots on a Docker node.
@@ -58,14 +61,58 @@ const TERMINAL_SANDBOX_STATUS_SET = new Set<string>(TERMINAL_SANDBOX_STATUSES);
  *
  * The agent side excludes the same {@link TERMINAL_SANDBOX_STATUSES} the orphan
  * reconciler uses to decide a container "should NOT be running" — a row in one
- * of those states holds no live slot. Including `sleeping` or
- * `deletion_failed` would inflate `allocated_count`, make bare-metal nodes
- * appear full, and trigger unnecessary Hetzner capacity (#15378).
+ * of those states holds no live slot — EXCEPT where a deletion generation still
+ * records ownership of one. A `deletion_failed` row exists precisely because
+ * teardown did not succeed, so while its container is still out there it does
+ * occupy a slot, and counting it is what stops a delete that cannot prove
+ * absence from freeing a live sibling's capacity (#17185). That does not
+ * reintroduce the inflation of #15378, because ownership is not open-ended: the
+ * orphan reaper releases it in the same sweep that removes the container, so an
+ * abandoned deletion stops counting the moment its container is proven gone.
  * `disconnected` is deliberately NOT excluded: it is non-terminal (the
  * container is up but unreachable) and still occupies the slot.
  */
+/** Postgres `undefined_column` — the shape a pre-migration read takes. */
+const UNDEFINED_COLUMN = "42703";
+
+function isUndefinedColumn(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === UNDEFINED_COLUMN
+  );
+}
+
 export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<number> {
-  return countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
+  // Repair-on-failure rather than prophylactic DDL. This is the placement hot
+  // path (`getAvailableNode`, the autoscaler, `syncAllocatedCounts`, each once
+  // per node per sweep) and it reads ownership columns added after the base
+  // table, which the provisioning worker can reach before its migration has run
+  // — its deploy has no `migrate-db` gate.
+  //
+  // Calling ensure up front would guard that, but at a cost the guard does not
+  // justify: it puts a ~15-statement ALTER/CREATE block on every placement, and
+  // `ensureAgentSandboxSchema` rethrows AND drops its memo on failure, so one
+  // transient DDL failure would fail placement for every agent — a strictly
+  // wider blast radius than the missing column it protects against.
+  //
+  // Instead the query runs unguarded, and only an actual `undefined_column`
+  // triggers the self-heal and one retry. The happy path pays nothing, the
+  // pre-migration path still recovers, and a DDL failure surfaces on a request
+  // that was already failing rather than taking down placement wholesale.
+  try {
+    return await countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — the retry is the handling; any
+    // other failure, and any failure of the retry itself, propagates with cause.
+    if (!isUndefinedColumn(error)) throw error;
+    logger.warn(
+      "[docker-node-workloads] Workload count hit a missing column; applying agent-sandbox schema ensure and retrying once",
+      { nodeId },
+    );
+    await ensureAgentSandboxSchema();
+    return countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +235,13 @@ export async function loadSandboxStatusesByIds(
  * moved the workload (#15228). Apps deliberately fan one name across rows and
  * are NOT node-aware.
  */
-const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
+/**
+ * Exported so a test can drive the REAL wiring rather than a copy: the contract
+ * that `keyOf` yields an `agent_sandboxes.id` — which `onReaped` then feeds to a
+ * CAS keyed on that column — is an assumption spanning two modules, and a copy
+ * of the config in a test would assert nothing about the one production uses.
+ */
+export const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   prefix: AGENT_CONTAINER_NAME_PREFIX,
   keyOf: agentIdFromContainerName,
   terminalStatuses: TERMINAL_SANDBOX_STATUS_SET,
@@ -197,6 +250,12 @@ const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   nodeAware: true,
   rowlessGraceMs: DEFAULT_ROWLESS_GRACE_MS,
   nodeMoveGraceMs: DEFAULT_NODE_MOVE_GRACE_MS,
+  // Reaping is the only step that PROVES an agent container is gone, so it is
+  // where a deletion generation that could not prove absence finally hands its
+  // node slot back (#17185).
+  onReaped: async (agentId, nodeId) => {
+    await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId);
+  },
 };
 
 /**

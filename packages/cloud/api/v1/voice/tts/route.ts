@@ -39,7 +39,6 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { userVoicesRepository } from "@/db/repositories/user-voices";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { CUSTOM_VOICE_TTS_MARKUP } from "@/lib/pricing-constants";
 import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
@@ -51,6 +50,7 @@ import {
 } from "@/lib/services/credits";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { drainPcm16ToWav } from "@/lib/services/pcm16-wav";
+import { recordCustomVoiceUsage } from "@/lib/services/tts-custom-voice-usage";
 import {
   fingerprintCloudVoiceSettings,
   getCloudFirstLineCacheService,
@@ -177,9 +177,11 @@ async function __hono_POST(c: AppContext) {
   const timings: TtsTimings = {};
 
   try {
-    const { user, apiKeyId } = await requireGenerativeRouteCaller(c, {
-      compatibility: "raw",
-    });
+    const { user, apiKeyId, admissionSnapshot } =
+      await requireGenerativeRouteCaller(c, {
+        compatibility: "raw",
+        rateLimitEndpoint: "strict",
+      });
     timings.authMs = Date.now() - requestStart;
     const admissionStart = Date.now();
 
@@ -589,6 +591,7 @@ async function __hono_POST(c: AppContext) {
         context: billingContext,
         apiKeyId,
         cost: billingCost,
+        admissionSnapshot,
         idempotencyKey: ttsIdempotencyKey ?? undefined,
       });
       reservation = admission.reservation;
@@ -722,23 +725,12 @@ async function __hono_POST(c: AppContext) {
         let userVoiceId: string | null = null;
         let voiceName: string | null = null;
         if (voiceId && isCustomVoice) {
-          const voice =
-            await userVoicesRepository.findByElevenLabsVoiceId(voiceId);
-          if (voice?.organizationId === user.organization_id) {
-            const ownedVoiceId = voice.id;
-            userVoiceId = ownedVoiceId;
-            voiceName = voice.name;
-            await userVoicesRepository
-              .incrementUsageCount(ownedVoiceId)
-              .catch((error) => {
-                // error-policy:J7 usage enrichment must not suppress the
-                // canonical billing and usage record for successful audio.
-                logger.warn("[Voice TTS API] Failed to increment voice usage", {
-                  voiceId: ownedVoiceId,
-                  error: error instanceof Error ? error.message : String(error),
-                });
-              });
-          }
+          const voiceUsage = await recordCustomVoiceUsage({
+            elevenLabsVoiceId: voiceId,
+            organizationId: user.organization_id,
+          });
+          userVoiceId = voiceUsage.userVoiceId;
+          voiceName = voiceUsage.voiceName;
         }
         await usageService.create({
           organization_id: user.organization_id,

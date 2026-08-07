@@ -16,7 +16,10 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { elizaLogger, logger } from "@elizaos/core";
-import { resolveServerOnlyPort } from "@elizaos/shared";
+import {
+  createSelfApiRequestHeaders,
+  resolveServerOnlyPort,
+} from "@elizaos/shared";
 
 const LOGS_OPS = ["search", "delete", "set_level"] as const;
 type LogsOp = (typeof LOGS_OPS)[number];
@@ -129,7 +132,10 @@ async function searchLogs(params: LogsParams): Promise<ActionResult> {
   const qs = search.toString();
   const url = `${getApiBase()}/api/logs${qs ? `?${qs}` : ""}`;
 
-  const resp = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  const resp = await fetch(url, {
+    headers: createSelfApiRequestHeaders(),
+    signal: AbortSignal.timeout(10_000),
+  });
   if (!resp.ok) {
     return failure(
       `Failed to load logs: HTTP ${resp.status}`,
@@ -161,6 +167,7 @@ async function searchLogs(params: LogsParams): Promise<ActionResult> {
 async function deleteLogs(): Promise<ActionResult> {
   const resp = await fetch(`${getApiBase()}/api/logs`, {
     method: "DELETE",
+    headers: createSelfApiRequestHeaders(),
     signal: AbortSignal.timeout(10_000),
   });
   if (!resp.ok) {

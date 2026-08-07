@@ -76,6 +76,23 @@ mock.module("../../middleware/rate-limit", () => ({
   OrgRateLimitCacheNotReadyError: TestOrgRateLimitCacheNotReadyError,
 }));
 
+const admissionSnapshot = {
+  balance: { balanceUsd: 10, balanceAt: Date.now(), balanceRevision: 1 },
+  rateLimits: {
+    completionsRpm: 120,
+    embeddingsRpm: 120,
+    standardRpm: 120,
+    strictRpm: 30,
+  },
+};
+class TestInferenceAdmissionSnapshotCacheWarmingError extends Error {}
+const getInferenceAdmissionSnapshotCacheOnly = mock(async () => admissionSnapshot);
+mock.module("../inference-admission-snapshot", () => ({
+  getInferenceAdmissionSnapshotCacheOnly,
+  InferenceAdmissionSnapshotCacheWarmingError: TestInferenceAdmissionSnapshotCacheWarmingError,
+  inferenceRateLimitConfig: () => ({ windowMs: 60_000, maxRequests: 120 }),
+}));
+
 const admitOrganizationInference = mock(
   async (params: {
     context?: { metadata?: Record<string, unknown> };
@@ -303,6 +320,7 @@ beforeEach(() => {
   streamTurnError = null;
   characterReads = 0;
   enforceOrgRateLimit.mockClear();
+  getInferenceAdmissionSnapshotCacheOnly.mockClear();
   admitOrganizationInference.mockClear();
   orgRateLimitResult = null;
   orgRateLimitError = null;
@@ -371,6 +389,7 @@ describe("SharedRuntimeChatService", () => {
     expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
       cacheOnly: true,
       executionCtx: h.executionCtx,
+      config: { windowMs: 60_000, maxRequests: 120 },
     });
     const admissionContext = admitOrganizationInference.mock.calls[0]?.[0].context;
     expect(admissionContext?.metadata).toMatchObject({
@@ -414,6 +433,7 @@ describe("SharedRuntimeChatService", () => {
     expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
       cacheOnly: true,
       executionCtx: h.executionCtx,
+      config: { windowMs: 60_000, maxRequests: 120 },
     });
     expect(admitOrganizationInference).not.toHaveBeenCalled();
   });

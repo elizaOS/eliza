@@ -1,9 +1,12 @@
 /**
  * Applies the cloud DB's Drizzle SQL migrations (packages/cloud/shared/src/db/
- * migrations) with per-statement failure diagnostics instead of drizzle-kit's
- * opaque errors. Invoked as `db:cloud:migrate` at the repo root and
- * `db:migrate` in packages/cloud/shared, including the deploy pipeline's
- * migrate-db gate; enforces TLS for remote databases.
+ * migrations) under a database-wide advisory lock with per-statement failure
+ * diagnostics instead of drizzle-kit's opaque errors. Ledger validation and
+ * bounded lock retries make concurrent deploys serialize without accepting
+ * partial, duplicated, or reordered migration history. Invoked as
+ * `db:cloud:migrate` at the repo root and `db:migrate` in
+ * packages/cloud/shared, including the deploy pipeline's migrate-db gate;
+ * enforces TLS for remote databases.
  */
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -11,11 +14,21 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import pg from "pg";
+import {
+  type CleanupFailure,
+  runCleanupSteps,
+  runWithCleanup,
+} from "./error-preserving-cleanup";
 
 const { Client } = pg;
 
 const MIGRATIONS_SCHEMA = "drizzle";
 const MIGRATIONS_TABLE = "__drizzle_migrations";
+const MIGRATION_ADVISORY_LOCK_KEY = "eliza:cloud:migrations:v1";
+const DEFAULT_LOCK_TIMEOUT_MS = 5_000;
+const DEFAULT_LOCK_MAX_ATTEMPTS = 5;
+const DEFAULT_LOCK_RETRY_BASE_MS = 250;
+const DEFAULT_LOCK_RETRY_MAX_MS = 2_000;
 const MIGRATIONS_DIR =
   [
     path.join(process.cwd(), "packages/cloud/shared/src/db/migrations"),
@@ -63,9 +76,43 @@ interface DatabaseError extends Error {
 }
 
 interface MigrationClient {
+  backend: "pglite" | "postgres";
   query<T = unknown>(text: string, params?: unknown[]): Promise<{ rows: T[] }>;
   end(): Promise<void>;
 }
+
+interface LockRetryOptions {
+  timeoutMs: number;
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+}
+
+interface ValidatedMigrationLedger {
+  lastAppliedJournalIndex: number;
+}
+
+// The old runner selected pending work by timestamp rather than journal index.
+// These seven historical entries moved backward relative to an earlier journal
+// timestamp, so an incrementally migrated database may legitimately omit any
+// of them. Keep the exception closed over the known immutable history; a new
+// backward timestamp is still treated as a broken ledger.
+const LEGACY_TIMESTAMP_SKIPPABLE_TAGS = new Set([
+  "0017_add_organization_encryption_keys",
+  "0044_seed_chain_data_pricing",
+  "0048_00_elite_rumiko_fujikawa_drops",
+  "0048_01_elite_rumiko_fujikawa_creates",
+  "0048_02_elite_rumiko_fujikawa_alters",
+  "0048_03_elite_rumiko_fujikawa_indexes",
+  "0065_add_generations_is_public",
+]);
+
+// Historical SQL files were edited after deployment, so their stored hashes
+// cannot truthfully authenticate the current checkout. The catalog-guard
+// migration is the first immutable checkpoint owned by this runner; hashes
+// from this entry forward are enforced on every subsequent invocation.
+const HASH_IDENTITY_ENFORCEMENT_TAG =
+  "0194_job_execution_interruptions_catalog_guard";
 
 async function readJournal(): Promise<Journal> {
   return JSON.parse(await readFile(JOURNAL_PATH, "utf8")) as Journal;
@@ -85,13 +132,71 @@ async function readMigration(entry: JournalEntry): Promise<Migration> {
   };
 }
 
-function createdAtValue(
-  migration: AppliedMigration | undefined,
-): number | null {
-  if (!migration?.created_at) return null;
+function createdAtValue(migration: AppliedMigration): number | null {
+  if (migration.created_at === null) return null;
 
   const value = Number(migration.created_at);
   return Number.isFinite(value) ? value : null;
+}
+
+function readPositiveInteger(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return value;
+}
+
+function lockRetryOptions(): LockRetryOptions {
+  const options = {
+    timeoutMs: readPositiveInteger(
+      "MIGRATION_LOCK_TIMEOUT_MS",
+      DEFAULT_LOCK_TIMEOUT_MS,
+    ),
+    maxAttempts: readPositiveInteger(
+      "MIGRATION_LOCK_MAX_ATTEMPTS",
+      DEFAULT_LOCK_MAX_ATTEMPTS,
+    ),
+    baseDelayMs: readPositiveInteger(
+      "MIGRATION_LOCK_RETRY_BASE_MS",
+      DEFAULT_LOCK_RETRY_BASE_MS,
+    ),
+    maxDelayMs: readPositiveInteger(
+      "MIGRATION_LOCK_RETRY_MAX_MS",
+      DEFAULT_LOCK_RETRY_MAX_MS,
+    ),
+  };
+  if (options.maxDelayMs < options.baseDelayMs) {
+    throw new Error(
+      "MIGRATION_LOCK_RETRY_MAX_MS must be at least MIGRATION_LOCK_RETRY_BASE_MS",
+    );
+  }
+  return options;
+}
+
+function databaseErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const code = (error as DatabaseError).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+function isLockTimeout(error: unknown): boolean {
+  return databaseErrorCode(error) === "55P03";
+}
+
+function retryDelayMs(attempt: number, options: LockRetryOptions): number {
+  const ceiling = Math.min(
+    options.maxDelayMs,
+    options.baseDelayMs * 2 ** Math.max(0, attempt - 1),
+  );
+  return Math.max(1, Math.floor(ceiling * (0.5 + Math.random() * 0.5)));
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function summarizeStatement(statement: string): string {
@@ -119,6 +224,15 @@ function formatDatabaseError(error: unknown): string {
   return details.join(" ");
 }
 
+function reportMigrationCleanupFailure(failure: CleanupFailure): void {
+  const context = failure.primaryFailure
+    ? " while preserving the primary migration failure"
+    : "";
+  console.error(
+    `[db:migrate] ${failure.label} failed${context}: ${formatDatabaseError(failure.cleanupError)}`,
+  );
+}
+
 async function ensureMigrationsTable(client: MigrationClient): Promise<void> {
   await client.query(`CREATE SCHEMA IF NOT EXISTS "${MIGRATIONS_SCHEMA}"`);
   await client.query(`
@@ -130,52 +244,243 @@ async function ensureMigrationsTable(client: MigrationClient): Promise<void> {
   `);
 }
 
-async function getLastAppliedMigration(
+async function getAppliedMigrations(
   client: MigrationClient,
-): Promise<AppliedMigration | undefined> {
+): Promise<AppliedMigration[]> {
   const result = await client.query<AppliedMigration>(`
     SELECT id, hash, created_at
     FROM "${MIGRATIONS_SCHEMA}"."${MIGRATIONS_TABLE}"
-    ORDER BY created_at DESC
-    LIMIT 1
+    ORDER BY id ASC
   `);
 
-  return result.rows[0];
+  return result.rows;
 }
 
-async function applyMigration(
+function validateAppliedMigrationLedger(
+  applied: AppliedMigration[],
+  migrations: Migration[],
+): ValidatedMigrationLedger {
+  if (applied.length > migrations.length) {
+    throw new Error(
+      `Migration ledger contains ${applied.length} rows but this checkout defines only ${migrations.length}`,
+    );
+  }
+
+  const migrationByCreatedAt = new Map<
+    number,
+    { journalIndex: number; migration: Migration }
+  >();
+  for (const [journalIndex, migration] of migrations.entries()) {
+    const createdAt = migration.entry.when;
+    if (migrationByCreatedAt.has(createdAt)) {
+      throw new Error(
+        `Migration journal contains duplicate created_at=${createdAt}`,
+      );
+    }
+    migrationByCreatedAt.set(createdAt, { journalIndex, migration });
+  }
+
+  const seenCreatedAt = new Set<number>();
+  const appliedJournalIndexes = new Set<number>();
+  const hashIdentityEnforcementIndex = migrations.findIndex(
+    (migration) => migration.entry.tag === HASH_IDENTITY_ENFORCEMENT_TAG,
+  );
+  if (hashIdentityEnforcementIndex === -1) {
+    throw new Error(
+      `Migration journal is missing hash enforcement checkpoint ${HASH_IDENTITY_ENFORCEMENT_TAG}`,
+    );
+  }
+  let lastAppliedJournalIndex = -1;
+  let lastEnforcedJournalIndex = hashIdentityEnforcementIndex - 1;
+  let hashEnforcementStarted = false;
+  for (const row of applied) {
+    const createdAt = createdAtValue(row);
+    if (createdAt === null) {
+      throw new Error(
+        `Migration ledger row id=${row.id} has an invalid created_at value`,
+      );
+    }
+    if (seenCreatedAt.has(createdAt)) {
+      throw new Error(
+        `Migration ledger contains duplicate created_at=${createdAt}`,
+      );
+    }
+    seenCreatedAt.add(createdAt);
+
+    const matched = migrationByCreatedAt.get(createdAt);
+    if (!matched) {
+      throw new Error(
+        `Migration ledger row id=${row.id} has no matching journal entry for created_at=${createdAt}`,
+      );
+    }
+    if (
+      matched.journalIndex >= hashIdentityEnforcementIndex &&
+      row.hash !== matched.migration.hash
+    ) {
+      throw new Error(
+        `Migration ledger hash mismatch for ${matched.migration.entry.tag}: expected ${matched.migration.hash}, found ${row.hash}`,
+      );
+    }
+    // Historical deployments used both journal-order and timestamp-order
+    // runners, so row id cannot authenticate ordering before the checkpoint.
+    // From the checkpoint forward this runner owns a single append-only order.
+    if (matched.journalIndex >= hashIdentityEnforcementIndex) {
+      if (matched.journalIndex <= lastEnforcedJournalIndex) {
+        throw new Error(
+          `Migration ledger is out of immutable journal order at row id=${row.id}: ${matched.migration.entry.tag} follows journal index ${lastEnforcedJournalIndex}`,
+        );
+      }
+      hashEnforcementStarted = true;
+      lastEnforcedJournalIndex = matched.journalIndex;
+    } else if (hashEnforcementStarted) {
+      throw new Error(
+        `Historical migration ${matched.migration.entry.tag} appears after hash enforcement checkpoint ${HASH_IDENTITY_ENFORCEMENT_TAG}`,
+      );
+    }
+    appliedJournalIndexes.add(matched.journalIndex);
+    lastAppliedJournalIndex = Math.max(
+      lastAppliedJournalIndex,
+      matched.journalIndex,
+    );
+  }
+
+  let runningTimestampMaximum = Number.NEGATIVE_INFINITY;
+  for (
+    let journalIndex = 0;
+    journalIndex <= lastAppliedJournalIndex;
+    journalIndex++
+  ) {
+    const migration = migrations[journalIndex];
+    if (!migration) {
+      throw new Error(`Migration journal is missing index ${journalIndex}`);
+    }
+    const timestampMovedBackward =
+      migration.entry.when <= runningTimestampMaximum;
+    const isKnownLegacySkip =
+      timestampMovedBackward &&
+      LEGACY_TIMESTAMP_SKIPPABLE_TAGS.has(migration.entry.tag);
+    if (!appliedJournalIndexes.has(journalIndex) && !isKnownLegacySkip) {
+      throw new Error(
+        `Migration ledger is missing required journal entry ${migration.entry.tag}`,
+      );
+    }
+    runningTimestampMaximum = Math.max(
+      runningTimestampMaximum,
+      migration.entry.when,
+    );
+  }
+
+  return { lastAppliedJournalIndex };
+}
+
+async function acquireMigrationLock(
+  client: MigrationClient,
+  options: LockRetryOptions,
+): Promise<void> {
+  for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
+    await client.query("SELECT set_config('lock_timeout', $1, false)", [
+      `${options.timeoutMs}ms`,
+    ]);
+    try {
+      await client.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [
+        MIGRATION_ADVISORY_LOCK_KEY,
+      ]);
+      await client.query("SELECT set_config('lock_timeout', '0', false)");
+      console.log(`[db:migrate] acquired migration lock on attempt ${attempt}`);
+      return;
+    } catch (error) {
+      if (!isLockTimeout(error)) throw error;
+      if (attempt === options.maxAttempts) {
+        console.error(
+          `[db:migrate] migration lock acquisition exhausted ${options.maxAttempts} attempts`,
+        );
+        throw error;
+      }
+      const delayMs = retryDelayMs(attempt, options);
+      console.warn(
+        `[db:migrate] migration lock busy on attempt ${attempt}/${options.maxAttempts}; retrying in ${delayMs}ms`,
+      );
+      await sleep(delayMs);
+    }
+  }
+}
+
+async function releaseMigrationLock(client: MigrationClient): Promise<void> {
+  const result = await client.query<{ unlocked: boolean }>(
+    "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked",
+    [MIGRATION_ADVISORY_LOCK_KEY],
+  );
+  if (result.rows[0]?.unlocked !== true) {
+    throw new Error(
+      "Migration advisory lock was not held by this session at release",
+    );
+  }
+  console.log("[db:migrate] released migration lock");
+}
+
+/** Applies one journal migration atomically and retries only after rollback. */
+export async function applyMigration(
   client: MigrationClient,
   migration: Migration,
+  options: LockRetryOptions,
 ): Promise<void> {
   const { entry, statements, hash } = migration;
 
-  console.log(
-    `[db:migrate] applying ${entry.tag} (${statements.length} statements)`,
-  );
-  await client.query("BEGIN");
+  for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
+    console.log(
+      `[db:migrate] applying ${entry.tag} (${statements.length} statements, attempt ${attempt}/${options.maxAttempts})`,
+    );
+    await client.query("BEGIN");
 
-  try {
-    for (const [index, statement] of statements.entries()) {
-      try {
-        await client.query(statement);
-      } catch (error) {
+    try {
+      await client.query("SELECT set_config('lock_timeout', $1, true)", [
+        `${options.timeoutMs}ms`,
+      ]);
+      for (const [index, statement] of statements.entries()) {
+        try {
+          await client.query(statement);
+        } catch (error) {
+          console.error(
+            `[db:migrate] failed ${entry.tag} statement ${index + 1}/${statements.length}`,
+          );
+          console.error(`[db:migrate] sql: ${summarizeStatement(statement)}`);
+          console.error(`[db:migrate] error: ${formatDatabaseError(error)}`);
+          throw error;
+        }
+      }
+
+      await client.query(
+        `INSERT INTO "${MIGRATIONS_SCHEMA}"."${MIGRATIONS_TABLE}" (hash, created_at) VALUES ($1, $2)`,
+        [hash, entry.when],
+      );
+      await client.query("COMMIT");
+      return;
+    } catch (error) {
+      await runCleanupSteps(
+        [
+          {
+            label: `rollback for ${entry.tag}`,
+            run: async () => {
+              await client.query("ROLLBACK");
+            },
+          },
+        ],
+        reportMigrationCleanupFailure,
+        { error },
+      );
+      if (!isLockTimeout(error)) throw error;
+      if (attempt === options.maxAttempts) {
         console.error(
-          `[db:migrate] failed ${entry.tag} statement ${index + 1}/${statements.length}`,
+          `[db:migrate] ${entry.tag} exhausted ${options.maxAttempts} lock-timeout attempts`,
         );
-        console.error(`[db:migrate] sql: ${summarizeStatement(statement)}`);
-        console.error(`[db:migrate] error: ${formatDatabaseError(error)}`);
         throw error;
       }
+      const delayMs = retryDelayMs(attempt, options);
+      console.warn(
+        `[db:migrate] ${entry.tag} lock timeout on attempt ${attempt}/${options.maxAttempts}; retrying in ${delayMs}ms`,
+      );
+      await sleep(delayMs);
     }
-
-    await client.query(
-      `INSERT INTO "${MIGRATIONS_SCHEMA}"."${MIGRATIONS_TABLE}" (hash, created_at) VALUES ($1, $2)`,
-      [hash, entry.when],
-    );
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
   }
 }
 
@@ -187,6 +492,7 @@ async function createPGliteClient(url: string): Promise<MigrationClient> {
   const db = await PGlite.create({ dataDir, extensions: { vector } });
 
   return {
+    backend: "pglite",
     // Migrations contain multi-statement chunks (drizzle does not split on `;`
     // for non-breakpoint segments). PGlite's prepared `query()` rejects those,
     // so route parameter-less SQL through `exec()` and bound queries through
@@ -213,12 +519,73 @@ async function createPgClient(url: string): Promise<MigrationClient> {
   });
   await client.connect();
   return {
+    backend: "postgres",
     query: async <T>(text: string, params?: unknown[]) => {
       const result = await client.query<Record<string, unknown>>(text, params);
       return { rows: result.rows as T[] };
     },
     end: () => client.end(),
   };
+}
+
+/** Runs the validated migration plan and owns lock and client teardown. */
+export async function runMigrations(
+  client: MigrationClient,
+  migrations: Migration[],
+  retryOptions: LockRetryOptions,
+): Promise<void> {
+  let lockHeld = false;
+  await runWithCleanup(
+    async () => {
+      if (client.backend === "postgres") {
+        await acquireMigrationLock(client, retryOptions);
+        lockHeld = true;
+      } else {
+        console.log(
+          "[db:migrate] PGlite backend uses its single-writer database lock",
+        );
+      }
+      await ensureMigrationsTable(client);
+
+      const applied = await getAppliedMigrations(client);
+      const validatedLedger = validateAppliedMigrationLedger(
+        applied,
+        migrations,
+      );
+      const lastApplied = applied.at(-1);
+      const lastAppliedCreatedAt = lastApplied
+        ? createdAtValue(lastApplied)
+        : null;
+      console.log(
+        `[db:migrate] last applied migration: ${
+          lastAppliedCreatedAt === null
+            ? "none"
+            : `${lastAppliedCreatedAt} (${lastApplied?.hash.slice(0, 12)})`
+        }`,
+      );
+
+      const pending = migrations.slice(
+        validatedLedger.lastAppliedJournalIndex + 1,
+      );
+      console.log(`[db:migrate] pending migrations: ${pending.length}`);
+
+      for (const migration of pending) {
+        await applyMigration(client, migration, retryOptions);
+      }
+
+      console.log("[db:migrate] migrations complete");
+    },
+    [
+      {
+        label: "migration advisory unlock",
+        run: async () => {
+          if (lockHeld) await releaseMigrationLock(client);
+        },
+      },
+      { label: "database client close", run: () => client.end() },
+    ],
+    reportMigrationCleanupFailure,
+  );
 }
 
 async function main(): Promise<void> {
@@ -231,42 +598,18 @@ async function main(): Promise<void> {
   const migrations = await Promise.all(
     journal.entries.map((entry) => readMigration(entry)),
   );
+  const retryOptions = lockRetryOptions();
 
   const client: MigrationClient = databaseUrl.startsWith("pglite://")
     ? await createPGliteClient(databaseUrl)
     : await createPgClient(databaseUrl);
 
-  try {
-    await ensureMigrationsTable(client);
-
-    const lastApplied = await getLastAppliedMigration(client);
-    const lastAppliedCreatedAt = createdAtValue(lastApplied);
-    console.log(
-      `[db:migrate] last applied migration: ${
-        lastAppliedCreatedAt === null
-          ? "none"
-          : `${lastAppliedCreatedAt} (${lastApplied?.hash.slice(0, 12)})`
-      }`,
-    );
-
-    const pending = migrations.filter(
-      (migration) =>
-        lastAppliedCreatedAt === null ||
-        migration.entry.when > lastAppliedCreatedAt,
-    );
-    console.log(`[db:migrate] pending migrations: ${pending.length}`);
-
-    for (const migration of pending) {
-      await applyMigration(client, migration);
-    }
-
-    console.log("[db:migrate] migrations complete");
-  } finally {
-    await client.end();
-  }
+  await runMigrations(client, migrations, retryOptions);
 }
 
-main().catch((error) => {
-  console.error(`[db:migrate] fatal: ${formatDatabaseError(error)}`);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error(`[db:migrate] fatal: ${formatDatabaseError(error)}`);
+    process.exit(1);
+  });
+}

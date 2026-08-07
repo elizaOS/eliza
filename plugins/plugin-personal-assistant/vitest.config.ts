@@ -65,7 +65,7 @@ const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-app-manager",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-inbox/plugin",
-  "@elizaos/plugin-ollama",
+  "@elizaos/plugin-zerollama",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ]);
@@ -631,6 +631,22 @@ export default defineConfig({
           "scenario-runner",
           "schema",
           "index.js",
+        ),
+      },
+      // The scenario corpus imports shared assertion helpers through
+      // `@elizaos/scenario-runner/scenario-assertions` — the same
+      // package-exports subpath shape as `/schema` above, which this lane
+      // cannot resolve (the `./*` exports wildcard points at a `./dist/*.js`
+      // that plugin-tests never builds). Anchor it to source; its only
+      // package import is `/schema`, covered by the alias above.
+      {
+        find: /^@elizaos\/scenario-runner\/scenario-assertions$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "scenario-runner",
+          "src",
+          "scenario-assertions.ts",
         ),
       },
       {

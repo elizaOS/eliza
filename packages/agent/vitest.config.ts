@@ -27,6 +27,10 @@ export default defineConfig({
   root: here,
   resolve: {
     ...baseConfig.resolve,
+    // Plugin-resolution tests import the same workspace packages the runtime
+    // loads through Bun. Canonicalizing their symlinks keeps each third-party
+    // package beside its own isolated transitive dependencies.
+    preserveSymlinks: false,
     alias: [
       // Resolve Octokit from its physical Bun store path so its own transitive
       // dependencies remain visible while workspace source aliases preserve symlinks.
@@ -120,6 +124,10 @@ export default defineConfig({
           monorepoRoot,
           "packages/core/src/utils/atomic-json.ts",
         ),
+      },
+      {
+        find: /^@elizaos\/core\/node$/,
+        replacement: path.join(monorepoRoot, "packages/core/src/index.node.ts"),
       },
       {
         find: /^@elizaos\/core\/security\/(.+)$/,

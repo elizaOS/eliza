@@ -6,12 +6,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "playwright/test";
+import { VISUAL_ROUTES } from "./visual-routes";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(HERE, "../..");
 const APP_SOURCE = path.join(PACKAGE_ROOT, "src/App.tsx");
 const LIVE_ROUTES_SPEC = path.join(HERE, "live-routes.spec.ts");
-const VISUAL_SPEC = path.join(HERE, "visual.spec.ts");
 
 function routePathsFromApp(): string[] {
   const source = readFileSync(APP_SOURCE, "utf8");
@@ -30,7 +30,7 @@ function routePathsFromSpec(filePath: string): Set<string> {
 test("homepage route matrices cover every routed page", () => {
   const appRoutes = routePathsFromApp();
   const liveRoutes = routePathsFromSpec(LIVE_ROUTES_SPEC);
-  const visualRoutes = routePathsFromSpec(VISUAL_SPEC);
+  const visualRoutes = new Set(VISUAL_ROUTES.map((route) => route.path));
 
   expect(appRoutes).toEqual([
     "/",
@@ -39,6 +39,8 @@ test("homepage route matrices cover every routed page", () => {
     "/login",
     "/connected",
     "/get-started",
+    "/profile/edit",
+    "*",
   ]);
 
   const missingLiveRoutes = appRoutes.filter((route) => !liveRoutes.has(route));
