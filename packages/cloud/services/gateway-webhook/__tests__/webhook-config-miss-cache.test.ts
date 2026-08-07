@@ -1,9 +1,11 @@
-// Pins the negative half of the per-agent webhook-config cache. An agent id
-// that resolves to nothing must be remembered briefly: since Meta's
-// verification handshake became exempt from signature checking, this lookup is
-// reachable without a signature, and an uncached miss would let a caller drive
-// one authenticated round trip to the cloud API per request with cache keys of
-// their choosing.
+/**
+ * Pins the negative half of the per-agent webhook-config cache.
+ *
+ * An agent id that resolves to nothing must be remembered briefly: since
+ * Meta's verification handshake became exempt from signature checking, this
+ * lookup is reachable without a signature, and an uncached miss would let a
+ * caller drive one authenticated round trip to the cloud API per request.
+ */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { GatewayRedis } from "../src/redis";
 import { resolveWebhookConfig } from "../src/webhook-config";
