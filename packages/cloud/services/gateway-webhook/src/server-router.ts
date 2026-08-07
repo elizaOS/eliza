@@ -1,5 +1,6 @@
-// Handles webhook gateway server router behavior for authenticated connector fan-in.
+/** Routes authenticated connector traffic to cloud identities and agent servers. */
 import { readFileSync } from "node:fs";
+import { reacquireAuthHeader } from "./auth";
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
@@ -42,6 +43,7 @@ export async function resolveIdentity(
   platform: string,
   platformId: string,
   platformName?: string,
+  reauth: () => Promise<Record<string, string>> = reacquireAuthHeader,
 ): Promise<ResolvedIdentity | null> {
   const cacheKey = `identity:${platform}:${platformId}`;
   const cached = await redis.get<ResolvedIdentity | { notFound: true }>(
@@ -57,16 +59,30 @@ export async function resolveIdentity(
   const timeoutId = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
 
   try {
-    const res = await fetch(url, {
+    const body = JSON.stringify({
+      platform,
+      platformId,
+      ...(platformName ? { platformName } : {}),
+    });
+    let res = await fetch(url, {
       method: "POST",
       headers: authHeader,
-      body: JSON.stringify({
-        platform,
-        platformId,
-        ...(platformName ? { platformName } : {}),
-      }),
+      body,
       signal: controller.signal,
     });
+    // A Worker redeploy invalidates the gateway's token until its scheduled
+    // refresh, up to ~48 minutes away — and this call runs post-ack, so every
+    // 401 in that window is a user-visible silence. Re-bootstrap and retry
+    // exactly once; a second 401 falls through to the error path below.
+    if (res.status === 401) {
+      const freshHeader = await reauth();
+      res = await fetch(url, {
+        method: "POST",
+        headers: freshHeader,
+        body,
+        signal: controller.signal,
+      });
+    }
     if (res.status === 404) {
       await redis.set(cacheKey, JSON.stringify({ notFound: true }), {
         ex: IDENTITY_TRANSIENT_CACHE_TTL_SECONDS,
