@@ -401,6 +401,7 @@ async function navigateToView(
 	subview?: string,
 	navigationLabel = view.label,
 	delivery?: "originating-client",
+	originatingClientId?: string,
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
 	// A 501/404 means this shell doesn't implement the navigate route — opening
@@ -423,6 +424,7 @@ async function navigateToView(
 					viewType: requestedViewType,
 					...(resolvedSubview ? { subview: resolvedSubview } : {}),
 					...(delivery ? { delivery } : {}),
+					...(originatingClientId ? { clientId: originatingClientId } : {}),
 				}),
 				signal: AbortSignal.timeout(5_000),
 			},
@@ -466,6 +468,7 @@ export interface RunViewsShowInput {
 	options?: Record<string, unknown>;
 	viewType?: ViewType;
 	callback?: HandlerCallback;
+	originatingClientId?: string;
 }
 
 export async function runViewsShow({
@@ -474,6 +477,7 @@ export async function runViewsShow({
 	options,
 	viewType,
 	callback,
+	originatingClientId,
 }: RunViewsShowInput): Promise<ActionResult> {
 	const messageText = userRequestMessageText(message);
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
@@ -569,6 +573,7 @@ export async function runViewsShow({
 		subview ?? undefined,
 		navigationLabel,
 		isRealtimeVoiceTurn(message) ? "originating-client" : undefined,
+		originatingClientId,
 	);
 
 	logger.info(
