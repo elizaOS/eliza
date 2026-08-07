@@ -207,7 +207,6 @@ describe("admitInferenceChargeViaLedger — atomic admission gate", () => {
     if (!pgliteReady) return;
     await seedOrg("10.000000");
   });
-
   test(
     "admits an affordable charge and writes exactly one pending row at the estimate",
     async () => {
@@ -530,7 +529,6 @@ describe("createLedgerDebitSettler — exactly-once inline settlement", () => {
     PGLITE_TIMEOUT,
   );
 
-
   test(
     "leaves a warm gate hint so the NEXT turn does not fail closed on a cacheOnly read (#17768)",
     async () => {
@@ -549,10 +547,7 @@ describe("createLedgerDebitSettler — exactly-once inline settlement", () => {
       const hint = await readOrgBalanceHint(ORG_ID);
       expect(hint).not.toBeNull();
       expect(hint?.balanceUsd).toBeCloseTo(7.5, 6);
-      await expect(getGateBalanceUsd(ORG_ID, { cacheOnly: true })).resolves.toBeCloseTo(
-        7.5,
-        6,
-      );
+      await expect(getGateBalanceUsd(ORG_ID, { cacheOnly: true })).resolves.toBeCloseTo(7.5, 6);
     },
     PGLITE_TIMEOUT,
   );
@@ -564,11 +559,9 @@ describe("createLedgerDebitSettler — exactly-once inline settlement", () => {
       const { creditsService: credits } = await import("../credits");
       const { isOrgAdmissionRefused } = await import("../inference-admission-refusal");
       const { readOrgBalanceHint } = await import("../inference-auth-cache");
-      const snap = spyOn(credits, "getOrganizationBalanceSnapshot").mockImplementation(
-        async () => {
-          throw new Error("forced snapshot failure for test");
-        },
-      );
+      const snap = spyOn(credits, "getOrganizationBalanceSnapshot").mockImplementation(async () => {
+        throw new Error("forced snapshot failure for test");
+      });
       try {
         const reqId = nextRequestId();
         await ledger.admitInferenceChargeViaLedger({
@@ -596,9 +589,7 @@ describe("createLedgerDebitSettler — exactly-once inline settlement", () => {
     "uncollected debit leaves the gate hint absent (parity with refused KV settle) (#17768)",
     async () => {
       if (!pgliteReady) return;
-      const { readOrgBalanceHint, writeOrgBalanceHint } = await import(
-        "../inference-auth-cache"
-      );
+      const { readOrgBalanceHint, writeOrgBalanceHint } = await import("../inference-auth-cache");
       const reqId = nextRequestId();
       // Warm hint present before the refused settle, as a real org would have.
       await writeOrgBalanceHint(ORG_ID, 0.5, Date.now(), "1");

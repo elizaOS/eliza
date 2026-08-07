@@ -332,9 +332,9 @@ async function settleLedgerCharge(
     try {
       await republishOrgBalanceHintAfterDebit(ctx.organizationId);
     } catch (cause) {
-      // error-policy:J7 diagnostics must not kill the settle path: debit already
-      // committed; refuse the org and clear the gate rather than throw into the
-      // user's response (KV rethrows for task replay; ledger does not).
+      // error-policy:J4 the debit is already committed; convert the post-commit
+      // cache failure into an explicit admission refusal instead of presenting
+      // a healthy fast path (KV rethrows for task replay; ledger does not).
       markOrgAdmissionRefused(ctx.organizationId);
       await invalidateOrgBalanceHint(ctx.organizationId).catch(
         reportInvalidationFailure(ctx.organizationId, "balance-hint"),
