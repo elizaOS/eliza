@@ -47,4 +47,9 @@ describe("sanitizeSpeechText", () => {
       sanitizeSpeechText("*whispers* Wait!!! (pause) Are you sure??"),
     ).toBe("Wait! Are you sure?");
   });
+
+  it("rewrites I am to I'm so Kokoro/espeak does not say yam", () => {
+    expect(sanitizeSpeechText("I am ready.")).toBe("I'm ready.");
+    expect(sanitizeSpeechText("Yes, I am here.")).toBe("Yes, I'm here.");
+  });
 });

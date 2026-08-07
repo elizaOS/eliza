@@ -65,9 +65,19 @@ function sanitizeSpeechPunctuation(input: string): string {
 	return text;
 }
 
+/**
+ * Lexical tweaks for TTS engines that mis-phonemize common English.
+ * Kokoro/espeak-ng often renders "I am" as /jæm/ ("yam").
+ */
+function fixSpeechPronunciations(input: string): string {
+	return input.replace(/\bI am\b/gi, "I'm");
+}
+
 export function sanitizeSpeechText(input: string): string {
 	const normalized = input.normalize("NFKC");
 	const stripped = stripThinkingAndMarkup(normalized);
 	const withoutDirections = stripNonSpeechDirections(stripped);
-	return collapseWhitespace(sanitizeSpeechPunctuation(withoutDirections));
+	return collapseWhitespace(
+		fixSpeechPronunciations(sanitizeSpeechPunctuation(withoutDirections)),
+	);
 }
