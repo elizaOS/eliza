@@ -81,7 +81,7 @@
     "json-schema": "^0.4.0",
     "json5": "^2.2.3",
     "libphonenumber-js": "^1.12.42",
-    "nanoid": "^5.1.9",
+    "nanoid": "^6.0.0",
     "nodemailer": "^9.0.1",
     "pg": "^8.20.0",
     "redis": "^5.0.0",

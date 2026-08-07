@@ -1,3 +1,7 @@
+/**
+ * Exercises standalone Telegram gating and lifecycle against a mocked Telegraf
+ * client while retaining the production shared poller-lock implementation.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Stub Telegraf so the gate/lifecycle can be exercised without any network.
@@ -21,13 +25,19 @@ const { FakeTelegraf, launchMock, stopMock, constructed } = vi.hoisted(() => {
 
 vi.mock("telegraf", () => ({ Telegraf: FakeTelegraf }));
 
+import {
+  claimTelegramPollerToken,
+  releaseTelegramPollerToken,
+} from "../poller-lock";
 import { shouldStartTelegramStandaloneBot } from "./policy";
 import { TelegramStandaloneService } from "./service";
 
 // Minimal runtime — the service only touches getService() at stop time.
 function fakeRuntime(): Parameters<typeof TelegramStandaloneService.start>[0] {
   return {
+    agentId: "agent-standalone",
     getService: vi.fn(() => null),
+    reportError: vi.fn(),
   } as unknown as Parameters<typeof TelegramStandaloneService.start>[0];
 }
 
@@ -93,9 +103,38 @@ describe("TelegramStandaloneService lifecycle", () => {
 
     expect(constructed).toEqual([{ token: "test-token" }]);
     expect(launchMock).toHaveBeenCalledOnce();
+    expect(launchMock.mock.calls[0][0]).toMatchObject({
+      dropPendingUpdates: false,
+      allowedUpdates: ["message", "message_reaction"],
+    });
 
     await service.stop();
     expect(stopMock).toHaveBeenCalledWith("service-stop");
+  });
+
+  it("observes full-mode ownership through the shared lock and refuses a second poller", async () => {
+    process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS = "false";
+    process.env.ELIZA_TELEGRAM_STANDALONE_BOT = "1";
+    process.env.TELEGRAM_BOT_TOKEN = "test-token";
+    const activeBot = { stop: vi.fn() } as never;
+    claimTelegramPollerToken("test-token", {
+      bot: activeBot,
+      mode: "full",
+      ownerId: "agent-full",
+      accountId: "default",
+    });
+
+    const error = await TelegramStandaloneService.start(fakeRuntime()).catch(
+      (cause: unknown) => cause,
+    );
+    expect(launchMock).not.toHaveBeenCalled();
+    releaseTelegramPollerToken("test-token", activeBot);
+    expect(error).toMatchObject({
+      code: "TELEGRAM_STANDALONE_SETUP_FAILED",
+      cause: expect.objectContaining({
+        message: expect.stringMatching(/already has an active full poller/i),
+      }),
+    });
   });
 
   it("stands down under the gate when no bot token is configured", async () => {

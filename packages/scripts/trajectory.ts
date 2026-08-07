@@ -1117,6 +1117,8 @@ function providerRows(trajectory: RecordedTrajectory): ProviderRollupRow[] {
       (total, entry) => total + Math.max(0, entry.tokenCount || 0),
       0,
     );
+    const promptTokens = model.usage?.promptTokens;
+    const completionTokens = model.usage?.completionTokens;
     for (const entry of attributions) {
       const current = rows.get(entry.providerName) ?? {
         providerName: entry.providerName,
@@ -1128,14 +1130,33 @@ function providerRows(trajectory: RecordedTrajectory): ProviderRollupRow[] {
       };
       current.calls += 1;
       current.tokens += Math.max(0, entry.tokenCount || 0);
+      // Only the defensible input-cost share: require observed prompt tokens so
+      // we never allocate completion (or full-call) spend across providers.
+      const cost = model.costUsd;
+      const providerEstimate = Math.max(0, entry.tokenCount || 0);
       if (
-        typeof model.costUsd === "number" &&
-        Number.isFinite(model.costUsd) &&
-        totalProviderTokens > 0
+        typeof cost === "number" &&
+        Number.isFinite(cost) &&
+        cost > 0 &&
+        totalProviderTokens > 0 &&
+        providerEstimate > 0 &&
+        typeof promptTokens === "number" &&
+        Number.isFinite(promptTokens) &&
+        promptTokens > 0
       ) {
+        const completion =
+          typeof completionTokens === "number" &&
+          Number.isFinite(completionTokens) &&
+          completionTokens > 0
+            ? completionTokens
+            : 0;
+        const inputShare = promptTokens / (promptTokens + completion);
+        const attributionDenominator = Math.max(
+          promptTokens,
+          totalProviderTokens,
+        );
         current.costUsd +=
-          model.costUsd *
-          (Math.max(0, entry.tokenCount || 0) / totalProviderTokens);
+          cost * inputShare * (providerEstimate / attributionDenominator);
       }
       if (
         typeof entry.spanStart === "number" &&
@@ -1164,12 +1185,15 @@ async function cmdProviders(id: string): Promise<void> {
   const widths = {
     provider: Math.max(8, ...rows.map((row) => row.providerName.length)),
     calls: 5,
-    tokens: Math.max(6, ...rows.map((row) => String(row.tokens).length)),
-    cost: 10,
+    tokens: Math.max(10, ...rows.map((row) => String(row.tokens).length + 4)),
+    cost: 14,
     spans: 5,
     sha: 12,
   };
-  const header = `${"provider".padEnd(widths.provider)}  ${"calls".padEnd(widths.calls)}  ${"tokens".padEnd(widths.tokens)}  ${"cost".padEnd(widths.cost)}  ${"spans".padEnd(widths.spans)}  sha256`;
+  // tokenCount is a character estimate; cost is the input-cost share only when
+  // prompt usage is known (otherwise 0). Label both so the table is not read as
+  // billed tokenizer usage or full-call spend.
+  const header = `${"provider".padEnd(widths.provider)}  ${"calls".padEnd(widths.calls)}  ${"est.tok".padEnd(widths.tokens)}  ${"est.in$".padEnd(widths.cost)}  ${"spans".padEnd(widths.spans)}  sha256`;
   console.log(c.bold(header));
   console.log(c.dim("-".repeat(header.length)));
   for (const row of rows) {
@@ -1177,6 +1201,11 @@ async function cmdProviders(id: string): Promise<void> {
       `${row.providerName.padEnd(widths.provider)}  ${String(row.calls).padEnd(widths.calls)}  ${String(row.tokens).padEnd(widths.tokens)}  ${formatUsd(row.costUsd).padEnd(widths.cost)}  ${String(row.spans).padEnd(widths.spans)}  ${row.sha256.slice(0, widths.sha)}`,
     );
   }
+  console.log(
+    c.dim(
+      "est.tok = ceil(chars/3.5); est.in$ = prompt-token share of costUsd when usage is present.",
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------

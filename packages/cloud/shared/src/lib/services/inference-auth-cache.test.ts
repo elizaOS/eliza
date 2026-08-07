@@ -27,6 +27,15 @@ const {
 
 const KEY_HASH = hashApiKey("eliza_validator_test_key");
 const STEWARD_USER_ID = "steward-validator-1";
+const ADMISSION = {
+  balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
+  rateLimits: {
+    completionsRpm: 60,
+    embeddingsRpm: 100,
+    standardRpm: 30,
+    strictRpm: 5,
+  },
+};
 
 beforeEach(async () => {
   await invalidateInferenceAuthContextByKeyHash(KEY_HASH);
@@ -42,6 +51,7 @@ describe("session decision validators", () => {
       orgId: "org-1",
       apiKeyId: null,
       stewardUserId: STEWARD_USER_ID,
+      admission: ADMISSION,
     });
     await expect(readInferenceSessionAuthDecision(STEWARD_USER_ID)).resolves.toMatchObject({
       userId: "user-1",
@@ -94,6 +104,8 @@ describe("api-key IAC validators", () => {
       orgId: "org-1",
       apiKeyId: "key-1",
       keyHash: KEY_HASH,
+      appScopeId: null,
+      admission: ADMISSION,
     });
     await expect(readInferenceAuthContextWithOutcome(KEY_HASH)).resolves.toMatchObject({
       kind: "hit",

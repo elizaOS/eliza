@@ -110,10 +110,26 @@ export function extractModelIds(value) {
   return [...ids].sort();
 }
 
+// A row may carry an optional human label ("Skill revision: <value>"), which is
+// dropped so the predicates below judge the value alone. The strip must stop at
+// the label and never run on into the value, because two of the required rows
+// carry a colon inside the value by construction: skill-revision's documented
+// `owner/repo@<40-hex>:path`, and a routed model identifier such as
+// `bedrock/anthropic.claude-3:1`. Stripping to the first colon reduced those to
+// `path` and `1`, so the documented skill revision was rejected by the very
+// message that prescribes it, and the model id was reported as a placeholder.
+// A label is prose; it never carries the `@` or `/` that make a prefix part of
+// an identifier, so an identifier-shaped prefix keeps its colon.
+const IDENTIFIER_PREFIX_RE = /^[^:\s]*[@/][^:\s]*:/;
+const ROW_LABEL_RE = /^[^:]+:\s*/;
+
 function rowValue(row) {
-  return String(row ?? "")
-    .replace(/^[-*]\s*/, "")
-    .replace(/^[^:]+:\s*/, "")
+  const unlabelled = String(row ?? "").replace(/^[-*]\s*/, "");
+  return (
+    IDENTIFIER_PREFIX_RE.test(unlabelled)
+      ? unlabelled
+      : unlabelled.replace(ROW_LABEL_RE, "")
+  )
     .replaceAll("`", "")
     .trim();
 }

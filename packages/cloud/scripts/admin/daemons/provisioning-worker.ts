@@ -777,6 +777,12 @@ interface PoolReplenishSummary {
   reason: string;
 }
 
+interface PoolHealthCheckSummary {
+  probed: number;
+  alive: number;
+  removed: number;
+}
+
 /**
  * Health-checks every enabled `docker_nodes` row (SSH + `docker info`) and
  * persists the resulting status. Runs on the orchestrator host that already
@@ -1050,6 +1056,26 @@ async function processPoolDrainIdleCycle(): Promise<PoolDrainSummary> {
   const pool = await getWarmPoolManager();
   const result = await pool.drainIdle(image);
   return { drained: result.drained.length };
+}
+
+/**
+ * Probe ready warm-pool entries and destroy entries whose containers are gone.
+ *
+ * Ready pool rows use the shared execution tier, so the agent heartbeat sweep
+ * skips them, while the unclaimable reconciler deliberately excludes rows that
+ * already satisfy the runtime-ready predicate. This phase is therefore the
+ * authoritative liveness sweep for ready pool containers. It runs after drain
+ * and before replenish so refill decisions use the surviving pool depth, and
+ * the manager self-gates on `WARM_POOL_ENABLED`.
+ */
+export async function processPoolHealthCheckCycle(): Promise<PoolHealthCheckSummary> {
+  const pool = await getWarmPoolManager();
+  const result = await pool.healthCheck();
+  return {
+    probed: result.probed,
+    alive: result.alive,
+    removed: result.removed.length,
+  };
 }
 
 /**
@@ -1760,6 +1786,25 @@ async function runInfraMaintenanceCycle(
       if (result.drained > 0) {
         logger.info("[provisioning-worker] warm pool drain cycle complete", {
           drained: result.drained,
+        });
+      }
+    },
+  );
+
+  // Probe ready warm-pool entries and collect the ones whose container is gone.
+  // Runs BEFORE replenish so the refill decision sees real depth, and after
+  // drain so it does not probe entries the drain just removed.
+  await runBoundedPhase(
+    logger,
+    "warm pool health check cycle",
+    () => processPoolHealthCheckCycle(),
+    (result) => {
+      if (result.removed > 0) {
+        logger.info("[provisioning-worker] warm pool health check complete", {
+          event: "warm_pool.dead_entries_collected",
+          probed: result.probed,
+          alive: result.alive,
+          removed: result.removed,
         });
       }
     },

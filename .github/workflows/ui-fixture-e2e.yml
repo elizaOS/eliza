@@ -40,7 +40,11 @@ env:
 
 jobs:
   fixture-e2e:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # WebKit needs host libraries that the generic Hetzner fleet does not
+    # provision, and those runners do not grant the installer passwordless
+    # sudo. Keep this cross-engine lane on a disposable, fully provisionable
+    # host so a green result certifies WebKit actually launched.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

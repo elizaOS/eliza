@@ -13,7 +13,7 @@
  *   GET  /api/views/:id/frame.html     — sandboxed iframe document (HTML)
  *   GET  /api/views/:id/<asset>        — compiled bundle chunk/asset
  *   GET  /api/views/:id/hero           — hero image (image/*)
- *   POST /api/views/:id/navigate       — broadcast shell navigation event (JSON)
+ *   POST /api/views/:id/navigate       — deliver a shell navigation event (JSON)
  *   POST /api/views/:id/elements       — report the view's addressable element snapshot
  *   POST /api/views/:id/interact       — agent-view interaction (capability dispatch)
  *   POST /api/views/interact-result    — frontend result callback (resolves pending interact)
@@ -82,6 +82,18 @@ function parseViewTypeValue(value: unknown): ViewType | undefined {
   return value === "gui" || value === "tui" || value === "xr"
     ? (value as ViewType)
     : undefined;
+}
+
+function normalizedViewPath(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const withoutQuery = value.trim().split(/[?#]/, 1)[0];
+  if (!withoutQuery) return null;
+  const rooted = withoutQuery.startsWith("/")
+    ? withoutQuery
+    : `/${withoutQuery}`;
+  return rooted.length > 1 && rooted.endsWith("/")
+    ? rooted.slice(0, -1)
+    : rooted;
 }
 
 /** Hard cap on accepted element reports to bound memory + prompt growth. */
@@ -889,9 +901,10 @@ export async function handleViewsRoutes(
   }
 
   // ── POST /api/views/:id/navigate ─────────────────────────────────────────
-  // Broadcasts a shell:navigate:view WebSocket event to all connected clients.
-  // The frontend's startup-phase-hydrate WS handler dispatches eliza:navigate:view
-  // on window when it receives this message, which App.tsx handles.
+  // Broadcasts a shell:navigate:view WebSocket event to connected clients unless
+  // the caller owns a narrower delivery channel. Realtime voice returns the
+  // validated VIEWS result through its originating WebSocket session, so a
+  // global echo here would navigate unrelated browsers and devices.
   //
   // Optional body fields:
   //   action: "pin-tab"    — tells the shell to add to desktop tab bar
@@ -906,6 +919,7 @@ export async function handleViewsRoutes(
   //   path: string         — override the navigation path
   //   alwaysOnTop: boolean — for open-window, ask the shell to keep it above normal windows
   //   payload: unknown     — opaque deep-link state consumed by the target view
+  //   delivery: "originating-client" — caller will navigate its own client
   if (method === "POST" && subResource === "navigate") {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
@@ -951,6 +965,7 @@ export async function handleViewsRoutes(
         : undefined;
     const payload =
       body && Object.hasOwn(body, "payload") ? body.payload : undefined;
+    const originatingClientDelivery = body?.delivery === "originating-client";
     const layoutPayload = {
       ...(layoutViews && layoutViews.length > 0 ? { views: layoutViews } : {}),
       ...(layout ? { layout } : {}),
@@ -1037,13 +1052,15 @@ export async function handleViewsRoutes(
       }
     }
 
-    // Skip the echo for user-reported switches (the client already navigated).
-    if (reportedSource !== "user") {
+    // Skip the echo when the client already navigated or when the caller owns a
+    // narrower delivery channel such as the realtime voice session.
+    if (reportedSource !== "user" && !originatingClientDelivery) {
       const navigatePayload: ShellNavigateViewPayload = {
         viewId: id,
         viewPath,
         viewLabel,
         viewType: resolvedViewType,
+        source: reportedSource,
         ...(action ? { action } : {}),
         ...(subview ? { subview } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
@@ -1071,17 +1088,48 @@ export async function handleViewsRoutes(
   // The shell's agent-surface registry reports this view's addressable element
   // snapshot (id/role/label/value/focused) so the planner's "# Active View"
   // block can list elements and act on them by id without a list-elements
-  // round-trip. Gated server-side on `id` matching the active (navigated-to)
-  // view via setActiveViewElements, so a background/stale surface can't
-  // overwrite the foreground view's elements (accepted=false when it doesn't
-  // match — the report is simply dropped).
+  // round-trip. A normal report is gated on `id` matching the active view. If
+  // the backend restarted and therefore owns no view state, a report may
+  // restore it only when the browser's current path matches the registered
+  // path; retained/background views cannot claim the foreground this way.
   if (method === "POST" && subResource === "elements") {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
     );
     const elements = normalizeActiveViewElements(body?.elements);
     const clientId = resolveViewInteractClientId(req, body);
-    const accepted = setActiveViewElements(id, elements, clientId);
+    let accepted = setActiveViewElements(id, elements, clientId);
+    if (
+      !accepted &&
+      currentViewState === null &&
+      getActiveViewContext() === null
+    ) {
+      const viewType =
+        parseViewTypeValue(body?.viewType) ??
+        parseViewTypeParam(url.searchParams.get("viewType"));
+      const entry = getView(id, { viewType });
+      const reportedPath = normalizedViewPath(body?.viewPath);
+      const registeredPath = normalizedViewPath(entry?.path);
+      if (entry && reportedPath && reportedPath === registeredPath) {
+        const now = new Date().toISOString();
+        currentViewState = {
+          viewId: id,
+          viewPath: entry.path ?? null,
+          viewLabel: entry.label,
+          viewType: entry.viewType,
+          updatedAt: now,
+        };
+        setActiveViewContext({
+          viewId: id,
+          viewPath: entry.path ?? null,
+          viewLabel: entry.label,
+          viewType: entry.viewType,
+          elements,
+          ...(clientId ? { clientId } : {}),
+        });
+        accepted = true;
+      }
+    }
     json(res, { ok: true, viewId: id, accepted, count: elements.length });
     return true;
   }

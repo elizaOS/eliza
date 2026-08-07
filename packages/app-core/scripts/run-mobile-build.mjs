@@ -98,6 +98,10 @@ import {
   resolveExpectedRendererStamp,
 } from "./lib/mobile-lane-stamp.mjs";
 import {
+  mobileRendererRequiresFreshBuild,
+  resolveMobileRendererFeatureEnv,
+} from "./lib/mobile-renderer-feature-env.mjs";
+import {
   formatMobileWebDistProblems,
   mobileWebDistReuseStatus,
 } from "./lib/mobile-web-build-reuse.mjs";
@@ -487,9 +491,10 @@ export function resolveCapacitorCli({
   return capacitorCli;
 }
 
-function runCapacitor(args) {
+function runCapacitor(args, { env = process.env } = {}) {
   return run(resolveNodeExecutable(), [resolveCapacitorCli(), ...args], {
     cwd: appDir,
+    env,
   });
 }
 
@@ -1126,7 +1131,11 @@ async function buildWeb(platform) {
   // below, so the loud-fail-on-stale guarantee is preserved: a stale or
   // mismatched dist simply does not match here and falls through to a rebuild.
   // Explicit ELIZA_MOBILE_SKIP_WEB_BUILD=1 keeps its force-reuse semantics below.
-  if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD !== "1") {
+  const requiresFreshRenderer = mobileRendererRequiresFreshBuild({ platform });
+  if (
+    process.env.ELIZA_MOBILE_SKIP_WEB_BUILD !== "1" &&
+    !requiresFreshRenderer
+  ) {
     const autoStatus = mobileWebDistReuseStatus({
       appDir,
       repoRoot,
@@ -1144,6 +1153,14 @@ async function buildWeb(platform) {
       );
       return;
     }
+  }
+  if (
+    process.env.ELIZA_MOBILE_SKIP_WEB_BUILD !== "1" &&
+    requiresFreshRenderer
+  ) {
+    console.log(
+      `[mobile-build] Rebuilding renderer for '${platform}': debug feature flags require fresh output.`,
+    );
   }
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD === "1") {
     const status = mobileWebDistReuseStatus({
@@ -1241,6 +1258,7 @@ async function buildWeb(platform) {
             process.env.ELIZA_FORCE_LOCAL_UPSTREAMS ?? "1",
         }
       : {}),
+    ...resolveMobileRendererFeatureEnv({ platform, env: process.env }),
   });
   const bun = resolveBunExecutable();
   const packageStylesPatch = path.join(
@@ -3772,6 +3790,16 @@ export function shouldIncludeIosFullBunEngine(env = process.env) {
     isFullIosBunEngineRequested(env) ||
     (isIosAppStoreBuild(env) && isIosAppStoreLocalRuntimeEnabled(env))
   );
+}
+
+export function resolveIosCapacitorSyncEnv(env = process.env) {
+  if (!shouldIncludeIosFullBunEngine(env)) return { ...env };
+
+  // Capacitor installs discovered plugin pods before the repository-owned
+  // Podfile can add ElizaBunEngine. Keep that intermediate install on the
+  // compatibility source set; prepareIosOverlay then writes both the engine
+  // and its dependent runtime plugin into the final pod graph.
+  return { ...env, ELIZA_IOS_FULL_BUN_ENGINE: "0" };
 }
 
 export function isIosAppStoreBuild(env = process.env) {
@@ -8545,7 +8573,9 @@ async function buildIos({ local = false } = {}) {
   if (shouldSkipIosCapacitorSync()) {
     console.log("[mobile-build] Skipping Capacitor iOS sync.");
   } else {
-    await runCapacitor(["sync", "ios"]);
+    await runCapacitor(["sync", "ios"], {
+      env: resolveIosCapacitorSyncEnv(),
+    });
   }
   // Overlay the freshly built renderer onto ios/App/App/public and assert it
   // matches the build — never ship a stale UI whether sync ran, was skipped, or

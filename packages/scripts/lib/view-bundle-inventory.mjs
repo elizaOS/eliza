@@ -7,7 +7,6 @@
  * silently omit a newly added, renamed, nested, or case-colliding target.
  */
 
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -17,6 +16,7 @@ import {
   assertUniqueRepositoryIdentities,
   normalizeGitRepositoryPath,
 } from "./repository-file-integrity.mjs";
+import { execFileSync } from "./spawn-sync-captured.mjs";
 import { listPackages } from "./workspaces.mjs";
 
 const VIEW_CONFIG_BASENAME =

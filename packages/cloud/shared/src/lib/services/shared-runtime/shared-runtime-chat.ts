@@ -14,6 +14,7 @@ import {
   RateLimitError,
 } from "../../api/errors";
 import { cache } from "../../cache/client";
+import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
 import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
 import { getProviderFromModel } from "../../pricing";
@@ -31,6 +32,12 @@ import { aiBillingRecordsService } from "../ai-billing-records";
 import type { CreditReconciliationResult, CreditReservation } from "../credits";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import { isInferenceAdmissionDispatchMarkError } from "../inference-admission-gate";
+import {
+  getInferenceAdmissionSnapshotCacheOnly,
+  InferenceAdmissionSnapshotCacheWarmingError,
+  inferenceRateLimitConfig,
+} from "../inference-admission-snapshot";
+import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
 import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
 import {
   isKnownPreDispatchProviderConfigurationError,
@@ -53,6 +60,7 @@ import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
+const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
 
 export type BridgeExecutionContext = {
   waitUntil(promise: Promise<unknown>): void;
@@ -182,12 +190,18 @@ async function characterFor(
   let linked: UserCharacter | null | undefined;
   if (agent.character_id) {
     if (options.cacheOnly) {
-      try {
-        linked = await cache.get<UserCharacter>(`character:data:${agent.character_id}`);
-      } catch {
-        // error-policy:J4 a cache dependency failure cannot fall through to
-        // the linked-character repository on an inference request.
-        throw new SharedRuntimeCacheWarmingError("Character cache is unavailable. Retry shortly.");
+      linked = linkedCharacterMemoryCache.get(agent.character_id);
+      if (!linked) {
+        try {
+          linked = await cache.get<UserCharacter>(`character:data:${agent.character_id}`);
+          if (linked) linkedCharacterMemoryCache.set(agent.character_id, linked);
+        } catch {
+          // error-policy:J4 a cache dependency failure cannot fall through to
+          // the linked-character repository on an inference request.
+          throw new SharedRuntimeCacheWarmingError(
+            "Character cache is unavailable. Retry shortly.",
+          );
+        }
       }
     } else {
       linked = await import("../../../db/repositories/characters").then(
@@ -212,6 +226,7 @@ async function characterFor(
       )
       .then(async (character) => {
         if (character) {
+          linkedCharacterMemoryCache.set(characterId, character);
           await cache.set(`character:data:${characterId}`, character, CacheTTL.agent.characterData);
         }
       })
@@ -334,10 +349,29 @@ async function admitTurn(
     },
   };
   let rateLimited: Response | null;
+  let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  if (executionCtx) {
+    try {
+      admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
+        agent.organization_id,
+        executionCtx,
+      );
+    } catch (error) {
+      // error-policy:J1 a combined policy miss remains a retryable warmup and
+      // cannot fall through to synchronous balance or tier reads.
+      if (error instanceof InferenceAdmissionSnapshotCacheWarmingError) {
+        throw new SharedRuntimeCacheWarmingError(
+          "Inference admission cache is warming. Retry shortly.",
+        );
+      }
+      throw error;
+    }
+  }
   try {
     rateLimited = await enforceOrgRateLimit(agent.organization_id, "completions", {
       cacheOnly: Boolean(executionCtx),
       executionCtx,
+      config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
     });
   } catch (error) {
     // error-policy:J1 the shared-runtime boundary keeps policy hydration off
@@ -368,6 +402,7 @@ async function admitTurn(
       estimatedInputTokens,
       estimatedOutputTokens: 500,
       executionCtx,
+      admissionSnapshot,
     });
   } catch (error) {
     // error-policy:J1 translate the billing-cache boundary into the shared

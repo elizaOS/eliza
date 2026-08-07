@@ -76,7 +76,7 @@ COPY uv.lock ./
 # image.
 RUN uv venv --python 3.12 /workspace/.venv \
  && . /workspace/.venv/bin/activate \
- && uv sync --extra train --frozen --no-install-project
+ && uv sync --extra train --locked --no-install-project
 
 ENV VIRTUAL_ENV=/workspace/.venv \
     PATH=/workspace/.venv/bin:$PATH \

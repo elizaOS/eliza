@@ -50,6 +50,7 @@ import {
   type VoiceSpeakerMetadata,
   type VoiceTranscriptEvent,
 } from "../../voice/voice-chat-types";
+import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import type { VoiceTraceMark } from "../../voice/voice-session-client";
 import type { VoiceSessionMintResponse } from "../../voice/voice-session-protocol";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
@@ -178,10 +179,10 @@ export function __resetCompanionSpeechMemoryForTests(): void {
  * Chat assistant TTS pipeline — order matters for cloud-backed voice:
  * 1. Server exposes Eliza Cloud via `GET /api/cloud/status` (`hasApiKey`, `enabled`, `connected`).
  * 2. `AppContext.pollCloudCredits` persists React state and dispatches {@link ELIZA_CLOUD_STATUS_UPDATED_EVENT}.
- * 3. This hook stores `detail.cloudVoiceProxyAvailable` in a ref for same-turn
- *    `true` before React state commits; `cloudConnected` is `context || ref===true`
- *    so an early `false` snapshot cannot block TTS after auth loads. Then reloads
- *    `messages.tts` from `getConfig`.
+ * 3. This hook stores the event's authenticated-and-selected capability in a
+ *    ref for same-turn `true` before React state commits; an early `false`
+ *    snapshot cannot block TTS after auth loads. Then it reloads `messages.tts`
+ *    from `getConfig`.
  * 4. `useVoiceChat` resolves cloud vs own-key mode and speaks via `/api/tts/cloud`
  *    only when cloud inference is actually selected, not merely linked.
  */
@@ -330,8 +331,13 @@ export function useChatVoiceController(options: {
           hasPersistedApiKey: detail.hasPersistedApiKey,
         });
       }
-      if (detail && typeof detail.cloudVoiceProxyAvailable === "boolean") {
-        setCloudVoiceSnapshot(detail.cloudVoiceProxyAvailable);
+      if (detail) {
+        setCloudVoiceSnapshot(
+          isCloudVoiceRunnable({
+            connected: detail.connected,
+            proxyAvailable: detail.cloudVoiceProxyAvailable,
+          }),
+        );
       }
       // Cloud voice availability can flip provider selection — re-resolve config.
       reloadVoiceConfig();
@@ -470,13 +476,16 @@ export function useChatVoiceController(options: {
   );
 
   const cloudVoiceAvailable = useMemo(() => {
-    const fromContext = elizaCloudVoiceProxyAvailable;
+    const fromContext = isCloudVoiceRunnable({
+      connected: elizaCloudConnected,
+      proxyAvailable: elizaCloudVoiceProxyAvailable,
+    });
     // Ref snapshot can be `false` from an early status poll before the key is
     // loaded, then never updated if no further event fires. Prefer the
     // committed `enabled` state; only use the event snapshot to force `true`
     // when it arrives before the wider app state catches up.
     return fromContext || cloudVoiceSnapshot === true;
-  }, [cloudVoiceSnapshot, elizaCloudVoiceProxyAvailable]);
+  }, [cloudVoiceSnapshot, elizaCloudConnected, elizaCloudVoiceProxyAvailable]);
 
   useEffect(() => {
     ttsDebug("chat:cloud-voice-available", {

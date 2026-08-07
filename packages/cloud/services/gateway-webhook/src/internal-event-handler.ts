@@ -1,4 +1,4 @@
-// Handles webhook gateway internal event handler behavior for authenticated connector fan-in.
+/** Validates and forwards authenticated internal agent events. */
 import { z } from "zod";
 import { validateInternalSecret } from "./internal-auth";
 import { logger } from "./logger";
@@ -11,28 +11,69 @@ import {
 
 const MAX_BODY_BYTES = 64 * 1024;
 
+const CanonicalNotificationProvenanceSchema = z
+  .object({
+    source: z.enum(["email", "gmail", "calendar", "google_calendar"] as const),
+    accountId: z.string().min(1).max(128),
+    platformRecordId: z.string().min(1).max(256),
+    chat: z
+      .object({
+        id: z.string().min(1).max(128),
+        type: z.enum(["dm", "private", "direct", "group", "channel"] as const),
+      })
+      .strict(),
+    senderName: z.string().min(1).max(255).optional(),
+  })
+  .strict();
+
 /**
  * Zod schema for the internal event request body.
  * K8s services (CronJobs, matcher, notifier) send events matching this shape.
+ * Notification producers that need canonical memory recall attach
+ * payload.canonicalProvenance; the gateway accepts it only after
+ * X-Internal-Secret auth and forwards it unchanged to agent-server.
  */
-const InternalEventSchema = z.object({
-  agentId: z
-    .string()
-    .min(1)
-    .max(128)
-    .regex(/^[a-zA-Z0-9_-]+$/),
-  // Allows periods and @ for email-format userIds (e.g. user@domain.com)
-  userId: z
-    .string()
-    .min(1)
-    .max(256)
-    .regex(/^[a-zA-Z0-9_@.-]+$/),
-  type: z.enum(["cron", "notification", "system"]),
-  // Depth/fan-out is not validated — callers are trusted K8s-internal services
-  // (CronJobs, matcher, notifier) that have already passed X-Internal-Secret auth.
-  // The 64KB byte-length guard bounds total size.
-  payload: z.record(z.string(), z.unknown()),
-});
+const InternalEventSchema = z
+  .object({
+    agentId: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[a-zA-Z0-9_-]+$/),
+    // Allows periods and @ for email-format userIds (e.g. user@domain.com)
+    userId: z
+      .string()
+      .min(1)
+      .max(256)
+      .regex(/^[a-zA-Z0-9_@.-]+$/),
+    type: z.enum(["cron", "notification", "system"]),
+    // Depth/fan-out is not validated — callers are trusted K8s-internal services
+    // (CronJobs, matcher, notifier) that have already passed X-Internal-Secret auth.
+    // The 64KB byte-length guard bounds total size.
+    payload: z.record(z.string(), z.unknown()),
+  })
+  .superRefine((event, ctx) => {
+    const payload = event.payload as Record<string, unknown>;
+    const envelope = payload.canonicalProvenance;
+    if (envelope === undefined) return;
+    if (event.type !== "notification") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["payload", "canonicalProvenance"],
+        message: "canonicalProvenance is only accepted on notification events",
+      });
+      return;
+    }
+    const parsed = CanonicalNotificationProvenanceSchema.safeParse(envelope);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        ctx.addIssue({
+          ...issue,
+          path: ["payload", "canonicalProvenance", ...issue.path],
+        });
+      }
+    }
+  });
 
 type InternalEvent = z.infer<typeof InternalEventSchema>;
 
@@ -138,9 +179,12 @@ async function processInternalEvent(
   const { redis } = deps;
 
   const server = await resolveAgentServer(redis, event.agentId);
-  if (!server) {
+  if (server.kind !== "ready") {
     // warn, not error: expected during rolling updates or for unregistered agents
-    logger.warn("No server found for agent", { agentId: event.agentId });
+    logger.warn("No server found for agent", {
+      agentId: event.agentId,
+      reason: server.kind,
+    });
     return;
   }
 

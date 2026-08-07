@@ -118,7 +118,23 @@ describe("local inference provider", () => {
 				text: "say this",
 			} as never),
 		).resolves.toEqual(wav);
-		expect(synthesizeSpeech).toHaveBeenCalledWith("say this", undefined);
+		expect(synthesizeSpeech).toHaveBeenCalledWith(
+			"say this",
+			undefined,
+			undefined,
+		);
+
+		await expect(
+			handlers[ModelType.TEXT_TO_SPEECH]?.(runtime as never, {
+				text: "use this voice",
+				voice: "  af_heart  ",
+			} as never),
+		).resolves.toEqual(wav);
+		expect(synthesizeSpeech).toHaveBeenLastCalledWith(
+			"use this voice",
+			undefined,
+			"af_heart",
+		);
 
 		const pcm = new Float32Array([0, 0.1, -0.1]);
 		await expect(

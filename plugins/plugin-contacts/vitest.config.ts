@@ -1,14 +1,19 @@
-/** Vitest config for @elizaos/plugin-contacts: pins react/ui aliases so component tests resolve the workspace copies. */
+/** Vitest config for Contacts: layers native/UI test seams over the shared workspace source aliases. */
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
+const baseAliases = Array.isArray(baseConfig.resolve?.alias)
+  ? baseConfig.resolve.alias
+  : [];
 
 export default defineConfig({
   resolve: {
+    ...baseConfig.resolve,
     alias: [
       {
         find: /^react$/,
@@ -71,6 +76,7 @@ export default defineConfig({
         find: /^@elizaos\/app-core\/(.+)$/,
         replacement: resolve(rootDir, "../../packages/app-core/src/$1"),
       },
+      ...baseAliases,
     ],
   },
   test: {

@@ -4,7 +4,6 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -19,6 +18,7 @@ import {
   SCRIPT_TEST_LANE_COMMANDS,
   SCRIPT_TEST_RUNNER,
 } from "../lib/script-test-inventory.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 import {
   parseScriptTestArgs,
   runScriptTests,

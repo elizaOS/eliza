@@ -65,6 +65,9 @@ describe("native Apple Calendar bridge dylib candidates", () => {
       "../../../../../../../libMacWindowEffects.dylib",
     );
     expect(candidatePaths).toContain(
+      "../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+    );
+    expect(candidatePaths).toContain(
       "../../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
     );
   });

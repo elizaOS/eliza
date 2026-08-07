@@ -78,7 +78,9 @@ env:
 jobs:
   chat-shell-gestures:
     name: Chat shell gesture + parity e2e
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # WebKit needs distro libraries that the Hetzner fleet cannot install
+    # without passwordless sudo. Keep this browser lane on a provisioned host.
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -106,7 +108,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright chromium + webkit
-        run: bunx playwright install --with-deps chromium webkit
+        run: .github/scripts/install-playwright-browsers.sh chromium webkit
 
       # Boot-free coverage gate: fails when a gesture-handler site in
       # packages/ui/src lacks a CHAT_GESTURE_COVERAGE matrix row (#12188).

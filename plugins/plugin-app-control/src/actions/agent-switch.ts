@@ -25,7 +25,7 @@ import type {
 	State,
 } from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
-import { readStringOption } from "../params.js";
+import { readStringOption, userRequestMessageText } from "../params.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 /** Parsed wire response of POST /api/runtime/agent-switch. */
@@ -180,7 +180,8 @@ export function createAgentSwitchAction(
 			message: Memory,
 		): Promise<boolean> => {
 			return (
-				inferAgentSwitchProfile(message.content.text ?? "", undefined) !== null
+				inferAgentSwitchProfile(userRequestMessageText(message), undefined) !==
+				null
 			);
 		},
 
@@ -192,7 +193,7 @@ export function createAgentSwitchAction(
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			const profile = inferAgentSwitchProfile(
-				message.content.text ?? "",
+				userRequestMessageText(message),
 				options,
 			);
 			if (!profile) {

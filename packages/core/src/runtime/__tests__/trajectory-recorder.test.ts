@@ -9,6 +9,10 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// The real canonical parser, imported by path on purpose: the round-trip test
+// must fail if the recorder's terminal shape and the validator's accepted
+// vocabulary ever drift apart.
+import { validateTrajectory } from "../../../../scripts/lib/trajectory-validate";
 import { TRACE_ENV } from "../trace-correlation";
 import {
 	applyTrajectoryFieldCap,
@@ -100,6 +104,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 					promptTokens: 1000,
 					completionTokens: 50,
 					cacheReadInputTokens: 800,
+					reasoningTokens: 400,
 					totalTokens: 1050,
 				},
 			},
@@ -205,6 +210,12 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(parsed.metrics.totalPromptTokens).toBe(1000 + 1500 + 1700);
 		expect(parsed.metrics.totalCompletionTokens).toBe(50 + 80 + 40);
 		expect(parsed.metrics.totalCacheReadTokens).toBe(800 + 1000);
+		// #16394: reasoning tokens roll up across stages; only the
+		// message-handler stage carried them here (400), the others omit the
+		// field and contribute 0.
+		expect(parsed.metrics.totalReasoningTokens).toBe(400);
+		expect(parsed.stages[0]?.model?.usage?.reasoningTokens).toBe(400);
+		expect(parsed.stages[1]?.model?.usage?.reasoningTokens).toBeUndefined();
 		expect(parsed.metrics.finalDecision).toBe("FINISH");
 		expect(parsed.metrics.totalLatencyMs).toBe(300 + 600 + 110 + 270);
 	});
@@ -682,6 +693,89 @@ describe("JsonFileTrajectoryRecorder", () => {
 		const trajectory = await recorder.load(id);
 		expect(trajectory?.status).toBe("errored");
 		expect(trajectory?.metrics.finalDecision).toBe("error");
+	});
+
+	it("stamps the canonical clean terminal on a finished trajectory with no evaluation stage", async () => {
+		// Non-evaluated terminal paths (Stage-1 direct reply, deterministic
+		// fallback, structured failure reply) end a turn without any evaluation
+		// stage. The recorder must still stamp the clean terminal — an absent
+		// finalDecision on a finished trajectory previously read as "died after
+		// planner" and made delivered turns indistinguishable from drops. The
+		// stamp must be a member of the canonical validator's closed
+		// finalDecision vocabulary, not an invented sentinel.
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-direct-reply",
+			rootMessage: { id: "msg", text: "whats my favorite color?" },
+		});
+		await recorder.recordStage(id, {
+			stageId: "stage-msghandler-1",
+			kind: "messageHandler",
+			startedAt: 1_000,
+			endedAt: 1_200,
+			latencyMs: 200,
+			model: {
+				modelType: "RESPONSE_HANDLER",
+				provider: "test",
+				response: "crimson.",
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+		const trajectory = await recorder.load(id);
+		expect(trajectory?.status).toBe("finished");
+		expect(trajectory?.metrics.finalDecision).toBe("FINISH");
+	});
+
+	it("round-trips the stamped clean terminal through the real canonical validator", async () => {
+		// The canonical parser (packages/scripts/lib/trajectory-validate.ts)
+		// accepts only FINISH / CONTINUE / max_iterations / error for
+		// finalDecision — any invented terminal sentinel fails validation for
+		// every recorded trajectory. This drives the REAL validator, not a
+		// re-declared vocabulary, so recorder and parser cannot drift apart.
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-validator-roundtrip",
+			rootMessage: { id: "msg", text: "whats my favorite color?" },
+		});
+		await recorder.recordStage(id, {
+			stageId: "stage-msghandler-1",
+			kind: "messageHandler",
+			startedAt: 1_000,
+			endedAt: 1_200,
+			latencyMs: 200,
+			model: {
+				modelType: "RESPONSE_HANDLER",
+				provider: "test",
+				response: "crimson.",
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+		const trajectory = await recorder.load(id);
+		const result = validateTrajectory(trajectory);
+		const finalDecisionIssues = result.issues.filter(
+			(issue) => issue.path === "$.metrics.finalDecision",
+		);
+		expect(finalDecisionIssues).toEqual([]);
+	});
+
+	it("does not overwrite an evaluation-derived finalDecision at finish", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-eval-continue",
+			rootMessage: { id: "msg", text: "x" },
+		});
+		await recorder.recordStage(id, {
+			stageId: "stage-eval-iter-1",
+			kind: "evaluation",
+			iteration: 1,
+			startedAt: 1_000,
+			endedAt: 1_100,
+			latencyMs: 100,
+			evaluation: { success: true, decision: "CONTINUE", thought: "more" },
+		});
+		await recorder.endTrajectory(id, "finished");
+		const trajectory = await recorder.load(id);
+		expect(trajectory?.metrics.finalDecision).toBe("CONTINUE");
 	});
 
 	it("list returns trajectories sorted by startedAt desc and respects filters", async () => {

@@ -23,8 +23,96 @@ export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
 
 let appPromise: Promise<Hono<AppEnv>> | undefined;
-let inferenceAppPromise: Promise<Hono<AppEnv>> | undefined;
-const CHAT_COMPLETIONS_PATH = "/api/v1/chat/completions";
+const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
+
+interface InferenceRouteSpec {
+  key: string;
+  mountPath: string;
+  matches(pathname: string): boolean;
+  load(): Promise<{ default: Hono<AppEnv> }>;
+}
+
+function exactInferenceRoute(
+  pathname: string,
+  load: InferenceRouteSpec["load"],
+): InferenceRouteSpec {
+  return {
+    key: pathname,
+    mountPath: pathname,
+    matches: (candidate) => candidate === pathname,
+    load,
+  };
+}
+
+const INFERENCE_ROUTES: readonly InferenceRouteSpec[] = [
+  exactInferenceRoute(
+    "/api/v1/chat/completions",
+    () => import("../v1/chat/completions/route"),
+  ),
+  exactInferenceRoute("/api/v1/messages", () => import("../v1/messages/route")),
+  exactInferenceRoute(
+    "/api/v1/responses",
+    () => import("../v1/responses/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/embeddings",
+    () => import("../v1/embeddings/route"),
+  ),
+  exactInferenceRoute("/api/v1/chat", () => import("../v1/chat/route")),
+  exactInferenceRoute(
+    "/api/v1/voice/stt",
+    () => import("../v1/voice/stt/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/voice/tts",
+    () => import("../v1/voice/tts/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/generate-image",
+    () => import("../v1/generate-image/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/generate-video",
+    () => import("../v1/generate-video/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/generate-music",
+    () => import("../v1/generate-music/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/generate-sfx",
+    () => import("../v1/generate-sfx/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/generate-prompts",
+    () => import("../v1/generate-prompts/route"),
+  ),
+  {
+    key: "app-chat",
+    mountPath: "/api/v1/apps/:id/chat",
+    matches: (pathname) => /^\/api\/v1\/apps\/[^/]+\/chat$/.test(pathname),
+    load: () => import("../v1/apps/[id]/chat/route"),
+  },
+  {
+    key: "app-generate-image",
+    mountPath: "/api/v1/apps/:id/generate-image",
+    matches: (pathname) =>
+      /^\/api\/v1\/apps\/[^/]+\/generate-image$/.test(pathname),
+    load: () => import("../v1/apps/[id]/generate-image/route"),
+  },
+  {
+    key: "agent-a2a",
+    mountPath: "/api/agents/:id/a2a",
+    matches: (pathname) => /^\/api\/agents\/[^/]+\/a2a$/.test(pathname),
+    load: () => import("../agents/[id]/a2a/route"),
+  },
+  {
+    key: "agent-mcp",
+    mountPath: "/api/agents/:id/mcp",
+    matches: (pathname) => /^\/api\/agents\/[^/]+\/mcp$/.test(pathname),
+    load: () => import("../agents/[id]/mcp/route"),
+  },
+];
 const AGENT_ID_RE =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
@@ -55,11 +143,18 @@ async function getApp(): Promise<Hono<AppEnv>> {
   return appPromise;
 }
 
-async function getInferenceApp(): Promise<Hono<AppEnv>> {
-  inferenceAppPromise ??= import("./inference-app").then((m) =>
-    m.createInferenceApp(),
-  );
-  return inferenceAppPromise;
+async function getInferenceApp(
+  spec: InferenceRouteSpec,
+): Promise<Hono<AppEnv>> {
+  let promise = inferenceAppPromises.get(spec.key);
+  if (!promise) {
+    promise = Promise.all([import("./inference-app"), spec.load()]).then(
+      ([shell, route]) =>
+        shell.createInferenceApp(spec.mountPath, route.default),
+    );
+    inferenceAppPromises.set(spec.key, promise);
+  }
+  return promise;
 }
 
 export function isThinInferenceEnabled(
@@ -69,7 +164,7 @@ export function isThinInferenceEnabled(
 }
 
 export function isCanonicalInferencePath(pathname: string): boolean {
-  return pathname === CHAT_COMPLETIONS_PATH;
+  return INFERENCE_ROUTES.some((route) => route.matches(pathname));
 }
 
 async function dispatchInference(
@@ -77,16 +172,18 @@ async function dispatchInference(
   env: AppEnv["Bindings"],
   ctx: ExecutionContext,
 ): Promise<Response | null> {
-  if (
-    !isThinInferenceEnabled(env) ||
-    !isCanonicalInferencePath(new URL(request.url).pathname)
-  ) {
+  if (!isThinInferenceEnabled(env)) {
     return null;
   }
+  const pathname = new URL(request.url).pathname;
+  const route = INFERENCE_ROUTES.find((candidate) =>
+    candidate.matches(pathname),
+  );
+  if (!route) return null;
 
   const dispatchStartedAt = performance.now();
-  const moduleWasInitialized = Boolean(inferenceAppPromise);
-  const app = await getInferenceApp();
+  const moduleWasInitialized = inferenceAppPromises.has(route.key);
+  const app = await getInferenceApp(route);
   const moduleInitMs = performance.now() - dispatchStartedAt;
   const response = await app.fetch(request, env, ctx);
   const dispatchMs = performance.now() - dispatchStartedAt;
@@ -207,7 +304,14 @@ function isFrontendAliasBackendPath(url: URL): boolean {
     url.pathname === "/api" ||
     url.pathname.startsWith("/api/") ||
     url.pathname === "/steward" ||
-    url.pathname.startsWith("/steward/")
+    url.pathname.startsWith("/steward/") ||
+    // OIDC requires discovery and its key set at the issuer origin's root, so
+    // those two documents must reach this Worker rather than the hosted
+    // frontend. Match them exactly: a `/.well-known/` prefix would also move
+    // every other well-known path on the alias hosts off the SPA, including
+    // publishing the internal-service JWKS where it is not published today.
+    url.pathname === "/.well-known/openid-configuration" ||
+    url.pathname === "/.well-known/oidc/jwks.json"
   );
 }
 

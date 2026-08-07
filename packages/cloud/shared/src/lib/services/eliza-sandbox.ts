@@ -9789,7 +9789,13 @@ export class ElizaSandboxService {
       normalized.includes("not found") ||
       normalized.includes("already gone") ||
       normalized.includes("no longer exists") ||
-      normalized.includes("404")
+      normalized.includes("404") ||
+      // docker-sandbox-provider's hydrateContainerFromDb throws this when the
+      // sandbox row points at a node purged from docker_nodes (decommissioned
+      // node). For stop/delete teardown the container's host no longer exists,
+      // so there is nothing left to stop — without this the delete escalates,
+      // exhausts retries, and wedges the agent in deletion_failed forever.
+      normalized.includes("missing persisted docker node metadata")
     );
   }
 

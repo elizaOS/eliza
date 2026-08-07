@@ -476,6 +476,8 @@ export * from "./utils/project-registry";
 export * from "./utils/prompt-compression";
 // Canonical env-var reader with legacy-alias back-compat
 export * from "./utils/read-env";
+// Blob-safe rendering of user/planner-supplied references in output
+export * from "./utils/reference-echo";
 // Canonical runtime-setting → env resolver (per-agent setting first, then env)
 export * from "./utils/resolve-setting";
 export * from "./utils/server-health";

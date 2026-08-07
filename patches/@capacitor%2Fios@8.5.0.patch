@@ -1,0 +1,32 @@
+diff --git a/Capacitor/Capacitor/CapacitorBridge.swift b/Capacitor/Capacitor/CapacitorBridge.swift
+index 26343639508383f9c2fdf195cd00c04c6614d41f..27e65565597e219c9a4a831e315a75d95118d941 100644
+--- a/Capacitor/Capacitor/CapacitorBridge.swift
++++ b/Capacitor/Capacitor/CapacitorBridge.swift
+@@ -265,13 +265,25 @@ open class CapacitorBridge: NSObject, CAPBridgeProtocol {
+         } else {
+             observers.append(NotificationCenter.default.addObserver(forName: UIScene.willEnterForegroundNotification, object: nil, queue: OperationQueue.main) { [weak self] notification in
+                 if let scene = notification.object as? UIWindowScene, scene === self?.viewController?.view.window?.windowScene {
+-                    self?.triggerDocumentJSEvent(eventName: "resume")
++                    // Skip until the initial page load has finished: this scene
++                    // notification also fires at cold launch, and evaluating the
++                    // document event before Capacitor is injected throws a JS error.
++                    guard let self = self, case .subsequentLoad = self.webViewDelegationHandler.webViewLoadingState else {
++                        return
++                    }
++                    self.triggerDocumentJSEvent(eventName: "resume")
+                 }
+ 
+             })
+             observers.append(NotificationCenter.default.addObserver(forName: UIScene.didEnterBackgroundNotification, object: nil, queue: OperationQueue.main) { [weak self] notification in
+                 if let scene = notification.object as? UIWindowScene, scene === self?.viewController?.view.window?.windowScene {
+-                    self?.triggerDocumentJSEvent(eventName: "pause")
++                    // There is likewise no page state to pause before the initial
++                    // load completes, so keep this document eval behind the same
++                    // loading-state boundary as resume.
++                    guard let self = self, case .subsequentLoad = self.webViewDelegationHandler.webViewLoadingState else {
++                        return
++                    }
++                    self.triggerDocumentJSEvent(eventName: "pause")
+                 }
+             })
+         }

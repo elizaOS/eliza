@@ -7,9 +7,9 @@
  * secrets so a managed deploy overwrites any stale Worker value first.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolveGnuBash } from "../lib/gnu-shell.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
 
@@ -108,7 +108,10 @@ describe("Cloud CF realtime voice deploy contract", () => {
       "is gated by VOICE_REALTIME_WS_ENABLED; skipping",
     );
     expect(publishStep.run).toContain(
-      "DEEPGRAM_API_KEY|CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION",
+      "CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION",
+    );
+    expect(publishStep.run).toContain(
+      "is gated by VOICE_BATCH_STT_PROVIDER=deepgram; skipping",
     );
     expect(publishStep.run).toContain(
       "FISH_AUDIO_API_KEY|FISH_AUDIO_REFERENCE_ID",
@@ -255,7 +258,6 @@ executedDescribe(
 
     test("requires every realtime provider and bridge secret in opted-in staging", () => {
       for (const missing of [
-        "DEEPGRAM_API_KEY",
         "CARTESIA_API_KEY",
         "VOICE_REALTIME_ELIZA_AUTHORIZATION",
       ]) {
@@ -374,7 +376,7 @@ executedDescribe(
       expect(missingDedicated.stdout).toContain(
         "Production realtime voice is enabled",
       );
-      expect(missingDedicated.stdout).toContain("DEEPGRAM_API_KEY");
+      expect(missingDedicated.stdout).not.toContain("DEEPGRAM_API_KEY");
       expect(missingDedicated.stdout).toContain("CARTESIA_API_KEY");
       expect(missingDedicated.stdout).toContain(
         "VOICE_REALTIME_ELIZA_AUTHORIZATION",
@@ -389,7 +391,6 @@ executedDescribe(
       const configured = runPreflight({
         DEPLOY_ENVIRONMENT: "production",
         PRODUCTION_REALTIME_WS_ENABLED: "true",
-        DEEPGRAM_API_KEY: "deepgram-production",
         CARTESIA_API_KEY: "cartesia-production",
         VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer production-dedicated",
         PRODUCTION_REALTIME_CARTESIA_VOICE_ID: "production-voice-id",

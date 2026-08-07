@@ -97,9 +97,15 @@ function renderText(selected: ReportedError[]): string {
 		const suffix = ctx ? ` — ${ctx}` : "";
 		return `- [${entry.scope}] ${entry.code}: ${entry.message}${suffix}`;
 	});
-	return `## Recent runtime errors
+	// The framing must make the block self-quarantining: rendered into a group
+	// turn, an unframed error list reads like conversation topic material — a
+	// live "available_apps provider timeout" got answered as if it were the
+	// user's question (tj-f8249b30e986d6). State explicitly that these are
+	// internal diagnostics and that user messages are never about them unless
+	// the user explicitly asks about errors.
+	return `## Recent runtime errors (internal diagnostics)
 
-The following failures were reported outside the normal action flow:
+The following failures were reported outside the normal action flow. They are internal diagnostics for your own self-awareness — not conversation content. Never assume a user's message refers to them unless the user explicitly asks about errors.
 
 ${lines.join("\n")}
 

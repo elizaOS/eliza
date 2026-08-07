@@ -23,6 +23,7 @@ import {
   ModelType,
   type Service,
 } from "@elizaos/core";
+import { readConfigEnvKey } from "./config-env.js";
 import { parseJsonObjectResponse } from "./json-model-output.js";
 import { withTrajectoryContext } from "./trajectory-context.js";
 
@@ -243,6 +244,22 @@ function shouldForceCloudAppSkill(taskText: string): boolean {
   return APP_BUILD_TASK_RE.test(taskText);
 }
 
+/** Parse the explicit operator opt-in for forcing the paired Cloud app-build
+ * skills (`build-monetized-app` + `eliza-cloud`) to the top of the ranking
+ * for app-shaped prompts. Pure so the gate is unit-testable without touching
+ * config; `recommendSkillsForTask` resolves the config-backed value once per
+ * call. Default is OFF: the keyword/LLM ranking wins unless the operator
+ * explicitly enables the override via `ELIZA_FORCE_CLOUD_APP_SKILLS`. */
+export function isForcedCloudAppSkillsOptIn(raw: string | undefined): boolean {
+  const normalized = raw?.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
+}
+
 function buildForcedCloudAppSkills(
   candidates: SkillCandidate[],
 ): RecommendedSkill[] {
@@ -274,12 +291,13 @@ function buildForcedCloudAppSkills(
 }
 
 function withForcedCloudAppSkills(
+  enabled: boolean,
   recommendations: RecommendedSkill[],
   candidates: SkillCandidate[],
   taskText: string,
   max: number,
 ): RecommendedSkill[] {
-  if (!shouldForceCloudAppSkill(taskText)) {
+  if (!enabled || !shouldForceCloudAppSkill(taskText)) {
     return recommendations.slice(0, max);
   }
 
@@ -440,6 +458,9 @@ export async function recommendSkillsForTask(
     tags: skill.frontmatter?.metadata?.otto?.tags,
   }));
 
+  const forceCloudAppSkills = isForcedCloudAppSkillsOptIn(
+    readConfigEnvKey("ELIZA_FORCE_CLOUD_APP_SKILLS"),
+  );
   const taskTokens = new Set(tokenize(opts.taskText));
   const contextParts: string[] = [];
   if (opts.repoContext?.language) contextParts.push(opts.repoContext.language);
@@ -460,7 +481,13 @@ export async function recommendSkillsForTask(
 
   if (scoredCandidates.length === 0) {
     log.debug(`${LOG_PREFIX} no keyword overlap for task; skipping LLM pass`);
-    return withForcedCloudAppSkills([], candidates, opts.taskText, max);
+    return withForcedCloudAppSkills(
+      forceCloudAppSkills,
+      [],
+      candidates,
+      opts.taskText,
+      max,
+    );
   }
 
   const fastPathRecommendations: RecommendedSkill[] = scoredCandidates.map(
@@ -478,6 +505,7 @@ export async function recommendSkillsForTask(
 
   if (llmDisabled || llmShortCircuit) {
     return withForcedCloudAppSkills(
+      forceCloudAppSkills,
       fastPathRecommendations,
       candidates,
       opts.taskText,
@@ -488,6 +516,7 @@ export async function recommendSkillsForTask(
   const useModelFn = (runtime as { useModel?: unknown }).useModel;
   if (typeof useModelFn !== "function") {
     return withForcedCloudAppSkills(
+      forceCloudAppSkills,
       fastPathRecommendations,
       candidates,
       opts.taskText,
@@ -525,6 +554,7 @@ export async function recommendSkillsForTask(
       `${LOG_PREFIX} LLM scoring returned no parseable entries; falling back to keyword pass`,
     );
     return withForcedCloudAppSkills(
+      forceCloudAppSkills,
       fastPathRecommendations,
       candidates,
       opts.taskText,
@@ -573,6 +603,7 @@ export async function recommendSkillsForTask(
     .sort((a, b) => b.score - a.score)
     .slice(0, max);
   return withForcedCloudAppSkills(
+    forceCloudAppSkills,
     finalRecommendations,
     candidates,
     opts.taskText,
