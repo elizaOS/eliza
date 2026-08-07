@@ -3163,7 +3163,7 @@ export async function handleConversationRoutes(
             }
             writeChatToolSse(res, event);
           },
-          onChunk: (chunk) => {
+          onChunk: (chunk, origin) => {
             if (!chunk) return;
             if (
               disconnectTracker.isAborted() ||
@@ -3172,9 +3172,15 @@ export async function handleConversationRoutes(
               return;
             }
             streamedText += chunk;
-            tokenWriter.writeChunk(res, chunk, streamedText);
+            // Action-callback text is provisional on the wire: the final reply
+            // may replace it wholesale, and a voice client must not speak text
+            // it cannot retract (the double-speak defect). Text rendering is
+            // unaffected.
+            tokenWriter.writeChunk(res, chunk, streamedText, {
+              provisional: origin === "action_callback",
+            });
           },
-          onSnapshot: (text) => {
+          onSnapshot: (text, origin) => {
             if (!text) return;
             if (
               disconnectTracker.isAborted() ||
@@ -3197,7 +3203,9 @@ export async function handleConversationRoutes(
               return;
             }
             streamedText = text;
-            tokenWriter.writeSnapshot(res, streamedText);
+            tokenWriter.writeSnapshot(res, streamedText, {
+              provisional: origin === "action_callback",
+            });
           },
           resolveNoResponseText: () =>
             resolveNoResponseFallback(state.logBuffer, runtime),
