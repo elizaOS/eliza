@@ -23,6 +23,13 @@ import { provisioningJobService } from "./provisioning-jobs";
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
 const USER = "33333333-3333-4333-8333-333333333333";
+const EMPTY_RECOVERY = {
+  scanned: 0,
+  retried: 0,
+  permanentlyFailed: 0,
+  unchanged: 0,
+  failures: [],
+};
 
 function makeJob(
   type: string,
@@ -103,7 +110,7 @@ function harness(job: Job) {
       renewLeaseSpy.mockRestore();
     },
   };
-  const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+  const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
   const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
   const updateSpy = spyOn(jobsRepository, "updateForExecution").mockImplementation(
     async (claimedJob, updates) => ({ ...claimedJob, ...updates }),

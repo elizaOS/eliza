@@ -12,7 +12,11 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
-import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  loadAccount,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../../../../plugins/plugin-agent-orchestrator/src/services/acp-service.js";
 import { OrchestratorTaskService } from "../../../../plugins/plugin-agent-orchestrator/src/services/orchestrator-task-service.js";
@@ -445,23 +449,26 @@ describeLive(
         setEnv("OPENAI_API_KEY", "test-api-key-must-not-authenticate");
 
         const now = Date.now();
-        saveAccount({
-          id: LINKED_ACCOUNT_ID,
-          providerId: "openai-codex",
-          label: "Live linked Codex",
-          source: "oauth",
-          credentials: {
-            access: hostAuth.tokens.access_token,
-            refresh: hostAuth.tokens.refresh_token,
-            idToken: hostAuth.tokens.id_token,
-            expires: jwtExpiryMs(hostAuth.tokens.access_token),
+        saveAccount(
+          {
+            id: LINKED_ACCOUNT_ID,
+            providerId: "openai-codex",
+            label: "Live linked Codex",
+            source: "oauth",
+            credentials: {
+              access: hostAuth.tokens.access_token,
+              refresh: hostAuth.tokens.refresh_token,
+              idToken: hostAuth.tokens.id_token,
+              expires: jwtExpiryMs(hostAuth.tokens.access_token),
+            },
+            organizationId: hostAuth.tokens.account_id,
+            createdAt: now,
+            updatedAt: hostAuth.last_refresh
+              ? Date.parse(hostAuth.last_refresh)
+              : now,
           },
-          organizationId: hostAuth.tokens.account_id,
-          createdAt: now,
-          updatedAt: hostAuth.last_refresh
-            ? Date.parse(hostAuth.last_refresh)
-            : now,
-        });
+          createIsolatedAccountStoragePolicy(liveRoot),
+        );
 
         __resetDefaultAccountPoolForTests();
         const firstPool = getDefaultAccountPool();

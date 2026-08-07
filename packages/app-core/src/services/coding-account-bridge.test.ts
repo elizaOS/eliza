@@ -16,13 +16,19 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  loadAccount,
+  resetAccountCredentialStorage,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import type { AccountCredentialProvider } from "@elizaos/auth/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,
   configureDefaultAccountPoolSelection,
   getDefaultAccountPool,
+  resetDefaultAccountPoolAfterCredentialReset,
 } from "./account-pool.js";
 import { readTodayCounters } from "./account-usage.js";
 import {
@@ -45,21 +51,24 @@ function writeAccount(
   extra: { organizationId?: string; idToken?: string } = {},
 ): void {
   const { idToken, ...record } = extra;
-  saveAccount({
-    id,
-    providerId,
-    label: id,
-    source: "oauth",
-    credentials: {
-      access,
-      refresh: `${access}-refresh`,
-      expires: FAR_FUTURE,
-      ...(idToken ? { idToken } : {}),
+  saveAccount(
+    {
+      id,
+      providerId,
+      label: id,
+      source: "oauth",
+      credentials: {
+        access,
+        refresh: `${access}-refresh`,
+        expires: FAR_FUTURE,
+        ...(idToken ? { idToken } : {}),
+      },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      ...record,
     },
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    ...record,
-  });
+    createIsolatedAccountStoragePolicy(home),
+  );
 }
 
 function writeExpiringAccount(
@@ -67,15 +76,18 @@ function writeExpiringAccount(
   id: string,
   credentials: { access: string; refresh: string; expires: number },
 ): void {
-  saveAccount({
-    id,
-    providerId,
-    label: id,
-    source: "oauth",
-    credentials,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  });
+  saveAccount(
+    {
+      id,
+      providerId,
+      label: id,
+      source: "oauth",
+      credentials,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+    createIsolatedAccountStoragePolicy(home),
+  );
 }
 
 async function setUsage(
@@ -143,6 +155,30 @@ afterEach(() => {
 const originalFetch = globalThis.fetch;
 
 describe("coding-account-bridge", () => {
+  it("fences a pre-reset pool from recreating credential metadata", async () => {
+    writeAccount("openai-codex", "stale-pool", "codex-stale");
+    const pool = getDefaultAccountPool();
+    const account = pool.get("stale-pool", "openai-codex");
+    if (!account) throw new Error("test account was not loaded");
+    await pool.upsert({ ...account, priority: 4 });
+    const metadataPath = path.join(home, "auth", "_pool-metadata.json");
+    expect(readFileSync(metadataPath, "utf8")).toContain("stale-pool");
+
+    resetAccountCredentialStorage(
+      createIsolatedAccountStoragePolicy(home),
+      () => {},
+    );
+
+    await expect(pool.upsert({ ...account, priority: 5 })).rejects.toEqual(
+      expect.objectContaining({
+        code: "AUTH_CREDENTIAL_STORAGE_GENERATION_CHANGED",
+      }),
+    );
+    expect(() => readFileSync(metadataPath, "utf8")).toThrow();
+    resetDefaultAccountPoolAfterCredentialReset();
+    expect(getDefaultAccountPool().list("openai-codex")).toEqual([]);
+  });
+
   it("derives identity only from a structurally valid three-segment id token", () => {
     const encodedPayload = Buffer.from(
       JSON.stringify({ email: "valid@example.com" }),

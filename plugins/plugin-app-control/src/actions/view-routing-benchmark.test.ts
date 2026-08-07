@@ -154,7 +154,7 @@ function runBenchmark(): {
 	};
 
 	// Exhaustive noun recall: every view × every multilingual noun × forms.
-	for (const { viewId, phrases } of nounRecallCases()) {
+	for (const { viewId, phrases, navigationOnly } of nounRecallCases()) {
 		record(
 			viewId,
 			"und",
@@ -162,6 +162,7 @@ function runBenchmark(): {
 			phrases.verb,
 			resolveIntentView(phrases.verb),
 		);
+		if (navigationOnly) continue;
 		record(
 			viewId,
 			"und",

@@ -12,12 +12,18 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listAccounts, loadAccount, saveAccount } from "./account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  listAccounts,
+  loadAccount,
+  saveAccount as saveAccountWithPolicy,
+} from "./account-storage";
 import {
   _resetFlowRegistry,
   type FlowState,
   fetchAnthropicOAuthProfile,
-  startCodexOAuthFlow,
+  type StartOptions,
+  startCodexOAuthFlow as startCodexOAuthFlowWithPolicy,
   submitFlowCode,
   submitProviderFlowCode,
   subscribeFlow,
@@ -109,9 +115,27 @@ function useTempElizaHome(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-oauth-flow-test-"));
   tempHomes.push(dir);
   vi.stubEnv("ELIZA_HOME", dir);
+  vi.stubEnv("ELIZA_STATE_DIR", dir);
   vi.stubEnv("HOME", dir);
   vi.stubEnv("USERPROFILE", dir);
   return dir;
+}
+
+function storagePolicy() {
+  const root = process.env.ELIZA_HOME;
+  if (!root) throw new Error("test storage root is not initialized");
+  return createIsolatedAccountStoragePolicy(root);
+}
+
+function saveAccount(record: Parameters<typeof saveAccountWithPolicy>[0]) {
+  return saveAccountWithPolicy(record, storagePolicy());
+}
+
+function startCodexOAuthFlow(options: Omit<StartOptions, "storagePolicy">) {
+  return startCodexOAuthFlowWithPolicy({
+    ...options,
+    storagePolicy: storagePolicy(),
+  });
 }
 
 /** A controllable fake vendor flow: the test resolves the token exchange. */

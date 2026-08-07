@@ -62,6 +62,10 @@ export function buildSharedEnv(
       process.env.ELIZA_LOCAL_ROOT_KEY ?? CLOUD_E2E_LOCAL_ROOT_KEY,
     // Mocks
     MOCK_REDIS: "1",
+    // Worker inference is cache-only. Keep the local cache enabled so cold
+    // decisions can hydrate into the in-memory Redis adapter instead of
+    // returning a permanent warming response from `.dev.vars`' dev default.
+    CACHE_ENABLED: "true",
     MOCK_HETZNER_LATENCY: "0",
     MOCK_HETZNER_ACTION_MS: process.env.MOCK_HETZNER_ACTION_MS ?? "30",
     CONTROL_PLANE_TICK_MS: process.env.CONTROL_PLANE_TICK_MS ?? "50",

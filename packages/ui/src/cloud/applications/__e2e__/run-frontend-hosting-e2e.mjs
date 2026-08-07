@@ -39,11 +39,27 @@ const outDir = join(here, "output-frontend-hosting");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
-// Leg-3 port range (363xx).
-const API_PORT = 36313;
-const PAGE_PORT = 36314;
+// Ephemeral ports: a fixed port lets a zombie cloud-api from a previous run
+// on a persistent self-hosted runner answer the health check with its stale
+// DB (app create then 409s on the reused fixture name). A kernel-assigned
+// free port guarantees this run talks only to the server it just booted.
+import { createServer as createNetServer } from "node:net";
+async function freePort() {
+  return new Promise((res, rej) => {
+    const srv = createNetServer();
+    srv.listen(0, "127.0.0.1", () => {
+      const { port } = srv.address();
+      srv.close((err) => (err ? rej(err) : res(port)));
+    });
+    srv.on("error", rej);
+  });
+}
+const API_PORT = await freePort();
+const PAGE_PORT = await freePort();
 const API_BASE = `http://127.0.0.1:${API_PORT}`;
-const DEAD_API_BASE = "http://127.0.0.1:36399"; // nothing listens here
+// A port we allocated and immediately released, then never listen on: requests
+// must fail, which is exactly the cloud-inactive state under test.
+const DEAD_API_BASE = `http://127.0.0.1:${await freePort()}`;
 
 let failures = 0;
 function assert(cond, msg) {

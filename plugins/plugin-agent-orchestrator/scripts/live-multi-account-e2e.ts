@@ -38,9 +38,12 @@ import { assessCodingAccountReadiness } from "../src/services/coding-account-sel
 // clean-skip path never loads them — the scheduled lane invokes this with no
 // secrets and must exit 0 without touching the build graph.
 type SaveAccount = typeof import("@elizaos/auth/account-storage").saveAccount;
+type AccountStoragePolicy =
+  import("@elizaos/auth/account-storage").AccountStoragePolicy;
 type GetBridge =
   typeof import("../../../packages/app-core/src/services/coding-account-bridge.ts").getCodingAgentSelectorBridge;
 let saveAccount: SaveAccount;
+let storagePolicy: AccountStoragePolicy;
 let getCodingAgentSelectorBridge: GetBridge;
 
 const log = (m: string) => console.log(`[live-multi-account] ${m}`);
@@ -80,15 +83,18 @@ function seedClaude(tokens: string[]): string[] {
   const ids: string[] = [];
   tokens.forEach((token, idx) => {
     const id = `live-claude-${idx + 1}`;
-    saveAccount({
-      id,
-      providerId: "anthropic-subscription",
-      label: `Live Claude ${idx + 1}`,
-      source: "oauth",
-      credentials: { access: token, refresh: "", expires: jwtExpMs(token) },
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+    saveAccount(
+      {
+        id,
+        providerId: "anthropic-subscription",
+        label: `Live Claude ${idx + 1}`,
+        source: "oauth",
+        credentials: { access: token, refresh: "", expires: jwtExpMs(token) },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+      storagePolicy,
+    );
     ids.push(id);
   });
   return ids;
@@ -109,21 +115,24 @@ function seedCodex(blobs: string[]): string[] {
       return;
     }
     const id = `live-codex-${idx + 1}`;
-    saveAccount({
-      id,
-      providerId: "openai-codex",
-      label: `Live Codex ${idx + 1}`,
-      source: "oauth",
-      credentials: {
-        access,
-        refresh,
-        expires: jwtExpMs(access),
-        ...(idToken ? { idToken } : {}),
+    saveAccount(
+      {
+        id,
+        providerId: "openai-codex",
+        label: `Live Codex ${idx + 1}`,
+        source: "oauth",
+        credentials: {
+          access,
+          refresh,
+          expires: jwtExpMs(access),
+          ...(idToken ? { idToken } : {}),
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        organizationId: accountId,
       },
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      organizationId: accountId,
-    });
+      storagePolicy,
+    );
     ids.push(id);
   });
   return ids;
@@ -181,7 +190,9 @@ async function main(): Promise<void> {
   process.env.ELIZA_CODING_ACCOUNT_STRATEGY ??= "least-used";
 
   // Gate passed and credentials present — now load the runtime graph.
-  ({ saveAccount } = await import("@elizaos/auth/account-storage"));
+  const accountStorage = await import("@elizaos/auth/account-storage");
+  saveAccount = accountStorage.saveAccount;
+  storagePolicy = accountStorage.createIsolatedAccountStoragePolicy(home);
   ({ getCodingAgentSelectorBridge } = await import(
     "../../../packages/app-core/src/services/coding-account-bridge.ts"
   ));

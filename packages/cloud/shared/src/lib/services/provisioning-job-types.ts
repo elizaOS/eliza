@@ -92,6 +92,8 @@ export const JOB_TYPES = {
    * app strands a live DB we keep paying for and burns a finite slot (#8342).
    */
   APP_DB_DEPROVISION: "app_db_deprovision",
+  /** Durable post-commit eviction for terminal app provisioning writebacks. */
+  APP_CACHE_INVALIDATE: "app_cache_invalidate",
 } as const;
 
 export type ProvisioningJobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES];
@@ -246,6 +248,7 @@ export const APPS_JOB_TYPES = [
   JOB_TYPES.CONTAINER_LOGS,
   JOB_TYPES.APP_DEPLOY,
   JOB_TYPES.APP_DB_DEPROVISION,
+  JOB_TYPES.APP_CACHE_INVALIDATE,
 ] as const satisfies readonly ProvisioningJobType[];
 
 export const JOB_LANES = {

@@ -17,7 +17,10 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import { getDefaultAccountPool } from "../../../packages/app-core/src/services/account-pool.ts";
 import { getCodingAgentSelectorBridge } from "../../../packages/app-core/src/services/coding-account-bridge.ts";
 import { AcpService } from "../src/services/acp-service.ts";
@@ -64,21 +67,24 @@ async function main() {
     return;
   }
 
-  saveAccount({
-    id: "machine-codex",
-    providerId: "openai-codex",
-    label: "Machine Codex (live)",
-    source: "oauth",
-    credentials: {
-      access,
-      refresh,
-      expires: jwtExpMs(access),
-      ...(idToken ? { idToken } : {}),
+  saveAccount(
+    {
+      id: "machine-codex",
+      providerId: "openai-codex",
+      label: "Machine Codex (live)",
+      source: "oauth",
+      credentials: {
+        access,
+        refresh,
+        expires: jwtExpMs(access),
+        ...(idToken ? { idToken } : {}),
+      },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      organizationId: accountId,
     },
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    organizationId: accountId,
-  });
+    createIsolatedAccountStoragePolicy(home),
+  );
   log(`Imported real Codex account (account_id ${accountId}).`);
 
   const pool = getDefaultAccountPool();

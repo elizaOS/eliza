@@ -183,11 +183,9 @@ async function pollCycle(
 
 /**
  * One-shot recovery of the executions a previous process left `in_progress`.
- * Guarded because it sits between boot and the poll loop: the sweep throws when
- * every job in a batch failed, and on a lane this small that batch is routinely
- * one row. Rethrowing here exits the process, systemd restarts into the same
- * row, and the lane claims nothing at all — strictly worse than booting with
- * that row still stale, which the poll cycle's stale sweep retries anyway.
+ * Guarded because it sits between boot and the poll loop: typed row failures
+ * are already reported after every job type has been swept, while rethrowing
+ * here would keep the healthy lanes from resuming work.
  */
 export async function recoverInterruptedExecutions(
   logger: WorkerLogger,
@@ -195,16 +193,17 @@ export async function recoverInterruptedExecutions(
 ): Promise<void> {
   try {
     const { provisioningJobService } = await loadWorkerDeps();
-    const recovered =
+    const recovery =
       await provisioningJobService.recoverInterruptedJobsOnStartup(
         workerStartedAt,
         APPS_JOB_TYPES,
       );
-    if (recovered > 0) {
+    if (recovery.retried > 0 || recovery.permanentlyFailed > 0) {
       logger.warn(
         "[apps-worker] recovered interrupted executions from prior process",
         {
-          recovered,
+          retried: recovery.retried,
+          permanentlyFailed: recovery.permanentlyFailed,
         },
       );
     }

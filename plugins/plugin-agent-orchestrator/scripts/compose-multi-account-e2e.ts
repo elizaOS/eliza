@@ -24,7 +24,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 // Import the pool from app-core SRC, not the package barrel: app-core has no
 // `eliza-source` export condition, so the barrel resolves to (possibly stale)
 // dist — which may predate the coding-agent selector bridge. The src path
@@ -75,16 +78,19 @@ function mkAccount(
   access: string,
   organizationId?: string,
 ) {
-  saveAccount({
-    id,
-    providerId,
-    label: id,
-    source: "oauth",
-    credentials: { access, refresh: `${access}-r`, expires: FAR_FUTURE },
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    ...(organizationId ? { organizationId } : {}),
-  });
+  saveAccount(
+    {
+      id,
+      providerId,
+      label: id,
+      source: "oauth",
+      credentials: { access, refresh: `${access}-r`, expires: FAR_FUTURE },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      ...(organizationId ? { organizationId } : {}),
+    },
+    createIsolatedAccountStoragePolicy(home),
+  );
 }
 
 const checks: Array<{ name: string; ok: boolean; detail?: string }> = [];

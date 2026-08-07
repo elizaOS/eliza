@@ -13,7 +13,10 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import { getDefaultAccountPool } from "../../../packages/app-core/src/services/account-pool.ts";
 import { getCodingAgentSelectorBridge } from "../../../packages/app-core/src/services/coding-account-bridge.ts";
 import { AcpService } from "../src/services/acp-service.ts";
@@ -30,19 +33,22 @@ async function main() {
     log("SKIP: no CEREBRAS_API_KEY in env");
     return;
   }
-  saveAccount({
-    id: "live-cerebras",
-    providerId: "cerebras-api",
-    label: "Machine Cerebras (live)",
-    source: "api-key",
-    credentials: {
-      access: cerebrasKey,
-      refresh: "",
-      expires: Date.now() + 1e10,
+  saveAccount(
+    {
+      id: "live-cerebras",
+      providerId: "cerebras-api",
+      label: "Machine Cerebras (live)",
+      source: "api-key",
+      credentials: {
+        access: cerebrasKey,
+        refresh: "",
+        expires: Date.now() + 1e10,
+      },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     },
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  });
+    createIsolatedAccountStoragePolicy(home),
+  );
   getDefaultAccountPool();
   const bridge = getCodingAgentSelectorBridge();
   if (!bridge) throw new Error("coding-account bridge not installed");
