@@ -21,6 +21,7 @@ import path from "node:path";
 import process from "node:process";
 import * as readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { runBootHooks } from "./boot-hooks.ts";
 import {
   type BootContext,
   type BootPhaseName,
@@ -87,6 +88,10 @@ import {
   buildRuntimeSettingsProjection,
   type RuntimeSettingsProjectionOptions,
 } from "./runtime-settings.ts";
+import {
+  applySandboxCharacterFromEnv,
+  resolveSandboxRouteAgentId,
+} from "./sandbox-character.ts";
 
 export { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 export {
@@ -3963,6 +3968,11 @@ export async function startEliza(
     }
   }
 
+  // 1a. Local / sandbox character override — must run before first-run setup
+  //     so character.json (or ELIZA_AGENT_CHARACTER_JSON) sets the agent name
+  //     and skips the interactive name/style wizard.
+  applySandboxCharacterFromEnv(config);
+
   // 1b. First-run setup — ask for agent name if not configured.
   //     In headless mode (GUI) the first-run setup is handled by the web UI,
   //     so we skip the interactive CLI prompt and let the runtime start
@@ -4308,18 +4318,8 @@ export async function startEliza(
     return startInCloudMode(config, thinClientCloudAgentId, opts);
   }
 
-  // 3. Build elizaOS Character from Eliza config
-  // Cloud sandbox (Path A): if the provisioner injected the assigned
-  // character via ELIZA_AGENT_CHARACTER_JSON, merge it onto the config so the
-  // container boots AS that character (e.g. "Nyx") instead of the bundled
-  // default preset. Skipped when the env var is absent.
-  let sandboxRouteAgentId: string | null = null;
-  {
-    const { applySandboxCharacterFromEnv, resolveSandboxRouteAgentId } =
-      await import("./sandbox-character.ts");
-    applySandboxCharacterFromEnv(config);
-    sandboxRouteAgentId = resolveSandboxRouteAgentId();
-  }
+  // 3. Build elizaOS Character from Eliza config (override applied at 1a).
+  const sandboxRouteAgentId: string | null = resolveSandboxRouteAgentId();
 
   // 3b. Canonical file boot (sovereign identity): when configured via
   // ELIZA_CANONICAL_BOOT_ROOT / ELIZA_CANONICAL_BOOT_MANIFEST, read the
@@ -4335,7 +4335,6 @@ export async function startEliza(
     );
     applyCanonicalFileBootToConfig(config);
   }
-
   const character = buildCharacterFromConfig(config);
 
   // Pin the runtime agent id to the platform character_id so the gateways can
@@ -4878,6 +4877,12 @@ export async function startEliza(
     await runRuntimeStartupMaintenance(runtime, opts?.abortSignal);
     opts?.abortSignal?.throwIfAborted();
     bootTimer.lap("svc:startup-maintenance");
+    // Pre-ready hooks are declared in registry data and drained here so every
+    // host (including headless agent-server) observes the same fixed point.
+    // A declared hook failure rejects boot; readiness must never hide a broken
+    // voice/model handler installation behind a fabricated degraded success.
+    await runBootHooks(runtime);
+    bootTimer.lap("svc:boot-hooks");
     // runtime.initialize() survives a total TEXT_EMBEDDING dimension-probe
     // failure (EmbeddingDimensionProbeError is caught in core, which flips the
     // runtime into embedding-disabled mode instead of writing vectors the SQL
@@ -5449,14 +5454,50 @@ export async function startEliza(
       ...deferredPluginsForRuntime,
     ]);
 
-    const registerDeferredPlugin = async (plugin: Plugin): Promise<void> => {
+    const timeoutMs = (() => {
+      const raw =
+        process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS?.trim();
+      if (!raw) return 30_000;
+      const parsed = Number.parseInt(raw, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
+    })();
+    const registerDeferredPlugin = async (
+      plugin: (typeof deferredPluginsForRuntime)[number],
+    ): Promise<void> => {
       const startedAt = Date.now();
+      let registrationWatchdog: ReturnType<typeof setTimeout> | undefined;
+      let exceededWatchdog = false;
       try {
         abortSignal.throwIfAborted();
-        logger.debug(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
+        logger.info(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
+        // registerPlugin has no cancellation contract. Treat the configured
+        // deadline as an observable watchdog while continuing to await the
+        // real registration, so a "timed out" plugin cannot finish later and
+        // mutate a wave the host has already reported as settled.
+        registrationWatchdog = setTimeout(() => {
+          exceededWatchdog = true;
+          const error = new Error(
+            `Registration exceeded ${timeoutMs / 1000}s watchdog`,
+          );
+          logger.warn(
+            `[eliza] deferred: Plugin ${plugin.name} registration exceeded the ${timeoutMs / 1000}s watchdog; still waiting for a definitive result`,
+          );
+          // error-policy:J7 the watchdog reports a diagnostic without killing
+          // the deferred loop; the same registration promise remains awaited.
+          runtime.reportError(
+            "eliza.deferredPluginRegistrationWatchdog",
+            error,
+            {
+              plugin: plugin.name,
+              phase: "deferred-boot",
+              timeoutMs,
+            },
+          );
+        }, timeoutMs);
+        registrationWatchdog.unref?.();
         await runtime.registerPlugin(plugin);
-        logger.debug(
-          `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
+        logger.info(
+          `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms${exceededWatchdog ? ", after watchdog" : ""})`,
         );
       } catch (err) {
         if (abortSignal.aborted) throw err;
@@ -5472,29 +5513,42 @@ export async function startEliza(
           plugin: plugin.name,
           phase: "deferred-boot",
         });
+      } finally {
+        if (registrationWatchdog) clearTimeout(registrationWatchdog);
       }
     };
     // Deferred registrations run behind an already-listening server. Launching
     // every registerPlugin at once floods the event loop with CPU-bound init
     // work and starves the bound HTTP server of I/O turns for the whole wave
-    // (loadperf F3). A small worker pool with a setImmediate yield between
-    // registrations lets /api/* interleave while preserving runtime ownership
-    // and completion semantics. Mirrors the yield-between-imports loop in the
-    // deferred static import phase.
+    // (loadperf F3). The preferred provider is placed first in the shared queue,
+    // but it does not block the other workers from starting. A setImmediate
+    // yield between registrations lets /api/* interleave.
+    // Mirrors the yield-between-imports loop in the deferred static import phase.
+    const preferredPlugin = preferredProviderPluginName
+      ? deferredPluginsForRuntime.find(
+          (plugin) => plugin.name === preferredProviderPluginName,
+        )
+      : undefined;
+    const registrationQueue = preferredPlugin
+      ? [
+          preferredPlugin,
+          ...deferredPluginsForRuntime.filter(
+            (plugin) => plugin.name !== preferredPlugin.name,
+          ),
+        ]
+      : deferredPluginsForRuntime;
+
     const registrationConcurrency = 4;
     let nextPluginIndex = 0;
     await Promise.all(
       Array.from(
         {
-          length: Math.min(
-            registrationConcurrency,
-            deferredPluginsForRuntime.length,
-          ),
+          length: Math.min(registrationConcurrency, registrationQueue.length),
         },
         async () => {
-          while (nextPluginIndex < deferredPluginsForRuntime.length) {
+          while (nextPluginIndex < registrationQueue.length) {
             abortSignal.throwIfAborted();
-            const plugin = deferredPluginsForRuntime[nextPluginIndex];
+            const plugin = registrationQueue[nextPluginIndex];
             nextPluginIndex += 1;
             await registerDeferredPlugin(plugin);
             await new Promise<void>((resolve) => {

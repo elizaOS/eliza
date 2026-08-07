@@ -28,6 +28,7 @@ import {
   sql,
 } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
+import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
@@ -43,6 +44,7 @@ import {
 } from "../../db/repositories/jobs";
 import {
   type AgentExecutionTier,
+  type AgentSandboxStatus,
   agentSandboxes,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
 } from "../../db/schemas/agent-sandboxes";
@@ -78,6 +80,7 @@ import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-ser
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { readContainerProvisionJobData } from "./container-jobs-data";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
+import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
 import {
   configureElizaLifecycleTransaction,
   elizaAdminCanaryRolloutAdvisoryLockSql,
@@ -742,7 +745,7 @@ interface LifecycleSandboxRow {
   agent_name: string | null;
   created_at: Date;
   execution_tier: AgentExecutionTier;
-  status: string;
+  status: AgentSandboxStatus;
   updated_at: Date | null;
   claimed_at: Date | null;
   warm_claim_credential_state: "pending" | "attested" | "ready" | "failed" | null;
@@ -1488,6 +1491,10 @@ export class ProvisioningJobService {
       executionTier: AgentExecutionTier;
     };
   }): Promise<EnqueueAgentDeleteResult> {
+    // Stamps `deletion_allocation_counted`, and this runs inside the
+    // provisioning worker, whose deploy does not gate on migrate-db. Ensure is
+    // memoized, so the DDL runs once per isolate rather than once per enqueue.
+    await ensureAgentSandboxSchema();
     const expectedIdentity = params.expectedIdentity;
     const expectedCreatedAt = expectedIdentity ? new Date(expectedIdentity.createdAt) : null;
     if (expectedCreatedAt && !Number.isFinite(expectedCreatedAt.getTime())) {
@@ -1637,6 +1644,16 @@ export class ProvisioningJobService {
             status: "deletion_pending" as const,
             deletion_attempt_id: deletionAttemptId,
             ...(continuesEarlierDeletion ? {} : { deletion_started_at: new Date() }),
+            // Gated on the BROADER continuation signal than the start time is.
+            // `continuesEarlierDeletion` only checks `deletion_started_at`, and
+            // nothing ties that column to `status`, so a row already sitting in
+            // deletion_pending with null intent columns would take the "fresh"
+            // branch and re-derive ownership from its OWN deletion status —
+            // reading as "still counted" and freeing a slot on every recovery
+            // sweep, the exact double-free this column exists to stop (#17185).
+            ...(isDeletionContinuation(sandbox)
+              ? {}
+              : { deletion_allocation_counted: holdsCountedNodeSlot(sandbox) }),
             billing_status: "suspended" as const,
             scheduled_shutdown_at: null,
             shutdown_warning_sent_at: null,

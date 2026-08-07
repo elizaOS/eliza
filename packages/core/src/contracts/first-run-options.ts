@@ -480,7 +480,7 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
 		id: "ollama",
 		name: "Ollama",
 		envKey: null,
-		pluginName: "@elizaos/plugin-ollama",
+		pluginName: "@elizaos/plugin-zerollama",
 		keyPrefix: null,
 		description: "Local models, no API key needed.",
 		family: "ollama",
@@ -739,6 +739,8 @@ const FIRST_RUN_PROVIDER_ALIASES: Record<string, FirstRunProviderId> = {
 	moonshot: "moonshot",
 	moonshotai: "moonshot",
 	"moonshot-ai": "moonshot",
+	llama_local: "ollama",
+	"llama-local": "ollama",
 	cerebras: "cerebras",
 	// Tolerate the linked-account form so env/integration callers normalize too.
 	"cerebras-api": "cerebras",

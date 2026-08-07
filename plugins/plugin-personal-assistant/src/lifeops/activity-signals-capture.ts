@@ -239,22 +239,24 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
   const isExpectedTransientError = (error: unknown): boolean =>
     isApiError(error) && (error.kind === "network" || error.kind === "timeout");
 
-  // A 401 is the designed signed-out state, not a capture defect: every
+  // A 401/403 is the designed signed-out state, not a capture defect: every
   // capture endpoint sits behind session auth, so anonymous pages (pre
   // sign-in, post sign-out) reject each probe and signal. The ready poll
   // keeps checking quietly and the capture engages on the first poll after a
   // session exists — no console noise in between.
-  const isUnauthenticatedError = (error: unknown): boolean =>
-    isApiError(error) && error.kind === "http" && error.status === 401;
+  const isSessionUnavailableError = (error: unknown): boolean =>
+    isApiError(error) &&
+    error.kind === "http" &&
+    (error.status === 401 || error.status === 403);
 
   const reportCaptureError = (error: unknown): void => {
-    if (isRuntimeUnavailableError(error)) {
+    if (isRuntimeUnavailableError(error) || isSessionUnavailableError(error)) {
       standDownActivitySignals();
       return;
     }
     if (
       isExpectedTransientError(error) ||
-      isUnauthenticatedError(error) ||
+      isSessionUnavailableError(error) ||
       isCloudAgentGoneError(error)
     ) {
       return;
@@ -269,14 +271,14 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
     });
   };
 
-  // Runtime not up yet (boot, restart), signed-out (401), and a stale binding
+  // Runtime not up yet (boot, restart), signed-out (401/403), and a stale binding
   // to a deleted agent (structural agent-gone 404) are the designed
   // stand-down states; only those plus transport loss and the 503 "runtime
   // starting" shape count. Anything else coming out of the status probe
   // (persistent 500s included) is a real defect and must surface, not read as
   // "not ready" forever (#16504).
   const isExpectedProbeFailure = (error: unknown): boolean =>
-    isUnauthenticatedError(error) ||
+    isSessionUnavailableError(error) ||
     isCloudAgentGoneError(error) ||
     (isApiError(error) &&
       (error.kind === "network" ||
@@ -329,7 +331,10 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
       return persisted;
     } catch (error) {
       lastSent.delete(dedupeKey);
-      if (isRuntimeUnavailableError(error)) {
+      if (
+        isRuntimeUnavailableError(error) ||
+        isSessionUnavailableError(error)
+      ) {
         standDownActivitySignals();
         return null;
       }

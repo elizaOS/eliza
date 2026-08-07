@@ -17,6 +17,8 @@
  * decoding path, no live model.
  */
 
+import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+
 export const VOICE_TRACE_HEADER = "X-Eliza-Voice-Trace-Id";
 /** Scope headers so the configured endpoint routes the turn to the right agent. */
 export const VOICE_AGENT_HEADER = "X-Eliza-Agent-Id";
@@ -61,6 +63,7 @@ export interface ElizaSseBridgeResult {
 
 export interface ElizaVoiceViewHandoff {
   viewId: string;
+  viewPath?: string;
   subview?: string;
 }
 
@@ -117,7 +120,12 @@ export async function streamElizaConversation(
       // This is the canonical message contract. Agent and conversation identity
       // are structural URL segments, so the route cannot silently discard them;
       // sharedRestMessageSend/bridgeStream executes and persists this turn.
-      body: JSON.stringify({ text: request.transcript }),
+      body: JSON.stringify({
+        text: request.transcript,
+        metadata: {
+          clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+        },
+      }),
       signal: request.signal,
     });
   } catch (error) {
@@ -202,7 +210,8 @@ export async function streamElizaConversation(
         if (!line.startsWith("data:")) continue;
         const payload = line.slice(5).trim();
         if (payload === "") continue;
-        if (payload === "[DONE]" || eventType === "done") {
+        const payloadType = extractPayloadType(payload);
+        if (payload === "[DONE]" || eventType === "done" || payloadType === "done") {
           const viewHandoff = payload === "[DONE]" ? null : extractViewHandoff(payload);
           return {
             completed: true,
@@ -210,7 +219,7 @@ export async function streamElizaConversation(
             ...(viewHandoff ? { viewHandoff } : {}),
           };
         }
-        if (eventType === "error") {
+        if (eventType === "error" || payloadType === "error") {
           throw new ElizaSseBridgeError(
             `Eliza agent stream error: ${extractErrorMessage(payload)}`,
             "upstream_error",
@@ -348,6 +357,18 @@ function extractErrorMessage(payload: string): string {
   return payload.slice(0, 256) || "unknown agent stream error";
 }
 
+function extractPayloadType(payload: string): string | null {
+  try {
+    const parsed = JSON.parse(payload) as { type?: unknown };
+    return typeof parsed.type === "string" ? parsed.type : null;
+  } catch (ignoredError) {
+    void ignoredError;
+    // error-policy:J3 untrusted SSE payloads without JSON have no typed control
+    // meaning; token extraction and explicit event labels still handle them.
+    return null;
+  }
+}
+
 function extractDeltaContent(payload: string): string | null {
   let parsed: unknown;
   try {
@@ -396,18 +417,26 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
   for (let index = parsed.actionResults.length - 1; index >= 0; index--) {
     const candidate = parsed.actionResults[index];
     if (!isRecord(candidate) || candidate.success !== true) continue;
-    if (
-      typeof candidate.actionName !== "string" ||
-      candidate.actionName.toUpperCase() !== "VIEWS" ||
-      !isRecord(candidate.values)
-    ) {
+    const data = isRecord(candidate.data) ? candidate.data : null;
+    const actionName =
+      typeof candidate.actionName === "string"
+        ? candidate.actionName
+        : typeof data?.actionName === "string"
+          ? data.actionName
+          : null;
+    if (actionName?.toUpperCase() !== "VIEWS" || !isRecord(candidate.values)) {
       continue;
     }
     const mode = readBoundedString(candidate.values.mode)?.toLowerCase();
     const viewId = readBoundedString(candidate.values.viewId);
     if ((mode !== "show" && mode !== "open") || !viewId) continue;
+    const viewPath = readBoundedString(candidate.values.viewPath);
     const subview = readBoundedString(candidate.values.subview);
-    return { viewId, ...(subview ? { subview } : {}) };
+    return {
+      viewId,
+      ...(viewPath ? { viewPath } : {}),
+      ...(subview ? { subview } : {}),
+    };
   }
   return null;
 }

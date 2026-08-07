@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 
 import { streamElizaConversation, VOICE_TRACE_HEADER } from "../eliza-sse-bridge";
 
@@ -134,7 +135,12 @@ describe("eliza sse bridge", () => {
     expect(seenUrl).toBe(
       "http://x/api/v1/eliza/agents/agent-XYZ/api/conversations/conv-ABC/messages/stream",
     );
-    expect(seenBody).toEqual({ text: "hi" });
+    expect(seenBody).toEqual({
+      text: "hi",
+      metadata: {
+        clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+      },
+    });
     expect(seenHeaders?.get("Authorization")).toBe("Bearer s");
     expect(seenHeaders?.get("X-Service-Key")).toBe("Bearer s");
     expect(seenHeaders?.get("X-Eliza-Agent-Id")).toBe("agent-XYZ");
@@ -143,16 +149,23 @@ describe("eliza sse bridge", () => {
     expect(seenHeaders?.get("X-Eliza-User-Id")).toBe("user-456");
   });
 
-  test("returns only a successful model-selected VIEWS handoff from terminal metadata", async () => {
+  test("returns the originating-client VIEWS handoff from the local runtime done frame", async () => {
     const fetchImpl = (async () =>
       sseResponse([
-        `event: chunk\ndata: ${JSON.stringify({ chunk: "Opened Notes." })}\n\n`,
-        `event: done\ndata: ${JSON.stringify({
+        `data: ${JSON.stringify({ type: "token", text: "Opened Notes." })}\n\n`,
+        `data: ${JSON.stringify({
+          type: "done",
+          fullText: "Opened Notes.",
           actionResults: [
             {
               actionName: "VIEWS",
               success: true,
-              values: { mode: "show", viewId: "notes", subview: "recent" },
+              values: {
+                mode: "show",
+                viewId: "notes",
+                viewPath: "/notes",
+                subview: "recent",
+              },
             },
           ],
         })}\n\n`,
@@ -176,7 +189,11 @@ describe("eliza sse bridge", () => {
     expect(result).toEqual({
       completed: true,
       aborted: false,
-      viewHandoff: { viewId: "notes", subview: "recent" },
+      viewHandoff: {
+        viewId: "notes",
+        viewPath: "/notes",
+        subview: "recent",
+      },
     });
   });
 
@@ -220,7 +237,7 @@ describe("eliza sse bridge", () => {
   test("surfaces canonical agent stream errors instead of completing an empty turn", async () => {
     const fetchImpl = (async () =>
       sseResponse([
-        `event: error\ndata: ${JSON.stringify({ message: "agent failed" })}\n\n`,
+        `data: ${JSON.stringify({ type: "error", message: "agent failed" })}\n\n`,
       ])) as unknown as typeof fetch;
     await expect(
       streamElizaConversation(

@@ -1,17 +1,7 @@
 /**
- * Agent-backup size limits shared by everything that RETAINS or CONSUMES a v1
- * agent snapshot.
- *
- * A v1 snapshot is one JSON document on the wire. Retaining one that is larger
- * than what restore accepts produces a backup that authorizes a cutover and can
- * never be restored — the exact production-canary failure in #17172: Cloud
- * retained up to 256 MiB while `/api/restore`
- * (`packages/agent/src/api/server.ts`) and backup-chain reconstruction
- * (`packages/cloud/shared/src/db/repositories/agent-sandboxes.ts`) both cap at
- * 128 MiB, so a 128-256 MiB snapshot was a silent dead end.
- *
- * Every side imports THIS module so the numbers cannot drift apart again.
- * The producer-side capture budget (#17214) derives from the same constant.
+ * Defines the common wire-size ceiling for v1 agent snapshots.
+ * Retain, push, reconstruction, and restore consumers share this contract so
+ * no stored backup can exceed the smallest restore boundary (#17172).
  */
 
 /**

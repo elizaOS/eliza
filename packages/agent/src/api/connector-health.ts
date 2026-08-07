@@ -10,6 +10,12 @@ import type { AgentRuntime } from "@elizaos/core";
 
 export type ConnectorStatus = "ok" | "missing" | "unknown";
 
+type PollerHealthProbe = {
+  getPollerHealth: () =>
+    | { ok?: boolean; connected?: boolean; lastError?: string }
+    | Promise<{ ok?: boolean; connected?: boolean; lastError?: string }>;
+};
+
 export interface ConnectorHealthMonitorOptions {
   runtime: AgentRuntime;
   config: { connectors?: Record<string, unknown> };
@@ -55,6 +61,14 @@ const CONNECTOR_PLUGIN_MAP_NORMALIZED = Object.fromEntries(
     pluginName,
   ]),
 );
+
+function hasPollerHealthProbe(service: unknown): service is PollerHealthProbe {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as PollerHealthProbe).getPollerHealth === "function"
+  );
+}
 
 export class ConnectorHealthMonitor {
   private runtime: AgentRuntime;
@@ -124,7 +138,15 @@ export class ConnectorHealthMonitor {
     if (!pluginName) return "unknown";
 
     const service = this.runtime.getService(pluginName);
-    if (service) return "ok";
+    if (service) {
+      if (hasPollerHealthProbe(service)) {
+        const health = await service.getPollerHealth();
+        return health.ok === true && health.connected === true
+          ? "ok"
+          : "missing";
+      }
+      return "ok";
+    }
 
     // Also check runtime.clients if available
     const clients = (

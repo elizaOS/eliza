@@ -530,7 +530,10 @@ describe("voice-session WS lifecycle", () => {
     expect(new URL(requests[0].url).pathname).toBe(
       "/api/v1/eliza/agents/agent-1/api/conversations/conv-1/messages/stream",
     );
-    expect(requests[0].body).toEqual({ text: "hello agent" });
+    expect(requests[0].body).toEqual({
+      text: "hello agent",
+      metadata: { clientTransport: "realtime_voice" },
+    });
     expect(requests[0].headers.authorization).toBe("Bearer eliza-server");
     expect(requests[0].headers["x-service-key"]).toBe("Bearer eliza-server");
     expect(requests[0].headers["x-eliza-agent-id"]).toBe("agent-1");
@@ -674,7 +677,7 @@ describe("voice-session WS lifecycle", () => {
           {
             actionName: "VIEWS",
             success: true,
-            values: { mode: "show", viewId: "notes" },
+            values: { mode: "show", viewId: "notes", viewPath: "/notes" },
           },
           {
             actionName: "UNRELATED_ACTION",
@@ -697,6 +700,7 @@ describe("voice-session WS lifecycle", () => {
       {
         t: "navigate_view",
         viewId: "notes",
+        viewPath: "/notes",
         traceId: expect.any(String),
       },
     ]);

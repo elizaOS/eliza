@@ -278,6 +278,12 @@ export interface ForwardMessageOptions {
   senderName?: string;
   /** Platform-specific chat/conversation ID for reply routing. */
   chatId?: string;
+  /** Connector account or bot identity that received the platform record. */
+  accountId?: string;
+  /** Stable platform-native message/update id used for canonical dedupe. */
+  platformRecordId?: string;
+  /** Platform-native chat type when the adapter exposes it. */
+  chatType?: string;
 }
 
 /**
@@ -300,6 +306,10 @@ export function buildForwardBody(
   if (options?.platformName) body.platformName = options.platformName;
   if (options?.senderName) body.senderName = options.senderName;
   if (options?.chatId) body.chatId = options.chatId;
+  if (options?.accountId) body.accountId = options.accountId;
+  if (options?.platformRecordId)
+    body.platformRecordId = options.platformRecordId;
+  if (options?.chatType) body.chatType = options.chatType;
   return body;
 }
 

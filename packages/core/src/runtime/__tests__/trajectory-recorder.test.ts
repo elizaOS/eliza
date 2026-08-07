@@ -104,6 +104,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 					promptTokens: 1000,
 					completionTokens: 50,
 					cacheReadInputTokens: 800,
+					reasoningTokens: 400,
 					totalTokens: 1050,
 				},
 			},
@@ -209,6 +210,12 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(parsed.metrics.totalPromptTokens).toBe(1000 + 1500 + 1700);
 		expect(parsed.metrics.totalCompletionTokens).toBe(50 + 80 + 40);
 		expect(parsed.metrics.totalCacheReadTokens).toBe(800 + 1000);
+		// #16394: reasoning tokens roll up across stages; only the
+		// message-handler stage carried them here (400), the others omit the
+		// field and contribute 0.
+		expect(parsed.metrics.totalReasoningTokens).toBe(400);
+		expect(parsed.stages[0]?.model?.usage?.reasoningTokens).toBe(400);
+		expect(parsed.stages[1]?.model?.usage?.reasoningTokens).toBeUndefined();
 		expect(parsed.metrics.finalDecision).toBe("FINISH");
 		expect(parsed.metrics.totalLatencyMs).toBe(300 + 600 + 110 + 270);
 	});

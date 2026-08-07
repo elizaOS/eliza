@@ -108,6 +108,31 @@ const hyperliquidOrder = {
 };
 
 describe("tradeRouterAction", () => {
+  it("blocks steward trade order submission on injection-flagged messages", async () => {
+    const fetchMock = vi.fn();
+    const { runtime } = createRuntime(fetchMock as unknown as typeof fetch);
+    const base = message("Buy 5 Polymarket outcome tokens.");
+    const flagged = {
+      ...base,
+      content: {
+        text: base.content.text,
+        metadata: { promptInjectionSuspected: true },
+      },
+    } as Memory;
+    const result = await tradeRouterAction.handler(
+      runtime,
+      flagged,
+      undefined,
+      { parameters: hyperliquidOrder } as HandlerOptions,
+    );
+    expect(result.success).toBe(false);
+    expect(result.text).toMatch(/GHSA-gh63-5vpj-39qp/);
+    expect((result.data as { error?: string }).error).toBe(
+      "PROMPT_INJECTION_BLOCKED",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("inspects governed account state through StewardTradingService", async () => {
     const fetchMock = vi
       .fn()

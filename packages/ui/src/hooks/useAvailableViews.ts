@@ -550,7 +550,14 @@ function mergeViewRegistryEntries(
 function mergeWithAppShellViews(
   networkViews: ViewRegistryEntry[],
   appShellViews: ViewRegistryEntry[],
+  platform: ReturnType<typeof getFrontendPlatform>,
 ): ViewRegistryEntry[] {
+  // Native binaries must execute the signed in-process renderer when both the
+  // connected runtime and the app declare the same view. Web and desktop keep
+  // the runtime bundle so plugin reloads remain live during development.
+  if (platform === "ios" || platform === "android") {
+    return mergeViewRegistryEntries(appShellViews, [networkViews]);
+  }
   return mergeViewRegistryEntries(networkViews, [appShellViews]);
 }
 
@@ -610,8 +617,13 @@ export function useAvailableViews(
   );
   const networkViews =
     resource.status === "success" ? resource.data : EMPTY_VIEWS;
+  const platform = getFrontendPlatform();
   const views = useMemo(() => {
-    const merged = mergeWithAppShellViews(networkViews, appShellViews);
+    const merged = mergeWithAppShellViews(
+      networkViews,
+      appShellViews,
+      platform,
+    );
     // Native device-OS surfaces (phone, messages, contacts, camera) exist only
     // on the AOSP ElizaOS fork. Each such view declares `nativeOs: true` on its
     // `ViewDeclaration`; strip them from the view manager + router on every
@@ -619,7 +631,7 @@ export function useAvailableViews(
     // AOSP-gated home tiles (`nativeOs`) and the route gates in App.tsx.
     if (isAospShellEnabled()) return merged;
     return merged.filter((view) => !view.nativeOs);
-  }, [networkViews, appShellViews]);
+  }, [networkViews, appShellViews, platform]);
 
   return {
     views,

@@ -44,6 +44,7 @@ import {
 } from "./features/basic-capabilities/index";
 import {
 	INFERENCE_MARKS,
+	type InferenceTimingMeta,
 	markInference,
 	recordInferenceSpan,
 	setInferenceModelProvider,
@@ -157,6 +158,8 @@ import {
 	setTrajectoryPurpose,
 } from "./trajectory-context";
 import {
+	runInModelCallRecordingScope,
+	runWithModelCallRecordingScope,
 	type TrajectoryProviderAccessLogger,
 	type TrajectoryRuntimeLlmCallLogger,
 	withProviderStep,
@@ -382,10 +385,89 @@ interface CachedProviderResult extends ProviderResult {
 
 interface InFlightProviderExecution {
 	promise: Promise<ProviderResult>;
+	// The execution owns its abort authority: callers race the shared promise
+	// against their OWN turn signal and this controller fires only when the
+	// last interested caller has aborted. Wiring the work directly to the
+	// first caller's signal would swallow a later coalesced waiter's "stop"
+	// entirely, and push the first caller's abort reason into turns that never
+	// requested it.
+	controller: AbortController;
+	// Every consumer of this execution MUST attach through awaitProviderExecution
+	// rather than awaiting `promise` directly: an uncounted caller would not
+	// register as a waiter, so the accounting below could abort the shared
+	// work out from under it.
+	waiters: number;
 	startedAt: number;
 	startedAtMonotonic: number;
 	timeoutMs?: number;
 	timeoutMode: "fail" | "degrade";
+}
+
+// Per-waiter cancellation boundary for a (possibly coalesced) provider
+// execution. Each caller observes its own signal: an aborting waiter rejects
+// immediately with ITS reason while the shared work keeps running for the
+// remaining callers, and the shared work is aborted exactly when the caller
+// count drops to zero — so a lone caller's abort still reaches the provider.
+//
+// EVERY attached caller counts toward `waiters`, including callers with no
+// signal (composeState outside any turn or streaming context — signalFor and
+// getStreamingContext are both legitimately undefined there). The abort
+// condition reads `waiters` as "is anyone still interested", so exempting
+// signal-less callers would let a cancelling waiter abort work an uncounted
+// caller is still awaiting.
+//
+// `evict` removes the in-flight map entry for this execution. It must run
+// SYNCHRONOUSLY, immediately before `controller.abort()`, rather than being
+// left to the `promise.then(cleanup, cleanup)` at the call site: that cleanup
+// only fires once the shared promise finishes unwinding through
+// withProviderDeadline/withProviderStep, a microtask or more after the
+// synchronous abort. A composeState call landing in that window would
+// otherwise `get()` the dying execution and inherit an abort reason it never
+// asked for. Evicting here makes the entry unreachable at the moment it stops
+// being viable instead of when its promise settles.
+function awaitProviderExecution(
+	execution: InFlightProviderExecution,
+	signal: AbortSignal | undefined,
+	evict: () => void,
+): Promise<ProviderResult> {
+	execution.waiters += 1;
+	let released = false;
+	const release = () => {
+		if (released) return false;
+		released = true;
+		execution.waiters -= 1;
+		return true;
+	};
+	if (!signal) {
+		return execution.promise.finally(release);
+	}
+	return new Promise<ProviderResult>((resolve, reject) => {
+		const settle = <V>(handler: (value: V) => void) => {
+			return (value: V) => {
+				if (!release()) return;
+				signal.removeEventListener("abort", onAbort);
+				handler(value);
+			};
+		};
+		const onAbort = settle(() => {
+			if (execution.waiters === 0) {
+				evict();
+				execution.controller.abort(signal.reason);
+			}
+			reject(signal.reason ?? new Error("Provider execution aborted"));
+		});
+		// Attach the settle handlers to `execution.promise` BEFORE checking
+		// `signal.aborted`: an already-aborted caller still needs a rejection
+		// handler wired up, or the shared promise's eventual rejection (driven
+		// by the `controller.abort()` below) goes unhandled and crashes the
+		// process under Node's default unhandled-rejection behavior.
+		execution.promise.then(settle(resolve), settle(reject));
+		if (signal.aborted) {
+			onAbort(undefined);
+			return;
+		}
+		signal.addEventListener("abort", onAbort, { once: true });
+	});
 }
 
 export function calculateProviderOverlaps(
@@ -763,6 +845,64 @@ function isTextStreamResult(
 		"usage" in value &&
 		"finishReason" in value
 	);
+}
+
+/**
+ * Read the hidden reasoning-token count from a model response so it can be
+ * surfaced on the successful model span (#16394). Native results (tool-call
+ * shape) carry a `.usage` object; plain-text results do not, and the field is
+ * left undefined there. Returns a finite non-negative number or `undefined`;
+ * missing is preserved as missing rather than coerced to zero so an
+ * unattributed burst stays distinguishable from a confirmed-none call.
+ *
+ * Covers the elizaOS `TokenUsage.reasoningTokens` field plus the two raw
+ * provider shapes the AI SDK exposes (`usage.reasoningTokens` and
+ * `providerMetadata.completion_tokens_details.reasoning_tokens`).
+ */
+export function readReasoningTokensFromResponse(
+	response: unknown,
+): number | undefined {
+	if (typeof response !== "object" || response === null) return undefined;
+	const record = response as Record<string, unknown>;
+	const usageRaw = isPlainObject(record.usage) ? record.usage : undefined;
+	const usage = usageRaw as Record<string, unknown> | undefined;
+	const fromUsage =
+		usage && typeof usage.reasoningTokens === "number"
+			? usage.reasoningTokens
+			: undefined;
+	if (fromUsage !== undefined) {
+		return Number.isFinite(fromUsage) && fromUsage >= 0 ? fromUsage : undefined;
+	}
+	// Fall back to provider metadata when the adapter did not normalize the
+	// field into the usage object (some OpenAI-compatible paths expose it only
+	// under completion_tokens_details).
+	const providerMetadataRaw = isPlainObject(record.providerMetadata)
+		? record.providerMetadata
+		: undefined;
+	const providerMetadata = providerMetadataRaw as
+		| Record<string, unknown>
+		| undefined;
+	const detailsRaw = providerMetadata
+		? isPlainObject(providerMetadata.completion_tokens_details)
+			? providerMetadata.completion_tokens_details
+			: isPlainObject(providerMetadata.completionTokensDetails)
+				? providerMetadata.completionTokensDetails
+				: undefined
+		: undefined;
+	const details = detailsRaw as Record<string, unknown> | undefined;
+	const fromDetails = details
+		? typeof details.reasoning_tokens === "number"
+			? details.reasoning_tokens
+			: typeof details.reasoningTokens === "number"
+				? details.reasoningTokens
+				: undefined
+		: undefined;
+	if (fromDetails !== undefined) {
+		return Number.isFinite(fromDetails) && fromDetails >= 0
+			? fromDetails
+			: undefined;
+	}
+	return undefined;
 }
 
 function getSearchCategoryKey(category: string): string {
@@ -1218,8 +1358,11 @@ export class AgentRuntime implements IAgentRuntime {
 	private settings: RuntimeSettings;
 	private servicePromiseHandlers = new Map<string, ServicePromiseHandler>(); // Combined handlers for resolve/reject
 	private servicePromises = new Map<string, Promise<Service>>(); // read
-	/** In-flight service start promises; dedupes concurrent getService() for the same type. */
+	/** Full settlement of each type's current parallel startup set, used by teardown. */
 	private startingServices = new Map<string, Promise<Service | null>>();
+	private startingServiceClasses = new Map<ServiceClass, Promise<Service>>();
+	private serviceInstancesByClass = new Map<ServiceClass, Service>();
+	private failedServiceClasses = new Set<ServiceClass>();
 	private serviceRegistrationStatus = new Map<
 		ServiceTypeName,
 		"pending" | "registering" | "registered" | "failed"
@@ -2338,6 +2481,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		if (pluginToRegister.services) {
+			const serviceTypesToStart = new Set<ServiceTypeName>();
 			for (const service of pluginToRegister.services) {
 				const serviceType = service.serviceType as ServiceTypeName;
 
@@ -2368,12 +2512,13 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					services.push(service);
 				}
+				serviceTypesToStart.add(serviceType);
+			}
 
-				// Eagerly kick off service start so it is available via the
-				// sync getService() by the time actions/routes need it.
-				// Fire-and-forget: cannot await here because _runServiceStart
-				// awaits initPromise which resolves after initialize() completes
-				// (after all registerPlugin calls finish). Awaiting would deadlock.
+			// Register every sibling implementation before startup takes a class
+			// snapshot, otherwise the first declaration can fail before a later
+			// implementation of the same service type is visible.
+			for (const serviceType of serviceTypesToStart) {
 				this._ensureServiceStarted(serviceType).catch((err) => {
 					// error-policy:J5 eager startup is fire-and-forget; _runServiceStart
 					// reports the failure and service-load callers observe the rejection.
@@ -2562,12 +2707,22 @@ export class AgentRuntime implements IAgentRuntime {
 		this.eventHandlers.clear();
 		this.events = {};
 		this.stateCache.clear();
+		// Abort before dropping the map. Each execution owns the only handle to
+		// its provider work — no caller retains the controller — so clearing
+		// alone would strand in-flight provider calls past teardown with nothing
+		// left able to cancel them.
+		for (const execution of this.providerExecutionsInFlight.values()) {
+			execution.controller.abort(new Error("Runtime stopped"));
+		}
 		this.providerExecutionsInFlight.clear();
 		this.roomReadMemo.invalidate();
 		this.roomMessagesMemo.invalidate();
 		this.servicePromises.clear();
 		this.servicePromiseHandlers.clear();
 		this.startingServices.clear();
+		this.startingServiceClasses.clear();
+		this.serviceInstancesByClass.clear();
+		this.failedServiceClasses.clear();
 	}
 
 	private async _stopServiceInstance(
@@ -3862,9 +4017,20 @@ export class AgentRuntime implements IAgentRuntime {
 		worldPolicy?: ToolPolicyConfig;
 		roomPolicy?: ToolPolicyConfig;
 	}): Promise<Action[]> {
-		const policyService = (await this._ensureServiceStarted(
-			"tool_policy",
-		)) as ToolPolicyService | null;
+		let policyService: ToolPolicyService | null;
+		try {
+			policyService = (await this._ensureServiceStarted(
+				"tool_policy",
+			)) as ToolPolicyService | null;
+		} catch (error) {
+			// error-policy:J4 explicit user-facing degrade — a tool_policy service
+			// that was configured but failed to start cannot safely authorize tools.
+			// Keep the turn alive with no executable actions and surface the failure.
+			this.reportError("AgentRuntime.getFilteredActions", error, {
+				serviceType: "tool_policy",
+			});
+			return [];
+		}
 
 		if (!policyService || !context) {
 			return [...this.actions];
@@ -3891,9 +4057,23 @@ export class AgentRuntime implements IAgentRuntime {
 			roomPolicy?: ToolPolicyConfig;
 		},
 	): Promise<{ allowed: boolean; reason: string }> {
-		const policyService = (await this._ensureServiceStarted(
-			"tool_policy",
-		)) as ToolPolicyService | null;
+		let policyService: ToolPolicyService | null;
+		try {
+			policyService = (await this._ensureServiceStarted(
+				"tool_policy",
+			)) as ToolPolicyService | null;
+		} catch (error) {
+			// error-policy:J4 explicit user-facing degrade — a tool_policy service
+			// that was configured but failed to start cannot safely authorize tools.
+			// Deny the action and surface the service failure.
+			this.reportError("AgentRuntime.isActionAllowed", error, {
+				serviceType: "tool_policy",
+			});
+			return {
+				allowed: false,
+				reason: "Tool policy service failed to start",
+			};
+		}
 
 		if (!policyService) {
 			return { allowed: true, reason: "No policy service available" };
@@ -4704,9 +4884,20 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		// Optional trajectory logging service; absent unless configured.
-		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
-			| (Service & TrajectoryProviderAccessLogger)
-			| null;
+		let trajLogger: (Service & TrajectoryProviderAccessLogger) | null;
+		try {
+			trajLogger = (await this._ensureServiceStarted("trajectories")) as
+				| (Service & TrajectoryProviderAccessLogger)
+				| null;
+		} catch (error) {
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — a trajectory
+			// logger that fails to start must never abort composeState; continue
+			// without provider-access logging. Surfaced via reportError.
+			this.reportError("AgentRuntime.composeState.trajectories", error, {
+				serviceType: "trajectories",
+			});
+			trajLogger = null;
+		}
 		const composeStartedAt = Date.now();
 		const providerSignal =
 			this.turnControllers.signalFor(message.roomId) ??
@@ -4735,6 +4926,11 @@ export class AgentRuntime implements IAgentRuntime {
 					const timeoutMode = provider.timeoutMode ?? "fail";
 					const startedAt = Date.now();
 					const startedAtMonotonic = performance.now();
+					// The work is deliberately NOT wired to this caller's signal:
+					// coalesced waiters each race the shared promise against their own
+					// signal in awaitProviderExecution, and the dedicated controller
+					// aborts the provider only when no interested caller remains.
+					const workController = new AbortController();
 					const promise = withProviderDeadline(
 						(signal) =>
 							withProviderStep(providerRuntime, provider.name, () =>
@@ -4744,10 +4940,12 @@ export class AgentRuntime implements IAgentRuntime {
 							),
 						providerBudgetMs,
 						provider.name,
-						providerSignal,
+						workController.signal,
 					);
 					execution = {
 						promise,
+						controller: workController,
+						waiters: 0,
 						startedAt,
 						startedAtMonotonic,
 						timeoutMs: providerBudgetMs,
@@ -4755,18 +4953,38 @@ export class AgentRuntime implements IAgentRuntime {
 					};
 					if (inFlightKey !== null) {
 						this.providerExecutionsInFlight.set(inFlightKey, execution);
-						const cleanup = () => {
-							if (
-								this.providerExecutionsInFlight.get(inFlightKey) === execution
-							) {
-								this.providerExecutionsInFlight.delete(inFlightKey);
-							}
-						};
-						void promise.then(cleanup, cleanup);
 					}
 				}
+				// Hoisted so BOTH the owner path (the `execution` just created
+				// above) and the coalesced path (the `execution` fetched from the
+				// map before this `if`) can evict the SAME map entry the moment it
+				// stops being viable, rather than waiting for `promise` to unwind.
+				// Identity-checked against the specific execution this call
+				// attached to, so a later execution occupying the same key is
+				// never evicted by a stale caller; idempotent so calling it
+				// synchronously from awaitProviderExecution's abort path AND again
+				// from `promise.then(evict, evict)` below is harmless.
+				const attachedExecution = execution;
+				const evict =
+					inFlightKey !== null
+						? () => {
+								if (
+									this.providerExecutionsInFlight.get(inFlightKey) ===
+									attachedExecution
+								) {
+									this.providerExecutionsInFlight.delete(inFlightKey);
+								}
+							}
+						: () => {};
+				if (!providerCoalesced && inFlightKey !== null) {
+					void attachedExecution.promise.then(evict, evict);
+				}
 				try {
-					const result = await execution.promise;
+					const result = await awaitProviderExecution(
+						execution,
+						providerSignal,
+						evict,
+					);
 					const endedAt = Date.now();
 					const duration = performance.now() - execution.startedAtMonotonic;
 					recordInferenceSpan(`provider:${provider.name}`, duration, {
@@ -5201,41 +5419,115 @@ export class AgentRuntime implements IAgentRuntime {
 		return newState;
 	}
 
-	/** Lazy service start: used internally by _ensureServiceStarted / getServiceLoadPromise. */
-	/** Dedupes concurrent starts for the same type via startingServices so only one start runs. */
+	/** Starts every pending implementation in parallel and waits for the full set. */
 	private async _ensureServiceStarted(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null> {
 		if (this.stopped) return null;
 		if (!this.isNativeFeatureServiceEnabled(serviceType)) return null;
 		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
-		const instances = this.services.get(key);
-		if (instances && instances.length > 0) {
-			return instances[0];
-		}
+		// Fast path: a service that is already registered and running is returned
+		// immediately WITHOUT awaiting initPromise. Callers inside initialize()
+		// (plugin init -> getFilteredActions) would otherwise deadlock on the
+		// still-unresolved init barrier even though the instance is already up.
+		const alreadyRunning = this.services.get(key)?.[0];
+		if (alreadyRunning && this.initResolver) return alreadyRunning;
+		await this.initPromise;
+		if (this.stopped) return null;
 		const classes = this.serviceTypes.get(key);
 		if (!classes || classes.length === 0) {
 			return null;
 		}
-		let inFlight = this.startingServices.get(key);
-		if (!inFlight) {
-			// Start ALL registered service classes for this type, not just the first.
-			// This supports multiple services of the same type (e.g. multiple wallet services).
-			inFlight = (async () => {
-				let first: Service | null = null;
-				for (const cls of classes) {
-					const result = await this._runServiceStart(key, serviceType, cls);
-					if (result && !first) first = result;
-				}
-				return first;
-			})();
-			this.startingServices.set(key, inFlight);
+		const startedImplementation = classes
+			.map((serviceClass) => this.serviceInstancesByClass.get(serviceClass))
+			.find((service): service is Service => service !== undefined);
+		const starts = classes.map((serviceClass) => {
+			const started = this.serviceInstancesByClass.get(serviceClass);
+			if (started) return Promise.resolve(started);
+			const pending = this.startingServiceClasses.get(serviceClass);
+			if (pending) return pending;
+			if (
+				startedImplementation &&
+				this.failedServiceClasses.has(serviceClass)
+			) {
+				return Promise.resolve(startedImplementation);
+			}
+
+			const start = this._runServiceStart(key, serviceType, serviceClass).then(
+				(service) => {
+					if (!service) {
+						throw new Error(
+							`Service implementation ${serviceClass.name || "<anonymous>"} did not start`,
+						);
+					}
+					this.failedServiceClasses.delete(serviceClass);
+					return service;
+				},
+				(error) => {
+					this.failedServiceClasses.add(serviceClass);
+					throw error;
+				},
+			);
+			this.startingServiceClasses.set(serviceClass, start);
+			void start.then(
+				() => this.startingServiceClasses.delete(serviceClass),
+				() => this.startingServiceClasses.delete(serviceClass),
+			);
+			return start;
+		});
+
+		const settlement = Promise.allSettled(starts);
+		const allStarts = settlement.then((results) => {
+			const firstSuccessful = results.find(
+				(result): result is PromiseFulfilledResult<Service> =>
+					result.status === "fulfilled",
+			)?.value;
+			return firstSuccessful ?? null;
+		});
+		this.startingServices.set(key, allStarts);
+		void allStarts.then(() => {
+			if (this.startingServices.get(key) === allStarts) {
+				this.startingServices.delete(key);
+			}
+		});
+
+		const settled = await settlement;
+		const first = this.services.get(key)?.[0] ?? null;
+		if (first) {
+			this.serviceRegistrationStatus.set(key, "registered");
+			const handler = this.servicePromiseHandlers.get(key);
+			if (handler) {
+				handler.resolve(first);
+				this.servicePromiseHandlers.delete(key);
+			}
+			return first;
 		}
-		try {
-			return await inFlight;
-		} finally {
-			this.startingServices.delete(key);
+
+		const cause = new AggregateError(
+			settled.flatMap((result) =>
+				result.status === "rejected" ? [result.reason] : [],
+			),
+			`All implementations of service ${String(serviceType)} failed`,
+		);
+		const startupError = new ElizaError(
+			`Service ${String(serviceType)} not found or failed to start`,
+			{
+				code: "SERVICE_START_FAILED",
+				context: {
+					serviceType: String(serviceType),
+					implementationCount: classes.length,
+				},
+				cause,
+			},
+		);
+		const handler = this.servicePromiseHandlers.get(key);
+		if (handler) {
+			handler.reject(startupError);
+			this.servicePromiseHandlers.delete(key);
+			this.servicePromises.delete(key);
 		}
+		this.serviceRegistrationStatus.set(key, "failed");
+		throw startupError;
 	}
 
 	/** Runs one service start; used by _ensureServiceStarted with startingServices dedupe. */
@@ -5244,8 +5536,9 @@ export class AgentRuntime implements IAgentRuntime {
 		serviceType: string,
 		serviceDef: ServiceClass,
 	): Promise<Service | null> {
-		this.serviceRegistrationStatus.set(key, "registering");
-		await this.initPromise;
+		if ((this.services.get(key)?.length ?? 0) === 0) {
+			this.serviceRegistrationStatus.set(key, "registering");
+		}
 		if (typeof serviceDef.start !== "function") {
 			this.serviceRegistrationStatus.set(key, "failed");
 			throw new ElizaError("Service class has no static start method", {
@@ -5255,8 +5548,9 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		try {
 			if (this.stopped) {
-				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				throw new Error(
+					`Runtime stopped before service ${String(serviceType)} could start`,
+				);
 			}
 			const serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
@@ -5272,25 +5566,21 @@ export class AgentRuntime implements IAgentRuntime {
 					serviceInstance,
 					"late service start after runtime stop",
 				);
-				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				throw new Error(
+					`Runtime stopped while service ${String(serviceType)} was starting`,
+				);
 			}
-			if (!this.services.has(key)) {
-				this.services.set(key, []);
-			}
-			const serviceList = this.services.get(key);
-			if (serviceList) {
-				serviceList.push(serviceInstance);
-			}
-			const handler = this.servicePromiseHandlers.get(serviceType);
-			if (handler) {
-				handler.resolve(serviceInstance);
-				this.servicePromiseHandlers.delete(serviceType);
-			}
+			this.serviceInstancesByClass.set(serviceDef, serviceInstance);
+			const orderedInstances = (this.serviceTypes.get(key) ?? []).flatMap(
+				(serviceClass) => {
+					const instance = this.serviceInstancesByClass.get(serviceClass);
+					return instance ? [instance] : [];
+				},
+			);
+			this.services.set(key, orderedInstances);
 			if (serviceDef.registerSendHandlers) {
 				serviceDef.registerSendHandlers(this, serviceInstance);
 			}
-			this.serviceRegistrationStatus.set(key, "registered");
 			return serviceInstance;
 		} catch (error) {
 			// error-policy:J2 service startup adds service identity and preserves the cause
@@ -5984,11 +6274,20 @@ export class AgentRuntime implements IAgentRuntime {
 		// funnels through here is covered exactly once.
 		const resolvedProvider =
 			provider || this.models.get(modelKey)?.[0]?.provider || "unknown";
-		recordInferenceSpan(`model:${modelType}`, elapsedTime, {
+		// Surface reasoning-token usage on the successful model span so a
+		// reasoning burst is attributable per call (#16394). Native results
+		// (tool-call shape) carry `.usage`; plain-text results do not, in which
+		// case the field is omitted entirely — missing stays missing, never zero.
+		const spanMeta: InferenceTimingMeta = {
 			modelKey,
 			provider: resolvedProvider,
 			outcome: "success",
-		});
+		};
+		const reasoningTokens = readReasoningTokensFromResponse(response);
+		if (reasoningTokens !== undefined) {
+			spanMeta.reasoningTokens = reasoningTokens;
+		}
+		recordInferenceSpan(`model:${modelType}`, elapsedTime, spanMeta);
 		if (modelType !== ModelType.TEXT_EMBEDDING) {
 			setInferenceModelProvider(resolvedProvider);
 		}
@@ -6236,6 +6535,24 @@ export class AgentRuntime implements IAgentRuntime {
 					attemptMeta,
 				);
 			}
+
+			// Outer-scope mirrors of the try-block locals needed by the catch block's
+			// failed-attempt trajectory record. `let`/`const` inside `try` are not
+			// visible to the matching `catch`, so we capture them here as they are
+			// assigned inside (#17532).
+			let modelParamsRef: unknown = params;
+			let promptContentRef: string | null | undefined;
+			// recordingStateRef tracks whether the provider already logged this call.
+			// The catch block must not add a second failure entry for a call the
+			// provider recorded before throwing (e.g. OpenAI streaming logs in its
+			// generator finalizer then rethrows the stream error) — that would
+			// reintroduce the double-counting this fix removes (#17532).
+			//
+			// Initial value `{ recorded: false }` is only read when the handler
+			// throws BEFORE runWithModelCallRecordingScope assigns the real store
+			// (line ~6578). Once assigned, all later reads reference the scope's
+			// live mutable object, not this placeholder.
+			let recordingStateRef: { recorded: boolean } = { recorded: false };
 
 			try {
 				const binaryModels: string[] = [
@@ -6649,6 +6966,11 @@ export class AgentRuntime implements IAgentRuntime {
 						: null) ||
 					(typeof modelParams === "string" ? modelParams : null);
 
+				// Capture the post-hook params + prompt into the outer scope so the
+				// catch block's failed-attempt trajectory record can see them.
+				modelParamsRef = modelParams;
+				promptContentRef = promptContent;
+
 				if (!binaryModels.includes(resolvedModelKey)) {
 					this.logger.trace(
 						{
@@ -6720,10 +7042,15 @@ export class AgentRuntime implements IAgentRuntime {
 					attemptMeta,
 				);
 				handlerStartedAt = Date.now();
-				const rawResponse = await handler(
-					this,
-					modelParams as Record<string, JsonValue | object>,
-				);
+				const { result: handlerResult, recordingState } =
+					await runWithModelCallRecordingScope(() =>
+						handler(this, modelParams as Record<string, JsonValue | object>),
+					);
+				// Expose the mutable recording state to the catch block so it can
+				// suppress a failure entry when the provider already logged this
+				// call before throwing (#17532).
+				recordingStateRef = recordingState;
+				const rawResponse = handlerResult;
 
 				let safeRawResponse: unknown =
 					secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse;
@@ -6741,9 +7068,38 @@ export class AgentRuntime implements IAgentRuntime {
 					(paramsChunk || ctxChunk) &&
 					isTextStreamResult(rawResponse)
 				) {
-					for await (const chunk of rawResponse.textStream) {
-						if (abortSignal?.aborted) break;
-						await deliverModelStreamChunk(chunk);
+					// Consume the provider stream inside the recording scope, mirroring
+					// the pass-through TextStreamResult wrapper below. Async generators
+					// do not inherit AsyncLocalStorage context from their creation, and
+					// runWithModelCallRecordingScope above has already exited by the
+					// time we iterate, so markProviderRecordedCall (fired from the
+					// provider finalizer via logActiveTrajectoryLlmCall — e.g. the
+					// plugin-openai live-stream finally block) would find no store and
+					// no-op. Re-entering the scope per-.next() (and forwarding .return()
+					// cleanup) ensures the provider mark lands and suppresses the
+					// generic fallback, otherwise this call is double-recorded (#17532).
+					const streamIter = rawResponse.textStream[Symbol.asyncIterator]();
+					try {
+						while (true) {
+							const { done, value } = await runInModelCallRecordingScope(
+								recordingState,
+								() => streamIter.next(),
+							);
+							if (done) break;
+							// Check abort AFTER pulling a chunk (matching the original
+							// for-await pull-then-check order) so the provider generator
+							// body always advances at least once and its finally block
+							// runs on .return() cleanup.
+							if (abortSignal?.aborted) break;
+							await deliverModelStreamChunk(value);
+						}
+					} finally {
+						// Forward cleanup to the provider iterator so its finally block
+						// (markProviderRecordedCall) also runs inside the scope. Safe to
+						// call even if already exhausted.
+						await runInModelCallRecordingScope(recordingState, async () => {
+							await streamIter.return?.();
+						});
 					}
 					await flushGuardedStream();
 					structuredExtractor?.flush();
@@ -6879,6 +7235,7 @@ export class AgentRuntime implements IAgentRuntime {
 							result: resultRef.current,
 							response: modelOutToTrajectoryString(resultRef.current),
 							elapsedTime,
+							providerRecorded: recordingState.recorded,
 						});
 					}
 					recordInferenceSpan(
@@ -6972,7 +7329,14 @@ export class AgentRuntime implements IAgentRuntime {
 					resultRef.current,
 				);
 
-				if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
+				if (
+					String(modelType) !== ModelType.TEXT_EMBEDDING &&
+					!(
+						shouldStream &&
+						!handlerDeliveredStream &&
+						isTextStreamResult(resultRef.current as object)
+					)
+				) {
 					await this.recordUseModelTrajectory({
 						modelType: String(modelType),
 						resolvedModelKey: String(resolvedModelKey),
@@ -6982,7 +7346,114 @@ export class AgentRuntime implements IAgentRuntime {
 						result: resultRef.current,
 						response: modelOutToTrajectoryString(resultRef.current),
 						elapsedTime,
+						providerRecorded: recordingState.recorded,
 					});
+				}
+
+				// Pass-through stream: the caller will consume textStream after
+				// useModel returns. Defer the generic trajectory record until then,
+				// so the provider's deferred recordLlmCall has time to mark the
+				// flag (#17532). The wrapper accumulates chunks as they pass
+				// through so the trajectory entry can be recorded from the
+				// delivered text without awaiting streamResult.text, which may
+				// never settle or may reject on the abort path. A backstop on the
+				// provider's text promise guarantees at least one entry even when
+				// the consumer never iterates or awaits .text (#17532 review).
+				if (
+					shouldStream &&
+					!handlerDeliveredStream &&
+					isTextStreamResult(resultRef.current as object)
+				) {
+					const streamResult = resultRef.current as TextStreamResult;
+					const trajArgs = {
+						modelType: String(modelType),
+						resolvedModelKey: String(resolvedModelKey),
+						provider: resolvedModel.provider,
+						modelParams,
+						promptContent,
+						elapsedTime,
+					};
+					let didRecord = false;
+					const accumulatedChunks: string[] = [];
+					const recordOnce = async () => {
+						if (didRecord) return;
+						didRecord = true;
+						const finalText = accumulatedChunks.join("");
+						await this.recordUseModelTrajectory({
+							...trajArgs,
+							result: finalText,
+							response: finalText,
+							providerRecorded: recordingState.recorded,
+						});
+					};
+					// Guaranteed terminal record: if the consumer never iterates
+					// the textStream and never awaits .text, the provider's text
+					// promise still resolves (or rejects) eventually. Attach a
+					// backstop so at least one trajectory entry fires regardless
+					// of how the consumer treats the stream result (#17532 review,
+					// Finding 2).
+					streamResult.text.then(
+						(resolvedText) => {
+							if (accumulatedChunks.length === 0 && resolvedText) {
+								accumulatedChunks.push(resolvedText);
+							}
+							void recordOnce();
+						},
+						() => void recordOnce(),
+					);
+					resultRef.current = {
+						...streamResult,
+						textStream: (async function* () {
+							// Each .next() call re-enters the recording scope so
+							// the provider generator body (and its finally block
+							// where markProviderRecordedCall fires) runs inside
+							// the ALS context (#17532).
+							const innerIter = streamResult.textStream[Symbol.asyncIterator]();
+							try {
+								while (true) {
+									const { done, value } = await runInModelCallRecordingScope(
+										recordingState,
+										() => innerIter.next(),
+									);
+									if (done) break;
+									accumulatedChunks.push(value);
+									yield value;
+								}
+							} finally {
+								// Forward cleanup to the provider iterator so its
+								// finally block (markProviderRecordedCall) runs inside
+								// the scope. Safe to call even if already exhausted.
+								await runInModelCallRecordingScope(recordingState, async () => {
+									await innerIter.return?.();
+								});
+								// Record from accumulated chunks, NOT streamResult.text.
+								// The abort path's text promise may never settle or may
+								// reject; using accumulated chunks avoids hanging the
+								// generator's return() (#17532 review, Finding 3).
+								try {
+									await recordOnce();
+								} catch {
+									// error-policy:J7 Trajectory logging must never break core model flow.
+								}
+							}
+						})(),
+						// Lazy: record from accumulated chunks when the caller
+						// awaits text, not eagerly when the provider's SDK promise
+						// settles (#17532). The consumer explicitly awaited
+						// streamResult.text, so resolving it is safe — a rejection
+						// surfaces at the caller's own await site.
+						get text() {
+							return Promise.resolve(
+								runInModelCallRecordingScope(recordingState, async () => {
+									const t = await streamResult.text;
+									accumulatedChunks.length = 0;
+									accumulatedChunks.push(t);
+									await recordOnce();
+									return t;
+								}),
+							);
+						},
+					} satisfies TextStreamResult;
 				}
 				recordInferenceSpan(
 					`model-postprocess:${String(modelType)}`,
@@ -7005,6 +7476,30 @@ export class AgentRuntime implements IAgentRuntime {
 						Date.now() - handlerStartedAt,
 						{ ...attemptMeta, outcome: "error" },
 					);
+				}
+				// Record the failed attempt as a trajectory llm-call entry so a
+				// rejected (often billed) provider attempt is not invisible. If
+				// failover succeeds, only the success would otherwise appear; if
+				// every attempt fails, the step would have zero model entries
+				// (#17532). Fire-and-forget: trajectory logging must not block the
+				// failover/rethrow path, and its own failures are reported inside.
+				// Skip when the provider already logged this call before throwing
+				// (e.g. OpenAI streaming logs in its finalizer then rethrows) — a
+				// second failure entry would reintroduce the double-counting this
+				// fix removes (#17532).
+				if (!recordingStateRef.recorded) {
+					void this.recordFailedModelTrajectory({
+						modelType: String(modelType),
+						resolvedModelKey: String(resolvedModelKey),
+						provider: resolvedModel.provider,
+						modelParams: modelParamsRef,
+						promptContent: promptContentRef,
+						error,
+						elapsedTime:
+							handlerStartedAt === null
+								? Date.now() - preprocessingStartedAt
+								: Date.now() - handlerStartedAt,
+					});
 				}
 				lastModelError = error;
 				const nextModel = resolvedModels[resolvedIndex + 1];
@@ -7052,8 +7547,14 @@ export class AgentRuntime implements IAgentRuntime {
 		result?: unknown;
 		response: string;
 		elapsedTime: number;
+		providerRecorded: boolean;
 	}): Promise<void> {
 		if (this.initResolver) return;
+
+		// When the provider-level wire recorder (`recordLlmCall` or
+		// `logActiveTrajectoryLlmCall`) already logged this call, suppress the
+		// generic fallback to avoid double counting (#17532).
+		if (args.providerRecorded) return;
 
 		try {
 			const trajCtx = getTrajectoryContext();
@@ -7150,6 +7651,7 @@ export class AgentRuntime implements IAgentRuntime {
 				cacheCreationInputTokens: asNumber(
 					usageRecord.cacheCreationInputTokens,
 				),
+				reasoningTokens: asNumber(usageRecord.reasoningTokens),
 				modelSlot: args.modelType,
 				runId: trajCtx.runId,
 				roomId: trajCtx.roomId,
@@ -7159,13 +7661,121 @@ export class AgentRuntime implements IAgentRuntime {
 				providerAttributions,
 			});
 		} catch (error) {
-			// error-policy:J7 Trajectory logging must never break core model flow.
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — model responses
+			// remain usable when trajectory persistence fails, while reportError
+			// makes the missing telemetry observable to the agent and owner.
 			this.logger.warn(
 				{ error, modelType: args.modelType },
 				"Failed to record model-call trajectory",
 			);
 			this.reportError("AgentRuntime.recordUseModelTrajectory", error, {
 				modelType: args.modelType,
+				resolvedModelKey: args.resolvedModelKey,
+				provider: args.provider,
+			});
+		}
+	}
+
+	/**
+	 * Emit a failure llm-call entry for a `useModel` attempt that threw before
+	 * producing a usable result. Without this, a rejected provider attempt is
+	 * invisible in the trajectory: if failover succeeds, only the successful
+	 * call appears and the failed (and often billed) attempt is lost; if every
+	 * attempt fails, the step has zero model entries at all (#17532).
+	 *
+	 * Records the real error — sanitized of secrets — as the response payload
+	 * with `finishReason: "error"`, and does NOT fabricate an empty response or
+	 * zero token counts. Trajectory logging never breaks core model flow, so
+	 * failures here are swallowed and surfaced via reportError instead.
+	 */
+	private async recordFailedModelTrajectory(args: {
+		modelType: string;
+		resolvedModelKey: string;
+		provider?: string;
+		modelParams: unknown;
+		promptContent: string | null | undefined;
+		error: unknown;
+		elapsedTime: number;
+	}): Promise<void> {
+		if (this.initResolver) return;
+		// A failed attempt is NOT provider-recorded: the provider never returned
+		// a result, so its wire recorder did not run. We want this entry to land.
+		try {
+			const trajCtx = getTrajectoryContext();
+			const stepId = trajCtx?.trajectoryStepId;
+			if (!stepId) return;
+			const trajLogger = (await this._ensureServiceStarted("trajectories")) as
+				| (Service & TrajectoryRuntimeLlmCallLogger)
+				| null;
+			if (!trajLogger) return;
+
+			const paramsRecord = isPlainObject(args.modelParams)
+				? (args.modelParams as Record<string, unknown>)
+				: {};
+			const tempRaw = isPlainObject(args.modelParams)
+				? (args.modelParams as { temperature?: number }).temperature
+				: undefined;
+			const maxTokensRaw = isPlainObject(args.modelParams)
+				? (args.modelParams as { maxTokens?: number }).maxTokens
+				: undefined;
+			const systemPrompt =
+				resolveEffectiveSystemPrompt({
+					params: args.modelParams,
+					fallback: this.buildRuntimeSystemPrompt(),
+				}) ?? "";
+			const userPrompt =
+				this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
+				args.promptContent ??
+				"";
+			const errorMessage =
+				args.error instanceof Error
+					? args.error.message
+					: typeof args.error === "string"
+						? args.error
+						: "unknown model error";
+			// Mark the response as a sanitized failure, not a success payload, so
+			// downstream readers/agents can distinguish billed-but-failed attempts
+			// from real outputs. Secrets are stripped to keep the trajectory safe.
+			const sanitizedMessage = this.redactSecrets(errorMessage);
+			const activeTrace = this.getActiveTrace(this.getCurrentRunId());
+			trajLogger.logLlmCall({
+				stepId,
+				model: args.resolvedModelKey,
+				modelType: args.modelType,
+				provider: args.provider,
+				systemPrompt,
+				userPrompt,
+				prompt:
+					typeof paramsRecord.prompt === "string"
+						? paramsRecord.prompt
+						: userPrompt,
+				messages: undefined,
+				tools: paramsRecord.tools,
+				toolChoice: paramsRecord.toolChoice,
+				responseSchema: paramsRecord.responseSchema,
+				providerOptions: paramsRecord.providerOptions,
+				response: `[model call failed] ${sanitizedMessage}`,
+				finishReason: "error",
+				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
+				...(typeof maxTokensRaw === "number"
+					? { maxTokens: maxTokensRaw }
+					: {}),
+				purpose: trajCtx.purpose ?? "action",
+				actionType: "runtime.useModel",
+				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
+				modelSlot: args.modelType,
+				runId: trajCtx.runId,
+				roomId: trajCtx.roomId,
+				messageId: trajCtx.messageId,
+				executionTraceId: activeTrace?.id,
+				providerOrder: trajCtx.providerOrder,
+				providerAttributions: trajCtx.providerAttributions,
+			});
+		} catch (trajectoryError) {
+			// error-policy:J7 Trajectory logging must never break core model flow.
+			this.reportError("TrajectoryFailedAttemptRecord", trajectoryError, {
+				modelKey: args.resolvedModelKey,
+				provider: args.provider,
 			});
 		}
 	}

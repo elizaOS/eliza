@@ -11,7 +11,7 @@
  *  1. A stored bearer skips the /api/v1/user status probe entirely — the
  *     agents list IS the connectivity probe, and its result is REUSED as
  *     `knownAgents` for the bind (exactly one list fetch, zero status probes).
- *  2. After `handleCloudLogin` lands a bearer, no post-login status re-probe
+ *  2. After `handleInteractiveCloudLogin` lands a bearer, no post-login status re-probe
  *     runs — the token is the proof; the probe only runs when no token landed.
  *  3. The bind warms the just-bound agent base with a fire-and-forget
  *     conversations fetch so the post-ready hydrate hits a warm container —
@@ -117,21 +117,21 @@ function draft(): FirstRunProfileDraft {
 
 function ports(overrides: Partial<FirstRunFinishPorts> = {}): {
   ports: FirstRunFinishPorts;
-  handleCloudLogin: ReturnType<typeof vi.fn>;
+  handleInteractiveCloudLogin: ReturnType<typeof vi.fn>;
 } {
-  const handleCloudLogin = vi.fn(async () => {});
+  const handleInteractiveCloudLogin = vi.fn(async () => {});
   return {
     ports: {
       uiLanguage: "en",
       elizaCloudConnected: false,
-      handleCloudLogin,
+      handleInteractiveCloudLogin,
       setRuntimeState: vi.fn(),
       setTab: vi.fn(),
       completeFirstRun: vi.fn(),
       onStatus: vi.fn(),
       ...overrides,
     },
-    handleCloudLogin,
+    handleInteractiveCloudLogin,
   };
 }
 
@@ -183,24 +183,24 @@ describe("listOrAutoProvisionCloudAgent — no serial status probe before the ag
     clientStub.getCloudCompatAgents
       .mockResolvedValueOnce({ success: false, data: [], error: "401" })
       .mockResolvedValueOnce({ success: true, data: [RUNNING_AGENT] });
-    const { ports: p, handleCloudLogin } = ports();
+    const { ports: p, handleInteractiveCloudLogin } = ports();
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("done");
     // The failure path consulted the status probe (legacy semantics kept)…
     expect(clientStub.getCloudStatus).toHaveBeenCalled();
     // …and re-entered login rather than treating the dead list as connected.
-    expect(handleCloudLogin).toHaveBeenCalledTimes(1);
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     expect(clientStub.getCloudCompatAgents).toHaveBeenCalledTimes(2);
   });
 
-  it("after handleCloudLogin lands a bearer there is NO post-login status re-probe — one probe total on the no-token entry", async () => {
-    const { ports: p, handleCloudLogin } = ports();
-    handleCloudLogin.mockImplementation(async () => {
+  it("after handleInteractiveCloudLogin lands a bearer there is NO post-login status re-probe — one probe total on the no-token entry", async () => {
+    const { ports: p, handleInteractiveCloudLogin } = ports();
+    handleInteractiveCloudLogin.mockImplementation(async () => {
       storeStewardToken("fresh-jwt");
     });
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("done");
-    expect(handleCloudLogin).toHaveBeenCalledTimes(1);
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     // Exactly ONE status probe (the pre-login connectivity check). The old
     // code issued a second one after login whose result was overridden by the
     // token check anyway — that serial round trip must not come back.
@@ -209,10 +209,10 @@ describe("listOrAutoProvisionCloudAgent — no serial status probe before the ag
   });
 
   it("returns needs-cloud-login when login lands no token and the probe stays disconnected", async () => {
-    const { ports: p, handleCloudLogin } = ports();
+    const { ports: p, handleInteractiveCloudLogin } = ports();
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("needs-cloud-login");
-    expect(handleCloudLogin).toHaveBeenCalledTimes(1);
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     // Pre-login probe + post-login probe (no token landed, so the probe is
     // still the only evidence available).
     expect(clientStub.getCloudStatus).toHaveBeenCalledTimes(2);

@@ -206,8 +206,12 @@ export interface ShellController {
     active: boolean;
     connecting: boolean;
     paused: boolean;
+    /** True when realtime mic frames are replaced with silence. */
+    microphoneMuted: boolean;
     status: VoiceContinuousStatus;
     error: string | null;
+    /** Mute/unmute the realtime microphone without ending the conversation. */
+    toggleMicrophoneMute: () => void;
   };
   /** Toggle the hands-free conversation loop (mic ↔ spoken reply ↔ mic). */
   toggleHandsFree: () => void;
@@ -469,6 +473,7 @@ export function useShellController(): ShellController {
       if (event.t === "navigate_view") {
         dispatchNavigateViewEvent({
           viewId: event.viewId,
+          ...(event.viewPath ? { viewPath: event.viewPath } : {}),
           source: "agent",
           ...(event.subview ? { subview: event.subview } : {}),
         });
@@ -1594,6 +1599,7 @@ export function useShellController(): ShellController {
       connected: elizaCloudConnected,
       proxyAvailable: elizaCloudVoiceProxyAvailable,
     }),
+    realtimeVoiceEnabled,
   });
   // Wire the forward ref so the conversation-switch / clear handlers (defined
   // above `voiceOutput`) can stop in-flight assistant speech at gesture time.
@@ -2371,8 +2377,10 @@ export function useShellController(): ShellController {
       active: realtimeVoice.active,
       connecting: realtimeVoice.connecting,
       paused: realtimeVoice.paused,
+      microphoneMuted: realtimeVoice.microphoneMuted,
       status: realtimeVoice.status,
       error: realtimeVoiceErrorMessage,
+      toggleMicrophoneMute: realtimeVoice.toggleMicrophoneMute,
     },
     toggleHandsFree,
     micPermission,

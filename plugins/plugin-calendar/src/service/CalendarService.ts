@@ -100,6 +100,16 @@ import {
   resolveNextCalendarEventWindow,
 } from "../internal/calendar-normalize.js";
 import { DEFAULT_CALENDAR_REMINDER_STEPS } from "../internal/constants.js";
+import {
+  createElizaCalendarEvent,
+  ELIZA_CALENDAR_GRANT_ID,
+  ELIZA_CALENDAR_ID,
+  ELIZA_CALENDAR_PROVIDER,
+  elizaCalendarSummary,
+  isElizaCalendarEventId,
+  isElizaCalendarGrant,
+  updateElizaCalendarEvent,
+} from "../internal/eliza-calendar.js";
 import { CalendarServiceError, fail } from "../internal/errors.js";
 import {
   accountIdForGrant,
@@ -248,11 +258,20 @@ function shouldIncludeIcsCalendars(request: {
   if (
     request.grantId &&
     (isAppleCalendarGrant(request.grantId) ||
-      isMicrosoftCalendarGrantId(request.grantId))
+      isMicrosoftCalendarGrantId(request.grantId) ||
+      isElizaCalendarGrant(request.grantId))
   ) {
     return false;
   }
   return true;
+}
+
+function shouldIncludeElizaCalendar(request: {
+  side?: LifeOpsConnectorSide | null;
+  grantId?: string | null;
+}): boolean {
+  if (request.side && request.side !== "owner") return false;
+  return !request.grantId || isElizaCalendarGrant(request.grantId);
 }
 
 function googleEventIntersectsWindow(
@@ -305,6 +324,7 @@ function normalizeCalendarProvider(value: unknown): LifeOpsCalendarProvider {
     case "microsoft":
     case "apple_calendar":
     case "ics":
+    case "eliza":
       return provider;
     default:
       throw new CalendarServiceError(
@@ -919,6 +939,8 @@ export function mergeAggregatedCalendarFeedEvents(
       case "google":
       case "microsoft":
         return 4;
+      case "eliza":
+        return 5;
       case "apple_calendar":
         return 3;
       case "ics":
@@ -1090,7 +1112,7 @@ export function mergeAggregatedCalendarFeedEvents(
 export class CalendarService extends Service {
   static override serviceType = "calendar";
   capabilityDescription =
-    "Google, Microsoft, Apple, and guarded ICS calendar feeds, event management, guest free/busy, and next-event context for Eliza agents.";
+    "Built-in Eliza, Google, Microsoft, Apple, and guarded ICS calendar feeds, event management, guest free/busy, and next-event context for Eliza agents.";
 
   private readonly repo: CalendarRepository;
   private gate: CalendarHostGate;
@@ -1176,6 +1198,12 @@ export class CalendarService extends Service {
           nowIso,
           horizonIso,
         )),
+        ...(await this.repo.listCalendarEvents(
+          this.agentId(),
+          ELIZA_CALENDAR_PROVIDER,
+          nowIso,
+          horizonIso,
+        )),
       ];
       await restoreMeetingAutoJoinAnchors(this.runtime, this.agentId(), events);
     } catch (error) {
@@ -1232,6 +1260,12 @@ export class CalendarService extends Service {
       ...(await this.repo.listCalendarEvents(
         this.agentId(),
         MICROSOFT_CALENDAR_PROVIDER,
+        nowIso,
+        horizonIso,
+      )),
+      ...(await this.repo.listCalendarEvents(
+        this.agentId(),
+        ELIZA_CALENDAR_PROVIDER,
         nowIso,
         horizonIso,
       )),
@@ -2402,6 +2436,12 @@ export class CalendarService extends Service {
         undefined,
         undefined,
       )),
+      ...(await this.repo.listCalendarEvents(
+        this.agentId(),
+        ELIZA_CALENDAR_PROVIDER,
+        undefined,
+        undefined,
+      )),
     ];
     const reservations = events.filter((event) => {
       const parentEventId = availabilityReservationParentEventId(event);
@@ -2420,7 +2460,8 @@ export class CalendarService extends Service {
     const side = normalizeOptionalConnectorSide(request?.side, "side");
     const targetsNonGoogleProvider =
       isMicrosoftCalendarGrantId(request?.grantId) ||
-      isAppleCalendarGrant(request?.grantId);
+      isAppleCalendarGrant(request?.grantId) ||
+      isElizaCalendarGrant(request?.grantId);
     const statuses = targetsNonGoogleProvider
       ? []
       : await this.gate.getGoogleConnectorAccounts(requestUrl, side);
@@ -2434,6 +2475,9 @@ export class CalendarService extends Service {
       .filter((grant) => grant.capabilities.includes("google.calendar.read"));
     const summaries: LifeOpsCalendarSummary[] = [];
     const failures: LifeOpsCalendarSourceHealth[] = [];
+    if (shouldIncludeElizaCalendar({ side, grantId: request?.grantId })) {
+      summaries.push(elizaCalendarSummary());
+    }
     if (grants.length > 0) {
       const listCalendars = requireGoogleServiceMethod(
         this.runtime,
@@ -2563,7 +2607,7 @@ export class CalendarService extends Service {
       if (appleCalendars.ok) {
         summaries.push(...appleCalendars.data);
       } else if (
-        appleCalendars.reason !== "not_supported" ||
+        appleCalendars.reason === "native_error" ||
         isAppleCalendarGrant(request?.grantId)
       ) {
         const calendar = appleCalendarPlaceholderSummary({
@@ -3999,6 +4043,47 @@ export class CalendarService extends Service {
     };
   }
 
+  private async readElizaCalendarFeed(args: {
+    calendar: LifeOpsCalendarSummary;
+    timeMin: string;
+    timeMax: string;
+  }): Promise<LifeOpsCalendarFeed> {
+    const events = await this.repo.listCalendarEvents(
+      this.agentId(),
+      ELIZA_CALENDAR_PROVIDER,
+      args.timeMin,
+      args.timeMax,
+      "owner",
+      ELIZA_CALENDAR_GRANT_ID,
+    );
+    // The built-in source is authoritative local state, not a polled remote.
+    // Its observation token therefore advances only when stored events change;
+    // stamping every read with wall-clock time would make receipts non-replayable.
+    const syncedAt =
+      events
+        .map((event) => event.updatedAt)
+        .filter((value) => Number.isFinite(Date.parse(value)))
+        .sort()
+        .at(-1) ?? null;
+    return {
+      calendarId: args.calendar.calendarId,
+      events,
+      source: "synced",
+      state: "complete",
+      sources: [
+        calendarSourceHealth({
+          calendar: args.calendar,
+          status: "fresh",
+          syncedAt,
+          error: null,
+        }),
+      ],
+      timeMin: args.timeMin,
+      timeMax: args.timeMax,
+      syncedAt,
+    };
+  }
+
   async getCalendarFeed(
     requestUrl: URL,
     request: GetLifeOpsCalendarFeedRequest = {},
@@ -4178,6 +4263,17 @@ export class CalendarService extends Service {
   ): Promise<LifeOpsCalendarFeed> {
     const sources: AggregatedCalendarFeedSource[] = [];
     for (const calendar of calendars) {
+      if (calendar.provider === ELIZA_CALENDAR_PROVIDER) {
+        sources.push({
+          calendar,
+          feed: await this.readElizaCalendarFeed({
+            calendar,
+            timeMin,
+            timeMax,
+          }),
+        });
+        continue;
+      }
       if (calendar.provider === "ics") {
         const source = await this.repo.getIcsCalendarSource(
           this.agentId(),
@@ -4413,10 +4509,10 @@ export class CalendarService extends Service {
   }
 
   /**
-   * Resolve a conversational create into one concrete, writable Google source
-   * and absolute interval without performing the external write. Approval
-   * callers persist this exact binding so execution cannot silently switch
-   * accounts, providers, calendars, or relative-time interpretations.
+   * Resolve a conversational create into one concrete writable source and
+   * absolute interval without performing the write. Approval callers persist
+   * this exact binding so execution cannot silently switch providers,
+   * calendars, or relative-time interpretations.
    */
   async prepareCalendarEventCreate(
     requestUrl: URL,
@@ -4437,6 +4533,32 @@ export class CalendarService extends Service {
     const calendarId = normalizeCalendarId(request.calendarId);
     const recurrence = normalizeRecurrence(request.recurrence);
     const range = resolveCalendarEventRange(request, now);
+    if (!request.grantId || isElizaCalendarGrant(request.grantId)) {
+      if (calendarId !== ELIZA_CALENDAR_ID) {
+        fail(
+          404,
+          "The built-in Eliza calendar has one primary calendar.",
+          "ELIZA_CALENDAR_NOT_FOUND",
+        );
+      }
+      if (recurrence) {
+        fail(
+          400,
+          "Recurring events require a connected calendar provider.",
+          "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED",
+        );
+      }
+      return {
+        ...request,
+        side: "owner",
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+        startAt: range.startAt,
+        endAt: range.endAt,
+        timeZone: range.timeZone,
+        ...(recurrence ? { recurrence } : {}),
+      };
+    }
     if (isAppleCalendarGrant(request.grantId)) {
       failConditionalMutationUnsupported("Apple");
     }
@@ -4566,6 +4688,56 @@ export class CalendarService extends Service {
       request,
       now,
     );
+    if (!request.grantId || isElizaCalendarGrant(request.grantId)) {
+      if (calendarId !== ELIZA_CALENDAR_ID) {
+        fail(
+          404,
+          "The built-in Eliza calendar has one primary calendar.",
+          "ELIZA_CALENDAR_NOT_FOUND",
+        );
+      }
+      const event = createElizaCalendarEvent({
+        agentId: this.agentId(),
+        request: {
+          ...request,
+          calendarId: ELIZA_CALENDAR_ID,
+          grantId: ELIZA_CALENDAR_GRANT_ID,
+          side: "owner",
+        },
+        startAt,
+        endAt,
+        timeZone,
+        attendees: normalizeCalendarAttendees(request.attendees),
+        now,
+      });
+      const receipt = await this.repo.insertCalendarEventIfAbsent(event);
+      const persisted = receipt.event;
+      if (receipt.inserted) {
+        await this.syncCalendarReminderPlans([persisted]);
+        await reconcileMeetingAutoJoin({
+          runtime: this.runtime,
+          agentId: this.agentId(),
+          events: [persisted],
+        });
+        await this.recordCalendarEventAudit(
+          persisted.id,
+          "calendar event created in the built-in Eliza calendar",
+          {
+            calendarId: persisted.calendarId,
+            title: request.title,
+          },
+          {
+            externalId: persisted.externalId,
+            providerVersion: persisted.metadata.etag,
+          },
+        );
+      }
+      return {
+        outcome: "event",
+        event: persisted,
+        writeOnlyReceipt: null,
+      };
+    }
     if (isMicrosoftCalendarGrantId(request.grantId)) {
       if (recurrence) {
         failMicrosoftRecurrenceUnsupported("creation");
@@ -4789,6 +4961,176 @@ export class CalendarService extends Service {
     };
   }
 
+  private async resolveElizaCalendarEvent(args: {
+    eventId: string;
+    calendarId?: string | null;
+  }): Promise<LifeOpsCalendarEvent> {
+    const eventId = requireNonEmptyString(args.eventId, "eventId");
+    const event = isElizaCalendarEventId(eventId, this.agentId())
+      ? await this.repo.getCalendarEventById(this.agentId(), eventId)
+      : await this.repo.getCalendarEventByExternalId({
+          agentId: this.agentId(),
+          provider: ELIZA_CALENDAR_PROVIDER,
+          externalEventId: eventId,
+          calendarId: args.calendarId,
+          side: "owner",
+          grantId: ELIZA_CALENDAR_GRANT_ID,
+        });
+    if (!event || event.provider !== ELIZA_CALENDAR_PROVIDER) {
+      throw new CalendarServiceError(
+        404,
+        "The built-in calendar event was not found.",
+        "CALENDAR_EVENT_NOT_FOUND",
+      );
+    }
+    return event;
+  }
+
+  private async updateBuiltInCalendarEvent(args: {
+    request: {
+      calendarId?: string | null;
+      eventId: string;
+      title?: string;
+      description?: string;
+      location?: string;
+      startAt?: string;
+      endAt?: string;
+      timeZone?: string;
+      attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
+      recurrence?: string[] | null;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion?: string;
+    };
+    now?: Date;
+  }): Promise<LifeOpsCalendarEvent> {
+    if (args.request.recurrence?.length || args.request.recurrenceScope) {
+      fail(
+        400,
+        "Recurring events require a connected calendar provider.",
+        "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED",
+      );
+    }
+    if (args.request.notifyAttendees === true) {
+      fail(
+        400,
+        "The built-in Eliza calendar cannot email attendees. Connect an external calendar to send updates.",
+        "ELIZA_CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED",
+      );
+    }
+    const expectedVersion = requireNonEmptyString(
+      args.request.expectedProviderVersion,
+      "expectedProviderVersion",
+    );
+    const existing = await this.resolveElizaCalendarEvent(args.request);
+    const updated = updateElizaCalendarEvent({
+      event: existing,
+      ...(args.request.title !== undefined
+        ? { title: args.request.title }
+        : {}),
+      ...(args.request.description !== undefined
+        ? { description: args.request.description }
+        : {}),
+      ...(args.request.location !== undefined
+        ? { location: args.request.location }
+        : {}),
+      ...(args.request.startAt !== undefined
+        ? { startAt: args.request.startAt }
+        : {}),
+      ...(args.request.endAt !== undefined
+        ? { endAt: args.request.endAt }
+        : {}),
+      ...(args.request.timeZone !== undefined
+        ? { timeZone: args.request.timeZone }
+        : {}),
+      attendees:
+        args.request.attendees === undefined || args.request.attendees === null
+          ? undefined
+          : normalizeCalendarAttendees(args.request.attendees),
+      now: args.now ?? new Date(),
+    });
+    const persisted = await this.repo.replaceCalendarEventIfVersion({
+      event: updated,
+      expectedVersion,
+    });
+    if (!persisted) {
+      fail(
+        409,
+        "The built-in calendar event changed after approval; refresh and retry.",
+        "PROVIDER_PRECONDITION_FAILED",
+      );
+    }
+    await this.syncCalendarReminderPlans([persisted]);
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: [persisted],
+    });
+    await this.recordCalendarEventAudit(
+      persisted.id,
+      "calendar event updated in the built-in Eliza calendar",
+      { eventId: existing.externalId },
+      { providerVersion: persisted.metadata.etag },
+      "calendar_event_updated",
+    );
+    return persisted;
+  }
+
+  private async deleteBuiltInCalendarEvent(args: {
+    eventId: string;
+    calendarId?: string | null;
+    expectedProviderVersion?: string;
+    recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+    notifyAttendees?: boolean;
+  }): Promise<void> {
+    if (args.recurrenceScope) {
+      fail(
+        400,
+        "Recurring events require a connected calendar provider.",
+        "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED",
+      );
+    }
+    if (args.notifyAttendees === true) {
+      fail(
+        400,
+        "The built-in Eliza calendar cannot email attendees.",
+        "ELIZA_CALENDAR_ATTENDEE_NOTIFICATIONS_UNSUPPORTED",
+      );
+    }
+    const expectedVersion = requireNonEmptyString(
+      args.expectedProviderVersion,
+      "expectedProviderVersion",
+    );
+    const event = await this.resolveElizaCalendarEvent(args);
+    const deleted = await this.repo.deleteCalendarEventByIdIfVersion({
+      agentId: this.agentId(),
+      eventId: event.id,
+      expectedVersion,
+    });
+    if (!deleted) {
+      fail(
+        409,
+        "The built-in calendar event changed after approval; refresh and retry.",
+        "PROVIDER_PRECONDITION_FAILED",
+      );
+    }
+    await this.deleteAvailabilityReservationsForParentIds([event.id]);
+    await this.deleteCalendarReminderPlansForEvents([event.id]);
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: [],
+      removedEventIds: [event.id],
+    });
+    await this.recordCalendarEventAudit(
+      event.id,
+      "calendar event deleted from the built-in Eliza calendar",
+      { eventId: event.externalId },
+      { deleted: true, providerVersion: expectedVersion },
+      "calendar_event_deleted",
+    );
+  }
+
   async updateCalendarEvent(
     requestUrl: URL,
     request: {
@@ -4858,6 +5200,19 @@ export class CalendarService extends Service {
           ? undefined
           : normalizeCalendarAttendees(request.attendees),
     };
+    if (
+      isElizaCalendarGrant(request.grantId) ||
+      isElizaCalendarEventId(request.eventId, this.agentId())
+    ) {
+      return this.updateBuiltInCalendarEvent({
+        request: {
+          ...request,
+          ...nativePatch,
+          recurrence,
+          recurrenceScope,
+        },
+      });
+    }
     if (isAppleCalendarGrant(request.grantId)) {
       if (request.expectedProviderVersion) {
         failConditionalMutationUnsupported("Apple");
@@ -5504,6 +5859,19 @@ export class CalendarService extends Service {
     }
     const recurrenceScope = normalizeRecurrenceScope(request.recurrenceScope);
     const eventId = requireNonEmptyString(request.eventId, "eventId");
+    if (
+      isElizaCalendarGrant(request.grantId) ||
+      isElizaCalendarEventId(eventId, this.agentId())
+    ) {
+      await this.deleteBuiltInCalendarEvent({
+        eventId,
+        calendarId: request.calendarId,
+        expectedProviderVersion: request.expectedProviderVersion,
+        recurrenceScope,
+        notifyAttendees: request.notifyAttendees,
+      });
+      return;
+    }
     if (isAppleCalendarGrant(request.grantId)) {
       if (request.expectedProviderVersion) {
         failConditionalMutationUnsupported("Apple");
@@ -5627,8 +5995,9 @@ export class CalendarService extends Service {
   }
 
   /**
-   * Resolve the exact Google object a conditional update/delete will mutate.
-   * Series operations return the master rather than the flattened occurrence.
+   * Resolve the exact object a conditional update/delete will mutate. Google
+   * series operations return the master rather than a flattened occurrence;
+   * built-in events bind directly to their repository version.
    */
   async getConditionalCalendarMutationTarget(
     requestUrl: URL,
@@ -5643,6 +6012,43 @@ export class CalendarService extends Service {
   ): Promise<LifeOpsCalendarEvent> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
+    if (
+      isElizaCalendarGrant(request.grantId) ||
+      isElizaCalendarEventId(request.eventId, this.agentId())
+    ) {
+      if (normalizeRecurrenceScope(request.recurrenceScope)) {
+        fail(
+          400,
+          "Recurring events require a connected calendar provider.",
+          "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED",
+        );
+      }
+      return this.resolveElizaCalendarEvent(request);
+    }
+    // An unscoped external-id lookup may still name a built-in event: the
+    // built-in calendar is a first-class source, so consult it before binding
+    // the mutation to an external provider grant. A miss falls through to the
+    // existing provider resolution unchanged.
+    if (!request.grantId) {
+      const builtIn = await this.repo.getCalendarEventByExternalId({
+        agentId: this.agentId(),
+        provider: ELIZA_CALENDAR_PROVIDER,
+        externalEventId: requireNonEmptyString(request.eventId, "eventId"),
+        calendarId: request.calendarId,
+        side: "owner",
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+      });
+      if (builtIn) {
+        if (normalizeRecurrenceScope(request.recurrenceScope)) {
+          fail(
+            400,
+            "Recurring events require a connected calendar provider.",
+            "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED",
+          );
+        }
+        return builtIn;
+      }
+    }
     if (
       isAppleCalendarGrant(request.grantId) ||
       isMicrosoftCalendarGrantId(request.grantId) ||

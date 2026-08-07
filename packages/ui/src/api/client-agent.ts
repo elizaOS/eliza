@@ -2056,7 +2056,9 @@ ElizaClient.prototype.getModelsCatalog = async function (
   // takes tens of seconds on a cold cache — far past the client's 10s fetch
   // budget. Catalog consumers (settings panel, slash completions) only need
   // the validated catalog, which is local static tables + one file read.
-  return this.fetch("/api/models?catalogOnly=1", init);
+  return init === undefined
+    ? this.fetch("/api/models?catalogOnly=1")
+    : this.fetch("/api/models?catalogOnly=1", init);
 };
 
 ElizaClient.prototype.getModelsConfig = async function (this: ElizaClient) {
