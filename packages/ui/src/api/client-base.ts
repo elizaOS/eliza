@@ -86,6 +86,14 @@ type StreamChatEvent = {
   type?: string;
   text?: string;
   fullText?: string;
+  /**
+   * `type: "token"` only — the carried text is an in-flight action-callback
+   * delivery the turn's final reply may replace wholesale. Text bubbles render
+   * it exactly like any streamed text; voice output must NOT synthesize it
+   * until the terminal frame confirms it (speech cannot be retracted — the
+   * voice "double-speak" defect).
+   */
+  provisional?: boolean;
   transcriptVisibility?: "internal";
   agentName?: string;
   messageId?: string;
@@ -304,7 +312,11 @@ function parseStreamChatDataLine(line: string): StreamChatEvent | null {
 function applyStreamChatTokenEvent(
   parsed: StreamChatEvent,
   state: StreamChatState,
-  onToken: (token: string, accumulatedText?: string) => void,
+  onToken: (
+    token: string,
+    accumulatedText?: string,
+    provisional?: boolean,
+  ) => void,
 ): boolean {
   const chunk = parsed.text ?? "";
   const nextFullText =
@@ -323,7 +335,7 @@ function applyStreamChatTokenEvent(
         : state.fullText;
   if (nextFullText === state.fullText) return false;
   state.fullText = nextFullText;
-  onToken(chunk, state.fullText);
+  onToken(chunk, state.fullText, parsed.provisional === true);
   return false;
 }
 
@@ -383,7 +395,11 @@ function applyStreamChatDoneEvent(
 function applyStreamChatDataLine(
   line: string,
   state: StreamChatState,
-  onToken: (token: string, accumulatedText?: string) => void,
+  onToken: (
+    token: string,
+    accumulatedText?: string,
+    provisional?: boolean,
+  ) => void,
   onStatus?: (status: ChatTurnStatus) => void,
   onToolEvent?: (event: ChatToolCallEvent) => void,
 ): boolean {
@@ -1869,7 +1885,14 @@ export class ElizaClient {
   async streamChatEndpoint(
     path: string,
     text: string,
-    onToken: (token: string, accumulatedText?: string) => void,
+    onToken: (
+      token: string,
+      accumulatedText?: string,
+      /** True when this text state is an in-flight action-callback delivery
+       *  the final reply may replace — voice output must hold it (see
+       *  StreamChatEvent.provisional). */
+      provisional?: boolean,
+    ) => void,
     channelType: ConversationChannelType = "DM",
     signal?: AbortSignal,
     images?: ImageAttachment[],

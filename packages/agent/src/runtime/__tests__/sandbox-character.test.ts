@@ -6,18 +6,39 @@ import { describe, expect, it, vi } from "vitest";
 import {
   applySandboxCharacterFromEnv,
   applySandboxIdentityFromEnv,
+  type CharacterOverrideFileAccess,
   prepareSandboxRuntimeConfig,
   resolveSandboxRouteAgentId,
 } from "../sandbox-character.ts";
 
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+
+function makeFileAccess(options?: {
+  cwd?: string;
+  repoRoot?: string | null;
+  files?: Record<string, string>;
+}): CharacterOverrideFileAccess {
+  const files = options?.files ?? {};
+  return {
+    cwd: options?.cwd ?? "/workspace",
+    argv1: "/workspace/packages/agent/src/index.ts",
+    existsSync: (filePath) => Object.hasOwn(files, filePath),
+    readTextFileSync: (filePath) => {
+      const value = files[filePath];
+      if (value === undefined) throw new Error(`missing file: ${filePath}`);
+      return value;
+    },
+    resolvePackageRoot: () => options?.repoRoot ?? null,
+  };
+}
 
 describe("applySandboxCharacterFromEnv", () => {
   it("is a no-op when no character override is present", () => {
     const config = { agents: { list: [] } } as never;
-    const out = applySandboxCharacterFromEnv(config, { NODE_ENV: "test" });
+    const out = applySandboxCharacterFromEnv(config, {}, makeFileAccess());
     expect(out).toBe(config);
     expect((out as { agents?: { list?: unknown[] } }).agents?.list).toEqual([]);
   });
@@ -53,6 +74,107 @@ describe("applySandboxCharacterFromEnv", () => {
     expect(
       (out as { ui: { assistant: { name: string } } }).ui.assistant.name,
     ).toBe("Nyx");
+  });
+
+  it("preserves object knowledge sources when appending lore", () => {
+    const config = {} as never;
+    const out = applySandboxCharacterFromEnv(config, {
+      ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({
+        name: "Nyx",
+        knowledge: [
+          { path: "docs", shared: true },
+          { directory: "knowledge" },
+          "facts.md",
+        ],
+        lore: ["Never discard structured knowledge."],
+      }),
+    });
+
+    expect(
+      (out as { agents: { list: Array<{ knowledge: unknown[] }> } }).agents
+        .list[0]?.knowledge,
+    ).toEqual([
+      { path: "docs", shared: true },
+      { directory: "knowledge" },
+      "facts.md",
+      "Never discard structured knowledge.",
+    ]);
+  });
+
+  it("loads an explicit relative character path through the injected file seam", () => {
+    const filePath = "/workspace/characters/nyx.json";
+    const out = applySandboxCharacterFromEnv(
+      {} as never,
+      { ELIZA_CHARACTER_PATH: "characters/nyx.json" },
+      makeFileAccess({
+        files: { [filePath]: JSON.stringify({ name: "File Nyx" }) },
+      }),
+    );
+
+    expect(
+      (out as { agents: { list: Array<{ name: string }> } }).agents.list[0]
+        ?.name,
+    ).toBe("File Nyx");
+  });
+
+  it("discovers character.json at the injected package root during tests", () => {
+    const filePath = "/repo/character.json";
+    const out = applySandboxCharacterFromEnv(
+      {} as never,
+      { NODE_ENV: "test" },
+      makeFileAccess({
+        repoRoot: "/repo",
+        files: { [filePath]: JSON.stringify({ name: "Root Nyx" }) },
+      }),
+    );
+
+    expect(
+      (out as { agents: { list: Array<{ name: string }> } }).agents.list[0]
+        ?.name,
+    ).toBe("Root Nyx");
+  });
+
+  it("normalizes legacy modelProvider ids and replaces stale routing", () => {
+    const config = {
+      serviceRouting: {
+        llmText: {
+          backend: "remote",
+          transport: "remote",
+          remoteApiBase: "https://old.invalid",
+          primaryModel: "llama3.2",
+        },
+      },
+    } as never;
+    const out = applySandboxCharacterFromEnv(config, {
+      ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({
+        name: "Nyx",
+        modelProvider: "llama_local",
+      }),
+    });
+
+    expect(out.serviceRouting?.llmText).toEqual({
+      backend: "ollama",
+      transport: "direct",
+      primaryModel: "llama3.2",
+    });
+  });
+
+  it("retains existing routing for an unsupported modelProvider", () => {
+    const existingRoute = {
+      backend: "openai",
+      transport: "direct",
+    } as const;
+    const config = {
+      serviceRouting: { llmText: existingRoute },
+    } as never;
+    const out = applySandboxCharacterFromEnv(config, {
+      ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({
+        name: "Nyx",
+        modelProvider: "made-up-provider",
+      }),
+    });
+
+    expect(out.serviceRouting?.llmText).toEqual(existingRoute);
   });
 
   it("survives malformed JSON without throwing and keeps the config unchanged", () => {

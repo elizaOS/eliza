@@ -290,13 +290,23 @@ const POSTGRES_CAPTURE_BATCH_ROWS = 500;
 
 const MEDIA_DIR_NAME = "media";
 const BACKUPS_DIR_NAME = "backups";
+/** Per-provider model cache / weights under state-dir (`resolveModelsCacheDir`). */
+const MODELS_DIR_NAME = "models";
+/** Cross-tool on-disk cache root under state-dir (`tools.cache.diskRoot` default). */
+const TOOL_CACHE_DIR_NAME = "tool-cache";
+/**
+ * Generic cache root occasionally used by inference/runtime layers under
+ * state-dir. Re-downloadable; must not bloat upgrade snapshots (#17920).
+ */
+const CACHE_DIR_NAME = "cache";
 const LOCAL_BACKUP_EXTENSION = ".agent-backup.json";
 const LOCAL_BACKUP_FORMAT = "elizaos.agent-backup-file";
 const LOCAL_BACKUP_RETENTION = 10;
 const DEFAULT_PGLITE_DIR_NAME = ".elizadb";
 const VAULT_PGLITE_DIR_NAME = ".vault-pglite";
 const VAULT_AUDIT_DIR_NAME = "audit";
-const VAULT_AUDIT_PATH = path.join("audit", "vault.jsonl");
+// Always posix-style: collectFileSet/normalizeRelativePath compare against `/`.
+const VAULT_AUDIT_PATH = "audit/vault.jsonl";
 const VAULT_JSON_PATH = "vault.json";
 const PGLITE_VOLATILE_ROOT_FILES = new Set([
   "eliza-pglite.lock",
@@ -546,6 +556,9 @@ function baseStateFileInclude(relativePath: string): boolean {
   if (
     first === MEDIA_DIR_NAME ||
     first === BACKUPS_DIR_NAME ||
+    first === MODELS_DIR_NAME ||
+    first === TOOL_CACHE_DIR_NAME ||
+    first === CACHE_DIR_NAME ||
     first === DEFAULT_PGLITE_DIR_NAME ||
     first === VAULT_PGLITE_DIR_NAME ||
     relativePath === VAULT_JSON_PATH ||

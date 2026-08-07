@@ -1,9 +1,9 @@
 /**
  * Unit tests for `registerLocalInferenceBoot` — the plugin-owned PRE-READY boot
- * hook the app-core host drains through the generic boot-hook channel (instead
- * of hard-wiring these internals at fixed init points, arch-audit #12089 item
- * 18). Verifies the encapsulated ordering / platform gating that used to live in
- * `repairRuntimeAfterBoot`:
+ * hook the shared agent host drains through the generic boot-hook channel
+ * (instead of hard-wiring these internals at fixed init points, arch-audit
+ * #12089 item 18). Verifies the encapsulated ordering / platform gating that
+ * used to live in `repairRuntimeAfterBoot`:
  *   - the mobile-voice-invariant warning fires regardless of platform,
  *   - on mobile the model handler installs ONLY when the mobile gate is on,
  *   - on desktop the model handler installs unconditionally.

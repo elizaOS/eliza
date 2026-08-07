@@ -21,17 +21,14 @@ import type {
 } from "@elizaos/core";
 import { requireConfirmation } from "@elizaos/core";
 import type { WalletRouterParams } from "../types/wallet-router.js";
+import { ON_CHAIN_WRITE_SUBACTIONS } from "./wallet-context-safety.js";
 
 /** Cache namespace for on-chain wallet writes (GHSA-rqm7-f4jc-84x3). */
 export const WALLET_FINANCIAL_CONFIRM_ACTION = "WALLET_FINANCIAL";
 
-const ON_CHAIN_SUBACTIONS = new Set<WalletRouterParams["subaction"]>([
-  "transfer",
-  "swap",
-  "bridge",
-  "gov",
-  "pump_fun_buy",
-]);
+// Alias of the single source in wallet-context-safety.ts: this gate fires for
+// exactly the on-chain write subactions, so the two gates cannot diverge.
+export const ON_CHAIN_SUBACTIONS = ON_CHAIN_WRITE_SUBACTIONS;
 
 export function requiresWalletFinancialConfirmation(
   params: Pick<WalletRouterParams, "subaction" | "dryRun">,

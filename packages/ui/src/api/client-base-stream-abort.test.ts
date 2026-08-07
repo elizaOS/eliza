@@ -55,7 +55,7 @@ describe("streamChatEndpoint client abort", () => {
 
     // The partial that streamed before the stop is preserved and returned as an
     // interrupted (completed:false) turn.
-    expect(onToken).toHaveBeenCalledWith("partial", "partial");
+    expect(onToken).toHaveBeenCalledWith("partial", "partial", false);
     expect(result.text).toBe("partial");
     expect(result.completed).toBe(false);
     // The read loop stopped consuming: the reader was cancelled with the client

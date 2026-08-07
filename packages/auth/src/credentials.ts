@@ -14,6 +14,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  ElizaError,
   getElizaNamespace,
   getSubscriptionAuthProvider,
   logger,
@@ -24,9 +25,13 @@ import {
 import type { SubscriptionCredentialSource } from "@elizaos/shared/contracts/first-run-options";
 import {
   type AccountCredentialRecord,
+  type AccountDeletionPlan,
+  type AccountStoragePolicy,
+  commitAccountDeletions,
   deleteAccount,
   listAccounts,
   loadAccount,
+  preflightProviderAccountDeletions,
   saveAccount,
 } from "./account-storage.ts";
 import { refreshAnthropicToken } from "./anthropic.ts";
@@ -79,6 +84,8 @@ export type AccessTokenOutcome =
 /** Freshness requested by a token consumer before it starts work. */
 export interface GetAccessTokenOptions {
   minRemainingMs?: number;
+  /** Required only when an expired credential must be refreshed on disk. */
+  storagePolicy?: AccountStoragePolicy;
 }
 
 /** Selects the typed token result instead of the legacy nullable return. */
@@ -140,9 +147,10 @@ function recordToStored(record: AccountCredentialRecord): StoredCredentials {
 export function saveCredentials(
   provider: SubscriptionProvider,
   credentials: OAuthCredentials,
-  accountId: string = DEFAULT_ACCOUNT_ID,
+  accountId: string,
+  storagePolicy: AccountStoragePolicy,
 ): void {
-  const existing = loadAccount(provider, accountId);
+  const existing = loadAccount(provider, accountId, storagePolicy);
   const now = Date.now();
   // OAuth refresh grants frequently re-issue an access_token WITHOUT a fresh
   // id_token (id_token is an OIDC login artifact). Codex's chatgpt-mode auth
@@ -173,7 +181,7 @@ export function saveCredentials(
     ...(existing?.userId !== undefined ? { userId: existing.userId } : {}),
     ...(existing?.email !== undefined ? { email: existing.email } : {}),
   };
-  saveAccount(record);
+  saveAccount(record, storagePolicy);
 }
 
 /**
@@ -183,8 +191,9 @@ export function saveCredentials(
 export function loadCredentials(
   provider: SubscriptionProvider,
   accountId: string = DEFAULT_ACCOUNT_ID,
+  storagePolicy?: AccountStoragePolicy,
 ): StoredCredentials | null {
-  const record = loadAccount(provider, accountId);
+  const record = loadAccount(provider, accountId, storagePolicy);
   if (!record) return null;
   return recordToStored(record);
 }
@@ -194,9 +203,17 @@ export function loadCredentials(
  */
 export function deleteCredentials(
   provider: SubscriptionProvider,
-  accountId: string = DEFAULT_ACCOUNT_ID,
+  accountId: string,
+  storagePolicy: AccountStoragePolicy,
 ): void {
-  deleteAccount(provider, accountId);
+  deleteAccount(provider, accountId, storagePolicy);
+}
+
+export function preflightProviderCredentialDeletion(
+  providers: readonly AccountCredentialProvider[],
+  storagePolicy: AccountStoragePolicy,
+): AccountDeletionPlan {
+  return preflightProviderAccountDeletions(providers, storagePolicy);
 }
 
 /**
@@ -204,10 +221,10 @@ export function deleteCredentials(
  */
 export function deleteProviderCredentials(
   provider: AccountCredentialProvider,
+  storagePolicy: AccountStoragePolicy,
 ): number {
-  const accounts = listProviderAccounts(provider);
-  for (const account of accounts) deleteAccount(provider, account.id);
-  return accounts.length;
+  const plan = preflightProviderCredentialDeletion([provider], storagePolicy);
+  return commitAccountDeletions(plan);
 }
 
 /**
@@ -216,8 +233,9 @@ export function deleteProviderCredentials(
 export function hasValidCredentials(
   provider: AccountCredentialProvider,
   accountId: string = DEFAULT_ACCOUNT_ID,
+  storagePolicy?: AccountStoragePolicy,
 ): boolean {
-  const record = loadAccount(provider, accountId);
+  const record = loadAccount(provider, accountId, storagePolicy);
   if (!record) return false;
   return record.credentials.expires > Date.now();
 }
@@ -227,8 +245,9 @@ export function hasValidCredentials(
  */
 export function listProviderAccounts(
   provider: AccountCredentialProvider,
+  storagePolicy?: AccountStoragePolicy,
 ): AccountCredentialRecord[] {
-  return listAccounts(provider);
+  return listAccounts(provider, storagePolicy);
 }
 
 /**
@@ -281,7 +300,7 @@ export async function getAccessToken(
   const requestedWidenedLifetime = effectiveBufferMs > REFRESH_BUFFER_MS;
 
   if (!isSubscriptionProvider(provider)) {
-    const direct = loadAccount(provider, accountId);
+    const direct = loadAccount(provider, accountId, opts?.storagePolicy);
     if (!direct) {
       return finish(tokenFailure("auth", "No credential is stored"));
     }
@@ -302,7 +321,7 @@ export async function getAccessToken(
     });
   }
 
-  const initial = loadCredentials(provider, accountId);
+  const initial = loadCredentials(provider, accountId, opts?.storagePolicy);
   if (!initial) {
     return finish(tokenFailure("auth", "No credential is stored"));
   }
@@ -359,7 +378,7 @@ export async function getAccessToken(
   return accountRefreshMutex.acquire(`${provider}:${accountId}`, async () => {
     // Re-read after acquiring the lock — a concurrent caller may have
     // already refreshed the token, in which case we want the new one.
-    const stored = loadCredentials(provider, accountId);
+    const stored = loadCredentials(provider, accountId, opts?.storagePolicy);
     if (!stored) {
       return finish(tokenFailure("auth", "No credential is stored"));
     }
@@ -371,6 +390,22 @@ export async function getAccessToken(
         expiresAt: credentials.expires,
         refreshed: false,
       });
+    }
+
+    // Refused BEFORE the grant is spent, not after. Anthropic and Codex rotate
+    // refresh tokens on use (one-time-use), so throwing after the refresh would
+    // discard the rotated token while the stored one is already consumed — every
+    // later refresh 401s and the account needs manual re-auth. In front of the
+    // await this costs nothing.
+    if (!opts?.storagePolicy) {
+      throw new ElizaError(
+        "Refreshing a stored credential requires an explicit account storage policy",
+        {
+          code: "AUTH_CREDENTIAL_MUTATION_POLICY_REQUIRED",
+          context: { provider, accountId },
+          severity: "fatal",
+        },
+      );
     }
 
     logger.info(
@@ -407,7 +442,7 @@ export async function getAccessToken(
       );
     }
 
-    saveCredentials(provider, refreshed, accountId);
+    saveCredentials(provider, refreshed, accountId, opts.storagePolicy);
     if (refreshed.expires <= Date.now() + effectiveBufferMs) {
       return finish(
         tokenFailure(

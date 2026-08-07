@@ -499,7 +499,13 @@ declare module "./client-base" {
     sendConversationMessageStream(
       id: string,
       text: string,
-      onToken: (token: string, accumulatedText?: string) => void,
+      onToken: (
+        token: string,
+        accumulatedText?: string,
+        /** True for in-flight action-callback text the final reply may
+         *  replace — voice output must hold it until the turn completes. */
+        provisional?: boolean,
+      ) => void,
       channelType?: ConversationChannelType,
       signal?: AbortSignal,
       images?: ImageAttachment[],

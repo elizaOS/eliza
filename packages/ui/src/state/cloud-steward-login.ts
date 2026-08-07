@@ -9,7 +9,7 @@
  * dependency-free contract between the two:
  *
  *   - The shell-router registers a launcher with {@link registerStewardLoginLauncher}.
- *   - The cloud-state login flow (`handleCloudLogin`, Cloud branch) calls
+ *   - The cloud-state login flow (the interactive Cloud branch) calls
  *     {@link launchStewardLogin}, which resolves once a Steward session token is
  *     present (or rejects on cancel / failure).
  *

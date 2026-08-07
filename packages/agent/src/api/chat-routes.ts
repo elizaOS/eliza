@@ -944,9 +944,19 @@ export interface ChatActionResultSummary {
   values?: Record<string, unknown>;
 }
 
+/**
+ * Where a streamed text emission originated. `"model"` text is (or extends)
+ * the turn's final reply; `"action_callback"` text is an in-flight action
+ * status delivery that the turn's final reply may replace entirely. Voice
+ * clients must not synthesize `"action_callback"` text until the terminal
+ * frame confirms it — speech, unlike a chat bubble, cannot be retracted
+ * (the "double-speak" defect: ack spoken, then the reply spoken again).
+ */
+export type ChatStreamTextOrigin = "model" | "action_callback";
+
 export interface ChatGenerateOptions {
-  onChunk?: (chunk: string) => void;
-  onSnapshot?: (text: string) => void;
+  onChunk?: (chunk: string, origin?: ChatStreamTextOrigin) => void;
+  onSnapshot?: (text: string, origin?: ChatStreamTextOrigin) => void;
   /**
    * In-flight phase changes for the rich status indicator. Emitted additively
    * alongside `onChunk`/`onSnapshot` — `thinking` before the first visible
@@ -2378,8 +2388,14 @@ export function writeChatTokenSse(
   res: http.ServerResponse,
   text: string,
   fullText: string,
+  options?: ChatTokenWriteOptions,
 ): void {
-  writeSse(res, { type: "token", text, fullText });
+  writeSse(res, {
+    type: "token",
+    text,
+    fullText,
+    ...(options?.provisional ? { provisional: true } : {}),
+  });
 }
 
 export { DELTA_STREAM_PROTOCOL };
@@ -2406,25 +2422,48 @@ export interface ChatTokenStreamWriterDeps {
  * legacy O(N²) (every token re-serialized its whole prefix). The protocol is
  * negotiated per request (see `readChatRequestPayload`).
  */
+/**
+ * Per-write options for the token wire. `provisional: true` marks the carried
+ * text as an in-flight action-callback delivery the turn's final reply may
+ * replace — voice clients must not synthesize it until the terminal `done`
+ * frame (or a later non-provisional frame) confirms it, because speech cannot
+ * be retracted the way a re-rendered chat bubble can (the "double-speak"
+ * defect). Text bubbles may render it exactly as before.
+ */
+export interface ChatTokenWriteOptions {
+  provisional?: boolean;
+}
+
 export interface ChatTokenStreamWriter {
   /** An incremental streamed chunk. `fullText` is the accumulated text so far. */
-  writeChunk(res: http.ServerResponse, chunk: string, fullText: string): void;
+  writeChunk(
+    res: http.ServerResponse,
+    chunk: string,
+    fullText: string,
+    options?: ChatTokenWriteOptions,
+  ): void;
   /** An authoritative full-text replace (structured-field rewrite, single-frame
    *  reply). The client treats the carried `fullText` as the new buffer. */
-  writeSnapshot(res: http.ServerResponse, fullText: string): void;
+  writeSnapshot(
+    res: http.ServerResponse,
+    fullText: string,
+    options?: ChatTokenWriteOptions,
+  ): void;
 }
 
 export function createChatTokenStreamWriter(
   protocol: ChatTokenStreamProtocol,
   deps: ChatTokenStreamWriterDeps,
 ): ChatTokenStreamWriter {
+  const provisionalField = (options?: ChatTokenWriteOptions) =>
+    options?.provisional ? { provisional: true as const } : {};
   if (protocol === "legacy") {
     return {
-      writeChunk(res, chunk, fullText) {
-        deps.writeChatTokenSse(res, chunk, fullText);
+      writeChunk(res, chunk, fullText, options) {
+        deps.writeChatTokenSse(res, chunk, fullText, options);
       },
-      writeSnapshot(res, fullText) {
-        deps.writeChatTokenSse(res, fullText, fullText);
+      writeSnapshot(res, fullText, options) {
+        deps.writeChatTokenSse(res, fullText, fullText, options);
       },
     };
   }
@@ -2439,20 +2478,33 @@ export function createChatTokenStreamWriter(
   let bytesSinceSnapshot = 0;
   let lengthAtLastSnapshot = 0;
   return {
-    writeChunk(res, chunk, fullText) {
+    writeChunk(res, chunk, fullText, options) {
       bytesSinceSnapshot += chunk.length;
       if (bytesSinceSnapshot >= Math.max(2048, lengthAtLastSnapshot)) {
-        deps.writeSse(res, { type: "token", text: chunk, fullText });
+        deps.writeSse(res, {
+          type: "token",
+          text: chunk,
+          fullText,
+          ...provisionalField(options),
+        });
         bytesSinceSnapshot = 0;
         lengthAtLastSnapshot = fullText.length;
       } else {
-        deps.writeSse(res, { type: "token", text: chunk });
+        deps.writeSse(res, {
+          type: "token",
+          text: chunk,
+          ...provisionalField(options),
+        });
       }
     },
-    writeSnapshot(res, fullText) {
+    writeSnapshot(res, fullText, options) {
       // No `text` field: the client reads `fullText` as an authoritative
       // replace rather than an append.
-      deps.writeSse(res, { type: "token", fullText });
+      deps.writeSse(res, {
+        type: "token",
+        fullText,
+        ...provisionalField(options),
+      });
       bytesSinceSnapshot = 0;
       lengthAtLastSnapshot = fullText.length;
     },
@@ -2510,8 +2562,12 @@ function stampAppConversationProvenance(
       context: { roomId: memory.roomId },
     });
   }
-  const existingMetadata = memory.metadata as MessageMetadata;
-  const metadataRecord = existingMetadata as Record<string, unknown>;
+  const metadataRecord =
+    memory.metadata &&
+    typeof memory.metadata === "object" &&
+    !Array.isArray(memory.metadata)
+      ? (memory.metadata as Record<string, unknown>)
+      : {};
   const readMetadataString = (key: string): string | undefined => {
     const value = metadataRecord[key];
     return typeof value === "string" && value.trim() ? value : undefined;
@@ -2521,7 +2577,7 @@ function stampAppConversationProvenance(
   const platformMessageId =
     readMetadataString("platformMessageId") ?? memory.id;
   memory.metadata = {
-    ...existingMetadata,
+    ...metadataRecord,
     type: "message",
     provider,
     accountId,
@@ -3102,16 +3158,22 @@ async function generateChatResponseWithTiming(
       firstVisibleReplyMarked = true;
       markInference(INFERENCE_MARKS.firstVisibleReply);
     };
-    const emitChunk = (chunk: string): void => {
+    const emitChunk = (
+      chunk: string,
+      origin: ChatStreamTextOrigin = "model",
+    ): void => {
       if (!chunk) return;
       markFirstVisibleReply();
       responseText += chunk;
       if (opts?.onChunk) {
-        opts.onChunk(chunk);
+        opts.onChunk(chunk, origin);
         appendOnlyText += chunk;
       }
     };
-    const emitSnapshot = (text: string): void => {
+    const emitSnapshot = (
+      text: string,
+      origin: ChatStreamTextOrigin = "model",
+    ): void => {
       if (!text) return;
       // Skip when the snapshot matches the current responseText exactly:
       // re-emitting the same fullText forces clients to re-render an identical
@@ -3120,7 +3182,7 @@ async function generateChatResponseWithTiming(
       responseText = text;
       if (opts?.onSnapshot) {
         markFirstVisibleReply();
-        opts.onSnapshot(text);
+        opts.onSnapshot(text, origin);
       }
     };
     const claimStreamSource = (
@@ -3136,22 +3198,26 @@ async function generateChatResponseWithTiming(
       }
       return activeStreamSource === source;
     };
-    const appendIncomingText = (chunk: string, accumulated?: string): void => {
+    const appendIncomingText = (
+      chunk: string,
+      accumulated?: string,
+      origin: ChatStreamTextOrigin = "model",
+    ): void => {
       // StreamChunkCallback defines `chunk` as a delta. Structured extractors
       // additionally provide their authoritative accumulation, which lets this
       // boundary recover an actual upstream rewrite without guessing from text
       // overlap. Applying overlap deduplication to genuine deltas corrupts valid
       // boundaries such as "Fast " + "streaming " and repeated tokens.
       if (accumulated === undefined) {
-        emitChunk(chunk);
+        emitChunk(chunk, origin);
         return;
       }
       if (accumulated === responseText) return;
       if (accumulated.startsWith(responseText)) {
-        emitChunk(accumulated.slice(responseText.length));
+        emitChunk(accumulated.slice(responseText.length), origin);
         return;
       }
-      emitSnapshot(accumulated);
+      emitSnapshot(accumulated, origin);
     };
     const captureCallbackBaseline = (): void => {
       if (preCallbackText === null) {
@@ -3159,7 +3225,10 @@ async function generateChatResponseWithTiming(
       }
     };
     /** Latest action callback wins: replaces prior callback text, keeps LLM prefix. */
-    const replaceCallbackText = (incoming: string): void => {
+    const replaceCallbackText = (
+      incoming: string,
+      origin: ChatStreamTextOrigin = "action_callback",
+    ): void => {
       captureCallbackBaseline();
       const baseline = preCallbackText ?? "";
       const separator = baseline.length > 0 ? "\n\n" : "";
@@ -3177,24 +3246,25 @@ async function generateChatResponseWithTiming(
         (opts?.onSnapshot || appendOnlyText === responseText)
       ) {
         const delta = nextText.slice(responseText.length);
-        emitChunk(delta);
+        emitChunk(delta, origin);
         // emitChunk already advanced responseText; re-emit snapshot for
         // legacy clients that only handle fullText updates.
-        opts?.onSnapshot?.(nextText);
+        opts?.onSnapshot?.(nextText, origin);
         return;
       }
-      emitSnapshot(nextText);
+      emitSnapshot(nextText, origin);
     };
     const applyCallbackTextUpdate = (
       content: Content,
       incoming: string,
+      origin: ChatStreamTextOrigin = "action_callback",
     ): void => {
       captureCallbackBaseline();
       if (resolveCallbackMergeMode(content) === "append") {
-        appendIncomingText(incoming);
+        appendIncomingText(incoming, undefined, origin);
         return;
       }
-      replaceCallbackText(incoming);
+      replaceCallbackText(incoming, origin);
     };
 
     // Inbound event consumers may persist correlation state or apply
@@ -3538,7 +3608,18 @@ async function generateChatResponseWithTiming(
                     if (!progressCallback) {
                       visibleCallbackDeliveries += 1;
                     }
-                    applyCallbackTextUpdate(content, visibleChunk);
+                    // Origin discriminates the two deliveries that ride this
+                    // one callback: an ACTION's own callback carries its
+                    // actionName (provisional status text the final reply may
+                    // replace), while the reply handler's terminal delivery
+                    // carries none (it IS the turn's reply). Voice clients key
+                    // single-utterance behavior off this (see
+                    // ChatStreamTextOrigin).
+                    applyCallbackTextUpdate(
+                      content,
+                      visibleChunk,
+                      attributedActionName ? "action_callback" : "model",
+                    );
                     if (attributedActionName) {
                       recordActionCallback(
                         attributedActionName,
@@ -3745,7 +3826,8 @@ async function generateChatResponseWithTiming(
                   runtime,
                   message,
                   selfControlFallbackActions,
-                  appendIncomingText,
+                  (incoming: string) =>
+                    appendIncomingText(incoming, undefined, "action_callback"),
                   recordActionCallback,
                   {
                     abortSignal: generationAbortController.signal,

@@ -39,6 +39,11 @@ const PRODUCTION_LATE_BACKFILL_TAGS = [
   "0017_add_organization_encryption_keys", // gitleaks:allow immutable migration tag, not credential material
   "0081_db_optimization_and_r2_trajectories",
 ] as const;
+const PRODUCTION_UNRECORDED_TAGS = [
+  "0063_zippy_joshua_kane",
+  "0065_add_device_bus_tables",
+  "0066_add_twilio_inbound_calls",
+] as const;
 const PRODUCTION_BACKFILL_ANCHOR_TAG =
   "0105_managed_domains_cloudflare_provider";
 const BASE_URL =
@@ -379,6 +384,32 @@ describe.skipIf(!ENABLED)(
       await database.client.end();
     }, 120_000);
 
+    test("accepts production schema history missing ledger rows before the checkpoint", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, 184, "production-hybrid");
+      const entries = await journalEntries();
+      const missingEntries = PRODUCTION_UNRECORDED_TAGS.map((tag) => {
+        const entry = entries.find((candidate) => candidate.tag === tag);
+        if (!entry) throw new Error(`Missing production ledger fixture ${tag}`);
+        return entry;
+      });
+      await database.client.query(
+        "DELETE FROM drizzle.__drizzle_migrations WHERE created_at = ANY($1::bigint[])",
+        [missingEntries.map((entry) => entry.when)],
+      );
+
+      const migrated = await runScript(MIGRATOR, database.url);
+      expect(migrated.exitCode, migrated.output).toBe(0);
+      expect(migrated.output).toContain("pending migrations: 10");
+
+      const remaining = await database.client.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = ANY($1::bigint[])",
+        [missingEntries.map((entry) => entry.when)],
+      );
+      expect(remaining.rows[0]?.count).toBe("0");
+      await database.client.end();
+    }, 120_000);
+
     test("rejects historical rows appended after the immutable checkpoint", async () => {
       const database = await createDatabase();
       await seedAppliedPrefix(database.client, 184);
@@ -458,25 +489,6 @@ describe.skipIf(!ENABLED)(
       expect(duplicateResult.exitCode).toBe(1);
       expect(duplicateResult.output).toContain("duplicate created_at");
       await duplicate.client.end();
-
-      const missingRequired = await createDatabase();
-      await seedAppliedPrefix(missingRequired.client, 184);
-      const entries = await journalEntries();
-      const requiredEntry = entries[100];
-      if (!requiredEntry) throw new Error("Missing required journal fixture");
-      await missingRequired.client.query(
-        "DELETE FROM drizzle.__drizzle_migrations WHERE created_at = $1",
-        [requiredEntry.when],
-      );
-      const missingRequiredResult = await runScript(
-        MIGRATOR,
-        missingRequired.url,
-      );
-      expect(missingRequiredResult.exitCode).toBe(1);
-      expect(missingRequiredResult.output).toContain(
-        `missing required journal entry ${requiredEntry.tag}`,
-      );
-      await missingRequired.client.end();
 
       const unknownRow = await createDatabase();
       await seedAppliedPrefix(unknownRow.client, 184);

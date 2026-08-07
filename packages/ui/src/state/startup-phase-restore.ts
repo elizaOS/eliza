@@ -47,6 +47,7 @@ import {
   isOnboardingReplayRequested,
   wasForceFreshResetApplied,
 } from "../platform";
+import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import {
   buildCloudSharedAgentApiBase,
   buildDedicatedCloudAgentApiBase,
@@ -107,10 +108,6 @@ function recoverCloudAgentId(active: PersistedActiveServer): string | null {
     : "";
   if (rawId && !rawId.includes("/")) return rawId;
   return dedicatedCloudAgentIdFromBase(active.apiBase);
-}
-
-function isDevUiPort(): boolean {
-  return typeof window !== "undefined" && window.location.port === "2138";
 }
 
 /**
@@ -728,7 +725,7 @@ export async function runRestoringSession(
     (isAndroid || isIOS) &&
     isCommittedOnDeviceMobileRuntimeMode(readPersistedMobileRuntimeMode());
   const shouldProbeExistingInstall =
-    !forceFreshFirstRun && !persistedActiveServer && !isDevUiPort();
+    !forceFreshFirstRun && !persistedActiveServer && !isViteDevUiShell();
   let probed: ExistingFirstRunProbeResult | null = null;
   if (shouldProbeExistingInstall) {
     try {

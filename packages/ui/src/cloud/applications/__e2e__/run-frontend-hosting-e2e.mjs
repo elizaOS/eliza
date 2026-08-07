@@ -31,6 +31,7 @@ import { chromium } from "playwright";
 import postcss from "postcss";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
+import { startCloudApiTestServer } from "./cloud-api-test-server.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uiSrc = resolve(here, "../../..");
@@ -38,12 +39,6 @@ const repoRoot = resolve(uiSrc, "../../..");
 const outDir = join(here, "output-frontend-hosting");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
-
-// Leg-3 port range (363xx).
-const API_PORT = 36313;
-const PAGE_PORT = 36314;
-const API_BASE = `http://127.0.0.1:${API_PORT}`;
-const DEAD_API_BASE = "http://127.0.0.1:36399"; // nothing listens here
 
 let failures = 0;
 function assert(cond, msg) {
@@ -69,7 +64,6 @@ const stackEnv = {
   BUN_OPTIONS: bunOptions,
   MOCK_REDIS: "1",
   DATABASE_URL: `pglite://${pgdata}`,
-  API_DEV_PORT: String(API_PORT),
   CRON_SECRET: "local-cron-secret",
   ELIZA_KMS_BACKEND: "local",
   ELIZA_LOCAL_ROOT_KEY: Buffer.alloc(32, 7).toString("base64"),
@@ -86,11 +80,8 @@ await new Promise((res, rej) => {
 });
 
 console.log("== boot cloud-api ==");
-const apiServer = spawn(
-  "bun",
-  ["run", "packages/cloud/scripts/admin/dev/cloud-api-hono-dev.ts"],
-  { cwd: repoRoot, env: stackEnv, stdio: ["ignore", "ignore", "inherit"] },
-);
+const { child: apiServer, baseUrl: API_BASE } =
+  await startCloudApiTestServer({ repoRoot, env: stackEnv });
 process.on("exit", () => {
   try {
     apiServer.kill("SIGTERM");
@@ -344,10 +335,13 @@ const pageHtml = (apiBase) => `<!doctype html><html><head><meta charset="utf-8">
 let proxyTarget = API_BASE;
 const pageServer = Bun.serve({
   hostname: "127.0.0.1",
-  port: PAGE_PORT,
+  port: 0,
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
+      if (proxyTarget === null) {
+        return new Response("upstream unavailable", { status: 502 });
+      }
       try {
         return await fetch(`${proxyTarget}${url.pathname}${url.search}`, {
           method: request.method,
@@ -365,6 +359,7 @@ const pageServer = Bun.serve({
     });
   },
 });
+const PAGE_PORT = pageServer.port;
 process.on("exit", () => {
   try {
     pageServer.stop(true);
@@ -535,7 +530,7 @@ await snap("mobile-selection", mobile);
 await mobile.close();
 
 // --- cloud-inactive (API unreachable) ----------------------------------------
-proxyTarget = DEAD_API_BASE;
+proxyTarget = null;
 await page.goto(PAGE_URL);
 await page.getByRole("button", { name: "Retry" }).waitFor({ timeout: 30_000 });
 await snap("desktop-cloud-inactive-error");

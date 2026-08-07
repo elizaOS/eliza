@@ -53,7 +53,7 @@ describe("countAllocatedWorkloadsOnNode — live-slot accounting (#15378)", () =
     where.mockClear();
   });
 
-  test("the agent_sandboxes filter excludes every terminal status, not just stopped/error", async () => {
+  test("the agent_sandboxes filter recognizes every terminal status before ownership override", async () => {
     await countAllocatedWorkloadsOnNode("node-under-test");
 
     // Two queries run (containers + agent_sandboxes); the agent one is the
@@ -63,8 +63,9 @@ describe("countAllocatedWorkloadsOnNode — live-slot accounting (#15378)", () =
       .find((params) => params.includes("sleeping"));
 
     expect(agentParams).toBeDefined();
-    // Regression: the previous filter only excluded stopped/error, so sleeping
-    // and deletion_failed sandboxes kept holding phantom slots.
+    // Regression: the status vocabulary previously omitted sleeping and
+    // deletion_failed. The query's ownership branch may still count a terminal
+    // deletion row when its container has not been proven stopped.
     for (const terminal of ["stopped", "error", "sleeping", "deletion_failed"]) {
       expect(agentParams).toContain(terminal);
     }

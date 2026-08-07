@@ -11,13 +11,21 @@ import { useVoiceConfig } from "../../voice/useVoiceConfig";
 /** `useVoiceChat` requires a transcript sink; the overlay owns input elsewhere. */
 const NOOP_TRANSCRIPT = (): void => {};
 
-function findLatestAssistantText(
-  messages: readonly ConversationMessage[],
-): { id: string; text: string; source?: string } | null {
+function findLatestAssistantText(messages: readonly ConversationMessage[]): {
+  id: string;
+  text: string;
+  source?: string;
+  provisional?: boolean;
+} | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message && message.role === "assistant" && message.text.trim()) {
-      return { id: message.id, text: message.text, source: message.source };
+      return {
+        id: message.id,
+        text: message.text,
+        source: message.source,
+        provisional: message.provisional,
+      };
     }
   }
   return null;
@@ -160,6 +168,17 @@ export function useShellVoiceOutput(
       if (!lastTurnVoiceRef.current) return;
       voiceReplyIdsRef.current.add(latest.id);
     }
+
+    // Single utterance per turn: provisional text is an in-flight action
+    // callback the turn's final reply may replace wholesale ("Set tone=warm
+    // for you." → "okay i changed personality to warm"). A chat bubble can be
+    // re-rendered; speech cannot be retracted — speaking it here and then the
+    // reply is the voice "double-speak" defect. Hold until a non-provisional
+    // frame or the terminal reconciliation confirms the turn's final message
+    // (a turnComplete-style action ack IS that final message and is spoken
+    // then, exactly once). spokenRef is deliberately not advanced, so the
+    // final text is treated as never-spoken and voiced in full.
+    if (latest.provisional) return;
 
     const previous = spokenRef.current;
     if (

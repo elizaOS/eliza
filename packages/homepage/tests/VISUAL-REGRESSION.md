@@ -47,9 +47,33 @@ Animated elements (`video`, `[data-testid="cloud-video"]`, `.animate-pulse`,
 `.animate-spin`, `[data-marquee]`) are masked. Extend the `dynamicMask` helper
 in `visual.spec.ts` for new animations.
 
-## Config notes
+## How a capture becomes a comparison
 
-The package `playwright.config.ts` does not declare an `expect.toHaveScreenshot`
-block — Playwright defaults apply (`maxDiffPixels: 0`, strict). Consider
-adding `maxDiffPixelRatio: 0.02` there if anti-aliasing noise produces
-spurious diffs on CI.
+`visual.spec.ts` does not use `toHaveScreenshot`. Each test captures through
+`captureScreenshotWithQualityRetry` (`tests/e2e/screenshot-quality.ts`) and
+compares that exact buffer with `expect(screenshot).toMatchSnapshot(...)`
+(`maxDiffPixelRatio: 0.02` at the call site — no config-level screenshot
+block exists).
+
+The capture gate guarantees two things before any pixel diff happens:
+
+1. **Quality** — blank or effectively single-color frames are rejected
+   (`ScreenshotQualityError`).
+2. **Stability** — two consecutive captures must be visually stable:
+   byte-identical, or differing in at most the same 2% pixel ratio the
+   snapshot comparison allows. This replaces (and mirrors) the settling loop
+   `toHaveScreenshot` provided internally, which also re-captured until two
+   consecutive frames matched under the pixel tolerance — never under byte
+   equality, since PNG compression turns a handful of changed pixels into a
+   mostly rewritten byte stream. Without this gate a colorful mid-composite
+   WebGL frame would be diffed once and fail. A page that never settles
+   inside the attempt budget throws `ScreenshotUnstableError` naming the
+   pixel and byte delta between the last two captures, a far better
+   diagnostic than a bare pixel-ratio failure.
+
+The artifact suites (`aesthetic-audit`, `contact-sheet-capture`,
+`live-routes`) photograph deliberately live pages for human review and opt
+out with `requireStable: false`; they keep the quality gate only.
+
+The gate's loop behavior is unit-tested without a browser in
+`tests/screenshot-stability.node.test.mjs` (part of `bun run test`).

@@ -8,6 +8,7 @@
  * Cloud state. Sits behind the authenticated dashboard gate; not public.
  */
 import path from "node:path";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
 import type { AgentRuntime, RouteRequestMeta, UUID } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
@@ -193,7 +194,10 @@ export async function handleAgentAdminRoutes(
         removeStateDir(dataDir);
       }
 
-      await clearPersistedFirstRunConfig(config);
+      clearPersistedFirstRunConfig(
+        config,
+        createRuntimeAccountStoragePolicy(stateDir),
+      );
       saveElizaConfig(config);
 
       // Wipe cloud-related vault entries so the next boot doesn't re-hydrate

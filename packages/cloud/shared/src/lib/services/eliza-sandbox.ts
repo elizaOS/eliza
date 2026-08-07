@@ -106,7 +106,10 @@ import {
   type SandboxHandle,
   type SandboxProvider,
 } from "./sandbox-provider";
-import { SandboxReplacementCleanupUnresolvedError } from "./sandbox-provider-types";
+import {
+  type SandboxDeletionStopOutcome,
+  SandboxReplacementCleanupUnresolvedError,
+} from "./sandbox-provider-types";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
 import {
   type RunSharedAgentTurnResult,
@@ -380,7 +383,13 @@ export type ProvisionRestoreOverride =
   | { kind: "fresh-boot" };
 
 export type DeleteAgentResult =
-  | { success: true; deletedSandbox: AgentSandbox }
+  | { success: true; rowDeleted: true; deletedSandbox: AgentSandbox }
+  | {
+      success: true;
+      rowDeleted: false;
+      reconciliationPending: true;
+      deletedSandbox: AgentSandbox;
+    }
   | { success: false; error: string };
 
 /**
@@ -393,6 +402,11 @@ export type BoundedSandboxStopResult =
   | null
   | { error: unknown }
   | { error: unknown; timedOut: true };
+
+type BoundedDeletionSandboxStopResult =
+  | SandboxDeletionStopOutcome
+  | { kind: "stop-failed"; error: unknown }
+  | { kind: "stop-timed-out"; error: unknown };
 
 export interface BridgeRequest {
   jsonrpc: "2.0";
@@ -1733,7 +1747,8 @@ export class ElizaSandboxService {
   async deleteAgent(agentId: string, orgId: string): Promise<DeleteAgentResult> {
     // Phase 1 — short transaction: take the lifecycle lock, validate
     // preconditions, and capture the fields needed for teardown. We deliberately
-    // do NOT run the container teardown inside this transaction: provider.stop()
+    // do NOT run the container teardown inside this transaction:
+    // provider.stopForDeletion()
     // can hang on an early SSH connect / provider init, and holding the row lock
     // + write transaction + a pooled connection for the full teardown cap (up to
     // SANDBOX_DELETE_STOP_TIMEOUT_MS) would wedge concurrent lifecycle ops on the
@@ -1750,8 +1765,8 @@ export class ElizaSandboxService {
     });
 
     // Phase 2 — bounded container + VPN teardown, run OUTSIDE the write-lock /
-    // transaction. provider.stop() removes the container and cleans up the
-    // headscale route (each internally bounded), but an EARLY hang (SSH connect /
+    // transaction. provider.stopForDeletion() removes the container and cleans
+    // up the headscale route (each internally bounded), but an EARLY hang (SSH connect /
     // provider init) was unbounded — a single stuck node could hang this delete
     // past the 300s job watchdog and wedge the entire provisioning worker
     // (fail-closed on every provision).
@@ -1760,38 +1775,40 @@ export class ElizaSandboxService {
     // genuine hang. A real stop failure on a REACHABLE node still escalates
     // (returns failure / retry), since the container may still be running; an
     // "already gone" failure is ignorable and we proceed.
-    // Whether the container is PROVEN gone. A bounded timeout completes the
+    // Whether the container is PROVEN not running. A bounded timeout completes the
     // delete but abandons a container that may still be running, so it is not
     // proof — releasing its slot would let the scheduler pack new containers
     // onto a box still running the old ones.
-    let containerProvenGone = true;
+    let containerProvenNotRunning = true;
+    let reconciliationReason: string | null = null;
 
     if (precheck.sandboxId) {
       const sandboxId = precheck.sandboxId;
       const stop = await this.runBoundedSandboxStop(sandboxId);
 
-      if (stop) {
+      if (stop.kind === "stop-timed-out") {
         const errorMessage = stop.error instanceof Error ? stop.error.message : String(stop.error);
-        if ("timedOut" in stop) {
-          // The container may still be running, so this generation keeps its
-          // node slot. The orphan reconciler releases it once it proves the
-          // container is actually absent (#17185).
-          containerProvenGone = false;
-          // HONEST LIMITATION: there is currently NO automatic reclaimer — no
-          // orphan-sweep / node-reconcile job that lists actual containers on a
-          // node and removes ones with no DB row (see docker-sandbox-provider's
-          // unreachable-node path for the same trade-off). We complete the
-          // delete to keep the provisioning work cycle bounded, but on timeout
-          // the container (and its headscale registration) is ABANDONED and will
-          // LEAK until such a sweeper is built or it is reclaimed by hand. Do NOT
-          // claim a reconciler already reclaims it.
-          logger.warn(
-            "[agent-sandbox] Stop during delete timed out; completing delete and ABANDONING the " +
-              "container — it will LEAK until reclaimed (no automatic orphan-sweep / node-reconcile " +
-              "job exists yet)",
-            { sandboxId, status: precheck.status, error: errorMessage },
-          );
-        } else if (this.isIgnorableSandboxStopError(stop.error)) {
+        // The container may still be running, so this generation keeps its
+        // node slot. The orphan reconciler releases it once it proves the
+        // container is actually not running (#17185).
+        containerProvenNotRunning = false;
+        reconciliationReason = `container stop timed out: ${errorMessage}`;
+        logger.warn(
+          "[agent-sandbox] Stop during delete timed out; completing delete and ABANDONING the " +
+            "container while retaining its capacity until reconciliation",
+          { sandboxId, status: precheck.status, error: errorMessage },
+        );
+      } else if (stop.kind === "not-running-unresolved") {
+        containerProvenNotRunning = false;
+        reconciliationReason = stop.reason;
+        logger.warn(
+          "[agent-sandbox] Provider could not prove the container stopped during delete; " +
+            "retaining its capacity until reconciliation",
+          { sandboxId, status: precheck.status, reason: stop.reason },
+        );
+      } else if (stop.kind === "stop-failed") {
+        const errorMessage = stop.error instanceof Error ? stop.error.message : String(stop.error);
+        if (this.isIgnorableSandboxStopError(stop.error)) {
           logger.info("[agent-sandbox] Sandbox already absent during delete cleanup", {
             sandboxId,
             status: precheck.status,
@@ -1808,18 +1825,17 @@ export class ElizaSandboxService {
       }
     }
 
-    // The container is proven gone, so this generation hands its node slot back
+    // The container is proven not running, so this generation hands its node slot back
     // — and does so BEFORE the steps that can still fail below (credential
     // revocation, the row-delete CAS, job-status persistence). Those failures
     // re-run this whole path; the CAS is what makes the second run a no-op
     // instead of a second decrement that frees a live sibling's slot (#17185).
     //
-    // Two paths deliberately skip the release and keep ownership: a reachable
-    // stop FAILURE returns above without reaching here, and a bounded timeout
-    // abandons a container that may still be running. Both leave the slot
-    // counted until something proves absence — the retry that completes the
-    // teardown, or the orphan reconciler that reaps the container.
-    if (containerProvenGone && precheck.nodeId) {
+    // Unresolved teardown deliberately skips the release and keeps ownership.
+    // A reachable stop failure returns above; a timeout or unreachable node
+    // completes deletion but leaves the slot counted until the orphan
+    // reconciler proves the container absent.
+    if (containerProvenNotRunning && precheck.nodeId) {
       const outcome = await agentSandboxesRepository.tryReleaseDeletionAllocation(
         agentId,
         orgId,
@@ -1852,11 +1868,27 @@ export class ElizaSandboxService {
       await apiKeysService.revokeForAgent(credentialOwnerId);
     }
 
-    // Phase 3 — short transaction: re-take the lock, re-validate (a concurrent
-    // provision could have started while teardown ran), then delete the row.
-    const result = await this.commitAgentRowDelete(agentId, orgId, precheck);
+    // The ownership flag lives on the sandbox row, so unresolved teardown must
+    // preserve that row as a terminal tombstone. The orphan reaper consumes the
+    // flag after removing the immutable container ID; a later delete retry then
+    // observes explicit absence and removes the tombstone. Deleting the row here
+    // would erase the only proof that the node counter still includes this slot.
+    let result: DeleteAgentResult;
+    if (containerProvenNotRunning) {
+      result = await this.commitAgentRowDelete(agentId, orgId, precheck);
+    } else {
+      if (!reconciliationReason) {
+        throw new Error("Unresolved deletion is missing its reconciliation reason");
+      }
+      result = await this.commitAgentReconciliationPending(
+        agentId,
+        orgId,
+        precheck,
+        reconciliationReason,
+      );
+    }
 
-    if (result.success) {
+    if (result.success && result.rowDeleted) {
       // Best-effort: drop the shared-runtime (Tier-0) conversation history for
       // this agent. That table is deliberately decoupled from the sandbox row
       // (no FK cascade), so the per-channel history rows would otherwise be
@@ -2037,7 +2069,82 @@ export class ElizaSandboxService {
         .returning();
 
       return deletedSandbox
-        ? ({ success: true, deletedSandbox } as const)
+        ? ({ success: true, rowDeleted: true, deletedSandbox } as const)
+        : ({ success: false, error: "Agent not found" } as const);
+    });
+  }
+
+  /**
+   * Persists unresolved deletion as a terminal tombstone without spending its
+   * capacity ownership. This completes the queue attempt promptly while keeping
+   * the durable row the orphan reaper and low-frequency delete retry require.
+   */
+  private async commitAgentReconciliationPending(
+    agentId: string,
+    orgId: string,
+    ownership: {
+      sandboxId: string | null;
+      environmentRevision: number;
+      lifecycleRevision: number;
+      deletionAttemptId: string;
+    },
+    reason: string,
+  ): Promise<DeleteAgentResult> {
+    return dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+
+      const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!rec) return { success: false, error: "Agent not found" } as const;
+      if (this.getReplacementCleanupLocator(rec)) {
+        return {
+          success: false,
+          error: "Agent replacement cleanup is still pending",
+        } as const;
+      }
+
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      if (
+        rec.status !== "deletion_pending" ||
+        rec.deletion_attempt_id !== ownership.deletionAttemptId ||
+        rec.sandbox_id !== ownership.sandboxId ||
+        rec.environment_revision !== ownership.environmentRevision ||
+        rec.lifecycle_revision !== ownership.lifecycleRevision ||
+        hasActiveProvisionJob
+      ) {
+        return {
+          success: false,
+          error: "Agent deletion ownership changed",
+        } as const;
+      }
+
+      const [pendingSandbox] = await tx
+        .update(agentSandboxes)
+        .set({
+          status: "deletion_failed",
+          error_message: `Deletion is awaiting container reconciliation: ${reason}`,
+          error_count: sql`${agentSandboxes.error_count} + 1`,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            eq(agentSandboxes.status, "deletion_pending"),
+            eq(agentSandboxes.deletion_attempt_id, ownership.deletionAttemptId),
+            sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${ownership.sandboxId}`,
+            eq(agentSandboxes.environment_revision, ownership.environmentRevision),
+            eq(agentSandboxes.lifecycle_revision, ownership.lifecycleRevision),
+          ),
+        )
+        .returning();
+
+      return pendingSandbox
+        ? ({
+            success: true,
+            rowDeleted: false,
+            reconciliationPending: true,
+            deletedSandbox: pendingSandbox,
+          } as const)
         : ({ success: false, error: "Agent not found" } as const);
     });
   }
@@ -2045,21 +2152,22 @@ export class ElizaSandboxService {
   /**
    * Phase 2 of `deleteAgent` (see there): the bounded container + VPN teardown.
    * Provider errors are captured as values so `withTimeout` rejects ONLY on a
-   * genuine hang. Returns `null` on success, `{ error }` on a bounded failure,
-   * or `{ error, timedOut: true }` when the teardown hit the hard cap (in which
-   * case the container is abandoned and leaks — there is no reclaimer).
+   * genuine hang. The provider's tagged outcome distinguishes proven absence
+   * from an unreachable workload; failures and timeouts remain distinct so the
+   * deletion workflow can preserve capacity without wedging its worker.
    */
-  private async runBoundedSandboxStop(sandboxId: string): Promise<BoundedSandboxStopResult> {
+  private async runBoundedSandboxStop(
+    sandboxId: string,
+  ): Promise<BoundedDeletionSandboxStopResult> {
     return withTimeout(
-      (async (): Promise<null | { error: unknown }> => {
+      (async (): Promise<SandboxDeletionStopOutcome | { kind: "stop-failed"; error: unknown }> => {
         try {
           const provider = await this.getProvider();
-          await provider.stop(sandboxId);
-          return null;
+          return await provider.stopForDeletion(sandboxId);
         } catch (error) {
           // error-policy:J1 provider boundary translation — deletion records the
           // exact stop failure so the outer workflow can report a structured outcome.
-          return { error };
+          return { kind: "stop-failed", error };
         }
       })(),
       SANDBOX_DELETE_STOP_TIMEOUT_MS,
@@ -2067,7 +2175,7 @@ export class ElizaSandboxService {
     ).catch(
       // error-policy:J1 timeout boundary translation — the deletion workflow
       // distinguishes a bounded timeout from a completed provider failure.
-      (error: unknown) => ({ error, timedOut: true as const }),
+      (error: unknown) => ({ kind: "stop-timed-out" as const, error }),
     );
   }
 
@@ -2115,10 +2223,8 @@ export class ElizaSandboxService {
    * Wraps `deleteAgent` so the SSH/DB sequence stays in one place,
    * but maps the return shape to what the queue handler expects and
    * tracks whether the container actually went down before the row was
-   * removed. The row delete happens iff `stop` either succeeded or the
-   * container was already gone — both are observable in the `deleteAgent`
-   * success path (`isIgnorableSandboxStopError` swallows "no such
-   * container" specifically).
+   * removed. Unresolved teardown is terminal for this queue attempt but keeps a
+   * reconciliation tombstone, so `rowDeleted` remains explicit in the result.
    */
   async executeDeletion(
     agentId: string,
@@ -2126,6 +2232,7 @@ export class ElizaSandboxService {
   ): Promise<{
     success: boolean;
     containerStopped: boolean;
+    rowDeleted: boolean;
     error?: string;
   }> {
     const result = await this.deleteAgent(agentId, orgId);
@@ -2134,11 +2241,12 @@ export class ElizaSandboxService {
       // case where a prior attempt deleted the row but failed before updating
       // the job status to "completed", causing the runner to retry.
       if (result.error === "Agent not found") {
-        return { success: true, containerStopped: true };
+        return { success: true, containerStopped: true, rowDeleted: true };
       }
       return {
         success: false,
         containerStopped: false,
+        rowDeleted: false,
         error: result.error,
       };
     }
@@ -2147,9 +2255,21 @@ export class ElizaSandboxService {
     // delete is async via the queue, the daemon owns this step so orphan
     // characters do not pile up when the deletion completes outside of an
     // HTTP request context. Best-effort: a failure here leaves an orphan
-    // row but does not un-delete the (already gone) sandbox.
+    // character but does not reverse the agent's logical deletion.
+    //
+    // Only once the sandbox row is actually gone. On the `deletion_failed`
+    // tombstone path the row survives for the recovery sweep, and
+    // `agent_sandboxes.character_id` is `onDelete: "set null"` — so deleting
+    // the character here would strip the tombstone's identity while it is
+    // still visible as an agent, leaving the sweep nothing to reconcile
+    // against. Mirrors the shared-runtime history drop above, which already
+    // gates on `result.rowDeleted`.
     const characterId = result.deletedSandbox.character_id;
-    if (characterId && !reusesExistingElizaCharacter(result.deletedSandbox.agent_config)) {
+    if (
+      result.rowDeleted &&
+      characterId &&
+      !reusesExistingElizaCharacter(result.deletedSandbox.agent_config)
+    ) {
       try {
         await userCharactersRepository.delete(characterId);
         logger.info("[agent-sandbox] Cleaned up linked character after delete", {
@@ -2167,11 +2287,8 @@ export class ElizaSandboxService {
 
     return {
       success: true,
-      // If we got past the stop step at all, by the time we returned success
-      // the container was either stopped or was never there. Either way it
-      // is no longer running, which is what the daemon needs to know to
-      // mark the job complete.
-      containerStopped: true,
+      containerStopped: result.rowDeleted,
+      rowDeleted: result.rowDeleted,
     };
   }
 

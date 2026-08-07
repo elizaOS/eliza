@@ -8,6 +8,7 @@
  */
 export * from "./advanced-capabilities-config.ts";
 export * from "./agent-event-service.ts";
+export * from "./boot-hooks.ts";
 export * from "./boot-pipeline.ts";
 export * from "./conversation-compactor.ts";
 export * from "./conversation-compactor.types.ts";

@@ -129,13 +129,13 @@ export function useBootRecoveryConductor(
 ): void {
   const {
     firstRunComplete,
-    handleCloudLogin,
+    handleCloudLoginRecovery,
     triggerRestart,
     backendConnection,
     retryBackendConnection,
   } = useAppSelectorShallow((s) => ({
     firstRunComplete: s.firstRunComplete,
-    handleCloudLogin: s.handleCloudLogin,
+    handleCloudLoginRecovery: s.handleCloudLoginRecovery,
     triggerRestart: s.triggerRestart,
     backendConnection: s.backendConnection,
     retryBackendConnection: s.retryBackendConnection,
@@ -286,12 +286,20 @@ export function useBootRecoveryConductor(
           choices: [],
         });
         busyRef.current = true;
-        void Promise.resolve(handleCloudLogin())
+        // Deliberate non-interactive same-tab recovery: the boot-recovery card
+        // runs during startup with no user gesture to attach a popup to, so it
+        // must go through the separately named recovery entry point rather
+        // than the interactive one (which pre-opens a named popup and is for
+        // user-facing login buttons only, #17129).
+        void Promise.resolve(handleCloudLoginRecovery())
           .then(() => {
             // Sign-in flow finished: hand the card back to the live trouble
             // state so the controls return if the boot is still stuck — the
             // in-flight copy must never be a dead end. (On recovery the
-            // healthy state removes the card entirely.)
+            // healthy state removes the card entirely.) releaseOverride is
+            // deliberately chained on success only: a failed launch keeps the
+            // pinned error card with its retry controls, and the catch below
+            // owns that transition.
             releaseOverride();
           })
           // error-policy:J4 — a failed sign-in launch is surfaced as an error
@@ -371,7 +379,7 @@ export function useBootRecoveryConductor(
       return true;
     },
     [
-      handleCloudLogin,
+      handleCloudLoginRecovery,
       pinOverride,
       releaseOverride,
       retryBackendConnection,

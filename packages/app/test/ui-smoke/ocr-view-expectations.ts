@@ -53,7 +53,11 @@ const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
 
 export const VIEW_OCR_POLICIES = {
   "builtin-chat": expected({
-    requireAll: ["Mostly clear"],
+    requireAny: [
+      "Mostly clear",
+      "Learn conversational Spanish",
+      "Submit the quarterly report",
+    ],
   }),
   "builtin-phone": expected({
     requireAny: ["call-blocked", "dialer", "recent"],

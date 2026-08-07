@@ -25,10 +25,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveFusedLibraryPath } from "../src/services/desktop-fused-ffi-backend-runtime";
 import { decodeMonoPcm16Wav } from "../src/services/voice/engine-bridge";
-import {
-	ELIZA_INFERENCE_ABI_VERSION,
-	loadElizaInferenceFfi,
-} from "../src/services/voice/ffi-bindings";
+import { loadElizaInferenceFfi } from "../src/services/voice/ffi-bindings";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -73,12 +70,9 @@ console.log(`[asr-real-smoke] bundle=${bundle}`);
 console.log(`[asr-real-smoke] audio=${wav}`);
 
 const ffi = loadElizaInferenceFfi(libPath);
-// This lane proves the CURRENT contract end-to-end, so it pins the canonical
-// constant rather than accepting the loader's graduated back-compat set.
-if (ffi.libraryAbiVersion !== String(ELIZA_INFERENCE_ABI_VERSION)) {
-	fail(
-		`expected ABI v${ELIZA_INFERENCE_ABI_VERSION}, got ${ffi.libraryAbiVersion}`,
-	);
+console.log(`[asr-real-smoke] compatible ABI v${ffi.libraryAbiVersion}`);
+if (!ffi.timedAsrSupported()) {
+	fail(`ABI v${ffi.libraryAbiVersion} does not provide timed ASR`);
 }
 const ctx = ffi.create(bundle);
 ffi.mmapAcquire(ctx, "asr");

@@ -85,6 +85,13 @@ describe("first-run provider catalog core/shared alignment", () => {
     expect(ollama?.pluginName).toBe("@elizaos/plugin-zerollama");
   });
 
+  it("normalizes legacy local-provider aliases identically", () => {
+    expect(normalizeFirstRunProviderId("llama_local")).toBe("ollama");
+    expect(coreNormalizeFirstRunProviderId("llama_local")).toBe("ollama");
+    expect(normalizeFirstRunProviderId("llama-local")).toBe("ollama");
+    expect(coreNormalizeFirstRunProviderId("llama-local")).toBe("ollama");
+  });
+
   it("core and shared expose an identical provider catalog", () => {
     expect(CORE_CATALOG).toEqual(FIRST_RUN_PROVIDER_CATALOG);
     expect(CORE_CATALOG.map((p) => p.id)).toEqual(

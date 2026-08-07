@@ -22,11 +22,15 @@ import {
 import { reconcileDiscordConnectionReady } from "./connection-lifecycle";
 import { logger } from "./logger";
 import {
+  deliverManagedReply,
   postManagedAgentMessageWithRetry,
-  sendReplyWithRetry,
 } from "./managed-message-egress";
 import { createMockRedis, createNativeRedis } from "./redis-adapter";
-import { buildReplyComponents } from "./reply-components";
+import {
+  buildManagedFailureReplyOptions,
+  buildManagedReplyOptions,
+  classifyManagedReplyReceipt,
+} from "./reply-components";
 import {
   forwardToServer,
   refreshKedaActivity,
@@ -2040,6 +2044,34 @@ export class GatewayManager {
           ...(outcome.status !== undefined ? { status: outcome.status } : {}),
           error: sanitizeError(outcome.error),
         });
+        const failureOptions = buildManagedFailureReplyOptions(message.id);
+        const failureDelivery = await deliverManagedReply({
+          sendFailureNotice: async () =>
+            classifyManagedReplyReceipt(
+              await message.reply(failureOptions),
+              failureOptions,
+            ),
+        });
+        if (failureDelivery.state === "deduplicated") {
+          logger.warn(
+            "Managed Agent Discord failure notice resolved to an existing nonce message",
+            {
+              guildId: message.guildId ?? null,
+              channelId: message.channelId,
+              messageId: message.id,
+            },
+          );
+        } else if (failureDelivery.state === "undeliverable") {
+          logger.error(
+            "Managed Agent Discord failure notice was undeliverable",
+            {
+              guildId: message.guildId ?? null,
+              channelId: message.channelId,
+              messageId: message.id,
+              error: sanitizeError(failureDelivery.failureNoticeError),
+            },
+          );
+        }
         return;
       }
 
@@ -2062,38 +2094,52 @@ export class GatewayManager {
       const replyText = routed.replyText.trim();
       const truncated =
         replyText.length > 2000 ? replyText.slice(0, 2000) : replyText;
-      // Link CTAs (for example the onboarding signup handoff) render as a
-      // style-5 Link button instead of a raw URL in the message body.
-      const components = buildReplyComponents(routed.replyCta);
-      // The routed reply is already consumed upstream, so a transient send
-      // failure retries rather than silently losing the turn's answer.
-      const sendResult = await sendReplyWithRetry(
-        () =>
-          message.reply({
-            content: truncated,
-            ...(components ? { components } : {}),
-            allowedMentions: { repliedUser: false },
-          }),
-        {
-          onAttemptFailure: ({ attempt, error }) => {
-            logger.warn("Managed Agent Discord reply send attempt failed", {
-              guildId: message.guildId ?? null,
-              channelId: message.channelId,
-              messageId: message.id,
-              attempt,
-              error: sanitizeError(error),
-            });
-          },
-        },
+      const replyOptions = buildManagedReplyOptions(
+        message.id,
+        truncated,
+        routed.replyCta,
       );
-      if (!sendResult.sent) {
-        logger.error("Managed Agent Discord reply dropped after retries", {
+      const failureOptions = buildManagedFailureReplyOptions(message.id);
+      const delivery = await deliverManagedReply({
+        sendReply: async () =>
+          classifyManagedReplyReceipt(
+            await message.reply(replyOptions),
+            replyOptions,
+          ),
+        sendFailureNotice: async () =>
+          classifyManagedReplyReceipt(
+            await message.reply(failureOptions),
+            failureOptions,
+          ),
+      });
+      if (delivery.state === "deduplicated") {
+        logger.warn(
+          "Managed Agent Discord send resolved to an existing nonce message",
+          {
+            guildId: message.guildId ?? null,
+            channelId: message.channelId,
+            messageId: message.id,
+            attempted: delivery.attempted,
+          },
+        );
+      } else if (delivery.state === "failure_notice") {
+        logger.warn("Managed Agent Discord reply degraded to failure notice", {
           guildId: message.guildId ?? null,
           channelId: message.channelId,
           messageId: message.id,
-          attempts: sendResult.attempts,
-          error: sanitizeError(sendResult.error ?? "unknown"),
+          error: sanitizeError(delivery.primaryError ?? "unknown"),
         });
+      } else if (delivery.state === "undeliverable") {
+        logger.error(
+          "Managed Agent Discord reply and failure notice were undeliverable",
+          {
+            guildId: message.guildId ?? null,
+            channelId: message.channelId,
+            messageId: message.id,
+            primaryError: sanitizeError(delivery.primaryError ?? "unknown"),
+            failureNoticeError: sanitizeError(delivery.failureNoticeError),
+          },
+        );
       }
     } catch (error) {
       logger.error("Failed to route managed Eliza Discord message", {

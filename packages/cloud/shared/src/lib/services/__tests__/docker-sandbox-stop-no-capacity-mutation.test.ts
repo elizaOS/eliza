@@ -81,7 +81,9 @@ describe("provider stop never mutates node capacity", () => {
     const provider = new DockerSandboxProvider();
     seedContainer(provider);
 
-    await expect(provider.stop(SANDBOX_ID)).resolves.toBeUndefined();
+    await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
+      kind: "not-running-proven",
+    });
     expect(decrementSpy).not.toHaveBeenCalled();
   });
 
@@ -95,18 +97,23 @@ describe("provider stop never mutates node capacity", () => {
     const provider = new DockerSandboxProvider();
     seedContainer(provider);
 
-    await expect(provider.stop(SANDBOX_ID)).resolves.toBeUndefined();
+    await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
+      kind: "not-running-proven",
+    });
     expect(decrementSpy).not.toHaveBeenCalled();
   });
 
-  test("an abandoned container on an unreachable node leaks on the box, not in the counter", async () => {
+  test("an unreachable container retains its capacity for reconciliation", async () => {
     execBehavior = async () => {
       throw new Error("[docker-ssh] Connection to 138.201.80.125:22 timed out after 10000ms");
     };
     const provider = new DockerSandboxProvider();
     seedContainer(provider);
 
-    await expect(provider.stop(SANDBOX_ID)).resolves.toBeUndefined();
+    await expect(provider.stopForDeletion(SANDBOX_ID)).resolves.toEqual({
+      kind: "not-running-unresolved",
+      reason: "node-unreachable",
+    });
     expect(decrementSpy).not.toHaveBeenCalled();
   });
 
@@ -120,7 +127,7 @@ describe("provider stop never mutates node capacity", () => {
     const provider = new DockerSandboxProvider();
     seedContainer(provider);
 
-    await expect(provider.stop(SANDBOX_ID)).rejects.toThrow(/Failed to stop container/);
+    await expect(provider.stopForDeletion(SANDBOX_ID)).rejects.toThrow(/Failed to stop container/);
     expect(decrementSpy).not.toHaveBeenCalled();
   });
 

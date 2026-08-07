@@ -93,12 +93,25 @@ describe("personalityAction — subactions write structured state", () => {
 	});
 
 	test("set_trait user-scope writes user slot only", async () => {
-		const { result } = await run(fake, "be terse with me", "set_trait", {
+		const { result, calls } = await run(fake, "be terse with me", "set_trait", {
 			scope: "user",
 			trait: "verbosity",
 			value: "terse",
 		});
 		expect(result.success).toBe(true);
+		// #17923 humanization: the ack is a human sentence, not settings-speak
+		// ("Set verbosity=terse for you."). Machine detail rides in values/data.
+		expect(calls[0].text).toBe("Okay — I'll be terse with you from here on.");
+		expect(calls[0].text).not.toContain("=");
+		expect(result.values).toMatchObject({
+			scope: "user",
+			trait: "verbosity",
+			value: "terse",
+		});
+		expect(
+			(result.data as { after?: { verbosity?: string | null } }).after
+				?.verbosity,
+		).toBe("terse");
 		const userSlot = fake.store.getSlot(
 			"00000000-0000-4000-8000-0000000000ff" as never,
 		);
@@ -195,7 +208,13 @@ describe("personalityAction — subactions write structured state", () => {
 			scope: "user",
 		});
 		expect(result.success).toBe(true);
-		expect(calls[0].text).toContain("verbosity=terse");
+		// Humanized summary — no key=value settings-speak in the spoken line; the
+		// raw slot stays available as machine detail in data.slot.
+		expect(calls[0].text).toContain("verbosity terse");
+		expect(calls[0].text).not.toContain("=");
+		expect(
+			(result.data as { slot?: { verbosity?: string | null } }).slot?.verbosity,
+		).toBe("terse");
 	});
 });
 

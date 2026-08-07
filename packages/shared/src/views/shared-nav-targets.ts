@@ -7,17 +7,21 @@
  * navigation — the designed not-found render for unclaimed /apps/<slug> routes
  * is #17033 — so every entry here must be client-resolvable. Matcher ids and
  * client ids are separate namespaces — the matcher's "wallet" resolves to the
- * builtin "inventory" tab — so this table is the single translation point, and
- * it deliberately omits matcher ids with no shared-tier client surface (e.g.
- * "help", "camera") so those utterances fall through to the normal LLM turn
- * instead of navigating nowhere (#17032). The vocabulary is pinned by the
- * cross-package contract test packages/ui/src/shared-nav-contract.test.ts.
+ * builtin "inventory" tab — so this table is the single translation point.
+ * Host-owned destinations also carry their canonical path because they are not
+ * guaranteed to exist in every platform's in-process view registry. Matcher
+ * ids with no shared-tier client surface (e.g. "help", "camera") are omitted
+ * so those utterances fall through to the normal LLM turn instead of navigating
+ * nowhere (#17032). The vocabulary is pinned by the cross-package contract test
+ * packages/ui/src/shared-nav-contract.test.ts.
  */
 
 /** A client-resolvable navigation target for one matcher id. */
 export interface SharedNavTarget {
   /** View id the client resolves against its routable view registry. */
   viewId: string;
+  /** Canonical path when the destination is host-owned rather than registry-owned. */
+  viewPath?: string;
   /** Human label used in confirmation copy ("Opening <label> for you."). */
   label: string;
 }
@@ -83,6 +87,11 @@ export const SHARED_NAV_TARGETS: Readonly<Record<string, SharedNavTarget>> = {
   transcripts: { viewId: "transcripts", label: "Transcripts" },
   character: { viewId: "character", label: "Character" },
   automations: { viewId: "automations", label: "Automations" },
+  "cloud-apps": {
+    viewId: "cloud-apps",
+    viewPath: "/cloud-apps",
+    label: "Cloud Apps",
+  },
   chat: { viewId: "chat", label: "Home" },
   // "camera" is deliberately absent: the camera view is an AOSP-fork-only
   // native surface, and AOSP devices run dedicated local runtimes whose real

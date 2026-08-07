@@ -73,6 +73,10 @@ function proactiveMsg(id: string, text: string): ConversationMessage {
     source: "proactive-interaction",
   };
 }
+/** In-flight action-callback text (server-marked provisional stream frames). */
+function provisionalMsg(id: string, text: string): ConversationMessage {
+  return { id, role: "assistant", text, timestamp: 2, provisional: true };
+}
 
 const BASE: ShellVoiceOutputOptions = {
   conversationMessages: [],
@@ -389,6 +393,121 @@ describe("useShellVoiceOutput", () => {
     hoisted.cfg.voiceConfig = { provider: "local-inference" };
     const { result } = render(BASE);
     expect(result.current.asrProvider).toBeUndefined();
+  });
+
+  // Voice double-speak fix: a turn that runs an action streams the action's
+  // callback ack ("Set tone=warm for you.") as PROVISIONAL text, then the
+  // model's reply replaces it. Exactly ONE utterance may reach TTS — the
+  // turn's final message — because speech, unlike a chat bubble, cannot be
+  // retracted once spoken.
+  describe("single utterance per turn (action ack + reply)", () => {
+    it("holds the provisional action ack and speaks only the final reply", () => {
+      const user = userMsg("u1", "change your personality to warm");
+      const { rerender } = render({
+        ...BASE,
+        lastTurnVoice: true,
+        chatSending: true,
+        conversationMessages: [user],
+      });
+
+      // Mid-turn: the PERSONALITY callback snapshot lands as provisional text.
+      rerender({
+        ...BASE,
+        lastTurnVoice: true,
+        chatSending: true,
+        conversationMessages: [
+          user,
+          provisionalMsg("temp-1", "Set tone=warm for you."),
+        ],
+      });
+      expect(hoisted.queueAssistantSpeech).not.toHaveBeenCalled();
+
+      // Terminal reconciliation: the reply replaces the ack and the bubble is
+      // rekeyed to the persisted id. This is the turn's single utterance.
+      rerender({
+        ...BASE,
+        lastTurnVoice: true,
+        chatSending: false,
+        conversationMessages: [
+          user,
+          assistantMsg("server-1", "okay i changed personality to warm"),
+        ],
+      });
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledWith(
+        "server-1",
+        "okay i changed personality to warm",
+        true,
+        { replace: true },
+      );
+    });
+
+    it("speaks a turnComplete-style ack exactly once, at terminal confirmation", () => {
+      const user = userMsg("u1", "list my cloud apps");
+      const { rerender } = render({
+        ...BASE,
+        lastTurnVoice: true,
+        chatSending: true,
+        conversationMessages: [
+          user,
+          provisionalMsg("temp-1", "You have two cloud apps."),
+        ],
+      });
+      // Provisional while in flight — held.
+      expect(hoisted.queueAssistantSpeech).not.toHaveBeenCalled();
+
+      // The action opted into turnComplete: its ack IS the turn's final
+      // message. The terminal frame confirms the same text (rekeyed id).
+      rerender({
+        ...BASE,
+        lastTurnVoice: true,
+        chatSending: false,
+        conversationMessages: [
+          user,
+          assistantMsg("server-1", "You have two cloud apps."),
+        ],
+      });
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledWith(
+        "server-1",
+        "You have two cloud apps.",
+        true,
+        { replace: true },
+      );
+    });
+
+    it("speaks the reply as soon as a non-provisional frame replaces the ack mid-turn", () => {
+      const user = userMsg("u1", "change your personality to warm");
+      const { rerender } = render({
+        ...BASE,
+        lastTurnVoice: true,
+        chatSending: true,
+        conversationMessages: [
+          user,
+          provisionalMsg("temp-1", "Set tone=warm for you."),
+        ],
+      });
+      expect(hoisted.queueAssistantSpeech).not.toHaveBeenCalled();
+
+      // The reply handler's delivery is NOT provisional — voice may start on
+      // it immediately (still mid-turn), and it is the only utterance.
+      rerender({
+        ...BASE,
+        lastTurnVoice: true,
+        chatSending: true,
+        conversationMessages: [
+          user,
+          assistantMsg("temp-1", "okay i changed personality to warm"),
+        ],
+      });
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledWith(
+        "temp-1",
+        "okay i changed personality to warm",
+        false,
+        { replace: true },
+      );
+    });
   });
 
   // #8792: proactive interaction comments are text-only by default.
