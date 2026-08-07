@@ -6302,11 +6302,16 @@ export class AgentRuntime implements IAgentRuntime {
 				: typeof response === "string"
 					? response
 					: undefined;
+		const trajectoryContext = getTrajectoryContext();
+		const logRoomId =
+			(trajectoryContext?.roomId as UUID | undefined) ??
+			this.currentRoomId ??
+			this.agentId;
 		void this.adapter
 			.createLogs([
 				{
 					entityId: this.agentId,
-					roomId: this.currentRoomId ?? this.agentId,
+					roomId: logRoomId,
 					body: {
 						modelType,
 						modelKey,
@@ -6336,6 +6341,7 @@ export class AgentRuntime implements IAgentRuntime {
 				);
 				this.reportError("AgentRuntime.modelCallLog", error, {
 					model: modelKey,
+					diagnosticOnly: true,
 				});
 			});
 	}

@@ -103,9 +103,11 @@ describe("BROWSER action", () => {
         url: "https://example.com/path",
       }),
     );
-    expect(result?.text).toBe(
-      "open completed in workspace mode.\nExample\nhttps://example.com/path",
-    );
+    expect(result).toMatchObject({
+      text: "Opened example.com/path.",
+      userFacingText: "Opened example.com/path.",
+      verifiedUserFacing: true,
+    });
   });
 
   it("emits compact progress when streamProgress is true", async () => {

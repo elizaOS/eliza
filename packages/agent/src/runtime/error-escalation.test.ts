@@ -122,6 +122,24 @@ describe("ERROR_REPORTED escalation handler", () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it("never escalates diagnostic-only persistence failures into owner chat", async () => {
+    const spy = vi
+      .spyOn(EscalationService, "startEscalation")
+      .mockResolvedValue({} as never);
+    const tracker = new ErrorEscalationTracker(1, 10 * 60 * 1000);
+    const handler = createErrorReportedEscalationHandler(
+      {} as IAgentRuntime,
+      tracker,
+      10,
+    );
+
+    await handler({
+      ...payload("DB_INSERT_FAILED"),
+      context: { model: "TEXT_SMALL", diagnosticOnly: true },
+    });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it("does not re-enter reportError when escalation fails", async () => {
     vi.spyOn(EscalationService, "startEscalation").mockRejectedValue(
       new Error("send failed"),

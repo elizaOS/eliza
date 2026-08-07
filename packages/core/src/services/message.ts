@@ -3400,6 +3400,26 @@ function appliedEffectReceiptIdsForReply(
 	return [];
 }
 
+function uniqueAppliedCanonicalActionReply(
+	results: readonly ActionResult[],
+): string | null {
+	const allTurnReceipts = mergeEffectReceipts(
+		...results.map((result) => result.effectReceipts),
+	);
+	const candidates = new Set<string>();
+	for (const result of results) {
+		const text = result.userFacingText?.trim();
+		if (result.verifiedUserFacing !== true || !text) continue;
+		if (!resolveAppliedUserFacingEffectReceipts(result, allTurnReceipts)) {
+			continue;
+		}
+		candidates.add(text);
+	}
+	return candidates.size === 1
+		? (candidates.values().next().value ?? null)
+		: null;
+}
+
 /**
  * An action result grounds only the capability it actually proves.
  * Empty tracked-work claims require a `resource:tracked-work` read action.
@@ -3488,7 +3508,13 @@ export function evaluatePlannedReplyEgress(args: {
 		return {
 			verdict: "reject",
 			kind: "completed_side_effect",
-			fallbackReply: UNVERIFIED_EFFECT_REPLY,
+			// The planner may paraphrase a receipt-backed action by only punctuation
+			// or casing. Preserve the action's exact canonical text instead of
+			// replacing a real success with a false verification failure. Multiple
+			// distinct effects remain ambiguous and continue to fail closed.
+			fallbackReply:
+				uniqueAppliedCanonicalActionReply(args.actionResults) ??
+				UNVERIFIED_EFFECT_REPLY,
 		};
 	}
 	if (replyClaimsEmptyTrackedWorkState(reply)) {
