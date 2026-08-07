@@ -21,7 +21,6 @@ export default defineConfig({
   timeout: 60_000,
   expect: {
     timeout: 20000,
-    toHaveScreenshot: { maxDiffPixelRatio: 0.05 },
   },
   outputDir: recording
     ? path.resolve(

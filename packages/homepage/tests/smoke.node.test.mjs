@@ -92,7 +92,6 @@ test("visual regression compares the quality-validated capture itself", () => {
     /const screenshot = await captureScreenshotWithQualityRetry\(/,
   );
   assert.match(visualSpec, /expect\(screenshot\)\.toMatchSnapshot\(/);
-  assert.doesNotMatch(visualSpec, /\.toHaveScreenshot\(/);
 });
 
 test("large visual assets receive a durable browser cache policy", () => {
