@@ -196,7 +196,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: fused-lib
-          key: voice-fused-cpu-v1-${{ steps.fork.outputs.commit }}-${{ hashFiles('packages/app-core/scripts/stage-desktop-fused-lib.mjs') }}
+          key: voice-fused-cpu-v2-${{ steps.fork.outputs.commit }}-${{ hashFiles('packages/app-core/scripts/stage-desktop-fused-lib.mjs') }}
 
       - name: Setup Node.js
         if: steps.fused-cache.outputs.cache-hit != 'true'
@@ -225,7 +225,7 @@ jobs:
         run: |
           set -euo pipefail
           node packages/app-core/scripts/stage-desktop-fused-lib.mjs \
-            --variant cpu --out "$GITHUB_WORKSPACE/fused-lib"
+            --variant cpu --portable-cpu --out "$GITHUB_WORKSPACE/fused-lib"
 
       - name: Verify the fused ABI surface
         run: |
