@@ -128,8 +128,44 @@ interface FrameDelta {
   byteDelta: number;
 }
 
-/** Per-channel delta below this is anti-aliasing noise, not real change. */
-const CHANNEL_NOISE_THRESHOLD = 3;
+// Per-pixel tolerance mirrors the comparator the snapshot assertion itself
+// uses: Playwright's toMatchSnapshot diffs PNGs with pixelmatch at threshold
+// 0.2, which treats two pixels as equal while their weighted-YIQ color
+// distance stays within 35215 * threshold^2. The stability gate must judge
+// consecutive frames by the same metric — a stricter one (small per-channel
+// deltas) fails pages whose WebGL/video/shader dither the snapshot diff
+// happily tolerates, which is exactly what red-flagged every homepage route
+// in CI while the golden comparison itself was green.
+const PIXELMATCH_THRESHOLD = 0.2;
+const MAX_YIQ_DELTA = 35215 * PIXELMATCH_THRESHOLD ** 2;
+
+/** Composite a channel over white by its alpha, as pixelmatch does. */
+function blendOverWhite(channel: number, alpha: number): number {
+  return 255 + (channel - 255) * alpha;
+}
+
+/**
+ * Whether two RGBA pixels differ perceptibly, using pixelmatch's weighted
+ * YIQ color-distance formula and coefficients at PIXELMATCH_THRESHOLD.
+ */
+function pixelsDiffer(a: Uint8Array, b: Uint8Array, i: number): boolean {
+  const alphaA = a[i + 3] / 255;
+  const alphaB = b[i + 3] / 255;
+  const rA = blendOverWhite(a[i], alphaA);
+  const gA = blendOverWhite(a[i + 1], alphaA);
+  const bA = blendOverWhite(a[i + 2], alphaA);
+  const rB = blendOverWhite(b[i], alphaB);
+  const gB = blendOverWhite(b[i + 1], alphaB);
+  const bB = blendOverWhite(b[i + 2], alphaB);
+  const dy =
+    (rA - rB) * 0.29889531 + (gA - gB) * 0.58662247 + (bA - bB) * 0.11448223;
+  const di =
+    (rA - rB) * 0.59597799 - (gA - gB) * 0.2741761 - (bA - bB) * 0.32180189;
+  const dq =
+    (rA - rB) * 0.21147017 - (gA - gB) * 0.52261711 + (bA - bB) * 0.31114694;
+  const delta = 0.5053 * dy * dy + 0.299 * di * di + 0.1957 * dq * dq;
+  return delta > MAX_YIQ_DELTA;
+}
 
 /**
  * Pixel-level delta between two consecutive PNG captures. Byte-identical
@@ -158,12 +194,7 @@ async function compareFrames(a: Buffer, b: Buffer): Promise<FrameDelta> {
   }
   let differingPixels = 0;
   for (let i = 0; i < rawA.data.length; i += 4) {
-    if (
-      Math.abs(rawA.data[i] - rawB.data[i]) > CHANNEL_NOISE_THRESHOLD ||
-      Math.abs(rawA.data[i + 1] - rawB.data[i + 1]) > CHANNEL_NOISE_THRESHOLD ||
-      Math.abs(rawA.data[i + 2] - rawB.data[i + 2]) > CHANNEL_NOISE_THRESHOLD ||
-      Math.abs(rawA.data[i + 3] - rawB.data[i + 3]) > CHANNEL_NOISE_THRESHOLD
-    ) {
+    if (pixelsDiffer(rawA.data, rawB.data, i)) {
       differingPixels += 1;
     }
   }
