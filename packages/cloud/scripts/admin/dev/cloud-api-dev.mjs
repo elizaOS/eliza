@@ -256,18 +256,19 @@ async function main() {
         `ELIZA_CLOUD_AGENT_BASE_DOMAIN:${agentBaseDomainOverride}`,
       ]
     : [];
-  // Redis selection must reach the Worker's `c.env`, not just this launcher's
+  // Redis/cache selection must reach the Worker's `c.env`, not just this launcher's
   // process.env: routes build their client via `buildRedisClient(c.env)`, and
   // wrangler `--local` only exposes vars passed through wrangler.toml/.dev.vars/
   // `--var` — ambient process.env does NOT leak into `c.env`. Without this, the
-  // e2e env's `MOCK_REDIS=1` is invisible inside the Worker and any nonce-storage
-  // route (e.g. SIWE nonce/verify) returns 503 "Nonce storage unavailable". Most
-  // redis consumers (rate-limit) fail open, so this only surfaced once a spec
-  // drove the real SIWE login. Forward whichever redis selector is set.
-  const redisDevVars = ["MOCK_REDIS", "REDIS_URL"].flatMap((key) => {
-    const value = process.env[key];
-    return value ? ["--var", `${key}:${value}`] : [];
-  });
+  // e2e env's values are otherwise invisible inside the Worker: nonce storage
+  // returns 503 and cache-only inference decisions remain permanently warming.
+  // Forward whichever Redis selector and cache policy the caller set.
+  const redisDevVars = ["MOCK_REDIS", "REDIS_URL", "CACHE_ENABLED"].flatMap(
+    (key) => {
+      const value = process.env[key];
+      return value ? ["--var", `${key}:${value}`] : [];
+    },
+  );
   const appDeployDevVars = [
     "APPS_DEPLOY_ENABLED",
     "APPS_DEPLOY_ALLOWED_ORG_IDS",

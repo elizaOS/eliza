@@ -12,7 +12,7 @@ import {
 import {
   ExpectedDevSmokeFailureMatcher,
   isExpectedDevSmokeConsoleError,
-  isLifeOpsActivitySignals503,
+  isExpectedDevSmokeResponseCandidate,
 } from "./browser-failure-policy";
 
 export const API_PORT = Number(process.env.ELIZA_API_PORT || "31337");
@@ -61,7 +61,9 @@ export function browserFailureCollector(page: Page): BrowserFailureCollector {
       return;
     }
     if (response.status() < 500) return;
-    if (isLifeOpsActivitySignals503(response.status(), response.url())) {
+    if (
+      isExpectedDevSmokeResponseCandidate(response.status(), response.url())
+    ) {
       let check: Promise<void>;
       check = response
         .text()
