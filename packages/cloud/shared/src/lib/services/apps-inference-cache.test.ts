@@ -19,6 +19,12 @@ mock.module("../../db/repositories/apps", () => ({
       return appRows.get(id);
     },
   },
+  withAppCacheFence: async <T>(_appId: string, operation: (tx: unknown) => Promise<T>) =>
+    await operation({}),
+  withAppCacheFences: async <T>(
+    _identity: { appId?: string; apiKeyId?: string | null; slug?: string | null },
+    operation: (tx: unknown) => Promise<T>,
+  ) => await operation({}),
 }));
 
 mock.module("./api-keys", () => ({

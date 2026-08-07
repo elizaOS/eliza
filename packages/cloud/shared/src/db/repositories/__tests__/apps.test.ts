@@ -16,7 +16,7 @@
  * here (the repo cannot be driven against a real DB) — it never silently passes.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 
 // This suite drives an ISOLATED in-process PGlite (see docstring). When the
 // ambient DATABASE_URL is a real shared Postgres (e.g. CI's

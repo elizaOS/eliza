@@ -17,6 +17,14 @@ import { jobsRepository } from "../../db/repositories/jobs";
 import { AGENT_JOB_TYPES, APPS_JOB_TYPES, JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService } from "./provisioning-jobs";
 
+const EMPTY_RECOVERY = {
+  scanned: 0,
+  retried: 0,
+  permanentlyFailed: 0,
+  unchanged: 0,
+  failures: [],
+};
+
 describe("processPendingJobs — lane scoping", () => {
   test("apps lane claims + stale-recovers ONLY apps job types, never an agent type", async () => {
     const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue([]);
@@ -24,7 +32,7 @@ describe("processPendingJobs — lane scoping", () => {
       jobsRepository,
       "claimPendingJobsWithinSharedRunningLimit",
     ).mockResolvedValue([]);
-    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
     try {
       await provisioningJobService.processPendingJobs(1, {
         jobTypes: APPS_JOB_TYPES,
@@ -54,7 +62,7 @@ describe("processPendingJobs — lane scoping", () => {
       jobsRepository,
       "claimPendingJobsWithinSharedRunningLimit",
     ).mockResolvedValue([]);
-    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
     // #16639: the memory-intensive agent_snapshot lane is fail-closed by
     // default — it joins the loop only under the explicit env gate (covered
     // in provisioning-jobs-snapshot-gate.test.ts).
@@ -82,7 +90,7 @@ describe("processPendingJobs — lane scoping", () => {
       jobsRepository,
       "claimPendingJobsWithinSharedRunningLimit",
     ).mockResolvedValue([]);
-    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
     try {
       await provisioningJobService.processPendingJobs(1, {
         jobTypes: AGENT_JOB_TYPES,
@@ -112,7 +120,7 @@ describe("processPendingJobs — lane scoping", () => {
       jobsRepository,
       "claimPendingJobsWithinSharedRunningLimit",
     ).mockResolvedValue([]);
-    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
     try {
       await provisioningJobService.processPendingJobs(1);
 
@@ -134,7 +142,7 @@ describe("processPendingJobs — lane scoping", () => {
     const recoverSpy = spyOn(
       jobsRepository,
       "recoverInProgressJobsStartedBefore",
-    ).mockResolvedValue(0);
+    ).mockResolvedValue(EMPTY_RECOVERY);
     const startedBefore = new Date("2026-07-08T12:00:00.000Z");
     try {
       await provisioningJobService.recoverInterruptedJobsOnStartup(startedBefore, AGENT_JOB_TYPES);

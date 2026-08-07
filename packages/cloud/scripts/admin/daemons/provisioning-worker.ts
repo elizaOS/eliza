@@ -23,6 +23,7 @@ import {
 import type {
   HeartbeatResult,
   ProcessingResult,
+  ProvisioningRecoverySummary,
   RecoveryResult,
 } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
 import { loadLocalEnv } from "./shared/load-env";
@@ -721,7 +722,7 @@ async function processRecoveryCycle(concurrency = 5): Promise<RecoveryResult> {
 
 async function processStartupInterruptedJobsRecoveryCycle(
   config: ProvisioningWorkerConfig,
-): Promise<number> {
+): Promise<ProvisioningRecoverySummary> {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.recoverInterruptedJobsOnStartup(
     workerStartedAt,
@@ -1981,12 +1982,13 @@ async function main(): Promise<void> {
     logger,
     "startup interrupted-job recovery",
     () => processStartupInterruptedJobsRecoveryCycle(config),
-    (recovered) => {
-      if (recovered > 0) {
+    (recovery) => {
+      if (recovery.retried > 0 || recovery.permanentlyFailed > 0) {
         logger.info(
           "[provisioning-worker] startup interrupted-job recovery complete",
           {
-            recovered,
+            retried: recovery.retried,
+            permanentlyFailed: recovery.permanentlyFailed,
             startedBefore: workerStartedAt.toISOString(),
           },
         );
