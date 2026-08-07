@@ -92,6 +92,7 @@ vi.mock("../../lib/steward-session", () => ({
   consumeStewardCodeFromQuery: () => null,
   consumeStewardTokensFromHash: () => null,
   exchangeStewardCodeViaApi: vi.fn(),
+  recoverStewardSessionViaCookie: vi.fn(),
   refreshStewardSessionViaCookie: vi.fn(),
   syncStewardSessionCookie: sessionSpies.sync,
 }));
