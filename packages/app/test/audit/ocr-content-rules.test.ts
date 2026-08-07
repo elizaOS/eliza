@@ -174,6 +174,27 @@ ph eg`,
     },
   );
 
+  it("requires token boundaries when short anchors bypass low OCR confidence", () => {
+    const exactAnchor = evaluateOcrContent({
+      ocr: ocr("Portfolio balance ETH today ready", {
+        meanConfidence: 0.2,
+        pixelBlank: false,
+      }),
+      expectation: { requireAll: ["ETH"] },
+    });
+    expect(exactAnchor.verdict).toBe("verified");
+
+    const substringNoise = evaluateOcrContent({
+      ocr: ocr("Portfolio method esol today ready", {
+        meanConfidence: 0.2,
+        pixelBlank: false,
+      }),
+      expectation: { requireAny: ["ETH", "SOL"] },
+    });
+    expect(substringNoise.ocrInconclusive).toBe(true);
+    expect(substringNoise.verdict).toBe("needs-eyeball");
+  });
+
   it("keeps the word floor even when a one-word semantic anchor matches", () => {
     const f = evaluateOcrContent({
       ocr: ocr("Tasks", {
