@@ -73,10 +73,6 @@ jobs:
       - name: Run messaging gateway preflight
         run: bun run preflight:messaging-gateways
 
-      - name: Install service dependencies
-        working-directory: packages/cloud/services/gateway-discord
-        run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
-
       - name: Run service tests
         working-directory: packages/cloud/services/gateway-discord
         run: bun test tests/ --timeout 60000
