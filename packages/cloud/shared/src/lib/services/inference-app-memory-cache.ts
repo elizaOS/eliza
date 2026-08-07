@@ -1,20 +1,33 @@
 /**
- * Worker-lifetime memory cache for inference app rows, shared between the
- * apps service (reads) and the apps repository (eviction on mutation). Lives
- * in its own module so the repository can evict without importing the service
- * layer, which itself imports the repository.
+ * Worker-lifetime state for inference app reads, shared between the apps
+ * service and repository mutation boundary. Cache eviction and hydration
+ * generations move together so an in-flight read cannot republish a row that
+ * a concurrent mutation already invalidated.
  */
 import type { App } from "../../db/repositories/apps";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 
-export const inferenceAppMemoryCache = new InMemoryLRUCache<App>(100, 30_000);
+const inferenceAppMemoryCache = new InMemoryLRUCache<App>(100, 30_000);
+const appByIdHydrationGeneration = new Map<string, number>();
+
+export function getInferenceAppById(appId: string): App | null {
+  return inferenceAppMemoryCache.get(appId);
+}
+
+export function setInferenceAppById(appId: string, app: App): void {
+  inferenceAppMemoryCache.set(appId, app);
+}
+
+export function getAppByIdHydrationGeneration(appId: string): number {
+  return appByIdHydrationGeneration.get(appId) ?? 0;
+}
 
 /**
- * Evict one app from the worker-lifetime memory cache. Called by the apps
- * repository after every persisting mutation so a same-worker read cannot
- * return the pre-mutation row for up to the cache TTL — the shared-cache
- * eviction alone cannot reach this layer.
+ * Invalidates the memory cache and any authoritative read already in flight.
+ * Callers must use this single boundary rather than deleting the LRU directly;
+ * the generation bump prevents an older read from restoring stale state.
  */
-export function evictInferenceAppMemoryCache(appId: string): void {
+export function invalidateInferenceAppByIdState(appId: string): void {
   inferenceAppMemoryCache.delete(appId);
+  appByIdHydrationGeneration.set(appId, getAppByIdHydrationGeneration(appId) + 1);
 }
