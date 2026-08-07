@@ -13,6 +13,10 @@ import { BNB_DEX_PROTOCOLS } from "./bnb/dex";
 import { BNB_LENDING_PROTOCOLS } from "./bnb/lending";
 import { BNB_STAKING_PROTOCOLS } from "./bnb/staking";
 import { BNB_INFRASTRUCTURE_PROTOCOLS } from "./bnb/infrastructure";
+import { BASE_DEX_PROTOCOLS } from "./base/dex";
+import { BASE_LENDING_PROTOCOLS } from "./base/lending";
+import { BASE_NFT_PROTOCOLS } from "./base/nft";
+import { BASE_INFRASTRUCTURE_PROTOCOLS } from "./base/infrastructure";
 
 export type ChainProtocol = {
   programId: string;
@@ -75,12 +79,20 @@ const BNB_PROTOCOLS: Readonly<Record<string, ChainProtocol>> = {
   ...BNB_INFRASTRUCTURE_PROTOCOLS,
 };
 
+const BASE_PROTOCOLS: Readonly<Record<string, ChainProtocol>> = {
+  ...BASE_DEX_PROTOCOLS,
+  ...BASE_LENDING_PROTOCOLS,
+  ...BASE_NFT_PROTOCOLS,
+  ...BASE_INFRASTRUCTURE_PROTOCOLS,
+};
+
 const CHAIN_PROTOCOL_REGISTRIES: Partial<
   Record<SupportedChain, Readonly<Record<string, ChainProtocol>>>
 > = {
   solana: SOLANA_PROTOCOLS,
   ethereum: ETHEREUM_PROTOCOLS,
   bnb: BNB_PROTOCOLS,
+  base: BASE_PROTOCOLS,
 };
 
 export function lookupProtocol(
