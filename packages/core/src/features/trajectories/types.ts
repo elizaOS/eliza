@@ -205,8 +205,9 @@ export interface TrajectoryStep {
 	providerAccesses: ProviderAccess[];
 	reasoning?: string;
 
-	// Action taken
-	action: ActionAttempt;
+	// Action taken. Optional: Agent-bridge LLM-only captures have no action and
+	// must not fabricate one (#17730 / #17762). ART and other readers must guard.
+	action?: ActionAttempt;
 
 	// Feedback
 	reward: number;

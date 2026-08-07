@@ -436,6 +436,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // Voice config ref (latest value always available to callbacks)
   const voiceConfigRef = useRef<VoiceConfig | null>(effectiveVoiceConfig);
   voiceConfigRef.current = effectiveVoiceConfig;
+  const ttsRouteOverrideRef = useRef(options.ttsRouteOverride);
+  ttsRouteOverrideRef.current = options.ttsRouteOverride;
   // Cloud-session ref for capture-time route resolution (#16524): whether the
   // cloud STT proxy is a viable fallback when local-inference is unready.
   const cloudConnectedRef = useRef(options.cloudConnected === true);
@@ -1847,13 +1849,20 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           //  - otherwise the on-device `/api/tts/cloud` proxy is preserved.
           // Same `{ text }` body, same audio-bytes response — only the URL and
           // bearer change.
-          const route = resolveForcedCloudTtsRoute({
-            proxyUrl,
-            proxyBearer: apiToken || null,
-            sharedRuntimeOrigin: currentSharedRuntimeVoiceOrigin(),
-            configuredCloudOrigin: configuredCloudVoiceOrigin(),
-            cloudSessionToken: getCloudAuthToken(),
-          });
+          const routeOverride = ttsRouteOverrideRef.current?.trim();
+          const route = routeOverride
+            ? {
+                url: resolveApiUrl(routeOverride),
+                bearer: null,
+                via: "on-device-proxy" as const,
+              }
+            : resolveForcedCloudTtsRoute({
+                proxyUrl,
+                proxyBearer: apiToken || null,
+                sharedRuntimeOrigin: currentSharedRuntimeVoiceOrigin(),
+                configuredCloudOrigin: configuredCloudVoiceOrigin(),
+                cloudSessionToken: getCloudAuthToken(),
+              });
           // Debug-only correlation headers. Proxy/shared paths only: they are
           // not in the cloud worker's CORS allow-list, so sending them on the
           // direct cross-origin POST would fail the browser preflight.

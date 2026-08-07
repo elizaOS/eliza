@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "manualChecklistDoc": "packages/docs/apps/desktop/release-regression-checklist.md",
+  "manualChecklistDoc": "packages/app-core/test/release-regression-checklist.md",
   "workflowContracts": {
     "pr": {
       "files": [".github/workflows/test.yml"],
@@ -232,7 +232,7 @@
           "desktop-playwright"
         ]
       },
-      "manualChecklist": "packages/docs/apps/desktop/release-regression-checklist.md"
+      "manualChecklist": "packages/app-core/test/release-regression-checklist.md"
     },
     {
       "name": "workflow-and-release-contracts",
@@ -492,7 +492,7 @@
       "test:e2e": ["apps-e2e.e2e.test.ts"]
     },
     "desktopInventorySources": [
-      "packages/docs/apps/desktop/release-heavy-inventory.md"
+      "packages/app-core/test/release-heavy-inventory.md"
     ],
     "forbiddenDesktopInventoryMarkers": [
       ["it.", "todo", "("],

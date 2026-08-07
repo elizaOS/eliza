@@ -40,6 +40,7 @@ import {
   Service,
   TRACE_ENV,
   type TrajectoryUsageRollup,
+  type UUID,
 } from "@elizaos/core";
 import {
   detectTaskType,
@@ -2998,10 +2999,15 @@ export class OrchestratorTaskService extends Service {
     const roomId = doc?.task.roomId;
     if (!roomId) return null;
     const meta = doc.task.metadata ?? {};
-    const source =
-      typeof meta.source === "string" && meta.source
-        ? meta.source
-        : "orchestrator";
+    let source =
+      typeof meta.source === "string" && meta.source ? meta.source : undefined;
+    if (!source) {
+      // Records that predate the create-time source stamp: the room row knows
+      // which connector created it, and that source is what sendMessageToTarget
+      // needs to select a registered handler.
+      const room = await this.runtime.getRoom?.(roomId as UUID);
+      source = room?.source || "orchestrator";
+    }
     return {
       roomId,
       source,

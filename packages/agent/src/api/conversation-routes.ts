@@ -121,6 +121,7 @@ import {
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
 } from "./server-helpers.ts";
+import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ConversationMeta } from "./server-types.ts";
 import {
   resolveWaifuChatAccess,
@@ -276,6 +277,46 @@ export interface ConversationRouteState {
 export interface ConversationRouteContext extends RouteRequestContext {
   state: ConversationRouteState;
   callerAuthorization?: AgentHttpRequestAuthorization;
+}
+
+function readViewInteractionClientId(
+  req: Pick<http.IncomingMessage, "headers">,
+): string | null {
+  for (const name of ["x-elizaos-client-id", "x-eliza-client-id"] as const) {
+    const value = req.headers[name];
+    const candidate = Array.isArray(value) ? value[0] : value;
+    const clientId = normalizeWsClientId(candidate);
+    if (clientId) return clientId;
+  }
+  return null;
+}
+
+function withViewInteractionClient(
+  message: Memory,
+  req: Pick<http.IncomingMessage, "headers">,
+): Memory {
+  const viewClientId = readViewInteractionClientId(req);
+  if (!viewClientId) return message;
+  const contentMetadata =
+    message.content.metadata &&
+    typeof message.content.metadata === "object" &&
+    !Array.isArray(message.content.metadata)
+      ? message.content.metadata
+      : {};
+
+  // The routing identity is request-scoped rather than persisted chat content:
+  // a device capability must return to the shell that initiated this turn,
+  // while history remains portable across reconnects and devices.
+  return {
+    ...message,
+    content: {
+      ...message.content,
+      metadata: {
+        ...contentMetadata,
+        viewClientId,
+      },
+    },
+  };
 }
 
 function beginActiveChatTurn(state: ConversationRouteState): () => void {
@@ -2997,6 +3038,8 @@ export async function handleConversationRoutes(
       );
     }
 
+    const routedUserMessage = withViewInteractionClient(userMessage, req);
+
     const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
     if (walletModeGuidance) {
       const endActiveChatTurn = beginActiveChatTurn(state);
@@ -3087,7 +3130,7 @@ export async function handleConversationRoutes(
     try {
       const result = await generateChatResponse(
         runtime,
-        userMessage,
+        routedUserMessage,
         state.agentName,
         {
           abortSignal: disconnectTracker.signal,
@@ -3683,6 +3726,8 @@ export async function handleConversationRoutes(
       return true;
     }
 
+    const routedUserMessage = withViewInteractionClient(userMessage, req);
+
     const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
     if (walletModeGuidance) {
       const endActiveChatTurn = beginActiveChatTurn(state);
@@ -3732,7 +3777,7 @@ export async function handleConversationRoutes(
     try {
       const result = await generateChatResponse(
         runtime,
-        userMessage,
+        routedUserMessage,
         state.agentName,
         {
           resolveNoResponseText: () =>

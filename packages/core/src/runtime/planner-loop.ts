@@ -941,24 +941,46 @@ async function runPlannerLoopIterations(
 				}
 			}
 			// Loop-breaker: a non-terminal call that exactly repeats one already
-			// SUCCEEDED this turn (same name + args) cannot return new data. Execute
-			// only genuinely-fresh calls; when every call this iteration is such a
-			// repeat, count a dead round and — past `maxRepeatedToolCalls` — force a
-			// terminal synthesis instead of looping to the prompt-token budget.
-			const { fresh: validNonTerminalCalls, redundant: redundantCalls } =
-				partitionRedundantSucceededCalls(unavailable.valid, trajectory);
-			if (validNonTerminalCalls.length === 0 && redundantCalls.length > 0) {
+			// SUCCEEDED this turn (same name + args) cannot return new data, and one
+			// that already FAILED with the structural non-retryable marker cannot
+			// start succeeding mid-turn. Execute only genuinely-fresh calls; when
+			// every call this iteration is such a repeat, count a dead round and —
+			// past `maxRepeatedToolCalls` — force a terminal synthesis instead of
+			// looping to the prompt-token budget.
+			const {
+				fresh: validNonTerminalCalls,
+				redundant: redundantCalls,
+				nonRetryable: nonRetryableCalls,
+			} = partitionRedundantSucceededCalls(unavailable.valid, trajectory);
+			if (
+				validNonTerminalCalls.length === 0 &&
+				(redundantCalls.length > 0 || nonRetryableCalls.length > 0)
+			) {
 				repeatedNonTerminalToolCalls++;
+				const instructionParts: string[] = [];
+				if (redundantCalls.length > 0) {
+					instructionParts.push(
+						"You already have a successful result this turn for " +
+							`${redundantCalls.map((call) => call.name).join(", ")} with these ` +
+							"exact arguments. Re-running it cannot return new information.",
+					);
+				}
+				if (nonRetryableCalls.length > 0) {
+					instructionParts.push(
+						`${nonRetryableCalls.map((call) => call.name).join(", ")} already ` +
+							"failed this turn with these exact arguments and that failure is " +
+							"non-retryable — the identical call cannot succeed. Choose a " +
+							"different tool or different arguments.",
+					);
+				}
 				trajectory.context = appendContextEvent(trajectory.context, {
 					id: `redundant-tool-call:${iteration}`,
 					type: "instruction",
 					source: "planner-loop",
 					createdAt: Date.now(),
 					content:
-						"You already have a successful result this turn for " +
-						`${redundantCalls.map((call) => call.name).join(", ")} with these ` +
-						"exact arguments. Re-running it cannot return new information — " +
-						"answer the user now from the results already gathered.",
+						`${instructionParts.join(" ")} Answer the user now from the ` +
+						"results already gathered.",
 				});
 				if (repeatedNonTerminalToolCalls > config.maxRepeatedToolCalls) {
 					return finishWithForcedSynthesis({
@@ -972,10 +994,14 @@ async function runPlannerLoopIterations(
 				trajectory.plannedQueue.length = 0;
 				continue;
 			}
-			if (redundantCalls.length > 0) {
+			if (redundantCalls.length > 0 || nonRetryableCalls.length > 0) {
 				params.runtime.logger?.debug?.(
-					{ iteration, skipped: redundantCalls.map((call) => call.name) },
-					"Skipping tool calls that already succeeded with identical args this turn",
+					{
+						iteration,
+						skippedSucceeded: redundantCalls.map((call) => call.name),
+						skippedNonRetryable: nonRetryableCalls.map((call) => call.name),
+					},
+					"Skipping tool calls already settled with identical args this turn (succeeded or non-retryable failure)",
 				);
 			}
 			repeatedNonTerminalToolCalls = 0;
@@ -3456,27 +3482,43 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
 
 /**
  * Split a set of planned non-terminal calls into those that are genuinely new
- * this turn and those that exactly repeat a call which already SUCCEEDED (same
- * tool name + arguments). A repeat of a successful call cannot return new
- * information, so the loop should not re-execute it.
+ * this turn and those that exactly repeat a call (same tool name + arguments)
+ * which either already SUCCEEDED — a repeat cannot return new information — or
+ * already FAILED with the structural `data.retryable === false` marker — a
+ * deterministic unavailability (e.g. PAGE_DELEGATE's PAGE_CHILD_UNAVAILABLE)
+ * that cannot change within the turn. Neither kind is re-executed. Archived
+ * (compacted) steps still count: mid-turn input-budget compaction moves steps
+ * to `archivedSteps`, and a settled call must stay settled across that move.
  */
-function partitionRedundantSucceededCalls(
+export function partitionRedundantSucceededCalls(
 	calls: PlannerToolCall[],
 	trajectory: PlannerTrajectory,
-): { fresh: PlannerToolCall[]; redundant: PlannerToolCall[] } {
+): {
+	fresh: PlannerToolCall[];
+	redundant: PlannerToolCall[];
+	nonRetryable: PlannerToolCall[];
+} {
 	const succeeded = new Set<string>();
-	for (const step of trajectory.steps) {
-		if (step.toolCall && step.result?.success === true) {
-			succeeded.add(toolCallIdentity(step.toolCall));
+	const failedNonRetryable = new Set<string>();
+	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+		if (!step.toolCall || !step.result) continue;
+		const identity = toolCallIdentity(step.toolCall);
+		if (step.result.success === true) {
+			succeeded.add(identity);
+		} else if (step.result.data?.retryable === false) {
+			failedNonRetryable.add(identity);
 		}
 	}
 	const fresh: PlannerToolCall[] = [];
 	const redundant: PlannerToolCall[] = [];
+	const nonRetryable: PlannerToolCall[] = [];
 	for (const call of calls) {
-		if (succeeded.has(toolCallIdentity(call))) redundant.push(call);
+		const identity = toolCallIdentity(call);
+		if (succeeded.has(identity)) redundant.push(call);
+		else if (failedNonRetryable.has(identity)) nonRetryable.push(call);
 		else fresh.push(call);
 	}
-	return { fresh, redundant };
+	return { fresh, redundant, nonRetryable };
 }
 
 /**

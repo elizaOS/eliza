@@ -934,14 +934,17 @@ async function runCreateLegacy(
           : {}),
         ...(taskRoomId ? { taskRoomId } : {}),
         acceptanceCriteria,
-        ...(objectValue(extraMetadata.lane)
-          ? {
-              metadata: {
-                waveId: extraMetadata.waveId,
-                lane: extraMetadata.lane,
-              },
-            }
-          : {}),
+        metadata: {
+          // Persist the originating connector source on the durable record so
+          // proactive surfaces (TaskSupervisorService digest) can reach the
+          // origin room through a registered send handler.
+          ...(typeof content.source === "string" && content.source
+            ? { source: content.source }
+            : {}),
+          ...(objectValue(extraMetadata.lane)
+            ? { waveId: extraMetadata.waveId, lane: extraMetadata.lane }
+            : {}),
+        },
       });
       threadId = detail?.id ?? null;
       if (useSmithers && !threadId) {
@@ -1046,6 +1049,14 @@ async function runCreateLegacy(
           userId: message.entityId,
           label,
           source: content.source,
+          // Session-metadata copy of the task (NOT the spawn-option
+          // `initialTask`, which would double-deliver the prompt — this path
+          // delivers via sendPrompt). The router's recovery valves
+          // (retryIncompleteBuild / respawnStateLost) read `meta.initialTask`
+          // to reconstruct the work; without this stamp both silently return
+          // false on every TASKS:create session and a failed verification
+          // posts a failure instead of re-dispatching.
+          initialTask: taskWithRouteHints,
           workdirRouteId: route?.id,
           workdirRoute: route,
           keepAliveAfterComplete,
@@ -1954,15 +1965,25 @@ async function runSpawnAgent(
   } catch (error) {
     // error-policy:J1 spawn action boundary → structured failure to the
     // planner; no visible callback (see runSend's catch) — the evaluator
-    // reports the failure in voice instead of a raw canned bubble.
+    // reports the failure in voice instead of a raw canned bubble. The
+    // planner echoes `text` toward chat, so producers must keep their
+    // messages human (ElizaError with technical fields in `context`);
+    // that context is preserved here in the action's error data.
     const messageTextValue = failureMessage(error);
-    const code = isAuthError(error) ? "INVALID_CREDENTIALS" : messageTextValue;
+    const code = isAuthError(error)
+      ? "INVALID_CREDENTIALS"
+      : error instanceof ElizaError
+        ? error.code
+        : messageTextValue;
     return {
       success: false,
       error: code,
       text: isAuthError(error)
         ? "Task-agent credentials are invalid; tell the user the coding agent could not authenticate."
         : `Failed to spawn agent: ${messageTextValue}`,
+      ...(error instanceof ElizaError && error.context
+        ? { data: { errorCode: error.code, errorContext: error.context } }
+        : {}),
       continueChain: false,
     };
   }
@@ -2602,6 +2623,41 @@ function sessionMatchesTaskStatus(
   return status === taskStatus;
 }
 
+/**
+ * Best-effort probe for the empty-history answer: "I found no task threads"
+ * while a build is visibly running mid-turn reads as a contradiction in chat
+ * (observed live on "what did you just change?" during a build). Prefers the
+ * durable candidates the filters excluded, then falls back to any non-terminal
+ * ACP session. Returns a chat-safe display name (title/label in quotes — never
+ * a raw uuid) plus structural ids for the action data.
+ */
+async function findInFlightWork(
+  runtime: IAgentRuntime,
+  candidates: readonly TaskThreadDto[],
+): Promise<{ name: string; taskId?: string; sessionId?: string } | undefined> {
+  const running = candidates.find(
+    (task) =>
+      !task.paused &&
+      task.activeSessionCount > 0 &&
+      (task.status === "active" || task.status === "open"),
+  );
+  if (running) return { name: `"${running.title}"`, taskId: running.id };
+  const service = getAcpService(runtime);
+  if (!service) return undefined;
+  const active = (await listSessionsWithin(service)).find(
+    (session) => !TERMINAL_SESSION_STATUSES.has(session.status.toLowerCase()),
+  );
+  if (!active) return undefined;
+  const label =
+    typeof active.metadata?.label === "string"
+      ? active.metadata.label
+      : active.name;
+  return {
+    name: label ? `"${label}"` : "a coding task",
+    sessionId: active.id,
+  };
+}
+
 function failureResult(
   actionName: string,
   error: string,
@@ -2687,22 +2743,28 @@ async function runHistory(
         statuses.length > 0 ? `statuses ${statuses.join(", ")}` : undefined,
         search ? `search "${search}"` : undefined,
         projectId ? `project ${projectId}` : undefined,
-        sessionId ? `session ${sessionId}` : undefined,
+        // The raw session uuid is planner/log detail (kept in data.filters);
+        // user-bound text refers to it in plain words.
+        sessionId ? "that session" : undefined,
         includeArchived ? "including archived" : undefined,
       ].filter((part): part is string => Boolean(part));
       const filterSuffix =
         filterParts.length > 0 ? ` matching ${filterParts.join("; ")}` : "";
 
       let responseText = "";
+      let inFlight: Awaited<ReturnType<typeof findInFlightWork>> | undefined;
       if (metric === "count") {
         responseText = `I found ${count} orchestrator task${count === 1 ? "" : "s"}${filterSuffix}.`;
       } else if (tasks.length === 0) {
-        responseText = `I did not find any orchestrator task threads${filterSuffix}.`;
+        inFlight = await findInFlightWork(runtime, taskCandidates);
+        responseText = inFlight
+          ? `Nothing has finished yet — I'm still working on ${inFlight.name}.`
+          : `I did not find any orchestrator task threads${filterSuffix}.`;
       } else if (metric === "detail") {
         const task = tasks[0];
         responseText = [
           sessionId
-            ? `The orchestrator task containing session ${sessionId} is "${task.title}" [${task.status}].`
+            ? `The orchestrator task for that session is "${task.title}" [${task.status}].`
             : `The most recent orchestrator task is "${task.title}" [${task.status}].`,
           `Task id: ${task.id}`,
           `Latest session: ${task.latestSessionLabel ?? task.latestSessionId ?? "none"}`,
@@ -2729,6 +2791,16 @@ async function runHistory(
           actionName: "TASKS:history",
           count,
           taskIds: tasks.map((task) => task.id),
+          ...(inFlight
+            ? {
+                inFlight: {
+                  ...(inFlight.taskId ? { taskId: inFlight.taskId } : {}),
+                  ...(inFlight.sessionId
+                    ? { sessionId: inFlight.sessionId }
+                    : {}),
+                },
+              }
+            : {}),
           filters: {
             metric,
             ...(window ? { window } : {}),
