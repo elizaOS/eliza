@@ -1,0 +1,344 @@
+/**
+ * POST /api/oidc/token — authorization-code redemption.
+ *
+ * Ordering, and why it differs from the SSO bridge's exchange leg: the CLIENT
+ * is authenticated FIRST, and only then is the code claimed. The bridge claims
+ * first because its code is the sole credential and burning it on a bad
+ * verifier is a feature; here a code is only half the credential, so claiming
+ * before client auth would let an unauthenticated caller destroy arbitrary
+ * pending authorizations.
+ *
+ * After the atomic claim, every binding failure — wrong client, wrong
+ * redirect_uri, bad PKCE verifier, deactivated user — returns the SAME
+ * `invalid_grant`, so a stolen or replayed code cannot probe which check it
+ * failed.
+ *
+ * There is deliberately NO Origin/Referer check here. The steward-session and
+ * nonce-exchange routes require one, but this is a back-channel server-to-server
+ * POST that carries neither; copying that gate would break SSO outright.
+ *
+ * No refresh token is issued (`grant_types_supported: ["authorization_code"]`),
+ * which removes a persistent-credential store and, with it, the code-reuse
+ * token-family revocation obligation.
+ */
+
+import { Hono } from "hono";
+import {
+  getIpKey,
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { buildOidcClaims } from "@/lib/oidc/claims";
+import {
+  getOidcClient,
+  type OidcClient,
+  verifyOidcClientSecret,
+} from "@/lib/oidc/clients";
+import { consumeOidcAuthorizationCode } from "@/lib/oidc/codes";
+import {
+  isOidcEnabled,
+  type OidcConfig,
+  resolveOidcConfig,
+} from "@/lib/oidc/config";
+import { sha256Base64Url } from "@/lib/oidc/crypto";
+import { oidcErrorBody } from "@/lib/oidc/errors";
+import { isOidcSigningConfigured } from "@/lib/oidc/keys";
+import { assertOidcSubjectEligible, loadOidcSubject } from "@/lib/oidc/subject";
+import { mintOidcAccessToken, mintOidcIdToken } from "@/lib/oidc/tokens";
+import { resolveOidcUsername } from "@/lib/oidc/username";
+import { isBlockedBySsoBridgeLogout } from "@/lib/services/sso-bridge-codes";
+import { logger } from "@/lib/utils/logger";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import { emitOidcAudit } from "../audit";
+
+const app = new Hono<AppEnv>();
+
+const NO_STORE = {
+  "Cache-Control": "no-store",
+  Pragma: "no-cache",
+} as const;
+
+/**
+ * Per-client-per-IP where the client is REGISTERED, per-IP otherwise.
+ *
+ * Two constraints pull against each other. A busy relying party is a single
+ * egress address, so the STRICT (10/min/IP) preset the browser-facing auth
+ * routes use would throttle a normal login burst — hence the client in the key.
+ * But the client id here is unauthenticated, so keying on it ALONE would let an
+ * attacker mint a fresh bucket per request simply by varying the header. Only
+ * registered ids widen the key; everything else collapses onto the IP bucket.
+ * Keeping the IP in the key too means one relying party cannot exhaust
+ * another's budget. The global 600/min IP backstop applies underneath.
+ */
+function tokenRateLimitKey(c: AppContext): string {
+  const ipKey = getIpKey(c);
+  const basic = readBasicCredentials(c);
+  if (!basic) return ipKey;
+  try {
+    return getOidcClient(basic.clientId)
+      ? `oidc:${basic.clientId}:${ipKey}`
+      : ipKey;
+  } catch {
+    // error-policy:J3 an unreadable registry cannot widen the key; fall back to
+    // the narrower IP bucket rather than skipping the limiter.
+    return ipKey;
+  }
+}
+
+app.use(
+  rateLimit({
+    ...RateLimitPresets.RELAXED,
+    keyGenerator: tokenRateLimitKey,
+    failClosed: true,
+    redisUnavailableFallback: { namespace: "oidc-token" },
+  }),
+);
+
+interface BasicCredentials {
+  clientId: string;
+  clientSecret: string;
+}
+
+/**
+ * RFC 6749 §2.3.1 `client_secret_basic`. Both halves are form-url-encoded
+ * before base64, so they must be decoded after the split.
+ */
+function readBasicCredentials(c: AppContext): BasicCredentials | null {
+  const header = c.req.header("authorization");
+  if (!header?.toLowerCase().startsWith("basic ")) return null;
+  try {
+    const decoded = atob(header.slice(6).trim());
+    const separator = decoded.indexOf(":");
+    if (separator < 0) return null;
+    return {
+      clientId: decodeURIComponent(decoded.slice(0, separator)),
+      clientSecret: decodeURIComponent(decoded.slice(separator + 1)),
+    };
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — a malformed Basic header is
+    // "no credentials presented", which the caller turns into invalid_client.
+    return null;
+  }
+}
+
+function formValue(body: Record<string, unknown>, name: string): string | null {
+  const raw = body[name];
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+}
+
+function invalidClient(c: AppContext) {
+  return c.json(
+    oidcErrorBody("invalid_client", "Client authentication failed."),
+    401,
+    { ...NO_STORE, "WWW-Authenticate": 'Basic realm="oidc", charset="UTF-8"' },
+  );
+}
+
+function invalidGrant(c: AppContext) {
+  // One opaque outcome for every binding failure: an attacker holding a stolen
+  // code must not learn which check rejected it.
+  return c.json(
+    oidcErrorBody(
+      "invalid_grant",
+      "The authorization code is invalid or expired.",
+    ),
+    400,
+    NO_STORE,
+  );
+}
+
+function requireConfig(c: AppContext): OidcConfig | Response {
+  if (!isOidcEnabled(c.env)) {
+    return c.json({ error: "not_found" }, 404);
+  }
+  const config = resolveOidcConfig(c.env);
+  if (!config || new URL(c.req.url).host.toLowerCase() !== config.issuerHost) {
+    return c.json({ error: "not_found" }, 404);
+  }
+  if (!isOidcSigningConfigured()) {
+    logger.error(
+      "[oidc] token unavailable: OIDC_SIGNING_JWKS is not configured",
+    );
+    return c.json(
+      oidcErrorBody(
+        "temporarily_unavailable",
+        "The identity provider is not configured.",
+      ),
+      503,
+      NO_STORE,
+    );
+  }
+  return config;
+}
+
+/** Resolve and authenticate the client from either supported auth method. */
+async function authenticateClient(
+  c: AppContext,
+  body: Record<string, unknown>,
+): Promise<OidcClient | null> {
+  const basic = readBasicCredentials(c);
+  const clientId = basic?.clientId ?? formValue(body, "client_id");
+  const clientSecret = basic?.clientSecret ?? formValue(body, "client_secret");
+  if (!clientId || !clientSecret) return null;
+
+  const client = getOidcClient(clientId);
+  if (!client) return null;
+  return (await verifyOidcClientSecret(client, clientSecret)) ? client : null;
+}
+
+app.post("/", async (c) => {
+  const config = requireConfig(c);
+  if (config instanceof Response) return config;
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.parseBody()) as Record<string, unknown>;
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — an unparseable body is an
+    // invalid request, not a server fault.
+    return c.json(
+      oidcErrorBody(
+        "invalid_request",
+        "Expected an application/x-www-form-urlencoded body.",
+      ),
+      400,
+      NO_STORE,
+    );
+  }
+
+  try {
+    // Both supported client-auth methods are accepted because Go's oauth2
+    // client (under Forgejo/goth) auto-detects: it probes Basic first and
+    // retries with form parameters, so supporting only one fails intermittently.
+    const client = await authenticateClient(c, body);
+    if (!client) return invalidClient(c);
+
+    if (formValue(body, "grant_type") !== "authorization_code") {
+      return c.json(
+        oidcErrorBody(
+          "unsupported_grant_type",
+          "Only authorization_code is supported.",
+        ),
+        400,
+        NO_STORE,
+      );
+    }
+
+    const code = formValue(body, "code");
+    if (!code) return invalidGrant(c);
+
+    // Atomic burn. Exactly one of any concurrent set of presenters gets the
+    // row; replays and race losers get null.
+    const grant = await consumeOidcAuthorizationCode(code);
+    if (!grant) return invalidGrant(c);
+
+    if (grant.clientId !== client.client_id) return invalidGrant(c);
+    if (grant.redirectUri !== formValue(body, "redirect_uri"))
+      return invalidGrant(c);
+
+    if (grant.codeChallenge) {
+      const verifier = formValue(body, "code_verifier");
+      if (!verifier) return invalidGrant(c);
+      if ((await sha256Base64Url(verifier)) !== grant.codeChallenge)
+        return invalidGrant(c);
+    }
+
+    // The user could have signed out inside the code's 60-second window; a
+    // marker-store failure throws to the boundary below (503), never "not
+    // logged out".
+    if (
+      await isBlockedBySsoBridgeLogout(grant.stewardUserId, grant.tokenIssuedAt)
+    ) {
+      return invalidGrant(c);
+    }
+
+    // Claims are rebuilt from LIVE rows rather than a snapshot taken at
+    // authorize, so a mid-window deactivation fails the exchange.
+    const subject = await loadOidcSubject(grant.userId);
+    if (!subject) return invalidGrant(c);
+    if (assertOidcSubjectEligible(subject, client)) return invalidGrant(c);
+
+    const username = await resolveOidcUsername({
+      id: subject.user.id,
+      nickname: subject.user.nickname,
+      name: subject.user.name,
+      email: subject.user.email,
+    });
+    const scopes = grant.scope.split(" ").filter(Boolean);
+    const claims = buildOidcClaims({
+      user: subject.user,
+      organization: subject.user.organization,
+      profile: subject.profile,
+      username,
+      adminStatus: subject.adminStatus,
+      deploymentTenantId:
+        typeof c.env.STEWARD_TENANT_ID === "string"
+          ? c.env.STEWARD_TENANT_ID
+          : null,
+      scopes,
+      client,
+    });
+
+    const now = new Date();
+    const [idToken, accessToken] = await Promise.all([
+      mintOidcIdToken({
+        issuer: config.issuer,
+        clientId: client.client_id,
+        subject: subject.user.id,
+        nonce: grant.nonce,
+        authTime: grant.authTime,
+        ttlSeconds: client.id_token_ttl_seconds,
+        claims,
+        now,
+      }),
+      mintOidcAccessToken({
+        issuer: config.issuer,
+        clientId: client.client_id,
+        subject: subject.user.id,
+        audiences: client.resource_audiences,
+        scope: grant.scope,
+        ttlSeconds: client.access_token_ttl_seconds,
+        claims,
+        now,
+      }),
+    ]);
+
+    logger.info("[oidc] token issued", { client_id: client.client_id });
+    await emitOidcAudit(c, {
+      action: "oidc.token",
+      result: "success",
+      userId: subject.user.id,
+      orgId: subject.user.organization_id ?? undefined,
+      metadata: { client_id: client.client_id, scope: grant.scope },
+    });
+
+    return c.json(
+      {
+        access_token: accessToken,
+        token_type: "Bearer",
+        expires_in: client.access_token_ttl_seconds,
+        id_token: idToken,
+        scope: grant.scope,
+      },
+      200,
+      NO_STORE,
+    );
+  } catch (error) {
+    // error-policy:J1 route boundary — a store, registry, or key failure
+    // becomes a structured 503 the relying party can retry, never a 400 that
+    // would make it discard a still-valid login attempt as the user's fault.
+    logger.error("[oidc] token exchange failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return c.json(
+      oidcErrorBody(
+        "temporarily_unavailable",
+        "Token exchange is temporarily unavailable.",
+      ),
+      503,
+      NO_STORE,
+    );
+  }
+});
+
+export default app;

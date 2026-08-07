@@ -304,7 +304,12 @@ function isFrontendAliasBackendPath(url: URL): boolean {
     url.pathname === "/api" ||
     url.pathname.startsWith("/api/") ||
     url.pathname === "/steward" ||
-    url.pathname.startsWith("/steward/")
+    url.pathname.startsWith("/steward/") ||
+    // Root-mounted backend surfaces: the JWKS document, and OIDC discovery +
+    // its key set. These are served at the issuer origin's root by protocol
+    // requirement, so without this they would be swallowed by the hosted
+    // frontend rewrite the moment ELIZA_FRONTEND_HOST_SUFFIX matched this host.
+    url.pathname.startsWith("/.well-known/")
   );
 }
 
