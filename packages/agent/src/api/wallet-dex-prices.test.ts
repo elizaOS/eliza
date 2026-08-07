@@ -4,8 +4,8 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  DEXPAPRIKA_CHAIN_MAP,
   computeValueUsd,
+  DEXPAPRIKA_CHAIN_MAP,
   fetchDexPaprikaPrices,
 } from "./wallet-dex-prices";
 
@@ -50,11 +50,9 @@ describe("fetchDexPaprikaPrices", () => {
   });
 
   it("reads price from summary.price_usd and builds the correct network URL", async () => {
+    let requestedUrl: string | undefined;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      expect(url).toBe(
-        "https://api.dexpaprika.com/networks/arbitrum/tokens/0xAbC",
-      );
+      requestedUrl = String(input);
       return new Response(
         JSON.stringify({
           id: "0xAbC",
@@ -66,18 +64,26 @@ describe("fetchDexPaprikaPrices", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const results = await fetchDexPaprikaPrices(42161, ["0xAbC"]);
+    expect(requestedUrl).toBe(
+      "https://api.dexpaprika.com/networks/arbitrum/tokens/0xAbC",
+    );
     expect(results.get("0xabc")?.price).toBe("1879.41");
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it("returns empty when summary is missing or invalid", async () => {
+  it.each([
+    ["missing summary", { id: "0xdef", price_usd: 99 }],
+    ["zero price", { id: "0xdef", summary: { price_usd: 0 } }],
+    ["unparseable price", { id: "0xdef", summary: { price_usd: "invalid" } }],
+  ])("returns empty for %s", async (_case, payload) => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(JSON.stringify({ id: "0xdef", price_usd: 99 }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
       ),
     );
     const results = await fetchDexPaprikaPrices(137, ["0xdef"]);
