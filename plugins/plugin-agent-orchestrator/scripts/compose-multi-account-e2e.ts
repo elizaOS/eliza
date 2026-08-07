@@ -24,8 +24,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+// Runtime (not isolated-test) policy: the default AccountPool reads with a
+// runtime policy, and envelope encryption is keyed per policy owner — an
+// isolated-test write uses an in-memory random key the pool's runtime read
+// can never decrypt, so every account would silently vanish from selection.
 import {
-  createIsolatedAccountStoragePolicy,
+  createRuntimeAccountStoragePolicy,
   saveAccount,
 } from "@elizaos/auth/account-storage";
 // Import the pool from app-core SRC, not the package barrel: app-core has no
@@ -93,7 +97,7 @@ function mkAccount(
       updatedAt: Date.now(),
       ...(organizationId ? { organizationId } : {}),
     },
-    createIsolatedAccountStoragePolicy(home),
+    createRuntimeAccountStoragePolicy(home),
   );
 }
 
