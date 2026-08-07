@@ -112,7 +112,7 @@ const LEGACY_TIMESTAMP_SKIPPABLE_TAGS = new Set([
 // migration is the first immutable checkpoint owned by this runner; hashes
 // from this entry forward are enforced on every subsequent invocation.
 const HASH_IDENTITY_ENFORCEMENT_TAG =
-  "0193_job_execution_interruptions_catalog_guard";
+  "0194_job_execution_interruptions_catalog_guard";
 
 async function readJournal(): Promise<Journal> {
   return JSON.parse(await readFile(JOURNAL_PATH, "utf8")) as Journal;

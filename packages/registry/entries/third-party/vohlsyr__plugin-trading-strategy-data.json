@@ -1,0 +1,9 @@
+{
+  "package": "@vohlsyr/plugin-trading-strategy-data",
+  "repository": "github:Vohlsyr/plugin-trading-strategy-data",
+  "kind": "plugin",
+  "description": "Backtestable crypto trend signals and on-demand backtesting for BTC/ETH/SOL/XRP/ADA via Trading Strategy Data, paid per call in USDC on Base through x402.",
+  "homepage": "https://strategysignals.duckdns.org",
+  "version": "0.3.1",
+  "tags": ["x402", "trading", "crypto", "backtest", "payments"]
+}

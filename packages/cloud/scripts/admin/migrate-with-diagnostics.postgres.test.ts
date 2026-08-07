@@ -23,7 +23,7 @@ const MIGRATIONS_DIR = path.join(
 );
 const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
 const ADD_COLUMN_CREATED_AT = 1_785_384_000_000;
-const CATALOG_GUARD_CREATED_AT = 1_786_392_000_000;
+const CATALOG_GUARD_CREATED_AT = 1_786_478_400_000;
 const HISTORICAL_DRIFT_CREATED_AT = 1_770_518_468_000;
 // One deployed snapshot omitted these five backward-timestamp entries. Another
 // observed ledger contained 0017 and placed both it and 0081 after 0105; the
@@ -244,7 +244,7 @@ describe.skipIf(!ENABLED)(
 
       const first = await runScript(MIGRATOR, database.url);
       expect(first.exitCode, first.output).toBe(0);
-      expect(first.output).toContain("pending migrations: 9");
+      expect(first.output).toContain("pending migrations: 10");
 
       const catalog = await database.client.query<{
         data_type: string;
@@ -287,7 +287,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 9");
+      expect(migrated.output).toContain("pending migrations: 10");
 
       await database.client.query(
         "UPDATE drizzle.__drizzle_migrations SET hash = 'checkpoint-drift' WHERE created_at = $1",
@@ -296,7 +296,7 @@ describe.skipIf(!ENABLED)(
       const checkpointMismatch = await runScript(MIGRATOR, database.url);
       expect(checkpointMismatch.exitCode).toBe(1);
       expect(checkpointMismatch.output).toContain(
-        "Migration ledger hash mismatch for 0193_job_execution_interruptions_catalog_guard",
+        "Migration ledger hash mismatch for 0194_job_execution_interruptions_catalog_guard",
       );
       await database.client.end();
     }, 30_000);
@@ -333,7 +333,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 9");
+      expect(migrated.output).toContain("pending migrations: 10");
       await database.client.end();
     }, 120_000);
 
@@ -343,7 +343,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 9");
+      expect(migrated.output).toContain("pending migrations: 10");
       await database.client.end();
     }, 120_000);
 
@@ -375,7 +375,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 9");
+      expect(migrated.output).toContain("pending migrations: 10");
       await database.client.end();
     }, 120_000);
 
@@ -383,7 +383,7 @@ describe.skipIf(!ENABLED)(
       const database = await createDatabase();
       await seedAppliedPrefix(database.client, 184);
       const entries = await journalEntries();
-      for (const journalIndex of [192, 184, 185]) {
+      for (const journalIndex of [193, 184, 185]) {
         const entry = entries[journalIndex];
         if (!entry) throw new Error(`Missing journal entry ${journalIndex}`);
         const sql = await readFile(

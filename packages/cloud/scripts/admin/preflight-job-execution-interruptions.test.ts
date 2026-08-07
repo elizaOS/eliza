@@ -27,10 +27,10 @@ const MIGRATIONS = [
     ),
   },
   {
-    createdAt: 1_786_392_000_000,
+    createdAt: 1_786_478_400_000,
     path: path.join(
       ROOT,
-      "packages/cloud/shared/src/db/migrations/0193_job_execution_interruptions_catalog_guard.sql",
+      "packages/cloud/shared/src/db/migrations/0194_job_execution_interruptions_catalog_guard.sql",
     ),
   },
 ] as const;

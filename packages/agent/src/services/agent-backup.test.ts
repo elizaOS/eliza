@@ -11,11 +11,14 @@ import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   type AgentBackupStateData,
+  AgentSnapshotBudgetExceededError,
   createAgentSnapshot,
   createLocalAgentBackup,
+  fetchAgentScopedRowsBatched,
   listLocalAgentBackups,
   restoreAgentSnapshot,
   restoreLocalAgentBackup,
+  SnapshotBudget,
 } from "./agent-backup.ts";
 
 const ORIGINAL_ENV = {
@@ -334,5 +337,397 @@ describe("agent backup manifest", () => {
     expect(await readText(path.join(root, "eliza.json"))).toBe(
       '{"name":"fixture"}\n',
     );
+  });
+});
+
+describe("source-side snapshot budget (#17172 §1)", () => {
+  afterEach(() => {
+    restoreEnv();
+  });
+
+  async function fixtureRoot(): Promise<{ root: string; pgliteDir: string }> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-budget-"));
+    const pgliteDir = path.join(root, "pglite");
+    process.env.ELIZA_STATE_DIR = root;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    await writeFixtureState(root, pgliteDir);
+    return { root, pgliteDir };
+  }
+
+  const config = {
+    agents: { defaults: { workspace: "/tmp/workspace" } },
+  } as never;
+  const runtime = () => runtimeStub("11111111-1111-4111-8111-111111111111");
+
+  test("refuses a capture whose files exceed the byte budget", async () => {
+    const { root } = await fixtureRoot();
+    // A media file comfortably past a deliberately tiny budget.
+    await fs.writeFile(
+      path.join(root, "media", "big.bin"),
+      Buffer.alloc(64 * 1024, 7),
+    );
+
+    await expect(
+      createAgentSnapshot(runtime(), config, { maxRawBytes: 4096 }),
+    ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+  });
+
+  test("refuses BEFORE reading the oversized file, not after materializing it", async () => {
+    // The refusal must come from the declared size: an entry transiently costs
+    // ~2.33x its bytes, so charging post-read is charging post-damage.
+    const { root } = await fixtureRoot();
+    const bigPath = path.join(root, "media", "big.bin");
+    await fs.writeFile(bigPath, Buffer.alloc(256 * 1024, 3));
+
+    const realReadFile = fs.readFile;
+    const readPaths: string[] = [];
+    // biome-ignore lint/suspicious/noExplicitAny: test double for a node API
+    (fs as any).readFile = async (target: any, ...rest: any[]) => {
+      readPaths.push(String(target));
+      // biome-ignore lint/suspicious/noExplicitAny: forwarding to the real API
+      return (realReadFile as any)(target, ...rest);
+    };
+    try {
+      await expect(
+        createAgentSnapshot(runtime(), config, { maxRawBytes: 4096 }),
+      ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+      expect(readPaths).not.toContain(bigPath);
+    } finally {
+      // biome-ignore lint/suspicious/noExplicitAny: restoring the real API
+      (fs as any).readFile = realReadFile;
+    }
+  });
+
+  test("refuses a capture with more files than the count budget", async () => {
+    const { root } = await fixtureRoot();
+    const mediaDir = path.join(root, "media");
+    for (let i = 0; i < 8; i++) {
+      await fs.writeFile(path.join(mediaDir, `f${i}.bin`), "x");
+    }
+
+    await expect(
+      createAgentSnapshot(runtime(), config, { maxFiles: 3 }),
+    ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+  });
+
+  test("an already-aborted signal stops the capture", async () => {
+    await fixtureRoot();
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      createAgentSnapshot(runtime(), config, { signal: controller.signal }),
+    ).rejects.toThrow();
+  });
+
+  test("a capture within budget still succeeds unchanged", async () => {
+    await fixtureRoot();
+    const snapshot = await createAgentSnapshot(runtime(), config);
+    expect(snapshot.manifest.components.media.files.length).toBeGreaterThan(0);
+  });
+
+  test("charges the in-memory character and legacy config projections", async () => {
+    await fixtureRoot();
+    const oversizedCharacter = {
+      ...runtime(),
+      character: {
+        name: "Backup Test Agent",
+        bio: "x".repeat(32 * 1024),
+      },
+    } as unknown as AgentRuntime;
+    await expect(
+      createAgentSnapshot(oversizedCharacter, config, {
+        maxRawBytes: 16 * 1024,
+      }),
+    ).rejects.toMatchObject({ stage: "runtime character" });
+
+    const oversizedConfig = {
+      agents: { defaults: { system: "x".repeat(32 * 1024) } },
+    } as never;
+    await expect(
+      createAgentSnapshot(runtime(), oversizedConfig, {
+        maxRawBytes: 16 * 1024,
+      }),
+    ).rejects.toMatchObject({ stage: "legacy config" });
+  });
+
+  test("refuses when JSON metadata pushes the final wire body over budget", async () => {
+    await fixtureRoot();
+    const baseline = await createAgentSnapshot(runtime(), config);
+    const exactWireBytes = Buffer.byteLength(JSON.stringify(baseline), "utf8");
+
+    await expect(
+      createAgentSnapshot(runtime(), config, {
+        maxRawBytes: exactWireBytes - 1,
+      }),
+    ).rejects.toMatchObject({
+      stage: "final wire serialization",
+      observedBytes: exactWireBytes,
+      limitBytes: exactWireBytes - 1,
+    });
+  });
+
+  test("refuses an oversized PGlite dump from Blob.size, before arrayBuffer()", async () => {
+    await fixtureRoot();
+    let materialized = false;
+    const rawConnection = {
+      async dumpDataDir() {
+        return {
+          size: 256 * 1024,
+          arrayBuffer: async () => {
+            materialized = true;
+            return new ArrayBuffer(256 * 1024);
+          },
+        };
+      },
+      runExclusive: async <T>(operation: () => Promise<T>) => operation(),
+    };
+    const withDump = {
+      ...runtime(),
+      adapter: {
+        close: async () => undefined,
+        getRawConnection: () => rawConnection,
+      },
+    } as unknown as AgentRuntime;
+
+    await expect(
+      createAgentSnapshot(withDump, config, { maxRawBytes: 4096 }),
+    ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+    // The refusal must come from the declared size: the dump is transiently
+    // resident three times over (ArrayBuffer + Buffer + base64) once decoded.
+    expect(materialized).toBe(false);
+  });
+
+  test("an in-budget PGlite dump is charged, so a sibling cannot spend the same bytes", async () => {
+    const { root } = await fixtureRoot();
+    // Dump ~48 KiB + a 48 KiB media file: each fits a 96 KiB (base64) budget
+    // alone, both together do not.
+    const dumpBytes = Buffer.alloc(48 * 1024, 5);
+    await fs.writeFile(
+      path.join(root, "media", "big.bin"),
+      Buffer.alloc(48 * 1024, 7),
+    );
+    const rawConnection = {
+      async dumpDataDir() {
+        return new Blob([dumpBytes], { type: "application/gzip" });
+      },
+      runExclusive: async <T>(operation: () => Promise<T>) => operation(),
+    };
+    const withDump = {
+      ...runtime(),
+      adapter: {
+        close: async () => undefined,
+        getRawConnection: () => rawConnection,
+      },
+    } as unknown as AgentRuntime;
+
+    await expect(
+      createAgentSnapshot(withDump, config, { maxRawBytes: 96 * 1024 }),
+    ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+  });
+
+  test("refuses an oversized file on the pglite-files fallback walk", async () => {
+    const { pgliteDir } = await fixtureRoot();
+    // No getRawConnection on the stub adapter, so the capture takes the
+    // fallback file walk — which used to run with no budget at all.
+    await fs.writeFile(
+      path.join(pgliteDir, "oversized.wal"),
+      Buffer.alloc(256 * 1024, 9),
+    );
+
+    await expect(
+      createAgentSnapshot(runtime(), config, { maxRawBytes: 64 * 1024 }),
+    ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+  });
+
+  test("concurrent components cannot both pass the check and then allocate past the limit", async () => {
+    const { root, pgliteDir } = await fixtureRoot();
+    // Two 64 KiB files on two components that capture CONCURRENTLY, with a
+    // budget that fits one but not both. An observe-only reserve lets each
+    // sibling see zero charged bytes, pass, and read — the limit is then only
+    // discovered after both payloads are resident. A real reservation is
+    // synchronous, so whichever component reserves second is refused BEFORE
+    // its read, whatever the interleaving.
+    const mediaBig = path.join(root, "media", "big-a.bin");
+    const pgliteBig = path.join(pgliteDir, "big-b.wal");
+    await fs.writeFile(mediaBig, Buffer.alloc(64 * 1024, 1));
+    await fs.writeFile(pgliteBig, Buffer.alloc(64 * 1024, 2));
+
+    const realReadFile = fs.readFile;
+    const readPaths: string[] = [];
+    // biome-ignore lint/suspicious/noExplicitAny: test double for a node API
+    (fs as any).readFile = async (target: any, ...rest: any[]) => {
+      readPaths.push(String(target));
+      // biome-ignore lint/suspicious/noExplicitAny: forwarding to the real API
+      return (realReadFile as any)(target, ...rest);
+    };
+    try {
+      await expect(
+        // 128 KiB of budget: one 64 KiB file costs ~87 KiB in base64.
+        createAgentSnapshot(runtime(), config, { maxRawBytes: 128 * 1024 }),
+      ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+      const bigReads = readPaths.filter(
+        (p) => p === mediaBig || p === pgliteBig,
+      );
+      expect(bigReads.length).toBeLessThanOrEqual(1);
+    } finally {
+      // biome-ignore lint/suspicious/noExplicitAny: restoring the real API
+      (fs as any).readFile = realReadFile;
+    }
+  });
+});
+
+describe("snapshot budget reservation semantics", () => {
+  test("a hold claims capacity other reserves must count", () => {
+    const budget = new SnapshotBudget(200, 10);
+    const hold = budget.reserve(100); // holds base64Length(100) = 136
+    expect(() => budget.reserve(100)).toThrow(AgentSnapshotBudgetExceededError);
+    hold.release();
+    expect(() => budget.reserve(100)).not.toThrow();
+  });
+
+  test("commit converts the hold into a charge at the actual encoded size", () => {
+    const budget = new SnapshotBudget(200, 10);
+    const hold = budget.reserve(100);
+    hold.commit(50); // actual entry smaller than declared
+    // 50 charged, hold gone: 136 more fits again.
+    expect(() => budget.reserve(100)).not.toThrow();
+  });
+
+  test("a settled token is inert on double settle", () => {
+    const budget = new SnapshotBudget(400, 10);
+    const hold = budget.reserve(100);
+    hold.commit(50);
+    hold.release(); // must not un-charge the committed bytes
+    hold.commit(50); // must not double-charge
+    const holds = [budget.reserve(100), budget.reserve(100)];
+    for (const h of holds) h.release();
+    // Exactly 50 charged in total: a 350-byte hold still fits under 400.
+    expect(() => budget.reserve(255)).not.toThrow();
+  });
+
+  test("file count is enforced at commit time", () => {
+    const budget = new SnapshotBudget(10_000, 2);
+    budget.reserve(10).commit(10);
+    budget.reserve(10).commit(10);
+    const third = budget.reserve(10);
+    expect(() => third.commit(10)).toThrow(AgentSnapshotBudgetExceededError);
+  });
+});
+
+describe("keyset-batched Postgres capture (#17172 §1)", () => {
+  /** A pool double that serves `total` rows with sequential ids, in pages. */
+  function pagingPool(total: number) {
+    const statements: string[] = [];
+    const all = Array.from({ length: total }, (_, i) => ({
+      id: i + 1,
+      payload: "x",
+    }));
+    return {
+      statements,
+      pageSizes: [] as number[],
+      query(text: string, values: unknown[]) {
+        statements.push(text);
+        const limitMatch = text.match(/LIMIT (\d+)/);
+        const limit = limitMatch ? Number(limitMatch[1]) : all.length;
+        // The keyset param is appended after the base params.
+        const after = values.length > 1 ? Number(values[values.length - 1]) : 0;
+        const rows = all.filter((r) => r.id > after).slice(0, limit);
+        this.pageSizes.push(rows.length);
+        return Promise.resolve({ rows });
+      },
+    };
+  }
+
+  test("walks the whole table in ordered batches without duplicates or gaps", async () => {
+    const pool = pagingPool(1200);
+    const rows = await fetchAgentScopedRowsBatched(
+      pool as never,
+      (keyset) => `SELECT * FROM "t" WHERE "agent_id" = $1 ${keyset}`,
+      ["agent-1"],
+      undefined,
+      "t",
+      '"id"',
+    );
+
+    expect(rows).toHaveLength(1200);
+    const ids = rows.map((r) => r.id as number);
+    expect(ids).toEqual([...ids].sort((a, b) => a - b));
+    expect(new Set(ids).size).toBe(1200);
+    // More than one round-trip: the point is that no single statement returned
+    // the whole table.
+    expect(pool.statements.length).toBeGreaterThan(1);
+    expect(Math.max(...pool.pageSizes)).toBeLessThanOrEqual(500);
+  });
+
+  test("every statement is ordered and bounded by a LIMIT", async () => {
+    const pool = pagingPool(700);
+    await fetchAgentScopedRowsBatched(
+      pool as never,
+      (keyset) => `SELECT * FROM "t" WHERE "agent_id" = $1 ${keyset}`,
+      ["agent-1"],
+      undefined,
+      "t",
+      '"id"',
+    );
+    for (const sql of pool.statements) {
+      expect(sql).toMatch(/ORDER BY "id"/);
+      expect(sql).toMatch(/LIMIT \d+/);
+    }
+    // Pages after the first must resume from the last id, not re-scan.
+    expect(pool.statements.slice(1).every((s) => /"id" > \$2/.test(s))).toBe(
+      true,
+    );
+  });
+
+  test("fails instead of returning a partial dump when a page cannot advance", async () => {
+    const pool = {
+      query: () =>
+        Promise.resolve({
+          rows: Array.from({ length: 500 }, () => ({ payload: "missing-id" })),
+        }),
+    };
+
+    await expect(
+      fetchAgentScopedRowsBatched(
+        pool,
+        (keyset) => `SELECT * FROM "t" WHERE "agent_id" = $1 ${keyset}`,
+        ["agent-1"],
+        undefined,
+        "t",
+        '"id"',
+      ),
+    ).rejects.toMatchObject({
+      code: "AGENT_SNAPSHOT_KEYSET_ID_MISSING",
+    });
+  });
+
+  test("an over-budget table is refused mid-walk, before the rest is read", async () => {
+    const pool = pagingPool(5000);
+    // A budget far smaller than the full table but bigger than one batch.
+    const budget = new (class {
+      private used = 0;
+      check() {}
+      chargeRaw(bytes: number) {
+        this.used += bytes;
+        if (this.used > 20_000) throw new Error("over budget");
+      }
+    })();
+
+    await expect(
+      fetchAgentScopedRowsBatched(
+        pool as never,
+        (keyset) => `SELECT * FROM "t" WHERE "agent_id" = $1 ${keyset}`,
+        ["agent-1"],
+        budget as never,
+        "t",
+        '"id"',
+      ),
+    ).rejects.toThrow("over budget");
+
+    // Stopped early: it never issued the statements needed to read 5000 rows.
+    expect(pool.statements.length).toBeLessThan(10);
   });
 });

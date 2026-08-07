@@ -24,8 +24,8 @@ const REQUIRED_MIGRATIONS = [
     file: "0185_job_execution_interruptions.sql",
   },
   {
-    createdAt: 1_786_392_000_000,
-    file: "0193_job_execution_interruptions_catalog_guard.sql",
+    createdAt: 1_786_478_400_000,
+    file: "0194_job_execution_interruptions_catalog_guard.sql",
   },
 ] as const;
 const DEFAULT_MAX_ATTEMPTS = 30;
