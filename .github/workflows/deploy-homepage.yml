@@ -1,11 +1,12 @@
 # Deploy packages/homepage to the eliza-app-home Cloudflare Pages project.
 #
 # What this does:
-#   1. Builds packages/homepage (Vite static site) — the `prebuild` script in
-#      packages/homepage/package.json regenerates
+#   1. Verifies and builds packages/homepage (Vite static site) — the
+#      `prebuild` script in packages/homepage/package.json regenerates
 #      src/generated/release-data.ts from the GitHub Releases API before vite
 #      runs, so download buttons always reflect the latest published assets.
-#   2. Runs the browser route and visual suites against that static build.
+#   2. Requires the committed visual snapshot inventory, completes a production
+#      build, and runs the browser route and visual suites before deployment.
 #   3. Publishes dist/ to Cloudflare Pages as the production deployment serving
 #      eliza.app and www.eliza.app.
 #
@@ -40,7 +41,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-and-deploy:
@@ -99,11 +100,17 @@ jobs:
           VITE_WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
         run: node scripts/verify-channel-build-config.mjs
 
-      - name: Build homepage
+      - name: Verify and build homepage
         if: steps.release_data_check.outputs.available == 'true'
         working-directory: packages/homepage
-        run: bun run build
+        run: |
+          bun run test
+          bun run typecheck
+          bun run lint:check
+          bun run check:snapshot-inventory
+          bun run build
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ELIZA_REQUIRE_CHANNEL_CONFIG: "1"
           VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
           VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
@@ -112,47 +119,13 @@ jobs:
 
       - name: Install homepage browser
         if: steps.release_data_check.outputs.available == 'true'
-        working-directory: packages/homepage
-        run: ./node_modules/.bin/playwright install --with-deps chromium
+        run: PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium
 
-      - name: Generate missing snapshot baselines
+      - name: Test homepage routes and visuals
         if: steps.release_data_check.outputs.available == 'true'
-        id: gen-baselines
-        working-directory: packages/homepage
-        run: |
-          SNAP_DIR="tests/e2e/visual.spec.ts-snapshots"
-          # 6 routes × 2 viewports × 1 browser project = 12 expected snapshots
-          EXPECTED=12
-          ACTUAL=$(ls "$SNAP_DIR"/*.png 2>/dev/null | wc -l || echo 0)
-          if [ "$ACTUAL" -lt "$EXPECTED" ]; then
-            echo "Found $ACTUAL of $EXPECTED snapshot baselines — regenerating all."
-            rm -f "$SNAP_DIR"/*.png 2>/dev/null || true
-            bun run test:e2e -- --update-snapshots || true
-            echo "generated=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "generated=false" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Commit new snapshot baselines
-        if: steps.release_data_check.outputs.available == 'true' && steps.gen-baselines.outputs.generated == 'true'
-        continue-on-error: true
-        run: |
-          SNAP_DIR="packages/homepage/tests/e2e/visual.spec.ts-snapshots"
-          if [ -n "$(git status --porcelain $SNAP_DIR)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add $SNAP_DIR
-            git commit -m "chore: generate visual regression snapshot baselines [skip ci]"
-            git push origin HEAD:${{ github.ref_name }} || (git pull --rebase origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }})
-            echo "Pushed new snapshot baselines."
-          fi
-
-      - name: Test homepage downloads
-        if: steps.release_data_check.outputs.available == 'true' && steps.gen-baselines.outputs.generated == 'false'
         working-directory: packages/homepage
         env:
+          CI: "true"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun run test:e2e
 
