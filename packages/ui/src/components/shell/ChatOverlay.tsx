@@ -6306,7 +6306,6 @@ export function ChatOverlay({
                       className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
                       onSelect={() => {
                         navigateHome?.();
-                        collapseToPill();
                       }}
                     >
                       <House
