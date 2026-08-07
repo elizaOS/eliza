@@ -170,6 +170,7 @@ import type {
 	ResponseHandlerSenderRole,
 } from "../runtime/response-handler-field-evaluator";
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
+import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
@@ -1428,6 +1429,7 @@ type ResolvedMessageOptions = {
 	 * in-flight inference. Sourced from `MessageProcessingOptions.abortSignal`.
 	 */
 	abortSignal?: AbortSignal;
+	roomHandlerLease?: RoomHandlerLease;
 	onSettledActionResult?: (result: ActionResult) => void;
 };
 
@@ -6935,6 +6937,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
 	onSettledActionResult?: (result: ActionResult) => void;
+	roomHandlerLease?: RoomHandlerLease;
 	/**
 	 * Optional pre-planner early-reply delivery seam. A consumer that decides
 	 * NOT to deliver the event (e.g. the voice fast path's async-handoff gate)
@@ -8666,6 +8669,9 @@ export async function runV5MessageRuntimeStage1(args: {
 					async () => {
 						await factsTask;
 					},
+					"room-state",
+					args.message.roomId,
+					args.roomHandlerLease,
 				);
 			}
 		}
@@ -9142,8 +9148,19 @@ function detachPostDeliverySideEffect(
 	label: string,
 	task: () => Promise<unknown>,
 	kind: "room-state" | "diagnostic" = "room-state",
+	roomId?: string,
+	roomHandlerLease?: RoomHandlerLease,
 ): void {
-	void trackPostDeliveryTask(runtime, label, task, { kind });
+	void trackPostDeliveryTask(
+		runtime,
+		label,
+		task,
+		kind === "diagnostic"
+			? { kind }
+			: roomId && roomHandlerLease
+				? { kind, roomId, roomHandlerLease }
+				: { kind },
+	);
 }
 
 export function isSimpleReplyResponse(
@@ -10632,14 +10649,16 @@ export class DefaultMessageService implements IMessageService {
 			// (identity extraction, dispute detection) whose results may
 			// influence Stage 1 routing.
 			await runtime.runActionsByMode("ALWAYS_BEFORE", message);
-			// ALWAYS_DURING (non-blocking): fire-and-forget alongside the
-			// rest of the pipeline. Telemetry, logging, side effects.
-			// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection
-			// escaping runActionsByMode must not abort the turn, but it must surface.
-			void runtime.runActionsByMode("ALWAYS_DURING", message).catch((err) =>
-				runtime.reportError("MessageService.runActionsByMode", err, {
-					mode: "ALWAYS_DURING",
-				}),
+			// ALWAYS_DURING begins alongside the response pipeline, but actions may
+			// mutate room state. The room owner therefore remains live until this
+			// tracked work settles even if the visible response finishes first.
+			detachPostDeliverySideEffect(
+				runtime,
+				"ALWAYS_DURING",
+				() => runtime.runActionsByMode("ALWAYS_DURING", message),
+				"room-state",
+				message.roomId,
+				options?.roomHandlerLease,
 			);
 
 			trajectoryStepId =
@@ -10814,6 +10833,9 @@ export class DefaultMessageService implements IMessageService {
 						),
 					shouldRespondModel: resolvedShouldRespondModel,
 					...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
+					...(options?.roomHandlerLease
+						? { roomHandlerLease: options.roomHandlerLease }
+						: {}),
 					...(options?.onSettledActionResult
 						? {
 								onSettledActionResult: options.onSettledActionResult,
@@ -11155,7 +11177,14 @@ export class DefaultMessageService implements IMessageService {
 				{ src: "service:message", agentId: runtime.agentId },
 				"Skipping message from self",
 			);
-			this.emitRunEnded(runtime, runId, message, startTime, "self");
+			this.emitRunEnded(
+				runtime,
+				runId,
+				message,
+				startTime,
+				"self",
+				opts.roomHandlerLease,
+			);
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11230,7 +11259,14 @@ export class DefaultMessageService implements IMessageService {
 
 		if (defLllmOff && agentUserState === null) {
 			runtime.logger.debug({ src: "service:message" }, "LLM is off by default");
-			this.emitRunEnded(runtime, runId, message, startTime, "off");
+			this.emitRunEnded(
+				runtime,
+				runId,
+				message,
+				startTime,
+				"off",
+				opts.roomHandlerLease,
+			);
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11273,7 +11309,14 @@ export class DefaultMessageService implements IMessageService {
 				},
 				"Ignoring muted room",
 			);
-			this.emitRunEnded(runtime, runId, message, startTime, "muted");
+			this.emitRunEnded(
+				runtime,
+				runId,
+				message,
+				startTime,
+				"muted",
+				opts.roomHandlerLease,
+			);
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11314,6 +11357,7 @@ export class DefaultMessageService implements IMessageService {
 					message,
 					startTime,
 					"personality_gate",
+					opts.roomHandlerLease,
 				);
 				return {
 					didRespond: false,
@@ -11349,7 +11393,14 @@ export class DefaultMessageService implements IMessageService {
 				},
 				"Unaddressed bot/webhook message ignored by small-model triage (skipped Stage 1)",
 			);
-			this.emitRunEnded(runtime, runId, message, startTime, "bot_noise_triage");
+			this.emitRunEnded(
+				runtime,
+				runId,
+				message,
+				startTime,
+				"bot_noise_triage",
+				opts.roomHandlerLease,
+			);
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11691,6 +11742,9 @@ export class DefaultMessageService implements IMessageService {
 							responseId,
 							...(callback ? { callback } : {}),
 							deliveredVisibleTexts,
+							...(opts.roomHandlerLease
+								? { roomHandlerLease: opts.roomHandlerLease }
+								: {}),
 							...(opts.onSettledActionResult
 								? {
 										onSettledActionResult: opts.onSettledActionResult,
@@ -12002,7 +12056,14 @@ export class DefaultMessageService implements IMessageService {
 					// Mirror the ignore-path sibling below: a superseded turn ends
 					// its run as "replaced" so the discard is an observable terminal
 					// outcome instead of an unrecorded nothing.
-					this.emitRunEnded(runtime, runId, message, startTime, "replaced");
+					this.emitRunEnded(
+						runtime,
+						runId,
+						message,
+						startTime,
+						"replaced",
+						opts.roomHandlerLease,
+					);
 					return {
 						didRespond: false,
 						responseContent: null,
@@ -12200,12 +12261,18 @@ export class DefaultMessageService implements IMessageService {
 						// trajectory closure.
 						if (deliveryOutcome.status === "fulfilled") {
 							for (const responseMemory of deliveredClaimMemories) {
-								detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
-									this.emitMessageSent(
-										runtime,
-										responseMemory,
-										message.content.source ?? "messageHandler",
-									),
+								detachPostDeliverySideEffect(
+									runtime,
+									"MESSAGE_SENT",
+									() =>
+										this.emitMessageSent(
+											runtime,
+											responseMemory,
+											message.content.source ?? "messageHandler",
+										),
+									"room-state",
+									message.roomId,
+									opts.roomHandlerLease,
 								);
 							}
 						}
@@ -12255,7 +12322,14 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"Ignore response discarded - newer message being processed",
 				);
-				this.emitRunEnded(runtime, runId, message, startTime, "replaced");
+				this.emitRunEnded(
+					runtime,
+					runId,
+					message,
+					startTime,
+					"replaced",
+					opts.roomHandlerLease,
+				);
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -12270,7 +12344,14 @@ export class DefaultMessageService implements IMessageService {
 					{ src: "service:message", agentId: runtime.agentId },
 					"Message ID is missing, cannot create ignore response",
 				);
-				this.emitRunEnded(runtime, runId, message, startTime, "noMessageId");
+				this.emitRunEnded(
+					runtime,
+					runId,
+					message,
+					startTime,
+					"noMessageId",
+					opts.roomHandlerLease,
+				);
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -12365,19 +12446,26 @@ export class DefaultMessageService implements IMessageService {
 		// evaluator here makes every connector wait even though the reply has
 		// already been sent. Preserve evaluator-before-ALWAYS_AFTER ordering inside
 		// one detached task while keeping both failures observable at the boundary.
-		detachPostDeliverySideEffect(runtime, "post_turn", async () => {
-			if (semanticSignal) {
-				await runPostTurnEvaluators(runtime, message, state, {
+		detachPostDeliverySideEffect(
+			runtime,
+			"post_turn",
+			async () => {
+				if (semanticSignal) {
+					await runPostTurnEvaluators(runtime, message, state, {
+						didRespond: didRespondGate,
+						responses: responseMessages,
+						semanticSignal,
+					});
+				}
+				await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
 					didRespond: didRespondGate,
 					responses: responseMessages,
-					semanticSignal,
 				});
-			}
-			await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
-				didRespond: didRespondGate,
-				responses: responseMessages,
-			});
-		});
+			},
+			"room-state",
+			message.roomId,
+			opts.roomHandlerLease,
+		);
 
 		const didRespond =
 			responseMessages.length > 0 && !isStopResponse(responseContent);
@@ -12451,19 +12539,25 @@ export class DefaultMessageService implements IMessageService {
 
 		// Delivery is already committed; lifecycle observers run after the
 		// caller receives the result and remain drainable during shutdown.
-		detachPostDeliverySideEffect(runtime, "RUN_ENDED", () =>
-			runtime.emitEvent(EventType.RUN_ENDED, {
-				runtime,
-				source: "messageHandler",
-				runId,
-				messageId: message.id,
-				roomId: message.roomId,
-				entityId: message.entityId,
-				startTime,
-				status: "completed",
-				endTime: Date.now(),
-				duration: Date.now() - startTime,
-			} as RunEventPayload),
+		detachPostDeliverySideEffect(
+			runtime,
+			"RUN_ENDED",
+			() =>
+				runtime.emitEvent(EventType.RUN_ENDED, {
+					runtime,
+					source: "messageHandler",
+					runId,
+					messageId: message.id,
+					roomId: message.roomId,
+					entityId: message.entityId,
+					startTime,
+					status: "completed",
+					endTime: Date.now(),
+					duration: Date.now() - startTime,
+				} as RunEventPayload),
+			"room-state",
+			message.roomId,
+			opts.roomHandlerLease,
 		);
 		return {
 			didRespond,
@@ -13293,20 +13387,27 @@ export class DefaultMessageService implements IMessageService {
 		message: Memory,
 		startTime: number,
 		status: RunEventPayload["status"],
+		roomHandlerLease?: RoomHandlerLease,
 	): void {
-		detachPostDeliverySideEffect(runtime, "RUN_ENDED", () =>
-			runtime.emitEvent(EventType.RUN_ENDED, {
-				runtime,
-				source: "messageHandler",
-				runId,
-				messageId: message.id,
-				roomId: message.roomId,
-				entityId: message.entityId,
-				startTime,
-				status,
-				endTime: Date.now(),
-				duration: Date.now() - startTime,
-			} as RunEventPayload),
+		detachPostDeliverySideEffect(
+			runtime,
+			"RUN_ENDED",
+			() =>
+				runtime.emitEvent(EventType.RUN_ENDED, {
+					runtime,
+					source: "messageHandler",
+					runId,
+					messageId: message.id,
+					roomId: message.roomId,
+					entityId: message.entityId,
+					startTime,
+					status,
+					endTime: Date.now(),
+					duration: Date.now() - startTime,
+				} as RunEventPayload),
+			"room-state",
+			message.roomId,
+			roomHandlerLease,
 		);
 	}
 

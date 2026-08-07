@@ -491,10 +491,6 @@ interface MemoryMetadataBase {
 	scope?: MemoryScope;
 	timestamp?: number;
 	platformMessageId?: string;
-	/** Provider arrival time retained when room serialization restamps ordering. */
-	providerCreatedAt?: number;
-	/** Monotonic processing order within one runtime room. */
-	roomProcessingSequence?: number;
 	share?: ArtifactShareMetadata;
 }
 

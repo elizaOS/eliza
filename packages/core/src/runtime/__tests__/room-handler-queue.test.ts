@@ -5,8 +5,7 @@
  * lifecycle events. Exercises the real queue with real timers; no model or
  * runtime.
  */
-import { describe, expect, it, vi } from "vitest";
-import type { Memory, UUID } from "../../types";
+import { describe, expect, it } from "vitest";
 import {
 	RoomHandlerQueue,
 	RoomHandlerQueueAbortedError,
@@ -239,68 +238,57 @@ describe("RoomHandlerQueue", () => {
 			await queue.quiesceAll();
 			expect(queue.pendingTotal()).toBe(0);
 		});
-	});
 
-	describe("durable processing order", () => {
-		it("seeds after restart and overwrites provider-forged order metadata", async () => {
-			const now = vi.spyOn(Date, "now").mockReturnValue(100);
-			try {
-				const durable = {
-					id: "00000000-0000-0000-0000-000000000111" as UUID,
-					entityId: "00000000-0000-0000-0000-000000000112" as UUID,
-					agentId: "00000000-0000-0000-0000-000000000113" as UUID,
-					roomId: ROOM_A as UUID,
-					createdAt: 500,
-					content: { text: "durable" },
-					metadata: { type: "message", roomProcessingSequence: 9 },
-				} satisfies Memory;
-				const firstRuntimeQueue = new RoomHandlerQueue();
-				const firstLease = await firstRuntimeQueue.acquire(ROOM_A);
-				await firstRuntimeQueue.ensureProcessingClock(
-					ROOM_A,
-					firstLease,
-					async () => [durable],
+		it("uses explicit capabilities without deadlocking when async context is unavailable", async () => {
+			const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+			await expect(
+				queue.runWith(ROOM_A, async () => "top-level-ok"),
+			).resolves.toBe("top-level-ok");
+			expect(queue.pendingFor(ROOM_A)).toBe(0);
+
+			const lease = await queue.withLease(ROOM_A, async (ownedLease) => {
+				expect(queue.ownsLease(ROOM_A, ownedLease)).toBe(true);
+				const nested = await queue.runInLease(ROOM_A, ownedLease, () =>
+					queue.runInLease(ROOM_A, ownedLease, async () => "nested-ok"),
 				);
-				const incoming: Memory = {
-					entityId: durable.entityId,
-					agentId: durable.agentId,
-					roomId: durable.roomId,
-					createdAt: 75,
-					content: { text: "incoming" },
-					metadata: { type: "message", roomProcessingSequence: 999_999 },
-				};
-				firstRuntimeQueue.stampMessage(ROOM_A, firstLease, incoming);
-				expect(incoming.createdAt).toBe(501);
-				expect(incoming.metadata.roomProcessingSequence).toBe(10);
-				expect(incoming.metadata.providerCreatedAt).toBe(75);
+				expect(nested).toBe("nested-ok");
+				await expect(
+					queue.withLease(ROOM_A, async () => "reused", {
+						lease: ownedLease,
+					}),
+				).resolves.toBe("reused");
+				return ownedLease;
+			});
+			expect(queue.ownsLease(ROOM_A, lease)).toBe(false);
+			await expect(
+				queue.withLeases([ROOM_B, ROOM_A], async (leases) => {
+					expect(leases.size).toBe(2);
+					expect(queue.ownsLease(ROOM_A, leases.get(ROOM_A))).toBe(true);
+					expect(queue.ownsLease(ROOM_B, leases.get(ROOM_B))).toBe(true);
+					return "multi-room-ok";
+				}),
+			).resolves.toBe("multi-room-ok");
 
-				firstRuntimeQueue.stampMessage(ROOM_A, firstLease, incoming);
-				expect(incoming.createdAt).toBe(501);
-				expect(incoming.metadata.roomProcessingSequence).toBe(10);
-				await firstLease.release();
+			const explicitLease = await queue.acquire(ROOM_A);
+			const nested = await queue.runInLease(ROOM_A, explicitLease, () =>
+				queue.runInLease(ROOM_A, explicitLease, async () => "nested-ok"),
+			);
+			expect(nested).toBe("nested-ok");
+			expect(() =>
+				queue.runInLease(ROOM_B, explicitLease, () => "wrong-room"),
+			).toThrowError(
+				expect.objectContaining({
+					code: "ROOM_HANDLER_CROSS_ROOM_REENTRY",
+				}),
+			);
+			await expect(
+				queue.withLease(ROOM_B, async () => "widened", {
+					lease: explicitLease,
+				}),
+			).rejects.toMatchObject({ code: "ROOM_HANDLER_CROSS_ROOM_REENTRY" });
 
-				const restartedQueue = new RoomHandlerQueue();
-				const restartedLease = await restartedQueue.acquire(ROOM_A);
-				await restartedQueue.ensureProcessingClock(
-					ROOM_A,
-					restartedLease,
-					async () => [incoming],
-				);
-				const afterRestart: Memory = {
-					entityId: durable.entityId,
-					agentId: durable.agentId,
-					roomId: durable.roomId,
-					createdAt: 60,
-					content: { text: "after restart" },
-					metadata: { type: "message" },
-				};
-				restartedQueue.stampMessage(ROOM_A, restartedLease, afterRestart);
-				expect(afterRestart.createdAt).toBe(502);
-				expect(afterRestart.metadata.roomProcessingSequence).toBe(11);
-				await restartedLease.release();
-			} finally {
-				now.mockRestore();
-			}
+			await explicitLease.release();
+			expect(queue.pendingTotal()).toBe(0);
 		});
 	});
 
