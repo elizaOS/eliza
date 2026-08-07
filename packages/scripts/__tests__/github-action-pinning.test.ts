@@ -153,6 +153,35 @@ describe("GitHub action supply-chain references", () => {
     expect(source).not.toContain("playwright install --with-deps chromium");
   });
 
+  test("keeps production homepage deploys read-only and fully gated", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "deploy-homepage.yml"),
+      "utf8",
+    );
+    const workflow = Bun.YAML.parse(source) as {
+      permissions?: { contents?: string };
+    };
+
+    expect(workflow.permissions?.contents).toBe("read");
+    expect(source).toContain("bun run test");
+    expect(source).toContain("bun run typecheck");
+    expect(source).toContain("bun run lint:check");
+    expect(source).toContain("bun run check:snapshot-inventory");
+    expect(source).toContain("bun run test:e2e");
+    expect(source).toContain(
+      "PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium",
+    );
+    expect(source).not.toContain("playwright install --with-deps chromium");
+    expect(source).not.toContain("--update-snapshots");
+    expect(source).not.toContain("git push");
+    expect(source).not.toContain("continue-on-error");
+
+    const e2e = source.indexOf("bun run test:e2e");
+    const deploy = source.indexOf("wrangler@4.116.0 pages deploy dist");
+    expect(e2e).toBeGreaterThan(-1);
+    expect(deploy).toBeGreaterThan(e2e);
+  });
+
   test("keeps the Docker smoke on a runner with a Docker daemon", () => {
     const source = readFileSync(
       join(githubRoot, "workflows", "docker-ci-smoke.yml"),
