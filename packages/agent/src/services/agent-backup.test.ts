@@ -86,6 +86,24 @@ async function writeFixtureState(
     path.join(root, "skills", "active.json"),
     '{"skills":[]}\n',
   );
+  // Re-downloadable model weights / caches must never enter stateFiles (#17920).
+  await fs.mkdir(path.join(root, "models"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "models", "openai.json"),
+    '{"models":[]}\n',
+  );
+  await fs.mkdir(path.join(root, "models", "weights"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "models", "weights", "giant.bin"),
+    "x".repeat(1024),
+  );
+  await fs.mkdir(path.join(root, "tool-cache"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "tool-cache", "web-search.bin"),
+    "cached-tool-result",
+  );
+  await fs.mkdir(path.join(root, "cache"), { recursive: true });
+  await fs.writeFile(path.join(root, "cache", "runtime.tmp"), "volatile-cache");
   await fs.writeFile(path.join(pgliteDir, "pgdata.bin"), "database-bytes");
   await fs.writeFile(
     path.join(pgliteDir, "postmaster.pid"),
@@ -159,6 +177,19 @@ describe("agent backup manifest", () => {
     expect(pgliteFilePaths).not.toContain("pg_stat_tmp/stats.tmp");
     expect(stateFilePaths).toContain("skills/active.json");
     expect(stateFilePaths).not.toContain("pglite/pgdata.bin");
+    // #17920: models + cache trees are excluded from the stateFiles manifest.
+    expect(stateFilePaths).not.toContain("models/openai.json");
+    expect(stateFilePaths).not.toContain("models/weights/giant.bin");
+    expect(stateFilePaths).not.toContain("tool-cache/web-search.bin");
+    expect(stateFilePaths).not.toContain("cache/runtime.tmp");
+    expect(
+      stateFilePaths.every(
+        (filePath) =>
+          !filePath.startsWith("models/") &&
+          !filePath.startsWith("tool-cache/") &&
+          !filePath.startsWith("cache/"),
+      ),
+    ).toBe(true);
 
     await fs.rm(path.join(root, "media"), { recursive: true, force: true });
     await fs.rm(path.join(root, ".vault-pglite"), {
