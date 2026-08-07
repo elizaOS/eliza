@@ -22,6 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -97,19 +98,31 @@ class BrowserSurfaceIsolationInstrumentedTest {
         val context = instrumentation.targetContext
         val profileName = "eliza-surface-release-${System.nanoTime()}"
         val store = ProfileStore.getInstance()
+        lateinit var webView: WebView
         instrumentation.runOnMainSync {
             val profile = store.getOrCreateProfile(profileName)
-            val webView = WebView(context)
+            webView = WebView(context)
             WebViewCompat.setProfile(webView, profile.name)
             webView.loadUrl("about:blank")
             assertTrue(WebViewCompat.getWebViewRenderProcess(webView) != null)
+            assertThrows(IllegalStateException::class.java) {
+                store.deleteProfile(profileName)
+            }
+        }
+        instrumentation.runOnMainSync {
             webView.stopLoading()
             webView.destroy()
         }
         instrumentation.waitForIdleSync()
         instrumentation.runOnMainSync {
-            assertTrue(store.deleteProfile(profileName))
+            val deleted = store.deleteProfile(profileName)
+            assertTrue(deleted || store.getProfile(profileName) == null)
+            assertFalse(store.deleteProfile(profileName))
             assertNull(store.getProfile(profileName))
+            val replacement = store.getOrCreateProfile(profileName)
+            assertEquals(profileName, replacement.name)
+            val replacementDeleted = store.deleteProfile(profileName)
+            assertTrue(replacementDeleted || store.getProfile(profileName) == null)
         }
     }
 

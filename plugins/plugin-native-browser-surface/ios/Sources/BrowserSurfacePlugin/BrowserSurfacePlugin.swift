@@ -1,6 +1,6 @@
 /**
  * Native iOS half of `ElizaSurfaceManager` (#15245): layers one `WKWebView` per
- * Browser tab above the Capacitor host webview, each in its OWN renderer process
+ * Browser tab above the Capacitor host webview, each with its own WKProcessPool
  * and storage partition. A computed outer clip follows the rounded React host
  * while independent rounded occlusion holes expose host-rendered chrome without
  * resizing or hiding the live page.
@@ -31,6 +31,11 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "reconcileOwner", returnType: CAPPluginReturnPromise),
     ]
 
+    private struct ActiveOwnerLease {
+        let session: String
+        let epoch: Int
+    }
+
     private struct Surface {
         let container: OccludingSurfaceView
         let webView: WKWebView
@@ -38,34 +43,77 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         let storage: String
         let owner: String
         let session: String
+        let epoch: Int
     }
 
     private var surfaces: [String: Surface] = [:]
+    private var activeOwners: [String: ActiveOwnerLease] = [:]
     // One plugin-owned pool for every `shared`-process surface — deliberate, so a
     // shared surface still never lands in the host's implicit default pool.
     private let sharedProcessPool = WKProcessPool()
 
-    private func identity(_ call: CAPPluginCall, operation: String) -> (owner: String, session: String)? {
+    private func identity(
+        _ call: CAPPluginCall,
+        operation: String
+    ) -> NativeBrowserOwnerIdentity? {
         guard let owner = call.getString("owner"), !owner.isEmpty,
-              let session = call.getString("session"), !session.isEmpty else {
-            call.reject("\(operation) requires owner and session")
+              let session = call.getString("session"), !session.isEmpty,
+              let epoch = call.getInt("epoch"), epoch > 0 else {
+            call.reject("\(operation) requires owner, session, and a positive epoch")
             return nil
         }
-        return (owner, session)
+        return NativeBrowserOwnerIdentity(owner: owner, session: session, epoch: epoch)
+    }
+
+    private func claimOwner(_ identity: NativeBrowserOwnerIdentity) -> Bool {
+        if let current = activeOwners[identity.owner] {
+            if identity.epoch < current.epoch ||
+                (identity.epoch == current.epoch && identity.session != current.session) {
+                return false
+            }
+            if identity.epoch == current.epoch {
+                return true
+            }
+        }
+        if activeOwners[identity.owner]?.epoch != identity.epoch {
+            activeOwners[identity.owner] = ActiveOwnerLease(
+                session: identity.session,
+                epoch: identity.epoch
+            )
+        }
+        return true
+    }
+
+    private func requireActiveIdentity(
+        _ call: CAPPluginCall,
+        identity: NativeBrowserOwnerIdentity,
+        operation: String
+    ) -> Bool {
+        guard let current = activeOwners[identity.owner],
+              current.session == identity.session,
+              current.epoch == identity.epoch else {
+            call.reject("\(operation) rejected a retired or unclaimed renderer session")
+            return false
+        }
+        return true
     }
 
     private func ownedSurface(
         _ call: CAPPluginCall,
         id: String,
-        owner: String,
-        session: String,
+        identity: NativeBrowserOwnerIdentity,
         operation: String
     ) -> Surface? {
         guard let surface = surfaces[id] else {
             call.reject("no surface \(id)")
             return nil
         }
-        guard surface.owner == owner, surface.session == session else {
+        guard NativeBrowserSurfaceLifecycleContract.owns(
+            owner: surface.owner,
+            session: surface.session,
+            epoch: surface.epoch,
+            identity: identity
+        ) else {
             call.reject("\(operation) cannot mutate surface \(id) owned by another renderer session")
             return nil
         }
@@ -100,6 +148,11 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         let urlString = call.getString("url")
 
         DispatchQueue.main.async {
+            guard self.requireActiveIdentity(
+                call,
+                identity: identity,
+                operation: "createSurface"
+            ) else { return }
             guard let hostView = self.bridge?.viewController?.view else {
                 call.reject("no host view controller to attach the surface to")
                 return
@@ -107,6 +160,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             if let existing = self.surfaces[id] {
                 guard existing.owner == identity.owner,
                       existing.session == identity.session,
+                      existing.epoch == identity.epoch,
                       existing.process == process,
                       existing.storage == storage else {
                     call.reject("surface \(id) already exists with different owner/session/policy")
@@ -121,7 +175,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             }
 
             let config = WKWebViewConfiguration()
-            // Fresh pool ⇒ distinct content process; shared ⇒ the plugin pool.
+            // Fresh pool ⇒ a dedicated process-pool boundary; shared ⇒ the plugin pool.
             config.processPool = process == "isolated" ? WKProcessPool() : self.sharedProcessPool
             // Non-persistent store ⇒ private, per-surface cookies/localStorage.
             config.websiteDataStore = storage == "isolated"
@@ -144,7 +198,8 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
                 process: process,
                 storage: storage,
                 owner: identity.owner,
-                session: identity.session
+                session: identity.session,
+                epoch: identity.epoch
             )
             call.resolve()
         }
@@ -187,11 +242,15 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         DispatchQueue.main.async {
+            guard self.requireActiveIdentity(
+                call,
+                identity: identity,
+                operation: "setBounds"
+            ) else { return }
             guard let surface = self.ownedSurface(
                 call,
                 id: id,
-                owner: identity.owner,
-                session: identity.session,
+                identity: identity,
                 operation: "setBounds"
             ) else { return }
             // CSS px map 1:1 to UIKit points, so no density conversion is needed.
@@ -244,11 +303,15 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             )
         }
         DispatchQueue.main.async {
+            guard self.requireActiveIdentity(
+                call,
+                identity: identity,
+                operation: "setOcclusionRects"
+            ) else { return }
             guard let surface = self.ownedSurface(
                 call,
                 id: id,
-                owner: identity.owner,
-                session: identity.session,
+                identity: identity,
                 operation: "setOcclusionRects"
             ) else { return }
             surface.container.setHostOcclusions(rects)
@@ -264,11 +327,15 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         guard let identity = identity(call, operation: "navigate") else { return }
         DispatchQueue.main.async {
+            guard self.requireActiveIdentity(
+                call,
+                identity: identity,
+                operation: "navigate"
+            ) else { return }
             guard let surface = self.ownedSurface(
                 call,
                 id: id,
-                owner: identity.owner,
-                session: identity.session,
+                identity: identity,
                 operation: "navigate"
             ) else { return }
             surface.webView.load(URLRequest(url: url))
@@ -283,11 +350,15 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         guard let identity = identity(call, operation: "reloadSurface") else { return }
         DispatchQueue.main.async {
+            guard self.requireActiveIdentity(
+                call,
+                identity: identity,
+                operation: "reloadSurface"
+            ) else { return }
             guard let surface = self.ownedSurface(
                 call,
                 id: id,
-                owner: identity.owner,
-                session: identity.session,
+                identity: identity,
                 operation: "reloadSurface"
             ) else { return }
             surface.webView.reload()
@@ -299,22 +370,26 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let identity = identity(call, operation: "presentSurface") else { return }
         let id = call.getString("id")
         DispatchQueue.main.async {
+            guard self.requireActiveIdentity(
+                call,
+                identity: identity,
+                operation: "presentSurface"
+            ) else { return }
+            for surface in self.surfaces.values
+            where surface.owner == identity.owner {
+                surface.container.isHidden = true
+            }
             let selected: Surface?
             if let id {
                 guard let surface = self.ownedSurface(
                     call,
                     id: id,
-                    owner: identity.owner,
-                    session: identity.session,
+                    identity: identity,
                     operation: "presentSurface"
                 ) else { return }
                 selected = surface
             } else {
                 selected = nil
-            }
-            for surface in self.surfaces.values
-            where surface.owner == identity.owner && surface.session == identity.session {
-                surface.container.isHidden = true
             }
             if let selected {
                 selected.container.superview?.bringSubviewToFront(selected.container)
@@ -331,11 +406,18 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         guard let identity = identity(call, operation: "destroySurface") else { return }
         DispatchQueue.main.async {
+            guard self.requireActiveIdentity(
+                call,
+                identity: identity,
+                operation: "destroySurface"
+            ) else { return }
             guard let surface = self.surfaces[id] else {
                 call.resolve()
                 return
             }
-            guard surface.owner == identity.owner, surface.session == identity.session else {
+            guard surface.owner == identity.owner,
+                  surface.session == identity.session,
+                  surface.epoch == identity.epoch else {
                 call.reject("destroySurface cannot mutate surface \(id) owned by another renderer session")
                 return
             }
@@ -352,9 +434,18 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         guard let identity = identity(call, operation: "getSurfaceState") else { return }
         DispatchQueue.main.async {
+            guard self.requireActiveIdentity(
+                call,
+                identity: identity,
+                operation: "getSurfaceState"
+            ) else { return }
             guard let surface = self.surfaces[id],
-                  surface.owner == identity.owner,
-                  surface.session == identity.session else {
+                  NativeBrowserSurfaceLifecycleContract.owns(
+                      owner: surface.owner,
+                      session: surface.session,
+                      epoch: surface.epoch,
+                      identity: identity
+                  ) else {
                 call.resolve([
                     "exists": false,
                     "foregrounded": false,
@@ -363,6 +454,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
                     "storage": NSNull(),
                     "owner": NSNull(),
                     "session": NSNull(),
+                    "epoch": NSNull(),
                 ])
                 return
             }
@@ -374,6 +466,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
                 "storage": surface.storage,
                 "owner": surface.owner,
                 "session": surface.session,
+                "epoch": surface.epoch,
             ])
         }
     }
@@ -381,9 +474,18 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func listSurfaceStates(_ call: CAPPluginCall) {
         guard let identity = identity(call, operation: "listSurfaceStates") else { return }
         DispatchQueue.main.async {
+            guard self.requireActiveIdentity(
+                call,
+                identity: identity,
+                operation: "listSurfaceStates"
+            ) else { return }
             let states = self.surfaces.compactMap { id, surface -> [String: Any]? in
-                guard surface.owner == identity.owner,
-                      surface.session == identity.session else { return nil }
+                guard NativeBrowserSurfaceLifecycleContract.owns(
+                    owner: surface.owner,
+                    session: surface.session,
+                    epoch: surface.epoch,
+                    identity: identity
+                ) else { return nil }
                 return self.surfaceState(id: id, surface: surface)
             }
             call.resolve(["surfaces": states])
@@ -398,9 +500,20 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         let desired = Set(desiredIds)
         DispatchQueue.main.async {
+            guard self.claimOwner(identity) else {
+                call.reject("reconcileOwner rejected a retired renderer session")
+                return
+            }
+            // Presentation is fenced before fallible cleanup so a stale page
+            // cannot remain visible or interactive after its realm is retired.
+            for surface in self.surfaces.values where surface.owner == identity.owner {
+                surface.container.isHidden = true
+            }
             let staleIds = self.surfaces.compactMap { id, surface -> String? in
                 guard surface.owner == identity.owner else { return nil }
-                return surface.session != identity.session || !desired.contains(id) ? id : nil
+                return surface.session != identity.session ||
+                    surface.epoch != identity.epoch ||
+                    !desired.contains(id) ? id : nil
             }
             for id in staleIds {
                 guard let surface = self.surfaces.removeValue(forKey: id) else { continue }
@@ -420,6 +533,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             "storage": surface.storage,
             "owner": surface.owner,
             "session": surface.session,
+            "epoch": surface.epoch,
         ]
     }
 }

@@ -12,13 +12,15 @@ cross-surface leak the isolation epic closes. This plugin gives each tab its own
 native child web surface instead:
 
 - **iOS** — a `WKWebView` per surface. `isolated` process ⇒ a fresh
-  `WKProcessPool` (distinct content process); `isolated` storage ⇒
+  `WKProcessPool` boundary; `isolated` storage ⇒
   `WKWebsiteDataStore.nonPersistent()` (its own cookies/localStorage/IndexedDB).
   `shared` reuses a plugin-owned pool / the default store.
-- **Android** — a `WebView` per surface with the platform out-of-process
-  renderer; `isolated` storage ⇒ its own androidx.webkit multi-profile
-  `Profile`. If the system WebView is too old for multi-profile, `createSurface`
-  **rejects** (fail-fast) rather than silently sharing the default store.
+- **Android** — a `WebView` per surface with a verified out-of-app sandboxed
+  renderer; Android may reuse that renderer process across sibling WebViews.
+  `isolated` storage ⇒ its own androidx.webkit multi-profile `Profile`. If the
+  system WebView is too old for multi-profile or cannot expose an out-of-app
+  renderer, `createSurface` **rejects** rather than silently weakening the
+  boundary.
 
 ## Explicit-policy invariant
 

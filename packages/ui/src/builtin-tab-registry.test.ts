@@ -133,8 +133,8 @@ describe("browser: native-webview isolation manifest (#13596)", () => {
 
   it("resolves to native-webview isolation (the catalogue's canonical consumer)", () => {
     // The browser hosts arbitrary third-party web content in a native child
-    // web-content surface with its own renderer process; it must never share
-    // the host realm. See surface-isolation.ts's catalogue entry.
+    // web-content surface outside the host renderer realm. See
+    // surface-isolation.ts's catalogue entry for each platform's guarantee.
     expect(resolveSurfaceManifest({ surface }).isolation).toBe(
       "native-webview",
     );

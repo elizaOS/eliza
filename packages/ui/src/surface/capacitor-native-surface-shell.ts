@@ -23,11 +23,13 @@ export interface ElizaSurfaceManagerState {
   storage: "isolated" | "shared" | null;
   owner: string | null;
   session: string | null;
+  epoch: number | null;
 }
 
 interface SurfaceIdentityOptions {
   owner: string;
   session: string;
+  epoch: number;
 }
 
 export interface ElizaSurfaceManagerPlugin {
@@ -80,6 +82,7 @@ export interface ElizaSurfaceManagerPlugin {
 export interface NativeSurfaceOwnerIdentity {
   readonly owner: string;
   readonly session: string;
+  readonly epoch: number;
 }
 
 function plugin(): ElizaSurfaceManagerPlugin {
@@ -93,9 +96,38 @@ function createRealmSession(): string {
   return `browser-realm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+const OWNER_EPOCH_STORAGE_KEY = "eliza:native-browser-owner-epoch";
+
+function createRealmEpoch(): number {
+  const timeOrigin =
+    typeof globalThis.performance?.timeOrigin === "number"
+      ? globalThis.performance.timeOrigin
+      : Date.now();
+  let prior = 0;
+  try {
+    const stored = globalThis.sessionStorage?.getItem(OWNER_EPOCH_STORAGE_KEY);
+    if (stored !== null && stored !== undefined) {
+      const parsed = Number.parseInt(stored, 10);
+      if (Number.isSafeInteger(parsed) && parsed > 0) prior = parsed;
+    }
+  } catch {
+    // error-policy:J4 a restricted host may disable sessionStorage; the realm's
+    // monotonic navigation time still fences ordinary renderer reloads.
+  }
+  const epoch = Math.max(Math.floor(timeOrigin * 1_000), prior + 1);
+  try {
+    globalThis.sessionStorage?.setItem(OWNER_EPOCH_STORAGE_KEY, String(epoch));
+  } catch {
+    // error-policy:J4 epoch persistence is optional when host storage is
+    // unavailable; native still enforces the realm's time-ordered epoch.
+  }
+  return epoch;
+}
+
 const DEFAULT_IDENTITY: NativeSurfaceOwnerIdentity = {
   owner: "eliza-browser-workspace",
   session: createRealmSession(),
+  epoch: createRealmEpoch(),
 };
 
 function report(op: string, error: unknown): void {
@@ -235,17 +267,20 @@ export class CapacitorNativeSurfaceShell implements NativeSurfaceShell {
     });
     // error-policy:J1 native presentation boundary translates the terminal
     // transport failure into the hook's typed, user-retryable unavailable state.
-    return result.catch((error: unknown) => {
-      const generation = target?.desired?.generation ?? 0;
-      const failure = asUnavailableError(error, {
-        surfaceId: id,
-        generation,
-        operation: `presentSurface(${id ?? "host"})`,
-        revision,
-      });
-      this.reportOnce(failure);
-      return Promise.reject(failure);
-    });
+    return result.then(
+      () => this.clearReportedFailures(id),
+      (error: unknown) => {
+        const generation = target?.desired?.generation ?? 0;
+        const failure = asUnavailableError(error, {
+          surfaceId: id,
+          generation,
+          operation: `presentSurface(${id ?? "host"})`,
+          revision,
+        });
+        this.reportOnce(failure);
+        return Promise.reject(failure);
+      },
+    );
   }
 
   destroySurface(id: string): Promise<void> {
@@ -490,6 +525,7 @@ export class CapacitorNativeSurfaceShell implements NativeSurfaceShell {
           storage: desired.request.policy.storage,
           owner: this.identity.owner,
           session: this.identity.session,
+          epoch: this.identity.epoch,
         },
         true,
       );
@@ -693,7 +729,8 @@ export class CapacitorNativeSurfaceShell implements NativeSurfaceShell {
       previous.process !== state.process ||
       previous.storage !== state.storage ||
       previous.owner !== state.owner ||
-      previous.session !== state.session
+      previous.session !== state.session ||
+      previous.epoch !== state.epoch
     ) {
       entry.lastBoundsKey = null;
       entry.lastOcclusionKey = null;
@@ -718,6 +755,7 @@ export class CapacitorNativeSurfaceShell implements NativeSurfaceShell {
   }
 
   private resolveWaiters(entry: SurfaceCommandState, revision: number): void {
+    this.clearReportedFailures(entry.id);
     const settled = entry.waiters.filter(
       (waiter) => waiter.revision <= revision,
     );
@@ -755,6 +793,13 @@ export class CapacitorNativeSurfaceShell implements NativeSurfaceShell {
     if (this.reportedFailures.has(key)) return;
     this.reportedFailures.add(key);
     report(error.operation, error);
+  }
+
+  private clearReportedFailures(surfaceId: string | null): void {
+    const prefix = `${surfaceId ?? "host"}:`;
+    for (const key of this.reportedFailures) {
+      if (key.startsWith(prefix)) this.reportedFailures.delete(key);
+    }
   }
 }
 
@@ -814,6 +859,7 @@ const ABSENT_SURFACE_STATE: ElizaSurfaceManagerState = {
   storage: null,
   owner: null,
   session: null,
+  epoch: null,
 };
 
 function asUnavailableError(
@@ -844,7 +890,11 @@ function ownerMatches(
   state: ElizaSurfaceManagerState,
   identity: NativeSurfaceOwnerIdentity,
 ): boolean {
-  return state.owner === identity.owner && state.session === identity.session;
+  return (
+    state.owner === identity.owner &&
+    state.session === identity.session &&
+    state.epoch === identity.epoch
+  );
 }
 
 function policyMatches(
@@ -896,13 +946,15 @@ function validateSurfaceState(value: unknown): ElizaSurfaceManagerState {
     storage: sharingValue(value.storage, "storage"),
     owner: nullableString(value.owner, "owner"),
     session: nullableString(value.session, "session"),
+    epoch: nullableSafeInteger(value.epoch, "epoch"),
   };
   if (
     state.exists &&
     (state.process === null ||
       state.storage === null ||
       state.owner === null ||
-      state.session === null)
+      state.session === null ||
+      state.epoch === null)
   ) {
     throw new Error(
       "existing native surface state requires identity and policy",
@@ -953,4 +1005,14 @@ function sharingValue(
   if (value === null || value === "isolated" || value === "shared")
     return value;
   throw new Error(`native surface state ${field} must be isolated|shared|null`);
+}
+
+function nullableSafeInteger(value: unknown, field: string): number | null {
+  if (value === null) return null;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return value;
+  }
+  throw new Error(
+    `native surface state ${field} must be a positive safe integer|null`,
+  );
 }

@@ -39,10 +39,12 @@ async function drainPromises(): Promise<void> {
 const IDENTITY_A: NativeSurfaceOwnerIdentity = {
   owner: "browser",
   session: "realm-a",
+  epoch: 1,
 };
 const IDENTITY_B: NativeSurfaceOwnerIdentity = {
   owner: "browser",
   session: "realm-b",
+  epoch: 2,
 };
 const CREATE_A: NativeSurfaceCreateRequest = {
   id: "browser-tab:a",
@@ -53,6 +55,11 @@ const CREATE_B: NativeSurfaceCreateRequest = {
   ...CREATE_A,
   id: "browser-tab:b",
   url: "https://b.example",
+};
+const CREATE_C: NativeSurfaceCreateRequest = {
+  ...CREATE_A,
+  id: "browser-tab:c",
+  url: "https://c.example",
 };
 const REOPENED_A: NativeSurfaceCreateRequest = {
   ...CREATE_A,
@@ -87,6 +94,7 @@ const ABSENT_STATE: ElizaSurfaceManagerState = {
   storage: null,
   owner: null,
   session: null,
+  epoch: null,
 };
 
 type NativeOperation =
@@ -114,6 +122,11 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
   private readonly failures = new Map<NativeOperation, number>();
   private readonly appliedFailures = new Map<NativeOperation, number>();
   private readonly gates = new Map<NativeOperation, Array<Deferred<void>>>();
+  private readonly activeOwners = new Map<
+    string,
+    { session: string; epoch: number }
+  >();
+  private ownerCleanupFailures = 0;
 
   rejectNext(operation: NativeOperation, count = 1): void {
     this.failures.set(operation, (this.failures.get(operation) ?? 0) + count);
@@ -134,10 +147,18 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
     return gate;
   }
 
+  rejectNextOwnerCleanup(count = 1): void {
+    this.ownerCleanupFailures += count;
+  }
+
   seed(
     identity: NativeSurfaceOwnerIdentity,
     req: NativeSurfaceCreateRequest,
   ): void {
+    this.activeOwners.set(identity.owner, {
+      session: identity.session,
+      epoch: identity.epoch,
+    });
     this.surfaces.set(req.id, {
       id: req.id,
       exists: true,
@@ -147,23 +168,27 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
       storage: req.policy.storage,
       owner: identity.owner,
       session: identity.session,
+      epoch: identity.epoch,
     });
   }
 
   createSurface(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string;
     url?: string;
     process: "isolated" | "shared";
     storage: "isolated" | "shared";
   }): Promise<void> {
     return this.execute("create", `create:${options.id}`, () => {
+      this.requireActive(options);
       const existing = this.surfaces.get(options.id);
       if (existing) {
         if (
           existing.owner !== options.owner ||
           existing.session !== options.session ||
+          existing.epoch !== options.epoch ||
           existing.process !== options.process ||
           existing.storage !== options.storage
         ) {
@@ -181,6 +206,7 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
         storage: options.storage,
         owner: options.owner,
         session: options.session,
+        epoch: options.epoch,
       });
     });
   }
@@ -189,6 +215,7 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
     options: {
       owner: string;
       session: string;
+      epoch: number;
       id: string;
     } & SurfaceBounds,
   ): Promise<void> {
@@ -201,6 +228,7 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
   setOcclusionRects(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string;
     rects: readonly SurfaceOcclusionRect[];
   }): Promise<void> {
@@ -213,6 +241,7 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
   navigate(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string;
     url: string;
   }): Promise<void> {
@@ -224,6 +253,7 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
   reloadSurface(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string;
   }): Promise<void> {
     return this.execute("reload", `reload:${options.id}`, () => {
@@ -234,17 +264,18 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
   presentSurface(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string | null;
   }): Promise<void> {
     return this.execute("present", `present:${options.id ?? "host"}`, () => {
-      if (options.id) this.requireOwned({ ...options, id: options.id });
+      this.requireActive(options);
       for (const surface of this.surfaces.values()) {
-        if (
-          surface.owner === options.owner &&
-          surface.session === options.session
-        ) {
-          surface.foregrounded = surface.id === options.id;
+        if (surface.owner === options.owner) {
+          surface.foregrounded = false;
         }
+      }
+      if (options.id) {
+        this.requireOwned({ ...options, id: options.id }).foregrounded = true;
       }
     });
   }
@@ -252,9 +283,11 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
   destroySurface(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string;
   }): Promise<void> {
     return this.execute("destroy", `destroy:${options.id}`, () => {
+      this.requireActive(options);
       const surface = this.surfaces.get(options.id);
       if (!surface) return;
       this.requireOwned(options);
@@ -265,13 +298,16 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
   getSurfaceState(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string;
   }): Promise<ElizaSurfaceManagerState> {
     return this.execute("state", `state:${options.id}`, () => undefined).then(
       () => {
+        this.requireActive(options);
         const surface = this.surfaces.get(options.id);
         return surface?.owner === options.owner &&
-          surface.session === options.session
+          surface.session === options.session &&
+          surface.epoch === options.epoch
           ? { ...surface }
           : { ...ABSENT_STATE };
       },
@@ -281,29 +317,59 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
   listSurfaceStates(options: {
     owner: string;
     session: string;
+    epoch: number;
   }): Promise<unknown> {
-    return this.execute("list", "list", () => undefined).then(() => ({
-      surfaces: [...this.surfaces.values()]
-        .filter(
-          (surface) =>
-            surface.owner === options.owner &&
-            surface.session === options.session,
-        )
-        .map((surface) => ({ ...surface })),
-    }));
+    return this.execute("list", "list", () => undefined).then(() => {
+      this.requireActive(options);
+      return {
+        surfaces: [...this.surfaces.values()]
+          .filter(
+            (surface) =>
+              surface.owner === options.owner &&
+              surface.session === options.session &&
+              surface.epoch === options.epoch,
+          )
+          .map((surface) => ({ ...surface })),
+      };
+    });
   }
 
   reconcileOwner(options: {
     owner: string;
     session: string;
+    epoch: number;
     desiredIds: readonly string[];
   }): Promise<void> {
     return this.execute("reconcile", "reconcile", () => {
+      const current = this.activeOwners.get(options.owner);
+      if (
+        current &&
+        (options.epoch < current.epoch ||
+          (options.epoch === current.epoch &&
+            options.session !== current.session))
+      ) {
+        throw new Error("retired native owner");
+      }
+      if (!current || options.epoch > current.epoch) {
+        this.activeOwners.set(options.owner, {
+          session: options.session,
+          epoch: options.epoch,
+        });
+      }
+      for (const surface of this.surfaces.values()) {
+        if (surface.owner === options.owner) surface.foregrounded = false;
+      }
+      if (this.ownerCleanupFailures > 0) {
+        this.ownerCleanupFailures -= 1;
+        throw new Error("native owner cleanup rejected");
+      }
       const desired = new Set(options.desiredIds);
       for (const [id, surface] of this.surfaces) {
         if (
           surface.owner === options.owner &&
-          (surface.session !== options.session || !desired.has(id))
+          (surface.session !== options.session ||
+            surface.epoch !== options.epoch ||
+            !desired.has(id))
         ) {
           this.surfaces.delete(id);
         }
@@ -341,17 +407,34 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
   private requireOwned(options: {
     owner: string;
     session: string;
+    epoch: number;
     id: string;
   }): NativeSurfaceRecord {
     const surface = this.surfaces.get(options.id);
     if (
       !surface ||
       surface.owner !== options.owner ||
-      surface.session !== options.session
+      surface.session !== options.session ||
+      surface.epoch !== options.epoch
     ) {
       throw new Error(`no owned surface ${options.id}`);
     }
     return surface;
+  }
+
+  private requireActive(options: {
+    owner: string;
+    session: string;
+    epoch: number;
+  }): void {
+    const active = this.activeOwners.get(options.owner);
+    if (
+      !active ||
+      active.session !== options.session ||
+      active.epoch !== options.epoch
+    ) {
+      throw new Error("retired native owner");
+    }
   }
 }
 
@@ -416,7 +499,18 @@ describe("CapacitorNativeSurfaceShell", () => {
     expect(shell.hasSurface(CREATE_A.id)).toBe(false);
     await shell.createSurface(CREATE_A);
     expect(shell.hasSurface(CREATE_A.id)).toBe(true);
-    expect(errorSpy).toHaveBeenCalledTimes(1);
+
+    manager.rejectNext("bounds", 3);
+    await expect(shell.setBounds(CREATE_A.id, BOUNDS)).rejects.toMatchObject({
+      operation: `setBounds(${CREATE_A.id})`,
+    });
+    await shell.setBounds(CREATE_A.id, BOUNDS);
+    manager.rejectNext("bounds", 3);
+    const shifted = { ...BOUNDS, x: BOUNDS.x + 1 };
+    await expect(shell.setBounds(CREATE_A.id, shifted)).rejects.toMatchObject({
+      operation: `setBounds(${CREATE_A.id})`,
+    });
+    expect(errorSpy).toHaveBeenCalledTimes(3);
   });
 
   it("reconciles navigation, geometry, reload, and global visibility on a motionless page", async () => {
@@ -442,6 +536,22 @@ describe("CapacitorNativeSurfaceShell", () => {
     expect(
       manager.events.filter((event) => event.startsWith("reload:")),
     ).toHaveLength(3);
+  });
+
+  it("accepts navigation whose mutation landed before its acknowledgement was lost", async () => {
+    const manager = new StatefulNativeManager();
+    const shell = new CapacitorNativeSurfaceShell(() => manager, IDENTITY_A);
+    await shell.createSurface(CREATE_A);
+    manager.applyThenRejectNext("navigate");
+
+    await shell.navigate(CREATE_A.id, "https://landed.example");
+
+    expect(manager.surfaces.get(CREATE_A.id)?.currentUrl).toBe(
+      "https://landed.example",
+    );
+    expect(
+      manager.events.filter((event) => event === `navigate:${CREATE_A.id}`),
+    ).toHaveLength(1);
   });
 
   it("destroys a stale generation before reopening the same id", async () => {
@@ -496,8 +606,15 @@ describe("CapacitorNativeSurfaceShell", () => {
         .map((state) => state.id),
     ).toEqual([CREATE_A.id]);
 
+    await shell.presentSurface(CREATE_B.id);
+    expect(
+      [...manager.surfaces.values()]
+        .filter((state) => state.foregrounded)
+        .map((state) => state.id),
+    ).toEqual([CREATE_B.id]);
+
     const gate = manager.deferNext("present");
-    const staleSelection = shell.presentSurface(CREATE_B.id);
+    const staleSelection = shell.presentSurface(CREATE_A.id);
     await drainPromises();
     const host = shell.presentSurface(null);
     gate.resolve();
@@ -530,6 +647,78 @@ describe("CapacitorNativeSurfaceShell", () => {
       currentUrl: REOPENED_A.url,
     });
     expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects delayed create and presentation commands from a retired renderer epoch", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    errorSpy.mockClear();
+    const manager = new StatefulNativeManager();
+    const older = new CapacitorNativeSurfaceShell(() => manager, IDENTITY_A);
+    await older.createSurface(CREATE_A);
+    await older.presentSurface(CREATE_A.id);
+
+    const newer = new CapacitorNativeSurfaceShell(() => manager, IDENTITY_B);
+    await Promise.all([
+      newer.createSurface(REOPENED_A),
+      newer.createSurface(CREATE_B),
+    ]);
+    await newer.presentSurface(CREATE_B.id);
+
+    await expect(older.createSurface(CREATE_C)).rejects.toMatchObject({
+      surfaceId: CREATE_C.id,
+    });
+    await expect(older.presentSurface(null)).rejects.toMatchObject({
+      surfaceId: null,
+    });
+    expect(manager.surfaces.has(CREATE_C.id)).toBe(false);
+    expect(manager.surfaces.get(CREATE_B.id)).toMatchObject({
+      epoch: IDENTITY_B.epoch,
+      foregrounded: true,
+    });
+    expect(errorSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("hides every stale owner surface before fallible epoch cleanup", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    errorSpy.mockClear();
+    const manager = new StatefulNativeManager();
+    manager.seed(IDENTITY_A, CREATE_A);
+    manager.seed(IDENTITY_A, CREATE_B);
+    const staleA = manager.surfaces.get(CREATE_A.id);
+    const staleB = manager.surfaces.get(CREATE_B.id);
+    if (!staleA || !staleB) throw new Error("expected seeded surfaces");
+    staleA.foregrounded = true;
+    staleB.foregrounded = true;
+    manager.rejectNextOwnerCleanup(3);
+
+    const newer = new CapacitorNativeSurfaceShell(() => manager, IDENTITY_B);
+    await expect(newer.presentSurface(null)).rejects.toMatchObject({
+      surfaceId: null,
+    });
+    expect(
+      [...manager.surfaces.values()].every((state) => !state.foregrounded),
+    ).toBe(true);
+
+    await newer.presentSurface(null);
+    expect(manager.surfaces.size).toBe(0);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns presentation to the host before rejecting a missing selected surface", async () => {
+    const manager = new StatefulNativeManager();
+    const shell = new CapacitorNativeSurfaceShell(() => manager, IDENTITY_A);
+    await Promise.all([
+      shell.createSurface(CREATE_A),
+      shell.createSurface(CREATE_B),
+    ]);
+    await shell.presentSurface(CREATE_A.id);
+
+    await expect(
+      manager.presentSurface({ ...IDENTITY_A, id: "browser-tab:missing" }),
+    ).rejects.toThrow(/no owned surface/);
+    expect(
+      [...manager.surfaces.values()].every((state) => !state.foregrounded),
+    ).toBe(true);
   });
 
   it("removes a native orphan left by a renderer that no longer exists", async () => {

@@ -6,8 +6,8 @@
  * `capacitor-native-surface-shell.ts` models the same method set structurally
  * and calls it through the Capacitor `Plugins` registry — but the shapes here
  * are the source of truth for both native implementations (iOS `WKWebView` on a
- * dedicated `WKProcessPool` + `WKWebsiteDataStore`; Android out-of-process
- * `WebView` + androidx.webkit `Profile`).
+ * dedicated `WKProcessPool` + `WKWebsiteDataStore`; Android platform-managed
+ * out-of-app `WebView` renderer + androidx.webkit `Profile`).
  *
  * The load-bearing invariant every method upholds: an independent surface always
  * carries an EXPLICIT process + storage policy. `createSurface` rejects when
@@ -16,7 +16,12 @@
  * epic closes.
  */
 
-/** Renderer-process sharing for a surface — its own process, or a shared pool. */
+/**
+ * Native renderer policy. `isolated` means a dedicated pool on iOS and a
+ * verified out-of-app sandboxed renderer on Android, which the OS may reuse
+ * across sibling WebViews. `shared` selects the plugin pool on iOS and leaves
+ * Android renderer placement to the platform.
+ */
 export type SurfaceProcessSharing = "isolated" | "shared";
 
 /** Website-data-store sharing for a surface — its own store, or the host's. */
@@ -27,6 +32,8 @@ export interface SurfaceOwnerOptions {
   owner: string;
   /** Unique JS-realm token fencing stale commands after a renderer reload. */
   session: string;
+  /** Monotonic renderer epoch; native rejects every command from older epochs. */
+  epoch: number;
 }
 
 export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
@@ -107,6 +114,7 @@ export interface SurfaceState {
   storage: SurfaceStorageSharing | null;
   owner: string | null;
   session: string | null;
+  epoch: number | null;
 }
 
 export interface SurfaceStateWithId extends SurfaceState {
@@ -137,7 +145,7 @@ export interface ElizaSurfaceManagerPlugin {
   reloadSurface(options: SurfaceIdOptions): Promise<void>;
   /** Atomically hide all siblings, then present the requested surface or host. */
   presentSurface(options: PresentSurfaceOptions): Promise<void>;
-  /** Tear a surface down and release its process + storage. */
+  /** Tear a surface down and release its native renderer and storage resources. */
   destroySurface(options: SurfaceIdOptions): Promise<void>;
   /** Introspect a surface's live state — for debugging and instrumented tests. */
   getSurfaceState(options: SurfaceIdOptions): Promise<SurfaceState>;
