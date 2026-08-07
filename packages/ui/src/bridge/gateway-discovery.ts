@@ -111,7 +111,12 @@ async function discoverViaDesktopBridge(
     void invokeDesktopBridgeRequest<unknown>({
       rpcMethod: "gatewayStopDiscovery",
       ipcChannel: "gateway:stopDiscovery",
-    }).catch(() => {});
+    }).catch((error) => {
+      logger.warn(
+        { error },
+        "[gateway-discovery] Failed to stop desktop discovery",
+      );
+    });
   }
 }
 

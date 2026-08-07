@@ -7,6 +7,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const { loggerWarn } = vi.hoisted(() => ({ loggerWarn: vi.fn() }));
 const isFeatureAvailable = vi.fn<(feature: string) => boolean>();
 const getPlugins = vi.fn<() => { gateway: { plugin: unknown } }>();
 const isElectrobunRuntime = vi.fn<() => boolean>();
@@ -32,7 +33,7 @@ vi.mock("./electrobun-rpc", () => ({
 }));
 
 vi.mock("@elizaos/logger", () => ({
-  logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+  logger: { warn: loggerWarn, info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
 import {
@@ -196,6 +197,28 @@ describe("discoverGatewayEndpoints — Electrobun desktop transport", () => {
       ([options]) => options.rpcMethod,
     );
     expect(methods).toContain("gatewayStopDiscovery");
+  });
+
+  it("reports a best-effort stop failure without rejecting a successful scan", async () => {
+    invokeDesktopBridgeRequest.mockImplementation(async ({ rpcMethod }) => {
+      if (rpcMethod === "gatewayGetDiscoveredGateways") {
+        return { gateways: [ENDPOINT] };
+      }
+      if (rpcMethod === "gatewayStopDiscovery") {
+        throw new Error("stop failed");
+      }
+      return { gateways: [] };
+    });
+
+    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual([
+      ENDPOINT,
+    ]);
+    await vi.waitFor(() => {
+      expect(loggerWarn).toHaveBeenCalledWith(
+        { error: expect.any(Error) },
+        "[gateway-discovery] Failed to stop desktop discovery",
+      );
+    });
   });
 
   it("never consults the Capacitor plugin registry on desktop", async () => {
