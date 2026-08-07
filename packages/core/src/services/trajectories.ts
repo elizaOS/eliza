@@ -8,6 +8,7 @@
 export { tryHandleTrajectoryReadRoutes } from "../features/trajectories/read-routes";
 export { TrajectoriesService } from "../features/trajectories/TrajectoriesService";
 export * from "./trajectory-export";
+export * from "./trajectory-json";
 export * from "./trajectory-types";
 
 import type {

@@ -13,9 +13,11 @@ import { TrajectoriesService } from "./TrajectoriesService";
 
 function createRuntimeWithoutSql(): IAgentRuntime {
 	return {
+		agentId: "00000000-0000-4000-8000-000000000001",
 		adapter: { db: {} },
 		getService: () => null,
 		getServicesByType: () => [],
+		reportError: () => {},
 	} as unknown as IAgentRuntime;
 }
 
@@ -23,6 +25,7 @@ function makeTrajectoryRow(trajectoryId: string, stepId: string) {
 	return {
 		id: trajectoryId,
 		agent_id: "00000000-0000-4000-8000-000000000001",
+		status: "active",
 		start_time: 1,
 		end_time: null,
 		duration_ms: null,
@@ -41,14 +44,6 @@ function makeTrajectoryRow(trajectoryId: string, stepId: string) {
 				observation: {},
 				llmCalls: [],
 				providerAccesses: [],
-				action: {
-					attemptId: "pending",
-					timestamp: 1,
-					actionType: "pending",
-					actionName: "pending",
-					parameters: {},
-					success: false,
-				},
 				reward: 0,
 				done: false,
 			},
@@ -187,6 +182,14 @@ describe("TrajectoriesService", () => {
 			executeRawSql: (
 				sqlText: string,
 			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+			executeRawSqlTransaction: <T>(
+				work: (
+					execute: (sqlText: string) => Promise<{
+						rows: Array<Record<string, unknown>>;
+						columns: string[];
+					}>,
+				) => Promise<T>,
+			) => Promise<T>;
 		};
 
 		serviceInternals.executeRawSql = async (sqlText: string) => {
@@ -201,6 +204,8 @@ describe("TrajectoriesService", () => {
 			}
 			return { rows: [], columns: [] };
 		};
+		serviceInternals.executeRawSqlTransaction = (work) =>
+			work(serviceInternals.executeRawSql);
 
 		service.startStep(trajectoryId, {
 			timestamp: 1,
@@ -222,7 +227,7 @@ describe("TrajectoriesService", () => {
 		const persisted = JSON.parse(row.steps_json);
 		expect(persisted).toHaveLength(2);
 		expect(persisted[0].observation).toEqual({});
-		expect(persisted[0].action.parameters).toEqual({});
+		expect(persisted[0].action).toBeUndefined();
 		expect(persisted[1].stepNumber).toBe(1);
 	});
 
@@ -266,9 +271,11 @@ describe("TrajectoriesService", () => {
 
 	it("includes persisted metadata on trajectory list rows", async () => {
 		const service = new TrajectoriesService({
+			agentId: "00000000-0000-4000-8000-000000000001",
 			adapter: { db: { execute: async () => ({ rows: [] }) } },
 			getService: () => null,
 			getServicesByType: () => [],
+			reportError: () => {},
 		} as unknown as IAgentRuntime);
 		const serviceInternals = service as unknown as {
 			ensureStorageReady: () => Promise<void>;
@@ -293,6 +300,14 @@ describe("TrajectoriesService", () => {
 						start_time: 1000,
 						end_time: 1500,
 						duration_ms: 500,
+						steps_json: "[]",
+						reward_components_json: JSON.stringify({
+							environmentReward: 0,
+						}),
+						metrics_json: JSON.stringify({
+							episodeLength: 0,
+							finalStatus: "completed",
+						}),
 						step_count: 1,
 						llm_call_count: 2,
 						total_prompt_tokens: 10,
@@ -336,9 +351,11 @@ describe("TrajectoriesService", () => {
 
 	it("rejects malformed persisted list rows instead of fabricating required fields", async () => {
 		const service = new TrajectoriesService({
+			agentId: "00000000-0000-4000-8000-000000000001",
 			adapter: { db: { execute: async () => ({ rows: [] }) } },
 			getService: () => null,
 			getServicesByType: () => [],
+			reportError: () => {},
 		} as unknown as IAgentRuntime);
 		const serviceInternals = service as unknown as {
 			ensureStorageReady: () => Promise<void>;
@@ -358,6 +375,16 @@ describe("TrajectoriesService", () => {
 								source: "chat",
 								status: "completed",
 								start_time: 1000,
+								end_time: 1500,
+								duration_ms: 500,
+								steps_json: "[]",
+								reward_components_json: JSON.stringify({
+									environmentReward: 0,
+								}),
+								metrics_json: JSON.stringify({
+									episodeLength: 0,
+									finalStatus: "completed",
+								}),
 								step_count: 1,
 								llm_call_count: null,
 								total_prompt_tokens: 10,
@@ -367,6 +394,7 @@ describe("TrajectoriesService", () => {
 								total_reward: 0,
 								metadata_json: "{}",
 								created_at: "1970-01-01T00:00:01.000Z",
+								updated_at: "1970-01-01T00:00:01.500Z",
 							},
 						],
 						columns: [],
