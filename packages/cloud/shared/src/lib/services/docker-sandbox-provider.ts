@@ -21,7 +21,10 @@ import { signStewardMutatingRequest } from "../steward/sign";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
-import { buildAgentContainerSecurityFlags } from "./agent-container-security";
+import {
+  buildAgentContainerMemoryFlags,
+  buildAgentContainerSecurityFlags,
+} from "./agent-container-security";
 import { ensureRegistryAccess } from "./containers/hetzner-client/registry";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { resolveImageDigest } from "./containers/registry-probe";
@@ -1416,9 +1419,13 @@ export class DockerSandboxProvider implements SandboxProvider {
         "--health-timeout 5s",
         "--health-start-period 15s",
         "--health-retries 6",
-        ...(config.container?.memoryMb
-          ? [`--memory ${shellQuote(`${Math.ceil(config.container.memoryMb)}m`)}`]
-          : []),
+        // Per-container memory ceiling (see buildAgentContainerMemoryFlags):
+        // an explicit per-agent `container.memory` wins; otherwise the
+        // env-tunable fleet default applies so a boot-looping agent can never
+        // OOM-starve its co-tenants again (staging fleet incident 2026-08-05).
+        ...buildAgentContainerMemoryFlags(
+          config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb(),
+        ),
         // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
         // privilege escalation, and bound the process count — then, under
         // headscale only, re-add exactly NET_ADMIN + /dev/net/tun for the VPN.
