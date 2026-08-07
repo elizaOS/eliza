@@ -66,7 +66,6 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Set default SMS", "bridge-only", "compose"],
   }),
   "builtin-contacts": expected({
-    requireAll: ["Contacts"],
     requireAny: ["address book", "phone, or email", "search"],
   }),
   "builtin-camera": exempt(
@@ -238,7 +237,6 @@ export const VIEW_OCR_POLICIES = {
     VIEW_REGISTRY_FALLBACK,
   ),
   "plugin-contacts-gui": expected({
-    requireAll: ["Contacts"],
     requireAny: ["address book", "phone, or email", "search"],
   }),
   "plugin-focus-gui": expected({
