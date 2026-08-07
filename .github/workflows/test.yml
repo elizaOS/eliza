@@ -82,9 +82,6 @@ jobs:
       - name: Validate GitHub-native turbo cache contract
         run: node packages/scripts/ci-turbo-cache-contract.mjs
 
-      - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.mjs
-
       - name: Install workflow-invariants parser dependency
         run: npm install --prefix "$RUNNER_TEMP/workflow-invariants-deps" --no-save --no-package-lock --ignore-scripts yaml@2.9.0
 
@@ -163,6 +160,16 @@ jobs:
 
       - name: Test-runner vacuous-green guard
         run: bun test packages/scripts/__tests__/run-all-tests-vacuous-green-guard.test.ts
+
+      - name: Validate CI Bun version pin contract
+        run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+
+      - name: Upload Bun runtime resolution inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: bun-runtime-inventory
+          path: ${{ runner.temp }}/bun-runtime-inventory.json
+          retention-days: 30
 
   server-tests:
     name: Server Tests
