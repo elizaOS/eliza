@@ -10,7 +10,7 @@ export const VIEWS_ACTION_NAME = "VIEWS";
 
 type ViewCommandRoutingContext = {
 	runtime: { actions?: ReadonlyArray<{ name?: string }> };
-	message?: { content?: { text?: unknown } };
+	message?: Pick<Memory, "content">;
 };
 
 function messageText(context: ViewCommandRoutingContext): string {

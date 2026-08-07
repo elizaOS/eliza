@@ -3424,16 +3424,22 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
           // "it creates multiple agents" report. Only an authoritative success
           // list may conclude the user has no agent to reuse; otherwise surface
           // the error so the caller can retry rather than duplicate.
-          return await this.getCloudCompatAgents().catch((cause) => ({
+          return await this.getCloudCompatAgents().catch((cause: unknown) => ({
             success: false as const,
             data: [] as CloudCompatAgent[],
             error: cause instanceof Error ? cause.message : undefined,
+            cause,
           }));
         })();
     if (!list.success) {
+      // Keep the original rejection on the cause chain: callers (the join
+      // flow's stale-binding recovery) classify the structural agent-gone
+      // shape by status/code via `isCloudAgentGoneError`, which the flattened
+      // message alone cannot carry.
       throw new Error(
         list.error ||
           "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
+        { cause: "cause" in list ? list.cause : undefined },
       );
     }
     // Dedicated mode must not bind a temporary shared bridge as if it were a

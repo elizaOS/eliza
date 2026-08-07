@@ -377,13 +377,23 @@ describe("getDeviceSecret", () => {
   it("delegates account-pool broker routes before wake handling", async () => {
     const previousEnabled = process.env.ELIZA_ACCOUNT_POOL_BROKER_ENABLED;
     const previousSecret = process.env.ELIZA_ACCOUNT_POOL_BROKER_SECRET;
+    // Isolate account storage: the broker health handler enumerates real
+    // accounts, so without a scratch ELIZA_HOME/STATE_DIR this test reads
+    // (and may fail to decrypt) the developer's actual account vault.
+    const previousHome = process.env.ELIZA_HOME;
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const scratch = fs.mkdtempSync(
+      path.join(os.tmpdir(), "internal-routes-broker-"),
+    );
+    process.env.ELIZA_HOME = scratch;
+    process.env.ELIZA_STATE_DIR = scratch;
     process.env.ELIZA_ACCOUNT_POOL_BROKER_ENABLED = "1";
     process.env.ELIZA_ACCOUNT_POOL_BROKER_SECRET =
       "test-broker-secret-at-least-thirty-two-chars";
     try {
       const response = fakeRes();
       const handled = await handleInternalWakeRoute(
-        fakeReq("/internal/account-pool/v1/health", {
+        fakeReq("/api/internal/account-pool/v1/health", {
           method: "GET",
           auth: "Bearer test-broker-secret-at-least-thirty-two-chars",
         }),
@@ -404,6 +414,11 @@ describe("getDeviceSecret", () => {
       if (previousSecret === undefined)
         delete process.env.ELIZA_ACCOUNT_POOL_BROKER_SECRET;
       else process.env.ELIZA_ACCOUNT_POOL_BROKER_SECRET = previousSecret;
+      if (previousHome === undefined) delete process.env.ELIZA_HOME;
+      else process.env.ELIZA_HOME = previousHome;
+      if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = previousStateDir;
+      fs.rmSync(scratch, { recursive: true, force: true });
     }
   });
 

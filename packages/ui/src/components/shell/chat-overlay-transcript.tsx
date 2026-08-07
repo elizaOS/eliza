@@ -43,6 +43,50 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
   );
 }
 
+/**
+ * Keeps the pending label and first streamed reply in one line box while its
+ * content changes; subsequent token updates retain the same subtree.
+ */
+function OverlayAssistantTurnBody({
+  message,
+  turnStatus,
+}: {
+  message: ChatMessageData;
+  turnStatus: ChatTurnStatus | null;
+}) {
+  const attachmentsNode = message.attachments?.length ? (
+    <MessageAttachments attachments={message.attachments} />
+  ) : null;
+  const pending =
+    !message.text.trim() &&
+    !message.attachments?.length &&
+    !message.secretRequest;
+  const phase = pending ? "status" : "reply";
+  return (
+    <div
+      className="grid min-h-[1.4375rem] w-full min-w-0"
+      data-testid="overlay-assistant-turn-body"
+      data-phase={phase}
+    >
+      {pending ? (
+        <div className="col-start-1 row-start-1 flex min-h-[1.4375rem] items-center">
+          <TurnStatus status={turnStatus} showLabel={false} />
+        </div>
+      ) : (
+        <div className="col-start-1 row-start-1 min-h-[1.4375rem] min-w-0">
+          <InlineWidgetText content={message.text} />
+          {attachmentsNode}
+          {message.secretRequest ? (
+            <div className="pointer-events-auto">
+              <SensitiveRequestBlock request={message.secretRequest} />
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function renderOverlayMessageBody(
   message: ChatMessageData,
   ctx: ChatMessageRenderContext | undefined,
@@ -80,15 +124,6 @@ export function renderOverlayMessageBody(
     );
   }
 
-  if (!isUser && !message.text.trim() && !message.attachments?.length) {
-    return (
-      <>
-        <TurnStatus status={ctx?.turnStatus ?? null} showLabel={false} />
-        {attachmentsNode}
-      </>
-    );
-  }
-
   if (isUser) {
     return (
       <>
@@ -99,15 +134,10 @@ export function renderOverlayMessageBody(
   }
 
   return (
-    <>
-      <InlineWidgetText content={message.text} />
-      {attachmentsNode}
-      {message.secretRequest ? (
-        <div className="pointer-events-auto">
-          <SensitiveRequestBlock request={message.secretRequest} />
-        </div>
-      ) : null}
-    </>
+    <OverlayAssistantTurnBody
+      message={message}
+      turnStatus={ctx?.turnStatus ?? null}
+    />
   );
 }
 

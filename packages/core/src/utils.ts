@@ -354,6 +354,23 @@ export const addHeader = (header: string, body: string) => {
 };
 
 /**
+ * Canonical header for a rendered recent-conversation block.
+ *
+ * The parenthetical is load-bearing: it tells the model the visible dialogue
+ * is only the most recent window of a longer stored conversation, so
+ * beyond-window recall questions are not answered from the window alone
+ * (tj-69d82bb89ebb69). Every renderer of this block — the recent-messages
+ * provider and the conversation compactors — must emit the header through
+ * this helper; rebuilding from a bare "# Conversation Messages" constant
+ * silently strips the disclosure.
+ *
+ * @param {number} visibleCount - Number of messages rendered in the block.
+ * @returns {string} The annotated section header.
+ */
+export const conversationMessagesHeader = (visibleCount: number): string =>
+	`# Conversation Messages (most recent ${visibleCount}; older history is not shown here)`;
+
+/**
  * Generates a string with random user names populated in a template.
  *
  * This function generates random user names and populates placeholders

@@ -25,6 +25,9 @@ export const AI_PROVIDER_PLUGINS: readonly string[] = [
   "@elizaos/plugin-zai",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-codex-cli",
+  "@elizaos/plugin-cli-inference",
+  "@elizaos/plugin-nearai",
+  "@elizaos/plugin-vercel-ai-gateway",
 ];
 
 /**

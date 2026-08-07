@@ -283,7 +283,7 @@ describe("evaluateOcrContent", () => {
     ],
     [
       "plugin-notes-gui",
-      "Newnote Clear\nCreate a note from here or through chat\nTitle\nDetails\n+ Add note",
+      "Launch checklist Followup\nCloud agent, phone, and deck are ready.\nShare the demo recording with the team.",
     ],
   ])("verifies current macOS OCR segmentation for %s", (slug, text) => {
     const f = evaluateOcrContent({

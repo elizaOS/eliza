@@ -122,7 +122,7 @@ async function postBroker(
 ): Promise<FakeRes> {
   const res = fakeRes();
   await handleAccountPoolBrokerRoute(
-    fakeReq(`/internal/account-pool/v1/${pathSuffix}`, {
+    fakeReq(`/api/internal/account-pool/v1/${pathSuffix}`, {
       auth: `Bearer ${SECRET}`,
       body,
     }),
@@ -179,7 +179,7 @@ describe("account-pool broker route auth", () => {
     delete process.env.ELIZA_ACCOUNT_POOL_BROKER_ENABLED;
     const res = fakeRes();
     const handled = await handleAccountPoolBrokerRoute(
-      fakeReq("/internal/account-pool/v1/health", {
+      fakeReq("/api/internal/account-pool/v1/health", {
         method: "GET",
         auth: `Bearer ${SECRET}`,
       }),
@@ -192,7 +192,7 @@ describe("account-pool broker route auth", () => {
     const weak = fakeRes();
     expect(
       await handleAccountPoolBrokerRoute(
-        fakeReq("/internal/account-pool/v1/health", {
+        fakeReq("/api/internal/account-pool/v1/health", {
           method: "GET",
           auth: "Bearer short",
         }),
@@ -204,7 +204,7 @@ describe("account-pool broker route auth", () => {
   it("rejects non-loopback callers before serving the broker", async () => {
     const res = fakeRes();
     const handled = await handleAccountPoolBrokerRoute(
-      fakeReq("/internal/account-pool/v1/health", {
+      fakeReq("/api/internal/account-pool/v1/health", {
         method: "GET",
         auth: `Bearer ${SECRET}`,
         remoteAddress: "10.0.0.8",
@@ -220,7 +220,7 @@ describe("account-pool broker route auth", () => {
   it("requires bearer auth and never echoes the secret in errors", async () => {
     const res = fakeRes();
     await handleAccountPoolBrokerRoute(
-      fakeReq("/internal/account-pool/v1/health", {
+      fakeReq("/api/internal/account-pool/v1/health", {
         method: "GET",
         auth: "Bearer wrong-secret",
       }),
@@ -310,7 +310,7 @@ describe("account-pool broker consumer key management", () => {
   it("returns structured no-store 400 for malformed consumer key ids", async () => {
     const res = fakeRes();
     await handleAccountPoolBrokerRoute(
-      fakeReq("/internal/account-pool/v1/consumer-keys/%E0%A4%A", {
+      fakeReq("/api/internal/account-pool/v1/consumer-keys/%E0%A4%A", {
         method: "PATCH",
         auth: `Bearer ${SECRET}`,
         body: {
@@ -345,7 +345,7 @@ describe("account-pool broker consumer key management", () => {
 
     const listed = fakeRes();
     await handleAccountPoolBrokerRoute(
-      fakeReq("/internal/account-pool/v1/consumer-keys", {
+      fakeReq("/api/internal/account-pool/v1/consumer-keys", {
         method: "GET",
         auth: `Bearer ${SECRET}`,
       }),
@@ -369,7 +369,7 @@ describe("account-pool broker consumer key management", () => {
 
     const updated = fakeRes();
     await handleAccountPoolBrokerRoute(
-      fakeReq(`/internal/account-pool/v1/consumer-keys/${id}`, {
+      fakeReq(`/api/internal/account-pool/v1/consumer-keys/${id}`, {
         method: "PATCH",
         auth: `Bearer ${SECRET}`,
         body: {
@@ -393,7 +393,7 @@ describe("account-pool broker consumer key management", () => {
 
     const rotated = fakeRes();
     await handleAccountPoolBrokerRoute(
-      fakeReq(`/internal/account-pool/v1/consumer-keys/${id}/rotate`, {
+      fakeReq(`/api/internal/account-pool/v1/consumer-keys/${id}/rotate`, {
         method: "POST",
         auth: `Bearer ${SECRET}`,
       }),

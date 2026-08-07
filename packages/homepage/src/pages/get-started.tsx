@@ -1008,7 +1008,7 @@ export default function GetStartedPage() {
             </Link>
           )}
         </div>
-        <ElizaLogo className="h-8" />
+        <ElizaLogo variant="svg" className="h-8 w-auto" />
         <div className="w-16" />
       </header>
 

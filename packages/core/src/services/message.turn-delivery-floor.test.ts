@@ -68,6 +68,31 @@ function stage1DirectReply(replyText: string) {
 	};
 }
 
+function stage1ActionPlan(actionName: string) {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "handle-response-action",
+				name: "HANDLE_RESPONSE",
+				arguments: {
+					shouldRespond: "RESPOND",
+					thought: "The requested operation needs a registered action.",
+					contexts: ["general"],
+					intents: ["perform requested operation"],
+					candidateActionNames: [actionName],
+					replyText: "Working on it.",
+					facts: [],
+					relationships: [],
+					addressedTo: [],
+					requiresTool: true,
+				},
+			},
+		],
+		finishReason: "tool_calls",
+	};
+}
+
 interface Harness {
 	runtime: IAgentRuntime;
 	service: DefaultMessageService;
@@ -415,6 +440,84 @@ describe("race-superseded turns keep addressed responses", () => {
 
 		expect(secondTurn).not.toBeNull();
 		// Each inbound message got exactly one reply — no drop, no double.
+		expect(visibleTexts(firstDeliveries)).toEqual([firstReply]);
+		expect(visibleTexts(secondDeliveries)).toEqual([secondReply]);
+		expect(result.didRespond).toBe(true);
+	});
+
+	it("keeps an addressed action-mode result when a newer message completes first", async () => {
+		const actionName = "TEST_ADDRESS_ACTION";
+		const firstReply = `action complete. probe-${v4()}`;
+		const secondReply = `second answer. probe-${v4()}`;
+		const firstDeliveries: Content[] = [];
+		const secondDeliveries: Content[] = [];
+		let secondTurn: Promise<unknown> | null = null;
+		let responseHandlerCalls = 0;
+		let actionPlannerCalls = 0;
+
+		const h = createHarness(async (getHarness, modelType) => {
+			if (modelType === "RESPONSE_HANDLER") {
+				responseHandlerCalls += 1;
+				return responseHandlerCalls === 1
+					? stage1ActionPlan(actionName)
+					: stage1DirectReply(secondReply);
+			}
+			if (modelType === "ACTION_PLANNER") {
+				actionPlannerCalls += 1;
+				if (actionPlannerCalls !== 1) throw RATE_LIMIT_ERROR;
+				const inner = getHarness();
+				secondTurn = inner.service.handleMessage(
+					inner.runtime,
+					inner.makeMessage("also answer this newer question"),
+					async (content) => {
+						secondDeliveries.push(content);
+						return [];
+					},
+				);
+				await secondTurn;
+				return {
+					thought: "Run the requested registered action.",
+					toolCalls: [
+						{
+							id: "addressed-action-1",
+							name: actionName,
+							args: {},
+						},
+					],
+				};
+			}
+			throw RATE_LIMIT_ERROR;
+		});
+		const actionHandler = vi.fn(async () => ({
+			success: true,
+			text: firstReply,
+			userFacingText: firstReply,
+			continueChain: false,
+			data: { actionName },
+		}));
+		h.runtime.actions = [
+			{
+				name: actionName,
+				similes: [],
+				description: "Exercise addressed action-mode race delivery.",
+				examples: [],
+				validate: async () => true,
+				handler: actionHandler,
+			},
+		] as never;
+
+		const result = await h.service.handleMessage(
+			h.runtime,
+			h.makeMessage("perform the requested operation"),
+			async (content) => {
+				firstDeliveries.push(content);
+				return [];
+			},
+		);
+		await drainPostDeliveryTasks(h.runtime);
+
+		expect(secondTurn).not.toBeNull();
+		expect(actionHandler).toHaveBeenCalledTimes(1);
 		expect(visibleTexts(firstDeliveries)).toEqual([firstReply]);
 		expect(visibleTexts(secondDeliveries)).toEqual([secondReply]);
 		expect(result.didRespond).toBe(true);

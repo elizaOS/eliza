@@ -3,8 +3,9 @@
  *
  * Replaces the upstream plugin-agent-skills providers that dump ALL skills
  * into every prompt. Instead, builds a lightweight inverted index at startup
- * and scores the user's message + recent context to select only the most
- * relevant skills per turn.
+ * and scores the current user message to select only the most relevant skills
+ * per turn. Prior turns remain available through normal conversation context;
+ * they must not silently activate an unrelated skill on a new standalone ask.
  *
  * Three tiers of injection:
  *   - No match:  1-line footer (~25 tokens)
@@ -20,7 +21,6 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared";
 
 // ── Stopwords ────────────────────────────────────────────────────────────────
 
@@ -281,18 +281,6 @@ function scoreQuery(index: BM25Index, queryText: string): ScoredSkill[] {
   return results;
 }
 
-// ── Recent context helper ────────────────────────────────────────────────────
-
-function getRecentContext(state: State): string {
-  return getRecentMessagesData(state)
-    .slice(-5)
-    .map((message) => {
-      const content = message.content as Record<string, unknown> | undefined;
-      return (content?.text as string) ?? "";
-    })
-    .join(" ");
-}
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function truncateDesc(desc: string, maxLen: number): string {
@@ -333,7 +321,7 @@ export function createDynamicSkillProvider(): Provider {
     async get(
       runtime: IAgentRuntime,
       message: Memory,
-      state: State,
+      _state: State,
     ): Promise<ProviderResult> {
       try {
         const service = runtime.getService<Service & AgentSkillsServiceLike>(
@@ -353,13 +341,14 @@ export function createDynamicSkillProvider(): Provider {
           indexCache = buildIndex(skills);
         }
 
-        // Score against current message + recent context
+        // Skill activation is scoped to the current turn. Mixing the last five
+        // messages into this query lets an old topic keep injecting thousands
+        // of irrelevant instruction characters into every later planner call.
+        // Conversational history is already rendered separately for the model;
+        // this provider only owns retrieval of instructions for the present ask.
         const messageText =
           ((message.content as Record<string, unknown>)?.text as string) ?? "";
-        const recentContext = getRecentContext(state);
-        const queryText = `${messageText} ${recentContext}`;
-
-        const scored = scoreQuery(indexCache, queryText);
+        const scored = scoreQuery(indexCache, messageText);
         const topMatch = scored[0];
 
         // Tier 0: No relevant match — 1-line footer only

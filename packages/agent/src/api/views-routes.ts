@@ -84,6 +84,18 @@ function parseViewTypeValue(value: unknown): ViewType | undefined {
     : undefined;
 }
 
+function normalizedViewPath(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const withoutQuery = value.trim().split(/[?#]/, 1)[0];
+  if (!withoutQuery) return null;
+  const rooted = withoutQuery.startsWith("/")
+    ? withoutQuery
+    : `/${withoutQuery}`;
+  return rooted.length > 1 && rooted.endsWith("/")
+    ? rooted.slice(0, -1)
+    : rooted;
+}
+
 /** Hard cap on accepted element reports to bound memory + prompt growth. */
 const MAX_REPORTED_VIEW_ELEMENTS = 200;
 
@@ -1044,6 +1056,7 @@ export async function handleViewsRoutes(
         viewPath,
         viewLabel,
         viewType: resolvedViewType,
+        source: reportedSource,
         ...(action ? { action } : {}),
         ...(subview ? { subview } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
@@ -1071,17 +1084,48 @@ export async function handleViewsRoutes(
   // The shell's agent-surface registry reports this view's addressable element
   // snapshot (id/role/label/value/focused) so the planner's "# Active View"
   // block can list elements and act on them by id without a list-elements
-  // round-trip. Gated server-side on `id` matching the active (navigated-to)
-  // view via setActiveViewElements, so a background/stale surface can't
-  // overwrite the foreground view's elements (accepted=false when it doesn't
-  // match — the report is simply dropped).
+  // round-trip. A normal report is gated on `id` matching the active view. If
+  // the backend restarted and therefore owns no view state, a report may
+  // restore it only when the browser's current path matches the registered
+  // path; retained/background views cannot claim the foreground this way.
   if (method === "POST" && subResource === "elements") {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
     );
     const elements = normalizeActiveViewElements(body?.elements);
     const clientId = resolveViewInteractClientId(req, body);
-    const accepted = setActiveViewElements(id, elements, clientId);
+    let accepted = setActiveViewElements(id, elements, clientId);
+    if (
+      !accepted &&
+      currentViewState === null &&
+      getActiveViewContext() === null
+    ) {
+      const viewType =
+        parseViewTypeValue(body?.viewType) ??
+        parseViewTypeParam(url.searchParams.get("viewType"));
+      const entry = getView(id, { viewType });
+      const reportedPath = normalizedViewPath(body?.viewPath);
+      const registeredPath = normalizedViewPath(entry?.path);
+      if (entry && reportedPath && reportedPath === registeredPath) {
+        const now = new Date().toISOString();
+        currentViewState = {
+          viewId: id,
+          viewPath: entry.path ?? null,
+          viewLabel: entry.label,
+          viewType: entry.viewType,
+          updatedAt: now,
+        };
+        setActiveViewContext({
+          viewId: id,
+          viewPath: entry.path ?? null,
+          viewLabel: entry.label,
+          viewType: entry.viewType,
+          elements,
+          ...(clientId ? { clientId } : {}),
+        });
+        accepted = true;
+      }
+    }
     json(res, { ok: true, viewId: id, accepted, count: elements.length });
     return true;
   }

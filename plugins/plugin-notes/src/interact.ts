@@ -1,11 +1,11 @@
 /**
- * Server interaction broker for Notes view capabilities.
- * The view registry supplies the owning runtime at dispatch time so each agent
- * reaches its own service instance. This boundary converts expected
- * validation/not-found failures into explicit capability results.
+ * Server interaction broker for Notes view capabilities. The registry supplies
+ * the owning runtime at dispatch time, and every successful mutation returns a
+ * receipt bound to the exact durable revision that the user-facing reply cites.
  */
 
 import {
+  type AppliedEffectReceipt,
   ElizaError,
   type IAgentRuntime,
   isElizaError,
@@ -20,6 +20,8 @@ export interface NotesInteractResult {
   text: string;
   state?: NotesSnapshot;
   data?: unknown;
+  effectReceipts?: readonly AppliedEffectReceipt[];
+  userFacingEffectReceiptIds?: readonly string[];
   error?: {
     code: string;
     message: string;
@@ -37,6 +39,26 @@ const EXPECTED_FAILURE_CODES = new Set([
 const PLANNER_SUMMARY_ITEM_LIMIT = 20;
 const PLANNER_SUMMARY_EXCERPT_LENGTH = 160;
 
+function quoted(value: string): string {
+  return `“${value}”`;
+}
+
+function sentence(value: string): string {
+  const text = value.trim();
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function humanDetails(value: string): string {
+  const details = value.trim();
+  return details.length > 0
+    ? ` — ${details.slice(0, PLANNER_SUMMARY_EXCERPT_LENGTH)}`
+    : "";
+}
+
+function noteSummary(note: StickyNote): string {
+  return `${quoted(note.title)}${humanDetails(note.body)}`;
+}
+
 function paramsRecord(value: unknown): Record<string, unknown> {
   if (value === undefined) return {};
   if (!isRecord(value)) {
@@ -47,17 +69,6 @@ function paramsRecord(value: unknown): Record<string, unknown> {
     });
   }
   return value;
-}
-
-function requiredParam(params: Record<string, unknown>, key: string): unknown {
-  if (!(key in params)) {
-    throw new ElizaError(`Capability param "${key}" is required.`, {
-      code: "NOTES_VALIDATION_FAILED",
-      context: { field: key },
-      severity: "ephemeral",
-    });
-  }
-  return params[key];
 }
 
 function assertOnlyParams(
@@ -78,89 +89,130 @@ function assertOnlyParams(
   }
 }
 
-function withoutId(params: Record<string, unknown>): Record<string, unknown> {
+function withoutParams(
+  params: Record<string, unknown>,
+  excluded: readonly string[],
+): Record<string, unknown> {
+  const excludedKeys = new Set(excluded);
   return Object.fromEntries(
-    Object.entries(params).filter(([key]) => key !== "id"),
+    Object.entries(params).filter(([key]) => !excludedKeys.has(key)),
   );
 }
 
+function updatePatch(
+  params: Record<string, unknown>,
+  selectors: readonly string[],
+): Record<string, unknown> {
+  const patch = withoutParams(params, [...selectors, "newTitle"]);
+  if (Object.hasOwn(params, "newTitle")) patch.title = params.newTitle;
+  return patch;
+}
+
+function normalizeRenameParams(
+  params: Record<string, unknown>,
+  capability: string,
+): Record<string, unknown> {
+  if (!Object.hasOwn(params, "oldTitle")) return params;
+  if (Object.hasOwn(params, "id") || Object.hasOwn(params, "query")) {
+    throw new ElizaError(
+      `${capability} oldTitle cannot be combined with id or query.`,
+      {
+        code: "NOTES_VALIDATION_FAILED",
+        context: { fields: ["oldTitle", "id", "query"] },
+        severity: "ephemeral",
+      },
+    );
+  }
+  if (Object.hasOwn(params, "title") && Object.hasOwn(params, "newTitle")) {
+    throw new ElizaError(
+      `${capability} accepts title or newTitle as the replacement, not both.`,
+      {
+        code: "NOTES_VALIDATION_FAILED",
+        context: { fields: ["title", "newTitle"] },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const normalized: Record<string, unknown> = {
+    ...params,
+    title: params.oldTitle,
+  };
+  if (Object.hasOwn(params, "title")) normalized.newTitle = params.title;
+  delete normalized.oldTitle;
+  return normalized;
+}
+
 function summarizeNotes(notes: StickyNote[]): string {
-  if (notes.length === 0) return "No sticky notes yet.";
+  if (notes.length === 0) return "You don't have any notes yet.";
   const visible = notes
     .slice(0, PLANNER_SUMMARY_ITEM_LIMIT)
-    .map(
-      (note) =>
-        `${note.title}: ${note.body.slice(0, PLANNER_SUMMARY_EXCERPT_LENGTH)}`,
-    );
+    .map((note) => noteSummary(note));
   if (notes.length > visible.length) {
-    visible.push(`${notes.length - visible.length} more notes not shown.`);
+    visible.push(`Plus ${notes.length - visible.length} more.`);
   }
-  return visible.join("\n");
+  return notes.length === 1
+    ? visible.join("")
+    : `Here are your notes:\n${visible.map((note) => `• ${note}`).join("\n")}`;
 }
 
-function normalizedLookup(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
+type NoteSelector =
+  | { selector: "id"; value: string }
+  | { selector: "title" | "query"; value: string };
 
-function resolveNoteTarget(
-  notes: StickyNote[],
+function parseLookupTarget(
   params: Record<string, unknown>,
-): string {
-  if (typeof params.id === "string" && params.id.trim().length > 0) {
-    return params.id;
-  }
-  const targetValue =
-    typeof params.title === "string"
-      ? params.title
-      : typeof params.query === "string"
-        ? params.query
-        : "";
-  const target = normalizedLookup(targetValue);
-  if (target.length === 0) {
-    throw new ElizaError("delete-note requires id, title, or query.", {
-      code: "NOTES_VALIDATION_FAILED",
-      context: { field: "id" },
-      severity: "ephemeral",
-    });
-  }
-
-  const exact = notes.filter((note) => normalizedLookup(note.title) === target);
-  const candidates =
-    exact.length > 0
-      ? exact
-      : notes.filter((note) =>
-          normalizedLookup(`${note.title} ${note.body}`).includes(target),
-        );
-  if (candidates.length === 0) {
-    throw new ElizaError(`No sticky note matches "${targetValue}".`, {
-      code: "NOTES_NOT_FOUND",
-      context: { kind: "note", target: targetValue },
-      severity: "ephemeral",
-    });
-  }
-  if (candidates.length > 1) {
+  capability: string,
+  selectorNames: readonly ("id" | "title" | "query")[],
+): NoteSelector {
+  const providedSelectors = selectorNames.filter((name) =>
+    Object.hasOwn(params, name),
+  );
+  if (providedSelectors.length !== 1) {
     throw new ElizaError(
-      `"${targetValue}" matches multiple sticky notes: ${candidates
-        .map((note) => note.title)
-        .join(", ")}.`,
+      `${capability} requires exactly one of ${selectorNames.join(", ")}.`,
       {
-        code: "NOTES_AMBIGUOUS_NOTE",
+        code: "NOTES_VALIDATION_FAILED",
         context: {
-          target: targetValue,
-          candidateIds: candidates.map((note) => note.id),
+          fields: selectorNames,
+          providedFields: providedSelectors,
         },
         severity: "ephemeral",
       },
     );
   }
-  const candidate = candidates[0];
-  if (!candidate) {
-    throw new ElizaError("Resolved sticky note was missing.", {
-      code: "NOTES_NOTE_RESOLUTION_FAILED",
+  const selector = providedSelectors[0];
+  const selectorValue = selector ? params[selector] : undefined;
+  if (
+    !selector ||
+    typeof selectorValue !== "string" ||
+    selectorValue.trim().length === 0
+  ) {
+    throw new ElizaError(
+      `${capability} ${selector ?? "selector"} must be a nonblank string.`,
+      {
+        code: "NOTES_VALIDATION_FAILED",
+        context: { field: selector ?? "selector" },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const value = selectorValue.trim();
+  return selector === "id" ? { selector, value } : { selector, value };
+}
+
+function parseNamedLookupTarget(
+  params: Record<string, unknown>,
+  capability: string,
+): { selector: "title" | "query"; value: string } {
+  const target = parseLookupTarget(params, capability, ["title", "query"]);
+  if (target.selector === "id") {
+    throw new ElizaError("Named lookup unexpectedly resolved an id selector.", {
+      code: "NOTES_LOOKUP_RESOLUTION_FAILED",
+      context: { capability },
       severity: "fatal",
     });
   }
-  return candidate.id;
+  return target;
 }
 
 function success(
@@ -177,6 +229,39 @@ function success(
   return result;
 }
 
+function mutationSuccess(
+  state: NotesSnapshot,
+  capability: string,
+  resource: { kind: string; id: string },
+  text: string,
+  data?: unknown,
+): NotesInteractResult {
+  const observedAt = new Date().toISOString();
+  const receiptId = `notes:${capability}:${resource.id}:${state.revision}`;
+  const receipt: AppliedEffectReceipt = {
+    receiptId,
+    operation: `notes.${capability}`,
+    resource: { ...resource, version: String(state.revision) },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "applied",
+    commit: {
+      kind: "durable",
+      id: `notes:revision:${state.revision}`,
+      committedAt: observedAt,
+    },
+  };
+  return {
+    success: true,
+    text,
+    state,
+    ...(data !== undefined ? { data } : {}),
+    effectReceipts: [receipt],
+    userFacingEffectReceiptIds: [receiptId],
+  };
+}
+
 async function dispatchCapability(
   service: NotesService,
   capability: string,
@@ -184,36 +269,106 @@ async function dispatchCapability(
 ): Promise<NotesInteractResult> {
   const params = paramsRecord(paramsValue);
   if (capability === "get-notes") {
-    assertOnlyParams(params, []);
-    const notes = service.listNotes();
+    assertOnlyParams(params, ["title", "query"]);
+    const target =
+      Object.keys(params).length === 0
+        ? null
+        : parseNamedLookupTarget(params, capability);
+    const notes = target
+      ? [service.getNoteByLookup(target.selector, target.value)]
+      : service.listNotes();
     return success(service, summarizeNotes(notes), { notes });
   }
   if (capability === "get-note") {
-    assertOnlyParams(params, ["id"]);
-    const note = service.getNote(requiredParam(params, "id"));
-    return success(service, `Read sticky note "${note.title}".`, { note });
+    assertOnlyParams(params, ["id", "title", "query"]);
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
+    const note =
+      target.selector === "id"
+        ? service.getNote(target.value)
+        : service.getNoteByLookup(target.selector, target.value);
+    return success(service, sentence(noteSummary(note)), { note });
   }
   if (capability === "create-note") {
-    const note = await service.createNote(params);
-    return success(service, `Created sticky note "${note.title}".`, { note });
+    const { value: note, snapshot } =
+      await service.createNoteWithCommit(params);
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "notes.note", id: note.id },
+      `Created note ${quoted(note.title)}.`,
+      { note },
+    );
   }
   if (capability === "update-note") {
-    const note = await service.updateNote(
-      requiredParam(params, "id"),
-      withoutId(params),
+    assertOnlyParams(params, [
+      "id",
+      "oldTitle",
+      "title",
+      "query",
+      "newTitle",
+      "body",
+      "color",
+    ]);
+    const normalized = normalizeRenameParams(params, capability);
+    const selectors = ["id", "title", "query"] as const;
+    const target = parseLookupTarget(normalized, capability, selectors);
+    const patch = updatePatch(normalized, selectors);
+    const { value: note, snapshot } =
+      target.selector === "id"
+        ? await service.updateNoteWithCommit(target.value, patch)
+        : await service.updateNoteByLookupWithCommit(
+            target.selector,
+            target.value,
+            patch,
+          );
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "notes.note", id: note.id },
+      `Updated note ${quoted(note.title)}.`,
+      { note },
     );
-    return success(service, `Updated sticky note "${note.title}".`, { note });
   }
   if (capability === "delete-note") {
     assertOnlyParams(params, ["id", "title", "query"]);
-    const id = resolveNoteTarget(service.listNotes(), params);
-    const note = await service.deleteNote(id);
-    return success(service, `Deleted sticky note "${note.title}".`, { note });
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
+    const { value: note, snapshot } =
+      target.selector === "id"
+        ? await service.deleteNoteWithCommit(target.value)
+        : await service.deleteNoteByLookupWithCommit(
+            target.selector,
+            target.value,
+          );
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "notes.note", id: note.id },
+      `Deleted note ${quoted(note.title)}.`,
+      { note },
+    );
   }
   if (capability === "clear-notes") {
     assertOnlyParams(params, []);
-    const cleared = await service.clearNotes();
-    return success(service, `Cleared ${cleared} sticky note(s).`, { cleared });
+    const { value: cleared, snapshot } = await service.clearNotesWithCommit();
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "notes.note-collection", id: "notes" },
+      cleared === 0
+        ? "There were no notes to delete."
+        : cleared === 1
+          ? "Deleted your note."
+          : `Deleted all ${cleared} notes.`,
+      { cleared },
+    );
   }
   throw new ElizaError(`Notes does not support capability "${capability}".`, {
     code: "NOTES_UNKNOWN_CAPABILITY",
@@ -239,9 +394,8 @@ export async function interact(
     }
     return await dispatchCapability(service, capability, params);
   } catch (error) {
-    // error-policy:J1 boundary translation — expected capability input and
-    // lookup failures become explicit false results; systemic store failures
-    // continue upward to the shared view-route error boundary and diagnostics.
+    // error-policy:J1 Expected capability input and lookup failures become
+    // explicit false results; systemic failures reach the shared route boundary.
     const normalized = isElizaError(error)
       ? error
       : toElizaError(error, "NOTES_INTERACT_FAILED");

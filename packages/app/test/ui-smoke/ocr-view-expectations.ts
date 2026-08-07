@@ -244,12 +244,6 @@ export const VIEW_OCR_POLICIES = {
   }),
   "plugin-calendar-gui": expected({
     requireAll: ["Calendar"],
-    requireAny: [
-      "source current",
-      "source settings",
-      "Refresh sources",
-      "agenda",
-    ],
   }),
   "plugin-documents-gui": exempt(
     "unregistered-remote-bundle",
@@ -302,8 +296,8 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["ready views", "gui ready"],
   }),
   "plugin-notes-gui": expected({
-    requireAll: ["New note"],
-    requireAny: ["Title", "Details", "Add note"],
+    requireAll: ["Launch checklist", "Follow up"],
+    requireAny: ["Cloud agent", "demo recording"],
   }),
   "plugin-task-coordinator-gui": expected({
     requireAll: ["Task Coordinator"],

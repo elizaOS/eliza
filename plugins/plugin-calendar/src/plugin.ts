@@ -32,6 +32,7 @@ export const calendarPlugin: Plugin = {
   name: "calendar",
   description:
     "Multi-provider calendar feeds, scheduling, and event management for Eliza agents.",
+  dependencies: ["@elizaos/plugin-scheduling"],
   schema: calendarSchema,
   services: [CalendarMigrationService, CalendarService],
   actions: [calendarAction, calendarSourcesAction, conflictDetectAction],
@@ -56,7 +57,7 @@ export const calendarPlugin: Plugin = {
       id: "calendar",
       label: "Calendar",
       description:
-        "Unified Google, Microsoft, Apple, and ICS calendar with day/week/month tabs and inline conflict detection.",
+        "Chat-first calendar over unified Google, Microsoft, Apple, and ICS events.",
       icon: "Calendar",
       path: "/calendar",
       modalities: ["gui"],

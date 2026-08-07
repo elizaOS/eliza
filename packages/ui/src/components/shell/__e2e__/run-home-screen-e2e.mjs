@@ -27,6 +27,7 @@ import {
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
 import {
+  touchDragHold,
   touchLongPress,
   touchSwipe,
   touchTap,
@@ -255,6 +256,16 @@ async function swipeLeft(locator) {
   await locator.page().mouse.move(endX, y, { steps: 8 });
   await locator.page().mouse.up();
 }
+async function dragVertical(locator, dy) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("missing vertical drag target bounds");
+  const x = box.x + box.width * 0.5;
+  const startY = box.y + box.height * 0.5;
+  await locator.page().mouse.move(x, startY);
+  await locator.page().mouse.down();
+  await locator.page().mouse.move(x, startY + dy, { steps: 10 });
+  await locator.page().mouse.up();
+}
 // Horizontal touch-swipes across an element, driven through Chromium's real
 // touch input path. These keep the mobile pagers honest - the inner launcher
 // pager AND the outer home↔launcher rail: hit-testing, touch-action, implicit
@@ -286,6 +297,123 @@ async function touchSwipeRight(page, testId) {
   await touchSwipe(page, `[data-testid="${testId}"]`, 280, 0, {
     steps: 10,
     stepDelayMs: 16,
+  });
+}
+
+// Reproduce the WebView delivery pattern behind the fast-flick release jump:
+// the last move and release land in one browser task, before the queued rAF can
+// paint. The result records the computed transform immediately and over the
+// following frames, plus the compat click that a real touch stack synthesizes.
+async function sameTaskFastFlickLeft(page) {
+  return page.evaluate(async () => {
+    const target = document.querySelector(
+      '[data-testid="home-launcher-home-page"]',
+    );
+    const rail = document.querySelector('[data-testid="home-launcher-rail"]');
+    if (!(target instanceof HTMLElement) || !(rail instanceof HTMLElement)) {
+      throw new Error("missing home pager elements for same-task flick");
+    }
+
+    const rect = target.getBoundingClientRect();
+    const startX = rect.left + rect.width * 0.8;
+    const startY = rect.top + rect.height * 0.45;
+    const pointer = (type, x, y, buttons) =>
+      new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 41,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        buttons,
+        clientX: x,
+        clientY: y,
+      });
+
+    target.dispatchEvent(pointer("pointerdown", startX, startY, 1));
+    target.dispatchEvent(pointer("pointermove", startX - 20, startY + 1, 1));
+    // Keep the final move and release synchronous. The 90px travel is below
+    // the 30%-width distance threshold, so only the fast-flick path can commit.
+    target.dispatchEvent(pointer("pointermove", startX - 90, startY + 2, 1));
+    target.dispatchEvent(pointer("pointerup", startX - 90, startY + 2, 0));
+
+    let clickBubbled = false;
+    const observeBubble = () => {
+      clickBubbled = true;
+    };
+    document.addEventListener("click", observeBubble);
+    const compatClick = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      clientX: startX - 90,
+      clientY: startY + 2,
+    });
+    target.dispatchEvent(compatClick);
+    document.removeEventListener("click", observeBubble);
+
+    const readX = () => {
+      const transform = getComputedStyle(rail).transform;
+      return !transform || transform === "none"
+        ? 0
+        : new DOMMatrixReadOnly(transform).m41;
+    };
+    const immediateX = readX();
+    const frameX = [];
+    for (let frame = 0; frame < 8; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      frameX.push(readX());
+    }
+    return {
+      immediateX,
+      frameX,
+      clickDefaultPrevented: compatClick.defaultPrevented,
+      clickBubbled,
+      viewportWidth: rect.width,
+    };
+  });
+}
+
+async function sameTaskVerticalDrag(page) {
+  return page.evaluate(async () => {
+    const target = document.querySelector(
+      '[data-testid="home-launcher-home-page"]',
+    );
+    const rail = document.querySelector('[data-testid="home-launcher-rail"]');
+    if (!(target instanceof HTMLElement) || !(rail instanceof HTMLElement)) {
+      throw new Error("missing home pager elements for vertical rejection");
+    }
+    const rect = target.getBoundingClientRect();
+    const startX = rect.left + rect.width * 0.5;
+    const startY = rect.top + rect.height * 0.35;
+    const pointer = (type, x, y, buttons) =>
+      new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 42,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        buttons,
+        clientX: x,
+        clientY: y,
+      });
+    target.dispatchEvent(pointer("pointerdown", startX, startY, 1));
+    target.dispatchEvent(pointer("pointermove", startX - 4, startY + 24, 1));
+    target.dispatchEvent(pointer("pointermove", startX - 10, startY + 140, 1));
+    target.dispatchEvent(pointer("pointerup", startX - 10, startY + 140, 0));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+    const transform = getComputedStyle(rail).transform;
+    return {
+      page: document
+        .querySelector('[data-testid="home-launcher-surface"]')
+        ?.getAttribute("data-page"),
+      railX:
+        !transform || transform === "none"
+          ? 0
+          : new DOMMatrixReadOnly(transform).m41,
+    };
   });
 }
 
@@ -619,13 +747,38 @@ try {
   await waitForSurfacePageSettled(mobile, "home");
   await waitForHomeEnterSettled(mobile);
   await mobile.waitForTimeout(SWIPE_HINT_SHOW_DELAY_MS + 1_000);
+  // The current dashboard contract opens a populated notification inbox on
+  // mount. Push it closed through the real gesture surface before certifying
+  // the home widgets that intentionally stay inert behind an expanded shade.
+  const initialNotificationCenter = mobile.getByTestId(
+    "home-notification-center",
+  );
+  const initialNotificationList = initialNotificationCenter.getByTestId(
+    "home-notification-list",
+  );
+  await initialNotificationList.waitFor({ state: "visible", timeout: 5000 });
+  assert(
+    (await initialNotificationList.getAttribute("data-shade-mode")) ===
+      "expanded",
+    "populated notifications open as the full gesture-only inbox",
+  );
+  await touchSwipe(mobile, '[data-testid="home-notification-list"]', 0, -180, {
+    steps: 10,
+    stepDelayMs: 16,
+  });
+  await initialNotificationCenter
+    .locator(
+      '[data-testid="home-notification-list"][data-shade-mode="rested"]',
+    )
+    .waitFor({ state: "visible", timeout: 5000 });
+  const homeWidgetHost = mobile.getByTestId("widget-host-home");
   await Promise.all([
     mobile.getByTestId("home-time-widget").waitFor({ state: "visible" }),
     mobile.getByTestId("home-weather").waitFor({ state: "visible" }),
-    mobile.getByText("Buy groceries", { exact: true }).waitFor({
+    homeWidgetHost.getByText("Buy groceries", { exact: true }).waitFor({
       state: "visible",
     }),
-    mobile.getByText("Design review", { exact: true }).waitFor({
+    homeWidgetHost.getByText("Design review", { exact: true }).waitFor({
       state: "visible",
     }),
   ]);
@@ -674,7 +827,6 @@ try {
   // (seeded in the fixture). Assert the host is mounted AND that each seeded
   // per-plugin widget card renders its populated content (each self-hides when
   // empty, so visibility proves the data flowed through real widget components).
-  const homeWidgetHost = mobile.getByTestId("widget-host-home");
   await mobile.waitForSelector('[data-testid="widget-host-home"]');
   assert((await homeWidgetHost.count()) === 1, "home WidgetHost is present");
   assert(
@@ -734,8 +886,8 @@ try {
     );
   }
   // Notifications render inline on the home column. The consolidated shade is
-  // already expanded and control-free; detailed gesture and dismissal behavior
-  // is covered by the app Playwright gesture matrix.
+  // control-free and operated by directional gestures; this run covers both
+  // live travel and settled-state ownership without redundant global chrome.
   {
     const center = mobile.getByTestId("home-notification-center");
     await center.waitFor({ state: "visible", timeout: 5000 });
@@ -759,13 +911,92 @@ try {
       "the notification row shows the seeded title",
     );
     assert(
-      (await center
-        .locator('[data-testid="home-notification-list"][data-shade-mode="expanded"]')
-        .count()) === 1 &&
+      (await center.getByTestId("notifications-count").count()) === 0 &&
         (await center.getByTestId("notifications-count-button").count()) === 0 &&
         (await center.getByTestId("notifications-clear-all").count()) === 0 &&
         (await center.getByTestId("notifications-collapse").count()) === 0,
-      "the consolidated notification shade is expanded without legacy controls",
+      "the gesture-only shade renders no redundant global controls",
+    );
+
+    const notificationRow = center.getByTestId("notification-row");
+    const restedRowBox = await notificationRow.boundingBox();
+    if (!restedRowBox) throw new Error("missing notification row bounds");
+    const partialPull = await touchDragHold(
+      mobile,
+      '[data-testid="home-notification-list"]',
+      0,
+      48,
+      { steps: 6, stepDelayMs: 16 },
+    );
+    await mobile.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(resolve)),
+    );
+    const heldRowBox = await notificationRow.boundingBox();
+    if (!heldRowBox) throw new Error("missing pulled notification row bounds");
+    const heldRowTravel = heldRowBox.y - restedRowBox.y;
+    assert(
+      Math.abs(heldRowTravel) > 1 && Math.abs(heldRowTravel) < 28,
+      `a partial pull moves the notification continuously (${heldRowTravel.toFixed(2)}px)`,
+    );
+
+    await partialPull.release();
+    const releaseTrace = await mobile.evaluate(async (restedTop) => {
+      const samples = [];
+      const startedAt = performance.now();
+      // Keep sampling through click suppression so the next tap is both a
+      // separate user action and a settled-state check.
+      while (performance.now() - startedAt < 560) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const row = document.querySelector(
+          '[data-testid="notification-row"]',
+        );
+        if (!(row instanceof HTMLElement)) break;
+        samples.push(row.getBoundingClientRect().top - restedTop);
+      }
+      return samples;
+    }, restedRowBox.y);
+    const releasePeak = Math.max(...releaseTrace.map((value) => Math.abs(value)));
+    const releaseFinal = releaseTrace.at(-1) ?? Number.POSITIVE_INFINITY;
+    assert(
+      releasePeak <= Math.abs(heldRowTravel) + 1.5,
+      `a cancelled pull returns without bouncing farther from rest (${releasePeak.toFixed(2)}px peak)`,
+    );
+    assert(
+      Math.abs(releaseFinal) < 0.75,
+      `the notification row settles back at rest (${releaseFinal.toFixed(2)}px)`,
+    );
+
+    await touchSwipe(
+      mobile,
+      '[data-testid="home-notification-list"]',
+      0,
+      180,
+      { steps: 10, stepDelayMs: 16 },
+    );
+    await center
+      .locator(
+        '[data-testid="home-notification-list"][data-shade-mode="expanded"]',
+      )
+      .waitFor({ state: "visible", timeout: 5000 });
+    assert(
+      (await center.getByTestId("notification-row").count()) === 1,
+      "a downward gesture opens the full inbox without duplicating rows",
+    );
+    await touchSwipe(
+      mobile,
+      '[data-testid="home-notification-list"]',
+      0,
+      -180,
+      { steps: 10, stepDelayMs: 16 },
+    );
+    await center
+      .locator(
+        '[data-testid="home-notification-list"][data-shade-mode="rested"]',
+      )
+      .waitFor({ state: "visible", timeout: 5000 });
+    assert(
+      (await center.getByTestId("notification-row").count()) === 1,
+      "an upward gesture restores the rested triage row",
     );
   }
   // Apps and native surfaces live exclusively on the adjacent launcher page;
@@ -863,6 +1094,49 @@ try {
   );
 
   await waitForSurfacePageSettled(mobile, "home");
+
+  // The final pointermove and release can share one WebView task on a short,
+  // fast flick. The release frame must become the transition origin instead of
+  // being coalesced away, the adjacent page must commit, and its synthesized
+  // click must not launch the content beneath the finger.
+  const fastFlick = await sameTaskFastFlickLeft(mobile);
+  assert(
+    Math.abs(fastFlick.immediateX + 90) < 3,
+    `same-task flick starts its settle at the release frame (${fastFlick.immediateX.toFixed(2)}px)`,
+  );
+  assert(
+    fastFlick.frameX.length >= 4 &&
+      fastFlick.frameX.every(
+        (value, index, values) => index === 0 || value <= values[index - 1] + 1,
+      ),
+    `same-task flick advances monotonically (${fastFlick.frameX.map((value) => value.toFixed(1)).join(", ")})`,
+  );
+  assert(
+    fastFlick.frameX.every(
+      (value, index, values) =>
+        index === 0 ||
+        Math.abs(value - values[index - 1]) < fastFlick.viewportWidth * 0.25,
+    ),
+    "same-task flick contains no one-frame release jump",
+  );
+  assert(
+    fastFlick.clickDefaultPrevented && !fastFlick.clickBubbled,
+    "committed same-task flick suppresses its synthesized click",
+  );
+  await waitForSurfacePageSettled(mobile, "launcher");
+  assert(
+    (await mobile.getByTestId("home-launcher-surface").getAttribute(
+      "data-page",
+    )) === "launcher",
+    "same-task fast flick commits exactly the adjacent launcher page",
+  );
+  await touchSwipeRight(mobile, "home-launcher-launcher-page");
+  await waitForSurfacePageSettled(mobile, "home");
+  const verticalDrag = await sameTaskVerticalDrag(mobile);
+  assert(
+    verticalDrag.page === "home" && Math.abs(verticalDrag.railX) < 1,
+    "same-task vertical drag is rejected without paging or displacing the rail",
+  );
 
   // A real finger often performs a deliberate drag rather than a sharp flick.
   // This ~35%-wide, low-velocity touch path used to reveal Apps and then snap
@@ -1155,7 +1429,7 @@ try {
     (await desktop.getByTestId("home-tile-phone").count()) === 0,
     "phone tile hidden when native disabled",
   );
-  // Desktop uses the same inline, expanded, control-free notification center.
+  // Desktop uses the same inline, control-free directional shade.
   {
     const center = desktop.getByTestId("home-notification-center");
     await center.waitFor({ state: "visible", timeout: 5000 });
@@ -1163,13 +1437,33 @@ try {
       (await center.getByTestId("notification-row").count()) === 1,
       "desktop home renders the inline notification inbox with the seeded row",
     );
+    const list = center.getByTestId("home-notification-list");
     assert(
-      (await center
-        .locator('[data-testid="home-notification-list"][data-shade-mode="expanded"]')
-        .count()) === 1 &&
-        (await center.getByTestId("notifications-count-button").count()) === 0,
-      "desktop renders the same expanded notification shade without a count control",
+      (await list.getAttribute("data-shade-mode")) === "expanded",
+      "desktop notifications open as the full inbox",
     );
+    await dragVertical(list, -180);
+    await center
+      .locator(
+        '[data-testid="home-notification-list"][data-shade-mode="rested"]',
+      )
+      .waitFor({ state: "visible", timeout: 5000 });
+    await dragVertical(list, 180);
+    await center
+      .locator(
+        '[data-testid="home-notification-list"][data-shade-mode="expanded"]',
+      )
+      .waitFor({ state: "visible", timeout: 5000 });
+    assert(
+      (await center.getByTestId("notification-row").count()) === 1,
+      "desktop directional gestures preserve the single notification row",
+    );
+    await dragVertical(list, -180);
+    await center
+      .locator(
+        '[data-testid="home-notification-list"][data-shade-mode="rested"]',
+      )
+      .waitFor({ state: "visible", timeout: 5000 });
   }
   await snap(desktop, "desktop-home");
   await swipeLeft(desktop.getByTestId("home-launcher-home-page"));

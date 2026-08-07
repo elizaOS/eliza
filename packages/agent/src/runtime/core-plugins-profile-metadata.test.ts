@@ -7,9 +7,9 @@
  * declarative table (`CORE_PLUGIN_PROFILE_METADATA`) and the legacy lists are
  * DERIVED from it via `selectCorePluginsByProfile`. These tests pin:
  *
- *   1. The derived lists still contain exactly the historical membership, so a
- *      future edit to the table that silently changes a platform load set fails
- *      CI instead of shipping a boot regression.
+ *   1. The derived lists contain the intended platform membership, so a future
+ *      edit that silently changes a load set fails CI instead of shipping a
+ *      boot regression.
  *   2. Exactly one plugin is `requiredBootstrap` (plugin-sql), the invariant
  *      the audit calls out ("keeping only plugin-sql as required bootstrap").
  *   3. The old independent array literals are gone from the module source (grep
@@ -63,11 +63,13 @@ describe("CORE_PLUGIN_PROFILE_METADATA drift guard", () => {
     ]);
   });
 
-  it("derives MOBILE_VIEW_PLUGINS from the metadata table (unchanged membership)", () => {
+  it("derives MOBILE_VIEW_PLUGINS from the metadata table", () => {
     sameMembers(MOBILE_VIEW_PLUGINS, [
       "@elizaos/plugin-task-coordinator",
       "@elizaos/plugin-inbox",
       "@elizaos/plugin-app-control",
+      "@elizaos/plugin-notes",
+      "@elizaos/plugin-calendar",
     ]);
   });
 

@@ -95,7 +95,11 @@ import {
 	resolveEffectiveSystemPrompt,
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
-import { buildProviderAttributionsFromState } from "./runtime/trajectory-provider-attribution";
+import {
+	buildProviderAttributionsFromState,
+	canonicalPromptForModelCall,
+	omitUnvalidatedProviderSpans,
+} from "./runtime/trajectory-provider-attribution";
 import {
 	TurnAbortedError,
 	TurnControllerRegistry,
@@ -146,7 +150,6 @@ import {
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
 	runWithStreamingContext,
-	runWithSuppressedModelStream,
 } from "./streaming-context";
 import {
 	getTrajectoryContext,
@@ -577,6 +580,10 @@ export class EmbeddingDimensionProbeError extends Error {
 
 const TEXT_GENERATION_MODEL_KEYS: readonly string[] =
 	TEXT_GENERATION_MODEL_TYPES;
+
+const CANONICAL_TEXT_CAPABILITY_SETTING = "ELIZA_CANONICAL_LLM_TEXT_ENABLED";
+const CANONICAL_EMBEDDING_CAPABILITY_SETTING =
+	"ELIZA_CANONICAL_EMBEDDINGS_ENABLED";
 
 type StructuredResponseFormat = "JSON" | "TOON";
 
@@ -4085,15 +4092,13 @@ export class AgentRuntime implements IAgentRuntime {
 							runWithActionRoutingContext(
 								{ actionName: action.name, modelClass: action.modelClass },
 								() =>
-									runWithSuppressedModelStream(() =>
-										action.handler(
-											this,
-											message,
-											composedState,
-											{ mode },
-											actionCallback,
-											options?.responses,
-										),
+									action.handler(
+										this,
+										message,
+										composedState,
+										{ mode },
+										actionCallback,
+										options?.responses,
 									),
 							),
 					});
@@ -4953,6 +4958,10 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 			text: providersText,
 		} as State;
+		// Spans against `providersText` are composition-local only. Model-call
+		// writers rebind from `providerAttributionState` against the exact
+		// recorded messages/prompt; do not treat these offsets as model-prompt
+		// indices.
 		const providerAttribution = buildProviderAttributionsFromState({
 			state: attributionState,
 			prompt: providersText,
@@ -4968,6 +4977,7 @@ export class AgentRuntime implements IAgentRuntime {
 			activeTrajectoryContext.providerOrder = providerAttribution.providerOrder;
 			activeTrajectoryContext.providerAttributions =
 				providerAttribution.providerAttributions;
+			activeTrajectoryContext.providerAttributionState = attributionState;
 		}
 		if (trajectoryStepId && trajLogger) {
 			const userText =
@@ -5002,8 +5012,9 @@ export class AgentRuntime implements IAgentRuntime {
 						sha256: attribution?.sha256,
 						tokenCount: attribution?.tokenCount,
 						position: attribution?.position,
-						spanStart: attribution?.spanStart,
-						spanEnd: attribution?.spanEnd,
+						// Spans index providersText, which is not persisted on the
+						// access row — omit them so readers do not slice a different
+						// string with compose-local offsets.
 						purpose: "compose_state",
 						query: { message: userText.slice(0, 2000) },
 						runId: trajCtx?.runId,
@@ -5048,8 +5059,6 @@ export class AgentRuntime implements IAgentRuntime {
 						sha256: attribution?.sha256,
 						tokenCount: attribution?.tokenCount,
 						position: attribution?.position,
-						spanStart: attribution?.spanStart,
-						spanEnd: attribution?.spanEnd,
 						purpose: "compose_state",
 						query: { message: userText.slice(0, 2000) },
 						runId: trajCtx?.runId,
@@ -5531,6 +5540,13 @@ export class AgentRuntime implements IAgentRuntime {
 		metadata?: ModelRegistrationMetadata,
 	): void {
 		const modelKey = String(modelType);
+		if (this.isCanonicalModelCapabilityDisabled(modelKey)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, modelType: modelKey, provider },
+				"Ignoring model registration for a capability omitted from canonical service routing",
+			);
+			return;
+		}
 		if (!this.models.has(modelKey)) {
 			this.models.set(modelKey, []);
 		}
@@ -5639,6 +5655,27 @@ export class AgentRuntime implements IAgentRuntime {
 		return hasHandler ? override : undefined;
 	}
 
+	private isCanonicalModelCapabilityDisabled(modelType: string): boolean {
+		const setting = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
+			? this.getSetting(CANONICAL_TEXT_CAPABILITY_SETTING)
+			: modelType === ModelType.TEXT_EMBEDDING
+				? this.getSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING)
+				: undefined;
+		return (
+			setting === false || String(setting).trim().toLowerCase() === "false"
+		);
+	}
+
+	private assertCanonicalModelCapabilityEnabled(modelType: string): void {
+		if (!this.isCanonicalModelCapabilityDisabled(modelType)) return;
+		const capability = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
+			? "llmText"
+			: "embeddings";
+		throw new NoModelProviderConfiguredError(
+			`Canonical service routing does not configure the ${capability} capability. Add serviceRouting.${capability} before requesting ${modelType}.`,
+		);
+	}
+
 	private resolveModelRegistration(
 		modelType: ModelTypeName | string,
 		provider?: string,
@@ -5651,6 +5688,9 @@ export class AgentRuntime implements IAgentRuntime {
 		provider?: string,
 	): ResolvedModelRegistration[] {
 		const requestedModelKey = String(modelType);
+		if (this.isCanonicalModelCapabilityDisabled(requestedModelKey)) {
+			return [];
+		}
 		const resolvedModels: ResolvedModelRegistration[] = [];
 
 		for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
@@ -6005,6 +6045,7 @@ export class AgentRuntime implements IAgentRuntime {
 		provider?: string,
 	): Promise<R> {
 		const useModelStartedAt = Date.now();
+		this.assertCanonicalModelCapabilityEnabled(String(modelType));
 		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
 			? captureModelLookupCaller()
 			: undefined;
@@ -7212,6 +7253,31 @@ export class AgentRuntime implements IAgentRuntime {
 			const resultRecord = isPlainObject(args.result)
 				? (args.result as Record<string, unknown>)
 				: {};
+			const messages = Array.isArray(paramsRecord.messages)
+				? paramsRecord.messages
+				: undefined;
+			const prompt =
+				typeof paramsRecord.prompt === "string"
+					? paramsRecord.prompt
+					: userPrompt;
+			// Rebind provider spans to the exact string this call persists. Copying
+			// composeState's providersText offsets onto a larger messages prompt
+			// produces false exact-match slices (#14877).
+			const canonicalPrompt = canonicalPromptForModelCall({
+				messages,
+				prompt,
+			});
+			const reboundAttributions = trajCtx.providerAttributionState
+				? buildProviderAttributionsFromState({
+						state: trajCtx.providerAttributionState,
+						prompt: canonicalPrompt,
+					})
+				: undefined;
+			const providerOrder =
+				reboundAttributions?.providerOrder ?? trajCtx.providerOrder;
+			const providerAttributions =
+				reboundAttributions?.providerAttributions ??
+				omitUnvalidatedProviderSpans(trajCtx.providerAttributions);
 			const usageRecord = isPlainObject(resultRecord.usage)
 				? (resultRecord.usage as Record<string, unknown>)
 				: {};
@@ -7225,13 +7291,8 @@ export class AgentRuntime implements IAgentRuntime {
 				provider: args.provider,
 				systemPrompt,
 				userPrompt,
-				prompt:
-					typeof paramsRecord.prompt === "string"
-						? paramsRecord.prompt
-						: userPrompt,
-				messages: Array.isArray(paramsRecord.messages)
-					? paramsRecord.messages
-					: undefined,
+				prompt,
+				messages,
 				tools: paramsRecord.tools,
 				toolChoice: paramsRecord.toolChoice,
 				responseSchema: paramsRecord.responseSchema,
@@ -7263,8 +7324,8 @@ export class AgentRuntime implements IAgentRuntime {
 				roomId: trajCtx.roomId,
 				messageId: trajCtx.messageId,
 				executionTraceId: activeTrace?.id,
-				providerOrder: trajCtx.providerOrder,
-				providerAttributions: trajCtx.providerAttributions,
+				providerOrder,
+				providerAttributions,
 			});
 		} catch (error) {
 			// error-policy:J7 Trajectory logging must never break core model flow.
@@ -9848,11 +9909,24 @@ ${section_end}`;
 				"Database adapter not initialized before ensureEmbeddingDimension",
 			);
 		}
+		const canonicalProviderSetting = this.getSetting(
+			"ELIZA_EMBEDDING_PROVIDER",
+		);
+		const embeddingProvider =
+			typeof canonicalProviderSetting === "string" &&
+			canonicalProviderSetting.trim()
+				? canonicalProviderSetting.trim()
+				: undefined;
 		const allRegistrations = this.resolveModelRegistrations(
 			ModelType.TEXT_EMBEDDING,
+			embeddingProvider,
 		);
 		if (allRegistrations.length === 0) {
-			throw new Error("No TEXT_EMBEDDING model registered");
+			throw new Error(
+				embeddingProvider
+					? `Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler`
+					: "No TEXT_EMBEDDING model registered",
+			);
 		}
 
 		// EMBEDDING_PROVIDER=local is an ownership boundary, not a preference.
@@ -9861,12 +9935,12 @@ ${section_end}`;
 		// to send embedding batches to Eliza Cloud when the GGUF was still staging.
 		// Prefer the router when present because it owns local device selection;
 		// otherwise fail over only among concrete on-device handlers.
-		const configuredProvider = String(
+		const configuredOwnershipProvider = String(
 			this.getSetting("EMBEDDING_PROVIDER") ?? "",
 		)
 			.trim()
 			.toLowerCase();
-		const localOnly = configuredProvider === "local";
+		const localOnly = configuredOwnershipProvider === "local";
 		const localRegistrations = localOnly
 			? allRegistrations.filter((registration) =>
 					LOCAL_EMBEDDING_PROVIDERS.has(registration.provider),

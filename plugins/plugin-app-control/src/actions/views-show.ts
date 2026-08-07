@@ -1,11 +1,7 @@
 /**
- * @module plugin-app-control/actions/views-show
- *
- * show/open sub-mode: resolve a view by name or ID and navigate to it.
- *
- * Navigation uses POST /api/apps/launch with the view's shell path as the
- * target. When the view has no `path`, the agent tells the user the view
- * ID and how to navigate manually.
+ * Resolves a requested view and asks the active shell to navigate to it.
+ * The callback owns the one visible acknowledgement; the returned action
+ * receipt remains available to the planner without becoming a second row.
  */
 
 import type {
@@ -22,7 +18,6 @@ import {
 	targetReferenceLogView,
 	userRequestMessageText,
 } from "../params.js";
-import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
@@ -326,6 +321,30 @@ function resolveView(
 	return { kind: "ambiguous", candidates: topTied.map(({ view }) => view) };
 }
 
+/**
+ * Resolve a semantic intent to the view that owns the connector-independent
+ * experience in the current registry. The connected Calendar remains
+ * addressable by its exact id and is the fallback when Simple Calendar is not
+ * installed; when both exist, a generic spoken calendar request should open the
+ * durable view that works without a connector.
+ */
+function resolveIntentViewInRegistry(
+	intentViewId: string,
+	views: readonly ViewSummary[],
+):
+	| { kind: "match"; view: ViewSummary }
+	| { kind: "ambiguous"; candidates: ViewSummary[] }
+	| { kind: "none" } {
+	if (intentViewId === "calendar") {
+		const simpleCalendar = views.find(
+			(view) =>
+				view.id.toLowerCase() === "simple-calendar" && view.available !== false,
+		);
+		if (simpleCalendar) return { kind: "match", view: simpleCalendar };
+	}
+	return resolveView(intentViewId, views);
+}
+
 function resolveRegisteredNotesView(
 	views: readonly ViewSummary[],
 ):
@@ -448,7 +467,8 @@ export async function runViewsShow({
 	// supplies the view id. Either source is enough to proceed.
 	const rigidIntentViewId = matchViewCommand(messageText);
 	const intentViewId = rigidIntentViewId ?? resolveIntentView(messageText);
-	let target = extractViewTarget(message, options) ?? intentViewId;
+	const extractedTarget = extractViewTarget(message, options);
+	let target = extractedTarget ?? intentViewId;
 	if (!target) {
 		const text =
 			'Tell me which view to open. Try: "open wallet" or "show settings".';
@@ -458,6 +478,14 @@ export async function runViewsShow({
 
 	const views = await client.listViews({ viewType });
 	let resolution = resolveView(target, views);
+	let explicitAliasViewId: string | null = null;
+	if (resolution.kind === "none" && extractedTarget) {
+		explicitAliasViewId = matchViewCommand(extractedTarget);
+		if (explicitAliasViewId) {
+			target = explicitAliasViewId;
+			resolution = resolveView(target, views);
+		}
+	}
 	if (
 		isStandaloneNotesSurfaceRequest(messageText) &&
 		resolution.kind === "match" &&
@@ -475,13 +503,22 @@ export async function runViewsShow({
 	// to a surface this build doesn't have (e.g. task-coordinator without the
 	// coding plugin loaded) leaves the planner's explicit, registered target in
 	// place. So the model never needs to correctly GUESS the surface.
-	if (intentViewId && intentViewId !== target) {
-		const intentResolution = resolveView(intentViewId, views);
+	if (intentViewId) {
+		const intentResolution = resolveIntentViewInRegistry(intentViewId, views);
 		const intentRegistered =
 			intentResolution.kind !== "none" && intentResolution.kind !== "ambiguous";
-		if (intentRegistered || resolution.kind === "none") {
+		const intentTarget =
+			intentResolution.kind === "match"
+				? intentResolution.view.id
+				: intentViewId;
+		const resolvedTarget =
+			resolution.kind === "match" ? resolution.view.id : target;
+		if (
+			intentTarget !== resolvedTarget &&
+			(intentRegistered || resolution.kind === "none")
+		) {
 			resolution = intentResolution;
-			target = intentViewId;
+			target = intentTarget;
 		}
 	}
 
@@ -506,8 +543,9 @@ export async function runViewsShow({
 	const view = resolution.view;
 	const subview =
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
-	const canonicalTarget = rigidIntentViewId
-		? SHARED_NAV_TARGETS[rigidIntentViewId]
+	const canonicalViewId = rigidIntentViewId ?? explicitAliasViewId;
+	const canonicalTarget = canonicalViewId
+		? SHARED_NAV_TARGETS[canonicalViewId]
 		: undefined;
 	const navigationLabel =
 		canonicalTarget?.viewId === view.id ? canonicalTarget.label : view.label;
@@ -518,10 +556,6 @@ export async function runViewsShow({
 		navigationLabel,
 	);
 
-	// Record the switch so the compose hook injects the acknowledgement provider
-	// (and the provider phrases it) on this turn's reply and the immediate next.
-	if (result.ok) markViewSwitch(message?.roomId);
-
 	logger.info(
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}${result.subview ? ` subview=${result.subview}` : ""}`,
 	);
@@ -531,9 +565,9 @@ export async function runViewsShow({
 		text: result.text,
 		...(result.ok
 			? {
-					// The natural Stage 1 acknowledgement or the action callback is
-					// the visible response; the raw terminal receipt only closes the
-					// turn and must not persist as a second assistant row.
+					// The typed callback above owns the visible completion. Keeping the
+					// terminal receipt internal prevents a second assistant row while
+					// preserving its verified text for non-transcript consumers.
 					transcriptVisibility: "internal" as const,
 					userFacingText: result.text,
 					verifiedUserFacing: true,

@@ -99,7 +99,7 @@ async function main() {
     await capture("01-collapsed", mixed);
     await page.getByRole("button", { name: "Manage calendar sources" }).click();
     await page
-      .getByText("New calendars are included automatically")
+      .getByRole("button", { name: "Close source settings" })
       .waitFor({ state: "visible", timeout: 5_000 });
     await capture("02-expanded-mixed", mixed);
 
