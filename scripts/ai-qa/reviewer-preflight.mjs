@@ -89,7 +89,7 @@ export async function preflightReviewer({
         isOpenAi
           ? {
               model: resolvedModel,
-              max_tokens: 1,
+              max_completion_tokens: 16,
               messages: [
                 {
                   role: "user",

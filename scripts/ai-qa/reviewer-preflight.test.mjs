@@ -180,6 +180,9 @@ describe("reviewer provider preflight", () => {
     assert.equal(result.ok, true);
     assert.equal(requestUrl, "https://api.openai.com/v1/chat/completions");
     assert.equal(requestInit.headers.authorization, "Bearer openai-test-key");
-    assert.equal(JSON.parse(requestInit.body).model, "gpt-5-mini");
+    const requestBody = JSON.parse(requestInit.body);
+    assert.equal(requestBody.model, "gpt-5-mini");
+    assert.equal(requestBody.max_completion_tokens, 16);
+    assert.equal("max_tokens" in requestBody, false);
   });
 });
