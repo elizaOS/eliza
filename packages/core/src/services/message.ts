@@ -11961,13 +11961,7 @@ export class DefaultMessageService implements IMessageService {
 					// Mirror the ignore-path sibling below: a superseded turn ends
 					// its run as "replaced" so the discard is an observable terminal
 					// outcome instead of an unrecorded nothing.
-					await this.emitRunEnded(
-						runtime,
-						runId,
-						message,
-						startTime,
-						"replaced",
-					);
+					this.emitRunEnded(runtime, runId, message, startTime, "replaced");
 					return {
 						didRespond: false,
 						responseContent: null,
@@ -13246,7 +13240,7 @@ export class DefaultMessageService implements IMessageService {
 		runId: UUID,
 		message: Memory,
 		startTime: number,
-		status: string,
+		status: RunEventPayload["status"],
 	): void {
 		detachPostDeliverySideEffect(runtime, "RUN_ENDED", () =>
 			runtime.emitEvent(EventType.RUN_ENDED, {
@@ -13257,7 +13251,7 @@ export class DefaultMessageService implements IMessageService {
 				roomId: message.roomId,
 				entityId: message.entityId,
 				startTime,
-				status: status as "completed" | "timeout",
+				status,
 				endTime: Date.now(),
 				duration: Date.now() - startTime,
 			} as RunEventPayload),
