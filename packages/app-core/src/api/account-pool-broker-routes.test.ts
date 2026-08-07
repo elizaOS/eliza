@@ -9,7 +9,10 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import type { AccountCredentialProvider } from "@elizaos/auth/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -100,20 +103,23 @@ function writeAccount(
   access: string,
   extra: { organizationId?: string } = {},
 ): void {
-  saveAccount({
-    id,
-    providerId,
-    label: id,
-    source: "oauth",
-    credentials: {
-      access,
-      refresh: `${access}-refresh`,
-      expires: FAR_FUTURE,
+  saveAccount(
+    {
+      id,
+      providerId,
+      label: id,
+      source: "oauth",
+      credentials: {
+        access,
+        refresh: `${access}-refresh`,
+        expires: FAR_FUTURE,
+      },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      ...extra,
     },
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    ...extra,
-  });
+    createIsolatedAccountStoragePolicy(home),
+  );
 }
 
 async function postBroker(

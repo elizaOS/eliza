@@ -8,14 +8,13 @@
  * keeps openai.com default model ids off non-openai upstreams. Mutations are
  * applied in place; consumed by the first-run / config API routes.
  */
+
 import {
-  applySubscriptionCredentials,
-  deleteProviderCredentials,
-} from "@elizaos/auth/credentials";
-import {
-  SUBSCRIPTION_PROVIDER_IDS,
-  SUBSCRIPTION_PROVIDER_MAP,
-} from "@elizaos/auth/types";
+  type AccountStoragePolicy,
+  resetAccountCredentialStorage,
+} from "@elizaos/auth/account-storage";
+import { applySubscriptionCredentials } from "@elizaos/auth/credentials";
+import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/auth/types";
 import type {
   DeploymentTargetConfig,
   LinkedAccountFlagsConfig,
@@ -699,104 +698,117 @@ export function clearSubscriptionProviderConfig(
  * Clear persisted first-run state that should force the UI back through the
  * first-run setup on the next load/reset.
  */
-export function clearPersistedFirstRunConfig(config: MutableElizaConfig): void {
-  if (config.meta && typeof config.meta === "object") {
-    delete (config.meta as Record<string, unknown>).firstRunComplete;
-  }
+export function clearPersistedFirstRunConfig(
+  config: MutableElizaConfig,
+  storagePolicy: AccountStoragePolicy,
+): void {
+  const configSnapshot = structuredClone(config);
+  const environmentSnapshot = { ...process.env };
+  try {
+    resetAccountCredentialStorage(storagePolicy, () => {
+      if (config.meta && typeof config.meta === "object") {
+        delete (config.meta as Record<string, unknown>).firstRunComplete;
+      }
 
-  config.agents = { list: [] };
+      config.agents = { list: [] };
 
-  if (config.cloud && typeof config.cloud === "object") {
-    config.cloud = {};
-  }
+      if (config.cloud && typeof config.cloud === "object") {
+        config.cloud = {};
+      }
 
-  const models = asRecord(config.models);
-  if (models) {
-    delete models.nano;
-    delete models.small;
-    delete models.medium;
-    delete models.large;
-    delete models.mega;
-    if (Object.keys(models).length === 0) {
-      delete config.models;
-    }
-  }
+      const models = asRecord(config.models);
+      if (models) {
+        delete models.nano;
+        delete models.small;
+        delete models.medium;
+        delete models.large;
+        delete models.mega;
+        if (Object.keys(models).length === 0) {
+          delete config.models;
+        }
+      }
 
-  // Clear voice settings so presets apply their correct voice on first-run setup.
-  const messages = asRecord(config.messages);
-  if (messages) {
-    delete messages.tts;
-    if (Object.keys(messages).length === 0) {
-      delete config.messages;
-    }
-  }
+      // Clear voice settings so presets apply their correct voice on first-run setup.
+      const messages = asRecord(config.messages);
+      if (messages) {
+        delete messages.tts;
+        if (Object.keys(messages).length === 0) {
+          delete config.messages;
+        }
+      }
 
-  // Clear UI state (avatar, preset selection) so the full character resets.
-  // Without this, the avatar survives a reset but the voice doesn't,
-  // causing mismatched character state (e.g. male preset with female voice).
-  delete config.ui;
+      // Clear UI state (avatar, preset selection) so the full character resets.
+      // Without this, the avatar survives a reset but the voice doesn't,
+      // causing mismatched character state (e.g. male preset with female voice).
+      delete config.ui;
 
-  delete (config as Record<string, unknown>).connection;
-  delete config.deploymentTarget;
-  delete config.linkedAccounts;
-  delete config.serviceRouting;
+      delete (config as Record<string, unknown>).connection;
+      delete config.deploymentTarget;
+      delete config.linkedAccounts;
+      delete config.serviceRouting;
 
-  const signalProviders = [
-    "anthropic",
-    "anthropic-subscription",
-    "cerebras",
-    "deepseek",
-    "gemini",
-    "grok",
-    "groq",
-    "mistral",
-    "moonshot",
-    "nearai",
-    "ollama",
-    "openai",
-    "openai-subscription",
-    "openrouter",
-    "together",
-    "zai",
-  ] as const satisfies readonly FirstRunLocalProviderId[];
+      const signalProviders = [
+        "anthropic",
+        "anthropic-subscription",
+        "cerebras",
+        "deepseek",
+        "gemini",
+        "grok",
+        "groq",
+        "mistral",
+        "moonshot",
+        "nearai",
+        "ollama",
+        "openai",
+        "openai-subscription",
+        "openrouter",
+        "together",
+        "zai",
+      ] as const satisfies readonly FirstRunLocalProviderId[];
 
-  for (const providerId of signalProviders) {
-    for (const envKey of getFirstRunProviderSignalEnvKeys(providerId)) {
-      clearPersistedEnvValue(config, envKey);
-      delete process.env[envKey];
-    }
-  }
+      for (const providerId of signalProviders) {
+        for (const envKey of getFirstRunProviderSignalEnvKeys(providerId)) {
+          clearPersistedEnvValue(config, envKey);
+          delete process.env[envKey];
+        }
+      }
 
-  // A full reset must also drop the provider-specific default model env vars
-  // that applyDefaultModelNames stamps (ANTHROPIC_LARGE_MODEL, OPENAI_SMALL_MODEL,
-  // CEREBRAS_MODEL, …); otherwise a stale model id from a prior provider survives
-  // into the next fresh first-run.
-  for (const { smallKey, largeKey, cleanupKeys } of Object.values(
-    PROVIDER_DEFAULT_MODELS,
-  )) {
-    for (const envKey of new Set([
-      smallKey,
-      largeKey,
-      ...(cleanupKeys ?? []),
-    ])) {
-      clearPersistedEnvValue(config, envKey);
-      delete process.env[envKey];
-    }
-  }
+      // A full reset must also drop the provider-specific default model env vars
+      // that applyDefaultModelNames stamps (ANTHROPIC_LARGE_MODEL, OPENAI_SMALL_MODEL,
+      // CEREBRAS_MODEL, …); otherwise a stale model id from a prior provider survives
+      // into the next fresh first-run.
+      for (const { smallKey, largeKey, cleanupKeys } of Object.values(
+        PROVIDER_DEFAULT_MODELS,
+      )) {
+        for (const envKey of new Set([
+          smallKey,
+          largeKey,
+          ...(cleanupKeys ?? []),
+        ])) {
+          clearPersistedEnvValue(config, envKey);
+          delete process.env[envKey];
+        }
+      }
 
-  delete process.env.ELIZAOS_CLOUD_API_KEY;
-  delete process.env.ELIZAOS_CLOUD_ENABLED;
-  delete process.env.ELIZAOS_CLOUD_NANO_MODEL;
-  delete process.env.ELIZAOS_CLOUD_MEDIUM_MODEL;
-  delete process.env.ELIZAOS_CLOUD_SMALL_MODEL;
-  delete process.env.ELIZAOS_CLOUD_LARGE_MODEL;
-  delete process.env.ELIZAOS_CLOUD_MEGA_MODEL;
-  delete process.env.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL;
-  delete process.env.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL;
-  delete process.env.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL;
-  delete process.env.ELIZAOS_CLOUD_PLANNER_MODEL;
-  for (const provider of SUBSCRIPTION_PROVIDER_IDS) {
-    deleteProviderCredentials(provider);
+      delete process.env.ELIZAOS_CLOUD_API_KEY;
+      delete process.env.ELIZAOS_CLOUD_ENABLED;
+      delete process.env.ELIZAOS_CLOUD_NANO_MODEL;
+      delete process.env.ELIZAOS_CLOUD_MEDIUM_MODEL;
+      delete process.env.ELIZAOS_CLOUD_SMALL_MODEL;
+      delete process.env.ELIZAOS_CLOUD_LARGE_MODEL;
+      delete process.env.ELIZAOS_CLOUD_MEGA_MODEL;
+      delete process.env.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL;
+      delete process.env.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL;
+      delete process.env.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL;
+      delete process.env.ELIZAOS_CLOUD_PLANNER_MODEL;
+    });
+  } catch (cause) {
+    const mutableConfig = config as Record<string, unknown>;
+    for (const key of Object.keys(mutableConfig)) delete mutableConfig[key];
+    Object.assign(mutableConfig, structuredClone(configSnapshot));
+    for (const key of Object.keys(process.env)) delete process.env[key];
+    Object.assign(process.env, environmentSnapshot);
+    throw cause;
   }
 }
 
