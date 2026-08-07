@@ -16,6 +16,7 @@ import {
   createMessageMemory,
   INSUFFICIENT_CREDITS_REPLY,
   type Memory,
+  RoomHandlerQueue,
   stringToUuid,
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
@@ -87,6 +88,7 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
     },
     emitEvent: vi.fn(async () => undefined),
     reportError: vi.fn(),
+    roomHandlerQueue: new RoomHandlerQueue(),
     getMemories: vi.fn(async () => []),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
@@ -374,6 +376,23 @@ describe("chat route helper coverage", () => {
       }),
     ).resolves.toBeNull();
     expect(error).toHaveBeenCalledWith(res, "channelType is invalid", 400);
+
+    error.mockClear();
+    readJsonBodyMock.mockResolvedValueOnce({
+      text: "hi",
+      clientMessageId: "x".repeat(129),
+    });
+    await expect(
+      readChatRequestPayload(req as never, res as never, {
+        readJsonBody,
+        error,
+      }),
+    ).resolves.toBeNull();
+    expect(error).toHaveBeenCalledWith(
+      res,
+      "clientMessageId must be a non-empty string of at most 128 characters",
+      400,
+    );
 
     readJsonBodyMock.mockResolvedValueOnce({ text: "   " });
     await expect(

@@ -72,7 +72,10 @@ vi.mock("../chat-routes.ts", async () => {
         ? { clientMessageId: requestClientMessageId }
         : {}),
     })),
-    persistConversationMemory: vi.fn(async (_runtime, memory) => memory),
+    persistConversationMemory: vi.fn(async (runtime, memory) => {
+      await runtime.createMemory(memory, "messages");
+      return memory;
+    }),
     persistAssistantConversationMemory: vi.fn(
       async (
         runtime,
@@ -81,8 +84,8 @@ vi.mock("../chat-routes.ts", async () => {
         _channelType,
         _dedupeSinceMs,
         memoryId,
-      ) =>
-        ({
+      ) => {
+        const memory = {
           id: memoryId ?? stringToUuid("stream-contract-assistant"),
           entityId: runtime.agentId,
           agentId: runtime.agentId,
@@ -90,7 +93,10 @@ vi.mock("../chat-routes.ts", async () => {
           content:
             typeof content === "string" ? { text: content } : { ...content },
           createdAt: Date.now(),
-        }) as never,
+        } as Memory;
+        await runtime.createMemory(memory, "messages");
+        return memory as never;
+      },
     ),
     resolveNoResponseFallback: () => "",
   };
@@ -703,10 +709,21 @@ function createState(
       if (memory.id) storedMemories.set(memory.id as UUID, memory);
       return memory.id;
     }),
+    updateMemory: vi.fn(async (memory: Partial<Memory> & { id: UUID }) => {
+      const existing = storedMemories.get(memory.id);
+      if (!existing) throw new Error("memory not found");
+      storedMemories.set(memory.id, { ...existing, ...memory });
+      return true;
+    }),
+    getMemories: vi.fn(async ({ roomId }: { roomId: UUID }) =>
+      [...storedMemories.values()]
+        .filter((memory) => memory.roomId === roomId)
+        .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0)),
+    ),
     getMemoriesByIds: vi.fn(async (ids: UUID[]) => {
       const clientUserId = requestClientMessageId
         ? (stringToUuid(
-            `conversation-user:${ROOM_ID}:${requestClientMessageId}`,
+            `conversation-user:${AGENT_ID}:${ROOM_ID}:${USER_ID}:${requestClientMessageId}`,
           ) as UUID)
         : null;
       return ids.flatMap((id) => {
@@ -726,6 +743,7 @@ function createState(
       });
     }),
     reportError: vi.fn(),
+    abortTurn: vi.fn(),
     roomHandlerQueue: new RoomHandlerQueue(),
     adapter: {},
   } as unknown as AgentRuntime;
@@ -965,6 +983,7 @@ describe("conversation stream SSE contract (#10712)", () => {
       ChannelType.DM,
       expect.any(Number),
       routeOwnedAssistantId,
+      expect.anything(),
     );
     // `done` is terminal — no token frames after it.
     expect(
@@ -1160,6 +1179,7 @@ describe("conversation stream SSE contract (#10712)", () => {
           .join(" "),
       ).not.toMatch(/create a note|character view/i);
       expect(persistAssistant).toHaveBeenCalledTimes(2);
+      expect(runtime.abortTurn).not.toHaveBeenCalled();
     } finally {
       dateNow.mockRestore();
       persistUser.mockImplementation(originalPersistUser);
@@ -1260,10 +1280,12 @@ describe("conversation stream SSE contract (#10712)", () => {
       "terminal stream write exploded",
     );
     expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+    expect(first.state.activeChatTurnCount).toBe(0);
 
     const second = createFollowupCtx(first.ctx, first.state);
     await handleConversationRoutes(second.ctx);
     expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+    expect(first.state.activeChatTurnCount).toBe(0);
     const secondPayloads = parseSsePayloads(second.record.writes);
     expect(secondPayloads.filter((payload) => payload.type === "done")).toEqual(
       [expect.objectContaining({ fullText: expect.any(String) })],
@@ -1355,7 +1377,7 @@ describe("conversation stream SSE contract (#10712)", () => {
     ).toBe(true);
   });
 
-  it("fails closed when the room is deleted after ensure and allows retry", async () => {
+  it("fails closed when the room is deleted after ensure and finalizes retry without re-running", async () => {
     requestClientMessageId = "delete-during-generation-id";
     const generationStarted = createDeferred();
     const generationGate = createDeferred();
@@ -1392,7 +1414,7 @@ describe("conversation stream SSE contract (#10712)", () => {
     const retry = createFollowupCtx(first.ctx, first.state);
     await handleConversationRoutes(retry.ctx);
 
-    expect(first.useModel).toHaveBeenCalledTimes(1);
+    expect(first.useModel).not.toHaveBeenCalled();
     expect(
       parseSsePayloads(retry.record.writes).some(
         (payload) => payload.type === "done",
@@ -1541,6 +1563,7 @@ describe("conversation stream SSE contract (#10712)", () => {
       ChannelType.DM,
       expect.any(Number),
       expect.any(String),
+      expect.anything(),
     );
   });
 

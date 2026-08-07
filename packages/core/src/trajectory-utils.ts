@@ -1539,6 +1539,7 @@ async function withChildTrajectoryStep<T>(
 						});
 					}
 				},
+				{ kind: "diagnostic" },
 			);
 		}
 	}

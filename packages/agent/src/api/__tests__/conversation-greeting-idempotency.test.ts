@@ -11,7 +11,11 @@
  */
 
 import type { Memory, UUID } from "@elizaos/core";
-import { ChannelType, MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
+import {
+  ChannelType,
+  MESSAGE_SOURCE_AGENT_GREETING,
+  RoomHandlerQueue,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../../core/src/database/inMemoryAdapter.ts";
 import {
@@ -29,6 +33,7 @@ function makeRuntime(adapter: InMemoryDatabaseAdapter): unknown {
   return {
     agentId: AGENT_ID,
     character: { name: "Eliza" },
+    roomHandlerQueue: new RoomHandlerQueue(),
     async ensureConnection(params: { roomId: UUID; roomName?: string }) {
       await adapter.createRooms([
         {
