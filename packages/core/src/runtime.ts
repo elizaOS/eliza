@@ -1358,8 +1358,11 @@ export class AgentRuntime implements IAgentRuntime {
 	private settings: RuntimeSettings;
 	private servicePromiseHandlers = new Map<string, ServicePromiseHandler>(); // Combined handlers for resolve/reject
 	private servicePromises = new Map<string, Promise<Service>>(); // read
-	/** In-flight service start promises; dedupes concurrent getService() for the same type. */
+	/** Full settlement of each type's current parallel startup set, used by teardown. */
 	private startingServices = new Map<string, Promise<Service | null>>();
+	private startingServiceClasses = new Map<ServiceClass, Promise<Service>>();
+	private serviceInstancesByClass = new Map<ServiceClass, Service>();
+	private failedServiceClasses = new Set<ServiceClass>();
 	private serviceRegistrationStatus = new Map<
 		ServiceTypeName,
 		"pending" | "registering" | "registered" | "failed"
@@ -2478,6 +2481,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		if (pluginToRegister.services) {
+			const serviceTypesToStart = new Set<ServiceTypeName>();
 			for (const service of pluginToRegister.services) {
 				const serviceType = service.serviceType as ServiceTypeName;
 
@@ -2508,12 +2512,13 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					services.push(service);
 				}
+				serviceTypesToStart.add(serviceType);
+			}
 
-				// Eagerly kick off service start so it is available via the
-				// sync getService() by the time actions/routes need it.
-				// Fire-and-forget: cannot await here because _runServiceStart
-				// awaits initPromise which resolves after initialize() completes
-				// (after all registerPlugin calls finish). Awaiting would deadlock.
+			// Register every sibling implementation before startup takes a class
+			// snapshot, otherwise the first declaration can fail before a later
+			// implementation of the same service type is visible.
+			for (const serviceType of serviceTypesToStart) {
 				this._ensureServiceStarted(serviceType).catch((err) => {
 					// error-policy:J5 eager startup is fire-and-forget; _runServiceStart
 					// reports the failure and service-load callers observe the rejection.
@@ -2715,6 +2720,9 @@ export class AgentRuntime implements IAgentRuntime {
 		this.servicePromises.clear();
 		this.servicePromiseHandlers.clear();
 		this.startingServices.clear();
+		this.startingServiceClasses.clear();
+		this.serviceInstancesByClass.clear();
+		this.failedServiceClasses.clear();
 	}
 
 	private async _stopServiceInstance(
@@ -4009,9 +4017,20 @@ export class AgentRuntime implements IAgentRuntime {
 		worldPolicy?: ToolPolicyConfig;
 		roomPolicy?: ToolPolicyConfig;
 	}): Promise<Action[]> {
-		const policyService = (await this._ensureServiceStarted(
-			"tool_policy",
-		)) as ToolPolicyService | null;
+		let policyService: ToolPolicyService | null;
+		try {
+			policyService = (await this._ensureServiceStarted(
+				"tool_policy",
+			)) as ToolPolicyService | null;
+		} catch (error) {
+			// error-policy:J4 explicit user-facing degrade — a tool_policy service
+			// that was configured but failed to start cannot safely authorize tools.
+			// Keep the turn alive with no executable actions and surface the failure.
+			this.reportError("AgentRuntime.getFilteredActions", error, {
+				serviceType: "tool_policy",
+			});
+			return [];
+		}
 
 		if (!policyService || !context) {
 			return [...this.actions];
@@ -4038,9 +4057,23 @@ export class AgentRuntime implements IAgentRuntime {
 			roomPolicy?: ToolPolicyConfig;
 		},
 	): Promise<{ allowed: boolean; reason: string }> {
-		const policyService = (await this._ensureServiceStarted(
-			"tool_policy",
-		)) as ToolPolicyService | null;
+		let policyService: ToolPolicyService | null;
+		try {
+			policyService = (await this._ensureServiceStarted(
+				"tool_policy",
+			)) as ToolPolicyService | null;
+		} catch (error) {
+			// error-policy:J4 explicit user-facing degrade — a tool_policy service
+			// that was configured but failed to start cannot safely authorize tools.
+			// Deny the action and surface the service failure.
+			this.reportError("AgentRuntime.isActionAllowed", error, {
+				serviceType: "tool_policy",
+			});
+			return {
+				allowed: false,
+				reason: "Tool policy service failed to start",
+			};
+		}
 
 		if (!policyService) {
 			return { allowed: true, reason: "No policy service available" };
@@ -4851,9 +4884,20 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		// Optional trajectory logging service; absent unless configured.
-		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
-			| (Service & TrajectoryProviderAccessLogger)
-			| null;
+		let trajLogger: (Service & TrajectoryProviderAccessLogger) | null;
+		try {
+			trajLogger = (await this._ensureServiceStarted("trajectories")) as
+				| (Service & TrajectoryProviderAccessLogger)
+				| null;
+		} catch (error) {
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — a trajectory
+			// logger that fails to start must never abort composeState; continue
+			// without provider-access logging. Surfaced via reportError.
+			this.reportError("AgentRuntime.composeState.trajectories", error, {
+				serviceType: "trajectories",
+			});
+			trajLogger = null;
+		}
 		const composeStartedAt = Date.now();
 		const providerSignal =
 			this.turnControllers.signalFor(message.roomId) ??
@@ -5375,41 +5419,115 @@ export class AgentRuntime implements IAgentRuntime {
 		return newState;
 	}
 
-	/** Lazy service start: used internally by _ensureServiceStarted / getServiceLoadPromise. */
-	/** Dedupes concurrent starts for the same type via startingServices so only one start runs. */
+	/** Starts every pending implementation in parallel and waits for the full set. */
 	private async _ensureServiceStarted(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null> {
 		if (this.stopped) return null;
 		if (!this.isNativeFeatureServiceEnabled(serviceType)) return null;
 		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
-		const instances = this.services.get(key);
-		if (instances && instances.length > 0) {
-			return instances[0];
-		}
+		// Fast path: a service that is already registered and running is returned
+		// immediately WITHOUT awaiting initPromise. Callers inside initialize()
+		// (plugin init -> getFilteredActions) would otherwise deadlock on the
+		// still-unresolved init barrier even though the instance is already up.
+		const alreadyRunning = this.services.get(key)?.[0];
+		if (alreadyRunning && this.initResolver) return alreadyRunning;
+		await this.initPromise;
+		if (this.stopped) return null;
 		const classes = this.serviceTypes.get(key);
 		if (!classes || classes.length === 0) {
 			return null;
 		}
-		let inFlight = this.startingServices.get(key);
-		if (!inFlight) {
-			// Start ALL registered service classes for this type, not just the first.
-			// This supports multiple services of the same type (e.g. multiple wallet services).
-			inFlight = (async () => {
-				let first: Service | null = null;
-				for (const cls of classes) {
-					const result = await this._runServiceStart(key, serviceType, cls);
-					if (result && !first) first = result;
-				}
-				return first;
-			})();
-			this.startingServices.set(key, inFlight);
+		const startedImplementation = classes
+			.map((serviceClass) => this.serviceInstancesByClass.get(serviceClass))
+			.find((service): service is Service => service !== undefined);
+		const starts = classes.map((serviceClass) => {
+			const started = this.serviceInstancesByClass.get(serviceClass);
+			if (started) return Promise.resolve(started);
+			const pending = this.startingServiceClasses.get(serviceClass);
+			if (pending) return pending;
+			if (
+				startedImplementation &&
+				this.failedServiceClasses.has(serviceClass)
+			) {
+				return Promise.resolve(startedImplementation);
+			}
+
+			const start = this._runServiceStart(key, serviceType, serviceClass).then(
+				(service) => {
+					if (!service) {
+						throw new Error(
+							`Service implementation ${serviceClass.name || "<anonymous>"} did not start`,
+						);
+					}
+					this.failedServiceClasses.delete(serviceClass);
+					return service;
+				},
+				(error) => {
+					this.failedServiceClasses.add(serviceClass);
+					throw error;
+				},
+			);
+			this.startingServiceClasses.set(serviceClass, start);
+			void start.then(
+				() => this.startingServiceClasses.delete(serviceClass),
+				() => this.startingServiceClasses.delete(serviceClass),
+			);
+			return start;
+		});
+
+		const settlement = Promise.allSettled(starts);
+		const allStarts = settlement.then((results) => {
+			const firstSuccessful = results.find(
+				(result): result is PromiseFulfilledResult<Service> =>
+					result.status === "fulfilled",
+			)?.value;
+			return firstSuccessful ?? null;
+		});
+		this.startingServices.set(key, allStarts);
+		void allStarts.then(() => {
+			if (this.startingServices.get(key) === allStarts) {
+				this.startingServices.delete(key);
+			}
+		});
+
+		const settled = await settlement;
+		const first = this.services.get(key)?.[0] ?? null;
+		if (first) {
+			this.serviceRegistrationStatus.set(key, "registered");
+			const handler = this.servicePromiseHandlers.get(key);
+			if (handler) {
+				handler.resolve(first);
+				this.servicePromiseHandlers.delete(key);
+			}
+			return first;
 		}
-		try {
-			return await inFlight;
-		} finally {
-			this.startingServices.delete(key);
+
+		const cause = new AggregateError(
+			settled.flatMap((result) =>
+				result.status === "rejected" ? [result.reason] : [],
+			),
+			`All implementations of service ${String(serviceType)} failed`,
+		);
+		const startupError = new ElizaError(
+			`Service ${String(serviceType)} not found or failed to start`,
+			{
+				code: "SERVICE_START_FAILED",
+				context: {
+					serviceType: String(serviceType),
+					implementationCount: classes.length,
+				},
+				cause,
+			},
+		);
+		const handler = this.servicePromiseHandlers.get(key);
+		if (handler) {
+			handler.reject(startupError);
+			this.servicePromiseHandlers.delete(key);
+			this.servicePromises.delete(key);
 		}
+		this.serviceRegistrationStatus.set(key, "failed");
+		throw startupError;
 	}
 
 	/** Runs one service start; used by _ensureServiceStarted with startingServices dedupe. */
@@ -5418,8 +5536,9 @@ export class AgentRuntime implements IAgentRuntime {
 		serviceType: string,
 		serviceDef: ServiceClass,
 	): Promise<Service | null> {
-		this.serviceRegistrationStatus.set(key, "registering");
-		await this.initPromise;
+		if ((this.services.get(key)?.length ?? 0) === 0) {
+			this.serviceRegistrationStatus.set(key, "registering");
+		}
 		if (typeof serviceDef.start !== "function") {
 			this.serviceRegistrationStatus.set(key, "failed");
 			throw new ElizaError("Service class has no static start method", {
@@ -5429,8 +5548,9 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		try {
 			if (this.stopped) {
-				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				throw new Error(
+					`Runtime stopped before service ${String(serviceType)} could start`,
+				);
 			}
 			const serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
@@ -5446,25 +5566,21 @@ export class AgentRuntime implements IAgentRuntime {
 					serviceInstance,
 					"late service start after runtime stop",
 				);
-				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				throw new Error(
+					`Runtime stopped while service ${String(serviceType)} was starting`,
+				);
 			}
-			if (!this.services.has(key)) {
-				this.services.set(key, []);
-			}
-			const serviceList = this.services.get(key);
-			if (serviceList) {
-				serviceList.push(serviceInstance);
-			}
-			const handler = this.servicePromiseHandlers.get(serviceType);
-			if (handler) {
-				handler.resolve(serviceInstance);
-				this.servicePromiseHandlers.delete(serviceType);
-			}
+			this.serviceInstancesByClass.set(serviceDef, serviceInstance);
+			const orderedInstances = (this.serviceTypes.get(key) ?? []).flatMap(
+				(serviceClass) => {
+					const instance = this.serviceInstancesByClass.get(serviceClass);
+					return instance ? [instance] : [];
+				},
+			);
+			this.services.set(key, orderedInstances);
 			if (serviceDef.registerSendHandlers) {
 				serviceDef.registerSendHandlers(this, serviceInstance);
 			}
-			this.serviceRegistrationStatus.set(key, "registered");
 			return serviceInstance;
 		} catch (error) {
 			// error-policy:J2 service startup adds service identity and preserves the cause
