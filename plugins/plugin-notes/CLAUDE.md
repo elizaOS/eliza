@@ -7,7 +7,12 @@ can create, inspect, update, and delete together.
 
 This package owns one intentionally focused Cloud surface:
 
-- `notes` — sticky-note CRUD with title, body, and color.
+- `notes` — note CRUD with one user-authored content field and optional color.
+
+The persisted schema retains a derived first-line label plus body for stable
+lookup and compatibility with existing notes. That split is deterministic:
+planner capabilities accept one `content` value and never ask a model to invent
+a separate title or summary. The view renders the combined content as one field.
 
 Managed dedicated agents load the runtime plugin through the `lean-chat`
 profile. The app build loads `src/register.ts` through the manifest-driven app

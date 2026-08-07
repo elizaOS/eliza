@@ -16,7 +16,13 @@
  *   node …/dev-ui.mjs --check-acp-hot-reload=31337             # one-shot reload safety probe
  */
 import { execSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -32,6 +38,7 @@ import { isRedundantApiListenLine } from "./lib/dev-ui-log-filter.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
 import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
+import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
 import {
@@ -275,6 +282,43 @@ function createDevChildEnv(baseEnv) {
     );
   }
   return nextEnv;
+}
+
+function prepareMacNativeEffectsForDev() {
+  const plan = resolveMacNativeEffectsDevPlan({
+    cwd,
+    env: process.env,
+    platform: process.platform,
+    exists: existsSync,
+    modifiedAt: (value) => statSync(value).mtimeMs,
+  });
+  if (plan.kind === "skip") return;
+
+  if (plan.kind === "build") {
+    try {
+      console.log(
+        `  ${green(logPrefix)} ${dim("Building macOS Calendar/EventKit bridge...")}`,
+      );
+      execSync("bun run build:native-effects", {
+        cwd: plan.packageDir,
+        env: process.env,
+        stdio: "inherit",
+      });
+    } catch (error) {
+      console.warn(
+        `  ${green(logPrefix)} ${dim(`macOS native bridge unavailable; Calendar stays explicit-unavailable (${error instanceof Error ? error.message : String(error)}).`)}`,
+      );
+      return;
+    }
+    if (!existsSync(plan.dylibPath)) {
+      console.warn(
+        `  ${green(logPrefix)} ${dim("macOS native bridge build completed without its declared dylib; Calendar stays explicit-unavailable.")}`,
+      );
+      return;
+    }
+  }
+
+  process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB = plan.dylibPath;
 }
 
 function shellQuoteArg(value) {
@@ -1077,6 +1121,8 @@ if (uiOnly) {
       }`,
     )}`,
   );
+
+  prepareMacNativeEffectsForDev();
 
   let devServerEntry = resolveDevServerEntryRelativePath(cwd);
   // Resolve to absolute so it stays valid when we anchor the API child cwd

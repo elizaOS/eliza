@@ -10,6 +10,7 @@ describe("voice session server protocol", () => {
         JSON.stringify({
           t: "navigate_view",
           viewId: " notes ",
+          viewPath: " /notes ",
           subview: " recent ",
           traceId: " trace-1 ",
         }),
@@ -17,6 +18,7 @@ describe("voice session server protocol", () => {
     ).toEqual({
       t: "navigate_view",
       viewId: "notes",
+      viewPath: "/notes",
       subview: "recent",
       traceId: "trace-1",
     });
@@ -42,6 +44,19 @@ describe("voice session server protocol", () => {
           t: "navigate_view",
           viewId: "notes",
           subview: {},
+          traceId: "trace-1",
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects an invalid optional view path rather than falling back", () => {
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "navigate_view",
+          viewId: "notes",
+          viewPath: {},
           traceId: "trace-1",
         }),
       ),
