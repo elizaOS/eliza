@@ -36,6 +36,7 @@ type PendingTrajectoryState = {
 	stepByMessageId: Map<string, string>;
 	messageIdByStepId: Map<string, string>;
 	endTargetByStepId: Map<string, string>;
+	runOwnedStepIds: Set<string>;
 };
 
 const pendingTrajectoriesByRuntime = new WeakMap<
@@ -54,6 +55,7 @@ function getPendingTrajectoryState(
 			stepByMessageId: new Map(),
 			messageIdByStepId: new Map(),
 			endTargetByStepId: new Map(),
+			runOwnedStepIds: new Set(),
 		};
 		pendingTrajectoriesByRuntime.set(key, state);
 	}
@@ -74,11 +76,13 @@ function cleanupPendingTrajectory(
 	}
 
 	state.endTargetByStepId.delete(trajectoryStepId);
+	state.runOwnedStepIds.delete(trajectoryStepId);
 	if (
 		state.stepByReplyId.size === 0 &&
 		state.stepByMessageId.size === 0 &&
 		state.messageIdByStepId.size === 0 &&
-		state.endTargetByStepId.size === 0
+		state.endTargetByStepId.size === 0 &&
+		state.runOwnedStepIds.size === 0
 	) {
 		pendingTrajectoriesByRuntime.delete(runtime as object);
 	}
@@ -444,14 +448,19 @@ export const trajectoriesPlugin: Plugin = {
 				}
 			},
 		],
+		RUN_STARTED: [
+			async (payload: RunEventPayload) => {
+				const { runtime, messageId } = payload;
+				if (!runtime || !messageId) return;
+				const state = pendingTrajectoriesByRuntime.get(runtime as object);
+				const trajectoryStepId = state?.stepByMessageId.get(messageId);
+				if (trajectoryStepId) state?.runOwnedStepIds.add(trajectoryStepId);
+			},
+		],
 		MESSAGE_SENT: [
 			async (payload: MessagePayload) => {
 				const { runtime, message, trajectoryTerminalOwner } = payload;
 				if (!message || !runtime) return;
-				// A live message-service run owns terminalization through RUN_ENDED so
-				// its post-turn evaluator child can finish first. Delivery-only emitters
-				// omit this capability and retain MESSAGE_SENT as their terminal fallback.
-				if (trajectoryTerminalOwner === "run") return;
 
 				const meta = message.metadata as Record<string, unknown> | undefined;
 				const inReplyTo =
@@ -470,6 +479,15 @@ export const trajectoriesPlugin: Plugin = {
 						?.stepByReplyId.get(inReplyTo);
 				}
 				if (!trajectoryStepId) return;
+				const state = pendingTrajectoriesByRuntime.get(runtime as object);
+				// RUN_STARTED is the structural owner. The payload capability covers the
+				// partial-listener case where the run began but this listener did not run.
+				if (
+					trajectoryTerminalOwner === "run" ||
+					state?.runOwnedStepIds.has(trajectoryStepId)
+				) {
+					return;
+				}
 
 				try {
 					await endPendingTrajectory(runtime, trajectoryStepId, "completed");
