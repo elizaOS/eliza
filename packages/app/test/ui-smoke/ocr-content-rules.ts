@@ -128,15 +128,44 @@ export function normalize(text: string): string {
 function containsExpectedText(haystack: string, label: string): boolean {
   const needle = normalize(label);
   if (!needle) return false;
+  const compactNeedle = needle.replaceAll(" ", "");
+
+  // Short anchors match inside unrelated noise tokens under a bare substring
+  // test — "SOL" hits inside the garbled token "esol", "ETH" inside "method".
+  // That matters most in exactly the low-confidence regime where scrambled
+  // glyphs are likeliest, so require a token boundary for them. `normalize`
+  // has already collapsed the haystack to single-space-separated tokens, so
+  // padding both sides is a sufficient boundary test.
+  if (compactNeedle.length < 6) {
+    return ` ${haystack} `.includes(` ${needle} `);
+  }
+
   if (haystack.includes(needle)) return true;
 
-  // Tesseract sometimes joins adjacent words ("New note" → "Newnote").
-  // Require six real characters so removing spaces cannot make tiny labels
-  // such as "on" or "go" match inside unrelated words.
-  const compactNeedle = needle.replaceAll(" ", "");
+  // Tesseract sometimes joins adjacent words ("New note" → "Newnote"). Six
+  // real characters is enough specificity that removing spaces cannot make
+  // the needle match inside an unrelated word.
+  return haystack.replaceAll(" ", "").includes(compactNeedle);
+}
+
+/**
+ * Returns true only when a declared positive semantic contract is fully
+ * visible. This may rescue a readable, label-bearing transcript whose global
+ * confidence is diluted by decorative glyphs; it never bypasses the word or
+ * blank-pixel floors, and forbid-only policies cannot manufacture confidence.
+ */
+function positiveExpectationMatches(
+  haystack: string,
+  expectation?: OcrExpectation,
+): boolean {
+  if (!expectation) return false;
+  const allLabels = expectation.requireAll ?? [];
+  const anyLabels = expectation.requireAny ?? [];
+  if (allLabels.length === 0 && anyLabels.length === 0) return false;
   return (
-    compactNeedle.length >= 6 &&
-    haystack.replaceAll(" ", "").includes(compactNeedle)
+    allLabels.every((label) => containsExpectedText(haystack, label)) &&
+    (anyLabels.length === 0 ||
+      anyLabels.some((label) => containsExpectedText(haystack, label)))
   );
 }
 
@@ -202,11 +231,13 @@ export function evaluateOcrContent({
 
   const hay = normalize(ocr.text);
   const blankPixels = !exemptFromBlank && ocr.pixelBlank === true;
+  const semanticAnchorsMatched = positiveExpectationMatches(hay, expectation);
   const ocrInconclusive =
     !exemptFromBlank &&
     !blankPixels &&
     (ocr.words < OCR_RELIABLE_WORD_FLOOR ||
-      ocr.meanConfidence < OCR_RELIABLE_CONFIDENCE_FLOOR);
+      (ocr.meanConfidence < OCR_RELIABLE_CONFIDENCE_FLOOR &&
+        !semanticAnchorsMatched));
   const errorLeaks = ocrInconclusive ? [] : detectErrorLeaks(ocr.text);
   const placeholderLeaks = ocrInconclusive
     ? []
