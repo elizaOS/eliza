@@ -35,59 +35,71 @@ export default function ApplicationsPage() {
   return (
     <AppsPageWrapper>
       <DashboardPageContainer className="space-y-4 md:space-y-6">
-        <DashboardStatGrid data-onboarding="apps-stats">
-          <DashboardStatCard
-            label={t("cloud.apps.stat.totalApps", {
-              defaultValue: "Total Apps",
-            })}
-            value={apps.length}
-            icon={<Grid3x3 className="h-5 w-5 text-muted" />}
-          />
-          <DashboardStatCard
-            label={t("cloud.apps.stat.activeApps", {
-              defaultValue: "Active Apps",
-            })}
-            value={activeCount}
-            icon={<Activity className="h-5 w-5 text-green-500" />}
-          />
-          <DashboardStatCard
-            label={t("cloud.apps.stat.totalUsers", {
-              defaultValue: "Total Users",
-            })}
-            value={totalUsers.toLocaleString()}
-            icon={<Users className="h-5 w-5 text-muted" />}
-          />
-          <DashboardStatCard
-            label={t("cloud.apps.stat.totalRequests", {
-              defaultValue: "Total Requests",
-            })}
-            value={totalRequests.toLocaleString()}
-            icon={<TrendingUp className="h-5 w-5 text-purple-500" />}
-          />
-        </DashboardStatGrid>
-        {!session.ready || isLoading ? (
+        {!session.ready ? (
           <AppsSkeleton />
-        ) : isError ? (
+        ) : !session.authenticated ? (
           <DashboardErrorState
-            message={
-              error instanceof Error
-                ? error.message
-                : t("cloud.apps.error.load", {
-                    defaultValue: "Failed to load apps",
-                  })
-            }
-          />
-        ) : apps.length === 0 ? (
-          // Apps are created BY the agent (chat: "build me an app…"), never
-          // from the console — the dashboard only manages what exists.
-          <AppsEmptyState
-            description={t("cloud.apps.emptyAgentHint", {
-              defaultValue:
-                "Ask your Eliza agent to build and deploy an app — it will show up here to manage, monetize, and share.",
+            message={t("cloud.apps.signInRequired", {
+              defaultValue: "Sign in to Eliza Cloud to manage Cloud Apps.",
             })}
           />
         ) : (
-          <AppsTable apps={apps} />
+          <>
+            <DashboardStatGrid data-onboarding="apps-stats">
+              <DashboardStatCard
+                label={t("cloud.apps.stat.totalApps", {
+                  defaultValue: "Total Apps",
+                })}
+                value={apps.length}
+                icon={<Grid3x3 className="h-5 w-5 text-muted" />}
+              />
+              <DashboardStatCard
+                label={t("cloud.apps.stat.activeApps", {
+                  defaultValue: "Active Apps",
+                })}
+                value={activeCount}
+                icon={<Activity className="h-5 w-5 text-green-500" />}
+              />
+              <DashboardStatCard
+                label={t("cloud.apps.stat.totalUsers", {
+                  defaultValue: "Total Users",
+                })}
+                value={totalUsers.toLocaleString()}
+                icon={<Users className="h-5 w-5 text-muted" />}
+              />
+              <DashboardStatCard
+                label={t("cloud.apps.stat.totalRequests", {
+                  defaultValue: "Total Requests",
+                })}
+                value={totalRequests.toLocaleString()}
+                icon={<TrendingUp className="h-5 w-5 text-purple-500" />}
+              />
+            </DashboardStatGrid>
+            {isLoading ? (
+              <AppsSkeleton />
+            ) : isError ? (
+              <DashboardErrorState
+                message={
+                  error instanceof Error
+                    ? error.message
+                    : t("cloud.apps.error.load", {
+                        defaultValue: "Failed to load apps",
+                      })
+                }
+              />
+            ) : apps.length === 0 ? (
+              // Apps are created BY the agent (chat: "build me an app…"), never
+              // from the console — the dashboard only manages what exists.
+              <AppsEmptyState
+                description={t("cloud.apps.emptyAgentHint", {
+                  defaultValue:
+                    "Ask your Eliza agent to build and deploy an app — it will show up here to manage, monetize, and share.",
+                })}
+              />
+            ) : (
+              <AppsTable apps={apps} />
+            )}
+          </>
         )}
       </DashboardPageContainer>
     </AppsPageWrapper>

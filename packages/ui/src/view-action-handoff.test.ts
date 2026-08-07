@@ -93,6 +93,29 @@ describe("view action handoff", () => {
     });
   });
 
+  it("dispatches a shared host destination at its canonical path", () => {
+    const dispatch = vi.fn();
+    const sharedCloudApps: ChatActionResultSummary = {
+      actionName: "VIEWS",
+      success: true,
+      values: {
+        mode: "show",
+        viewId: "cloud-apps",
+        viewPath: "/cloud-apps",
+        source: "agent",
+      },
+    };
+
+    expect(dispatchViewActionHandoffDirect([sharedCloudApps], dispatch)).toBe(
+      true,
+    );
+    expect(dispatch).toHaveBeenCalledWith({
+      viewId: "cloud-apps",
+      viewPath: "/cloud-apps",
+      source: "agent",
+    });
+  });
+
   it("does not duplicate history when the WebSocket already switched the route", async () => {
     const dispatch = vi.fn();
 
