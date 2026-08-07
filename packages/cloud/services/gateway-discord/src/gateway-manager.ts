@@ -29,6 +29,7 @@ import { createMockRedis, createNativeRedis } from "./redis-adapter";
 import {
   buildManagedFailureReplyOptions,
   buildManagedReplyOptions,
+  classifyManagedReplyReceipt,
 } from "./reply-components";
 import {
   forwardToServer,
@@ -2043,11 +2044,24 @@ export class GatewayManager {
           ...(outcome.status !== undefined ? { status: outcome.status } : {}),
           error: sanitizeError(outcome.error),
         });
+        const failureOptions = buildManagedFailureReplyOptions(message.id);
         const failureDelivery = await deliverManagedReply({
-          sendFailureNotice: () =>
-            message.reply(buildManagedFailureReplyOptions(message.id)),
+          sendFailureNotice: async () =>
+            classifyManagedReplyReceipt(
+              await message.reply(failureOptions),
+              failureOptions,
+            ),
         });
-        if (failureDelivery.state === "undeliverable") {
+        if (failureDelivery.state === "deduplicated") {
+          logger.warn(
+            "Managed Agent Discord failure notice resolved to an existing nonce message",
+            {
+              guildId: message.guildId ?? null,
+              channelId: message.channelId,
+              messageId: message.id,
+            },
+          );
+        } else if (failureDelivery.state === "undeliverable") {
           logger.error(
             "Managed Agent Discord failure notice was undeliverable",
             {
@@ -2080,18 +2094,35 @@ export class GatewayManager {
       const replyText = routed.replyText.trim();
       const truncated =
         replyText.length > 2000 ? replyText.slice(0, 2000) : replyText;
-      // Both sends carry the inbound message ID as an enforced Discord nonce.
-      // discord.js owns transport retries; the one application fallback cannot
-      // duplicate an ambiguously accepted primary reply.
+      const replyOptions = buildManagedReplyOptions(
+        message.id,
+        truncated,
+        routed.replyCta,
+      );
+      const failureOptions = buildManagedFailureReplyOptions(message.id);
       const delivery = await deliverManagedReply({
-        sendReply: () =>
-          message.reply(
-            buildManagedReplyOptions(message.id, truncated, routed.replyCta),
+        sendReply: async () =>
+          classifyManagedReplyReceipt(
+            await message.reply(replyOptions),
+            replyOptions,
           ),
-        sendFailureNotice: () =>
-          message.reply(buildManagedFailureReplyOptions(message.id)),
+        sendFailureNotice: async () =>
+          classifyManagedReplyReceipt(
+            await message.reply(failureOptions),
+            failureOptions,
+          ),
       });
-      if (delivery.state === "failure_notice") {
+      if (delivery.state === "deduplicated") {
+        logger.warn(
+          "Managed Agent Discord send resolved to an existing nonce message",
+          {
+            guildId: message.guildId ?? null,
+            channelId: message.channelId,
+            messageId: message.id,
+            attempted: delivery.attempted,
+          },
+        );
+      } else if (delivery.state === "failure_notice") {
         logger.warn("Managed Agent Discord reply degraded to failure notice", {
           guildId: message.guildId ?? null,
           channelId: message.channelId,

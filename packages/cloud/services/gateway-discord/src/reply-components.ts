@@ -116,3 +116,20 @@ export function buildManagedFailureReplyOptions(
     MANAGED_REPLY_UNAVAILABLE_TEXT,
   );
 }
+
+export type ManagedReplyReceiptStatus = "delivered" | "deduplicated";
+
+/**
+ * Distinguishes a fulfilled send from Discord returning a different message
+ * that already owns the nonce. Same-payload nonce replays are semantically
+ * delivered regardless of whether this request created the message.
+ */
+export function classifyManagedReplyReceipt(
+  receipt: { content: string; nonce: string | number | null },
+  expected: MessageReplyOptions,
+): ManagedReplyReceiptStatus {
+  return receipt.content === expected.content &&
+    String(receipt.nonce) === String(expected.nonce)
+    ? "delivered"
+    : "deduplicated";
+}

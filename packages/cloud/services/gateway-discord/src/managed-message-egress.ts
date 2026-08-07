@@ -195,35 +195,63 @@ export type ManagedReplyDeliveryOutcome =
   | { state: "reply" }
   | { state: "failure_notice"; primaryError?: string }
   | {
+      state: "deduplicated";
+      attempted: "reply" | "failure_notice";
+      primaryError?: string;
+    }
+  | {
       state: "undeliverable";
       primaryError?: string;
       failureNoticeError: string;
     };
 
 /**
- * Makes at most one application-level primary send and one failure-notice
- * send. The caller supplies the same enforced Discord nonce to both closures;
- * discord.js owns its internal REST retries, while this boundary prevents a
- * second logical reply and turns a genuine delivery failure into visible UI.
+ * Makes at most two same-nonce primary sends and one distinct-nonce failure
+ * notice. The second primary call only confirms an ambiguous transport failure:
+ * Discord returns the existing message if the first call was accepted, or
+ * creates it if the first call never arrived. Deterministic 4xx failures skip
+ * confirmation, and the final fallback is bounded and non-recursive.
  */
 export async function deliverManagedReply(options: {
-  sendReply?: () => Promise<unknown>;
-  sendFailureNotice: () => Promise<unknown>;
+  sendReply?: () => Promise<"delivered" | "deduplicated">;
+  sendFailureNotice: () => Promise<"delivered" | "deduplicated">;
 }): Promise<ManagedReplyDeliveryOutcome> {
   let primaryError: string | undefined;
   if (options.sendReply) {
-    try {
-      await options.sendReply();
-      return { state: "reply" };
-    } catch (error) {
-      // error-policy:J4 A failed primary send degrades to a visibly distinct
-      // same-nonce notice; Discord deduplicates an ambiguously accepted reply.
-      primaryError = error instanceof Error ? error.message : String(error);
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const receipt = await options.sendReply();
+        return receipt === "delivered"
+          ? { state: "reply" }
+          : { state: "deduplicated", attempted: "reply" };
+      } catch (error) {
+        // error-policy:J4 One same-nonce confirmation resolves an ambiguous
+        // transport failure without risking a duplicate logical reply.
+        primaryError = error instanceof Error ? error.message : String(error);
+        const status =
+          error && typeof error === "object" && "status" in error
+            ? (error as { status?: unknown }).status
+            : undefined;
+        const retryable =
+          typeof status !== "number" ||
+          status === 408 ||
+          status === 429 ||
+          status >= 500;
+        if (attempt === 1 && retryable) continue;
+        break;
+      }
     }
   }
 
   try {
-    await options.sendFailureNotice();
+    const receipt = await options.sendFailureNotice();
+    if (receipt === "deduplicated") {
+      return {
+        state: "deduplicated",
+        attempted: "failure_notice",
+        ...(primaryError ? { primaryError } : {}),
+      };
+    }
     return {
       state: "failure_notice",
       ...(primaryError ? { primaryError } : {}),

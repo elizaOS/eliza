@@ -4,6 +4,7 @@ import {
   buildManagedFailureReplyOptions,
   buildManagedReplyOptions,
   buildReplyComponents,
+  classifyManagedReplyReceipt,
   MANAGED_REPLY_UNAVAILABLE_TEXT,
 } from "../src/reply-components";
 
@@ -112,5 +113,24 @@ describe("managed reply options", () => {
     expect(fallback.nonce).not.toBe(primary.nonce);
     // Discord caps the nonce at 25 characters; a snowflake is 19.
     expect(String(fallback.nonce).length).toBeLessThanOrEqual(25);
+  });
+
+  test("classifies a returned nonce message by semantic payload", () => {
+    const expected = buildManagedReplyOptions("123456789012345678", "hello");
+    expect(
+      classifyManagedReplyReceipt(
+        { content: "hello", nonce: "123456789012345678" },
+        expected,
+      ),
+    ).toBe("delivered");
+    expect(
+      classifyManagedReplyReceipt(
+        {
+          content: MANAGED_REPLY_UNAVAILABLE_TEXT,
+          nonce: "123456789012345678",
+        },
+        expected,
+      ),
+    ).toBe("deduplicated");
   });
 });

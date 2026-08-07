@@ -230,9 +230,11 @@ describe("deliverManagedReply", () => {
     const result = await deliverManagedReply({
       sendReply: async () => {
         primaryCalls += 1;
+        return "delivered";
       },
       sendFailureNotice: async () => {
         fallbackCalls += 1;
+        return "delivered";
       },
     });
 
@@ -246,6 +248,7 @@ describe("deliverManagedReply", () => {
     const result = await deliverManagedReply({
       sendFailureNotice: async () => {
         fallbackCalls += 1;
+        return "delivered";
       },
     });
 
@@ -253,24 +256,47 @@ describe("deliverManagedReply", () => {
     expect(fallbackCalls).toBe(1);
   });
 
-  test("an ambiguous primary failure makes one fallback attempt, never an application retry", async () => {
+  test("an ambiguous primary failure is confirmed once with the same nonce", async () => {
     let primaryCalls = 0;
     let fallbackCalls = 0;
     const result = await deliverManagedReply({
       sendReply: async () => {
         primaryCalls += 1;
-        throw new Error("socket closed after request write");
+        if (primaryCalls === 1) {
+          throw new Error("socket closed after request write");
+        }
+        return "delivered";
       },
       sendFailureNotice: async () => {
         fallbackCalls += 1;
+        return "delivered";
+      },
+    });
+
+    expect(result).toEqual({ state: "reply" });
+    expect(primaryCalls).toBe(2);
+    expect(fallbackCalls).toBe(0);
+  });
+
+  test("two ambiguous primary failures make one bounded fallback attempt", async () => {
+    let primaryCalls = 0;
+    let fallbackCalls = 0;
+    const result = await deliverManagedReply({
+      sendReply: async () => {
+        primaryCalls += 1;
+        throw new Error(`ambiguous-${primaryCalls}`);
+      },
+      sendFailureNotice: async () => {
+        fallbackCalls += 1;
+        return "delivered";
       },
     });
 
     expect(result).toEqual({
       state: "failure_notice",
-      primaryError: "socket closed after request write",
+      primaryError: "ambiguous-2",
     });
-    expect(primaryCalls).toBe(1);
+    expect(primaryCalls).toBe(2);
     expect(fallbackCalls).toBe(1);
   });
 
@@ -301,5 +327,36 @@ describe("deliverManagedReply", () => {
     });
     expect(primaryCalls).toBe(1);
     expect(fallbackCalls).toBe(1);
+  });
+
+  test("a mismatched nonce receipt is reported without sending a fallback", async () => {
+    let fallbackCalls = 0;
+    const result = await deliverManagedReply({
+      sendReply: async () => "deduplicated",
+      sendFailureNotice: async () => {
+        fallbackCalls += 1;
+        return "delivered";
+      },
+    });
+
+    expect(result).toEqual({ state: "deduplicated", attempted: "reply" });
+    expect(fallbackCalls).toBe(0);
+  });
+
+  test("a mismatched fallback receipt retains the primary failure context", async () => {
+    const result = await deliverManagedReply({
+      sendReply: async () => {
+        const error = new Error("forbidden") as Error & { status: number };
+        error.status = 403;
+        throw error;
+      },
+      sendFailureNotice: async () => "deduplicated",
+    });
+
+    expect(result).toEqual({
+      state: "deduplicated",
+      attempted: "failure_notice",
+      primaryError: "forbidden",
+    });
   });
 });
