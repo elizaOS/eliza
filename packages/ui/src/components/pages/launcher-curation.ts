@@ -123,6 +123,10 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   // `chat` is the home/primary surface, not a launcher tile — a Chat tile is
   // pure redundancy next to the always-present home chat (#14479).
   "chat",
+  // Headless agent-capability surface (VIEWS action=interact set-flashlight):
+  // it declares no `path` and renders nothing, on any platform, so a tile
+  // would open a broken route and push real tiles below the mobile fold.
+  "device-control",
   // The Eliza Cloud Applications studio (`cloud-apps`, registered by
   // `@elizaos/app` on native shells). My Apps is the ONE apps destination in
   // the launcher: the studio is reached from the My Apps view's Eliza Cloud
