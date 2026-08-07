@@ -1,6 +1,3 @@
-// Exercises cloud API v1 cron provisioning worker health route.test behavior with deterministic Worker route fixtures.
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-
 /**
  * End-to-end wiring test for the provisioning-worker-health cron route.
  *
@@ -10,13 +7,17 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
  *   - the Redis-backed gate (`checkProvisioningWorkerHealth`), so we can inject
  *     a stale/absent/fresh heartbeat without a live Redis;
  *   - global `fetch`, so we can capture the outbound ops-channel alert without
- *     POSTing to a real Slack webhook.
+ *     POSTing to a real Slack webhook;
+ *   - the shared-DB heartbeat write, whose repository is outside this route's
+ *     health/alert contract and must not initialize persistent PGlite here.
  *
  * Asserts the dead-alert gap is closed: when the daemon heartbeat is
  * absent or stale, the route returns `healthy:false` AND the alert callback
  * actually fires (structured error log + Slack channel POST). The healthy path
  * stays silent, and an invalid cron secret is rejected before any check runs.
  */
+
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { ProvisioningWorkerHealth } from "@/lib/services/provisioning-worker-health";
 
@@ -28,6 +29,7 @@ const checkProvisioningWorkerHealth = mock(
 );
 
 const loggerError = mock(() => undefined);
+const writeCloudApiDbHeartbeat = mock(async () => undefined);
 
 // The monitor reads `process.env.PROVISIONING_ALERT_SLACK_WEBHOOK` and POSTs to
 // it via global fetch; capture that POST instead of hitting the network.
@@ -46,6 +48,10 @@ mock.module("@/lib/services/provisioning-worker-health", () => ({
   // Re-exported by the monitor's barrel of constants; keep the real TTL so the
   // monitor's staleness window matches production.
   PROVISIONING_WORKER_HEARTBEAT_TTL_S: 60,
+}));
+
+mock.module("@/lib/services/cloud-api-db-heartbeat", () => ({
+  writeCloudApiDbHeartbeat,
 }));
 
 mock.module("@/lib/utils/logger", () => ({
@@ -77,6 +83,7 @@ const realFetch = globalThis.fetch;
 beforeEach(() => {
   checkProvisioningWorkerHealth.mockClear();
   loggerError.mockClear();
+  writeCloudApiDbHeartbeat.mockClear();
   fetchMock.mockClear();
   fetchCalls.length = 0;
   process.env.PROVISIONING_ALERT_SLACK_WEBHOOK = SLACK_WEBHOOK;
@@ -110,6 +117,7 @@ describe("provisioning-worker-health cron route", () => {
     };
     expect(body.healthy).toBe(false);
     expect(body.stale).toBe(false);
+    expect(writeCloudApiDbHeartbeat).toHaveBeenCalledTimes(1);
 
     // The alert callback actually fired: structured error log + Slack POST.
     expect(loggerError).toHaveBeenCalled();
@@ -179,5 +187,6 @@ describe("provisioning-worker-health cron route", () => {
     const response = await hitCron("wrong-secret");
     expect(response.status).toBeGreaterThanOrEqual(400);
     expect(checkProvisioningWorkerHealth).not.toHaveBeenCalled();
+    expect(writeCloudApiDbHeartbeat).not.toHaveBeenCalled();
   });
 });

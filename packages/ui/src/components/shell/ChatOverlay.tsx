@@ -10,7 +10,6 @@ import {
   FileText,
   Film,
   Loader2,
-  Mic,
   Music,
   Paperclip,
   Search,
@@ -29,6 +28,7 @@ import {
   useTransform,
 } from "motion/react";
 import * as React from "react";
+import { type OrbState, ThinkingOrb } from "thinking-orbs";
 
 import { client } from "../../api/client";
 import type {
@@ -50,6 +50,8 @@ import {
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
   ELIZA_BACK_INTENT_EVENT,
+  NAVIGATE_VIEW_EVENT,
+  type NavigateViewDetail,
 } from "../../events";
 import {
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
@@ -67,9 +69,9 @@ import {
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
-import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { tabFromPath } from "../../navigation";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
@@ -143,9 +145,10 @@ import {
 import {
   isShortLandscapeViewport,
   measureSafeAreaInsetTop,
+  resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
-import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
+import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
@@ -294,7 +297,9 @@ export type ChatMode = "pill" | "input" | "half" | "full";
 
 type MotionControls = { stop: () => void };
 
-const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
+// Keep the synchronous resize anchor aligned with MessageScroller's own
+// definition of an end-pinned reader.
+const MESSAGE_SCROLLER_END_THRESHOLD_PX = 8;
 // A landscape phone still needs room for the attach, mic, voice, and text
 // controls. The old 208px cap squeezed the editable field to ~46px and made a
 // rotation look like the composer had broken. Keep the corner treatment, but
@@ -311,18 +316,22 @@ const CHAT_CLEARANCE_MAX_PX = 220;
 // floor. That gap is part of the occluded footprint even though it is outside
 // the measured fieldset.
 const CHAT_CLEARANCE_REST_GAP_PX = 8;
-// Restore-from-maximized grab zone (#13531): while full-bleed, a downward pull
-// that STARTS within this fraction of the panel height from the top drops
-// full-bleed and tracks the finger. 0.9 = "top 90%" — nearly the whole panel is
-// grabbable (only the bottom composer strip is excluded), and it sits UNDER the
-// top bar whose empty space is pointer-transparent so pulls there reach it too.
+// Single source of truth for the visible gap between the focused composer and
+// the software keyboard. The layout solver consumes the same number it paints,
+// so a native keyboard event cannot leave panel height using stale rest padding.
+const KEYBOARD_COMPOSER_GAP_PX = 12;
 // The pull-down-to-restore grab zone is scoped to the TOP BAR only (safe-area +
 // this many px), NOT the whole panel. A full-height strip stole the transcript's
 // scroll (every touch-drag/wheel over the messages read as a restore pull) and
 // made an accidental tap twitch the sheet out of full-screen. Confining it to
 // the top leaves the transcript freely scrollable and makes "exit full-screen"
 // an explicit drag from the top edge.
-const MAXIMIZE_RESTORE_ZONE_PX = 72;
+const MAXIMIZE_RESTORE_ZONE_PX = 96;
+// A tap or tiny pointer wobble remains inert, but a deliberate downward pull
+// must take ownership almost immediately. The previous viewport-relative
+// threshold consumed roughly 90–130px before moving anything, which made a
+// maximized sheet feel stuck and encouraged repeated, harder swipes.
+const RESTORE_UNMAX_SLOP_PX = 8;
 // The panel's top clearance + max height (which decide how the full-bleed header
 // clears the notch) live in the pure, unit-tested `resolveChatPanelLayout` — see
 // chat-panel-layout.ts.
@@ -405,6 +414,10 @@ const PANEL_RADIUS_PX = 32;
 // to the window shape. Keeping the decision in visible-height space avoids the
 // old "near-full but still showing wallpaper above it" resting state.
 const FULLSCREEN_SNAP_VH = 0.9;
+// Keep a committed full-screen snap stable through a few pixels of pointer
+// noise. The entry threshold is still the visible 90% line; reversing farther
+// than this hands height authority back to the inset sheet.
+const FULLSCREEN_RELEASE_HYSTERESIS_PX = 12;
 
 export {
   grabberBarOpacity,
@@ -414,7 +427,8 @@ export {
 } from "./chat-overlay-motion";
 
 // Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip. Send
-// + mic now use lucide icons (SendHorizontal / Mic); the rest stay hand-drawn.
+// + voice/send use lucide icons (AudioLines / SendHorizontal); the rest stay
+// hand-drawn.
 // The plus fills nearly the whole 36-unit box (arms 3→33) so, rendered at the
 // full button size, it carries the same optical weight as the lucide mic/send
 // marks — a tighter path would read as a small, over-padded glyph beside them.
@@ -483,7 +497,7 @@ function SoftButton({
   active?: boolean;
   /** Accessible toggle state when it is intentionally broader than the accent state. */
   pressed?: boolean;
-  /** Breathe the accent glyph while a live capture is hot. */
+  /** Breathe the glyph while a batch capture has no richer activity surface. */
   pulse?: boolean;
   testId?: string;
 }): React.JSX.Element {
@@ -505,8 +519,7 @@ function SoftButton({
       className={cn(
         // Icon-only control: transparent, borderless, no capsule — just the
         // glyph. Hover and active express through icon color alone — neutral
-        // resting → neutral hover, accent for active — never a background/
-        // border, never blue.
+        // resting → white active — never a background/border or status color.
         //
         // The icon size keeps the visible desktop box quiet at 40px and lets the
         // shared Button primitive raise the real element to 44px on coarse
@@ -514,10 +527,10 @@ function SoftButton({
         // when compact screens draw the two trailing controls closer together.
         "relative grid shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent [&_svg]:size-5",
         active
-          ? "text-accent hover:text-accent"
+          ? "text-white hover:text-white"
           : "text-muted-strong hover:text-txt",
-        // Pulse the accent glyph while capture is hot; reduced-motion falls back
-        // to the static accent without adding background or border chrome.
+        // Batch capture has no inline waveform, so its glyph breathes; realtime
+        // voice keeps this control static because the composer owns the motion.
         pulse && "animate-pulse motion-reduce:animate-none",
         // Blocked controls (e.g. voice/transcript during sign-in-first
         // onboarding) read as inert: dimmed AND non-interactive to the pointer
@@ -707,6 +720,184 @@ function ComposerMicActivity({
   );
 }
 
+type RealtimeVoiceStatus = NonNullable<
+  ShellController["realtimeVoice"]
+>["status"];
+
+const REALTIME_COMPOSER_LABEL: Record<RealtimeVoiceStatus, string> = {
+  idle: "Voice is live",
+  listening: "Listening…",
+  transcribing: "Hearing you…",
+  thinking: "Thinking…",
+  speaking: "Speaking…",
+  interrupting: "Stopping…",
+};
+
+type RealtimeVoiceVisualPhase =
+  | RealtimeVoiceStatus
+  | "connecting"
+  | "paused"
+  | "error";
+
+const REALTIME_VOICE_ORB: Record<
+  RealtimeVoiceVisualPhase,
+  { state: OrbState; speed: number; paused?: boolean }
+> = {
+  idle: { state: "breathing", speed: 0.72 },
+  connecting: { state: "connecting", speed: 1 },
+  listening: { state: "listening", speed: 1 },
+  transcribing: { state: "listening", speed: 0.82 },
+  thinking: { state: "working", speed: 0.92 },
+  speaking: { state: "composing", speed: 1.08 },
+  interrupting: { state: "shaping", speed: 1.18 },
+  paused: { state: "breathing", speed: 0, paused: true },
+  error: { state: "breathing", speed: 0, paused: true },
+};
+
+/** A fixed-size orb gives every realtime phase distinct motion without moving the composer. */
+function ComposerRealtimeVoiceWaveform({
+  phase,
+  reduceMotion,
+}: {
+  phase: RealtimeVoiceVisualPhase;
+  reduceMotion: boolean;
+}): React.JSX.Element {
+  const visual = REALTIME_VOICE_ORB[phase];
+  const paused = reduceMotion || visual.paused === true;
+
+  return (
+    <span
+      aria-hidden="true"
+      data-phase={phase}
+      data-orb-state={visual.state}
+      data-testid="chat-composer-realtime-waveform"
+      className={cn(
+        "flex h-5 w-6 shrink-0 items-center justify-center",
+        phase === "error" ? "opacity-60" : "opacity-90",
+      )}
+    >
+      <ThinkingOrb
+        aria-hidden="true"
+        data-testid="chat-composer-thinking-orb"
+        state={visual.state}
+        size={20}
+        speed={paused ? 0 : visual.speed}
+        paused={paused}
+        theme="dark"
+      />
+    </span>
+  );
+}
+
+/** Realtime voice occupies the composer's normal text lane, never a second card. */
+function ComposerRealtimeVoiceActivity({
+  connecting,
+  error,
+  needsAudioUnlock,
+  onUnlockAudio,
+  paused,
+  reduceMotion,
+  status,
+  transcript,
+}: {
+  connecting: boolean;
+  error: string | null;
+  needsAudioUnlock: boolean;
+  onUnlockAudio: () => void;
+  paused: boolean;
+  reduceMotion: boolean;
+  status: RealtimeVoiceStatus;
+  transcript: string;
+}): React.JSX.Element {
+  const phaseLabel = error
+    ? error
+    : paused
+      ? "Voice paused"
+      : connecting
+        ? "Connecting…"
+        : REALTIME_COMPOSER_LABEL[status];
+  const liveTranscript =
+    !error &&
+    !paused &&
+    !connecting &&
+    (status === "listening" || status === "transcribing")
+      ? transcript.trim()
+      : "";
+  const visualPhase: RealtimeVoiceVisualPhase = error
+    ? "error"
+    : paused
+      ? "paused"
+      : connecting
+        ? "connecting"
+        : status;
+  const shimmerPhase =
+    !error &&
+    !paused &&
+    !liveTranscript &&
+    (connecting ||
+      status === "transcribing" ||
+      status === "thinking" ||
+      status === "speaking");
+  const visibleCopy = liveTranscript || phaseLabel;
+  const copyRef = React.useRef<HTMLSpanElement>(null);
+
+  // Live partials grow from the end, so keep the newest words in view without
+  // letting a long utterance resize the composer or cover its controls.
+  React.useLayoutEffect(() => {
+    const copy = copyRef.current;
+    if (!copy) return;
+    copy.scrollTop = liveTranscript ? copy.scrollHeight : 0;
+  }, [liveTranscript]);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={
+        liveTranscript ? `${phaseLabel}: ${liveTranscript}` : phaseLabel
+      }
+      data-status={status}
+      data-testid="chat-composer-realtime-voice"
+      className="flex min-h-10 min-w-0 flex-1 items-center gap-2 px-1.5"
+    >
+      <ComposerRealtimeVoiceWaveform
+        phase={visualPhase}
+        reduceMotion={reduceMotion}
+      />
+      <div className="flex h-10 min-w-0 flex-1 items-center overflow-hidden">
+        <span
+          ref={copyRef}
+          data-testid="chat-composer-realtime-copy"
+          className={cn(
+            "block max-h-10 w-full min-w-0 overflow-hidden whitespace-pre-wrap text-start text-sm leading-5 [overflow-wrap:anywhere]",
+            error
+              ? "text-danger"
+              : liveTranscript
+                ? "text-txt"
+                : "text-white/75",
+            shimmerPhase &&
+              "shimmer shimmer-duration-1200 motion-reduce:shimmer-none",
+          )}
+          title={visibleCopy}
+        >
+          {visibleCopy}
+        </span>
+      </div>
+      {needsAudioUnlock ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onUnlockAudio}
+          data-testid="chat-composer-voice-audio-unlock"
+          className="h-7 shrink-0 rounded-full border border-warn/40 bg-warn/10 px-2 text-xs font-medium text-warn hover:bg-warn/20"
+        >
+          Enable sound
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 /** Inert conversation-nav fallback for minimal mock controllers. */
 const EMPTY_CONVERSATION_NAV: ConversationNav = {
   hasPrev: false,
@@ -732,7 +923,6 @@ function SheetGrabber({
   breathing,
   opacity,
   pilled,
-  inert,
 }: {
   open: boolean;
   onOpen: () => void;
@@ -746,11 +936,8 @@ function SheetGrabber({
   // Inert while pilled so the invisible grabber can't steal taps meant for the
   // pill capsule (or pass-through to the home screen) below it.
   pilled: boolean;
-  // Inert while collapsed attachment controls are visible; their tap targets sit
-  // in the same top edge zone the broad swipe handle normally owns.
-  inert?: boolean;
 }): React.JSX.Element {
-  const disabled = pilled || inert;
+  const disabled = pilled;
   return (
     <motion.button
       style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
@@ -778,6 +965,15 @@ function SheetGrabber({
           e.preventDefault();
           onClose();
         }
+      }}
+      // Opening the sheet moves this handle before Chromium emits the touch
+      // gesture's compatibility click. Without suppressing that native follow-
+      // up, the click re-hit-tests onto the composer now underneath the release
+      // coordinate and focuses it; the next handle tap then dismisses the
+      // keyboard instead of closing the sheet. Pointer events remain the sole
+      // touch authority, matching PillHandle's moving-target contract below.
+      onTouchEnd={(e) => {
+        if (e.cancelable) e.preventDefault();
       }}
       {...binding}
       className={cn(
@@ -995,8 +1191,6 @@ export function ChatOverlay({
     recording,
     analyser,
     transcript,
-    startRecording,
-    stopRecording,
     handsFree,
     toggleHandsFree,
     transcriptionMode,
@@ -1014,6 +1208,15 @@ export function ChatOverlay({
     stopSpeaking,
     speaking,
   } = controller;
+  const realtimeVoice = controller.realtimeVoice;
+  const realtimeVoiceComposerVisible = Boolean(
+    realtimeVoice?.enabled &&
+      !realtimeVoice.error &&
+      (handsFree ||
+        realtimeVoice.active ||
+        realtimeVoice.connecting ||
+        realtimeVoice.status !== "idle"),
+  );
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
   const noProviderConfigured = controller.noProviderConfigured ?? false;
@@ -1277,6 +1480,10 @@ export function ChatOverlay({
   // leave-full transition resets it. Pinned sessions start here: first-run opens
   // edge-to-edge full-screen, then its falling edge collapses to half.
   const [maximized, setMaximized] = React.useState(pinnedOpen);
+  // Live mirror for threshold commits and reversals that can occur in one
+  // pointer event before React has flushed the maximized state update.
+  const maximizedRef = React.useRef(maximized);
+  maximizedRef.current = maximized;
   // A restore drag is in flight (pull-down out of full-bleed). Declared up here
   // (not by the restore binding) because `fullBleedFrame` below reads it to keep
   // the panel MAX-HEIGHT full-screen-sized for the drag (so the height can track
@@ -1284,19 +1491,11 @@ export function ChatOverlay({
   // binding. Keeping the strip mounted while true also preserves the pointer
   // capture across the un-maximize (the "can't collapse" bug). See the binding.
   const [restoreDragging, setRestoreDragging] = React.useState(false);
-  // Whether the in-flight restore drag has turned downward and dropped
-  // full-bleed. A ref (not the `maximized` state) because the release handler
-  // runs in the SAME event as the drop and would otherwise read the stale,
-  // pre-re-render `maximized` and snap back instead of resting where released.
-  const restoreDidUnmaximizeRef = React.useRef(false);
-  // Highest (most-upward) offset the current restore drag has reached. The
-  // ceiling-consumption rebase in onDragOffset absorbs any upward drift while
-  // the panel sits at the full-bleed ceiling, so a raw `offset < 0` test fires
-  // late: the sheet already follows the finger DOWN off the ceiling (its
-  // fullBleedT un-morphs) for the first N px while `offset` is still positive,
-  // and a release in that window would snap back to full-bleed. Un-maximize the
-  // instant the finger nets downward from this peak instead.
-  const restorePeakOffsetRef = React.useRef(0);
+  // Whether the in-flight restore drag cleared its accidental-wobble slop and
+  // gave the shared continuum to the finger. Keep the committed maximize state
+  // stable for the whole hold; release converts the live geometry to the honest
+  // inset detent. This ref lets that release observe engagement synchronously.
+  const restoreDidEngageRef = React.useRef(false);
   // Reactive composer-focus flag. Only the short-landscape compact resting
   // affordance reads it (#14173): focusing the field lifts the compact treatment
   // so the composer widens to full BEFORE the first keystroke, and blurring an
@@ -1340,16 +1539,13 @@ export function ChatOverlay({
   const openProgressAnimationRef = React.useRef<MotionControls | null>(null);
   const prefillFocusFrameRef = React.useRef<number | null>(null);
   const prefillFocusTimerRef = React.useRef<number | null>(null);
-  // A GPU-compositing hint scoped to an ACTIVE drag/settle only. While the
-  // finger drives the panel (`scale`/`flexBasis` change every frame) and while
-  // the release spring runs, we set `will-change: transform` on the panel (and
-  // suppress the thread's edge mask) so iOS Safari/WebKit promotes the morph to
-  // its own compositor layer up front — it then composites without a per-frame
-  // repaint of the frosted glass + content (the visible micro-stutter on the
-  // installed PWA). Deliberately NOT permanent: `will-change` keeps a promoted
-  // layer (and its memory) resident, so we drop it the instant the release
-  // spring settles. A ref mirrors it for the guarded setter so per-frame drag
-  // updates never cause a redundant re-render.
+  // Render-level motion state for the active drag and its release spring. The
+  // native-glass handoff and safe-area morph use this boundary, while the live
+  // height itself remains a MotionValue so pointer frames do not re-render.
+  // Do not turn this signal into `will-change` on the text-bearing fieldset:
+  // promoting and demoting that whole subtree re-rasterizes stationary glyphs
+  // at the gesture edges. The pill's real transform is composited by the
+  // browser when Framer Motion writes it; open-sheet drags change layout only.
   const [isDragging, setDragging] = React.useState(false);
   const isDraggingRef = React.useRef(false);
   // True only while the sheet is at TRUE rest: no finger down AND no height
@@ -1470,6 +1666,9 @@ export function ChatOverlay({
   // so releasing on either side of the line cannot disagree with what the user
   // saw while holding the sheet.
   const maxPullRawRef = React.useRef(0);
+  // Once a held gesture crosses the full-screen line and then reverses below
+  // it, release must honor the reversal instead of the earlier high-water mark.
+  const maximizeReversedRef = React.useRef(false);
   // Thread height at the START of the current gesture. Release paths that land
   // at the bottom use it to tell a big yank (started at/above the half detent →
   // the user is putting the chat away → PILL) from a short close (started low →
@@ -1505,13 +1704,13 @@ export function ChatOverlay({
   // un-maximize on frame 1 —
   // the two branches racing was the "restore drag snaps back to FULL on
   // release" bug (the strip's slop branch never saw `maximized` true, so
-  // restoreDragging/restoreDidUnmaximizeRef were never set and the release
+  // restoreDragging/restoreDidEngageRef were never set and the release
   // discarded the whole downward travel).
   const restoreGestureRef = React.useRef(false);
   // TRUE once the current gesture's mid-drag PILL commit fired. The release
   // handlers run in the SAME event as the last integrator frame, so they can
   // see the pre-commit `pilled/sheetOpen` closures (React flushes the commit's
-  // setState after the event) — same race `restoreDidUnmaximizeRef` guards for
+  // setState after the event) — same race `restoreDidEngageRef` guards for
   // the restore drag. Reset at every gesture seed.
   const pillCommittedMidDragRef = React.useRef(false);
   // The last integrated gesture offset (px, up-positive, 0 at pointerdown);
@@ -1532,6 +1731,7 @@ export function ChatOverlay({
 
   const resetPullPeak = React.useCallback(() => {
     maxPullRawRef.current = 0;
+    maximizeReversedRef.current = false;
     fullscreenCrossContRef.current = null;
   }, []);
   // At rest the collapsed composer should not carry hidden transcript/header
@@ -1546,10 +1746,9 @@ export function ChatOverlay({
     dragPreviewVisibleRef.current = visible;
     setDragPreviewVisible(visible);
   }, []);
-  // Push-to-talk is a label-only mirror of the shared hold hook's holding phase.
-  const [pttHolding, setPttHolding] = React.useState(false);
   const [imageError, setImageError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const preserveFocusOnAgentNavigationRef = React.useRef<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
@@ -1727,18 +1926,10 @@ export function ChatOverlay({
     renderableMessages,
     renderWindow.windowSize,
   ]);
-  const latestSettledAssistantId = React.useMemo(() => {
-    for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
-      const message = visibleMessages[index];
-      if (message?.role === "assistant" && message.content.trim()) {
-        return message.id;
-      }
-    }
-    return null;
-  }, [visibleMessages]);
-  const speakingSourceMessageId = speaking
-    ? (playingMessageId ?? latestSettledAssistantId)
-    : null;
+  // Automatic realtime speech belongs to the composer-wide voice state. Only
+  // user-selected playback belongs to a message row; binding automatic TTS to
+  // the newest row would reveal Reply/Copy/Play as each response starts.
+  const speakingSourceMessageId = speaking ? playingMessageId : null;
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
   // The thread body is mounted while the sheet is open OR during an upward
@@ -1748,6 +1939,48 @@ export function ChatOverlay({
   // streamed-content growth. The ref remains local because search, keyboard
   // focus, topic jumps, and infinite-history prefetch address the same viewport.
   const threadRef = React.useRef<HTMLDivElement>(null);
+  // MessageScroller intentionally defers resize reconciliation to the next
+  // animation frame. That is correct for ordinary content growth, but the chat
+  // sheet changes this viewport's height on every drag frame: a bottom-pinned
+  // transcript would otherwise paint once at the old scrollTop, then jump when
+  // MessageScroller catches up. Preserve only an already-pinned reader in the
+  // ResizeObserver delivery phase; readers in history retain their exact place.
+  const threadPinnedToEndRef = React.useRef(!firstRunOpen);
+  const handleThreadScroll = React.useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      const viewport = event.currentTarget;
+      const end = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+      threadPinnedToEndRef.current =
+        end - viewport.scrollTop <= MESSAGE_SCROLLER_END_THRESHOLD_PX;
+    },
+    [],
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a conversation change resets the keyed MessageScroller to its declared start/end policy.
+  React.useLayoutEffect(() => {
+    threadPinnedToEndRef.current = !firstRunOpen;
+  }, [activeConversationId, firstRunOpen]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationId remounts the keyed viewport even while presentation stays true.
+  React.useLayoutEffect(() => {
+    const viewport = threadRef.current;
+    if (
+      !threadPresented ||
+      !viewport ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
+    const preservePinnedEnd = () => {
+      if (!threadPinnedToEndRef.current) return;
+      const end = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+      if (Math.abs(end - viewport.scrollTop) > 0.5) {
+        viewport.scrollTop = end;
+      }
+    };
+    preservePinnedEnd();
+    const observer = new ResizeObserver(preservePinnedEnd);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [activeConversationId, threadPresented]);
   const [scrollToEndRequest, setScrollToEndRequest] = React.useState(0);
   // Focus the thread for keyboard scrolling when an opener requested it.
   // Deliberately NO dependency array: many requesters (drag settles, flick
@@ -1880,8 +2113,10 @@ export function ChatOverlay({
     element: HTMLElement;
     fadeTimer: number;
     cleanupTimer: number;
-    outline: string;
-    outlineOffset: string;
+    boxShadow: string;
+    filter: string;
+    borderRadius: string;
+    textShadow: string;
     transition: string;
   } | null>(null);
   const clearSearchHighlight = React.useCallback(() => {
@@ -1889,8 +2124,10 @@ export function ChatOverlay({
     if (!active) return;
     window.clearTimeout(active.fadeTimer);
     window.clearTimeout(active.cleanupTimer);
-    active.element.style.outline = active.outline;
-    active.element.style.outlineOffset = active.outlineOffset;
+    active.element.style.boxShadow = active.boxShadow;
+    active.element.style.filter = active.filter;
+    active.element.style.borderRadius = active.borderRadius;
+    active.element.style.textShadow = active.textShadow;
     active.element.style.transition = active.transition;
     active.element.removeAttribute("data-chat-search-highlight");
     activeSearchHighlightRef.current = null;
@@ -1909,26 +2146,43 @@ export function ChatOverlay({
         el.scrollIntoView({ block: "center", behavior: "smooth" });
       }
       // Paint inside the actual bubble so the scroller's paint containment
-      // cannot clip the transient accent.
+      // cannot clip the transient neutral highlight.
       const bubble =
         el.querySelector<HTMLElement>('[data-chat-message-bubble="true"]') ??
         el;
+      // The assistant bubble spans the transcript width by design. Paint on
+      // its selectable text layer so the halo follows the message rather than
+      // inheriting the row's straight edges.
+      const paintTarget =
+        bubble.querySelector<HTMLElement>('[data-chat-selectable="true"]') ??
+        bubble;
       const previous = {
-        outline: bubble.style.outline,
-        outlineOffset: bubble.style.outlineOffset,
-        transition: bubble.style.transition,
+        boxShadow: paintTarget.style.boxShadow,
+        filter: paintTarget.style.filter,
+        borderRadius: paintTarget.style.borderRadius,
+        textShadow: paintTarget.style.textShadow,
+        transition: paintTarget.style.transition,
       };
-      bubble.setAttribute("data-chat-search-highlight", "true");
-      bubble.style.outline = "2px solid var(--accent)";
-      bubble.style.outlineOffset = "-2px";
-      bubble.style.transition =
-        "outline-color 650ms cubic-bezier(0.22, 1, 0.36, 1)";
+      paintTarget.setAttribute("data-chat-search-highlight", "true");
+      // A drop shadow follows the painted bubble/text silhouette. An outline
+      // follows the full assistant row, which reads as a rectangular box.
+      paintTarget.style.borderRadius = "0.75rem";
+      paintTarget.style.boxShadow =
+        "0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 16px rgba(255, 255, 255, 0.28)";
+      paintTarget.style.filter =
+        "drop-shadow(0 0 7px rgba(255, 255, 255, 0.62))";
+      paintTarget.style.textShadow =
+        "0 0 4px rgba(255, 255, 255, 0.72), 0 0 12px rgba(255, 255, 255, 0.38)";
+      paintTarget.style.transition =
+        "box-shadow 650ms cubic-bezier(0.22, 1, 0.36, 1), filter 650ms cubic-bezier(0.22, 1, 0.36, 1), text-shadow 650ms cubic-bezier(0.22, 1, 0.36, 1)";
       const fadeTimer = window.setTimeout(() => {
-        bubble.style.outline = "2px solid transparent";
+        paintTarget.style.boxShadow = "none";
+        paintTarget.style.filter = "drop-shadow(0 0 0 rgba(255, 255, 255, 0))";
+        paintTarget.style.textShadow = "0 0 0 rgba(255, 255, 255, 0)";
       }, 1050);
       const cleanupTimer = window.setTimeout(clearSearchHighlight, 1750);
       activeSearchHighlightRef.current = {
-        element: bubble,
+        element: paintTarget,
         fadeTimer,
         cleanupTimer,
         ...previous,
@@ -2020,6 +2274,9 @@ export function ChatOverlay({
     (message: ChatMessageData) => {
       setChatReplyTarget(buildReplyTargetFromMessage(message, agentName));
       setMode((m) => (m === "half" || m === "full" ? m : "half"));
+      // Keep this synchronous with the trusted Reply click so mobile browsers
+      // may open the software keyboard without a second tap.
+      inputRef.current?.focus({ preventScroll: true });
     },
     [setChatReplyTarget, agentName],
   );
@@ -2058,7 +2315,9 @@ export function ChatOverlay({
               ) : undefined
             }
             appearance="glass"
-            enterOnMount={m.id.startsWith("temp-")}
+            // Fast actions can navigate in the same paint that appends their
+            // optimistic turn. Overlay rows must therefore be visible on their
+            // first frame so the handoff never exposes only the prior transcript.
             agentName={agentName}
             message={shellToChatMessageData(m)}
             reduceMotion={reduce}
@@ -2283,29 +2542,6 @@ export function ChatOverlay({
     [setPendingImages],
   );
 
-  // ── Push-to-talk ────────────────────────────────────────────────────────────
-  // Press-and-hold on the mic dictates into the composer draft (no send); a
-  // quick tap falls through to handleMicClick → toggleHandsFree. The hold/tap/
-  // slide-off/click-suppression machine is the shared usePushToTalk hook — the
-  // overlay only supplies its can-begin guard and the dictation start/stop.
-  const { handlers: micHoldHandlers, shouldSuppressClick } = usePushToTalk({
-    // Arm only when idle with no draft and no capture already live (a tap while
-    // hands-free toggles it off — handleMicClick). Voice input is gated while a
-    // reply is in flight; type + send to queue another turn instead.
-    canBegin: () =>
-      !hasDraft && !recording && !transcriptionMode && !responding,
-    onHoldStart: () => {
-      setPttHolding(true);
-      startRecording("dictate");
-    },
-    onHoldEnd: () => {
-      // Dictation always inserts into the draft; there is no submit-on-release,
-      // so a clean release and a slide-off both just stop the capture.
-      stopRecording();
-      setPttHolding(false);
-    },
-  });
-
   const handleMicClick = React.useCallback(() => {
     // Trace the home-overlay mic tap BEFORE any branching so the on-screen HUD
     // captures the tap even when this handler early-returns short of capture.
@@ -2315,11 +2551,6 @@ export function ChatOverlay({
       responding,
       handsFree,
     });
-    // Swallow exactly the one click that follows a held PTT release.
-    if (shouldSuppressClick()) {
-      voiceCaptureDebug("mic:noop", { reason: "suppress-click" });
-      return;
-    }
     // While transcribing, the mic is the master voice control: a tap turns the
     // mic OFF, which also ends transcription (mic = parent — turning off the mic
     // turns off transcript). This is distinct from the transcript button, which
@@ -2350,7 +2581,6 @@ export function ChatOverlay({
     toggleHandsFree,
     transcriptionMode,
     stopTranscriptionAndMic,
-    shouldSuppressClick,
   ]);
 
   const hasThread = visibleMessages.length > 0;
@@ -2584,6 +2814,9 @@ export function ChatOverlay({
   // sub-threshold inset a touch page carries at rest.
   const keyboardBlocksMaximize =
     effectiveKeyboardInset >= KEYBOARD_INTRUSION_THRESHOLD_PX;
+  const layoutBottomPad = keyboardLiftActive
+    ? KEYBOARD_COMPOSER_GAP_PX
+    : bottomPad;
 
   // FULL-SCREEN derived gate: maximized only takes effect AT the full detent, so
   // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
@@ -2673,7 +2906,7 @@ export function ChatOverlay({
   // panel top tracks the pointer all the way to the screen edge.
   const layoutInput = {
     viewportH,
-    bottomPad,
+    bottomPad: layoutBottomPad,
     keyboardInset,
     effectiveKeyboardInset,
     safeAreaTopPx: safeAreaTop,
@@ -2698,7 +2931,13 @@ export function ChatOverlay({
   // the detent target matches the visible height (no dead slack at the top of a
   // pull-down) while the sheet rises all the way to the top.
   const openH = panelMaxH;
-  const halfH = Math.round(viewportH * SHEET_HALF_VH);
+  // The nominal half detent can exceed the entire visible panel when a native
+  // keyboard lifts the overlay without shrinking Chromium's layout viewport
+  // (the LP3 WebView reports 414px while Gboard consumes 223px). A resting
+  // detent may never outrun its current panel ceiling: panelCapH intentionally
+  // follows threadHeight during a live over-pull, so an oversized HALF target
+  // otherwise re-expands the cap and clips the grabber above the screen.
+  const halfH = resolveChatPanelHalfDetentHeight(viewportH, panelMaxH);
   const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
   // A free-drag rest height wins over the detent until a detent is re-taken.
   const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
@@ -2768,7 +3007,15 @@ export function ChatOverlay({
   const scrimVisibility = useTransform(threadHeight, (h) =>
     h > 0 ? "visible" : "hidden",
   );
-  const threadFlexBasis = useTransform(threadHeight, (h) => `${h}px`);
+  // Scroll geometry is integer CSS pixels (`clientHeight`, `scrollHeight`, and
+  // the bottom-anchor `scrollTop`). Quantize the flex viewport to that same
+  // coordinate system so fractional pointer frames cannot make transcript
+  // glyphs drift subpixel-by-subpixel and then jump when the scroll anchor
+  // crosses its next integer pixel.
+  const threadFlexBasis = useTransform(
+    threadHeight,
+    (height) => `${Math.round(height)}px`,
+  );
   // Full-screen SHAPE spring (0 = inset chat shape, 1 = edge-to-edge). It springs
   // between the two whenever `maximized` flips, so a maximize ANIMATES out to full
   // screen instead of jumping, and a restore drag ANIMATES back to the exact inset
@@ -2886,23 +3133,32 @@ export function ChatOverlay({
     fullBleedT,
     (t: number) => PANEL_RADIUS_PX * (1 - t),
   );
-  // A matching clip-path keeps transformed transcript children inside the
-  // morphing glass edge on WebKit. Border-radius plus overflow-hidden alone can
-  // leak a compositor-layer text sliver through the rounded top corners.
-  const contentClipPath = useMotionTemplate`inset(0 round ${morphRadius}px)`;
+  // Paint follows the same continuous shape coordinate as geometry. React's
+  // boolean `fullBleed` chooses the eventual resting state, but it must never
+  // tear down the rim, bevel, or fill in the middle of a held gesture.
+  const surfaceBackgroundColor = useTransform(fullBleedT, (t: number) => {
+    const percent = (clamp01(t) * 100).toFixed(3);
+    return `color-mix(in srgb, var(--bg) ${percent}%, ${GLASS_SHEET_FILL})`;
+  });
+  const surfaceEdgeShadow = useTransform(fullBleedT, (t: number) =>
+    liquidGlassEdgeShadow(1 - t),
+  );
+  // Keep transformed transcript children one physical border-width inside the
+  // inset glass. The rim is translucent, so clipping at its outer edge lets
+  // compositor-promoted text show through the antialiased top curve even when
+  // the rim itself paints above it. The reserved pixel eases to zero with the
+  // full-bleed morph, where there is no border or rounded edge to protect.
+  const contentClipPath = useTransform(fullBleedT, (t: number) => {
+    const inset = 1 - t;
+    const innerRadius = Math.max(0, PANEL_RADIUS_PX * (1 - t) - inset);
+    return `inset(${inset}px round ${innerRadius}px)`;
+  });
   const bottomInsetFactor = useTransform(fullBleedT, [0, 1], [1, 0]);
   const overlayPadBottom = useMotionTemplate`calc(${bottomInsetFactor} * (var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem))`;
   // Full-bleed extends the glass UP under the status bar; riding the shape
   // spring (instead of a discrete swap at commit) keeps the top edge from
   // popping a safe-area-height on notch devices. 0px at rest (t=0).
   const glassTopExtension = useMotionTemplate`calc(${fullBleedT} * -1 * env(safe-area-inset-top, 0px))`;
-  // The overlay's bottom safe-area padding eases to zero during maximize. The
-  // panel is anchored above that padding, so without a matching glass extension
-  // the wallpaper shows through as a temporary floor strip until the shape
-  // spring reaches 1. Extend only the painted surface through the remaining
-  // inset while full-screen is committed; composer/content geometry continues
-  // to follow its normal safe-area morph.
-  const glassBottomExtension = useMotionTemplate`calc(-1 * ${bottomInsetFactor} * (var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem))`;
   // At full-bleed the composer floats as its OWN glass capsule — the exact
   // chrome of the resting input bar (frosted fill, hairline border, capsule
   // radius) — instead of dissolving into the edge-to-edge panel. All of it
@@ -2921,6 +3177,9 @@ export function ChatOverlay({
   const composerCapsuleWidth = useMotionTemplate`calc(100% - ${fullBleedT} * 24px)`;
   const composerCapsuleBorder = useMotionTemplate`color-mix(in srgb, var(--border-strong) calc(${fullBleedT} * 100%), transparent)`;
   const composerCapsuleBg = useMotionTemplate`color-mix(in srgb, var(--card) calc(${fullBleedT} * 86%), transparent)`;
+  const composerCapsuleShadow = useTransform(fullBleedT, (t: number) =>
+    liquidGlassEdgeShadow(t),
+  );
   // --- Liquid-glass pill → input morph (driven by openProgress) ---------------
   // The panel is ONE persistent element; the pill capsule and the full
   // input crossfade by opacity (compositor-cheap) while the whole panel scales
@@ -2934,6 +3193,10 @@ export function ChatOverlay({
   // Glass surface + its content crossfade IN as the input forms (one wrapper, so
   // sheen/glow/thread/composer resolve together with the glass).
   const glassOpacity = useTransform(openProgress, [0, 1], [0, 1]);
+  const rimOpacity = useTransform(
+    [glassOpacity, fullBleedT] as MotionValue<number>[],
+    ([open, bleed]: number[]) => open * (1 - bleed),
+  );
   // The pill capsule fades OUT over the first half of the open so it has cleared
   // before the input controls resolve (no double-image mid-morph).
   const pillOpacity = useTransform(openProgress, [0, 0.55], [1, 0], {
@@ -2996,7 +3259,11 @@ export function ChatOverlay({
   // open) so a half-finished pill drag springs cleanly back to the capsule.
   const settleDrag = React.useCallback(() => {
     draggingRef.current = false;
-    setDragPreviewMounted(false);
+    // Keep a collapsed-state drag preview mounted until the return spring
+    // actually reaches zero. Unmounting it at pointer-up removes the moving
+    // body one frame before the glass settles, which reads as a flash/snap on a
+    // short pull or a canceled pointer. The threadHeight listener owns the
+    // eventual unmount; committed open destinations clear the preview below.
     // Settle toward the LIVE resting pose (modeRef/freeHRef), not the render
     // closure: a mid-drag commit flips mode in the same event as the release,
     // and the stale closure here sprang the sheet back toward the PRE-commit
@@ -3042,7 +3309,6 @@ export function ChatOverlay({
     animateOpenProgress,
     settleFullBleed,
     overpullCapT,
-    setDragPreviewMounted,
   ]);
   // Keep the ref the (earlier-declared) viewport-resize effect calls pointing at
   // the latest settleDrag, so a rotation re-settles with current geometry.
@@ -3468,6 +3734,39 @@ export function ChatOverlay({
     if (preFocusCollapsedRef.current) collapse();
   }, [collapse]);
 
+  // A chat-command navigation is different from a direct tile/tab navigation:
+  // the user just pressed Enter and should be able to keep typing. Capture that
+  // one transition before App updates currentTab; the blur effect below consumes
+  // the lease. Direct navigation carries no agent source and keeps the existing
+  // iOS keyboard cleanup.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const preserveFocusedComposer = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      const action = detail?.action;
+      const targetTab =
+        action === "close" || action === "close-all" || action === "open-window"
+          ? null
+          : action === "split-view" || action === "tile-views"
+            ? "views"
+            : detail?.viewId && detail.viewPath === `/${detail.viewId}`
+              ? detail.viewId
+              : detail?.viewPath
+                ? (tabFromPath(detail.viewPath) ?? detail.viewId ?? null)
+                : (detail?.viewId ?? null);
+      preserveFocusOnAgentNavigationRef.current =
+        detail?.source === "agent" &&
+        targetTab !== null &&
+        typeof document !== "undefined" &&
+        document.activeElement === inputRef.current
+          ? targetTab
+          : null;
+    };
+    window.addEventListener(NAVIGATE_VIEW_EVENT, preserveFocusedComposer);
+    return () =>
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, preserveFocusedComposer);
+  }, []);
+
   // The composer overlay floats over every view and survives tab changes, so
   // navigating away from a focused composer (chat → Settings / Home / …) would
   // otherwise leave the textarea holding DOM focus on the new view (its
@@ -3479,7 +3778,13 @@ export function ChatOverlay({
   // change) is left untouched. Keyboard.hide() guarantees iOS dismisses the
   // accessory bar, not just the soft keyboard.
   React.useEffect(() => {
-    if (currentTab === "chat") return;
+    if (currentTab === "chat") {
+      preserveFocusOnAgentNavigationRef.current = null;
+      return;
+    }
+    const preserveFocus =
+      preserveFocusOnAgentNavigationRef.current === currentTab;
+    preserveFocusOnAgentNavigationRef.current = null;
     const input = inputRef.current;
     if (
       typeof document === "undefined" ||
@@ -3488,6 +3793,7 @@ export function ChatOverlay({
     ) {
       return;
     }
+    if (preserveFocus) return;
     input.blur();
     void import("@capacitor/keyboard")
       .then(({ Keyboard }) => Keyboard.hide())
@@ -3523,6 +3829,24 @@ export function ChatOverlay({
     [hasRevealableThread, sheetOpen],
   );
   const expand = React.useCallback(() => expandCore(true), [expandCore]);
+
+  // Talk is part of this conversation, so starting it reveals this same thread
+  // at the reading detent without focusing the textarea or opening a keyboard.
+  // The sheet remains open after Talk ends, leaving the just-persisted voice
+  // turns visible and reviewable like typed turns.
+  const voiceConversationActive = Boolean(
+    realtimeVoice?.enabled &&
+      (handsFree || realtimeVoice.active || realtimeVoice.connecting),
+  );
+  const voiceConversationWasActiveRef = React.useRef(false);
+  React.useEffect(() => {
+    const wasActive = voiceConversationWasActiveRef.current;
+    voiceConversationWasActiveRef.current = voiceConversationActive;
+    if (!voiceConversationActive || wasActive || pinnedOpen) return;
+    preFocusCollapsedRef.current = false;
+    setFreeH(null);
+    goToDetent("half");
+  }, [goToDetent, pinnedOpen, voiceConversationActive]);
   // Typing re-asserts the open but must NOT re-snapshot the pre-focus state:
   // the sheet is open by then, so re-snapshotting on every keystroke read
   // "open-before-focus" and a keyboard dismiss no longer returned a
@@ -4309,13 +4633,12 @@ export function ChatOverlay({
       // the capsule and crossfades out under the finger — in BOTH directions);
       // above 0 it is the thread height.
       openProgress.set(cont < 0 ? clamp01(1 + cont / PILL_OPEN_DISTANCE) : 1);
-      const snappedAboveThreshold =
-        fullscreenCrossContRef.current != null &&
-        cont >= fullscreenCrossContRef.current;
-      if (!snappedAboveThreshold) {
-        // A same-gesture reversal below the snap line takes height authority
-        // back from the full-screen spring on its first pixel.
-        if (fullscreenCrossContRef.current != null) stopThreadAnimation();
+      const restorePinnedInsideSlop =
+        restoreGestureRef.current && !restoreDidEngageRef.current;
+      if (!restorePinnedInsideSlop) {
+        // The live grabber owns height for the whole held gesture, including
+        // the last 10% into full-screen and a same-gesture reversal. A restore
+        // gesture is the sole exception for its tiny accidental-wobble slop.
         threadHeight.set(Math.max(0, cont));
       }
       // Mount the panel body on ANY pull that opens height, even with no
@@ -4382,7 +4705,18 @@ export function ChatOverlay({
           }
         }
       }
-      const overpullT = Math.max(rawOverpullT, measuredOverpullT);
+      // Restore is the exact inverse of the pinned maximize segment. Its
+      // continuum is intentionally de-slacked to the rendered thread height,
+      // so deriving shape from `cont - insetPanelMaxH` collapses the whole
+      // radius/width/rim morph on the first downward frame. Instead, unwind the
+      // same real top-margin distance directly from the restore pointer travel.
+      // Height and shape therefore leave fullscreen together, one pixel for one
+      // pixel, without swapping visual owners under the held finger.
+      const restoreOverpullT = restoreGestureRef.current
+        ? clamp01(1 - Math.max(0, -offset) / maxOverPull)
+        : null;
+      const overpullT =
+        restoreOverpullT ?? Math.max(rawOverpullT, measuredOverpullT);
       // The snap line is a TOP-edge contract: once the window reaches the top
       // 10% of the viewport, it fills the rest. Include the small safe-area gap
       // below the bottom-anchored panel in this reach measurement; comparing the
@@ -4399,7 +4733,8 @@ export function ChatOverlay({
       );
       const crossedFullscreenLine =
         fullscreenCrossContRef.current != null
-          ? cont >= fullscreenCrossContRef.current
+          ? cont >=
+            fullscreenCrossContRef.current - FULLSCREEN_RELEASE_HYSTERESIS_PX
           : livePanelH >= fullscreenSnapH;
       if (dy > 0 && livePanelH > maxPullRawRef.current) {
         maxPullRawRef.current = livePanelH;
@@ -4409,21 +4744,23 @@ export function ChatOverlay({
       // the panel is already pinned at the ceiling) — the panel edge keeps
       // tracking the finger instead of freezing until `cont` clears the ceiling.
       overpullCapT.set(overpullT);
-      // DISCRETE full-bleed SHAPE. The finger NEVER sets `fullBleedT` directly —
-      // the "awkward lerp" of border/radius/width easing with every pixel. Instead
-      // the over-pull flips a state at the threshold and the shape SPRINGS to it
-      // once (border, radius, side inset, width, composer capsule). Only the SHAPE
-      // is stateful: below 90% the panel HEIGHT tracks the finger 1:1; at the
-      // line the height and shape spring to the viewport. Pulling back below the
-      // same line springs the window shape home.
-      // Reduced-motion cuts instantly.
+      // Height and shape share the same held-gesture owner. Letting the 90%
+      // state flip start an independent spring made the outer fieldset reach
+      // viewport height before its painted/content box, exposing a large floor
+      // strip until pointer-up. A restore remains pinned inside its top band;
+      // once it exits that band the finger owns the reverse morph too.
+      if (!restorePinnedInsideSlop) fullBleedT.set(overpullT);
+      // The state boundary mounts the full-screen restore affordance and chooses
+      // the resting endpoint. It does not take animation authority from a held
+      // pointer; release settles the live values to the committed endpoint.
       // A real keyboard blocks maximize (the edge-to-edge panel would spill above
       // the keyboard-shrunk visual viewport); a pull-to-full with the keyboard up
       // settles at the inset FULL detent instead.
       if (
         crossedFullscreenLine &&
-        !maximized &&
+        !maximizedRef.current &&
         fullscreenCrossContRef.current == null &&
+        !restoreGestureRef.current &&
         !keyboardBlocksMaximize
       ) {
         fullscreenCrossContRef.current = cont;
@@ -4433,24 +4770,28 @@ export function ChatOverlay({
         // Sync the live mirrors — the release can run before React flushes.
         modeRef.current = "full";
         freeHRef.current = null;
+        maximizedRef.current = true;
+        maximizeReversedRef.current = false;
         focusThreadRef.current = true;
-        if (reduce) threadHeight.set(fullPanelMaxH);
-        else animateThreadHeight(fullPanelMaxH);
-        if (reduce) fullBleedT.set(1);
-        else animateFullBleedTo(1);
         detentHaptic();
       } else if (
         !crossedFullscreenLine &&
-        maximized &&
+        // React may not have committed `maximized` before a coalesced pointer
+        // stream reverses. The synchronous crossing ref is the authoritative
+        // proof that this gesture entered full-screen and must now relinquish
+        // its peak instead of re-maximizing on release.
+        maximizedRef.current &&
         // A RESTORE drag owns its own visible-height crossing in onRestoreDrag;
         // this branch is only for a same-gesture reversal on the grabber. Letting
         // it also fire here
         // un-maximized on the restore's very first frame — before the strip's
-        // slop branch could set restoreDragging/restoreDidUnmaximizeRef — so
+        // slop branch could set restoreDragging/restoreDidEngageRef — so
         // the release discarded the drag and snapped back to FULL.
         !restoreGestureRef.current
       ) {
         setMaximized(false);
+        maximizedRef.current = false;
+        maximizeReversedRef.current = true;
         // Restore the gesture's STARTING pose: the mid-drag commit flipped
         // mode to "full" (and cleared freeH); leaving that in place made a
         // cancel settle at FULL instead of the detent the drag began on, and
@@ -4460,8 +4801,6 @@ export function ChatOverlay({
         modeRef.current = dragStartModeRef.current;
         freeHRef.current = dragStartFreeHRef.current;
         fullscreenCrossContRef.current = null;
-        if (reduce) fullBleedT.set(0);
-        else animateFullBleedTo(0);
         // Void the peak so the release decision does not re-maximize from an
         // abandoned high-water mark.
         maxPullRawRef.current = 0;
@@ -4516,11 +4855,8 @@ export function ChatOverlay({
       stopThreadAnimation,
       stopOpenProgressAnimation,
       stopFullBleedAnimation,
-      animateFullBleedTo,
-      animateThreadHeight,
       setDragPreviewMounted,
       getPanelElement,
-      maximized,
       keyboardBlocksMaximize,
     ],
   );
@@ -4533,6 +4869,7 @@ export function ChatOverlay({
   // screen on release; ordinary window drags use the visible 90% line.
   const maybeMaximizeOnRelease = React.useCallback((): boolean => {
     if (pinnedOpen) return false;
+    if (maximizeReversedRef.current) return false;
     // A real keyboard blocks the release-time maximize too (mirrors the mid-drag
     // gate): a pull-to-full with the keyboard up settles at the inset FULL detent
     // instead of an edge-to-edge maximize that would spill above the visible area.
@@ -4557,6 +4894,7 @@ export function ChatOverlay({
   ]);
 
   const pullBinding: PullGestureBinding = usePullGesture({
+    preventTouchCompatibilityEvents: true,
     onStart: resetPullPeak,
     onDrag: onDragOffset,
     onDragReset: settleDrag,
@@ -4681,7 +5019,6 @@ export function ChatOverlay({
     // to a detent — drag the sheet to any size and it stays.
     onSettleFree: (direction) => {
       draggingRef.current = false;
-      setDragPreviewMounted(false);
       // Onboarding: a released drag always springs back to the pinned FULL.
       if (pinnedOpen) return settleDrag();
       // Include a same-event mid-drag pill commit (see onPullUp).
@@ -4721,7 +5058,10 @@ export function ChatOverlay({
       // peak visible height (maxPullRawRef) carries the intent. Downward restore drags
       // must not re-enter full-bleed, even if a previous upward peak was visible
       // before the release settled.
-      if (direction === "up" && maybeMaximizeOnRelease()) return;
+      if (direction === "up" && maybeMaximizeOnRelease()) {
+        setDragPreviewMounted(false);
+        return;
+      }
       const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
       // DETENT MAGNETISM — the resting positions are the detents {collapsed:0,
       // half, full}; a release within SHEET_DETENT_MAGNET of one snaps to it
@@ -4735,8 +5075,10 @@ export function ChatOverlay({
       }
       focusThreadRef.current = true;
       if (h >= openH - SHEET_DETENT_MAGNET) {
+        setDragPreviewMounted(false);
         goToDetent("full");
       } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
+        setDragPreviewMounted(false);
         goToDetent("half");
       } else {
         // In a gap between detents → rest exactly where released. `half` is the
@@ -4744,6 +5086,7 @@ export function ChatOverlay({
         // left. This leaves FULL without goToDetent, so drop full-bleed here
         // too — only the FULL detent may stay maximized (a stale flag would
         // re-maximize the next return to full).
+        setDragPreviewMounted(false);
         setFreeH(h);
         setMode("half");
         setMaximized(false);
@@ -4757,10 +5100,10 @@ export function ChatOverlay({
     [pullBinding],
   );
 
-  // Top-20% pull-down-to-restore (#13531). While maximized (full-bleed) there is
-  // no SheetGrabber; this binding drives an invisible grab strip over the top
-  // 20% of the panel. A downward pull drops full-bleed on the first downward
-  // frame and LIVE-TRACKS the finger — the panel insets and shrinks 1:1 under the
+  // Top-bar pull-down-to-restore (#13531). While maximized (full-bleed) there is
+  // no SheetGrabber; this binding drives the generous invisible top grab zone.
+  // A deliberate downward pull drops full-bleed after a few pixels and then
+  // LIVE-TRACKS the finger — the panel insets and shrinks 1:1 under the
   // pointer, resting where released (free rest, with detent magnetism at
   // half/full and a full collapse near the bottom). Keyboard (Enter/Space/
   // ArrowDown) does the discrete restore. Onboarding pins the sheet, so the zone
@@ -4779,65 +5122,33 @@ export function ChatOverlay({
   const onRestoreDrag = React.useCallback(
     (offset: number) => {
       if (pinnedOpen) return;
-      // Fresh gesture (onDragOffset flips draggingRef on its first frame). Seed
-      // the peak at 0 — the maximized sheet sits at the ceiling, which is
-      // gesture-start offset 0 — NOT the first sampled offset (a fast/coalesced
-      // first move can already be far down, and seeding the peak there would
-      // make `offset < peak` impossible so a plain pull-down never un-maximized).
+      // Fresh gesture (onDragOffset flips draggingRef on its first frame).
       if (!draggingRef.current) {
-        restoreDidUnmaximizeRef.current = false;
-        restorePeakOffsetRef.current = 0;
-        // Keep the maximized height spring in charge until this restore drag
-        // has moved a full 10% of the viewport downward. The sentinel is
-        // cleared at the crossing below, where the finger takes height back.
-        fullscreenCrossContRef.current = Number.NEGATIVE_INFINITY;
+        restoreDidEngageRef.current = false;
+        fullscreenCrossContRef.current = null;
       }
       // Claim the gesture BEFORE delegating so the integrator's own over-pull
       // hysteresis stands down — this strip owns the un-maximize (see
       // restoreGestureRef).
       restoreGestureRef.current = true;
-      if (offset > restorePeakOffsetRef.current) {
-        restorePeakOffsetRef.current = offset;
-      }
-      onDragOffset(offset);
-      // Full-screen remains truly full-height while the pointer is in the top
-      // 10% band. Once the downward travel carries the sheet below 90%, hand
-      // height back to the finger and spring the width/radius/insets to window
-      // mode. No wallpaper can appear above a still-maximized panel.
-      const downwardTravel = restorePeakOffsetRef.current - offset;
-      const restoreThresholdTravel = Math.max(
-        1,
-        fullPanelMaxH - fullscreenSnapH,
-      );
-      if (maximized && downwardTravel > restoreThresholdTravel) {
+      const downwardTravel = Math.max(0, -offset);
+      if (
+        !restoreDidEngageRef.current &&
+        downwardTravel > RESTORE_UNMAX_SLOP_PX
+      ) {
         fullscreenCrossContRef.current = null;
-        stopThreadAnimation();
-        threadHeight.set(Math.max(0, dragContRef.current));
-        setMaximized(false);
+        // Flip the synchronous owners before the shared integrator runs this
+        // frame. It can therefore apply the coalesced first move immediately,
+        // with no viewport-sized dead zone. The committed maximize bit stays
+        // stable until release, so no second handle or alternate render tree can
+        // enter while this pointer owns the restore strip.
+        restoreDidEngageRef.current = true;
         setRestoreDragging(true);
-        restoreDidUnmaximizeRef.current = true;
-        // The integrator's hysteresis is gated off for restore gestures, so
-        // drive the shape morph home here — the state effect is drag-gated and
-        // would otherwise leave the edges full-bleed while the panel shrinks.
-        if (reduce) fullBleedT.set(0);
-        else animateFullBleedTo(0);
-        // And void the pull peak so the release can't re-maximize from the
-        // ceiling high-water mark the drag just left.
         maxPullRawRef.current = 0;
       }
+      onDragOffset(offset);
     },
-    [
-      pinnedOpen,
-      maximized,
-      onDragOffset,
-      fullPanelMaxH,
-      fullscreenSnapH,
-      stopThreadAnimation,
-      threadHeight,
-      reduce,
-      fullBleedT,
-      animateFullBleedTo,
-    ],
+    [pinnedOpen, onDragOffset],
   );
   // Release from a restore drag: if it never un-maximized (an upward/stationary
   // gesture) keep it pinned full-bleed; otherwise settle at the released height —
@@ -4848,7 +5159,7 @@ export function ChatOverlay({
     restoreGestureRef.current = false;
     setDragPreviewMounted(false);
     setRestoreDragging(false);
-    if (pinnedOpen || !restoreDidUnmaximizeRef.current) return settleDrag();
+    if (pinnedOpen || !restoreDidEngageRef.current) return settleDrag();
     // A restore that un-maximized always lands on the inset shape; drive the
     // morph home (0) so a release mid-return finishes un-morphing the edges.
     animateFullBleedTo(0);
@@ -4995,6 +5306,12 @@ export function ChatOverlay({
       !firstRunOpen,
   });
   const nativeInsetSheet = nativeSheetTier === "native";
+  // Keep the CSS material identity stable through fullscreen and its restore.
+  // Toggling backdrop-filter on at the first downward frame forces a new
+  // compositor surface exactly when the finger needs the frame budget. The
+  // fullscreen fill is opaque, so the already-present filter is visually inert
+  // there; retaining it makes restore the same warm compositor path as maximize.
+  const cssSheetBackdropActive = !nativeInsetSheet;
   // Why-not-native, as a slug (glass/native-backdrop.ts) — the observable
   // half of the tier system's J4 degrades, rendered into the AX probe below.
   const nativeGlassDiag = useNativeGlassDiag();
@@ -5041,7 +5358,7 @@ export function ChatOverlay({
         // so the switch is seamless) — at rest it stays the plain calc so the
         // home-indicator clearance contract is exact.
         paddingBottom: keyboardLiftActive
-          ? "0.75rem"
+          ? `${KEYBOARD_COMPOSER_GAP_PX}px`
           : fullBleed || restoreDragging || isDragging
             ? overlayPadBottom
             : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
@@ -5107,16 +5424,13 @@ export function ChatOverlay({
         />
       ) : null}
 
-      {/* No live interim transcript is shown above the composer while
-          listening — the spoken words land as the sent message when the turn
-          completes. The mic being hot is confirmed by the pulsing speech glow
-          on the input bar / grabber / collapsed pill instead of text. */}
-
       {/* Audio-unlock prompt. When autoplay policy blocks the first spoken
           reply, the ambient overlay would otherwise go silent with no recourse
           (the in-view status bar has its own unlock; this is the floating-shell
           equivalent). Warm accent = call-to-action; no blue. */}
-      {needsAudioUnlock ? (
+      {needsAudioUnlock &&
+      !realtimeVoiceComposerVisible &&
+      !realtimeVoice?.error ? (
         <div
           role="status"
           aria-live="polite"
@@ -5164,17 +5478,14 @@ export function ChatOverlay({
       >
         {!firstRunOpen &&
         ((!fullBleed && !restoreDragging) ||
-          draggingRef.current ||
           grabberPressRef.current != null) ? (
           // Suppressed while full-bleed (the restore strip owns the top) and
-          // while a restore drag is in flight (so the strip keeps the pointer
-          // capture through the un-maximize) — EXCEPT while a grabber drag is
-          // live OR merely pressed: a MID-DRAG commit (pill or maximize) must not
-          // unmount or disable the element holding the pointer capture, or the
-          // gesture dies at the exact moment it commits. `grabberPressRef` widens
-          // that window back to the pointerdown, before the integrator's first
-          // frame flips `draggingRef`. Onboarding hides the grabber entirely: it
-          // is pinned, undismissable, and sign-in-first.
+          // while a restore drag is in flight (the restore strip keeps that
+          // pointer capture). A normal grabber remains mounted through its own
+          // mid-drag pill/maximize commit because `grabberPressRef` retains the
+          // accepted pointer id until its terminal event. Using the global drag
+          // flag here mounted BOTH handles during restore. Onboarding hides the
+          // grabber entirely: it is pinned, undismissable, and sign-in-first.
           <SheetGrabber
             open={sheetOpen}
             onOpen={openFromGrabber}
@@ -5188,7 +5499,6 @@ export function ChatOverlay({
             breathing={(listening || responding) && !recording}
             opacity={grabberOpacity}
             pilled={pilled}
-            inert={!sheetOpen && (hasImages || Boolean(imageError))}
           />
         ) : null}
         <motion.fieldset
@@ -5218,16 +5528,15 @@ export function ChatOverlay({
             // full-bleed ceiling in lock-step with the shape morph (see
             // panelCapH) so an over-pull grows 1:1 under the finger.
             maxHeight: panelCapH,
-            // A max-height alone does not make an intrinsically sized flexbox
-            // consume that height. During a held maximize the transcript flex
-            // basis can shrink around the composer chrome, leaving the sheet
-            // flagged MAXIMIZED while its top still sits ~50px below the
-            // viewport. Full-screen frames therefore own an explicit animated
-            // height. Window/restore frames must explicitly return to `auto`:
-            // passing `undefined` leaves Framer Motion's last pixel height
-            // inline, stranding a restored sheet at the inset-full ceiling while
-            // its thread height continues shrinking underneath it.
-            height: fullBleed ? panelCapH : "auto",
+            // Resting full-screen needs an explicit height because an intrinsic
+            // flexbox can shrink around the composer. During a drag and its
+            // release spring, however, the thread/content box is the geometry
+            // owner: forcing the outer fieldset to viewport height one frame
+            // earlier exposes an unpainted floor below the still-moving content.
+            // Returning to `auto` for that whole motion keeps surface, transcript,
+            // and composer bottom-anchored as one object; the settled full-screen
+            // endpoint switches to the same explicit cap only after they match.
+            height: fullBleed && !isDragging ? panelCapH : "auto",
             // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
             // bottom transform-origin would drop the top edge below the status
             // bar (the "gap at the top when maximized" bug). While open (incl. a
@@ -5236,16 +5545,6 @@ export function ChatOverlay({
             scale: fullBleed ? 1 : panelScale,
             // Grow UP out of the pill at the bottom.
             transformOrigin: "bottom center",
-            // GPU-promote the panel ONLY while a drag/settle is live (#swipe-
-            // smoothness). The morph animates `scale` (a transform) here and the
-            // thread animates its `flexBasis` below; hinting `will-change:
-            // transform` for the duration of the gesture lets WebKit/iOS Safari
-            // rasterize the panel onto its own compositor layer up front, so the
-            // finger-tracked morph and the release spring composite without
-            // repainting the frosted glass each frame (the installed-PWA
-            // micro-stutter). Dropped on settle — a permanent hint keeps the
-            // layer (and its memory) resident for no benefit at rest.
-            willChange: isDragging ? "transform" : undefined,
             // Pilled: span the (invisible) input area but pass taps through to the
             // home screen — only the pill-capsule child re-enables pointer events.
             pointerEvents: pilled ? "none" : "auto",
@@ -5268,21 +5567,7 @@ export function ChatOverlay({
             aria-hidden="true"
             data-testid="chat-sheet-surface"
             data-glass-tier={nativeSheetTier}
-            className={cn(
-              "pointer-events-none absolute inset-0 z-0",
-              // SOLID warm-dark panel. The chat floats over the live ember field,
-              // so a transparent/border-only surface let the home widgets bleed
-              // straight through the open thread (the #1 "too transparent"
-              // complaint). The panel is now an opaque warm near-black with a
-              // warm hairline edge that seats it above the field, so nothing
-              // behind it ever shows through. NOTE: the opaque fill is enforced
-              // by the inline backgroundColor below (inline wins over this
-              // class); this class supplies the edge. Flat system: depth =
-              // border, not a drop shadow (all shadow tokens are none).
-              fullBleed
-                ? "border-0 bg-card"
-                : "border border-border-strong bg-card",
-            )}
+            className="pointer-events-none absolute inset-0 z-0 bg-card"
             style={{
               opacity: glassOpacity,
               // Corner radius eases with the full-screen shape spring: the inset
@@ -5306,23 +5591,19 @@ export function ChatOverlay({
               backgroundColor:
                 firstRunOpen || nativeInsetSheet
                   ? "transparent"
-                  : fullBleed
-                    ? "var(--bg)"
-                    : GLASS_SHEET_FILL,
-              backdropFilter:
-                fullBleed || nativeInsetSheet
-                  ? undefined
-                  : GLASS_SHEET_BACKDROP_FILTER,
-              WebkitBackdropFilter:
-                fullBleed || nativeInsetSheet
-                  ? undefined
-                  : GLASS_SHEET_BACKDROP_FILTER,
+                  : surfaceBackgroundColor,
+              backdropFilter: cssSheetBackdropActive
+                ? GLASS_SHEET_BACKDROP_FILTER
+                : undefined,
+              WebkitBackdropFilter: cssSheetBackdropActive
+                ? GLASS_SHEET_BACKDROP_FILTER
+                : undefined,
               // Liquid-glass bevel: a bright top-left rim over a soft
               // bottom-right shade so the frosted edge catches light like a real
               // glass slab. Only on the inset sheet — full-bleed has no edge to
               // catch light. Depth here is the glass rim, not a drop shadow (the
               // flat system keeps all shadow tokens none).
-              boxShadow: fullBleed ? undefined : LIQUID_GLASS_EDGE_SHADOW,
+              boxShadow: surfaceEdgeShadow,
               // Specular sheen: a soft radial highlight near the top-left (as if
               // lit from above) over the faint neutral top-edge fade — the glass
               // catches light instead of just fading. Neutral white only, NOT the
@@ -5341,10 +5622,6 @@ export function ChatOverlay({
               // the extension eases in with the morph instead of popping at
               // commit. Harmless when the inset is 0.
               top: glassTopExtension,
-              // Cover the bottom safe-area floor throughout the maximize
-              // spring. At rest this is omitted so the inset window continues
-              // to float above the gesture/home-indicator clearance.
-              bottom: fullBleed ? glassBottomExtension : undefined,
             }}
           />
           {/* AX-tree mirror of data-detent: the native gesture e2e suites
@@ -5616,6 +5893,7 @@ export function ChatOverlay({
                   key={activeConversationId ?? "unbound"}
                   autoScroll={!firstRunOpen}
                   defaultScrollPosition={firstRunOpen ? "start" : "end"}
+                  scrollEdgeThreshold={MESSAGE_SCROLLER_END_THRESHOLD_PX}
                 >
                   <MessageScrollerSendFollow request={scrollToEndRequest} />
                   <MessageScrollerSearchBridge
@@ -5632,6 +5910,7 @@ export function ChatOverlay({
                         data-testid="chat-thread-scroll"
                         ref={threadRef}
                         preserveScrollOnPrepend={false}
+                        onScroll={handleThreadScroll}
                         aria-label="conversation history"
                         aria-hidden={
                           !sheetOpen || searchOpen ? true : undefined
@@ -5672,9 +5951,12 @@ export function ChatOverlay({
                             className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
                           />
                         ) : null}
-                        {/* Normal chat keeps the latest line near the composer. First-run
-                  starts at the top of the transcript so the opening prompt reads
-                  like the first turn in a conversation. */}
+                        {/* Normal chat consumes only the free space in genuinely
+                  short threads to keep their latest line near the composer.
+                  Once content fills the viewport there is no free space to
+                  distribute, so long transcripts retain their natural flow.
+                  First-run starts at the top so the opening prompt reads like
+                  the first turn. */}
                         <MessageScrollerContent
                           ref={threadContentRef}
                           aria-busy={responding}
@@ -5682,7 +5964,7 @@ export function ChatOverlay({
                             "flex flex-col gap-0",
                             firstRunOpen
                               ? "shrink-0 pt-8"
-                              : "mt-auto pb-3 pt-8",
+                              : "mt-auto justify-end pb-3 pt-8",
                           )}
                         >
                           {/* Top sentinel for infinite upward scroll (#13532, #14279):
@@ -5789,6 +6071,26 @@ export function ChatOverlay({
                     </AnimatePresence>
                   </MessageScroller>
                 </MessageScrollerProvider>
+                {!firstRunOpen ? (
+                  <motion.div
+                    data-testid="chat-thread-top-fade"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-px top-px z-30 h-12"
+                    style={{
+                      opacity: threadContentOpacity,
+                      // A fixed compositor layer lets messages dissolve beneath
+                      // the floating grabber without masking the scrolling
+                      // subtree. WebKit re-rasterizes CSS-masked scrollers while
+                      // their flex basis changes, which makes the pull gesture
+                      // stutter. Hold the panel color through the grabber's
+                      // footprint before beginning the dissolve so no glyph can
+                      // ghost through the antialiased rim or the handle itself.
+                      backgroundImage: fullBleed
+                        ? "linear-gradient(to bottom, var(--bg) 0%, var(--bg) 28%, color-mix(in srgb, var(--bg) 72%, transparent) 64%, transparent 100%)"
+                        : "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
+                    }}
+                  />
+                ) : null}
               </motion.div>
             ) : null}
             {/* Cloud-agent provisioning status — rendered IN the chat, just
@@ -5798,11 +6100,22 @@ export function ChatOverlay({
                 (or a credit/retry state is live), so this is inert in the common
                 case. Full chat-column width, styled to sit in the sheet. */}
             <AgentProvisioningWidget spanClassName="relative z-10 mx-auto w-full max-w-3xl shrink-0 px-3 pt-2" />
-            {/* Pending image attachments + any read error, just above the input. */}
+            {/* Pending attachments share the sheet's pull binding so tile and
+                gap pixels remain one continuous drag surface. Their remove
+                controls sit below the grabber's narrow top hit band and stop
+                the pointerdown from seeding a drag, preserving an independent
+                44px-class target for each file. */}
             {hasImages || imageError ? (
-              <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
+              <div
+                data-testid="chat-pending-attachments"
+                className="pointer-events-none relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2"
+              >
                 {hasImages ? (
-                  <div className="flex flex-wrap gap-2">
+                  <div
+                    data-testid="chat-pending-attachment-list"
+                    {...pullBinding}
+                    className="pointer-events-auto flex touch-none flex-wrap gap-2"
+                  >
                     {pendingImages.map((img, i) => {
                       const kind = chatUploadKind(img.mimeType);
                       const removeButton = (
@@ -5810,11 +6123,13 @@ export function ChatOverlay({
                           variant="ghost"
                           size="icon-sm"
                           aria-label={`remove ${img.name}`}
+                          onPointerDown={(event) => event.stopPropagation()}
                           onClick={() => removeImage(i)}
                           // Small visual disc, but a 44px-class hit zone via the
                           // invisible `before` overlay so it's thumb-tappable
-                          // without crowding the tile.
-                          className="absolute -right-1.5 -top-1.5 z-30 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
+                          // without crowding the tile. Bottom placement keeps
+                          // that hit zone clear of the grabber above the sheet.
+                          className="pointer-events-auto absolute -bottom-1.5 -right-1.5 z-30 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
                         >
                           ×
                         </Button>
@@ -5923,7 +6238,7 @@ export function ChatOverlay({
                 borderRadius: PANEL_RADIUS_PX,
                 borderColor: composerCapsuleBorder,
                 backgroundColor: composerCapsuleBg,
-                boxShadow: fullBleed ? LIQUID_GLASS_EDGE_SHADOW : undefined,
+                boxShadow: composerCapsuleShadow,
                 width: composerCapsuleWidth,
                 ...(keyboardLiftActive
                   ? {}
@@ -6009,6 +6324,17 @@ export function ChatOverlay({
                   analyser={analyser}
                   finishing={transcriptionFinishing}
                   reduceMotion={reduce}
+                  transcript={transcript}
+                />
+              ) : realtimeVoiceComposerVisible && realtimeVoice ? (
+                <ComposerRealtimeVoiceActivity
+                  connecting={realtimeVoice.connecting}
+                  error={realtimeVoice.error}
+                  needsAudioUnlock={needsAudioUnlock}
+                  onUnlockAudio={unlockAudio}
+                  paused={realtimeVoice.paused}
+                  reduceMotion={reduce}
+                  status={realtimeVoice.status}
                   transcript={transcript}
                 />
               ) : (
@@ -6111,67 +6437,11 @@ export function ChatOverlay({
               {/* Trailing controls. */}
               <div
                 data-testid="chat-composer-trailing-controls"
-                className="grid shrink-0 grid-cols-2 items-center gap-0"
+                className="grid shrink-0 grid-cols-1 items-center"
               >
-                {/* Two fixed slots keep the composer geometry stable while the
-                    controls dissolve between rest, send, and stop states. */}
-                <ComposerControlSlot
-                  slot="left"
-                  reduceMotion={reduce}
-                  controlKey={
-                    transcriptionMode
-                      ? "voice-master-stop"
-                      : transcriptionComposerActive ||
-                          draftOwnsTrailingControl ||
-                          generationOwnsTrailingControl
-                        ? null
-                        : "voice"
-                  }
-                >
-                  {transcriptionMode ? (
-                    // Transcript capture and the underlying mic are independent:
-                    // this control preserves the one-tap privacy stop while the
-                    // adjacent transcript control can leave listening enabled.
-                    <SoftButton
-                      icon={AudioLines}
-                      label="stop transcription and mic"
-                      disabled={firstRunOpen || transcriptionFinishing}
-                      active
-                      pressed
-                      pulse={recording}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={handleMicClick}
-                      testId="chat-composer-mic"
-                    />
-                  ) : !transcriptionComposerActive &&
-                    !draftOwnsTrailingControl &&
-                    !generationOwnsTrailingControl ? (
-                    // Tap starts hands-free conversation; hold inserts
-                    // push-to-talk dictation into the editable draft.
-                    <SoftButton
-                      icon={AudioLines}
-                      label={
-                        pttHolding
-                          ? "release to insert"
-                          : handsFree
-                            ? "end conversation"
-                            : recording
-                              ? "stop listening"
-                              : "talk"
-                      }
-                      disabled={firstRunOpen}
-                      active={handsFree || pttHolding}
-                      pressed={recording || handsFree}
-                      pulse={recording || handsFree}
-                      onClick={handleMicClick}
-                      onPointerDown={micHoldHandlers.onPointerDown}
-                      onPointerUp={micHoldHandlers.onPointerUp}
-                      onPointerCancel={micHoldHandlers.onPointerCancel}
-                      onPointerLeave={micHoldHandlers.onPointerLeave}
-                      testId="chat-composer-mic"
-                    />
-                  ) : null}
-                </ComposerControlSlot>
+                {/* One stable rightmost slot owns every primary action. Talk no
+                    longer shares the row with an ambiguous second mic, and a
+                    held pointer has exactly the same Cartesia action as a tap. */}
                 <ComposerControlSlot
                   slot="right"
                   reduceMotion={reduce}
@@ -6182,7 +6452,7 @@ export function ChatOverlay({
                         ? "send"
                         : generationOwnsTrailingControl
                           ? "generation-stop"
-                          : "transcribe"
+                          : "voice"
                   }
                 >
                   {transcriptionComposerActive ? (
@@ -6228,25 +6498,38 @@ export function ChatOverlay({
                     />
                   ) : (
                     <SoftButton
-                      icon={Mic}
-                      label="start transcription"
+                      glyph={handsFree ? STOP_GLYPH : undefined}
+                      icon={handsFree ? undefined : AudioLines}
+                      label={
+                        realtimeVoice?.error
+                          ? `retry talk — ${realtimeVoice.error}`
+                          : realtimeVoice?.connecting
+                            ? "cancel voice connection"
+                            : handsFree
+                              ? "end conversation"
+                              : recording
+                                ? "stop listening"
+                                : "talk"
+                      }
                       disabled={firstRunOpen}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={toggleTranscriptionMode}
-                      testId="chat-composer-transcribe"
+                      active={handsFree}
+                      pressed={recording || handsFree}
+                      pulse={recording && !handsFree}
+                      onClick={handleMicClick}
+                      testId="chat-composer-mic"
                     />
                   )}
                 </ComposerControlSlot>
               </div>
             </motion.div>
           </motion.div>
-          {!firstRunOpen && !fullBleed ? (
+          {!firstRunOpen ? (
             <motion.div
               data-testid="chat-sheet-rim"
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 z-40 border border-border-strong"
               style={{
-                opacity: glassOpacity,
+                opacity: rimOpacity,
                 borderRadius: morphRadius,
               }}
             />

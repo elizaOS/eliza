@@ -204,6 +204,15 @@ export interface PlannerLoopResult {
 	 * "fixes" deliberate silence into a synthesized reply.
 	 */
 	endedWithDeliberateSilence?: boolean;
+	/**
+	 * Which silent terminal ended the turn when `endedWithDeliberateSilence`
+	 * is set from a STOP/IGNORE/NONE-only terminal (NONE folds into IGNORE).
+	 * Lets the message handler record the turn under the action the model
+	 * actually chose instead of hardcoding IGNORE. Absent on the
+	 * `suppressPlannerReply` action path, where the silence belongs to a
+	 * real action whose result is already recorded.
+	 */
+	silentTerminalAction?: "IGNORE" | "STOP";
 }
 
 export interface PlannerLoopParams {
@@ -215,6 +224,12 @@ export interface PlannerLoopParams {
 		context: {
 			trajectory: PlannerTrajectory;
 			iteration: number;
+			/**
+			 * The planner's explicit completion declaration for the batch that
+			 * produced this call. `false` means any handler callback is an
+			 * intermediate implementation detail rather than the turn's reply.
+			 */
+			plannerCompleted?: boolean;
 		},
 	) => Promise<PlannerToolResult> | PlannerToolResult;
 	evaluate?: (params: {

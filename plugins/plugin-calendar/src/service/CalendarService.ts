@@ -197,6 +197,7 @@ type GoogleCalendarSyncBatch = {
 
 const CALENDAR_FEED_FRESHNESS_MS = 60_000;
 const DEFAULT_ICS_SYNC_LEASE_MS = 30_000;
+const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
 
 type CalendarSecretsService = {
   getGlobal(key: string): Promise<string | null>;
@@ -410,6 +411,7 @@ function failAppleCalendarResult(
     fail(
       409,
       `Apple Calendar is not available on ${result.platform}; connect Google Calendar or use a native Apple platform.`,
+      CALENDAR_SOURCE_UNSUPPORTED,
     );
   }
   if (
@@ -2581,7 +2583,7 @@ export class CalendarService extends Service {
                 appleCalendars.reason === "permission"
                   ? "CALENDAR_PERMISSION_REQUIRED"
                   : appleCalendars.reason === "not_supported"
-                    ? "CALENDAR_SOURCE_UNSUPPORTED"
+                    ? CALENDAR_SOURCE_UNSUPPORTED
                     : "CALENDAR_SOURCE_ERROR",
               message:
                 appleCalendars.reason === "not_supported"
@@ -4277,9 +4279,11 @@ export class CalendarService extends Service {
           // error-policy:J4 A stale/error source is returned explicitly so one
           // failed account cannot masquerade as either a complete or empty feed.
           const sourceError = calendarSourceError(error);
-          this.runtime.reportError("calendar:feed-source", error, {
-            source: calendarSourceKey(calendar),
-          });
+          if (sourceError.code !== CALENDAR_SOURCE_UNSUPPORTED) {
+            this.runtime.reportError("calendar:feed-source", error, {
+              source: calendarSourceKey(calendar),
+            });
+          }
           feed =
             (await this.readCachedCalendarFeed({
               calendar,

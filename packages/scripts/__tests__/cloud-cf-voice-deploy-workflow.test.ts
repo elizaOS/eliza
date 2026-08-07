@@ -7,9 +7,9 @@
  * secrets so a managed deploy overwrites any stale Worker value first.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolveGnuBash } from "../lib/gnu-shell.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
 
@@ -73,6 +73,13 @@ function runPreflight(env: Record<string, string>) {
       DEPLOY_ENVIRONMENT: "staging",
       DEEPGRAM_API_KEY: "deepgram-test",
       CARTESIA_API_KEY: "cartesia-test",
+      FISH_AUDIO_API_KEY: "fish-test",
+      FISH_AUDIO_REFERENCE_ID: "fish-reference-test",
+      ELIZA_TTS_FISH_ENABLED: "false",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "false",
+      FISH_AUDIO_MODEL: "s2.1-pro",
+      FISH_AUDIO_SAMPLE_RATE: "16000",
+      FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: "1500",
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer dedicated-test",
       VOICE_REALTIME_WS_ENABLED: "false",
       STAGING_ELIZACLOUD_API_KEY: "",
@@ -101,7 +108,37 @@ describe("Cloud CF realtime voice deploy contract", () => {
       "is gated by VOICE_REALTIME_WS_ENABLED; skipping",
     );
     expect(publishStep.run).toContain(
-      "DEEPGRAM_API_KEY|CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION",
+      "CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION",
+    );
+    expect(publishStep.run).toContain(
+      "is gated by VOICE_BATCH_STT_PROVIDER=deepgram; skipping",
+    );
+    expect(publishStep.run).toContain(
+      "FISH_AUDIO_API_KEY|FISH_AUDIO_REFERENCE_ID",
+    );
+    expect(publishStep.run).toContain(
+      "is gated by realtime voice, Fish enablement, and data-governance approval; skipping",
+    );
+  });
+
+  test("passes a production-off Fish opt-in and exact realtime format to the Worker", () => {
+    const fishFlag = deployStep.env?.ELIZA_TTS_FISH_ENABLED;
+    expect(fishFlag).toBe(publishStep.env?.ELIZA_TTS_FISH_ENABLED);
+    expect(fishFlag).toContain("steps.env.outputs.deploy_environment");
+    expect(fishFlag).toContain("!= 'production'");
+    expect(fishFlag).toContain("vars.ELIZA_TTS_FISH_ENABLED");
+    expect(deployStep.env?.FISH_AUDIO_SAMPLE_RATE).toBe("16000");
+    expect(deployStep.run).toContain(
+      '--var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED"',
+    );
+    expect(deployStep.env?.FISH_AUDIO_DATA_GOVERNANCE_APPROVED).toBe(
+      publishStep.env?.FISH_AUDIO_DATA_GOVERNANCE_APPROVED,
+    );
+    expect(deployStep.run).toContain(
+      '--var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED"',
+    );
+    expect(deployStep.run).toContain(
+      '--var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE"',
     );
   });
 
@@ -118,6 +155,14 @@ describe("Cloud CF realtime voice deploy contract", () => {
     // staging worker); production remains explicitly off until its own gated flip.
     expect(stagingVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
     expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "false"');
+    expect(stagingVars).toContain('ELIZA_TTS_FISH_ENABLED = "false"');
+    expect(productionVars).toContain('ELIZA_TTS_FISH_ENABLED = "false"');
+    expect(stagingVars).toContain(
+      'FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"',
+    );
+    expect(productionVars).toContain(
+      'FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"',
+    );
     expect(publishStep.env?.VOICE_REALTIME_WS_ENABLED).toContain(
       "vars.VOICE_REALTIME_WS_ENABLED",
     );
@@ -213,7 +258,6 @@ executedDescribe(
 
     test("requires every realtime provider and bridge secret in opted-in staging", () => {
       for (const missing of [
-        "DEEPGRAM_API_KEY",
         "CARTESIA_API_KEY",
         "VOICE_REALTIME_ELIZA_AUTHORIZATION",
       ]) {
@@ -228,6 +272,53 @@ executedDescribe(
         ).toBe(1);
         expect(result.stdout).toContain(missing);
       }
+    });
+
+    test("requires Fish credentials and exact provider configuration only after Fish opt-in", () => {
+      for (const missing of ["FISH_AUDIO_API_KEY", "FISH_AUDIO_REFERENCE_ID"]) {
+        const result = runPreflight({
+          [missing]: " \t\n",
+          ELIZA_TTS_FISH_ENABLED: "true",
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+          VOICE_REALTIME_WS_ENABLED: "true",
+        });
+        expect(
+          result.status,
+          `${missing}: ${result.stdout}${result.stderr}`,
+        ).toBe(1);
+        expect(result.stdout).toContain(missing);
+      }
+
+      for (const invalid of [
+        { FISH_AUDIO_MODEL: "s2.1" },
+        { FISH_AUDIO_SAMPLE_RATE: "24000" },
+      ]) {
+        const result = runPreflight({
+          ...invalid,
+          ELIZA_TTS_FISH_ENABLED: "true",
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+          VOICE_REALTIME_WS_ENABLED: "true",
+        });
+        expect(result.status, `${result.stdout}${result.stderr}`).toBe(1);
+      }
+
+      const configured = runPreflight({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        VOICE_REALTIME_WS_ENABLED: "true",
+      });
+      expect(configured.status).toBe(0);
+    });
+
+    test("refuses Fish promotion without explicit data-governance approval", () => {
+      const result = runPreflight({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "false",
+        VOICE_REALTIME_WS_ENABLED: "true",
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("FISH_AUDIO_DATA_GOVERNANCE_APPROVED");
     });
 
     test("constructs the staging fallback only after truthy opt-in and a nonblank source key", () => {
@@ -285,7 +376,7 @@ executedDescribe(
       expect(missingDedicated.stdout).toContain(
         "Production realtime voice is enabled",
       );
-      expect(missingDedicated.stdout).toContain("DEEPGRAM_API_KEY");
+      expect(missingDedicated.stdout).not.toContain("DEEPGRAM_API_KEY");
       expect(missingDedicated.stdout).toContain("CARTESIA_API_KEY");
       expect(missingDedicated.stdout).toContain(
         "VOICE_REALTIME_ELIZA_AUTHORIZATION",
@@ -300,7 +391,6 @@ executedDescribe(
       const configured = runPreflight({
         DEPLOY_ENVIRONMENT: "production",
         PRODUCTION_REALTIME_WS_ENABLED: "true",
-        DEEPGRAM_API_KEY: "deepgram-production",
         CARTESIA_API_KEY: "cartesia-production",
         VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer production-dedicated",
         PRODUCTION_REALTIME_CARTESIA_VOICE_ID: "production-voice-id",

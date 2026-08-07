@@ -4,8 +4,9 @@
  *
  * Ops:
  *   create — create a trigger (interval / once / cron) with instructions and
- *            wakeMode. Enforces a per-creator limit and dedupes on
- *            (type, instructions, schedule).
+ *            wakeMode. Enforces a per-creator limit and dedupes on the full
+ *            delivery identity (type, instructions, schedule, workflow,
+ *            creator, delivery room).
  *   update — patch displayName / instructions / schedule / wakeMode / maxRuns.
  *   delete — remove a trigger task.
  *   run    — fire a trigger immediately (manual run, force=true).
@@ -21,6 +22,7 @@ import {
   type ActionExample,
   type ActionResult,
   AUTONOMY_SERVICE_TYPE,
+  type EffectReceipt,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -175,6 +177,69 @@ function ok(
     text,
     values: { op, ...(values ?? {}) },
     data: { actionName: TRIGGER_ACTION, op, ...(data ?? {}) },
+  };
+}
+
+// TRIGGER never emits a mid-turn callback (see the handler note below), so the
+// planner's final message is the only user-facing ack — and the planned-reply
+// egress gate refuses any completion claim not bound to a committed effect
+// receipt with exact action-owned text. Every mutating op therefore returns
+// the full receipt contract; a bare {success,text} result made even a genuine
+// "reminder is set" ack structurally unverifiable, so it was replaced with the
+// unverified-effect fallback at egress.
+//
+// The receiptId carries a random component: the planner can re-dispatch the
+// identical create within one turn (both invocations landing on the dedupe
+// path), and the turn-wide receipt merge rejects a reused ID whose observed
+// timestamp differs.
+function triggerReceipt(
+  op: "create" | "update" | "delete" | "toggle",
+  taskId: string,
+  idempotency: { key: string | null; replayed?: boolean },
+): EffectReceipt {
+  const observedAt = new Date().toISOString();
+  const base = {
+    receiptId: `trigger-${op}:${taskId}:${crypto.randomUUID()}`,
+    operation: `trigger.${op}`,
+    resource: { kind: "trigger.task", id: taskId },
+    artifacts: [],
+    idempotency: {
+      key: idempotency.key,
+      replayed: idempotency.replayed === true,
+    },
+    observedAt,
+  } as const;
+  // A replay means the handler verified an equivalent committed trigger row
+  // already exists — the documented replayed-noop semantics — rather than a
+  // fresh commit of a new row.
+  return idempotency.replayed
+    ? {
+        ...base,
+        outcome: "noop",
+        reason: "An equivalent enabled trigger already exists.",
+      }
+    : {
+        ...base,
+        outcome: "applied",
+        commit: { kind: "durable", id: taskId, committedAt: observedAt },
+      };
+}
+
+// Committed-mutation result: binds the canonical text to its receipt so the
+// egress verifier can ground a completion claim on it.
+function okCommitted(
+  op: TriggerOp,
+  text: string,
+  receipt: EffectReceipt,
+  data?: Record<string, unknown>,
+  values?: Record<string, unknown>,
+): ActionResult {
+  return {
+    ...ok(op, text, data, values),
+    userFacingText: text,
+    verifiedUserFacing: true,
+    effectReceipts: [receipt],
+    userFacingEffectReceiptIds: [receipt.receiptId],
   };
 }
 
@@ -397,8 +462,26 @@ async function opCreate(
   const scheduleKey = usedDelay ? `+${delayMs}` : (scheduledAtIso ?? "");
   const workflowId = readString(params.workflowId);
   const dedupeWorkflowId = workflowId === undefined ? "" : workflowId;
+  // Workflow triggers run autonomously, so they land in the autonomy room. A
+  // prompt trigger (reminder) must fire back where the user asked for it — the
+  // originating chat room — so the reminder is actually delivered to them.
+  // Resolved before the dedupe key because the delivery room is part of the
+  // trigger's identity.
+  const service = runtime.getService(AUTONOMY_SERVICE_TYPE);
+  const autonomyService = isAutonomyRoomService(service) ? service : null;
+  const deliveryRoomId = workflowId
+    ? (autonomyService?.getAutonomousRoomId?.() ?? message.roomId)
+    : message.roomId;
+  // The dedupe key is the COMPLETE delivery identity: what fires (type,
+  // instructions, schedule, workflow) plus who it fires FOR (creator) and
+  // WHERE it fires (delivery room). Task lookup is agent-wide, so a key
+  // hashing only the request let one user's stored reminder suppress a
+  // different user's identical ask — the second recipient got a verified
+  // "you're covered" while the only existing trigger delivered to someone
+  // else's room. Only the same recipient re-asking for the same delivery is
+  // a replay.
   const dedupeKey = dedupeHash(
-    `${triggerType}|${instructions.toLowerCase()}|${intervalMs}|${scheduleKey}|${cronExpression ?? ""}|${dedupeWorkflowId}`,
+    `${triggerType}|${instructions.toLowerCase()}|${intervalMs}|${scheduleKey}|${cronExpression ?? ""}|${dedupeWorkflowId}|${creatorId}|${deliveryRoomId}`,
   );
 
   const existingTasks = await runtime.getTasks({
@@ -417,20 +500,62 @@ async function opCreate(
     );
   }
 
-  const duplicate = existingTasks.find((t) => {
+  // Two duplicate tiers with different evidentiary strength. A dedupeKey
+  // match hashes the FULL request (type, instructions, schedule, workflow),
+  // so it proves the desired state is already true and may mint a replayed
+  // receipt. The legacy fallback matches instructions+type only — it ignores
+  // the schedule, so a stored 8am reminder "matches" a new 9am request; that
+  // is a hint, never proof, and must not become a verified "you're covered".
+  // The createdBy equality is load-bearing even though the key already hashes
+  // the creator: dedupeHash is a 32-bit djb2, so a collision across users is
+  // possible — and a cross-recipient false match here silently swallows a
+  // distinct recipient's delivery. The structural guard makes that class of
+  // suppression impossible regardless of hash width.
+  const exactDuplicate = existingTasks.find((t) => {
     const cfg = readTriggerConfig(t);
-    if (!cfg?.enabled) return false;
-    if (cfg.dedupeKey) return cfg.dedupeKey === dedupeKey;
+    return Boolean(
+      cfg?.enabled &&
+        cfg.createdBy === creatorId &&
+        cfg.dedupeKey === dedupeKey,
+    );
+  });
+  if (exactDuplicate?.id) {
+    // Idempotent success: the desired state (an equivalent enabled trigger)
+    // is already committed. The replayed no-op receipt lets a truthful
+    // "you're already covered" ack pass egress verification.
+    return okCommitted(
+      "create",
+      // Human phrasing: the user's goal is already true, so say that plainly
+      // rather than narrating the dedupe machinery ("an equivalent trigger
+      // exists" reads as an internal record, not an answer).
+      "Already set — you're covered.",
+      triggerReceipt("create", String(exactDuplicate.id), {
+        key: dedupeKey,
+        replayed: true,
+      }),
+      { duplicateTaskId: exactDuplicate.id, dedupeKey },
+    );
+  }
+  const legacyDuplicate = existingTasks.find((t) => {
+    const cfg = readTriggerConfig(t);
+    if (!cfg?.enabled || cfg.dedupeKey) return false;
+    // Same recipient only: another user's identical wording is a different
+    // delivery, not a near-duplicate — steering them to "delete it first"
+    // would suppress their own reminder in favor of someone else's.
+    if (cfg.createdBy !== creatorId) return false;
     return (
       cfg.instructions.trim().toLowerCase() === instructions.toLowerCase() &&
       cfg.triggerType === triggerType
     );
   });
-  if (duplicate?.id) {
-    return ok("create", "An equivalent trigger already exists.", {
-      duplicateTaskId: duplicate.id,
-      dedupeKey,
-    });
+  if (legacyDuplicate?.id) {
+    // Un-receipted: the fuzzy match cannot prove the schedule matches, so
+    // this reports the near-duplicate without claiming verified success.
+    return ok(
+      "create",
+      `A similar ${triggerType} trigger already exists ("${readTriggerConfig(legacyDuplicate)?.instructions ?? "unknown"}"). Confirm whether that covers this, or delete it first to create the new one.`,
+      { duplicateTaskId: legacyDuplicate.id, legacyFuzzyMatch: true },
+    );
   }
 
   // A trigger with a workflowId dispatches that workflow; without one it is a
@@ -472,27 +597,20 @@ async function opCreate(
     );
   }
 
-  // Workflow triggers run autonomously, so they land in the autonomy room. A
-  // prompt trigger (reminder) must fire back where the user asked for it — the
-  // originating chat room — so the reminder is actually delivered to them.
-  const service = runtime.getService(AUTONOMY_SERVICE_TYPE);
-  const autonomyService = isAutonomyRoomService(service) ? service : null;
-  const roomId =
-    triggerConfig.kind === "prompt"
-      ? message.roomId
-      : (autonomyService?.getAutonomousRoomId?.() ?? message.roomId);
-
   const taskId = await runtime.createTask({
     name: TRIGGER_TASK_NAME,
     description: displayName,
-    roomId,
+    // The room hashed into the dedupe key above — the task must land exactly
+    // where its identity says it delivers.
+    roomId: deliveryRoomId,
     tags: [...TRIGGER_TASK_TAGS],
     metadata,
   });
 
-  return ok(
+  return okCommitted(
     "create",
     `Created trigger "${displayName}" (${describeSchedule(triggerConfig)}).`,
+    triggerReceipt("create", String(taskId), { key: dedupeKey }),
     {
       triggerId,
       taskId,
@@ -571,10 +689,12 @@ async function opUpdate(
     description: next.displayName,
     metadata,
   });
-  return ok("update", `Updated trigger "${next.displayName}".`, {
-    taskId: String(task.id),
-    triggerId: next.triggerId,
-  });
+  return okCommitted(
+    "update",
+    `Updated trigger "${next.displayName}".`,
+    triggerReceipt("update", String(task.id), { key: null }),
+    { taskId: String(task.id), triggerId: next.triggerId },
+  );
 }
 
 async function opDelete(
@@ -586,9 +706,12 @@ async function opDelete(
   if (!loaded.task.id)
     return failed("delete", "Task missing id.", "TASK_NOT_FOUND");
   await runtime.deleteTask(loaded.task.id);
-  return ok("delete", `Deleted trigger "${loaded.trigger.displayName}".`, {
-    taskId: String(loaded.task.id),
-  });
+  return okCommitted(
+    "delete",
+    `Deleted trigger "${loaded.trigger.displayName}".`,
+    triggerReceipt("delete", String(loaded.task.id), { key: null }),
+    { taskId: String(loaded.task.id) },
+  );
 }
 
 async function opRun(
@@ -641,9 +764,10 @@ async function opToggle(
     );
   }
   await runtime.updateTask(task.id, { metadata });
-  return ok(
+  return okCommitted(
     "toggle",
     `${enabled ? "Enabled" : "Disabled"} trigger "${trigger.displayName}".`,
+    triggerReceipt("toggle", String(task.id), { key: null }),
     { taskId: String(task.id), triggerId: trigger.triggerId, enabled },
   );
 }

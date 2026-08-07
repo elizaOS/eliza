@@ -19,6 +19,8 @@
  *   - Sweep: drains stale pending charging the ESTIMATE; skips young rows;
  *     age-ordered across batches; inline-then-sweep never double-charges.
  *   - Concurrency: a same-org burst cannot collectively overdraw.
+ *   - Post-debit gate hint: a successful settle leaves a warm cacheOnly hint;
+ *     an uncollected (refused) debit leaves the hint absent (#17768).
  *
  * Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
@@ -205,7 +207,6 @@ describe("admitInferenceChargeViaLedger — atomic admission gate", () => {
     if (!pgliteReady) return;
     await seedOrg("10.000000");
   });
-
   test(
     "admits an affordable charge and writes exactly one pending row at the estimate",
     async () => {
@@ -524,6 +525,86 @@ describe("createLedgerDebitSettler — exactly-once inline settlement", () => {
       } finally {
         notify.mockRestore();
       }
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "leaves a warm gate hint so the NEXT turn does not fail closed on a cacheOnly read (#17768)",
+    async () => {
+      if (!pgliteReady) return;
+      const { readOrgBalanceHint } = await import("../inference-auth-cache");
+      const { getGateBalanceUsd } = await import("../inference-billing-fast-path");
+      const reqId = nextRequestId();
+      await ledger.admitInferenceChargeViaLedger({
+        charge: charge(reqId),
+        estimatedCostUsd: 3,
+        thresholdUsd: 1,
+      });
+      await ledger.createLedgerDebitSettler(charge(reqId))(2.5);
+
+      // Settle awaited the republish; the hint must be present for cacheOnly reads.
+      const hint = await readOrgBalanceHint(ORG_ID);
+      expect(hint).not.toBeNull();
+      expect(hint?.balanceUsd).toBeCloseTo(7.5, 6);
+      await expect(getGateBalanceUsd(ORG_ID, { cacheOnly: true })).resolves.toBeCloseTo(7.5, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "republish failure leaves the debit outcome intact and forces the org off the fast path (#17768)",
+    async () => {
+      if (!pgliteReady) return;
+      const { creditsService: credits } = await import("../credits");
+      const { isOrgAdmissionRefused } = await import("../inference-admission-refusal");
+      const { readOrgBalanceHint } = await import("../inference-auth-cache");
+      const snap = spyOn(credits, "getOrganizationBalanceSnapshot").mockImplementation(async () => {
+        throw new Error("forced snapshot failure for test");
+      });
+      try {
+        const reqId = nextRequestId();
+        await ledger.admitInferenceChargeViaLedger({
+          charge: charge(reqId),
+          estimatedCostUsd: 3,
+          thresholdUsd: 1,
+        });
+        const settle = ledger.createLedgerDebitSettler(charge(reqId));
+        // Debit committed; settle must not throw even if the post-debit republish fails.
+        await expect(settle(2.5)).resolves.toMatchObject({
+          actualCost: 2.5,
+          adjustmentType: "none",
+        });
+        expect(await readBalance()).toBeCloseTo(7.5, 6);
+        expect(isOrgAdmissionRefused(ORG_ID)).toBe(true);
+        expect(await readOrgBalanceHint(ORG_ID)).toBeNull();
+      } finally {
+        snap.mockRestore();
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "uncollected debit leaves the gate hint absent (parity with refused KV settle) (#17768)",
+    async () => {
+      if (!pgliteReady) return;
+      const { readOrgBalanceHint, writeOrgBalanceHint } = await import("../inference-auth-cache");
+      const reqId = nextRequestId();
+      // Warm hint present before the refused settle, as a real org would have.
+      await writeOrgBalanceHint(ORG_ID, 0.5, Date.now(), "1");
+      await ledger.admitInferenceChargeViaLedger({
+        charge: charge(reqId),
+        estimatedCostUsd: 1,
+        thresholdUsd: 0.5,
+      });
+      await dbWrite.execute(
+        `UPDATE organizations SET credit_balance = '0.500000' WHERE id = '${ORG_ID}';`,
+      );
+      await ledger.createLedgerDebitSettler(charge(reqId))(5);
+      // onCreditMutation + invalidate on uncollected must not leave a stale warm
+      // gate that would over-admit; absent is correct.
+      expect(await readOrgBalanceHint(ORG_ID)).toBeNull();
     },
     PGLITE_TIMEOUT,
   );

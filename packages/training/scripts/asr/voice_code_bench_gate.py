@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 DATASET_SOURCE_URL = "https://huggingface.co/datasets/besimple-ai/voice-code-bench"
 DATASET_LICENSE = "mit"
@@ -52,6 +52,7 @@ class VoiceCodeBenchEntity:
     id: str
     type: str
     canonical: str
+    acoustic: str | None = None
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,7 @@ class VoiceCodeBenchRow:
     difficulty: str
     reference: str
     entities: tuple[VoiceCodeBenchEntity, ...]
+    acoustic_reference: str | None = None
 
 
 def gate_contract() -> dict[str, Any]:
@@ -111,20 +113,49 @@ def normalize_entity(text: str) -> str:
     return _NON_ALNUM_RE.sub("", text.lower())
 
 
-def entity_matches_hypothesis(entity: str, hypothesis: str) -> bool:
-    entity_normalized = normalize_entity(entity)
+def entity_matches_hypothesis(
+    entity: str, hypothesis: str, entity_type: str | None = None
+) -> bool:
+    entity_normalized = _normalize_structured_entity(entity, entity_type)
     if not entity_normalized:
         return False
     hypothesis_tokens = _TOKEN_RE.findall(hypothesis.lower())
     for start in range(len(hypothesis_tokens)):
         joined = ""
         for token in hypothesis_tokens[start:]:
-            joined += token
+            joined += _normalize_structured_entity(token, entity_type)
             if joined == entity_normalized:
                 return True
             if len(joined) >= len(entity_normalized):
                 break
     return False
+
+
+def _normalize_structured_entity(text: str, entity_type: str | None) -> str:
+    if entity_type not in {"phone_number", "phone_extension"}:
+        return normalize_entity(text)
+    aliases = {
+        "zero": "0",
+        "oh": "0",
+        "o": "0",
+        "one": "1",
+        "two": "2",
+        "three": "3",
+        "four": "4",
+        "five": "5",
+        "six": "6",
+        "seven": "7",
+        "eight": "8",
+        "nine": "9",
+        "dash": "",
+        "hyphen": "",
+        "area": "",
+        "code": "",
+        "extension": "ext",
+    }
+    return "".join(
+        aliases.get(token, token) for token in _TOKEN_RE.findall(text.lower())
+    )
 
 
 def word_error_rate(reference: str, hypothesis: str) -> float:
@@ -139,6 +170,114 @@ def character_error_rate(reference: str, hypothesis: str) -> float:
         list(normalize_entity(reference)),
         list(normalize_entity(hypothesis)),
     )
+
+
+def format_invariant_error_rates(
+    row: VoiceCodeBenchRow, hypothesis: str
+) -> tuple[float, float]:
+    if row.acoustic_reference is None or any(
+        entity.acoustic is None for entity in row.entities
+    ):
+        return (
+            word_error_rate(row.reference, hypothesis),
+            character_error_rate(row.reference, hypothesis),
+        )
+    word_chunks = _format_invariant_chunks(
+        row,
+        lambda text: normalize_for_error_rate(text).split(),
+    )
+    char_chunks = _format_invariant_chunks(
+        row, lambda text: list(normalize_entity(text))
+    )
+    if word_chunks is None or char_chunks is None:
+        return (
+            word_error_rate(row.acoustic_reference, hypothesis),
+            character_error_rate(row.acoustic_reference, hypothesis),
+        )
+    acoustic_words = normalize_for_error_rate(row.acoustic_reference).split()
+    hypothesis_words = normalize_for_error_rate(hypothesis).split()
+    acoustic_chars = list(normalize_entity(row.acoustic_reference))
+    hypothesis_chars = list(normalize_entity(hypothesis))
+    return (
+        _alternative_edit_rate(word_chunks, hypothesis_words, len(acoustic_words)),
+        _alternative_edit_rate(char_chunks, hypothesis_chars, len(acoustic_chars)),
+    )
+
+
+def _format_invariant_chunks(
+    row: VoiceCodeBenchRow,
+    normalize: Callable[[str], list[str]],
+) -> list[list[list[str]]] | None:
+    if row.acoustic_reference is None:
+        return None
+    reference = normalize(row.acoustic_reference)
+    chunks: list[list[list[str]]] = []
+    cursor = 0
+    for entity in row.entities:
+        if entity.acoustic is None:
+            return None
+        acoustic = normalize(entity.acoustic)
+        canonical = normalize(entity.canonical)
+        start = _find_subsequence(reference, acoustic, cursor)
+        if start is None:
+            return None
+        if start > cursor:
+            chunks.append([reference[cursor:start]])
+        alternatives = [acoustic]
+        if canonical != acoustic:
+            alternatives.append(canonical)
+        chunks.append(alternatives)
+        cursor = start + len(acoustic)
+    if cursor < len(reference):
+        chunks.append([reference[cursor:]])
+    return chunks
+
+
+def _find_subsequence(
+    values: list[str], subsequence: list[str], start: int
+) -> int | None:
+    width = len(subsequence)
+    for index in range(start, len(values) - width + 1):
+        if values[index : index + width] == subsequence:
+            return index
+    return None
+
+
+def _alternative_edit_rate(
+    chunks: list[list[list[str]]], hypothesis: list[str], reference_length: int
+) -> float:
+    if reference_length == 0:
+        return 0.0 if not hypothesis else 1.0
+    previous = list(range(len(hypothesis) + 1))
+    for alternatives in chunks:
+        candidates = [
+            _advance_edit_cost(previous, alternative, hypothesis)
+            for alternative in alternatives
+        ]
+        previous = [
+            min(candidate[column] for candidate in candidates)
+            for column in range(len(previous))
+        ]
+    return previous[-1] / reference_length
+
+
+def _advance_edit_cost(
+    initial: list[int], reference: list[str], hypothesis: list[str]
+) -> list[int]:
+    previous = list(initial)
+    for reference_item in reference:
+        current = [previous[0] + 1]
+        for column, hypothesis_item in enumerate(hypothesis, start=1):
+            current.append(
+                min(
+                    previous[column - 1]
+                    + (0 if reference_item == hypothesis_item else 1),
+                    current[column - 1] + 1,
+                    previous[column] + 1,
+                )
+            )
+        previous = current
+    return previous
 
 
 def score_voice_code_bench_rows(
@@ -160,7 +299,12 @@ def score_voice_code_bench_rows(
         row_matched = 0
         for entity in row.entities:
             total_entities += 1
-            entity_match = entity_matches_hypothesis(entity.canonical, hypothesis)
+            entity_match = entity_matches_hypothesis(
+                entity.canonical, hypothesis, entity.type
+            ) or (
+                entity.acoustic is not None
+                and entity_matches_hypothesis(entity.acoustic, hypothesis, entity.type)
+            )
             if entity_match:
                 matched_entities += 1
                 row_matched += 1
@@ -169,14 +313,14 @@ def score_voice_code_bench_rows(
                     "id": entity.id,
                     "type": entity.type,
                     "canonical": entity.canonical,
+                    "acoustic": entity.acoustic,
                     "matched": entity_match,
                 }
             )
         row_success = row.entities and row_matched == len(row.entities)
         if row_success:
             task_successes += 1
-        row_wer = word_error_rate(row.reference, hypothesis)
-        row_cer = character_error_rate(row.reference, hypothesis)
+        row_wer, row_cer = format_invariant_error_rates(row, hypothesis)
         wer_sum += row_wer
         cer_sum += row_cer
         row_scores.append(
@@ -247,6 +391,44 @@ def validate_publishable_report(report: dict[str, Any]) -> list[str]:
             value = metrics.get(key)
             if isinstance(value, bool) or not isinstance(value, int | float):
                 errors.append(f"metrics.{key} must be numeric")
+    if report.get("publishable") is True:
+        if report.get("provider_error_count") != 0:
+            errors.append("provider_error_count must be zero")
+        rows = report.get("rows")
+        if not isinstance(rows, list) or len(rows) != DATASET_ROWS:
+            errors.append("rows must contain all 300 scored rows")
+        else:
+            required_row_hashes = {
+                "row_id",
+                "audio_sha256",
+                "reference_sha256",
+                "entities_sha256",
+            }
+            for index, row in enumerate(rows):
+                if not isinstance(row, dict):
+                    errors.append(f"rows[{index}] must be an object")
+                    continue
+                if row.get("status") != "ok":
+                    errors.append(f"rows[{index}].status must be ok")
+                if (
+                    not isinstance(row.get("transcript"), str)
+                    or not row["transcript"].strip()
+                ):
+                    errors.append(f"rows[{index}].transcript is required")
+                row_hashes = row.get("hashes")
+                if not isinstance(row_hashes, dict):
+                    errors.append(f"rows[{index}].hashes are required")
+                    continue
+                for key in required_row_hashes:
+                    value = row_hashes.get(key)
+                    if (
+                        not isinstance(value, str)
+                        or len(value) != 64
+                        or any(
+                            character not in "0123456789abcdef" for character in value
+                        )
+                    ):
+                        errors.append(f"rows[{index}].hashes.{key} must be sha256 hex")
     return errors
 
 

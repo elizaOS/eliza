@@ -2,6 +2,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const toVitePath = (value: string): string => value.replaceAll("\\", "/");
@@ -9,9 +10,13 @@ const coreSrc = resolve(rootDir, "../../packages/core/src");
 const pluginBrowserSrc = resolve(rootDir, "../plugin-browser/src");
 const pluginCommandsSrc = resolve(rootDir, "../plugin-commands/src");
 const sharedSrc = resolve(rootDir, "../../packages/shared/src");
+const baseAliases = Array.isArray(baseConfig.resolve?.alias)
+  ? baseConfig.resolve.alias
+  : [];
 
 export default defineConfig({
   resolve: {
+    ...baseConfig.resolve,
     alias: [
       // Changed-test coverage runs before workspace builds, so command imports
       // must resolve core from source rather than an absent dist entrypoint.
@@ -85,6 +90,7 @@ export default defineConfig({
         find: /^@elizaos\/plugin-browser\/(.+)$/,
         replacement: `${toVitePath(pluginBrowserSrc)}/$1`,
       },
+      ...baseAliases,
     ],
   },
   test: {

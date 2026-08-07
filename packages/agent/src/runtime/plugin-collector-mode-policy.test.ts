@@ -1,9 +1,9 @@
 /**
  * Covers collectPluginNames() model-provider policy across deployment-target
- * runtimes — cloud exposes only the cloud provider, remote never falls back to
- * cloud/local providers, local-only keeps local providers — plus the mobile
- * provider allow-list and coding-agent orchestrator gating. Deterministic —
- * env plus in-memory ElizaConfig, no live model.
+ * runtimes — cloud-proxy exposes only the cloud provider, Cloud runtime with a
+ * direct text route retains that provider, remote never falls back, and
+ * local-only keeps local providers — plus mobile provider and orchestrator
+ * gating. Deterministic env plus in-memory config; no live model.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -24,8 +24,10 @@ const ENV_KEYS = [
   "ELIZA_DEFAULT_AGENT_TYPE",
   "ELIZA_ACP_DEFAULT_AGENT",
   "ELIZA_AGENT_SELECTION_STRATEGY",
+  "CEREBRAS_API_KEY",
   "OPENAI_API_KEY",
   "OLLAMA_BASE_URL",
+  "ZAI_API_KEY",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -84,6 +86,292 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-openai")).toBe(false);
     expect(names.has("@elizaos/plugin-ollama")).toBe(false);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+  });
+
+  it("keeps a direct Cerebras text provider beside Cloud capabilities", () => {
+    process.env.CEREBRAS_API_KEY = "csk-test";
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "cerebras",
+          transport: "direct",
+        },
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(false);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+  });
+
+  it("keeps only z.ai when it owns direct text beside Cloud capabilities", () => {
+    process.env.ZAI_API_KEY = "zai-test";
+    process.env.OPENAI_API_KEY = "sk-test";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "zai",
+          transport: "direct",
+        },
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-zai")).toBe(true);
+    expect(names.has("@elizaos/plugin-openai")).toBe(false);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+  });
+
+  it("keeps only local inference when it owns direct text beside Cloud capabilities", () => {
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "local-inference",
+          transport: "direct",
+        },
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+  });
+
+  it("keeps local inference when it owns embeddings beside direct Cloud text", () => {
+    process.env.CEREBRAS_API_KEY = "csk-test";
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "cerebras",
+          transport: "direct",
+        },
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "local-inference",
+          transport: "direct",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(false);
+  });
+
+  it("keeps z.ai when it owns direct embeddings beside external direct text", () => {
+    process.env.CEREBRAS_API_KEY = "csk-test";
+    process.env.ZAI_API_KEY = "zai-test";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "cerebras",
+          transport: "direct",
+        },
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "zai",
+          transport: "direct",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+    expect(names.has("@elizaos/plugin-zai")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+  });
+
+  it("keeps z.ai embeddings when Cloud owns text", () => {
+    process.env.ZAI_API_KEY = "zai-test";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "zai",
+          transport: "direct",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-zai")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+  });
+
+  it("does not load an arbitrary package for an unknown direct backend", () => {
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "not-a-provider",
+          transport: "direct",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-not-a-provider")).toBe(false);
+  });
+
+  it("keeps OpenAI embeddings when Cloud owns text", () => {
+    process.env.OPENAI_API_KEY = "sk-test";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "openai",
+          transport: "direct",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(false);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+  });
+
+  it("keeps local inference embeddings when Cloud owns text", () => {
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "local-inference",
+          transport: "direct",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+  });
+
+  it("resolves Cerebras direct capabilities through the OpenAI-compatible plugin", () => {
+    process.env.CEREBRAS_API_KEY = "csk-test";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "cerebras",
+          transport: "direct",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(false);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
   });
 
   it("remote mode never falls back to cloud or local model providers", () => {

@@ -36,9 +36,9 @@
  *   notes     where else the suite runs (dedicated workflow / lane).
  */
 
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "./spawn-sync-captured.mjs";
 
 /** Same content pattern that defines the guarded set in issue #9310. */
 export const GUARD_CONTENT_PATTERN =

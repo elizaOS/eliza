@@ -40,7 +40,12 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
-import { addHeader, formatMessages, formatPosts } from "../../../utils.ts";
+import {
+	addHeader,
+	conversationMessagesHeader,
+	formatMessages,
+	formatPosts,
+} from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("RECENT_MESSAGES");
@@ -518,9 +523,15 @@ export const recentMessagesProvider: Provider = {
 				.filter(Boolean)
 				.join("\n\n");
 
+			// Name the bounded window without advertising an action. Providers run
+			// on runtimes with different plugin and role surfaces; the Stage-1
+			// boundary is the authority that says whether older history is searchable.
 			const recentMessagesBody =
 				formattedRecentMessages && formattedRecentMessages.length > 0
-					? addHeader("# Conversation Messages", formattedRecentMessages)
+					? addHeader(
+							conversationMessagesHeader(dialogueMessages.length),
+							formattedRecentMessages,
+						)
 					: "";
 			const recentMessages = [compactedContext, recentMessagesBody]
 				.filter(Boolean)

@@ -167,7 +167,7 @@ AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"
-ELIZA_ONBOARDING_APP_URL = "https://eliza.app"
+ELIZA_ONBOARDING_APP_URL = "https://app.elizacloud.ai"
 BLUEBUBBLES_GATEWAY_PHONE_NUMBER = "+14159611510"
 NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
@@ -317,6 +317,16 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   DISCORD_BOT_TOKEN / DISCORD_CHANNEL_ID
 #   GATEWAY_BOOTSTRAP_SECRET / GATEWAY_INTERNAL_SECRET
 #   JWT_SIGNING_PRIVATE_KEY / JWT_SIGNING_PUBLIC_KEY
+#   OIDC_SIGNING_JWKS                  OIDC provider key ring: JSON array of PRIVATE JWKs
+#                                      (element 0 signs, all published at jwks_uri).
+#                                      Generate with packages/cloud/scripts/admin/generate-oidc-keys.ts.
+#   OIDC_CLIENTS                       OIDC relying-party registry: JSON array; client
+#                                      secrets stored as sha256 hex only.
+#                                      NOTE: both are SECRETS on purpose — a wiped secret
+#                                      makes SSO fail closed (503) rather than serve an
+#                                      empty registry. OIDC_ENABLED / OIDC_ISSUER_URL are
+#                                      committed [vars] below for the same reason inverted:
+#                                      losing them must not silently change the issuer.
 #   COINGECKO_API_KEY / BRAVE_SEARCH_API_KEY
 #   TWITTER_BEARER_TOKEN / X_API_KEY / X_API_KEY_SECRET
 #   X402_RECIPIENT_ADDRESS / PINATA_JWT
@@ -378,6 +388,19 @@ APPS_DEPLOY_ENABLED = "1"
 NEXT_PUBLIC_APP_URL = "https://staging.elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api-staging.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
+# OpenID Connect provider (Eliza Cloud as the OP for Eliza Hub). Committed vars,
+# not secrets: the issuer string is byte-compared by every relying party, so it
+# must survive a redeploy that wipes secrets rather than silently disappear.
+# OIDC_ENABLED is the kill switch; the provider serves nothing until it is "true".
+# The issuer MUST be a bare origin on a host this Worker is routed for (see
+# `routes` above) — the apex elizacloud.ai is the SPA and never reaches the
+# Worker, and a path on the issuer is refused because every endpoint is served
+# from the host root. The console SPA must be built with the same string as
+# VITE_OIDC_ISSUER_URL or signed-out relying-party logins cannot resume; the
+# `build:web` env blocks in .github/workflows/cloud-cf-deploy.yml carry it, and
+# `packages/cloud/shared/src/lib/oidc/config.test.ts` fails if the two drift.
+OIDC_ENABLED = "false"
+OIDC_ISSUER_URL = "https://api-staging.elizacloud.ai"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
 # redirects email magic-link callbacks to staging.elizacloud.ai instead of the
 # prod fallback (www.elizacloud.ai). Tenant row provisioned manually.
@@ -445,8 +468,9 @@ INFERENCE_DEFERRED_ADMISSION = "true"
 # Enables local decision memos in front of shared revisioned caches. Exact
 # organization rate and spend decisions remain in the Durable Object.
 INFERENCE_HOT_PATH_CACHES = "true"
-# Staging retains authoritative auth while admission/cache foundations soak.
-INFERENCE_AUTH_CACHE_ENABLED = "false"
+# One combined auth+org+moderation read; authoritative refresh runs only under
+# waitUntil and the 60s physical TTL bounds lost invalidation.
+INFERENCE_AUTH_CACHE_ENABLED = "true"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
@@ -468,6 +492,10 @@ VOICE_REALTIME_WS_ENABLED = "true"
 VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.elizacloud.ai"
 VOICE_REALTIME_ELIZA_MODEL = "gemma-4-31b"
+# Fish is promoted only by the environment-scoped deploy variable after its
+# credentials exist; the committed default remains safe for local deploys.
+ELIZA_TTS_FISH_ENABLED = "false"
+FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
 
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob-staging.elizacloud.ai"
@@ -559,7 +587,7 @@ __filename = '"/worker.js"'
 
 [env.production.vars]
 NODE_ENV = "production"
-THIN_INFERENCE_ENTRY_ENABLED = "false"
+THIN_INFERENCE_ENTRY_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
 # the no-op stub. Mirrors [env.staging.vars]. CUTOVER GATE — only effective once the prod
@@ -580,6 +608,12 @@ NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+# OpenID Connect provider — see the staging block for why these are vars, not
+# secrets. Flip OIDC_ENABLED to "true" only after OIDC_SIGNING_JWKS and
+# OIDC_CLIENTS are pushed; changing OIDC_ISSUER_URL afterwards invalidates every
+# relying-party account link.
+OIDC_ENABLED = "false"
+OIDC_ISSUER_URL = "https://api.elizacloud.ai"
 # Pin the prod Steward tenant explicitly instead of leaning on the implicit
 # DEFAULT_STEWARD_TENANT_ID ("elizacloud") in steward-tenant-config.ts. That
 # implicit fallback is what the prod magic-link bug hinged on — make it explicit
@@ -590,7 +624,7 @@ AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"
-ELIZA_ONBOARDING_APP_URL = "https://eliza.app"
+ELIZA_ONBOARDING_APP_URL = "https://app.elizacloud.ai"
 BLUEBUBBLES_GATEWAY_PHONE_NUMBER = "+14159611510"
 NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
@@ -639,8 +673,9 @@ INFERENCE_DEFERRED_ADMISSION = "true"
 # Enables local decision memos in front of shared revisioned caches. Exact
 # organization rate and spend decisions remain in the Durable Object.
 INFERENCE_HOT_PATH_CACHES = "true"
-# Production authorization remains authoritative until the revocation gate lands.
-INFERENCE_AUTH_CACHE_ENABLED = "false"
+# One combined auth+org+moderation read; authoritative refresh runs only under
+# waitUntil and the 60s physical TTL bounds lost invalidation.
+INFERENCE_AUTH_CACHE_ENABLED = "true"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
@@ -656,6 +691,8 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 # Realtime voice is a staging-only soak. Keep the production posture explicit
 # so a missing variable or inherited default cannot accidentally expose it.
 VOICE_REALTIME_WS_ENABLED = "false"
+ELIZA_TTS_FISH_ENABLED = "false"
+FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"

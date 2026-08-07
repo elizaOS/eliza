@@ -1,34 +1,36 @@
-// Handles v1 cloud API v1 generate image route traffic with route-local auth expectations.
+/** Handles authenticated image generation, safety validation, billing, and persistence. */
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError,
+  getGenerativeExecutionContext,
+  getGenerativePricingCacheOptions,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import {
   ApiError,
   failureResponse,
   jsonError,
 } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getImageProvider } from "@/lib/providers/image/registry";
 import { getAiProviderConfigurationError } from "@/lib/providers/language-model";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
+import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
 import { calculateImageGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
   DEFAULT_IMAGE_MODEL_ID,
   getSupportedImageModelDefinition,
   SUPPORTED_IMAGE_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
+import { admitAppInferenceCacheOnly } from "@/lib/services/app-inference-admission";
+import { appsService } from "@/lib/services/apps";
 import { contentSafetyService } from "@/lib/services/content-safety";
-import {
-  creditsService,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
+import { InsufficientCreditsError } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_IMAGES = 4;
@@ -80,8 +82,6 @@ async function deleteStoredImages(
 }
 
 const app = new Hono<AppEnv>();
-
-app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 function extensionForMimeType(mimeType: string): string {
   if (mimeType === "image/jpeg") return "jpg";
@@ -164,14 +164,53 @@ async function generateOneImage(request: ImageRequest): Promise<{
   }
 }
 
-app.post("/", async (c) => {
-  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
-    null;
+export async function handleGenerateImagePOST(
+  c: AppContext,
+  options: { requiredAppId?: string } = {},
+): Promise<Response> {
+  let admission:
+    | Awaited<ReturnType<typeof admitFlatGenerativeOperation>>
+    | Awaited<ReturnType<typeof admitAppInferenceCacheOnly>>
+    | undefined;
   let chargeSettled = false;
   const images: GeneratedImage[] = [];
 
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user, apiKeyId, admissionSnapshot, appScopeId } =
+      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
+    const executionCtx = getGenerativeExecutionContext(c);
+    let inferenceApp: Awaited<ReturnType<typeof appsService.getById>> | null =
+      null;
+    if (options.requiredAppId) {
+      if (appScopeId && appScopeId !== options.requiredAppId) {
+        return jsonError(c, 403, "Access denied to this app", "access_denied");
+      }
+      const resolution = executionCtx
+        ? await appsService.getByIdCacheOnly(options.requiredAppId, {
+            executionCtx,
+          })
+        : {
+            kind: "ready" as const,
+            app: (await appsService.getById(options.requiredAppId)) ?? null,
+          };
+      if (resolution.kind !== "ready") {
+        throw new ApiError(
+          503,
+          "service_unavailable",
+          "App cache is warming; retry shortly",
+        );
+      }
+      inferenceApp = resolution.app;
+      if (!inferenceApp) {
+        return jsonError(c, 404, "App not found", "resource_not_found");
+      }
+      if (
+        !inferenceApp.monetization_enabled &&
+        inferenceApp.organization_id !== user.organization_id
+      ) {
+        return jsonError(c, 403, "Access denied to this app", "access_denied");
+      }
+    }
     if (!c.env.BLOB) {
       return jsonError(
         c,
@@ -216,34 +255,78 @@ app.post("/", async (c) => {
       );
     }
 
-    await contentSafetyService.assertSafeForPublicUse({
-      surface: "media_generation_prompt",
+    const [, cost] = await Promise.all([
+      contentSafetyService.assertSafeForPublicUse({
+        surface: "media_generation_prompt",
+        organizationId: user.organization_id,
+        userId: user.id,
+        text: request.prompt,
+        imageUrls: request.sourceImage ? [request.sourceImage] : undefined,
+        allowDataImages: true,
+        metadata: { type: "image", model: request.model },
+      }),
+      calculateImageGenerationCostFromCatalog({
+        model: request.model,
+        provider: definition.provider,
+        billingSource: definition.billingSource,
+        imageCount: request.numImages,
+        dimensions: {
+          ...definition.defaultDimensions,
+          ...imageDimensions(request),
+        },
+        cache: getGenerativePricingCacheOptions(c),
+      }),
+    ]);
+    const billingContext: BillingContext = {
       organizationId: user.organization_id,
       userId: user.id,
-      text: request.prompt,
-      imageUrls: request.sourceImage ? [request.sourceImage] : undefined,
-      allowDataImages: true,
-      metadata: { type: "image", model: request.model },
-    });
-
-    const cost = await calculateImageGenerationCostFromCatalog({
+      apiKeyId,
       model: request.model,
       provider: definition.provider,
       billingSource: definition.billingSource,
-      imageCount: request.numImages,
-      dimensions: {
-        ...definition.defaultDimensions,
-        ...imageDimensions(request),
-      },
-    });
+      requestId:
+        options.requiredAppId && c.req.header("Idempotency-Key")?.trim()
+          ? `app-image:${options.requiredAppId}:${user.id}:${c.req
+              .header("Idempotency-Key")!
+              .trim()
+              .slice(0, 200)}`
+          : `generate-image:${crypto.randomUUID()}`,
+      affiliateCode: c.req.header("X-Affiliate-Code"),
+      description: `Image generation: ${request.model} x${request.numImages}`,
+    };
 
     try {
-      reservation = await creditsService.reserve({
-        organizationId: user.organization_id,
-        userId: user.id,
-        amount: cost.totalCost,
-        description: `Image generation: ${request.model} x${request.numImages}`,
-      });
+      admission =
+        inferenceApp && options.requiredAppId && executionCtx
+          ? await admitAppInferenceCacheOnly({
+              app: inferenceApp,
+              appId: options.requiredAppId,
+              userId: user.id,
+              organizationId: user.organization_id,
+              estimatedBaseCostUsd: cost.totalCost,
+              description: billingContext.description ?? "Image generation",
+              idempotencyKey:
+                c.req.header("Idempotency-Key") ?? billingContext.requestId!,
+              requestId: billingContext.requestId!,
+              model: request.model,
+              provider: definition.provider,
+              billingSource: definition.billingSource,
+              affiliateCode: billingContext.affiliateCode,
+              executionCtx,
+              admissionSnapshot,
+              metadata: {
+                endpoint: "apps.generate-image",
+                numImages: request.numImages,
+              },
+            })
+          : await admitFlatGenerativeOperation({
+              c,
+              context: billingContext,
+              apiKeyId,
+              cost,
+              admissionSnapshot,
+            });
+      await admission?.markProviderDispatched?.();
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return c.json(
@@ -308,58 +391,80 @@ app.post("/", async (c) => {
       });
     }
 
-    await reservation.reconcile(cost.totalCost);
-    chargeSettled = true;
-
-    await Promise.all(
-      images.map((image) =>
-        generationsService
-          .create({
-            organization_id: user.organization_id,
-            user_id: user.id,
-            type: "image",
-            model: request.model,
-            provider: definition.provider,
-            prompt: request.prompt,
-            result: {
-              text: image.text,
-              r2Key: image.key,
-              billingSource: definition.billingSource,
-            },
-            status: "completed",
-            storage_url: image.url,
-            thumbnail_url: image.url,
-            file_size: BigInt(image.sizeBytes),
-            mime_type: image.mimeType,
-            parameters: {
-              numImages: request.numImages,
-              aspectRatio: request.aspectRatio,
-              stylePreset: request.stylePreset,
-              width: request.width,
-              height: request.height,
-              hasSourceImage: Boolean(request.sourceImage),
-            },
-            dimensions: {
-              width: request.width,
-              height: request.height,
-            },
-            cost: String(cost.totalCost),
-            credits: String(cost.totalCost),
-            completed_at: new Date(),
-          })
-          .catch((recordError) => {
-            logger.warn("[GenerateImage] Failed to record generation", {
-              error:
-                recordError instanceof Error
-                  ? recordError.message
-                  : String(recordError),
-            });
-          }),
-      ),
-    );
+    let billingApplied = false;
+    const persistenceTask = (async () => {
+      if (inferenceApp) await admission?.settle(cost.totalCost);
+      else {
+        await billFlatUsage(
+          billingContext,
+          cost,
+          admission && "reservation" in admission
+            ? admission.reservation
+            : undefined,
+        );
+      }
+      billingApplied = true;
+      chargeSettled = true;
+      await Promise.all(
+        images.map((image) =>
+          generationsService
+            .create({
+              organization_id: user.organization_id,
+              user_id: user.id,
+              type: "image",
+              model: request.model,
+              provider: definition.provider,
+              prompt: request.prompt,
+              result: {
+                text: image.text,
+                r2Key: image.key,
+                billingSource: definition.billingSource,
+              },
+              status: "completed",
+              storage_url: image.url,
+              thumbnail_url: image.url,
+              file_size: BigInt(image.sizeBytes),
+              mime_type: image.mimeType,
+              parameters: {
+                numImages: request.numImages,
+                aspectRatio: request.aspectRatio,
+                stylePreset: request.stylePreset,
+                width: request.width,
+                height: request.height,
+                hasSourceImage: Boolean(request.sourceImage),
+              },
+              dimensions: {
+                width: request.width,
+                height: request.height,
+              },
+              cost: String(cost.totalCost),
+              credits: String(cost.totalCost),
+              completed_at: new Date(),
+            })
+            .catch((recordError) => {
+              logger.warn("[GenerateImage] Failed to record generation", {
+                error:
+                  recordError instanceof Error
+                    ? recordError.message
+                    : String(recordError),
+              });
+            }),
+        ),
+      );
+    })().catch(async (error) => {
+      if (!billingApplied) await admission?.settleUnknown();
+      // error-policy:J7 billing and generation records persist after the image
+      // response; conservative settlement remains observable on failure.
+      logger.error("[GenerateImage] Background persistence failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+    if (executionCtx) executionCtx.waitUntil(persistenceTask);
+    else void persistenceTask;
 
     return c.json({
       success: true,
+      ...(options.requiredAppId ? { appId: options.requiredAppId } : {}),
       model: request.model,
       images: images.map(({ image, url, text }) => ({ image, url, text })),
       cost,
@@ -380,8 +485,10 @@ app.post("/", async (c) => {
     if (!chargeSettled && images.length > 0) {
       await deleteStoredImages(c.env, images);
     }
-    if (reservation && !chargeSettled) {
-      await reservation.reconcile(0).catch((reconcileError) => {
+    if (admission && !chargeSettled) {
+      const release = admission.settle(0);
+      const executionCtx = getGenerativeExecutionContext(c);
+      const observed = release.catch((reconcileError) => {
         logger.error("[GenerateImage] Failed to refund reservation", {
           error:
             reconcileError instanceof Error
@@ -389,10 +496,14 @@ app.post("/", async (c) => {
               : String(reconcileError),
         });
       });
+      if (executionCtx) executionCtx.waitUntil(observed);
+      else await observed;
     }
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
-});
+}
+
+app.post("/", (c) => handleGenerateImagePOST(c));
 
 app.all("*", (c) =>
   c.json({ success: false, error: "Method not allowed" }, 405),

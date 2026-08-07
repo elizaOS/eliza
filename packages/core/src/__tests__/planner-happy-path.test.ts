@@ -24,7 +24,7 @@ import type {
 import type { ContextRegistry } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
-import type { UUID } from "../types/primitives";
+import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
@@ -137,6 +137,7 @@ function makeRuntime(opts: {
 			: {}),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
+		getSetting: vi.fn(() => undefined),
 		useModel: vi.fn(
 			async (modelType: unknown, params: unknown, provider: unknown) => {
 				calls.push({ modelType, params, provider });
@@ -204,6 +205,8 @@ function makeMockAction(opts: {
 	}>;
 	tags?: string[];
 	suppressActionResultClipboard?: boolean;
+	suppressEarlyReply?: boolean;
+	suppressPostActionContinuation?: boolean;
 }): Action {
 	return {
 		name: opts.name,
@@ -218,6 +221,10 @@ function makeMockAction(opts: {
 		...(opts.contexts ? { contexts: opts.contexts } : {}),
 		...(opts.suppressActionResultClipboard
 			? { suppressActionResultClipboard: true }
+			: {}),
+		...(opts.suppressEarlyReply ? { suppressEarlyReply: true } : {}),
+		...(opts.suppressPostActionContinuation
+			? { suppressPostActionContinuation: true }
 			: {}),
 	} as Action;
 }
@@ -372,6 +379,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const plannerParams = calls[1]?.params as
 			| {
 					messages?: Array<{ role?: string; content?: string }>;
+					tools?: Array<{ name?: string }>;
 					promptSegments?: unknown[];
 					responseSchema?: unknown;
 					providerOptions?: {
@@ -410,6 +418,38 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			content: expect.stringContaining(expectedIdentity),
 		});
 		expect(plannerParams?.messages?.length).toBeGreaterThan(1);
+		const plannerUserContent = plannerParams?.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain(
+			"Stage 1 already decided this turn needs tools",
+		);
+		expect(plannerUserContent).not.toContain(
+			"how many times have I mentioned X",
+		);
+		const plannerSegments = plannerParams?.promptSegments as
+			| Array<{ stable?: boolean }>
+			| undefined;
+		const firstDynamicSegment = plannerSegments?.findIndex(
+			(segment) => segment.stable !== true,
+		);
+		if (
+			plannerSegments &&
+			firstDynamicSegment !== undefined &&
+			firstDynamicSegment >= 0
+		) {
+			expect(
+				plannerSegments
+					.slice(firstDynamicSegment)
+					.some((segment) => segment.stable === true),
+			).toBe(false);
+		}
+		const plannerToolNames =
+			plannerParams?.tools?.map((tool) => tool.name).filter(Boolean) ?? [];
+		expect(new Set(plannerToolNames).size).toBe(plannerToolNames.length);
+		for (const terminal of ["REPLY", "IGNORE", "STOP"]) {
+			expect(plannerToolNames.filter((name) => name === terminal)).toHaveLength(
+				1,
+			);
+		}
 		expect(evaluatorParams?.messages?.length).toBeGreaterThan(1);
 		expect(plannerParams?.promptSegments?.length).toBeGreaterThan(1);
 		expect(evaluatorParams?.promptSegments?.length).toBeGreaterThan(1);
@@ -727,6 +767,127 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		);
 	});
 
+	it("suppresses the ack fallback when an ambient turn ran a tool and then deliberately IGNOREd", async () => {
+		// The ambient-turn policy invites the planner to attempt work before
+		// choosing silence, so a tool-then-IGNORE ambient turn must end silent:
+		// the ack fallback ("On it." / "on it, working on that now.") is exactly
+		// the process-narration filler the policy suppresses, and the action
+		// results alone make the turn observable.
+		let webSearchCalls = 0;
+		const webSearch = makeMockAction({
+			name: "WEB_SEARCH",
+			parameters: [
+				{
+					name: "q",
+					description: "Search query",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => {
+				webSearchCalls++;
+				return {
+					success: true,
+					text: "no results worth sharing",
+					data: { actionName: "WEB_SEARCH", results: [] },
+				};
+			},
+		});
+
+		const runtime = makeRuntime({
+			actions: [webSearch],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["web"],
+						thought: "Ambient chatter; check whether the web has anything.",
+						candidateActionNames: ["WEB_SEARCH"],
+						replyText: "On it.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{ id: "call-1", name: "WEB_SEARCH", args: { q: "eliza" } },
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "CONTINUE",
+						thought: "Nothing concrete came back.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [{ id: "ignore-1", name: "IGNORE", args: {} }],
+					},
+				},
+			],
+		});
+
+		const message = makeMessage("what was that tool everyone mentioned?");
+		message.content.channelType = ChannelType.GROUP;
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(webSearchCalls).toBe(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.mode).toBe("none");
+			expect(result.result.actionResults).toHaveLength(1);
+		}
+	});
+
+	it("records STOP-shaped ambient deliberate silence as a terminal STOP, not IGNORE", async () => {
+		const runtime = makeRuntime({
+			actions: [],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["web"],
+						thought: "Ambient chatter; nothing for me here.",
+						replyText: "",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [{ id: "stop-1", name: "STOP", args: {} }],
+					},
+				},
+			],
+		});
+
+		const message = makeMessage("anyway, moving on");
+		message.content.channelType = ChannelType.GROUP;
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("STOP");
+		}
+	});
+
 	it("falls back to a single tool's user-facing text when the evaluator omits messageToUser", async () => {
 		// When the evaluator returns FINISH with no `messageToUser`, the framework
 		// falls through to the tool's `userFacingText`. This preserves the
@@ -791,6 +952,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			expect(result.result.responseContent?.text).toBe(
 				"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/example/.bun (19G).",
 			);
+			// Canonical means do-not-paraphrase through the outbound voice gate,
+			// not only while the planner chooses its final message.
+			expect(result.result.responseContent?.agentVoiced).toBe(true);
 		}
 	});
 
@@ -894,6 +1058,282 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
 		]);
+	});
+
+	it("keeps a failed action callback singular when the evaluator violates protocol", async () => {
+		const rawFailure = 'No view matches "home".';
+		const voicedFailure =
+			'I couldn\'t find a view called "home". Try opening Home instead.';
+		const delivered: string[] = [];
+		const deliveredVisibleTexts = new Set<string>();
+		const views = makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			suppressEarlyReply: true,
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: rawFailure }, "VIEWS");
+				return {
+					success: false,
+					text: rawFailure,
+					userFacingText: rawFailure,
+				};
+			},
+		});
+		const deterministicViewEvaluator = {
+			name: "test.force_failed_view",
+			priority: 10,
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "VIEWS",
+					params: { action: "show", view: "home" },
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [views],
+			responseHandlerEvaluators: [deterministicViewEvaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["simple"],
+						replyText: "Went back.",
+						thought: "The model guessed navigation completed.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "view-call",
+								name: "VIEWS",
+								args: { action: "show", view: "home" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({ response: voicedFailure }),
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: '{"action":"show","view":"notes"}',
+				},
+			],
+		});
+		const callback = vi.fn(async (content: { text?: string }) => {
+			if (content.text) delivered.push(content.text);
+			return [];
+		});
+		const wrappedCallback = wrapSingleTurnVisibleCallback(
+			runtime,
+			makeMessage("go back"),
+			callback,
+			(text) => deliveredVisibleTexts.add(text.toLowerCase()),
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("go back"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			callback: wrappedCallback,
+			deliveredVisibleTexts,
+		});
+
+		expect(delivered).toEqual([voicedFailure]);
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+		}
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.TEXT_SMALL,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
+	it("suppresses a speculative Stage 1 reply when a deterministic action owns the callback", async () => {
+		let viewCalls = 0;
+		const earlyReply = vi.fn(async () => undefined);
+		const views = makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			suppressEarlyReply: true,
+			suppressPostActionContinuation: true,
+			handler: async () => {
+				viewCalls++;
+				return {
+					success: true,
+					text: "Opened Notes.",
+					userFacingText: "Opened Notes.",
+					verifiedUserFacing: true,
+				};
+			},
+		});
+		const deterministicViewEvaluator = {
+			name: "test.force_deterministic_view",
+			priority: 10,
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "VIEWS",
+					params: { action: "show", view: "notes" },
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [views],
+			responseHandlerEvaluators: [deterministicViewEvaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS"],
+						replyText: "Opening Notes now.",
+						thought: "The view switch is deterministic.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Opening Notes.",
+						toolCalls: [
+							{
+								id: "view-call",
+								name: "VIEWS",
+								args: { action: "show", view: "notes" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "The view is open.",
+						messageToUser: "Opened Notes.",
+					}),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("open notes"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(viewCalls).toBe(1);
+		expect(result.kind).toBe("planned_reply");
+	});
+
+	it("keeps the Stage 1 reply when mixed candidates do not share response ownership", async () => {
+		let viewCalls = 0;
+		let otherCalls = 0;
+		const earlyReply = vi.fn(async () => undefined);
+		const views = makeMockAction({
+			name: "VIEWS",
+			suppressEarlyReply: true,
+			handler: async () => {
+				viewCalls++;
+				return { success: true, text: "Opened the view." };
+			},
+		});
+		const otherAction = makeMockAction({
+			name: "OTHER_ACTION",
+			handler: async () => {
+				otherCalls++;
+				return { success: true, text: "Updated the other resource." };
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [views, otherAction],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS", "OTHER_ACTION"],
+						replyText: "I'll update that now.",
+						thought: "One of two tools may be needed.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Updating the other resource.",
+						toolCalls: [{ id: "other-call", name: "OTHER_ACTION", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "The other resource was updated.",
+						messageToUser: "The update is complete.",
+					}),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("update that resource"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledOnce();
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({ text: "I'll update that now." }),
+		);
+		expect(viewCalls).toBe(0);
+		expect(otherCalls).toBe(1);
+		expect(result.kind).toBe("planned_reply");
 	});
 
 	it("sanitizes drifted callback text at the wire while planner-echo suppression still matches the raw form (#15888)", async () => {

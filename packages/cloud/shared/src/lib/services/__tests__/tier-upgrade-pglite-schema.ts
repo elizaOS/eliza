@@ -226,6 +226,27 @@ $$`,
   `CREATE TRIGGER agent_sandboxes_lifecycle_revision_trigger
 BEFORE UPDATE ON "agent_sandboxes"
 FOR EACH ROW
+WHEN (
+  to_jsonb(OLD) - ARRAY[
+    'billing_status',
+    'last_billed_at',
+    'hourly_rate',
+    'total_billed',
+    'shutdown_warning_sent_at',
+    'scheduled_shutdown_at',
+    'updated_at'
+  ]::text[]
+  IS DISTINCT FROM
+  to_jsonb(NEW) - ARRAY[
+    'billing_status',
+    'last_billed_at',
+    'hourly_rate',
+    'total_billed',
+    'shutdown_warning_sent_at',
+    'scheduled_shutdown_at',
+    'updated_at'
+  ]::text[]
+)
 EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   `CREATE TABLE IF NOT EXISTS "api_keys" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),

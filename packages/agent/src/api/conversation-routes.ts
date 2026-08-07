@@ -59,6 +59,10 @@ import {
   truncateConversationMessages,
 } from "../services/conversation-message-service.ts";
 import {
+  createPendantSessionRepository,
+  type PendantSessionRepository,
+} from "../services/pendant-session/repository.ts";
+import {
   type SerializedMessageAttachment,
   selectAttachmentsForViewer,
 } from "./attachment-disclosure.ts";
@@ -1105,6 +1109,139 @@ async function persistClientUserMemory(
     return;
   }
   await persistExactConversationMemory(runtime, memory);
+}
+
+interface CanonicalPendantProvenance {
+  ownerId: UUID;
+  agentId: UUID;
+  sessionId: string;
+  segmentId: string;
+  segmentRevision: number;
+}
+
+function readRequiredMetadataString(
+  metadata: Record<string, unknown>,
+  key: string,
+): string {
+  const value = metadata[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ElizaError(`Pendant transcript metadata is missing ${key}`, {
+      code: "PENDANT_TRANSCRIPT_PROVENANCE_INVALID",
+      context: { key },
+    });
+  }
+  return value.trim();
+}
+
+export async function verifyCanonicalPendantProvenance(
+  runtime: AgentRuntime,
+  caller: { entityId: UUID; role: WaifuChatWorldRole },
+  prompt: string,
+  metadata: Record<string, unknown> | undefined,
+  repository?: PendantSessionRepository,
+): Promise<CanonicalPendantProvenance | null> {
+  if (metadata?.voiceSource !== "pendant") return null;
+  if (caller.role !== "OWNER") {
+    throw new ElizaError(
+      "Only the authenticated owner may submit a pendant transcript",
+      {
+        code: "PENDANT_TRANSCRIPT_OWNER_REQUIRED",
+        context: { callerRole: caller.role },
+      },
+    );
+  }
+
+  const ownerId = readRequiredMetadataString(
+    metadata,
+    "pendantOwnerId",
+  ) as UUID;
+  const agentId = readRequiredMetadataString(
+    metadata,
+    "pendantAgentId",
+  ) as UUID;
+  const sessionId = readRequiredMetadataString(metadata, "pendantSessionId");
+  const segmentId = readRequiredMetadataString(metadata, "pendantSegmentId");
+  const segmentRevision = metadata.pendantSegmentRevision;
+  if (!Number.isSafeInteger(segmentRevision) || Number(segmentRevision) < 0) {
+    throw new ElizaError(
+      "Pendant transcript metadata has an invalid segment revision",
+      {
+        code: "PENDANT_TRANSCRIPT_PROVENANCE_INVALID",
+        context: { key: "pendantSegmentRevision" },
+      },
+    );
+  }
+  if (ownerId !== caller.entityId || agentId !== runtime.agentId) {
+    throw new ElizaError(
+      "Pendant transcript identity does not match the authenticated runtime",
+      {
+        code: "PENDANT_TRANSCRIPT_IDENTITY_MISMATCH",
+        context: { ownerId, agentId },
+      },
+    );
+  }
+
+  const store = repository ?? createPendantSessionRepository(runtime);
+  const stored = await store.load({
+    ownerId,
+    agentId,
+    sessionId,
+  });
+  const segment = stored?.segments.find(
+    (candidate) => candidate.id === segmentId,
+  );
+  if (
+    !stored ||
+    !segment ||
+    segment.sessionId !== sessionId ||
+    segment.status !== "resolved" ||
+    segment.revision !== segmentRevision ||
+    segment.text.trim() !== prompt.trim()
+  ) {
+    throw new ElizaError(
+      "Pendant transcript does not match a canonical resolved segment",
+      {
+        code: "PENDANT_TRANSCRIPT_SEGMENT_MISMATCH",
+        context: { sessionId, segmentId, segmentRevision },
+      },
+    );
+  }
+
+  return { ownerId, agentId, sessionId, segmentId, segmentRevision };
+}
+
+export function stampCanonicalPendantMemory(
+  messages: Awaited<ReturnType<typeof buildUserMessages>>,
+  provenance: CanonicalPendantProvenance,
+): void {
+  for (const memory of [messages.userMessage, messages.messageToStore]) {
+    memory.metadata = {
+      ...memory.metadata,
+      type: "message",
+      provider: "pendant",
+      accountId: provenance.agentId,
+      platformMessageId: provenance.segmentId,
+      sourceId: provenance.segmentId,
+      chatType: "dm",
+      scope: "owner-private",
+      scopedToEntityId: provenance.ownerId,
+      addedBy: provenance.ownerId,
+      addedByRole: "OWNER",
+      base: {
+        type: "message",
+        source: "pendant",
+        scope: "owner-private",
+      },
+      pendant: {
+        userId: provenance.ownerId,
+        accountId: provenance.agentId,
+        messageId: provenance.segmentId,
+        sessionId: provenance.sessionId,
+        segmentId: provenance.segmentId,
+        segmentRevision: provenance.segmentRevision,
+      },
+    };
+  }
 }
 
 function writeConversationDoneSse(
@@ -2791,6 +2928,12 @@ export async function handleConversationRoutes(
 
     let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
     try {
+      const pendantProvenance = await verifyCanonicalPendantProvenance(
+        runtime,
+        caller,
+        prompt,
+        chatMetadata,
+      );
       userMessages = await buildUserMessages({
         images,
         prompt,
@@ -2798,9 +2941,12 @@ export async function handleConversationRoutes(
         agentId: runtime.agentId,
         roomId: conv.roomId,
         channelType,
-        messageSource: source,
+        messageSource: pendantProvenance ? "pendant" : source,
         metadata: chatMetadata,
       });
+      if (pendantProvenance) {
+        stampCanonicalPendantMemory(userMessages, pendantProvenance);
+      }
     } catch (err) {
       return failStream(
         `Failed to prepare user message: ${getErrorMessage(err)}`,
@@ -2988,12 +3134,14 @@ export async function handleConversationRoutes(
           onSnapshot: (text) => {
             if (!text) return;
             if (
-              !streamedText ||
               disconnectTracker.isAborted() ||
               disconnectTracker.checkConnectionClosed()
             ) {
               return;
             }
+            // Action callbacks may be the first visible source for a turn. An
+            // authoritative snapshot therefore has to be able to establish the
+            // stream, not merely revise text emitted by a model-token source.
             // Structured field extractors can briefly normalize whitespace or
             // closing punctuation while the same visible field is still
             // streaming. Do not shrink the user-visible token stream for
@@ -3475,6 +3623,12 @@ export async function handleConversationRoutes(
 
     let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
     try {
+      const pendantProvenance = await verifyCanonicalPendantProvenance(
+        runtime,
+        caller,
+        prompt,
+        restMetadata,
+      );
       userMessages = await buildUserMessages({
         images,
         prompt,
@@ -3482,9 +3636,12 @@ export async function handleConversationRoutes(
         agentId: runtime.agentId,
         roomId: conv.roomId,
         channelType,
-        messageSource: source,
+        messageSource: pendantProvenance ? "pendant" : source,
         metadata: restMetadata,
       });
+      if (pendantProvenance) {
+        stampCanonicalPendantMemory(userMessages, pendantProvenance);
+      }
     } catch (err) {
       releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       error(

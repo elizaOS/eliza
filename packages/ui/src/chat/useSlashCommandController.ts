@@ -22,7 +22,6 @@ import {
   resolveSettingsSectionToken,
   SETTINGS_SECTION_SUGGESTIONS,
 } from "../components/settings/settings-section-tokens";
-import { useBootConfig } from "../config/boot-config-react.hooks";
 import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../events";
 import { useAvailableViews } from "../hooks/useAvailableViews";
 import { useProtectedAgentProbesEnabled } from "../hooks/useProtectedAgentProbesEnabled";
@@ -287,7 +286,6 @@ export function useSlashCommandController(
   options: SlashCommandControllerOptions = {},
 ): SlashCommandController {
   const { isAuthorized = false, isElevated = false } = options;
-  const bootConfig = useBootConfig();
   const { setTab, handleChatClear } = useAppSelectorShallow((s) => ({
     setTab: s.setTab,
     handleChatClear: s.handleChatClear,
@@ -320,6 +318,11 @@ export function useSlashCommandController(
     }
     let cancelled = false;
     const abortController = new AbortController();
+    const cancelCatalogLoad = () => {
+      cancelled = true;
+      abortController.abort();
+    };
+    window.addEventListener("pagehide", cancelCatalogLoad, { once: true });
     setLoading(true);
     setLoadError(false);
     void (async () => {
@@ -434,8 +437,8 @@ export function useSlashCommandController(
       setLoading(false);
     })();
     return () => {
-      cancelled = true;
-      abortController.abort();
+      window.removeEventListener("pagehide", cancelCatalogLoad);
+      cancelCatalogLoad();
     };
   }, [probesEnabled]);
 
@@ -451,8 +454,10 @@ export function useSlashCommandController(
       }),
     [serverCommands, customCommands, isAuthorized, isElevated],
   );
-  const naturalShortcutsEnabled =
-    bootConfig.shortcutFlags?.naturalLanguage === true;
+  // Natural language belongs to the agent model. Client-side shortcuts are
+  // reserved for explicit slash protocol so host configuration cannot bypass
+  // inference for an ordinary chat message.
+  const naturalShortcutsEnabled = false;
 
   const resolveChoices = React.useCallback(
     (source: CommandArgSource, context?: SlashArgChoiceContext): string[] => {
@@ -551,7 +556,6 @@ export function useSlashCommandController(
       commands,
       loading,
       loadError,
-      naturalShortcutsEnabled,
       resolveChoices,
       describeChoice,
       isAuthorized,

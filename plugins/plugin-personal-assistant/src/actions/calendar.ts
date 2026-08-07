@@ -12,6 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -533,6 +534,12 @@ const calendarActionDeps: CalendarActionDeps = {
       ...(args.purpose ? { purpose: args.purpose } : {}),
     }),
   recentConversationTexts: (args) => recentConversationTexts(args),
+  renderGroundedReply: (args) =>
+    renderGroundedActionReply({
+      ...args,
+      domain: "calendar",
+      preferCharacterVoice: true,
+    }),
   mutationGateway: createCalendarMutationApprovalGateway(),
   travelBuffer: {
     resolveTravelIntent: (args) => resolveCreateEventTravelIntent(args),

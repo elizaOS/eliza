@@ -12,6 +12,13 @@ import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode, DockerNodeStatus } from "../../db/schemas/docker-nodes";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
+import {
+  buildEmbeddingSidecarProbeCmd,
+  buildEnsureEmbeddingSidecarCmd,
+  type EmbeddingSidecarStatus,
+  embeddingSidecarStatusFromMetadata,
+  parseEmbeddingSidecarProbe,
+} from "./containers/embedding-sidecar";
 import { countAllocatedWorkloadsOnNode } from "./docker-node-workloads";
 import {
   dockerPlatformFlag,
@@ -72,6 +79,27 @@ export function __resetNodeHealthFailureStateForTests(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Embedding-sidecar self-heal bookkeeping
+// ---------------------------------------------------------------------------
+
+/**
+ * Last self-heal attempt per node. In-memory for the same reason as the
+ * pre-pull/health state above: the provisioning worker owns the loop and a
+ * restart is a clean slate. The cooldown exists because the ensure command may
+ * pull the sidecar image (hundreds of MB) — a node whose install keeps failing
+ * must not re-pull every health cycle.
+ */
+const embeddingSidecarSelfHealState = new Map<string, number>();
+/** Minimum gap between sidecar self-heal attempts on the same node. */
+const EMBEDDING_SIDECAR_SELF_HEAL_COOLDOWN_MS = 30 * 60 * 1000;
+/** Generous ensure timeout: first run pulls the TEI image + model weights. */
+const EMBEDDING_SIDECAR_ENSURE_TIMEOUT_MS = 5 * 60 * 1000;
+
+export function __resetEmbeddingSidecarSelfHealStateForTests(): void {
+  embeddingSidecarSelfHealState.clear();
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -84,6 +112,12 @@ export interface NodeCapacityReport {
   status: DockerNodeStatus;
   enabled: boolean;
   lastHealthCheck: Date | null;
+  /**
+   * Last persisted local-embedding-sidecar verdict for the node ("unknown"
+   * until the health loop has probed it). Surfaced so a fleet silently missing
+   * its sidecars is visible in every capacity read, not just node-local logs.
+   */
+  embeddingSidecar: EmbeddingSidecarStatus | "unknown";
 }
 
 export interface CapacitySummary {
@@ -356,6 +390,13 @@ export class DockerNodeManager {
               `[docker-node-manager] Canonical node ${node.node_id} (${node.hostname}) is reachable but disk is critically full; leaving healthy so the disk-clean cycle can reclaim space (canonical nodes are not autoscaler-replaced). Operators: free space or set enabled=false.`,
             );
           }
+          // Embedding-sidecar sub-verdict: surfaced (metadata + capacity report
+          // + ERROR log) and self-healed, but it never owns the node status —
+          // no agent is scheduled onto the sidecar itself, and flipping a whole
+          // fleet to degraded because sidecars are missing would zero scheduling
+          // capacity. The invariant is "absence is loud and converges", not
+          // "absence drains the node".
+          await this.embeddingSidecarHealth(node, ssh);
           // A reachable node clears any accumulated consecutive-failure count so
           // one recovered cycle undoes prior transient failures.
           nodeHealthFailureState.delete(node.node_id);
@@ -449,6 +490,74 @@ export class DockerNodeManager {
   }
 
   /**
+   * Probe the node's local-embedding sidecar and persist the verdict to
+   * `docker_nodes.metadata.embeddingSidecar` so its absence is a queryable
+   * fleet fact (capacity report, admin API) instead of a silent fall-through
+   * to the cloud embedding path — the failure mode that lost the fleet's
+   * hand-installed sidecars unnoticed. When the sidecar is not serving, one
+   * cooldown-gated ensure attempt re-installs it (the durable remediation for
+   * nodes provisioned before the sidecar shipped in bootstrap); the persisted
+   * verdict is re-probed AFTER the repair so recovery is visible immediately.
+   *
+   * Runs only after `docker info` confirmed reachability and never throws out
+   * of the health check: like the disk sub-probe, the sidecar never owns
+   * reachability — the docker-info probe does.
+   */
+  async embeddingSidecarHealth(node: DockerNode, ssh: DockerSSHClient): Promise<void> {
+    try {
+      let status = await this.probeEmbeddingSidecar(ssh);
+      if (status === null) return;
+
+      if (status !== "running" && containersEnv.embeddingSidecarSelfHealEnabled()) {
+        const lastAttempt = embeddingSidecarSelfHealState.get(node.node_id) ?? 0;
+        if (Date.now() - lastAttempt >= EMBEDDING_SIDECAR_SELF_HEAL_COOLDOWN_MS) {
+          // Stamp BEFORE the attempt so a hanging/failing ensure still honors
+          // the cooldown next cycle instead of re-pulling the image every tick.
+          embeddingSidecarSelfHealState.set(node.node_id, Date.now());
+          logger.warn(
+            `[docker-node-manager] Embedding sidecar ${status} on node ${node.node_id} (${node.hostname}); attempting self-heal install`,
+          );
+          await ssh.exec(buildEnsureEmbeddingSidecarCmd(), EMBEDDING_SIDECAR_ENSURE_TIMEOUT_MS);
+          status = (await this.probeEmbeddingSidecar(ssh)) ?? status;
+        }
+      }
+
+      if (status === "running") {
+        embeddingSidecarSelfHealState.delete(node.node_id);
+      } else {
+        logger.error(
+          `[docker-node-manager] Embedding sidecar ${status} on node ${node.node_id} (${node.hostname}) — agents on this node cannot reach local embeddings. Self-heal ${containersEnv.embeddingSidecarSelfHealEnabled() ? "will retry after cooldown" : "is disabled"}.`,
+          { nodeId: node.node_id, hostname: node.hostname, embeddingSidecar: status },
+        );
+      }
+      await dockerNodesRepository.setEmbeddingSidecarHealth(node.node_id, status);
+    } catch (error) {
+      // error-policy:J7 the sidecar sub-probe/self-heal is diagnostics on the
+      // health loop; a thrown SSH/exec failure is logged loudly here and must
+      // not take down the reachability verdict the loop exists to produce.
+      logger.warn("[docker-node-manager] Embedding sidecar probe/self-heal failed", {
+        nodeId: node.node_id,
+        hostname: node.hostname,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Run the sidecar probe over SSH; null = probe output was unusable. */
+  private async probeEmbeddingSidecar(
+    ssh: DockerSSHClient,
+  ): Promise<EmbeddingSidecarStatus | null> {
+    const output = await ssh.exec(buildEmbeddingSidecarProbeCmd(), 20_000);
+    const status = parseEmbeddingSidecarProbe(output);
+    if (status === null) {
+      logger.warn("[docker-node-manager] Embedding sidecar probe returned no status token", {
+        output: output.slice(0, 200),
+      });
+    }
+    return status;
+  }
+
+  /**
    * Single-attempt readiness probe used during scheduling. This prevents stale
    * healthy rows from receiving new work when SSH credentials or the Docker
    * daemon are no longer valid.
@@ -532,6 +641,7 @@ export class DockerNodeManager {
       status: node.status,
       enabled: node.enabled,
       lastHealthCheck: node.last_health_check,
+      embeddingSidecar: embeddingSidecarStatusFromMetadata(node.metadata),
     }));
 
     const enabledNodes = nodeReports.filter((n) => n.enabled && n.status === "healthy");

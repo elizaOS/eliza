@@ -559,7 +559,7 @@ export const NotificationRow = memo(function NotificationRow({
               onExpandStack(stackKey, event.detail === 0);
             } else onOpen(notification);
           }}
-          className="eliza-notif-row-content flex min-h-touch min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left active:scale-[0.99] motion-reduce:active:scale-100"
+          className="eliza-notif-row-content flex min-h-touch min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left"
         >
           <NotificationSourceIcon
             source={notification.source}

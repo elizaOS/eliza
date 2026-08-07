@@ -154,6 +154,21 @@ export interface Bindings {
   VOICE_REALTIME_WS_ENABLED?: string;
   /** Cartesia voice id (UUID) used for the realtime downlink. */
   VOICE_REALTIME_CARTESIA_VOICE_ID?: string;
+  /** Default-off flag that promotes Fish Audio to primary realtime TTS. */
+  ELIZA_TTS_FISH_ENABLED?: string;
+  FISH_AUDIO_DATA_GOVERNANCE_APPROVED?: string;
+  /** Server-side Fish Audio API key for realtime TTS. */
+  FISH_AUDIO_API_KEY?: string;
+  /** Fish realtime model: s1, s2-pro, s2.1-pro, or s2.1-pro-free. */
+  FISH_AUDIO_MODEL?: string;
+  /** Fish reference/voice id for realtime TTS. */
+  FISH_AUDIO_REFERENCE_ID?: string;
+  /** Legacy alias for the Fish realtime reference id. */
+  FISH_AUDIO_VOICE_ID?: string;
+  /** Fish realtime output sample rate; the voice-session contract is raw PCM at 16 kHz. */
+  FISH_AUDIO_SAMPLE_RATE?: string;
+  /** Pre-first-audio timeout that permits Fish -> Cartesia fallback. */
+  FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS?: string;
   /**
    * API origin for the LLM leg. The bridge constructs the canonical
    * `/eliza/agents/:agentId/api/conversations/:conversationId/messages/stream`
@@ -183,7 +198,7 @@ export interface Bindings {
   CEREBRAS_API_KEY?: string;
   /** Opt-in batch STT provider. Deepgram is never selected by key presence alone. */
   VOICE_BATCH_STT_PROVIDER?: string;
-  /** Deepgram realtime Flux and opt-in prerecorded STT key (server-held; NEVER returned to clients). */
+  /** Opt-in prerecorded Deepgram STT key (server-held; never returned to clients). */
   DEEPGRAM_API_KEY?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;
@@ -242,6 +257,30 @@ export interface Bindings {
   STEWARD_REQUEST_SIGNING_SECRET?: string;
   STEWARD_REQUEST_SIGNING_SECRETS?: string;
   STEWARD_REQUEST_SIGNING_KEY_ID?: string;
+
+  // ---- OpenID Connect provider (Eliza Cloud as the OP for Eliza Hub) ----
+  /** Kill switch. The provider serves nothing unless this is exactly "true". */
+  OIDC_ENABLED?: string;
+  /**
+   * Issuer string, emitted VERBATIM into the discovery document and every
+   * token, and the only host the OIDC endpoints answer on. Relying parties
+   * byte-compare it, so a trailing slash or host change invalidates every
+   * existing account link. Must be a host this Worker is routed for — the
+   * apex `elizacloud.ai` is the SPA and never reaches the Worker.
+   */
+  OIDC_ISSUER_URL?: string;
+  /**
+   * Secret: JSON array of PRIVATE JWKs (optionally base64-wrapped). Element 0
+   * signs; every element is published at `jwks_uri`, which is what makes an
+   * overlapping key rotation possible.
+   */
+  OIDC_SIGNING_JWKS?: string;
+  /**
+   * Secret: JSON array of relying-party registry entries (optionally
+   * base64-wrapped). Client secrets are stored as sha256 hex only.
+   */
+  OIDC_CLIENTS?: string;
+
   RPC_URL?: string;
   CHAIN_ID?: string;
 

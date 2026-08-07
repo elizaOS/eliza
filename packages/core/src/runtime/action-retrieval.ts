@@ -179,7 +179,33 @@ const COMPRESS_MODE_TOP_K_CAP = 8;
 // arbitrate from the exposed descriptions (#9950).
 const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	ADD_GOAL: ["OWNER_GOALS"],
+	// Habit/reminder-shaped candidates hint BOTH the owner-life umbrella and the
+	// always-registered TRIGGER scheduler. Stage-1 routinely invents these names
+	// ("can u help me to brush my teeth everyday" → SET_HABIT), and on
+	// deployments without @elizaos/plugin-personal-assistant the OWNER_* similes
+	// resolve to nothing — the candidate narrow then demoted the retrieved
+	// TRIGGER_* actions off the planner surface entirely, leaving only
+	// PAGE_DELEGATE guesses ("CREATE_HABIT is not available on the owner page"
+	// x4, live trajectory tj-9e6b825e91d725). With the TRIGGER hint the only
+	// real scheduled-work capability stays exposed; on full deployments the
+	// owner umbrella is also kept and its de-claim description still routes new
+	// habits to OWNER_ROUTINES_CREATE (#10722).
+	ADD_HABIT: ["OWNER_ROUTINES", "TRIGGER"],
+	ADD_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
 	CONFIRM_GOAL: ["OWNER_GOALS"],
+	CREATE_HABIT: ["OWNER_ROUTINES", "TRIGGER"],
+	CREATE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	CREATE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
+	DAILY_HABIT: ["OWNER_ROUTINES", "TRIGGER"],
+	DAILY_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	HABIT_CREATE: ["OWNER_ROUTINES", "TRIGGER"],
+	NEW_HABIT: ["OWNER_ROUTINES", "TRIGGER"],
+	NEW_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	RECURRING_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	REMINDER_CREATE: ["OWNER_REMINDERS", "TRIGGER"],
+	SAVE_HABIT: ["OWNER_ROUTINES", "TRIGGER"],
+	SET_HABIT: ["OWNER_ROUTINES", "TRIGGER"],
+	TRACK_HABIT: ["OWNER_ROUTINES", "TRIGGER"],
 	CROSS_CHANNEL_SEARCH: ["MESSAGE"],
 	CREATE_GOAL: ["OWNER_GOALS"],
 	CREATE_SAVINGS_PLAN: ["OWNER_GOALS"],

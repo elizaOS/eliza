@@ -24,6 +24,8 @@ import type {
 import { logger } from "@elizaos/core";
 import { removeAppDeployFact } from "../app-facts.js";
 import {
+  appReferenceLogView,
+  describeAppReference,
   extractAppReference,
   getCloudClient,
   resolveApp,
@@ -55,7 +57,7 @@ const CANCELED_MESSAGE = "Canceled. No Cloud app was deleted.";
 const DESTROYED_RESOURCES = ["its running container", "its tenant database"];
 
 function notFoundMessage(reference: string, available: string[]): string {
-  const base = `I couldn't find an app matching "${reference}".`;
+  const base = `I couldn't find an app matching ${describeAppReference(reference)}.`;
   if (available.length === 0) {
     return `${base} You don't have any apps on Eliza Cloud yet.`;
   }
@@ -291,7 +293,7 @@ export const deleteAppAction: Action = {
       ({ app, available, ambiguous } = await resolveApp(client, reference));
     } catch (err) {
       logger.warn(
-        `[DELETE_APP] Failed to resolve app "${reference}": ${
+        `[DELETE_APP] Failed to resolve app "${appReferenceLogView(reference)}": ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -308,18 +310,18 @@ export const deleteAppAction: Action = {
     if (!app) {
       const candidates = ambiguous && ambiguous.length > 1 ? ambiguous : null;
       const msg = candidates
-        ? `Which app do you mean? "${reference}" matches ${candidates.length}: ${candidates.join(", ")}. Reply with the exact name so I don't delete the wrong one.`
+        ? `Which app do you mean? ${describeAppReference(reference)} matches ${candidates.length}: ${candidates.join(", ")}. Reply with the exact name so I don't delete the wrong one.`
         : notFoundMessage(reference, available);
       await callback?.({ text: msg, actions: ["DELETE_APP"] });
       return {
         success: false,
         text: candidates
-          ? `Ambiguous reference "${reference}" (${candidates.length} matches).`
-          : `No app matched "${reference}".`,
+          ? `Ambiguous reference "${appReferenceLogView(reference)}" (${candidates.length} matches).`
+          : `No app matched "${appReferenceLogView(reference)}".`,
         userFacingText: msg,
         data: {
           reason: candidates ? "ambiguous" : "not_found",
-          reference,
+          reference: appReferenceLogView(reference),
           ...(candidates ? { candidates } : {}),
         },
       };

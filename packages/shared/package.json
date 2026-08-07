@@ -143,6 +143,16 @@
       "import": "./dist/local-inference/verify.js",
       "default": "./dist/local-inference/verify.js"
     },
+    "./platform/native-library-policy": {
+      "types": "./dist/platform/native-library-policy.d.ts",
+      "eliza-source": {
+        "types": "./src/platform/native-library-policy.ts",
+        "import": "./src/platform/native-library-policy.ts",
+        "default": "./src/platform/native-library-policy.ts"
+      },
+      "import": "./dist/platform/native-library-policy.js",
+      "default": "./dist/platform/native-library-policy.js"
+    },
     "./character-presets": {
       "types": "./dist/character-presets.d.ts",
       "import": "./dist/character-presets.js",
@@ -415,7 +425,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/registry": "workspace:*",
-    "chalk": "^5.3.0",
+    "chalk": "^6.0.0",
     "drizzle-orm": "0.45.2",
     "phonemizer": "^1.2.1",
     "react": "^19.0.0",

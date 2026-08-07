@@ -231,6 +231,52 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 		});
 	});
 
+	it("returns LLM-only detail without fabricating a tool event", async () => {
+		const service = {
+			getTrajectoryDetail: async (id: string) => ({
+				trajectoryId: id,
+				agentId: "agent-1",
+				startTime: 500,
+				endTime: 1000,
+				metrics: { episodeLength: 1, finalStatus: "completed" },
+				metadata: { source: "chat" },
+				steps: [
+					{
+						stepId: "s0",
+						llmCalls: [
+							{
+								callId: "c0",
+								model: "m",
+								response: "hello",
+								stepType: "reasoning",
+								provider: "openai",
+							},
+						],
+						providerAccesses: [],
+						// Agent bridge action-optional step — no action field.
+					},
+				],
+			}),
+		};
+		const { res, get } = mockRes();
+
+		const handled = await tryHandleTrajectoryReadRoutes({
+			pathname: "/api/trajectories/llm-only",
+			method: "GET",
+			url: url("/api/trajectories/llm-only"),
+			runtime: runtimeWith(service),
+			res,
+		});
+
+		expect(handled).toBe(true);
+		expect(get().status).toBe(200);
+		expect(get().body).toMatchObject({
+			trajectory: { id: "llm-only", status: "completed", llmCallCount: 1 },
+			llmCalls: [{ id: "c0", response: "hello" }],
+			toolEvents: [],
+		});
+	});
+
 	it("resolves room context only when requested", async () => {
 		const service = {
 			listTrajectories: async () => ({

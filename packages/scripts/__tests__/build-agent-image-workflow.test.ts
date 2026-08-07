@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const workflowText = readFileSync(
   new URL("../../../.github/workflows/build-agent-image.yml", import.meta.url),
@@ -73,8 +74,9 @@ function runPublicationResolver(
     join(tmpdir(), "eliza-image-publication-"),
   );
   const githubOutput = join(temporaryDirectory, "github-output");
-  const result = Bun.spawnSync(
-    ["bash", "-c", extractStepRunBlock("Resolve publication repository")],
+  const result = spawnSync(
+    "bash",
+    ["-c", extractStepRunBlock("Resolve publication repository")],
     {
       env: {
         ...process.env,
@@ -85,8 +87,6 @@ function runPublicationResolver(
         REGISTRY: "ghcr.io",
         REQUESTED_TARGET: requestedTarget,
       },
-      stderr: "pipe",
-      stdout: "pipe",
     },
   );
   const output = new Map<string, string>();
@@ -101,7 +101,7 @@ function runPublicationResolver(
   rmSync(temporaryDirectory, { recursive: true, force: true });
 
   return {
-    exitCode: result.exitCode,
+    exitCode: result.status ?? 1,
     output,
     stderr: result.stderr.toString(),
   };
@@ -135,12 +135,9 @@ function runDemoPromotion(overrides: Partial<Record<string, string>> = {}): {
 `,
   );
   const sourceDigest = `sha256:${"a".repeat(64)}`;
-  const result = Bun.spawnSync(
-    [
-      "bash",
-      "-c",
-      extractStepRunBlock("Promote exact canonical digest to demo"),
-    ],
+  const result = spawnSync(
+    "bash",
+    ["-c", extractStepRunBlock("Promote exact canonical digest to demo")],
     {
       env: {
         ...process.env,
@@ -154,13 +151,11 @@ function runDemoPromotion(overrides: Partial<Record<string, string>> = {}): {
         SOURCE_REPOSITORY: "ghcr.io/elizaos/eliza",
         ...overrides,
       },
-      stderr: "pipe",
-      stdout: "pipe",
     },
   );
   const response = {
     craneLog: existsSync(craneLog) ? readFileSync(craneLog, "utf8") : "",
-    exitCode: result.exitCode,
+    exitCode: result.status ?? 1,
     output: existsSync(githubOutput) ? readFileSync(githubOutput, "utf8") : "",
     stderr: result.stderr.toString(),
   };
@@ -412,6 +407,29 @@ describe("build-agent-image workflow", () => {
       "@elizaos/plugin-whatsapp",
       "@elizaos/plugin-workflow",
     ]);
+  });
+
+  test("repairs and proves runner Docker access before Buildx setup", () => {
+    const steps = workflowStepNames();
+    const accessIndex = steps.indexOf("Ensure Docker daemon access");
+    const buildxIndex = workflowText.indexOf(
+      "uses: docker/setup-buildx-action@",
+    );
+
+    expect(accessIndex).toBeGreaterThanOrEqual(0);
+    expect(buildxIndex).toBeGreaterThan(
+      workflowText.indexOf("- name: Ensure Docker daemon access"),
+    );
+
+    const runBlock = extractStepRunBlock("Ensure Docker daemon access");
+    expect(runBlock).toContain("set -euo pipefail");
+    expect(runBlock).toContain("docker info");
+    expect(runBlock).toContain("/var/run/docker.sock");
+    expect(runBlock).toContain("setfacl");
+    expect(runBlock).toContain("RUNNER_ENVIRONMENT:-");
+    expect(runBlock).not.toContain("docker info || true");
+    expect(runBlock).not.toContain("chmod 666");
+    expect(runBlock).not.toContain("chmod 777");
   });
 
   test("keeps Node ESM dist rewrite after the Turbo build", () => {

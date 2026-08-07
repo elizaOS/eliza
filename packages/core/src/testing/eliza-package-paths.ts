@@ -36,6 +36,7 @@ function getRepoLocalWorkspaceRoot(
 			"../eliza/packages/app-core",
 		],
 		"@elizaos/shared": ["eliza/packages/shared", "../eliza/packages/shared"],
+		"@elizaos/ui": ["packages/ui", "eliza/packages/ui", "../eliza/packages/ui"],
 	};
 
 	// Workspace plugins live under plugins/ (or eliza/plugins/ when this repo
@@ -81,6 +82,7 @@ function getRepoLocalElizaCoreRoot(
 	}
 
 	const elizaRoots = [
+		path.resolve(repoRoot),
 		path.resolve(repoRoot, "eliza"),
 		path.resolve(repoRoot, "..", "eliza"),
 	];
@@ -426,11 +428,15 @@ export function getSharedSourceRoot(repoRoot: string): string | undefined {
 }
 
 export function getUiSourceRoot(repoRoot: string): string | undefined {
-	const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
-	if (!appCoreSourceRoot) {
+	const packageRoot = getInstalledPackageRoot("@elizaos/ui", repoRoot);
+	if (!packageRoot) {
 		return undefined;
 	}
 
-	const sourceRoot = path.join(appCoreSourceRoot, "ui");
+	if (path.basename(packageRoot) === "src") {
+		return packageRoot;
+	}
+
+	const sourceRoot = path.join(packageRoot, "src");
 	return existsSync(path.join(sourceRoot, "index.ts")) ? sourceRoot : undefined;
 }
