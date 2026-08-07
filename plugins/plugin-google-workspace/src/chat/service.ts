@@ -246,7 +246,13 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       resolveDefaultGoogleChatAccountId(runtime)
     );
 
-    for (const accountId of listGoogleChatAccountIds(runtime)) {
+    const accountIds = listGoogleChatAccountIds(runtime);
+    if (accountIds.length === 0) {
+      logger.info("Google Chat service is dormant because no accounts are configured");
+      return service;
+    }
+
+    for (const accountId of accountIds) {
       const settings = service.loadSettings(accountId);
       if (settings.enabled === false) {
         continue;
@@ -272,12 +278,11 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       } as EventPayload);
     }
 
-    if (service.states.size === 0) {
-      const settings = service.loadSettings(service.defaultAccountId);
-      service.validateSettings(settings);
-    }
-
-    logger.info("Google Chat service started successfully");
+    logger.info(
+      service.states.size > 0
+        ? "Google Chat service started successfully"
+        : "Google Chat service is dormant because all configured accounts are disabled"
+    );
 
     return service;
   }

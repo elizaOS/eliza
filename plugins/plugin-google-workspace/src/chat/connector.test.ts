@@ -6,6 +6,7 @@
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { GoogleChatService } from "./service.js";
+import { GoogleChatConfigurationError } from "./types.js";
 
 describe("Google Chat message connector", () => {
   function runtime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
@@ -47,6 +48,42 @@ describe("Google Chat message connector", () => {
     (service as { states: typeof states; defaultAccountId: string }).defaultAccountId = accountId;
     return service;
   }
+
+  it("stays dormant without configuration so RECENT_ERRORS receives no service-start failure", async () => {
+    const reportError = vi.fn();
+    const runtimeInstance = runtime({
+      getSetting: vi.fn(() => null),
+      emitEvent: vi.fn(),
+      reportError,
+    });
+
+    const service = await GoogleChatService.start(runtimeInstance);
+
+    expect(service).toBeInstanceOf(GoogleChatService);
+    expect(runtimeInstance.registerMessageConnector).not.toHaveBeenCalled();
+    expect(runtimeInstance.emitEvent).not.toHaveBeenCalled();
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it("still fails fast when an explicitly enabled account lacks credentials", async () => {
+    const runtimeInstance = runtime({
+      getSetting: vi.fn((key: string) =>
+        key === "GOOGLE_CHAT_ACCOUNTS"
+          ? JSON.stringify({
+              workspace: {
+                enabled: true,
+                audience: "https://example.com/googlechat",
+              },
+            })
+          : null
+      ),
+      reportError: vi.fn(),
+    });
+
+    await expect(GoogleChatService.start(runtimeInstance)).rejects.toBeInstanceOf(
+      GoogleChatConfigurationError
+    );
+  });
 
   it("registers connector metadata and routes space sends", async () => {
     const runtimeInstance = runtime();

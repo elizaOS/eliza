@@ -37,6 +37,16 @@ function characterConfig(runtime: IAgentRuntime): GoogleChatMultiAccountConfig {
   return raw && typeof raw === "object" ? (raw as GoogleChatMultiAccountConfig) : {};
 }
 
+function hasDefaultCharacterGoogleChatConfig(runtime: IAgentRuntime): boolean {
+  const settings = runtime.character.settings as Record<string, unknown> | undefined;
+  const raw = settings?.googleChat ?? settings?.["google-chat"];
+  return Boolean(
+    raw &&
+      typeof raw === "object" &&
+      Object.keys(raw as Record<string, unknown>).some((key) => key !== "accounts")
+  );
+}
+
 function parseAccountsJson(runtime: IAgentRuntime): Record<string, GoogleChatAccountConfig> {
   const raw = stringSetting(runtime, "GOOGLE_CHAT_ACCOUNTS");
   if (!raw) return {};
@@ -111,7 +121,17 @@ export function listGoogleChatAccountIds(runtime: IAgentRuntime): string[] {
     config.serviceAccount ||
     config.serviceAccountFile ||
     config.serviceAccountKey ||
-    config.serviceAccountKeyFile
+    config.serviceAccountKeyFile ||
+    hasDefaultCharacterGoogleChatConfig(runtime) ||
+    envOrSetting(runtime, "GOOGLE_CHAT_ENABLED") !== undefined ||
+    envOrSetting(runtime, "GOOGLE_CHAT_AUDIENCE") !== undefined ||
+    envOrSetting(runtime, "GOOGLE_CHAT_AUDIENCE_TYPE") !== undefined ||
+    envOrSetting(runtime, "GOOGLE_CHAT_WEBHOOK_PATH") !== undefined ||
+    envOrSetting(runtime, "GOOGLE_CHAT_SPACES") !== undefined ||
+    envOrSetting(runtime, "GOOGLE_CHAT_REQUIRE_MENTION") !== undefined ||
+    envOrSetting(runtime, "GOOGLE_CHAT_BOT_USER") !== undefined ||
+    envOrSetting(runtime, "GOOGLE_CHAT_DEFAULT_ACCOUNT_ID") !== undefined ||
+    envOrSetting(runtime, "GOOGLE_CHAT_ACCOUNT_ID") !== undefined
   ) {
     ids.add(DEFAULT_GOOGLE_CHAT_ACCOUNT_ID);
   }
@@ -120,9 +140,7 @@ export function listGoogleChatAccountIds(runtime: IAgentRuntime): string[] {
     ids.add(normalizeGoogleChatAccountId(id));
   }
 
-  return Array.from(ids.size ? ids : new Set([DEFAULT_GOOGLE_CHAT_ACCOUNT_ID])).sort((a, b) =>
-    a.localeCompare(b)
-  );
+  return Array.from(ids).sort((a, b) => a.localeCompare(b));
 }
 
 export function resolveDefaultGoogleChatAccountId(runtime: IAgentRuntime): string {
@@ -132,7 +150,9 @@ export function resolveDefaultGoogleChatAccountId(runtime: IAgentRuntime): strin
   if (requested) return normalizeGoogleChatAccountId(requested);
 
   const ids = listGoogleChatAccountIds(runtime);
-  return ids.includes(DEFAULT_GOOGLE_CHAT_ACCOUNT_ID) ? DEFAULT_GOOGLE_CHAT_ACCOUNT_ID : ids[0];
+  return ids.includes(DEFAULT_GOOGLE_CHAT_ACCOUNT_ID)
+    ? DEFAULT_GOOGLE_CHAT_ACCOUNT_ID
+    : (ids[0] ?? DEFAULT_GOOGLE_CHAT_ACCOUNT_ID);
 }
 
 export function readGoogleChatAccountId(...sources: unknown[]): string | undefined {
