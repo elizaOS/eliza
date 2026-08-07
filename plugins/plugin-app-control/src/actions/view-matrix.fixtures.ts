@@ -42,6 +42,8 @@ export interface NounRecallCase {
 	noun: string;
 	/** Phrases that must all resolve (recall) — verb, possessive, bare forms. */
 	phrases: { verb: string; possessive: string; bare: string };
+	/** This view requires an explicit strong navigation verb. */
+	navigationOnly?: boolean;
 }
 
 /**
@@ -55,6 +57,7 @@ export function nounRecallCases(): NounRecallCase[] {
 	for (const viewId of MATCHER_VIEW_IDS) {
 		const nouns = __matcherData.VIEW_NOUNS[viewId] ?? [];
 		for (const noun of nouns) {
+			if (viewId === "cloud-apps" && noun === "cloud app") continue;
 			cases.push({
 				viewId,
 				noun,
@@ -63,6 +66,7 @@ export function nounRecallCases(): NounRecallCase[] {
 					possessive: `my ${noun}`,
 					bare: noun,
 				},
+				...(viewId === "cloud-apps" ? { navigationOnly: true } : {}),
 			});
 		}
 	}
@@ -126,6 +130,34 @@ export const CURATED_MULTILINGUAL: readonly CuratedCase[] = [
 	{ viewId: "settings", lang: "ko", phrase: "설정 열어" },
 	{ viewId: "settings", lang: "vi", phrase: "mở cài đặt" },
 	{ viewId: "settings", lang: "tl", phrase: "buksan ang mga setting" },
+	// cloud apps — navigation grammar is intentionally strong-verb-only so
+	// inventory utterances remain available to LIST_CLOUD_APPS.
+	{ viewId: "cloud-apps", lang: "en", phrase: "open cloud apps" },
+	{
+		viewId: "cloud-apps",
+		lang: "es",
+		phrase: "abre las aplicaciones en la nube",
+	},
+	{
+		viewId: "cloud-apps",
+		lang: "pt",
+		phrase: "abra aplicativos na nuvem",
+	},
+	{
+		viewId: "cloud-apps",
+		lang: "fr",
+		phrase: "ouvre les applications cloud",
+	},
+	{ viewId: "cloud-apps", lang: "de", phrase: "öffne cloud-anwendungen" },
+	{ viewId: "cloud-apps", lang: "zh", phrase: "打开云应用" },
+	{ viewId: "cloud-apps", lang: "ja", phrase: "クラウドアプリを開いて" },
+	{ viewId: "cloud-apps", lang: "ko", phrase: "클라우드 앱 열어" },
+	{
+		viewId: "cloud-apps",
+		lang: "vi",
+		phrase: "mở ứng dụng đám mây",
+	},
+	{ viewId: "cloud-apps", lang: "tl", phrase: "buksan ang cloud apps" },
 ];
 
 /**
@@ -138,6 +170,13 @@ export const NEGATIVE_CONTROLS: readonly {
 }[] = [
 	{ lang: "en", phrase: "what's the weather like today" },
 	{ lang: "en", phrase: "tell me a joke" },
+	{ lang: "en", phrase: "list my cloud apps" },
+	{ lang: "en", phrase: "show my cloud apps" },
+	{ lang: "en", phrase: "do not open cloud apps" },
+	{ lang: "en", phrase: "how do I open cloud apps?" },
+	{ lang: "en", phrase: "when I open cloud apps it crashes" },
+	{ lang: "en", phrase: "open cloud apps documentation" },
+	{ lang: "en", phrase: "open the cloud app Acme" },
 	{ lang: "es", phrase: "cuéntame un chiste" },
 	{ lang: "pt", phrase: "como está o tempo hoje" },
 	{ lang: "fr", phrase: "raconte-moi une blague" },

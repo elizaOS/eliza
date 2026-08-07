@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { registerAllCloudSurfaces } from "./register-all";
-import { listCloudRoutes } from "./shell/cloud-route-registry";
+import { getCloudRoute, listCloudRoutes } from "./shell/cloud-route-registry";
 
 /**
  * Guards the boot-time wiring: every cloud domain must register its routes when
@@ -39,6 +39,7 @@ describe("registerAllCloudSurfaces", () => {
       "dashboard/connectors",
       "dashboard/organization",
       "dashboard/api-explorer",
+      "cloud-apps",
       "dashboard/apps",
       "dashboard/admin",
       "approve/:approvalId",
@@ -52,6 +53,18 @@ describe("registerAllCloudSurfaces", () => {
     ]) {
       expect(paths, `missing route ${p}`).toContain(p);
     }
+  });
+
+  it("keeps the web Cloud Apps handoff on the live Applications surface", () => {
+    registerAllCloudSurfaces();
+    const cloudApps = getCloudRoute("cloud-apps");
+    const retiredConsoleApps = getCloudRoute("dashboard/apps");
+
+    expect(cloudApps).toMatchObject({
+      path: "cloud-apps",
+      group: "dashboard",
+    });
+    expect(cloudApps?.element).not.toBe(retiredConsoleApps?.element);
   });
 
   it("keeps legacy-only spellings as redirects, not routes", () => {
