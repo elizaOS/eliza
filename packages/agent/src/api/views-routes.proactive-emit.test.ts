@@ -29,6 +29,7 @@ function makeCtx(
   const req = Readable.from(
     body === null ? [] : [Buffer.from(JSON.stringify(body))],
   ) as unknown as http.IncomingMessage;
+  req.headers = { "content-type": "application/json" };
   const res = {} as http.ServerResponse;
   const emitEvent = vi.fn(async () => {});
   const pathname = `/api/views/${encodeURIComponent(id)}/navigate`;
@@ -129,6 +130,7 @@ describe("POST /api/views/:id/navigate — VIEW_SWITCHED emission (#8792)", () =
     const req = Readable.from([
       Buffer.from(JSON.stringify({ source: "user" })),
     ]) as unknown as http.IncomingMessage;
+    req.headers = { "content-type": "application/json" };
     const pathname = "/api/views/wallet/navigate";
     const ctx: ViewsRouteContext = {
       req,
