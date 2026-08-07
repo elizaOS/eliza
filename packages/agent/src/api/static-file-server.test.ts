@@ -66,12 +66,16 @@ describe("resolveInjectedDashboardToken", () => {
 describe("injectApiBaseIntoHtml token embedding", () => {
   const html = "<!doctype html><html><head></head><body></body></html>";
 
-  it("embeds the token into the served HTML when provided", () => {
+  it("embeds the token into boot config and localStorage when provided", () => {
     const out = injectApiBaseIntoHtml(Buffer.from(html), undefined, {
       apiToken: TOKEN,
     }).toString("utf-8");
     expect(out).toContain(TOKEN);
-    expect(out).toContain("__ELIZA_API_TOKEN__");
+    expect(out).toContain("apiToken");
+    expect(out).toContain("elizaos.app.boot-config");
+    expect(out).toContain("elizaos:active-server");
+    expect(out).toContain("accessToken");
+    expect(out).not.toContain("__ELIZA_API_TOKEN__");
   });
 
   it("never leaks a token into the HTML when none is injected", () => {

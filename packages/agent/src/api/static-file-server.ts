@@ -174,7 +174,13 @@ export function injectApiBaseIntoHtml(
     );
   }
   if (trimmedToken) {
-    parts.push(`window.__ELIZA_API_TOKEN__=${JSON.stringify(trimmedToken)};`);
+    // Seed boot-config apiToken (single source of truth for getElizaApiToken) before
+    // React boots — same pattern as apiBase above and the Electrobun renderer.
+    // Also mirror into elizaos:active-server.accessToken so startup restore and
+    // LAN clients (e.g. iPad Safari with no DevTools) authenticate without pairing.
+    parts.push(
+      `(function(){var t=${JSON.stringify(trimmedToken)},k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiToken:t});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};try{localStorage.setItem("eliza:first-run-complete","1");var sk="elizaos:active-server",sp={};try{sp=JSON.parse(localStorage.getItem(sk)||"{}")||{};}catch(e){}localStorage.setItem(sk,JSON.stringify(Object.assign({id:"local:embedded",kind:"local",label:"This device"},sp,{accessToken:t})));}catch(e){}})();`,
+    );
   }
   const injection = Buffer.from(`<script>${parts.join("")}</script>`);
 
