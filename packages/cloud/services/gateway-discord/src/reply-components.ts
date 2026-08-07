@@ -76,10 +76,11 @@ export function buildReplyComponents(
 }
 
 /**
- * Binds an outbound reply to the inbound Discord snowflake. Discord rejects a
- * duplicate nonce from the same bot for the next few minutes, so discord.js
- * REST retries and the failure-notice fallback cannot double-post after an
- * ambiguous timeout or 5xx response.
+ * Binds an outbound reply to the inbound Discord snowflake. Within Discord's
+ * nonce window a repeat send under the same nonce is deduplicated — the API
+ * returns the message that already exists rather than creating a second one —
+ * so discord.js REST retries and a gateway resume replay cannot double-post
+ * after an ambiguous timeout or 5xx.
  */
 export function buildManagedReplyOptions(
   inboundMessageId: string,
@@ -96,12 +97,22 @@ export function buildManagedReplyOptions(
   };
 }
 
-/** Uses the same nonce as the primary reply so fallback recovery is idempotent. */
+/**
+ * Derives a nonce distinct from the primary reply's.
+ *
+ * Sharing the primary nonce would make the two messages interchangeable to
+ * Discord's deduplicator: once a failure notice has been posted, a later
+ * replay of the same inbound message — a gateway resume, with the cloud route
+ * idempotent on the inbound id and returning the same answer — would have its
+ * real reply deduplicated against the notice, and the user would permanently
+ * see the failure text instead of the answer that was computed. Discord caps
+ * the nonce at 25 characters and a snowflake is 19, so the suffix always fits.
+ */
 export function buildManagedFailureReplyOptions(
   inboundMessageId: string,
 ): MessageReplyOptions {
   return buildManagedReplyOptions(
-    inboundMessageId,
+    `${inboundMessageId}-f`,
     MANAGED_REPLY_UNAVAILABLE_TEXT,
   );
 }
