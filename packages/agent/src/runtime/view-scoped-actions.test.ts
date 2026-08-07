@@ -107,6 +107,7 @@ async function navigateTo(id: string): Promise<void> {
   const req = Readable.from([
     Buffer.from(JSON.stringify({})),
   ]) as unknown as http.IncomingMessage;
+  req.headers = { "content-type": "application/json" };
   const pathname = `/api/views/${encodeURIComponent(id)}/navigate`;
   const ctx: ViewsRouteContext = {
     req,
