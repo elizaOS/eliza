@@ -1,8 +1,8 @@
 /**
  * Unit coverage for `drainBootHookContributors`, the generic PRE-READY boot-hook
  * channel that the shared agent host drains before the runtime is marked ready.
- * It invokes each registry-declared contributor in order and rethrows any real
- * failure, short-circuiting the remaining contributors.
+ * It invokes each registry-declared contributor in order, retains the packaged
+ * local-inference fallback, and rethrows real failures.
  */
 
 import {
@@ -80,15 +80,17 @@ describe("drainBootHookContributors — generic pre-ready boot-hook channel", ()
   });
 });
 
-describe("resolveBootHookContributors — data-declared hooks", () => {
+describe("resolveBootHookContributors — declared hooks and packaged fallback", () => {
   it("discovers the local inference hook from the generated registry", () => {
     expect(
       getBootHookContributors().map((contributor) => contributor.id),
     ).toContain("@elizaos/plugin-local-inference");
   });
 
-  it("returns no contributors when the registry declares no hooks", () => {
-    expect(resolveBootHookContributors([])).toEqual([]);
+  it("retains local inference when a packaged build has no registry data", () => {
+    expect(
+      resolveBootHookContributors([]).map((contributor) => contributor.id),
+    ).toEqual(["@elizaos/plugin-local-inference"]);
   });
 
   it("resolves a registry-declared hook", () => {
@@ -104,7 +106,7 @@ describe("resolveBootHookContributors — data-declared hooks", () => {
     ]);
   });
 
-  it("deduplicates declarations by id with the last declaration winning", () => {
+  it("deduplicates declarations by id while retaining the packaged fallback", () => {
     const contributors = resolveBootHookContributors([
       {
         id: "same-plugin",
@@ -119,6 +121,7 @@ describe("resolveBootHookContributors — data-declared hooks", () => {
     ]);
     expect(contributors.map((contributor) => contributor.id)).toEqual([
       "same-plugin",
+      "@elizaos/plugin-local-inference",
     ]);
   });
 });

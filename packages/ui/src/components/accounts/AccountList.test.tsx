@@ -43,7 +43,7 @@ const accounts = vi.hoisted(() => ({
     ],
   },
   loading: false,
-  error: null,
+  error: null as string | null,
   patch: vi.fn().mockResolvedValue(undefined),
   refresh: vi.fn().mockResolvedValue(undefined),
   refreshUsage: vi.fn().mockResolvedValue(undefined),
@@ -146,14 +146,42 @@ vi.mock("./AddAccountDialog", () => ({
     open,
     credentialRepairAccount,
     onClose,
+    onCreated,
   }: {
     open: boolean;
     credentialRepairAccount?: { id: string } | null;
     onClose: () => void;
+    onCreated: (account: {
+      id: string;
+      providerId: "openai-api";
+      label: string;
+      source: "api-key";
+      enabled: boolean;
+      priority: number;
+      createdAt: number;
+      health: "ok";
+    }) => void;
   }) =>
     open ? (
       <div role="dialog">
         add dialog {credentialRepairAccount?.id ?? "new"}
+        <button
+          type="button"
+          onClick={() =>
+            onCreated({
+              id: "created",
+              providerId: "openai-api",
+              label: "Created",
+              source: "api-key",
+              enabled: true,
+              priority: 3,
+              createdAt: 1,
+              health: "ok",
+            })
+          }
+        >
+          finish add
+        </button>
         <button type="button" onClick={onClose}>
           close dialog
         </button>
@@ -169,6 +197,7 @@ describe("AccountList", () => {
     vi.clearAllMocks();
     mockedReadSubscriptionOAuth.mockReturnValue(null);
     accounts.loading = false;
+    accounts.error = null;
     accounts.patch.mockResolvedValue(undefined);
   });
 
@@ -190,6 +219,21 @@ describe("AccountList", () => {
         "No accounts yet — add one to start using this provider.",
       ),
     ).toBeTruthy();
+  });
+
+  it("renders a retryable error instead of a healthy empty state when inventory fails", () => {
+    const data = accounts.data;
+    // biome-ignore lint/suspicious/noExplicitAny: test toggles the hook's data shape
+    (accounts as any).data = null;
+    accounts.error = "Failed to load accounts: malformed response";
+    render(<AccountList providerId="openai-api" />);
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Failed to load accounts: malformed response",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(accounts.refresh).toHaveBeenCalledOnce();
+    // biome-ignore lint/suspicious/noExplicitAny: restore
+    (accounts as any).data = data;
   });
 
   it("targets the repair dialog at the reauthenticated account and clears it for plain adds", () => {
@@ -216,6 +260,18 @@ describe("AccountList", () => {
     expect(screen.getByRole("dialog").textContent).toContain("second");
     fireEvent.click(screen.getByRole("button", { name: "Add account" }));
     expect(screen.getByRole("dialog").textContent).toContain("new");
+  });
+
+  it("adopts the successful dialog response while refreshing the inventory", async () => {
+    render(<AccountList providerId="openai-api" />);
+    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+    fireEvent.click(screen.getByRole("button", { name: "finish add" }));
+    await waitFor(() =>
+      expect(accounts.refresh).toHaveBeenCalledWith({
+        providerId: "openai-api",
+        account: expect.objectContaining({ id: "created", label: "Created" }),
+      }),
+    );
   });
 
   it("swaps priorities with the neighbour via two patches", async () => {

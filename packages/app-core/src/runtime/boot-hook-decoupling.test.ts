@@ -1,7 +1,8 @@
 /**
  * Static integration guard for the registry-driven pre-ready hook channel. It
- * proves the shared agent host owns the single drain point and neither host
- * hardcodes a feature plugin into executable startup code.
+ * proves the shared agent host owns the single drain point and app-core does
+ * not hardcode a feature plugin into executable startup code. The shared host
+ * retains one explicit fallback for packaged builds with no staged registry.
  */
 
 import { readFileSync } from "node:fs";
@@ -48,12 +49,13 @@ describe("pre-ready boot-hook ownership", () => {
     expect(repairBody).not.toContain("registerLocalInferenceBoot");
   });
 
-  it("resolves hook contributors exclusively from registry data", () => {
+  it("resolves registry hooks and retains the packaged local-inference fallback", () => {
     const source = readFileSync(AGENT_BOOT_HOOKS_TS, "utf8");
 
     expect(source).toContain("entry.launch?.bootHook");
     expect(source).toContain("getBootHookContributors");
-    expect(source).not.toContain("plugin-local-inference");
-    expect(source).not.toContain("registerLocalInferenceBoot");
+    expect(source).toContain("FALLBACK_BOOT_HOOK_DECLARATIONS");
+    expect(source).toContain("@elizaos/plugin-local-inference/runtime");
+    expect(source).toContain("registerLocalInferenceBoot");
   });
 });

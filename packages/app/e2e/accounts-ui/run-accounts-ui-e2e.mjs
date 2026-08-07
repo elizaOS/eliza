@@ -98,7 +98,34 @@ const stubElizaCore = {
     b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
       contents: `
         const noop = new Proxy(() => noop, { get: () => noop });
-        module.exports = new Proxy({}, { get: () => noop });
+        class ElizaError extends Error {
+          constructor(message, options = {}) {
+            super(message, options.cause === undefined ? undefined : { cause: options.cause });
+            this.name = "ElizaError";
+            this.code = options.code;
+            this.context = options.context;
+          }
+        }
+        const contracts = {
+          ElizaError,
+          LINKED_ACCOUNT_PROVIDER_IDS: [
+            "anthropic-subscription", "openai-codex", "gemini-cli",
+            "zai-coding", "kimi-coding", "deepseek-coding",
+            "anthropic-api", "openai-api", "deepseek-api", "zai-api",
+            "moonshot-api", "cerebras-api"
+          ],
+          LINKED_ACCOUNT_ACCOUNT_SOURCES: ["oauth", "api-key"],
+          LINKED_ACCOUNT_HEALTH_STATES: [
+            "ok", "rate-limited", "needs-reauth", "invalid", "unknown", "expired"
+          ],
+          SERVICE_ROUTE_ACCOUNT_STRATEGIES: [
+            "priority", "round-robin", "least-used", "quota-aware",
+            "reset-soonest", "drain-soonest-reset"
+          ]
+        };
+        module.exports = new Proxy(contracts, {
+          get: (target, key) => key in target ? target[key] : noop
+        });
       `,
       loader: "js",
     }));
@@ -258,6 +285,17 @@ const poolAccounts = async () =>
   (await control("GET", "/__e2e__/pool?providerId=anthropic-api")).body
     .accounts;
 
+// The child prints ready as soon as its socket is listening, but Bun may still
+// compile the first real route lazily on a cold or saturated runner. Warm the
+// exact inventory path before the browser's shorter transport timeout starts.
+const inventoryWarmup = await control("GET", "/api/accounts");
+if (inventoryWarmup.status !== 200) {
+  throw new Error(
+    `accounts API inventory warmup failed with HTTP ${inventoryWarmup.status}`,
+  );
+}
+console.log("accounts API inventory route warmed");
+
 // ── drive the UI ────────────────────────────────────────────────────────────
 const consoleLog = [];
 const networkLog = [];
@@ -316,10 +354,29 @@ async function addAccount(label, apiKey, { expectError = false } = {}) {
   return dialog;
 }
 
+async function waitForAccountCount(count) {
+  try {
+    await page
+      .locator(`text=Accounts (${count})`)
+      .waitFor({ state: "visible", timeout: 30_000 });
+  } catch (error) {
+    const headings = await page.locator("h3").allTextContents();
+    const alerts = await page.locator('[role="alert"]').allTextContents();
+    const inventory = await page.evaluate(async () => {
+      const response = await fetch("/api/accounts");
+      return { status: response.status, body: await response.json() };
+    });
+    console.error(
+      `[accounts-ui-e2e] count=${count} diagnostic headings=${JSON.stringify(headings)} alerts=${JSON.stringify(alerts)} inventory=${JSON.stringify(inventory)}`,
+    );
+    throw error;
+  }
+}
+
 try {
   // 01 — empty state.
   await page.goto(base);
-  await page.locator("text=Accounts (0)").waitFor({ state: "visible" });
+  await waitForAccountCount(0);
   assert(
     (await page.locator("text=No accounts yet").count()) === 1,
     "empty state renders when no accounts are connected",
@@ -343,7 +400,7 @@ try {
   await dialog.locator("#add-account-apikey").fill("sk-ant-e2e-personal-0001");
   await dialog.getByRole("button", { name: "Add account" }).click();
   await dialog.waitFor({ state: "hidden" });
-  await page.locator("text=Accounts (1)").waitFor({ state: "visible" });
+  await waitForAccountCount(1);
   let accounts = await poolAccounts();
   assert(
     accounts.length === 1 && accounts[0].label === "Personal",

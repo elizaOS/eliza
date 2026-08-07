@@ -139,7 +139,7 @@ describe("NotificationService", () => {
 		try {
 			await expect(
 				failing.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
-			).rejects.toThrow("Service notification failed to start");
+			).rejects.toThrow("Service notification not found or failed to start");
 			expect(failing.runtime.getRecentReportedErrors()).toEqual(
 				expect.arrayContaining([
 					expect.objectContaining({
@@ -177,7 +177,7 @@ describe("NotificationService", () => {
 		try {
 			await expect(
 				transient.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
-			).rejects.toThrow("Service notification failed to start");
+			).rejects.toThrow("Service notification not found or failed to start");
 			expect(
 				transient.runtime.getServiceRegistrationStatus(
 					ServiceType.NOTIFICATION,
@@ -252,7 +252,7 @@ describe("NotificationService", () => {
 				expect.arrayContaining([
 					expect.objectContaining({
 						scope: "NotificationService.recovery",
-						message: "Service notification failed to start",
+						message: "Service notification not found or failed to start",
 						context: expect.objectContaining({
 							attempt: 1,
 							retryAfterSeconds: 1,

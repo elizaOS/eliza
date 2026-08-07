@@ -4,6 +4,7 @@
  * synchronously-throwing stop. Deterministic: real runtime, no database.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
@@ -138,13 +139,28 @@ describe("AgentRuntime.stop", () => {
 		}
 
 		await runtime.registerService(FailingStartService);
-		await expect(
-			runtime.getServiceLoadPromise(FailingStartService.serviceType),
-		).rejects.toMatchObject({
-			code: "SERVICE_START_FAILED",
-			cause: expect.objectContaining({
-				message: "startup dependency unavailable",
-			}),
+		const startupError = await runtime
+			.getServiceLoadPromise(FailingStartService.serviceType)
+			.then(
+				() => null,
+				(error: unknown) => error,
+			);
+		expect(startupError).toBeInstanceOf(ElizaError);
+		if (!(startupError instanceof ElizaError)) {
+			throw new Error("Expected a typed service startup failure");
+		}
+		expect(startupError.code).toBe("SERVICE_START_FAILED");
+		expect(startupError.context).toMatchObject({
+			serviceType: FailingStartService.serviceType,
+			implementationCount: 1,
+		});
+		expect(startupError.cause).toBeInstanceOf(AggregateError);
+		const aggregate = startupError.cause as AggregateError;
+		expect(aggregate.errors).toHaveLength(1);
+		const implementationError = aggregate.errors[0];
+		expect(implementationError).toBeInstanceOf(ElizaError);
+		expect((implementationError as ElizaError).cause).toMatchObject({
+			message: "startup dependency unavailable",
 		});
 		await runtime.stop();
 	});
