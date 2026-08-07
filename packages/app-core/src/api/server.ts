@@ -43,11 +43,11 @@ import {
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
 } from "@elizaos/agent";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
-import { type AgentRuntime, logger } from "@elizaos/core";
+import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";

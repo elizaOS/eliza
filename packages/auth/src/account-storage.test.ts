@@ -241,9 +241,9 @@ describe("encrypted at-rest storage", () => {
     });
     expect(persisted).not.toContain("access-sealed");
     expect(persisted).not.toContain("refresh-sealed");
-    expect(loadAccount("openai-codex", "sealed", policy)?.credentials.access).toBe(
-      "access-sealed",
-    );
+    expect(
+      loadAccount("openai-codex", "sealed", policy)?.credentials.access,
+    ).toBe("access-sealed");
   });
 
   it("migrates a valid plaintext credential to an envelope on first read", () => {
@@ -253,9 +253,9 @@ describe("encrypted at-rest storage", () => {
     const file = path.join(providerRoot, "legacy.json");
     fs.writeFileSync(file, JSON.stringify(record("legacy")), { mode: 0o600 });
 
-    expect(loadAccount("openai-codex", "legacy", policy)?.credentials.access).toBe(
-      "access-legacy",
-    );
+    expect(
+      loadAccount("openai-codex", "legacy", policy)?.credentials.access,
+    ).toBe("access-legacy");
     const persisted = fs.readFileSync(file, "utf8");
     expect(JSON.parse(persisted)).toEqual({
       schemaVersion: 2,
