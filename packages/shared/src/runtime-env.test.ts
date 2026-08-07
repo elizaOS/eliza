@@ -17,6 +17,7 @@ import {
   isWildcardBindHost,
   resolveApiExposePort,
   resolveApiSecurityConfig,
+  resolveApiToken,
   resolveDesktopApiPortPreference,
   resolvePlatform,
   resolveRuntimePorts,
@@ -145,6 +146,18 @@ describe("self API request authentication", () => {
         expected,
       );
     }
+  });
+
+  // Regression: `firstNonEmpty` returns null for an unset key, and the Bearer
+  // strip at `resolveApiSecurityConfig` once only handled undefined — every
+  // tokenless deployment crashed with a TypeError before any request ran.
+  it("resolves a null server token without a configured value, and strips a configured Bearer prefix", () => {
+    expect(resolveApiToken({})).toBeNull();
+    expect(resolveApiToken({ ELIZA_API_TOKEN: "   " })).toBeNull();
+    expect(resolveApiToken({ ELIZA_API_TOKEN: "Bearer server-token" })).toBe(
+      "server-token",
+    );
+    expect(resolveApiSecurityConfig({}).token).toBeNull();
   });
 
   it("resolves no credential when neither key carries a value", () => {

@@ -9,17 +9,21 @@
  * loopback and specific (non-wildcard) non-loopback IP binds, which keep the
  * Host + CORS guards enforced.
  */
+import type http from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ensureApiTokenForBindHost,
   getConfiguredApiToken,
+  resolveTerminalRunRejection,
 } from "./server-helpers-auth.ts";
 
 const ENV_KEYS = [
   "ELIZA_API_BIND",
   "ELIZA_API_TOKEN",
+  "ELIZA_API_AUTH_TOKEN",
   "ELIZA_DISABLE_AUTO_API_TOKEN",
   "ELIZA_CLOUD_PROVISIONED",
+  "ELIZA_TERMINAL_RUN_TOKEN",
   "STEWARD_AGENT_TOKEN",
   "ELIZAOS_CLOUD_ENABLED",
   "ELIZAOS_CLOUD_API_KEY",
@@ -97,5 +101,47 @@ describe("ensureApiTokenForBindHost — M7 wildcard-bind + disabled auto-token",
     ensureApiTokenForBindHost("0.0.0.0");
 
     expect(getConfiguredApiToken()).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+// The legacy compat key `ELIZA_API_AUTH_TOKEN` is a caller-side fallback for
+// requests this process makes back to its own API. It must never count as the
+// server's configured inbound token: promoting it would satisfy the early
+// return below (skipping the #12228 wildcard-bind auto-token) and would flip
+// `apiTokenEnabled` in the terminal boundary (403-ing loopback terminal runs
+// that develop allows). These tests pin the develop-parity behavior under a
+// legacy-only env.
+describe("legacy-only ELIZA_API_AUTH_TOKEN stays caller-side", () => {
+  it("still mints the wildcard-bind auto-token when only the legacy key is set", () => {
+    process.env.ELIZA_API_BIND = "0.0.0.0";
+    process.env.ELIZA_API_AUTH_TOKEN = "legacy-plugin-compat-token";
+    expect(getConfiguredApiToken()).toBeUndefined();
+
+    ensureApiTokenForBindHost("0.0.0.0");
+
+    const token = getConfiguredApiToken();
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    expect(token).not.toBe("legacy-plugin-compat-token");
+    expect(process.env.ELIZA_API_AUTH_TOKEN).toBe("legacy-plugin-compat-token");
+  });
+
+  it("keeps loopback terminal runs in compatibility mode under a legacy-only config", () => {
+    process.env.ELIZA_API_AUTH_TOKEN = "legacy-plugin-compat-token";
+    const req = { headers: {} } as http.IncomingMessage;
+
+    // No terminal token configured and no canonical API token: the terminal
+    // boundary must stay in compatibility mode (null = allowed), not treat the
+    // legacy key as an enabled API token and 403 the run.
+    expect(resolveTerminalRunRejection(req, {})).toBeNull();
+  });
+
+  it("still disables terminal runs when a canonical token is configured alongside the legacy key", () => {
+    process.env.ELIZA_API_TOKEN = "canonical-token";
+    process.env.ELIZA_API_AUTH_TOKEN = "legacy-plugin-compat-token";
+    const req = { headers: {} } as http.IncomingMessage;
+
+    expect(resolveTerminalRunRejection(req, {})).toMatchObject({
+      status: 403,
+    });
   });
 });

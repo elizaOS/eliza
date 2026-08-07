@@ -17,18 +17,29 @@ import { logsAction } from "./logs.ts";
 import { pluginAction } from "./plugin.ts";
 import { runtimeAction } from "./runtime.ts";
 
+/** The server process's own credential env, pinned per fixture. */
+interface ServerCredentialEnv {
+  canonical?: string;
+  legacy?: string;
+}
+
 /**
  * Run the production authorization path with the server's own configured
- * credential, independent of whatever the caller side currently has in env.
+ * credential env, independent of whatever the caller side currently has in
+ * env. Accepts the raw env shape (canonical `ELIZA_API_TOKEN` and/or legacy
+ * `ELIZA_API_AUTH_TOKEN`) so fixtures can exercise Bearer-prefixed and
+ * legacy-only server configurations, not just a clean canonical value.
  */
 function authorizeAsServer(
   req: http.IncomingMessage,
-  serverToken: string,
+  serverEnv: ServerCredentialEnv,
 ): boolean {
   const savedCanonical = process.env.ELIZA_API_TOKEN;
   const savedLegacy = process.env.ELIZA_API_AUTH_TOKEN;
-  process.env.ELIZA_API_TOKEN = serverToken;
-  delete process.env.ELIZA_API_AUTH_TOKEN;
+  if (serverEnv.canonical === undefined) delete process.env.ELIZA_API_TOKEN;
+  else process.env.ELIZA_API_TOKEN = serverEnv.canonical;
+  if (serverEnv.legacy === undefined) delete process.env.ELIZA_API_AUTH_TOKEN;
+  else process.env.ELIZA_API_AUTH_TOKEN = serverEnv.legacy;
   try {
     return isAuthorized(req);
   } finally {
@@ -47,8 +58,8 @@ interface CapturedRequest {
 }
 
 const ENV_KEYS = [
-  "API_PORT",
   "ELIZA_API_AUTH_TOKEN",
+  "ELIZA_API_PORT",
   "ELIZA_API_TOKEN",
   "ELIZA_PORT",
   "ELIZA_REQUIRE_LOCAL_AUTH",
@@ -74,7 +85,9 @@ function sendJson(
   res.end(JSON.stringify(body));
 }
 
-async function startProtectedSelfApi(expectedToken: string): Promise<{
+async function startProtectedSelfApi(
+  serverEnv: string | ServerCredentialEnv,
+): Promise<{
   port: number;
   requests: CapturedRequest[];
 }> {
@@ -97,11 +110,13 @@ async function startProtectedSelfApi(expectedToken: string): Promise<{
       // actually resolves (#17043). `isAuthorized` runs the production
       // `getConfiguredApiToken` -> `extractAuthToken` -> timing-safe compare.
       //
-      // The server's configured credential is pinned to `expectedToken` for the
+      // The server's configured credential env is pinned to `serverEnv` for the
       // duration of the check so a caller configured differently is a real
       // disagreement between two sides, not an identity comparison against the
       // same live env the caller just read.
-      if (!authorizeAsServer(req, expectedToken)) {
+      const pinnedServerEnv: ServerCredentialEnv =
+        typeof serverEnv === "string" ? { canonical: serverEnv } : serverEnv;
+      if (!authorizeAsServer(req, pinnedServerEnv)) {
         sendJson(res, 401, { error: "Unauthorized" });
         return;
       }
@@ -286,7 +301,7 @@ describe("authenticated agent self-API callers", () => {
     const token = "canonical-self-api-token";
     const server = await startProtectedSelfApi(token);
     process.env.ELIZA_PORT = String(server.port);
-    process.env.API_PORT = String(server.port);
+    process.env.ELIZA_API_PORT = String(server.port);
     process.env.ELIZA_API_TOKEN = ` bearer    ${token} `;
     process.env.ELIZA_API_AUTH_TOKEN = "wrong-legacy-token";
 
@@ -331,7 +346,7 @@ describe("authenticated agent self-API callers", () => {
     const token = "legacy-self-api-token";
     const server = await startProtectedSelfApi(token);
     process.env.ELIZA_PORT = String(server.port);
-    process.env.API_PORT = String(server.port);
+    process.env.ELIZA_API_PORT = String(server.port);
     process.env.ELIZA_API_AUTH_TOKEN = ` ${token} `;
 
     expect(await runProductionCallers()).toEqual([
@@ -348,6 +363,62 @@ describe("authenticated agent self-API callers", () => {
         (request) => request.authorization === `Bearer ${token}`,
       ),
     ).toBe(true);
+  });
+
+  it("agrees with a server whose configured value carries a Bearer prefix", async () => {
+    const token = "prefixed-server-side-token";
+    // The operator pasted the whole header value into the server's env. The
+    // server normalizes at `resolveApiSecurityConfig` and expects the bare
+    // token; the caller resolves the identical credential, so both sides agree
+    // by construction rather than by both happening to carry the prefix.
+    const server = await startProtectedSelfApi({
+      canonical: `Bearer ${token}`,
+    });
+    process.env.ELIZA_PORT = String(server.port);
+    process.env.ELIZA_API_PORT = String(server.port);
+    process.env.ELIZA_API_TOKEN = `Bearer ${token}`;
+
+    expect(await runProductionCallers()).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
+    expect(
+      server.requests.every(
+        (request) => request.authorization === `Bearer ${token}`,
+      ),
+    ).toBe(true);
+  });
+
+  it("never promotes a legacy-only server config into an inbound credential", async () => {
+    const token = "legacy-only-server-token";
+    // The server env carries ONLY the plugin-level compat key. The inbound
+    // boundary is canonical-only (`getConfiguredApiToken` -> `resolveApiToken`),
+    // so with local trust off the server has no credential that admits anyone —
+    // a caller presenting the legacy value must still be rejected, exactly as
+    // on develop. This is the regression guard for the credential-widening the
+    // review flagged: the legacy key must stay caller-side.
+    const server = await startProtectedSelfApi({ legacy: token });
+    process.env.ELIZA_PORT = String(server.port);
+    process.env.ELIZA_API_PORT = String(server.port);
+    process.env.ELIZA_API_AUTH_TOKEN = token;
+
+    const result = await logsAction.handler?.({} as never, message, undefined, {
+      parameters: { action: "search" },
+    } as never);
+
+    expect(result).toMatchObject({
+      success: false,
+      values: { error: "LOGS_SEARCH_FAILED" },
+    });
+    expect(result?.text).toContain("HTTP 401");
+    // The caller-side compat fallback still sent the legacy value as a bearer;
+    // the server simply refuses to treat it as its own inbound credential.
+    expect(server.requests[0]?.authorization).toBe(`Bearer ${token}`);
   });
 
   it.each([

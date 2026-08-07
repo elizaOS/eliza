@@ -24,7 +24,10 @@ import type {
   WalletNftsResponse,
   WalletTradingProfileResponse,
 } from "@elizaos/shared";
-import { createSelfApiRequestHeaders } from "@elizaos/shared";
+import {
+  createSelfApiRequestHeaders,
+  resolveDesktopApiPort,
+} from "@elizaos/shared";
 import type { ConversationScope } from "../api/server-types.ts";
 
 async function renderCharacterLiveState(
@@ -54,38 +57,28 @@ interface BrowserBridgeCompanionLiveStatus {
   extensionVersion?: string | null;
 }
 
-function getLocalApiUrls(path: string): string[] {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const configuredPort = process.env.API_PORT || process.env.SERVER_PORT;
-  const ports = configuredPort
-    ? [configuredPort, configuredPort === "31337" ? "2138" : "31337"]
-    : ["2138", "31337"];
-  return [...new Set(ports)].map(
-    (port) => `http://127.0.0.1:${port}${normalizedPath}`,
-  );
-}
-
 async function fetchLocalJson<T>(
   path: string,
   timeoutMs = 1500,
 ): Promise<T | null> {
-  for (const url of getLocalApiUrls(path)) {
-    try {
-      const response = await fetch(url, {
-        headers: createSelfApiRequestHeaders(),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      if (response.ok) return (await response.json()) as T;
-    } catch (err) {
-      // error-policy:J4 local-API port failover — the dev API lives on one of a
-      // small candidate port set; a connection failure just means try the next
-      // port. Exhausting every port returns null, which every caller renders as
-      // an explicit "unavailable from the … API" line (agent-visible, not silence).
-      logger.debug(
-        { err, url },
-        "[PageScopedLiveState] local API port unreachable",
-      );
-    }
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  // Server boot syncs ELIZA_API_PORT to the actually bound port
+  // (`syncResolvedApiPort`), so in-process this resolves the agent's own API.
+  // The bearer credential is attached to that one resolved port only — never
+  // sprayed across guessed candidate ports where an unrelated local process
+  // could be listening and capture the token.
+  const url = `http://127.0.0.1:${resolveDesktopApiPort(process.env)}${normalizedPath}`;
+  try {
+    const response = await fetch(url, {
+      headers: createSelfApiRequestHeaders(),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (response.ok) return (await response.json()) as T;
+  } catch (err) {
+    // error-policy:J4 local-API unavailability — an unreachable self-API returns
+    // null, which every caller renders as an explicit "unavailable from the …
+    // API" line (agent-visible, not silence).
+    logger.debug({ err, url }, "[PageScopedLiveState] local API unreachable");
   }
   return null;
 }

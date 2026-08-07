@@ -37,6 +37,7 @@ const repoRoot = resolve(
 );
 const scanRoots = [
   "packages/agent/src",
+  "packages/app-core/src",
   "plugins/plugin-app-control/src",
 ] as const;
 
@@ -76,6 +77,27 @@ const protocolExemptions: readonly ProtocolExemption[] = [
     rationale:
       "The localhost-compatible request targets the Ollama model protocol rather than the elizaOS self-API.",
   },
+  {
+    path: "packages/app-core/src/api/cloud-pair-route.ts",
+    target: /^exchangeUrl$/,
+    protocol: "cloud-pairing-exchange",
+    rationale:
+      "The request posts a pairing code to the configured cloud relay rather than the local self-API.",
+  },
+  {
+    path: "packages/app-core/src/api/dev-compat-routes.ts",
+    target: /^target$/,
+    protocol: "desktop-screenshot-sidecar",
+    rationale:
+      "The loopback request targets the Electrobun screenshot sidecar, authenticated with its dedicated ELIZA_SCREENSHOT_SERVER_TOKEN rather than the self-API bearer.",
+  },
+  {
+    path: "packages/app-core/src/api/first-run-routes.ts",
+    target: /\/api\/config/,
+    protocol: "forwarded-inbound-authorization",
+    rationale:
+      "The loopback config sync deliberately forwards the ORIGINAL inbound Authorization header so /api/config authorizes with the requesting caller's authority instead of escalating to the process's own token.",
+  },
 ];
 
 const expectedProtectedPaths = [
@@ -91,10 +113,10 @@ const expectedProtectedPaths = [
 ] as const;
 
 const localTargetPattern =
-  /127\.0\.0\.1|localhost|loopbackBase|getApiBase|getLocalApiUrls|resolveServerOnlyPort|resolveDesktopApiPort|ELIZA_PORT/;
+  /127\.0\.0\.1|localhost|loopbackBase|getApiBase|resolveServerOnlyPort|resolveDesktopApiPort|ELIZA_PORT/;
 const apiPathPattern = /\/api\//;
 const knownSelfApiBasePattern =
-  /loopbackBase|getApiBase|getLocalApiUrls|resolveServerOnlyPort|resolveDesktopApiPort/;
+  /loopbackBase|getApiBase|resolveServerOnlyPort|resolveDesktopApiPort/;
 const authPrimitivePattern =
   /\b(?:createSelfApiRequestHeaders|createViewsRequestHeaders)\s*\(/;
 
