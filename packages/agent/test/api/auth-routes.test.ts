@@ -10,7 +10,12 @@ type CapturedResponse = {
 
 function createAuthRouteHarness(options: {
   headers?: Record<string, string>;
+  method?: string;
   pathname?: string;
+  remoteAddress?: string;
+  pairingEnabled?: boolean;
+  ensurePairingCode?: () => string | null;
+  getPairingExpiresAt?: () => number;
 }): {
   captured: CapturedResponse;
   ctx: Parameters<typeof handleAuthRoutes>[0];
@@ -25,17 +30,18 @@ function createAuthRouteHarness(options: {
       ...options.headers,
     },
     socket: {
-      remoteAddress: "127.0.0.1",
+      remoteAddress: options.remoteAddress ?? "127.0.0.1",
     },
   } as http.IncomingMessage;
   const res = {} as http.ServerResponse;
+  const expiresAt = options.getPairingExpiresAt?.() ?? Date.now() + 60_000;
 
   return {
     captured,
     ctx: {
       req,
       res,
-      method: "GET",
+      method: options.method ?? "GET",
       pathname: options.pathname ?? "/api/auth/me",
       readJsonBody: async () => null,
       json: (_res, data, status = 200) => {
@@ -46,11 +52,11 @@ function createAuthRouteHarness(options: {
         captured.status = status;
         captured.body = { error: message };
       },
-      pairingEnabled: () => false,
-      ensurePairingCode: () => null,
+      pairingEnabled: options.pairingEnabled ?? (() => false),
+      ensurePairingCode: options.ensurePairingCode ?? (() => null),
       normalizePairingCode: (code) => code,
       rateLimitPairing: () => true,
-      getPairingExpiresAt: () => Date.now() + 60_000,
+      getPairingExpiresAt: () => expiresAt,
       clearPairing: () => {},
     },
   };
@@ -111,6 +117,54 @@ describe("handleAuthRoutes", () => {
         passwordConfigured: true,
         ownerConfigured: false,
       },
+    });
+  });
+
+  describe("GET /api/auth/pair-code", () => {
+    it("returns the pairing code for trusted loopback callers", async () => {
+      delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+      const expiresAt = Date.now() + 600_000;
+      const { ctx, captured } = createAuthRouteHarness({
+        pathname: "/api/auth/pair-code",
+        pairingEnabled: () => true,
+        ensurePairingCode: () => "ABCD-EFGH",
+        getPairingExpiresAt: () => expiresAt,
+      });
+
+      await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
+
+      expect(captured.status).toBe(200);
+      expect(captured.body).toEqual({ code: "ABCD-EFGH", expiresAt });
+    });
+
+    it("rejects non-loopback callers", async () => {
+      delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+      const { ctx, captured } = createAuthRouteHarness({
+        pathname: "/api/auth/pair-code",
+        remoteAddress: "192.168.1.50",
+        pairingEnabled: () => true,
+        ensurePairingCode: () => "ABCD-EFGH",
+      });
+
+      await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
+
+      expect(captured.status).toBe(403);
+      expect(captured.body).toEqual({
+        error: "Pair code visible on loopback only",
+      });
+    });
+
+    it("returns 503 when pairing is disabled", async () => {
+      delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+      const { ctx, captured } = createAuthRouteHarness({
+        pathname: "/api/auth/pair-code",
+        pairingEnabled: () => false,
+      });
+
+      await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
+
+      expect(captured.status).toBe(503);
+      expect(captured.body).toEqual({ error: "Pairing not enabled" });
     });
   });
 });
