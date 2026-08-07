@@ -70,7 +70,12 @@ describe("createTurnDrainRegistry", () => {
 		const result = await registry.drain(DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS);
 		const elapsedMs = Date.now() - start;
 
-		expect(result).toEqual({ observedCount: 0, abandonedMessageIds: [] });
+		expect(result).toEqual({
+			observedCount: 0,
+			timedOut: false,
+			unfinishedMessageIds: [],
+			abandonedMessageIds: [],
+		});
 		// Must not wait anywhere near the timeout — a well-behaved drain with
 		// no tracked turns resolves on the current tick, not after a timer.
 		expect(elapsedMs).toBeLessThan(DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS / 10);
@@ -98,7 +103,14 @@ describe("createTurnDrainRegistry", () => {
 		expect(elapsedMs).toBeLessThan(500);
 	});
 
-	it("does not abandon a turn that has no status-reaction controller", async () => {
+	it("reports a timeout for a hung turn that has no status-reaction controller (#17749 review)", async () => {
+		// The shape @lalalune found: status reactions are scope-gated, so on a
+		// typical server most turns have no controller. Such a turn can hang
+		// through the entire bound while contributing nothing to
+		// `abandonedMessageIds` — and the caller, branching on that array, logged
+		// "Drained N in-flight turn(s) before shutdown" for a shutdown that timed
+		// out and dropped the work. `timedOut` and `unfinishedMessageIds` are the
+		// signals that survive a missing controller.
 		const registry = createTurnDrainRegistry();
 		const hungTurn = new Promise<void>(() => undefined);
 
@@ -106,11 +118,105 @@ describe("createTurnDrainRegistry", () => {
 
 		const result = await registry.drain(20);
 
-		// Nothing to reconcile: abandonment now reports the reactions that were
-		// forced to a terminal state, and this turn never had one. It is still
-		// observed, so the operator still sees that a turn was outstanding.
+		expect(result.timedOut).toBe(true);
+		expect(result.unfinishedMessageIds).toEqual(["msg-no-reaction"]);
 		expect(result.observedCount).toBe(1);
+		// Still nothing to reconcile — the turn never had a reaction — so this
+		// array stays empty. That is exactly why it cannot carry the verdict.
 		expect(result.abandonedMessageIds).toEqual([]);
+	});
+
+	it("reports a clean drain as not timed out, so the caller can log success on that alone", async () => {
+		const registry = createTurnDrainRegistry();
+
+		registry.trackTurn("msg-clean", delay(1));
+		const result = await registry.drain(200);
+
+		expect(result.timedOut).toBe(false);
+		expect(result.unfinishedMessageIds).toEqual([]);
+		expect(result.observedCount).toBe(1);
+	});
+
+	it("separates dropped work from reconciled reactions when both occur", async () => {
+		// `unfinishedMessageIds` answers "what work was dropped";
+		// `abandonedMessageIds` answers "which reactions did we have to force".
+		// They are different questions and a turn can appear in either, both, or
+		// neither.
+		const registry = createTurnDrainRegistry();
+		const controller = makeController();
+
+		// Handler still running AND a live reaction: appears in both.
+		registry.trackTurn("msg-both", new Promise<void>(() => undefined));
+		registry.trackStatusReaction("msg-both", controller);
+		// Handler still running, no reaction: dropped work only.
+		registry.trackTurn("msg-work-only", new Promise<void>(() => undefined));
+
+		const result = await registry.drain(20);
+
+		expect(result.timedOut).toBe(true);
+		expect([...result.unfinishedMessageIds].sort()).toEqual([
+			"msg-both",
+			"msg-work-only",
+		]);
+		expect(result.abandonedMessageIds).toEqual(["msg-both"]);
+	});
+
+	it("leaves no permanent residue when a turn dies without driving its reaction terminal (#17749 review)", async () => {
+		// @lalalune's leak: the previous registry retired an entry only once BOTH
+		// halves finished, so a throw that skipped the controller's terminal
+		// transition pinned the entry for the process lifetime and made every
+		// later stop() burn the full drain bound on it. The halves now retire
+		// independently, and the first drain forces the orphaned reaction
+		// terminal — so the residue is one bounded drain, not forever.
+		const registry = createTurnDrainRegistry();
+		const controller = makeController();
+
+		// A handler that rejects and never reconciles its own reaction.
+		registry.trackTurn("msg-orphan", Promise.reject(new Error("turn blew up")));
+		registry.trackStatusReaction("msg-orphan", controller);
+		await delay(10);
+
+		const first = await registry.drain(20);
+		expect(first.abandonedMessageIds).toEqual(["msg-orphan"]);
+		expect(controller.abandon).toHaveBeenCalledTimes(1);
+
+		// The orphan is gone: nothing tracked, and a second drain returns
+		// immediately instead of burning the bound again.
+		expect(registry.pendingCount()).toBe(0);
+		const start = Date.now();
+		const second = await registry.drain(5_000);
+		expect(second).toEqual({
+			observedCount: 0,
+			timedOut: false,
+			unfinishedMessageIds: [],
+			abandonedMessageIds: [],
+		});
+		expect(Date.now() - start).toBeLessThan(500);
+	});
+
+	it("does not let an older promise retire a re-registered turn under the same id (#17749 review)", async () => {
+		// @lalalune's aliasing note. The previous shape mutated one shared entry
+		// object, so the older promise's `.finally` flipped `handlerSettled` for
+		// the NEWER turn and could retire it early. Discord message ids are
+		// unique, so this is defence rather than an observed failure — but it was
+		// unguarded.
+		const registry = createTurnDrainRegistry();
+		let finishFirst: () => void = () => undefined;
+		const first = new Promise<void>((resolve) => {
+			finishFirst = resolve;
+		});
+
+		registry.trackTurn("msg-dup", first);
+		registry.trackTurn("msg-dup", new Promise<void>(() => undefined));
+
+		// Settle the SUPERSEDED promise. The live turn must remain tracked.
+		finishFirst();
+		await delay(10);
+
+		expect(registry.pendingCount()).toBe(1);
+		const result = await registry.drain(20);
+		expect(result.timedOut).toBe(true);
+		expect(result.unfinishedMessageIds).toEqual(["msg-dup"]);
 	});
 
 	it("tracks a status reaction registered before the turn promise itself", async () => {

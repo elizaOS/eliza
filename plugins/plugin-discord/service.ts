@@ -4044,18 +4044,30 @@ export class DiscordService extends Service implements IDiscordService {
 		// debouncers, message managers, and client this method is about to
 		// destroy. Bounded by DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS — no unbounded
 		// wait, since a hang here would block process shutdown indefinitely.
-		const { observedCount, abandonedMessageIds } =
-			await this.turnDrainRegistry.drain(DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS);
-		if (abandonedMessageIds.length > 0) {
+		const {
+			observedCount,
+			timedOut,
+			unfinishedMessageIds,
+			abandonedMessageIds,
+		} = await this.turnDrainRegistry.drain(DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS);
+		// Branch on `timedOut`, never on the abandoned-reaction count. Status
+		// reactions are scope-gated — `none`, and un-addressed guild messages
+		// under `group-mentions`, produce no controller at all — so on a typical
+		// server most turns can hang through the whole bound while contributing
+		// nothing to `abandonedMessageIds`. Reporting the success line for those
+		// announced a clean drain for a shutdown that dropped work (#17749
+		// review, @lalalune).
+		if (timedOut) {
 			this.runtime.logger.warn(
 				{
 					src: "plugin:discord",
 					agentId: this.runtime.agentId,
 					observedInFlightTurns: observedCount,
+					unfinishedMessageIds,
 					abandonedMessageIds,
 					drainTimeoutMs: DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS,
 				},
-				`[DiscordService] Shutdown drain timeout elapsed after ${DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS}ms — abandoning ${abandonedMessageIds.length} of ${observedCount} in-flight turn(s) and reconciling their status reactions`,
+				`[DiscordService] Shutdown drain timeout elapsed after ${DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS}ms — ${unfinishedMessageIds.length} of ${observedCount} in-flight turn(s) still running and abandoned, ${abandonedMessageIds.length} status reaction(s) reconciled`,
 			);
 		} else if (observedCount > 0) {
 			this.runtime.logger.info(

@@ -86,6 +86,7 @@ import {
 } from "./staleness";
 import {
 	createStatusReactionController,
+	type StatusReactionController,
 	type StatusReactionScope,
 	shouldShowStatusReaction,
 } from "./status-reactions";
@@ -1478,6 +1479,14 @@ export class MessageManager {
 		}
 		const worldId = createUniqueUuid(this.runtime, messageServerId ?? roomId);
 
+		// Declared outside the try so the outer catch can drive the controller to
+		// a terminal state. Scoped inside, a throw escaping the inner handlers
+		// left the reaction stuck on its last in-progress emoji forever — visible
+		// to users on every failed turn, and it also pinned the turn in the
+		// shutdown-drain registry, since that retires an entry only once the
+		// reaction settles (#17749 review, @lalalune).
+		let statusReactions: StatusReactionController | null = null;
+
 		try {
 			let { processedContent, attachments } =
 				await this.processMessage(message);
@@ -2022,7 +2031,7 @@ export class MessageManager {
 				message,
 				clientUserId,
 			);
-			const statusReactions = useReactions
+			statusReactions = useReactions
 				? createStatusReactionController(message)
 				: null;
 			if (statusReactions) {
@@ -3007,6 +3016,12 @@ export class MessageManager {
 				turnReplied = true;
 			}
 		} catch (error) {
+			// Terminal, always: this is the only path a throw can take out of the
+			// turn body, so without it the controller never resolves whenFinished
+			// — leaving the user looking at a "thinking" emoji on a turn that died,
+			// and leaving the drain registry holding the entry for the process
+			// lifetime. Idempotent when an inner handler already settled it.
+			statusReactions?.setError();
 			if (!inboundMemoryCommitted) {
 				inboundMemoryCommitted =
 					await this.releaseMessageProcessingIfInboundNotPersisted(
