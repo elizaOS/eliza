@@ -87,7 +87,7 @@ describe("renderScheduledDispatchMessage", () => {
     expect(modelPrompts[0]).toContain(INSTRUCTION);
   });
 
-  it("throws on a missing model surface, a model failure, and blank output", async () => {
+  it("returns deterministic fallback on missing model surface, throws on model failure and blank output", async () => {
     const record = {
       taskId: "st_2",
       firedAtIso: "2026-07-05T09:00:00.000Z",
@@ -95,9 +95,15 @@ describe("renderScheduledDispatchMessage", () => {
       promptInstructions: INSTRUCTION,
       contextRequest: undefined,
     };
-    await expect(
-      renderScheduledDispatchMessage(makeRuntime({}).runtime, record),
-    ).rejects.toMatchObject({ code: "SCHEDULED_DISPATCH_MODEL_UNAVAILABLE" });
+    // Model-free runtime: deterministic fallback (not an error)
+    const fallbackBody = await renderScheduledDispatchMessage(
+      makeRuntime({}).runtime,
+      record,
+    );
+    expect(fallbackBody).not.toContain("Remind the owner to take");
+    expect(fallbackBody.length).toBeGreaterThan(0);
+
+    // Model failure: typed retryable error
     await expect(
       renderScheduledDispatchMessage(
         makeRuntime({
@@ -108,6 +114,7 @@ describe("renderScheduledDispatchMessage", () => {
         record,
       ),
     ).rejects.toMatchObject({ code: "SCHEDULED_DISPATCH_RENDER_FAILED" });
+    // Blank output: typed error
     await expect(
       renderScheduledDispatchMessage(
         makeRuntime({ model: () => "   \n" }).runtime,
@@ -140,6 +147,23 @@ describe("renderScheduledDispatchTitle", () => {
     expect(modelPrompts[0]).not.toContain(INSTRUCTION);
   });
 
+  it("returns deterministic title on model-free runtime", async () => {
+    const title = await renderScheduledDispatchTitle(
+      makeRuntime({}).runtime,
+      {
+        taskId: "st_title_nofree",
+        firedAtIso: "2026-07-05T09:00:00.000Z",
+        channelKey: "in_app",
+        promptInstructions: INSTRUCTION,
+        contextRequest: undefined,
+      },
+      RENDERED,
+    );
+    expect(title).not.toBe("Reminder");
+    expect(title).not.toBe("Approval needed");
+    expect(title.length).toBeGreaterThan(0);
+  });
+
   it("throws on blank title output", async () => {
     await expect(
       renderScheduledDispatchTitle(
@@ -157,7 +181,28 @@ describe("renderScheduledDispatchTitle", () => {
   });
 });
 
-describe("default scheduled-task dispatcher (no injected deps)", () => {
+describe("default scheduled-task dispatcher — model-free host", () => {
+  it("delivers deterministic fallback notification on a model-free runtime", async () => {
+    const notified: NotifyCapture[] = [];
+    const { runtime } = makeRuntime({ notified });
+    const service = await ScheduledTaskRunnerService.start(runtime);
+    const runner = service.getRunner({ agentId: String(runtime.agentId) });
+    const task = await runner.schedule(reminderInput());
+
+    const fired = await runner.fire(task.taskId);
+
+    expect(fired.state.status).toBe("fired");
+    expect(notified).toHaveLength(1);
+    // The deterministic fallback must never deliver raw instruction text
+    expect(notified[0]?.body).not.toContain("Remind the owner to take");
+    expect(notified[0]?.body?.length).toBeGreaterThan(0);
+    // The title must never be the old hardcoded literal
+    expect(notified[0]?.title).not.toBe("Reminder");
+    expect(notified[0]?.title).not.toBe("Approval needed");
+  });
+});
+
+describe("default scheduled-task dispatcher (model host)", () => {
   it("notifies with model-rendered body and title, never raw or generic copy", async () => {
     const notified: NotifyCapture[] = [];
     const { runtime, modelPrompts } = makeRuntime({
@@ -214,11 +259,12 @@ describe("default scheduled-task dispatcher (no injected deps)", () => {
 
 describe("buildScheduledDispatchRenderPrompt", () => {
   it("embeds the instruction as opaque payload with delivery framing and structural urgency", () => {
+    const { runtime } = makeRuntime({});
     const base = {
       promptInstructions: INSTRUCTION,
       firedAtIso: "2026-07-05T09:00:00.000Z",
     };
-    const normal = buildScheduledDispatchRenderPrompt({
+    const normal = buildScheduledDispatchRenderPrompt(runtime, {
       ...base,
       intensity: "normal",
     });
@@ -226,17 +272,25 @@ describe("buildScheduledDispatchRenderPrompt", () => {
     expect(normal).toContain("not the message itself");
     expect(normal).toContain("Fired at: 2026-07-05T09:00:00.000Z");
     expect(
-      buildScheduledDispatchRenderPrompt({ ...base, intensity: "urgent" }),
+      buildScheduledDispatchRenderPrompt(runtime, {
+        ...base,
+        intensity: "urgent",
+      }),
     ).toContain("urgent");
     expect(
-      buildScheduledDispatchRenderPrompt({ ...base, intensity: "soft" }),
+      buildScheduledDispatchRenderPrompt(runtime, {
+        ...base,
+        intensity: "soft",
+      }),
     ).toContain("gentle");
   });
 });
 
 describe("buildScheduledDispatchTitlePrompt", () => {
   it("uses the rendered body as title context and structural urgency framing", () => {
+    const { runtime } = makeRuntime({});
     const normal = buildScheduledDispatchTitlePrompt(
+      runtime,
       {
         intensity: "normal",
         firedAtIso: "2026-07-05T09:00:00.000Z",
@@ -248,6 +302,7 @@ describe("buildScheduledDispatchTitlePrompt", () => {
     expect(normal).not.toContain(INSTRUCTION);
     expect(
       buildScheduledDispatchTitlePrompt(
+        runtime,
         { intensity: "urgent", firedAtIso: "2026-07-05T09:00:00.000Z" },
         RENDERED,
       ),

@@ -200,20 +200,24 @@ describe("scheduled dispatch renders promptInstructions through the model", () =
     expect(reported[0]?.scope).toBe("lifeops:scheduled-task:dispatch-render");
   });
 
-  it("a runtime without a model surface fails closed instead of sending the raw instruction", async () => {
+  it("a runtime without a model surface delivers the deterministic fallback — never the raw instruction", async () => {
     enableAgentEventServiceStub();
-    const { runtime, reported } = makeRuntime({});
+    const { runtime } = makeRuntime({
+      notifier: {
+        notify: async () => ({ id: "n1" }),
+      },
+    });
     const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
 
     const result = await dispatcher.dispatch(inAppRecord());
 
-    expect(result).toMatchObject({
-      ok: false,
-      reason: "transport_error",
-      retryAfterMinutes: 5,
-    });
-    expect(getAgentEventServiceStubEvents()).toHaveLength(0);
-    expect(reported).toHaveLength(1);
+    expect(result).toMatchObject({ ok: true });
+    // The events should contain the deterministic fallback, not the raw instruction
+    const events = getAgentEventServiceStubEvents();
+    expect(events).toHaveLength(1);
+    expect(String(events[0]?.data.text)).not.toContain(
+      "Remind the owner to take",
+    );
   });
 
   it("blank model output fails closed instead of sending the raw instruction", async () => {
@@ -302,7 +306,8 @@ describe("scheduled dispatch renders promptInstructions through the model", () =
 
 describe("buildScheduledDispatchRenderPrompt", () => {
   it("embeds the instruction as opaque payload with delivery framing", () => {
-    const prompt = buildScheduledDispatchRenderPrompt({
+    const { runtime } = makeRuntime({});
+    const prompt = buildScheduledDispatchRenderPrompt(runtime, {
       promptInstructions: INSTRUCTION,
       intensity: "normal",
       firedAtIso: "2026-07-05T09:00:00.000Z",
@@ -313,13 +318,14 @@ describe("buildScheduledDispatchRenderPrompt", () => {
   });
 
   it("keys urgency framing on the structural intensity field", () => {
-    const urgent = buildScheduledDispatchRenderPrompt({
+    const { runtime } = makeRuntime({});
+    const urgent = buildScheduledDispatchRenderPrompt(runtime, {
       promptInstructions: INSTRUCTION,
       intensity: "urgent",
       firedAtIso: "2026-07-05T09:00:00.000Z",
     });
     expect(urgent).toContain("urgent");
-    const soft = buildScheduledDispatchRenderPrompt({
+    const soft = buildScheduledDispatchRenderPrompt(runtime, {
       promptInstructions: INSTRUCTION,
       intensity: "soft",
       firedAtIso: "2026-07-05T09:00:00.000Z",
@@ -330,7 +336,9 @@ describe("buildScheduledDispatchRenderPrompt", () => {
 
 describe("buildScheduledDispatchTitlePrompt", () => {
   it("uses the rendered body, not the instruction payload, as notification title context", () => {
+    const { runtime } = makeRuntime({});
     const prompt = buildScheduledDispatchTitlePrompt(
+      runtime,
       {
         intensity: "normal",
         firedAtIso: "2026-07-05T09:00:00.000Z",

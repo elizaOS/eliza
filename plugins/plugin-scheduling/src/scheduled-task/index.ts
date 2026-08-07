@@ -38,6 +38,8 @@ export {
   FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS,
 } from "./default-pack.js";
 export {
+  buildDeterministicDispatchBody,
+  buildDeterministicDispatchTitle,
   buildScheduledDispatchRenderPrompt,
   buildScheduledDispatchTitlePrompt,
   RENDER_FAILURE_RETRY_MINUTES,
