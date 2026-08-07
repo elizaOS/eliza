@@ -9,10 +9,6 @@
  */
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  type NativeLibraryCandidate,
-  resolveNativeLibraryCandidate,
-} from "@elizaos/app-core/platform/native-library-policy";
 import * as appleCalendarBridgePolicyImport from "@elizaos/capacitor-calendar/macos-bridge-policy";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -28,6 +24,10 @@ import type {
   LifeOpsCalendarWriteOnlyCreateReceipt,
   LifeOpsConnectorSide,
 } from "@elizaos/shared";
+import {
+  type NativeLibraryCandidate,
+  resolveNativeLibraryCandidate,
+} from "@elizaos/shared/platform/native-library-policy";
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 

@@ -1,3 +1,4 @@
+/** Verifies isRecord through the package's configured test harness. */
 // Unit coverage for the pure chat-input/streaming parsers in state/parsers.ts.
 // These drive slash commands, custom-action argument binding, streamed-text
 // reconciliation, and startup-error formatting — all chat-surface behavior with

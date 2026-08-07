@@ -1,3 +1,4 @@
+/** Verifies CloudConnectorsSettingsBody through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Covers the Cloud Connectors upsell's trusted-click login handoff. Desktop
@@ -12,6 +13,7 @@ import CloudConnectorsSettingsBody from "./CloudConnectorsUpsell";
 const cloudLoginWindow = vi.hoisted(() => ({
   popup: { closed: false } as unknown as Window,
   preOpen: vi.fn(),
+  claim: vi.fn(),
 }));
 
 vi.mock("../../agent-surface", () => ({
@@ -20,6 +22,7 @@ vi.mock("../../agent-surface", () => ({
 
 vi.mock("../../state/cloud-login-launch", () => ({
   preOpenCloudLoginWindow: cloudLoginWindow.preOpen,
+  claimCloudLoginWindow: cloudLoginWindow.claim,
 }));
 
 vi.mock("./CloudConnectorsSection", () => ({
@@ -37,21 +40,27 @@ afterEach(() => {
 });
 
 describe("CloudConnectorsSettingsBody", () => {
-  it("pre-opens the shared cloud auth window before starting login", () => {
-    const handleCloudLogin = vi.fn(async () => undefined);
-    cloudLoginWindow.preOpen.mockReturnValue(cloudLoginWindow.popup);
+  it("invokes the interactive login entry point and claims the popup inside the click gesture", () => {
+    const handleInteractiveCloudLogin = vi.fn(async () => undefined);
     __setAppValueForTests({
       t,
       elizaCloudConnected: false,
       elizaCloudLoginBusy: false,
-      handleCloudLogin,
+      handleInteractiveCloudLogin,
       setActionNotice: vi.fn(),
     } as never);
 
     render(<CloudConnectorsSettingsBody />);
     fireEvent.click(screen.getByRole("button", { name: "Connect Cloud" }));
 
-    expect(cloudLoginWindow.preOpen).toHaveBeenCalledTimes(1);
-    expect(handleCloudLogin).toHaveBeenCalledWith(cloudLoginWindow.popup);
+    // #17129 + #17064 regression guard: user activation is only live during
+    // the click, so the component claims (pre-opens) the popup synchronously
+    // in the gesture, then calls the interactive entry point which consumes
+    // the claimed handle. The raw pre-open/window path stays off the component
+    // — a future interactive call site cannot omit the popup and compile the
+    // old defect.
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
+    expect(cloudLoginWindow.claim).toHaveBeenCalledTimes(1);
+    expect(cloudLoginWindow.preOpen).not.toHaveBeenCalled();
   });
 });

@@ -20,7 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/test/helpers/real-runtime.ts";
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import todosPlugin from "../src/index.ts";
 import { currentTodosProvider } from "../src/providers/current-todos.ts";
 import { TodosService } from "../src/service.ts";

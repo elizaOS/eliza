@@ -1,4 +1,4 @@
-/** Provides app charge test plugin utilities for the shared package test harness. */
+/** Supplies the minimal APP_CHARGE plugin fixture used by cross-package payment scenarios. */
 import type { Memory, Plugin } from "@elizaos/core";
 
 const CHARGE_ID = "charge_scenario_five";

@@ -1,6 +1,6 @@
 /**
  * Guards the invariant that core's `./testing` export carries no reverse import
- * edge into `@elizaos/agent` (#12091 item 6): greps the harness source for
+ * edge into `@elizaos/agent` (#12091 item 6): greps the testing source for
  * import specifiers and asserts the injected-option shape. Deterministic — no
  * runtime or model involved.
  */
@@ -24,9 +24,9 @@ import {
 const testingDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testingDir, "../..");
 
-const HARNESS_FILES = ["real-runtime.ts", "pglite-runtime.ts"] as const;
+const TEST_RUNTIME_FILES = ["real-runtime.ts", "pglite-runtime.ts"] as const;
 const CORE_PACKAGE_FILES = [
-	...HARNESS_FILES.map((file) => `src/testing/${file}`),
+	...TEST_RUNTIME_FILES.map((file) => `src/testing/${file}`),
 ] as const;
 
 function importSpecifiers(source: string): string[] {
@@ -36,7 +36,7 @@ function importSpecifiers(source: string): string[] {
 }
 
 describe("core ./testing has no reverse edge into @elizaos/agent (#12091 item 6)", () => {
-	for (const file of HARNESS_FILES) {
+	for (const file of TEST_RUNTIME_FILES) {
 		it(`${file} imports nothing from packages/agent`, () => {
 			const source = fs.readFileSync(path.join(testingDir, file), "utf8");
 			// Match only import/require contexts (static `from "…"`, dynamic

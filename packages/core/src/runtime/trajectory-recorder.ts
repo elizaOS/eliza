@@ -5,7 +5,7 @@
  * Spec: PLAN.md §18.1 (`RecordedStage` / `RecordedTrajectory` schemas) and
  * §18.2 (`TrajectoryRecorder` interface).
  *
- * Output shape is read by `packages/scripts/trajectory.ts` and `packages/scripts/run-eliza-cerebras.ts`.
+ * Output shape is read by `packages/scripts/trajectory.ts`.
  *
  * Persistence model:
  * - One JSON file per trajectory at
@@ -24,6 +24,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveAliasedEnvValue } from "../boot-env";
+import { ElizaError } from "../errors";
 import {
 	computeCallCostUsd,
 	PRICE_TABLE_ID,
@@ -32,6 +33,7 @@ import type { EvaluationResult } from "../types/components";
 import type { ChatMessage, ToolChoice } from "../types/model";
 import { readEnv } from "../utils/read-env";
 import { resolveStateDir } from "../utils/state-dir";
+import { stringifyForDiagnostics } from "./json-output";
 import {
 	resolveTraceCorrelationFromEnv,
 	type TraceCorrelation,
@@ -54,11 +56,12 @@ export type RecordedStageKind =
 	| "factsAndRelationships";
 
 export interface RecordedUsage {
-	promptTokens: number;
-	completionTokens: number;
+	promptTokens?: number;
+	completionTokens?: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
-	totalTokens: number;
+	reasoningTokens?: number;
+	totalTokens?: number;
 }
 
 export interface RecordedToolCall {
@@ -70,7 +73,7 @@ export interface RecordedToolCall {
 export interface RecordedModelCall {
 	modelType: string;
 	modelName?: string;
-	provider: string;
+	provider?: string;
 	prompt?: string;
 	messages?: ChatMessage[] | unknown[];
 	tools?: unknown;
@@ -84,8 +87,8 @@ export interface RecordedModelCall {
 	 * USD cost of this LLM call computed from the price table identified by
 	 * `priceTableId`. Local-inference providers (Ollama / LM Studio /
 	 * llama.cpp) record a real `0` — not "missing". The recorder emits a
-	 * warning log when a hosted-provider model has no price entry; the
-	 * field defaults to `0` in that case so cost roll-ups stay numeric.
+	 * warning log when a hosted-provider model has no price entry and omits the
+	 * field so unknown spend cannot be mistaken for free inference.
 	 */
 	costUsd?: number;
 	/**
@@ -303,6 +306,7 @@ export interface RecordedTrajectoryMetrics {
 	totalCompletionTokens: number;
 	totalCacheReadTokens: number;
 	totalCacheCreationTokens: number;
+	totalReasoningTokens?: number;
 	totalCostUsd: number;
 	plannerIterations: number;
 	toolCallsExecuted: number;
@@ -459,33 +463,7 @@ function atomicTempPath(filePath: string): string {
 	return `${filePath}.${process.pid}.${Date.now().toString(36)}.${rand}.tmp`;
 }
 
-async function atomicWriteJson(
-	filePath: string,
-	value: unknown,
-	logger?: RecorderLogger,
-): Promise<void> {
-	const dir = path.dirname(filePath);
-	const tmp = atomicTempPath(filePath);
-	try {
-		await fs.mkdir(dir, { recursive: true });
-		await fs.writeFile(tmp, JSON.stringify(value, null, 2), "utf8");
-		await fs.rename(tmp, filePath);
-	} catch (err) {
-		logger?.warn?.(
-			{ err: (err as Error).message, filePath },
-			"[TrajectoryRecorder] atomic write failed",
-		);
-		try {
-			// error-policy:J6 best-effort teardown — removing the orphaned tmp file
-			// after a failed write; its own failure is not actionable.
-			await fs.unlink(tmp).catch(() => undefined);
-		} catch {
-			// error-policy:J6 best-effort teardown of the tmp file
-		}
-	}
-}
-
-async function atomicWriteText(
+async function atomicWriteFile(
 	filePath: string,
 	value: string,
 	logger?: RecorderLogger,
@@ -496,19 +474,43 @@ async function atomicWriteText(
 		await fs.mkdir(dir, { recursive: true });
 		await fs.writeFile(tmp, value, "utf8");
 		await fs.rename(tmp, filePath);
-	} catch (err) {
+	} catch (error) {
 		logger?.warn?.(
-			{ err: (err as Error).message, filePath },
-			"[TrajectoryRecorder] markdown write failed",
+			{ err: (error as Error).message, filePath },
+			"[TrajectoryRecorder] atomic write failed",
 		);
 		try {
-			// error-policy:J6 best-effort teardown — removing the orphaned tmp file
-			// after a failed write; its own failure is not actionable.
-			await fs.unlink(tmp).catch(() => undefined);
-		} catch {
-			// error-policy:J6 best-effort teardown of the tmp file
+			await fs.unlink(tmp);
+		} catch (cleanupError) {
+			// error-policy:J6 best-effort teardown retains the original write failure
+			if ((cleanupError as NodeJS.ErrnoException).code !== "ENOENT") {
+				logger?.warn?.(
+					{ err: (cleanupError as Error).message, tmp },
+					"[TrajectoryRecorder] temporary file cleanup failed",
+				);
+			}
 		}
+		throw new ElizaError("Failed to persist trajectory artifact", {
+			code: "TRAJECTORY_ATOMIC_WRITE_FAILED",
+			cause: error,
+			context: { filePath },
+		});
 	}
+}
+
+async function atomicWriteJson(
+	filePath: string,
+	value: unknown,
+	logger?: RecorderLogger,
+): Promise<void> {
+	const serialized = JSON.stringify(value, null, 2);
+	if (serialized === undefined) {
+		throw new ElizaError("Trajectory artifact is not JSON-serializable", {
+			code: "TRAJECTORY_ARTIFACT_INVALID",
+			context: { filePath },
+		});
+	}
+	await atomicWriteFile(filePath, serialized, logger);
 }
 
 function formatTimestamp(ms: number | undefined): string {
@@ -523,11 +525,7 @@ function formatDuration(ms: number | undefined): string {
 }
 
 function safeStringifyForMarkdown(value: unknown): string {
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
-	}
+	return stringifyForDiagnostics(value);
 }
 
 function redactMarkdownSecrets(text: string): string {
@@ -575,6 +573,7 @@ function summarizeEmbeddingResponse(response: string): string | null {
 			.join(", ");
 		return `Embedding vector (${parsed.length} dimensions). Preview: [${preview}${parsed.length > 8 ? ", ..." : ""}]`;
 	} catch {
+		// error-policy:J7 malformed embedding previews must not break trajectory rendering
 		return null;
 	}
 }
@@ -601,7 +600,7 @@ function renderTrajectoryMarkdown(trajectory: RecordedTrajectory): string {
 		`- total: ${formatDuration(metrics.totalLatencyMs)} · $${metrics.totalCostUsd.toFixed(6)}`,
 	);
 	lines.push(
-		`- tokens: ${metrics.totalPromptTokens} input · ${metrics.totalCompletionTokens} output · ${metrics.totalCacheReadTokens} cache-read · ${metrics.totalCacheCreationTokens} cache-created`,
+		`- tokens: ${metrics.totalPromptTokens} input · ${metrics.totalCompletionTokens} output · ${metrics.totalCacheReadTokens} cache-read · ${metrics.totalCacheCreationTokens} cache-created · ${metrics.totalReasoningTokens} reasoning`,
 	);
 	lines.push(`- root message id: \`${trajectory.rootMessage.id}\``);
 	if (trajectory.rootMessage.text) {
@@ -624,12 +623,15 @@ function renderTrajectoryMarkdown(trajectory: RecordedTrajectory): string {
 			lines.push(`- parent: \`${stage.parentStageId}\``);
 		}
 		if (stage.model) {
+			const providerLabel = stage.model.provider
+				? ` (${stage.model.provider})`
+				: "";
 			lines.push(
-				`- model: \`${stage.model.modelName ?? stage.model.modelType}\` (${stage.model.provider})`,
+				`- model: \`${stage.model.modelName ?? stage.model.modelType}\`${providerLabel}`,
 			);
 			if (stage.model.usage) {
 				lines.push(
-					`- usage: ${stage.model.usage.promptTokens} input · ${stage.model.usage.completionTokens} output · ${stage.model.usage.cacheReadInputTokens ?? 0} cache-read · ${stage.model.usage.cacheCreationInputTokens ?? 0} cache-created`,
+					`- usage: ${stage.model.usage.promptTokens ?? "n/a"} input · ${stage.model.usage.completionTokens ?? "n/a"} output · ${stage.model.usage.cacheReadInputTokens ?? "n/a"} cache-read · ${stage.model.usage.cacheCreationInputTokens ?? "n/a"} cache-created · ${stage.model.usage.reasoningTokens ?? "n/a"} reasoning`,
 				);
 			}
 			if (typeof stage.model.costUsd === "number") {
@@ -740,11 +742,18 @@ function applyMetricsForStage(
 		: 0;
 
 	if (stage.model?.usage) {
-		metrics.totalPromptTokens += stage.model.usage.promptTokens;
-		metrics.totalCompletionTokens += stage.model.usage.completionTokens;
+		if (stage.model.usage.promptTokens !== undefined) {
+			metrics.totalPromptTokens += stage.model.usage.promptTokens;
+		}
+		if (stage.model.usage.completionTokens !== undefined) {
+			metrics.totalCompletionTokens += stage.model.usage.completionTokens;
+		}
 		metrics.totalCacheReadTokens += stage.model.usage.cacheReadInputTokens ?? 0;
 		metrics.totalCacheCreationTokens +=
 			stage.model.usage.cacheCreationInputTokens ?? 0;
+		metrics.totalReasoningTokens =
+			(metrics.totalReasoningTokens ?? 0) +
+			(stage.model.usage.reasoningTokens ?? 0);
 	}
 	if (typeof stage.model?.costUsd === "number") {
 		metrics.totalCostUsd += stage.model.costUsd;
@@ -975,11 +984,13 @@ export function resolveTrajectoryFieldCapBytes(): number {
 export function encodeTrajectoryFieldValue(value: unknown): string {
 	if (typeof value === "string") return value;
 	if (value === undefined || value === null) return "";
-	try {
-		return JSON.stringify(sanitizeForRecord(value));
-	} catch {
-		return String(value);
+	const serialized = JSON.stringify(sanitizeForRecord(value));
+	if (serialized === undefined) {
+		throw new ElizaError("Trajectory field is not JSON-serializable", {
+			code: "TRAJECTORY_FIELD_INVALID",
+		});
 	}
+	return serialized;
 }
 
 /**
@@ -1160,8 +1171,10 @@ export function annotateStageCost(
 		provider: stage.model.provider,
 		logger,
 	});
-	stage.model.costUsd = cost;
-	stage.model.priceTableId = PRICE_TABLE_ID;
+	if (cost !== undefined) {
+		stage.model.costUsd = cost;
+		stage.model.priceTableId = PRICE_TABLE_ID;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1172,6 +1185,11 @@ export interface CreateJsonFileRecorderOptions {
 	rootDir?: string;
 	logger?: RecorderLogger;
 	enabled?: boolean;
+	reportError?: (
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	) => void;
 }
 
 interface MutableTrajectory extends RecordedTrajectory {}
@@ -1180,6 +1198,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 	private readonly rootDir: string;
 	private readonly markdownDir: string;
 	private readonly logger?: RecorderLogger;
+	private readonly reportError?: CreateJsonFileRecorderOptions["reportError"];
 	private readonly enabled: boolean;
 	private readonly markdownEnabled: boolean;
 	private readonly active = new Map<string, MutableTrajectory>();
@@ -1189,6 +1208,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		this.rootDir = opts.rootDir ?? resolveTrajectoryDir();
 		this.markdownDir = resolveTrajectoryMarkdownDir(this.rootDir);
 		this.logger = opts.logger;
+		this.reportError = opts.reportError;
 		this.enabled =
 			opts.enabled !== undefined
 				? opts.enabled
@@ -1211,7 +1231,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			traceId:
 				input.traceId ?? inheritedCorrelation.traceId ?? crypto.randomUUID(),
 			taskId: input.taskId ?? inheritedCorrelation.taskId,
-			sessionId: input.sessionId ?? process.env.PARALLAX_SESSION_ID,
+			sessionId: input.sessionId ?? inheritedCorrelation.sessionId,
 			parentStepId: input.parentStepId ?? inheritedCorrelation.parentStepId,
 		};
 
@@ -1238,6 +1258,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 				totalCompletionTokens: 0,
 				totalCacheReadTokens: 0,
 				totalCacheCreationTokens: 0,
+				totalReasoningTokens: 0,
 				totalCostUsd: 0,
 				plannerIterations: 0,
 				toolCallsExecuted: 0,
@@ -1248,9 +1269,13 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		};
 		this.active.set(id, trajectory);
 
-		// Best-effort initial flush so the file exists even if the run crashes
-		// before any stage lands. Errors are logged and swallowed.
+		// The initial flush is diagnostic and detached from message delivery.
 		void this.queueFlushTrajectory(trajectory).catch((err) => {
+			// error-policy:J7 Report a missing initial trajectory artifact without
+			// aborting the message path that started it.
+			this.reportError?.("TrajectoryRecorder.initialFlush", err, {
+				trajectoryId: id,
+			});
 			this.logger?.warn?.(
 				{ err: (err as Error).message, trajectoryId: id },
 				"[TrajectoryRecorder] initial flush failed",
@@ -1297,6 +1322,21 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		if (status === "errored" && !trajectory.metrics.finalDecision) {
 			trajectory.metrics.finalDecision = "error";
 		}
+		// Non-evaluated terminal paths (Stage-1 direct reply, deterministic
+		// fallback, structured failure reply) finish a turn without any
+		// evaluation stage, so nothing above ever set finalDecision. Stamp the
+		// clean terminal here — an absent finalDecision on a finished
+		// trajectory reads as "died mid-turn" and made delivered turns look
+		// like drops. The value must be a member of the canonical validator's
+		// closed vocabulary (packages/scripts/lib/trajectory-validate.ts) —
+		// every recorded trajectory round-trips through it, and an invented
+		// sentinel is rejected as an invalid finalDecision. "FINISH" is the
+		// accepted shape for a cleanly finished run; whether an evaluator
+		// produced it remains distinguishable from the trajectory itself (an
+		// evaluator-decided FINISH always has an evaluation stage).
+		if (status === "finished" && !trajectory.metrics.finalDecision) {
+			trajectory.metrics.finalDecision = "FINISH";
+		}
 
 		try {
 			await this.queueFlushTrajectory(trajectory);
@@ -1313,53 +1353,48 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		const inMem = this.active.get(trajectoryId);
 		if (inMem) return inMem;
 
+		const files = await this.collectAllFiles();
+		const match = files.find((f) => f.id === trajectoryId);
+		if (!match) return null;
 		try {
-			const files = await this.collectAllFiles();
-			const match = files.find((f) => f.id === trajectoryId);
-			if (!match) return null;
 			const raw = await fs.readFile(match.filePath, "utf8");
 			return JSON.parse(raw) as RecordedTrajectory;
-		} catch (err) {
-			this.logger?.warn?.(
-				{ err: (err as Error).message, trajectoryId },
-				"[TrajectoryRecorder] load failed",
-			);
-			return null;
+		} catch (error) {
+			// error-policy:J2 preserve the storage failure while identifying the trajectory
+			throw new ElizaError("Failed to load recorded trajectory", {
+				code: "TRAJECTORY_LOAD_FAILED",
+				cause: error,
+				context: { trajectoryId, filePath: match.filePath },
+			});
 		}
 	}
 
 	async list(
 		opts: ListTrajectoriesOptions = {},
 	): Promise<RecordedTrajectory[]> {
-		try {
-			const files = await this.collectAllFiles();
-			const out: RecordedTrajectory[] = [];
-			for (const file of files) {
-				try {
-					const raw = await fs.readFile(file.filePath, "utf8");
-					const trajectory = JSON.parse(raw) as RecordedTrajectory;
-					if (opts.agentId && trajectory.agentId !== opts.agentId) continue;
-					if (opts.since && trajectory.startedAt < opts.since) continue;
-					out.push(trajectory);
-				} catch (err) {
-					this.logger?.warn?.(
-						{ err: (err as Error).message, filePath: file.filePath },
-						"[TrajectoryRecorder] list: skipping unreadable trajectory file",
-					);
-				}
+		const files = await this.collectAllFiles();
+		const out: RecordedTrajectory[] = [];
+		for (const file of files) {
+			try {
+				const raw = await fs.readFile(file.filePath, "utf8");
+				const trajectory = JSON.parse(raw) as RecordedTrajectory;
+				if (opts.agentId && trajectory.agentId !== opts.agentId) continue;
+				if (opts.since && trajectory.startedAt < opts.since) continue;
+				out.push(trajectory);
+			} catch (error) {
+				// error-policy:J2 identify the corrupt artifact instead of hiding it from list results
+				throw new ElizaError("Failed to read recorded trajectory", {
+					code: "TRAJECTORY_LIST_ENTRY_FAILED",
+					cause: error,
+					context: { trajectoryId: file.id, filePath: file.filePath },
+				});
 			}
-			out.sort((a, b) => b.startedAt - a.startedAt);
-			if (opts.limit && out.length > opts.limit) {
-				return out.slice(0, opts.limit);
-			}
-			return out;
-		} catch (err) {
-			this.logger?.warn?.(
-				{ err: (err as Error).message },
-				"[TrajectoryRecorder] list failed",
-			);
-			return [];
 		}
+		out.sort((a, b) => b.startedAt - a.startedAt);
+		if (opts.limit && out.length > opts.limit) {
+			return out.slice(0, opts.limit);
+		}
+		return out;
 	}
 
 	private queueFlushTrajectory(trajectory: MutableTrajectory): Promise<void> {
@@ -1397,7 +1432,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			snapshot.agentId,
 			`${snapshot.trajectoryId}.md`,
 		);
-		await atomicWriteText(
+		await atomicWriteFile(
 			markdownPath,
 			renderTrajectoryMarkdown(snapshot),
 			this.logger,
@@ -1411,8 +1446,10 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		const stack: string[] = [this.rootDir];
 		try {
 			await fs.access(this.rootDir);
-		} catch {
-			return out;
+		} catch (error) {
+			// error-policy:J4 a recorder with no storage directory has no trajectories yet
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return out;
+			throw error;
 		}
 
 		while (stack.length > 0) {
@@ -1423,8 +1460,13 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 				entries = (await fs.readdir(dir, {
 					withFileTypes: true,
 				})) as import("node:fs").Dirent[];
-			} catch {
-				continue;
+			} catch (error) {
+				// error-policy:J2 preserve directory traversal failures with their path
+				throw new ElizaError("Failed to scan trajectory storage", {
+					code: "TRAJECTORY_DIRECTORY_READ_FAILED",
+					cause: error,
+					context: { directory: dir },
+				});
 			}
 			for (const entry of entries) {
 				const full = path.join(dir, entry.name);
@@ -1467,6 +1509,11 @@ export interface FinalizeTrajectoryRecordingOptions {
 	trajectoryId: string;
 	status: "finished" | "errored";
 	logger?: RecorderLogger;
+	reportError?: (
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	) => void;
 }
 
 /**
@@ -1482,10 +1529,16 @@ export async function finalizeTrajectoryRecording(
 	try {
 		await opts.recorder.endTrajectory(opts.trajectoryId, opts.status);
 	} catch (err) {
+		// error-policy:J7 Finalization is diagnostic and cannot replace the turn;
+		// it must still surface the trajectory left unterminated.
 		opts.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: opts.trajectoryId },
 			"[TrajectoryRecorder] endTrajectory failed",
 		);
+		opts.reportError?.("TrajectoryRecorder.finalize", err, {
+			trajectoryId: opts.trajectoryId,
+			status: opts.status,
+		});
 	}
 }
 

@@ -1,3 +1,4 @@
+/** Verifies shouldUseSameTabCloudLogin through the package's configured test harness. */
 // @vitest-environment jsdom
 // @vitest-environment-options { "url": "https://app.elizacloud.ai/" }
 //
@@ -13,11 +14,14 @@ import {
   buildSameTabCloudLoginPath,
   CLOUD_LOGIN_POPUP_NAME,
   canNavigateSameTabForBlockedPopup,
+  claimCloudLoginWindow,
   hasSameOriginStewardLogin,
   isTouchPrimaryWebBrowser,
   preOpenCloudLoginWindow,
+  releaseClaimedCloudLoginWindow,
   resolveCloudSignInPageUrl,
   shouldUseSameTabCloudLogin,
+  takeClaimedCloudLoginWindow,
 } from "./cloud-login-launch";
 
 const globalWithPlatform = globalThis as typeof globalThis & {
@@ -69,13 +73,20 @@ function stubHostname(hostname: string, protocol = "https:"): void {
   });
 }
 
-function makePopup(closed: boolean): Window {
-  return { closed } as Window;
+function makePopup(
+  closed: boolean,
+): Window & { close: ReturnType<typeof vi.fn> } {
+  return { closed, close: vi.fn() } as unknown as Window & {
+    close: ReturnType<typeof vi.fn>;
+  };
 }
 
 afterEach(() => {
   delete globalWithPlatform.Capacitor;
   delete windowWithElectrobun.__electrobunWindowId;
+  // Drain the module-level gesture stash so a handle claimed in one test can
+  // never leak into (or be closed by) the next test's claim.
+  void takeClaimedCloudLoginWindow();
   vi.restoreAllMocks();
   restoreDescriptor("location", originalLocationDescriptor);
   restoreDescriptor("matchMedia", originalMatchMediaDescriptor);
@@ -179,6 +190,83 @@ describe("preOpenCloudLoginWindow", () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
     expect(preOpenCloudLoginWindow()).toBe(popup);
     expect(openSpy).toHaveBeenCalledWith("about:blank", CLOUD_LOGIN_POPUP_NAME);
+  });
+});
+
+describe("claimCloudLoginWindow / takeClaimedCloudLoginWindow (gesture stash)", () => {
+  it("claim stub plays the popup and take consumes it exactly once", () => {
+    const popup = makePopup(false);
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    // Non-touch web so the claim actually pre-opens.
+    expect(claimCloudLoginWindow()).toBe(popup);
+    // First consume returns the stashed handle; second returns null (cleared).
+    expect(takeClaimedCloudLoginWindow()).toBe(popup);
+    expect(takeClaimedCloudLoginWindow()).toBeNull();
+  });
+
+  it("claim on touch-primary web stubs null (redirect-first), take returns null", () => {
+    stubMatchMedia(true);
+    const openSpy = vi.spyOn(window, "open");
+    expect(claimCloudLoginWindow()).toBeNull();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(takeClaimedCloudLoginWindow()).toBeNull();
+  });
+
+  it("does not reset a previously consumed handle on a later claim", () => {
+    const popup = makePopup(false);
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    expect(claimCloudLoginWindow()).toBe(popup);
+    void takeClaimedCloudLoginWindow();
+    // A fresh claim stashes a new handle even after the old one was consumed.
+    vi.spyOn(window, "open").mockReturnValue(makePopup(false));
+    expect(claimCloudLoginWindow()).not.toBeNull();
+    // The consumed handle belongs to the login flow now — never closed here.
+    expect(popup.close).not.toHaveBeenCalled();
+  });
+
+  it("re-claim closes a stale unconsumed handle before overwriting it", () => {
+    const stale = makePopup(false);
+    const fresh = makePopup(false);
+    vi.spyOn(window, "open")
+      .mockReturnValueOnce(stale)
+      .mockReturnValueOnce(fresh);
+    expect(claimCloudLoginWindow()).toBe(stale);
+    // A second gesture claims again before anything consumed the first handle
+    // (e.g. a flow that short-circuited before interactive login).
+    expect(claimCloudLoginWindow()).toBe(fresh);
+    expect(stale.close).toHaveBeenCalledTimes(1);
+    expect(fresh.close).not.toHaveBeenCalled();
+    expect(takeClaimedCloudLoginWindow()).toBe(fresh);
+  });
+});
+
+describe("releaseClaimedCloudLoginWindow", () => {
+  it("closes and clears a claimed-but-never-consumed popup", () => {
+    const popup = makePopup(false);
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    expect(claimCloudLoginWindow()).toBe(popup);
+    releaseClaimedCloudLoginWindow();
+    expect(popup.close).toHaveBeenCalledTimes(1);
+    expect(takeClaimedCloudLoginWindow()).toBeNull();
+  });
+
+  it("is a no-op once the handle was consumed (login owns that lifecycle)", () => {
+    const popup = makePopup(false);
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    expect(claimCloudLoginWindow()).toBe(popup);
+    expect(takeClaimedCloudLoginWindow()).toBe(popup);
+    releaseClaimedCloudLoginWindow();
+    expect(popup.close).not.toHaveBeenCalled();
+  });
+
+  it("tolerates an already-closed stashed handle and an empty stash", () => {
+    const popup = makePopup(true);
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    expect(claimCloudLoginWindow()).toBe(popup);
+    releaseClaimedCloudLoginWindow();
+    expect(popup.close).not.toHaveBeenCalled();
+    // Empty stash: nothing to close, nothing throws.
+    releaseClaimedCloudLoginWindow();
   });
 });
 

@@ -1,3 +1,4 @@
+/** Verifies isSafeDeepLink through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * The notification deep-link guard (`navigate-deep-link`): `isSafeDeepLink`

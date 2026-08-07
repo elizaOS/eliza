@@ -1,0 +1,218 @@
+# certification-hosted — runs the certification chain on a GitHub-hosted
+# runner, as the sanctioned fallback for certification-vast when the vast.ai
+# path is unavailable (dead VAST_API_KEY, no offers). Thin caller of
+# scripts/vast/local-certify.mjs, which runs the exact chain the vast onstart
+# runs — packages/evidence bundle:create → certify:rollup → certify:sign —
+# "same commands, same output; the gate cannot tell the difference (by design
+# — the signature is what matters)".
+#
+# The gpu/full-tier vision analyzers resolve their backend from env
+# (packages/evidence/src/vision-qa/config.ts): with ANTHROPIC_API_KEY present
+# they use the Anthropic Messages API, so no local GPU is required. A rented
+# GPU only ever served the local llama-server backend.
+#
+# Secrets discipline mirrors certification-vast: workflow_dispatch only (no
+# pull_request trigger — PR-controlled code must never see the signing key),
+# and both secrets are exposed only to the single step that runs the chain.
+name: certification-hosted
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit sha to certify (default: the ref this workflow runs on)"
+        required: false
+        type: string
+      tier:
+        description: "Certification tier"
+        required: false
+        default: "full"
+        type: choice
+        options: [cpu, gpu, full]
+      runner:
+        # Wording deliberately avoids the fleet label strings: the routing
+        # contract's collector flags any YAML scalar containing them, and this
+        # description is prose, not a route.
+        description: "Runner pool: hosted (ubuntu-24.04) or the self-hosted robot fleet"
+        required: false
+        default: "hosted"
+        type: choice
+        options: [hosted, robot]
+
+concurrency:
+  group: certification-hosted
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  hosted-certification:
+    # The full matrix at --concurrency=3 exceeds 150 minutes on a 4-vCPU
+    # hosted runner (run 31067341248 was killed by the cap mid-matrix). The
+    # robot pool — installed for exactly this weight class (the
+    # certification-image builds) — finishes it in a fraction of the time.
+    # Routing composes the dispatch input WITH the HETZNER_FLEET_ONLINE gate
+    # (#17813): hosted is the default, and an explicit robot dispatch degrades
+    # to hosted when the fleet is offline instead of queuing against zero
+    # registered runners. This exact selector is allowlisted in
+    # packages/scripts/hetzner-fleet-routing-contract.mjs.
+    runs-on: ${{ fromJSON(inputs.runner != 'robot' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 300
+    steps:
+      - name: Preflight secrets
+        env:
+          HAS_SIGNING_KEY: ${{ secrets.ELIZA_CERT_SIGNING_KEY != '' }}
+          HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          TIER: ${{ inputs.tier }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ "$HAS_SIGNING_KEY" = "true" ] || missing="$missing ELIZA_CERT_SIGNING_KEY"
+          if [ "$TIER" != "cpu" ]; then
+            [ "$HAS_ANTHROPIC_KEY" = "true" ] || missing="$missing ANTHROPIC_API_KEY"
+          fi
+          if [ -n "$missing" ]; then
+            echo "::error title=certification-hosted::missing repo secret(s):$missing"
+            exit 1
+          fi
+
+      - name: Checkout commit to certify
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.sha != '' && inputs.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          install-command: bun install --frozen-lockfile
+          install-native-deps: "false"
+
+      - name: Generate shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      # The develop-pr test lane documents why: package-owned test scripts
+      # assume the core dependency graph and view bundles exist; on a clean
+      # hosted runner absent generated artifacts fail tests that have nothing
+      # wrong (diagnostic run 31062965483: plugin-meetings dist unresolved).
+      - name: Build core dependency graph and view bundles
+        run: |
+          bun run build:core
+          bun run build:views
+
+      # SECURITY: the hetzner-robot runners execute on a production box whose
+      # service environment carries real credentials — run 31073689058 showed a
+      # live ELIZA_VAULT_PASSPHRASE visible to every test process, plus
+      # TTY/color vars that changed logger output under test. This workflow is
+      # workflow_dispatch-only, so PR-controlled code never runs here, but the
+      # runner environment itself should be reviewed org-side: any workflow
+      # granted this pool inherits it. The wrapper below keeps repo test
+      # processes from seeing that environment at all.
+      #
+      # The evidence + certify steps run through `env -i` with an explicit
+      # allowlist derived from what a hosted ubuntu-24.04 runner provides:
+      # PATH, a fresh scratch HOME/TMPDIR under $RUNNER_TEMP (isolates
+      # keychain/vault/dotfile state), TZ=UTC + LANG=C.UTF-8 (hosted image
+      # defaults), CI, the GITHUB_*/RUNNER_* context, and the two secrets the
+      # chain needs (ELIZA_CERT_SIGNING_KEY, ANTHROPIC_API_KEY). Everything
+      # else — box credentials, POSTGRES_URL, TERM/FORCE_COLOR, D-Bus/XDG
+      # session state — is dropped. The command also runs inside a private
+      # session bus (dbus-run-session) because hosted runners have a per-user
+      # session bus and packages/vault's keychain-safety heuristic
+      # (isKeychainUnsafe) branches on its reachability; without it the vault
+      # master-key suite honestly reports the headless-host gap.
+      - name: Prepare hermetic runner (robot pool)
+        if: ${{ inputs.runner == 'robot' }}
+        run: |
+          set -euo pipefail
+          wrapper="$RUNNER_TEMP/hermetic-run.sh"
+          cat > "$wrapper" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          scratch_home="$RUNNER_TEMP/hermetic-home"
+          scratch_tmp="$RUNNER_TEMP/hermetic-tmp"
+          mkdir -p "$scratch_home" "$scratch_tmp"
+          allow=(
+            "PATH=$PATH"
+            "HOME=$scratch_home"
+            "TMPDIR=$scratch_tmp"
+            "TZ=UTC"
+            "LANG=C.UTF-8"
+            "CI=true"
+            "USER=${USER:-ci}"
+          )
+          while IFS= read -r name; do
+            case "$name" in
+              GITHUB_*|RUNNER_*) allow+=("$name=${!name}") ;;
+            esac
+          done < <(compgen -e)
+          for name in ELIZA_CERT_SIGNING_KEY ANTHROPIC_API_KEY; do
+            [ -n "${!name:-}" ] && allow+=("$name=${!name}")
+          done
+          if command -v dbus-run-session >/dev/null 2>&1; then
+            exec env -i "${allow[@]}" dbus-run-session -- "$@"
+          fi
+          echo "hermetic-run: dbus-run-session unavailable; vault keychain-safety suites will see a headless host" >&2
+          exec env -i "${allow[@]}" "$@"
+          EOF
+          chmod +x "$wrapper"
+          echo "HERMETIC_RUN=$wrapper" >> "$GITHUB_ENV"
+
+      # The bundle ingests evidence silos produced by real lanes on the
+      # certified sha; a fresh runner has none, and certify:sign honestly
+      # refuses an empty verdicts document (proven by hosted run
+      # 31056825214). Run the same deterministic scenario lane the
+      # develop-exhaustive matrix runs — real runtime, deterministic model,
+      # keyless — which writes the reports/scenarios silo.
+      - name: Produce evidence — deterministic scenario lane
+        env:
+          TZ: UTC
+        run: ${HERMETIC_RUN:-} bun run --cwd packages/scenario-runner test:pr:e2e
+
+      # The orchestrated command is the complete chain — matrix → ingest →
+      # analyze → vision-qa → rollup → reviewer merge → sign → self-verify.
+      # The matrix is NOT skippable here: rollup scores lanes only from
+      # lanes/<lane>/result.json, which only the matrix step records (run
+      # 31059202533: --skip-matrix + no visual subjects → zero verdicts →
+      # honest refusal). Certification therefore means: the repo test matrix
+      # passes on the certified sha, recorded and signed.
+      - name: Run certification (orchestrated certify)
+        env:
+          ELIZA_CERT_SIGNING_KEY: ${{ secrets.ELIZA_CERT_SIGNING_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: >-
+          ${HERMETIC_RUN:-}
+          bun run --cwd packages/evidence certify --
+          --tier "${{ inputs.tier }}"
+          --reviewer-id "certification-hosted@github-actions"
+          --reviewer-kind agent
+          --matrix-arg --only=test
+          --matrix-arg --no-cloud
+          --matrix-arg --concurrency=3
+          --cert-out "$GITHUB_WORKSPACE/certification.json"
+
+      - name: Collect artifacts
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cert-out/evidence"
+          [ -f certification.json ] && cp certification.json "$RUNNER_TEMP/cert-out/certification.json"
+          bundle_dir=$(ls -dt evidence/runs/*/ 2>/dev/null | head -1 || true)
+          if [ -n "$bundle_dir" ]; then
+            cp -R "$bundle_dir" "$RUNNER_TEMP/cert-out/evidence/bundle"
+            echo "bundle: $bundle_dir"
+          else
+            echo "no bundle dir produced" > "$RUNNER_TEMP/cert-out/NO_BUNDLE.txt"
+          fi
+
+      - name: Upload certification + bundle (also on RED — the lane logs are the diagnosis)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: certification-${{ inputs.sha != '' && inputs.sha || github.sha }}
+          path: ${{ runner.temp }}/cert-out/
+          if-no-files-found: error
+          retention-days: 30

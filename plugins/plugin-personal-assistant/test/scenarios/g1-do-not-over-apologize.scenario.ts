@@ -3,8 +3,9 @@
  * a practical repair draft, but the response must not turn a late email into a
  * guilt lecture, self-abasing confession, therapy framing, or crisis escalation.
  */
+
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action-assertions.ts";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

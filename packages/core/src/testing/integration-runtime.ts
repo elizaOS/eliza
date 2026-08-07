@@ -1,12 +1,4 @@
-/**
- * @fileoverview Integration Runtime Factory
- *
- * Creates real AgentRuntime instances for integration testing with:
- * - Real PGLite/Postgres database (via @elizaos/plugin-sql)
- * - Real inference providers (Ollama, OpenAI, Anthropic, etc.)
- *
- * NO MOCKS. Tests require real infrastructure.
- */
+/** Creates integration runtimes backed by a real database and inference provider. */
 
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../logger";

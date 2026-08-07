@@ -1,3 +1,4 @@
+/** Verifies WalletSectionNav price surface through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

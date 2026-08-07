@@ -1,3 +1,4 @@
+/** Verifies runFirstRunFinish — router boundaries through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -78,7 +79,7 @@ function ports(): FirstRunFinishPorts {
   return {
     uiLanguage: "en",
     elizaCloudConnected: true,
-    handleCloudLogin: vi.fn(async () => {}),
+    handleInteractiveCloudLogin: vi.fn(async () => {}),
     setRuntimeState: vi.fn(),
     setTab: vi.fn(),
     completeFirstRun: vi.fn(),

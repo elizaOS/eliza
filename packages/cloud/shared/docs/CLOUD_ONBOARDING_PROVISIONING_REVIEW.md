@@ -259,7 +259,7 @@ nightly `hetzner-e2e`, which had been silently skipping/failing):
 
 | Topology | Tests | Vehicle |
 | --- | --- | --- |
-| Cloud agent (provisioned) | `packages/test/cloud-e2e` — provision, deprovision, stuck-cleanup, dashboard, **sleep-wake**, **scheduled-backup**, **suspend-resume**, **auth-errors** (11 specs / 15 tests) | mock stack (real router/worker/job-queue/provisioning svc) |
+| Cloud agent (provisioned) | `packages/cloud/e2e` — provision, deprovision, stuck-cleanup, dashboard, **sleep-wake**, **scheduled-backup**, **suspend-resume**, **auth-errors** (11 specs / 15 tests) | mock stack (real router/worker/job-queue/provisioning svc) |
 | Local agent + **cloud inference** | `packages/cloud/routing/src/resolve.test.ts` (**57 tests**: local/cloud/auto per-feature routing, Bearer/header proxy assembly) | vitest |
 | Automatic setup / local setup | `packages/app/test/ui-smoke/first-run-startup.spec.ts`, `packages/app/test/ui-smoke/onboarding-to-home.spec.ts`, `packages/shared/src/contracts/first-run-routes.test.ts` | Playwright + bun |
 | Reset / re-onboard | `packages/app/test/ui-smoke/reset-returns-to-onboarding.spec.ts` | Playwright |

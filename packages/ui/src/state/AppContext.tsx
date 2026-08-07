@@ -48,7 +48,7 @@ import {
   tryHandleTutorialText,
 } from "../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../utils";
-import { RESYNC_EVENT, type ResyncEventDetail } from "./AppContext.hooks";
+import { dispatchConversationResync } from "./AppContext.hooks";
 import {
   getActiveProfile,
   loadAgentProfileRegistry,
@@ -190,7 +190,6 @@ function AppProviderInner({
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,
-      startupPhase,
       startupError,
       authRequired,
       actionNotice,
@@ -208,7 +207,6 @@ function AppProviderInner({
     setFirstRunComplete,
     incrementFirstRunRevealNonce: setFirstRunUiRevealNonce_increment,
     setFirstRunLoading,
-    setStartupPhase,
     setStartupError,
     setAuthRequired,
     setActionNotice,
@@ -220,7 +218,6 @@ function AppProviderInner({
     setBackendConnection,
     resetBackendConnection,
     dismissSystemWarning,
-    startupStatus,
     lifecycleBusyRef,
     lifecycleActionRef,
   } = lifecycle;
@@ -736,8 +733,6 @@ function AppProviderInner({
     };
   }, [firstRun]);
 
-  // startupStatus is now derived in useLifecycleState
-
   // --- Command palette / emote picker / MCP / game / dropped files (via useMiscUiState) ---
   const miscUiHook = useMiscUiState();
   const {
@@ -925,7 +920,8 @@ function AppProviderInner({
     elizaCloudPreferDisconnectedUntilLoginRef,
     elizaCloudLoginPollTimer,
     pollCloudCredits,
-    handleCloudLogin,
+    handleCloudLoginRecovery,
+    handleInteractiveCloudLogin,
     handleCloudDisconnect,
     handleCloudSignOut,
   } = cloudHook;
@@ -1282,13 +1278,10 @@ function AppProviderInner({
         type: "active-conversation",
         conversationId: convId,
       });
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent<ResyncEventDetail>(RESYNC_EVENT, {
-            detail: { conversationId: convId },
-          }),
-        );
-      }
+      dispatchConversationResync({
+        conversationId: convId,
+        reason: "connection-recovered",
+      });
     });
   }, []);
 
@@ -1487,7 +1480,6 @@ function AppProviderInner({
     setAgentStatus,
     setAgentStatusIfChanged,
     setActionNotice,
-    setStartupPhase,
     setStartupError,
     setAuthRequired,
     setFirstRunComplete,
@@ -1549,7 +1541,7 @@ function AppProviderInner({
 
   // Memoize the coordinator handle so that unrelated re-renders (e.g. chatInput
   // keystrokes) don't produce a new object reference and bust the value useMemo below.
-  // The coordinator's computed fields (legacyPhase, loading, terminal, target, phase)
+  // The coordinator's computed fields derive from reducer state.
   // all derive from its reducer state, so state is the only dep we need.
   // biome-ignore lint/correctness/useExhaustiveDependencies: coordinator fields all derive from state
   const stableStartupCoordinator = useMemo(
@@ -1783,8 +1775,6 @@ function AppProviderInner({
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,
-      startupPhase,
-      startupStatus,
       startupError,
       // StartupCoordinator — the sole startup authority
       startupCoordinator: stableStartupCoordinator,
@@ -2124,7 +2114,8 @@ function AppProviderInner({
       handleCharacterStyleInput,
       handleCharacterMessageExamplesInput,
       completeFirstRun,
-      handleCloudLogin,
+      handleCloudLoginRecovery,
+      handleInteractiveCloudLogin,
       handleCloudDisconnect,
       handleCloudSignOut,
       switchAgentProfile,
@@ -2158,8 +2149,6 @@ function AppProviderInner({
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,
-      startupPhase,
-      startupStatus,
       startupError,
       stableStartupCoordinator,
       authRequired,
@@ -2502,7 +2491,8 @@ function AppProviderInner({
       handleCharacterStyleInput,
       handleCharacterMessageExamplesInput,
       completeFirstRun,
-      handleCloudLogin,
+      handleCloudLoginRecovery,
+      handleInteractiveCloudLogin,
       handleCloudDisconnect,
       handleCloudSignOut,
       switchAgentProfile,

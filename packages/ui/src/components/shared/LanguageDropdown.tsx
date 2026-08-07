@@ -75,8 +75,8 @@ export function LanguageDropdown({
             <span
               className={
                 variant === "titlebar"
-                  ? "uppercase tracking-[0.14em] opacity-80"
-                  : "hidden sm:inline uppercase tracking-widest opacity-80"
+                  ? "uppercase tracking-[0.14em]"
+                  : "hidden sm:inline uppercase tracking-widest"
               }
             >
               {current.id}

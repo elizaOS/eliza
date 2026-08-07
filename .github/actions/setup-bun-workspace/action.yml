@@ -5,7 +5,7 @@ inputs:
   bun-version:
     description: "Bun version to install"
     required: false
-    default: "canary"
+    default: "1.3.14"
   python-version:
     description: "Python version for node-gyp fallbacks"
     required: false
@@ -64,18 +64,17 @@ inputs:
   node-version:
     description: "Node.js version to set up when setup-node is true"
     required: false
-    default: "24"
+    default: "24.15.0"
 
 runs:
   using: "composite"
   steps:
     # Self-hosted (hetzner-robot) runners are not guaranteed to expose `node`
-    # on the step PATH, and the very next step (turbo-cache-github ->
-    # turbo-cache-key.mjs) invokes `node` directly. Without this, jobs that
-    # rely solely on this composite for their toolchain (feed-env-audit and
-    # voice-workbench) fail with
+    # on the step PATH, and the very next step (turbo-cache-key.mjs) invokes
+    # `node` directly. Without this, jobs that
+    # rely solely on this composite for their toolchain fail with
     # "node: command not found" on runners missing a system Node. setup-node is
-    # idempotent, so callers that already ran it (keyless-harness, the audits)
+    # idempotent, so callers that already ran it (model-provider-runtime, the audits)
     # just re-select the same version. Toggle off via setup-node: "false".
     - name: Setup Node.js
       if: ${{ inputs.setup-node == 'true' }}
@@ -85,12 +84,11 @@ runs:
         node-version: ${{ inputs.node-version }}
 
     # Persist Turbo's local filesystem cache (.turbo) directly from this
-    # composite instead of nesting turbo-cache-github inside it. actions/cache's
+    # composite instead of nesting another composite. actions/cache's
     # post step loses `path` through a doubly nested composite, so restores ran
     # but every save ended with "Input required and not supplied: path" and the
-    # repository never populated a turbo-Linux-* entry. Keep the standalone
-    # shim for workflows that invoke it directly; setup-bun-workspace must
-    # inline the same pinned cache contract so its post step can save.
+    # repository never populated a turbo-Linux-* entry. setup-bun-workspace
+    # owns the single cache contract so its post step can save.
     #
     # Include github.job in the primary key because every setup consumer races
     # to save at post-job time. Without a lane suffix, a fast non-Turbo lane
@@ -136,7 +134,7 @@ runs:
       # don't let an ISA-incompatible download turn into a hard job failure —
       # hosted runners are never in this branch and keep fail-fast behavior.
       continue-on-error: ${{ runner.environment == 'self-hosted' }}
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: ${{ inputs.python-version }}
 
@@ -178,6 +176,34 @@ runs:
           || "$python_bin" -m pip install --user setuptools \
           || "$python_bin" -m pip install --break-system-packages setuptools
 
+    # unattended-upgrades runs continuously on the persistent self-hosted
+    # runners, so an apt-get that starts while it holds the dpkg frontend lock
+    # aborts at once with exit 100 and fails a lane whose only fault was timing.
+    # Retry loops around our own apt calls cannot cover `playwright install
+    # --with-deps`, which spawns an apt-get this action passes no flags to. A
+    # config drop-in applies to every apt-get in the job, ours and Playwright's,
+    # so they wait for the lock holder instead of dying on contact.
+    - name: Let apt wait for the dpkg lock
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |
+        if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
+          echo "::warning::passwordless sudo unavailable; apt lock contention stays fatal for this job"
+          exit 0
+        fi
+        if [ ! -d /etc/apt/apt.conf.d ]; then
+          echo "::notice::no apt configuration directory; nothing to configure on this runner"
+          exit 0
+        fi
+        # A runner this cannot be written on still installs fine whenever the
+        # lock is free, so warn rather than fail the whole setup here.
+        if printf 'DPkg::Lock::Timeout "600";\n' \
+          | sudo tee /etc/apt/apt.conf.d/99-eliza-ci-dpkg-lock-timeout >/dev/null; then
+          echo "apt will wait up to 600s for the dpkg frontend lock"
+        else
+          echo "::warning::could not write the apt dpkg lock timeout; apt lock contention stays fatal for this job"
+        fi
+
     - name: Install protoc
       # protoc is required even when install-native-deps=false because Rust
       # plugins (plugin-{discord,groq,openai,sql,whatsapp}) depend on the
@@ -208,7 +234,7 @@ runs:
             echo "Disabling unrelated Microsoft apt source: ${source_file}"
             sudo mv "${source_file}" "${source_file}.disabled"
           done < <(grep -RIl "packages.microsoft.com" /etc/apt/sources.list.d 2>/dev/null || true)
-          APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+          APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=600)
           for attempt in 1 2 3; do
             if sudo apt-get "${APT_ARGS[@]}" update && \
                sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing protobuf-compiler; then
@@ -280,7 +306,7 @@ runs:
           echo "Disabling unrelated Microsoft apt source: ${source_file}"
           sudo mv "${source_file}" "${source_file}.disabled"
         done < <(grep -RIl "packages.microsoft.com" /etc/apt/sources.list.d 2>/dev/null || true)
-        APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+        APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=600)
         for attempt in 1 2 3; do
           if sudo apt-get "${APT_ARGS[@]}" update && \
              sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing \
@@ -297,9 +323,17 @@ runs:
         fi
 
     - name: Setup Bun
-      uses: oven-sh/setup-bun@v2
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      env:
+        # setup-bun installs via os.homedir(), so per-matrix homes prevent
+        # concurrent executable replacement on a shared runner.
+        # runner.name is human-readable and may contain spaces, which setup-bun's
+        # executable probe cannot safely consume as part of the home path.
+        HOME: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
+        USERPROFILE: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
       with:
         bun-version: ${{ inputs.bun-version }}
+        no-cache: true
 
     - name: Cache Bun install
       # Cache the Bun install store on every OS, Linux included (#12338). Long
@@ -326,34 +360,11 @@ runs:
       run: |
         install_command="${{ inputs.install-command }}"
         for attempt in 1 2; do
-          install_log="$(mktemp)"
-          if bash -lc "$install_command" 2>&1 | tee "$install_log"; then
-            rm -f "$install_log"
+          if bash -lc "$install_command"; then
             exit 0
+          else
+            install_status=$?
           fi
-          install_status=${PIPESTATUS[0]}
-          if grep -q "lockfile had changes, but lockfile is frozen" "$install_log" && \
-             [[ "$install_command" == *"--frozen-lockfile"* ]]; then
-            fallback_command="${install_command/--frozen-lockfile/--no-frozen-lockfile}"
-            echo "::warning::Bun reported frozen lockfile drift; falling back to a non-frozen install."
-            if bash -lc "$fallback_command"; then
-              # The frozen install above is the canonical lockfile-drift signal.
-              # When it fails we fall back to a non-frozen install — but Bun
-              # canary (this repo tracks `bun-version: canary`) reserializes
-              # bun.lock byte-for-byte between versions even when the resolved
-              # dependency graph is identical, so a `git diff` here fails on
-              # serialization noise rather than real drift. Restore the committed
-              # lockfile after installing; the dedicated lockfile-drift gates
-              # (cloud-gateway-*, cache-key-stability) still catch genuine drift.
-              if ! git diff --quiet -- bun.lock; then
-                echo "::warning::bun.lock changed during install (bun-canary reserialization); restoring the committed lockfile."
-                git checkout -- bun.lock
-              fi
-              rm -f "$install_log"
-              exit 0
-            fi
-          fi
-          rm -f "$install_log"
           if [ "$attempt" -eq 2 ]; then
             exit "$install_status"
           fi

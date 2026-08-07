@@ -5,10 +5,6 @@ import { defineConfig } from "vitest/config";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appCoreSrcRoot = path.resolve(__dirname, "../../src");
-const remotePluginSrcRoot = path.resolve(
-  __dirname,
-  "../../../plugin-remote-manifest/src",
-);
 const sharedSrcRoot = path.resolve(__dirname, "../../../shared/src");
 const coreSrcRoot = path.resolve(__dirname, "../../../core/src");
 const loggerSrcRoot = path.resolve(__dirname, "../../../logger/src");
@@ -39,14 +35,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/app-core\/(.*)$/,
         replacement: path.join(appCoreSrcRoot, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-remote-manifest$/,
-        replacement: path.join(remotePluginSrcRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-remote-manifest\/(.*)$/,
-        replacement: path.join(remotePluginSrcRoot, "$1"),
       },
       {
         find: /^@elizaos\/shared$/,

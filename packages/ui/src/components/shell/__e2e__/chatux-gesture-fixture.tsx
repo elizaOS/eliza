@@ -17,7 +17,7 @@
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import { TopicChipsBar } from "../TopicChipsBar";
+import { ShellTopicChipsBar } from "../TopicChipsBar";
 import { TopicGroup } from "../TopicGroup";
 
 function Bubbles({ lines }: { lines: string[] }): React.JSX.Element {
@@ -39,7 +39,7 @@ function InteractiveTopicGroup(): React.JSX.Element {
   const [collapsed, setCollapsed] = React.useState(false);
   return (
     <div data-testid="topic-group-host">
-      <TopicChipsBar topics={["billing", "deployment", "latency"]} />
+      <ShellTopicChipsBar topics={["billing", "deployment", "latency"]} />
       <TopicGroup
         topic="deployment"
         count={3}

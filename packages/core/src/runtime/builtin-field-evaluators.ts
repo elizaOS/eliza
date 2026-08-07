@@ -33,7 +33,7 @@ import type { ResponseHandlerFieldEvaluator } from "./response-handler-field-eva
 /**
  * Stage-1 envelope `emotion` enum value set — kept in lock-step with
  * `EXPRESSIVE_EMOTION_ENUM` exported from
- * `plugins/plugin-local-inference/src/services/voice/expressive-tags.ts`.
+ * `/plugin-local-inference/services/voice/expressive-tags.ts`.
  *
  * It is **redeclared here** instead of imported because `@elizaos/core` may not
  * depend on `@elizaos/plugin-local-inference` (dependency direction is inward
@@ -173,9 +173,9 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "candidateActionNames",
 	description:
-		"Likely UPPER_SNAKE_CASE action names. Prefer available_actions; confident unlisted names ok. Life-management (goals/todos/reminders/routines) -> the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER); hint, not a claim. Empty when no action likely.",
+		"Likely UPPER_SNAKE_CASE action names. Prefer available_actions; confident unlisted names ok. UI navigation plus view-backed Notes and native-device operations -> VIEWS; calendar-event reads/writes -> CALENDAR. Life-management (goals/todos/reminders/routines) -> the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER); hint, not a claim. Empty when no action likely.",
 	descriptionCompressed:
-		"Likely UPPER_SNAKE_CASE action names; empty when no action likely.",
+		"Likely UPPER_SNAKE_CASE action names. UI navigation and view-backed Notes/device operations -> VIEWS; calendar events -> CALENDAR. Empty only when no action is needed.",
 	priority: 50,
 	schema: {
 		type: "array",

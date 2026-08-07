@@ -1,3 +1,4 @@
+/** Verifies useAppShellState favorites retry-after-ready through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * useAppShellState server-favorites hydration: single retry-after-ready

@@ -2098,7 +2098,7 @@ public class ElizaAgentService extends Service {
             // llama.cpp fork's fused native lib under agent/{abi}/
             // (libelizainference.so), opt the bun process into loading it
             // directly via bun:ffi — see
-            // eliza/plugins/plugin-aosp-local-inference/src/aosp-local-inference-bootstrap.ts
+            // eliza/plugins/plugin-native-inference/src/aosp-local-inference-bootstrap.ts
             // (tryBuildAospFusedTextLoader) and aosp-llama-paths.ts
             // (isAospEnabled reads ELIZA_LOCAL_LLAMA).
             // This is required, not optional: the eliza-1 model tiers are
@@ -2170,7 +2170,7 @@ public class ElizaAgentService extends Service {
             boolean delegateToBionicHost =
                 fusedInferenceBundled && abiGgmlVulkan.isFile() && bionicJniBridgeBundled;
             // #11760: export the device RAM class + idle-unload default so the
-            // bun agent's in-process loader (plugin-aosp-local-inference) applies
+            // bun agent's in-process loader (plugin-native-inference) applies
             // the same inference memory policy as the bionic host. Operator env
             // always wins.
             InferenceMemoryPolicy.RamClass inferenceRamClass = inferenceRamClass();

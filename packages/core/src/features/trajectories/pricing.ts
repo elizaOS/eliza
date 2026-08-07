@@ -16,7 +16,7 @@
  * table is auditable. Update both the entry and the corresponding source
  * comment if a provider changes their rate card.
  */
-import { logger } from "../../logger";
+import { ElizaError } from "../../errors";
 import { isLocalProvider as isLocalProviderName } from "../../runtime/action-model-routing";
 import { readEnv } from "../../utils/read-env";
 import type {
@@ -351,10 +351,9 @@ export const MODEL_CONTEXT_WINDOW_TOKENS: Record<string, number> = {
  *
  * Overrides are merged BEFORE the static tables in both lookups, so an env
  * entry wins over a static entry with the same key and env keys participate
- * in the same longest-substring fallback as static keys. Malformed JSON or
- * invalid entries are skipped with a warning — a bad override must never
- * crash the runtime, and unknown ids keep the safe degraded behavior
- * (cost 0 + warn, default context window).
+ * in the same longest-substring fallback as static keys. Malformed documents
+ * and entries fail fast so a broken operator override cannot silently fall back
+ * to a different price or context window.
  *
  * Parses are memoized per raw env string so hot-path lookups stay cheap while
  * tests (and long-lived processes with mutated env) still observe changes.
@@ -374,16 +373,20 @@ function parseJsonObject(
 		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
 			return parsed as Record<string, unknown>;
 		}
-		logger.warn(
-			`[pricing] ${envName} must be a JSON object of model-id keys — override ignored`,
-		);
+		throw new ElizaError(`${envName} must be a JSON object`, {
+			code: "INVALID_TRAJECTORY_PRICING_OVERRIDE",
+			context: { envName },
+		});
 	} catch (error) {
-		logger.warn(
-			{ error: error instanceof Error ? error.message : String(error) },
-			`[pricing] ${envName} is not valid JSON — override ignored`,
-		);
+		// error-policy:J2 Environment overrides are operator-controlled data; retain
+		// the parser cause and prevent an invalid override from looking unapplied.
+		if (error instanceof ElizaError) throw error;
+		throw new ElizaError(`${envName} is not valid JSON`, {
+			code: "INVALID_TRAJECTORY_PRICING_OVERRIDE",
+			cause: error,
+			context: { envName },
+		});
 	}
-	return null;
 }
 
 function isNonNegativeFinite(value: unknown): value is number {
@@ -411,11 +414,13 @@ function getPriceOverrides(): Record<string, ModelPriceUsdPerMTokens> {
 				!isNonNegativeFinite(record.input) ||
 				!isNonNegativeFinite(record.output)
 			) {
-				logger.warn(
-					{ modelId },
-					"[pricing] MODEL_PRICES_JSON entry needs numeric input/output — entry skipped",
+				throw new ElizaError(
+					"MODEL_PRICES_JSON entry needs numeric input and output rates",
+					{
+						code: "INVALID_TRAJECTORY_PRICING_OVERRIDE",
+						context: { envName: "MODEL_PRICES_JSON", modelId },
+					},
 				);
-				continue;
 			}
 			value[modelId] = {
 				provider:
@@ -447,11 +452,13 @@ function getContextWindowOverrides(): Record<string, number> {
 	if (parsed) {
 		for (const [modelId, tokens] of Object.entries(parsed)) {
 			if (!isNonNegativeFinite(tokens) || tokens < 1) {
-				logger.warn(
-					{ modelId },
-					"[pricing] MODEL_CONTEXT_WINDOWS_JSON entry needs a positive token count — entry skipped",
+				throw new ElizaError(
+					"MODEL_CONTEXT_WINDOWS_JSON entry needs a positive token count",
+					{
+						code: "INVALID_TRAJECTORY_PRICING_OVERRIDE",
+						context: { envName: "MODEL_CONTEXT_WINDOWS_JSON", modelId },
+					},
 				);
-				continue;
 			}
 			value[modelId] = Math.floor(tokens);
 		}
@@ -589,12 +596,9 @@ export function lookupModelPrice(
 /**
  * Compute the USD cost of a single LLM call.
  *
- * Returns 0 when:
- *  - `usage` is undefined or all-zero,
- *  - the model is unknown (cost computation is observability; it must
- *    never crash the runtime),
- *  - the provider is a known local tier (Ollama / LM Studio / llama.cpp /
- *    "local") — local cost is a real zero, not a missing price.
+ * Returns `undefined` when usage or hosted-model pricing is unavailable. A
+ * known local tier (Ollama / LM Studio / llama.cpp / "local") returns a real
+ * zero because no hosted inference charge exists.
  *
  * When the model is unknown and the provider is *not* local, the optional
  * `logger.warn` is invoked once per call. Callers in hot paths can pass
@@ -617,25 +621,32 @@ export function computeCallCostUsd(
 		local?: boolean;
 		logger?: TrajectoryRuntimeLogger;
 	} = {},
-): number {
-	if (!usage) return 0;
+): number | undefined {
+	if (!usage) return undefined;
+	const tokenValues = [
+		usage.promptTokens,
+		usage.completionTokens,
+		usage.cacheReadInputTokens,
+		usage.cacheCreationInputTokens,
+		usage.totalTokens,
+	];
+	if (!tokenValues.some((value) => typeof value === "number")) return undefined;
 
 	const provider = options.provider?.toLowerCase().trim();
 	const isLocalProvider = isLocalTierProvider(provider, options.local);
+	if (isLocalProvider) return 0;
 
 	const lookup = lookupModelPrice(modelName);
 	if (!lookup) {
-		if (!isLocalProvider) {
-			options.logger?.warn?.(
-				{
-					modelName: modelName ?? "(undefined)",
-					provider: provider ?? "(unknown)",
-					priceTableId: PRICE_TABLE_ID,
-				},
-				"[pricing] no price entry — cost_usd defaulted to 0",
-			);
-		}
-		return 0;
+		options.logger?.warn?.(
+			{
+				modelName: modelName ?? "(undefined)",
+				provider: provider ?? "(unknown)",
+				priceTableId: PRICE_TABLE_ID,
+			},
+			"[pricing] no price entry — cost_usd omitted",
+		);
+		return undefined;
 	}
 
 	const { price } = lookup;
@@ -646,10 +657,16 @@ export function computeCallCostUsd(
 	const completion = usage.completionTokens ?? 0;
 
 	const inputCost = (nonCachedInput / 1_000_000) * price.input;
-	const cacheReadCost =
-		(cacheRead / 1_000_000) * (price.cacheRead || price.input);
-	const cacheWriteCost =
-		(cacheWrite / 1_000_000) * (price.cacheWrite || price.input);
+	const cacheReadRate =
+		price.cacheRead !== undefined && price.cacheRead > 0
+			? price.cacheRead
+			: price.input;
+	const cacheWriteRate =
+		price.cacheWrite !== undefined && price.cacheWrite > 0
+			? price.cacheWrite
+			: price.input;
+	const cacheReadCost = (cacheRead / 1_000_000) * cacheReadRate;
+	const cacheWriteCost = (cacheWrite / 1_000_000) * cacheWriteRate;
 	const outputCost = (completion / 1_000_000) * price.output;
 
 	return inputCost + cacheReadCost + cacheWriteCost + outputCost;

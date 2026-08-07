@@ -230,6 +230,7 @@ describe("NOTIFY on the planner action surface", () => {
       getService: vi.fn((t: string) =>
         t === ServiceType.NOTIFICATION ? service : null,
       ),
+      reportError: vi.fn(),
       logger: {
         debug: vi.fn(),
         info: vi.fn(),

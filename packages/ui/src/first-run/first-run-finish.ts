@@ -49,6 +49,7 @@ import {
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import type { CloudLoginOptions } from "../state/types";
 import { isCloudStatusAuthenticated } from "../utils";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
 import {
@@ -79,12 +80,13 @@ const RUNNING_CLOUD_AGENT_STATUS = "running";
 export interface FirstRunFinishPorts {
   uiLanguage: UiLanguage;
   elizaCloudConnected: boolean;
-  handleCloudLogin: (
-    prePoppedWindow?: Window | null,
-    options?: CloudLoginOptions,
-  ) => Promise<void>;
-  /** Pre-opened popup window for the cloud-login redirect (popup-blocker safe). */
-  preOpenWindow?: () => Window | null;
+  /**
+   * Interactive Cloud login entry point: pre-opens the named popup window
+   * itself, so the first-run flow cannot omit it (#17129). Use this for
+   * user-facing login; the deliberate same-tab boot-recovery path lives on
+   * the separately-named recovery entry point (use-boot-recovery-conductor).
+   */
+  handleInteractiveCloudLogin: (options?: CloudLoginOptions) => Promise<void>;
   setRuntimeState: (
     key: FirstRunRuntimeStateKey,
     value: string | boolean,
@@ -411,8 +413,7 @@ async function finishLocal(
   if (firstRunNeedsCloudConnect(sourceDraft, ports.elizaCloudConnected)) {
     ports.setRuntimeState("firstRunRuntimeTarget", "elizacloud-hybrid");
     ports.setRuntimeState("firstRunProvider", "elizacloud");
-    const authWindow = ports.preOpenWindow?.() ?? null;
-    await ports.handleCloudLogin(authWindow);
+    await ports.handleInteractiveCloudLogin();
     const cloudStatus = await getCloudStatusIfSupported();
     let cloudConnectedForFinish = isCloudStatusAuthenticated(
       Boolean(cloudStatus?.connected),
@@ -741,9 +742,12 @@ export async function bindCloudAgent(
           })
           .then((res) => {
             if (!res.success) {
-              console.warn(
-                `[firstRunFinish] shared bridge delete failed (leaked row ${sharedAgentId}): ${res.error ?? "unknown"}`,
-              );
+              reportRendererDiagnostic({
+                scope: "first-run.shared-bridge-cleanup",
+                error: new Error(res.error ?? "Shared bridge cleanup failed"),
+                severity: "warning",
+                context: { sharedAgentId },
+              });
             }
           });
       },
@@ -822,8 +826,7 @@ export async function listOrAutoProvisionCloudAgent(
     firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish) ||
     !getCloudAuthToken(client)
   ) {
-    const authWindow = ports.preOpenWindow?.() ?? null;
-    await ports.handleCloudLogin(authWindow, { requireClientAuth: true });
+    await ports.handleInteractiveCloudLogin({ requireClientAuth: true });
     // A landed bearer IS the proof every following step runs on — the old
     // post-login status re-probe's result was overridden by exactly this
     // token check, so the extra /api/v1/user round trip (~0.8s on staging)

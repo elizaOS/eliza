@@ -24,7 +24,6 @@ const defaultTestGreps = [
   "desktop app tool tasks",
   "desktop app tool plugins",
   "desktop app tool skills",
-  "desktop app tool fine tuning",
   "desktop app tool trajectories",
   "desktop app tool relationships",
   "desktop app tool memories",

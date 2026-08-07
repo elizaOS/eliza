@@ -1,3 +1,4 @@
+/** Verifies resolveChatVoiceSpeakerLabel through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Covers chat voice-speaker provenance: `resolveChatVoiceSpeakerLabel` name/

@@ -20,13 +20,13 @@ import {
 import { detectPasswordManagerBackend } from "@elizaos/plugin-browser/password-manager-bridge";
 import { detectHealthBackend } from "@elizaos/plugin-health";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../test/helpers/live-provider";
 import {
   expectActionCalled,
   expectActionNotCalled,
 } from "../helpers/action-assertions.js";
+import { itIf } from "../helpers/conditional-tests.ts";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
+import { selectLiveProvider } from "../helpers/live-provider";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
 // ---------------------------------------------------------------------------
@@ -62,18 +62,16 @@ describe("Action Invocation E2E", () => {
   let lifeOps: LifeOpsModule;
   let registeredActions: Set<string>;
   let appBlockingAvailable = false;
-  let calendlyConfigured = false;
   let googleCalendarWritable = false;
   let healthBackendAvailable = false;
   let passwordManagerAvailable = false;
-  let remoteDesktopAvailable = false;
   let twilioConfigured = false;
   let websiteBlockingAvailable = false;
   let xReadConnected = false;
   let previousDisableLifeOpsScheduler: string | undefined;
 
   // Connectors / actions / native backends required by this suite are
-  // environment-dependent (Twilio, Calendly, X, Google Calendar, native
+  // environment-dependent (Twilio, X, Google Calendar, native
   // app/website blockers, etc.). Default behavior is to warn loudly and
   // skip — CI environments cannot configure all third-party credentials.
   // Set ELIZA_REQUIRE_ALL_CONNECTORS=1 in dev to surface gaps as failures.
@@ -253,14 +251,10 @@ describe("Action Invocation E2E", () => {
 
     const service = new lifeOps.LifeOpsService(runtime);
     twilioConfigured = Boolean(lifeOps.readTwilioCredentialsFromEnv());
-    calendlyConfigured = Boolean(lifeOps.readCalendlyCredentialsFromEnv());
     healthBackendAvailable =
       (await detectHealthBackend().catch(() => "none")) !== "none";
     passwordManagerAvailable =
       (await detectPasswordManagerBackend().catch(() => "none")) !== "none";
-    remoteDesktopAvailable =
-      (await lifeOps.detectRemoteDesktopBackend().catch(() => "none")) !==
-      "none";
     appBlockingAvailable = Boolean(
       (await lifeOps.getAppBlockerStatus().catch(() => null))?.available,
     );
@@ -290,7 +284,7 @@ describe("Action Invocation E2E", () => {
       `[action-e2e] Disabled evaluators for action-only assertions: ${removedEvaluators.join(", ") || "(none)"}`,
     );
     logger.info(
-      `[action-e2e] Feature availability — appBlocking=${appBlockingAvailable}, calendly=${calendlyConfigured}, googleCalendarWritable=${googleCalendarWritable}, health=${healthBackendAvailable}, passwordManager=${passwordManagerAvailable}, remoteDesktop=${remoteDesktopAvailable}, twilio=${twilioConfigured}, xRead=${xReadConnected}`,
+      `[action-e2e] Feature availability — appBlocking=${appBlockingAvailable}, googleCalendarWritable=${googleCalendarWritable}, health=${healthBackendAvailable}, passwordManager=${passwordManagerAvailable}, twilio=${twilioConfigured}, xRead=${xReadConnected}`,
     );
   }, 180_000);
 
@@ -889,46 +883,6 @@ describe("Action Invocation E2E", () => {
         await withHarness(async (h) => {
           await h.send("Look up my GitHub password.");
           expectAnySelectedAction(h, ["PASSWORD_MANAGER"]);
-        });
-      },
-      DEFAULT_TEST_TIMEOUT_MS,
-    );
-
-    itIf(canRunLiveTests)(
-      "remote desktop request triggers REMOTE_DESKTOP",
-      async () => {
-        if (!requireAction("REMOTE_DESKTOP")) return;
-        if (
-          !requireEnvironmentCapability(
-            remoteDesktopAvailable,
-            "remote desktop backend",
-          )
-        )
-          return;
-        await withHarness(async (h) => {
-          await h.send("Start a remote desktop session.");
-          expectAnySelectedAction(h, ["REMOTE_DESKTOP"]);
-        });
-      },
-      DEFAULT_TEST_TIMEOUT_MS,
-    );
-
-    itIf(canRunLiveTests)(
-      "calendly booking link request triggers CALENDAR",
-      async () => {
-        if (!requireAction("CALENDAR")) return;
-        if (
-          !requireEnvironmentCapability(
-            calendlyConfigured,
-            "Calendly credentials",
-          )
-        )
-          return;
-        await withHarness(async (h) => {
-          await h.send(
-            "Create a single-use Calendly booking link for https://api.calendly.com/event_types/abc.",
-          );
-          expectAnySelectedAction(h, ["CALENDAR"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,

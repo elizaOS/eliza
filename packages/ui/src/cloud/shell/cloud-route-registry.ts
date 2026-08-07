@@ -3,6 +3,7 @@
  * their public/authed access policy, consumed by the CloudRouterShell.
  */
 import type { ComponentType, LazyExoticComponent, ReactNode } from "react";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 
 export const CLOUD_PUBLIC_ROUTE_ACCESS = "cloud-public-route-reviewed" as const;
 
@@ -101,9 +102,12 @@ export function registerCloudRoute(def: CloudRouteDef): void {
     existing.public !== true &&
     def.public === true
   ) {
-    console.warn(
-      `[cloud-route-registry] Route "${def.path}" was re-registered from private to public. Use CLOUD_PUBLIC_ROUTE_ACCESS only for intentionally public routes.`,
-    );
+    reportRendererDiagnostic({
+      scope: "cloud-routes.private-to-public-reregistration",
+      error: new Error("A private cloud route was re-registered as public"),
+      severity: "warning",
+      context: { path: def.path },
+    });
   }
   const entry: CloudRouteEntry = { ...def, order: store.seq };
   store.seq += 1;

@@ -1,3 +1,4 @@
+/** Verifies AppRunsWidget through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // AppRunsWidget polling gates: skips the app-run poll on limited cloud agent

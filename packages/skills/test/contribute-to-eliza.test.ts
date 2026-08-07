@@ -153,7 +153,7 @@ describe("contribute-to-eliza skill structure", () => {
     assert.match(source, /source\.sha256/);
     assert.match(source, /revisionStatus.*committed/);
     assert.match(source, /never substitute.*guessed SHA/i);
-    assert.match(source, /SECURITY\.md/);
+    assert.match(source, /packages\/docs\/security\.md/);
     assert.match(source, /origin\/develop/);
     assert.match(source, /package-local `AGENTS\.md` or `CLAUDE\.md`/);
     assert.match(source, /manually inspect every trajectory, log, screenshot/);
@@ -328,13 +328,33 @@ describe("live report parsing", () => {
     }
   });
 
-  it("flattens paginated gh output and rejects malformed pages", () => {
+  it("parses ordered newline-delimited records from every gh page", () => {
     assert.deepStrictEqual(
-      parsePaginatedJson('[[{"number":1}],[{"number":2}]]'),
-      [{ number: 1 }, { number: 2 }],
+      parsePaginatedJson(
+        '{"number":1,"body":"first\\nrecord"}\n{"number":2}\n',
+        "repos/elizaOS/eliza/issues",
+      ),
+      [
+        { number: 1, body: "first\nrecord" },
+        { number: 2 },
+      ],
     );
-    assert.throws(() => parsePaginatedJson('{"number":1}'), /array of pages/);
-    assert.throws(() => parsePaginatedJson('[[{"number":1}],{}]'), /page 2/);
+    assert.deepStrictEqual(parsePaginatedJson("\n\r\n"), []);
+  });
+
+  it("rejects malformed or truncated paginated records with endpoint context", () => {
+    assert.throws(
+      () =>
+        parsePaginatedJson(
+          '{"number":1}\n{"number":',
+          "repos/elizaOS/eliza/issues?state=open",
+        ),
+      /malformed JSON.*repos\/elizaOS\/eliza\/issues\?state=open.*line 2/,
+    );
+    assert.throws(
+      () => parsePaginatedJson(null as unknown as string, "issues endpoint"),
+      /did not return text output for issues endpoint/,
+    );
   });
 
   it("accepts exact provider/model pairs and rejects placeholders", () => {
@@ -681,7 +701,7 @@ describe("live report parsing", () => {
 });
 
 describe("live report behavior", () => {
-  it("invokes gh only through paginated GET requests", () => {
+  it("invokes gh only through 2.45-compatible paginated GET requests", () => {
     let invocation:
       | {
           command: string;
@@ -695,7 +715,7 @@ describe("live report behavior", () => {
         invocation = { command, args, options };
         return {
           status: 0,
-          stdout: '[[{"number":1}],[{"number":2}]]',
+          stdout: '{"number":1}\n{"number":2}\n',
           stderr: "",
         };
       },
@@ -703,16 +723,172 @@ describe("live report behavior", () => {
 
     assert.deepStrictEqual(pages, [{ number: 1 }, { number: 2 }]);
     assert.strictEqual(invocation?.command, "gh");
-    assert.deepStrictEqual(invocation?.args.slice(0, 5), [
+    assert.deepStrictEqual(invocation?.args, [
       "api",
       "--method",
       "GET",
       "--paginate",
-      "--slurp",
+      "--jq",
+      ".[]",
+      "repos/elizaOS/eliza/issues?state=open&per_page=100",
     ]);
     assert.ok(
       !invocation?.args.some((argument) => /POST|PATCH|DELETE/.test(argument)),
     );
+  });
+
+  it("fails command and spawn errors with endpoint context", () => {
+    const endpoint = "repos/elizaOS/eliza/issues?state=open&per_page=100";
+    assert.throws(
+      () =>
+        readGhPages(endpoint, () => ({
+          status: 1,
+          stdout: '{"number":1}\n',
+          stderr: "HTTP 502",
+        })),
+      /gh api failed for repos\/elizaOS\/eliza\/issues.*HTTP 502/,
+    );
+    const spawnError = new Error("spawn gh ENOENT");
+    assert.throws(
+      () =>
+        readGhPages(endpoint, () => ({
+          status: null,
+          stdout: "",
+          stderr: "",
+          error: spawnError,
+        })),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message.includes(`could not start for ${endpoint}`) &&
+        error.cause === spawnError,
+    );
+  });
+
+  it("retries transient reads without accepting partial output", () => {
+    for (const transientFailure of [
+      'Get "https://api.github.com/repos/elizaOS/eliza/issues": net/http: TLS handshake timeout',
+      "gh: HTTP 503: Service Unavailable",
+    ]) {
+      const invocations: string[][] = [];
+      const delays: number[] = [];
+      const outcomes = [
+        {
+          status: 1,
+          stdout: '{"number":999,"partial":true}\n',
+          stderr: transientFailure,
+        },
+        {
+          status: 0,
+          stdout: '{"number":1}\n{"number":2}\n',
+          stderr: "",
+        },
+      ];
+
+      const pages = readGhPages(
+        "repos/elizaOS/eliza/issues?state=open&per_page=100",
+        (_command, args) => {
+          invocations.push(args);
+          const outcome = outcomes.shift();
+          assert.ok(outcome);
+          return outcome;
+        },
+        (durationMs) => delays.push(durationMs),
+      );
+
+      assert.deepStrictEqual(pages, [{ number: 1 }, { number: 2 }]);
+      assert.deepStrictEqual(delays, [250]);
+      assert.strictEqual(invocations.length, 2);
+      assert.ok(
+        invocations.every(
+          (args) =>
+            args[0] === "api" &&
+            args[1] === "--method" &&
+            args[2] === "GET" &&
+            !args.some((argument) => /POST|PATCH|DELETE/.test(argument)),
+        ),
+      );
+    }
+  });
+
+  it("bounds transient retries and reports the exhausted attempt count", () => {
+    let invocations = 0;
+    const delays: number[] = [];
+    const endpoint = "repos/elizaOS/eliza/issues/1/comments?per_page=100";
+
+    assert.throws(
+      () =>
+        readGhPages(
+          endpoint,
+          (_command, args) => {
+            invocations += 1;
+            assert.deepStrictEqual(args.slice(0, 6), [
+              "api",
+              "--method",
+              "GET",
+              "--paginate",
+              "--jq",
+              ".[]",
+            ]);
+            return {
+              status: 1,
+              stdout: "",
+              stderr: "Get api.github.com: connection reset by peer",
+            };
+          },
+          (durationMs) => delays.push(durationMs),
+        ),
+      /gh api failed for repos\/elizaOS\/eliza\/issues\/1\/comments\?per_page=100 after 3 attempts/,
+    );
+    assert.strictEqual(invocations, 3);
+    assert.deepStrictEqual(delays, [250, 500]);
+  });
+
+  it("does not retry non-transient failures, spawn errors, or malformed output", () => {
+    const endpoint = "repos/elizaOS/eliza/issues?state=open&per_page=100";
+    for (const scenario of [
+      {
+        expected: /HTTP 401: Bad credentials/,
+        result: {
+          status: 1,
+          stdout: "",
+          stderr: "gh: HTTP 401: Bad credentials",
+        },
+      },
+      {
+        expected: /gh api could not start for/,
+        result: {
+          error: new Error("spawn gh ENOENT"),
+          status: null,
+          stdout: "",
+          stderr: "",
+        },
+      },
+      {
+        expected: /malformed JSON .* at output line 2/,
+        result: {
+          status: 0,
+          stdout: '{"number":1}\nnot-json\n',
+          stderr: "",
+        },
+      },
+    ]) {
+      let invocations = 0;
+      const delays: number[] = [];
+      assert.throws(
+        () =>
+          readGhPages(
+            endpoint,
+            () => {
+              invocations += 1;
+              return scenario.result;
+            },
+            (durationMs) => delays.push(durationMs),
+          ),
+        scenario.expected,
+      );
+      assert.strictEqual(invocations, 1);
+      assert.deepStrictEqual(delays, []);
+    }
   });
 
   it("filters bots, sensitive or claimed work and audits disclosures and evidence", () => {

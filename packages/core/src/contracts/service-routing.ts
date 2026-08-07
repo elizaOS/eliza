@@ -1,12 +1,14 @@
 /**
- * Fail-closed normalizers and adapters over `@elizaos/contracts` service-routing
- * config. Re-exports the contract types and validates untrusted config records
+ * Fail-closed normalizers and adapters over runtime service-routing config.
+ * Re-exports the contract types and validates untrusted config records
  * into typed shapes — service route/routing, deployment target, and
  * linked-account records/flags — dropping unknown or empty fields rather than
  * passing them through. Also builds the default Eliza Cloud service routing
  * (Cerebras text-model defaults, per-capability cloud-proxy routes). Consumed by
  * cloud-topology resolution and first-run config handling.
  */
+
+import { asRecord } from "../utils/type-guards.js";
 import type {
 	DeploymentTargetConfig,
 	DeploymentTargetRuntime,
@@ -26,11 +28,20 @@ import type {
 	ServiceRouteConfig,
 	ServiceRoutingConfig,
 	ServiceTransport,
-} from "@elizaos/contracts";
-import { asRecord } from "../utils/type-guards.js";
+} from "./service-routing-types.js";
+import { SERVICE_CAPABILITIES } from "./service-routing-types.js";
 
-// Type contracts live in @elizaos/contracts; re-exported here so consumers
-// that import from this module keep compiling.
+export { DEPLOYMENT_TARGET_RUNTIMES } from "./deployment-types.js";
+export {
+	LINKED_ACCOUNT_ACCOUNT_SOURCES,
+	LINKED_ACCOUNT_HEALTH_STATES,
+	LINKED_ACCOUNT_PROVIDER_IDS,
+	LINKED_ACCOUNT_SOURCES,
+	LINKED_ACCOUNT_STATUSES,
+	SERVICE_CAPABILITIES,
+	SERVICE_ROUTE_ACCOUNT_STRATEGIES,
+	SERVICE_TRANSPORTS,
+} from "./service-routing-types.js";
 export type {
 	DeploymentTargetConfig,
 	DeploymentTargetRuntime,
@@ -74,14 +85,6 @@ const ELIZA_CLOUD_DEFAULT_SERVICE_CAPABILITIES = [
 	"embeddings",
 	"rpc",
 ] as const satisfies readonly Exclude<ServiceCapability, "llmText">[];
-
-export const SERVICE_CAPABILITIES = [
-	"llmText",
-	"tts",
-	"media",
-	"embeddings",
-	"rpc",
-] as const satisfies readonly ServiceCapability[];
 
 export function buildElizaCloudServiceRoute(
 	args: {

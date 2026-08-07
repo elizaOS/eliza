@@ -133,7 +133,7 @@ raw samples per downloaded dataset, reference simple/wallet/email/calendar
 trajectories, real Eliza recorder-stage comparisons, an `eliza_native_v1`
 export of real local trajectories for smoke training, per-dataset synthesis
 templates for missing components, model-call envelopes for Cerebras and the
-Vercel AI Gateway bridge, and a composition audit. See
+shared AI SDK request boundary, and a composition audit. See
 [`docs/dataset/TRAJECTORY_ALIGNMENT_AUDIT.md`](docs/dataset/TRAJECTORY_ALIGNMENT_AUDIT.md).
 
 ### Quick reference

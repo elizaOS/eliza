@@ -39,7 +39,6 @@ const ROUTES = [
   ["/apps/database", "database"],
   ["/apps/logs", "logs"],
   ["/apps/tasks", "tasks"],
-  ["/apps/fine-tuning", "fine-tuning"],
   ["/character", "character"],
   ["/character/documents", "knowledge"],
   ["/wallet", "wallet"],
@@ -59,8 +58,6 @@ const ROUTES = [
   ["/inventory", "wallet.inventory"],
   ["/model-tester", "model-tester"],
   ["/phone-companion", "phone-companion"],
-  ["/apps/facewear", "facewear"],
-  ["/apps/smartglasses", "smartglasses"],
   // the 9 mobile plugin views fixed this session
   ["/trajectory-logger", "trajectory-logger"],
   ["/hyperliquid", "hyperliquid"],

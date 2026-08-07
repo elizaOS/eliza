@@ -1,3 +1,4 @@
+/** Verifies resolvePull through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // SCOPE (honest labelling, #10722): this is a LOGIC-ONLY unit suite, not
@@ -155,6 +156,23 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     result.current.onPointerDown(pointer(100, 300, 1, currentTarget));
 
     expect(setPointerCapture).toHaveBeenCalledWith(1);
+  });
+
+  it("can suppress a touch compatibility click before a gesture-owned tap moves its target", () => {
+    const preventDefault = vi.fn();
+    const onTap = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onTap, preventTouchCompatibilityEvents: true }),
+    );
+
+    result.current.onPointerDown(
+      pointer(100, 300, 1, undefined, {
+        pointerType: "touch",
+        preventDefault,
+      }),
+    );
+
+    expect(preventDefault).toHaveBeenCalledTimes(1);
   });
 
   it("flushes the latest coalesced drag before free-settle release", () => {

@@ -1,3 +1,4 @@
+/** Verifies first-run conductor fuzz storms through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -128,7 +129,7 @@ function seedAppStore(): AppStoreSpies {
     elizaCloudConnected: true,
     uiLanguage: "en",
     completeFirstRun: spies.completeFirstRun,
-    handleCloudLogin: vi.fn(async () => undefined),
+    handleInteractiveCloudLogin: vi.fn(async () => undefined),
     setTab: vi.fn(),
     setState: vi.fn(),
   };
@@ -281,6 +282,10 @@ async function runStorm(opts: {
 beforeEach(() => {
   ensureLocalStorage().clear();
   vi.clearAllMocks();
+  // jsdom's window.open is unimplemented and logs a console error the setup
+  // gate would flag; the flow launchers claim a real popup on every runtime /
+  // provider pick, so default it to the popup-blocked (null) signal.
+  vi.spyOn(window, "open").mockReturnValue(null);
   mocks.client.listLocalAgentBackups.mockResolvedValue([]);
   mocks.client.getCloudCompatAgents.mockResolvedValue({
     success: true,

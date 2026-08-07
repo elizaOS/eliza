@@ -1,6 +1,7 @@
 /**
  * External API contract tests for the trajectory logger client.
- * The fixtures mirror plugin-training route responses so the real parser and phase summarizers are checked against the wire shape this widget reads.
+ * The fixtures mirror core trajectory read-route responses so the real parser
+ * and phase summarizers are checked against the wire shape this widget reads.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";

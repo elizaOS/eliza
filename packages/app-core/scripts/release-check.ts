@@ -1,5 +1,10 @@
 #!/usr/bin/env -S node --import tsx
-/** Supports app-core build, packaging, or development orchestration for release check ts. */
+/**
+ * Release gate for the packaged app-core artifact: asserts required dist files
+ * exist, runs an `npm pack` dry-run (skippable via the pack-dry-run policy) to
+ * check the file list against forbidden prefixes, validates the static asset
+ * manifest, and audits Apple Store entitlements.
+ */
 
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -83,7 +88,7 @@ function resolveOrchestratorPluginPackageJsonPath() {
   return resolveExistingPath(orchestratorPluginPackageJsonPathCandidates);
 }
 const requiredWorkflowSnippets = [
-  'BUN_VERSION: "canary"',
+  'BUN_VERSION: "1.3.14"',
   "workflow_call:",
   "name: Validate Release Inputs",
   "Manual branch dispatches must provide inputs.tag; refusing to derive a release tag from package.json.",
@@ -100,18 +105,6 @@ const requiredWorkflowSnippets = [
   "ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}",
   'ELIZA_VALIDATE_CDN: "1"',
   "bun run release:check",
-  "build-browser-companions:",
-  "name: Build Agent Browser Bridge companions",
-  "bun run browser-bridge:package:release",
-  'echo "packaged=true" >> "$GITHUB_OUTPUT"',
-  "name: Upload Agent Browser Bridge release artifacts",
-  "name: browser-bridge-store-bundles",
-  "publish-browser-companions:",
-  "name: Publish Agent Browser Bridge companions",
-  "name: Attach Agent Browser Bridge assets to GitHub release",
-  "GH_REPO: ${{ github.repository }}",
-  "gh release upload",
-  '--repo "$GH_REPO"',
   "for attempt in 1 2 3; do",
   `bun install failed on attempt \${attempt}; retrying in 15 seconds`,
   "name: Ensure avatar assets",
@@ -235,6 +228,55 @@ export function findMissingRequiredSnippets(
   return snippets.filter((snippet) => !content.includes(snippet));
 }
 
+/**
+ * Whether `lines` appear in `content` as CONSECUTIVE lines, in order.
+ *
+ * `content.includes(line)` per line proves only that each line exists somewhere
+ * in the file, in any order, at any distance. That is worthless when a line's
+ * whole meaning is positional: `exit 1` occurs nine times in the macOS stager
+ * and `fi` fifty-eight, so deleting the one `exit 1` that fails a
+ * require-staple release still satisfies a per-line check (#17680).
+ *
+ * Indentation is compared after trimming so the guard survives reformatting,
+ * but order and adjacency — the properties that carry the meaning — are pinned.
+ */
+export function containsContiguousBlock(
+  content: string,
+  lines: readonly string[],
+): boolean {
+  if (lines.length === 0) return true;
+  const haystack = content.split("\n").map((line) => line.trim());
+  const needle = lines.map((line) => line.trim());
+  const last = haystack.length - needle.length;
+  for (let start = 0; start <= last; start++) {
+    let matched = true;
+    for (let offset = 0; offset < needle.length; offset++) {
+      if (haystack[start + offset] !== needle[offset]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return true;
+  }
+  return false;
+}
+
+/**
+ * The staple-failure block of the macOS stager, asserted as one unit.
+ *
+ * Every line here is individually ambiguous or individually meaningless; the
+ * contract lives in their arrangement. Keep this in sync with
+ * `platforms/electrobun/scripts/stage-macos-release-artifacts.sh`.
+ */
+export const requiredMacStaplerFailureBlock = [
+  'if ! retry_command "$STAPLER_ATTEMPTS" "$STAPLER_DELAY_SECONDS" xcrun stapler staple "$TEMP_DMG_PATH"; then',
+  'if [[ "${ELECTROBUN_REQUIRE_STAPLED_DMG:-0}" == "1" ]]; then',
+  "exit 1",
+  "fi",
+  'echo "stage-macos-release-artifacts: notarization accepted but stapler ticket was not available; continuing without stapled DMG" >&2',
+  "fi",
+] as const;
+
 const forbiddenWorkflowSnippets = [
   ' -name "*.exe" -o \\',
   'bun install -g "rcedit@4.0.1"',
@@ -263,9 +305,9 @@ const requiredElectrobunPrWorkflowSnippets = [
   "workflow_dispatch:",
   "permissions:",
   "contents: read",
-  'BUN_VERSION: "canary"',
+  'BUN_VERSION: "1.3.14"',
   "name: Release Workflow Contract",
-  "bun install --ignore-scripts",
+  "bun install --frozen-lockfile --ignore-scripts",
   'run-postinstall: "true"',
   "bun run test:regression-matrix:release-contract",
   "bun run test:release:contract",
@@ -1052,17 +1094,26 @@ function assertMacArtifactStagerLooksCorrect() {
     "retry_notarytool_log >&2 || true",
     'STAPLER_ATTEMPTS="${ELECTROBUN_STAPLER_ATTEMPTS:-12}"',
     'STAPLER_DELAY_SECONDS="${ELECTROBUN_STAPLER_DELAY_SECONDS:-30}"',
-    'if ! retry_command "$STAPLER_ATTEMPTS" "$STAPLER_DELAY_SECONDS" xcrun stapler staple "$TEMP_DMG_PATH"; then',
-    '  if [[ "${ELECTROBUN_REQUIRE_STAPLED_DMG:-0}" == "1" ]]; then',
-    "    exit 1",
-    "  fi",
-    '  echo "stage-macos-release-artifacts: notarization accepted but stapler ticket was not available; continuing without stapled DMG" >&2',
-    "fi",
+    // The staple-failure block is asserted contiguously below, not here: each
+    // of its lines is ambiguous alone (#17680).
     'mv "$TEMP_DMG_PATH" "$FINAL_DMG_PATH"',
   ];
   const missing = requiredSnippets.filter(
     (snippet) => !script.includes(snippet),
   );
+
+  if (!containsContiguousBlock(script, requiredMacStaplerFailureBlock)) {
+    console.error(
+      "release-check: macOS artifact stager's staple-failure block is missing, reordered, or no longer contiguous:",
+    );
+    for (const line of requiredMacStaplerFailureBlock) {
+      console.error(`  | ${line}`);
+    }
+    console.error(
+      "  A require-staple release must exit non-zero rather than fall through to the warning.",
+    );
+    process.exit(1);
+  }
 
   if (missing.length > 0) {
     console.error(
@@ -1347,10 +1398,14 @@ function assertStartApiServerCatchBlockSafety() {
       catchBlock.includes("opts?.serverOnly") ||
       catchBlock.includes("options?.serverOnly")
     ) ||
-    !catchBlock.includes("process.exit(1)")
+    !catchBlock.includes(
+      'throw new ElizaError("API server is required in server-only mode"',
+    ) ||
+    !catchBlock.includes('code: "AGENT_API_START_FAILED"') ||
+    !catchBlock.includes('severity: "fatal"')
   ) {
     console.error(
-      "release-check: eliza.ts startApiServer catch block must call process.exit(1) when opts?.serverOnly is true.",
+      "release-check: eliza.ts startApiServer catch block must throw a fatal AGENT_API_START_FAILED ElizaError in server-only mode.",
     );
     process.exit(1);
   }

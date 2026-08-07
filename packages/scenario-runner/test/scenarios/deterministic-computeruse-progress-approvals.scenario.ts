@@ -1,7 +1,7 @@
 /**
  * Keyless coverage of computer-use approval-relay buttons: progress events raise
  * approval requests and relay their responses. Runs on the pr-deterministic lane
- * under the LLM proxy.
+ * under the model provider.
  */
 import type { Plugin } from "@elizaos/core";
 import type {

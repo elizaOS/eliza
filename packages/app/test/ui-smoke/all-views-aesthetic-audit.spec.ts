@@ -70,11 +70,6 @@ const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {
   "builtin-background-ipad-portrait": "needs-work",
   "builtin-background-mobile-landscape": "needs-work",
   "builtin-background-mobile-portrait": "needs-work",
-  "builtin-fine-tuning-ipad-portrait": "needs-work",
-  "builtin-fine-tuning-mobile-portrait": "needs-work",
-  "plugin-model-tester-gui-mobile-landscape": "needs-work",
-  "plugin-training-gui-ipad-portrait": "needs-work",
-  "plugin-training-gui-mobile-portrait": "needs-work",
 };
 
 // "Her"-minimal ratchet baseline (#9950) — the committed per-view record of the
@@ -330,6 +325,32 @@ async function readViewPaint(
   );
   const loadingViewPresent = await loadingView.isVisible();
   return { readableChars, overlayPresent, loadingViewPresent };
+}
+
+async function settleHomeEntrance(page: Page): Promise<void> {
+  const home = page.getByTestId("home-screen");
+  if ((await home.count()) === 0) return;
+
+  // Readable clock text appears before the staggered home cards have reached
+  // full opacity, so the generic paint probe is intentionally insufficient for
+  // this one surface. Wait on the named production animation instead of a fixed
+  // timeout so screenshots and OCR observe the same settled pixels at every
+  // viewport and remain fast when the animation has already completed.
+  await page.waitForFunction(
+    () => {
+      const root = document.querySelector('[data-testid="home-screen"]');
+      if (!(root instanceof HTMLElement)) return false;
+      return !root
+        .getAnimations({ subtree: true })
+        .some(
+          (animation) =>
+            (animation as CSSAnimation).animationName === "home-enter" &&
+            animation.playState !== "finished",
+        );
+    },
+    undefined,
+    { timeout: 5_000 },
+  );
 }
 
 /**
@@ -1112,7 +1133,13 @@ async function forceRemoteBundleAuditRoute(
   view: AuditViewCase,
 ): Promise<RemoteBundleAuditProof | null> {
   if (view.kind !== "plugin") return null;
-  const registryResponse = await page.request.get("/api/views");
+  // The long capture matrix keeps the fixture server busy enough for a single
+  // socket reset to occur without indicating an application failure. Playwright
+  // limits maxRetries to ECONNRESET, while HTTP and parse failures still fail
+  // this registry boundary immediately.
+  const registryResponse = await page.request.get("/api/views", {
+    maxRetries: 2,
+  });
   expect(registryResponse.ok(), "plugin view registry must load").toBe(true);
   const payload: unknown = await registryResponse.json();
   const registered = findRemoteBundleDeclaration(
@@ -1346,16 +1373,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           await page.waitForTimeout(1000);
           paint = await readPaint();
         }
-        if (view.slug === "plugin-calendar-gui") {
-          const manageSources = page.getByRole("button", {
-            name: "Manage calendar sources",
-          });
-          await manageSources.click();
-          await page
-            .getByText("New calendars join automatically")
-            .waitFor({ state: "visible", timeout: 5_000 });
-          paint = await readPaint();
-        }
+        await settleHomeEntrance(page);
         const { readableChars, overlayPresent } = paint;
         const renderStateIssues = [
           ...(paint.loadingViewPresent
@@ -1393,18 +1411,6 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           await page.waitForTimeout(800);
           buffer = await page.screenshot({ path: restPath, fullPage: false });
           quality = await analyzeScreenshot(buffer).catch(() => null);
-        }
-        if (
-          view.slug === "plugin-calendar-gui" &&
-          vp.name === "mobile-landscape"
-        ) {
-          await page
-            .getByText("Travel", { exact: true })
-            .scrollIntoViewIfNeeded();
-          await page.screenshot({
-            path: path.join(shotDir, `${view.slug}-sources-lower.png`),
-            fullPage: false,
-          });
         }
         const qualityIssues = quality
           ? screenshotQualityIssues(`${view.slug} ${vp.name}`, quality)

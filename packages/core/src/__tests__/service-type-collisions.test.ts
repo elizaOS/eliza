@@ -92,30 +92,6 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 		},
 	],
 	[
-		"discord-local",
-		{
-			reason:
-				"Discord local exists in the bundled Discord plugin and the standalone local plugin during migration; both export the same plugin/service contract and must not be enabled together.",
-			classes: new Set([
-				"plugins/plugin-discord/discord-local-service.ts:DiscordLocalService",
-				"plugins/plugin-discord-local/src/index.ts:DiscordLocalService",
-			]),
-		},
-	],
-	[
-		"tunnel",
-		{
-			reason:
-				"Tunnel providers intentionally share the backend-agnostic tunnel slot; plugin init selects a single active implementation.",
-			classes: new Set([
-				"plugins/plugin-ngrok/src/services/NgrokService.ts:NgrokService",
-				"plugins/plugin-tailscale/src/services/CloudTailscaleService.ts:CloudTailscaleService",
-				"plugins/plugin-tailscale/src/services/LocalTailscaleService.ts:LocalTailscaleService",
-				"plugins/plugin-tunnel/src/services/LocalTunnelService.ts:LocalTunnelService",
-			]),
-		},
-	],
-	[
 		"capability-router",
 		{
 			reason:
@@ -134,17 +110,12 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 				"Workflow credential providers share one discovery slot so workflow nodes can ask every connector for credentials.",
 			classes: new Set([
 				"plugins/plugin-bluebubbles/src/workflow-credential-provider.ts:BlueBubblesWorkflowCredentialProvider",
-				"plugins/plugin-bluesky/workflow-credential-provider.ts:BlueskyWorkflowCredentialProvider",
 				"plugins/plugin-elizacloud/src/services/cloud-credential-provider.ts:CloudCredentialProvider",
-				"plugins/plugin-farcaster/workflow-credential-provider.ts:FarcasterWorkflowCredentialProvider",
-				"plugins/plugin-feishu/src/workflow-credential-provider.ts:FeishuWorkflowCredentialProvider",
-				"plugins/plugin-google-chat/src/workflow-credential-provider.ts:GoogleChatWorkflowCredentialProvider",
+				"plugins/plugin-google-workspace/src/chat/workflow-credential-provider.ts:GoogleChatWorkflowCredentialProvider",
 				"plugins/plugin-instagram/src/workflow-credential-provider.ts:InstagramWorkflowCredentialProvider",
-				"plugins/plugin-line/src/workflow-credential-provider.ts:LineWorkflowCredentialProvider",
 				"plugins/plugin-matrix/src/workflow-credential-provider.ts:MatrixWorkflowCredentialProvider",
 				"plugins/plugin-signal/src/workflow-credential-provider.ts:SignalWorkflowCredentialProvider",
 				"plugins/plugin-slack/src/workflow-credential-provider.ts:SlackWorkflowCredentialProvider",
-				"plugins/plugin-twitch/src/workflow-credential-provider.ts:TwitchWorkflowCredentialProvider",
 				"plugins/plugin-whatsapp/src/workflow-credential-provider.ts:WhatsAppWorkflowCredentialProvider",
 				"plugins/plugin-x/src/workflow-credential-provider.ts:XWorkflowCredentialProvider",
 			]),
@@ -609,16 +580,6 @@ describe("serviceType collision guardrails", () => {
 		expect(groups.get("FORM")?.map(classId)).toEqual([
 			"plugins/plugin-form/src/service.ts:FormService",
 		]);
-		expectServiceType(
-			registrations,
-			"plugins/plugin-tailscale/src/services/LocalTailscaleService.ts:LocalTailscaleService",
-			"tunnel",
-		);
-		expectServiceType(
-			registrations,
-			"plugins/plugin-tailscale/src/services/CloudTailscaleService.ts:CloudTailscaleService",
-			"tunnel",
-		);
 		expectServiceType(
 			registrations,
 			"packages/core/src/features/trust/services/TrustEngine.ts:TrustEngine",

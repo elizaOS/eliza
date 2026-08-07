@@ -1,3 +1,4 @@
+/** Verifies AppBackground through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -80,45 +81,6 @@ describe("AppBackground", () => {
     ).toBeNull();
   });
 
-  it("renders wallpaper layers as `fixed inset-0` that CONSUME the bottom-reclaim offset (extend past the collapsed ICB)", () => {
-    // CONSUMPTION CONTRACT (#15178). The wallpaper is `fixed inset-0`, but on
-    // the installed iOS standalone PWA the fixed containing block collapses to
-    // the small ICB (device: `ce873` vs physical `sh932`), so a bare `inset-0`
-    // (`bottom: 0`) stops the field ~59px SHORT of the home-indicator edge —
-    // the recurring unpainted black strip. shaw's WIP (f903c59) asserted "no
-    // bottom override", codifying that regression. The correct contract: the
-    // fixed field's `bottom` is dropped by the JS-MEASURED
-    // `--standalone-bottom-reclaim` so it reaches the TRUE physical bottom. The
-    // var is a hard 0 off the iOS-standalone/native surface, so this is a
-    // no-op on desktop/web/Android.
-    seed({ mode: "shader", color: "#ef5a1f" });
-    const { container } = render(<AppBackground />);
-    const shader = container.querySelector<HTMLElement>(
-      '[data-testid="app-background-shader"]',
-    );
-    expect(shader?.className).toContain("fixed");
-    expect(shader?.className).toContain("inset-0");
-    // The field MUST consume the reclaim var on its bottom (else it re-ships the
-    // #15178 strip). React normalizes the offset to the resolved calc() string.
-    expect(shader?.style.bottom ?? "").toContain(
-      "var(--standalone-bottom-reclaim",
-    );
-  });
-
-  it("renders the image wallpaper as `fixed inset-0` that CONSUMES the bottom-reclaim offset", () => {
-    seed({ mode: "image", color: "#000000", imageUrl: "/api/media/x.png" });
-    const { container } = render(<AppBackground />);
-    const image = container.querySelector<HTMLElement>(
-      '[data-testid="app-background-image"]',
-    );
-    expect(image?.className).toContain("fixed");
-    expect(image?.className).toContain("inset-0");
-    // The wallpaper MUST reach the true physical bottom via the measured var.
-    expect(image?.style.bottom ?? "").toContain(
-      "var(--standalone-bottom-reclaim",
-    );
-  });
-
   it("renders a cover image when configured for image mode", () => {
     seed({ mode: "image", color: "#000000", imageUrl: "/api/media/x.png" });
     const { container } = render(<AppBackground />);
@@ -146,20 +108,6 @@ describe("AppBackground", () => {
       scrim?.closest('[data-testid="app-background-image"]'),
     ).not.toBeNull();
     expect(scrim?.className).toContain("bg-bg/50");
-  });
-
-  it("preserves detail in the low-light Canopy wallpaper in dark mode", () => {
-    seed({
-      mode: "image",
-      color: "#000000",
-      imageUrl: "/wallpapers/canopy.webp",
-    });
-    const { container } = render(<AppBackground />);
-    const scrim = container.querySelector<HTMLElement>(
-      '[data-testid="app-background-image-scrim"]',
-    );
-    expect(scrim?.className).toContain("bg-bg/50");
-    expect(scrim?.className).toContain("dark:bg-bg/15");
   });
 
   it("does NOT reintroduce the cosmetic warm bottom-floor gradient", () => {

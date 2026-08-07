@@ -1,3 +1,4 @@
+/** Verifies ProgrammableShaderBackground — rail-gesture present throttle (#15282) through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Rail-gesture present-throttle contract (#15282): while the home↔launcher rail

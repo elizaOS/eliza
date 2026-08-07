@@ -1,3 +1,4 @@
+/** Verifies VoiceCaptureHud through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // VoiceCaptureHud — on-screen voice-capture trace for the installed PWA (no

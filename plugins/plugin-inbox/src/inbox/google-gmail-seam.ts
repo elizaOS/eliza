@@ -2,7 +2,7 @@
  * Gmail runtime-service seam for the inbox unsubscribe back-end.
  *
  * The inbox plugin legitimately consumes Gmail. This module resolves the
- * `@elizaos/plugin-google` runtime service (`runtime.getService("google")`),
+ * `@elizaos/plugin-google-workspace` runtime service (`runtime.getService("google")`),
  * derives the account-scoped connector grant the unsubscribe path needs, and
  * exposes the narrow Gmail surface that surface uses: search, mailto/HTTP
  * unsubscribe send, sender-filter creation, and thread trashing.
@@ -25,7 +25,7 @@ import type {
   GoogleMessageSummary,
   GoogleParsedMailto,
   IGoogleWorkspaceService,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google-workspace";
 import {
   fail,
   type LifeOpsConnectorGrant,
@@ -213,7 +213,7 @@ function requireGoogleWorkspaceService(
   if (!isRecord(service)) {
     fail(
       503,
-      "Google Workspace service is not registered. Enable @elizaos/plugin-google before using inbox Gmail features.",
+      "Google Workspace service is not registered. Enable @elizaos/plugin-google-workspace before using inbox Gmail features.",
     );
   }
   return service;
@@ -227,7 +227,7 @@ function requireGoogleServiceMethod<
   if (typeof fn !== "function") {
     fail(
       501,
-      `@elizaos/plugin-google does not expose ${String(method)} for account-scoped inbox access.`,
+      `@elizaos/plugin-google-workspace does not expose ${String(method)} for account-scoped inbox access.`,
     );
   }
   return (fn as (...args: unknown[]) => unknown).bind(

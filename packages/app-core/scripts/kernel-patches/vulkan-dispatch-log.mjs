@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for vulkan dispatch log mjs. */
+/**
+ * Parses ggml Vulkan dispatch logs from llama.cpp runs into a pipeline summary
+ * (matmul/subgroup/q8_1/split-k counts, top pipelines, matmul op shapes) for
+ * tuning the Vulkan kernel patches.
+ */
 import fs from "node:fs";
 
 const DISPATCH_RE = /ggml_vk_dispatch_pipeline\(([^,\s)]+)/g;

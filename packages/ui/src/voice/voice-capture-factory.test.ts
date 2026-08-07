@@ -1,3 +1,4 @@
+/** Verifies createVoiceCapture through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { Capacitor } from "@capacitor/core";

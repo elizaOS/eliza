@@ -205,7 +205,7 @@ export interface IntegrationTelemetrySpan {
 }
 
 export interface CreateIntegrationTelemetrySpanArgs {
-  boundary: string;
+  boundary: "wallet";
   operation: string;
 }
 

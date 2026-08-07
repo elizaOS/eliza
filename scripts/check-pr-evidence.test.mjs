@@ -17,6 +17,7 @@ import {
   findRetiredRepoEvidenceFiles,
   hasArtifactReference,
   hasEvidenceFileReference,
+  hasInlineTranscriptEvidence,
   hasMatchingEvidenceHead,
   hasNaWithReason,
   hasOcrEvidenceReference,
@@ -490,7 +491,7 @@ describe("check-pr-evidence parser", () => {
       "domain-artifacts": "- [x] OCR report [ocr](ocr.txt)",
     });
     const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
-      changedFiles: ["packages/eliza-computer/src/App.tsx"],
+      changedFiles: ["packages/app/src/main.tsx"],
     });
     assert.equal(ok, false);
     assert.ok(
@@ -763,6 +764,44 @@ describe("check-pr-evidence row primitives", () => {
     assert.equal(hasEvidenceFileReference(`[archive](${zip})`), false);
   });
 
+  it("accepts fork text uploads on the user-attachments files path (#17600)", () => {
+    // GitHub mints /user-attachments/files/<id>/<name> for text uploads —
+    // the only first-party attachment route a fork contributor has for
+    // document evidence, since release uploads require push access.
+    const log =
+      "https://github.com/user-attachments/files/30640882/17599-verification.log";
+    assert.equal(hasArtifactReference(`[transcript](${log})`), true);
+    assert.equal(hasEvidenceFileReference(`[transcript](${log})`), true);
+    assert.equal(
+      isRowSatisfied(`- [x] Backend logs: [transcript](${log})`),
+      true,
+    );
+  });
+
+  it("keeps non-evidence extensions and malformed files paths untrusted", () => {
+    for (const rejected of [
+      // extension not in the evidence-file allowlist
+      "https://github.com/user-attachments/files/30640882/payload.zip",
+      "https://github.com/user-attachments/files/30640882/tool.exe",
+      // no extension at all
+      "https://github.com/user-attachments/files/30640882/README",
+      // non-numeric id segment
+      "https://github.com/user-attachments/files/abc/notes.log",
+      // nested path
+      "https://github.com/user-attachments/files/30640882/a/b.log",
+    ]) {
+      assert.equal(hasArtifactReference(`[x](${rejected})`), false, rejected);
+    }
+  });
+
+  it("never lets a files-path document satisfy a visual row", () => {
+    const log =
+      "https://github.com/user-attachments/files/30640882/17599-verification.log";
+    assert.equal(hasVisualArtifactReference(`[t](${log})`, "image"), false);
+    assert.equal(hasVisualArtifactReference(`[t](${log})`, "video"), false);
+    assert.equal(hasVisualArtifactReference(log, "video"), false);
+  });
+
   it("detects linked OCR evidence without accepting keyword-only prose", () => {
     const rows = new Map([
       [
@@ -982,6 +1021,25 @@ describe("check-pr-evidence row primitives", () => {
     }
   });
 
+  it("does not treat marker words inside command, path, or member identifiers as confessions", () => {
+    const backend = [
+      "- [x] Backend logs:",
+      "<details><summary>Backend logs</summary>",
+      "```text",
+      "$ bun run audit:test-integrity:no-vi-mocks",
+      "packages/fixtures/setup.ts:12 loaded fixture.json through object.mock",
+      String.raw`C:\fixtures\setup.ts completed test:mocks and todo.md`,
+      "2026-07-30T18:01:12Z INFO statusCode=200 count=313 duration_ms=84",
+      "```",
+      "</details>",
+    ].join("\n");
+
+    assert.equal(
+      evaluatePrEvidence(buildBody({ "backend-logs": backend })).ok,
+      true,
+    );
+  });
+
   it("accepts only structured inline trajectories with model, input, and output records", () => {
     const trajectory = [
       "- [x] Real-LLM trajectory:",
@@ -1175,14 +1233,14 @@ describe("check-pr-evidence row primitives", () => {
     });
     assert.equal(forced.ok, false);
 
-    const contributionSite = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+    const appShell = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
       labels: "",
-      changedFiles: ["packages/eliza-computer/src/App.tsx"],
+      changedFiles: ["packages/app/src/main.tsx"],
     });
     assert.equal(
-      contributionSite.ok,
+      appShell.ok,
       false,
-      "eliza.army is a rendered UI surface and requires visual proof",
+      "the app shell is a rendered UI surface and requires visual proof",
     );
   });
 
@@ -1346,6 +1404,55 @@ describe("check-pr-evidence marker extraction", () => {
     const bounded = boundRowBlock(block);
     assert.ok(bounded.includes("continued indented line"));
     assert.ok(!bounded.includes("example.com"));
+  });
+
+  it("keeps complete fenced transcripts intact across blank lines", () => {
+    const transcript = [
+      "- [x] Backend logs from the exact run:",
+      "",
+      "```text",
+      "INFO request POST /api/agents returned statusCode=201 with the expected agent identifier",
+      "",
+      "INFO database transaction committed the agent and owner rows without warnings",
+      "INFO response body matched the persisted record and the request correlation identifier",
+      "```",
+      "",
+      "# not part of the row",
+      "https://example.com/should-not-be-captured",
+    ].join("\n");
+    const bounded = boundRowBlock(transcript);
+    assert.match(bounded, /database transaction committed/);
+    assert.ok(!bounded.includes("example.com"));
+
+    const body = buildBody({ "backend-logs": transcript });
+    const finding = evaluatePrEvidence(body).findings.find(
+      (entry) => entry.id === "backend-logs",
+    );
+    assert.equal(finding?.status, "ok");
+  });
+
+  it("supports tilde fences and rejects an unterminated fence without bleed", () => {
+    const complete = [
+      "- [x] Backend logs:",
+      "~~~log",
+      "INFO first request completed with statusCode=200 and a stable correlation identifier",
+      "WARN retry path was exercised once before the upstream connection recovered successfully",
+      "INFO final response matched the durable database record and emitted no error event",
+      "~~~",
+    ].join("\n");
+    assert.equal(hasInlineTranscriptEvidence(boundRowBlock(complete)), true);
+
+    const unterminated = [
+      "- [x] Backend logs:",
+      "```text",
+      "short line",
+      "",
+      "# unrelated evidence",
+      "https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000006",
+    ].join("\n");
+    const bounded = boundRowBlock(unterminated);
+    assert.equal(bounded, "- [x] Backend logs:");
+    assert.ok(!bounded.includes("user-attachments"));
   });
 });
 

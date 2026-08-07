@@ -29,7 +29,7 @@ describe("Electrobun Store packaging", () => {
       Object.values(copy).some((target) => target.startsWith("eliza-dist/")),
     ).toBe(true);
     expect(Object.values(copy)).toContain("eliza-dist/package.json");
-    expect(copy.remotes).toBe("remotes");
+    expect(Object.values(copy)).not.toContain("remotes");
   });
 
   it("omits the embedded runtime tree for external API desktop builds", () => {

@@ -33,14 +33,6 @@ class UsageStatsReaderInstrumentedTest {
         get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Test
-    fun hasUsageStatsAccess_runsTheAppOpsCheckOnDevice() {
-        // The AppOps GET_USAGE_STATS probe executes against the real
-        // AppOpsManager and returns a definite boolean (no crash, no throw).
-        val access = UsageStatsReader(context).hasUsageStatsAccess()
-        assertTrue("hasUsageStatsAccess returns a concrete boolean", access || !access)
-    }
-
-    @Test
     fun collectLastDay_returnsWellFormedRealUsage() {
         val reader = UsageStatsReader(context)
         assumeTrue(

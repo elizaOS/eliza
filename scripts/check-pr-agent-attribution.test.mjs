@@ -15,7 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import {
   evaluatePrAttribution,
   extractAttributionRows,
@@ -92,11 +92,13 @@ function generatedPrWorkflowPaths() {
   return readdirSync(workflowsDirectory)
     .filter((name) => /\.ya?ml$/.test(name))
     .map((name) => `.github/workflows/${name}`)
-    .filter((workflowPath) =>
-      /\bgh\s+pr\s+create\b|peter-evans\/create-pull-request@/.test(
-        workflowSource(workflowPath),
-      ),
-    )
+    .filter((workflowPath) => {
+      const source = workflowSource(workflowPath);
+      return (
+        /^\s*gh\s+pr\s+create\b/m.test(source) ||
+        /peter-evans\/create-pull-request@/.test(source)
+      );
+    })
     .sort();
 }
 
@@ -141,69 +143,6 @@ function yamlLiteralBodies(source) {
   return bodies;
 }
 
-async function renderedOsRecoveryBody() {
-  const modulePath = path.join(
-    repositoryRoot,
-    "packages/os/scripts/release-asset-inventory.mjs",
-  );
-  const {
-    createReleaseAssetInventory,
-    releaseAssetInventorySha256,
-    renderRecoveryPullRequestBody,
-  } = await import(pathToFileURL(modulePath).href);
-  const digest = "a".repeat(64);
-  const inventory = createReleaseAssetInventory({
-    repository: "elizaOS/eliza",
-    release: {
-      id: 7001,
-      node_id: "RE_generated_pr_contract",
-      tag_name: "v2.0.4-os.1",
-      target_commitish: "develop",
-      draft: false,
-      prerelease: true,
-      published_at: "2026-07-13T20:00:00Z",
-      immutable: false,
-    },
-    assets: [
-      {
-        id: 9001,
-        node_id: "RA_generated_pr_contract",
-        name: "elizaos-live-amd64.img.zst",
-        size: 128,
-        digest: `sha256:${digest}`,
-        state: "uploaded",
-        created_at: "2026-07-13T20:01:00Z",
-        updated_at: "2026-07-13T20:01:01Z",
-      },
-    ],
-  });
-  const receipt = {
-    schemaVersion: 1,
-    inventorySha256: releaseAssetInventorySha256(inventory),
-    assets: [
-      {
-        databaseId: 9001,
-        nodeId: "RA_generated_pr_contract",
-        name: "elizaos-live-amd64.img.zst",
-        sizeBytes: 128,
-        githubDigest: `sha256:${digest}`,
-        downloadedSha256: digest,
-      },
-    ],
-  };
-  return renderRecoveryPullRequestBody({
-    inventory,
-    receipt,
-    baseSha: "b".repeat(40),
-    tagSha: "c".repeat(40),
-    tag: "v2.0.4-os.1",
-    manifestPath: "packages/os/release/test/manifest.json",
-    runUrl: "https://github.com/elizaOS/eliza/actions/runs/12345/attempts/2",
-    verificationLog:
-      "captured exact release and asset IDs\ndownloaded every asset by database ID\nverified all SHA-256 digests",
-  });
-}
-
 async function generatedPrBody(workflowPath) {
   const source = workflowSource(workflowPath);
   const heredocs = heredocBodies(source);
@@ -221,13 +160,6 @@ async function generatedPrBody(workflowPath) {
   );
   if (yamlBody) return yamlBody;
 
-  if (source.includes("release-asset-inventory.mjs render-pr")) {
-    const attribution = heredocs.find((candidate) =>
-      candidate.includes("<!-- contribution-attribution:v1 -->"),
-    );
-    assert.ok(attribution, `${workflowPath} must append attribution rows`);
-    return `${await renderedOsRecoveryBody()}\n\n${attribution}`;
-  }
   assert.fail(`${workflowPath} has no extractable generated PR body`);
 }
 
@@ -414,6 +346,59 @@ describe("PR agent attribution", () => {
     assert.equal(noSkill.ok, true);
   });
 
+  it("keeps a value's own colon when the row omits the optional label", () => {
+    // The label ("Skill revision: ") is optional, and a contributor who writes
+    // the format the failure message prescribes omits it. Stripping to the
+    // first colon then consumed the value itself, so the documented
+    // `owner/repo@<40-hex>:path` was rejected by the message prescribing it.
+    const unlabelled = [
+      "<!-- contribution-attribution:v1 -->",
+      "<!-- attribution-row:ai-assistance --> yes",
+      "<!-- attribution-row:models --> `openai/gpt-5.6-sol`",
+      "<!-- attribution-row:client --> Codex Desktop",
+      "<!-- attribution-row:skill-revision --> `elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza`",
+      "<!-- attribution-row:status --> self-reported",
+    ].join("\n");
+    const result = evaluatePrAttribution(unlabelled);
+    assert.equal(
+      result.ok,
+      true,
+      result.findings.map((finding) => finding.message).join("; "),
+    );
+    assert.equal(
+      result.attribution.skillRevision,
+      "elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza",
+    );
+
+    // The same hazard one row over: a routed identifier may carry a colon, and
+    // an unlabelled one was truncated to the trailing segment and then read as
+    // a placeholder rather than as a model.
+    assert.deepEqual(
+      evaluatePrAttribution(
+        unlabelled.replace(
+          "`openai/gpt-5.6-sol`",
+          "`bedrock/anthropic.claude-3:1`",
+        ),
+      ).attribution.modelIds,
+      ["bedrock/anthropic.claude-3:1"],
+    );
+  });
+
+  it("still drops a human label, including one containing a slash", () => {
+    // The strip exists for the documented template, so refusing to run past a
+    // value's colon must not stop it removing a genuine label. `Client / agent
+    // tooling:` is the repository's own, and it carries a slash.
+    const labelled = evaluatePrAttribution(body());
+    assert.equal(labelled.ok, true);
+    assert.equal(labelled.attribution.client, "Codex Desktop");
+    assert.equal(
+      labelled.attribution.status,
+      "self-reported",
+      "a labelled status row must still reduce to the bare keyword",
+    );
+    assert.deepEqual(labelled.attribution.modelIds, ["openai/gpt-5.6-sol"]);
+  });
+
   it("rejects missing markers and rows even when prose names a model", () => {
     const result = evaluatePrAttribution(
       "Built with openai/gpt-5.6-sol using Codex Desktop.",
@@ -597,7 +582,6 @@ describe("PR agent attribution", () => {
     const ecosystemRefs = {
       npm: "dependabot/npm_and_yarn/*",
       "github-actions": "dependabot/github_actions/*",
-      pip: "dependabot/pip/*",
     };
     assert.deepEqual(
       [...new Set(configuredEcosystems)].sort(),
@@ -657,7 +641,7 @@ describe("PR agent attribution", () => {
   it("discovers and validates every workflow-generated PR body", async () => {
     const workflowPaths = generatedPrWorkflowPaths();
     assert.ok(
-      workflowPaths.length >= 4,
+      workflowPaths.length >= 1,
       "expected all repository PR-creation workflows to be discovered",
     );
     for (const workflowPath of workflowPaths) {

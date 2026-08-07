@@ -11,8 +11,6 @@ import providerPluginMap from "./provider-plugin-map.json" with {
 import type { RegistryEntry } from "./schema";
 
 const expectedProviderPluginMap = {
-  AIGATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
-  AI_GATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   ANTHROPIC_API_KEY: "@elizaos/plugin-anthropic",
   CEREBRAS_API_KEY: "@elizaos/plugin-openai",
   ELIZAOS_CLOUD_API_KEY: "@elizaos/plugin-elizacloud",
@@ -21,12 +19,11 @@ const expectedProviderPluginMap = {
   GEMINI_API_KEY: "@elizaos/plugin-google-genai",
   GOOGLE_API_KEY: "@elizaos/plugin-google-genai",
   GOOGLE_GENERATIVE_AI_API_KEY: "@elizaos/plugin-google-genai",
-  GROQ_API_KEY: "@elizaos/plugin-groq",
   NEARAI_API_KEY: "@elizaos/plugin-nearai",
-  OLLAMA_BASE_URL: "@elizaos/plugin-ollama",
+  OLLAMA_API_ENDPOINT: "@elizaos/plugin-zerollama",
+  OLLAMA_API_URL: "@elizaos/plugin-zerollama",
+  OLLAMA_BASE_URL: "@elizaos/plugin-zerollama",
   OPENAI_API_KEY: "@elizaos/plugin-openai",
-  OPENROUTER_API_KEY: "@elizaos/plugin-openrouter",
-  XAI_API_KEY: "@elizaos/plugin-xai",
   ZAI_API_KEY: "@elizaos/plugin-zai",
   Z_AI_API_KEY: "@elizaos/plugin-zai",
 };

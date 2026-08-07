@@ -41,15 +41,15 @@ describe("resolveWorkspacePackageDirs", () => {
       `eliza-workspaces-${process.pid}-${Date.now()}`,
     );
     roots.push(root);
-    packageDir(root, "packages/feed");
-    packageDir(root, "packages/feed/packages/core");
+    packageDir(root, "packages/standalone");
+    packageDir(root, "packages/standalone/packages/core");
 
     const actual = resolveWorkspacePackageDirs(root, [
       "packages/*",
-      "!packages/feed",
-      "packages/feed/packages/*",
+      "!packages/standalone",
+      "packages/standalone/packages/*",
     ]).map((dir) => path.relative(root, dir));
 
-    expect(actual).toEqual(["packages/feed/packages/core"]);
+    expect(actual).toEqual(["packages/standalone/packages/core"]);
   });
 });

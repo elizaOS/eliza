@@ -11,7 +11,7 @@ import {
   buildPrePullSelfHealRecoverCommand,
   buildTrackedPrePullCommand,
   DockerNodeManager,
-  isPrePullTimeoutError,
+  isDockerSshCommandTimeoutError,
 } from "./docker-node-manager";
 
 const IMAGE = "ghcr.io/elizaos/eliza:test-prepull";
@@ -69,16 +69,23 @@ afterEach(() => {
 describe("pre-pull timeout classification", () => {
   test("recovers only DockerSSHClient timeout failures", () => {
     expect(
-      isPrePullTimeoutError(
+      isDockerSshCommandTimeoutError(
         new Error("[docker-ssh] Command timed out after 300000ms on node: sh [redacted]"),
       ),
     ).toBe(true);
     expect(
-      isPrePullTimeoutError(
+      isDockerSshCommandTimeoutError(
+        new Error("pre-pull wrapper", {
+          cause: new Error("[docker-ssh] Command timed out after 300000ms on node: sh [redacted]"),
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isDockerSshCommandTimeoutError(
         new Error("[docker-ssh] Command exited with code 1 on node: manifest unknown"),
       ),
     ).toBe(false);
-    expect(isPrePullTimeoutError(new Error("pull access denied"))).toBe(false);
+    expect(isDockerSshCommandTimeoutError(new Error("pull access denied"))).toBe(false);
   });
 });
 

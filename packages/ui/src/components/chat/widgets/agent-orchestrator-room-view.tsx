@@ -107,7 +107,7 @@ function ParticipantRow({
       <span className="relative inline-flex shrink-0">
         <Icon
           className={`h-3.5 w-3.5 ${
-            isSubAgent ? (live ? "text-txt" : "text-muted/50") : "text-muted/70"
+            isSubAgent ? (live ? "text-txt" : "text-muted/50") : "text-muted"
           }`}
         />
         {isSubAgent ? (
@@ -132,14 +132,14 @@ function ParticipantRow({
         {participant.label}
       </span>
       {participant.framework ? (
-        <span className="shrink-0 rounded-full bg-muted/10 px-1.5 py-0.5 text-3xs text-muted/70">
+        <span className="shrink-0 rounded-full bg-muted/10 px-1.5 py-0.5 text-3xs text-muted">
           {participant.framework}
         </span>
       ) : null}
       {isSubAgent ? (
         <span
           className={`ml-auto flex shrink-0 items-center gap-1 text-3xs ${
-            participant.activeTool ? "text-accent" : "text-muted/70"
+            participant.activeTool ? "text-accent" : "text-muted"
           }`}
         >
           {participant.activeTool ? <Wrench className="h-3 w-3" /> : null}
@@ -149,7 +149,7 @@ function ParticipantRow({
         </span>
       ) : null}
       {tokens ? (
-        <span className="shrink-0 tabular-nums text-3xs text-muted/60">
+        <span className="shrink-0 tabular-nums text-3xs text-muted">
           {tokens}
         </span>
       ) : null}

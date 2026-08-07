@@ -200,6 +200,8 @@ function buildTzFormatter(timezone: string): Intl.DateTimeFormat | null {
 			hour12: false,
 		});
 	} catch {
+		// error-policy:J3 timezone names are untrusted schedule input; an invalid
+		// identifier is an explicit formatter-construction miss.
 		return null;
 	}
 }

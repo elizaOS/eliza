@@ -1,3 +1,4 @@
+/** Verifies ChatView terminal auto-focus (once per problem transition) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Guards ChatView's terminal auto-focus against a re-focus loop. A

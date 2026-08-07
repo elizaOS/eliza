@@ -131,7 +131,6 @@ const wsRoute = (await import("../ws/route")).default;
 
 const baseEnv = {
   VOICE_REALTIME_WS_ENABLED: "true",
-  DEEPGRAM_API_KEY: "dg",
   CARTESIA_API_KEY: "cartesia",
   VOICE_REALTIME_CARTESIA_VOICE_ID: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
   VOICE_REALTIME_ELIZA_ENDPOINT: "https://eliza.test/sse",
@@ -332,6 +331,76 @@ describe("voice-session ws upgrade (happy path)", () => {
     expect(session.config.prewarmElizaContext).toBe(
       (session.config.fetchImpl as { prewarm?: unknown }).prewarm,
     );
+  });
+
+  test("leaves Fish realtime TTS off by default", async () => {
+    const res = await upgrade();
+    expect(res.status).toBe(101);
+    const session = buildCapturedSession();
+    expect(session.config.fishAudioEnabled).toBe(false);
+    expect(session.config.fishAudioApiKey).toBeUndefined();
+  });
+
+  test("injects Fish realtime TTS config when the Fish flag is enabled", async () => {
+    const res = await upgrade({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+      FISH_AUDIO_API_KEY: "fish-key",
+      FISH_AUDIO_REFERENCE_ID: "fish-voice",
+      FISH_AUDIO_MODEL: "s2.1-pro-free",
+      FISH_AUDIO_SAMPLE_RATE: "16000",
+      FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: "25",
+    });
+    expect(res.status).toBe(101);
+    const session = buildCapturedSession();
+    expect(session.config.fishAudioEnabled).toBe(true);
+    expect(session.config.fishAudioApiKey).toBe("fish-key");
+    expect(session.config.fishAudioReferenceId).toBe("fish-voice");
+    expect(session.config.fishAudioModel).toBe("s2.1-pro-free");
+    expect(session.config.fishAudioSampleRate).toBe(16000);
+    expect(session.config.fishAudioFirstAudioTimeoutMs).toBe(25);
+    expect(typeof session.config.fishAudioWebSocketFactory).toBe("function");
+  });
+
+  test("refuses Fish egress when data-governance approval is absent", async () => {
+    const res = await upgrade({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_API_KEY: "fish-key",
+      FISH_AUDIO_REFERENCE_ID: "fish-voice",
+    });
+
+    expect(res.status).toBe(503);
+    expect((await res.json()) as unknown).toEqual({
+      error: "Fish Audio is unavailable pending data-governance approval",
+      code: "fish_audio_data_governance_unapproved",
+    });
+    expect(attachCalls).toHaveLength(0);
+  });
+
+  test("refuses the upgrade when Fish config would violate the voice PCM contract", async () => {
+    const res = await upgrade({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+      FISH_AUDIO_API_KEY: "fish-key",
+      FISH_AUDIO_REFERENCE_ID: "fish-voice",
+      FISH_AUDIO_SAMPLE_RATE: "24000",
+    });
+
+    expect(res.status).toBe(503);
+    expect(attachCalls).toHaveLength(0);
+  });
+
+  test("refuses the upgrade when the configured Fish model is unsupported", async () => {
+    const res = await upgrade({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+      FISH_AUDIO_API_KEY: "fish-key",
+      FISH_AUDIO_REFERENCE_ID: "fish-voice",
+      FISH_AUDIO_MODEL: "s2.1",
+    });
+
+    expect(res.status).toBe(503);
+    expect(attachCalls).toHaveLength(0);
   });
 
   test("returns 503 transport-unavailable when WebSocketPair is absent", async () => {

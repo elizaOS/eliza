@@ -2,7 +2,7 @@
 // OrchestratorWorkbench.tsx (the React workbench) and the capability dispatcher
 // in orchestrator-capabilities.ts. Kept out of the .tsx so that file exports
 // only React components and stays Fast-Refresh-compatible in dev.
-import type { CodingAgentTaskThread } from "@elizaos/ui";
+import type { CodingAgentTaskThread } from "@elizaos/ui/api/client-types-cloud";
 
 export type TaskPriority = CodingAgentTaskThread["priority"];
 

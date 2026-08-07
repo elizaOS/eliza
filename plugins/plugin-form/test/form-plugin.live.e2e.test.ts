@@ -7,11 +7,11 @@
  * Gated on ELIZA_LIVE_TEST=1.
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../packages/test/helpers/conditional-tests";
+import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/test/helpers/real-runtime.ts";
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
 
 const LIVE = process.env.ELIZA_LIVE_TEST === "1";
 

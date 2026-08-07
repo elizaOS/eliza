@@ -4,7 +4,7 @@
  *
  * Wave-1 (W1-B) decision: the canonical implementations of these types live
  * in `./lifeops.ts` for now — a non-app-lifeops, non-plugin-health importer
- * (`test/mocks/fixtures/lifeops-presence-day.ts`) requires that the types
+ * (`packages/scenario-runner/test/mocks/fixtures/lifeops-presence-day.ts`) requires that the types
  * stay in `@elizaos/shared`, and the cross-file dependencies inside
  * `lifeops.ts` (e.g. `LifeOpsActivitySignal.health: LifeOpsHealthSignal`,
  * `LifeOpsMobileHealthPayload.signal: LifeOpsHealthSignal`,

@@ -1,11 +1,11 @@
 /**
- * Internal-tool apps (plugin viewers, inspectors, fine-tuning, automations)
+ * Internal-tool apps (plugin viewers, inspectors, and automations)
  * derived from the `GET /api/views` ViewDeclaration feed.
  *
  * The catalog and pinnable list are built from a single declarative source of
  * `ViewDeclaration` records — the same shape plugins register — with `pinnable`
- * a declared flag on each declaration. When a plugin owns the view (fine-tuning,
- * automations), its live network `ViewRegistryEntry` overlays
+ * a declared flag on each declaration. When a plugin owns the view, its live
+ * network `ViewRegistryEntry` overlays
  * label/description/hero at read time, so renaming a plugin app's `displayName`
  * in its ViewDeclaration updates the catalog with no edit here.
  */
@@ -75,29 +75,6 @@ const INTERNAL_TOOL_VIEW_DECLARATIONS: readonly InternalToolViewDeclaration[] =
       path: "/apps/skills",
       order: 2,
       hasDetailsPage: false,
-      pinnable: true,
-    },
-    {
-      name: "@elizaos/plugin-training",
-      displayName: "Fine Tuning",
-      description:
-        "Collect training data, inspect trajectories, run Eliza harness evals, benchmark model tiers, and manage fine-tuned models.",
-      capabilities: [
-        "training",
-        "fine-tuning",
-        "trajectories",
-        "datasets",
-        "models",
-        "evals",
-        "benchmarks",
-        "analysis",
-        "data-collection",
-      ],
-      heroImage: "/api/apps/hero/training",
-      targetTab: "fine-tuning",
-      path: "/apps/fine-tuning",
-      order: 3,
-      hasDetailsPage: true,
       pinnable: true,
     },
     {
@@ -213,8 +190,8 @@ const INTERNAL_TOOL_APP_BY_PATH = new Map(
 /**
  * Resolve the effective label, description, hero, and capabilities for an
  * internal-tool app, preferring the live `/api/views` ViewDeclaration that owns
- * the app's window path when one is supplied. Plugin-owned apps (fine-tuning,
- * automations) thus reflect renames in their ViewDeclaration with no edit here;
+ * the app's window path when one is supplied. Plugin-owned apps thus reflect
+ * renames in their ViewDeclaration with no edit here;
  * UI-only viewers fall back to the local declaration.
  */
 function resolveAppMetadata(

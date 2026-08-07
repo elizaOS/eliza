@@ -1,3 +1,4 @@
+/** Verifies HomeScreen through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // HomeScreen composition: the unified home WidgetHost, the pinned dashboard
@@ -122,6 +123,23 @@ describe("HomeScreen", () => {
     expect(screen.queryByRole("button", { name: "Calendar" })).toBeNull();
   });
 
+  it("lets notifications use the real short-screen remainder instead of a viewport percentage", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const home = screen.getByTestId("home-screen");
+    const css = home.querySelector("style")?.textContent ?? "";
+    const region = home.querySelector<HTMLElement>(
+      "[data-home-notification-region]",
+    );
+
+    expect(css).toContain("max-height: min(20rem, 100%)");
+    expect(css).not.toContain("max-height: 40%");
+    expect(region?.className).toContain("min-h-0");
+    expect(screen.getByTestId("home-apps-scroll").className).toContain(
+      "overflow-y-auto",
+    );
+  });
+
   it("has no Edit button or Pinned label (clean, action-driven dashboard)", () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.queryByTestId("home-edit-toggle")).toBeNull();
@@ -180,22 +198,28 @@ describe("HomeScreen", () => {
     expect(apps.contains(calendarButton)).toBe(true);
     apps.scrollTop = 96;
 
+    // The redesigned inbox starts fully populated in its capped region. Fold
+    // it once before exercising an explicit expansion that occupies Home.
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    act(() => vi.advanceTimersByTime(700));
+
     calendarButton.focus();
-    fireEvent.wheel(screen.getByTestId("home-notification-list"), {
-      deltaY: -(PULL_COMMIT_PX + 10),
-    });
+    fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
     expect(apps.className).toContain("overflow-y-auto");
     expect(apps.className).not.toContain("overflow-y-hidden");
     expect(apps.getAttribute("aria-hidden")).toBe("true");
     expect(apps.hasAttribute("inert")).toBe(true);
     expect(apps.contains(calendarButton)).toBe(true);
     expect(document.activeElement).toBe(
-      screen.getByTestId("notifications-collapse"),
+      screen.getByTestId("home-notification-center"),
     );
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
     expect(screen.queryByTestId("notification-group-label")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     act(() => vi.advanceTimersByTime(700));
     expect(screen.getByTestId("home-notification-list").dataset.shadeMode).toBe(
       "rested",
@@ -212,7 +236,6 @@ describe("HomeScreen", () => {
     __ingestNotificationForTests(makeNotification());
     render(<HomeScreen onOpenTile={vi.fn()} />);
 
-    const home = screen.getByTestId("home-screen");
     const column = screen.getByTestId("home-content-column");
     const list = screen.getByTestId("home-notification-list");
     const notificationRegion = column.querySelector<HTMLElement>(
@@ -221,27 +244,16 @@ describe("HomeScreen", () => {
     const secondaryRegion = column.querySelector<HTMLElement>(
       "[data-home-below-notifications]",
     );
-    const secondaryRegionInner = column.querySelector<HTMLElement>(
-      "[data-home-below-notifications-inner]",
-    );
-    const css = home.querySelector("style")?.textContent ?? "";
-
     expect(column.hasAttribute("data-home-has-notifications")).toBe(true);
     expect(notificationRegion).toBeTruthy();
     expect(secondaryRegion).toBeTruthy();
-    expect(secondaryRegionInner?.className).toContain("min-h-0");
-    expect(secondaryRegionInner?.className).toContain("overflow-y-auto");
     expect(
       secondaryRegion?.contains(screen.getByTestId("home-widget-host")),
     ).toBe(true);
-    expect(css).toContain(
-      '[data-shade-preview="expanding"][data-shade-dragging]',
-    );
-    expect(css).toContain(
-      '[data-shade-mode="expanded"]:not([data-shade-settling])',
-    );
-    expect(css).toContain("grid-template-rows: 0fr");
-    expect(css).toContain("--eliza-home-notification-settle-duration");
+
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    act(() => vi.advanceTimersByTime(700));
 
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
@@ -281,7 +293,8 @@ describe("HomeScreen", () => {
 
     fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(list.hasAttribute("data-shade-settling")).toBe(true);
     expect(
@@ -335,6 +348,7 @@ describe("HomeScreen", () => {
     fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX / 2 + 2) });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(apps.hasAttribute("inert")).toBe(false);
+    act(() => vi.advanceTimersByTime(700));
 
     const calendarButton = screen.getByRole("button", {
       name: "Open Calendar",
@@ -348,10 +362,11 @@ describe("HomeScreen", () => {
 
     expect(apps.hasAttribute("inert")).toBe(true);
     expect(document.activeElement).toBe(
-      screen.getByTestId("notifications-collapse"),
+      screen.getByTestId("home-notification-center"),
     );
 
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     act(() => vi.advanceTimersByTime(700));
     expect(apps.hasAttribute("inert")).toBe(false);
     expect(document.activeElement).toBe(calendarButton);
@@ -375,6 +390,9 @@ describe("HomeScreen", () => {
     const calendarButton = screen.getByRole("button", {
       name: "Open Calendar",
     });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    act(() => vi.advanceTimersByTime(700));
     calendarButton.focus();
     fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
     expect(apps.hasAttribute("inert")).toBe(true);

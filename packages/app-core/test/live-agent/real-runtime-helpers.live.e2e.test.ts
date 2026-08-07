@@ -2,9 +2,9 @@
 import { createElizaPlugin } from "@elizaos/agent";
 import { ModelType, type Plugin, stringToUuid } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { itIf } from "../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../test/helpers/live-provider";
+import { itIf } from "../helpers/conditional-tests.ts";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
+import { selectLiveProvider } from "../helpers/live-provider";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
 const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";

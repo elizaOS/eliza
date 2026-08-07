@@ -500,6 +500,8 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 			try {
 				return JSON.parse(value) as string;
 			} catch {
+				// error-policy:J3 Streamed scalar text is untrusted model output;
+				// malformed JSON remains a string value.
 				return value.slice(1, -1);
 			}
 		}
@@ -1111,6 +1113,8 @@ function decodeJsonEscape(raw: string): string {
 	try {
 		return JSON.parse(`"${raw}"`) as string;
 	} catch {
+		// error-policy:J3 Streamed structured output is untrusted model data;
+		// malformed JSON remains the explicit raw value.
 		return raw;
 	}
 }

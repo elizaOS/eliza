@@ -1,5 +1,5 @@
 ---
-title: Apps
+title: Dashboard apps
 sidebarTitle: Apps
 description: Browse, launch, and manage apps and games that integrate with your Eliza agent from the in-dashboard app browser.
 ---

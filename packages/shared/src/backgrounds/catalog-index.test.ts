@@ -1,59 +1,16 @@
 /**
- * Background catalog NAME INDEX (#13538): the shared metadata half + the
- * matchers the BACKGROUND action uses to route "use the misty-forest background"
- * to a name-select. Proves the index is code-free and unknown names resolve to
- * nothing (confinement).
+ * Exercises the background-name matchers used to route requests such as
+ * "use the misty-forest background" while rejecting unknown or generic colors.
  */
 import { describe, expect, it } from "vitest";
 import {
   BACKGROUND_CATALOG_INDEX,
   DEFAULT_BACKGROUND_CATALOG_ID,
   detectCatalogId,
-  GLSL_BACKGROUND_META,
-  IMAGE_BACKGROUND_META,
   matchCatalogId,
-  NATURAL_BACKGROUND_META,
-  PHOTO_BACKGROUND_META,
 } from "./catalog-index";
 
 describe("background catalog index (#13538)", () => {
-  it("is the union of natural + photo + glsl metadata, code-free", () => {
-    expect(BACKGROUND_CATALOG_INDEX.length).toBe(
-      NATURAL_BACKGROUND_META.length +
-        PHOTO_BACKGROUND_META.length +
-        GLSL_BACKGROUND_META.length,
-    );
-    for (const e of BACKGROUND_CATALOG_INDEX) {
-      // Pure metadata: no render source of any kind lives in the index.
-      expect(e).not.toHaveProperty("source");
-      expect(e.palette.length).toBeGreaterThan(0);
-      expect(e.tags.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("ships the five curated photo wallpapers (#14 default-wallpapers)", () => {
-    const ids = PHOTO_BACKGROUND_META.map((e) => e.id);
-    expect(ids).toEqual([
-      "dusk-dunes",
-      "reef",
-      "slate",
-      "ember-dunes",
-      "canopy",
-    ]);
-    for (const e of PHOTO_BACKGROUND_META) {
-      // Photo wallpapers are image entries with a sampled 3-stop palette.
-      expect(e.kind).toBe("image");
-      expect(e.palette.length).toBeGreaterThanOrEqual(3);
-      expect(e.label).toBeTruthy();
-      expect(e.description).toBeTruthy();
-    }
-    // The image name-select set is exactly the gradient + photo image entries.
-    expect(IMAGE_BACKGROUND_META.length).toBe(
-      NATURAL_BACKGROUND_META.length + PHOTO_BACKGROUND_META.length,
-    );
-    expect(IMAGE_BACKGROUND_META.every((e) => e.kind === "image")).toBe(true);
-  });
-
   it("the default id names a real catalog entry", () => {
     expect(
       BACKGROUND_CATALOG_INDEX.some(

@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for docs list js. */
+/**
+ * Prints an annotated index of the repo's docs/ markdown files (path, summary,
+ * read-when hints from frontmatter), skipping archive/ and research/;
+ * --build-bin writes a bin/docs-list wrapper instead.
+ */
 
 import {
   existsSync,

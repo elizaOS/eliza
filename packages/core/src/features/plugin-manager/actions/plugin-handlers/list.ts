@@ -1,9 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/list
- *
- * `list` sub-mode of the PLUGIN action. Reports the loaded
- * plugins in the runtime as tracked by PluginManagerService.
- */
+/** Reports plugins loaded in the runtime and tracked by the plugin manager. */
 
 import type {
 	ActionResult,

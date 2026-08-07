@@ -3,10 +3,21 @@
 /**
  * Syntax-highlighted read-only code block (Prism vsc-dark-plus) for docs/snippets.
  */
-import { memo } from "react";
+import { type HTMLAttributes, memo } from "react";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
 import { cn } from "../../lib/utils";
 import { SyntaxHighlighter } from "./prism-light";
+
+function FocusableCodePre(props: HTMLAttributes<HTMLElement>) {
+  return (
+    <section
+      {...props}
+      aria-label="Code"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: overflowing code requires a keyboard scroll entry point
+      tabIndex={0}
+    />
+  );
+}
 
 export interface CodeDisplayProps {
   code: string;
@@ -77,14 +88,14 @@ export const CodeDisplay = memo(function CodeDisplay({
         className,
       )}
     >
-      <div className="overflow-x-auto">
+      <div>
         <SyntaxHighlighter
           language={language}
           style={SYNTAX_HIGHLIGHT_PALETTE}
           customStyle={codeCustomStyle}
           wrapLongLines={false}
           showLineNumbers={false}
-          PreTag="div"
+          PreTag={FocusableCodePre}
         >
           {code}
         </SyntaxHighlighter>

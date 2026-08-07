@@ -82,6 +82,7 @@ export function EarningsSimulator({
             <span className="text-sm font-mono text-white">{users}</span>
           </div>
           <Slider
+            aria-label="Monthly active users"
             value={[users]}
             onValueChange={([v]) => setUsers(v)}
             min={10}
@@ -107,6 +108,7 @@ export function EarningsSimulator({
             </span>
           </div>
           <Slider
+            aria-label="Average spend per user"
             value={[spendPerUser]}
             onValueChange={([v]) => setSpendPerUser(v)}
             min={1}

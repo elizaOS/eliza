@@ -1,3 +1,4 @@
+/** Verifies ElizaAgentsTable per-row view model through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

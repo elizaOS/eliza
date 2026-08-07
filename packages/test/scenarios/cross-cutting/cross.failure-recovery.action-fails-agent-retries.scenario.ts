@@ -29,7 +29,6 @@ export default scenario({
   seed: [
     {
       type: "memory",
-      roomId: "main",
       content: {
         kind: "todo",
         status: "corrupt",

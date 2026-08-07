@@ -25,11 +25,6 @@ export type {
   VoiceTurnStatus,
 } from "./types";
 export {
-  createVoiceHost,
-  createVoiceHostForRuntime,
-  type VoiceHost,
-} from "./voice-host-requests";
-export {
   evaluateVoiceLatencyBudget,
   getDefaultVoiceLatencyBudget,
   getVoiceLatencyBudgetFromEnv,

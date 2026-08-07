@@ -1,35 +1,48 @@
 /**
- * Vitest config for plugin-app-manager: aliases the `@elizaos/agent/*` and
- * `@elizaos/auth/*` host imports to local test stubs (test/stubs/) so the
- * library's route and service code runs under test without the full agent
- * package.
+ * Vitest config for plugin-app-manager: layers package-specific host stubs over
+ * the shared workspace source aliases so tests never require sibling dist
+ * artifacts.
  */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const fromHere = (relativePath: string) =>
   fileURLToPath(new URL(relativePath, import.meta.url));
+const baseAliases = Array.isArray(baseConfig.resolve?.alias)
+  ? baseConfig.resolve.alias
+  : [];
 
 export default defineConfig({
   resolve: {
-    alias: {
-      "@elizaos/agent/config/paths": fromHere(
-        "../../packages/agent/src/config/paths.ts",
-      ),
-      "@elizaos/agent/services/app-package-modules": fromHere(
-        "test/stubs/agent-app-package-modules.ts",
-      ),
-      "@elizaos/agent/services/overlay-app-presence": fromHere(
-        "test/stubs/agent-overlay-app-presence.ts",
-      ),
-      "@elizaos/agent/services/registry-client-queries": fromHere(
-        "test/stubs/agent-registry-client-queries.ts",
-      ),
-      "@elizaos/auth/atomic-json": fromHere(
-        "../../packages/auth/src/atomic-json.ts",
-      ),
-      "@elizaos/plugin-registry": fromHere("../plugin-registry/src/index.ts"),
-    },
+    ...baseConfig.resolve,
+    alias: [
+      {
+        find: "@elizaos/agent/config/paths",
+        replacement: fromHere("../../packages/agent/src/config/paths.ts"),
+      },
+      {
+        find: "@elizaos/agent/services/app-package-modules",
+        replacement: fromHere("test/stubs/agent-app-package-modules.ts"),
+      },
+      {
+        find: "@elizaos/agent/services/overlay-app-presence",
+        replacement: fromHere("test/stubs/agent-overlay-app-presence.ts"),
+      },
+      {
+        find: "@elizaos/agent/services/registry-client-queries",
+        replacement: fromHere("test/stubs/agent-registry-client-queries.ts"),
+      },
+      {
+        find: "@elizaos/core/atomic-json",
+        replacement: fromHere("../../packages/core/src/utils/atomic-json.ts"),
+      },
+      {
+        find: "@elizaos/plugin-registry",
+        replacement: fromHere("../plugin-registry/src/index.ts"),
+      },
+      ...baseAliases,
+    ],
   },
   test: {
     include: ["src/**/*.test.ts"],

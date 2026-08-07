@@ -250,7 +250,7 @@ assert(true, "walked every visible desktop section with the rail retained");
 // ── 3. Cloud login preserves the desktop page through popup handoff ──────────
 const settingsUrlBeforeLogin = p.url();
 const popupPromise = context.waitForEvent("page");
-await p.getByRole("button", { name: "Connect Cloud" }).click();
+await p.getByRole("button", { name: "Connect Eliza Cloud" }).click();
 const authPopup = await popupPromise;
 await authPopup.waitForLoadState("domcontentloaded");
 assert(

@@ -27,7 +27,7 @@ describe("development Vite process commands", () => {
       resolveViteCommand({ appDir, nodePath: "/usr/local/bin/node" }),
       {
         command: "/usr/local/bin/node",
-        args: ["--import", "tsx", viteCli],
+        args: ["--import", "tsx", viteCli, "--configLoader", "native"],
       },
     );
   });
@@ -42,7 +42,16 @@ describe("development Vite process commands", () => {
       }),
       {
         command: "/usr/bin/node",
-        args: ["--import", "tsx", viteCli, "--force", "--port", "2138"],
+        args: [
+          "--import",
+          "tsx",
+          viteCli,
+          "--configLoader",
+          "native",
+          "--force",
+          "--port",
+          "2138",
+        ],
       },
     );
     assert.deepEqual(
@@ -53,7 +62,15 @@ describe("development Vite process commands", () => {
       }),
       {
         command: "/usr/bin/node",
-        args: ["--import", "tsx", viteCli, "--port", "2138"],
+        args: [
+          "--import",
+          "tsx",
+          viteCli,
+          "--configLoader",
+          "native",
+          "--port",
+          "2138",
+        ],
       },
     );
   });
@@ -81,7 +98,7 @@ describe("development Vite process commands", () => {
         ...viteCommand.args.slice(0, 2),
         "--input-type=module",
         "--eval",
-        'await import("@elizaos/cloud-routing")',
+        'await import("./packages/core/src/cloud-routing.ts")',
       ],
       {
         cwd: repoRoot,

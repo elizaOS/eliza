@@ -37,7 +37,7 @@ on:
         type: number
         default: 0
       publish_packages:
-        description: Publish PyPI, Snap, Debian, and Flatpak distributions
+        description: Publish PyPI, Snap, and Flatpak distributions
         required: false
         type: boolean
         default: true
@@ -105,7 +105,6 @@ jobs:
       pypi: true
       snap: true
       flatpak: true
-      apt: true
     secrets: inherit
 
   publish-android:

@@ -1,3 +1,4 @@
+/** Verifies useCloudState — backend-backed (unlocked) Cloud account sign-out through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * On a backend-backed session (local app-core / agent runtime, runtime NOT

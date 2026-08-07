@@ -45,7 +45,7 @@ OLLAMA_LARGE_MODEL=eliza-1-9b
 OLLAMA_SMALL_MODEL=eliza-1-2b
 ```
 
-When the `@elizaos/plugin-ollama` plugin is enabled, Eliza sends
+When the `@elizaos/plugin-zerollama` plugin is enabled, Eliza sends
 `TEXT_LARGE` requests to the model named in `OLLAMA_LARGE_MODEL` and
 `TEXT_SMALL` requests to the model named in `OLLAMA_SMALL_MODEL`.
 
@@ -69,7 +69,7 @@ GGUF + llama.cpp is the canonical local-inference path:
 - Runs on consumer GPUs without any FP8/PolarQuant kernel availability
   worries.
 - Ollama exposes an OpenAI-compatible API on `:11434` that the
-  `@elizaos/plugin-ollama` plugin already consumes.
+  `@elizaos/plugin-zerollama` plugin already consumes.
 
 For datacenter / multi-GPU serving, see the sibling vast-pyworker
 manifests at `../vast-pyworker/` — those use the vLLM + PolarQuant /

@@ -317,6 +317,7 @@ describe("credential-tunnel-service", () => {
 
     expect(scope.scopedToken).toMatch(/^[0-9a-f]{64}$/);
     expect(scope.sensitiveRequestIds).toEqual([]);
+    await expect(bridge.stop()).resolves.toBeUndefined();
     expect(
       await bridge.tryRetrieveCredential({
         childSessionId: "pty-1-abc",
@@ -373,7 +374,7 @@ describe("credential-tunnel-service", () => {
         } as never,
         {
           tunnel: createCredentialTunnelService(),
-          env: { PARALLAX_SESSION_ID: "pty-1-child" },
+          env: { ORCHESTRATOR_SESSION_ID: "pty-1-child" },
         },
       ),
     ).toBe(false);

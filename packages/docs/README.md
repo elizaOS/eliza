@@ -1,15 +1,14 @@
 # elizaOS Documentation
 
-Source for the [elizaOS](https://github.com/elizaOS/eliza) documentation site, built with [Mintlify](https://mintlify.com). Covers the OS, runtime, app layer, Eliza Cloud, Chip, and Robot tracks.
+Source for the public [elizaOS](https://github.com/elizaOS/eliza) documentation site, built with [Mintlify](https://mintlify.com). Internal plans, audits, and compliance artifacts live in the repository-root `docs/` tree instead.
 
 ## Local Development
 
-Install the Mintlify CLI, then preview from this directory:
+Preview from this directory with the current Mintlify CLI:
 
 ```bash
-bun install -g mint
-cd packages/docs
-mint dev
+bun run --cwd packages/docs predev
+cd packages/docs && bunx mintlify@latest dev
 ```
 
 The preview starts at `http://localhost:3000`. Brand assets (logos, favicons, OG embeds, banners) are automatically synced from `packages/shared` before dev and build.
@@ -21,15 +20,13 @@ packages/docs/
 ├── docs.json          # Mintlify site config: navigation, colors, fonts, logo
 ├── index.mdx          # Home page
 ├── quickstart.mdx     # Quickstart
-├── tracks/            # Dimension-specific content (OS, Runtime, App, Cloud, Chip, Robot)
+├── tracks/            # Product content (OS, Runtime, App, Cloud, Eliza-1)
 ├── apps/              # App layer pages (desktop, mobile, dashboard, ui-library)
 ├── runtime/           # Runtime internals reference
-├── agents/            # Agent internals reference
 ├── plugins/           # Plugin reference pages
 ├── cli/               # CLI reference
-├── connectors/        # Connector pages (Discord, Telegram, iMessage, etc.)
 ├── cloud/             # Eliza Cloud reference
-├── guides/            # How-to guides and tutorials
+├── development/       # Developer workflows shared across packages
 ├── user/              # End-user guides
 ├── test/              # Test suite (nav integrity, broken links)
 └── public/            # Static assets (auto-generated — do not hand-edit)
@@ -43,7 +40,7 @@ packages/docs/
    ```bash
    bun run --cwd packages/docs test
    ```
-4. Preview with `mint dev`.
+4. From the repository root, run `bun run --cwd packages/docs predev`, then start `bunx mintlify@latest dev` inside `packages/docs`.
 
 ## Tests
 
@@ -52,12 +49,14 @@ packages/docs/
 - `docs.json` is valid and has required Mintlify fields.
 - Navigation tabs and groups contain no duplicate labels or pages.
 - Every page referenced in navigation exists on disk.
-- All markdown files are non-empty.
-- All internal links in markdown and MDX files resolve to real files.
+- No unlisted content page is hidden outside navigation.
+- All markdown files are non-empty and have structurally valid frontmatter.
+- Internal links, local assets, repository paths, and GitHub source links resolve.
+- Documented Bun scripts and Cloud API paths exist in their source packages.
 
 ## Publishing
 
-Changes merged to the main branch are automatically deployed by the Mintlify GitHub App. The app must be installed on the repository and pointed at the default branch.
+Publishing is handled by the configured Mintlify GitHub integration. Its deployment branch and site settings are managed outside this package.
 
 If a page shows as 404 after deploy, confirm the file path appears in `docs.json` navigation and that the Mintlify CLI shows no errors locally.
 

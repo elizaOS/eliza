@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 import {
   type GoogleApiClientFactory,
   GoogleCalendarClient,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google-workspace";
 import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import { lifeOpsCalendarEventFromGoogle } from "../src/internal/google-delegates.js";

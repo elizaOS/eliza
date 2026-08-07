@@ -30,7 +30,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/test/helpers/real-runtime.ts";
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import { __testing, APPLE_CALENDAR_GRANT_ID } from "../src/apple-calendar.ts";
 import {
   type CalendarHostGate,

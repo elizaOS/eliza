@@ -66,7 +66,8 @@ function initManagerSync(): IActionRoutingContextManager {
 				},
 			};
 		} catch {
-			// fall through to stack
+			// error-policy:J4 AsyncLocalStorage is an optional Node optimization;
+			// other runtimes use the explicit stack manager below.
 		}
 	}
 	return new StackContextManager<ActionRoutingContext | undefined>();

@@ -28,6 +28,9 @@ type MemoryOp = (typeof MEMORY_OPS)[number];
 const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
 
+const UUID_SCHEMA_PATTERN =
+  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
+
 interface MemoryParams {
   action?: MemoryOp;
   op?: MemoryOp;
@@ -533,7 +536,7 @@ export const memoryAction: Action = {
   descriptionCompressed:
     "manage agent memory create search update delete; delete by memoryId or query; update/delete require confirm:true",
   routingHint:
-    "store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY; do NOT use for open-web lookups -> WEB_SEARCH, for reading messages already in a channel -> MESSAGE (action=search), or for the skill catalog -> SKILL",
+    "store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY. This includes recalling or COUNTING what was said earlier than the messages shown in context ('how many times have I mentioned X', 'have I ever told you about X', 'what did we say about X last week') — the conversation block in context is only the most recent turns, so answer those from op:search over the stored record, never from that block alone. Do NOT use for open-web lookups -> WEB_SEARCH, for searching connected external channels such as email or another platform's inbox -> MESSAGE (action=search), or for the skill catalog -> SKILL",
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
@@ -607,15 +610,17 @@ export const memoryAction: Action = {
     },
     {
       name: "entityId",
-      description: "search: filter to memories owned by this entity id.",
+      description:
+        "search: optional entity UUID from a previous result. Omit it when no exact UUID is known.",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
     },
     {
       name: "roomId",
-      description: "search: filter to memories from this room id.",
+      description:
+        'search: optional room UUID from a previous result. Omit it to search all stored rooms; never pass a source label such as "chat".',
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
     },
     {
       name: "query",
@@ -635,7 +640,7 @@ export const memoryAction: Action = {
       description:
         "update/delete: id of the memory to mutate. delete: optional when query is provided.",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
     },
     {
       name: "confirm",

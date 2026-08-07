@@ -48,6 +48,7 @@ function makeRuntime(svc: TrajectoriesService | null): IAgentRuntime {
 		getService: vi.fn(() => svc),
 		getServicesByType: vi.fn(() => (svc ? [svc] : [])),
 		logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+		reportError: vi.fn(),
 	} as unknown as IAgentRuntime;
 }
 

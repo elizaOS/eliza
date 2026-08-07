@@ -1,3 +1,4 @@
+/** Verifies sharedRuntimeVoiceOrigin (shared-base detection) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Unit tests for the shared-tier voice fallback (#15395). Covers:

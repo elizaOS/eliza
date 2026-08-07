@@ -28,7 +28,6 @@ describe("parseX402Response", () => {
     }
     expect(requirements).toHaveLength(1);
     const req = requirements[0];
-    expect(req).toBeDefined();
     if (!req) {
       throw new Error("expected first payment requirement");
     }

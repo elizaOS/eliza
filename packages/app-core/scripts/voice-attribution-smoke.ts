@@ -38,21 +38,21 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { buildVoiceTurnSignal } from "../../../packages/shared/src/voice/respond-gate.ts";
-import { handleLiveVoiceAttribution } from "../../../plugins/plugin-local-inference/src/runtime/voice-entity-binding.ts";
-import { resolveFusedLibraryPath } from "../../../plugins/plugin-local-inference/src/services/desktop-fused-ffi-backend-runtime.ts";
+import { handleLiveVoiceAttribution } from "@elizaos/plugin-local-inference/runtime/voice-entity-binding";
+import { resolveFusedLibraryPath } from "@elizaos/plugin-local-inference/services/desktop-fused-ffi-backend-runtime";
 import {
   AudioFrameConsumer,
   type AudioFrameEvent,
-} from "../../../plugins/plugin-local-inference/src/services/voice/audio-frame-consumer.ts";
-import { loadElizaInferenceFfi } from "../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings.ts";
-import { VoiceProfileStore } from "../../../plugins/plugin-local-inference/src/services/voice/profile-store.ts";
-import { VoiceAttributionPipeline } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/attribution-pipeline.ts";
-import { FusedDiarizer } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/diarizer-fused.ts";
-import { FusedSpeakerEncoder } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/encoder-fused.ts";
+} from "@elizaos/plugin-local-inference/services/voice/audio-frame-consumer";
+import { loadElizaInferenceFfi } from "@elizaos/plugin-local-inference/services/voice/ffi-bindings";
+import { VoiceProfileStore } from "@elizaos/plugin-local-inference/services/voice/profile-store";
+import { VoiceAttributionPipeline } from "@elizaos/plugin-local-inference/services/voice/speaker/attribution-pipeline";
+import { FusedDiarizer } from "@elizaos/plugin-local-inference/services/voice/speaker/diarizer-fused";
+import { FusedSpeakerEncoder } from "@elizaos/plugin-local-inference/services/voice/speaker/encoder-fused";
 import {
   GgmlSileroVad,
   VadDetector,
-} from "../../../plugins/plugin-local-inference/src/services/voice/vad.ts";
+} from "@elizaos/plugin-local-inference/services/voice/vad";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const WAV = path.join(

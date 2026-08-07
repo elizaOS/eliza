@@ -85,6 +85,12 @@ const NA_WITH_REASON_RE =
 const CLAIM_WINDOW_MS = CLAIM_RECENCY_DAYS * 24 * 60 * 60 * 1000;
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
 const FULL_COMMIT_RE = /^[a-f0-9]{40}$/i;
+const GH_READ_MAX_ATTEMPTS = 3;
+const GH_READ_RETRY_BASE_DELAY_MS = 250;
+// Rate limits are intentionally excluded: HTTP 403/429 require honoring the
+// server's retry window, while this short transport backoff would amplify them.
+const RETRYABLE_GH_READ_FAILURE_RE =
+  /(?:TLS handshake timeout|i\/o timeout|context deadline exceeded|client\.timeout exceeded|connection (?:reset|refused|closed)|unexpected EOF|temporary failure in name resolution|no such host|network is unreachable|HTTP (?:408|5\d\d)\b)/i;
 const DOMAIN_ARTIFACT_HOSTS = new Set([
   "arbiscan.io",
   "basescan.org",
@@ -296,41 +302,80 @@ function compareComment(left, right) {
   return left.id - right.id || left.url.localeCompare(right.url);
 }
 
-export function parsePaginatedJson(output) {
-  const parsed = JSON.parse(output);
-  if (!Array.isArray(parsed)) {
-    throw new TypeError("gh --slurp output must be an array of pages");
+export function parsePaginatedJson(output, endpoint = "GitHub endpoint") {
+  if (typeof output !== "string") {
+    throw new TypeError(`gh api did not return text output for ${endpoint}`);
   }
-  return parsed.flatMap((page, index) => {
-    if (!Array.isArray(page)) {
-      throw new TypeError(`gh page ${index + 1} must be an array`);
+  const records = [];
+  const lines = output.split(/\r?\n/);
+  for (const [index, line] of lines.entries()) {
+    if (line.trim().length === 0) continue;
+    try {
+      records.push(JSON.parse(line));
+    } catch (error) {
+      const detail = error instanceof Error ? `: ${error.message}` : "";
+      throw new SyntaxError(
+        `gh api returned malformed JSON for ${endpoint} at output line ${index + 1}${detail}`,
+      );
     }
-    return page;
-  });
+  }
+  return records;
 }
 
-export function readGhPages(endpoint, spawn = spawnSync) {
+function waitSynchronously(durationMs) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, durationMs);
+}
+
+export function readGhPages(
+  endpoint,
+  spawn = spawnSync,
+  wait = waitSynchronously,
+) {
   if (typeof endpoint !== "string" || endpoint.length === 0) {
     throw new TypeError("GitHub endpoint must be a non-empty string");
   }
-  const args = ["api", "--method", "GET", "--paginate", "--slurp", endpoint];
-  const result = spawn("gh", args, {
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-    windowsHide: true,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    const detail =
-      typeof result.stderr === "string" && result.stderr.trim().length > 0
-        ? `: ${result.stderr.trim()}`
-        : "";
-    throw new Error(`gh api failed for ${endpoint}${detail}`);
+  // `--jq .[]` emits one compact JSON record per line across every page and is
+  // available in gh 2.45. Unlike newer `--slurp`, it works on Ubuntu 24.04's
+  // packaged GitHub CLI while preserving complete, ordered pagination.
+  const args = [
+    "api",
+    "--method",
+    "GET",
+    "--paginate",
+    "--jq",
+    ".[]",
+    endpoint,
+  ];
+  let attempt = 1;
+  while (true) {
+    const result = spawn("gh", args, {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      windowsHide: true,
+    });
+    if (result.error) {
+      throw new Error(`gh api could not start for ${endpoint}`, {
+        cause: result.error,
+      });
+    }
+    if (result.status === 0) {
+      return parsePaginatedJson(result.stdout, endpoint);
+    }
+
+    const stderr =
+      typeof result.stderr === "string" ? result.stderr.trim() : "";
+    const retryable = RETRYABLE_GH_READ_FAILURE_RE.test(stderr);
+    if (!retryable || attempt === GH_READ_MAX_ATTEMPTS) {
+      const attempts = retryable ? ` after ${attempt} attempts` : "";
+      const detail = stderr.length > 0 ? `: ${stderr}` : "";
+      throw new Error(`gh api failed for ${endpoint}${attempts}${detail}`);
+    }
+
+    // Each retry reruns the complete paginated GET, so output from an aborted
+    // attempt can never be mistaken for a complete inventory.
+    wait(GH_READ_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+    attempt += 1;
   }
-  if (typeof result.stdout !== "string") {
-    throw new TypeError("gh api did not return text output");
-  }
-  return parsePaginatedJson(result.stdout);
 }
 
 export function parseModelDisclosure(text) {

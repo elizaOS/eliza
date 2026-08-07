@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for runtime package manifest ts. */
+/**
+ * Computes the set of npm packages the packaged runtime must bundle: the
+ * baseline release-plugin policy plus packages discovered by scanning built JS
+ * for import/require specifiers.
+ */
 import fs from "node:fs";
 import path from "node:path";
 // Import from the specific subpath instead of "@elizaos/agent" so loading

@@ -37,7 +37,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
 
 ENV BUN_INSTALL=/root/.bun \
     PATH=/root/.bun/bin:$PATH
-RUN curl -fsSL https://bun.sh/install | bash -s "canary" \
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14" \
  && bun --version
 
 WORKDIR /workspace
@@ -50,7 +50,7 @@ COPY uv.lock ./
 # pin only matters for the GPU image.
 RUN uv venv --python 3.12 /workspace/.venv \
  && . /workspace/.venv/bin/activate \
- && uv sync --extra train --frozen --no-install-project
+ && uv sync --extra train --locked --no-install-project
 
 ENV VIRTUAL_ENV=/workspace/.venv \
     PATH=/root/.bun/bin:/workspace/.venv/bin:$PATH \

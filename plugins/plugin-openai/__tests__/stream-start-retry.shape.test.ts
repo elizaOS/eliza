@@ -1,12 +1,17 @@
 /**
- * Shape tests for live-stream start retry: a transient provider error that
+ * Shape tests for the transient-retry lanes: a transient provider error that
  * kills the stream BEFORE its first token (Cerebras's "Encountered a server
  * error, please try again" arrives via `onError` with an empty stream, or as
  * a throw on the first pull) retries with backoff, because nothing has
- * reached the user yet. Mid-stream and non-transient failures stay fatal.
- * Mocked `ai` SDK (fresh stream objects per call — generators are single-use),
- * no network; the live Cerebras failure this fences rode the incident log.
+ * reached the user yet. Mid-stream and non-transient failures stay fatal, a
+ * cancelled request never retries (the backoff itself is abort-aware),
+ * concurrent streams retry independently without amplification, and every
+ * retried call surfaces retryCount/lastRetryReason on MODEL_USED and the
+ * result's providerMetadata. Mocked `ai` SDK (fresh stream objects per call —
+ * generators are single-use), no network; the live Cerebras failure this
+ * fences rode the incident log.
  */
+import { EventType, logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
@@ -138,6 +143,28 @@ describe("live-stream start retry", () => {
     await expect(collect(stream)).resolves.toEqual(["hel", "lo"]);
     expect(aiMocks.streamText).toHaveBeenCalledTimes(2);
   }, 20_000);
+
+  it("survives a sustained transient burst: five stream-start failures, sixth attempt delivers", async () => {
+    // Live 2026-08-02: Cerebras 500 bursts outlasted the previous 3-attempt
+    // window and killed recoverable turns. The budget is now 5 retries; a
+    // burst that clears within it must deliver, not fail the turn.
+    let call = 0;
+    aiMocks.streamText.mockImplementation((args: { onError: (a: { error: unknown }) => void }) => {
+      call++;
+      return Promise.resolve(
+        call <= 5 ? emptyErroredResult(args.onError, TRANSIENT) : successResult(["ok"])
+      );
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(createRuntime(), {
+      prompt: "hi",
+      stream: true,
+    } as never)) as { textStream: AsyncIterable<string> };
+
+    await expect(collect(stream)).resolves.toEqual(["ok"]);
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(6);
+  }, 30_000);
 
   it("retries a transient throw on the first pull", async () => {
     let call = 0;
@@ -424,5 +451,320 @@ describe("live-stream start retry", () => {
       message: "Encountered a server error, please try again",
     });
     expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+  }, 20_000);
+});
+
+describe("transient retry: abort-aware backoff", () => {
+  beforeEach(() => {
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("OPENAI_BASE_URL", "https://api.openai.com/v1");
+    vi.stubEnv("CEREBRAS_API_KEY", undefined);
+    vi.stubEnv("ELIZA_PROVIDER", undefined);
+    aiMocks.streamText.mockReset();
+    aiMocks.generateText.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("stream-start lane: abort mid-backoff rejects with the abort reason and no further streamText call ever fires", async () => {
+    const controller = new AbortController();
+    // Every attempt fails transiently, so only the abort can end the loop.
+    aiMocks.streamText.mockImplementation((args: { onError: (a: { error: unknown }) => void }) =>
+      Promise.resolve(emptyErroredResult(args.onError, TRANSIENT))
+    );
+
+    const { handleTextSmall } = await import("../models/text");
+    const pending = handleTextSmall(createRuntime(), {
+      prompt: "hi",
+      stream: true,
+      signal: controller.signal,
+    } as never);
+    // The first attempt fails within microtasks; the minimum backoff is 300ms,
+    // so an 80ms abort lands inside the delay.
+    setTimeout(() => controller.abort(new Error("cancelled mid-backoff")), 80);
+
+    await expect(pending).rejects.toMatchObject({ message: "cancelled mid-backoff" });
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+    // Past the first retry's maximum backoff (300ms + 200ms jitter): a retry
+    // scheduled despite the abort would have fired by now.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+  }, 20_000);
+
+  it("stream-start lane: a signal already aborted at classification time blocks the retry even for a transient error", async () => {
+    const controller = new AbortController();
+    aiMocks.streamText.mockImplementation((args: { onError: (a: { error: unknown }) => void }) => {
+      // Cancellation racing the in-flight attempt: aborted before the retry
+      // decision runs.
+      controller.abort();
+      return Promise.resolve(emptyErroredResult(args.onError, TRANSIENT));
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(createRuntime(), {
+      prompt: "hi",
+      stream: true,
+      signal: controller.signal,
+    } as never)) as { textStream: AsyncIterable<string> };
+
+    await expect(collect(stream)).rejects.toMatchObject({
+      message: "Encountered a server error, please try again",
+    });
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+  }, 20_000);
+
+  it("generate lane: abort mid-backoff rejects the non-streaming call and stops retrying", async () => {
+    const controller = new AbortController();
+    aiMocks.generateText.mockImplementation(() => Promise.reject(TRANSIENT));
+
+    const { handleTextSmall } = await import("../models/text");
+    const pending = handleTextSmall(createRuntime(), {
+      prompt: "hi",
+      signal: controller.signal,
+    } as never);
+    setTimeout(() => controller.abort(new Error("cancelled mid-backoff")), 80);
+
+    await expect(pending).rejects.toMatchObject({ message: "cancelled mid-backoff" });
+    expect(aiMocks.generateText).toHaveBeenCalledTimes(1);
+  }, 20_000);
+
+  it("buffered-stream lane: abort mid-backoff rejects the planner call and stops retrying", async () => {
+    process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+    try {
+      const controller = new AbortController();
+      // consumeStreamWithTransientRetry does not await streamText — return
+      // plain result objects, not promises.
+      aiMocks.streamText.mockImplementation(
+        (args: { onError: (a: { error: unknown }) => void }) => ({
+          // biome-ignore lint/correctness/useYield: error-only stream fixture — the provider error surfaces via onError, no tokens.
+          textStream: (async function* textStream() {
+            args.onError({ error: TRANSIENT });
+          })(),
+          toolCalls: Promise.resolve([]),
+          finishReason: Promise.resolve("error"),
+          usage: Promise.resolve(undefined),
+        })
+      );
+
+      const { handleTextSmall } = await import("../models/text");
+      const pending = handleTextSmall(createRuntime(), {
+        prompt: "plan",
+        stream: true,
+        signal: controller.signal,
+      } as never);
+      setTimeout(() => controller.abort(new Error("cancelled mid-backoff")), 80);
+
+      await expect(pending).rejects.toMatchObject({ message: "cancelled mid-backoff" });
+      expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+    } finally {
+      delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+    }
+  }, 20_000);
+});
+
+describe("transient retry: concurrency is bounded per stream", () => {
+  beforeEach(() => {
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("OPENAI_BASE_URL", "https://api.openai.com/v1");
+    vi.stubEnv("CEREBRAS_API_KEY", undefined);
+    vi.stubEnv("ELIZA_PROVIDER", undefined);
+    aiMocks.streamText.mockReset();
+    aiMocks.generateText.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("three simultaneous streams each retrying once stay independent: two attempts per stream, six total, no cross-talk", async () => {
+    const attemptsByPrompt = new Map<string, number>();
+    aiMocks.streamText.mockImplementation(
+      (args: { prompt?: string; onError: (a: { error: unknown }) => void }) => {
+        const prompt = args.prompt ?? "<missing>";
+        const attempt = (attemptsByPrompt.get(prompt) ?? 0) + 1;
+        attemptsByPrompt.set(prompt, attempt);
+        return Promise.resolve(
+          attempt === 1 ? emptyErroredResult(args.onError, TRANSIENT) : successResult([prompt])
+        );
+      }
+    );
+
+    const { handleTextSmall } = await import("../models/text");
+    const prompts = ["stream-a", "stream-b", "stream-c"];
+    const streams = (await Promise.all(
+      prompts.map((prompt) => handleTextSmall(createRuntime(), { prompt, stream: true } as never))
+    )) as Array<{
+      textStream: AsyncIterable<string>;
+      providerMetadata?: { retryCount?: number };
+    }>;
+
+    const texts = await Promise.all(streams.map((stream) => collect(stream)));
+    // Each stream delivers ITS OWN retried text — a cross-amplified retry
+    // would either duplicate attempts or leak another stream's tokens.
+    expect(texts).toEqual([["stream-a"], ["stream-b"], ["stream-c"]]);
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(6);
+    for (const prompt of prompts) {
+      expect(attemptsByPrompt.get(prompt)).toBe(2);
+    }
+    for (const stream of streams) {
+      expect(stream.providerMetadata?.retryCount).toBe(1);
+    }
+  }, 30_000);
+});
+
+describe("transient retry: observability", () => {
+  beforeEach(() => {
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("OPENAI_BASE_URL", "https://api.openai.com/v1");
+    vi.stubEnv("CEREBRAS_API_KEY", undefined);
+    vi.stubEnv("ELIZA_PROVIDER", undefined);
+    aiMocks.streamText.mockReset();
+    aiMocks.generateText.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  function findModelUsedPayload(runtime: { emitEvent: ReturnType<typeof vi.fn> }) {
+    const call = runtime.emitEvent.mock.calls.find(([event]) => event === EventType.MODEL_USED);
+    return call?.[1] as
+      | { retryCount?: number; lastRetryReason?: string; model?: string }
+      | undefined;
+  }
+
+  it("a retried stream exposes retryCount/lastRetryReason on MODEL_USED, providerMetadata, and the structured warn", async () => {
+    const warnSpy = vi.spyOn(logger, "warn");
+    let call = 0;
+    aiMocks.streamText.mockImplementation((args: { onError: (a: { error: unknown }) => void }) => {
+      call++;
+      return Promise.resolve(
+        call <= 2 ? emptyErroredResult(args.onError, TRANSIENT) : successResult(["ok"])
+      );
+    });
+
+    const runtime = {
+      character: { name: "Ada", system: "system prompt" },
+      emitEvent: vi.fn(),
+      getService: vi.fn(() => null),
+      getServicesByType: vi.fn(() => []),
+      getSetting: vi.fn(() => undefined),
+    };
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(
+      runtime as never,
+      {
+        prompt: "hi",
+        stream: true,
+      } as never
+    )) as {
+      textStream: AsyncIterable<string>;
+      providerMetadata?: { retryCount?: number; lastRetryReason?: string };
+    };
+    await expect(collect(stream)).resolves.toEqual(["ok"]);
+
+    expect(stream.providerMetadata).toMatchObject({
+      retryCount: 2,
+      lastRetryReason: expect.stringContaining("server error"),
+    });
+    const payload = findModelUsedPayload(runtime);
+    expect(payload).toMatchObject({
+      retryCount: 2,
+      lastRetryReason: expect.stringContaining("server error"),
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        src: "plugin-openai",
+        lane: "stream-start",
+        attempt: 1,
+        maxRetries: 5,
+        model: expect.any(String),
+        reason: expect.stringContaining("server error"),
+      }),
+      expect.any(String)
+    );
+  }, 30_000);
+
+  it("a clean first-attempt stream reports retryCount 0 and no lastRetryReason", async () => {
+    aiMocks.streamText.mockImplementation(() => Promise.resolve(successResult(["ok"])));
+
+    const runtime = {
+      character: { name: "Ada", system: "system prompt" },
+      emitEvent: vi.fn(),
+      getService: vi.fn(() => null),
+      getServicesByType: vi.fn(() => []),
+      getSetting: vi.fn(() => undefined),
+    };
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(
+      runtime as never,
+      {
+        prompt: "hi",
+        stream: true,
+      } as never
+    )) as {
+      textStream: AsyncIterable<string>;
+      providerMetadata?: { retryCount?: number; lastRetryReason?: string };
+    };
+    await expect(collect(stream)).resolves.toEqual(["ok"]);
+
+    expect(stream.providerMetadata?.retryCount).toBe(0);
+    expect(stream.providerMetadata).not.toHaveProperty("lastRetryReason");
+    const payload = findModelUsedPayload(runtime);
+    expect(payload?.retryCount).toBe(0);
+    expect(payload).not.toHaveProperty("lastRetryReason");
+  }, 20_000);
+
+  it("a retried non-streaming native call surfaces retry telemetry on MODEL_USED and result providerMetadata", async () => {
+    let call = 0;
+    aiMocks.generateText.mockImplementation(() => {
+      call++;
+      if (call === 1) {
+        return Promise.reject({
+          statusCode: 400,
+          message: "Encountered a server error, please try again",
+        });
+      }
+      return Promise.resolve({
+        text: "",
+        toolCalls: [{ toolName: "lookup", input: { q: "answer" } }],
+        finishReason: "tool-calls",
+        usage: { inputTokens: 12, outputTokens: 6 },
+        providerMetadata: undefined,
+      });
+    });
+
+    const runtime = {
+      character: { name: "Ada", system: "system prompt" },
+      emitEvent: vi.fn(),
+      getService: vi.fn(() => null),
+      getServicesByType: vi.fn(() => []),
+      getSetting: vi.fn(() => undefined),
+    };
+    const { handleTextSmall } = await import("../models/text");
+    const result = (await handleTextSmall(
+      runtime as never,
+      {
+        prompt: "call a tool",
+        tools: { lookup: { description: "Lookup", inputSchema: { type: "object" } } },
+        toolChoice: { type: "tool", toolName: "lookup" },
+      } as never
+    )) as {
+      providerMetadata?: { retryCount?: number; lastRetryReason?: string };
+    };
+
+    expect(result.providerMetadata).toMatchObject({
+      retryCount: 1,
+      lastRetryReason: expect.stringContaining("server error"),
+    });
+    const payload = findModelUsedPayload(runtime);
+    expect(payload).toMatchObject({
+      retryCount: 1,
+      lastRetryReason: expect.stringContaining("server error"),
+    });
+    expect(aiMocks.generateText).toHaveBeenCalledTimes(2);
   }, 20_000);
 });

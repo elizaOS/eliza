@@ -1,19 +1,8 @@
-// Renders assistant message text with its inline widgets (#8876, #8997, #9304).
-//
-// The chat overlay shows raw `message.content`. Without segmentation
-// it would leak, as literal text, every marker the full ChatView surface
-// handles: the inline-widget markers (`[TASK:…]`, `[CHOICE:…]`, `[FORM]…[/FORM]`,
-// `[FOLLOWUPS]…[/FOLLOWUPS]`), the structured markers (`[CONFIG:…]`, fenced
-// UiSpec JSON, permission requests), and hidden reasoning/tool tags.
-//
-// To stay consistent with MessageContent (ChatView) and never drift, this
-// delegates to the SAME `parseSegments` parser instead of re-implementing a
-// partial one. It renders the prose, fenced code blocks, and the interactive
-// inline widgets (task card / choice buttons / inline form / suggestion chips).
-// The heavier affordances — plugin config card, UiSpec block, permission card —
-// reuse the same renderers as MessageContent. Handlers come from the app +
-// composer contexts, so callers just render
-// `<InlineWidgetText content={msg.content} />`.
+/**
+ * Renders assistant prose and inline widgets in the shell transcript. It uses
+ * the canonical message segment parser so hidden markers and structured
+ * affordances stay consistent with the full chat view.
+ */
 
 import type { ReactNode } from "react";
 import { useAppSelectorShallow } from "../../state";

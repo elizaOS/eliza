@@ -1,11 +1,4 @@
-/**
- * Boolean parsing utilities.
- *
- * Provides flexible boolean parsing from string values
- * with configurable truthy/falsy representations.
- *
- * @module utils/boolean
- */
+/** Parses string booleans against configurable truthy and falsy vocabularies. */
 
 /**
  * Options for boolean parsing.

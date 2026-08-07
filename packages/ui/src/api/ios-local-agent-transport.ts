@@ -15,6 +15,7 @@ import {
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
 } from "../first-run/mobile-runtime-mode";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {
   handleIosLocalAgentRequest,
   startIosLocalAgentKernel,
@@ -978,9 +979,11 @@ async function tryFullBunStreamingResponse(
   const plugin = createIosStreamingAgentPlugin(
     { call: runtime.call, addListener: runtime.addListener },
     (error) => {
-      console.warn("[ios-local-agent] stream request failed after head", {
-        path: options.path?.slice(0, 120) ?? null,
-        error: error instanceof Error ? error.message : String(error),
+      reportRendererDiagnostic({
+        scope: "ios-local-agent.stream-after-head",
+        severity: "warning",
+        error,
+        context: { path: options.path?.slice(0, 120) },
       });
     },
   );

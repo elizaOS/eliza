@@ -213,7 +213,6 @@ export function hasModelKey(
     "Z_AI_API_KEY",
     "MOONSHOT_API_KEY",
     "KIMI_API_KEY",
-    "AI_GATEWAY_API_KEY",
     "ELIZAOS_CLOUD_API_KEY",
     "OLLAMA_BASE_URL",
   ];

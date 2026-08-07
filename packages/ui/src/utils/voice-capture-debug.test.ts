@@ -1,3 +1,4 @@
+/** Verifies voiceCaptureDebug breadcrumb ring (device HUD source) through the package's configured test harness. */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getVoiceCaptureBreadcrumbs,

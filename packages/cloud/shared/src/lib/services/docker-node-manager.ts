@@ -12,6 +12,13 @@ import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode, DockerNodeStatus } from "../../db/schemas/docker-nodes";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
+import {
+  buildEmbeddingSidecarProbeCmd,
+  buildEnsureEmbeddingSidecarCmd,
+  type EmbeddingSidecarStatus,
+  embeddingSidecarStatusFromMetadata,
+  parseEmbeddingSidecarProbe,
+} from "./containers/embedding-sidecar";
 import { countAllocatedWorkloadsOnNode } from "./docker-node-workloads";
 import {
   dockerPlatformFlag,
@@ -72,6 +79,162 @@ export function __resetNodeHealthFailureStateForTests(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Placement circuit breaker (docker-command timeouts feed back into selection)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-node docker-command timeout timestamps + quarantine deadline. In-memory
+ * for the same reason as the health/pre-pull state above: the provisioning
+ * worker is a single long-lived process and a restart is a clean slate.
+ *
+ * Why this exists (#17880): capacity accounting and the `docker info`
+ * readiness probe are both blind to a node that is alive but drowning in IO —
+ * `docker info` answers from daemon memory while `docker create` needs journal
+ * flushes, so an overloaded node passes selection and then times out every
+ * provision. Timeouts recorded here quarantine the node from selection instead
+ * of letting it be re-picked for every subsequent provision.
+ */
+const placementTimeoutState = new Map<
+  string,
+  { timeoutsMs: number[]; quarantinedUntilMs: number }
+>();
+/** Docker-command timeouts on a node within the window before quarantine. */
+const PLACEMENT_TIMEOUT_THRESHOLD = 3;
+/** Sliding window in which timeouts count toward the threshold. */
+const PLACEMENT_TIMEOUT_WINDOW_MS = 10 * 60 * 1000;
+/**
+ * How long a quarantined node is excluded from selection. Longer than the
+ * window, so a node coming out of quarantine starts from a drained window and
+ * gets the full threshold of fresh attempts before re-quarantining.
+ */
+const PLACEMENT_QUARANTINE_MS = 15 * 60 * 1000;
+
+export function __resetPlacementTimeoutStateForTests(): void {
+  placementTimeoutState.clear();
+}
+
+/** Matches only the docker-ssh timeout signature in an error or its causes. */
+export function isDockerSshCommandTimeoutError(
+  error: unknown,
+  commandFirstToken?: string,
+): boolean {
+  const visited = new Set<unknown>();
+  let current: unknown = error;
+
+  while (current !== undefined && current !== null && !visited.has(current)) {
+    visited.add(current);
+    const message = current instanceof Error ? current.message : String(current);
+    const commandSuffix = commandFirstToken ? `: ${commandFirstToken} [redacted]` : " [redacted]";
+    if (
+      message.includes("[docker-ssh] Command timed out after") &&
+      message.endsWith(commandSuffix)
+    ) {
+      return true;
+    }
+    current = current instanceof Error ? current.cause : undefined;
+  }
+
+  return false;
+}
+
+/**
+ * Feed a container-operation failure on a node back into placement. Only
+ * docker-command timeouts count — they are the overload signature; every other
+ * failure mode (bad image, auth, node absent) has its own handling and says
+ * nothing about the node's ability to take work.
+ */
+export function notePlacementCommandFailure(
+  nodeId: string,
+  error: unknown,
+  nowMs = Date.now(),
+): void {
+  if (!isDockerSshCommandTimeoutError(error, "docker")) return;
+  const state = placementTimeoutState.get(nodeId) ?? {
+    timeoutsMs: [],
+    quarantinedUntilMs: 0,
+  };
+  state.timeoutsMs = state.timeoutsMs.filter((ts) => nowMs - ts < PLACEMENT_TIMEOUT_WINDOW_MS);
+  state.timeoutsMs.push(nowMs);
+  if (state.timeoutsMs.length >= PLACEMENT_TIMEOUT_THRESHOLD) {
+    state.quarantinedUntilMs = nowMs + PLACEMENT_QUARANTINE_MS;
+    state.timeoutsMs = [];
+    logger.warn("[docker-node-manager] Node quarantined from placement after docker timeouts", {
+      nodeId,
+      threshold: PLACEMENT_TIMEOUT_THRESHOLD,
+      windowMs: PLACEMENT_TIMEOUT_WINDOW_MS,
+      quarantineMs: PLACEMENT_QUARANTINE_MS,
+    });
+  }
+  placementTimeoutState.set(nodeId, state);
+}
+
+/** A successful container operation proves the node can take work again. */
+export function clearPlacementCommandFailures(nodeId: string): void {
+  placementTimeoutState.delete(nodeId);
+}
+
+export function isNodePlacementQuarantined(nodeId: string, nowMs = Date.now()): boolean {
+  const state = placementTimeoutState.get(nodeId);
+  return !!state && state.quarantinedUntilMs > nowMs;
+}
+
+// ---------------------------------------------------------------------------
+// IO-pressure readiness signal
+// ---------------------------------------------------------------------------
+
+/**
+ * Refuse placement above this /proc/pressure/io `full avg60` percentage.
+ *
+ * Both ends are measured on the same production node (88.99.66.168):
+ * while healthy and completing provisions in ~36s it reports avg60 33.6–36.4,
+ * and during the #17880 outage — every `docker create` timing out at 60s — it
+ * reported avg60 78.50. 60 leaves ~24 points of margin below the healthy
+ * ceiling and ~18 above the outage floor.
+ *
+ * avg60, not avg10: on that same healthy node avg10 swings 30.5–40.9, so a
+ * gate anywhere near the working range refuses a working node on a transient
+ * spike (an image extract is enough) and manufactures the "no nodes available"
+ * outage this is meant to prevent. avg60 spans 2.8 points over the same window.
+ */
+const PLACEMENT_MAX_IO_PRESSURE_FULL_AVG60 = 60;
+
+/** Separates docker-info output from the PSI section in the readiness probe. */
+const READINESS_PROBE_PSI_MARKER = "---IO-PRESSURE---";
+
+/**
+ * Parse `full avg60=` out of /proc/pressure/io content. Returns null when the
+ * signal is absent (pre-4.20 kernel, CONFIG_PSI off, unreadable) — absence
+ * must not block placement; the circuit breaker still protects that node.
+ */
+export function parseIoPressureFullAvg60(section: string): number | null {
+  const match = section.match(/^full\s+avg10=[\d.]+\s+avg60=(\d+(?:\.\d+)?)/m);
+  if (!match) return null;
+  const value = Number.parseFloat(match[1]!);
+  return Number.isFinite(value) ? value : null;
+}
+
+// ---------------------------------------------------------------------------
+// Embedding-sidecar self-heal bookkeeping
+// ---------------------------------------------------------------------------
+
+/**
+ * Last self-heal attempt per node. In-memory for the same reason as the
+ * pre-pull/health state above: the provisioning worker owns the loop and a
+ * restart is a clean slate. The cooldown exists because the ensure command may
+ * pull the sidecar image (hundreds of MB) — a node whose install keeps failing
+ * must not re-pull every health cycle.
+ */
+const embeddingSidecarSelfHealState = new Map<string, number>();
+/** Minimum gap between sidecar self-heal attempts on the same node. */
+const EMBEDDING_SIDECAR_SELF_HEAL_COOLDOWN_MS = 30 * 60 * 1000;
+/** Generous ensure timeout: first run pulls the TEI image + model weights. */
+const EMBEDDING_SIDECAR_ENSURE_TIMEOUT_MS = 5 * 60 * 1000;
+
+export function __resetEmbeddingSidecarSelfHealStateForTests(): void {
+  embeddingSidecarSelfHealState.clear();
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -84,6 +247,12 @@ export interface NodeCapacityReport {
   status: DockerNodeStatus;
   enabled: boolean;
   lastHealthCheck: Date | null;
+  /**
+   * Last persisted local-embedding-sidecar verdict for the node ("unknown"
+   * until the health loop has probed it). Surfaced so a fleet silently missing
+   * its sidecars is visible in every capacity read, not just node-local logs.
+   */
+  embeddingSidecar: EmbeddingSidecarStatus | "unknown";
 }
 
 export interface CapacitySummary {
@@ -104,6 +273,11 @@ export interface NodeSelectionOptions {
    * if the blue landed on the same node as the old.
    */
   excludeNodeId?: string;
+  /**
+   * Refuse transient IO pressure only while selecting new placement. Sticky
+   * stateful routing and autoscaler readiness must remain liveness-only.
+   */
+  enforcePlacementIoPressure?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,11 +301,6 @@ function isAutoscaledNode(node: DockerNode): boolean {
 
 function prePullPidFile(marker: string): string {
   return `${PREPULL_PID_DIR}/eliza-prepull-${marker}.pid`;
-}
-
-export function isPrePullTimeoutError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("Command timed out after");
 }
 
 export function buildTrackedPrePullCommand(
@@ -234,16 +403,59 @@ export class DockerNodeManager {
       .filter((candidate) => candidate.node.node_id !== options.excludeNodeId)
       .sort((a, b) => b.available - a.available);
 
-    for (const candidate of candidates) {
-      if (!isNodeMetadataCompatible(candidate.node, options.requiredPlatform)) {
-        logger.warn("[docker-node-manager] Skipping node with incompatible architecture", {
-          nodeId: candidate.node.node_id,
-          requiredPlatform: options.requiredPlatform,
-          metadata: candidate.node.metadata,
-        });
-        continue;
+    const compatibleCandidates = candidates.filter((candidate) => {
+      if (isNodeMetadataCompatible(candidate.node, options.requiredPlatform)) {
+        return true;
       }
-      if (!(await this.ensureNodeReady(candidate.node, options))) {
+      logger.warn("[docker-node-manager] Skipping node with incompatible architecture", {
+        nodeId: candidate.node.node_id,
+        requiredPlatform: options.requiredPlatform,
+        metadata: candidate.node.metadata,
+      });
+      return false;
+    });
+    const nowMs = Date.now();
+    const selectable: typeof compatibleCandidates = [];
+    const quarantined: Array<{
+      candidate: (typeof compatibleCandidates)[number];
+      quarantinedUntilMs: number;
+    }> = [];
+    for (const candidate of compatibleCandidates) {
+      const quarantinedUntilMs =
+        placementTimeoutState.get(candidate.node.node_id)?.quarantinedUntilMs ?? 0;
+      if (quarantinedUntilMs > nowMs) {
+        quarantined.push({ candidate, quarantinedUntilMs });
+      } else {
+        selectable.push(candidate);
+      }
+    }
+    if (quarantined.length > 0) {
+      logger.warn("[docker-node-manager] Skipping quarantined nodes during selection", {
+        nodeIds: quarantined.map(({ candidate }) => candidate.node.node_id),
+      });
+    }
+
+    if (selectable.length === 0 && quarantined.length > 0) {
+      const fallback = quarantined.reduce((oldest, current) =>
+        current.quarantinedUntilMs < oldest.quarantinedUntilMs ? current : oldest,
+      );
+      selectable.push(fallback.candidate);
+      logger.warn(
+        "[docker-node-manager] Overriding placement quarantine because every capacity-bearing node is quarantined",
+        {
+          nodeId: fallback.candidate.node.node_id,
+          quarantinedUntilMs: fallback.quarantinedUntilMs,
+        },
+      );
+    }
+
+    for (const candidate of selectable) {
+      if (
+        !(await this.ensureNodeReady(candidate.node, {
+          ...options,
+          enforcePlacementIoPressure: true,
+        }))
+      ) {
         continue;
       }
       logger.info(
@@ -356,6 +568,13 @@ export class DockerNodeManager {
               `[docker-node-manager] Canonical node ${node.node_id} (${node.hostname}) is reachable but disk is critically full; leaving healthy so the disk-clean cycle can reclaim space (canonical nodes are not autoscaler-replaced). Operators: free space or set enabled=false.`,
             );
           }
+          // Embedding-sidecar sub-verdict: surfaced (metadata + capacity report
+          // + ERROR log) and self-healed, but it never owns the node status —
+          // no agent is scheduled onto the sidecar itself, and flipping a whole
+          // fleet to degraded because sidecars are missing would zero scheduling
+          // capacity. The invariant is "absence is loud and converges", not
+          // "absence drains the node".
+          await this.embeddingSidecarHealth(node, ssh);
           // A reachable node clears any accumulated consecutive-failure count so
           // one recovered cycle undoes prior transient failures.
           nodeHealthFailureState.delete(node.node_id);
@@ -449,6 +668,78 @@ export class DockerNodeManager {
   }
 
   /**
+   * Probe the node's local-embedding sidecar and persist the verdict to
+   * `docker_nodes.metadata.embeddingSidecar` so its absence is a queryable
+   * fleet fact (capacity report, admin API) instead of a silent fall-through
+   * to the cloud embedding path — the failure mode that lost the fleet's
+   * hand-installed sidecars unnoticed. When the sidecar is not serving, one
+   * cooldown-gated ensure attempt re-installs it (the durable remediation for
+   * nodes provisioned before the sidecar shipped in bootstrap); the persisted
+   * verdict is re-probed AFTER the repair so recovery is visible immediately.
+   *
+   * Runs only after `docker info` confirmed reachability and never throws out
+   * of the health check: like the disk sub-probe, the sidecar never owns
+   * reachability — the docker-info probe does.
+   */
+  async embeddingSidecarHealth(node: DockerNode, ssh: DockerSSHClient): Promise<void> {
+    try {
+      let status = await this.probeEmbeddingSidecar(ssh);
+      if (status === null) return;
+
+      if (status !== "running" && containersEnv.embeddingSidecarSelfHealEnabled()) {
+        const lastAttempt = embeddingSidecarSelfHealState.get(node.node_id) ?? 0;
+        if (Date.now() - lastAttempt >= EMBEDDING_SIDECAR_SELF_HEAL_COOLDOWN_MS) {
+          // Stamp BEFORE the attempt so a hanging/failing ensure still honors
+          // the cooldown next cycle instead of re-pulling the image every tick.
+          embeddingSidecarSelfHealState.set(node.node_id, Date.now());
+          logger.warn(
+            `[docker-node-manager] Embedding sidecar ${status} on node ${node.node_id} (${node.hostname}); attempting self-heal install`,
+          );
+          await ssh.exec(buildEnsureEmbeddingSidecarCmd(), EMBEDDING_SIDECAR_ENSURE_TIMEOUT_MS);
+          status = (await this.probeEmbeddingSidecar(ssh)) ?? status;
+        }
+      }
+
+      if (status === "running") {
+        embeddingSidecarSelfHealState.delete(node.node_id);
+      } else {
+        logger.error(
+          `[docker-node-manager] Embedding sidecar ${status} on node ${node.node_id} (${node.hostname}) — agents on this node cannot reach local embeddings. Self-heal ${containersEnv.embeddingSidecarSelfHealEnabled() ? "will retry after cooldown" : "is disabled"}.`,
+          {
+            nodeId: node.node_id,
+            hostname: node.hostname,
+            embeddingSidecar: status,
+          },
+        );
+      }
+      await dockerNodesRepository.setEmbeddingSidecarHealth(node.node_id, status);
+    } catch (error) {
+      // error-policy:J7 the sidecar sub-probe/self-heal is diagnostics on the
+      // health loop; a thrown SSH/exec failure is logged loudly here and must
+      // not take down the reachability verdict the loop exists to produce.
+      logger.warn("[docker-node-manager] Embedding sidecar probe/self-heal failed", {
+        nodeId: node.node_id,
+        hostname: node.hostname,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Run the sidecar probe over SSH; null = probe output was unusable. */
+  private async probeEmbeddingSidecar(
+    ssh: DockerSSHClient,
+  ): Promise<EmbeddingSidecarStatus | null> {
+    const output = await ssh.exec(buildEmbeddingSidecarProbeCmd(), 20_000);
+    const status = parseEmbeddingSidecarProbe(output);
+    if (status === null) {
+      logger.warn("[docker-node-manager] Embedding sidecar probe returned no status token", {
+        output: output.slice(0, 200),
+      });
+    }
+    return status;
+  }
+
+  /**
    * Single-attempt readiness probe used during scheduling. This prevents stale
    * healthy rows from receiving new work when SSH credentials or the Docker
    * daemon are no longer valid.
@@ -457,8 +748,18 @@ export class DockerNodeManager {
     try {
       const ssh = this.sshClientForNode(node);
       await ssh.connect();
-      const dockerInfo = await ssh.exec("docker info --format '{{.ID}}|{{.Architecture}}'", 10_000);
-      const { dockerId, architecture } = parseDockerInfoProbe(dockerInfo);
+      const dockerInfoCommand = "docker info --format '{{.ID}}|{{.Architecture}}'";
+      // Placement reads PSI in the same round trip because `docker info`
+      // answers from daemon memory even when IO stalls `docker create`. Other
+      // callers use this method as a liveness probe for sticky stateful routing
+      // and autoscaler bootstrap, where transient pressure must not reroute or
+      // reject the node.
+      const probeCommand = options.enforcePlacementIoPressure
+        ? `${dockerInfoCommand} && { echo '${READINESS_PROBE_PSI_MARKER}'; cat /proc/pressure/io 2>/dev/null || true; }`
+        : dockerInfoCommand;
+      const probeOutput = await ssh.exec(probeCommand, 10_000);
+      const [dockerSection = "", psiSection = ""] = probeOutput.split(READINESS_PROBE_PSI_MARKER);
+      const { dockerId, architecture } = parseDockerInfoProbe(dockerSection);
       if (dockerId.trim()) {
         if (
           !isArchitectureCompatibleWithPlatform(architecture, options.requiredPlatform) &&
@@ -468,6 +769,20 @@ export class DockerNodeManager {
             nodeId: node.node_id,
             architecture,
             requiredPlatform: options.requiredPlatform,
+          });
+          return false;
+        }
+        const ioPressure = options.enforcePlacementIoPressure
+          ? parseIoPressureFullAvg60(psiSection)
+          : null;
+        if (ioPressure !== null && ioPressure >= PLACEMENT_MAX_IO_PRESSURE_FULL_AVG60) {
+          // No DB status write: IO overload is transient and node-status flips
+          // are reserved for dead/unreachable daemons (see the canonical-node
+          // protection below).
+          logger.warn("[docker-node-manager] Node refused for placement: IO-starved", {
+            nodeId: node.node_id,
+            ioPressureFullAvg60: ioPressure,
+            max: PLACEMENT_MAX_IO_PRESSURE_FULL_AVG60,
           });
           return false;
         }
@@ -532,6 +847,7 @@ export class DockerNodeManager {
       status: node.status,
       enabled: node.enabled,
       lastHealthCheck: node.last_health_check,
+      embeddingSidecar: embeddingSidecarStatusFromMetadata(node.metadata),
     }));
 
     const enabledNodes = nodeReports.filter((n) => n.enabled && n.status === "healthy");
@@ -654,7 +970,7 @@ export class DockerNodeManager {
             image,
             error: message,
           });
-          if (isPrePullTimeoutError(error)) {
+          if (isDockerSshCommandTimeoutError(error)) {
             // A timed-out `docker pull` is NOT stopped by DockerSSHClient's
             // channel-close (that only sends SIGHUP, which a detached `docker
             // pull` ignores), so it can keep running. The tracked wrapper leaves

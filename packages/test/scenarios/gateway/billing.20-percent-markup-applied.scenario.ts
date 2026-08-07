@@ -3,7 +3,7 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "../_helpers/action-assertions.ts";
+import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
 
 function assertTwilioBillingResult(ctx: ScenarioContext): string | undefined {
   const action = ctx.turns?.[1]?.actionsCalled.find((entry) =>

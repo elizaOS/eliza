@@ -1,44 +1,13 @@
-/**
- * @fileoverview elizaOS Integration Testing Infrastructure
- *
- * This module provides REAL integration testing utilities that use:
- * - Real database (PGLite by default, Postgres if configured)
- * - Real inference (Ollama by default, cloud providers if API keys are available)
- *
- * NO MOCKS. Tests must use real infrastructure to provide genuine confidence.
- *
- * @example
- * ```typescript
- * import {
- *   createIntegrationTestRuntime,
- *   withTestRuntime,
- *   requireInferenceProvider,
- * } from '@elizaos/core';
- *
- * describe('My Integration Tests', () => {
- *   it('should process a message with real inference', async () => {
- *     const { runtime, cleanup, inferenceProvider } = await createIntegrationTestRuntime({
- *       databaseAdapter: myAdapter,
- *     });
- *
- *     logger.info({ provider: inferenceProvider?.name }, "Using inference provider");
- *
- *     try {
- *       const memory = await runtime.createMemory({
- *         entityId: runtime.agentId,
- *         roomId: runtime.agentId,
- *         content: { text: 'Hello, world!' },
- *       }, 'messages');
- *
- *       expect(memory).toBeDefined();
- *     } finally {
- *       await cleanup();
- *     }
- *   });
- * });
- * ```
- */
+/** Runtime, provider, connector, and browser utilities for package-owned tests. */
 
+export {
+	ADVERSARIAL_KIND_DESCRIPTIONS,
+	ADVERSARIAL_KINDS,
+	type AdversarialFixtureSpec,
+	type AdversarialKind,
+	adversarialActionRouteFixtures,
+	adversarialPlannerFixture,
+} from "./adversarial-model-fixtures";
 // Browser API shims (Storage, Canvas, Media, console patches)
 export {
 	createCanvas2DContext,
@@ -50,6 +19,33 @@ export {
 } from "./browser-mocks";
 // Conditional test helpers (describeIf, itIf, testIf)
 export { describeIf, itIf, testIf } from "./conditional-tests";
+export {
+	actionSlug,
+	benignExternalMessageFixture,
+	finalMessageUserText,
+	matchesScenarioInput,
+	type RuntimeWithScenarioModelFixtures,
+	registerStrictActionRouteFixtures,
+	type StrictActionRouteFixture,
+	stage1ResponseHandlerFixture,
+	strictActionRouteFixtures,
+} from "./deterministic-action-fixtures";
+export {
+	createDeterministicModelFixtureRegistry,
+	createDeterministicModelPlugin,
+	type DeterministicModelCall,
+	type DeterministicModelCallDiagnostic,
+	type DeterministicModelDiagnostics,
+	type DeterministicModelFixture,
+	type DeterministicModelFixtureDiagnostic,
+	type DeterministicModelFixtureMatch,
+	type DeterministicModelFixtureRegistry,
+	type DeterministicModelPlugin,
+	type DeterministicModelPluginOptions,
+	type DeterministicModelResponse,
+	type DeterministicSchemaMatcher,
+	type DeterministicTextMatcher,
+} from "./deterministic-model-plugin";
 // Package path resolution for monorepo tests
 export {
 	getAppCoreSourceRoot,
@@ -101,6 +97,11 @@ export {
 // Loopback port availability checker
 export { canBindLoopback } from "./loopback";
 export { createMockRuntime, MOCK_AGENT_ID } from "./mock-runtime";
+export {
+	createTestRuntimeWithModelProvider,
+	type ModelProviderTestRuntime,
+	type ModelProviderTestRuntimeOptions,
+} from "./model-provider-runtime";
 // Ollama model handlers (for local inference)
 export {
 	createOllamaModelHandlers,

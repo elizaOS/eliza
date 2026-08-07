@@ -9,7 +9,7 @@
  * which mounts each view as an in-canvas surface on the `KioskShell`.
  */
 
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import type { SendToWebview } from "../types.js";
 
 interface KioskCanvasWindowOptions {

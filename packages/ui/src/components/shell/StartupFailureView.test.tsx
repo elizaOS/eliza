@@ -1,7 +1,8 @@
+/** Verifies StartupFailureView through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // StartupFailureView recovery affordances per failure reason (e.g. an
-// unreachable saved backend offers a cloud-first reset). Real component in jsdom;
+// unreachable saved backend offers a first-run reset). Real component in jsdom;
 // branding, bug-report, platform reload, and translation are mocked.
 
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -40,7 +41,7 @@ afterEach(() => {
 });
 
 describe("StartupFailureView", () => {
-  it("offers a cloud-first recovery for unreachable saved backends", () => {
+  it("offers one first-run reset for unreachable saved backends", () => {
     render(
       <StartupFailureView
         error={{
@@ -53,10 +54,11 @@ describe("StartupFailureView", () => {
       />,
     );
 
-    const cloudRecovery = screen.getByTestId("startup-use-cloud");
-    expect(cloudRecovery.textContent).toContain("Choose Eliza Cloud");
+    const startOver = screen.getByTestId("startup-start-over");
+    expect(startOver.textContent).toContain("Start over");
+    expect(screen.queryByTestId("startup-use-cloud")).toBeNull();
 
-    fireEvent.click(cloudRecovery);
+    fireEvent.click(startOver);
 
     expect(mocks.startFreshFirstRunReload).toHaveBeenCalledTimes(1);
   });

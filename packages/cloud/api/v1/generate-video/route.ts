@@ -1,16 +1,18 @@
-// Handles v1 cloud API v1 generate video route traffic with route-local auth expectations.
+/** Handles authenticated video generation, billing, and pending-job reconciliation. */
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError,
+  getGenerativeExecutionContext,
+  getGenerativePricingCacheOptions,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import {
   ApiError,
   failureResponse,
   jsonError,
 } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   collectVideoProviderApiKeys,
   getVideoProvider,
@@ -19,6 +21,7 @@ import {
   VIDEO_PENDING_SETTLEMENT_MARKER,
   VideoGenerationPendingError,
 } from "@/lib/providers/video/types";
+import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
 import {
   calculateVideoGenerationCostFromCatalog,
   getDefaultVideoBillingDimensions,
@@ -28,11 +31,9 @@ import {
   SUPPORTED_VIDEO_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@/lib/services/content-safety";
-import {
-  creditsService,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
+import { InsufficientCreditsError } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
+import { persistPendingVideoSettlement } from "@/lib/services/pending-video-settlement";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -50,8 +51,6 @@ const videoRequestSchema = z.object({
 });
 
 const app = new Hono<AppEnv>();
-
-app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 /** Everything the catch needs to persist a pending settlement (#11862). */
 interface PendingSettlementContext {
@@ -114,8 +113,9 @@ function providerFailureDetails(options: {
 }
 
 app.post("/", async (c) => {
-  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
-    null;
+  let admission:
+    | Awaited<ReturnType<typeof admitFlatGenerativeOperation>>
+    | undefined;
   // Once the charge is SETTLED, a later (non-critical, post-settle) failure must
   // NOT hit the catch's reconcile(0) — which is non-idempotent and would refund
   // the already-correct charge, giving a free video. Mirrors generate-image.
@@ -123,7 +123,8 @@ app.post("/", async (c) => {
   let pendingContext: PendingSettlementContext | null = null;
 
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user, apiKeyId, admissionSnapshot } =
+      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
     const request = videoRequestSchema.parse(await c.req.json());
     const definition = getSupportedVideoModelDefinition(request.model);
     if (!definition) {
@@ -151,20 +152,6 @@ app.post("/", async (c) => {
       );
     }
 
-    await contentSafetyService.assertSafeForPublicUse({
-      surface: "media_generation_prompt",
-      organizationId: user.organization_id,
-      userId: user.id,
-      text: [
-        `Video prompt: ${request.prompt}`,
-        request.referenceUrl
-          ? `Reference URL: ${request.referenceUrl}`
-          : undefined,
-      ],
-      imageUrls: request.referenceUrl ? [request.referenceUrl] : undefined,
-      metadata: { type: "video", model: request.model },
-    });
-
     const defaults = getDefaultVideoBillingDimensions(request.model);
     const durationSeconds = request.durationSeconds ?? defaults.durationSeconds;
     const dimensions = {
@@ -178,19 +165,47 @@ app.post("/", async (c) => {
         ? { durationSeconds }
         : {}),
     };
-    const cost = await calculateVideoGenerationCostFromCatalog({
-      model: request.model,
-      billingSource: definition.billingSource,
-      durationSeconds,
-      dimensions,
-    });
-
-    try {
-      reservation = await creditsService.reserve({
+    const [, cost] = await Promise.all([
+      contentSafetyService.assertSafeForPublicUse({
+        surface: "media_generation_prompt",
         organizationId: user.organization_id,
         userId: user.id,
-        amount: cost.totalCost,
-        description: `Video generation: ${request.model}`,
+        text: [
+          `Video prompt: ${request.prompt}`,
+          request.referenceUrl
+            ? `Reference URL: ${request.referenceUrl}`
+            : undefined,
+        ],
+        imageUrls: request.referenceUrl ? [request.referenceUrl] : undefined,
+        metadata: { type: "video", model: request.model },
+      }),
+      calculateVideoGenerationCostFromCatalog({
+        model: request.model,
+        billingSource: definition.billingSource,
+        durationSeconds,
+        dimensions,
+        cache: getGenerativePricingCacheOptions(c),
+      }),
+    ]);
+    const billingContext: BillingContext = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      apiKeyId,
+      model: request.model,
+      provider: definition.provider,
+      billingSource: definition.billingSource,
+      requestId: `generate-video:${crypto.randomUUID()}`,
+      affiliateCode: c.req.header("X-Affiliate-Code"),
+      description: `Video generation: ${request.model}`,
+    };
+
+    try {
+      admission = await admitFlatGenerativeOperation({
+        c,
+        context: billingContext,
+        apiKeyId,
+        cost,
+        admissionSnapshot,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
@@ -226,6 +241,7 @@ app.post("/", async (c) => {
 
     let generated: Awaited<ReturnType<typeof provider.generate>>;
     try {
+      await admission.markProviderDispatched?.();
       generated = await provider.generate({
         ...request,
         // Bill-what-you-deliver: the org is charged for the RESOLVED duration
@@ -265,50 +281,65 @@ app.post("/", async (c) => {
       );
     }
 
-    await reservation.reconcile(cost.totalCost);
-    chargeSettled = true;
-
-    const generation = await generationsService.create({
-      organization_id: user.organization_id,
-      user_id: user.id,
-      type: "video",
-      model: request.model,
-      provider: definition.provider,
-      prompt: request.prompt,
-      result: {
-        requestId: generated.requestId,
-        seed: generated.seed,
-        timings: generated.timings,
-        billingSource: definition.billingSource,
-      },
-      status: "completed",
-      storage_url: generated.video.url,
-      thumbnail_url: generated.video.url,
-      file_size: generated.video.file_size
-        ? BigInt(generated.video.file_size)
-        : undefined,
-      mime_type: generated.video.content_type ?? "video/mp4",
-      parameters: {
-        referenceUrl: request.referenceUrl,
-        durationSeconds,
-        resolution: request.resolution,
-        audio: request.audio,
-        voiceControl: request.voiceControl,
-      },
-      dimensions: {
-        width: generated.video.width,
-        height: generated.video.height,
-        duration: durationSeconds,
-      },
-      cost: String(cost.totalCost),
-      credits: String(cost.totalCost),
-      job_id: generated.requestId,
-      completed_at: new Date(),
+    const generationId = crypto.randomUUID();
+    let billingApplied = false;
+    const persistenceTask = (async () => {
+      await billFlatUsage(billingContext, cost, admission?.reservation);
+      billingApplied = true;
+      chargeSettled = true;
+      await generationsService.create({
+        id: generationId,
+        organization_id: user.organization_id,
+        user_id: user.id,
+        type: "video",
+        model: request.model,
+        provider: definition.provider,
+        prompt: request.prompt,
+        result: {
+          requestId: generated.requestId,
+          seed: generated.seed,
+          timings: generated.timings,
+          billingSource: definition.billingSource,
+        },
+        status: "completed",
+        storage_url: generated.video.url,
+        thumbnail_url: generated.video.url,
+        file_size: generated.video.file_size
+          ? BigInt(generated.video.file_size)
+          : undefined,
+        mime_type: generated.video.content_type ?? "video/mp4",
+        parameters: {
+          referenceUrl: request.referenceUrl,
+          durationSeconds,
+          resolution: request.resolution,
+          audio: request.audio,
+          voiceControl: request.voiceControl,
+        },
+        dimensions: {
+          width: generated.video.width,
+          height: generated.video.height,
+          duration: durationSeconds,
+        },
+        cost: String(cost.totalCost),
+        credits: String(cost.totalCost),
+        job_id: generated.requestId,
+        completed_at: new Date(),
+      });
+    })().catch(async (error) => {
+      if (!billingApplied) await admission?.settleUnknown();
+      // error-policy:J7 successful video billing/history persistence runs
+      // outside the response; conservative settlement remains observable.
+      logger.error("[GenerateVideo] Background persistence failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
+    const executionCtx = getGenerativeExecutionContext(c);
+    if (executionCtx) executionCtx.waitUntil(persistenceTask);
+    else void persistenceTask;
 
     return c.json({
       success: true,
-      id: generation.id,
+      id: generationId,
       requestId: generated.requestId,
       video: generated.video,
       seed: generated.seed,
@@ -323,81 +354,79 @@ app.post("/", async (c) => {
     // terminal state — charging on late success, refunding once on failure.
     if (
       error instanceof VideoGenerationPendingError &&
-      reservation?.reservationTransactionId &&
+      admission &&
       !chargeSettled &&
       pendingContext
     ) {
-      try {
-        const generation = await generationsService.create({
-          organization_id: pendingContext.organizationId,
-          user_id: pendingContext.userId,
-          type: "video",
-          model: pendingContext.model,
-          provider: pendingContext.provider,
-          prompt: pendingContext.prompt,
-          status: "pending",
-          parameters: pendingContext.parameters,
-          metadata: {
-            settlement_marker: VIDEO_PENDING_SETTLEMENT_MARKER,
-            reservation_transaction_id: reservation.reservationTransactionId,
-            reserved_amount: reservation.reservedAmount,
-            billed_cost: pendingContext.totalCost,
-            billing_source: pendingContext.billingSource,
-          },
-          dimensions: { duration: pendingContext.durationSeconds },
-          cost: String(pendingContext.totalCost),
-          credits: String(pendingContext.totalCost),
-          job_id: error.requestId,
+      const pendingAdmission = admission;
+      const pending = pendingContext;
+      const pendingGenerationId = crypto.randomUUID();
+      const persistPendingSettlement = persistPendingVideoSettlement({
+        generationId: pendingGenerationId,
+        requestId: error.requestId,
+        ...pending,
+        settlementMarker: VIDEO_PENDING_SETTLEMENT_MARKER,
+        existingReservation:
+          pendingAdmission.mode === "synchronous_reservation"
+            ? pendingAdmission.reservation
+            : undefined,
+        releaseDeferredAdmission: () => pendingAdmission.settle(0),
+      })
+        .then(() => {
+          logger.warn(
+            "[GenerateVideo] Upstream job still pending after poll window — holding credits for reconcile",
+            {
+              generationId: pendingGenerationId,
+              requestId: error.requestId,
+              organizationId: pending.organizationId,
+              billedCost: pending.totalCost,
+            },
+          );
+        })
+        .catch((persistError) => {
+          // error-policy:J7 the upstream job may still bill us, so a failed
+          // detached persistence must retain the admitted hold for the sweep.
+          logger.error(
+            "[GenerateVideo] Failed to persist pending settlement — leaving hold for the reservation sweep",
+            {
+              requestId: error.requestId,
+              error:
+                persistError instanceof Error
+                  ? persistError.message
+                  : String(persistError),
+            },
+          );
         });
-        logger.warn(
-          "[GenerateVideo] Upstream job still pending after poll window — holding credits for reconcile",
-          {
-            generationId: generation.id,
-            requestId: error.requestId,
-            organizationId: pendingContext.organizationId,
-            billedCost: pendingContext.totalCost,
-          },
-        );
-        return c.json(
-          {
-            success: false,
-            status: "pending",
-            id: generation.id,
-            requestId: error.requestId,
-            error:
-              "Video generation is still running upstream. Credits stay reserved and settle automatically: charged if the video completes, refunded if it fails.",
-          },
-          202,
-        );
-      } catch (persistError) {
-        // Do NOT fall through to the refund: the upstream job may still bill
-        // us. The unsettled hold is picked up by the stranded-reservation
-        // sweep, which settles it at the estimated cost (platform-safe).
-        logger.error(
-          "[GenerateVideo] Failed to persist pending settlement — leaving hold for the reservation sweep",
-          {
-            requestId: error.requestId,
-            reservationTransactionId: reservation.reservationTransactionId,
-            error:
-              persistError instanceof Error
-                ? persistError.message
-                : String(persistError),
-          },
-        );
-        return failureResponse(c, error);
-      }
+      const executionCtx = getGenerativeExecutionContext(c);
+      if (executionCtx) executionCtx.waitUntil(persistPendingSettlement);
+      else await persistPendingSettlement;
+      return c.json(
+        {
+          success: false,
+          status: "pending",
+          id: pendingGenerationId,
+          requestId: error.requestId,
+          error:
+            "Video generation is still running upstream. Credits stay reserved and settle automatically: charged if the video completes, refunded if it fails.",
+        },
+        202,
+      );
     }
-    if (reservation && !chargeSettled) {
-      await reservation.reconcile(0).catch((reconcileError) => {
-        logger.error("[GenerateVideo] Failed to refund reservation", {
+    if (admission && !chargeSettled) {
+      const release = admission.settle(0);
+      const executionCtx = getGenerativeExecutionContext(c);
+      const observed = release.catch((reconcileError) => {
+        logger.error("[GenerateVideo] Failed to release admission", {
           error:
             reconcileError instanceof Error
               ? reconcileError.message
               : String(reconcileError),
         });
       });
+      if (executionCtx) executionCtx.waitUntil(observed);
+      else await observed;
     }
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 

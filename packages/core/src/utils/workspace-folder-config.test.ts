@@ -4,7 +4,7 @@
  * bookmarks and malformed JSON, and honors `ELIZA_STATE_DIR`, all against a real
  * temp state directory.
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -59,6 +59,11 @@ describe("workspace-folder-config", () => {
 		expect(readWorkspaceFolderConfig(env)).toBeNull();
 	});
 
+	it("surfaces filesystem failures when reading config", () => {
+		mkdirSync(workspaceFolderConfigPath(env));
+		expect(() => readWorkspaceFolderConfig(env)).toThrow();
+	});
+
 	it("clear removes the stored config", () => {
 		writeWorkspaceFolderConfig({ path: "/x", bookmark: null }, env);
 		clearWorkspaceFolderConfig(env);
@@ -67,6 +72,11 @@ describe("workspace-folder-config", () => {
 
 	it("clear is idempotent (no throw when nothing to clear)", () => {
 		expect(() => clearWorkspaceFolderConfig(env)).not.toThrow();
+	});
+
+	it("surfaces filesystem failures when clearing config", () => {
+		mkdirSync(workspaceFolderConfigPath(env));
+		expect(() => clearWorkspaceFolderConfig(env)).toThrow();
 	});
 
 	it("honors ELIZA_STATE_DIR for file location", () => {

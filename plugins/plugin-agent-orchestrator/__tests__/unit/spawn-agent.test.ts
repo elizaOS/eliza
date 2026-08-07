@@ -6,6 +6,7 @@ import { promoteSubactionsToActions } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 // SPAWN_AGENT is `TASKS { action: "spawn_agent" }`.
 import { spawnAgentAction } from "../../src/actions/tasks.js";
+import { workspaceDiskBudgetError } from "../../src/services/workspace-registry.js";
 import {
   callback,
   memory,
@@ -477,5 +478,54 @@ describe("TASKS:spawn_agent", () => {
         )
       )?.error,
     ).toBe("INVALID_CREDENTIALS");
+  });
+
+  it("keeps a disk-budget refusal human in text and technical in error data", async () => {
+    const svc = serviceMock({
+      spawnSession: vi.fn(async () => {
+        throw workspaceDiskBudgetError(
+          {
+            allowed: false,
+            reclaimedBytes: 0,
+            reclaimedCount: 0,
+            freeBytes: 753868800,
+            usedBytes: 0,
+            reason: "free-disk-floor",
+          },
+          { capBytes: 21474836480, minFreeBytes: 2147483648 },
+          "/home/user/.eliza/workspaces",
+        );
+      }),
+    });
+
+    const result = await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({ task: "x" }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("WORKSPACE_DISK_BUDGET_EXCEEDED");
+    // Chat-bound text stays human: no byte counts, caps, or fs paths.
+    expect(result?.text).toBe(
+      "Failed to spawn agent: the workspace disk is nearly full, so a new coding workspace cannot be created right now",
+    );
+    expect(result?.text).not.toMatch(/used=|free=|cap=|minFree=/);
+    expect(result?.text).not.toContain("/home/");
+    // The byte-level fields still ride the action's error data for
+    // logs/trajectories and planner diagnostics.
+    expect(result?.data).toMatchObject({
+      errorCode: "WORKSPACE_DISK_BUDGET_EXCEEDED",
+      errorContext: {
+        reason: "free-disk-floor",
+        usedBytes: 0,
+        freeBytes: 753868800,
+        capBytes: 21474836480,
+        minFreeBytes: 2147483648,
+        targetRoot: "/home/user/.eliza/workspaces",
+      },
+    });
   });
 });

@@ -15,7 +15,7 @@ import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelectorShallow } from "../../state";
-import { preOpenCloudLoginWindow } from "../../state/cloud-login-launch";
+import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { openExternalUrl } from "../../utils";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -83,6 +83,7 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
         Sign-in window did not open?
       </p>
       <Button
+        aria-label="Open Eliza Cloud sign-in in your browser"
         variant="ghost"
         className="block h-auto w-full whitespace-normal break-all px-0 py-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
         onClick={() => void openExternalUrl(browserUrl)}
@@ -108,7 +109,7 @@ export function ConfigPageView({
     walletConfig,
     walletApiKeySaving,
     handleWalletApiKeySave,
-    handleCloudLogin,
+    handleInteractiveCloudLogin,
   } = useAppSelectorShallow((s) => ({
     t: s.t,
     elizaCloudConnected: s.elizaCloudConnected,
@@ -117,7 +118,7 @@ export function ConfigPageView({
     walletConfig: s.walletConfig,
     walletApiKeySaving: s.walletApiKeySaving,
     handleWalletApiKeySave: s.handleWalletApiKeySave,
-    handleCloudLogin: s.handleCloudLogin,
+    handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
   }));
 
   const [secretsOpen, setSecretsOpen] = useState(false);
@@ -316,7 +317,10 @@ export function ConfigPageView({
   const cloudStatusProps = {
     connected: elizaCloudConnected,
     loginBusy: elizaCloudLoginBusy,
-    onLogin: () => void handleCloudLogin(preOpenCloudLoginWindow()),
+    onLogin: () => {
+      claimCloudLoginWindow();
+      void handleInteractiveCloudLogin();
+    },
   };
 
   const legacyRpcChains = walletConfig?.legacyCustomChains ?? [];
@@ -360,7 +364,10 @@ export function ConfigPageView({
     }),
     group: "rpc-config",
     description: "Sign in to Eliza Cloud to use managed RPC",
-    onActivate: () => void handleCloudLogin(preOpenCloudLoginWindow()),
+    onActivate: () => {
+      claimCloudLoginWindow();
+      void handleInteractiveCloudLogin();
+    },
   });
   const saveEl = useAgentElement<HTMLButtonElement>({
     id: "wallet-rpc-save",
@@ -408,7 +415,7 @@ export function ConfigPageView({
             className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
               rpcMode === "cloud"
                 ? "border-accent bg-accent/8"
-                : "border-border/40 bg-card/30 opacity-50 grayscale hover:opacity-70 hover:grayscale-0"
+                : "border-border/40 bg-card/30 hover:border-border"
             }`}
           >
             <div className="flex items-center gap-2">
@@ -457,7 +464,7 @@ export function ConfigPageView({
             className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
               rpcMode === "custom"
                 ? "border-accent bg-accent/8"
-                : "border-border/40 bg-card/30 opacity-50 grayscale hover:opacity-70 hover:grayscale-0"
+                : "border-border/40 bg-card/30 hover:border-border"
             }`}
           >
             <div className="flex items-center gap-2">
@@ -578,9 +585,10 @@ export function ConfigPageView({
                   size="sm"
                   className="text-xs font-bold"
                   {...cloudConnectEl.agentProps}
-                  onClick={() =>
-                    void handleCloudLogin(preOpenCloudLoginWindow())
-                  }
+                  onClick={() => {
+                    claimCloudLoginWindow();
+                    void handleInteractiveCloudLogin();
+                  }}
                   disabled={elizaCloudLoginBusy}
                 >
                   {elizaCloudLoginBusy
@@ -605,7 +613,7 @@ export function ConfigPageView({
                 variant="default"
                 size="sm"
                 data-testid="wallet-rpc-save"
-                className="text-xs-tight"
+                className="text-xs-tight !text-black"
                 {...saveEl.agentProps}
                 onClick={() => {
                   void handleWalletSaveAll();
@@ -733,7 +741,7 @@ export function ConfigPageView({
                 variant="default"
                 size="sm"
                 data-testid="wallet-rpc-save"
-                className="text-xs-tight"
+                className="text-xs-tight !text-black"
                 {...saveEl.agentProps}
                 onClick={() => {
                   void handleWalletSaveAll();

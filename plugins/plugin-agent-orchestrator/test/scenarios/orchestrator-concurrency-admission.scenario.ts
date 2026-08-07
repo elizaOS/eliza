@@ -44,7 +44,7 @@ const ROOM = "33333333-3333-4333-8333-333333333333";
 /** The typed lifecycle events the orchestrator_lifecycle benchmark scores
  * (spawn / send / pause / resume / cancel / status_query / share). This scenario
  * emits a structural subset under concurrent load; the vocabulary is kept in
- * sync with `packages/benchmarks/orchestrator_lifecycle/events.py`. */
+ * sync with `orchestrator_lifecycle/events.py` in https://github.com/elizaOS/benchmarks. */
 type LifecycleEvent = "spawn" | "status_query" | "share";
 
 type PerTaskTrace = {

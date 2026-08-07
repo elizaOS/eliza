@@ -109,47 +109,6 @@ export function isConnectorConfigured(
 }
 
 /**
- * Per-destination shape check for streaming plugins (twitch, youtube,
- * customRtmp, pumpfun, x, rtmpSources). Same pattern as `isConnectorConfigured`
- * — pure data inspection, no transitive imports.
- */
-export function isStreamingDestinationConfigured(
-	destName: string,
-	destConfig: unknown,
-): boolean {
-	if (!destConfig || typeof destConfig !== "object") return false;
-	const config = destConfig as Record<string, unknown>;
-	if (config.enabled === false) return false;
-
-	switch (destName) {
-		case "twitch":
-			return Boolean(config.streamKey || config.enabled === true);
-		case "youtube":
-			return Boolean(config.streamKey || config.enabled === true);
-		case "customRtmp":
-			return Boolean(config.rtmpUrl && config.rtmpKey);
-		case "pumpfun":
-			return Boolean(config.streamKey && config.rtmpUrl);
-		case "x":
-			return Boolean(config.streamKey && config.rtmpUrl);
-		case "rtmpSources":
-			return (
-				Array.isArray(destConfig) &&
-				destConfig.some((row) => {
-					if (!row || typeof row !== "object") return false;
-					const rec = row as Record<string, unknown>;
-					const id = String(rec.id ?? "").trim();
-					const url = String(rec.rtmpUrl ?? "").trim();
-					const key = String(rec.rtmpKey ?? "").trim();
-					return Boolean(id && url && key);
-				})
-			);
-		default:
-			return false;
-	}
-}
-
-/**
  * WeChat connector detection. Top-level `apiKey` is caught by the universal
  * check in `isConnectorConfigured`; this helper handles the multi-account
  * variant where each account in `config.accounts.*.apiKey` is checked.

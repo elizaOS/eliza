@@ -1,3 +1,4 @@
+/** Verifies StewardLoginSection OAuth launch through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -74,6 +75,7 @@ vi.mock("../../lib/steward-session", () => ({
   consumeStewardCodeFromQuery: () => null,
   consumeStewardTokensFromHash: () => null,
   exchangeStewardCodeViaApi: () => Promise.resolve({}),
+  recoverStewardSessionViaCookie: () => Promise.resolve(null),
   refreshStewardSessionViaCookie: () => Promise.resolve({ ok: true as const }),
   syncStewardSessionCookie: () => Promise.resolve(),
 }));

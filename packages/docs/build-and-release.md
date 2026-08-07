@@ -1,3 +1,8 @@
+---
+title: Build and Release
+description: "How the monorepo builds desktop artifacts and fans releases out to distribution channels."
+---
+
 # Build and release (CI, desktop binaries)
 
 `.github/workflows/release-electrobun.yml` is the canonical desktop release workflow and reusable desktop release-build graph. `.github/workflows/test-electrobun-release.yml` calls that same graph on pull requests in build-only mode.
@@ -15,7 +20,7 @@ We ship **separate** `Eliza-arm64.dmg` and `Eliza-x64.dmg` because:
 - **The Intel artifact still uses explicit x64 invocations** through the shared desktop builder (`ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64"`) so native modules and helper binaries are resolved consistently as x64 throughout the packaging path.
 - **Why this still matters on the Intel runner:** our workflow shares the same commands and staging logic across all jobs, and the explicit x64 path avoids accidental host/translation drift in the install and packaging steps.
 
-See `.github/workflows/release-electrobun.yml`: the platform jobs run `arch -x86_64` for the macOS Intel leg during "Install root dependencies", `scripts/desktop-build.mjs stage`, and `scripts/desktop-build.mjs package`.
+See `.github/workflows/release-electrobun.yml`: the platform jobs run `arch -x86_64` for the macOS Intel leg during installation and the `packages/app-core/scripts/desktop-build.mjs` staging and packaging commands.
 
 **Runner hygiene:** When GitHub **renames, updates, or retires** labels such as `macos-14` or `macos-15-intel`, update the matrix in `.github/workflows/release-electrobun.yml` (and any callers) and run **`.github/workflows/test-electrobun-release.yml`** on a branch to confirm the desktop build graph still passes before relying on it for a release.
 
@@ -28,11 +33,13 @@ The packaged app runs the agent from `eliza-dist/` (bundled JS + `node_modules`)
 
 The packaging scripts derive that subset instead of keeping a hand-maintained allowlist:
 
-1. `scripts/copy-runtime-node-modules.ts` handles the Electrobun build and scans the built `dist/` output for bare package imports, unions that with the installed `@elizaos/*` and `@elizaos/plugin-*` packages from the repo root, then recursively copies their runtime deps into `dist/node_modules`.
+1. `packages/app-core/scripts/copy-runtime-node-modules.ts` handles the Electrobun build, scans the built output for bare package imports, and copies the required runtime dependency closure.
 2. The packaging flow **walks package.json `dependencies` and `optionalDependencies` recursively**. **Why:** dynamic plugin loading and native optional deps change more often than the release workflow; deriving the closure from installed package metadata avoids shipping a stale allowlist.
 3. Known dev/renderer-only packages (for example `typescript`, `lucide-react`) are skipped to keep the packaged runtime smaller.
 
-We do **not** try to exclude deps that might already be inlined by tsdown into plugin dist/, because plugins can `require()` at runtime; excluding them would risk "Cannot find module" in the packaged app.
+We do **not** exclude dependencies merely because a plugin bundler may have
+inlined them into `dist/`; plugins can still import dependencies at runtime, so
+excluding them would risk a packaged "Cannot find module" failure.
 
 ## Release workflow: design and WHYs
 
@@ -85,8 +92,8 @@ Why the workflow mirrors that shape directly to `https://eliza.ai/releases/`:
 The official Electrobun docs expect the CLI to come from the project dependency and be invoked through npm scripts or `bunx`. Eliza now uses the shared desktop builder to reach that package-local path:
 
 - `packages/app-core/platforms/electrobun/package.json` declares `electrobun` as a dependency.
-- `scripts/desktop-build.mjs stage` installs the Electrobun workspace package before packaging.
-- `scripts/desktop-build.mjs package` resolves `electrobun` from
+- `packages/app-core/scripts/desktop-build.mjs stage` installs the Electrobun workspace package before packaging.
+- `packages/app-core/scripts/desktop-build.mjs package` resolves `electrobun` from
   `packages/app-core/platforms/electrobun/node_modules/.bin` first, then falls back to a
   PATH/global binary and only uses `bunx` as a last resort.
 
@@ -102,7 +109,7 @@ We still keep two Windows-specific guards around that documented flow:
 
 ## Windows preload EACCES recovery
 
-`scripts/desktop-build.mjs` now runs a desktop preflight before preload bundling. It verifies:
+`packages/app-core/scripts/desktop-build.mjs` runs a desktop preflight before preload bundling. It verifies:
 
 - Bun version is a supported stable version.
 - `packages/app-core/platforms/electrobun/node_modules/electrobun/package.json` contains `exports["./view"]`.
@@ -179,6 +186,4 @@ construction.
 
 ## See also
 
-- [Electrobun startup and exception handling](/electrobun-startup) — why the agent keeps the API server up on load failure.
-- [Plugin resolution and NODE_PATH](/plugin-resolution-and-node-path) — why dynamic plugin imports need `NODE_PATH` in dev/CLI/Electrobun.
 - [CHANGELOG](./changelog) — concrete changes and WHYs per release.

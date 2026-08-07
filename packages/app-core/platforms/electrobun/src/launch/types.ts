@@ -1,5 +1,5 @@
 /** Implements Electrobun desktop types ts behavior for app-core shell integration. */
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import type { DatabaseSnapshot } from "../database";
 
 export type LaunchPhase =
@@ -52,11 +52,6 @@ export interface LaunchSnapshot {
     cloudProvisioned?: boolean;
     requiredGate?: "runtime" | "bootstrap" | "pairing" | null;
     error?: string | null;
-  };
-  remotes: {
-    seeded: boolean;
-    requiredStarted: boolean;
-    errors: Array<{ id: string; error: string }>;
   };
   localModel: {
     backgroundDownloadQueued: boolean;

@@ -7,6 +7,7 @@
  * the message when none is supplied.
  */
 import { logger } from "../../../../logger.ts";
+import { unwrapUserMessageText } from "../../../../security/incoming-message-security.ts";
 import type {
 	Action,
 	ActionExample,
@@ -18,6 +19,10 @@ import type { Memory } from "../../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
 import { hasActionContext } from "../../../../utils/action-validation.ts";
+import {
+	describeUserReference,
+	userReferenceLogView as queryLogView,
+} from "../../../../utils/reference-echo.ts";
 import type { ExperienceService } from "../service.ts";
 import { formatExperienceForPrompt } from "../utils/experienceFormatter.ts";
 
@@ -58,6 +63,10 @@ function readNumberParam(value: unknown): number | undefined {
 	}
 	return undefined;
 }
+
+// Blob-safe rendering rationale lives in utils/reference-echo.ts.
+const describeQuery = (query: string): string =>
+	describeUserReference(query, "that request");
 
 export const searchExperiencesAction: Action = {
 	name: SEARCH_EXPERIENCES,
@@ -115,10 +124,9 @@ export const searchExperiencesAction: Action = {
 		_state?: State,
 		_options?: HandlerOptions,
 	): Promise<boolean> => {
-		const text =
-			typeof message.content.text === "string"
-				? message.content.text.toLowerCase()
-				: "";
+		// Unwrapped so intent matching runs on the user's words, not the
+		// external-content security envelope around them.
+		const text = unwrapUserMessageText(message).toLowerCase();
 		if (!runtime.getService("EXPERIENCE")) {
 			return false;
 		}
@@ -185,9 +193,9 @@ export const searchExperiencesAction: Action = {
 							formatExperienceForPrompt(experience, index),
 						)
 						.join("\n\n")
-				: `No experiences found for "${query}".`;
+				: `No experiences found for ${describeQuery(query)}.`;
 
-		const text = `[EXPERIENCE SEARCH]\nQuery: ${query}\nMatches: ${experiences.length}\nGraph: ${graph.nodes.length} nodes, ${graph.links.length} links\n\n${resultText}`;
+		const text = `[EXPERIENCE SEARCH]\nQuery: ${queryLogView(query)}\nMatches: ${experiences.length}\nGraph: ${graph.nodes.length} nodes, ${graph.links.length} links\n\n${resultText}`;
 		if (callback) {
 			await callback(
 				{
@@ -200,14 +208,14 @@ export const searchExperiencesAction: Action = {
 		}
 
 		logger.info(
-			`[SearchExperiencesAction] Returned ${experiences.length} experiences for query "${query}"`,
+			`[SearchExperiencesAction] Returned ${experiences.length} experiences for query "${queryLogView(query)}"`,
 		);
 
 		return {
 			success: true,
 			text,
 			data: {
-				query,
+				query: queryLogView(query),
 				experiences,
 				graph,
 				postActions: [
@@ -216,7 +224,7 @@ export const searchExperiencesAction: Action = {
 						label: "Copy experience search results",
 						action: "CLIPBOARD_WRITE",
 						input: {
-							title: `Experience search: ${query}`,
+							title: `Experience search: ${queryLogView(query)}`,
 							content: resultText,
 							tags: ["experience-search", "experience-graph"],
 						},
@@ -224,7 +232,7 @@ export const searchExperiencesAction: Action = {
 				],
 			},
 			values: {
-				experienceSearchQuery: query,
+				experienceSearchQuery: queryLogView(query),
 				experienceSearchCount: String(experiences.length),
 			},
 			continueChain: experiences.length > 0,
@@ -233,8 +241,9 @@ export const searchExperiencesAction: Action = {
 };
 
 function extractExperienceSearchQuery(message: Memory): string {
-	const text =
-		typeof message.content.text === "string" ? message.content.text : "";
+	// Unwrapped: on hardened connectors the raw content.text is the whole
+	// external-content security envelope, not the user's request.
+	const text = unwrapUserMessageText(message);
 	const normalized = text
 		.replace(
 			/^\s*(?:please\s+)?(?:search|find|explore|show|recall)\s+(?:my\s+|the\s+)?(?:experience|experiences|memory graph|learnings?)\s*(?:for|about|on)?\s*/i,

@@ -1,8 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/runtime-state
- *
- * Read and mutate runtime plugin state for the MANAGE_PLUGINS action.
- */
+/** Reads and mutates runtime plugin state for the plugin-management action. */
 
 import type {
 	ActionResult,
@@ -316,6 +312,8 @@ async function setPluginEnabled({
 		await callback?.({
 			text: `I couldn't ${enabled ? "enable" : "disable"} the ${state.name} plugin — something went wrong on my end.`,
 		});
+		// error-policy:J1 the action boundary returns an explicit unsuccessful
+		// result after presenting the failure to the user.
 		return {
 			success: false,
 			text: `Failed to ${enabled ? "enable" : "disable"} ${state.name}: ${message}`,

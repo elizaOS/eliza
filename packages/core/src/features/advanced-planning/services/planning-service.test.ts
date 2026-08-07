@@ -5,6 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+import { ElizaError } from "../../../errors.ts";
 import { effectDeliveryBindingProvesApplication } from "../../../runtime/effect-delivery.ts";
 import type { EffectReceipt } from "../../../types/effects.ts";
 import type {
@@ -153,6 +154,68 @@ describe("PlanningService.createSimplePlan — LLM-driven action selection (#104
 			undefined,
 		);
 		expect(planActions(plan)).toEqual(["REPLY"]);
+	});
+});
+
+describe("PlanningService model-output validation", () => {
+	const replyAction = {
+		name: "REPLY",
+		description: "Reply to the user",
+		validate: async () => true,
+		handler: async () => ({ success: true }),
+	} satisfies Action;
+
+	it("rejects malformed comprehensive-plan JSON instead of fabricating an empty plan", async () => {
+		const runtime = planningRuntime(replyAction, {
+			useModel: vi.fn(async () => "not JSON"),
+		});
+		const service = new PlanningService(runtime);
+
+		await expect(
+			service.createComprehensivePlan(runtime, { goal: "Reply clearly" }),
+		).rejects.toMatchObject({
+			code: "ACTION_PLAN_BUILD_FAILED",
+			cause: { code: "PLANNING_MODEL_OUTPUT_INVALID" },
+		});
+	});
+
+	it("rejects unavailable model-selected actions instead of converting them to REPLY", async () => {
+		const runtime = planningRuntime(replyAction, {
+			useModel: vi.fn(async () =>
+				JSON.stringify({
+					goal: "Run a missing tool",
+					execution_model: "sequential",
+					steps: [{ id: "step_1", action: "MISSING_TOOL" }],
+				}),
+			),
+		});
+		const service = new PlanningService(runtime);
+
+		await expect(
+			service.createComprehensivePlan(runtime, {
+				goal: "Run a missing tool",
+			}),
+		).rejects.toMatchObject({ code: "PLANNING_ACTION_UNAVAILABLE" });
+	});
+
+	it("rejects malformed adaptation output instead of reporting synthetic success", async () => {
+		const runtime = planningRuntime(replyAction, {
+			useModel: vi.fn(async () => JSON.stringify({ steps: [] })),
+		});
+		const service = new PlanningService(runtime);
+		const plan = await service.createSimplePlan(
+			runtime,
+			msg("reply"),
+			{} as State,
+			{ text: "reply", actions: ["REPLY"] } as Content,
+		);
+
+		await expect(service.adaptPlan(runtime, plan, 0, [])).rejects.toEqual(
+			expect.objectContaining({
+				code: "PLAN_ADAPTATION_FAILED",
+				cause: expect.any(ElizaError),
+			}),
+		);
 	});
 });
 

@@ -3,9 +3,9 @@
  * otherwise executes multiline input as independent `sh -c` processes.
  */
 
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
 const workflowPath = new URL(
@@ -26,9 +26,11 @@ const harnesses = [
 describe("Android emulator workflow shell boundary", () => {
   it("invokes every emulator lane as one committed Bash harness", () => {
     const workflow = readFileSync(workflowPath, "utf8");
+    const actionReference =
+      /uses: reactivecircus\/android-emulator-runner@([0-9a-f]{40})/g;
     const actionBlocks = workflow
-      .split("uses: reactivecircus/android-emulator-runner@v2")
-      .slice(1);
+      .split(actionReference)
+      .filter((_, index) => index > 0 && index % 2 === 0);
 
     expect(actionBlocks).toHaveLength(harnesses.length);
     expect(

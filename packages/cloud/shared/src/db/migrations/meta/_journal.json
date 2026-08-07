@@ -1310,6 +1310,55 @@
       "when": 1785614400000,
       "tag": "0187_agent_sandbox_lifecycle_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1785960000000,
+      "tag": "0188_sso_bridge_store",
+      "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1786046400000,
+      "tag": "0189_agent_sandbox_lifecycle_revision_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1786132800000,
+      "tag": "0190_shared_rows_release_stale_placement",
+      "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1786219200000,
+      "tag": "0191_oidc_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1786305600000,
+      "tag": "0192_oidc_request_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1786392000000,
+      "tag": "0193_agent_sandbox_deletion_allocation_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1786478400000,
+      "tag": "0194_job_execution_interruptions_catalog_guard",
+      "breakpoints": true
     }
   ]
 }

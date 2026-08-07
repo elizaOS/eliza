@@ -31,6 +31,8 @@ export interface TestRuntimeOptions {
 	characterName?: string;
 	/** Additional plugins to register (plugin-sql is always included). */
 	plugins?: Plugin[];
+	/** Embedding width shared by the database vector schema and model provider. */
+	embeddingDimensions?: number;
 	/** Reuse an existing PGLite data directory instead of creating a temp one. */
 	pgliteDir?: string;
 	/**
@@ -108,7 +110,20 @@ export async function createTestRuntime(
 		options?.removePgliteDirOnCleanup ?? options?.pgliteDir === undefined;
 
 	const prevPgliteDir = process.env.PGLITE_DATA_DIR;
+	const prevEmbeddingDimension = process.env.EMBEDDING_DIMENSION;
+	const prevLocalEmbeddingDimensions = process.env.LOCAL_EMBEDDING_DIMENSIONS;
 	process.env.PGLITE_DATA_DIR = pgliteDir;
+	if (options?.embeddingDimensions !== undefined) {
+		if (
+			!Number.isSafeInteger(options.embeddingDimensions) ||
+			options.embeddingDimensions <= 0
+		) {
+			throw new Error("embeddingDimensions must be a positive integer");
+		}
+		const value = String(options.embeddingDimensions);
+		process.env.EMBEDDING_DIMENSION = value;
+		process.env.LOCAL_EMBEDDING_DIMENSIONS = value;
+	}
 
 	const character = createCharacter({
 		name: options?.characterName ?? "TestAgent",
@@ -166,6 +181,16 @@ export async function createTestRuntime(
 			process.env.PGLITE_DATA_DIR = prevPgliteDir;
 		} else {
 			delete process.env.PGLITE_DATA_DIR;
+		}
+		if (prevEmbeddingDimension !== undefined) {
+			process.env.EMBEDDING_DIMENSION = prevEmbeddingDimension;
+		} else {
+			delete process.env.EMBEDDING_DIMENSION;
+		}
+		if (prevLocalEmbeddingDimensions !== undefined) {
+			process.env.LOCAL_EMBEDDING_DIMENSIONS = prevLocalEmbeddingDimensions;
+		} else {
+			delete process.env.LOCAL_EMBEDDING_DIMENSIONS;
 		}
 		if (removePgliteDirOnCleanup) {
 			try {

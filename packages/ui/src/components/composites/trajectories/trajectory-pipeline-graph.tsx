@@ -95,14 +95,14 @@ function PipelineNodeButton({
       : "border-border/40 hover:border-border/60 ",
     skipped: selected
       ? "border-primary/30 bg-primary/5   opacity-70"
-      : "border-border/25 border-dashed opacity-50 hover:opacity-70",
+      : "border-border/25 border-dashed hover:bg-bg-muted/40",
     error: selected
       ? "border-danger/40 bg-danger/5  "
       : "border-danger/30 hover:border-danger/40",
   };
 
   const iconColor = {
-    active: selected ? "text-primary" : "text-txt/70",
+    active: selected ? "text-primary" : "text-muted-strong",
     skipped: "text-muted/50",
     error: "text-danger/80",
   };
@@ -124,7 +124,7 @@ function PipelineNodeButton({
       `}
     >
       <Icon className={`h-5 w-5 ${iconColor[node.status]}`} />
-      <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-txt/70 whitespace-nowrap">
+      <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-strong whitespace-nowrap">
         {node.label}
       </span>
       <span

@@ -355,6 +355,48 @@ function verifiedUrlsFromMetadata(message: Memory): string[] {
   return stringArrayOf(metadataRecord(message)?.subAgentVerifiedUrls);
 }
 
+// Trailing-slash/hash-insensitive key so a dead-list URL and a route-alias
+// spelling of the same page compare equal.
+function normalizedUrlKey(value: string): string {
+  const parsed = parseUrl(value);
+  if (!parsed) return value.trim();
+  parsed.hash = "";
+  const text = parsed.toString();
+  return text.endsWith("/") ? text.slice(0, -1) : text;
+}
+
+// The router's verification annotation lists each dead probe as
+// `  - <url> → <status>`; that annotation is the only place the dead list
+// reaches this evaluator (completion metadata carries verified URLs only).
+function deadUrlKeysFromCompletionText(text: string): Set<string> {
+  const keys = new Set<string>();
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const annotationIndex = lines.findIndex((line) =>
+    line.startsWith("[verification:"),
+  );
+  if (annotationIndex < 0) return keys;
+  for (const line of lines.slice(annotationIndex + 1)) {
+    const match = /^\s*-\s+(\S+)\s+→\s/.exec(line);
+    if (match?.[1]) keys.add(normalizedUrlKey(match[1]));
+  }
+  return keys;
+}
+
+// Route-alias expansion can promote a public URL whose DIRECT probe failed
+// into subAgentVerifiedUrls (the router verifies the loopback page live, then
+// expands it to all route aliases). The annotation's dead list is the ground
+// truth for what actually probed dead, so drop those before relaying.
+function verifiedUrlsExcludingDead(
+  message: Memory,
+  completionText: string,
+): string[] {
+  const verified = verifiedUrlsFromMetadata(message);
+  if (verified.length === 0) return verified;
+  const dead = deadUrlKeysFromCompletionText(completionText);
+  if (dead.size === 0) return verified;
+  return verified.filter((url) => !dead.has(normalizedUrlKey(url)));
+}
+
 function deliverableFromMetadata(message: Memory): string | undefined {
   const value = textOf(metadataRecord(message)?.subAgentDeliverable);
   return value.length > 0 ? value : undefined;
@@ -418,7 +460,13 @@ function isSuccessfulSubAgentCompletion(message: Memory): boolean {
   if (source !== SUB_AGENT_SOURCE && metadata.subAgent !== true) return false;
   if (textOf(metadata.subAgentEvent) !== "task_complete") return false;
   if (metadata.subAgentCapExceeded === true) return false;
-  return !completionHasVerificationFailure(textOf(content.text));
+  const text = textOf(content.text);
+  if (!completionHasVerificationFailure(text)) return true;
+  // Verify-failed / retry-exhausted completion that still carries at least
+  // one URL that actually probed live: there IS a deliverable — relay it with
+  // a caveat instead of stepping aside, which leaves delivery to the planner
+  // model volunteering a reply (fine on strong models, silent on weak ones).
+  return verifiedUrlsExcludingDead(message, text).length > 0;
 }
 
 function replyPatchFromCompletion(
@@ -681,11 +729,20 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
   evaluate: async ({ runtime, message, messageHandler }) => {
     const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
-    const verifiedUrls = verifiedUrlsFromMetadata(message);
+    const verifiedUrls = verifiedUrlsExcludingDead(message, completionText);
     // Durable-task verification state, when the session has a record. Every
     // branch below that relays the completion as a user-facing reply frames it
     // through this view so an unverified claim is never presented as final.
     const verification = await verificationViewFor(runtime, message);
+    // Router URL-verify failure (dead URLs listed in the completion): every
+    // relayed reply below must disclose the gap, so this is computed ABOVE the
+    // first relay branch — the deliverable and degenerate-partial relays
+    // return early and would otherwise skip it.
+    const verificationCaveat = completionHasVerificationFailure(completionText)
+      ? "Note: some resources referenced by the build failed verification — parts of the page may be broken."
+      : undefined;
+    const withVerificationCaveat = (reply: string): string =>
+      verificationCaveat ? `${reply}\n\n${verificationCaveat}` : reply;
     // The deliverable IS the sub-agent's printed/tool output (short, single
     // block; the router stripped it from the narration). Relay it verbatim
     // rather than letting the parent model re-summarize or truncate it.
@@ -697,7 +754,10 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
         setContexts: [SIMPLE_CONTEXT_ID],
         clearCandidateActions: true,
         clearParentActionHints: true,
-        reply: frameReplyWithVerification(deliverable, verification),
+        reply: frameReplyWithVerification(
+          withVerificationCaveat(deliverable),
+          verification,
+        ),
         debug: [
           "verified sub-agent completion carries a captured deliverable; relaying it verbatim",
         ],
@@ -722,7 +782,10 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
           setContexts: [SIMPLE_CONTEXT_ID],
           clearCandidateActions: true,
           clearParentActionHints: true,
-          reply: frameReplyWithVerification(partial, verification),
+          reply: frameReplyWithVerification(
+            withVerificationCaveat(partial),
+            verification,
+          ),
           debug: [
             `sub-agent completion finished with stopReason=${finishReason} (truncated/blocked); relaying best partial once instead of re-spawning the same request`,
           ],
@@ -790,7 +853,10 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
         setContexts: [SIMPLE_CONTEXT_ID],
         clearCandidateActions: true,
         clearParentActionHints: true,
-        reply: frameReplyWithVerification(reply, verification),
+        reply: frameReplyWithVerification(
+          withVerificationCaveat(reply),
+          verification,
+        ),
         debug: [
           "verified sub-agent completion has no concrete follow-up action; using direct reply",
         ],
@@ -835,7 +901,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
       };
     }
     const framedReply = reply
-      ? frameReplyWithVerification(reply, verification)
+      ? frameReplyWithVerification(withVerificationCaveat(reply), verification)
       : reply;
     return {
       ...respondIfNeeded(messageHandler),

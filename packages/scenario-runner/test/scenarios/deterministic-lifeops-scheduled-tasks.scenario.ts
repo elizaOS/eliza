@@ -1,6 +1,6 @@
 /**
  * Keyless coverage for the LifeOps ScheduledTask action surface. Runs on the
- * pr-deterministic lane under the LLM proxy.
+ * pr-deterministic lane under the model provider.
  */
 import type {
   CapturedAction,
@@ -9,10 +9,10 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
   type StrictActionRouteFixture,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -78,7 +78,7 @@ const historyParameters = {
 };
 
 let createdTaskId: string | null = null;
-let scenarioRuntime: RuntimeWithScenarioLlmFixtures | null = null;
+let scenarioRuntime: RuntimeWithScenarioModelFixtures | null = null;
 
 const initialStrictRoutes: StrictActionRouteFixture[] = [
   {
@@ -142,7 +142,7 @@ function seedStrictFixtures(ctx: ScenarioContext): string | undefined {
   completeParameters.taskId = "__created_task_id_unset__";
   historyParameters.taskId = "__created_task_id_unset__";
 
-  scenarioRuntime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+  scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
   registerStrictActionRouteFixtures(scenarioRuntime, initialStrictRoutes);
   return undefined;
 }

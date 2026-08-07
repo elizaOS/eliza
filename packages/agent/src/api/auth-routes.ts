@@ -3,7 +3,8 @@
  * reports the caller's identity, session, and server-authoritative boundary
  * role (OWNER for a trusted loopback owner or valid API token, else GUEST with
  * a 401); `GET /api/auth/status` reports whether a token is required and the
- * pairing-code state; `POST /api/auth/pair` exchanges a rate-limited,
+ * pairing-code state; `GET /api/auth/pair-code` exposes the current code on
+ * loopback for operators; `POST /api/auth/pair` exchanges a rate-limited,
  * timing-safe pairing code for the configured connection token. These are the
  * entry points a client hits before it is authenticated, so they front the
  * rest of the API surface. In app-core the pair handler is shadowed by the
@@ -26,6 +27,8 @@ import {
 } from "./server-helpers-auth.ts";
 
 function getConfiguredApiToken(): string | undefined {
+  // Inbound credential only — see the note on the exported helper in
+  // server-helpers-auth.ts for why the legacy plugin key is not accepted here.
   return resolveApiToken(process.env) ?? undefined;
 }
 
@@ -126,9 +129,35 @@ export async function handleAuthRoutes(
     if (enabled) ensurePairingCode();
     json(res, {
       required,
+      authenticated: isAuthorized(req),
       pairingEnabled: enabled,
       expiresAt: enabled ? getPairingExpiresAt() : null,
     });
+    return true;
+  }
+
+  // Loopback-only helper for operators pairing a remote browser against a
+  // standalone agent (`bun run start`). External clients must enter the code
+  // manually — never receive it over the LAN.
+  if (method === "GET" && pathname === "/api/auth/pair-code") {
+    if (!isTrustedLocalRequest(req)) {
+      error(res, "Pair code visible on loopback only", 403);
+      return true;
+    }
+    if (isCloudProvisionedContainer()) {
+      error(res, "Pairing disabled", 403);
+      return true;
+    }
+    if (!pairingEnabled()) {
+      error(res, "Pairing not enabled", 503);
+      return true;
+    }
+    const code = ensurePairingCode();
+    if (!code) {
+      error(res, "Pairing not enabled", 503);
+      return true;
+    }
+    json(res, { code, expiresAt: getPairingExpiresAt() });
     return true;
   }
 
@@ -174,7 +203,31 @@ export async function handleAuthRoutes(
       return true;
     }
 
-    const provided = normalizePairingCode(parsed.data.code);
+    const provided = parsed.data.code.trim();
+
+    // Accept the raw API token itself as a valid "pairing code" — lets operators
+    // share the token as a static secret without needing loopback access to read
+    // a generated code.
+    //
+    // This path deliberately bypasses the pairing code's expiry window: the
+    // token does not rotate, so a holder can pair at any time. It is still
+    // gated by `pairingEnabled()`, the cloud-container check, and the
+    // per-IP `rateLimitPairing` above, which is what bounds guessing —
+    // `timingSafeEqual` only removes the timing side-channel, it does nothing
+    // against brute force. The token must therefore carry real entropy; a
+    // human-chosen `ELIZA_API_TOKEN` weakens pairing to that token's strength.
+    const tokenA = Buffer.from(token, "utf8");
+    const tokenB = Buffer.from(provided, "utf8");
+    const tokenMatch =
+      tokenA.length === tokenB.length && crypto.timingSafeEqual(tokenA, tokenB);
+
+    if (tokenMatch) {
+      const response: PostAuthPairResponse = { token };
+      json(res, response);
+      return true;
+    }
+
+    const normalizedProvided = normalizePairingCode(provided);
     const current = ensurePairingCode();
     if (!current || Date.now() > getPairingExpiresAt()) {
       ensurePairingCode();
@@ -188,7 +241,7 @@ export async function handleAuthRoutes(
 
     const expected = normalizePairingCode(current);
     const a = Buffer.from(expected, "utf8");
-    const b = Buffer.from(provided, "utf8");
+    const b = Buffer.from(normalizedProvided, "utf8");
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       error(res, "Invalid pairing code", 403);
       return true;

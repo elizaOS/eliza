@@ -273,7 +273,7 @@ frontend logs) is [#15171](https://github.com/elizaOS/eliza/pull/15171).
 ## Security Reporting
 
 The canonical security policy — reporting channel, disclosure window, and
-remediation SLAs — is [`SECURITY.md`](SECURITY.md). In short: report
+remediation SLAs — is [`packages/docs/security.md`](packages/docs/security.md). In short: report
 vulnerabilities privately to `security@elizalabs.ai`; do not open a public
 GitHub issue for a live vulnerability, credential leak, exploit path, or
 embargoed dependency issue. Include affected versions or commits, reproduction

@@ -42,7 +42,12 @@ export type AgentSessionRecoveryResult =
   | { ok: true; redirectUrl: string; mode: "navigate" | "in-process" }
   | {
       ok: false;
-      reason: "not-ready" | "unauthorized" | "manage-required" | "error";
+      reason:
+        | "not-ready"
+        | "unauthorized"
+        | "manage-required"
+        | "cancelled"
+        | "error";
       message: string;
     };
 
@@ -56,9 +61,11 @@ export interface RunAgentSessionRecoveryDeps {
   /** Injected fetch (tests). Defaults to global `fetch`. */
   fetchFn?: typeof fetch;
   /** Injected sleep (tests). Defaults to real setTimeout. */
-  sleepFn?: (ms: number) => Promise<void>;
+  sleepFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
   /** Injected clock (tests). Defaults to `Date.now`. */
   nowFn?: () => number;
+  /** Cancels mint polling and native exchange when the owning UI cycle ends. */
+  signal?: AbortSignal;
   /** Navigate the current window to the `/pair` relay. Injected in tests. */
   navigate: (url: string) => void;
   /**
@@ -74,6 +81,7 @@ export interface RunAgentSessionRecoveryDeps {
       cloudToken: string;
       agentId: string;
       expectedOrigin: string;
+      signal?: AbortSignal;
     },
   ) => Promise<string>;
   /** Injected API-key persistence (tests). Defaults to CloudPairRelay's persistence. */
@@ -88,12 +96,40 @@ export interface RunAgentSessionRecoveryDeps {
    * the proven credential. Generic pairing callers omit it.
    */
   clearStalePairCredentials?: () => void;
+  /** Rejects any late response or side effect that belongs to an old target. */
+  isRecoveryTargetCurrent?: () => boolean;
+  /**
+   * Atomically commit an in-process bearer to every caller-owned store. When
+   * provided, this replaces the default persistence + callback pair.
+   */
+  commitPairedInProcess?: (apiToken: string) => void | Promise<void>;
   /** Optional callback after an in-process pair succeeds. */
   onPairedInProcess?: (apiToken: string) => void | Promise<void>;
 }
 
-const realSleep = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
+const realSleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timeout = setTimeout(finish, ms);
+    signal?.addEventListener("abort", finish, { once: true });
+  });
+
+const cancelledResult = (): AgentSessionRecoveryResult => ({
+  ok: false,
+  reason: "cancelled",
+  message: "Agent session recovery was cancelled",
+});
 
 /** Only absolute http(s) URLs are safe full-page navigation targets. */
 function isSafeRedirectUrl(value: string): boolean {
@@ -177,10 +213,13 @@ export async function runAgentSessionRecovery(
       }),
     persistPairApiToken = persistCloudPairApiToken,
     clearStalePairCredentials,
+    isRecoveryTargetCurrent,
+    commitPairedInProcess,
     onPairedInProcess,
     fetchFn = fetch,
     sleepFn = realSleep,
     nowFn = Date.now,
+    signal,
   } = deps;
 
   const base = cloudApiBase.replace(/\/+$/, "");
@@ -190,13 +229,18 @@ export async function runAgentSessionRecovery(
 
   const deadline = nowFn() + MAX_PAIRING_WAIT_MS;
   while (nowFn() < deadline) {
+    if (signal?.aborted || isRecoveryTargetCurrent?.() === false) {
+      return cancelledResult();
+    }
     let res: Response;
     try {
       res = await fetchFn(url, {
         method: "POST",
         headers: { Authorization: `Bearer ${cloudToken}` },
+        signal,
       });
     } catch (err) {
+      if (signal?.aborted) return cancelledResult();
       // error-policy:J4 a transient control-plane request failure becomes a
       // non-destructive retry result; the valid Cloud token is preserved.
       return {
@@ -211,9 +255,19 @@ export async function runAgentSessionRecovery(
     const data = (await res
       .json()
       .catch(() => ({ error: "Unknown error" }))) as PairingTokenResponse;
+    if (signal?.aborted || isRecoveryTargetCurrent?.() === false) {
+      return cancelledResult();
+    }
 
     if (res.status === 202) {
-      await sleepFn(retryAfterMs(res, data));
+      const remainingMs = Math.max(0, deadline - nowFn());
+      const waitMs = Math.min(retryAfterMs(res, data), remainingMs);
+      if (signal) {
+        await sleepFn(waitMs, signal);
+      } else {
+        await sleepFn(waitMs);
+      }
+      if (signal?.aborted) return cancelledResult();
       continue;
     }
 
@@ -292,11 +346,22 @@ export async function runAgentSessionRecovery(
             cloudToken,
             agentId,
             expectedOrigin: new URL(redirectUrl).origin,
+            ...(signal ? { signal } : {}),
           });
-          persistPairApiToken(apiToken);
-          await onPairedInProcess?.(apiToken);
+          if (signal?.aborted || isRecoveryTargetCurrent?.() === false) {
+            return cancelledResult();
+          }
+          if (commitPairedInProcess) {
+            await commitPairedInProcess(apiToken);
+          } else {
+            persistPairApiToken(apiToken);
+            await onPairedInProcess?.(apiToken);
+          }
           return { ok: true, redirectUrl, mode: "in-process" };
         } catch (err) {
+          if (signal?.aborted || isRecoveryTargetCurrent?.() === false) {
+            return cancelledResult();
+          }
           // error-policy:J4 native exchange failures retain the server's typed
           // recovery category. Unknown/network/storage failures stay retryable
           // and cannot invalidate the Cloud credential.
@@ -313,6 +378,9 @@ export async function runAgentSessionRecovery(
 
       // Hand off to the /pair relay in the current window: it pins the fresh
       // credential and redirects to `/`, clearing the stale-credential 401 loop.
+      if (signal?.aborted || isRecoveryTargetCurrent?.() === false) {
+        return cancelledResult();
+      }
       navigate(redirectUrl);
       return { ok: true, redirectUrl, mode: "navigate" };
     }

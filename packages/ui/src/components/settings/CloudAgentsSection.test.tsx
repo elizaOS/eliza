@@ -1,3 +1,4 @@
+/** Verifies CloudAgentsSection rename through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -830,6 +831,35 @@ describe("CloudAgentsSection load state (error vs empty)", () => {
       resolveFetch?.({ success: true, data: [] });
       await pendingFetch;
     });
+  });
+
+  it("consumes a list rejection that settles after unmount", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      let rejectFetch!: (reason?: unknown) => void;
+      const pendingFetch = new Promise<never>((_resolve, reject) => {
+        rejectFetch = reject;
+      });
+      clientMock.getCloudCompatAgents.mockReturnValue(pendingFetch);
+
+      const view = render(<CloudAgentsSection />);
+      await waitFor(() =>
+        expect(clientMock.getCloudCompatAgents).toHaveBeenCalledTimes(1),
+      );
+      view.unmount();
+
+      rejectFetch(new Error("late cloud-agent fetch failure"));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 
   it("does not let an older list response overwrite a newer refresh", async () => {

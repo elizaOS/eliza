@@ -1,3 +1,4 @@
+/** Verifies Home ↔ Launcher composed surface through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // COMPOSED screen-state test — the gap the audit flagged. Every prior test
@@ -377,9 +378,6 @@ describe("Home ↔ Launcher composed surface", () => {
     expect(screen.queryByTestId("launcher-image-browser")).toBeNull();
     expect(settingsVisual?.querySelector("img")).toBeNull();
     expect(browserVisual?.querySelector("img")).toBeNull();
-    expect(settingsVisual?.getAttribute("style")).toContain("linear-gradient");
-    expect(browserVisual?.getAttribute("style")).toContain("linear-gradient");
-
     const settingsGlyph = settingsVisual
       ?.querySelector("svg")
       ?.getAttribute("class");

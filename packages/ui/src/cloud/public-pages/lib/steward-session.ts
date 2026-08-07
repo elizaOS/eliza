@@ -7,6 +7,7 @@
  */
 
 import {
+  clearStoredStewardToken,
   STEWARD_NONCE_EXCHANGE_ENDPOINT,
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
@@ -28,9 +29,10 @@ export function resolveStewardAuthEndpoint(
 async function postAuthJson(
   path: string,
   body?: Record<string, unknown>,
+  method: "POST" | "DELETE" = "POST",
 ): Promise<Response> {
   return fetch(resolveStewardAuthEndpoint(path), {
-    method: "POST",
+    method,
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -227,4 +229,63 @@ export async function refreshStewardSessionViaCookie(): Promise<{
     expiresIn?: number;
     token?: string;
   };
+}
+
+const DEAD_SESSION_RETRY_DELAY_MS = 100;
+
+function isRejectedCookieSession(error: unknown): boolean {
+  return (
+    error instanceof StewardSessionError &&
+    error.status === 401 &&
+    (error.code === "invalid_token" || error.code === "missing_token")
+  );
+}
+
+async function clearRejectedCookieSession(): Promise<void> {
+  const response = await postAuthJson(
+    STEWARD_SESSION_ENDPOINT,
+    undefined,
+    "DELETE",
+  );
+  if (!response.ok) {
+    const body = await readSessionError(response);
+    throw new StewardSessionError(
+      body.error || "Could not reset the expired Eliza Cloud session.",
+      response.status,
+      body.code ?? null,
+    );
+  }
+  clearStoredStewardToken();
+}
+
+/**
+ * Restore the cookie session when the login page has only the non-HttpOnly
+ * `steward-authed` marker. A refresh token is single-use, so one 401 can be the
+ * losing side of another tab's successful rotation. Retry once after that
+ * response settles; a second auth rejection proves the cookie is stale enough
+ * to clear before rendering a clean sign-in form.
+ */
+export async function recoverStewardSessionViaCookie(): Promise<{
+  ok: true;
+  expiresAt?: number;
+  expiresIn?: number;
+  token?: string;
+} | null> {
+  try {
+    return await refreshStewardSessionViaCookie();
+  } catch (error) {
+    if (!isRejectedCookieSession(error)) throw error;
+  }
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, DEAD_SESSION_RETRY_DELAY_MS);
+  });
+
+  try {
+    return await refreshStewardSessionViaCookie();
+  } catch (error) {
+    if (!isRejectedCookieSession(error)) throw error;
+    await clearRejectedCookieSession();
+    return null;
+  }
 }

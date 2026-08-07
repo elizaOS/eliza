@@ -70,6 +70,7 @@ const PROVIDER_LABELS: Record<LifeOpsCalendarProvider, string> = {
   microsoft: "Microsoft Outlook",
   apple_calendar: "Apple Calendar",
   ics: "Calendar subscription",
+  eliza: "Eliza Calendar",
 };
 
 export function calendarSourceIdentityKey(
@@ -266,7 +267,8 @@ export function toCalendarSourceManagerModel(
       actionId,
       providerLabel: providerLabel(provider),
       accountLabel:
-        calendar?.accountEmail?.trim() || "Account details unavailable",
+        calendar?.accountEmail?.trim() ||
+        (provider === "eliza" ? "Built in" : "Account details unavailable"),
       calendarLabel: calendarLabel(calendar, health),
       primary: calendar?.primary ?? false,
       accessLabel: normalizeAccessRole(

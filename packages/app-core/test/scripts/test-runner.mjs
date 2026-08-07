@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for test runner mjs. */
+/**
+ * Sequential full-suite entry: runs the app, homepage, app-core,
+ * computeruse-real, and root e2e lanes in order through runManagedTestCommand
+ * with shared env and locking.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {

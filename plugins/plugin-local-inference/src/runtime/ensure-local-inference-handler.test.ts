@@ -251,6 +251,33 @@ describe("ensureLocalInferenceHandler", () => {
 		);
 	});
 
+	it("maps explicit legacy voice names without treating model ids as voices", async () => {
+		const { registrations, runtime } = makeRuntime();
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TEXT_TO_SPEECH,
+		);
+
+		await handler(runtime, {
+			text: "hello",
+			voice: "  Nova  ",
+			model: "tts-1",
+		});
+		expect(engineState.synthesizeSpeech).toHaveBeenLastCalledWith(
+			"hello",
+			undefined,
+			"af_nova",
+		);
+
+		await handler(runtime, { text: "hello again", model: "tts-1" });
+		expect(engineState.synthesizeSpeech).toHaveBeenLastCalledWith(
+			"hello again",
+			undefined,
+			undefined,
+		);
+	});
+
 	it("honors ELIZA_DISABLE_LOCAL_EMBEDDINGS by leaving TEXT_EMBEDDING unregistered", async () => {
 		process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
 		const { registrations, runtime } = makeRuntime();
@@ -286,6 +313,32 @@ describe("ensureLocalInferenceHandler", () => {
 
 		expect(registrations).toHaveLength(0);
 		expect(engineState.available).not.toHaveBeenCalled();
+	});
+
+	it("registers desktop gte-small embeddings when no generative backend is available", async () => {
+		engineState.available.mockResolvedValue(false);
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+
+		expect(registrations).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					modelType: ModelType.TEXT_EMBEDDING,
+					provider: "eliza-local-inference",
+				}),
+				expect.objectContaining({ modelType: ModelType.TEXT_SMALL }),
+				expect.objectContaining({ modelType: ModelType.TEXT_LARGE }),
+			]),
+		);
+		expect(
+			registrations.some(
+				(entry) => entry.modelType === ModelType.TEXT_TO_SPEECH,
+			),
+		).toBe(false);
+		expect(installRouterHandler).toHaveBeenCalledWith(runtime, {
+			skipSlots: [],
+		});
 	});
 
 	it("does not duplicate registrations on the same runtime", async () => {
