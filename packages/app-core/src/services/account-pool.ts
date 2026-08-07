@@ -1229,6 +1229,7 @@ async function deleteAccountMeta(
 }
 
 let cachedDefaultPool: AccountPool | null = null;
+let cachedRuntimeStoragePolicy: AccountStoragePolicy | null = null;
 let defaultSelectionConfig: AccountPoolSelectionConfig = {};
 
 function normalizeStrategy(value: unknown): Strategy | undefined {
@@ -1337,11 +1338,24 @@ export function configureDefaultAccountPoolSelection(
  * resolvers should import `getDefaultAccountPool()` rather than constructing
  * a new pool directly.
  */
-export function getDefaultAccountPool(): AccountPool {
-  if (!cachedDefaultPool) {
-    const storagePolicy = createRuntimeAccountStoragePolicy(
+/**
+ * The storage policy every account mutation in this module presents.
+ * `getAccessToken` refuses to refresh without one, and a refresh that rotates a
+ * one-time grant must be able to persist what came back, so token resolution
+ * needs the same policy the pool's read/write/delete closures already carry.
+ */
+function defaultRuntimeStoragePolicy(): AccountStoragePolicy {
+  if (!cachedRuntimeStoragePolicy) {
+    cachedRuntimeStoragePolicy = createRuntimeAccountStoragePolicy(
       process.env.ELIZA_HOME || resolveStateDir(),
     );
+  }
+  return cachedRuntimeStoragePolicy;
+}
+
+export function getDefaultAccountPool(): AccountPool {
+  if (!cachedDefaultPool) {
+    const storagePolicy = defaultRuntimeStoragePolicy();
     cachedDefaultPool = new AccountPool({
       readAccounts: () => loadAllAccounts(storagePolicy),
       writeAccount: (account) => persistAccount(account, storagePolicy),
@@ -1383,7 +1397,9 @@ export async function applyAccountPoolApiCredentials(
       })) ?? accounts.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
     if (!account) continue;
 
-    const token = await getAccountAccessToken(providerId, account.id);
+    const token = await getAccountAccessToken(providerId, account.id, {
+      storagePolicy: defaultRuntimeStoragePolicy(),
+    });
     if (!token) continue;
 
     const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
@@ -1576,7 +1592,9 @@ export async function sweepAccountPoolKeepAlive(
       if (providerId === "openai-codex") {
         await adoptRotatedCodexTokens(record.id);
       }
-      const token = await getAccountAccessToken(providerId, record.id);
+      const token = await getAccountAccessToken(providerId, record.id, {
+        storagePolicy: defaultRuntimeStoragePolicy(),
+      });
       if (!token) {
         result.failed += 1;
         await pool.markNeedsReauth(record.id, "No valid credential available", {
@@ -1717,7 +1735,9 @@ function installAnthropicBridge(pool: AccountPool): void {
       return { id: account.id, expiresAt: Number.POSITIVE_INFINITY };
     },
     getAccessToken: (providerId, accountId) =>
-      getAccountAccessToken(providerId, accountId),
+      getAccountAccessToken(providerId, accountId, {
+        storagePolicy: defaultRuntimeStoragePolicy(),
+      }),
     markInvalid: (accountId, detail) =>
       pool.markInvalid(accountId, detail, {
         providerId: "anthropic-subscription",
@@ -1733,6 +1753,7 @@ function installAnthropicBridge(pool: AccountPool): void {
 export function resetDefaultAccountPoolAfterCredentialReset(): void {
   stopAccountPoolKeepAliveForTests();
   cachedDefaultPool = null;
+  cachedRuntimeStoragePolicy = null;
 }
 
 export const __resetDefaultAccountPoolForTests =

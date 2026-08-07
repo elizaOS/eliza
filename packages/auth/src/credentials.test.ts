@@ -365,6 +365,48 @@ describe("applySubscriptionCredentials", () => {
     });
   });
 
+  // Regression (#17464 review): the mandatory-policy guard used to sit AFTER the
+  // refresh had already been redeemed. Anthropic and Codex rotate refresh tokens
+  // on use, so throwing there discarded the rotated token while the stored one
+  // was already consumed, and every later refresh 401'd. The guard must refuse
+  // before anything is spent.
+  it("refuses a policy-less refresh before the grant is redeemed", async () => {
+    useTempElizaHome();
+    const refreshMock = vi.mocked(refreshCodexToken);
+    refreshMock.mockClear();
+    refreshMock.mockResolvedValue({
+      access: "rotated-access",
+      refresh: "rotated-refresh",
+      expires: Date.now() + 60 * 60_000,
+    });
+    saveCredentials(
+      "openai-codex",
+      {
+        access: "expired-access",
+        refresh: "one-time-refresh",
+        expires: Date.now() - 1_000,
+      },
+      "personal",
+    );
+
+    // No storagePolicy: this is the shape every un-migrated caller has.
+    await expect(
+      getAccessTokenWithPolicy("openai-codex", "personal"),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: "AUTH_CREDENTIAL_MUTATION_POLICY_REQUIRED",
+      }),
+    );
+
+    // The point of the ordering: the upstream grant was never spent, so the
+    // stored one-time refresh token is still usable.
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(loadAccount("openai-codex", "personal", storagePolicy())?.credentials).toMatchObject({
+      access: "expired-access",
+      refresh: "one-time-refresh",
+    });
+  });
+
   it("returns a typed auth outcome when the requested account is absent", async () => {
     useTempElizaHome();
 

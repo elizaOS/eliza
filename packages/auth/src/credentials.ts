@@ -392,6 +392,22 @@ export async function getAccessToken(
       });
     }
 
+    // Refused BEFORE the grant is spent, not after. Anthropic and Codex rotate
+    // refresh tokens on use (one-time-use), so throwing after the refresh would
+    // discard the rotated token while the stored one is already consumed — every
+    // later refresh 401s and the account needs manual re-auth. In front of the
+    // await this costs nothing.
+    if (!opts?.storagePolicy) {
+      throw new ElizaError(
+        "Refreshing a stored credential requires an explicit account storage policy",
+        {
+          code: "AUTH_CREDENTIAL_MUTATION_POLICY_REQUIRED",
+          context: { provider, accountId },
+          severity: "fatal",
+        },
+      );
+    }
+
     logger.info(
       `[auth] Refreshing ${provider} token for account "${accountId}"...`,
     );
@@ -426,16 +442,6 @@ export async function getAccessToken(
       );
     }
 
-    if (!opts?.storagePolicy) {
-      throw new ElizaError(
-        "Refreshing a stored credential requires an explicit account storage policy",
-        {
-          code: "AUTH_CREDENTIAL_MUTATION_POLICY_REQUIRED",
-          context: { provider, accountId },
-          severity: "fatal",
-        },
-      );
-    }
     saveCredentials(provider, refreshed, accountId, opts.storagePolicy);
     if (refreshed.expires <= Date.now() + effectiveBufferMs) {
       return finish(
