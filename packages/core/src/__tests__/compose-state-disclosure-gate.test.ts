@@ -101,4 +101,68 @@ describe("composeState owner-exclusive providers", () => {
 		expect(second.text).toContain("Owner-private access notice");
 		expect(second.text).toContain("audience_changed");
 	});
+
+	it("reuses public providers while revalidating private providers in one turn", async () => {
+		const { runtime } = runtimeHarness();
+		const publicGet = vi.fn(async () => ({ text: "PUBLIC_PROVIDER_CANARY" }));
+		const privateGet = vi.fn(async () => ({ text: "PRIVATE_PROVIDER_CANARY" }));
+		runtime.registerProvider({ name: "PUBLIC", get: publicGet });
+		runtime.registerProvider({
+			name: "PRIVATE",
+			disclosureGate: { require: "owner_exclusive" },
+			get: privateGet,
+		});
+		const turn = message(
+			runtime,
+			"66666666-6666-6666-6666-666666666666" as UUID,
+		);
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+
+		const first = await runtime.composeState(
+			turn,
+			["PUBLIC", "PRIVATE"],
+			true,
+			false,
+			[],
+		);
+		const second = await runtime.composeState(
+			turn,
+			["PUBLIC", "PRIVATE"],
+			true,
+			false,
+			[],
+		);
+
+		expect(first.text).toContain("PUBLIC_PROVIDER_CANARY");
+		expect(first.text).toContain("PRIVATE_PROVIDER_CANARY");
+		expect(second.text).toContain("PUBLIC_PROVIDER_CANARY");
+		expect(second.text).toContain("PRIVATE_PROVIDER_CANARY");
+		expect(publicGet).toHaveBeenCalledTimes(1);
+		expect(privateGet).toHaveBeenCalledTimes(2);
+		expect(runtime.stateCache.has(turn.id as string)).toBe(false);
+	});
+
+	it("invalidates the public-only turn cache when message text changes", async () => {
+		const { runtime } = runtimeHarness();
+		const publicGet = vi.fn(async () => ({ text: "PUBLIC_PROVIDER_CANARY" }));
+		const privateGet = vi.fn(async () => ({ text: "PRIVATE_PROVIDER_CANARY" }));
+		runtime.registerProvider({ name: "PUBLIC", get: publicGet });
+		runtime.registerProvider({
+			name: "PRIVATE",
+			disclosureGate: { require: "owner_exclusive" },
+			get: privateGet,
+		});
+		const turn = message(
+			runtime,
+			"77777777-7777-7777-7777-777777777777" as UUID,
+		);
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+
+		await runtime.composeState(turn, ["PUBLIC", "PRIVATE"], true, false, []);
+		turn.content.text = "rewritten private context";
+		await runtime.composeState(turn, ["PUBLIC", "PRIVATE"], true, false, []);
+
+		expect(publicGet).toHaveBeenCalledTimes(2);
+		expect(privateGet).toHaveBeenCalledTimes(2);
+	});
 });
