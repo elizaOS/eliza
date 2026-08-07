@@ -1,3 +1,4 @@
+/** Verifies SkillsView through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Renders the real SkillsView against a mocked state barrel to cover load-on-

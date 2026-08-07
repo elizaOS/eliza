@@ -1,12 +1,11 @@
 /** Composes the mobile coding cockpit route from deck, session, and terminal panes. */
-import {
-  Button,
-  type CockpitSpawnTarget,
-  CockpitView,
-  type CodingAgentCreateTaskInput,
-  client,
-  type OrchestratorRoomRosterOverview,
-} from "@elizaos/ui";
+import { client } from "@elizaos/ui/api";
+import type {
+  CodingAgentCreateTaskInput,
+  OrchestratorRoomRosterOverview,
+} from "@elizaos/ui/api/client-types-cloud";
+import { type CockpitSpawnTarget, CockpitView } from "@elizaos/ui/components";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useCallback, useEffect, useState } from "react";
 import {
   CockpitInteractiveTerminal,

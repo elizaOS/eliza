@@ -15,7 +15,12 @@ Those handlers call `getPtyConsoleBridge(state)`, which resolves
 `runtime.getService("PTY_SERVICE")?.consoleBridge`. **Without a registered
 `PTY_SERVICE`, that bridge is `null` and the terminal is inert.**
 
-This plugin supplies that service. It is the missing keystone — everything else
+This plugin supplies that service. Consumers: the app web terminal
+(`PtyTerminalPane` + agent-server WS handlers), the `@elizaos/plugin-task-coordinator`
+cockpit interactive terminal, and the agent swarm helpers in `packages/agent`.
+It is independent of `@elizaos/plugin-agent-orchestrator`, which spawns its
+coding agents as ACP subprocesses directly rather than through `PTY_SERVICE`.
+It is the missing keystone — everything else
 already exists, so this connects three finished pieces (xterm UI, WS keystroke
 path, interactive CLI) rather than building them.
 
@@ -27,8 +32,8 @@ automatically on store builds.
 ## Why eliza-code on cerebras (not the Claude/Codex CLIs)
 
 Running a real interactive CLI *on a subscription* inherently means impersonating
-that vendor's CLI — the TOS-unsafe tier. `eliza-code` (`packages/examples/code`)
-is a real interactive slash-command TUI **we own**: it already implements
+that vendor's CLI — the TOS-unsafe tier. `eliza-code` is a separately installed
+interactive slash-command TUI: it already implements
 `/help`, `/clear`, `/task`, etc., and selects its model provider purely from env.
 Pointing it at Eliza Cloud's OpenAI-compatible endpoint routes inference to
 cerebras (`gemma-4-31b` for both fast and smart) — a real CLI with all slash
@@ -113,7 +118,7 @@ test/
 ```bash
 bun run --cwd plugins/plugin-pty build      # tsup ESM + declarations
 bun run --cwd plugins/plugin-pty test       # vitest unit suite
-bun run --cwd plugins/plugin-pty typecheck  # tsgo --noEmit
+bun run --cwd plugins/plugin-pty typecheck  # tsc --noEmit
 bun run --cwd plugins/plugin-pty lint
 ```
 
@@ -128,7 +133,7 @@ bun run --cwd plugins/plugin-pty lint
 | `PTY_ELIZA_CLOUD_FAST_MODEL` / `PTY_ELIZA_CLOUD_SMART_MODEL` | `gemma-4-31b` | Optional deployment pins for the fast/smart eliza-code model ids. Request body model values still take precedence. |
 | `PTY_ALLOWED_BASE_URLS` | Eliza Cloud API | Comma-separated operator allowlist for non-default OpenAI-compatible base URLs. |
 | `PTY_IDLE_TIMEOUT_MS` | `900000` | Idle live-session timeout. Set `0` to disable the fallback reaper. |
-| `ELIZA_CODE_BIN` | auto-resolved | Absolute path to built `eliza-code` `dist/index.js`. |
+| `ELIZA_CODE_BIN` | — | Required absolute path to the installed `eliza-code` entrypoint. |
 | `PTY_VENDOR_CLI_ENABLED` | `false` | Experimental vendor-CLI tier (`kind: "claude" \| "codex"` — the real vendor CLI on the user's own subscription). Enables only on `true`, `1`, `on`, or `yes`; never on store builds. |
 | `PTY_CLAUDE_BIN` / `PTY_CODEX_BIN` | PATH lookup | Absolute path to the `claude` / `codex` launcher. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | — | Optional Claude Code OAuth token passed through to `kind: "claude"` sessions; without it the CLI reads `~/.claude/.credentials.json`. |
@@ -137,8 +142,7 @@ bun run --cwd plugins/plugin-pty lint
 
 ## How the cerebras wiring works
 
-`buildElizaCodeCerebrasSpec` sets the env eliza-code reads
-(`packages/examples/code/src/lib/model-provider.ts`):
+`buildElizaCodeCerebrasSpec` sets the provider env consumed by eliza-code:
 `ELIZA_CODE_PROVIDER=openai`, `ELIZA_CODE_CODING_ONLY=1`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`
 (`https://api.elizacloud.ai/v1`), and `OPENAI_{SMALL,MEDIUM,LARGE}_MODEL`. The
 `tier` (`fast`/`smart`) controls which model small/medium lead with; large is
@@ -160,11 +164,11 @@ from loading the orchestrator and recursively spawning sub-agents.
 - Never log the spawn request body — it can carry an API key.
 - PTY child processes do **not** inherit the full server `process.env`; only a
   small runtime allowlist plus explicit eliza-code spec env is passed through.
-- See the root `AGENTS.md` for repo-wide conventions.
+- See the root `CLAUDE.md` for repo-wide conventions.
 
-## ⛔ NON-NEGOTIABLE — evidence & real end-to-end tests
+## Verification
 
-The binding standard is **[AGENTS.md](../../AGENTS.md)**. The unit suite
+The binding standard is the root [CLAUDE.md](../../CLAUDE.md). The unit suite
 proves the store/bridge/routing/spec logic against an injected PTY; the gated
 `pty.real.test.ts` (and the manual real-runtime checks) prove the actual
 node-pty / Bun-truePty path spawns real processes, streams output, round-trips

@@ -238,4 +238,21 @@ describe("probeHardware GPU detection", () => {
 			expect(probe.gpu).toBeNull();
 		}
 	});
+
+	it("uses reclaimable system memory instead of the undercounted OS free-page value", async () => {
+		const totalBytes = 128 * 1024 ** 3;
+		const freeBytes = 96 * 1024 ** 3;
+		const probe = await probeHardware({ totalBytes, freeBytes });
+
+		expect(probe.totalRamGb).toBe(128);
+		expect(probe.freeRamGb).toBe(96);
+		if (probe.appleSilicon) {
+			expect(probe.gpu).toMatchObject({
+				backend: "metal",
+				totalVramGb: 128,
+				freeVramGb: 96,
+			});
+			expect(classifyDeviceTier(probe).tier).toBe("MAX");
+		}
+	});
 });

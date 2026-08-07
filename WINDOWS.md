@@ -35,7 +35,8 @@ helper under `packages/scripts/`), don't paper over it in CI.
    but lacks `&&` chains in script runners; nothing in this repo depends on
    it directly, but pwsh is the supported shell.
 7. **Python 3.10+** on PATH as either `python` or `python3` — only required
-   for the voice/training benchmarks (`bench:voice-*`, `publish:eliza1`).
+   for the training pipeline (`publish:eliza1`); voice benchmarks moved to
+   https://github.com/elizaOS/benchmarks.
    Cross-platform launcher lives at
    [`packages/scripts/run-python.mjs`](packages/scripts/run-python.mjs).
 
@@ -47,7 +48,8 @@ Keep it aligned with
 [`packages/homepage/public/install.sh`](packages/homepage/public/install.sh)
 where the install flow is equivalent, and call out intentional platform
 differences near the branch that handles them. Installer security issues are in
-scope for `SECURITY.md` because these scripts bootstrap user machines.
+scope for [`packages/docs/security.md`](packages/docs/security.md) because these
+scripts bootstrap user machines.
 
 ## What works on Windows
 
@@ -72,11 +74,8 @@ Verified (`windows-latest` CI lane, see `.github/workflows/windows-ci.yml`):
 | `@elizaos/cloud-shared` | 720 | 2 mock-setup fails (cross-platform issue) |
 | `@elizaos/elizaos` (CLI) | 39 | 0 fail |
 | `@elizaos/vault` | 185 | 0 fail |
-| `@elizaos/security` | 53 | 0 fail |
 | `@elizaos/registry` | 7 | 0 fail |
-| `@elizaos/contracts` | 9 | 0 fail |
 | `@elizaos/logger` | 4 | 0 fail |
-| `@elizaos/soc2-verify` | 13 | 0 fail |
 | `plugin-elizacloud` | 147 | 0 fail |
 | `plugin-discord` | 87 | 0 fail |
 | `plugin-line` | 87 | 0 fail |
@@ -90,7 +89,7 @@ Verified (`windows-latest` CI lane, see `.github/workflows/windows-ci.yml`):
 | `plugin-calendar` | 36 | 0 fail |
 | `plugin-linear` | 22 | 0 fail |
 | `plugin-form` | 22 | 0 fail |
-| `plugin-google` | 21 | 0 fail |
+| `plugin-google-workspace` | 32 | 0 fail |
 | `plugin-anthropic` | 19 | 0 fail |
 | `plugin-bluesky` | 18 | 0 fail |
 | `plugin-music` | 18 | 0 fail |
@@ -100,12 +99,10 @@ Verified (`windows-latest` CI lane, see `.github/workflows/windows-ci.yml`):
 | `plugin-feishu` | 15 | 0 fail |
 | `plugin-cli` | 13 | 0 fail |
 | `plugin-streaming` | 11 | 0 fail |
-| `plugin-google-chat` | 11 | 0 fail |
 | `plugin-contacts` | 9 | 0 fail |
 | `plugin-app-manager` | 8 | 0 fail |
 | `plugin-google-genai` | 8 | 0 fail |
 | `plugin-edge-tts` | 7 | 0 fail |
-| `plugin-benchmarks` | 7 | 0 fail |
 | `plugin-codex-cli` | 5 | 0 fail |
 | `plugin-inmemorydb` | 5 | 0 fail |
 | `plugin-localdb` | 4 | 0 fail |
@@ -160,20 +157,6 @@ Calling them "not Windows compatible" misframes the situation; they're
 The TypeScript code in `@elizaos/ui`, `@elizaos/app-core`, the API and
 runtime that these shells host all build and test on Windows. Only the
 final OS-image / store-bundle steps require an Apple host.
-
-## RISC-V cross-build
-
-`verify:riscv64`, `build:riscv64-artifacts`,
-`check:riscv64-artifacts` cross-compile native plugins for RISC-V Linux.
-The scripts currently invoke bash + `qemu-riscv64-static` for the
-optional smoke phase, which doesn't have a Windows-native equivalent.
-Run inside WSL 2 (Ubuntu 22.04+) for the smoke step.
-
-The underlying cross-compiler (Zig) does work on Windows, so the
-cross-build phase itself could be ported; the smoke phase is what
-genuinely needs WSL/Linux. On Windows the bash entry points exit
-cleanly with a "Linux-only" message via
-[`packages/scripts/run-bash-linux-only.mjs`](packages/scripts/run-bash-linux-only.mjs).
 
 ## Known Bun-on-Windows issues (upstream)
 

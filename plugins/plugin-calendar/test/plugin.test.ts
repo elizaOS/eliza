@@ -33,13 +33,15 @@ describe("plugin-calendar surface", () => {
       conflictDetectAction,
     ]);
     expect(calendarPlugin.providers).toContain(calendarSourcesProvider);
-    expect(calendarSourcesAction.subActions).toEqual([
-      "list",
-      "select",
-      "deselect",
-      "connect",
-      "reconnect",
-    ]);
+    expect(calendarSourcesAction.subActions).toBeUndefined();
+    expect(
+      calendarSourcesAction.parameters?.find(
+        (parameter) => parameter.name === "operation",
+      )?.schema,
+    ).toMatchObject({
+      type: "string",
+      enum: ["list", "select", "deselect", "connect", "reconnect"],
+    });
     expect(calendarAction.description).not.toMatch(
       /scaffold_stub|not migrated|not yet implemented/i,
     );

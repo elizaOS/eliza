@@ -18,6 +18,7 @@ import {
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { hasRoleAccess, isAgentSelf } from "../../roles";
+import { unwrapUserMessageText } from "../../security/incoming-message-security.ts";
 import type {
 	Action,
 	ActionExample,
@@ -31,6 +32,10 @@ import type {
 	State,
 	UUID,
 } from "../../types";
+import {
+	describeUserReference,
+	userReferenceLogView as queryLogView,
+} from "../../utils/reference-echo.ts";
 import { addDocumentFromFilePath } from "./docs-loader.ts";
 import {
 	type DocumentListResult,
@@ -46,6 +51,10 @@ import type {
 } from "./types.ts";
 import { fetchDocumentFromUrl, isYouTubeUrl } from "./url-ingest.ts";
 import { createDocumentNoteFilename, deriveDocumentTitle } from "./utils.ts";
+
+// Blob-safe rendering rationale lives in utils/reference-echo.ts.
+const describeQuery = (query: string): string =>
+	describeUserReference(query, "that search");
 
 type DocumentSubAction =
 	| "list"
@@ -172,6 +181,7 @@ const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 	"user-private",
 	"agent-private",
 ]);
+const DOCUMENT_SCOPE_OPTIONS = [...DOCUMENT_SCOPES, "all-visible"] as const;
 
 const DOCUMENT_PATH_PATTERN =
 	/(?:\/[\w .-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
@@ -208,6 +218,8 @@ function hasSearchCategory(runtime: IAgentRuntime, category: string): boolean {
 		runtime.getSearchCategory(category, { includeDisabled: true });
 		return true;
 	} catch {
+		// error-policy:J4 getSearchCategory uses a throw to signal an absent
+		// optional registry entry; callers register it on this explicit miss.
 		return false;
 	}
 }
@@ -231,7 +243,9 @@ function getDocumentId(
 	const candidate = (params.documentId ?? params.id)?.trim();
 	if (candidate && isUuid(candidate)) return candidate;
 
-	const match = (message.content.text ?? "").match(
+	// Extract from the user's actual words: on hardened connectors
+	// content.text is core's external-content security envelope.
+	const match = unwrapUserMessageText(message).match(
 		/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
 	);
 	return match?.[0] && isUuid(match[0]) ? match[0] : null;
@@ -244,8 +258,8 @@ function getSearchMode(value: unknown): SearchMode | undefined {
 }
 
 function getLimit(value: unknown, fallback: number): number {
-	return typeof value === "number" && Number.isFinite(value)
-		? Math.max(1, Math.min(100, Math.floor(value)))
+	return typeof value === "number" && Number.isFinite(value) && value >= 1
+		? Math.min(100, Math.floor(value))
 		: fallback;
 }
 
@@ -337,7 +351,25 @@ function getQuery(params: DocumentActionParameters): string {
 	return "";
 }
 
-function getDocumentFilterParams(params: DocumentActionParameters): {
+function getOptionalPlannerString(
+	value: unknown,
+	message: Memory,
+): string | undefined {
+	if (typeof value !== "string" || !value.trim()) return undefined;
+	const normalized = value.trim();
+	if (
+		normalized === "0" &&
+		!/(?:^|\D)0(?:\D|$)/.test(message.content.text ?? "")
+	) {
+		return undefined;
+	}
+	return normalized;
+}
+
+function getDocumentFilterParams(
+	params: DocumentActionParameters,
+	message: Memory,
+): {
 	scope?: DocumentVisibilityScope;
 	scopedToEntityId?: UUID;
 	addedBy?: UUID;
@@ -359,8 +391,12 @@ function getDocumentFilterParams(params: DocumentActionParameters): {
 		typeof params.addedBy === "string" && isUuid(params.addedBy)
 			? (params.addedBy as UUID)
 			: undefined;
-	const timeRangeStart = parseTimestampParam(params.timeRangeStart);
-	const timeRangeEnd = parseTimestampParam(params.timeRangeEnd);
+	const timeRangeStart = parseTimestampParam(
+		getOptionalPlannerString(params.timeRangeStart, message),
+	);
+	const timeRangeEnd = parseTimestampParam(
+		getOptionalPlannerString(params.timeRangeEnd, message),
+	);
 	const tags = Array.isArray(params.tags)
 		? params.tags.filter((tag): tag is string => typeof tag === "string")
 		: undefined;
@@ -425,7 +461,9 @@ function getFilePath(
 	if (typeof params.filePath === "string" && params.filePath.trim()) {
 		return params.filePath.trim();
 	}
-	return (message.content.text ?? "").match(DOCUMENT_PATH_PATTERN)?.[0] ?? null;
+	return (
+		unwrapUserMessageText(message).match(DOCUMENT_PATH_PATTERN)?.[0] ?? null
+	);
 }
 
 function getUrl(
@@ -435,7 +473,7 @@ function getUrl(
 	if (typeof params.url === "string" && params.url.trim()) {
 		return params.url.trim();
 	}
-	return (message.content.text ?? "").match(URL_PATTERN)?.[0] ?? null;
+	return unwrapUserMessageText(message).match(URL_PATTERN)?.[0] ?? null;
 }
 
 async function scopedAddOptions(
@@ -508,7 +546,7 @@ async function handleSearch(
 		...message,
 		content: { ...message.content, text: query },
 	};
-	const filters = getDocumentFilterParams(params);
+	const filters = getDocumentFilterParams(params, message);
 	const matches = await service.searchDocuments(
 		searchMessage,
 		filters.scopedToEntityId
@@ -522,15 +560,15 @@ async function handleSearch(
 		.slice(0, limit);
 	const text =
 		visible.length === 0
-			? `I couldn't find any documents matching "${query}".`
-			: `Found ${visible.length} document fragment(s) for "${query}":\n\n${visible
+			? `I couldn't find any documents matching ${describeQuery(query)}.`
+			: `Found ${visible.length} document fragment(s) for ${describeQuery(query)}:\n\n${visible
 					.map((item, index) => `${index + 1}. ${item.content.text ?? ""}`)
 					.join("\n\n")}`;
 	// No visible callback: fragments are intermediate retrieval data for the
 	// planner to synthesize into the answer, not the answer itself.
 	return result(true, text, "search", {
-		values: { query, results: visible },
-		data: { query, results: visible },
+		values: { query: queryLogView(query), results: visible },
+		data: { query: queryLogView(query), results: visible },
 	});
 }
 
@@ -707,6 +745,8 @@ async function handleDelete(
 	try {
 		await service.deleteDocument(documentId, message);
 	} catch (error) {
+		// error-policy:J1 Delete translates authorization and persistence
+		// failures into explicit action results.
 		const code = error instanceof ElizaError ? error.code : undefined;
 		if (code === "DOCUMENT_MUTATION_FORBIDDEN") {
 			const text =
@@ -769,12 +809,12 @@ function formatDocumentListResult(result: DocumentListResult): string {
 			return "No documents matched the requested filters.";
 		case "query_miss":
 			if (result.availableDocuments.length === 0) {
-				return `No documents matched ${JSON.stringify(result.query)}. Available-document offset ${result.availableOffset} is past the ${result.totalAvailable} documents allowed by the requested filters.`;
+				return `No documents matched ${describeQuery(result.query ?? "")}. Available-document offset ${result.availableOffset} is past the ${result.totalAvailable} documents allowed by the requested filters.`;
 			}
-			return `No documents matched ${JSON.stringify(result.query)}. Showing available documents${result.availableOffset > 0 ? ` from offset ${result.availableOffset}` : ""} instead:\n${formatDocumentList(result.availableDocuments)}`;
+			return `No documents matched ${describeQuery(result.query ?? "")}. Showing available documents${result.availableOffset > 0 ? ` from offset ${result.availableOffset}` : ""} instead:\n${formatDocumentList(result.availableDocuments)}`;
 		case "page_exhausted": {
 			const matchDescription = result.query
-				? `documents matching ${JSON.stringify(result.query)}`
+				? `documents matching ${describeQuery(result.query)}`
 				: "available documents";
 			return `Offset ${result.offset} is past the ${result.totalMatched} ${matchDescription}.`;
 		}
@@ -803,8 +843,13 @@ async function handleList(
 		typeof params.addedBy === "string" && isUuid(params.addedBy)
 			? (params.addedBy as UUID)
 			: undefined;
-	const timeRangeStart = parseTimestampParam(params.timeRangeStart);
-	const timeRangeEnd = parseTimestampParam(params.timeRangeEnd);
+	const timeRangeStart = parseTimestampParam(
+		getOptionalPlannerString(params.timeRangeStart, message),
+	);
+	const timeRangeEnd = parseTimestampParam(
+		getOptionalPlannerString(params.timeRangeEnd, message),
+	);
+	const query = getOptionalPlannerString(params.query, message);
 	const offset =
 		typeof params.offset === "number" && params.offset >= 0
 			? Math.floor(params.offset)
@@ -813,7 +858,7 @@ async function handleList(
 	const listResult = await service.listDocumentsDetailed(message, {
 		limit: getLimit(params.limit, 25),
 		offset,
-		query: params.query,
+		query,
 		scope,
 		scopedToEntityId,
 		addedBy,
@@ -826,7 +871,7 @@ async function handleList(
 		documents: listResult.documents,
 		availableDocuments: listResult.availableDocuments,
 		status: listResult.status,
-		...(listResult.query ? { query: listResult.query } : {}),
+		...(listResult.query ? { query: queryLogView(listResult.query) } : {}),
 		limit: listResult.limit,
 		offset: listResult.offset,
 		totalVisible: listResult.totalVisible,
@@ -893,9 +938,9 @@ async function handleImportFile(
 	);
 	if (filePath) {
 		if (!fs.existsSync(filePath)) {
-			const text = `No file exists at ${filePath}; tell the user it couldn't be found.`;
+			const text = `No file exists at ${describeUserReference(filePath, "that path")}; tell the user it couldn't be found.`;
 			return result(false, text, "import_file", {
-				values: { error: "not_found" },
+				values: { error: "not_found", filePath: queryLogView(filePath) },
 			});
 		}
 		const stored = await addDocumentFromFilePath({
@@ -1125,9 +1170,10 @@ export const documentAction: Action = {
 		},
 		{
 			name: "limit",
-			description: "Maximum number of results or listed documents.",
+			description:
+				"Maximum number of results or listed documents (1-100). Use 0 when this field is not applicable to the selected action.",
 			required: false,
-			schema: { type: "number", minimum: 1, maximum: 100 },
+			schema: { type: "number", minimum: 0, maximum: 100 },
 		},
 		{
 			name: "searchMode",
@@ -1138,11 +1184,11 @@ export const documentAction: Action = {
 		{
 			name: "scope",
 			description:
-				"Visibility scope for newly-created documents: global, owner-private, user-private, or agent-private.",
+				"Visibility scope. For list/search, use all-visible unless the user explicitly names global, owner-private, user-private, or agent-private; phrases such as 'my documents' mean all documents visible to the requester. For newly-created documents, select the requested visibility scope.",
 			required: false,
 			schema: {
 				type: "string",
-				enum: [...DOCUMENT_SCOPES],
+				enum: [...DOCUMENT_SCOPE_OPTIONS],
 			},
 		},
 		{
@@ -1295,6 +1341,8 @@ export const documentAction: Action = {
 					return handleImportUrl(runtime, service, message, params, callback);
 			}
 		} catch (error) {
+			// error-policy:J1 The polymorphic documents action translates
+			// failures into its explicit unsuccessful result shape.
 			logger.error({ error }, `Error in DOCUMENT ${subaction} action`);
 			// Planner-facing only: internal exception text must not leak to chat.
 			const text = `The documents ${subaction.replace("_", " ")} operation failed: ${

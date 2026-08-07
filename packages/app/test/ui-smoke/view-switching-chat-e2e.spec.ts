@@ -623,19 +623,21 @@ test("agent navigate by viewId-only resolves the registered canonical path", asy
     "viewId-only registry resolution is a renderer guard; the live agent path is covered by the cases above",
   );
   await openAppPath(page, "/chat");
-  await sendChatCommand(page, "open the model tester");
+  await sendChatCommand(page, "open my notes");
 
   await deliverAgentNavigate(page, {
-    viewId: "model-tester",
+    viewId: "notes",
     viewType: "gui",
     action: undefined,
     alwaysOnTop: false,
   });
 
-  await expect(page).toHaveURL(/\/model-tester(?:[?#]|$)/, {
+  await expect(page).toHaveURL(/\/notes(?:[?#]|$)/, {
     timeout: 30_000,
   });
-  await expect(page.locator('[data-agent-id="run-all"]').first()).toBeVisible({
+  await expect(
+    page.locator('[data-testid="simple-notes-view"]').first(),
+  ).toBeVisible({
     timeout: 60_000,
   });
 });

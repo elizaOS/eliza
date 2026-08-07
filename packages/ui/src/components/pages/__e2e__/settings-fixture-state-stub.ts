@@ -12,6 +12,7 @@ import {
   DEFAULT_BRANDING,
 } from "../../../config/branding-base";
 import { createTranslator } from "../../../i18n";
+import { preOpenCloudLoginWindow } from "../../../state/cloud-login-launch";
 
 declare const module: { exports: unknown };
 
@@ -32,7 +33,11 @@ const fixtureState: Record<string, unknown> = {
   setState: () => {},
   setTab: () => {},
   setActionNotice: () => {},
-  handleCloudLogin: async (popup: Window | null = null) => {
+  handleInteractiveCloudLogin: async () => {
+    // Mirrors the real interactive entry point: pre-open the named popup,
+    // then record whether it is live so the e2e can assert the Settings
+    // surface passed a real window into the flow.
+    const popup = preOpenCloudLoginWindow();
     document.documentElement.dataset.elizaSettingsCloudLoginPopup = Boolean(
       popup && !popup.closed,
     )

@@ -5,10 +5,8 @@
  * registration) moved into the plugin's `registerLocalInferenceBoot` hook,
  * declared in its `registry-entry.json` and drained by the generic boot-hook
  * channel (`runBootHooks` / `drainBootHookContributors`). This statically scans
- * the real `eliza.ts` source to prove the old fixed-point coupling is gone from
- * the executable path — matching the audit's "grep guard proves the old central
- * name-keyed special case is gone" done-when. Runs against the real source tree,
- * no mocks.
+ * the runtime host and contributor module to prove the old fixed-point coupling
+ * is gone from the executable path. Runs against the real source tree, no mocks.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -16,11 +14,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ELIZA_TS = join(HERE, "eliza.ts");
-
-function readElizaSource(): string {
-  return readFileSync(ELIZA_TS, "utf8");
-}
+const APP_CONTRIBUTORS_TS = join(HERE, "startup", "app-contributors.ts");
+const APP_RUNTIME_HOST_TS = join(HERE, "startup", "app-runtime-host.ts");
 
 /**
  * The body of `repairRuntimeAfterBoot`, where the local-inference boot handler
@@ -40,7 +35,9 @@ function repairRuntimeAfterBootBody(source: string): string {
 
 describe("boot-tail local-inference decoupling (arch-audit #12089 item 18)", () => {
   it("repairRuntimeAfterBoot drains the generic boot-hook channel instead of naming local-inference internals", () => {
-    const body = repairRuntimeAfterBootBody(readElizaSource());
+    const body = repairRuntimeAfterBootBody(
+      readFileSync(APP_RUNTIME_HOST_TS, "utf8"),
+    );
 
     // The migration: the boot tail now drains registry-declared boot hooks.
     expect(body).toContain("runBootHooks(runtime)");
@@ -53,7 +50,7 @@ describe("boot-tail local-inference decoupling (arch-audit #12089 item 18)", () 
   });
 
   it("resolves boot-hook contributors from the registry by data, naming no plugin", () => {
-    const source = readElizaSource();
+    const source = readFileSync(APP_CONTRIBUTORS_TS, "utf8");
     // The contributor resolver scans the registry (apps + plugins) for a
     // declared `bootHook` — data-driven, no hard-wired specifier.
     expect(source).toContain("entry.launch?.bootHook");

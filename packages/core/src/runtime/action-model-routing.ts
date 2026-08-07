@@ -1,18 +1,15 @@
 /**
  * Per-action model routing — strategy registry.
  *
- * Closes Eliza-1 pipeline gap A5 / W1-R2: provider switching was previously
- * per-provider only. There was no way for an Action descriptor to request that
- * its `useModel` call execute on a small / local model while the planner ran
- * on the large cloud model. This module is the resolver seam that the runtime
- * consults whenever a `useModel` call happens inside an action handler.
+ * Resolves an action's model class independently from the planner model, so an
+ * action can run on a small or local model while planning uses a larger model.
  *
  * Design constraints (AGENTS.md):
  *   - No runtime type-branching mess: each `ActionModelClass` is a strategy
  *     entry in {@link ACTION_MODEL_STRATEGIES}. New classes are additions to
  *     that table, not new `if/else` branches.
  *   - Strong typing: no `any`, no unsafe casts at the call sites.
- *   - Backwards compat: when `action.modelClass` is absent, the resolver
+ *   - When `action.modelClass` is absent, the resolver
  *     returns `null` and the runtime falls through to its existing behavior.
  *
  * Fallback chain (ascending cost / capability):
@@ -383,6 +380,8 @@ export async function executeChainWithFallback<TResult>(
 			}
 			return result;
 		} catch (err) {
+			// error-policy:J4 Each chain entry is an explicitly configured model
+			// failover; the final failure still propagates after all entries are tried.
 			lastError = err;
 			// Continue to the next step in the chain.
 		}

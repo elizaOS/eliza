@@ -174,7 +174,7 @@ REMOTE_SCRIPT="$(cat <<REMOTE
 set -euxo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q && apt-get install -y -q git curl ca-certificates build-essential cmake unzip
-curl -fsSL https://bun.sh/install | bash
+curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
 export PATH="\$HOME/.bun/bin:\$PATH"
 nvidia-smi -L
 nvcc --version

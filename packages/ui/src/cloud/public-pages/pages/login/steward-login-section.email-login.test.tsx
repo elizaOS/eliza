@@ -1,3 +1,4 @@
+/** Verifies StewardLoginSection email magic-link companion code through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -91,6 +92,7 @@ vi.mock("../../lib/steward-session", () => ({
   consumeStewardCodeFromQuery: () => null,
   consumeStewardTokensFromHash: () => null,
   exchangeStewardCodeViaApi: vi.fn(),
+  recoverStewardSessionViaCookie: vi.fn(),
   refreshStewardSessionViaCookie: vi.fn(),
   syncStewardSessionCookie: sessionSpies.sync,
 }));

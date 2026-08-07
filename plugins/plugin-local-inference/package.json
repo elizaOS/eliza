@@ -106,7 +106,8 @@
 	"scripts": {
 		"build": "bun run build.ts",
 		"dev": "bun run build.ts",
-		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run",
+		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run && bun run test:ci-scripts",
+		"test:ci-scripts": "node --test scripts/local-inference-attest.test.mjs scripts/local-inference-performance-check.test.mjs",
 		"test:asr:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/asr-real-smoke.ts",
 		"test:kokoro:real": "bun scripts/kokoro-real-smoke.ts",
 		"probe:sd-cpp": "node scripts/probe-sd-cpp.mjs --human",
@@ -134,7 +135,7 @@
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
-		"@elizaos/plugin-aosp-local-inference": "workspace:*",
+		"@elizaos/plugin-native-inference": "workspace:*",
 		"@elizaos/plugin-capacitor-bridge": "workspace:*",
 		"@elizaos/plugin-computeruse": "workspace:*",
 		"@elizaos/shared": "workspace:*",

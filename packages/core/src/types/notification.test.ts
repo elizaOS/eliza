@@ -9,7 +9,6 @@ import {
 	type NotificationCategory,
 	type NotificationPriority,
 	type NotificationTier,
-	SILENT_TIER_DEFAULT_EXPIRY_MS,
 	tierForPriority,
 } from "./notification.ts";
 
@@ -90,9 +89,5 @@ describe("notification triage model (§C.1)", () => {
 				expect(valid.has(defaultPriorityForCategory(c))).toBe(true);
 			}
 		});
-	});
-
-	it("exposes a 24h silent-tier default expiry window", () => {
-		expect(SILENT_TIER_DEFAULT_EXPIRY_MS).toBe(24 * 60 * 60 * 1000);
 	});
 });

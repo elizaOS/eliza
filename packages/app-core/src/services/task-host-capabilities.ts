@@ -31,8 +31,8 @@
  * to "all four available").
  */
 
-import type { TaskExecutionProfile } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
+import type { TaskExecutionProfile } from "@elizaos/shared";
 
 interface CapacitorPluginsLike {
   BackgroundRunner?: unknown;

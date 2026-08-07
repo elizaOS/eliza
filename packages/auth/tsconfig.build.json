@@ -11,8 +11,10 @@
     "rewriteRelativeImportExtensions": true,
     "paths": {
       "@elizaos/core": ["../core/dist/index.d.ts"],
+      "@elizaos/core/atomic-json": ["../core/dist/atomic-json.d.ts"],
       "@elizaos/shared": ["../shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../shared/dist/*"]
+      "@elizaos/shared/*": ["../shared/dist/*"],
+      "@elizaos/vault": ["../vault/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*"],

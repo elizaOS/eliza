@@ -1,7 +1,7 @@
 /**
  * Keyless scenario asserting the agent-addressable surface of an active view:
  * the agent reaches a scenario ledger view's registered controls and produces a
- * trajectory over them. Runs on the pr-deterministic lane under the LLM proxy.
+ * trajectory over them. Runs on the pr-deterministic lane under the model provider.
  */
 import {
   registerPluginViews,
@@ -28,12 +28,13 @@ import type {
 import { ModelType } from "@elizaos/core";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { stage1ResponseHandlerFixture } from "@elizaos/test-harness/action-route-fixtures";
-import type { LlmProxyCall } from "@elizaos/test-harness/llm-proxy";
+import { stage1ResponseHandlerFixture } from "@elizaos/core/testing";
+import type { DeterministicModelCall } from "@elizaos/core/testing";
 import {
+  finalMessageUserText,
   matchesScenarioInput,
-  type RuntimeWithScenarioLlmFixtures,
-} from "./_helpers/strict-llm-action-fixtures";
+  type RuntimeWithScenarioModelFixtures,
+} from "@elizaos/core/testing";
 
 const VIEW_ID = "scenario-active-ledger";
 const VIEW_LABEL = "Scenario Active Ledger";
@@ -149,7 +150,7 @@ const scenarioViewsRoutePlugin: Plugin = {
   ),
 };
 
-type RuntimeWithScenarioPlugins = RuntimeWithScenarioLlmFixtures & {
+type RuntimeWithScenarioPlugins = RuntimeWithScenarioModelFixtures & {
   plugins?: Array<{ name?: string }>;
   registerPlugin?: (plugin: Plugin) => Promise<void>;
 };
@@ -237,13 +238,22 @@ function plannerFixture({
 }) {
   return {
     name: `active-view-planner-${capability}-${elementId}`,
-    match: (call: LlmProxyCall) =>
-      call.modelType === ModelType.ACTION_PLANNER &&
-      matchesScenarioInput(input)(call.latestUserText) &&
-      call.toolNames.includes("VIEWS") &&
-      promptHasActiveViewElements(
+    match: (call: DeterministicModelCall) => {
+      if (call.modelType !== ModelType.ACTION_PLANNER) return false;
+      if (!call.toolNames.includes("VIEWS")) return false;
+      // On the messages-path planner, Active View is prepended into the last
+      // user message content, so latestUserText is no longer an exact match
+      // for the bare scenario input. Accept exact or suffix match.
+      const userText = finalMessageUserText(call.latestUserText);
+      if (userText !== input && !userText.endsWith(input)) return false;
+      // Certifies the agent-addressable surface reaches the planner on every
+      // turn (fill + click). Depends on product fixes in #17918: preserve
+      // elements on same-viewId re-publish, inject into the *last* user
+      // message, re-inject after budget compaction.
+      return promptHasActiveViewElements(
         `${call.params.prompt ?? ""}\n${call.latestUserText}`,
-      ),
+      );
+    },
     response: {
       text: "",
       thought: `Use the active-view element id ${elementId}.`,
@@ -367,7 +377,7 @@ export default scenario({
           await runtime.registerPlugin(scenarioViewsRoutePlugin);
         }
         installPromptOptimizations(runtime as never, {} as never);
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           stage1ResponseHandlerFixture({
             actionName: "VIEWS",
             contextIds: ["active-view", "views"],
@@ -527,6 +537,9 @@ export default scenario({
       name: "planner clicks active-view element by id",
       text: CLICK_TEXT,
       expectedActions: ["VIEWS"],
+      // Prefer completed-state copy once the planner + interact path runs. If
+      // the planner fixture fails to match, the runtime synthesizes Stage-1's
+      // progressive "Saving…" reply and the cert lane goes red (#17918).
       responseIncludesAny: ["Saved the active ledger."],
       assertTurn: (execution) =>
         expectViewsInteract(execution, {

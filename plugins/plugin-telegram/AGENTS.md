@@ -4,7 +4,7 @@ Connects an Eliza agent to Telegram via the Bot API, enabling bidirectional mess
 
 ## Purpose / role
 
-This plugin adds a `TelegramService` that polls Telegram for incoming messages and reactions, routes them through the elizaOS runtime, and sends agent responses back. It also provides an owner-pairing service for binding a Telegram user to an agent owner account. The plugin auto-enables when the `telegram` connector key is present in the agent's `eliza.json` connector config (`autoEnable.connectorKeys: ["telegram"]`); it can also be loaded explicitly as a dependency.
+This plugin adds a `TelegramService` that polls Telegram for incoming messages and reactions, routes them through the elizaOS runtime, and sends agent responses back. It also provides an owner-pairing service for binding a Telegram user to an agent owner account, plus an opt-in standalone long-poll mode (`TelegramStandaloneService`, the former `@elizaos/plugin-telegram-standalone` package, now merged in and selected via `ELIZA_TELEGRAM_STANDALONE_BOT`). The plugin auto-enables when the `telegram` connector key is present in the agent's `eliza.json` connector config (`autoEnable.connectorKeys: ["telegram"]`); it can also be loaded explicitly as a dependency.
 
 ## Plugin surface
 
@@ -14,6 +14,7 @@ This plugin adds a `TelegramService` that polls Telegram for incoming messages a
 |---|---|---|
 | `TelegramService` | `"telegram"` | Launches a Telegraf long-poll bot, processes `message` + `message_reaction` events, manages multi-account state, registers the agent as a `MessageConnector` |
 | `TelegramOwnerPairingServiceImpl` | `"OWNER_PAIRING_TELEGRAM"` | Registers `/eliza_pair <code>` bot command; provides `sendOwnerLoginDmLink` called by auth backend to DM login links |
+| `TelegramStandaloneService` | `"telegram-standalone"` | Opt-in standalone long-poll mode: a minimal Telegraf poller that routes inbound messages through the runtime message service. Self-gates — dormant unless LifeOps passive connectors are disabled AND `ELIZA_TELEGRAM_STANDALONE_BOT` is truthy |
 
 **Routes** (all `rawPath: true` — no plugin-name prefix):
 
@@ -51,6 +52,10 @@ src/
   interactions.ts             renderTelegramInteractions — inline keyboard / interaction rendering
   command-registration.ts     buildTelegramCommandDescriptors, registerTelegramCommandHandlers, applyTelegramSetMyCommands
   local-client.ts             TELEGRAM_LOCAL_MOCK_SESSION_PREFIX — mock session helpers
+  standalone/                 Standalone long-poll mode (former @elizaos/plugin-telegram-standalone)
+    service.ts                TelegramStandaloneService — self-gated Telegraf poller lifecycle
+    handler.ts                handleTelegramStandaloneMessage — inbound routing to the message service
+    policy.ts                 shouldStartTelegramStandaloneBot — the ELIZA_TELEGRAM_STANDALONE_BOT gate
   sensitive-request-adapter.ts  telegramDmSensitiveRequestAdapter, registerTelegramDmSensitiveRequestAdapter
   constants.ts                TELEGRAM_SERVICE_NAME = "telegram"; MESSAGE_CONSTANTS
   types.ts                    TelegramContent, Button, TelegramEventTypes, payload interfaces
@@ -87,6 +92,7 @@ bun run --cwd plugins/plugin-telegram clean          # rm dist .turbo
 | `TELEGRAM_API_ROOT` | No | Override Telegram Bot API base URL (default `https://api.telegram.org`). Allows local Bot API server. |
 | `TELEGRAM_ALLOWED_CHATS` | No | JSON array of chat ID strings that the bot will respond to. If absent, all chats are allowed. Read via `runtime.getSetting()`. |
 | `TELEGRAM_TEST_CHAT_ID` | No | Chat ID used by `TelegramTestSuite` for live smoke tests. |
+| `ELIZA_TELEGRAM_STANDALONE_BOT` | No | `1`/`true`/`yes` switches on the standalone long-poll mode (`TelegramStandaloneService`) — only honored when LifeOps passive connectors are disabled; otherwise the passive connector owns the long-poll. |
 
 Multi-account configuration is declared on `character.settings.telegram`:
 
@@ -120,7 +126,7 @@ Account resolution order (for the `default` account): `character.settings.telegr
 
 ## Conventions / gotchas
 
-- **One bot token per Telegram long-poll session.** If two agent instances share the same token they will 409-conflict. The plugin tracks active pollers in `ACTIVE_TELEGRAM_POLLERS` (module-level `Map`) and stops the previous poller before launching a new one.
+- **One bot token per Telegram long-poll session.** If two live agent instances share the same token they will 409-conflict. Full and standalone pollers use the shared process-local lock in `src/poller-lock.ts`: global records are keyed by a token fingerprint, never the plaintext token, and they do not store live `Telegraf` objects. A claim is reclaimed only after its poller reaches an explicit terminal state; starting, retrying, or quiet-but-live owners remain a hard launch failure.
 - **`TelegramService` must start before `TelegramOwnerPairingServiceImpl`** — the pairing service's `start` looks up the live Telegraf `bot` instance from the already-running `TelegramService`.
 - **Message sending**: use `MessageManager` (available as `TelegramService.messageManager`). Markdown is converted to Telegram MarkdownV2 via `convertMarkdownToTelegram` in `utils.ts`. Messages longer than 4096 characters are split.
 - **Forum topics**: each thread becomes a separate `Room` with `channelId` of the form `<chatId>-<threadId>`. Room metadata includes `isForumTopic: true`.
@@ -128,46 +134,12 @@ Account resolution order (for the `default` account): `character.settings.telegr
 - **GramJS (user-account)**: `account-auth-service.ts` uses the `telegram` npm package (GramJS/MTProto) for user-account login, distinct from the bot-API `telegraf` package used for bot accounts.
 - **ConnectorAccountManager**: registered in `init()`. Telegram bot accounts use long-lived bot tokens rather than OAuth, so start/complete OAuth flows are unsupported by design. Single-account env configs are surfaced as a synthetic `"default"` account.
 - **Sensitive request adapter**: `registerTelegramDmSensitiveRequestAdapter` (called in `init()`) wires Telegram DM delivery for secret / OAuth link-out requests, mirroring the Discord DM adapter.
-- See repo root `AGENTS.md` for architecture rules, logging standards, and git workflow.
+- See repo root `CLAUDE.md` for architecture rules, logging standards, and git workflow.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — platform connector:**
-- A real (or sandbox-account) round-trip on the platform: inbound message → agent → outbound reply, captured as logs **and** a screenshot/recording of the actual conversation.
-- The raw inbound event/webhook payload and the outbound API request/response, with IDs mapped correctly (`stringToUuid` / `createUniqueUuid`).
-- Attachments, threads/replies, edits, multi-account, and rate-limit/error paths — not just a single text ping.
-- The agent trajectory for the turn the connector drove.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

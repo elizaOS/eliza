@@ -1,3 +1,4 @@
+/** Verifies connect request handoff through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

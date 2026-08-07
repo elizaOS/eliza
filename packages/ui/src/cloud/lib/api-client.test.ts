@@ -1,3 +1,4 @@
+/** Verifies cloud api-client transport bridge through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

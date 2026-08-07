@@ -18,6 +18,31 @@
 		"eliza-1"
 	],
 	"config": {
+		"ELIZA_PII_SWAP_ENABLED": {
+			"type": "boolean",
+			"required": false,
+			"sensitive": false,
+			"default": "false",
+			"label": "Enable PII Swap",
+			"help": "Master switch (read by @elizaos/core). When on, named-entity PII is pseudonymized before every model call and restored at the execution boundary. Detection runs as an extraction prompt on the resident local Eliza-1 backend, so PII never leaves the device. Off by default — zero behavior change.",
+			"advanced": false
+		},
+		"ELIZA_PII_SWAP_EXEMPT_VALUES": {
+			"type": "string",
+			"required": false,
+			"sensitive": false,
+			"label": "Never-Swap Values",
+			"help": "Comma-separated exact values that must never be pseudonymized (false-positive opt-out), on top of the built-in framework/brand blocklist.",
+			"advanced": true
+		},
+		"ELIZA_PII_SWAP_DISABLED_KINDS": {
+			"type": "string",
+			"required": false,
+			"sensitive": false,
+			"label": "Skip Entity Kinds",
+			"help": "Comma-separated entity kinds to skip swapping, e.g. location,address.",
+			"advanced": true
+		},
 		"MODELS_DIR": {
 			"type": "file-path",
 			"required": false,
@@ -83,7 +108,7 @@
 			"required": false,
 			"sensitive": false,
 			"label": "AOSP FFI Loader",
-			"help": "Set to `1` on Android (elizaOS build) to enable the in-process bun:ffi loader (libllama.so + libeliza-llama-shim.so) via the @elizaos/plugin-aosp-local-inference companion plugin.",
+			"help": "Set to `1` on Android (elizaOS build) to enable the in-process bun:ffi loader (libllama.so + libeliza-llama-shim.so) via the @elizaos/plugin-native-inference companion plugin.",
 			"advanced": true
 		},
 		"ELIZA_MODEL": {

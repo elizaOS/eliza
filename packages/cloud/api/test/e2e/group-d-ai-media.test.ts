@@ -70,9 +70,7 @@ const describeLocalWorker = describe.skipIf(
 // dev, so a provider key here means the Worker can really forward. A remote
 // target (staging) opts in via E2E_LIVE_INFERENCE=1.
 const liveInferenceAvailable = Boolean(
-  process.env.OPENAI_API_KEY?.trim() ||
-    process.env.AI_GATEWAY_API_KEY?.trim() ||
-    process.env.E2E_LIVE_INFERENCE === "1",
+  process.env.OPENAI_API_KEY?.trim() || process.env.E2E_LIVE_INFERENCE === "1",
 );
 
 function bearerOnlyHeaders(): Record<string, string> {

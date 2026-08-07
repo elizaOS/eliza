@@ -41,9 +41,8 @@ export interface OptimizedPromptRuntimeLike {
  * artifact for the task.
  *
  * When the artifact carries `fewShotExamples`, they are inlined into the
- * system prompt under a `Demonstrations:` block. The structure mirrors
- * `plugins/plugin-training/src/optimizers/bootstrap-fewshot.ts#renderDemonstrations`
- * so an artifact written by either backend renders identically at the call
+ * system prompt under a `Demonstrations:` block using the canonical core
+ * artifact shape, so every offline producer renders identically at the call
  * site.
  */
 export function resolveOptimizedPrompt(
@@ -126,8 +125,7 @@ export function applyOptimizedProviderSelection(
  * Trim a recorded planner input down to the bits that meaningfully teach
  * the model in-context. Recorded inputs include the full provider block +
  * tool catalog (often ~30K chars); for ICL we only need the user's
- * current-turn request. Mirrors the same heuristic in
- * `plugins/plugin-training/src/optimizers/bootstrap-fewshot.ts:trimDemonstrationInput`.
+ * current-turn request.
  */
 function trimDemonstrationInput(rawInput: string): string {
 	const userMatch =
@@ -152,8 +150,8 @@ function injectDemonstrations(
 ): string {
 	if (prompt.includes("Demonstrations:")) {
 		// The artifact already had demonstrations rendered into the prompt
-		// (this is how bootstrap-fewshot writes its artifacts). Don't
-		// double-inject.
+		// Some offline artifacts already contain rendered demonstrations.
+		// Preserve that producer-owned rendering instead of double-injecting.
 		return prompt;
 	}
 	const lines: string[] = [prompt.trimEnd(), "", "Demonstrations:", ""];

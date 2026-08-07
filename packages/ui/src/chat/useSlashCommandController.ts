@@ -22,13 +22,13 @@ import {
   resolveSettingsSectionToken,
   SETTINGS_SECTION_SUGGESTIONS,
 } from "../components/settings/settings-section-tokens";
-import { useBootConfig } from "../config/boot-config-react.hooks";
 import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../events";
 import { useAvailableViews } from "../hooks/useAvailableViews";
 import { useProtectedAgentProbesEnabled } from "../hooks/useProtectedAgentProbesEnabled";
 import type { Tab } from "../navigation";
 import { useAppSelectorShallow } from "../state";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { loadSavedCustomCommands, normalizeSlashCommandName } from "./index";
 import { buildModelChoiceLabels, resolveModelChoices } from "./model-choices";
 import {
@@ -286,7 +286,6 @@ export function useSlashCommandController(
   options: SlashCommandControllerOptions = {},
 ): SlashCommandController {
   const { isAuthorized = false, isElevated = false } = options;
-  const bootConfig = useBootConfig();
   const { setTab, handleChatClear } = useAppSelectorShallow((s) => ({
     setTab: s.setTab,
     handleChatClear: s.handleChatClear,
@@ -319,6 +318,11 @@ export function useSlashCommandController(
     }
     let cancelled = false;
     const abortController = new AbortController();
+    const cancelCatalogLoad = () => {
+      cancelled = true;
+      abortController.abort();
+    };
+    window.addEventListener("pagehide", cancelCatalogLoad, { once: true });
     setLoading(true);
     setLoadError(false);
     void (async () => {
@@ -352,10 +356,11 @@ export function useSlashCommandController(
             return [];
           }
           loadFailed = true;
-          console.error(
-            "[useSlashCommandController] Failed to load the slash-command catalog; slash menu will be empty",
+          reportRendererDiagnostic({
+            scope: "slash-commands.catalog",
             error,
-          );
+            context: { degradedFeature: "slash-command-menu" },
+          });
           return [];
         });
       const customActions: CustomActionDef[] = await client
@@ -377,10 +382,11 @@ export function useSlashCommandController(
             return [];
           }
           loadFailed = true;
-          console.error(
-            "[useSlashCommandController] Failed to load custom actions; omitting them from the slash menu",
+          reportRendererDiagnostic({
+            scope: "slash-commands.custom-actions",
             error,
-          );
+            context: { degradedFeature: "custom-actions" },
+          });
           return [];
         });
       if (cancelled) return;
@@ -412,10 +418,11 @@ export function useSlashCommandController(
             // error-policy:J4 model completions degrade to none with the
             // failure logged; an unauthenticated 401/403 is expected (#14663).
             if (isExpectedCatalogAuthError(error)) return;
-            console.error(
-              "[useSlashCommandController] Failed to load the model catalog; model completions will be empty",
+            reportRendererDiagnostic({
+              scope: "slash-commands.model-catalog",
               error,
-            );
+              context: { degradedFeature: "model-completions" },
+            });
           });
       }
       setServerCommands(catalog);
@@ -430,8 +437,8 @@ export function useSlashCommandController(
       setLoading(false);
     })();
     return () => {
-      cancelled = true;
-      abortController.abort();
+      window.removeEventListener("pagehide", cancelCatalogLoad);
+      cancelCatalogLoad();
     };
   }, [probesEnabled]);
 
@@ -447,8 +454,10 @@ export function useSlashCommandController(
       }),
     [serverCommands, customCommands, isAuthorized, isElevated],
   );
-  const naturalShortcutsEnabled =
-    bootConfig.shortcutFlags?.naturalLanguage === true;
+  // Natural language belongs to the agent model. Client-side shortcuts are
+  // reserved for explicit slash protocol so host configuration cannot bypass
+  // inference for an ordinary chat message.
+  const naturalShortcutsEnabled = false;
 
   const resolveChoices = React.useCallback(
     (source: CommandArgSource, context?: SlashArgChoiceContext): string[] => {
@@ -547,7 +556,6 @@ export function useSlashCommandController(
       commands,
       loading,
       loadError,
-      naturalShortcutsEnabled,
       resolveChoices,
       describeChoice,
       isAuthorized,

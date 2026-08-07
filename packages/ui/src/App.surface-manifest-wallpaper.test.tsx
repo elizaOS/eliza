@@ -1,3 +1,4 @@
+/** Verifies App wallpaper-grant invariant — manifest gates the wallpaper (#13452) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -205,7 +206,11 @@ vi.mock("./state", async () => {
     setUiLanguage: vi.fn(),
     setUiTheme: vi.fn(),
     setUiThemeMode: vi.fn(),
-    startupCoordinator: { phase: "ready", retry: vi.fn() },
+    startupCoordinator: {
+      phase: "ready",
+      isShellPaintable: true,
+      retry: vi.fn(),
+    },
     startupError: null,
     systemWarnings: [],
     tab: appState.tab,

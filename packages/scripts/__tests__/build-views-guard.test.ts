@@ -10,6 +10,7 @@ import {
   expectedBundlePath,
   missingBundleReport,
   parseViewFilter,
+  viewBuildConcurrency,
 } from "../build-views.mjs";
 
 const tempDirs: string[] = [];
@@ -25,14 +26,14 @@ describe("build-views bundle guard (#15791)", () => {
     const configPath = path.join(
       "/repo",
       "plugins",
-      "plugin-polymarket",
+      "plugin-example",
       "vite.config.views.ts",
     );
     expect(expectedBundlePath(configPath)).toBe(
       path.join(
         "/repo",
         "plugins",
-        "plugin-polymarket",
+        "plugin-example",
         "dist",
         "views",
         "bundle.js",
@@ -47,13 +48,13 @@ describe("build-views bundle guard (#15791)", () => {
   test("a configured view that emitted no bundle fails observably", () => {
     const report = missingBundleReport([
       {
-        name: "plugin-polymarket",
-        relativeBundle: "plugins/plugin-polymarket/dist/views/bundle.js",
-        relativeConfig: "plugins/plugin-polymarket/vite.config.views.ts",
+        name: "plugin-example",
+        relativeBundle: "plugins/plugin-example/dist/views/bundle.js",
+        relativeConfig: "plugins/plugin-example/vite.config.views.ts",
       },
     ]);
     expect(report).not.toBeNull();
-    expect(report).toContain("plugin-polymarket");
+    expect(report).toContain("plugin-example");
     expect(report).toContain("missing after build");
   });
 
@@ -90,5 +91,31 @@ describe("build-views bundle guard (#15791)", () => {
       parseViewFilter(["--filter=plugin-feed", "--filter", "plugin-todos"]),
     ).toThrow(/only once/);
     expect(() => parseViewFilter(["--ignored"])).toThrow(/unknown argument/);
+  });
+
+  test("bounds native bundler concurrency by host capacity", () => {
+    expect(
+      viewBuildConcurrency({
+        targetCount: 19,
+        cpuCount: 16,
+        platform: "darwin",
+      }),
+    ).toBe(1);
+    expect(
+      viewBuildConcurrency({
+        targetCount: 19,
+        cpuCount: 16,
+        platform: "linux",
+      }),
+    ).toBe(4);
+    expect(
+      viewBuildConcurrency({ targetCount: 2, cpuCount: 16, platform: "linux" }),
+    ).toBe(2);
+    expect(
+      viewBuildConcurrency({ targetCount: 19, cpuCount: 1, platform: "linux" }),
+    ).toBe(1);
+    expect(
+      viewBuildConcurrency({ targetCount: 0, cpuCount: 16, platform: "linux" }),
+    ).toBe(0);
   });
 });

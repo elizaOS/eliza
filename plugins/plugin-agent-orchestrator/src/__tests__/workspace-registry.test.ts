@@ -20,6 +20,7 @@ import {
   resetSharedWorkspaceRegistry,
   resolveDiskBudgetConfig,
   WorkspaceRegistry,
+  workspaceDiskBudgetError,
 } from "../services/workspace-registry.js";
 import { CodingWorkspaceService } from "../services/workspace-service.js";
 
@@ -224,6 +225,42 @@ describe("measureDirBytes", () => {
   it("returns 0 for a missing dir", async () => {
     const total = await measureDirBytes(join(tmpdir(), "does-not-exist-13773"));
     expect(total).toBe(0);
+  });
+});
+
+describe("workspaceDiskBudgetError", () => {
+  it("keeps the message human and the technical fields in context", () => {
+    const error = workspaceDiskBudgetError(
+      {
+        allowed: false,
+        reclaimedBytes: 4096,
+        reclaimedCount: 1,
+        freeBytes: 753868800,
+        usedBytes: 0,
+        reason: "free-disk-floor",
+      },
+      { capBytes: 21474836480, minFreeBytes: 2147483648 },
+      "/home/user/.eliza/workspaces",
+    );
+    expect(error.code).toBe("WORKSPACE_DISK_BUDGET_EXCEEDED");
+    expect(error.severity).toBe("ephemeral");
+    // Chat-safe by construction: an action boundary relays the message
+    // verbatim, so no byte counts, uuids, or filesystem paths may ride in it.
+    expect(error.message).toBe(
+      "the workspace disk is nearly full, so a new coding workspace cannot be created right now",
+    );
+    expect(error.message).not.toMatch(/\d/);
+    expect(error.message).not.toContain("/");
+    expect(error.context).toEqual({
+      reason: "free-disk-floor",
+      usedBytes: 0,
+      freeBytes: 753868800,
+      capBytes: 21474836480,
+      minFreeBytes: 2147483648,
+      reclaimedBytes: 4096,
+      reclaimedCount: 1,
+      targetRoot: "/home/user/.eliza/workspaces",
+    });
   });
 });
 

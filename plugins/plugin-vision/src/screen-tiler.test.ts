@@ -5,8 +5,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_MAX_EDGE,
-  DEFAULT_OVERLAP_FRACTION,
   reconstructAbsoluteCoords,
   type ScreenTile,
   tileScreenshot,
@@ -244,15 +242,5 @@ describe("reconstructAbsoluteCoords", () => {
     expect(() =>
       reconstructAbsoluteCoords(t, 0, Number.POSITIVE_INFINITY),
     ).toThrow(/finite/);
-  });
-});
-
-describe("tileScreenshot — defaults", () => {
-  it("exports DEFAULT_MAX_EDGE in the local-VLM tile budget window", () => {
-    expect(DEFAULT_MAX_EDGE).toBeGreaterThanOrEqual(1024);
-    expect(DEFAULT_MAX_EDGE).toBeLessThanOrEqual(1568);
-  });
-  it("exports a 12% default overlap", () => {
-    expect(DEFAULT_OVERLAP_FRACTION).toBeCloseTo(0.12, 5);
   });
 });

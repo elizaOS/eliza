@@ -94,7 +94,6 @@ interface PackagedStartOptions {
   shellReadyTimeoutMs?: number;
 }
 
-const PACKAGED_TEST_DISABLED_FIRST_PARTY_REMOTES = ["eliza.local-model"];
 const PACKAGED_GRACEFUL_QUIT_TIMEOUT_MS = 15_000;
 const PACKAGED_LINUX_PROCESS_COOLDOWN_MS = 2_500;
 const PACKAGED_RELAUNCH_DELAY_MS =
@@ -552,49 +551,6 @@ function normalizeEvalScript(script: string): string {
   return `return (\n${trimmed}\n);`;
 }
 
-async function seedPackagedTestFirstPartyRemoteState(
-  stateDir: string,
-): Promise<void> {
-  if (process.env.ELIZA_TEST_ENABLE_LOCAL_MODEL_REMOTE === "1") {
-    return;
-  }
-
-  const statePath = path.join(
-    stateDir,
-    "remote-plugins",
-    "first-party-remotes.json",
-  );
-  let disabled: Record<string, boolean> = {};
-  try {
-    const parsed = JSON.parse(await fs.readFile(statePath, "utf8")) as unknown;
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      !Array.isArray(parsed) &&
-      typeof (parsed as { disabled?: unknown }).disabled === "object" &&
-      (parsed as { disabled?: unknown }).disabled !== null &&
-      !Array.isArray((parsed as { disabled?: unknown }).disabled)
-    ) {
-      disabled = {
-        ...((parsed as { disabled: Record<string, boolean> }).disabled ?? {}),
-      };
-    }
-  } catch {
-    // Fresh packaged test state has no first-party remote state file yet.
-  }
-
-  for (const id of PACKAGED_TEST_DISABLED_FIRST_PARTY_REMOTES) {
-    disabled[id] = true;
-  }
-
-  await fs.mkdir(path.dirname(statePath), { recursive: true });
-  await fs.writeFile(
-    statePath,
-    `${JSON.stringify({ version: 1, disabled }, null, 2)}\n`,
-    "utf8",
-  );
-}
-
 async function findBridgeListenerPids(port: number): Promise<number[]> {
   if (process.platform === "win32") {
     return [];
@@ -689,7 +645,6 @@ export class PackagedDesktopHarness {
     await fs.mkdir(this.stateDir, { recursive: true });
     await fs.mkdir(this.appDataDir, { recursive: true });
     await fs.mkdir(this.localAppDataDir, { recursive: true });
-    await seedPackagedTestFirstPartyRemoteState(this.stateDir);
 
     const useDedicatedXvfb =
       process.platform === "linux" &&

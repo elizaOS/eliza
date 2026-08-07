@@ -18,6 +18,7 @@ Supporting services (automatically started):
 - **FileStateService** — tracks file mtimes per conversation so write/edit operations are rejected if the file was externally modified since the agent last read it.
 - **SessionCwdService** — per-conversation working directory used by relative file operations and default-path tools. Defaults to `process.cwd()`; updated by WORKTREE operations.
 - **BackgroundShellService** — owns per-conversation background shell sessions and reaps all child process groups on plugin teardown.
+- **ShellService / ExecApprovalService** (`src/shell/`) — core shell executor with session tracking, plus command-approval gating via a file-backed allowlist; formerly the standalone `@elizaos/plugin-shell`, folded in here along with the `SHELL_HISTORY` provider.
 - **RipgrepService** — wraps the `@vscode/ripgrep` binary for fast regex search.
 
 ## Enabling the plugin

@@ -4,6 +4,7 @@
  * startup warnings for policy keys that loosen a declared gate or match no
  * registered action.
  */
+import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { RoleGateRole } from "../types/contexts";
 import {
@@ -61,19 +62,29 @@ export function readActionRolePolicy(): Record<string, RoleGateRole> {
 	try {
 		const parsed = JSON.parse(raw);
 		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-			cachedActionRolePolicy = {};
-			return cachedActionRolePolicy;
+			throw new ElizaError("ACTION_ROLE_POLICY must be a JSON object", {
+				code: "INVALID_ACTION_ROLE_POLICY",
+			});
 		}
-		cachedActionRolePolicy = Object.fromEntries(
-			Object.entries(parsed)
-				.map(([actionName, role]) => [
-					actionName,
-					parseActionRolePolicyRole(role),
-				])
-				.filter((entry): entry is [string, RoleGateRole] => Boolean(entry[1])),
-		);
-	} catch {
-		cachedActionRolePolicy = {};
+		const entries = Object.entries(parsed).map(([actionName, value]) => {
+			const role = parseActionRolePolicyRole(value);
+			if (!role) {
+				throw new ElizaError("ACTION_ROLE_POLICY contains an invalid role", {
+					code: "INVALID_ACTION_ROLE_POLICY",
+					context: { actionName },
+				});
+			}
+			return [actionName, role] as const;
+		});
+		cachedActionRolePolicy = Object.fromEntries(entries);
+	} catch (error) {
+		// error-policy:J2 Operator authorization policy is a security boundary;
+		// malformed configuration must fail startup rather than disable the policy.
+		if (error instanceof ElizaError) throw error;
+		throw new ElizaError("Failed to parse ACTION_ROLE_POLICY", {
+			code: "INVALID_ACTION_ROLE_POLICY",
+			cause: error,
+		});
 	}
 	return cachedActionRolePolicy;
 }

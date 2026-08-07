@@ -13,8 +13,8 @@ import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../packages/test/helpers/http.ts";
-import { createLiveRuntimeChildEnv } from "../../../../packages/test/helpers/live-child-env.ts";
+} from "../../../../packages/app-core/test/helpers/http.ts";
+import { createLiveRuntimeChildEnv } from "../../../../packages/app-core/test/helpers/live-child-env.ts";
 
 export const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 export const LIVE_PROVIDER_OVERRIDE =

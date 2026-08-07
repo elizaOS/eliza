@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 196
+- **Registered runtime actions:** 165
 
 ## Actions
 
@@ -366,10 +366,8 @@ list. Regenerate this document after changing the registered action surface.
 - `BUY_APP_DOMAIN` — `plugins/plugin-cloud-apps/src/actions/buy-app-domain.ts`
 - `CALENDAR` — `plugins/plugin-personal-assistant/src/actions/calendar.ts`
 - `CALENDAR_SOURCES` — `plugins/plugin-calendar/src/actions/calendar-sources.ts`
-- `CALENDLY` — `plugins/plugin-personal-assistant/src/actions/lib/calendly-handler.ts`
 - `CHARACTER` — `packages/core/src/features/advanced-capabilities/personality/actions/character.ts`
 - `CHECK_APP_DOMAIN` — `plugins/plugin-cloud-apps/src/actions/check-app-domain.ts`
-- `CLEAR_LINEAR_ACTIVITY` — `plugins/plugin-linear/src/actions/clearActivity.ts`
 - `CLIPBOARD` — `plugins/plugin-computeruse/src/actions/clipboard.ts`
 - `CLOSE_ALL_VIEWS` — `plugins/plugin-app-control/src/actions/views.ts`
 - `CLOSE_VIEW` — `plugins/plugin-app-control/src/actions/views.ts`
@@ -385,16 +383,12 @@ list. Regenerate this document after changing the registered action surface.
 - `CREATE_AD_SLOT` — `plugins/plugin-cloud-apps/src/actions/ad-inventory.ts`
 - `CREATE_APP` — `plugins/plugin-cloud-apps/src/actions/create-app.ts`
 - `CREATE_INFLUENCER_PROFILE` — `plugins/plugin-cloud-apps/src/actions/influencer.ts`
-- `CREATE_LINEAR_COMMENT` — `plugins/plugin-linear/src/actions/createComment.ts`
-- `CREATE_LINEAR_ISSUE` — `plugins/plugin-linear/src/actions/createIssue.ts`
 - `CREATE_OAUTH_INTENT` — `packages/core/src/features/oauth/actions/create-oauth-intent.ts`
 - `CREATIVE_DRAFT` — `plugins/plugin-personal-assistant/src/actions/creative-draft.ts`
 - `CREDENTIALS` — `plugins/plugin-personal-assistant/src/actions/credentials.ts`
 - `DATABASE` — `packages/agent/src/actions/database.ts`
 - `DECLARE_SUB_AGENT_CREDENTIAL_SCOPE` — `packages/core/src/features/sub-agent-credentials/actions/declare-sub-agent-credential-scope.ts`
 - `DELETE_APP` — `plugins/plugin-cloud-apps/src/actions/delete-app.ts`
-- `DELETE_LINEAR_COMMENT` — `plugins/plugin-linear/src/actions/deleteComment.ts`
-- `DELETE_LINEAR_ISSUE` — `plugins/plugin-linear/src/actions/deleteIssue.ts`
 - `DELIVER_OAUTH_LINK` — `packages/core/src/features/oauth/actions/deliver-oauth-link.ts`
 - `DELIVER_PLUGIN_CONFIG_FORM` — `packages/core/src/features/plugin-config/actions/deliver-plugin-config-form.ts`
 - `DEPLOY_APP` — `plugins/plugin-cloud-apps/src/actions/deploy-app.ts`
@@ -408,8 +402,6 @@ list. Regenerate this document after changing the registered action surface.
 - `ESCALATE` — `packages/core/src/features/autonomy/action.ts`
 - `EXPERIENCE` — `packages/core/src/features/advanced-capabilities/experience/actions/manage-experience.ts`
 - `EXPORT_AD_CAMPAIGN_REPORT` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
-- `FACEWEAR_CONNECT` — `plugins/plugin-facewear/src/actions/facewear-connect.ts`
-- `FACEWEAR_DEBUG` — `plugins/plugin-facewear/src/actions/facewear-debug.ts`
 - `FAMILY_COMMUNICATIONS` — `plugins/plugin-personal-assistant/src/lifeops/family-communications/action.ts`
 - `FILE` — `plugins/plugin-coding-tools/src/actions/file.ts`
 - `FILES` — `packages/agent/src/actions/files.ts`
@@ -419,10 +411,7 @@ list. Regenerate this document after changing the registered action surface.
 - `GET_APP` — `plugins/plugin-cloud-apps/src/actions/get-app.ts`
 - `GET_APP_DEPLOY_STATUS` — `plugins/plugin-cloud-apps/src/actions/get-app-deploy-status.ts`
 - `GET_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/get-app-earnings.ts`
-- `GET_LINEAR_ACTIVITY` — `plugins/plugin-linear/src/actions/getActivity.ts`
-- `GET_LINEAR_ISSUE` — `plugins/plugin-linear/src/actions/getIssue.ts`
 - `GET_MEETING_TRANSCRIPT` — `plugins/plugin-meetings/src/actions/get-meeting-transcript.ts`
-- `GIT_PATHOLOGY` — `plugins/plugin-gitpathologist/src/actions/git-pathology.ts`
 - `GITHUB` — `plugins/plugin-github/src/actions/github.ts`
 - `HOUSEHOLD_COORDINATION` — `plugins/plugin-personal-assistant/src/actions/household-coordination.ts`
 - `HOUSEHOLD_FOOD` — `plugins/plugin-personal-assistant/src/lifeops/food/action.ts`
@@ -432,14 +421,12 @@ list. Regenerate this document after changing the registered action surface.
 - `INBOX` — `plugins/plugin-inbox/src/actions/inbox.ts`
 - `JOIN_MEETING` — `plugins/plugin-meetings/src/actions/join-meeting.ts`
 - `LEAVE_MEETING` — `plugins/plugin-meetings/src/actions/leave-meeting.ts`
-- `LINEAR` — `plugins/plugin-linear/src/actions/linear.ts`
 - `LIQUIDITY` — `plugins/plugin-wallet/src/lp/actions/liquidity.ts`
 - `LIST_AD_SLOTS` — `plugins/plugin-cloud-apps/src/actions/ad-inventory.ts`
 - `LIST_APP_DOMAINS` — `plugins/plugin-cloud-apps/src/actions/list-app-domains.ts`
 - `LIST_CLOUD_APPS` — `plugins/plugin-cloud-apps/src/actions/list-cloud-apps.ts`
 - `LIST_FRONTEND_DEPLOYMENTS` — `plugins/plugin-cloud-apps/src/actions/rollback-frontend.ts`
 - `LIST_INFLUENCERS` — `plugins/plugin-cloud-apps/src/actions/influencer.ts`
-- `LIST_LINEAR_COMMENTS` — `plugins/plugin-linear/src/actions/listComments.ts`
 - `LIST_OVERDUE_FOLLOWUPS` — `plugins/plugin-personal-assistant/src/followup/actions/listOverdueFollowups.ts`
 - `LIST_PRESS_RELEASES` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
 - `LOCAL_CONDITIONS` — `plugins/plugin-personal-assistant/src/lifeops/oracles/action.ts`
@@ -452,11 +439,8 @@ list. Regenerate this document after changing the registered action surface.
 - `MEMORY` — `packages/agent/src/actions/memories.ts`
 - `MESSAGE` — `packages/core/src/features/advanced-capabilities/actions/message.ts`, `packages/core/src/features/messaging/triage/actions/draftFollowup.ts`, `packages/core/src/features/messaging/triage/actions/draftReply.ts`, `packages/core/src/features/messaging/triage/actions/listInbox.ts`, `packages/core/src/features/messaging/triage/actions/manageMessage.ts`, `packages/core/src/features/messaging/triage/actions/respondToMessage.ts`, `packages/core/src/features/messaging/triage/actions/scheduleDraftSend.ts`, `packages/core/src/features/messaging/triage/actions/searchMessages.ts`, `packages/core/src/features/messaging/triage/actions/sendDraft.ts`, `packages/core/src/features/messaging/triage/actions/triageMessages.ts`
 - `MODEL_SWITCH` — `plugins/plugin-app-control/src/actions/model-switch.ts`
-- `MUSIC` — `plugins/plugin-music/src/actions/music.ts`
-- `MUSIC_LIBRARY` — `plugins/plugin-music/src/actions/musicLibrary.ts`
 - `NOTIFY` — `packages/agent/src/actions/notify.ts`
 - `ORCHESTRATOR_STATUS_COMMAND` — `plugins/plugin-task-coordinator/src/orchestrator-command.ts`
-- `OSWORLD` — `plugins/plugin-benchmarks/src/actions/osworld.ts`
 - `OWNER_ALARMS` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
 - `OWNER_DOCUMENTS` — `plugins/plugin-personal-assistant/src/actions/document.ts`
 - `OWNER_FINANCES` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
@@ -469,16 +453,12 @@ list. Regenerate this document after changing the registered action surface.
 - `PAIR_OWNER_ACCOUNT` — `packages/agent/src/actions/pair-owner-account.ts`
 - `PARENTING_GUIDANCE` — `plugins/plugin-personal-assistant/src/lifeops/parenting/action.ts`
 - `PAYMENT` — `packages/core/src/features/payments/actions/payment.ts`
-- `PERPETUAL_MARKET` — `plugins/plugin-hyperliquid/src/actions/perpetual-market.ts`
 - `PERSONAL_ASSISTANT` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
 - `PERSONALITY` — `packages/core/src/features/advanced-capabilities/personality/actions/personality.ts`
 - `PLAN` — `packages/core/src/features/advanced-planning/actions/plan.ts`
-- `PLAY_AUDIO` — `plugins/plugin-music/src/actions/playAudio.ts`
-- `PLAYBACK` — `plugins/plugin-music/src/actions/playbackOp.ts`
 - `PLUGIN` — `packages/agent/src/actions/plugin.ts`
 - `POLL_PLUGIN_CONFIG_STATUS` — `packages/core/src/features/plugin-config/actions/poll-plugin-config-status.ts`
 - `POST` — `packages/core/src/features/advanced-capabilities/actions/post.ts`
-- `PREDICTION_MARKET` — `plugins/plugin-polymarket/src/actions.ts`
 - `PRIORITIZE` — `plugins/plugin-personal-assistant/src/actions/prioritize.ts`
 - `PROBE_PLUGIN_CONFIG_REQUIREMENTS` — `packages/core/src/features/plugin-config/actions/probe-plugin-config-requirements.ts`
 - `PROXY_STATUS` — `plugins/plugin-anthropic-proxy/src/actions/proxy-status.action.ts`
@@ -497,7 +477,6 @@ list. Regenerate this document after changing the registered action surface.
 - `SEARCH_CHANNEL_TOPICS` — `packages/core/src/features/basic-capabilities/actions/channel-topic-search.ts`
 - `SEARCH_EXPERIENCES` — `packages/core/src/features/advanced-capabilities/experience/actions/search-experiences.ts`
 - `SEARCH_KNOWLEDGE` — `packages/agent/src/actions/knowledge.ts`
-- `SEARCH_LINEAR_ISSUES` — `plugins/plugin-linear/src/actions/searchIssues.ts`
 - `SECRETS` — `packages/core/src/features/secrets/actions/manage-secret.ts`
 - `SECRETS_UPDATE_SETTINGS` — `packages/core/src/features/secrets/setup/action.ts`
 - `SECURITY_EVALUATOR` — `packages/core/src/features/trust/evaluators/securityEvaluator.ts`
@@ -508,16 +487,10 @@ list. Regenerate this document after changing the registered action surface.
 - `SHARE_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `SHELL` — `plugins/plugin-coding-tools/src/actions/bash.ts`
 - `SKILL` — `plugins/plugin-agent-skills/src/actions/skill.ts`
-- `SMARTGLASSES_CONTROL` — `plugins/plugin-facewear/src/actions/facewear-control.ts`
-- `SMARTGLASSES_DISPLAY_TEXT` — `plugins/plugin-facewear/src/actions/display-text.ts`
-- `SMARTGLASSES_MICROPHONE` — `plugins/plugin-facewear/src/actions/microphone.ts`
-- `SMARTGLASSES_STATUS` — `plugins/plugin-facewear/src/actions/facewear-status.ts`
 - `START_TRANSCRIPTION` — `plugins/plugin-local-inference/src/actions/transcription-control.ts`
 - `STOP_TRANSCRIPTION` — `plugins/plugin-local-inference/src/actions/transcription-control.ts`
-- `STREAM` — `plugins/plugin-streaming/src/core.ts`
 - `SUBMIT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
 - `TASKS` — `plugins/plugin-agent-orchestrator/src/actions/tasks.ts`
-- `TAU_BENCH_TOOL` — `plugins/plugin-benchmarks/src/actions/tau-bench.ts`
 - `TERMINAL_SHELL` — `packages/agent/src/actions/terminal.ts`
 - `TODO` — `plugins/plugin-todos/src/actions/todo.ts`
 - `TRADE` — `plugins/plugin-wallet/src/actions/trade-action.ts`
@@ -525,21 +498,17 @@ list. Regenerate this document after changing the registered action surface.
 - `TRUST` — `packages/core/src/features/trust/actions/trust.ts`
 - `TUNNEL_CREDENTIAL_TO_CHILD_SESSION` — `packages/core/src/features/sub-agent-credentials/actions/tunnel-credential-to-child-session.ts`
 - `UPDATE_APP` — `plugins/plugin-cloud-apps/src/actions/update-app.ts`
-- `UPDATE_LINEAR_ISSUE` — `plugins/plugin-linear/src/actions/updateIssue.ts`
 - `UPDATE_MONETIZATION` — `plugins/plugin-cloud-apps/src/actions/update-monetization.ts`
 - `USE_SKILL` — `plugins/plugin-agent-skills/src/actions/use-skill.ts`
-- `VENDING_MACHINE` — `plugins/plugin-benchmarks/src/actions/vending-machine.ts`
 - `VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE` — `packages/agent/src/api/builtin-views.ts`
 - `VIEW_CHARACTER_ADD_STYLE_RULE` — `packages/agent/src/api/builtin-views.ts`
 - `VIEW_CHARACTER_FILL_BIO` — `packages/agent/src/api/builtin-views.ts`
 - `VIEWS` — `plugins/plugin-app-control/src/actions/views.ts`
 - `VISION` — `plugins/plugin-vision/src/action.ts`
-- `VISUALWEBBENCH_TASK` — `plugins/plugin-benchmarks/src/actions/visualwebbench.ts`
 - `VOICE_CALL` — `plugins/plugin-personal-assistant/src/actions/voice-call.ts`
 - `WALLET` — `plugins/plugin-wallet/src/chains/wallet-action.ts`
 - `WEB_FETCH` — `plugins/plugin-coding-tools/src/actions/web-fetch.ts`
 - `WEB_SEARCH` — `plugins/plugin-coding-tools/src/actions/web-search.ts`
-- `WEBSHOP` — `plugins/plugin-benchmarks/src/actions/webshop.ts`
 - `WINDOW` — `plugins/plugin-computeruse/src/actions/window.ts`
 - `WITHDRAW_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/withdraw-app-earnings.ts`
 - `WORK_THREAD` — `plugins/plugin-personal-assistant/src/actions/work-thread.ts`

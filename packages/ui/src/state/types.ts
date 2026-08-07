@@ -262,9 +262,19 @@ export interface StartupCoordinatorView {
     probeForExistingInstall: boolean;
     defaultTarget: "embedded-local" | "remote-backend" | "cloud-managed" | null;
   };
-  legacyPhase: StartupPhase;
   loading: boolean;
   terminal: boolean;
+  isShellPaintable: boolean;
+  isInteractive: boolean;
+  statusMessageKey:
+    | "startupshell.Starting"
+    | "startupshell.InitializingAgent"
+    | "startupshell.Loading";
+  error: {
+    reason: StartupErrorReason;
+    message: string;
+    timedOut: boolean;
+  } | null;
   target: "embedded-local" | "remote-backend" | "cloud-managed" | null;
   phase: StartupCoordinatorView["state"]["phase"];
 }
@@ -314,7 +324,6 @@ export interface AppState {
   /** Incremented on agent reset so first-run UI shows immediately (not stuck behind VRM reveal). */
   firstRunUiRevealNonce: number;
   firstRunLoading: boolean;
-  startupPhase: StartupPhase;
   startupError: StartupErrorState | null;
   /** StartupCoordinator handle — the sole startup authority. */
   startupCoordinator: StartupCoordinatorView;
@@ -503,9 +512,9 @@ export interface AppState {
    * can render a copyable "didn't open? visit this link" fallback panel
    * underneath the spinner. Cleared when polling stops.
    *
-   * See useCloudState.handleCloudLogin for the setter and the rationale —
-   * some desktop environments (notably Tails routing xdg-open to Tor
-   * Browser flatpak) open without crashing but never surface a usable
+   * See useCloudState's interactive login entry point for the setter and the
+   * rationale — some desktop environments (notably Tails routing xdg-open to
+   * Tor Browser flatpak) open without crashing but never surface a usable
    * window, leaving the user stuck.
    */
   elizaCloudLoginFallbackUrl: string | null;
@@ -565,9 +574,6 @@ export interface AppState {
   importFile: File | null;
   importError: string | null;
   importSuccess: string | null;
-
-  // Startup
-  startupStatus: string | null;
 
   // First-run (the in-chat conductor owns flow state; these are the surviving
   // cross-surface fields: finish-port + CONNECT_EVENT writes, content-pack and
@@ -683,9 +689,14 @@ export type LoadConversationMessagesResult =
 export const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 export const AGENT_READY_TIMEOUT_MS = 120_000;
 
+export interface SetTabOptions {
+  /** Preserve an exact route already owned by the caller instead of pushing the tab's canonical path. */
+  history?: "push" | "preserve";
+}
+
 export interface AppActions {
   // Navigation
-  setTab: (tab: Tab) => void;
+  setTab: (tab: Tab, options?: SetTabOptions) => void;
   setUiShellMode: (mode: UiShellMode) => void;
   switchUiShellMode: (mode: UiShellMode) => void;
   switchShellView: (view: ShellView) => void;
@@ -910,10 +921,23 @@ export interface AppActions {
   completeFirstRun: (landingTab?: Tab) => void;
 
   // Cloud
-  handleCloudLogin: (
-    prePoppedWindow?: Window | null,
-    options?: CloudLoginOptions,
-  ) => Promise<void>;
+  /**
+   * Deliberate same-tab recovery entry point (boot-recovery conductor,
+   * native re-auth). Non-interactive by construction: it never opens a popup
+   * and never accepts a pre-popped window, so a missed interactive caller
+   * cannot compile against it. Interactive call sites MUST use
+   * `handleInteractiveCloudLogin`, which pre-opens the named popup itself —
+   * the null-window defect #17129 is unrepresentable at the type level.
+   */
+  handleCloudLoginRecovery: (options?: CloudLoginOptions) => Promise<void>;
+  /**
+   * Interactive-only Cloud login entry point. Pre-opens the named popup
+   * window itself, so interactive call sites cannot omit it (type-level
+   * contract, #17129). Use this for user-facing login buttons; keep
+   * `handleCloudLoginRecovery` for the deliberate same-tab boot-recovery
+   * path.
+   */
+  handleInteractiveCloudLogin: (options?: CloudLoginOptions) => Promise<void>;
   handleCloudDisconnect: (opts?: {
     skipConfirmation?: boolean;
   }) => Promise<void>;

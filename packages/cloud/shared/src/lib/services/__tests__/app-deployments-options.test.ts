@@ -60,7 +60,7 @@ describe("AppDeploymentsService deploy options", () => {
       userId: USER_ID,
       repoUrl: "https://github.com/elizaOS/eliza.git",
       ref: "develop",
-      dockerfile: "packages/examples/cloud/edad/Dockerfile",
+      dockerfile: "apps/example/Dockerfile",
       env: { ELIZA_APP_ID: APP_ID },
     });
 
@@ -72,7 +72,7 @@ describe("AppDeploymentsService deploy options", () => {
         options: {
           repoUrl: "https://github.com/elizaOS/eliza.git",
           ref: "develop",
-          dockerfile: "packages/examples/cloud/edad/Dockerfile",
+          dockerfile: "apps/example/Dockerfile",
           env: { ELIZA_APP_ID: APP_ID },
         },
       },
@@ -92,7 +92,7 @@ describe("AppDeploymentsService deploy options", () => {
       userId: USER_ID,
       repoUrl: "https://github.com/elizaOS/eliza.git",
       ref: "develop",
-      dockerfile: "packages/examples/cloud/clone-ur-crush/Dockerfile",
+      dockerfile: "apps/example/Dockerfile",
     });
 
     expect(calls).toEqual([
@@ -101,7 +101,7 @@ describe("AppDeploymentsService deploy options", () => {
         {
           repoUrl: "https://github.com/elizaOS/eliza.git",
           ref: "develop",
-          dockerfile: "packages/examples/cloud/clone-ur-crush/Dockerfile",
+          dockerfile: "apps/example/Dockerfile",
         },
       ],
     ]);

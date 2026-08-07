@@ -1,3 +1,4 @@
+/** Verifies HomeLauncherSurface through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // HomeLauncherSurface's Home ↔ Launcher paging: both pages stay mounted, flicks

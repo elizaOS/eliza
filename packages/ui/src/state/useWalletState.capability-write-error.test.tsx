@@ -1,3 +1,4 @@
+/** Verifies useWalletState — capability write failure surfaces through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Real error-path coverage for capability-toggle persistence in useWalletState

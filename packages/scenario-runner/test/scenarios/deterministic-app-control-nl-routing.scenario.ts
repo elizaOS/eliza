@@ -1,11 +1,12 @@
 /**
  * Keyless coverage that natural-language requests route to the correct
  * plugin-app-control action against seeded scenario views. Runs on the
- * pr-deterministic lane under the LLM proxy (fixtures pin the routing).
+ * pr-deterministic lane under the model provider (fixtures pin the routing).
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { ModelType } from "@elizaos/core";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -17,9 +18,8 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
-import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
 
-type RuntimeWithScenarioLlmFixtures = {
+type RuntimeWithScenarioModelFixtures = {
   actions?: Array<{
     name: string;
     validate?: (...args: unknown[]) => Promise<boolean> | boolean;
@@ -30,7 +30,7 @@ type RuntimeWithScenarioLlmFixtures = {
   deleteTask?: (taskId: string) => Promise<void>;
   getService?: (serviceType: string) => unknown;
   getTasks?: (query?: Record<string, unknown>) => Promise<unknown[]>;
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
@@ -185,7 +185,7 @@ const views = [
 ];
 
 const appLoadDirectory = "/tmp/eliza-app-control-nl-routing/apps";
-const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+const repoRoot = "/tmp/eliza-app-control-nl-routing/repo";
 const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
 const loadAppsInput = `Load apps from ${appLoadDirectory} directory`;
 const editFeedBoardInput = "Edit view feed-board plugin";
@@ -293,14 +293,28 @@ export default scenario({
         process.env.ELIZA_REPO_ROOT = repoRoot;
         process.env.ELIZA_WORKSPACE_DIR = repoRoot;
         resetAppControlHttpLoopback();
-        const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
 
         await fs.rm(path.dirname(appLoadDirectory), {
           force: true,
           recursive: true,
         });
         const loadedAppDir = path.join(appLoadDirectory, "app-loaded-console");
+        await fs.mkdir(feedPluginDir, { recursive: true });
         await fs.mkdir(loadedAppDir, { recursive: true });
+        await fs.writeFile(
+          path.join(feedPluginDir, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@elizaos/plugin-feed",
+              version: "1.0.0",
+              files: ["dist"],
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
         await fs.writeFile(
           path.join(loadedAppDir, "package.json"),
           `${JSON.stringify(
@@ -431,7 +445,7 @@ export default scenario({
         };
 
         let launchCount = 0;
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           handleResponseFixture("Open the settings view", "VIEWS"),
           plannerFixture(
             "Open the settings view",
@@ -547,7 +561,7 @@ export default scenario({
               action: "delete",
               view: "remote-ledger",
               // The VIEWS action declares `confirm` as schema type boolean; the
-              // strict LLM proxy validates fixture toolCalls against that
+              // strict model provider validates fixture toolCalls against that
               // schema, so a string "true" is rejected before the handler runs.
               confirm: true,
             },
@@ -639,6 +653,18 @@ export default scenario({
         });
 
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "remove app-control source fixtures",
+      apply: async () => {
+        await fs.rm(path.dirname(appLoadDirectory), {
+          force: true,
+          recursive: true,
+        });
       },
     },
   ],

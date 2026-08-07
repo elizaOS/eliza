@@ -33,8 +33,6 @@ beforeEach(() => {
     originalEnv.set(key, process.env[key]);
     delete process.env[key];
   }
-  // init() fires a background API-key validation request; keep it off the wire.
-  vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true } as Response);
 });
 
 afterEach(() => {
@@ -84,6 +82,19 @@ describe("plugin-openai media capability gating", () => {
     for (const modelType of MEDIA_MODEL_TYPES) {
       expect(registeredModelTypes()).not.toContain(modelType);
     }
+  });
+
+  it("performs no detached network probe during initialization", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("init must not fetch"));
+    const { runtime } = buildRuntime({
+      OPENAI_API_KEY: "sk-openai-fake",
+    });
+
+    await openaiPlugin.init?.({}, runtime);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("registers IMAGE_DESCRIPTION in Cerebras mode when an explicit vision base URL is set", async () => {

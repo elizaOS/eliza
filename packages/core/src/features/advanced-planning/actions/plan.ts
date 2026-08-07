@@ -617,6 +617,8 @@ export const planAction: Action = {
 				return handleFinalize(options);
 			}
 		} catch (error) {
+			// error-policy:J1 The action result and callback are the planner/user
+			// boundaries for an explicitly failed plan mutation.
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			// Continuation is suppressed on this action, so this callback is the

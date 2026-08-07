@@ -2,6 +2,8 @@
  * Playwright UI-smoke spec for the Chat View Memory Stability app flow using
  * the real renderer fixture.
  */
+
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { CHAT_PREFILL_EVENT } from "../../../ui/src/events";
 import {
@@ -107,10 +109,14 @@ function expectBoundedRuntimeGrowth(
 }
 
 async function navigateInPlace(page: Page, targetPath: string): Promise<void> {
-  await page.evaluate((path) => {
-    window.history.pushState(null, "", path);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  }, targetPath);
+  await page.evaluate(
+    ({ eventName, path }) => {
+      window.dispatchEvent(
+        new CustomEvent(eventName, { detail: { viewPath: path } }),
+      );
+    },
+    { eventName: NAVIGATE_VIEW_EVENT, path: targetPath },
+  );
   await expect(page).toHaveURL(
     new RegExp(
       `${targetPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:[?#].*)?$`,
@@ -165,7 +171,7 @@ test("chat and routed views keep heap, DOM, and listeners bounded", async ({
   );
 
   const composer = page.getByTestId("chat-composer-textarea");
-  const calendar = page.getByTestId("calendar-view").first();
+  const calendar = page.getByRole("heading", { name: "Calendar" }).first();
   const documents = page.getByTestId("documents-view").first();
   const taskCoordinator = page.getByTestId("task-coordinator-panel").first();
 

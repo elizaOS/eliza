@@ -1,15 +1,13 @@
 /**
  * Behavioral unit tests for {@link createElizaPlugin} — the agent plugin
  * factory that wires the workspace/session providers, lifecycle actions, the
- * runtime-owned schema, and the long-lived services (including the bounded
- * MemoryRetentionService this PR introduced).
+ * runtime-owned schema, and the long-lived retention services.
  *
  * These are REAL tests: they import and CALL `createElizaPlugin`, then assert
  * the returned plugin's structure and behavior, and drive the `init`/`dispose`
  * lifecycle against a REAL {@link AgentRuntime} (constructed with `logLevel:
- * "fatal"`, no database) — not a cast-fabricated runtime. `getService` is
- * spied on the real instance to steer the skills → slash-command registration
- * branches.
+ * "fatal"`, no database) — not a cast-fabricated runtime. Agent Skills owns its
+ * command lifecycle in plugin-agent-skills and has a separate real-runtime test.
  *
  * Companion to eliza-plugin-services.test.ts (which asserts the *source text*
  * of the services array as a fail-closed guard); this file proves the *runtime
@@ -145,7 +143,7 @@ describe("createElizaPlugin — init lifecycle", () => {
     vi.useFakeTimers();
     // A real runtime, no database — enough for the plugin's init registration
     // helpers (trigger worker, media GC, attachment ingest, error escalation,
-    // custom-actions) and the skills → slash-command wiring.
+    // and custom actions).
     runtime = new AgentRuntime({ logLevel: "fatal" });
   });
   afterEach(() => {
@@ -159,89 +157,6 @@ describe("createElizaPlugin — init lifecycle", () => {
     const spy = vi.spyOn(runtime, "registerTaskWorker");
     await expect(initOf(plugin)({}, runtime)).resolves.toBeUndefined();
     expect(spy).toHaveBeenCalled();
-  });
-
-  it("registers loaded skills as slash commands when both services resolve", async () => {
-    const register = vi.fn();
-    const skillsService = {
-      getLoadedSkills: () => [
-        { slug: "Research", name: "Research", description: "do research" },
-        { slug: "Cook", name: "Cook", description: "make food" },
-      ],
-    };
-    vi.spyOn(runtime, "getService").mockImplementation(((key: string) => {
-      if (key === "AGENT_SKILLS_SERVICE") return skillsService;
-      if (key === "commands") return { register };
-      return null;
-    }) as typeof runtime.getService);
-
-    const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
-    await initOf(plugin)({}, runtime);
-
-    // One command per loaded skill, slug lowercased into the alias.
-    expect(register).toHaveBeenCalledTimes(2);
-    const keys = register.mock.calls.map((c) => c[0].key);
-    expect(keys).toContain("skill-research");
-    expect(keys).toContain("skill-cook");
-    const aliases = register.mock.calls.flatMap((c) => c[0].textAliases);
-    expect(aliases).toContain("/research");
-  });
-
-  it("retries skills registration on a timer when the skills service isn't ready", async () => {
-    const register = vi.fn();
-    let skillsReady = false;
-    vi.spyOn(runtime, "getService").mockImplementation(((key: string) => {
-      if (key === "AGENT_SKILLS_SERVICE") {
-        return skillsReady
-          ? {
-              getLoadedSkills: () => [
-                { slug: "late", name: "late", description: "arrived late" },
-              ],
-            }
-          : null;
-      }
-      if (key === "commands") return { register };
-      return null;
-    }) as typeof runtime.getService);
-
-    const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
-    await initOf(plugin)({}, runtime);
-    // Not ready at boot -> no commands yet, a retry timer is scheduled.
-    expect(register).not.toHaveBeenCalled();
-
-    skillsReady = true;
-    vi.advanceTimersByTime(5000);
-    expect(register).toHaveBeenCalledTimes(1);
-    expect(register.mock.calls[0][0].key).toBe("skill-late");
-  });
-
-  it("no-ops skills registration when the commands service is missing", async () => {
-    vi.spyOn(runtime, "getService").mockImplementation(((key: string) => {
-      if (key === "AGENT_SKILLS_SERVICE") {
-        return {
-          getLoadedSkills: () => [
-            { slug: "x", name: "x", description: "desc" },
-          ],
-        };
-      }
-      return null; // no commands service
-    }) as typeof runtime.getService);
-
-    const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
-    await expect(initOf(plugin)({}, runtime)).resolves.toBeUndefined();
-  });
-
-  it("no-ops when the skills service reports zero loaded skills", async () => {
-    const register = vi.fn();
-    vi.spyOn(runtime, "getService").mockImplementation(((key: string) => {
-      if (key === "AGENT_SKILLS_SERVICE") return { getLoadedSkills: () => [] };
-      if (key === "commands") return { register };
-      return null;
-    }) as typeof runtime.getService);
-
-    const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
-    await initOf(plugin)({}, runtime);
-    expect(register).not.toHaveBeenCalled();
   });
 });
 

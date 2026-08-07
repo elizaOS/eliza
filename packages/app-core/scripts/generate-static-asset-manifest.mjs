@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for generate static asset manifest mjs. */
+/**
+ * CLI wrapper that writes the static asset manifest JSON via
+ * lib/static-asset-manifest.mjs and prints the output path.
+ */
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";

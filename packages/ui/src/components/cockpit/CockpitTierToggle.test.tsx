@@ -1,3 +1,4 @@
+/** Verifies CockpitTierToggle through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Interaction tests for CockpitTierToggle: flipping the segmented control emits

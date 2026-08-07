@@ -30,9 +30,6 @@ export function registerConfigureCommand(program: Command) {
       );
       console.log(`  ${theme.command("OPENAI_API_KEY")}       OpenAI (GPT)`);
       console.log(
-        `  ${theme.command("AI_GATEWAY_API_KEY")}   Vercel AI Gateway`,
-      );
-      console.log(
         `  ${theme.command("GOOGLE_API_KEY")}       Google (Gemini)\n`,
       );
     });

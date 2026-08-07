@@ -28,7 +28,7 @@ import {
   registerAutomationNodeContributor,
 } from "../../src/api/automation-node-contributors";
 
-// Representative crypto specs mirroring what plugin-wallet / plugin-hyperliquid
+// Representative crypto specs mirroring what plugin-wallet
 // register through the contributor extension point. The plugins' own suites
 // assert their exact specs; here we prove app-core's catalog drains such
 // contributors and gates availability on runtime capabilities.
@@ -80,7 +80,7 @@ const CRYPTO_CONTRIBUTOR_SPECS: RuntimeCapabilityNodeSpec[] = [
     class: "action",
     backingCapability: "HYPERLIQUID_ACTION",
     actionNames: ["HYPERLIQUID_ACTION", "HYPERLIQUID_ORDER"],
-    pluginNames: ["hyperliquid", "@elizaos/plugin-hyperliquid"],
+    pluginNames: ["wallet", "@elizaos/plugin-wallet"],
     ownerScoped: true,
     enabledWithoutRuntimeCapability: false,
     disabledReason: "Load the Hyperliquid runtime plugin.",
@@ -93,7 +93,7 @@ const CRYPTO_CONTRIBUTOR_SPECS: RuntimeCapabilityNodeSpec[] = [
     class: "trigger",
     backingCapability: "ORDER_EVENT",
     actionNames: ["ORDER_EVENT", "ORDER_FILLED", "HYPERLIQUID_ACTION"],
-    pluginNames: ["hyperliquid", "@elizaos/plugin-hyperliquid"],
+    pluginNames: ["wallet", "@elizaos/plugin-wallet"],
     ownerScoped: false,
     enabledWithoutRuntimeCapability: false,
     disabledReason: "Load an order-event-capable runtime plugin.",
@@ -418,7 +418,7 @@ describe("automations compat routes", () => {
       }),
     );
 
-    // Crypto nodes are owned by their plugins (plugin-wallet / plugin-hyperliquid)
+    // Crypto nodes are owned by their plugins (plugin-wallet)
     // and only appear when those plugins register a contributor. With none
     // registered here, they must be absent from the app-core static catalog.
     for (const id of [
@@ -433,7 +433,7 @@ describe("automations compat routes", () => {
   });
 
   it("drains crypto contributor nodes registered by owning plugins", async () => {
-    // Mirror how plugin-wallet / plugin-hyperliquid contribute their nodes: a
+    // Mirror how plugin-wallet contribute their nodes: a
     // registered contributor turns runtime-capability specs into descriptors.
     registerAutomationNodeContributor("crypto-plugins", ({ runtime }) =>
       buildRuntimeCapabilityNodes(CRYPTO_CONTRIBUTOR_SPECS, runtime),

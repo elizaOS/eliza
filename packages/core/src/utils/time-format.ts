@@ -1,10 +1,4 @@
-/**
- * Time formatting utilities.
- *
- * Provides functions for human-readable time display.
- *
- * @module utils/time-format
- */
+/** Formats durations and timestamps for human-readable display. */
 
 function describeRelativeTime(
 	timestamp: number,

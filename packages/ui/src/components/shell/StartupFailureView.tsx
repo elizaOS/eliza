@@ -22,27 +22,27 @@ function startupReasonLabel(
   switch (reason) {
     case "backend-timeout":
       return t("startupfailureview.BackendTimeout", {
-        defaultValue: "Backend Timeout",
+        defaultValue: "Taking longer than expected",
       });
     case "backend-unreachable":
       return t("startupfailureview.BackendUnreachable", {
-        defaultValue: "Backend Unreachable",
+        defaultValue: "Can't connect",
       });
     case "agent-timeout":
       return t("startupfailureview.AgentTimeout", {
-        defaultValue: "Agent Timeout",
+        defaultValue: "Your agent is taking longer than expected",
       });
     case "agent-error":
       return t("startupfailureview.AgentError", {
-        defaultValue: "Agent Error",
+        defaultValue: "Your agent couldn't start",
       });
     case "asset-missing":
       return t("startupfailureview.AssetMissing", {
-        defaultValue: "Asset Missing",
+        defaultValue: "Something needed is missing",
       });
     case "unknown":
       return t("startupfailureview.Unknown", {
-        defaultValue: "Unknown Error",
+        defaultValue: "Something went wrong",
       });
   }
 }
@@ -107,7 +107,7 @@ export function StartupFailureView({
               <AlertCircle className="h-5 w-5" aria-hidden />
             </span>
             <h1 className="text-xl font-semibold leading-tight text-destructive">
-              {t("startupfailureview.StartupFailed")} {reasonLabel}
+              {reasonLabel}
             </h1>
           </div>
         </CardHeader>
@@ -116,17 +116,22 @@ export function StartupFailureView({
           {/* The human-readable reason, surfaced front-and-centre (not buried in
               the bug-report draft) so a user staring at an offline phone learns
               what actually went wrong. */}
-          <p className="text-sm leading-relaxed text-txt">{error.message}</p>
-          {error.detail ? (
-            <section className="space-y-2">
-              <div className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
-                {t("common.details", { defaultValue: "Details" })}
-              </div>
-              <pre className="max-h-60 overflow-auto rounded-sm bg-bg/50 p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
-                {error.detail}
-              </pre>
-            </section>
-          ) : null}
+          <p className="text-sm leading-relaxed text-txt">
+            {t("startupfailureview.TryAgainDescription", {
+              defaultValue:
+                "Try again in a moment. If this keeps happening, the details below can help diagnose the problem.",
+            })}
+          </p>
+          <details className="group rounded-sm border border-border/60 bg-bg/50">
+            <summary className="cursor-pointer px-3 py-2 text-xs-tight font-semibold text-muted hover:text-txt">
+              {t("startupfailureview.TechnicalDetails", {
+                defaultValue: "Technical details",
+              })}
+            </summary>
+            <pre className="max-h-60 overflow-auto border-t border-border/60 p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
+              {[error.message, error.detail].filter(Boolean).join("\n\n")}
+            </pre>
+          </details>
 
           <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
             {error.reason === "backend-unreachable" ? (
@@ -135,10 +140,10 @@ export function StartupFailureView({
                 size="lg"
                 onClick={() => startFreshFirstRunReload()}
                 className="w-full sm:w-auto sm:min-w-[11rem]"
-                data-testid="startup-use-cloud"
+                data-testid="startup-start-over"
               >
-                {t("startupfailureview.ChooseElizaCloud", {
-                  defaultValue: "Choose Eliza Cloud",
+                {t("startupfailureview.StartOver", {
+                  defaultValue: "Start over",
                 })}
               </Button>
             ) : null}
@@ -165,32 +170,17 @@ export function StartupFailureView({
               </Button>
             ) : null}
             {error.reason === "backend-unreachable" ? (
-              <>
-                {/* Escape the unreachable saved backend: abandon it and re-run
-                    first-run so the user can choose cloud, local, or remote. */}
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => startFreshFirstRunReload()}
-                  className="w-full sm:w-auto sm:min-w-[10rem]"
-                  data-testid="startup-start-over"
-                >
-                  {t("startupfailureview.StartOver", {
-                    defaultValue: "Start over",
-                  })}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  asChild
-                  className="w-full sm:w-auto sm:min-w-[10rem]"
-                  data-testid="startup-open-app"
-                >
-                  <a href={branding.appUrl} target="_blank" rel="noreferrer">
-                    {t("startupfailureview.OpenApp")}
-                  </a>
-                </Button>
-              </>
+              <Button
+                variant="outline"
+                size="lg"
+                asChild
+                className="w-full sm:w-auto sm:min-w-[10rem]"
+                data-testid="startup-open-app"
+              >
+                <a href={branding.appUrl} target="_blank" rel="noreferrer">
+                  {t("startupfailureview.OpenApp")}
+                </a>
+              </Button>
             ) : null}
           </div>
         </CardContent>

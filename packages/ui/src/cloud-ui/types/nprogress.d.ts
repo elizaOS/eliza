@@ -1,3 +1,5 @@
+/** Supplies the narrow nprogress contract consumed by the cloud route cue. */
+
 declare module "nprogress" {
   interface NProgressOptions {
     easing: string;

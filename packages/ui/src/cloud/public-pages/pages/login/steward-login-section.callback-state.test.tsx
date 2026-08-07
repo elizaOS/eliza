@@ -1,3 +1,4 @@
+/** Verifies StewardLoginSection — OAuth callback completion state (#13519) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -27,6 +28,7 @@ vi.mock("../../lib/steward-session", () => ({
   consumeStewardCodeFromQuery: () => "callback-code",
   consumeStewardTokensFromHash: () => null,
   exchangeStewardCodeViaApi: () => callbackState.exchange(),
+  recoverStewardSessionViaCookie: () => Promise.resolve(null),
   refreshStewardSessionViaCookie: () => Promise.resolve({ ok: true as const }),
   syncStewardSessionCookie: () => Promise.resolve(),
 }));

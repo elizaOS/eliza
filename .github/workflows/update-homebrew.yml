@@ -19,7 +19,7 @@ on:
       # `secrets: inherit` from release-orchestrator.yml. The job body
       # now has a Check credentials step that emits a warning + skips
       # the dispatch when HOMEBREW_TAP_TOKEN is empty. Mirrors the
-      # pattern used in publish-apt-repo.yml (PR #7976).
+      # pattern used by the other reusable release workflows.
       HOMEBREW_TAP_TOKEN:
         required: false
   workflow_dispatch:
@@ -40,7 +40,7 @@ permissions:
 jobs:
   update-tap:
     name: Trigger Homebrew tap update
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Check credentials
         id: creds

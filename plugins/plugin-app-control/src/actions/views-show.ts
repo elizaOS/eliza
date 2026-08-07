@@ -1,11 +1,7 @@
 /**
- * @module plugin-app-control/actions/views-show
- *
- * show/open sub-mode: resolve a view by name or ID and navigate to it.
- *
- * Navigation uses POST /api/apps/launch with the view's shell path as the
- * target. When the view has no `path`, the agent tells the user the view
- * ID and how to navigate manually.
+ * Resolves a requested view and asks the active shell to navigate to it.
+ * The callback owns the one visible acknowledgement; the returned action
+ * receipt remains available to the planner without becoming a second row.
  */
 
 import type {
@@ -14,14 +10,15 @@ import type {
 	Memory,
 	ViewType,
 } from "@elizaos/core";
-import {
-	getUserMessageText,
-	logger,
-	resolveServerOnlyPort,
-} from "@elizaos/core";
+import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
-import { markViewSwitch } from "../runtime/view-switch-signal.js";
+import {
+	describeTargetReference,
+	targetReferenceLogView,
+	userRequestMessageText,
+} from "../params.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
@@ -57,6 +54,17 @@ const FILLER_WORDS = new Set([
 
 const DOCUMENT_SURFACE_WORDS =
 	/\b(?:documents?|docs?|files?|knowledge|uploads?|retrieval|papers?)\b/i;
+
+function isRealtimeVoiceTurn(message: Memory): boolean {
+	const metadata = message.content.metadata;
+	return (
+		typeof metadata === "object" &&
+		metadata !== null &&
+		!Array.isArray(metadata) &&
+		(metadata as Record<string, unknown>).clientTransport ===
+			REALTIME_VOICE_CLIENT_TRANSPORT
+	);
+}
 const NOTES_SURFACE_WORD = /\bnotes?\b/i;
 
 // Match a show-verb on WORD BOUNDARIES at the earliest position in the text.
@@ -92,7 +100,11 @@ function extractViewTarget(
 		readStringOpt(options, "name");
 	if (explicit) return explicit;
 
-	const text = getUserMessageText(message);
+	// Security-unwrapped user words: the raw content.text on a hardened
+	// connector is the whole external-content envelope, and its warning text
+	// contains show-verbs ("view", …) that would send the envelope remainder
+	// through the token scan.
+	const text = userRequestMessageText(message);
 
 	const match = SHOW_VERB_PATTERN.exec(text);
 	if (match) {
@@ -321,6 +333,30 @@ function resolveView(
 	return { kind: "ambiguous", candidates: topTied.map(({ view }) => view) };
 }
 
+/**
+ * Resolve a semantic intent to the view that owns the connector-independent
+ * experience in the current registry. The connected Calendar remains
+ * addressable by its exact id and is the fallback when Simple Calendar is not
+ * installed; when both exist, a generic spoken calendar request should open the
+ * durable view that works without a connector.
+ */
+function resolveIntentViewInRegistry(
+	intentViewId: string,
+	views: readonly ViewSummary[],
+):
+	| { kind: "match"; view: ViewSummary }
+	| { kind: "ambiguous"; candidates: ViewSummary[] }
+	| { kind: "none" } {
+	if (intentViewId === "calendar") {
+		const simpleCalendar = views.find(
+			(view) =>
+				view.id.toLowerCase() === "simple-calendar" && view.available !== false,
+		);
+		if (simpleCalendar) return { kind: "match", view: simpleCalendar };
+	}
+	return resolveView(intentViewId, views);
+}
+
 function resolveRegisteredNotesView(
 	views: readonly ViewSummary[],
 ):
@@ -364,6 +400,7 @@ async function navigateToView(
 	requestedViewType?: ViewType,
 	subview?: string,
 	navigationLabel = view.label,
+	delivery?: "originating-client",
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
 	// A 501/404 means this shell doesn't implement the navigate route — opening
@@ -385,6 +422,7 @@ async function navigateToView(
 					path: view.path,
 					viewType: requestedViewType,
 					...(resolvedSubview ? { subview: resolvedSubview } : {}),
+					...(delivery ? { delivery } : {}),
 				}),
 				signal: AbortSignal.timeout(5_000),
 			},
@@ -437,13 +475,14 @@ export async function runViewsShow({
 	viewType,
 	callback,
 }: RunViewsShowInput): Promise<ActionResult> {
-	const messageText = getUserMessageText(message);
+	const messageText = userRequestMessageText(message);
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
 	// no explicit view name, so the verb scan yields nothing — the domain intent
 	// supplies the view id. Either source is enough to proceed.
 	const rigidIntentViewId = matchViewCommand(messageText);
 	const intentViewId = rigidIntentViewId ?? resolveIntentView(messageText);
-	let target = extractViewTarget(message, options) ?? intentViewId;
+	const extractedTarget = extractViewTarget(message, options);
+	let target = extractedTarget ?? intentViewId;
 	if (!target) {
 		const text =
 			'Tell me which view to open. Try: "open wallet" or "show settings".';
@@ -453,6 +492,14 @@ export async function runViewsShow({
 
 	const views = await client.listViews({ viewType });
 	let resolution = resolveView(target, views);
+	let explicitAliasViewId: string | null = null;
+	if (resolution.kind === "none" && extractedTarget) {
+		explicitAliasViewId = matchViewCommand(extractedTarget);
+		if (explicitAliasViewId) {
+			target = explicitAliasViewId;
+			resolution = resolveView(target, views);
+		}
+	}
 	if (
 		isStandaloneNotesSurfaceRequest(messageText) &&
 		resolution.kind === "match" &&
@@ -470,26 +517,39 @@ export async function runViewsShow({
 	// to a surface this build doesn't have (e.g. task-coordinator without the
 	// coding plugin loaded) leaves the planner's explicit, registered target in
 	// place. So the model never needs to correctly GUESS the surface.
-	if (intentViewId && intentViewId !== target) {
-		const intentResolution = resolveView(intentViewId, views);
+	if (intentViewId) {
+		const intentResolution = resolveIntentViewInRegistry(intentViewId, views);
 		const intentRegistered =
 			intentResolution.kind !== "none" && intentResolution.kind !== "ambiguous";
-		if (intentRegistered || resolution.kind === "none") {
+		const intentTarget =
+			intentResolution.kind === "match"
+				? intentResolution.view.id
+				: intentViewId;
+		const resolvedTarget =
+			resolution.kind === "match" ? resolution.view.id : target;
+		if (
+			intentTarget !== resolvedTarget &&
+			(intentRegistered || resolution.kind === "none")
+		) {
 			resolution = intentResolution;
-			target = intentViewId;
+			target = intentTarget;
 		}
 	}
 
 	if (resolution.kind === "none") {
-		const text = `No view matches "${target}". Try \`action=list\` to see available views.`;
+		const text = `No view matches ${describeTargetReference(target)}. Try \`action=list\` to see available views.`;
 		await callback?.({ text });
-		return { success: false, text, data: { target } };
+		return {
+			success: false,
+			text,
+			data: { target: targetReferenceLogView(target) },
+		};
 	}
 
 	if (resolution.kind === "ambiguous") {
 		const candidates = resolution.candidates;
 		const list = candidates.map((v) => `- ${v.label} (${v.id})`).join("\n");
-		const text = `"${target}" matches multiple views:\n${list}\nWhich one did you mean?`;
+		const text = `${describeTargetReference(target)} matches multiple views:\n${list}\nWhich one did you mean?`;
 		await callback?.({ text });
 		return { success: false, text, data: { candidates } };
 	}
@@ -497,8 +557,9 @@ export async function runViewsShow({
 	const view = resolution.view;
 	const subview =
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
-	const canonicalTarget = rigidIntentViewId
-		? SHARED_NAV_TARGETS[rigidIntentViewId]
+	const canonicalViewId = rigidIntentViewId ?? explicitAliasViewId;
+	const canonicalTarget = canonicalViewId
+		? SHARED_NAV_TARGETS[canonicalViewId]
 		: undefined;
 	const navigationLabel =
 		canonicalTarget?.viewId === view.id ? canonicalTarget.label : view.label;
@@ -507,11 +568,8 @@ export async function runViewsShow({
 		viewType,
 		subview ?? undefined,
 		navigationLabel,
+		isRealtimeVoiceTurn(message) ? "originating-client" : undefined,
 	);
-
-	// Record the switch so the compose hook injects the acknowledgement provider
-	// (and the provider phrases it) on this turn's reply and the immediate next.
-	if (result.ok) markViewSwitch(message?.roomId);
 
 	logger.info(
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}${result.subview ? ` subview=${result.subview}` : ""}`,
@@ -522,9 +580,9 @@ export async function runViewsShow({
 		text: result.text,
 		...(result.ok
 			? {
-					// The natural Stage 1 acknowledgement or the action callback is
-					// the visible response; the raw terminal receipt only closes the
-					// turn and must not persist as a second assistant row.
+					// The typed callback above owns the visible completion. Keeping the
+					// terminal receipt internal prevents a second assistant row while
+					// preserving its verified text for non-transcript consumers.
 					transcriptVisibility: "internal" as const,
 					userFacingText: result.text,
 					verifiedUserFacing: true,
@@ -534,6 +592,7 @@ export async function runViewsShow({
 		values: {
 			mode: "show",
 			viewId: view.id,
+			...(view.path ? { viewPath: view.path } : {}),
 			viewType: view.viewType ?? viewType ?? "gui",
 			label: navigationLabel,
 			...(result.subview ? { subview: result.subview } : {}),

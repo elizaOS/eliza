@@ -263,7 +263,7 @@ describe("trajectory structural validation", () => {
   test("grades a proxy-served trajectory as evidenceGrade='proxy' (#13623)", () => {
     const proxied = completeTrajectory();
     for (const stage of proxied.stages) {
-      if (stage.model) stage.model.provider = "deterministic-llm-proxy";
+      if (stage.model) stage.model.provider = "deterministic-model-provider";
     }
     expect(deriveTrajectoryEvidenceGrade(proxied)).toBe("proxy");
   });
@@ -291,7 +291,7 @@ describe("trajectory structural validation", () => {
     // Proxy trajectory: requireLiveProvider turns it into a hard error.
     const proxied = completeTrajectory();
     for (const stage of proxied.stages) {
-      if (stage.model) stage.model.provider = "deterministic-llm-proxy";
+      if (stage.model) stage.model.provider = "deterministic-model-provider";
     }
     const gated = validateTrajectory(proxied, { requireLiveProvider: true });
     expect(gated.ok).toBe(false);

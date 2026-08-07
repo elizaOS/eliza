@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for run release check mjs. */
+/**
+ * Node wrapper that runs release-check.ts under the tsx loader from the repo
+ * root and forwards its exit status.
+ */
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

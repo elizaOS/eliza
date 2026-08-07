@@ -36,6 +36,10 @@ launcher; the evidence-driven split keeps that failure armed.
 - **Verifications** — a view whose pixels contain every label it's supposed to
   show earns a positive `verified`, retiring it from the manual `needs-eyeball`
   pile instead of leaving a human to squint at it.
+- **Semantic exemptions** — a platform-gated or unregistered-bundle surface
+  remains visibly `needs-eyeball` with a durable reason. Its observable browser
+  fallback is still asserted, and a newly loaded remote bundle invalidates the
+  exemption instead of inheriting it silently.
 - **Regressions** — a view the DOM audit passed (`good`/`needs-eyeball`) whose
   pixels are broken: blank paint, a developer-string leak, an unresolved
   placeholder, or a missing required label. These are the bugs the DOM metrics
@@ -48,7 +52,8 @@ launcher; the evidence-driven split keeps that failure armed.
 |------|------|
 | `scripts/mvp-visual-verify/ocr.mjs` | Shared OCR engine and pixel-diagnostic exports. Prefers packaged `tesseract.js`, with an explicit system `tesseract` fallback for debugging. |
 | `test/ui-smoke/ocr-content-rules.ts` | Pure, dependency-free verdict rules (proven blank / inconclusive OCR / dev-string / placeholder / expectation). Unit-tested; no OCR engine, no `page`, no fs. |
-| `test/ui-smoke/ocr-view-expectations.ts` | Per-builtin-view expectation manifest (required/forbidden on-screen labels), seeded from the real OCR of a healthy capture. |
+| `test/ui-smoke/ocr-view-expectations.ts` | Closed per-view semantic policy table: required/forbidden labels from stable view contracts, plus narrowly typed exemptions with fallback assertions. |
+| `test/ui-smoke/aesthetic-audit-view-cases.ts` | Shared built-in and plugin route registry consumed by capture and policy-coverage tests. |
 | `test/ui-smoke/ocr-triage-baseline.json` | `slug::viewport` of pixel-broken renders already tracked by an issue. Ratchet posture: known debt is reported but non-gating; a NEW pixel-broken render fails the gate. |
 | `scripts/ocr-triage.ts` | CLI: OCRs a capture dir, applies the rules, cross-checks `report.json`, writes `ocr-triage.json`, exits non-zero on a new regression. |
 | `test/audit/ocr-content-rules.test.ts` | Unit tests for the rules module. |
@@ -69,12 +74,20 @@ Exit `0` when no new regression; `1` when a view regressed off the baseline. Wir
 the invocation into the audit lane after the Playwright capture so a new
 pixel-broken render fails CI the way a new DOM `broken` already does.
 
-## Adding an expectation
+## Adding a view policy
 
-Add an entry to `VIEW_EXPECTATIONS` keyed by the capture slug. Prefer short,
-high-contrast chrome labels that OCR reliably; use `requireAny` for states that
-legitimately vary (time-of-day greeting, empty-vs-populated). A view with no entry
-is still checked for the universal defects (blank, dev-string, placeholder).
+Add an entry to `VIEW_OCR_POLICIES` keyed by the capture slug. Labels must come
+from durable component chrome or a deterministic audit fixture, not from the OCR
+transcript being judged. Prefer distinctive labels and use `requireAny` only for
+designed state alternatives. The registry coverage test fails if a captured slug
+has no policy or a retired slug remains in the table.
+
+Use `semantic-exemption` only when the browser capture structurally cannot own
+the view semantics: a native-only surface or a plugin with no registered remote
+bundle. State the reason, declare the exact fallback labels, and choose the typed
+applicability. An unregistered-bundle exemption fails as soon as capture reports
+bundle provenance, forcing a real semantic expectation for the newly observable
+surface.
 
 ## Baseline discipline
 

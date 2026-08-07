@@ -1,3 +1,4 @@
+/** Verifies WakeWordSection audioLevel listener lifecycle (FIX 2) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { cleanup, render, waitFor } from "@testing-library/react";

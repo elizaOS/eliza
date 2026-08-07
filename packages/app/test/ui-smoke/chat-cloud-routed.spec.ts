@@ -2,7 +2,7 @@
 // chat overlay on /chat). Flips the runtime-mode + cloud-status
 // fixtures to "cloud" and proves the overlay still drives a chat turn end to
 // end, and that the cloud routing surfaces where it is actually observable in
-// the keyless harness (the cloud voice/TTS proxy). Keyless against the stub.
+// the deterministic model-provider runtime (the cloud voice/TTS proxy). Keyless against the stub.
 //
 // SCOPE NOTE — there is NO distinct client-side "cloud proxy" route for the
 // chat SEND in this harness, and asserting one would be a larp. Cloud chat

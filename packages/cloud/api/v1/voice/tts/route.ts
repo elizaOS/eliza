@@ -1,7 +1,7 @@
-// Handles v1 cloud API v1 voice tts route traffic with route-local auth expectations.
+/** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * Voice TTS API (v1)
@@ -32,15 +32,16 @@ import {
   firstSentenceSnip,
 } from "@elizaos/shared/voice/first-sentence-snip";
 import { z } from "zod";
-import { userVoicesRepository } from "@/db/repositories/user-voices";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { CUSTOM_VOICE_TTS_MARKUP } from "@/lib/pricing-constants";
 import {
-  type BillingContext,
-  billFlatUsage,
-  reserveFlatUsageCredits,
-} from "@/lib/services/ai-billing";
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError,
+  getGenerativeExecutionContext,
+  getGenerativePricingCacheOptions,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
+import { CUSTOM_VOICE_TTS_MARKUP } from "@/lib/pricing-constants";
+import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
 import { calculateTTSCostFromCatalog } from "@/lib/services/ai-pricing";
 import { contentSafetyService } from "@/lib/services/content-safety";
 import {
@@ -48,7 +49,8 @@ import {
   InsufficientCreditsError,
 } from "@/lib/services/credits";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
-import { drainPcm16Stream, pcm16ToWav } from "@/lib/services/pcm16-wav";
+import { drainPcm16ToWav } from "@/lib/services/pcm16-wav";
+import { recordCustomVoiceUsage } from "@/lib/services/tts-custom-voice-usage";
 import {
   fingerprintCloudVoiceSettings,
   getCloudFirstLineCacheService,
@@ -129,7 +131,7 @@ function buildTtsObservabilityHeaders(
 
 /** ElevenLabs PCM sample rate we request for the WAV path (Hz). */
 const WAV_PCM_SAMPLE_RATE = 24_000;
-const MAX_WAV_PCM_BYTES = 64 * 1024 * 1024;
+const MAX_WAV_PCM_BYTES = 16 * 1024 * 1024;
 
 /**
  * Default Cartesia voice for un-pinned requests ("Skylar — Friendly Guide",
@@ -165,13 +167,21 @@ const MAX_CARTESIA_PCM_BYTES = 16 * 1024 * 1024;
  * @param request - Request body with text, voiceId, and optional modelId.
  * @returns Streaming audio response (audio/mpeg).
  */
-async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
+async function __hono_POST(c: AppContext) {
   let reservation: CreditReservation | undefined;
+  let settleUnknown: (() => Promise<unknown>) | undefined;
+  let markProviderDispatched: (() => Promise<void>) | undefined;
+  const request = c.req.raw;
+  const env = c.env;
   const requestStart = Date.now();
   const timings: TtsTimings = {};
 
   try {
-    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKeyId, admissionSnapshot } =
+      await requireGenerativeRouteCaller(c, {
+        compatibility: "raw",
+        rateLimitEndpoint: "strict",
+      });
     timings.authMs = Date.now() - requestStart;
     const admissionStart = Date.now();
 
@@ -240,7 +250,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       organizationId: user.organization_id,
       userId: user.id,
       text: `TTS text: ${text}`,
-      metadata: { type: "tts", model: modelId || "eleven_flash_v2_5", voiceId },
+      metadata: {
+        type: "tts",
+        model: modelId || "eleven_flash_v2_5",
+        voiceId,
+      },
     });
 
     logger.info(
@@ -390,31 +404,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       });
     }
 
-    let userVoiceId: string | null = null;
-    let voiceName: string | null = null;
-    let isCustomVoice = false;
-
-    if (voiceId) {
-      const voice = await userVoicesRepository.findByElevenLabsVoiceId(voiceId);
-
-      if (voice && voice.organizationId === user.organization_id) {
-        userVoiceId = voice.id;
-        voiceName = voice.name;
-        isCustomVoice = true;
-
-        userVoicesRepository.incrementUsageCount(voice.id).catch((err) =>
-          logger.error("[Voice TTS API] Failed to increment voice usage", {
-            voiceId: voice.id,
-            errorType: err instanceof Error ? err.name : "unknown",
-          }),
-        );
-
-        logger.info("[Voice TTS API] Tracking custom voice usage", {
-          userVoiceId: voice.id,
-          voiceName: voice.name,
-        });
-      }
-    }
+    // Arbitrary ElevenLabs ids are the custom-voice lane. Ownership metadata
+    // is enrichment only and is resolved with usage recording after response.
+    const isCustomVoice =
+      providerSelection.provider === "elevenlabs" &&
+      providerSelection.fallbackReason === "custom-or-elevenlabs-voice";
 
     // ---------------------------------------------------------------------
     // First-line cache hit path.
@@ -550,6 +544,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const ttsCost = await calculateTTSCostFromCatalog({
       model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
       characterCount: text.length,
+      ...(getGenerativePricingCacheOptions(c).cacheOnly
+        ? { cache: getGenerativePricingCacheOptions(c) }
+        : {}),
     });
     const estimatedCost = isCustomVoice
       ? Math.round(ttsCost.totalCost * CUSTOM_VOICE_TTS_MARKUP * 1_000_000) /
@@ -577,7 +574,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const billingContext: BillingContext = {
       organizationId: user.organization_id,
       userId: user.id,
-      apiKeyId: apiKey?.id ?? null,
+      apiKeyId,
       model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
       provider: "elevenlabs",
       billingSource: "elevenlabs",
@@ -589,11 +586,17 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     };
 
     try {
-      reservation = await reserveFlatUsageCredits(
-        billingContext,
-        billingCost,
-        ttsIdempotencyKey ? { idempotencyKey: ttsIdempotencyKey } : undefined,
-      );
+      const admission = await admitFlatGenerativeOperation({
+        c,
+        context: billingContext,
+        apiKeyId,
+        cost: billingCost,
+        admissionSnapshot,
+        idempotencyKey: ttsIdempotencyKey ?? undefined,
+      });
+      reservation = admission.reservation;
+      settleUnknown = admission.settleUnknown;
+      markProviderDispatched = admission.markProviderDispatched;
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
@@ -617,10 +620,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // ElevenLabs voice ids keep ElevenLabs. Billing below charges the same
     // ElevenLabs catalog rate either way, so the engine choice never changes
     // the user's price (Cartesia's upstream cost is lower, not higher).
-    let wav: Uint8Array | undefined;
+    let wav: Uint8Array<ArrayBuffer> | undefined;
     let audioStream: ReadableStream<Uint8Array> | undefined;
     let synthesisEngine: "elevenlabs" | "cartesia" = "elevenlabs";
     let cartesiaMp3ContentType = "audio/mpeg";
+    await markProviderDispatched?.();
     if (cartesiaEligible && cartesiaApiKey) {
       if (wantWav) {
         const cartesia = await synthesizeCartesiaWav({
@@ -686,8 +690,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         });
       }
       if (wantWav) {
-        wav = pcm16ToWav(
-          await drainPcm16Stream(audioStream, MAX_WAV_PCM_BYTES),
+        wav = await drainPcm16ToWav(
+          audioStream,
+          MAX_WAV_PCM_BYTES,
           WAV_PCM_SAMPLE_RATE,
         );
       }
@@ -701,25 +706,36 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       durationMs: duration,
     });
 
-    const billing = await billFlatUsage(
-      {
-        ...billingContext,
-        model:
-          synthesisEngine === "cartesia"
-            ? "cartesia/sonic-3.5"
-            : billingContext.model,
-        provider: synthesisEngine,
-      },
-      billingCost,
-      reservation,
-    );
-
-    (async () => {
+    let billingApplied = false;
+    const billingTask = (async () => {
       try {
+        const billing = await billFlatUsage(
+          {
+            ...billingContext,
+            model:
+              synthesisEngine === "cartesia"
+                ? "cartesia/sonic-3.5"
+                : billingContext.model,
+            provider: synthesisEngine,
+          },
+          billingCost,
+          reservation,
+        );
+        billingApplied = true;
+        let userVoiceId: string | null = null;
+        let voiceName: string | null = null;
+        if (voiceId && isCustomVoice) {
+          const voiceUsage = await recordCustomVoiceUsage({
+            elevenLabsVoiceId: voiceId,
+            organizationId: user.organization_id,
+          });
+          userVoiceId = voiceUsage.userVoiceId;
+          voiceName = voiceUsage.voiceName;
+        }
         await usageService.create({
           organization_id: user.organization_id,
           user_id: user.id,
-          api_key_id: apiKey?.id ?? null,
+          api_key_id: apiKeyId,
           type: "tts",
           // Attribute the engine that actually synthesized; the CHARGE always
           // comes from the ElevenLabs catalog rate (billingSource below), so a
@@ -750,12 +766,17 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           },
         });
       } catch (error) {
+        if (!billingApplied) await settleUnknown?.();
+        // error-policy:J7 billing and usage persistence run outside the audio
+        // response; conservative settlement remains observable on failure.
         logger.error("[Voice TTS API] Failed to create usage record", {
           errorType: error instanceof Error ? error.name : "unknown",
-          userVoiceId,
         });
       }
     })();
+    const executionCtx = getGenerativeExecutionContext(c);
+    if (executionCtx) executionCtx.waitUntil(billingTask);
+    else void billingTask;
 
     // ---------------------------------------------------------------------
     // First-line cache populate path.
@@ -836,7 +857,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // it. (Buffered, not streamed — fine for short TTS replies; the MP3 path
     // keeps its chunked streaming below.)
     if (wav !== undefined) {
-      return new Response(wav as unknown as BodyInit, {
+      return new Response(wav.buffer, {
         headers: {
           "Content-Type": "audio/wav",
           "Cache-Control": "no-cache",
@@ -856,6 +877,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       },
     });
   } catch (error) {
+    // error-policy:J1 translate provider, billing, and validation failures at
+    // the authenticated HTTP boundary without leaking provider response data.
     // Redaction boundary: provider SDK errors can embed the synthesis text or
     // provider response bodies in their message — log only the error type.
     logger.error("[Voice TTS API] Request failed", {
@@ -863,12 +886,21 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     });
 
     if (reservation) {
-      await reservation.reconcile(0);
-      logger.info("[Voice TTS API] Refunded credits after error");
+      const release = reservation.reconcile(0);
+      const executionCtx = getGenerativeExecutionContext(c);
+      if (executionCtx) executionCtx.waitUntil(release);
+      else await release;
+      logger.info("[Voice TTS API] Released credits after error");
     }
 
-    if (error instanceof ApiError) {
-      return Response.json(error.toJSON(), { status: error.status });
+    const apiError =
+      error instanceof ApiError ? error : asGenerativeCacheApiError(error);
+    if (apiError) {
+      const serialized =
+        "toJSON" in apiError && typeof apiError.toJSON === "function"
+          ? apiError.toJSON()
+          : { error: apiError.message };
+      return Response.json(serialized, { status: apiError.status ?? 500 });
     }
 
     if (error instanceof CartesiaRestTtsError) {
@@ -952,5 +984,5 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.post("/", async (c) => __hono_POST(c.req.raw, c.env));
+__hono_app.post("/", __hono_POST);
 export default __hono_app;

@@ -94,7 +94,7 @@ export async function handleSubscriptionRoutes(
   if (method === "GET" && pathname === "/api/subscription/status") {
     try {
       const { getSubscriptionStatus } = await loadSubscriptionAuth();
-      const baseRows = getSubscriptionStatus();
+      const baseRows = await getSubscriptionStatus();
       // Join each per-account row with its rich LinkedAccountConfig
       // entry from `eliza.json` (priority, enabled, health, usage).
       // CLI / setup-token / Claude Code rows have synthetic accountIds

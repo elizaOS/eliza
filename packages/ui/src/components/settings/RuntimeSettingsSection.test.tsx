@@ -1,3 +1,4 @@
+/** Verifies RuntimeSettingsSection IA through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * RuntimeSettingsSection is now a status/entry-point surface. My Runtimes owns

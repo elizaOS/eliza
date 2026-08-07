@@ -1,3 +1,4 @@
+/** Verifies PluginsView — native drag-to-reorder through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

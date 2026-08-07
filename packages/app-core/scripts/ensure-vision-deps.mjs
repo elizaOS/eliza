@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for ensure vision deps mjs. */
+/**
+ * Best-effort installer for the native camera/vision tools the runtime shells
+ * out to: imagesnap via Homebrew on macOS, fswebcam via apt on Linux (skipped
+ * when sudo needs a TTY), ffmpeg via winget on Windows; prints manual
+ * instructions when a package manager is unavailable.
+ */
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import os from "node:os";
@@ -99,7 +104,6 @@ function which(cmd) {
 
 function installMacOs() {
   if (which("imagesnap")) {
-    console.log(`  ${green(logPrefix)} ${dim("imagesnap installed")}`);
     return;
   }
 
@@ -123,7 +127,6 @@ function installMacOs() {
 
 function installLinux() {
   if (which("fswebcam")) {
-    console.log(`  ${green(logPrefix)} ${dim("fswebcam installed")}`);
     return;
   }
 
@@ -166,7 +169,6 @@ function installLinux() {
 
 function installWindows() {
   if (which("ffmpeg")) {
-    console.log(`  ${green(logPrefix)} ${dim("ffmpeg installed")}`);
     return;
   }
 

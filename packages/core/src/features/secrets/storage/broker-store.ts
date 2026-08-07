@@ -1,29 +1,8 @@
 /**
- * Broker-backed non-decrypting secret storage (issue #11536, phase E4).
- *
- * ============================================================================
- *  NON-DECRYPTING INVARIANT (the whole point of this file)
- * ----------------------------------------------------------------------------
- *  This store NEVER returns a plaintext secret value and NEVER calls the local
- *  AES-GCM decrypt path (`crypto/encryption.ts`). Its `get`/read path returns a
- *  {@link SecretHandle} \u2014 a reference to the secret \u2014 serialized as an opaque,
- *  detectably-non-credential string. The real credential is resolved only at
- *  USE-TIME, outside the runtime, through the already-shipped seams: the model
- *  gateway (E1/E2) for provider keys and the credential proxy (E3) for
- *  arbitrary API credentials. The broker injects the credential outbound
- *  (header-only) and the runtime never holds it.
- *
- *  This is the "eliza enterprise" guarantee: on shared/cloud infra the operator
- *  can prove the runtime CANNOT exfiltrate tenant credentials, because a broker
- *  store literally has no code path that yields plaintext. There is
- *  deliberately no `KeyManager`, no `decrypt`, no encryption import in this
- *  module \u2014 if plaintext isn't reachable, it can't leak.
- * ============================================================================
- *
- * Vendor-neutral: the store talks to an {@link ISecretBrokerClient}. Steward is
- * the reference broker; this file has no branded import.
- *
- * @module features/secrets/storage/broker-store
+ * Non-decrypting secret storage backed by a vendor-neutral broker client.
+ * Reads expose serialized references only; credential material is resolved at
+ * use time outside the runtime. Broker failures always throw so an outage can
+ * never be mistaken for a missing secret or an empty metadata set.
  */
 
 import { logger } from "../../../logger.ts";
@@ -76,7 +55,8 @@ export class BrokerSecretStorage extends BaseSecretStorage {
 		try {
 			return await this.broker.hasSecret(key, context);
 		} catch (error) {
-			return this.onBrokerError(error, false);
+			// error-policy:J2 normalize broker failures while preserving the cause
+			throw this.brokerError(error);
 		}
 	}
 
@@ -90,7 +70,8 @@ export class BrokerSecretStorage extends BaseSecretStorage {
 		try {
 			handle = await this.broker.issueHandle(key, context);
 		} catch (error) {
-			return this.onBrokerError(error, null);
+			// error-policy:J2 normalize broker failures while preserving the cause
+			throw this.brokerError(error);
 		}
 		if (!handle) return null;
 		// Defense-in-depth: never let a misbehaving broker smuggle a raw value
@@ -127,7 +108,8 @@ export class BrokerSecretStorage extends BaseSecretStorage {
 		try {
 			return await this.broker.storeSecret(key, value, context);
 		} catch (error) {
-			return this.onBrokerError(error, false);
+			// error-policy:J2 normalize broker failures while preserving the cause
+			throw this.brokerError(error);
 		}
 	}
 
@@ -138,7 +120,8 @@ export class BrokerSecretStorage extends BaseSecretStorage {
 		try {
 			return await this.broker.deleteSecret(key, context);
 		} catch (error) {
-			return this.onBrokerError(error, false);
+			// error-policy:J2 normalize broker failures while preserving the cause
+			throw this.brokerError(error);
 		}
 	}
 
@@ -150,7 +133,8 @@ export class BrokerSecretStorage extends BaseSecretStorage {
 		try {
 			return await this.broker.listSecrets(context);
 		} catch (error) {
-			return this.onBrokerError(error, {} as SecretMetadata);
+			// error-policy:J2 normalize broker failures while preserving the cause
+			throw this.brokerError(error);
 		}
 	}
 
@@ -174,21 +158,9 @@ export class BrokerSecretStorage extends BaseSecretStorage {
 		return false;
 	}
 
-	/**
-	 * Central fail-closed vs fail-soft decision. Under strict mode any broker
-	 * error is fatal (throw) so the caller cannot degrade to a plaintext-capable
-	 * local store; otherwise the error is logged and the soft default returned.
-	 */
-	private onBrokerError<T>(error: unknown, soft: T): T {
-		if (this.config.strict) {
-			if (error instanceof SecretsBrokerUnavailableError) throw error;
-			throw new SecretsBrokerUnavailableError(this.config.url, error);
-		}
-		logger.warn(
-			`[BrokerSecretStorage] Broker error (non-strict, returning soft default): ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-		);
-		return soft;
+	private brokerError(error: unknown): SecretsBrokerUnavailableError {
+		return error instanceof SecretsBrokerUnavailableError
+			? error
+			: new SecretsBrokerUnavailableError(this.config.url, error);
 	}
 }

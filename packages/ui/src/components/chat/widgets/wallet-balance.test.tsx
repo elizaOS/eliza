@@ -1,3 +1,4 @@
+/** Verifies WalletBalanceWidget (price-only, #10706) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // WalletBalanceWidget (price-only): loading placeholder until data resolves,

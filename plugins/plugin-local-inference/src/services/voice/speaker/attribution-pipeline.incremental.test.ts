@@ -298,7 +298,6 @@ describe("VoiceAttributionPipeline speculative-match promise lifecycle", () => {
 		// The rejection surfaced through the diagnostic sink...
 		expect(reported).toHaveLength(1);
 		const report = reported[0];
-		expect(report).toBeDefined();
 		if (!report) throw new Error("Expected a speculative-match report");
 		expect(report.scope).toBe("VoiceAttributionPipeline.speculativeMatch");
 		expect((report.error as Error).message).toBe(

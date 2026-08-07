@@ -57,10 +57,10 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
-    "@elizaos/plugin-google": "workspace:*",
+    "@elizaos/plugin-google-workspace": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "0.45.2",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {

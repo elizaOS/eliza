@@ -39,6 +39,7 @@ export interface LifeOpsCalendarEventAttendee {
 }
 
 export type LifeOpsCalendarProvider =
+  | "eliza"
   | "google"
   | "microsoft"
   | "apple_calendar"

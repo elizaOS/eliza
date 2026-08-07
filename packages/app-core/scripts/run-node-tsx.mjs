@@ -1,8 +1,17 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for run node tsx mjs. */
+/**
+ * Launches a script under Node with the tsx loader, resolving the node binary
+ * through run-node-runtime's candidate search (npm_node_execpath, PATH, common
+ * install paths).
+ */
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import {
+  parseRunNodeTsxArgs,
+  signalChildProcessTree,
+  startParentOrphanWatchdog,
+} from "./lib/run-node-tsx-lifecycle.mjs";
 import { resolveNodeExecPathFromCandidates } from "./run-node-runtime.mjs";
 
 function resolveNodeCmd() {
@@ -26,7 +35,9 @@ function resolveNodeCmd() {
   });
 }
 
-const args = process.argv.slice(2);
+const { childArgs: args, exitWithParent } = parseRunNodeTsxArgs(
+  process.argv.slice(2),
+);
 if (args.length === 0) {
   console.error("[run-node-tsx] Missing script path");
   process.exit(1);
@@ -58,6 +69,7 @@ const nodeArgs = [
 
 const child = spawn(resolveNodeCmd(), nodeArgs, {
   cwd: process.cwd(),
+  detached: exitWithParent && process.platform !== "win32",
   env: withWorkspaceNodePath(process.env),
   stdio: "inherit",
 });
@@ -74,21 +86,36 @@ let forceKillTimer = null;
 function forwardSignal(signal) {
   forwardedSignal = signal;
   if (child.exitCode == null && child.signalCode == null) {
-    child.kill(signal);
+    if (exitWithParent) {
+      signalChildProcessTree({ child, signal });
+    } else {
+      child.kill(signal);
+    }
     forceKillTimer = setTimeout(() => {
       if (child.exitCode == null && child.signalCode == null) {
-        child.kill("SIGKILL");
+        if (exitWithParent) {
+          signalChildProcessTree({ child, signal: "SIGKILL" });
+        } else {
+          child.kill("SIGKILL");
+        }
       }
     }, 10_000);
     forceKillTimer.unref?.();
   }
 }
 
+const parentWatchdog = exitWithParent
+  ? startParentOrphanWatchdog({
+      onOrphan: () => forwardSignal("SIGTERM"),
+    })
+  : null;
+
 for (const signal of Object.keys(SIGNAL_EXIT_CODE)) {
   process.once(signal, () => forwardSignal(signal));
 }
 
 child.on("error", (error) => {
+  parentWatchdog?.stop();
   console.error(
     `[run-node-tsx] Failed to spawn Node: ${error instanceof Error ? error.message : String(error)}`,
   );
@@ -96,6 +123,7 @@ child.on("error", (error) => {
 });
 
 child.on("exit", (code, signal) => {
+  parentWatchdog?.stop();
   if (forceKillTimer) {
     clearTimeout(forceKillTimer);
     forceKillTimer = null;

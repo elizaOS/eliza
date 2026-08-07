@@ -1,4 +1,4 @@
-// Exercises the gateway-webhook build forward body path with deterministic cloud service fixtures.
+/** Exercises gateway-webhook forwarding metadata with deterministic fixtures. */
 import { describe, expect, test } from "bun:test";
 import {
   buildForwardBody,
@@ -16,6 +16,9 @@ describe("buildForwardBody", () => {
       platformName: "telegram",
       senderName: "Alice",
       chatId: "42",
+      accountId: "bot:main",
+      platformRecordId: "message-7",
+      chatType: "private",
     };
     const body = buildForwardBody("user-001", "Hello", options);
     expect(body).toEqual({
@@ -24,6 +27,9 @@ describe("buildForwardBody", () => {
       platformName: "telegram",
       senderName: "Alice",
       chatId: "42",
+      accountId: "bot:main",
+      platformRecordId: "message-7",
+      chatType: "private",
     });
   });
 

@@ -70,9 +70,12 @@ function writeCodexAuth(dir: string, refresh: string): string {
   return p;
 }
 
-function expectAdoptError(fn: () => unknown, code: string): ElizaError {
+async function expectAdoptError(
+  fn: () => Promise<unknown>,
+  code: string,
+): Promise<ElizaError> {
   try {
-    fn();
+    await fn();
   } catch (err) {
     expect(err).toBeInstanceOf(ElizaError);
     expect((err as ElizaError).code).toBe(code);
@@ -113,11 +116,11 @@ afterEach(() => {
 });
 
 describe("success path", () => {
-  it("adopts the login, retires the source, and stores exactly the retired bytes", () => {
+  it("adopts the login, retires the source, and stores exactly the retired bytes", async () => {
     const codexHome = path.join(home, "codex");
     const authPath = writeCodexAuth(codexHome, "refresh-1");
 
-    const result = adoptCodexCliLogin({ codexHome, accountId: "pool-a" });
+    const result = await adoptCodexCliLogin({ codexHome, accountId: "pool-a" });
 
     // Source is gone from the CLI read path; the retired copy exists.
     expect(existsSync(authPath)).toBe(false);
@@ -128,31 +131,31 @@ describe("success path", () => {
     const retired = JSON.parse(readFileSync(result.retiredTo, "utf-8")) as {
       tokens: { access_token: string; refresh_token: string };
     };
-    const account = loadAccount("openai-codex", "pool-a");
+    const account = await loadAccount("openai-codex", "pool-a");
     expect(account?.credentials.access).toBe(retired.tokens.access_token);
     expect(account?.credentials.refresh).toBe(retired.tokens.refresh_token);
     expect(account?.credentials.idToken).toBe("id.token.codex");
     expect(result.organizationId).toBe("acct-abc");
   });
 
-  it("adopts from the default CODEX_HOME when no explicit home is given", () => {
+  it("adopts from the default CODEX_HOME when no explicit home is given", async () => {
     process.env.CODEX_HOME = path.join(home, ".codex");
     writeCodexAuth(process.env.CODEX_HOME, "rt.default-home");
 
-    adoptCodexCliLogin();
+    await adoptCodexCliLogin();
 
-    expect(loadAccount("openai-codex", "default")?.credentials.refresh).toBe(
-      "rt.default-home",
-    );
+    expect(
+      (await loadAccount("openai-codex", "default"))?.credentials.refresh,
+    ).toBe("rt.default-home");
   });
 
-  it("repeated adoption preserves every retired artifact (no-clobber retirement)", () => {
+  it("repeated adoption preserves every retired artifact (no-clobber retirement)", async () => {
     const codexHome = path.join(home, "codex");
     writeCodexAuth(codexHome, "refresh-first");
-    const first = adoptCodexCliLogin({ codexHome, accountId: "pool-a" });
+    const first = await adoptCodexCliLogin({ codexHome, accountId: "pool-a" });
 
     writeCodexAuth(codexHome, "refresh-second");
-    const second = adoptCodexCliLogin({
+    const second = await adoptCodexCliLogin({
       codexHome,
       accountId: "pool-a",
       overwrite: true,
@@ -163,9 +166,9 @@ describe("success path", () => {
     expect(readFileSync(first.retiredTo, "utf-8")).toContain("refresh-first");
     expect(readFileSync(second.retiredTo, "utf-8")).toContain("refresh-second");
     // The pool holds the latest adoption.
-    expect(loadAccount("openai-codex", "pool-a")?.credentials.refresh).toBe(
-      "refresh-second",
-    );
+    expect(
+      (await loadAccount("openai-codex", "pool-a"))?.credentials.refresh,
+    ).toBe("refresh-second");
   });
 });
 
@@ -182,36 +185,39 @@ describe("account id boundary", () => {
     ["control char", "a\u0000b"],
     ["overlong", "a".repeat(200)],
     ["leading dot", ".hidden"],
-  ])("rejects %s account id before any filesystem effect", (_label, id) => {
-    const codexHome = path.join(home, "codex");
-    const authPath = writeCodexAuth(codexHome, "refresh-1");
+  ])(
+    "rejects %s account id before any filesystem effect",
+    async (_label, id) => {
+      const codexHome = path.join(home, "codex");
+      const authPath = writeCodexAuth(codexHome, "refresh-1");
 
-    expectAdoptError(
-      () => adoptCodexCliLogin({ codexHome, accountId: id }),
-      "adopt_codex.invalid_account_id",
-    );
+      await expectAdoptError(
+        async () => adoptCodexCliLogin({ codexHome, accountId: id }),
+        "adopt_codex.invalid_account_id",
+      );
 
-    // The source was never touched.
-    expect(existsSync(authPath)).toBe(true);
-    expect(retiredFilesIn(codexHome)).toHaveLength(0);
-  });
+      // The source was never touched.
+      expect(existsSync(authPath)).toBe(true);
+      expect(retiredFilesIn(codexHome)).toHaveLength(0);
+    },
+  );
 });
 
 describe("source validation", () => {
-  it("classifies a missing source as no_source", () => {
-    expectAdoptError(
-      () => adoptCodexCliLogin({ codexHome: path.join(home, "nope") }),
+  it("classifies a missing source as no_source", async () => {
+    await expectAdoptError(
+      async () => adoptCodexCliLogin({ codexHome: path.join(home, "nope") }),
       "adopt_codex.no_source",
     );
   });
 
-  it("classifies a permission failure as source_stat_failed, not absence", () => {
+  it("classifies a permission failure as source_stat_failed, not absence", async () => {
     const codexHome = path.join(home, "codex");
     writeCodexAuth(codexHome, "refresh-1");
     chmodSync(codexHome, 0o000);
     try {
-      expectAdoptError(
-        () => adoptCodexCliLogin({ codexHome }),
+      await expectAdoptError(
+        async () => adoptCodexCliLogin({ codexHome }),
         "adopt_codex.source_stat_failed",
       );
     } finally {
@@ -219,7 +225,7 @@ describe("source validation", () => {
     }
   });
 
-  it("refuses a symlinked auth.json and consumes nothing", () => {
+  it("refuses a symlinked auth.json and consumes nothing", async () => {
     const codexHome = path.join(home, "codex");
     mkdirSync(codexHome, { recursive: true });
     const real = path.join(home, "elsewhere.json");
@@ -227,23 +233,23 @@ describe("source validation", () => {
     const link = path.join(codexHome, "auth.json");
     symlinkSync(real, link);
 
-    expectAdoptError(
-      () => adoptCodexCliLogin({ codexHome }),
+    await expectAdoptError(
+      async () => adoptCodexCliLogin({ codexHome }),
       "adopt_codex.not_regular_file",
     );
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(existsSync(real)).toBe(true);
-    expect(loadAccount("openai-codex", "default")).toBeNull();
+    expect(await loadAccount("openai-codex", "default")).toBeNull();
   });
 
-  it("restores the source when it is not valid JSON", () => {
+  it("restores the source when it is not valid JSON", async () => {
     const codexHome = path.join(home, "codex");
     mkdirSync(codexHome, { recursive: true });
     const authPath = path.join(codexHome, "auth.json");
     writeFileSync(authPath, "{not json");
 
-    expectAdoptError(
-      () => adoptCodexCliLogin({ codexHome }),
+    await expectAdoptError(
+      async () => adoptCodexCliLogin({ codexHome }),
       "adopt_codex.unreadable",
     );
     expect(existsSync(authPath)).toBe(true);
@@ -267,59 +273,59 @@ describe("source validation", () => {
       "empty refresh token",
       JSON.stringify({ tokens: { access_token: "a", refresh_token: "" } }),
     ],
-  ])("restores the source on %s", (_label, body) => {
+  ])("restores the source on %s", async (_label, body) => {
     const codexHome = path.join(home, "codex");
     mkdirSync(codexHome, { recursive: true });
     const authPath = path.join(codexHome, "auth.json");
     writeFileSync(authPath, body);
 
-    expectAdoptError(
-      () => adoptCodexCliLogin({ codexHome }),
+    await expectAdoptError(
+      async () => adoptCodexCliLogin({ codexHome }),
       "adopt_codex.invalid_tokens",
     );
     // Full rollback: source back in place, nothing retired, nothing pooled.
     expect(existsSync(authPath)).toBe(true);
     expect(retiredFilesIn(codexHome)).toHaveLength(0);
-    expect(loadAccount("openai-codex", "default")).toBeNull();
+    expect(await loadAccount("openai-codex", "default")).toBeNull();
   });
 });
 
 describe("pool collision", () => {
-  it("refuses to overwrite an existing pool account and leaves the source untouched", () => {
+  it("refuses to overwrite an existing pool account and leaves the source untouched", async () => {
     const codexHome = path.join(home, "codex");
     writeCodexAuth(codexHome, "refresh-1");
-    adoptCodexCliLogin({ codexHome, accountId: "pool-a" });
+    await adoptCodexCliLogin({ codexHome, accountId: "pool-a" });
     const authPath = writeCodexAuth(codexHome, "refresh-2");
 
-    expectAdoptError(
-      () => adoptCodexCliLogin({ codexHome, accountId: "pool-a" }),
+    await expectAdoptError(
+      async () => adoptCodexCliLogin({ codexHome, accountId: "pool-a" }),
       "adopt_codex.account_exists",
     );
     expect(existsSync(authPath)).toBe(true);
-    expect(loadAccount("openai-codex", "pool-a")?.credentials.refresh).toBe(
-      "refresh-1",
-    );
+    expect(
+      (await loadAccount("openai-codex", "pool-a"))?.credentials.refresh,
+    ).toBe("refresh-1");
   });
 });
 
 describe("fault injection", () => {
-  it("hard-fails retire when the source dir is not writable, committing nothing", () => {
+  it("hard-fails retire when the source dir is not writable, committing nothing", async () => {
     const codexHome = path.join(home, "codex");
     const authPath = writeCodexAuth(codexHome, "refresh-1");
     chmodSync(codexHome, 0o555);
     try {
-      expectAdoptError(
-        () => adoptCodexCliLogin({ codexHome }),
+      await expectAdoptError(
+        async () => adoptCodexCliLogin({ codexHome }),
         "adopt_codex.retire_failed",
       );
     } finally {
       chmodSync(codexHome, 0o755);
     }
     expect(existsSync(authPath)).toBe(true);
-    expect(loadAccount("openai-codex", "default")).toBeNull();
+    expect(await loadAccount("openai-codex", "default")).toBeNull();
   });
 
-  it("restores the source when the pool write fails", () => {
+  it("restores the source when the pool write fails", async () => {
     const codexHome = path.join(home, "codex");
     const authPath = writeCodexAuth(codexHome, "refresh-1");
     // Seed the auth-store dir, then drop its write bit so saveAccount fails.
@@ -327,8 +333,8 @@ describe("fault injection", () => {
     mkdirSync(authStoreDir, { recursive: true });
     chmodSync(authStoreDir, 0o555);
     try {
-      const err = expectAdoptError(
-        () => adoptCodexCliLogin({ codexHome }),
+      const err = await expectAdoptError(
+        async () => adoptCodexCliLogin({ codexHome }),
         "adopt_codex.pool_write_failed",
       );
       expect(err.context?.restored).toBe(true);
@@ -340,7 +346,7 @@ describe("fault injection", () => {
     expect(retiredFilesIn(codexHome)).toHaveLength(0);
   });
 
-  it("restoreRetiredSource refuses to clobber an occupied original path", () => {
+  it("restoreRetiredSource refuses to clobber an occupied original path", async () => {
     const dir = path.join(home, "restore");
     mkdirSync(dir, { recursive: true });
     const retired = path.join(dir, "auth.json.adopted-test");
@@ -356,7 +362,7 @@ describe("fault injection", () => {
     expect(readFileSync(retired, "utf-8")).toBe("retired-bytes");
   });
 
-  it("restoreRetiredSource moves the retired file back when the path is free", () => {
+  it("restoreRetiredSource moves the retired file back when the path is free", async () => {
     const dir = path.join(home, "restore");
     mkdirSync(dir, { recursive: true });
     const retired = path.join(dir, "auth.json.adopted-test");
@@ -427,12 +433,12 @@ describe("two-process concurrency", () => {
 
     try {
       await writerReady;
-      const error = expectAdoptError(
-        () => adoptCodexCliLogin({ codexHome, accountId: "race" }),
+      const error = await expectAdoptError(
+        async () => adoptCodexCliLogin({ codexHome, accountId: "race" }),
         "adopt_codex.concurrent_refresher",
       );
       expect(existsSync(String(error.context?.retiredTo))).toBe(true);
-      expect(loadAccount("openai-codex", "race")).toBeNull();
+      expect(await loadAccount("openai-codex", "race")).toBeNull();
       expect(await writerDone).toBe(0);
     } finally {
       if (writer.exitCode === null) writer.kill();

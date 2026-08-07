@@ -66,8 +66,6 @@ export type BuiltinTab =
   | "triggers"
   | "plugins"
   | "skills"
-  | "advanced"
-  | "fine-tuning"
   | "trajectories"
   | "transcripts"
   | "relationships"
@@ -93,7 +91,6 @@ export const APPS_TOOL_TABS = [
   "my-apps",
   "plugins",
   "skills",
-  "fine-tuning",
   "trajectories",
   "transcripts",
   "relationships",
@@ -102,8 +99,6 @@ export const APPS_TOOL_TABS = [
   "runtime",
   "database",
   "logs",
-  // Legacy hidden alias for old /advanced routes.
-  "advanced",
 ] as const satisfies readonly Tab[];
 
 export interface TabGroup {
@@ -380,8 +375,6 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   files: "/apps/files",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
-  advanced: "/apps/fine-tuning",
-  "fine-tuning": "/apps/fine-tuning",
   trajectories: "/apps/trajectories",
   transcripts: "/apps/transcripts",
   relationships: "/apps/relationships",
@@ -639,10 +632,6 @@ export function titleForTab(tab: Tab): string {
       return "Plugins";
     case "skills":
       return "Skills";
-    case "advanced":
-      return "Fine-Tuning";
-    case "fine-tuning":
-      return "Fine-Tuning";
     case "trajectories":
       return "Trajectories";
     case "transcripts":

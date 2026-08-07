@@ -3,13 +3,9 @@ name: App Aesthetic Audit
 # Walk EVERY app view (built-in tabs + plugin view bundles) at desktop + mobile
 # against the deterministic keyless stub stack, capture rest + hover screenshots,
 # run the blank/one-color analyzer + brand-color (no-blue / orange-hover) checks,
-# and write per-view verdicts + a contact sheet + report.json.
-#
-# This is the agent app's equivalent of cloud-frontend's `audit:cloud`. Until
-# this workflow existed the audit ran in NO CI lane (honor-system per the PR
-# template, #9304). It runs the strict verifier and uploads all artifacts, but
-# remains advisory for PR throughput (#14051): the required `ci-ok` gate owns
-# merge blocking, while this lane supplies visual evidence for reviewers.
+# and write per-view verdicts + a contact sheet + report.json. Both the DOM
+# verdict and pixel OCR fail closed: a green check means the underlying
+# reports passed, not merely that artifacts were uploaded for later review.
 
 on:
   pull_request:
@@ -36,9 +32,10 @@ env:
 
 jobs:
   aesthetic-audit:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 45
-    continue-on-error: true
+    # Pull requests execute contributor-controlled install and browser code, so
+    # this lane must never inherit credentials or residue from a persistent host.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
     env:
       # Keyless: the ui-smoke stub is forced when CI=true (shouldForceStubStack).
       ELIZA_UI_SMOKE_FORCE_STUB: "1"
@@ -56,7 +53,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -65,9 +62,6 @@ jobs:
         run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Run all-views aesthetic audit
-        # Strict verifier, advisory check (#14051): failures stay visible in
-        # logs/artifacts without blocking the required ci-ok merge gate.
-        continue-on-error: true
         env:
           ELIZA_AUDIT_APP_STRICT: "1"
           ELIZA_AUDIT_APP_STRICT_NEEDS_WORK: "1"
@@ -86,7 +80,6 @@ jobs:
     needs: aesthetic-audit
     runs-on: macos-15
     timeout-minutes: 20
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -101,13 +94,12 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
       - name: Download aesthetic-audit artifacts
-        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: app-aesthetic-audit-output
@@ -117,7 +109,6 @@ jobs:
         run: mkdir -p packages/app/aesthetic-audit-output
 
       - name: Run pixel OCR content audit
-        continue-on-error: true
         env:
           ELIZA_MVP_OCR_ENGINE: packaged
         run: bun run --cwd packages/app audit:ocr

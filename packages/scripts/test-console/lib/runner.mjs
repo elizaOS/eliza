@@ -167,7 +167,7 @@ export class RunManager extends EventEmitter {
     return {
       TEST_LANE: "pr",
       ELIZA_LIVE_TEST: "0",
-      SCENARIO_USE_LLM_PROXY: "1",
+      SCENARIO_USE_DETERMINISTIC_MODEL: "1",
     };
   }
 

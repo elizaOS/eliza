@@ -13,7 +13,7 @@
  * used here are: REPLY, MESSAGE, POST, CALENDAR, OWNER_TODOS, OWNER_GOALS,
  * OWNER_ROUTINES, OWNER_REMINDERS, OWNER_HEALTH, OWNER_SCREENTIME,
  * OWNER_FINANCES, ENTITY, BLOCK, CREDENTIALS, PERSONAL_ASSISTANT,
- * RESOLVE_REQUEST, REMOTE_DESKTOP, VOICE_CALL, COMPUTER_USE, BROWSER, and
+ * RESOLVE_REQUEST, VOICE_CALL, COMPUTER_USE, BROWSER, and
  * SCHEDULE_FOLLOW_UP. Retired names like LIFE/CHECKIN/PROFILE/RELATIONSHIP/
  * HEALTH/SCREEN_TIME/APP_BLOCK/WEBSITE_BLOCK/BOOK_TRAVEL/AUTOFILL/
  * PASSWORD_MANAGER/SUBSCRIPTIONS/DEVICE_INTENT must not appear as
@@ -617,23 +617,6 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["password", "credentials", "standard"],
   },
 
-  // ─── Remote desktop (REMOTE_DESKTOP action=start) ─────────────────────
-  {
-    id: "remote-desktop-start-session",
-    userMessage: "start a remote desktop session for my phone; confirmed: true",
-    expectedAction: "REMOTE_DESKTOP",
-    expectedParams: { action: "start" },
-    tags: ["remote-desktop", "standard"],
-  },
-  {
-    id: "remote-desktop-connect-from-phone",
-    userMessage:
-      "start a remote desktop session so I can connect to this machine from my phone; confirmed: true",
-    expectedAction: "REMOTE_DESKTOP",
-    expectedParams: { action: "start" },
-    tags: ["remote-desktop", "standard"],
-  },
-
   // ─── Cross-device broadcast (MESSAGE) ─────────────────────────────────
   // DEVICE_INTENT was retired; cross-device reminder broadcasts go through
   // MESSAGE (or OWNER_REMINDERS for routine reminders).
@@ -656,33 +639,6 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["intent-sync", "standard"],
     notes:
       "DEVICE_INTENT retired; routine reminders belong to OWNER_REMINDERS or OWNER_ROUTINES.",
-  },
-
-  // ─── Calendly availability + link (CALENDAR action=check_availability) ─
-  {
-    id: "calendly-check-availability",
-    userMessage:
-      "check my Calendly availability for https://api.calendly.com/event_types/abc from 2026-04-20 to 2026-04-24",
-    expectedAction: "CALENDAR",
-    expectedParams: {
-      action: "check_availability",
-      eventTypeUri: "https://api.calendly.com/event_types/abc",
-      startDate: "2026-04-20",
-      endDate: "2026-04-24",
-    },
-    tags: ["calendly", "scheduling", "standard"],
-  },
-  {
-    id: "calendly-create-single-use-link",
-    userMessage:
-      "create a single-use Calendly booking link for https://api.calendly.com/event_types/abc",
-    expectedAction: "CALENDAR",
-    expectedParams: {
-      action: "propose_times",
-      eventTypeUri: "https://api.calendly.com/event_types/abc",
-    },
-    tags: ["calendly", "scheduling", "standard"],
-    notes: "Calendly provider-only single-use-link routes through CALENDAR.",
   },
 
   // ─── Owner health (OWNER_HEALTH action=today|trend|...) ───────────────

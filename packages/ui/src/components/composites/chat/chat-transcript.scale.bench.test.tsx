@@ -1,3 +1,4 @@
+/** Verifies ChatTranscript scale render benchmark through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Transcript-scale render benchmark (perf/chat-render-benchmarks). Complements

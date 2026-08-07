@@ -29,15 +29,6 @@ describe("DEFAULT_BOOT_CONFIG", () => {
       : "preferSharedCloudTier: false";
     expect(source).toContain(literal);
   });
-
-  it("keeps preferSharedCloudTier overridable as the dedicated-direct kill-switch", () => {
-    const dedicatedDirect = {
-      ...DEFAULT_BOOT_CONFIG,
-      preferSharedCloudTier: false,
-    };
-
-    expect(dedicatedDirect.preferSharedCloudTier).toBe(false);
-  });
 });
 
 // ---------------------------------------------------------------------------

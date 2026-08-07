@@ -154,6 +154,7 @@ export async function buildPluginSql(
       "@electric-sql/pglite",
       "@electric-sql/pglite/vector",
       "@electric-sql/pglite/contrib/fuzzystrmatch",
+      "@electric-sql/pglite/contrib/pg_trgm",
       "drizzle-orm",
       "drizzle-orm/pglite",
     ],

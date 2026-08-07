@@ -1,3 +1,4 @@
+/** Verifies isShellReservedStorageKey through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // In-process host-realm broker (#14179): each of the four remaining mutation

@@ -228,3 +228,52 @@ describe("explicit account storage ownership", () => {
     expect(fs.existsSync(malformed)).toBe(false);
   });
 });
+
+describe("encrypted at-rest storage", () => {
+  it("persists records as AES-GCM envelopes with no plaintext secrets", () => {
+    const policy = createIsolatedAccountStoragePolicy(stateRoot);
+    saveAccount(record("sealed"), policy);
+    const file = path.join(stateRoot, "auth", "openai-codex", "sealed.json");
+    const persisted = fs.readFileSync(file, "utf8");
+    expect(JSON.parse(persisted)).toEqual({
+      schemaVersion: 2,
+      ciphertext: expect.any(String),
+    });
+    expect(persisted).not.toContain("access-sealed");
+    expect(persisted).not.toContain("refresh-sealed");
+    expect(loadAccount("openai-codex", "sealed", policy)?.credentials.access).toBe(
+      "access-sealed",
+    );
+  });
+
+  it("migrates a valid plaintext credential to an envelope on first read", () => {
+    const policy = createIsolatedAccountStoragePolicy(stateRoot);
+    const providerRoot = path.join(stateRoot, "auth", "openai-codex");
+    fs.mkdirSync(providerRoot, { recursive: true, mode: 0o700 });
+    const file = path.join(providerRoot, "legacy.json");
+    fs.writeFileSync(file, JSON.stringify(record("legacy")), { mode: 0o600 });
+
+    expect(loadAccount("openai-codex", "legacy", policy)?.credentials.access).toBe(
+      "access-legacy",
+    );
+    const persisted = fs.readFileSync(file, "utf8");
+    expect(JSON.parse(persisted)).toEqual({
+      schemaVersion: 2,
+      ciphertext: expect.any(String),
+    });
+    expect(persisted).not.toContain("access-legacy");
+  });
+
+  it("fails closed when an envelope is moved to a different account identity", () => {
+    const policy = createIsolatedAccountStoragePolicy(stateRoot);
+    saveAccount(record("origin"), policy);
+    const providerRoot = path.join(stateRoot, "auth", "openai-codex");
+    fs.copyFileSync(
+      path.join(providerRoot, "origin.json"),
+      path.join(providerRoot, "replayed.json"),
+    );
+    expect(() => loadAccount("openai-codex", "replayed", policy)).toThrow(
+      expect.objectContaining({ code: "AUTH_CREDENTIAL_RECORD_CORRUPT" }),
+    );
+  });
+});

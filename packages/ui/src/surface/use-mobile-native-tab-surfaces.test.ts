@@ -1,3 +1,4 @@
+/** Verifies useMobileNativeTabSurfaces through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Drives the real per-tab native-surface hook against a faithful in-memory

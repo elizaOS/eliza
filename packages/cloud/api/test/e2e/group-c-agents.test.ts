@@ -42,9 +42,7 @@ const MCP_LIVE_ADMITTED_OUTPUT_TOKENS = 4096;
 const serverReachable = await isServerReachable();
 const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
 const hasLiveProvider = Boolean(
-  process.env.OPENAI_API_KEY?.trim() ||
-    process.env.OPENROUTER_API_KEY?.trim() ||
-    process.env.AI_GATEWAY_API_KEY?.trim(),
+  process.env.OPENAI_API_KEY?.trim() || process.env.OPENROUTER_API_KEY?.trim(),
 );
 const receiptTarget = process.env.E2E_RECEIPT_TARGET?.trim();
 if (!serverReachable) {
@@ -62,8 +60,7 @@ if (!hasTestApiKey) {
 }
 if (!hasLiveProvider) {
   console.warn(
-    "[group-c-agents] OPENAI_API_KEY, OPENROUTER_API_KEY, and " +
-      "AI_GATEWAY_API_KEY are not set; exact-head A2A and MCP " +
+    "[group-c-agents] OPENAI_API_KEY and OPENROUTER_API_KEY are not set; exact-head A2A and MCP " +
       "provider/billing receipt tests will SKIP.",
   );
 }

@@ -1,3 +1,4 @@
+/** Verifies useWakeListenWindow through the package's configured test harness. */
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

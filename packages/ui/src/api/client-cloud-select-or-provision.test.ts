@@ -13,6 +13,7 @@ import { ElizaClient } from "./client-base";
 // Side-effect import: patches selectOrProvisionCloudAgent onto the prototype.
 import "./client-cloud";
 import type { CloudCompatAgent } from "./client-types-cloud";
+import { isCloudAgentGoneError } from "./client-types-core";
 
 /**
  * selectOrProvisionCloudAgent reuses an existing cloud agent instead of minting
@@ -328,6 +329,35 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       /network down|find your agents/i,
     );
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
+  });
+
+  it("keeps the structural agent-gone shape on the cause chain of a failed lookup", async () => {
+    const { client, getCloudCompatAgents } = fakeClient();
+    // What a stale binding produces: the deleted agent's origin answers the
+    // compat agent list with the cloud router's 404 shape.
+    getCloudCompatAgents.mockRejectedValue(
+      Object.assign(new Error("agent not found or not running"), {
+        kind: "http",
+        status: 404,
+        path: "/api/cloud/compat/agents",
+      }),
+    );
+
+    const rejection = await client
+      .selectOrProvisionCloudAgent(BASE_OPTS)
+      .then(() => null)
+      .catch((error: unknown) => error);
+
+    expect(rejection).toBeInstanceOf(Error);
+    // The join flow's stale-binding recovery classifies by status/code via
+    // the cause chain — the flattened message alone cannot carry it.
+    expect(isCloudAgentGoneError(rejection)).toBe(true);
+    expect(isCloudAgentGoneError(new TypeError("Failed to fetch"))).toBe(false);
+    expect(
+      isCloudAgentGoneError(
+        Object.assign(new Error("unauthorized"), { status: 401 }),
+      ),
+    ).toBe(false);
   });
 
   it("does NOT provision when the list returns success:false (e.g. expired auth)", async () => {

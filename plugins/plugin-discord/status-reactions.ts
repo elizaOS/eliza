@@ -13,6 +13,17 @@ export interface StatusReactionController {
 	setThinking: () => void;
 	setDone: () => void;
 	setError: () => void;
+	/**
+	 * Force this controller to its terminal state from outside the normal
+	 * turn lifecycle. Used by the connector's shutdown drain path when a
+	 * turn is abandoned before it finished on its own, so no reaction is
+	 * left showing "in progress" forever. Idempotent: a no-op once the
+	 * controller already reached a terminal state (including a prior
+	 * `abandon()`).
+	 */
+	abandon: () => void;
+	/** Resolves once this controller reaches any terminal state. */
+	whenFinished: Promise<void>;
 }
 
 const EMOJI_QUEUED = "⏳";
@@ -49,6 +60,10 @@ export function createStatusReactionController(
 	let currentEmoji: string | null = null;
 	let finished = false;
 	let chain: Promise<void> = Promise.resolve();
+	let resolveFinished: () => void = () => {};
+	const whenFinished = new Promise<void>((resolve) => {
+		resolveFinished = resolve;
+	});
 	const botId = message.client?.user?.id;
 
 	const clearCurrentReaction = async () => {
@@ -94,6 +109,7 @@ export function createStatusReactionController(
 			} finally {
 				if (terminal) {
 					finished = true;
+					resolveFinished();
 				}
 			}
 		});
@@ -106,6 +122,7 @@ export function createStatusReactionController(
 		chain = chain.then(async () => {
 			await clearCurrentReaction();
 			finished = true;
+			resolveFinished();
 		});
 	};
 
@@ -114,5 +131,11 @@ export function createStatusReactionController(
 		setThinking: () => transition(EMOJI_THINKING),
 		setDone: () => finishWithoutSuccessReaction(),
 		setError: () => transition(EMOJI_ERROR, true),
+		// Same terminal error-reaction transition as setError: a turn the
+		// shutdown drain had to abandon mid-flight did not complete
+		// successfully, so it gets the same visible marker rather than
+		// silently vanishing or being left on its last in-progress emoji.
+		abandon: () => transition(EMOJI_ERROR, true),
+		whenFinished,
 	};
 }

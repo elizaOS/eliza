@@ -117,8 +117,8 @@ function jwtExpiryMs(token: string): number | undefined {
     ) as { exp?: unknown };
     return typeof payload.exp === "number" ? payload.exp * 1000 : undefined;
   } catch {
-    // error-policy:J3 the JWT is untrusted input; an undecodable payload means
-    // "no expiry available", which callers substitute with now().
+    // error-policy:J3 the JWT is untrusted input; undefined is the explicit
+    // invalid-expiry signal rejected by token validation.
     return undefined;
   }
 }
@@ -147,6 +147,7 @@ export interface AdoptCodexResult {
 interface CodexAuthTokens {
   access_token: string;
   refresh_token: string;
+  expires: number;
   id_token?: string;
   account_id?: string;
 }
@@ -178,9 +179,18 @@ function validateTokens(parsed: unknown, sourceLabel: string): CodexAuthTokens {
       { source: sourceLabel },
     );
   }
+  const expires = jwtExpiryMs(tokens.access_token);
+  if (expires === undefined || !Number.isFinite(expires)) {
+    throw adoptError(
+      "adopt_codex.invalid_tokens",
+      `Codex login at ${sourceLabel} has no valid access-token expiry`,
+      { source: sourceLabel },
+    );
+  }
   return {
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
+    expires,
     ...(tokens.id_token !== undefined ? { id_token: tokens.id_token } : {}),
     ...(tokens.account_id !== undefined
       ? { account_id: tokens.account_id }
@@ -197,6 +207,8 @@ function readRegularFile(filePath: string): string {
   try {
     fd = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (err) {
+    // error-policy:J2 context-adding rethrow — preserve the filesystem cause in
+    // the typed adoption failure.
     throw adoptError(
       "adopt_codex.unreadable",
       `Could not open ${filePath} as a regular file`,
@@ -239,6 +251,8 @@ export function restoreRetiredSource(
   try {
     linkSync(retiredTo, originalPath);
   } catch (err) {
+    // error-policy:J1 no-clobber restore boundary — an occupied destination is
+    // an explicit non-restored result; every other link failure throws.
     if ((err as NodeJS.ErrnoException).code === "EEXIST") {
       return { restored: false, reason: "destination_occupied" };
     }
@@ -288,6 +302,8 @@ function adoptCodexCliLoginLocked(
   try {
     stat = lstatSync(authPath);
   } catch (err) {
+    // error-policy:J2 context-adding rethrow — distinguish a missing source from
+    // permission and I/O failures without treating either as healthy.
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       throw adoptError(
         "adopt_codex.no_source",
@@ -330,6 +346,8 @@ function adoptCodexCliLoginLocked(
     renameSync(authPath, retiredTo);
     fsyncParentDirectory(authPath);
   } catch (err) {
+    // error-policy:J2 context-adding rethrow — retirement must succeed atomically
+    // before any credential is adopted.
     throw adoptError(
       "adopt_codex.retire_failed",
       `Could not retire the Codex source at ${authPath}; exclusive ownership not established`,
@@ -348,6 +366,8 @@ function adoptCodexCliLoginLocked(
     try {
       parsed = JSON.parse(raw);
     } catch (err) {
+      // error-policy:J2 context-adding rethrow — invalid JSON is a typed source
+      // validation failure and retains its parser cause.
       throw adoptError(
         "adopt_codex.unreadable",
         `Codex login at ${authPath} is not valid JSON`,
@@ -357,6 +377,8 @@ function adoptCodexCliLoginLocked(
     }
     tokens = validateTokens(parsed, authPath);
   } catch (err) {
+    // error-policy:J2 rollback then rethrow — validation failure restores the
+    // exclusively-retired source when the destination remains free.
     const restore = restoreRetiredSource(retiredTo, authPath);
     if (!restore.restored) {
       logger.warn(
@@ -371,18 +393,25 @@ function adoptCodexCliLoginLocked(
   // copy we just retired may already hold consumed tokens. Committing it to
   // the pool would set up the exact dual-refresher revocation this operation
   // exists to prevent.
-  const sourceReappeared = (() => {
-    try {
-      lstatSync(authPath);
-      return true;
-    } catch {
-      // error-policy:J3 ENOENT is the healthy outcome (the source stayed
-      // retired); any other stat failure also reads as "not reappeared"
-      // because this is a best-effort live-refresher detector, not a
-      // correctness gate — the pool==retired invariant holds regardless.
-      return false;
+  let sourceReappeared: boolean;
+  try {
+    lstatSync(authPath);
+    sourceReappeared = true;
+  } catch (err) {
+    // error-policy:J3 only ENOENT proves the source stayed retired. Permission
+    // and I/O failures cannot be interpreted as absence at this ownership gate.
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      sourceReappeared = false;
+    } else {
+      const restore = restoreRetiredSource(retiredTo, authPath);
+      throw adoptError(
+        "adopt_codex.source_stat_failed",
+        `Could not verify that ${authPath} remained retired; the Codex source was ${restore.restored ? "restored" : `left retired at ${retiredTo}`}`,
+        { path: authPath, retiredTo, restored: restore.restored },
+        err,
+      );
     }
-  })();
+  }
   if (sourceReappeared) {
     throw adoptError(
       "adopt_codex.concurrent_refresher",
@@ -401,7 +430,7 @@ function adoptCodexCliLoginLocked(
       credentials: {
         access: tokens.access_token,
         refresh: tokens.refresh_token,
-        expires: jwtExpiryMs(tokens.access_token) ?? now,
+        expires: tokens.expires,
         ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
       },
       createdAt: existing?.createdAt ?? now,
@@ -409,6 +438,8 @@ function adoptCodexCliLoginLocked(
       ...(tokens.account_id ? { organizationId: tokens.account_id } : {}),
     });
   } catch (err) {
+    // error-policy:J2 preserve the atomic adoption context while restoring the
+    // retired source whenever ownership still permits it.
     const restore = restoreRetiredSource(retiredTo, authPath);
     if (!restore.restored) {
       // error-policy:J6 best-effort teardown — the pool write already failed

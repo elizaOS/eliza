@@ -68,6 +68,9 @@ let seededDocumentId: UUID | null = null;
 // processing (it is merged per source key), unlike world-metadata role grants
 // which each processed message clobbers.
 const GUEST_STABLE_ID = `${SCENARIO_ID}-guest-admin`;
+const GUEST_ROOM_ID = stringToUuid(
+  `scenario-room:${SCENARIO_ID}:guest`,
+) as UUID;
 
 function getDocumentService(ctx: ScenarioContext): DocumentService | null {
   const runtime = ctx.runtime as ScenarioRuntime;
@@ -251,7 +254,11 @@ export default scenario({
         if (!room?.worldId) return "primary room world was not created";
         const stored = await service.addDocument({
           worldId: room.worldId,
-          roomId: ctx.primaryRoomId as UUID,
+          // ADMIN is intentionally room-limited for document reads. Seed the
+          // global record in the guest room so the non-owner can identify the
+          // target without widening that privacy boundary; OWNER still has
+          // global visibility and performs the successful delete later.
+          roomId: GUEST_ROOM_ID,
           entityId: ctx.primaryUserId as UUID,
           clientDocumentId: stringToUuid(`${SCENARIO_ID}:doc`) as UUID,
           contentType: "text/markdown",

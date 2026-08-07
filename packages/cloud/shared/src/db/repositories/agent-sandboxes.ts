@@ -6,10 +6,15 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import {
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  SnapshotPayloadTooLargeError,
+} from "@elizaos/shared/agent-backup-limits";
+import {
   and,
   asc,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNotNull,
@@ -63,6 +68,7 @@ import {
   WARM_POOL_ORG_ID,
   WARM_POOL_USER_ID,
 } from "../schemas/agent-sandboxes";
+import { dockerNodes } from "../schemas/docker-nodes";
 import { jobs } from "../schemas/jobs";
 import { imageRepo, imageRepoSql } from "../utils/docker-image-ref";
 
@@ -118,7 +124,11 @@ const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   workspaceFiles: {},
 };
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
-const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = 128 * 1024 * 1024;
+/**
+ * A reconstructed chain has to fit the same v1 restorable ceiling as any other
+ * backup wire payload — it is what gets handed to restore (#17172).
+ */
+const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
 
 /**
  * Correlates a sandbox row with the queue operations that legitimately own its
@@ -301,6 +311,17 @@ export async function prepareAgentBackupInsertData(
   };
 }
 
+/**
+ * Outcome of spending a deletion generation's allocation ownership.
+ *
+ * Three-valued on purpose. A boolean conflates the benign expected case
+ * (`not-owned` — the retry path this feature exists to make safe) with a real
+ * accounting bug (`counter-unchanged` — ownership was ours, but the node
+ * counter did not move), and an operator reading `released: false` could not
+ * tell which they were looking at.
+ */
+export type DeletionAllocationRelease = "released" | "not-owned" | "counter-unchanged";
+
 export class AgentSandboxesRepository {
   // Reads
 
@@ -430,6 +451,7 @@ export class AgentSandboxesRepository {
       user_id: string;
       agent_name: string | null;
       bridge_url: string | null;
+      lifecycle_revision: number;
       updated_at: Date;
       status: AgentSandboxStatus;
     }>
@@ -441,6 +463,7 @@ export class AgentSandboxesRepository {
         user_id: agentSandboxes.user_id,
         agent_name: agentSandboxes.agent_name,
         bridge_url: agentSandboxes.bridge_url,
+        lifecycle_revision: agentSandboxes.lifecycle_revision,
         updated_at: agentSandboxes.updated_at,
         status: agentSandboxes.status,
       })
@@ -1050,7 +1073,7 @@ export class AgentSandboxesRepository {
       sandboxId: string | null;
       nodeId: string | null;
       containerName: string | null;
-      updatedAt: Date;
+      lifecycleRevision: number;
     },
   ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
@@ -1111,14 +1134,11 @@ export class AgentSandboxesRepository {
         sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.sandboxId}`,
         sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.nodeId}`,
         sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${expectedRunningGeneration.containerName}`,
-        // ms-window fence: the stored value may carry microseconds (raw
-        // `updated_at = NOW()` writers) while the expected value came through
-        // a typed read, which truncates to milliseconds — JS Date parsing
-        // truncates sub-ms lexically (never rounds), so ms==ms is exact. A
-        // plain eq() silently missed for every µs-stored row, so the observed
-        // running generation was never persisted after such a write (#17249
-        // fence class; same remedy as the sleep and managed-launch CASes).
-        sql`date_trunc('milliseconds', ${agentSandboxes.updated_at}) = ${expectedRunningGeneration.updatedAt}`,
+        // The database-owned lifecycle_revision subsumes the earlier
+        // ms-windowed updated_at fence (#17284): the trigger advances it on
+        // every write, including raw SQL writers, so no timestamp-precision
+        // or same-millisecond ABA window exists (#17249 fence class).
+        eq(agentSandboxes.lifecycle_revision, expectedRunningGeneration.lifecycleRevision),
       );
     }
     const [r] = await dbWrite
@@ -1579,7 +1599,7 @@ export class AgentSandboxesRepository {
     agentName: string;
     agentConfig?: Record<string, unknown>;
     characterId?: string | null;
-    expectedUpdatedAt?: Date | string | null;
+    expectedLifecycleRevision?: number;
   }): Promise<WarmClaimedAgentSandbox | null> {
     await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
@@ -1690,12 +1710,11 @@ export class AgentSandboxesRepository {
         return null;
       }
 
-      if (params.expectedUpdatedAt) {
-        const expectedMs = new Date(params.expectedUpdatedAt).getTime();
-        const currentMs = userRow.updated_at?.getTime() ?? Number.NaN;
-        if (Number.isFinite(expectedMs) && Number.isFinite(currentMs) && expectedMs !== currentMs) {
-          return null;
-        }
+      if (
+        params.expectedLifecycleRevision !== undefined &&
+        userRow.lifecycle_revision !== params.expectedLifecycleRevision
+      ) {
+        return null;
       }
 
       const claimedAt = new Date();
@@ -1749,6 +1768,9 @@ export class AgentSandboxesRepository {
           and(
             eq(agentSandboxes.id, params.userAgentId),
             eq(agentSandboxes.organization_id, params.organizationId),
+            ...(params.expectedLifecycleRevision === undefined
+              ? []
+              : [eq(agentSandboxes.lifecycle_revision, params.expectedLifecycleRevision)]),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             sql`${agentSandboxes.status} NOT IN ('deletion_pending', 'deletion_failed')`,
           ),
@@ -2127,9 +2149,10 @@ export class AgentSandboxesRepository {
       chainBytes +=
         cursor.size_bytes ?? Buffer.byteLength(JSON.stringify(cursor.state_data), "utf8");
       if (chainBytes > MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES) {
-        throw new Error(
-          `Backup chain for ${backupId} exceeds ${MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES} bytes`,
-        );
+        // Typed so the restore sites can tell "too large to apply" from "gone":
+        // the chain is intact and decryptable, so this must fail the provision
+        // closed rather than degrade to an empty boot, and it must never prune.
+        throw new SnapshotPayloadTooLargeError(chainBytes, MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES);
       }
       chain.push(await hydrateAgentSandboxBackup(cursor));
       if (cursor.backup_kind === "full") break;
@@ -2156,6 +2179,126 @@ export class AgentSandboxesRepository {
       }
     }
     return state;
+  }
+
+  /**
+   * Spend recorded allocation ownership and give the node its slot back, in one
+   * transaction (#17185).
+   *
+   * The flag flip and the decrement commit together so they can never disagree:
+   * whoever wins the row lock consumes the ownership, and every later caller
+   * matches no row and decrements nothing. Callers differ only in `claimWhere`,
+   * which is the fence deciding WHO is entitled to spend it.
+   *
+   * `allocated_count > 0` is a guard rather than `GREATEST(... , 0)` clamping,
+   * so an unexpected underflow leaves the counter untouched and visible instead
+   * of being silently absorbed.
+   *
+   * @returns which of the three {@link DeletionAllocationRelease} outcomes
+   * occurred. `counter-unchanged` also warns: ownership was ours to spend, but
+   * the node counter did not move — either it was already 0 or the
+   * `docker_nodes` row is gone, and in both cases there is no slot left to give
+   * back, so committing the flip is correct.
+   */
+  private async spendDeletionAllocation(
+    nodeId: string,
+    claimWhere: SQL,
+  ): Promise<DeletionAllocationRelease> {
+    // Memoized per database URL, so this is a settled-promise await after the
+    // first call in an isolate rather than DDL on every teardown. It stays on
+    // this path because the deletion writers can reach the column before the
+    // migration has run — `deploy-eliza-provisioning-worker.yml` has no
+    // `migrate-db` gate.
+    await ensureAgentSandboxSchema();
+    return dbWrite.transaction(async (tx) => {
+      const [claimed] = await tx
+        .update(agentSandboxes)
+        .set({ deletion_allocation_counted: false, updated_at: new Date() })
+        .where(and(claimWhere, eq(agentSandboxes.deletion_allocation_counted, true)))
+        .returning({ id: agentSandboxes.id });
+      if (!claimed) return "not-owned";
+
+      const decremented = await tx
+        .update(dockerNodes)
+        .set({
+          allocated_count: sql`${dockerNodes.allocated_count} - 1`,
+          updated_at: new Date(),
+        })
+        .where(and(eq(dockerNodes.node_id, nodeId), gt(dockerNodes.allocated_count, 0)))
+        .returning({ nodeId: dockerNodes.node_id });
+      if (decremented.length === 0) {
+        // Committing the flip is still correct. Either the counter was already
+        // 0, or the `docker_nodes` row is gone — and when the row goes its
+        // `allocated_count` goes with it, so there is no counter left to leak
+        // into. A transiently-absent node self-heals anyway: `syncAllocatedCounts`
+        // recomputes from surviving rows, and the error direction only ever
+        // under-packs a node, never over-packs one.
+        logger.warn(
+          `[agent-sandboxes] Deletion allocation ownership consumed for node ${nodeId} but allocated_count was not decremented — counter already at 0 or node row missing`,
+        );
+        return "counter-unchanged";
+      }
+      return "released";
+    });
+  }
+
+  /**
+   * Release the slot held by ONE deletion generation, at most once.
+   *
+   * Fenced on the whole locator, not just the row id: a superseded generation,
+   * another organization, or a row that has since moved nodes must not release
+   * the current node's capacity. This is what makes a re-claimed delete job
+   * (crash-retry, or a post-stop credential/row-delete/job-status failure) a
+   * no-op instead of a second decrement freeing a live sibling's slot.
+   */
+  async tryReleaseDeletionAllocation(
+    agentId: string,
+    orgId: string,
+    deletionAttemptId: string,
+    nodeId: string,
+  ): Promise<DeletionAllocationRelease> {
+    return this.spendDeletionAllocation(
+      nodeId,
+      and(
+        eq(agentSandboxes.id, agentId),
+        eq(agentSandboxes.organization_id, orgId),
+        eq(agentSandboxes.deletion_attempt_id, deletionAttemptId),
+        eq(agentSandboxes.node_id, nodeId),
+      ) as SQL,
+    );
+  }
+
+  /**
+   * Release a held slot once the orphan reconciler has PROVEN the container is
+   * gone.
+   *
+   * The delete path deliberately keeps ownership when it cannot prove absence —
+   * a bounded timeout abandons a container that may still be running, and a
+   * `deletion_failed` row's container is by definition still out there. Without
+   * this the slot would stay counted forever once `reEnqueueFailedDeletions`
+   * hits its circuit breaker, permanently shrinking the node and inflating the
+   * autoscaler's view of demand (the #15378 regression).
+   *
+   * Unfenced by generation on purpose: the reaper observed the container's
+   * absence directly, which supersedes whichever deletion attempt was in
+   * flight. The node is still matched, so a row since re-placed elsewhere
+   * cannot have the wrong node's capacity released.
+   *
+   * The missing `organization_id` predicate is deliberate and not a weaker
+   * fence: `agent_sandboxes.id` is the primary key, so scoping by org selects
+   * the same row or none. `tryReleaseDeletionAllocation` carries it because its
+   * caller holds an org-scoped request context and passing it through keeps the
+   * tenant boundary explicit at that entry point; the reaper has no such
+   * context, having started from a container name on a node.
+   */
+  async releaseDeletionAllocationOnReap(
+    agentId: string,
+    nodeId: string,
+  ): Promise<DeletionAllocationRelease> {
+    return this.spendDeletionAllocation(
+      nodeId,
+      and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.node_id, nodeId)) as SQL,
+    );
   }
 }
 

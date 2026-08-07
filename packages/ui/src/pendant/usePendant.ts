@@ -24,13 +24,14 @@ export interface UsePendantOptions {
   vadSpeechRmsThreshold?: number;
   onTranscript?: (text: string) => void;
   onSegment?: (detail: PendantTranscriptSegmentDetail) => void;
+  dispatchResolvedTranscript?: boolean;
 }
 
 export interface UsePendantResult {
   state: PendantState;
   supported: boolean;
-  connect: () => void;
-  disconnect: () => void;
+  connect: () => Promise<boolean>;
+  disconnect: () => Promise<void>;
   pause: () => void;
   resume: () => void;
 }
@@ -64,34 +65,35 @@ export function usePendant(options: UsePendantOptions = {}): UsePendantResult {
     setState(next);
   }, []);
 
-  const connect = React.useCallback(() => {
+  const connect = React.useCallback(async (): Promise<boolean> => {
     const existing = connectionRef.current;
     const currentStatus = stateRef.current.status;
     const busy =
       currentStatus === "requesting" ||
       currentStatus === "connecting" ||
       currentStatus === "reconnecting";
-    if (existing && (busy || isPendantLiveStatus(currentStatus))) return;
+    if (existing && busy) return false;
+    if (existing && isPendantLiveStatus(currentStatus)) return true;
     if (existing) {
-      void existing.connect();
-      return;
+      return existing.connect();
     }
     const opts: PendantConnectionOptions = {
       onState: setPendantState,
       onTranscript: optionsRef.current.onTranscript,
       onSegment: optionsRef.current.onSegment,
+      dispatchResolvedTranscript: optionsRef.current.dispatchResolvedTranscript,
       vadSilenceMs: optionsRef.current.vadSilenceMs,
       vadSpeechRmsThreshold: optionsRef.current.vadSpeechRmsThreshold,
     };
     const conn = new PendantConnection(opts);
     connectionRef.current = conn;
-    void conn.connect();
+    return conn.connect();
   }, [setPendantState]);
 
-  const disconnect = React.useCallback(() => {
+  const disconnect = React.useCallback(async (): Promise<void> => {
     const conn = connectionRef.current;
     connectionRef.current = null;
-    void conn?.disconnect();
+    await conn?.disconnect();
   }, []);
 
   const pause = React.useCallback(() => {

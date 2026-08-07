@@ -1,3 +1,4 @@
+/** Verifies mock-cloud connect e2e — dedicated cold boot + shared chat bridge through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

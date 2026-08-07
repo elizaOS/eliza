@@ -1,0 +1,145 @@
+/**
+ * Hygiene: streak recovery for brushing teeth — user has 2 missed mornings.
+ * The CHECKIN action should surface the missed streak and offer a friendly
+ * recovery path without shaming the user.
+ *
+ * Bug class guarded: the agent moralizes about missed brushing instead of
+ * just resetting the streak and getting on with the day.
+ */
+
+import type { IAgentRuntime } from "@elizaos/core";
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
+import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
+import { seedCheckinDefinition } from "../../../scenario-support/lifeops-seeds.ts";
+
+function scenarioNow(ctx: ScenarioContext): Date {
+  return typeof ctx.now === "string" && Number.isFinite(Date.parse(ctx.now))
+    ? new Date(ctx.now)
+    : new Date();
+}
+
+async function seedSecondMissedBrushOccurrence(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
+  const runtime = ctx.runtime as IAgentRuntime | undefined;
+  if (!runtime?.agentId) return "scenario runtime unavailable";
+  const now = scenarioNow(ctx);
+  const agentId = String(runtime.agentId);
+  const dueAt = new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString();
+  const createdAt = new Date(now.getTime() - 30 * 60 * 60 * 1000).toISOString();
+
+  await executeRawSql(
+    runtime,
+    `INSERT INTO life_task_occurrences (
+       id, agent_id, subject_id, definition_id, occurrence_key, due_at,
+       relevance_start_at, relevance_end_at, state, created_at, updated_at
+     ) VALUES (
+       ${sqlQuote("habit-checkin-brush-2")},
+       ${sqlQuote(agentId)},
+       ${sqlQuote(agentId)},
+       ${sqlQuote("seed-def-habit-checkin-brush")},
+       ${sqlQuote("seed:habit-checkin-brush-2")},
+       ${sqlQuote(dueAt)},
+       ${sqlQuote(dueAt)},
+       ${sqlQuote(new Date(Date.parse(dueAt) + 6 * 60 * 60 * 1000).toISOString())},
+       'pending',
+       ${sqlQuote(createdAt)},
+       ${sqlQuote(createdAt)}
+     )`,
+  );
+  return undefined;
+}
+
+function expectBrushRecoveryCheckin(ctx: ScenarioContext): string | undefined {
+  const action = ctx.actionsCalled.find(
+    (entry) => entry.actionName === "CHECKIN",
+  );
+  const data =
+    action?.result?.data && typeof action.result.data === "object"
+      ? (action.result.data as {
+          habitSummaries?: Array<{
+            title?: string;
+            missedOccurrenceStreak?: number;
+          }>;
+        })
+      : null;
+  if (!data) {
+    return "expected CHECKIN to return structured hygiene habit data";
+  }
+  const brush = data.habitSummaries?.find((habit) =>
+    /brush/i.test(habit.title ?? ""),
+  );
+  if (!brush) {
+    return `expected Brush teeth in habitSummaries, saw ${JSON.stringify(data.habitSummaries ?? null)}`;
+  }
+  if ((brush.missedOccurrenceStreak ?? 0) < 1) {
+    return `expected missed brush streak in structured data, saw ${JSON.stringify(brush)}`;
+  }
+
+  const reply = ctx.turns?.at(-1)?.responseText ?? "";
+  if (!/(brush|teeth)/i.test(reply)) {
+    return `expected brushing recovery in reply, saw ${JSON.stringify(reply)}`;
+  }
+  return undefined;
+}
+
+export default scenario({
+  lane: "live-only",
+  id: "hygiene.brush-teeth-streak-recovery",
+  title: "Brushing streak recovery surfaces missed days with a warm tone",
+  domain: "lifeops.hygiene",
+  tags: ["lifeops", "hygiene", "habits", "streak"],
+  isolation: "per-scenario",
+  requires: {
+    plugins: ["@elizaos/plugin-agent-skills"],
+  },
+  rooms: [
+    {
+      id: "main",
+      source: "telegram",
+      title: "LifeOps Hygiene Brush Recovery",
+    },
+  ],
+  seed: [
+    {
+      type: "custom",
+      name: "seed-brush-habit",
+      apply: seedCheckinDefinition({
+        id: "habit-checkin-brush",
+        title: "Brush teeth",
+        kind: "habit",
+        dueAt: "{{now-2h}}",
+      }),
+    },
+    {
+      type: "custom",
+      name: "seed-second-missed-brush",
+      apply: seedSecondMissedBrushOccurrence,
+    },
+  ],
+  turns: [
+    {
+      kind: "message",
+      name: "morning-checkin",
+      text: "Run my morning check-in.",
+      expectedActions: ["CHECKIN"],
+    },
+  ],
+  finalChecks: [
+    {
+      type: "custom",
+      name: "brush-recovery-checkin-data",
+      predicate: expectBrushRecoveryCheckin,
+    },
+    judgeRubric({
+      name: "brush-streak-recovery-warm-tone",
+      threshold: 0.6,
+      description:
+        "The check-in should mention the missed brushing days briefly and offer to reset the streak or just get back on track today. It must NOT moralize, lecture, or guilt-trip the user about dental hygiene. Score 1 if the reply is matter-of-fact and forward-looking; score 0 if it lectures about cavities or tells the user they should be ashamed.",
+    }),
+  ],
+});

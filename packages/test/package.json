@@ -1,30 +1,19 @@
 {
-  "name": "@elizaos/test-harness",
+  "name": "@elizaos/test-corpus",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Zero-cost end-to-end test substrate: the deterministic mock-LLM proxy, a one-import withMockLlmRuntime() helper, and a shared negative-response fixture pack.",
-  "main": "./harness/index.ts",
-  "exports": {
-    ".": "./harness/index.ts",
-    "./llm-proxy": "./mocks/helpers/llm-proxy-plugin.ts",
-    "./action-route-fixtures": "./harness/action-route-fixtures.ts",
-    "./negative-fixtures": "./harness/negative-fixtures.ts"
-  },
+  "description": "Repository-wide scenario definitions.",
   "scripts": {
-    "test": "vitest run --config harness/vitest.config.ts",
-    "format": "bunx @biomejs/biome format --write package.json harness mocks",
-    "format:check": "bunx @biomejs/biome format package.json harness mocks"
-  },
-  "dependencies": {
-    "@capacitor/core": "8.4.0",
-    "@elizaos/corpus-tools": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "telegraf": "^4.16.3"
+    "test": "bun --conditions eliza-source ../scenario-runner/src/cli.ts list scenarios --validate-scenarios",
+    "typecheck": "tsc --noEmit -p scenarios/tsconfig.json",
+    "format": "bunx @biomejs/biome format --write package.json scenarios",
+    "format:check": "bunx @biomejs/biome format package.json scenarios"
   },
   "devDependencies": {
-    "discord.js": "^14.26.4",
-    "vitest": "*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/scenario-runner": "workspace:*",
+    "@typescript/native": "npm:typescript@^7.0.2"
   },
   "elizaos": {
     "scripts": {

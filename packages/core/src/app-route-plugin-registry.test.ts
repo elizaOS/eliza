@@ -130,15 +130,17 @@ describe("drainAppRoutePluginLoaders", () => {
 		expect(target.routes).toEqual([{ type: "GET", path: "/api/ok" }]);
 	});
 
-	it("isolates a hard-failing loader and still drains the rest", async () => {
+	it("surfaces a hard-failing loader instead of partially registering routes", async () => {
 		const target: { routes: Route[] } = { routes: [] };
-		await drainAppRoutePluginLoaders(target, [
-			loader("broken", () => {
-				throw new Error("boom");
-			}),
-			loader("ok", () => plugin("ok", [route("GET", "/api/ok")])),
-		]);
-		expect(target.routes).toEqual([{ type: "GET", path: "/api/ok" }]);
+		await expect(
+			drainAppRoutePluginLoaders(target, [
+				loader("broken", () => {
+					throw new Error("boom");
+				}),
+				loader("ok", () => plugin("ok", [route("GET", "/api/ok")])),
+			]),
+		).rejects.toThrow("boom");
+		expect(target.routes).toEqual([]);
 	});
 
 	it("is a no-op for an empty loader set", async () => {

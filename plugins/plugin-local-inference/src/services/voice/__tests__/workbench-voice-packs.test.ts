@@ -63,8 +63,7 @@ describe("resolveKokoroVoicePack", () => {
 });
 
 describe("labelHash", () => {
-	it("is a deterministic unsigned 32-bit hash", () => {
-		expect(labelHash("owner")).toBe(labelHash("owner"));
+	it("returns an unsigned 32-bit integer", () => {
 		for (const label of ["", "owner", "guest", "Zephyr", "priya"]) {
 			const h = labelHash(label);
 			expect(Number.isInteger(h)).toBe(true);

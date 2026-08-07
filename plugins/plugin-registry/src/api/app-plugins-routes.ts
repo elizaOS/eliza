@@ -39,21 +39,17 @@ import {
   sendJson as sendJsonResponse,
 } from "@elizaos/app-core/api/response";
 import {
-  type ConfigField,
-  loadRegistry,
-  type RegistryEntry,
-} from "@elizaos/app-core/registry";
-import {
   _resetSharedVaultForTesting,
   mirrorPluginSensitiveToVault,
   sharedVault,
 } from "@elizaos/app-core/services/vault-mirror";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
-  asRecord,
-  CONNECTOR_PLUGINS,
-  STREAMING_PLUGINS,
-} from "@elizaos/shared";
+  type ConfigField,
+  loadRegistry,
+  type RegistryEntry,
+} from "@elizaos/registry/first-party";
+import { asRecord, CONNECTOR_PLUGINS } from "@elizaos/shared";
 import { VaultMissError } from "@elizaos/vault";
 
 const require = createRequire(import.meta.url);
@@ -530,14 +526,6 @@ function resolvePersistedPluginEnabled(
     return connectorEnabled ?? pluginEnabled;
   }
 
-  if (category === "streaming") {
-    const streamingEnabled = readCompatSectionEnabled(
-      config.streaming,
-      resolveCompatConfigKey(pluginId, npmName, STREAMING_PLUGINS),
-    );
-    return streamingEnabled ?? pluginEnabled;
-  }
-
   return pluginEnabled;
 }
 
@@ -587,16 +575,7 @@ export function analyzePluginStateDrift(
               CONNECTOR_PLUGINS,
             ),
           )
-        : category === "streaming"
-          ? readCompatSectionEnabled(
-              configRecord.streaming,
-              resolveCompatConfigKey(
-                pluginId,
-                npmName ?? undefined,
-                STREAMING_PLUGINS,
-              ),
-            )
-          : undefined;
+        : undefined;
     const entryEnabled =
       typeof configEntries[pluginId]?.enabled === "boolean"
         ? Boolean(configEntries[pluginId]?.enabled)
@@ -769,28 +748,6 @@ function reconcilePluginEnabledStates(): void {
           configRecord,
           "connectors",
           connectorKey,
-          entry.enabled,
-        );
-        dirty = true;
-      }
-    }
-
-    // Check streaming section
-    const streamingKey = resolveCompatConfigKey(
-      pluginId,
-      undefined,
-      STREAMING_PLUGINS,
-    );
-    if (streamingKey) {
-      const sectionEnabled = readCompatSectionEnabled(
-        configRecord.streaming,
-        streamingKey,
-      );
-      if (sectionEnabled !== undefined && sectionEnabled !== entry.enabled) {
-        writeCompatSectionEnabled(
-          configRecord,
-          "streaming",
-          streamingKey,
           entry.enabled,
         );
         dirty = true;
@@ -1404,15 +1361,6 @@ export function persistCompatPluginMutation(
         configRecord,
         "connectors",
         resolveCompatConfigKey(pluginId, plugin.npmName, CONNECTOR_PLUGINS),
-        body.enabled,
-      );
-    }
-
-    if (plugin.category === "streaming") {
-      writeCompatSectionEnabled(
-        configRecord,
-        "streaming",
-        resolveCompatConfigKey(pluginId, plugin.npmName, STREAMING_PLUGINS),
         body.enabled,
       );
     }

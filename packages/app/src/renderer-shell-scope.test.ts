@@ -15,7 +15,6 @@ const MAIN_INPUTS: RendererShellScopeInputs = {
   isPopout: false,
   isPhoneCompanion: false,
   appWindowSlug: null,
-  isModelTesterRoute: false,
   isEmbedRoute: false,
 };
 
@@ -58,15 +57,6 @@ describe("resolveRendererShellKind", () => {
     expect(
       resolveRendererShellKind({ ...MAIN_INPUTS, appWindowSlug: "notes" }),
     ).toBe("app-window");
-    expect(
-      resolveRendererShellKind({
-        ...MAIN_INPUTS,
-        appWindowSlug: "model-tester",
-      }),
-    ).toBe("model-tester");
-    expect(
-      resolveRendererShellKind({ ...MAIN_INPUTS, isModelTesterRoute: true }),
-    ).toBe("model-tester");
     expect(
       resolveRendererShellKind({ ...MAIN_INPUTS, isEmbedRoute: true }),
     ).toBe("embed");

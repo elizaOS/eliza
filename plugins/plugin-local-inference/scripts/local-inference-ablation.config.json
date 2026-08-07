@@ -17,8 +17,10 @@
     },
     {
       "name": "qjl_tcq_forced",
-      "label": "target only, QJL K + TBQ3 V",
-      "args": ["--cache-type-k", "qjl1_256", "--cache-type-v", "tbq3_0"]
+      "label": "target only, forced QJL/TCQ turbo3_tcq",
+      "args": ["--cache-type-k", "tbq3_tcq", "--cache-type-v", "tbq3_tcq"],
+      "softFailBackends": ["cpu"],
+      "softFailSignals": ["SIGSEGV"]
     },
     {
       "name": "mtp_only",
@@ -45,19 +47,19 @@
     },
     {
       "name": "all_mtp_qjl_tcq",
-      "label": "draft-MTP + QJL K + TBQ3 V",
+      "label": "draft-MTP + forced QJL/TCQ turbo3_tcq",
       "needsDrafter": true,
       "args": [
         "--spec-type",
         "draft-mtp",
         "--cache-type-k",
-        "qjl1_256",
+        "tbq3_tcq",
         "--cache-type-v",
-        "tbq3_0",
+        "tbq3_tcq",
         "--cache-type-k-draft",
-        "qjl1_256",
+        "tbq3_tcq",
         "--cache-type-v-draft",
-        "tbq3_0"
+        "tbq3_tcq"
       ]
     }
   ]

@@ -8,7 +8,7 @@
  * with an EMPTY conversation list.
  *
  * The only deterministic part is token generation, supplied by the in-process
- * deterministic LLM proxy (a real Plugin with real model handlers). Everything
+ * deterministic model provider (a real Plugin with real model handlers). Everything
  * else — runtime, DB, conversation persistence, first-run provisioning, the
  * data-dir wipe — is the real machinery. Because the proxy provides every text
  * model + embedding handler, it needs no provider/cloud key and no llama, so it
@@ -33,7 +33,7 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import { createIsolatedAccountStoragePolicy } from "@elizaos/auth/account-storage";
-import { createDeterministicLlmProxyPlugin } from "../../test/mocks/helpers/llm-proxy-plugin.ts";
+import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import {
   _clearCompatPgliteDataDirForTests,
   startApiServer,
@@ -80,12 +80,24 @@ async function main(): Promise<void> {
 
   try {
     // ── Phase 1: boot, provision, seed a real conversation ──────────────────
-    const proxy = createDeterministicLlmProxyPlugin({
-      failOnUnhandledAction: false,
+    const modelProvider = createDeterministicModelPlugin({
+      fixtures: [
+        {
+          name: "reset-seed-reply",
+          match: { modelType: "RESPONSE_HANDLER" },
+          response: {
+            contexts: ["simple"],
+            intents: ["greeting"],
+            replyText: "Hello before reset.",
+            candidateActionNames: [],
+          },
+          times: 1,
+        },
+      ],
     });
     const first = await createRealTestRuntime({
       characterName: "LocalResetCheck",
-      plugins: [proxy],
+      plugins: [modelProvider],
       pgliteDir,
       // We own the dir lifecycle (the reset wipe deletes it); don't let cleanup
       // race the wipe or remove a dir the reboot still needs.
@@ -182,9 +194,7 @@ async function main(): Promise<void> {
     await first.cleanup().catch(() => undefined);
 
     // ── Phase 3: re-boot a fresh runtime on the SAME dir + assert clean ─────
-    const proxy2 = createDeterministicLlmProxyPlugin({
-      failOnUnhandledAction: false,
-    });
+    const proxy2 = createDeterministicModelPlugin({});
     const second = await createRealTestRuntime({
       characterName: "LocalResetCheck",
       plugins: [proxy2],

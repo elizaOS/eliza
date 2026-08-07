@@ -910,61 +910,63 @@ async function handleListAllAccounts(
   const pool = await getPool();
   await pool.sweepExpired?.();
   const broker = brokerSnapshot();
-  const providers = SUPPORTED_PROVIDER_IDS.map((providerId) => {
-    const linkedConfigs = pool
-      .list(providerId)
-      .sort((a, b) => a.priority - b.priority);
-    const accountProvider = asAccountCredentialProvider(providerId);
-    const onDiskAccounts = accountProvider
-      ? listAccounts(accountProvider).map((r) => r.id)
-      : [];
-    const onDiskSet = new Set(onDiskAccounts);
-    const strategy = readAccountStrategy(ctx.state.config, providerId);
-    // Non-mutating dry-run: which account the pool would serve next + why,
-    // so the UI can label the active row without re-deriving policy. Guarded
-    // because older host bridges may not implement selectionState.
-    const selection = pool.selectionState?.(providerId, strategy);
-    const providerBroker = broker.providers[providerId];
-    const lastSelection = providerBroker?.lastSelection
-      ? {
-          accountId: providerBroker.lastSelection.accountId,
-          atMs: providerBroker.lastSelection.atMs,
-        }
-      : null;
-    const recentFailovers = providerBroker
-      ? providerBroker.recentFailovers.map((failover) => ({
-          fromAccountId: failover.fromAccountId,
-          toAccountId: failover.toAccountId,
-          atMs: failover.atMs,
-          cause: failover.cause.reason,
-        }))
-      : [];
-    return {
-      providerId,
-      strategy,
-      runtimeEligibility: runtimeEligibilityForProvider(providerId),
-      accounts: linkedConfigs.map((cfg) => {
-        const brokerAccount =
-          broker.accounts[brokerAccountKey(providerId, cfg.id)];
-        return {
-          ...cfg,
-          hasCredential: onDiskSet.has(cfg.id),
-          observability: {
-            activeLeaseCount: brokerAccount
-              ? brokerAccount.activeLeaseCount
-              : 0,
-            lastLeaseAt: brokerAccount?.lastLeaseAt ?? null,
-            servedLastRequest: lastSelection?.accountId === cfg.id,
-          },
-        };
-      }),
-      ...(selection ? { selection } : {}),
-      observability: {
-        lastSelection,
-        recentFailovers,
-      },
-    };
-  });
+  const providers = await Promise.all(
+    SUPPORTED_PROVIDER_IDS.map(async (providerId) => {
+      const linkedConfigs = pool
+        .list(providerId)
+        .sort((a, b) => a.priority - b.priority);
+      const accountProvider = asAccountCredentialProvider(providerId);
+      const onDiskAccounts = accountProvider
+        ? (await listAccounts(accountProvider)).map((r) => r.id)
+        : [];
+      const onDiskSet = new Set(onDiskAccounts);
+      const strategy = readAccountStrategy(ctx.state.config, providerId);
+      // Non-mutating dry-run: which account the pool would serve next + why,
+      // so the UI can label the active row without re-deriving policy. Guarded
+      // because older host bridges may not implement selectionState.
+      const selection = pool.selectionState?.(providerId, strategy);
+      const providerBroker = broker.providers[providerId];
+      const lastSelection = providerBroker?.lastSelection
+        ? {
+            accountId: providerBroker.lastSelection.accountId,
+            atMs: providerBroker.lastSelection.atMs,
+          }
+        : null;
+      const recentFailovers = providerBroker
+        ? providerBroker.recentFailovers.map((failover) => ({
+            fromAccountId: failover.fromAccountId,
+            toAccountId: failover.toAccountId,
+            atMs: failover.atMs,
+            cause: failover.cause.reason,
+          }))
+        : [];
+      return {
+        providerId,
+        strategy,
+        runtimeEligibility: runtimeEligibilityForProvider(providerId),
+        accounts: linkedConfigs.map((cfg) => {
+          const brokerAccount =
+            broker.accounts[brokerAccountKey(providerId, cfg.id)];
+          return {
+            ...cfg,
+            hasCredential: onDiskSet.has(cfg.id),
+            observability: {
+              activeLeaseCount: brokerAccount
+                ? brokerAccount.activeLeaseCount
+                : 0,
+              lastLeaseAt: brokerAccount?.lastLeaseAt ?? null,
+              servedLastRequest: lastSelection?.accountId === cfg.id,
+            },
+          };
+        }),
+        ...(selection ? { selection } : {}),
+        observability: {
+          lastSelection,
+          recentFailovers,
+        },
+      };
+    }),
+  );
   json(res, { providers });
   return true;
 }

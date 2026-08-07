@@ -1,3 +1,4 @@
+/** Verifies ThinkingBlock (#10712) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // ThinkingBlock: collapsed by default and toggles the reasoning body, renders

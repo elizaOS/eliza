@@ -58,8 +58,8 @@ describe("viewToEntry", () => {
       }),
     );
     expect(entry.hasHero).toBe(true);
-    expect(entry.imageUrl).toMatch(/^data:image\/png/);
-    expect(entry.fallbackImageUrl).toMatch(/^data:image\/png/);
+    expect(entry.imageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
+    expect(entry.fallbackImageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
     expect(entry.icon).toBe("StickyNote");
   });
 
@@ -73,9 +73,9 @@ describe("viewToEntry", () => {
     );
     expect(entry.hasHero).toBe(true);
     expect(entry.heroUrl).toBeUndefined();
-    expect(entry.imageUrl).toMatch(/^data:image\/png/);
+    expect(entry.imageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
     expect(entry.imageUrl).not.toBe("/api/views/notes/hero");
-    expect(entry.fallbackImageUrl).toMatch(/^data:image\/png/);
+    expect(entry.fallbackImageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
     expect(entry.icon).toBe("StickyNote");
   });
 
@@ -116,11 +116,11 @@ describe("mergeViewCatalog", () => {
     expect(claw?.kind).toBe("app");
     expect(claw?.label).toBe("Arcade");
     // A root-relative API hero is not shell-reachable → use the bundled icon
-    // (a preloaded PNG data URI) so the tile never 404s on native.
+    // (a package-local PNG URL) so the tile never probes the agent API.
     expect(claw?.heroUrl).toBeUndefined();
     expect(claw?.hasHero).toBe(true);
-    expect(claw?.imageUrl).toMatch(/^data:image\/png/);
-    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/png/);
+    expect(claw?.imageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
+    expect(claw?.fallbackImageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
   });
 
   it("uses an absolute (shell-reachable) app hero as the real tile image", () => {
@@ -139,7 +139,7 @@ describe("mergeViewCatalog", () => {
     expect(claw?.heroUrl).toBe("https://cdn.example.com/arcade.png");
     expect(claw?.imageUrl).toBe("https://cdn.example.com/arcade.png");
     // The fallback is still a bundled PNG for onError recovery.
-    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/png/);
+    expect(claw?.fallbackImageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
   });
 
   it("generates branded image fallbacks for entries without real hero art", () => {
@@ -153,16 +153,16 @@ describe("mergeViewCatalog", () => {
     const calendar = entries.find((e) => e.id === "calendar");
     const notes = entries.find((e) => e.id === "@elizaos/plugin-notes");
     expect(calendar?.heroUrl).toBeUndefined();
-    expect(calendar?.imageUrl).toMatch(/^data:image\/png/);
-    expect(calendar?.fallbackImageUrl).toMatch(/^data:image\/png/);
+    expect(calendar?.imageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
+    expect(calendar?.fallbackImageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
     expect(notes?.heroUrl).toBeUndefined();
-    expect(notes?.imageUrl).toMatch(/^data:image\/png/);
-    expect(notes?.fallbackImageUrl).toMatch(/^data:image\/png/);
+    expect(notes?.imageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
+    expect(notes?.fallbackImageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
   });
 });
 
-describe("viewToEntry uses bundled icons (native 404 fix)", () => {
-  it("uses the bundled preloaded icon, never the /api hero, when no real hero exists", () => {
+describe("viewToEntry uses packaged icons (native 404 fix)", () => {
+  it("uses the packaged icon, never the /api hero, when no real hero exists", () => {
     const entry = viewToEntry(
       makeView("calendar", {
         label: "Calendar",
@@ -172,7 +172,7 @@ describe("viewToEntry uses bundled icons (native 404 fix)", () => {
     );
     expect(entry.hasHero).toBe(true);
     expect(entry.heroUrl).toBeUndefined();
-    expect(entry.imageUrl).toMatch(/^data:image\/png/);
+    expect(entry.imageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
     expect(entry.imageUrl).not.toBe("/api/views/calendar/hero");
   });
 
@@ -186,9 +186,9 @@ describe("viewToEntry uses bundled icons (native 404 fix)", () => {
     );
     expect(entry.hasHero).toBe(true);
     expect(entry.heroUrl).toBeUndefined();
-    expect(entry.imageUrl).toMatch(/^data:image\/png/);
+    expect(entry.imageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
     expect(entry.imageUrl).not.toBe("/api/views/notes/hero");
-    expect(entry.fallbackImageUrl).toMatch(/^data:image\/png/);
+    expect(entry.fallbackImageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
   });
 
   it("dedupes: a catalog app whose plugin is already a loaded view is not shown twice", () => {
@@ -319,6 +319,33 @@ describe("viewToEntry uses bundled icons (native 404 fix)", () => {
     expect(entries.map((entry) => entry.id)).toEqual(["visible-plugin"]);
   });
 
+  it("shows Simple Calendar without the hidden connected-calendar catalog card", () => {
+    const entries = merge({
+      views: [
+        makeView("calendar", {
+          label: "Calendar",
+          pluginName: "@elizaos/plugin-calendar",
+          visibleInManager: false,
+        }),
+        makeView("simple-calendar", {
+          label: "Calendar",
+          pluginName: "@elizaos/plugin-simple-views",
+        }),
+      ],
+      catalog: [
+        makeApp({
+          name: "@elizaos/plugin-calendar",
+          displayName: "Calendar",
+          visibleInAppStore: false,
+        }),
+      ],
+      installed: [{ name: "@elizaos/plugin-calendar" }],
+    });
+
+    expect(entries.map((entry) => entry.id)).toEqual(["simple-calendar"]);
+    expect(entries[0]?.label).toBe("Calendar");
+  });
+
   it("on a non-GUI surface lists only loaded views of that modality, no catalog", () => {
     const entries = merge({
       activeModality: "xr",
@@ -389,3 +416,4 @@ describe("collapseViewEntries", () => {
     expect(collapsed[1].modalities).toEqual(["gui"]);
   });
 });
+const PACKAGED_VIEW_ICON_PATTERN = /\/view-icons\/[^/]+\.png$/;

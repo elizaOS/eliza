@@ -98,7 +98,7 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
     const refreshMock = refreshAnthropicToken as unknown as ReturnType<
       typeof vi.fn
     >;
-    saveCredentials(
+    await saveCredentials(
       "anthropic-subscription",
       {
         access: "current-access",
@@ -126,7 +126,7 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
       refresh: "fresh-refresh",
       expires: Date.now() + 60 * MIN,
     });
-    saveCredentials(
+    await saveCredentials(
       "anthropic-subscription",
       {
         access: "current-access",
@@ -145,7 +145,7 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
     expect(refreshMock).toHaveBeenCalledWith("current-refresh");
     expect(
-      loadAccount("anthropic-subscription", "personal")?.credentials,
+      (await loadAccount("anthropic-subscription", "personal"))?.credentials,
     ).toMatchObject({ access: "fresh-access", refresh: "fresh-refresh" });
   });
 
@@ -159,7 +159,7 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
       refresh: "short-fresh-refresh",
       expires: Date.now() + 30 * MIN,
     });
-    saveCredentials(
+    await saveCredentials(
       "anthropic-subscription",
       {
         access: "current-access",
@@ -180,7 +180,7 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
     });
     expect(refreshMock).toHaveBeenCalledTimes(1);
     expect(
-      loadAccount("anthropic-subscription", "personal")?.credentials,
+      (await loadAccount("anthropic-subscription", "personal"))?.credentials,
     ).toMatchObject({
       access: "short-fresh-access",
       refresh: "short-fresh-refresh",
@@ -209,7 +209,7 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
         };
       });
     });
-    saveCredentials(
+    await saveCredentials(
       "anthropic-subscription",
       {
         access: "expired-access",
@@ -243,7 +243,8 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
     expect(refreshMock).toHaveBeenCalledWith("old-refresh");
     expect(
-      loadAccount("anthropic-subscription", "personal")?.credentials.refresh,
+      (await loadAccount("anthropic-subscription", "personal"))?.credentials
+        .refresh,
     ).toBe("rotated-refresh");
   });
 
@@ -258,7 +259,7 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
       typeof vi.fn
     >;
     refreshMock.mockRejectedValue(new Error("transient anthropic 503"));
-    saveCredentials(
+    await saveCredentials(
       "anthropic-subscription",
       {
         access: "still-valid-access",
@@ -313,7 +314,7 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
     const refreshMock = refreshAnthropicToken as unknown as ReturnType<
       typeof vi.fn
     >;
-    saveCredentials(
+    await saveCredentials(
       "anthropic-subscription",
       {
         access: "long-lived-access",
@@ -342,7 +343,7 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
       refresh: "fresh-refresh",
       expires: Date.now() + 60 * MIN,
     });
-    saveCredentials(
+    await saveCredentials(
       "anthropic-subscription",
       {
         access: "near-expiry",
@@ -354,7 +355,7 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
 
     for (const bad of [0, -5, Number.NaN]) {
       refreshMock.mockClear();
-      saveAccount({
+      await saveAccount({
         id: "personal",
         providerId: "anthropic-subscription",
         label: "Default",

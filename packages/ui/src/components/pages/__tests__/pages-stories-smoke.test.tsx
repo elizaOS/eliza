@@ -1,3 +1,4 @@
+/** Verifies pages stories smoke through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Portable-stories smoke test for the pages surface. See test/portable-stories.tsx.

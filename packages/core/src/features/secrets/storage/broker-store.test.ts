@@ -2,8 +2,8 @@
  * Deterministic unit test for BrokerSecretStorage (features/secrets/storage):
  * the non-decrypting invariant (get() returns serialized handles, refuses to
  * pass through smuggled plaintext, and the source imports no decrypt path),
- * read-only vs write-capable set(), and fail-closed-vs-soft error handling under
- * strict/non-strict config. Uses vi-mocked broker clients and reads its own
+ * read-only vs write-capable set(), and observable broker failures under every
+ * configuration. Uses vi-mocked broker clients and reads its own
  * backend source for the structural guard.
  */
 import { readFileSync } from "node:fs";
@@ -139,7 +139,7 @@ describe("BrokerSecretStorage — non-decrypting invariant", () => {
 	});
 });
 
-describe("BrokerSecretStorage — fail-closed vs fail-soft", () => {
+describe("BrokerSecretStorage — broker failures", () => {
 	it("strict: broker error on get() throws SecretsBrokerUnavailableError", async () => {
 		const broker: ISecretBrokerClient = {
 			hasSecret: vi.fn(async () => {
@@ -168,7 +168,7 @@ describe("BrokerSecretStorage — fail-closed vs fail-soft", () => {
 		);
 	});
 
-	it("non-strict: broker error on get() returns null (soft)", async () => {
+	it("non-strict: broker error on get() still throws", async () => {
 		const broker: ISecretBrokerClient = {
 			hasSecret: vi.fn(async () => false),
 			issueHandle: vi.fn(async () => {
@@ -176,10 +176,12 @@ describe("BrokerSecretStorage — fail-closed vs fail-soft", () => {
 			}),
 		};
 		const store = new BrokerSecretStorage(broker, config({ strict: false }));
-		expect(await store.get("K", CONTEXT)).toBeNull();
+		await expect(store.get("K", CONTEXT)).rejects.toBeInstanceOf(
+			SecretsBrokerUnavailableError,
+		);
 	});
 
-	it("non-strict: broker error on exists() returns false (soft)", async () => {
+	it("non-strict: broker error on exists() still throws", async () => {
 		const broker: ISecretBrokerClient = {
 			hasSecret: vi.fn(async () => {
 				throw new Error("ECONNREFUSED");
@@ -187,6 +189,8 @@ describe("BrokerSecretStorage — fail-closed vs fail-soft", () => {
 			issueHandle: vi.fn(async () => null),
 		};
 		const store = new BrokerSecretStorage(broker, config({ strict: false }));
-		expect(await store.exists("K", CONTEXT)).toBe(false);
+		await expect(store.exists("K", CONTEXT)).rejects.toBeInstanceOf(
+			SecretsBrokerUnavailableError,
+		);
 	});
 });

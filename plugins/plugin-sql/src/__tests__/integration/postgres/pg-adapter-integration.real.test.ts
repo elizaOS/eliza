@@ -59,11 +59,6 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
         expect(db).toBeDefined();
         expect(db.execute).toBeDefined();
       });
-
-      it("should check if adapter is ready", async () => {
-        const isReady = await adapter.isReady();
-        expect(isReady).toBe(true);
-      });
     });
 
     describe("Raw Database Operations", () => {

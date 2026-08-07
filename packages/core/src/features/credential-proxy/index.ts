@@ -3,8 +3,6 @@
  *
  * Node-only: the client uses `node:crypto` and the SSRF-guarded transport, so
  * this barrel is exported from `index.node.ts` only (never the browser bundle).
- *
- * @module features/credential-proxy
  */
 
 export {

@@ -17,6 +17,7 @@ import {
 
 function runtimeWith(evaluators: ResponseHandlerEvaluator[]): IAgentRuntime {
 	return {
+		reportError: () => undefined,
 		agentId: "00000000-0000-0000-0000-000000000001",
 		responseHandlerEvaluators: evaluators,
 		logger: { warn: () => undefined, debug: () => undefined },
@@ -95,6 +96,7 @@ describe("response-handler evaluators", () => {
 			params: { action: "show" },
 		});
 		expect(result.activeEvaluators).toEqual(["threads"]);
+		expect(result.candidateActionsClearedByEvaluators).toBe(true);
 		expect(result.appliedPatches[0]?.changed).toContain("contexts:set");
 		expect(result.appliedPatches[0]?.changed).toContain(
 			"deterministicToolCall:set",
@@ -167,5 +169,24 @@ describe("response-handler evaluators", () => {
 		expect(messageHandler.plan.candidateActions).toBeUndefined();
 		expect(messageHandler.plan.parentActionHints).toBeUndefined();
 		expect(messageHandler.plan.reply).toBe("Done.");
+	});
+
+	it("reports when no evaluator established an exclusive candidate route", async () => {
+		const messageHandler = handler();
+		const result = await runResponseHandlerEvaluators({
+			runtime: runtimeWith([
+				{
+					name: "additive",
+					shouldRun: () => true,
+					evaluate: () => ({ addCandidateActions: ["SEARCH"] }),
+				},
+			]),
+			message,
+			state,
+			messageHandler,
+			availableContexts: [],
+		});
+
+		expect(result.candidateActionsClearedByEvaluators).toBe(false);
 	});
 });

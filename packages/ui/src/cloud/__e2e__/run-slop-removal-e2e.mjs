@@ -63,7 +63,7 @@ function assert(cond, msg) {
 
 const pgdata = mkdtempSync(join(tmpdir(), "slop-removal-pg-"));
 // Resolve @elizaos/* from source (no dist build needed in a fresh checkout) —
-// same trick as packages/test/cloud-e2e/playwright.config.ts.
+// same trick as packages/cloud/e2e/playwright.config.ts.
 const bunSourceCondition = "--conditions=eliza-source";
 const bunOptions = process.env.BUN_OPTIONS?.includes(bunSourceCondition)
   ? process.env.BUN_OPTIONS
@@ -96,7 +96,7 @@ await new Promise((res, rej) => {
 console.log("== boot cloud-api ==");
 const apiServer = spawn(
   "bun",
-  ["run", "packages/scripts/cloud/admin/dev/cloud-api-hono-dev.ts"],
+  ["run", "packages/cloud/scripts/admin/dev/cloud-api-hono-dev.ts"],
   { cwd: repoRoot, env: stackEnv, stdio: ["ignore", "ignore", "inherit"] },
 );
 process.on("exit", () => {

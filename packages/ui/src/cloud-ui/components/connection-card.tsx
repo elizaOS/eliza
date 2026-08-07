@@ -125,7 +125,7 @@ function ConnectionIdentityPanel({
   return (
     <div
       className={cn(
-        "flex items-center gap-4 p-4 bg-muted rounded-sm",
+        "flex items-center gap-4 p-4 bg-bg-muted rounded-sm",
         className,
       )}
     >
@@ -169,7 +169,7 @@ const calloutToneClassName: Record<
   red: "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400",
   yellow:
     "bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-400",
-  muted: "bg-muted border-transparent text-foreground",
+  muted: "bg-bg-muted border-transparent text-foreground",
 };
 
 function ConnectionCallout({
@@ -223,7 +223,7 @@ function ConnectionInstructions({
         <Button
           variant="ghost"
           className={cn(
-            "w-full justify-between p-4 h-auto bg-muted",
+            "w-full justify-between p-4 h-auto bg-bg-muted",
             triggerClassName,
           )}
         >
@@ -234,7 +234,10 @@ function ConnectionInstructions({
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent
-        className={cn("p-4 bg-muted rounded-b-lg border-t", contentClassName)}
+        className={cn(
+          "p-4 bg-bg-muted rounded-b-lg border-t",
+          contentClassName,
+        )}
       >
         {children}
       </CollapsibleContent>
@@ -258,7 +261,7 @@ function ConnectionCopyRow({
   className,
 }: ConnectionCopyRowProps) {
   return (
-    <div className={cn("p-3 bg-muted rounded-sm space-y-2", className)}>
+    <div className={cn("p-3 bg-bg-muted rounded-sm space-y-2", className)}>
       <Label className="text-xs text-muted-foreground">{label}</Label>
       <div className="flex items-center gap-2">
         <code className="flex-1 text-xs bg-background p-2 rounded-sm border overflow-x-auto">
@@ -305,7 +308,7 @@ function ConnectionDisconnectAction({
         <Button
           variant="outline"
           size="sm"
-          className="text-red-600 hover:text-red-700"
+          className="text-red-500 hover:text-red-400"
           disabled={isDisconnecting}
         >
           {isDisconnecting ? (
@@ -408,7 +411,7 @@ function ConnectionCard({
       {/* Content */}
       <div className="min-w-0 p-4 pt-0 sm:p-6 sm:pt-0">
         {status === "not-configured" && (
-          <div className="p-4 bg-muted rounded-sm">
+          <div className="p-4 bg-bg-muted rounded-sm">
             <p className="text-sm text-muted-foreground">
               {notConfiguredMessage}
             </p>

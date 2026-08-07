@@ -27,6 +27,7 @@ import {
   cumulativeLayoutShift,
   type LayoutShiftSample,
 } from "../testing/layout-stability";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {
   currentRoute,
   isRenderTelemetryEnabled,
@@ -98,7 +99,11 @@ function emitLayoutShift(event: LayoutShiftTelemetryEvent): void {
   }
   const message = `[RenderTelemetry] layout shifted ${event.shiftCount}x (CLS ${event.cls.toFixed(3)}) within ${event.windowMs}ms`;
   if (event.severity === "error") {
-    console.error(message, event);
+    reportRendererDiagnostic({
+      scope: "render-telemetry.layout-shift",
+      error: new Error(message),
+      context: { event },
+    });
   } else {
     console.info(message, event);
   }

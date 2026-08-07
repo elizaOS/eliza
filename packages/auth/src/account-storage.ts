@@ -5,15 +5,17 @@
  * atomic writes). Multiple accounts per provider are supported. Every mutator
  * requires a branded root/owner policy; isolated policies are physically
  * confined to the OS temporary directory and no operation may cross its
- * canonical provider directory.
- *
+ * canonical provider directory. Records persist as versioned AES-GCM
+ * envelopes encrypted with the vault master key; legacy plaintext records
+ * are validated and re-encrypted atomically on first read.
  */
 
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
+import { decrypt, encrypt, loadDefaultMasterKeySync } from "@elizaos/vault";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   type AccountCredentialProvider,
@@ -607,6 +609,59 @@ function assertStoragePolicy(policy: AccountStoragePolicy): void {
   }
 }
 
+interface EncryptedAccountEnvelope {
+  schemaVersion: 2;
+  ciphertext: string;
+}
+
+function isEnvelope(value: unknown): value is EncryptedAccountEnvelope {
+  const candidate = value as Partial<EncryptedAccountEnvelope> | null;
+  return (
+    candidate !== null &&
+    typeof candidate === "object" &&
+    candidate.schemaVersion === 2 &&
+    typeof candidate.ciphertext === "string"
+  );
+}
+
+function accountAad(
+  provider: AccountCredentialProvider,
+  accountId: string,
+): string {
+  return `@elizaos/auth/account/${provider}/${accountId}`;
+}
+
+/**
+ * Test processes and isolated-test policies never touch the real vault master
+ * key: each isolated auth root gets its own ephemeral in-process key, so a
+ * test cannot decrypt (or corrupt) developer credentials even if pointed at a
+ * real state directory by mistake.
+ */
+const testKeys = new Map<string, Buffer>();
+
+function isTestProcess(): boolean {
+  const argv = process.argv.join(" ").toLowerCase();
+  return (
+    process.env.NODE_ENV === "test" ||
+    process.env.VITEST === "true" ||
+    process.env.BUN_ENV === "test" ||
+    argv.includes("vitest") ||
+    argv.includes("bun test")
+  );
+}
+
+function masterKey(policy: AccountStoragePolicy): Buffer {
+  if (policy.owner !== "isolated-test" && !isTestProcess()) {
+    return loadDefaultMasterKeySync();
+  }
+  const root = path.resolve(policy.authRoot);
+  const existing = testKeys.get(root);
+  if (existing) return existing;
+  const created = randomBytes(32);
+  testKeys.set(root, created);
+  return created;
+}
+
 const ACCOUNT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/;
 
 export function assertCanonicalAccountId(accountId: string): void {
@@ -701,7 +756,15 @@ function writeAccountFile(
         fs.constants.O_NOFOLLOW,
       0o600,
     );
-    fs.writeFileSync(descriptor, JSON.stringify(value, null, 2), "utf8");
+    const envelope: EncryptedAccountEnvelope = {
+      schemaVersion: 2,
+      ciphertext: encrypt(
+        masterKey(policy),
+        JSON.stringify(value),
+        accountAad(provider, accountId),
+      ),
+    };
+    fs.writeFileSync(descriptor, JSON.stringify(envelope, null, 2), "utf8");
     fs.fsyncSync(descriptor);
     fs.closeSync(descriptor);
     descriptor = undefined;
@@ -1073,10 +1136,25 @@ function isAccountCredentialRecord(
   );
 }
 
-function parseAccountCredentialRecord(
+interface DecodedAccountRecord {
+  record: AccountCredentialRecord;
+  wasPlaintext: boolean;
+}
+
+/**
+ * Decode raw account-file bytes into a validated record. Envelope files are
+ * decrypted with the policy-scoped master key and a per-provider/account AAD
+ * so a ciphertext cannot be replayed under a different identity; legacy
+ * plaintext files are accepted once and flagged for re-encryption. Any
+ * decrypt or schema failure throws — a credential that cannot be proven
+ * intact is never returned.
+ */
+function decodeAccountRecord(
   contents: Buffer,
   file: string,
-): AccountCredentialRecord {
+  provider: AccountCredentialProvider,
+  policy: AccountStoragePolicy,
+): DecodedAccountRecord {
   let parsed: unknown;
   try {
     parsed = JSON.parse(contents.toString("utf8"));
@@ -1088,6 +1166,39 @@ function parseAccountCredentialRecord(
       cause,
     );
   }
+  if (!isEnvelope(parsed)) {
+    return {
+      record: parseAccountCredentialRecord(parsed, file),
+      wasPlaintext: true,
+    };
+  }
+  let decrypted: unknown;
+  try {
+    decrypted = JSON.parse(
+      decrypt(
+        masterKey(policy),
+        parsed.ciphertext,
+        accountAad(provider, path.basename(file, ".json")),
+      ),
+    );
+  } catch (cause) {
+    throw storageError(
+      "AUTH_CREDENTIAL_RECORD_CORRUPT",
+      "Credential envelope failed authenticated decryption",
+      { file, provider },
+      cause,
+    );
+  }
+  return {
+    record: parseAccountCredentialRecord(decrypted, file),
+    wasPlaintext: false,
+  };
+}
+
+function parseAccountCredentialRecord(
+  parsed: unknown,
+  file: string,
+): AccountCredentialRecord {
   if (!isAccountCredentialRecord(parsed)) {
     throw storageError(
       "AUTH_CREDENTIAL_RECORD_CORRUPT",
@@ -1130,7 +1241,12 @@ function listAccountsUnlocked(
       policy,
       "list-account",
     );
-    const parsed = parseAccountCredentialRecord(contents, filePath);
+    const { record: parsed, wasPlaintext } = decodeAccountRecord(
+      contents,
+      filePath,
+      provider,
+      policy,
+    );
     if (parsed.providerId !== provider) {
       throw storageError(
         "AUTH_CREDENTIAL_RECORD_CORRUPT",
@@ -1149,6 +1265,7 @@ function listAccountsUnlocked(
         { accountId: parsed.id, entry, filePath },
       );
     }
+    if (wasPlaintext) migratePlaintextRecord(parsed, policy);
     records.push(parsed);
   }
 
@@ -1170,7 +1287,12 @@ function loadAccountUnlocked(
     if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw cause;
   }
-  const parsed = parseAccountCredentialRecord(contents, file);
+  const { record: parsed, wasPlaintext } = decodeAccountRecord(
+    contents,
+    file,
+    provider,
+    policy,
+  );
   if (parsed.providerId !== provider || parsed.id !== accountId) {
     throw storageError(
       "AUTH_CREDENTIAL_RECORD_CORRUPT",
@@ -1184,7 +1306,23 @@ function loadAccountUnlocked(
       },
     );
   }
+  if (wasPlaintext) migratePlaintextRecord(parsed, policy);
   return parsed;
+}
+
+/**
+ * Re-persist a legacy plaintext record as an encrypted envelope in place.
+ * Runs inside the caller's storage lock; the rewrite is the same atomic
+ * temp-file + rename path every mutation uses.
+ */
+function migratePlaintextRecord(
+  record: AccountCredentialRecord,
+  policy: AccountStoragePolicy,
+): void {
+  writeAccountFile(record.providerId, record.id, policy, record);
+  logger.info(
+    `[auth] Migrated ${record.providerId} account "${record.id}" to encrypted storage`,
+  );
 }
 
 export function listAccounts(

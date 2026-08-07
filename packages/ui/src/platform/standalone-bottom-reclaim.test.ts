@@ -1,3 +1,4 @@
+/** Verifies measureStandaloneBottomGap: the screen.height cure for the collapsed-ICB strip through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

@@ -17,7 +17,13 @@
  * own size changes reach the flow, which is exactly the expand/collapse case).
  */
 import { ChevronDown } from "lucide-react";
-import { type CSSProperties, type ReactNode, useId, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import { useAppSelector } from "../../../state";
 
 export interface ChatWidgetShellProps {
@@ -57,16 +63,21 @@ export function ChatWidgetShell({
 }: ChatWidgetShellProps) {
   const t = useAppSelector((s) => s.t);
   const bodyId = useId();
-  const [expanded, setExpanded] = useState(!complete);
-  // Render-time adjustment (not an effect) so a completion transition never
-  // paints one expanded frame before collapsing. A transition in either
-  // direction resets the user's manual toggle: connect collapses, a later
-  // disconnect re-opens the setup form.
-  const [prevComplete, setPrevComplete] = useState(complete);
-  if (prevComplete !== complete) {
-    setPrevComplete(complete);
-    setExpanded(!complete);
-  }
+  // A completion transition creates a new identity, invalidating any manual
+  // disclosure override without a render-time or effect-time state write. The
+  // body remains mounted, so in-progress fields survive the transition.
+  const completionVersion = useMemo(
+    () => Symbol(complete ? "complete" : "incomplete"),
+    [complete],
+  );
+  const [manualDisclosure, setManualDisclosure] = useState<{
+    version: symbol;
+    expanded: boolean;
+  } | null>(null);
+  const expanded =
+    manualDisclosure?.version === completionVersion
+      ? manualDisclosure.expanded
+      : !complete;
 
   return (
     // Chat-native: no card box around the widget — it reads as part of the
@@ -95,7 +106,12 @@ export function ChatWidgetShell({
             }
             data-testid={testId ? `${testId}-chevron` : undefined}
             className="flex size-5 items-center justify-center text-muted transition-colors hover:text-txt"
-            onClick={() => setExpanded((v) => !v)}
+            onClick={() =>
+              setManualDisclosure({
+                version: completionVersion,
+                expanded: !expanded,
+              })
+            }
           >
             <ChevronDown
               className={`size-3.5 transition-transform duration-200 ${expanded ? "" : "-rotate-90"}`}

@@ -63,6 +63,16 @@ describe("copy-package-assets", () => {
       "packaging/python/.coverage.worker",
       "generated coverage data\n",
     );
+    writeFixture(
+      packageRoot,
+      "packaging/python/module.test.py",
+      "generated test source\n",
+    );
+    writeFixture(
+      packageRoot,
+      "packaging/python/__tests__/module.py",
+      "generated test source\n",
+    );
     for (const cacheDirectory of [
       ".mypy_cache",
       ".ruff_cache",
@@ -70,6 +80,8 @@ describe("copy-package-assets", () => {
       "ENV",
       "env",
       "venv",
+      "Pods",
+      "tmp",
     ]) {
       writeFixture(
         packageRoot,
@@ -107,6 +119,12 @@ describe("copy-package-assets", () => {
     expect(
       existsSync(join(packageRoot, "dist/packaging/python/.coverage.worker")),
     ).toBe(false);
+    expect(
+      existsSync(join(packageRoot, "dist/packaging/python/module.test.py")),
+    ).toBe(false);
+    expect(
+      existsSync(join(packageRoot, "dist/packaging/python/__tests__")),
+    ).toBe(false);
     for (const cacheDirectory of [
       ".mypy_cache",
       ".ruff_cache",
@@ -114,6 +132,8 @@ describe("copy-package-assets", () => {
       "ENV",
       "env",
       "venv",
+      "Pods",
+      "tmp",
     ]) {
       expect(
         existsSync(join(packageRoot, "dist/packaging/python", cacheDirectory)),

@@ -1,15 +1,15 @@
 /**
  * Pre-LLM action shortcuts (#8791).
  *
- * A shortcut maps a deterministic intent — an explicit slash/`!` command or a
- * natural-language phrase — onto a concrete target (an action to fire, or a
- * client navigation) *before* the first model call, so the most common turns
- * resolve without inference. The matcher is source-agnostic: a typed message
- * and an ASR transcript are both just `Memory.content.text`.
+ * A shortcut maps an explicit slash/`!` protocol invocation or a discoverable
+ * natural-language phrase onto a concrete target. The runtime message service
+ * executes only explicit protocol shortcuts before inference; caller-controlled
+ * discovery surfaces may opt into natural matching without changing model
+ * ownership of ordinary chat turns.
  *
- * Explicit shortcuts (slash/`!`) are unambiguous and always eligible. Natural
- * shortcuts are caller-enabled, confidence-floored, and defer to the LLM on
- * ambiguity — they never guess.
+ * Explicit shortcuts (slash/`!`) are unambiguous and eligible for deterministic
+ * dispatch. Natural shortcuts are caller-enabled and confidence-floored, but
+ * the agent chat pipeline deliberately leaves them to the planner.
  */
 
 /** Where a matched shortcut resolves to. */

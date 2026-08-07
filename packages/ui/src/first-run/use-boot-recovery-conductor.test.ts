@@ -1,3 +1,4 @@
+/** Verifies useBootRecoveryConductor through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -17,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   store: {
     firstRunComplete: true as boolean | null,
-    handleCloudLogin: vi.fn(async () => {}),
+    handleCloudLoginRecovery: vi.fn(async () => {}),
     triggerRestart: vi.fn(async () => {}),
     backendConnection: {
       state: "connected" as
@@ -320,7 +321,7 @@ describe("useBootRecoveryConductor", () => {
       );
     });
     expect(card()?.text).toContain("Opening Eliza Cloud sign-in");
-    expect(mocks.store.handleCloudLogin).toHaveBeenCalledTimes(1);
+    expect(mocks.store.handleCloudLoginRecovery).toHaveBeenCalledTimes(1);
     // The login flow settles without the boot healing (still stalled): the
     // live card with its controls must return — never a dead-end card.
     // (Flush the settled promise chain inside act; waitFor would deadlock

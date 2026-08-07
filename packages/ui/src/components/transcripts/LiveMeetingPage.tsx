@@ -192,7 +192,7 @@ export function LiveMeetingPage(): React.JSX.Element {
                 data-testid="live-meeting-empty"
                 className="grid h-full place-items-center px-6 text-center"
               >
-                <div className="flex max-w-sm flex-col items-center gap-3 text-muted/70">
+                <div className="flex max-w-sm flex-col items-center gap-3 text-muted">
                   <Radio className="h-6 w-6" aria-hidden />
                   <p className="text-sm">
                     No live meeting. Paste a meeting link above to have the
@@ -230,7 +230,7 @@ export function LiveMeetingPage(): React.JSX.Element {
                           {transcriptError}
                         </p>
                       ) : (
-                        <p className="text-sm text-muted/70">
+                        <p className="text-sm text-muted">
                           Connecting to the meeting transcript…
                         </p>
                       )}

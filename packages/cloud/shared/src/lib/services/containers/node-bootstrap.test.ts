@@ -88,6 +88,28 @@ describe("buildContainerNodeUserData — ghcr access", () => {
     expect(networkIdx).toBeGreaterThan(guardIdx);
   });
 
+  test("installs the supervised embedding sidecar after network + ghcr access", () => {
+    clearRegistryEnv();
+    const userData = buildContainerNodeUserData(baseInput);
+    // The ensure command attaches the sidecar to the shared network (needs the
+    // network to exist) and pulls a public ghcr image (needs the stale-cred
+    // cleanup first — the same `denied` failure the robot fix exists for). A
+    // failed install must not abort the rest of boot: registration still runs
+    // and the health loop surfaces + self-heals the sidecar.
+    const networkIdx = userData.indexOf("docker network create");
+    const accessIdx = userData.indexOf("docker logout 'ghcr.io'");
+    const sidecarIdx = userData.indexOf("eliza-embedding-sidecar");
+    expect(networkIdx).toBeGreaterThanOrEqual(0);
+    expect(accessIdx).toBeGreaterThan(networkIdx);
+    expect(sidecarIdx).toBeGreaterThan(accessIdx);
+    expect(userData).toContain("--restart always");
+    expect(userData).toContain("--label ai.elizaos.managed-by=eliza-cloud");
+    expect(userData).toContain("--model-id thenlper/gte-small");
+    expect(userData).toContain(
+      "|| echo '[bootstrap] embedding sidecar install failed; the node health loop will surface and self-heal it'",
+    );
+  });
+
   test("self-registration includes the node host-key fingerprint and fails closed if it cannot be read", () => {
     clearRegistryEnv();
     const userData = buildContainerNodeUserData({

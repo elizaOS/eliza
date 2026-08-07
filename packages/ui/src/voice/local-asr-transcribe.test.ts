@@ -1,3 +1,4 @@
+/** Verifies transcribeCloudWav through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Verifies the cloud STT client leg: the WAV → `/api/asr/cloud` POST payload

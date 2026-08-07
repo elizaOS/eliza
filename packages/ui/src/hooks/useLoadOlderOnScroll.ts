@@ -52,7 +52,7 @@ export interface LoadOlderOnScrollOptions<T extends HTMLElement> {
    * (the prepend dispatched). Rejection/throw is swallowed by the guard so a
    * transient fetch failure just re-arms on the next scroll-up.
    */
-  onLoadOlder: () => Promise<void>;
+  onLoadOlder: () => Promise<{ prependedCount: number } | undefined>;
   /** False once the true top is reached — latches the loader off. */
   hasMore: boolean;
   /**
@@ -107,6 +107,27 @@ export function useLoadOlderOnScroll<T extends HTMLElement = HTMLDivElement>({
     pendingAnchorHeightRef.current = el.scrollHeight;
     void onLoadOlderRef
       .current()
+      .then((result) => {
+        if (result && result.prependedCount === 0) {
+          // The loader authoritatively reports that no DOM growth is coming.
+          // Clear immediately so a later conversation switch cannot consume a
+          // stale anchor. Positive outcomes stay armed until the top-key layout
+          // effect observes the actual React commit, regardless of how many
+          // frames WebKit takes to schedule it.
+          pendingAnchorHeightRef.current = null;
+          return;
+        }
+        if (result) return;
+
+        // Compatibility for callers that do not report an outcome. Their
+        // commit should land within two frames; result-aware callers above do
+        // not rely on this timing heuristic.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            pendingAnchorHeightRef.current = null;
+          });
+        });
+      })
       .catch((err: unknown) => {
         // error-policy:J4 the transcript above stays intact and the next
         // scroll-up retries the page; logged so a persistently failing
@@ -117,27 +138,6 @@ export function useLoadOlderOnScroll<T extends HTMLElement = HTMLDivElement>({
       })
       .finally(() => {
         loadingRef.current = false;
-        // Clear any anchor the preservation effect did NOT consume. A load that
-        // prepends nothing (empty / fully-deduped / fully-filtered older page)
-        // leaves topItemKey unchanged, so the preservation layout effect never
-        // runs and the pre-grow height would otherwise stay parked — then a
-        // later UNRELATED top-key change (e.g. a conversation switch) would
-        // apply a bogus scrollTop delta.
-        //
-        // DOUBLE rAF (not single): a real prepend's React commit + preservation
-        // layout effect are scheduled off the SAME promise resolution as this
-        // finally, and their relative order is engine-dependent — on WebKit the
-        // commit routinely lands a frame LATER than a single rAF, so a
-        // single-frame expiry nulled the anchor before the effect consumed it
-        // and every ~3rd prepend jumped the viewport ~1 screen (verified via the
-        // webkit lane of run-chat-infinite-scroll-e2e). Two frames of runway
-        // reliably outlast the commit while still expiring long before any
-        // real user-driven unrelated top-key change.
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            pendingAnchorHeightRef.current = null;
-          });
-        });
       });
   }, [scrollRef]);
 

@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for sync dod gap issues mjs. */
+/**
+ * Syncs the GitHub issue drafts in INTEGRATION_DOD_MAP.md to real issues via
+ * the GitHub API: creates/updates issues under the integration-dod-gap label,
+ * closes resolved gaps, and supports DRY_RUN.
+ */
 
 import { readFileSync } from "node:fs";
 import {

@@ -1,9 +1,12 @@
 /**
  * Plugin entry for @elizaos/plugin-coding-tools: assembles the FILE, SHELL, and
- * WORKTREE actions, the AVAILABLE_CODING_TOOLS provider, and the sandbox /
- * file-state / session-cwd / ripgrep services into the `codingToolsPlugin`
- * object, and declares the auto-enable predicate that turns the plugin on only
- * when a coding feature flag is set and the environment supports a terminal.
+ * WORKTREE actions, the AVAILABLE_CODING_TOOLS and SHELL_HISTORY providers, and
+ * the shell / exec-approval / sandbox / file-state / session-cwd / ripgrep
+ * services into the `codingToolsPlugin` object, and declares the auto-enable
+ * predicate that turns the plugin on only when a coding or shell feature flag is
+ * set and the environment supports a terminal. The shell execution stack
+ * (ShellService, ExecApprovalService, SHELL_HISTORY) lives in ./shell — it was
+ * formerly the standalone @elizaos/plugin-shell.
  * `terminalSupportedByEnv` mirrors the gating in auto-enable.ts (disabled on the
  * store build variant and iOS; Android only in local-yolo mode). Also re-exports
  * the services and types for external consumers.
@@ -24,6 +27,11 @@ import {
   SandboxService,
   SessionCwdService,
 } from "./services/index.js";
+import {
+  ExecApprovalService,
+  ShellService,
+  shellHistoryProvider,
+} from "./shell/index.js";
 
 function terminalSupportedByEnv(
   env: Record<string, string | undefined>,
@@ -52,13 +60,15 @@ export const codingToolsPlugin: Plugin = {
   description:
     "Native coding tools: FILE read/write/edit/grep/glob/ls, SHELL commands/history/background sessions, WEB_FETCH/WEB_SEARCH public-web research, WORKTREE enter/exit. Absolute workspace paths unless an operation defaults to session cwd; private/system paths and private-network web targets are blocked.",
   services: [
+    ShellService,
+    ExecApprovalService,
     BackgroundShellService,
     FileStateService,
     SandboxService,
     SessionCwdService,
     RipgrepService,
   ],
-  providers: [availableToolsProvider],
+  providers: [availableToolsProvider, shellHistoryProvider],
   actions: [
     fileAction,
     shellAction,
@@ -67,6 +77,10 @@ export const codingToolsPlugin: Plugin = {
     webSearchAction,
   ],
   async dispose(runtime) {
+    await runtime.getService<ShellService>(ShellService.serviceType)?.stop();
+    await runtime
+      .getService<ExecApprovalService>(ExecApprovalService.serviceType)
+      ?.stop();
     await runtime
       .getService<BackgroundShellService>(BackgroundShellService.serviceType)
       ?.stop();
@@ -95,7 +109,8 @@ export const codingToolsPlugin: Plugin = {
           (f as { enabled?: unknown }).enabled !== false);
       return (
         (isFeatureEnabled(features?.codingTools) ||
-          isFeatureEnabled(features?.["coding-agent"])) &&
+          isFeatureEnabled(features?.["coding-agent"]) ||
+          isFeatureEnabled(features?.shell)) &&
         terminalSupportedByEnv(env as Record<string, string | undefined>)
       );
     },
@@ -113,4 +128,9 @@ export {
   SandboxService,
   SessionCwdService,
 } from "./services/index.js";
+export {
+  ExecApprovalService,
+  ShellService,
+  shellHistoryProvider,
+} from "./shell/index.js";
 export * from "./types.js";

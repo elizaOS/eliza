@@ -9,15 +9,15 @@
  * without rendering the full workbench view.
  */
 
-import {
-  type CodingAgentOrchestratorStatus,
-  type CodingAgentTaskEventRecord,
-  type CodingAgentTaskMessageRecord,
-  type CodingAgentTaskThread,
-  type CodingAgentTaskThreadDetail,
-  type CodingAgentTaskTimelineItem,
-  client,
-} from "@elizaos/ui";
+import { client } from "@elizaos/ui/api";
+import type {
+  CodingAgentOrchestratorStatus,
+  CodingAgentTaskEventRecord,
+  CodingAgentTaskMessageRecord,
+  CodingAgentTaskThread,
+  CodingAgentTaskThreadDetail,
+  CodingAgentTaskTimelineItem,
+} from "@elizaos/ui/api/client-types-cloud";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TASK_LIST_LIMIT } from "./orchestrator-params";
 import type { StatusFilter, Translate } from "./orchestrator-workbench-glyphs";

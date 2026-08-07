@@ -8,8 +8,6 @@ const ORIGINAL_FETCH = globalThis.fetch;
 // chat/completions client, easy to mock by host) and assert that a retryable
 // failure fails over to OpenRouter.
 delete process.env.BITROUTER_API_KEY;
-delete process.env.AI_GATEWAY_API_KEY;
-delete process.env.AIGATEWAY_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.CEREBRAS_API_KEY;
 delete process.env.GROQ_API_KEY;

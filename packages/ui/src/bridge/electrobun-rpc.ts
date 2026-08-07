@@ -119,74 +119,6 @@ export interface DesktopRuntimeModeInfo {
   externalApiSource?: string | null;
 }
 
-export type DesktopRemotePluginPermissionTag =
-  | `host:${"windows" | "tray" | "notifications" | "storage" | "manage-remote-plugins"}`
-  | `bun:${"read" | "write" | "env" | "run" | "ffi" | "addons" | "worker"}`
-  | `isolation:${"shared-worker" | "isolated-process"}`;
-
-export interface DesktopRemotePluginPermissionGrant {
-  host?: Partial<
-    Record<
-      | "windows"
-      | "tray"
-      | "notifications"
-      | "storage"
-      | "manage-remote-plugins",
-      boolean
-    >
-  >;
-  bun?: Partial<
-    Record<
-      "read" | "write" | "env" | "run" | "ffi" | "addons" | "worker",
-      boolean
-    >
-  >;
-  isolation?: "shared-worker" | "isolated-process";
-}
-
-export interface DesktopRemotePluginViewInfo {
-  relativePath: string;
-  hidden?: boolean;
-  title: string;
-  width: number;
-  height: number;
-  titleBarStyle?: "hidden" | "hiddenInset" | "default";
-  transparent?: boolean;
-  viewUrl: string;
-}
-
-export interface DesktopRemotePluginListEntry {
-  id: string;
-  name: string;
-  description: string;
-  version: string;
-  mode: "window" | "background";
-  permissions: DesktopRemotePluginPermissionTag[];
-  status: "installed" | "broken";
-  devMode: boolean;
-}
-
-export interface DesktopInstalledRemotePluginSnapshot {
-  id: string;
-  name: string;
-  description: string;
-  version: string;
-  mode: "window" | "background";
-  status: "installed" | "broken";
-  sourceKind: "prototype" | "local" | "artifact";
-  currentHash: string | null;
-  installedAt: number;
-  updatedAt: number;
-  devMode: boolean;
-  lastBuildAt: number | null;
-  lastBuildError: string | null;
-  requestedPermissions: DesktopRemotePluginPermissionGrant;
-  grantedPermissions: DesktopRemotePluginPermissionGrant;
-  view: DesktopRemotePluginViewInfo;
-  worker: { relativePath: string };
-  remoteUIs?: Record<string, { name: string; path: string }>;
-}
-
 export type DynamicViewPlacement =
   | "canvas"
   | "floating"
@@ -195,12 +127,7 @@ export type DynamicViewPlacement =
   | "tray"
   | "debug";
 
-export type DynamicViewSource =
-  | "agent"
-  | "plugin"
-  | "remote"
-  | "system"
-  | "developer";
+export type DynamicViewSource = "agent" | "plugin" | "system" | "developer";
 
 export interface DynamicViewManifest {
   id: string;
@@ -210,9 +137,6 @@ export interface DynamicViewManifest {
   entrypoint: string;
   placement: DynamicViewPlacement;
   permissions?: string[];
-  requiredRemotes?: string[];
-  eventSubscriptions?: Array<{ remoteId: string; events?: string[] }>;
-  invokeTargets?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -235,32 +159,6 @@ export async function unregisterDynamicView(
     ipcChannel: "dynamic-view:unregister",
     params: { viewId },
   });
-}
-
-export interface DesktopRemotePluginStoreSnapshot {
-  version: 1;
-  remotePlugins: DesktopInstalledRemotePluginSnapshot[];
-}
-
-export type DesktopRemotePluginWorkerState =
-  | "stopped"
-  | "starting"
-  | "running"
-  | "error";
-
-export interface DesktopRemotePluginWorkerStatus {
-  id: string;
-  state: DesktopRemotePluginWorkerState;
-  startedAt: number | null;
-  stoppedAt: number | null;
-  error: string | null;
-}
-
-export interface DesktopRemotePluginLogsSnapshot {
-  id: string;
-  path: string;
-  text: string;
-  truncated: boolean;
 }
 
 export interface WorkspaceFolderPickResult {
@@ -408,124 +306,6 @@ export async function getDesktopRuntimeMode(): Promise<DesktopRuntimeModeInfo | 
   });
 }
 
-export async function getDesktopRemotePluginStoreRoot(): Promise<
-  string | null
-> {
-  const result = await invokeDesktopBridgeRequest<{ storeRoot: string }>({
-    rpcMethod: "remotePluginGetStoreRoot",
-    ipcChannel: "remote-plugin:getStoreRoot",
-  });
-  return result?.storeRoot ?? null;
-}
-
-export async function listDesktopRemotePlugins(): Promise<
-  DesktopRemotePluginListEntry[] | null
-> {
-  const result = await invokeDesktopBridgeRequest<{
-    remotePlugins: DesktopRemotePluginListEntry[];
-  }>({
-    rpcMethod: "remotePluginList",
-    ipcChannel: "remote-plugin:list",
-  });
-  return result?.remotePlugins ?? null;
-}
-
-export async function getDesktopRemotePluginStoreSnapshot(): Promise<DesktopRemotePluginStoreSnapshot | null> {
-  return invokeDesktopBridgeRequest<DesktopRemotePluginStoreSnapshot>({
-    rpcMethod: "remotePluginGetStoreSnapshot",
-    ipcChannel: "remote-plugin:getStoreSnapshot",
-  });
-}
-
-export async function getDesktopRemotePlugin(
-  id: string,
-): Promise<DesktopInstalledRemotePluginSnapshot | null> {
-  return invokeDesktopBridgeRequest<DesktopInstalledRemotePluginSnapshot>({
-    rpcMethod: "remotePluginGet",
-    ipcChannel: "remote-plugin:get",
-    params: { id },
-  });
-}
-
-export async function installDesktopRemotePluginFromDirectory(options: {
-  sourceDir: string;
-  devMode?: boolean;
-  permissionsGranted?: DesktopRemotePluginPermissionGrant;
-}): Promise<DesktopInstalledRemotePluginSnapshot | null> {
-  return invokeDesktopBridgeRequest<DesktopInstalledRemotePluginSnapshot>({
-    rpcMethod: "remotePluginInstallFromDirectory",
-    ipcChannel: "remote-plugin:installFromDirectory",
-    params: options,
-  });
-}
-
-export async function uninstallDesktopRemotePlugin(id: string): Promise<{
-  removed: boolean;
-  remotePlugin: DesktopRemotePluginListEntry | null;
-} | null> {
-  return invokeDesktopBridgeRequest<{
-    removed: boolean;
-    remotePlugin: DesktopRemotePluginListEntry | null;
-  }>({
-    rpcMethod: "remotePluginUninstall",
-    ipcChannel: "remote-plugin:uninstall",
-    params: { id },
-  });
-}
-
-export async function startDesktopRemotePluginWorker(
-  id: string,
-): Promise<DesktopRemotePluginWorkerStatus | null> {
-  return invokeDesktopBridgeRequest<DesktopRemotePluginWorkerStatus>({
-    rpcMethod: "remotePluginStartWorker",
-    ipcChannel: "remote-plugin:startWorker",
-    params: { id },
-  });
-}
-
-export async function stopDesktopRemotePluginWorker(
-  id: string,
-): Promise<DesktopRemotePluginWorkerStatus | null> {
-  return invokeDesktopBridgeRequest<DesktopRemotePluginWorkerStatus>({
-    rpcMethod: "remotePluginStopWorker",
-    ipcChannel: "remote-plugin:stopWorker",
-    params: { id },
-  });
-}
-
-export async function getDesktopRemotePluginWorkerStatus(
-  id: string,
-): Promise<DesktopRemotePluginWorkerStatus | null> {
-  return invokeDesktopBridgeRequest<DesktopRemotePluginWorkerStatus>({
-    rpcMethod: "remotePluginGetWorkerStatus",
-    ipcChannel: "remote-plugin:getWorkerStatus",
-    params: { id },
-  });
-}
-
-export async function listDesktopRemotePluginWorkerStatuses(): Promise<
-  DesktopRemotePluginWorkerStatus[] | null
-> {
-  const result = await invokeDesktopBridgeRequest<{
-    workers: DesktopRemotePluginWorkerStatus[];
-  }>({
-    rpcMethod: "remotePluginListWorkerStatuses",
-    ipcChannel: "remote-plugin:listWorkerStatuses",
-  });
-  return result?.workers ?? null;
-}
-
-export async function getDesktopRemotePluginLogs(
-  id: string,
-  maxBytes?: number,
-): Promise<DesktopRemotePluginLogsSnapshot | null> {
-  return invokeDesktopBridgeRequest<DesktopRemotePluginLogsSnapshot>({
-    rpcMethod: "remotePluginGetLogs",
-    ipcChannel: "remote-plugin:getLogs",
-    params: { id, ...(maxBytes === undefined ? {} : { maxBytes }) },
-  });
-}
-
 export function subscribeDesktopBridgeEvent(options: {
   rpcMessage: string;
   ipcChannel: string;
@@ -540,33 +320,4 @@ export function subscribeDesktopBridgeEvent(options: {
   }
 
   return () => {};
-}
-
-export function subscribeDesktopRemotePluginStoreChanged(
-  listener: (snapshot: DesktopRemotePluginStoreSnapshot) => void,
-): () => void {
-  return subscribeDesktopBridgeEvent({
-    rpcMessage: "remotePluginStoreChanged",
-    ipcChannel: "remote-plugin:storeChanged",
-    listener: (payload) => {
-      const snapshot = (
-        payload as { snapshot?: DesktopRemotePluginStoreSnapshot }
-      )?.snapshot;
-      if (snapshot) listener(snapshot);
-    },
-  });
-}
-
-export function subscribeDesktopRemotePluginWorkerChanged(
-  listener: (status: DesktopRemotePluginWorkerStatus) => void,
-): () => void {
-  return subscribeDesktopBridgeEvent({
-    rpcMessage: "remotePluginWorkerChanged",
-    ipcChannel: "remote-plugin:workerChanged",
-    listener: (payload) => {
-      const status = (payload as { status?: DesktopRemotePluginWorkerStatus })
-        ?.status;
-      if (status) listener(status);
-    },
-  });
 }

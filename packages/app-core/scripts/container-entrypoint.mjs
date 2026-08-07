@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for container entrypoint mjs. */
+/**
+ * Docker container entrypoint: resolves whether the container boots the plain
+ * agent or the cloud-agent bridge from ELIZA_CONTAINER_MODE / bridge env vars,
+ * fills in default ports, and spawns the runtime under the tsx loader.
+ */
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 

@@ -114,6 +114,17 @@ export function parseViewFilter(args) {
   return filter;
 }
 
+/** Keep native bundler startup within stable host and memory limits. */
+export function viewBuildConcurrency({
+  targetCount,
+  cpuCount,
+  platform = process.platform,
+}) {
+  if (targetCount === 0) return 0;
+  if (platform === "darwin") return 1;
+  return Math.min(targetCount, 4, Math.max(1, cpuCount - 1));
+}
+
 async function buildView(configPath) {
   const cwd = path.dirname(configPath);
   const label = path.relative(repoRoot, cwd);
@@ -155,10 +166,10 @@ async function main() {
     `[build-views] discovered ${inventory.targets.length} authoritative target(s); building ${targets.length}`,
   );
 
-  const concurrency = Math.min(
-    configs.length,
-    Math.max(1, os.cpus().length - 1),
-  );
+  const concurrency = viewBuildConcurrency({
+    targetCount: configs.length,
+    cpuCount: os.availableParallelism(),
+  });
   const failures = [];
   let nextIndex = 0;
 

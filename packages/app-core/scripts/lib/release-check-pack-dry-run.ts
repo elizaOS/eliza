@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for release check pack dry run ts. */
+/**
+ * Decides whether release-check's exact `npm pack --dry-run` is skipped: local
+ * dist hotspots (huge renderer asset trees) make the dry run pathologically
+ * slow, so it is skipped when they exist unless ELIZA_FORCE_PACK_DRY_RUN=1.
+ */
 import { existsSync } from "node:fs";
 
 const localPackHotspotPaths = [

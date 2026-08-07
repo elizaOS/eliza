@@ -77,16 +77,82 @@ export function elideLongBlocks(
 }
 
 /**
- * Full relay-sanitization pipeline: strip envelope blocks, then hard-cap the
- * remainder. Returns "" when nothing survives (callers substitute their own
- * default, e.g. "Task completed.").
+ * Strip the orchestrator's OWN completion-envelope summary lines
+ * (summarizeEnvelope in completion-envelope.ts: `diff: …`, `workdir: …`,
+ * `files: N`, `tests: …`, `criteria: N/M met`, …). Those lines are verifier/log
+ * machine format, not model prose — when a completion summary carries them into
+ * a chat relay the user sees internal paths and counters. Line-anchored on the
+ * exact canonical field prefixes so builder prose is untouched.
+ */
+const ENVELOPE_SUMMARY_LINE =
+  /^(?:diff|workdir|files|verifiedFiles|tests|criteria|unmet|risks|UNVERIFIED missing): /;
+
+export function stripEnvelopeSummaryLines(text: string): string {
+  if (!text) return "";
+  return text
+    .split("\n")
+    .filter((line) => !ENVELOPE_SUMMARY_LINE.test(line.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Strip the canonical structured-proof completion lines our create prompts
+ * demand from builders (`APP_CREATE_DONE {...}` / `PLUGIN_CREATE_DONE {...}`).
+ * They are machine proof for the validator, not chat. When a stripped line
+ * carries a `liveUrl` the user-facing text keeps that one load-bearing fact as
+ * plain prose (unless the surrounding text already states the URL).
+ */
+const STRUCTURED_PROOF_LINE = /(?:APP|PLUGIN)_CREATE_DONE\s*\{/;
+
+export function stripStructuredProofLines(text: string): string {
+  if (!text) return "";
+  const kept: string[] = [];
+  const liveUrls: string[] = [];
+  for (const line of text.split("\n")) {
+    if (!STRUCTURED_PROOF_LINE.test(line.trim())) {
+      kept.push(line);
+      continue;
+    }
+    const url = line.match(/"liveUrl"\s*:\s*"([^"]+)"/)?.[1];
+    if (url) liveUrls.push(url);
+  }
+  let out = kept
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  for (const url of liveUrls) {
+    if (!out.includes(url)) {
+      out = out ? `${out}\nLive at ${url}` : `Live at ${url}`;
+    }
+  }
+  return out;
+}
+
+/**
+ * Full relay-sanitization pipeline: strip envelope blocks, envelope summary
+ * lines, and structured-proof lines, then hard-cap the remainder. Returns ""
+ * when nothing survives (callers substitute their own default, e.g.
+ * "Task completed.").
  */
 export function sanitizeCompletionRelay(
   text: string | undefined | null,
   maxChars: number = DEFAULT_MAX_RELAY_CHARS,
 ): string {
   if (!text) return "";
-  return elideLongBlocks(stripToolTranscript(text), maxChars);
+  const stripped = stripStructuredProofLines(
+    stripEnvelopeSummaryLines(stripToolTranscript(text)),
+  );
+  let out = elideLongBlocks(stripped, maxChars);
+  // The liveUrl rescue appends at the tail, which is exactly what elision
+  // truncates — re-assert it after the cap so the one load-bearing fact
+  // survives an oversized deliverable (bounded overshoot: one URL line).
+  const liveUrl = stripped.match(/^Live at (\S+)$/m)?.[1];
+  if (liveUrl && !out.includes(liveUrl)) {
+    out = `${out}\nLive at ${liveUrl}`;
+  }
+  return out;
 }
 
 export { TOOL_OUTPUT_END_MARKER };

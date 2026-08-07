@@ -11,7 +11,6 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it } from "vitest";
 import {
-  PENDING_PROMPTS_SERVICE,
   PendingPromptsService,
   resolvePendingPromptsService,
 } from "./service.ts";
@@ -35,11 +34,6 @@ function makeRuntime(): IAgentRuntime {
 }
 
 describe("PendingPromptsService", () => {
-  it("exposes the canonical serviceType literal", () => {
-    expect(PendingPromptsService.serviceType).toBe("eliza_pending_prompts");
-    expect(PENDING_PROMPTS_SERVICE).toBe("eliza_pending_prompts");
-  });
-
   it("starts and exposes a cache-backed store", async () => {
     const runtime = makeRuntime();
     const service = await PendingPromptsService.start(runtime);

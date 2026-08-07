@@ -1,4 +1,4 @@
-// Coordinates cloud service lookup behavior behind route handlers.
+/** Resolves authoritative model pricing with durable-cache support for hot routes. */
 import { aiPricingRepository } from "../../../db/repositories/ai-pricing";
 import type { PricingDimensions } from "../../../db/schemas/ai-pricing";
 import { expandPersistedPricingProviderKeys } from "../../providers/model-id-translation";
@@ -12,6 +12,7 @@ import {
   type PricingProductFamily,
 } from "../ai-pricing-definitions";
 import {
+  getCachedFlatPricingEntry,
   getCachedPersistedEntries,
   getCachedTextPricingRates,
   type PricingCacheReadOptions,
@@ -160,6 +161,30 @@ async function resolvePreparedPricingEntry(params: {
 
   throw new Error(
     `Pricing unavailable for ${params.productFamily}:${params.chargeType} ${canonicalModel}`,
+  );
+}
+
+async function resolveCachedPreparedPricingEntry(
+  params: Parameters<typeof resolvePreparedPricingEntry>[0] & {
+    cache?: PricingCacheReadOptions;
+  },
+): Promise<PreparedPricingEntry> {
+  const canonicalModel = canonicalModelId(params.model, params.provider);
+  const requestedDimensions = normalizePricingDimensions(params.dimensions);
+  const cacheKey = [
+    params.billingSource ?? "",
+    params.provider,
+    canonicalModel,
+    params.productFamily,
+    params.chargeType,
+    JSON.stringify(requestedDimensions),
+  ]
+    .map((part) => encodeURIComponent(part))
+    .join(":");
+  return await getCachedFlatPricingEntry(
+    cacheKey,
+    () => resolvePreparedPricingEntry(params),
+    params.cache,
   );
 }
 
@@ -585,14 +610,16 @@ export async function calculateImageGenerationCostFromCatalog(params: {
   billingSource?: PricingBillingSource;
   imageCount?: number;
   dimensions?: Record<string, unknown>;
+  cache?: PricingCacheReadOptions;
 }): Promise<FlatOperationCost> {
-  const entry = await resolvePreparedPricingEntry({
+  const entry = await resolveCachedPreparedPricingEntry({
     billingSource: params.billingSource,
     provider: params.provider,
     model: params.model,
     productFamily: "image",
     chargeType: "generation",
     dimensions: params.dimensions,
+    cache: params.cache,
   });
 
   return computeCostFromEntry(
@@ -606,16 +633,18 @@ export async function calculateVideoGenerationCostFromCatalog(params: {
   billingSource?: PricingBillingSource;
   durationSeconds?: number;
   dimensions?: Record<string, unknown>;
+  cache?: PricingCacheReadOptions;
 }): Promise<FlatOperationCost> {
   const definition = getSupportedVideoModelDefinition(params.model);
   const provider = definition?.provider ?? inferProviderFromCanonicalModel(params.model);
-  const entry = await resolvePreparedPricingEntry({
+  const entry = await resolveCachedPreparedPricingEntry({
     billingSource: params.billingSource ?? definition?.billingSource,
     provider,
     model: params.model,
     productFamily: "video",
     chargeType: "generation",
     dimensions: params.dimensions,
+    cache: params.cache,
   });
 
   return computeCostFromEntry(
@@ -633,17 +662,19 @@ export async function calculateMusicGenerationCostFromCatalog(params: {
   billingSource?: "fal" | "elevenlabs" | "suno";
   durationSeconds?: number;
   dimensions?: Record<string, unknown>;
+  cache?: PricingCacheReadOptions;
 }): Promise<FlatOperationCost> {
   const definition = getSupportedMusicModelDefinition(params.model);
   const provider =
     params.provider ?? definition?.provider ?? inferProviderFromCanonicalModel(params.model);
-  const entry = await resolvePreparedPricingEntry({
+  const entry = await resolveCachedPreparedPricingEntry({
     billingSource: params.billingSource,
     provider,
     model: params.model,
     productFamily: "music",
     chargeType: "generation",
     dimensions: params.dimensions,
+    cache: params.cache,
   });
 
   return computeCostFromEntry(
@@ -661,17 +692,19 @@ export async function calculateSfxGenerationCostFromCatalog(params: {
   billingSource?: "fal" | "elevenlabs";
   durationSeconds?: number;
   dimensions?: Record<string, unknown>;
+  cache?: PricingCacheReadOptions;
 }): Promise<FlatOperationCost> {
   const definition = getSupportedSfxModelDefinition(params.model);
   const provider =
     params.provider ?? definition?.provider ?? inferProviderFromCanonicalModel(params.model);
-  const entry = await resolvePreparedPricingEntry({
+  const entry = await resolveCachedPreparedPricingEntry({
     billingSource: params.billingSource,
     provider,
     model: params.model,
     productFamily: "sfx",
     chargeType: "generation",
     dimensions: params.dimensions,
+    cache: params.cache,
   });
 
   return computeCostFromEntry(
@@ -686,13 +719,15 @@ export async function calculateSfxGenerationCostFromCatalog(params: {
 export async function calculateTTSCostFromCatalog(params: {
   model: string;
   characterCount: number;
+  cache?: PricingCacheReadOptions;
 }): Promise<FlatOperationCost> {
-  const entry = await resolvePreparedPricingEntry({
+  const entry = await resolveCachedPreparedPricingEntry({
     billingSource: "elevenlabs",
     provider: "elevenlabs",
     model: params.model,
     productFamily: "tts",
     chargeType: "generation",
+    cache: params.cache,
   });
 
   return computeCostFromEntry(
@@ -704,13 +739,15 @@ export async function calculateTTSCostFromCatalog(params: {
 export async function calculateSTTCostFromCatalog(params: {
   model: string;
   durationSeconds: number;
+  cache?: PricingCacheReadOptions;
 }): Promise<FlatOperationCost> {
-  const entry = await resolvePreparedPricingEntry({
+  const entry = await resolveCachedPreparedPricingEntry({
     billingSource: "elevenlabs",
     provider: "elevenlabs",
     model: params.model,
     productFamily: "stt",
     chargeType: "generation",
+    cache: params.cache,
   });
 
   return computeCostFromEntry(

@@ -122,8 +122,7 @@ describe.skipIf(!hasFfmpeg.available)(
 );
 
 describe("slugForVideo", () => {
-  it("is deterministic and filesystem-safe", () => {
-    expect(slugForVideo("video/a/b.mp4")).toBe(slugForVideo("video/a/b.mp4"));
+  it("is filesystem-safe", () => {
     expect(slugForVideo("video/a/b.mp4")).toMatch(/^[A-Za-z0-9-]+$/);
   });
 

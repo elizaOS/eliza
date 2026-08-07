@@ -1,3 +1,4 @@
+/** Verifies KeepAliveViewHost — rerender storm through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // KeepAliveViewHost: rerender-storm detection + sibling-containment + keep-alive

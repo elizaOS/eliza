@@ -1,3 +1,4 @@
+/** Verifies SensitiveRequestPage — image/file upload (#8910) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

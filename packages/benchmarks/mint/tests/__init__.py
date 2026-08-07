@@ -1,3 +1,0 @@
-"""
-MINT Benchmark Tests
-"""

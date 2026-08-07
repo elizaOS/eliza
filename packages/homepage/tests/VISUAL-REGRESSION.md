@@ -26,8 +26,20 @@ Failure diffs go to `test-results/` (gitignored).
 
 ## Routes covered
 
-`/`, `/downloads`, `/login`, `/connected`, `/get-started`, `/leaderboard` at desktop
-(1280×720) and mobile (390×844 — iPhone 14 Pro).
+`tests/e2e/visual-routes.ts` is the single source of truth: `/`, `/downloads`,
+`/login`, `/connected`, `/get-started`, `/leaderboard`, and the `*` catch-all
+(exercised as `/this-page-does-not-exist`) at desktop (1280×720) and mobile
+(390×844 — iPhone 14 Pro).
+
+Adding a route there also extends the committed-baseline inventory. Commit the
+Linux PNGs for the new route, then confirm with:
+
+```bash
+bun run --cwd packages/homepage check:snapshot-inventory
+```
+
+CI runs the same check before Playwright, so a route added without its
+baselines fails with a file-anchored annotation instead of a screenshot diff.
 
 ## Dynamic content
 

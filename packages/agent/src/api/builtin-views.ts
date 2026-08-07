@@ -27,6 +27,34 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     nativeOs: true,
   },
   {
+    id: "device-control",
+    viewKind: "system",
+    label: "Device controls",
+    description:
+      "Hidden native device controls available to the agent on the Android shell",
+    icon: "Flashlight",
+    order: 4,
+    tags: ["device", "flashlight", "torch", "hardware"],
+    capabilities: [
+      {
+        id: "set-flashlight",
+        description: "Turn the phone flashlight on or off.",
+        params: {
+          enabled: {
+            type: "boolean",
+            description:
+              "True to turn the flashlight on; false to turn it off.",
+            required: true,
+          },
+        },
+      },
+    ],
+    visibleInManager: false,
+    desktopTabEnabled: false,
+    platforms: ["android"],
+    nativeOs: true,
+  },
+  {
     id: "chat",
     viewKind: "system",
     label: "Messages",
@@ -42,6 +70,21 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     visibleInManager: true,
     desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],
+  },
+  {
+    id: "browser",
+    viewKind: "system",
+    label: "Browser",
+    description: "Isolated native browser tabs for web pages and research",
+    icon: "Globe",
+    path: "/browser",
+    order: 2,
+    tags: ["browser", "web", "internet", "research", "tabs"],
+    relatedActions: ["BROWSER"],
+    visibleInManager: false,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+    surface: { isolation: "native-webview", background: "opaque" },
   },
   {
     id: "character",

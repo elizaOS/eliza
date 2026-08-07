@@ -137,18 +137,18 @@ describe("applySubscriptionCredentials", () => {
     useTempElizaHome();
     const expires = Date.now() + 60 * 60_000;
 
-    saveCredentials(
+    await saveCredentials(
       "openai-codex",
       { access: "access-personal", refresh: "refresh-personal", expires },
       "personal",
     );
-    saveCredentials(
+    await saveCredentials(
       "openai-codex",
       { access: "access-work", refresh: "refresh-work", expires },
       "work",
     );
 
-    const accountIds = listProviderAccounts("openai-codex")
+    const accountIds = (await listProviderAccounts("openai-codex"))
       .map((account) => account.id)
       .sort();
     expect(accountIds).toEqual(["personal", "work"]);
@@ -159,14 +159,14 @@ describe("applySubscriptionCredentials", () => {
       "access-work",
     );
 
-    const statusRows = getSubscriptionStatus()
+    const statusRows = (await getSubscriptionStatus())
       .filter((row) => row.provider === "openai-codex" && row.configured)
       .map((row) => row.accountId)
       .sort();
     expect(statusRows).toEqual(["personal", "work"]);
 
-    expect(deleteProviderCredentials("openai-codex")).toBe(2);
-    expect(listProviderAccounts("openai-codex")).toHaveLength(0);
+    expect(await deleteProviderCredentials("openai-codex")).toBe(2);
+    expect(await listProviderAccounts("openai-codex")).toHaveLength(0);
   });
 
   it("stores multiple z.ai coding-plan accounts without exposing them as direct API keys", async () => {
@@ -176,7 +176,7 @@ describe("applySubscriptionCredentials", () => {
     const now = Date.now();
     const expires = Number.MAX_SAFE_INTEGER;
 
-    saveAccount({
+    await saveAccount({
       id: "personal",
       providerId: "zai-coding",
       label: "Personal",
@@ -189,7 +189,7 @@ describe("applySubscriptionCredentials", () => {
       createdAt: now,
       updatedAt: now,
     });
-    saveAccount({
+    await saveAccount({
       id: "work",
       providerId: "zai-coding",
       label: "Work",
@@ -203,7 +203,7 @@ describe("applySubscriptionCredentials", () => {
       updatedAt: now + 1,
     });
 
-    const accountIds = listProviderAccounts("zai-coding")
+    const accountIds = (await listProviderAccounts("zai-coding"))
       .map((account) => account.id)
       .sort();
     expect(accountIds).toEqual(["personal", "work"]);
@@ -214,7 +214,7 @@ describe("applySubscriptionCredentials", () => {
       "zai-coding-work",
     );
 
-    const statusRows = getSubscriptionStatus().filter(
+    const statusRows = (await getSubscriptionStatus()).filter(
       (row) => row.provider === "zai-coding" && row.configured,
     );
     expect(statusRows.map((row) => row.accountId).sort()).toEqual([
@@ -239,11 +239,11 @@ describe("applySubscriptionCredentials", () => {
     expect(config.agents?.defaults?.model?.primary).toBeUndefined();
   });
 
-  it("stores account credentials with secret-grade filesystem permissions", () => {
+  it("stores account credentials with secret-grade filesystem permissions", async () => {
     const home = useTempElizaHome();
     const now = Date.now();
 
-    saveAccount({
+    await saveAccount({
       id: "personal",
       providerId: "openai-codex",
       label: "Personal",
@@ -260,6 +260,13 @@ describe("applySubscriptionCredentials", () => {
     const providerDir = path.join(home, "auth", "openai-codex");
     const accountFile = path.join(providerDir, "personal.json");
     expect(fs.existsSync(accountFile)).toBe(true);
+    const persisted = fs.readFileSync(accountFile, "utf8");
+    expect(JSON.parse(persisted)).toEqual({
+      schemaVersion: 2,
+      ciphertext: expect.any(String),
+    });
+    expect(persisted).not.toContain("access");
+    expect(persisted).not.toContain("refresh");
     // POSIX permission bits (0o700/0o600) are only enforced and reported on
     // POSIX. Windows uses NTFS ACLs and `fs.chmod` there only toggles the
     // read-only attribute, so `mode & 0o777` is not meaningful — assert the
@@ -340,7 +347,7 @@ describe("applySubscriptionCredentials", () => {
       refresh: "fresh-refresh",
       expires: Date.now() + 60 * 60_000,
     });
-    saveCredentials(
+    await saveCredentials(
       "openai-codex",
       {
         access: "expired-access",
@@ -359,7 +366,9 @@ describe("applySubscriptionCredentials", () => {
     expect(tokens).toEqual(["fresh-access", "fresh-access", "fresh-access"]);
     expect(refreshMock).toHaveBeenCalledTimes(1);
     expect(refreshMock).toHaveBeenCalledWith("old-refresh");
-    expect(loadAccount("openai-codex", "personal")?.credentials).toMatchObject({
+    expect(
+      (await loadAccount("openai-codex", "personal"))?.credentials,
+    ).toMatchObject({
       access: "fresh-access",
       refresh: "fresh-refresh",
     });
@@ -427,7 +436,7 @@ describe("applySubscriptionCredentials", () => {
       expires: Date.now() + 60 * 60_000,
     }));
     for (const accountId of ["personal", "work"]) {
-      saveCredentials(
+      await saveCredentials(
         "openai-codex",
         {
           access: `expired-${accountId}`,
@@ -464,7 +473,7 @@ describe("getSubscriptionStatus drains the subscription-auth registry", () => {
     }
   });
 
-  it("surfaces a Codex CLI login discovered via the built-in descriptor", () => {
+  it("surfaces a Codex CLI login discovered via the built-in descriptor", async () => {
     const home = useTempElizaHome();
     const codexDir = path.join(home, ".codex");
     fs.mkdirSync(codexDir, { recursive: true });
@@ -474,7 +483,7 @@ describe("getSubscriptionStatus drains the subscription-auth registry", () => {
       { mode: 0o600 },
     );
 
-    const codexRows = getSubscriptionStatus().filter(
+    const codexRows = (await getSubscriptionStatus()).filter(
       (row) => row.provider === "openai-codex",
     );
     expect(codexRows).toHaveLength(1);
@@ -492,19 +501,19 @@ describe("getSubscriptionStatus drains the subscription-auth registry", () => {
     );
   });
 
-  it("omits the Codex row when no ~/.codex/auth.json login exists", () => {
+  it("omits the Codex row when no ~/.codex/auth.json login exists", async () => {
     useTempElizaHome();
-    const codexRows = getSubscriptionStatus().filter(
+    const codexRows = (await getSubscriptionStatus()).filter(
       (row) => row.provider === "openai-codex",
     );
     expect(codexRows).toHaveLength(0);
   });
 
-  it("surfaces a credential from a plugin-registered descriptor override", () => {
+  it("surfaces a credential from a plugin-registered descriptor override", async () => {
     useTempElizaHome();
     // Seed the built-ins (as a host entry point would), then let a plugin
     // register its own descriptor for a vendor the host never hard-codes.
-    getSubscriptionStatus();
+    await getSubscriptionStatus();
     registerSubscriptionAuthProvider({
       id: "zai-coding",
       detectExternalCredentials: () => ({
@@ -517,7 +526,7 @@ describe("getSubscriptionStatus drains the subscription-auth registry", () => {
       }),
     });
 
-    const zaiRows = getSubscriptionStatus().filter(
+    const zaiRows = (await getSubscriptionStatus()).filter(
       (row) => row.provider === "zai-coding",
     );
     expect(zaiRows).toHaveLength(1);
@@ -538,10 +547,10 @@ describe("saveCredentials id_token preservation across refresh", () => {
     }
   });
 
-  it("keeps the prior id_token when a refresh omits it", () => {
+  it("keeps the prior id_token when a refresh omits it", async () => {
     useTempElizaHome();
     // Initial login captures an id_token.
-    saveCredentials(
+    await saveCredentials(
       "openai-codex",
       {
         access: "access-1",
@@ -551,12 +560,12 @@ describe("saveCredentials id_token preservation across refresh", () => {
       },
       "acct",
     );
-    expect(loadAccount("openai-codex", "acct")?.credentials.idToken).toBe(
-      "id-token-login",
-    );
+    expect(
+      (await loadAccount("openai-codex", "acct"))?.credentials.idToken,
+    ).toBe("id-token-login");
 
     // OAuth refresh typically re-issues access/refresh WITHOUT a new id_token.
-    saveCredentials(
+    await saveCredentials(
       "openai-codex",
       {
         access: "access-2",
@@ -565,15 +574,15 @@ describe("saveCredentials id_token preservation across refresh", () => {
       },
       "acct",
     );
-    const after = loadAccount("openai-codex", "acct")?.credentials;
+    const after = (await loadAccount("openai-codex", "acct"))?.credentials;
     expect(after?.access).toBe("access-2"); // fresh access persisted
     // ...but the id_token survives — codex-acp needs it or auth fails.
     expect(after?.idToken).toBe("id-token-login");
   });
 
-  it("overwrites the id_token when a refresh DOES supply a new one", () => {
+  it("overwrites the id_token when a refresh DOES supply a new one", async () => {
     useTempElizaHome();
-    saveCredentials(
+    await saveCredentials(
       "openai-codex",
       {
         access: "a1",
@@ -583,7 +592,7 @@ describe("saveCredentials id_token preservation across refresh", () => {
       },
       "acct",
     );
-    saveCredentials(
+    await saveCredentials(
       "openai-codex",
       {
         access: "a2",
@@ -593,8 +602,8 @@ describe("saveCredentials id_token preservation across refresh", () => {
       },
       "acct",
     );
-    expect(loadAccount("openai-codex", "acct")?.credentials.idToken).toBe(
-      "id-new",
-    );
+    expect(
+      (await loadAccount("openai-codex", "acct"))?.credentials.idToken,
+    ).toBe("id-new");
   });
 });

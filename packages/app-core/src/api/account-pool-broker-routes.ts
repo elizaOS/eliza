@@ -24,7 +24,13 @@ import {
 import { readCompatJsonBody } from "./compat-route-shared.js";
 import { sendJson } from "./response.js";
 
-const ROUTE_PREFIX = "/internal/account-pool/v1";
+// The dispatcher (`handleInternalWakeRoute`, reached via the compat route
+// chain) only sees this handler for `/api/internal/*` paths, and the router
+// never strips `/api`. The prefix therefore MUST include `/api` — an
+// un-prefixed value makes every broker route unreachable dead code: lease
+// calls fall through to generic device-secret auth (401) and fail-closed
+// proxies surface that as 503 "broker unavailable".
+const ROUTE_PREFIX = "/api/internal/account-pool/v1";
 const MIN_BROKER_SECRET_LENGTH = 32;
 
 let brokerSingleton: AccountPoolBroker | null = null;

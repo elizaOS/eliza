@@ -28,6 +28,11 @@ export {
   resolveRuntimeMode,
   validateRemoteApiBase,
 } from "@elizaos/agent";
+export * from "@elizaos/registry/first-party";
+// `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
+// app-core registry versions explicitly so the Node barrel stays authoritative
+// and avoids ambiguous star re-exports.
+export { type ConfigField, getPlugins } from "@elizaos/registry/first-party";
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
@@ -56,11 +61,6 @@ export {
   IOS_FULL_BUN_SMOKE_RESULT_KEY,
   runIosFullBunSmokeIfRequested,
 } from "./platform/ios-runtime-bridge";
-export * from "./registry";
-// `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
-// app-core registry versions explicitly so the Node barrel stays authoritative
-// and avoids ambiguous star re-exports.
-export { type ConfigField, getPlugins } from "./registry";
 export * from "./runtime/android-avf-microdroid-bridge";
 export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";
@@ -69,6 +69,7 @@ export * from "./runtime/channel-plugin-map";
 export * from "./runtime/desktop";
 export * from "./runtime/eliza";
 export * from "./runtime/mobile-safe-runtime";
+export * from "./runtime/server-only-process";
 export * from "./security/agent-vault-id";
 export * from "./security/hydrate-wallet-keys-from-platform-store";
 export * from "./security/platform-secure-store";

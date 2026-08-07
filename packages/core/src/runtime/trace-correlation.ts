@@ -38,15 +38,16 @@ export interface TraceCorrelation {
 export const TRACE_ENV = {
 	TRACE_ID: "ELIZA_TRACE_ID",
 	TASK_ID: "ELIZA_TASK_ID",
+	SESSION_ID: "ORCHESTRATOR_SESSION_ID",
 	PARENT_STEP_ID: "ELIZA_PARENT_TRAJECTORY_STEP_ID",
 } as const;
 
 /**
  * Read whatever correlation the current process inherited from its spawner.
- * A root turn has none of these set; a spawned sub-agent has at least
- * `ELIZA_TRACE_ID`. Returns only the fields actually present — `traceId` is
- * optional here (unlike the interface) precisely because the caller decides
- * whether to mint one when absent.
+ * A root turn has none of these set; a spawned sub-agent has an orchestrator
+ * session id and may also inherit a parent trace. Returns only the fields
+ * actually present — `traceId` is optional here (unlike the interface)
+ * precisely because the caller decides whether to mint one when absent.
  */
 export function resolveTraceCorrelationFromEnv(
 	env: NodeJS.ProcessEnv = process.env,
@@ -56,6 +57,8 @@ export function resolveTraceCorrelationFromEnv(
 	if (traceId) out.traceId = traceId;
 	const taskId = env[TRACE_ENV.TASK_ID]?.trim();
 	if (taskId) out.taskId = taskId;
+	const sessionId = env[TRACE_ENV.SESSION_ID]?.trim();
+	if (sessionId) out.sessionId = sessionId;
 	const parentStepId = env[TRACE_ENV.PARENT_STEP_ID]?.trim();
 	if (parentStepId) out.parentStepId = parentStepId;
 	return out;

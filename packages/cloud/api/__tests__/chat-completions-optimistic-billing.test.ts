@@ -89,6 +89,18 @@ type AuthResolveOptions = NonNullable<
   Parameters<typeof inferenceAuthContextActual.resolveInferenceAuthContext>[1]
 >;
 const authResolveOptions: AuthResolveOptions[] = [];
+// IAC v2 (#17805): the cached identity carries the admission projection —
+// balance plus per-endpoint rate policy — so the route derives its limiter
+// config from the single auth cache read instead of a per-route native gate.
+const ADMISSION = {
+  balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
+  rateLimits: {
+    completionsRpm: 60,
+    embeddingsRpm: 100,
+    standardRpm: 30,
+    strictRpm: 5,
+  },
+};
 const resolveInferenceAuthContext = mock(
   async (_request: Request, options: AuthResolveOptions = {}) => {
     authResolveOptions.push(options);
@@ -118,12 +130,14 @@ const resolveInferenceAuthContext = mock(
       kind: "authorized" as const,
       source: "cache" as const,
       ctx: {
-        v: 1 as const,
+        v: 2 as const,
         cachedAt: Date.now(),
         userId: USER,
         orgId: ORG,
         apiKeyId: API_KEY_ID,
         keyHash: "a".repeat(64),
+        appScopeId: null,
+        admission: ADMISSION,
       },
     };
   },
@@ -428,7 +442,7 @@ describe("chat/completions cache-only organization admission", () => {
     expect(generateText).toHaveBeenCalledTimes(1);
   });
 
-  test("an allowed native route decision reaches the handler and preserves limiter headers", async () => {
+  test("the Worker lane reaches the handler with snapshot-derived org rate limiting and no per-route native gate", async () => {
     const keys: string[] = [];
     const waitUntilPromises: Promise<unknown>[] = [];
     const response = await chatCompletionsRouter.fetch(
@@ -451,13 +465,15 @@ describe("chat/completions cache-only organization admission", () => {
       } as never,
     );
 
-    // The model stub throws after dispatch. A 500 here proves the native gate
-    // allowed the request into the same real route handler exercised below.
+    // The model stub throws after dispatch. A 500 here proves the request
+    // entered the same real route handler exercised below.
     expect(response.status).toBe(500);
-    expect(keys).toEqual(["public"]);
-    expect(response.headers.get("X-RateLimit-Policy")).toBe(
-      "cloudflare-native",
-    );
+    // #17805 removed the per-route native Cloudflare gate from the hot path:
+    // the binding must never be consulted and its policy header never set.
+    // Rate limiting is now the org-level check fed by the admission snapshot
+    // carried in the single auth cache read.
+    expect(keys).toEqual([]);
+    expect(response.headers.get("X-RateLimit-Policy")).toBeNull();
     expect(authResolveOptions).toHaveLength(1);
     expect(authResolveOptions[0]?.executionCtx).toBeDefined();
     expect(authResolveOptions[0]?.cacheOnly).toBe(true);
@@ -467,6 +483,10 @@ describe("chat/completions cache-only organization admission", () => {
       expect.objectContaining({
         cacheOnly: true,
         executionCtx: expect.any(Object),
+        config: {
+          windowMs: 60_000,
+          maxRequests: ADMISSION.rateLimits.completionsRpm,
+        },
       }),
     );
     expect(response.headers.get("X-Eliza-Auth-Trace")).toContain(

@@ -65,7 +65,7 @@
   },
   "sources": {
     "action-selection-cases.ts": "packages/app-core/test/benchmarks/action-selection-cases.ts",
-    "personality-bench": "packages/benchmarks/personality-bench/tests/calibration",
+    "personality-bench": "elizaOS/benchmarks:suites/personality-bench/tests/calibration",
     "cerebras": "gpt-oss-120b via https://api.cerebras.ai/v1 (CEREBRAS_API_KEY env)"
   }
 }

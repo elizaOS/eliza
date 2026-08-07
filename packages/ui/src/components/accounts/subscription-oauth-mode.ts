@@ -1,3 +1,5 @@
+/** Chooses the OAuth callback mode supported by the current browser host. */
+
 export type SubscriptionOAuthMode = "localhost" | "device";
 
 export function subscriptionOAuthModeForHostname(

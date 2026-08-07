@@ -1,3 +1,4 @@
+/** Verifies isLocalInferenceTtsReady through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Verifies the on-device Kokoro TTS readiness probe: it hits

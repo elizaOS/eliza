@@ -168,7 +168,11 @@ describe('scenario: "show me all views"', () => {
       .map((v) => v.order ?? 100);
 
     for (let i = 1; i < orders.length; i++) {
-      expect(orders[i]).toBeGreaterThanOrEqual(orders[i - 1]!);
+      const previousOrder = orders[i - 1];
+      if (previousOrder === undefined) {
+        throw new Error(`Missing scenario order at index ${i - 1}`);
+      }
+      expect(orders[i]).toBeGreaterThanOrEqual(previousOrder);
     }
   });
 });

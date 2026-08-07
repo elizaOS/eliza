@@ -20,7 +20,7 @@ import {
   type GoogleAuthClient,
   GoogleCalendarClient,
   type GoogleCredentialResolver,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google-workspace";
 import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import { Auth } from "googleapis";
 import { describe, expect, it } from "vitest";

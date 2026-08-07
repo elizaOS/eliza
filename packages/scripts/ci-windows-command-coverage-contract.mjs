@@ -153,7 +153,7 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
   return { commandCount: present.length, inventoryCount: inventory.length };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.main) {
   try {
     const { commandCount, inventoryCount } = runContract();
     console.log(

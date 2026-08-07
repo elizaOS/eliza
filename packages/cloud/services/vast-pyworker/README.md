@@ -43,7 +43,7 @@ slots.
 
 ## How Vast deploys this
 
-A Vast template (managed by `cloud/scripts/vast/upsert-template.ts`) declares:
+A Vast template (managed by `packages/cloud/scripts/vast/upsert-template.ts`) declares:
 
 - `image = ghcr.io/ggml-org/llama.cpp:server-cuda` for stock GGUF. MTP and
   TurboQuant KV-cache flags require a fork image, for example one built from
@@ -69,7 +69,7 @@ On every cold start the on-start script:
 ## Endpoint scaling
 
 Vast manages the queue, load balancer, and autoscaler. Configure the endpoint
-via `cloud/scripts/vast/provision-endpoint.ts`:
+via `packages/cloud/scripts/vast/provision-endpoint.ts`:
 
 - Endpoint autoscaling defaults: `min_load=1`, `cold_workers=1`,
   `max_workers=8`, `target_util=0.85`, `cold_mult=2.5`.
@@ -85,22 +85,22 @@ via `cloud/scripts/vast/provision-endpoint.ts`:
 ```bash
 # 1. (one-time) Upsert the Vast template. Captures image + onstart + env.
 VASTAI_API_KEY=vastai_… \
-PYWORKER_REPO=https://github.com/elizaOS/cloud.git \
+PYWORKER_REPO=https://github.com/elizaOS/eliza.git \
 PYWORKER_REF=<commit-sha> \
-bun cloud/scripts/vast/upsert-template.ts
+bun packages/cloud/scripts/vast/upsert-template.ts
 # → prints VAST_TEMPLATE_ID=<n>
 
 # 2. Provision the endpoint + workergroup from the same manifest.
 VASTAI_API_KEY=vastai_… \
 VAST_TEMPLATE_ID=<n> \
 ELIZA_VAST_MANIFEST=eliza-1-27b.json \
-bun cloud/scripts/vast/provision-endpoint.ts
+bun packages/cloud/scripts/vast/provision-endpoint.ts
 
 # 3. Smoke the live endpoint.
 VAST_BASE_URL=https://openai.vast.ai/eliza-cloud-eliza-1-27b \
 VAST_API_KEY=<endpoint-token> \
 VAST_MODEL=eliza-1-27b \
-bun run --cwd cloud vast:smoke
+bun packages/cloud/scripts/vast/smoke.ts
 
 # 4. Wire the cloud Worker to forward to the endpoint.
 wrangler secret put VAST_BASE_URL_ELIZA_1_27B
@@ -115,7 +115,7 @@ and drafter artifacts:
 ```bash
 # Build/push once. Use --build-arg BASE_IMAGE=rocm/dev-ubuntu-22.04:6.3
 # --build-arg BACKEND=rocm for AMD hosts.
-docker build -f cloud/services/vast-pyworker/Dockerfile.mtp \
+docker build -f packages/cloud/services/vast-pyworker/Dockerfile.mtp \
   --build-arg BACKEND=cuda \
   -t ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-mtp .
 docker push ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-mtp
@@ -130,7 +130,7 @@ MTP_DRAFTER_FILE=mtp-draft-3.6-q8_0.gguf \
 LLAMA_CONTEXT=8192 \
 LLAMA_DRAFT_CONTEXT=256 \
 LLAMA_DRAFT_MAX=16 \
-bun cloud/scripts/vast/upsert-template.ts
+bun packages/cloud/scripts/vast/upsert-template.ts
 ```
 
 For smaller tiers, use the canonical `elizaos/eliza-1` repo with the
@@ -158,7 +158,7 @@ VAST_RUNTIME=vllm \
 ELIZA_VAST_MANIFEST=eliza-1-27b.json \
 VAST_TEMPLATE_NAME=eliza-cloud-eliza-1-27b-vllm \
 PYWORKER_REF=<commit-sha> \
-bun cloud/scripts/vast/upsert-template.ts
+bun packages/cloud/scripts/vast/upsert-template.ts
 ```
 
 The committed GGUF manifests cover the catalog references:
@@ -188,7 +188,7 @@ MTP_MODEL=org/model-mtp \
 ELIZA_VLLM_MTP=1 \
 SPECULATIVE_TOKENS=15 \
 DRAFT_TENSOR_PARALLEL_SIZE=1 \
-bun cloud/scripts/vast/upsert-template.ts
+bun packages/cloud/scripts/vast/upsert-template.ts
 ```
 
 For Apple Silicon/vllm-metal images, pass `VLLM_METAL_ADDITIONAL_CONFIG_JSON`.
@@ -203,14 +203,13 @@ startup script exits before launching vLLM.
 Run the cloud-side validation before changing a template:
 
 ```bash
-cd cloud
-bun run vast:doctor
+bun packages/cloud/scripts/vast/doctor.ts
 ```
 
-## Routing from eliza/cloud
+## Routing from Eliza Cloud
 
 The cloud Worker routes `vast/eliza-1-*` requests through `VastProvider`
-(`packages/lib/providers/vast.ts`). Prefer one endpoint per model tier:
+(`packages/cloud/shared/src/lib/providers/vast.ts`). Prefer one endpoint per model tier:
 
 - `VAST_BASE_URL_ELIZA_1_2B`
 - `VAST_BASE_URL_ELIZA_1_9B`

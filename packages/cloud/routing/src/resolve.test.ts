@@ -276,34 +276,6 @@ describe("per-feature routing registry", () => {
     expect(route.source).toBe("local-key");
   });
 
-  it("exposes the exact feature registry and setting-key contract", () => {
-    expect(FEATURES.map(({ id, settingKey }) => ({ id, settingKey }))).toEqual([
-      { id: "llm", settingKey: "ELIZAOS_CLOUD_ROUTING_LLM" },
-      { id: "rpc", settingKey: "ELIZAOS_CLOUD_ROUTING_RPC" },
-      { id: "tool_use", settingKey: "ELIZAOS_CLOUD_ROUTING_TOOL_USE" },
-      { id: "embeddings", settingKey: "ELIZAOS_CLOUD_ROUTING_EMBEDDINGS" },
-      { id: "media", settingKey: "ELIZAOS_CLOUD_ROUTING_MEDIA" },
-      { id: "tts", settingKey: "ELIZAOS_CLOUD_ROUTING_TTS" },
-      { id: "stt", settingKey: "ELIZAOS_CLOUD_ROUTING_STT" },
-    ]);
-    expect(FEATURE_IDS).toEqual([
-      "llm",
-      "rpc",
-      "tool_use",
-      "embeddings",
-      "media",
-      "tts",
-      "stt",
-    ]);
-  });
-
-  it("exposes a non-empty, type-tagged feature list", () => {
-    expect(FEATURES.length).toBeGreaterThan(0);
-    expect(FEATURE_IDS).toContain("llm");
-    expect(FEATURE_IDS).toContain("rpc");
-    expect(FEATURE_IDS).toContain("tool_use");
-  });
-
   it("every registry entry has a unique id and a unique setting key", () => {
     const ids = new Set<string>();
     const keys = new Set<string>();

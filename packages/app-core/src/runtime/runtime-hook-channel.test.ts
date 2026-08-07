@@ -9,7 +9,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { OptionalAppRoutePluginUnavailableError } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
-import { drainRuntimeHookContributors } from "./eliza.ts";
+import { drainRuntimeHookContributors } from "./startup/app-contributors.ts";
 
 // The generic runtime-hook channel the boot tail drains. A "contributor" is
 // an app that declared a `runtimeHook` in the registry; the drain invokes each

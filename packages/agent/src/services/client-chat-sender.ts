@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import {
   type Content,
   createMessageMemory,
+  ElizaError,
   type IAgentRuntime,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
@@ -219,7 +220,18 @@ function installDashboardFallbackSend(
 
   const originalSend = runtime.sendMessageToTarget.bind(runtime);
   const hasRegisteredHandler = (source: string): boolean => {
-    if (typeof runtime.getMessageConnectors !== "function") return false;
+    if (typeof runtime.getMessageConnectors !== "function") {
+      // Failing closed preserves transport ownership when a runtime violates
+      // the connector-discovery contract.
+      throw new ElizaError(
+        `connector discovery unavailable; refusing dashboard fallback for source: ${source}`,
+        {
+          code: "CONNECTOR_DISCOVERY_UNAVAILABLE",
+          context: { source },
+          severity: "fatal",
+        },
+      );
+    }
     return runtime
       .getMessageConnectors()
       .some((connector) => connector.source === source);

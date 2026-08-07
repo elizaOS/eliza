@@ -1,12 +1,7 @@
 /**
- * SOC2 sandbox helpers, copied from
- * `packages/plugin-remote-manifest/src/sub-agent-claude-code/sandbox.ts` so
- * this node-only model-provider plugin does not depend on the worker-bundled
- * remote plugin.
- *
- * Keep in sync with the upstream copy if `SAFE_ENV_KEYS` / `SENSITIVE_ENV_RE`
- * change. Additions here over the upstream copy: the `SENSITIVE_ENV_RE` export
- * plus `redactSensitive` / `redactStderr`, used by the CLI handlers to redact
+ * SOC2 sandbox helpers: the canonical `SAFE_ENV_KEYS` allowlist and
+ * `SENSITIVE_ENV_RE` redaction pattern for spawning CLI subprocesses, plus
+ * `redactSensitive` / `redactStderr`, used by the CLI handlers to redact
  * subprocess stderr before logging.
  *
  * - `filterEnv` — explicit allowlist + token blocklist for child env.

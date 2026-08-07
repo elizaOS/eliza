@@ -1,3 +1,4 @@
+/** Verifies cloud ui stories smoke through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Portable-stories smoke test for the cloud-ui component set (@elizaos/ui/cloud-ui).

@@ -1,3 +1,4 @@
+/** Verifies useWakeController — fused on-device path through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Phase 2 of #9953: the fused on-device wake path is bridged to the UI through

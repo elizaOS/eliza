@@ -5,7 +5,7 @@
  * Excluded from the PR lane (`*.real.test.ts`); runs in the nightly
  * `external-api-live-drift.yml` lane.
  *
- * Asserts the live OpenAI response *shapes* that `packages/test/mocks/environments/openai.json`
+ * Asserts the live OpenAI response *shapes* that `packages/scenario-runner/test/mocks/environments/openai.json`
  * mirrors, so a divergence between the wire-mock and reality surfaces as a
  * failed/flagged nightly run.
  */

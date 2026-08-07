@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { verifyAndroidNativePlugins } from "./verify-android-native-plugins.mjs";
 
 /**
- * Gate for #9967: the generated-but-git-tracked `capacitor.settings.gradle` must
+ * Gate for #9967: the generated, portable `capacitor.settings.gradle` must
  * not silently drift from the declared `@elizaos/capacitor-*` app deps. Every
  * declared plugin that ships an Android module has to be in the compiled gradle
  * project list, or the launcher APK ships without it and no other test notices.
@@ -16,7 +16,7 @@ describe("android native-plugin wiring (#9967)", () => {
     expect(
       result.missing,
       result.missing.length > 0
-        ? `Missing from capacitor.settings.gradle — run \`npx cap sync android\` and commit: ${result.missing
+        ? `Missing from capacitor.settings.gradle — run the Android build sync and commit: ${result.missing
             .map((p: { name: string }) => p.name)
             .join(", ")}`
         : "",

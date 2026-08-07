@@ -121,19 +121,28 @@ describe("Smithers worker isolation", () => {
   it("does not forward provider credentials or task payloads through the environment", () => {
     const previousSecret = process.env.ANTHROPIC_API_KEY;
     const previousPayload = process.env.ELIZA_TASK_RUN_PAYLOAD;
+    const previousMsgpackSetting =
+      process.env.MSGPACKR_NATIVE_ACCELERATION_DISABLED;
     process.env.ANTHROPIC_API_KEY = "must-not-leak";
     process.env.ELIZA_TASK_RUN_PAYLOAD = "must-use-pipe";
+    process.env.MSGPACKR_NATIVE_ACCELERATION_DISABLED = "true";
     try {
       const env = buildSmithersWorkerEnv();
       expect(env.ANTHROPIC_API_KEY).toBeUndefined();
       expect(env.ELIZA_TASK_RUN_PAYLOAD).toBeUndefined();
       expect(env.PATH).toBe(process.env.PATH);
+      expect(env.MSGPACKR_NATIVE_ACCELERATION_DISABLED).toBe("true");
     } finally {
       if (previousSecret === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = previousSecret;
       if (previousPayload === undefined)
         delete process.env.ELIZA_TASK_RUN_PAYLOAD;
       else process.env.ELIZA_TASK_RUN_PAYLOAD = previousPayload;
+      if (previousMsgpackSetting === undefined)
+        delete process.env.MSGPACKR_NATIVE_ACCELERATION_DISABLED;
+      else
+        process.env.MSGPACKR_NATIVE_ACCELERATION_DISABLED =
+          previousMsgpackSetting;
     }
   });
 

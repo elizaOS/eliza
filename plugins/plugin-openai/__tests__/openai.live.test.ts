@@ -28,7 +28,6 @@ describeLive(
     it("generates text with TEXT_SMALL", async () => {
       const { runtime } = harness();
       const handler = openaiPlugin.models?.[ModelType.TEXT_SMALL];
-      expect(typeof handler).toBe("function");
       if (!handler) {
         throw new Error("TEXT_SMALL handler is unavailable");
       }
@@ -44,7 +43,6 @@ describeLive(
     it("generates embeddings with TEXT_EMBEDDING", async () => {
       const { runtime } = harness();
       const handler = openaiPlugin.models?.[ModelType.TEXT_EMBEDDING];
-      expect(typeof handler).toBe("function");
       if (!handler) {
         throw new Error("TEXT_EMBEDDING handler is unavailable");
       }

@@ -53,5 +53,6 @@ export const Card: Story = {
 
 /** Renders nothing when the viewer is not the owner. */
 export const NotOwner: Story = {
+  tags: ["story-gate-expect-blank"],
   args: { isOwner: false },
 };
