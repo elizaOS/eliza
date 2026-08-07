@@ -95,7 +95,11 @@ import {
 	resolveEffectiveSystemPrompt,
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
-import { buildProviderAttributionsFromState } from "./runtime/trajectory-provider-attribution";
+import {
+	buildProviderAttributionsFromState,
+	canonicalPromptForModelCall,
+	omitUnvalidatedProviderSpans,
+} from "./runtime/trajectory-provider-attribution";
 import {
 	TurnAbortedError,
 	TurnControllerRegistry,
@@ -4952,6 +4956,10 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 			text: providersText,
 		} as State;
+		// Spans against `providersText` are composition-local only. Model-call
+		// writers rebind from `providerAttributionState` against the exact
+		// recorded messages/prompt; do not treat these offsets as model-prompt
+		// indices.
 		const providerAttribution = buildProviderAttributionsFromState({
 			state: attributionState,
 			prompt: providersText,
@@ -4967,6 +4975,7 @@ export class AgentRuntime implements IAgentRuntime {
 			activeTrajectoryContext.providerOrder = providerAttribution.providerOrder;
 			activeTrajectoryContext.providerAttributions =
 				providerAttribution.providerAttributions;
+			activeTrajectoryContext.providerAttributionState = attributionState;
 		}
 		if (trajectoryStepId && trajLogger) {
 			const userText =
@@ -5001,8 +5010,9 @@ export class AgentRuntime implements IAgentRuntime {
 						sha256: attribution?.sha256,
 						tokenCount: attribution?.tokenCount,
 						position: attribution?.position,
-						spanStart: attribution?.spanStart,
-						spanEnd: attribution?.spanEnd,
+						// Spans index providersText, which is not persisted on the
+						// access row — omit them so readers do not slice a different
+						// string with compose-local offsets.
 						purpose: "compose_state",
 						query: { message: userText.slice(0, 2000) },
 						runId: trajCtx?.runId,
@@ -5047,8 +5057,6 @@ export class AgentRuntime implements IAgentRuntime {
 						sha256: attribution?.sha256,
 						tokenCount: attribution?.tokenCount,
 						position: attribution?.position,
-						spanStart: attribution?.spanStart,
-						spanEnd: attribution?.spanEnd,
 						purpose: "compose_state",
 						query: { message: userText.slice(0, 2000) },
 						runId: trajCtx?.runId,
@@ -7076,6 +7084,31 @@ export class AgentRuntime implements IAgentRuntime {
 			const resultRecord = isPlainObject(args.result)
 				? (args.result as Record<string, unknown>)
 				: {};
+			const messages = Array.isArray(paramsRecord.messages)
+				? paramsRecord.messages
+				: undefined;
+			const prompt =
+				typeof paramsRecord.prompt === "string"
+					? paramsRecord.prompt
+					: userPrompt;
+			// Rebind provider spans to the exact string this call persists. Copying
+			// composeState's providersText offsets onto a larger messages prompt
+			// produces false exact-match slices (#14877).
+			const canonicalPrompt = canonicalPromptForModelCall({
+				messages,
+				prompt,
+			});
+			const reboundAttributions = trajCtx.providerAttributionState
+				? buildProviderAttributionsFromState({
+						state: trajCtx.providerAttributionState,
+						prompt: canonicalPrompt,
+					})
+				: undefined;
+			const providerOrder =
+				reboundAttributions?.providerOrder ?? trajCtx.providerOrder;
+			const providerAttributions =
+				reboundAttributions?.providerAttributions ??
+				omitUnvalidatedProviderSpans(trajCtx.providerAttributions);
 			const usageRecord = isPlainObject(resultRecord.usage)
 				? (resultRecord.usage as Record<string, unknown>)
 				: {};
@@ -7089,13 +7122,8 @@ export class AgentRuntime implements IAgentRuntime {
 				provider: args.provider,
 				systemPrompt,
 				userPrompt,
-				prompt:
-					typeof paramsRecord.prompt === "string"
-						? paramsRecord.prompt
-						: userPrompt,
-				messages: Array.isArray(paramsRecord.messages)
-					? paramsRecord.messages
-					: undefined,
+				prompt,
+				messages,
 				tools: paramsRecord.tools,
 				toolChoice: paramsRecord.toolChoice,
 				responseSchema: paramsRecord.responseSchema,
@@ -7127,8 +7155,8 @@ export class AgentRuntime implements IAgentRuntime {
 				roomId: trajCtx.roomId,
 				messageId: trajCtx.messageId,
 				executionTraceId: activeTrace?.id,
-				providerOrder: trajCtx.providerOrder,
-				providerAttributions: trajCtx.providerAttributions,
+				providerOrder,
+				providerAttributions,
 			});
 		} catch (error) {
 			// error-policy:J7 Trajectory logging must never break core model flow.
