@@ -72,24 +72,28 @@ async function installCloudLoginRoutes(page: Page): Promise<void> {
       body: JSON.stringify({
         ok: true,
         sessionId: "ui-smoke-callsite-session",
-        browserUrl: "https://www.elizacloud.ai/device/ui-smoke-callsite-session",
+        browserUrl:
+          "https://www.elizacloud.ai/device/ui-smoke-callsite-session",
       }),
     });
   });
   // Serve a real-ish device page so the popup renders content instead of a
-  // network error (sandbox has no outbound network). The interactive flow
-  // navigates the pre-opened popup to the cli-login/device URL on the direct
-  // cloud base (https://elizacloud.ai/...), not www.
-  await page.route("https://elizacloud.ai/**", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "text/html",
-      body: `<!doctype html><html><head><title>Eliza Cloud login (ui-smoke stub)</title></head>
+  // network error (sandbox has no outbound network). The flow navigates the
+  // pre-opened popup to the login/device URL, which the stubbed /api/cloud/login
+  // response addresses on the www host. Context-scoped: page routes do not
+  // apply to the popup, which is a separate Page.
+  await page
+    .context()
+    .route(/^https:\/\/(www\.)?elizacloud\.ai\//, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: `<!doctype html><html><head><title>Eliza Cloud login (ui-smoke stub)</title></head>
 <body style="font-family:system-ui;background:#0f1115;color:#e6e6e6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
 <div style="text-align:center"><h1>Eliza Cloud</h1><p>Device login (ui-smoke evidence stub)</p>
 <p style="color:#8b949e;font-size:12px">window.name = eliza-cloud-auth</p></div></body></html>`,
+      });
     });
-  });
 }
 
 async function bootCloudSettings(
@@ -118,9 +122,7 @@ test.describe("cloud login callsite — interactive popup opens from the real Se
       const consoleLogs: string[] = [];
       const networkLogs: string[] = [];
       page.on("console", (message) => {
-        consoleLogs.push(
-          `[${message.type()}] ${message.text()}`,
-        );
+        consoleLogs.push(`[${message.type()}] ${message.text()}`);
       });
       page.on("pageerror", (error) => {
         consoleLogs.push(`[pageerror] ${error.message}`);
@@ -153,14 +155,11 @@ test.describe("cloud login callsite — interactive popup opens from the real Se
         .click();
       const popup = await popupPromise;
 
-      // window.open("about:blank", "eliza-cloud-auth") — assert the name.
-      await popup.waitForLoadState("domcontentloaded").catch(() => {});
-      const popupName = await popup.evaluate(() => window.name);
-      expect(popupName).toBe(CLOUD_LOGIN_POPUP_NAME);
-
       // The popup navigates to the device-login URL on the direct cloud base
       // (stubbed above) — proving the interactive path drives the popup to the
-      // real login URL instead of falling back to same-tab.
+      // real login URL instead of falling back to same-tab. Settle this FIRST:
+      // evaluating during the about:blank → device-URL navigation races the
+      // context teardown ("Execution context was destroyed").
       await expect
         .poll(
           async () => {
@@ -170,6 +169,23 @@ test.describe("cloud login callsite — interactive popup opens from the real Se
           { timeout: 15_000 },
         )
         .not.toBe("");
+      // window.open("about:blank", "eliza-cloud-auth") — assert the name,
+      // which persists across navigations on the same window. Poll with a
+      // swallowed evaluate: any still-committing navigation destroys the
+      // execution context mid-call, and the poll simply retries on the next
+      // stable document.
+      let popupName: string | null = null;
+      await expect
+        .poll(
+          async () => {
+            popupName = await popup
+              .evaluate(() => window.name)
+              .catch(() => null);
+            return popupName;
+          },
+          { timeout: 15_000 },
+        )
+        .toBe(CLOUD_LOGIN_POPUP_NAME);
       await popup.screenshot({
         path: testInfo.outputPath(`${viewport.name}-popup-device-login.png`),
         type: "png",
@@ -182,7 +198,9 @@ test.describe("cloud login callsite — interactive popup opens from the real Se
       await screenshot(page, testInfo, `${viewport.name}-2-after-popup-opened`);
 
       // Raw console + network logs as reviewable artifacts.
-      const logsPath = testInfo.outputPath(`${viewport.name}-console-network.log`);
+      const logsPath = testInfo.outputPath(
+        `${viewport.name}-console-network.log`,
+      );
       await mkdir(testInfo.outputDir, { recursive: true });
       await writeFile(
         logsPath,

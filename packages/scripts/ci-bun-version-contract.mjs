@@ -373,7 +373,7 @@ function analyzeYamlRuntime(text) {
       ) {
         if (origin === "workflow-env") envDecls.workflow = true;
         else if (origin === "job-env") envDecls.job.add(jobId);
-        else envDecls.step.add(`${jobId} ${stepIndex}`);
+        else envDecls.step.add(`${jobId}\u0000${stepIndex}`);
       }
       return;
     }
@@ -473,7 +473,7 @@ function analyzeYamlRuntime(text) {
   const envVisible = (jobId, stepIndex) =>
     (jobId !== null &&
       stepIndex !== null &&
-      envDecls.step.has(`${jobId} ${stepIndex}`)) ||
+      envDecls.step.has(`${jobId}\u0000${stepIndex}`)) ||
     (jobId !== null && envDecls.job.has(jobId)) ||
     envDecls.workflow;
 

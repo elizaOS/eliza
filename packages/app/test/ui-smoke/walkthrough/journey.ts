@@ -32,6 +32,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import type { AccountsListResponse } from "@elizaos/ui/api/client-agent";
 import { expect, type Page, type Route, type TestInfo } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -42,6 +43,10 @@ import {
 } from "../helpers";
 
 export type Lane = "mock" | "live";
+
+export const WALKTHROUGH_ACCOUNTS_RESPONSE = {
+  providers: [],
+} satisfies AccountsListResponse;
 
 export interface ViewportProfile {
   id: "desktop" | "mobile";
@@ -616,7 +621,7 @@ async function installMockLaneWrites(page: Page): Promise<void> {
   });
   await page.route("**/api/accounts", async (route) => {
     if (route.request().method() === "GET") {
-      await fulfillJson(route, 200, { accounts: [] });
+      await fulfillJson(route, 200, WALKTHROUGH_ACCOUNTS_RESPONSE);
       return;
     }
     await route.fallback();
@@ -989,20 +994,37 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     id: "settings-open",
     title: "Open settings",
     expectation:
-      "The Settings shell opens and the Models & Providers section is reachable.",
+      "The Settings shell opens, Models & Providers loads /api/accounts, and the account panel reaches a ready or explicit error state.",
     async run({ page }) {
+      const accountsResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          new URL(response.url()).pathname === "/api/accounts",
+        { timeout: 30_000 },
+      );
       await openAppPath(page, "/settings");
       await expect(page.getByTestId("settings-shell")).toBeVisible({
         timeout: 30_000,
       });
       await openSettingsSection(page, /Models & Providers/);
+      await accountsResponse;
+      const accountPanel = page.getByTestId("account-management-panel");
+      await expect(accountPanel).toBeVisible({ timeout: 30_000 });
+      await expect(accountPanel).toHaveAttribute(
+        "data-state",
+        /^(ready|error)$/,
+        { timeout: 30_000 },
+      );
       return {
         assertions: [
           "settings-shell visible",
           "Models & Providers section opened",
+          "GET /api/accounts completed",
+          "account-management-panel reached ready or error",
         ],
         dom: await domMarkers(page, {
           settingsShell: '[data-testid="settings-shell"]',
+          accountPanel: '[data-testid="account-management-panel"]',
         }),
       };
     },
@@ -1019,10 +1041,17 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         .getByTestId("wallet-shell")
         .or(page.getByRole("heading", { name: /Wallet/i }));
       await expect(shell.first()).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("wallets-sidebar").first()).toBeVisible({
+        timeout: 30_000,
+      });
       return {
-        assertions: ["wallet shell / heading visible at /wallet"],
+        assertions: [
+          "wallet shell / heading visible at /wallet",
+          "wallet balances/chains surface visible",
+        ],
         dom: await domMarkers(page, {
           walletShell: '[data-testid="wallet-shell"]',
+          walletContent: '[data-testid="wallets-sidebar"]',
         }),
       };
     },

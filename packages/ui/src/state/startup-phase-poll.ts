@@ -40,6 +40,7 @@ import { readMobileRuntimeBuildTruth } from "../first-run/reconcile-mobile-runti
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import { isAndroid, isIOS } from "../platform";
+import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
@@ -565,9 +566,6 @@ export async function runPollingBackend(
     }
   };
 
-  const isDevUiPort = () =>
-    typeof window !== "undefined" && window.location.port === "2138";
-
   const routeToOfflineFirstRun = (why: string) => {
     logger.warn(
       { reason: why },
@@ -585,7 +583,7 @@ export async function runPollingBackend(
   if (
     !cancelled.current &&
     effectRunRef.current === effectRunId &&
-    isDevUiPort() &&
+    isViteDevUiShell() &&
     isSameOriginProxyBase() &&
     !ctx?.persistedActiveServer &&
     !ctx?.hadPriorFirstRun
@@ -1195,7 +1193,7 @@ export async function runPollingBackend(
         return;
       }
       if (
-        isDevUiPort() &&
+        isViteDevUiShell() &&
         !policy.supportsLocalRuntime &&
         isSameOriginProxyBase() &&
         (ae?.status === undefined ||
