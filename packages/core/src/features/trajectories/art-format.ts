@@ -100,7 +100,14 @@ function buildAssistantMessage(step: TrajectoryStep): string | null {
 		return llmCall.response;
 	}
 
+	// Actionless bridge steps (LLM-only capture) have no ActionAttempt — prefer
+	// any non-action LLM response, else omit the assistant turn (#17730).
 	const action = step.action;
+	if (!action) {
+		const anyResponse = step.llmCalls.find((call) => call.response)?.response;
+		return anyResponse ?? null;
+	}
+
 	const parts: string[] = [];
 
 	parts.push(`I will ${action.actionType}.`);
@@ -138,10 +145,13 @@ export function toARTTrajectory(trajectory: Trajectory): ARTTrajectory {
 				...(trajectory.metrics.finalPnL !== undefined
 					? { finalPnL: trajectory.metrics.finalPnL }
 					: {}),
-				actionsTaken: trajectory.steps.map((s) => s.action.actionType),
-				errors: trajectory.steps
-					.filter((s) => !s.action.success)
-					.map((s) => s.action.error || "Unknown error"),
+				actionsTaken: trajectory.steps.flatMap((s) =>
+					s.action?.actionType ? [s.action.actionType] : [],
+				),
+				errors: trajectory.steps.flatMap((s) => {
+					if (!s.action || s.action.success) return [];
+					return [s.action.error || "Unknown error"];
+				}),
 			},
 			gameKnowledge: extractGameKnowledge(trajectory),
 			metrics: JSON.parse(JSON.stringify(trajectory.metrics)) as Record<

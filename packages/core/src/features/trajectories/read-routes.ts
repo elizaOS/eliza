@@ -59,6 +59,7 @@ interface ServiceTrajectoryStep {
 	stepId: string;
 	llmCalls: ServiceLlmCall[];
 	providerAccesses: ServiceProviderAccess[];
+	/** Absent on action-optional Agent-bridge steps (LLM-only capture). */
 	action?: ServiceActionAttempt;
 }
 
@@ -189,6 +190,8 @@ function detailToUi(
 				...(p.purpose ? { purpose: p.purpose } : {}),
 			});
 		}
+		// Genuinely actionless steps (Agent bridge LLM-only capture) contribute
+		// nothing to toolEvents — never fabricate a synthetic action (#17730).
 		const action = step.action;
 		if (action && (action.actionName || action.actionType)) {
 			const failed = action.success === false || Boolean(action.error);
