@@ -26,7 +26,8 @@
  */
 
 import type { SurfaceLifecyclePolicy } from "@elizaos/core";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
 import { CapacitorNativeSurfaceShell } from "./capacitor-native-surface-shell";
 import type {
   NativeSurfacePolicy,
@@ -91,6 +92,17 @@ export interface MobileNativeTabSurfaces {
   registerSurfaceElement(tabId: string, element: HTMLElement | null): void;
   /** Load a URL in a tab's native surface (address-bar navigation). */
   navigateSurface(tabId: string, url: string): void;
+  /** Reload the current page through the native reconciler. */
+  reloadSurface(tabId: string): void;
+  /** Transport failure replacing a blank or stale native layer, if any. */
+  readonly error: MobileNativeSurfaceError | null;
+  /** Replay the failed desired-state commands after the user chooses Retry. */
+  retry(): void;
+}
+
+export interface MobileNativeSurfaceError {
+  readonly key: string;
+  readonly message: string;
 }
 
 /**
@@ -102,13 +114,87 @@ function surfaceIdOf(tabId: string): string {
   return `browser-tab:${tabId}`;
 }
 
+// Native surface identity outlives a React view instance. One process-scoped
+// reconciler therefore owns every production remount; injected test shells stay
+// lane-local and deterministic.
+const PROCESS_NATIVE_SURFACE_SHELL = new CapacitorNativeSurfaceShell();
+const HOST_VISIBILITY_COMMAND = "browser-native-host:visibility";
+const SURFACE_LEASES = new WeakMap<
+  NativeSurfaceShell,
+  Map<string, Set<symbol>>
+>();
+let processPresentationPaused = false;
+let processPresentationLatchInstalled = false;
+
+function acquireSurfaceLease(
+  shell: NativeSurfaceShell,
+  id: string,
+  holder: symbol,
+): void {
+  let byId = SURFACE_LEASES.get(shell);
+  if (!byId) {
+    byId = new Map();
+    SURFACE_LEASES.set(shell, byId);
+  }
+  let holders = byId.get(id);
+  if (!holders) {
+    holders = new Set();
+    byId.set(id, holders);
+  }
+  holders.add(holder);
+}
+
+function releaseSurfaceLease(
+  shell: NativeSurfaceShell,
+  id: string,
+  holder: symbol,
+): boolean {
+  const byId = SURFACE_LEASES.get(shell);
+  const holders = byId?.get(id);
+  if (!holders) return true;
+  holders.delete(holder);
+  if (holders.size > 0) return false;
+  byId?.delete(id);
+  if (byId?.size === 0) SURFACE_LEASES.delete(shell);
+  return true;
+}
+
+function hasSurfaceLeases(shell: NativeSurfaceShell): boolean {
+  return (SURFACE_LEASES.get(shell)?.size ?? 0) > 0;
+}
+
+// A Browser view may unmount while the native app changes activity state. This
+// module-lifetime latch keeps later remounts hidden until the real resume edge;
+// hook-local listeners only reconcile native presentation for a mounted view.
+function ensureProcessPresentationLatch(): void {
+  if (processPresentationLatchInstalled || typeof document === "undefined") {
+    return;
+  }
+  processPresentationLatchInstalled = true;
+  document.addEventListener(APP_PAUSE_EVENT, () => {
+    processPresentationPaused = true;
+  });
+  document.addEventListener(APP_RESUME_EVENT, () => {
+    processPresentationPaused = false;
+  });
+}
+
+function presentationIsPaused(): boolean {
+  return (
+    processPresentationPaused ||
+    (typeof document !== "undefined" && document.visibilityState === "hidden")
+  );
+}
+
 function roundedCssPixel(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function parseCornerRadius(value: string): number {
+function parseCornerRadius(value: string): number | null {
   const radius = Number.parseFloat(value);
-  return Number.isFinite(radius) && radius > 0 ? roundedCssPixel(radius) : 0;
+  return Number.isFinite(radius) && radius >= 0
+    ? roundedCssPixel(radius)
+    : null;
 }
 
 const ZERO_CORNER_RADII: SurfaceCornerRadii = {
@@ -139,12 +225,12 @@ function roundedRect(rect: DOMRect): Omit<SurfaceBounds, "outerClip"> {
 }
 
 function readCornerRadii(style: CSSStyleDeclaration): SurfaceCornerRadii {
-  const shorthand = parseCornerRadius(style.borderRadius);
+  const shorthand = parseCornerRadius(style.borderRadius) ?? 0;
   return {
-    topLeft: parseCornerRadius(style.borderTopLeftRadius) || shorthand,
-    topRight: parseCornerRadius(style.borderTopRightRadius) || shorthand,
-    bottomRight: parseCornerRadius(style.borderBottomRightRadius) || shorthand,
-    bottomLeft: parseCornerRadius(style.borderBottomLeftRadius) || shorthand,
+    topLeft: parseCornerRadius(style.borderTopLeftRadius) ?? shorthand,
+    topRight: parseCornerRadius(style.borderTopRightRadius) ?? shorthand,
+    bottomRight: parseCornerRadius(style.borderBottomRightRadius) ?? shorthand,
+    bottomLeft: parseCornerRadius(style.borderBottomLeftRadius) ?? shorthand,
   };
 }
 
@@ -230,13 +316,14 @@ export function collectSurfaceOcclusionRects(
       y: roundedCssPixel(rect.top),
       width: roundedCssPixel(rect.width),
       height: roundedCssPixel(rect.height),
-      cornerRadius: parseCornerRadius(
-        element.style.borderTopLeftRadius ||
-          element.style.borderRadius ||
-          style?.borderTopLeftRadius ||
-          style?.borderRadius ||
-          "0",
-      ),
+      cornerRadius:
+        parseCornerRadius(
+          element.style.borderTopLeftRadius ||
+            element.style.borderRadius ||
+            style?.borderTopLeftRadius ||
+            style?.borderRadius ||
+            "0",
+        ) ?? 0,
     });
   }
   // A native mask represents the union of these regions. Nested portal/status
@@ -271,23 +358,110 @@ export function useMobileNativeTabSurfaces(
     shell,
   } = args;
 
-  // One shell per hosting Browser view. A caller-supplied shell (tests) wins;
-  // otherwise the Capacitor driver, constructed once.
-  const defaultShell = useMemo(() => new CapacitorNativeSurfaceShell(), []);
-  const activeShell = shell ?? defaultShell;
+  const activeShell = shell ?? PROCESS_NATIVE_SURFACE_SHELL;
 
   const elements = useRef(new Map<string, HTMLElement>());
+  const leaseHolder = useRef(Symbol("browser-native-surface-hook"));
   // The tab ids this hook has handed to the shell. Native acceptance is tracked
   // by the shell itself; this desired-set may include a create still in flight so
   // initial bounds/holes can queue behind that acknowledged create.
   const managedTabIds = useRef(new Set<string>());
-  // Last URL loaded into each surface, so a change to a tab's `url` (address-bar
-  // navigation upstream) drives a `navigate` instead of a spurious re-create.
-  const surfaceUrls = useRef(new Map<string, string>());
+  const observedCommands = useRef(new Map<string, ObservedSurfaceCommand>());
+  const previousActive = useRef(active);
+  const reloadRevision = useRef(0);
+  const [surfaceError, setSurfaceError] =
+    useState<MobileNativeSurfaceError | null>(null);
   // Latest lifecycle for the unmount cleanup, which runs with an empty dep list
   // and would otherwise close over a stale value.
   const lifecycleRef = useRef(lifecycle);
   lifecycleRef.current = lifecycle;
+
+  useEffect(() => {
+    ensureProcessPresentationLatch();
+  }, []);
+
+  const issueCommand = useCallback(
+    (key: string, signature: string, invoke: () => Promise<void>): void => {
+      const existing = observedCommands.current.get(key);
+      if (existing?.signature === signature) return;
+      const command: ObservedSurfaceCommand = {
+        signature,
+        status: "pending",
+        invoke,
+      };
+      observedCommands.current.set(key, command);
+      const run = (): void => {
+        if (observedCommands.current.get(key) !== command) return;
+        command.status = "pending";
+        let acknowledgement: Promise<void>;
+        try {
+          acknowledgement = invoke();
+        } catch (error) {
+          // error-policy:J1 the React/native command boundary translates a
+          // synchronous bridge failure into the same visible state as rejection.
+          acknowledgement = Promise.reject(error);
+        }
+        acknowledgement.then(
+          () => {
+            if (observedCommands.current.get(key) === command) {
+              command.status = "succeeded";
+              setSurfaceError((current) =>
+                current?.key === key ? null : current,
+              );
+            }
+          },
+          (error: unknown) => {
+            if (observedCommands.current.get(key) !== command) return;
+            command.status = "failed";
+            setSurfaceError({
+              key,
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "The native Browser surface is unavailable.",
+            });
+          },
+        );
+      };
+      run();
+    },
+    [],
+  );
+
+  const cancelSurfaceCommands = useCallback(
+    (id: string, clearRenderedError = true): void => {
+      const prefix = `${id}:`;
+      const removedKeys = new Set<string>();
+      for (const key of observedCommands.current.keys()) {
+        if (!key.startsWith(prefix)) continue;
+        observedCommands.current.delete(key);
+        removedKeys.add(key);
+      }
+      if (clearRenderedError) {
+        setSurfaceError((current) =>
+          current && removedKeys.has(current.key) ? null : current,
+        );
+      }
+    },
+    [],
+  );
+
+  const cancelCommand = useCallback((key: string): void => {
+    observedCommands.current.delete(key);
+    setSurfaceError((current) => (current?.key === key ? null : current));
+  }, []);
+
+  const retry = useCallback((): void => {
+    const failed = [...observedCommands.current.entries()].filter(
+      ([, command]) => command.status === "failed",
+    );
+    setSurfaceError(null);
+    for (const [key, command] of failed) {
+      observedCommands.current.delete(key);
+      issueCommand(key, command.signature, command.invoke);
+    }
+  }, [issueCommand]);
+
   const measure = useCallback(
     (tabId: string): void => {
       const element = elements.current.get(tabId);
@@ -299,9 +473,11 @@ export function useMobileNativeTabSurfaces(
         ...roundedRect(rect),
         outerClip: collectSurfaceOuterClip(element),
       };
-      activeShell.setBounds(id, bounds);
+      issueCommand(`${id}:bounds`, JSON.stringify(bounds), () =>
+        activeShell.setBounds(id, bounds),
+      );
     },
-    [activeShell],
+    [activeShell, issueCommand],
   );
 
   const registerSurfaceElement = useCallback(
@@ -319,9 +495,22 @@ export function useMobileNativeTabSurfaces(
   const navigateSurface = useCallback(
     (tabId: string, url: string): void => {
       if (!active) return;
-      activeShell.navigate(surfaceIdOf(tabId), url);
+      const id = surfaceIdOf(tabId);
+      issueCommand(`${id}:navigate`, url, () => activeShell.navigate(id, url));
     },
-    [active, activeShell],
+    [active, activeShell, issueCommand],
+  );
+
+  const reloadSurface = useCallback(
+    (tabId: string): void => {
+      if (!active) return;
+      const id = surfaceIdOf(tabId);
+      reloadRevision.current += 1;
+      issueCommand(`${id}:reload`, `${reloadRevision.current}`, () =>
+        activeShell.reload(id),
+      );
+    },
+    [active, activeShell, issueCommand],
   );
 
   const readOcclusions = useCallback(
@@ -335,38 +524,89 @@ export function useMobileNativeTabSurfaces(
   const syncOcclusions = useCallback((): void => {
     const rects = readOcclusions();
     for (const tabId of managedTabIds.current) {
-      activeShell.setOcclusionRects(surfaceIdOf(tabId), rects);
+      const id = surfaceIdOf(tabId);
+      issueCommand(`${id}:occlusions`, JSON.stringify(rects), () =>
+        activeShell.setOcclusionRects(id, rects),
+      );
     }
-  }, [activeShell, readOcclusions]);
+  }, [activeShell, issueCommand, readOcclusions]);
+
+  const syncVisibility = useCallback(
+    (force: boolean): void => {
+      if (!active) return;
+      const selected = tabs.find((tab) => tab.id === selectedTabId);
+      const presentedId =
+        surfaceError === null &&
+        !presentationIsPaused() &&
+        !overlayOpen &&
+        selected
+          ? surfaceIdOf(selected.id)
+          : null;
+      if (force) cancelCommand(HOST_VISIBILITY_COMMAND);
+      issueCommand(HOST_VISIBILITY_COMMAND, presentedId ?? "host", () =>
+        activeShell.presentSurface(presentedId),
+      );
+      if (presentedId && selected) measure(selected.id);
+    },
+    [
+      active,
+      tabs,
+      overlayOpen,
+      selectedTabId,
+      surfaceError,
+      activeShell,
+      cancelCommand,
+      issueCommand,
+      measure,
+    ],
+  );
 
   // Reconcile the live surface set with `tabs`: create surfaces for new tabs
-  // (explicit policy, never a default), navigate on an existing tab's URL change,
-  // destroy surfaces for closed tabs.
+  // (explicit policy, never a default) and destroy surfaces for closed tabs.
+  // Create is the declarative URL owner too: the shell reconciles a changed URL
+  // with `navigate`, while a close/reopen generation crosses native absence.
   useEffect(() => {
     if (!active) return;
     const wanted = new Set(tabs.map((tab) => tab.id));
     for (const tab of tabs) {
       const id = surfaceIdOf(tab.id);
       if (!managedTabIds.current.has(tab.id)) {
-        activeShell.createSurface({ id, url: tab.url, policy });
+        acquireSurfaceLease(activeShell, id, leaseHolder.current);
         managedTabIds.current.add(tab.id);
-        surfaceUrls.current.set(tab.id, tab.url);
-        measure(tab.id);
-        activeShell.setOcclusionRects(id, readOcclusions());
-      } else if (surfaceUrls.current.get(tab.id) !== tab.url) {
-        activeShell.navigate(id, tab.url);
-        surfaceUrls.current.set(tab.id, tab.url);
       }
+      const request = { id, url: tab.url, policy } as const;
+      issueCommand(`${id}:lifecycle`, `create:${JSON.stringify(request)}`, () =>
+        activeShell.createSurface(request),
+      );
+      measure(tab.id);
+      const rects = readOcclusions();
+      issueCommand(`${id}:occlusions`, JSON.stringify(rects), () =>
+        activeShell.setOcclusionRects(id, rects),
+      );
     }
     for (const tabId of [...managedTabIds.current]) {
       if (!wanted.has(tabId)) {
-        activeShell.destroySurface(surfaceIdOf(tabId));
+        const id = surfaceIdOf(tabId);
+        cancelSurfaceCommands(id);
+        if (releaseSurfaceLease(activeShell, id, leaseHolder.current)) {
+          issueCommand(`${id}:lifecycle`, "destroy", () =>
+            activeShell.destroySurface(id),
+          );
+        }
         managedTabIds.current.delete(tabId);
-        surfaceUrls.current.delete(tabId);
         elements.current.delete(tabId);
       }
     }
-  }, [active, tabs, policy, activeShell, measure, readOcclusions]);
+  }, [
+    active,
+    tabs,
+    policy,
+    activeShell,
+    cancelSurfaceCommands,
+    issueCommand,
+    measure,
+    readOcclusions,
+  ]);
 
   // Keep React-chrome holes aligned. ResizeObserver catches layout changes;
   // MutationObserver catches portals and Motion style writes. During a chat
@@ -543,38 +783,107 @@ export function useMobileNativeTabSurfaces(
     };
   }, [active, measure]);
 
-  // Foreground the selected surface and background the rest — unless an overlay
-  // is open, in which case every surface is backgrounded (see header).
+  // One global transaction selects the active native page, while an overlay,
+  // pause, or terminal surface error returns paint/input ownership to the host.
   useEffect(() => {
-    if (!active) return;
-    for (const tab of tabs) {
-      const id = surfaceIdOf(tab.id);
-      if (!overlayOpen && tab.id === selectedTabId) {
-        activeShell.foregroundSurface(id);
-        measure(tab.id);
-      } else {
-        activeShell.backgroundSurface(id);
-      }
+    syncVisibility(false);
+  }, [syncVisibility]);
+
+  // App pause gives paint/input ownership back to the host immediately. Resume
+  // invalidates the hook's successful acknowledgements and replays failed
+  // desired state plus the selected/background set through the same
+  // process-scoped reconciler. Resume is a bounded external recovery edge, not
+  // a timer: an unavailable surface remains visibly failed until this edge or
+  // an explicit Retry.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const pause = (): void => {
+      processPresentationPaused = true;
+      cancelCommand(HOST_VISIBILITY_COMMAND);
+      issueCommand(HOST_VISIBILITY_COMMAND, "paused", () =>
+        activeShell.presentSurface(null),
+      );
+    };
+    const resume = (): void => {
+      processPresentationPaused = false;
+      retry();
+      cancelCommand(HOST_VISIBILITY_COMMAND);
+      syncVisibility(true);
+    };
+    document.addEventListener(APP_PAUSE_EVENT, pause);
+    document.addEventListener(APP_RESUME_EVENT, resume);
+    return () => {
+      document.removeEventListener(APP_PAUSE_EVENT, pause);
+      document.removeEventListener(APP_RESUME_EVENT, resume);
+    };
+  }, [activeShell, cancelCommand, issueCommand, retry, syncVisibility]);
+
+  // A render-path handoff can leave this hook mounted while host content takes
+  // over. Hide every child surface in that state; reactivation replays the
+  // declarative selected/background set without recreating WebViews.
+  useEffect(() => {
+    const wasActive = previousActive.current;
+    previousActive.current = active;
+    if (wasActive === active) return;
+    cancelCommand(HOST_VISIBILITY_COMMAND);
+    if (active) {
+      syncVisibility(true);
+      return;
     }
-  }, [active, tabs, selectedTabId, overlayOpen, activeShell, measure]);
+    if (managedTabIds.current.size > 0) {
+      issueCommand(HOST_VISIBILITY_COMMAND, "host-render-path", () =>
+        activeShell.presentSurface(null),
+      );
+    }
+  }, [active, activeShell, cancelCommand, issueCommand, syncVisibility]);
 
   // On unmount, apply the manifest lifecycle: `retained` keeps surfaces warm in
   // the background; `ephemeral` (the Browser default) tears them down.
   useEffect(() => {
     const managed = managedTabIds.current;
     return () => {
+      cancelCommand(HOST_VISIBILITY_COMMAND);
       for (const tabId of managed) {
         const id = surfaceIdOf(tabId);
-        if (lifecycleRef.current === "retained") {
-          activeShell.backgroundSurface(id);
-        } else {
-          activeShell.destroySurface(id);
-        }
+        cancelSurfaceCommands(id, false);
+        const finalHolder = releaseSurfaceLease(
+          activeShell,
+          id,
+          leaseHolder.current,
+        );
+        const acknowledgement =
+          lifecycleRef.current === "retained" || !finalHolder
+            ? Promise.resolve()
+            : activeShell.destroySurface(id);
+        acknowledgement.then(
+          () => undefined,
+          () => undefined,
+        );
       }
       managed.clear();
+      if (!hasSurfaceLeases(activeShell)) {
+        // error-policy:J5 the process-scoped shell reports teardown failure;
+        // this retired hook must not retry over a newer mount's generation.
+        activeShell.presentSurface(null).then(
+          () => undefined,
+          () => undefined,
+        );
+      }
     };
     // Cleanup must run only on unmount; it reads the shell + lifecycle via refs.
-  }, [activeShell]);
+  }, [activeShell, cancelCommand, cancelSurfaceCommands]);
 
-  return { registerSurfaceElement, navigateSurface };
+  return {
+    registerSurfaceElement,
+    navigateSurface,
+    reloadSurface,
+    error: surfaceError,
+    retry,
+  };
+}
+
+interface ObservedSurfaceCommand {
+  readonly signature: string;
+  readonly invoke: () => Promise<void>;
+  status: "pending" | "succeeded" | "failed";
 }

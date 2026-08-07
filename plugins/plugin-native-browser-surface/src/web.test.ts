@@ -9,10 +9,12 @@ import { BrowserSurfaceWeb } from "./web";
 
 describe("BrowserSurfaceWeb", () => {
   const web = new BrowserSurfaceWeb();
+  const identity = { owner: "browser", session: "test-realm" } as const;
 
   it("rejects createSurface even with a full explicit policy", async () => {
     await expect(
       web.createSurface({
+        ...identity,
         id: "browser-tab:a",
         url: "https://example.com",
         process: "isolated",
@@ -24,6 +26,7 @@ describe("BrowserSurfaceWeb", () => {
   it("rejects every surface method as unavailable", async () => {
     await expect(
       web.setBounds({
+        ...identity,
         id: "a",
         x: 0,
         y: 0,
@@ -45,25 +48,31 @@ describe("BrowserSurfaceWeb", () => {
     ).rejects.toThrow(/native-only/i);
     await expect(
       web.setOcclusionRects({
+        ...identity,
         id: "a",
         rects: [{ x: 0, y: 0, width: 1, height: 1, cornerRadius: 0 }],
       }),
     ).rejects.toThrow(/native-only/i);
     await expect(
-      web.navigate({ id: "a", url: "https://example.com" }),
+      web.navigate({ ...identity, id: "a", url: "https://example.com" }),
     ).rejects.toThrow(/native-only/i);
-    await expect(web.foregroundSurface({ id: "a" })).rejects.toThrow(
+    await expect(web.reloadSurface({ ...identity, id: "a" })).rejects.toThrow(
       /native-only/i,
     );
-    await expect(web.backgroundSurface({ id: "a" })).rejects.toThrow(
+    await expect(web.presentSurface({ ...identity, id: "a" })).rejects.toThrow(
       /native-only/i,
     );
-    await expect(web.destroySurface({ id: "a" })).rejects.toThrow(
+    await expect(web.destroySurface({ ...identity, id: "a" })).rejects.toThrow(
       /native-only/i,
     );
-    await expect(web.foregroundHost()).rejects.toThrow(/native-only/i);
-    await expect(web.getSurfaceState({ id: "a" })).rejects.toThrow(
+    await expect(web.getSurfaceState({ ...identity, id: "a" })).rejects.toThrow(
       /native-only/i,
     );
+    await expect(web.listSurfaceStates(identity)).rejects.toThrow(
+      /native-only/i,
+    );
+    await expect(
+      web.reconcileOwner({ ...identity, desiredIds: ["a"] }),
+    ).rejects.toThrow(/native-only/i);
   });
 });

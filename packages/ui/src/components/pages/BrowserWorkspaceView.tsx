@@ -1966,6 +1966,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
 
   const reloadSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTab) return;
+    if (browserTabRenderPath === "native-mobile-webview") {
+      nativeTabSurfaces.reloadSurface(selectedTab.id);
+      return;
+    }
     if (workspace.mode === "web") {
       const iframe = iframeRefs.current.get(selectedTab.id);
       if (iframe) {
@@ -1979,7 +1983,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       return;
     }
     await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
-  }, [selectedTab, workspace.mode]);
+  }, [browserTabRenderPath, nativeTabSurfaces, selectedTab, workspace.mode]);
 
   const installBrowserBridgeExtension = useCallback(async () => {
     await runBrowserWorkspaceAction(
@@ -2563,25 +2567,56 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           );
         })
       ) : browserTabRenderPath === "native-mobile-webview" ? (
-        workspace.tabs.map((tab) => {
-          const active = tab.id === selectedTabId;
-          const visibilityClass = active
-            ? "pointer-events-auto opacity-100"
-            : "pointer-events-none opacity-0";
-          return (
-            // The native WKWebView / Android WebView is layered over this
-            // placeholder by `useMobileNativeTabSurfaces`; the div only reports
-            // the full content rect. React chrome is composed through native
-            // occlusion holes, so the page is never resized around the chat.
-            <div
-              key={tab.id}
-              ref={(el) => nativeTabSurfaces.registerSurfaceElement(tab.id, el)}
-              aria-hidden={!active}
-              className={`absolute inset-0 h-full w-full bg-bg transition-opacity ${visibilityClass}`}
-              style={{ colorScheme: uiTheme }}
-            />
-          );
-        })
+        nativeTabSurfaces.error ? (
+          <div
+            role="alert"
+            className="absolute inset-0 flex h-full w-full items-center justify-center bg-bg px-6 text-center"
+          >
+            <div className="flex max-w-sm flex-col items-center gap-3 rounded-3xl border border-border bg-bg-elevated p-6 shadow-lg">
+              <div className="text-sm font-semibold text-txt">
+                {t("browserworkspace.NativeSurfaceUnavailable", {
+                  defaultValue: "Browser view unavailable",
+                })}
+              </div>
+              <div className="text-xs leading-5 text-muted">
+                {t("browserworkspace.NativeSurfaceUnavailableDescription", {
+                  defaultValue:
+                    "The secure browser surface could not connect. Retry without losing your tabs.",
+                })}
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={nativeTabSurfaces.retry}
+              >
+                {t("common.retry", { defaultValue: "Retry" })}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          workspace.tabs.map((tab) => {
+            const active = tab.id === selectedTabId;
+            const visibilityClass = active
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0";
+            return (
+              // The native WKWebView / Android WebView is layered over this
+              // placeholder by `useMobileNativeTabSurfaces`; the div only reports
+              // the full content rect. React chrome is composed through native
+              // occlusion holes, so the page is never resized around the chat.
+              <div
+                key={tab.id}
+                ref={(el) =>
+                  nativeTabSurfaces.registerSurfaceElement(tab.id, el)
+                }
+                aria-hidden={!active}
+                className={`absolute inset-0 h-full w-full bg-bg transition-opacity ${visibilityClass}`}
+                style={{ colorScheme: uiTheme }}
+              />
+            );
+          })
+        )
       ) : browserTabRenderPath === "sandboxed-iframe" ? (
         workspace.tabs.map((tab) => {
           const active = tab.id === selectedTabId;

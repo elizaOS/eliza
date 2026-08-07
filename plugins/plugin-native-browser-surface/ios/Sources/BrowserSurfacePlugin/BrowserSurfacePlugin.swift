@@ -23,11 +23,12 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setBounds", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setOcclusionRects", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "navigate", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "foregroundSurface", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "backgroundSurface", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "reloadSurface", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "presentSurface", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "destroySurface", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "foregroundHost", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getSurfaceState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "listSurfaceStates", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "reconcileOwner", returnType: CAPPluginReturnPromise),
     ]
 
     private struct Surface {
@@ -35,12 +36,49 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         let webView: WKWebView
         let process: String
         let storage: String
+        let owner: String
+        let session: String
     }
 
     private var surfaces: [String: Surface] = [:]
     // One plugin-owned pool for every `shared`-process surface — deliberate, so a
     // shared surface still never lands in the host's implicit default pool.
     private let sharedProcessPool = WKProcessPool()
+
+    private func identity(_ call: CAPPluginCall, operation: String) -> (owner: String, session: String)? {
+        guard let owner = call.getString("owner"), !owner.isEmpty,
+              let session = call.getString("session"), !session.isEmpty else {
+            call.reject("\(operation) requires owner and session")
+            return nil
+        }
+        return (owner, session)
+    }
+
+    private func ownedSurface(
+        _ call: CAPPluginCall,
+        id: String,
+        owner: String,
+        session: String,
+        operation: String
+    ) -> Surface? {
+        guard let surface = surfaces[id] else {
+            call.reject("no surface \(id)")
+            return nil
+        }
+        guard surface.owner == owner, surface.session == session else {
+            call.reject("\(operation) cannot mutate surface \(id) owned by another renderer session")
+            return nil
+        }
+        return surface
+    }
+
+    private func dispose(_ surface: Surface) {
+        surface.container.isHidden = true
+        surface.webView.stopLoading()
+        surface.webView.navigationDelegate = nil
+        surface.webView.uiDelegate = nil
+        surface.container.removeFromSuperview()
+    }
 
     @objc func createSurface(_ call: CAPPluginCall) {
         guard let id = call.getString("id") else {
@@ -58,6 +96,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("createSurface requires an explicit storage policy (isolated|shared)")
             return
         }
+        guard let identity = identity(call, operation: "createSurface") else { return }
         let urlString = call.getString("url")
 
         DispatchQueue.main.async {
@@ -65,7 +104,18 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("no host view controller to attach the surface to")
                 return
             }
-            if self.surfaces[id] != nil {
+            if let existing = self.surfaces[id] {
+                guard existing.owner == identity.owner,
+                      existing.session == identity.session,
+                      existing.process == process,
+                      existing.storage == storage else {
+                    call.reject("surface \(id) already exists with different owner/session/policy")
+                    return
+                }
+                if let urlString, let url = URL(string: urlString),
+                   existing.webView.url?.absoluteString != url.absoluteString {
+                    existing.webView.load(URLRequest(url: url))
+                }
                 call.resolve()
                 return
             }
@@ -92,7 +142,9 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
                 container: container,
                 webView: webView,
                 process: process,
-                storage: storage
+                storage: storage,
+                owner: identity.owner,
+                session: identity.session
             )
             call.resolve()
         }
@@ -103,6 +155,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("setBounds requires an id")
             return
         }
+        guard let identity = identity(call, operation: "setBounds") else { return }
         guard let x = call.getDouble("x"), let y = call.getDouble("y"),
               let width = call.getDouble("width"), let height = call.getDouble("height"),
               let rawOuterClip = call.getObject("outerClip"),
@@ -134,10 +187,13 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         DispatchQueue.main.async {
-            guard let surface = self.surfaces[id] else {
-                call.reject("no surface \(id)")
-                return
-            }
+            guard let surface = self.ownedSurface(
+                call,
+                id: id,
+                owner: identity.owner,
+                session: identity.session,
+                operation: "setBounds"
+            ) else { return }
             // CSS px map 1:1 to UIKit points, so no density conversion is needed.
             let frame = CGRect(x: x, y: y, width: width, height: height)
             if surface.container.frame != frame {
@@ -156,6 +212,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("setOcclusionRects requires an id")
             return
         }
+        guard let identity = identity(call, operation: "setOcclusionRects") else { return }
         guard let rawRects = call.getArray("rects") as? [[String: Any]] else {
             call.reject("setOcclusionRects requires a rects array")
             return
@@ -187,10 +244,13 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             )
         }
         DispatchQueue.main.async {
-            guard let surface = self.surfaces[id] else {
-                call.reject("no surface \(id)")
-                return
-            }
+            guard let surface = self.ownedSurface(
+                call,
+                id: id,
+                owner: identity.owner,
+                session: identity.session,
+                operation: "setOcclusionRects"
+            ) else { return }
             surface.container.setHostOcclusions(rects)
             call.resolve()
         }
@@ -202,43 +262,64 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("navigate requires an id and a valid url")
             return
         }
+        guard let identity = identity(call, operation: "navigate") else { return }
         DispatchQueue.main.async {
-            guard let surface = self.surfaces[id] else {
-                call.reject("no surface \(id)")
-                return
-            }
+            guard let surface = self.ownedSurface(
+                call,
+                id: id,
+                owner: identity.owner,
+                session: identity.session,
+                operation: "navigate"
+            ) else { return }
             surface.webView.load(URLRequest(url: url))
             call.resolve()
         }
     }
 
-    @objc func foregroundSurface(_ call: CAPPluginCall) {
+    @objc func reloadSurface(_ call: CAPPluginCall) {
         guard let id = call.getString("id") else {
-            call.reject("foregroundSurface requires an id")
+            call.reject("reloadSurface requires an id")
             return
         }
+        guard let identity = identity(call, operation: "reloadSurface") else { return }
         DispatchQueue.main.async {
-            guard let surface = self.surfaces[id] else {
-                call.reject("no surface \(id)")
-                return
-            }
-            surface.container.superview?.bringSubviewToFront(surface.container)
-            surface.container.isHidden = false
+            guard let surface = self.ownedSurface(
+                call,
+                id: id,
+                owner: identity.owner,
+                session: identity.session,
+                operation: "reloadSurface"
+            ) else { return }
+            surface.webView.reload()
             call.resolve()
         }
     }
 
-    @objc func backgroundSurface(_ call: CAPPluginCall) {
-        guard let id = call.getString("id") else {
-            call.reject("backgroundSurface requires an id")
-            return
-        }
+    @objc func presentSurface(_ call: CAPPluginCall) {
+        guard let identity = identity(call, operation: "presentSurface") else { return }
+        let id = call.getString("id")
         DispatchQueue.main.async {
-            guard let surface = self.surfaces[id] else {
-                call.reject("no surface \(id)")
-                return
+            let selected: Surface?
+            if let id {
+                guard let surface = self.ownedSurface(
+                    call,
+                    id: id,
+                    owner: identity.owner,
+                    session: identity.session,
+                    operation: "presentSurface"
+                ) else { return }
+                selected = surface
+            } else {
+                selected = nil
             }
-            surface.container.isHidden = true
+            for surface in self.surfaces.values
+            where surface.owner == identity.owner && surface.session == identity.session {
+                surface.container.isHidden = true
+            }
+            if let selected {
+                selected.container.superview?.bringSubviewToFront(selected.container)
+                selected.container.isHidden = false
+            }
             call.resolve()
         }
     }
@@ -248,20 +329,18 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("destroySurface requires an id")
             return
         }
+        guard let identity = identity(call, operation: "destroySurface") else { return }
         DispatchQueue.main.async {
-            if let surface = self.surfaces.removeValue(forKey: id) {
-                surface.webView.stopLoading()
-                surface.container.removeFromSuperview()
+            guard let surface = self.surfaces[id] else {
+                call.resolve()
+                return
             }
-            call.resolve()
-        }
-    }
-
-    @objc func foregroundHost(_ call: CAPPluginCall) {
-        DispatchQueue.main.async {
-            for surface in self.surfaces.values {
-                surface.container.isHidden = true
+            guard surface.owner == identity.owner, surface.session == identity.session else {
+                call.reject("destroySurface cannot mutate surface \(id) owned by another renderer session")
+                return
             }
+            self.dispose(surface)
+            self.surfaces.removeValue(forKey: id)
             call.resolve()
         }
     }
@@ -271,14 +350,19 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("getSurfaceState requires an id")
             return
         }
+        guard let identity = identity(call, operation: "getSurfaceState") else { return }
         DispatchQueue.main.async {
-            guard let surface = self.surfaces[id] else {
+            guard let surface = self.surfaces[id],
+                  surface.owner == identity.owner,
+                  surface.session == identity.session else {
                 call.resolve([
                     "exists": false,
                     "foregrounded": false,
                     "currentUrl": NSNull(),
                     "process": NSNull(),
                     "storage": NSNull(),
+                    "owner": NSNull(),
+                    "session": NSNull(),
                 ])
                 return
             }
@@ -288,8 +372,55 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
                 "currentUrl": surface.webView.url?.absoluteString ?? NSNull(),
                 "process": surface.process,
                 "storage": surface.storage,
+                "owner": surface.owner,
+                "session": surface.session,
             ])
         }
+    }
+
+    @objc func listSurfaceStates(_ call: CAPPluginCall) {
+        guard let identity = identity(call, operation: "listSurfaceStates") else { return }
+        DispatchQueue.main.async {
+            let states = self.surfaces.compactMap { id, surface -> [String: Any]? in
+                guard surface.owner == identity.owner,
+                      surface.session == identity.session else { return nil }
+                return self.surfaceState(id: id, surface: surface)
+            }
+            call.resolve(["surfaces": states])
+        }
+    }
+
+    @objc func reconcileOwner(_ call: CAPPluginCall) {
+        guard let identity = identity(call, operation: "reconcileOwner") else { return }
+        guard let desiredIds = call.getArray("desiredIds") as? [String] else {
+            call.reject("reconcileOwner requires desiredIds")
+            return
+        }
+        let desired = Set(desiredIds)
+        DispatchQueue.main.async {
+            let staleIds = self.surfaces.compactMap { id, surface -> String? in
+                guard surface.owner == identity.owner else { return nil }
+                return surface.session != identity.session || !desired.contains(id) ? id : nil
+            }
+            for id in staleIds {
+                guard let surface = self.surfaces.removeValue(forKey: id) else { continue }
+                self.dispose(surface)
+            }
+            call.resolve()
+        }
+    }
+
+    private func surfaceState(id: String, surface: Surface) -> [String: Any] {
+        [
+            "id": id,
+            "exists": true,
+            "foregrounded": !surface.container.isHidden,
+            "currentUrl": surface.webView.url?.absoluteString ?? NSNull(),
+            "process": surface.process,
+            "storage": surface.storage,
+            "owner": surface.owner,
+            "session": surface.session,
+        ]
     }
 }
 

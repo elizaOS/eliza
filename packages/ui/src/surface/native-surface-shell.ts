@@ -161,38 +161,44 @@ export interface NativeSurfaceCreateRequest {
 
 /**
  * The native shell that owns the layered surface stack. The renderer issues these
- * commands synchronously; the production shell serializes each surface's async
- * bridge calls behind an acknowledged create, while a test double realises the
- * same order directly. A caller may therefore send initial geometry immediately
- * after create without racing the native layer into existence.
+ * desired-state commands and observes an acknowledgement promise. The production
+ * shell serializes and reconciles each surface against native state, while a test
+ * double may acknowledge directly. A caller may therefore submit geometry and
+ * visibility immediately after create without racing the native layer into
+ * existence, and may resubmit unchanged intent after a terminal transport error.
  */
 export interface NativeSurfaceShell {
   /**
    * Create (but do not necessarily foreground) a native surface with the given
-   * explicit policy. Must be called before {@link foregroundSurface} for an id.
+   * explicit policy. Must be called before presenting that id.
    */
-  createSurface(req: NativeSurfaceCreateRequest): void;
+  createSurface(req: NativeSurfaceCreateRequest): Promise<void>;
   /**
    * Position and outer-clip a surface over the host webview. Called on
    * layout/resize/style changes so the native layer tracks both the placeholder
    * and its actual rounded React host without recreating the web surface.
    */
-  setBounds(id: string, bounds: SurfaceBounds): void;
+  setBounds(id: string, bounds: SurfaceBounds): Promise<void>;
   /**
    * Keep the page full-size while exposing host overlays through rounded holes
    * in the native layer. Replaces the surface's complete occlusion set.
    */
-  setOcclusionRects(id: string, rects: readonly SurfaceOcclusionRect[]): void;
+  setOcclusionRects(
+    id: string,
+    rects: readonly SurfaceOcclusionRect[],
+  ): Promise<void>;
   /** Load a URL in an existing surface (address-bar navigation on the tab). */
-  navigate(id: string, url: string): void;
-  /** Bring an existing surface to the front, on top of the host. */
-  foregroundSurface(id: string): void;
-  /** Keep a surface alive but move it behind the foreground (warm retention). */
-  backgroundSurface(id: string): void;
+  navigate(id: string, url: string): Promise<void>;
+  /** Reload the current page in an existing native surface. */
+  reload(id: string): Promise<void>;
+  /**
+   * Atomically choose the one native surface that owns presentation, or `null`
+   * to return paint/input ownership to the host. Selecting a surface hides all
+   * siblings before foregrounding it.
+   */
+  presentSurface(id: string | null): Promise<void>;
   /** Tear a surface down and release its process + storage. */
-  destroySurface(id: string): void;
-  /** Foreground the host web surface (used when returning to an in-process view). */
-  foregroundHost(): void;
+  destroySurface(id: string): Promise<void>;
   /** Whether native creation for this id has been acknowledged and remains live. */
   hasSurface(id: string): boolean;
 }
