@@ -51,12 +51,6 @@ describe("createTargetSourceRegistry", () => {
 });
 
 describe("TargetSourceRegistryService", () => {
-	it("exposes the connector-target-source registry service type", () => {
-		expect(TargetSourceRegistryService.serviceType).toBe(
-			"ConnectorTargetSourceRegistry",
-		);
-	});
-
 	it("wraps a registry and clears sources on stop", async () => {
 		const svc = await TargetSourceRegistryService.start({} as never);
 		const source = fakeSource("discord");

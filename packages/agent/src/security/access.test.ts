@@ -53,9 +53,13 @@ describe("hasPrivateAccess fail-closed reporting (#12265)", () => {
     // Fail closed: a broken check must never grant access.
     expect(granted).toBe(false);
     // But the broken pipeline is surfaced, not silently swallowed.
-    expect(reportError).toHaveBeenCalledTimes(1);
-    expect(reportError.mock.calls[0]?.[0]).toBe("Access.hasPrivateAccess");
-    expect(reportError.mock.calls[0]?.[1]).toBeInstanceOf(Error);
+    // Core role resolution may report its narrower failing scopes first; this
+    // wrapper must still publish its own authorization-boundary observation.
+    expect(reportError).toHaveBeenCalledWith(
+      "Access.hasPrivateAccess",
+      expect.any(Error),
+      { entityId: ENTITY_ID },
+    );
   });
 
   it("grants without reporting when the check succeeds", async () => {

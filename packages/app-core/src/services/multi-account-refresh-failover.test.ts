@@ -27,9 +27,9 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
-import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";
 import type { AccountCredentialProvider } from "@elizaos/auth/types";
 import { logger } from "@elizaos/core";
+import { writeJsonAtomicSync } from "@elizaos/core/atomic-json";
 import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

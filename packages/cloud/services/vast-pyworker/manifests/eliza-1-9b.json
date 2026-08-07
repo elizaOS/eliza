@@ -1,5 +1,6 @@
 {
   "$schema": "./schema.json",
+  "runtime": "llama",
   "label": "eliza-1-9b-gguf",
   "model_size": "9b",
   "model_repo": "elizaos/eliza-1",

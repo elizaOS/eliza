@@ -47,14 +47,11 @@ const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
 // process env with wrangler dev; a remote target (staging) opts in via
 // E2E_LIVE_INFERENCE=1.
 const liveInferenceAvailable = Boolean(
-  process.env.OPENAI_API_KEY?.trim() ||
-    process.env.AI_GATEWAY_API_KEY?.trim() ||
-    process.env.E2E_LIVE_INFERENCE === "1",
+  process.env.OPENAI_API_KEY?.trim() || process.env.E2E_LIVE_INFERENCE === "1",
 );
 if (!liveInferenceAvailable) {
   console.warn(
-    "[group-l-app-charges] no provider key (OPENAI_API_KEY / " +
-      "AI_GATEWAY_API_KEY) and E2E_LIVE_INFERENCE!=1 — the #10423 live " +
+    "[group-l-app-charges] OPENAI_API_KEY is unset and E2E_LIVE_INFERENCE!=1 — the #10423 live " +
       "attribution test will SKIP.",
   );
 }

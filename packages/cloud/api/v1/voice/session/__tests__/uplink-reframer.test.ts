@@ -1,35 +1,34 @@
 /**
- * Uplink re-framer: arbitrary client PCM chunking -> exact 2560-byte Flux
- * frames. Verifies the frames validate against the REAL adapter's chunk check.
+ * Uplink re-framer: arbitrary client PCM chunking -> exact 3200-byte Ink
+ * frames. Verifies the frames validate against the real adapter's chunk check.
  */
 
 import { describe, expect, test } from "bun:test";
 
-import { validateDeepgramFluxAudioChunk } from "../../stt/providers/deepgram-flux";
+import { validateCartesiaInkAudioChunk } from "../../stt/providers/cartesia-ink";
 import { UPLINK_FRAME_BYTES, UplinkReframer } from "../lib/uplink-reframer";
 
 describe("uplink reframer", () => {
-  test("frame size matches the Flux chunk requirement", () => {
-    expect(UPLINK_FRAME_BYTES).toBe(2560);
+  test("frame size matches the Ink chunk recommendation", () => {
+    expect(UPLINK_FRAME_BYTES).toBe(3200);
   });
 
-  test("emits exact 2560-byte frames and holds the remainder", () => {
+  test("emits exact 3200-byte frames and holds the remainder", () => {
     const r = new UplinkReframer();
     expect(r.push(new Uint8Array(1000))).toEqual([]);
     expect(r.pending()).toBe(1000);
-    const frames = r.push(new Uint8Array(2000)); // total 3000 -> one 2560 frame.
+    const frames = r.push(new Uint8Array(2500));
     expect(frames.length).toBe(1);
-    expect(frames[0].byteLength).toBe(2560);
-    expect(r.pending()).toBe(440);
+    expect(frames[0].byteLength).toBe(3200);
+    expect(r.pending()).toBe(300);
   });
 
   test("emitted frames validate against the real adapter chunk check", () => {
     const r = new UplinkReframer();
-    const frames = r.push(new Uint8Array(2560 * 3));
+    const frames = r.push(new Uint8Array(3200 * 3));
     expect(frames.length).toBe(3);
     for (const f of frames) {
-      // The real merged adapter accepts ONLY exact 2560-byte chunks.
-      expect(() => validateDeepgramFluxAudioChunk(f)).not.toThrow();
+      expect(() => validateCartesiaInkAudioChunk(f)).not.toThrow();
     }
   });
 
@@ -42,13 +41,11 @@ describe("uplink reframer", () => {
 
   test("multiple small chunks accumulate into a whole frame", () => {
     const r = new UplinkReframer();
-    // 4*512 = 2048 (< 2560): no frame yet.
-    for (let i = 0; i < 4; i++) expect(r.push(new Uint8Array(512))).toEqual([]);
-    expect(r.pending()).toBe(2048);
-    // The 5th 512 reaches 2560 exactly -> emits one frame, remainder 0.
-    const out = r.push(new Uint8Array(512));
+    for (let i = 0; i < 4; i++) expect(r.push(new Uint8Array(640))).toEqual([]);
+    expect(r.pending()).toBe(2560);
+    const out = r.push(new Uint8Array(640));
     expect(out.length).toBe(1);
-    expect(out[0].byteLength).toBe(2560);
+    expect(out[0].byteLength).toBe(3200);
     expect(r.pending()).toBe(0);
   });
 });

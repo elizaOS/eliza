@@ -24,6 +24,8 @@ import {
 } from "./internal";
 import { loadPersistedActiveServer } from "./persistence";
 import type { RuntimeTarget, StartupEvent } from "./startup-coordinator";
+import { runStartupProbe } from "./startup-probe";
+import { STARTUP_TIMING_POLICY } from "./startup-timing-policy";
 
 function isCapacitorNative(): boolean {
   try {
@@ -362,13 +364,14 @@ export async function runStartingRuntime(
       return;
     }
     try {
-      // error-policy:J4 boot poll — the API is expected to be unreachable
-      // while the backend comes up; the loop's deadline surfaces a visible
-      // startup error (setStartupError) when it never recovers
-      // error-policy:J4 bounded-retry-then-error — a transient probe failure
-      // reads as null and the loop retries; a persistent failure surfaces via the
-      // deadline check above (setStartupError), so it is not silently masked.
-      const launchProgress = await client.getLaunchProgress().catch(() => null);
+      const launchProbe = await runStartupProbe(
+        () => client.getLaunchProgress(),
+        { unsupportedStatuses: [404] },
+      );
+      if (launchProbe.kind === "terminal-error") throw launchProbe.error;
+      if (launchProbe.kind === "retryable-error") lastErr = launchProbe.error;
+      const launchProgress =
+        launchProbe.kind === "ok" ? launchProbe.value : null;
       if (launchProgress) {
         const launchStatus = mapLaunchProgressToAgentStatus(launchProgress);
         deps.setAgentStatus(launchStatus);
@@ -420,16 +423,20 @@ export async function runStartingRuntime(
         }
 
         await new Promise<void>((r) => {
-          tidRef.current = setTimeout(r, 500);
+          tidRef.current = setTimeout(
+            r,
+            STARTUP_TIMING_POLICY.runtimePollIntervalMs,
+          );
         });
         continue;
       }
 
-      // error-policy:J4 boot poll — same deadline-guarded probe as above
-      // error-policy:J4 bounded-retry-then-error — same as the launch-progress
-      // probe above: null is retried within the deadline, a persistent failure
-      // surfaces via setStartupError, never a fabricated healthy state.
-      const bootProgress = await client.getBootProgress().catch(() => null);
+      const bootProbe = await runStartupProbe(() => client.getBootProgress(), {
+        unsupportedStatuses: [404],
+      });
+      if (bootProbe.kind === "terminal-error") throw bootProbe.error;
+      if (bootProbe.kind === "retryable-error") lastErr = bootProbe.error;
+      const bootProgress = bootProbe.kind === "ok" ? bootProbe.value : null;
       if (bootProgress) {
         const bootStatus = mapBootProgressToAgentStatus(bootProgress);
         deps.setAgentStatus(bootStatus);
@@ -472,7 +479,10 @@ export async function runStartingRuntime(
         }
 
         await new Promise<void>((r) => {
-          tidRef.current = setTimeout(r, 500);
+          tidRef.current = setTimeout(
+            r,
+            STARTUP_TIMING_POLICY.runtimePollIntervalMs,
+          );
         });
         continue;
       }
@@ -523,11 +533,12 @@ export async function runStartingRuntime(
         // dispatch BACKEND_AUTH_REQUIRED immediately on non-native runtimes
         // where there is no injection race.
         if (!isCapacitorNative()) {
-          const auth = await client.getAuthStatus().catch(() => ({
-            required: true,
-            pairingEnabled: false,
-            expiresAt: null,
-          }));
+          const authProbe = await runStartupProbe(() => client.getAuthStatus());
+          if (authProbe.kind !== "ok") {
+            lastErr = authProbe.error;
+            continue;
+          }
+          const auth = authProbe.value;
           deps.setAuthRequired(true);
           deps.setPairingEnabled(auth.pairingEnabled);
           deps.setPairingExpiresAt(auth.expiresAt);
@@ -546,8 +557,9 @@ export async function runStartingRuntime(
         //      limiter on those endpoints. /api/auth/me returns
         //      reason="remote_auth_required". Advance to ready so the auth gate
         //      can render LoginView. Hydrating tolerates 401s.
-        try {
-          const auth = await client.getAuthStatus();
+        const authProbe = await runStartupProbe(() => client.getAuthStatus());
+        if (authProbe.kind === "ok") {
+          const auth = authProbe.value;
           const remotePasswordMissing =
             auth.required &&
             auth.loginRequired &&
@@ -557,15 +569,20 @@ export async function runStartingRuntime(
             dispatch({ type: "AGENT_RUNNING" });
             return;
           }
-        } catch {
-          // /api/auth/status itself unreachable — keep retrying.
+        } else {
+          // The surrounding deadline owns recovery; retain the actual auth
+          // probe failure so timeout diagnostics name the failing boundary.
+          lastErr = authProbe.error;
         }
       }
       lastErr = err;
       deps.setConnected(false);
     }
     await new Promise<void>((r) => {
-      tidRef.current = setTimeout(r, 500);
+      tidRef.current = setTimeout(
+        r,
+        STARTUP_TIMING_POLICY.runtimePollIntervalMs,
+      );
     });
   }
 }
@@ -706,7 +723,10 @@ async function runCloudManagedWarmup(
       // polling WITHOUT sliding the deadline (a real 5xx is not "more warmup").
       deps.setConnected(false);
       await new Promise<void>((r) => {
-        tidRef.current = setTimeout(r, 500);
+        tidRef.current = setTimeout(
+          r,
+          STARTUP_TIMING_POLICY.runtimePollIntervalMs,
+        );
       });
       continue;
     }
@@ -725,7 +745,10 @@ async function runCloudManagedWarmup(
     });
 
     await new Promise<void>((r) => {
-      tidRef.current = setTimeout(r, 500);
+      tidRef.current = setTimeout(
+        r,
+        STARTUP_TIMING_POLICY.runtimePollIntervalMs,
+      );
     });
   }
 }

@@ -134,6 +134,11 @@ export function ConnectorAccountPrivacySelector({
           onValueChange={handleValueChange}
         >
           <SelectTrigger
+            aria-label={
+              accountLabel
+                ? `Privacy for ${accountLabel}`
+                : t("connectorprivacy.label", { defaultValue: "Privacy" })
+            }
             id={id}
             className="h-8 w-[150px] rounded-sm border border-border bg-card text-xs"
           >

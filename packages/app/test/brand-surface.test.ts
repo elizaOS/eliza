@@ -247,7 +247,6 @@ describe("brand surfaces", () => {
     const offenders: string[] = [];
     const files = [
       "src/main.tsx",
-      "src/model-tester-entry.tsx",
       "src/deep-link-handler.ts",
       "src/deep-link-routing.ts",
       "src/mobile-lifecycle.ts",

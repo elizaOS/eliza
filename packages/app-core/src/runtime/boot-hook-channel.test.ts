@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   drainBootHookContributors,
   resolveBootHookContributors,
-} from "./eliza.ts";
+} from "./startup/app-contributors.ts";
 
 // The generic boot-hook channel the pre-ready boot path drains. A "contributor"
 // is an app/plugin that declared a `bootHook` in the registry; the drain invokes

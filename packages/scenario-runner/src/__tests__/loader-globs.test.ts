@@ -9,20 +9,22 @@ describe("scenarioFileGlobAlternatives", () => {
   it("treats globstar directory segments as zero-or-more directories", () => {
     expect(
       scenarioFileGlobAlternatives(
-        "packages/test/scenarios/lifeops.*/**/*.scenario.ts",
+        "plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.*/**/*.scenario.ts",
       ),
     ).toEqual([
-      "packages/test/scenarios/lifeops.*/**/*.scenario.ts",
-      "packages/test/scenarios/lifeops.*/*.scenario.ts",
+      "plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.*/**/*.scenario.ts",
+      "plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.*/*.scenario.ts",
     ]);
   });
 
   it("keeps non-globstar globs unchanged", () => {
     expect(
       scenarioFileGlobAlternatives(
-        "packages/test/scenarios/lifeops.*/*.scenario.ts",
+        "plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.*/*.scenario.ts",
       ),
-    ).toEqual(["packages/test/scenarios/lifeops.*/*.scenario.ts"]);
+    ).toEqual([
+      "plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.*/*.scenario.ts",
+    ]);
   });
 });
 
@@ -32,8 +34,8 @@ describe("scenarioFileMatchesGlob", () => {
   it("matches root-prefixed directories containing dots with single-star globs", () => {
     expect(
       scenarioFileMatchesGlob(
-        "/repo/packages/test/scenarios/lifeops.push/push.urgent-bypasses-do-not-disturb.scenario.ts",
-        "packages/test/scenarios/lifeops.*/*.scenario.ts",
+        "/repo/plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.push/push.urgent-bypasses-do-not-disturb.scenario.ts",
+        "plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.*/*.scenario.ts",
         cwd,
       ),
     ).toBe(true);
@@ -42,15 +44,15 @@ describe("scenarioFileMatchesGlob", () => {
   it("treats globstar directory segments as zero-or-more directories", () => {
     expect(
       scenarioFileMatchesGlob(
-        "/repo/packages/test/scenarios/lifeops.push/push.urgent-bypasses-do-not-disturb.scenario.ts",
-        "packages/test/scenarios/lifeops.*/**/*.scenario.ts",
+        "/repo/plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.push/push.urgent-bypasses-do-not-disturb.scenario.ts",
+        "plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.*/**/*.scenario.ts",
         cwd,
       ),
     ).toBe(true);
     expect(
       scenarioFileMatchesGlob(
-        "/repo/packages/test/scenarios/lifeops.push/nested/push.urgent-bypasses-do-not-disturb.scenario.ts",
-        "packages/test/scenarios/lifeops.*/**/*.scenario.ts",
+        "/repo/plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.push/nested/push.urgent-bypasses-do-not-disturb.scenario.ts",
+        "plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.*/**/*.scenario.ts",
         cwd,
       ),
     ).toBe(true);
@@ -59,8 +61,8 @@ describe("scenarioFileMatchesGlob", () => {
   it("does not let single-star globs cross directory separators", () => {
     expect(
       scenarioFileMatchesGlob(
-        "/repo/packages/test/scenarios/lifeops.push/nested/push.urgent-bypasses-do-not-disturb.scenario.ts",
-        "packages/test/scenarios/lifeops.*/*.scenario.ts",
+        "/repo/plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.push/nested/push.urgent-bypasses-do-not-disturb.scenario.ts",
+        "plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.*/*.scenario.ts",
         cwd,
       ),
     ).toBe(false);
@@ -69,8 +71,8 @@ describe("scenarioFileMatchesGlob", () => {
   it("matches absolute globs against absolute file paths", () => {
     expect(
       scenarioFileMatchesGlob(
-        "/repo/packages/test/scenarios/lifeops.push/push.urgent-bypasses-do-not-disturb.scenario.ts",
-        "/repo/packages/test/scenarios/lifeops.*/*.scenario.ts",
+        "/repo/plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.push/push.urgent-bypasses-do-not-disturb.scenario.ts",
+        "/repo/plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.*/*.scenario.ts",
         cwd,
       ),
     ).toBe(true);

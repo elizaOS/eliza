@@ -27,10 +27,11 @@ export const PagePanelFrame = React.forwardRef<
 export const PagePanelContentArea = React.forwardRef<
   HTMLDivElement,
   PagePanelContentAreaProps
->(function PagePanelContentArea({ className, ...props }, ref) {
+>(function PagePanelContentArea({ className, tabIndex = 0, ...props }, ref) {
   return (
     <div
       ref={ref}
+      tabIndex={tabIndex}
       className={cn("min-w-0 flex-1 overflow-y-auto", className)}
       {...props}
     />

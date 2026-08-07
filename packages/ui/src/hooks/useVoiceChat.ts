@@ -38,6 +38,7 @@ import {
 import { APP_PAUSE_EVENT } from "../events";
 import { resolveApiUrl } from "../utils";
 import { getElizaApiToken } from "../utils/eliza-globals";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {
   isTtsDebugEnabled,
   ttsDebug,
@@ -61,7 +62,6 @@ import {
   ensurePlaybackContextRunning,
   PlaybackFramePump,
   type PlaybackFrameTap,
-  PlaybackTapLifecycle,
   resumeAudioContextForPlayback,
   warmPlaybackWorklet,
 } from "../voice/playback-frame-pump";
@@ -70,6 +70,7 @@ import {
   currentSharedRuntimeVoiceOrigin,
   resolveForcedCloudTtsRoute,
 } from "../voice/shared-runtime-voice";
+import { playDecodedVoiceAudio } from "../voice/voice-chat-audio-playback";
 import {
   collapseWhitespace,
   nextIdleMouthOpen,
@@ -107,7 +108,6 @@ import {
   type SpeechRecognitionInstance,
   type SpeechRecognitionResultEvent,
   TALKMODE_STOP_SETTLE_MS,
-  toArrayBuffer,
   type VoiceCaptureMode,
   type VoiceChatOptions,
   type VoiceChatState,
@@ -436,6 +436,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // Voice config ref (latest value always available to callbacks)
   const voiceConfigRef = useRef<VoiceConfig | null>(effectiveVoiceConfig);
   voiceConfigRef.current = effectiveVoiceConfig;
+  const ttsRouteOverrideRef = useRef(options.ttsRouteOverride);
+  ttsRouteOverrideRef.current = options.ttsRouteOverride;
   // Cloud-session ref for capture-time route resolution (#16524): whether the
   // cloud STT proxy is a viable fallback when local-inference is unready.
   const cloudConnectedRef = useRef(options.cloudConnected === true);
@@ -1671,19 +1673,23 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             // proxy): still ElevenLabs, same voice — NOT a voice swap (#12253).
             // Log at warn (not debug-only) so the retry is visible in the
             // console without the TTS debug flag.
-            console.warn(
-              `[useVoiceChat] Cloud TTS proxy returned ${cloudRes.status}; retrying via the direct ElevenLabs proxy (same voice)`,
-            );
+            reportRendererDiagnostic({
+              scope: "voice.tts-cloud-proxy-fallback",
+              error: new Error("Cloud TTS proxy rejected the request"),
+              severity: "warning",
+              context: { status: cloudRes.status, engine: "elevenlabs" },
+            });
             ttsDebug("useVoiceChat:cloud-proxy-fallback", {
               status: cloudRes.status,
               ttsTarget: describeTtsCloudFetchTargetForDebug(),
             });
           } catch (error) {
-            console.warn(
-              `[useVoiceChat] Cloud TTS proxy unreachable; retrying via the direct ElevenLabs proxy (same voice): ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
+            reportRendererDiagnostic({
+              scope: "voice.tts-cloud-proxy-unavailable",
+              error,
+              severity: "warning",
+              context: { engine: "elevenlabs" },
+            });
             ttsDebug("useVoiceChat:cloud-proxy-unavailable", {
               ttsTarget: describeTtsCloudFetchTargetForDebug(),
               error: error instanceof Error ? error.message : String(error),
@@ -1755,109 +1761,25 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
       }
 
-      if (generation !== generationRef.current) return;
-      const audioBuffer = await ctx.decodeAudioData(toArrayBuffer(audioBytes));
-      if (generation !== generationRef.current) return;
-
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.8;
-      analyserRef.current = analyser;
-      timeDomainDataRef.current = new Float32Array(
-        new ArrayBuffer(analyser.fftSize * Float32Array.BYTES_PER_ELEMENT),
-      );
-
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(analyser);
-      analyser.connect(ctx.destination);
-      audioSourceRef.current = source;
-      // The visualizer is optional. A first-use AudioWorklet module load can
-      // take seconds in a busy WebView, so audible playback gets only a short
-      // grace period before the tap is attached later.
-      const tapPromise = getPlaybackFramePump()
-        .tapSource(ctx, source, audioBuffer)
-        .catch((error) => {
-          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
-          ttsDebug("playback-reference:tap-attach-failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          return null;
-        });
-      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
-      await tapLifecycle.attach(tapPromise);
-      let playStartMs = 0;
-
-      await new Promise<void>((resolve) => {
-        let finished = false;
-        playStartMs = performance.now();
-        let wrappedFinish: (() => void) | null = null;
-
-        const finish = () => {
-          if (finished) return;
-          finished = true;
-          tapLifecycle.finish();
-          if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
-            activeTaskFinishRef.current = null;
-          }
-          if (audioSourceRef.current === source) {
-            audioSourceRef.current = null;
-          }
-          source.onended = null;
-          try {
-            source.disconnect();
-          } catch (error) {
-            // error-policy:J6 best-effort WebAudio teardown; disconnect can throw after playback has already ended.
-            ttsDebug("play:eliza-cloud:source-disconnect-failed", {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-          try {
-            analyser.disconnect();
-          } catch (error) {
-            // error-policy:J6 best-effort WebAudio teardown; disconnect can throw after playback has already ended.
-            ttsDebug("play:eliza-cloud:analyser-disconnect-failed", {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-          clearSpeechTimers();
-          resolve();
-        };
-
-        wrappedFinish = () => {
-          ttsDebug("play:web-audio:end", {
-            segment: task.segment,
-            elapsedMs: Math.round(performance.now() - playStartMs),
-          });
-          finish();
-        };
-
-        ttsDebug("play:web-audio:start", {
-          segment: task.segment,
-          append: task.append,
-          cached,
-          textChars: text.length,
-          preview: ttsDebugTextPreview(text),
-          durationSecApprox: Math.round(audioBuffer.duration * 100) / 100,
-        });
-
-        activeTaskFinishRef.current = wrappedFinish;
-        source.onended = wrappedFinish;
-        tapLifecycle.start(playStartMs);
-        speechTimeoutRef.current = setTimeout(
-          wrappedFinish,
-          Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
-        );
-
-        source.start(0);
-        emitPlaybackStart({
-          text,
-          segment: task.segment,
-          provider: "elevenlabs",
-          cached,
-          startedAtMs: playStartMs,
-          ...task.telemetry,
-        });
+      await playDecodedVoiceAudio({
+        context: ctx,
+        audioBytes,
+        generation,
+        generationRef,
+        provider: "elevenlabs",
+        text,
+        task,
+        cached,
+        analyserRef,
+        timeDomainDataRef,
+        audioSourceRef,
+        playbackFrameTapRef,
+        activeTaskFinishRef,
+        speechTimeoutRef,
+        getPlaybackFramePump,
+        clearSpeechTimers,
+        emitPlaybackStart,
+        tracePlayback: true,
       });
     },
     [
@@ -1927,13 +1849,20 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           //  - otherwise the on-device `/api/tts/cloud` proxy is preserved.
           // Same `{ text }` body, same audio-bytes response — only the URL and
           // bearer change.
-          const route = resolveForcedCloudTtsRoute({
-            proxyUrl,
-            proxyBearer: apiToken || null,
-            sharedRuntimeOrigin: currentSharedRuntimeVoiceOrigin(),
-            configuredCloudOrigin: configuredCloudVoiceOrigin(),
-            cloudSessionToken: getCloudAuthToken(),
-          });
+          const routeOverride = ttsRouteOverrideRef.current?.trim();
+          const route = routeOverride
+            ? {
+                url: resolveApiUrl(routeOverride),
+                bearer: null,
+                via: "on-device-proxy" as const,
+              }
+            : resolveForcedCloudTtsRoute({
+                proxyUrl,
+                proxyBearer: apiToken || null,
+                sharedRuntimeOrigin: currentSharedRuntimeVoiceOrigin(),
+                configuredCloudOrigin: configuredCloudVoiceOrigin(),
+                cloudSessionToken: getCloudAuthToken(),
+              });
           // Debug-only correlation headers. Proxy/shared paths only: they are
           // not in the cloud worker's CORS allow-list, so sending them on the
           // direct cross-origin POST would fail the browser preflight.
@@ -2066,87 +1995,24 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
       }
 
-      if (generation !== generationRef.current) return;
-      const audioBuffer = await ctx.decodeAudioData(toArrayBuffer(audioBytes));
-      if (generation !== generationRef.current) return;
-
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.8;
-      analyserRef.current = analyser;
-      timeDomainDataRef.current = new Float32Array(
-        new ArrayBuffer(analyser.fftSize * Float32Array.BYTES_PER_ELEMENT),
-      );
-
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(analyser);
-      analyser.connect(ctx.destination);
-      audioSourceRef.current = source;
-      // The visualizer is optional. A first-use AudioWorklet module load can
-      // take seconds in a busy WebView, so audible playback gets only a short
-      // grace period before the tap is attached later.
-      const tapPromise = getPlaybackFramePump()
-        .tapSource(ctx, source, audioBuffer)
-        .catch((error) => {
-          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
-          ttsDebug("playback-reference:tap-attach-failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          return null;
-        });
-      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
-      await tapLifecycle.attach(tapPromise);
-      let playStartMs = 0;
-
-      await new Promise<void>((resolve) => {
-        let finished = false;
-        playStartMs = performance.now();
-        let wrappedFinish: (() => void) | null = null;
-
-        const finish = () => {
-          if (finished) return;
-          finished = true;
-          tapLifecycle.finish();
-          if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
-            activeTaskFinishRef.current = null;
-          }
-          if (audioSourceRef.current === source) {
-            audioSourceRef.current = null;
-          }
-          source.onended = null;
-          try {
-            source.disconnect();
-          } catch {
-            /* ok */
-          }
-          try {
-            analyser.disconnect();
-          } catch {
-            /* ok */
-          }
-          clearSpeechTimers();
-          resolve();
-        };
-
-        wrappedFinish = finish;
-        activeTaskFinishRef.current = wrappedFinish;
-        source.onended = wrappedFinish;
-        tapLifecycle.start(playStartMs);
-        speechTimeoutRef.current = setTimeout(
-          wrappedFinish,
-          Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
-        );
-
-        source.start(0);
-        emitPlaybackStart({
-          text,
-          segment: task.segment,
-          provider: "eliza-cloud",
-          cached,
-          startedAtMs: playStartMs,
-          ...task.telemetry,
-        });
+      await playDecodedVoiceAudio({
+        context: ctx,
+        audioBytes,
+        generation,
+        generationRef,
+        provider: "eliza-cloud",
+        text,
+        task,
+        cached,
+        analyserRef,
+        timeDomainDataRef,
+        audioSourceRef,
+        playbackFrameTapRef,
+        activeTaskFinishRef,
+        speechTimeoutRef,
+        getPlaybackFramePump,
+        clearSpeechTimers,
+        emitPlaybackStart,
       });
     },
     [
@@ -2230,87 +2096,24 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
       }
 
-      if (generation !== generationRef.current) return;
-      const audioBuffer = await ctx.decodeAudioData(toArrayBuffer(audioBytes));
-      if (generation !== generationRef.current) return;
-
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.8;
-      analyserRef.current = analyser;
-      timeDomainDataRef.current = new Float32Array(
-        new ArrayBuffer(analyser.fftSize * Float32Array.BYTES_PER_ELEMENT),
-      );
-
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(analyser);
-      analyser.connect(ctx.destination);
-      audioSourceRef.current = source;
-      // The visualizer is optional. A first-use AudioWorklet module load can
-      // take seconds in a busy WebView, so audible playback gets only a short
-      // grace period before the tap is attached later.
-      const tapPromise = getPlaybackFramePump()
-        .tapSource(ctx, source, audioBuffer)
-        .catch((error) => {
-          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
-          ttsDebug("playback-reference:tap-attach-failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          return null;
-        });
-      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
-      await tapLifecycle.attach(tapPromise);
-      let playStartMs = 0;
-
-      await new Promise<void>((resolve) => {
-        let finished = false;
-        playStartMs = performance.now();
-        let wrappedFinish: (() => void) | null = null;
-
-        const finish = () => {
-          if (finished) return;
-          finished = true;
-          tapLifecycle.finish();
-          if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
-            activeTaskFinishRef.current = null;
-          }
-          if (audioSourceRef.current === source) {
-            audioSourceRef.current = null;
-          }
-          source.onended = null;
-          try {
-            source.disconnect();
-          } catch {
-            /* ok */
-          }
-          try {
-            analyser.disconnect();
-          } catch {
-            /* ok */
-          }
-          clearSpeechTimers();
-          resolve();
-        };
-
-        wrappedFinish = finish;
-        activeTaskFinishRef.current = wrappedFinish;
-        source.onended = wrappedFinish;
-        tapLifecycle.start(playStartMs);
-        speechTimeoutRef.current = setTimeout(
-          wrappedFinish,
-          Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
-        );
-
-        source.start(0);
-        emitPlaybackStart({
-          text,
-          segment: task.segment,
-          provider: "local-inference",
-          cached,
-          startedAtMs: playStartMs,
-          ...task.telemetry,
-        });
+      await playDecodedVoiceAudio({
+        context: ctx,
+        audioBytes,
+        generation,
+        generationRef,
+        provider: "local-inference",
+        text,
+        task,
+        cached,
+        analyserRef,
+        timeDomainDataRef,
+        audioSourceRef,
+        playbackFrameTapRef,
+        activeTaskFinishRef,
+        speechTimeoutRef,
+        getPlaybackFramePump,
+        clearSpeechTimers,
+        emitPlaybackStart,
       });
     },
     [
@@ -2556,9 +2359,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         error: unknown,
       ): void => {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(
-          `[useVoiceChat] ${engine} TTS failed; failing closed (no voice-engine swap): ${message}`,
-        );
+        reportRendererDiagnostic({
+          scope: "voice.tts-failed-closed",
+          error,
+          context: { engine },
+        });
         workerError = error;
         ttsFailure = {
           engine,
@@ -2925,7 +2730,16 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       });
 
       const current = assistantSpeechRef.current;
-      if (!current || current.messageId !== messageId) {
+      const promotesActiveMessage =
+        current != null &&
+        current.messageId !== messageId &&
+        queueOptions?.continuationOfMessageId === current.messageId &&
+        current.latestSpeakable.length > 0 &&
+        (speakable === current.latestSpeakable ||
+          speakable.startsWith(current.latestSpeakable));
+      if (promotesActiveMessage) {
+        current.messageId = messageId;
+      } else if (!current || current.messageId !== messageId) {
         clearAssistantTtsDebounce();
         assistantSpeechRef.current = {
           messageId,
@@ -2935,9 +2749,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           replacePlaybackOnFirstClip: queueOptions?.replace !== false,
           telemetry: queueOptions?.telemetry,
         };
-      } else if (queueOptions?.telemetry) {
-        current.telemetry = {
-          ...current.telemetry,
+      }
+
+      const promotedOrCurrent = assistantSpeechRef.current;
+      if (queueOptions?.telemetry && promotedOrCurrent) {
+        promotedOrCurrent.telemetry = {
+          ...promotedOrCurrent.telemetry,
           ...queueOptions.telemetry,
         };
       }

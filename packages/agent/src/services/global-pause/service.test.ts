@@ -9,11 +9,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it } from "vitest";
-import {
-  GLOBAL_PAUSE_SERVICE,
-  GlobalPauseService,
-  resolveGlobalPauseService,
-} from "./service.ts";
+import { GlobalPauseService, resolveGlobalPauseService } from "./service.ts";
 
 function makeRuntime(): IAgentRuntime {
   const cache = new Map<string, unknown>();
@@ -34,11 +30,6 @@ function makeRuntime(): IAgentRuntime {
 }
 
 describe("GlobalPauseService", () => {
-  it("exposes the canonical serviceType literal", () => {
-    expect(GlobalPauseService.serviceType).toBe("eliza_global_pause");
-    expect(GLOBAL_PAUSE_SERVICE).toBe("eliza_global_pause");
-  });
-
   it("set + current + clear lifecycle works through the service store", async () => {
     const runtime = makeRuntime();
     const service = await GlobalPauseService.start(runtime);

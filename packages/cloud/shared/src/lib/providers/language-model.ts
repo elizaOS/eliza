@@ -1,10 +1,5 @@
 // Defines cloud shared language model behavior for backend service consumers.
 import { createAnthropic } from "@ai-sdk/anthropic";
-import {
-  createGatewayProvider,
-  GatewayAuthenticationError,
-  type GatewayProvider,
-} from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import { APICallError, type LanguageModelMiddleware, RetryError, wrapLanguageModel } from "ai";
 import {
@@ -27,8 +22,7 @@ import { hasAnyVastProviderConfigured, resolveVastEndpointConfig } from "./vast-
  * configuration (missing/placeholder provider key, unconfigured endpoint) —
  * as opposed to a bad request or a transient upstream failure. The message
  * intentionally names the missing env var for operators; API boundaries must
- * classify with isProviderConfigurationError and return a clean client error
- * instead of forwarding it (#13406 leaked "AI_GATEWAY_API_KEY" to callers).
+ * classify with isProviderConfigurationError and return a clean client error.
  */
 export class ProviderConfigurationError extends Error {
   constructor(message: string) {
@@ -38,46 +32,12 @@ export class ProviderConfigurationError extends Error {
 }
 
 /**
- * The `@ai-sdk/gateway` error `name`s that mean "the gateway itself could not
- * serve this model on this deployment" — a stale/invalid key, an unreachable or
- * garbled gateway, an upstream 5xx, or a timeout. These are deployment-side
- * infrastructure failures, not the caller's fault, so an API boundary must
- * translate them to a clean model-not-available client error instead of leaking
- * the raw SDK message (the auth variant embeds "... set the AI_GATEWAY_API_KEY
- * environment variable ..." — #13406/#13960).
- *
- * Deliberately EXCLUDED: `GatewayInvalidRequestError` (400 — caller's bad
- * request), `GatewayModelNotFoundError` (404), and `GatewayRateLimitError`
- * (429). Those carry the caller-facing truth and are mapped to their real
- * status by getRecoverableProviderErrorStatus, so folding them in here would
- * mislabel a rate limit or a bad request as "model not available".
- */
-const GATEWAY_INFRA_ERROR_NAMES = new Set([
-  "GatewayError",
-  "GatewayAuthenticationError",
-  "GatewayResponseError",
-  "GatewayInternalServerError",
-  "GatewayTimeoutError",
-]);
-
-/**
- * True when an error means "this deployment has no working provider for the
- * requested model": our own resolution throws, plus the Vercel AI Gateway SDK's
- * infrastructure failures (stale key, unreachable/garbled gateway, upstream
- * 5xx, timeout). Unwraps the AI SDK's RetryError to the last real error.
- *
- * Match is by `name`, not by the SDK's `isInstance` marker symbol: the marker
- * is a module-local Symbol, so a duplicate `@ai-sdk/gateway` copy in the graph
- * (or `generateText`'s re-wrap into a marker-less Error via
- * ai/src/prompt/wrap-gateway-error.ts) defeats `isInstance` while the `name`
- * survives. Name-matching is the only classification that holds across module
- * boundaries and both the raw and wrapped error shapes.
+ * True when model resolution failed because this deployment has no configured
+ * provider. Unwraps the AI SDK's RetryError to the last real error.
  */
 export function isProviderConfigurationError(error: unknown): boolean {
   const unwrapped = RetryError.isInstance(error) ? error.lastError : error;
-  if (unwrapped instanceof ProviderConfigurationError) return true;
-  if (GatewayAuthenticationError.isInstance(unwrapped)) return true;
-  return unwrapped instanceof Error && GATEWAY_INFRA_ERROR_NAMES.has(unwrapped.name);
+  return unwrapped instanceof ProviderConfigurationError;
 }
 
 let groqClient: ReturnType<typeof createOpenAI> | null = null;
@@ -90,7 +50,6 @@ let openAIClient: {
 let cerebrasClient: ReturnType<typeof createOpenAI> | null = null;
 let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let anthropicClient: ReturnType<typeof createAnthropic> | null = null;
-let vercelAIGatewayClient: GatewayProvider | null = null;
 const CEREBRAS_NATIVE_TEXT_MODEL_SET = new Set<string>(CEREBRAS_NATIVE_TEXT_MODELS);
 
 function getGroqClient() {
@@ -174,14 +133,6 @@ function getOpenRouterBaseURL(): string {
     "",
   );
   return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
-}
-
-function getVercelAIGatewayApiKey(): string | null {
-  return getProviderKey("AI_GATEWAY_API_KEY") ?? getProviderKey("AIGATEWAY_API_KEY");
-}
-
-function getVercelAIGatewayBaseURL(): string | undefined {
-  return getProviderKey("AI_GATEWAY_BASE_URL") ?? undefined;
 }
 
 function getOpenRouterClient() {
@@ -269,22 +220,6 @@ function getPooledLanguageModel(model: string, credential: PooledLanguageModelCr
   }
 
   return null;
-}
-
-function getVercelAIGatewayClient() {
-  if (!vercelAIGatewayClient) {
-    const apiKey = getVercelAIGatewayApiKey();
-    if (!apiKey) {
-      throw new ProviderConfigurationError("AI_GATEWAY_API_KEY environment variable is required");
-    }
-
-    vercelAIGatewayClient = createGatewayProvider({
-      apiKey,
-      ...(getVercelAIGatewayBaseURL() ? { baseURL: getVercelAIGatewayBaseURL() } : {}),
-    });
-  }
-
-  return vercelAIGatewayClient;
 }
 
 function isOpenAINativeModel(model: string): boolean {
@@ -638,11 +573,10 @@ function normalizeAnthropicModelId(model: string): string {
 }
 
 /**
- * True iff a gateway-style backup provider is configured: OpenRouter (BYOK) is
- * the backup for non-native models; Vercel AI Gateway is the local/dev fallback.
+ * True iff the OpenRouter backup provider is configured.
  */
 export function hasGatewayProviderConfigured(): boolean {
-  return getOpenRouterApiKey() !== null || getVercelAIGatewayApiKey() !== null;
+  return getOpenRouterApiKey() !== null;
 }
 
 export function hasLanguageModelProviderConfigured(model: string): boolean {
@@ -660,7 +594,7 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
 
   // OpenRouter-catalog ids no native provider can serve → need the backup.
   if (requiresGatewayRouting(model)) {
-    return Boolean(getOpenRouterApiKey()) || Boolean(getVercelAIGatewayApiKey());
+    return Boolean(getOpenRouterApiKey());
   }
 
   if (isOpenAINativeModel(model)) {
@@ -671,12 +605,12 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
     return Boolean(getProviderKey("ANTHROPIC_API_KEY")) || Boolean(getOpenRouterApiKey());
   }
 
-  // Anything else is served by the OpenRouter backup (or the dev gateway).
-  return Boolean(getOpenRouterApiKey()) || Boolean(getVercelAIGatewayApiKey());
+  // Anything else is served by the OpenRouter backup.
+  return Boolean(getOpenRouterApiKey());
 }
 
 export function hasTextEmbeddingProviderConfigured(): boolean {
-  return Boolean(getProviderKey("OPENAI_API_KEY") || getVercelAIGatewayApiKey());
+  return Boolean(getProviderKey("OPENAI_API_KEY"));
 }
 
 export function getLanguageModel(model: string, credential?: PooledLanguageModelCredential) {
@@ -705,13 +639,10 @@ export function getLanguageModel(model: string, credential?: PooledLanguageModel
   }
 
   // OpenRouter-catalog ids no native provider can serve (`:nitro`/`:floor`,
-  // `openai/gpt-oss-120b` as an OpenRouter id) → OpenRouter backup (or dev gateway).
+  // `openai/gpt-oss-120b` as an OpenRouter id) → OpenRouter backup.
   if (requiresGatewayRouting(model)) {
     if (getOpenRouterApiKey()) {
       return getOpenRouterLanguageModel(model);
-    }
-    if (getVercelAIGatewayApiKey()) {
-      return getVercelAIGatewayClient().languageModel(model as never);
     }
     throw new ProviderConfigurationError("OPENROUTER_API_KEY is required for this model");
   }
@@ -733,11 +664,6 @@ export function getLanguageModel(model: string, credential?: PooledLanguageModel
     );
   }
 
-  // Dev convenience gateway.
-  if (getVercelAIGatewayApiKey()) {
-    return getVercelAIGatewayClient().languageModel(model as never);
-  }
-
   // Backup: OpenRouter (BYOK) serves any model we have no native key for.
   if (getOpenRouterApiKey()) {
     return getOpenRouterLanguageModel(model);
@@ -749,16 +675,10 @@ export function getLanguageModel(model: string, credential?: PooledLanguageModel
 }
 
 export function getTextEmbeddingModel(model: string) {
-  // Embeddings are OpenAI-native (`text-embedding-*`). Prefer a real OpenAI key
-  // Embeddings are OpenAI-native (`text-embedding-*`): OpenAI direct, then the
-  // dev gateway. OpenRouter has no `/v1/embeddings` route, so it is not an
-  // embedding backup.
+  // Embeddings are OpenAI-native (`text-embedding-*`). OpenRouter has no
+  // `/v1/embeddings` route, so it is not an embedding backup.
   if (getProviderKey("OPENAI_API_KEY")) {
     return getOpenAIClient().textEmbeddingModel(normalizeOpenAIModelId(model));
-  }
-
-  if (getVercelAIGatewayApiKey()) {
-    return getVercelAIGatewayClient().embeddingModel(model as never);
   }
 
   throw new ProviderConfigurationError("AI text embedding provider is not configured");
@@ -782,7 +702,7 @@ export function hasGroqLanguageModelProviderConfigured(): boolean {
 
 export function resolveAiProviderSource(
   model: string,
-): "groq" | "vast" | "bitrouter" | "gateway" | "cerebras" | "openai" | "anthropic" | null {
+): "groq" | "vast" | "bitrouter" | "cerebras" | "openai" | "anthropic" | null {
   if (isGroqNativeModel(model)) {
     return getProviderKey("GROQ_API_KEY") ? "groq" : null;
   }
@@ -803,7 +723,7 @@ export function resolveAiProviderSource(
     if (getOpenRouterApiKey()) {
       return "bitrouter";
     }
-    return getVercelAIGatewayApiKey() ? "gateway" : null;
+    return null;
   }
 
   if (isOpenAINativeModel(model) && getProviderKey("OPENAI_API_KEY")) {
@@ -814,10 +734,6 @@ export function resolveAiProviderSource(
     return "anthropic";
   }
 
-  if (getVercelAIGatewayApiKey()) {
-    return "gateway";
-  }
-
   // Backup: OpenRouter (BYOK), billed to the shared "bitrouter" price catalog.
   if (getOpenRouterApiKey()) {
     return "bitrouter";
@@ -826,14 +742,10 @@ export function resolveAiProviderSource(
   return null;
 }
 
-export function resolveEmbeddingProviderSource(): "gateway" | "openai" | null {
-  // Mirror getTextEmbeddingModel: OpenAI native → dev gateway.
+export function resolveEmbeddingProviderSource(): "openai" | null {
+  // Mirror getTextEmbeddingModel: OpenAI native only.
   if (getProviderKey("OPENAI_API_KEY")) {
     return "openai";
-  }
-
-  if (getVercelAIGatewayApiKey()) {
-    return "gateway";
   }
 
   return null;
@@ -842,7 +754,6 @@ export function resolveEmbeddingProviderSource(): "gateway" | "openai" | null {
 export function hasAnyAiProviderConfigured(): boolean {
   return Boolean(
     getOpenRouterApiKey() ||
-      getVercelAIGatewayApiKey() ||
       getProviderKey("CEREBRAS_API_KEY") ||
       getProviderKey("OPENAI_API_KEY") ||
       getProviderKey("ANTHROPIC_API_KEY") ||
@@ -854,7 +765,6 @@ export function hasAnyAiProviderConfigured(): boolean {
 export function getAiProviderConfigurationStatus() {
   return {
     openrouter: Boolean(getOpenRouterApiKey()),
-    gateway: Boolean(getVercelAIGatewayApiKey()),
     cerebras: Boolean(getProviderKey("CEREBRAS_API_KEY")),
     openai: Boolean(getProviderKey("OPENAI_API_KEY")),
     anthropic: Boolean(getProviderKey("ANTHROPIC_API_KEY")),

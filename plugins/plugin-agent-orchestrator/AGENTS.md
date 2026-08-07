@@ -12,6 +12,16 @@ ACP subprocesses, routes their terminal events back into the elizaOS runtime as
 synthetic inbound messages, and manages the git workspace and GitHub issue
 lifecycle that accompanies repo-hosted coding tasks.
 
+**Boundary with @elizaos/plugin-task-coordinator:** this plugin owns ALL
+agent/task state, session lifecycle, and the server-side orchestration surface.
+`@elizaos/plugin-task-coordinator` is the GUI display-and-control layer only
+(views, slot-registry fills, one view-scoped slash command) and holds no task
+state of its own. Do not add task/session state to task-coordinator, and do not
+add GUI views here. `@elizaos/plugin-pty` is likewise separate: it registers the
+generic `PTY_SERVICE` that powers the app's interactive web terminal; this
+plugin spawns its coding agents as ACP subprocesses directly and does not
+depend on it.
+
 Loaded by name: `@elizaos/plugin-agent-orchestrator`. Not default-enabled —
 add it explicitly in the agent's plugin list. Services and actions are only
 registered when `isLocalCodeExecutionAllowed()` AND terminal support is detected;
@@ -220,6 +230,7 @@ plugins/plugin-agent-orchestrator/
       route-utils.ts             parseBody, sendJson, sendError, RouteContext
   index.ts                      Re-export barrel (ESM root)
   index.node.ts                 Node-specific entry
+  test/scenarios/corpus/        Product-owned scenario-runner specs
 ```
 
 ## Commands
@@ -256,6 +267,7 @@ README → "GitHub credentials".
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `ORCHESTRATOR_SESSION_ID` | spawn-managed | Internal child-session marker injected by `AcpService`; scopes loopback bridge access, prevents child credential-broker registration, and correlates child trajectories. Do not configure it on the parent runtime. |
 | `GITHUB_TOKEN` | unset | PAT for GitHub-writing capabilities (issues, push, PR). Read via `runtime.getSetting` — store per-agent in vault/settings, not process env (multi-tenant leak). Wins over device flow when both set. |
 | `GITHUB_OAUTH_CLIENT_ID` | unset | OAuth **device flow** client id (read via `getSetting`); used when no `GITHUB_TOKEN`. Requires a live `authPromptCallback` to surface the device-code prompt. |
 | `GITHUB_OAUTH_CLIENT_SECRET` | unset | Server-side OAuth secret for the device flow. Read directly from **process env** by design — deliberately kept out of the plugin `getSetting` allowlist. |
@@ -268,7 +280,7 @@ README → "GitHub credentials".
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command |
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @agentclientprotocol/codex-acp@1.1.2` | Native Codex ACP command. The manifest default and the legacy `@zed-industries` default select the isolated managed successor; any other custom command is executed verbatim. |
 | `ELIZA_CODEX_ACP_SANDBOX_MODE` / `ELIZA_CODEX_SANDBOX_MODE` | unset | Optional managed Codex ACP sandbox mode: `read-only`, `workspace-write`, or `danger-full-access`. The successor receives these as `INITIAL_AGENT_MODE`; custom commands are not rewritten. |
-| `ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE` | `danger-full-access` | Codex ACP sandbox mode used when Linux Landlock is unavailable |
+| `ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE` | unset (required when Landlock unavailable) | Codex ACP sandbox mode used when Linux Landlock is unavailable. No default — unset/invalid throws `CODEX_NO_LANDLOCK_NO_FALLBACK` rather than widening to host access. |
 | `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false` |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
@@ -375,47 +387,13 @@ README → "GitHub credentials".
 - **Route registration side-effect.** `register-routes.ts` is re-exported as
   `codingAgentRouteRegistration` from `index.ts` to prevent Bun's tree-shaker
   from dropping it. Do not convert it back to a bare side-effect import.
-- See the root `AGENTS.md` for repo-wide rules (logger-only, ESM, architecture
+- See the root `CLAUDE.md` for repo-wide rules (logger-only, ESM, architecture
   commandments, naming).
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — agent behavior / app plugin:**
-- A **live-LLM** scenario trajectory showing the behavior end to end and asserting the **outcome**, not just that routing/an action was selected (see #9970).
-- The artifacts the behavior creates — memories, knowledge, scheduled-task rows, relationships, documents, outputs — inspected after the run.
-- Backend `[ClassName]` logs of the action/service/runner firing, plus error/edge/permission paths.
-- The empty-state and adversarial-input behavior, not just one happy scenario.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

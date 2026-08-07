@@ -1,4 +1,7 @@
-/** Supports app-core build, packaging, or development orchestration for copy package assets mjs. */
+/**
+ * Copies non-compiled asset paths from a package's src tree into its dist so
+ * packed artifacts ship them (usage: <package-dir> <src-path>...).
+ */
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

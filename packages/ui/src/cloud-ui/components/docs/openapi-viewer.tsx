@@ -19,13 +19,20 @@ export function OpenApiViewer({ value, className }: OpenApiViewerProps) {
         className,
       )}
     >
-      <div className="h-full overflow-auto">
+      <section
+        // The overflow viewport must be keyboard-focusable so keyboard users
+        // can pan both axes without a pointer.
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable regions require a keyboard entry point
+        tabIndex={0}
+        aria-label="OpenAPI specification"
+        className="h-full overflow-auto"
+      >
         <CodeDisplay
           code={value}
           language="json"
           className="min-h-full border-0 bg-transparent"
         />
-      </div>
+      </section>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+/** Verifies MobileSignalsPermissionsPanel three-state rendering through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Three-state guard for the mobile-signals permissions panel (#12784): when

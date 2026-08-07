@@ -8,7 +8,7 @@ The canonical orchestration plugin for elizaOS task agents. Spawns local coding 
 
 > Naming: this plugin is *not* the same thing as `@elizaos/plugin-acp`. That package is Shaw's ACP gateway client (IDE bridge over a remote ACP gateway). `@elizaos/plugin-agent-orchestrator` is the *task backend* that runs coding agents as subprocesses on the same host as the runtime.
 
-> **Vocabulary:** the work items this plugin manages (`OrchestratorTaskRecord`, `orchestrator_tasks`) are **coding tasks** — always qualify them as such in prose and UI, never the bare word "task" (which is reserved for the core runtime `Task` primitive). A coding task has no cron/recurrence; scheduling belongs to the trigger layer, not here. See [`docs/automation-glossary.md`](../../docs/automation-glossary.md).
+> **Vocabulary:** the work items this plugin manages (`OrchestratorTaskRecord`, `orchestrator_tasks`) are **coding tasks** — always qualify them as such in prose and UI, never the bare word "task" (which is reserved for the core runtime `Task` primitive). A coding task has no cron/recurrence; scheduling belongs to the trigger layer, not here.
 
 ## What it does
 
@@ -138,6 +138,11 @@ You usually don't subscribe directly — `SubAgentRouter` already does, and rout
 
 All configuration is via environment variables. Use `ELIZA_ACP_TRANSPORT=native` for the embedded TypeScript ACP client and `ELIZA_ACP_TRANSPORT=cli` only when you deliberately want the existing `acpx` wrapper.
 
+`ORCHESTRATOR_SESSION_ID` is spawn-managed rather than operator configuration.
+The ACP service injects the child session id under this name so the child can
+address its session-scoped loopback bridge, child runtimes do not register a
+second credential broker, and child trajectories retain their session join key.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport mode. Accepted values include `native`/`direct` and `cli`/`acpx`. |
@@ -147,7 +152,7 @@ All configuration is via environment variables. Use `ELIZA_ACP_TRANSPORT=native`
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command. |
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @agentclientprotocol/codex-acp@1.1.2` | Native Codex ACP command. The manifest default and the legacy `@zed-industries` default select the isolated managed successor; any other custom command is executed verbatim. |
 | `ELIZA_CODEX_ACP_SANDBOX_MODE` / `ELIZA_CODEX_SANDBOX_MODE` | unset | Optional managed Codex ACP sandbox mode: `read-only`, `workspace-write`, or `danger-full-access`. The successor receives these as `INITIAL_AGENT_MODE`; custom commands are not rewritten. |
-| `ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE` | `danger-full-access` | Codex ACP sandbox mode used when Linux Landlock is unavailable. |
+| `ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE` | unset (required when Landlock unavailable) | Codex ACP sandbox mode used when Linux Landlock is unavailable. No default — unset/invalid throws `CODEX_NO_LANDLOCK_NO_FALLBACK` rather than widening to host access. |
 | `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false`. |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command. |

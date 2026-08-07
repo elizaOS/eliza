@@ -555,7 +555,7 @@ export interface PluginAppNavTab {
 	headerPolicy?: ViewHeaderPolicy;
 	/**
 	 * Optional package export specifier the shell will dynamically import
-	 * when the tab is activated, e.g. "@elizaos/plugin-wallet-ui#InventoryView".
+	 * when the tab is activated, e.g. "@elizaos/plugin-wallet/ui#InventoryView".
 	 * The string before `#` is the package subpath, after `#` is the named
 	 * export. When omitted, the shell falls back to the static component
 	 * registry keyed by `id`.
@@ -1048,7 +1048,7 @@ export interface ViewDeclaration {
 	visibleInManager?: boolean;
 	/**
 	 * When true, this view is an internal-tool app (plugin viewer, inspector,
-	 * fine-tuning, automations) that the homescreen launcher may pin. The
+	 * automations) that the homescreen launcher may pin. The
 	 * launcher builds its pinnable list from this declared flag instead of a
 	 * hardcoded UI package-name table. Default false.
 	 */
@@ -1145,11 +1145,11 @@ export interface PluginOwnership {
  * - `direct`: loaded in-process via `import` and registered with the runtime as
  *   a normal Plugin object. Trusted, full agent privilege, shared crash domain.
  *   This is the default for every existing plugin in the monorepo.
- * - `remote`: hosted by `RemotePluginHost` as a sandboxed Bun Worker (or
- *   isolated Bun process when `remote.isolation === "isolated-process"`).
- *   Communicates with the agent via the wire envelope defined in
- *   `@elizaos/plugin-remote-manifest`. Permissions are declared by the plugin
- *   and enforced by the host. Typically installed dynamically at runtime via
+ * - `remote`: executed out-of-process behind the capability router; the agent
+ *   registers a synthesized local `Plugin` whose invocations forward over the
+ *   router's RPC surface (see `@elizaos/agent`'s `RemotePluginBridge` and
+ *   remote-plugin adapter). Permissions are declared by the plugin and
+ *   enforced by the host. Typically installed dynamically at runtime via
  *   `runtime.installRemotePlugin(...)` by an agent that has authored a plugin
  *   on the fly (e.g. a coding sub-agent).
  */
@@ -1371,8 +1371,8 @@ export interface Plugin {
 	 * Execution mode. Default `"direct"` — i.e., the plugin is loaded in-process
 	 * and registered with the runtime exactly as plugins have always been.
 	 * Setting `"remote"` requires a {@link Plugin.remote} block; the host
-	 * installs the plugin via `RemotePluginHost` and the runtime mirrors its
-	 * surfaces through proxies across the wire envelope.
+	 * installs the plugin behind the capability router and the runtime
+	 * mirrors its surfaces through proxies across the wire envelope.
 	 *
 	 * For remote-mode plugins, the surface arrays (`actions`, `providers`,
 	 * `services`, `models`, `events`, `routes`, `views`, `widgets`,
@@ -1437,9 +1437,10 @@ export interface Plugin {
 	actions?: Action[];
 	providers?: Provider[];
 	/**
-	 * Pre-LLM action shortcuts (#8791): deterministic slash/`!` commands and
-	 * confidence-floored natural-language phrases that resolve to a target before
-	 * the first model call. Registered into the runtime's `ShortcutRegistry`.
+	 * Shortcut definitions (#8791), registered into the runtime's
+	 * `ShortcutRegistry`. The message service executes only explicit slash/`!`
+	 * protocol invocations before inference; natural definitions remain available
+	 * to caller-controlled discovery surfaces but never bypass the planner.
 	 */
 	shortcuts?: ShortcutDefinition[];
 	/**

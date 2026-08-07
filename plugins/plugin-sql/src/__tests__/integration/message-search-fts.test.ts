@@ -82,8 +82,8 @@ describe("searchMessages FTS + trigram (real DB)", () => {
       );
       trigramAvailable = true;
     } catch {
-      // error-policy:J3 extension probing intentionally treats unsupported
-      // `pg_trgm` as absent in the PGlite harness.
+      // error-policy:J3 probe only — real Postgres without contrib, or a
+      // harness that disabled PGlite WASM extensions, skips trigram cases.
       trigramAvailable = false;
     }
 
@@ -284,7 +284,7 @@ describe("searchMessages FTS + trigram (real DB)", () => {
     // `message_search_document` column that keeps the query off the O(n)
     // recompute path. (On this ~20-row fixture the planner rationally prefers a
     // seq scan over any index, so the index's actual *selection* at scale — and
-    // the latency win — is measured in packages/benchmarks/searchbench on the
+    // the latency win — is measured in the searchbench suite (https://github.com/elizaOS/benchmarks) on the
     // 10k corpus, not asserted against this tiny table's query plan.)
     const indexes = JSON.stringify(
       await db.execute(sql`SELECT indexname FROM pg_indexes WHERE tablename = 'memories'`)

@@ -8,6 +8,7 @@
 
 import type { Task } from "@elizaos/core";
 import { readTriggerConfig } from "../triggers/runtime.ts";
+import type { WorkbenchTodoView } from "./workbench-context.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -19,16 +20,6 @@ export const WORKBENCH_TASK_TAG = "workbench-task";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-export interface WorkbenchTodoView {
-  id: string;
-  name: string;
-  description: string;
-  priority: number | null;
-  isUrgent: boolean;
-  isCompleted: boolean;
-  type: string;
-}
 
 export interface WorkbenchTaskView {
   id: string;
@@ -132,6 +123,13 @@ export function toWorkbenchTodo(task: Task): WorkbenchTodoView | null {
       typeof todoMeta.type === "string" && todoMeta.type.trim().length > 0
         ? todoMeta.type
         : "task",
+    tags: normalizeStringArray(task.tags),
+    createdAt: task.createdAt
+      ? new Date(Number(task.createdAt)).toISOString()
+      : null,
+    updatedAt: task.updatedAt
+      ? new Date(Number(task.updatedAt)).toISOString()
+      : null,
   };
 }
 

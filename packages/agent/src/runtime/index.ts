@@ -8,6 +8,7 @@
  */
 export * from "./advanced-capabilities-config.ts";
 export * from "./agent-event-service.ts";
+export * from "./boot-pipeline.ts";
 export * from "./conversation-compactor.ts";
 export * from "./conversation-compactor.types.ts";
 export * from "./eliza.ts";
@@ -23,6 +24,7 @@ export {
   resolvePlugins,
 } from "./plugin-resolver.ts";
 export * from "./plugin-types.ts";
+export * from "./process-lifecycle.ts";
 export * from "./release-plugin-policy.ts";
 export * from "./roles.ts";
 export * from "./trajectory-internals.ts";

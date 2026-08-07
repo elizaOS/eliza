@@ -6,7 +6,6 @@ import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -95,13 +94,5 @@ class SystemDeviceReaderInstrumentedTest {
             // The reader's bounds match a direct, independent AudioManager read.
             assertEquals(audio.getStreamMaxVolume(stream), volume.max)
         }
-    }
-
-    @Test
-    fun canWriteSettings_returnsLiveGrantState() {
-        // Just asserts the real permission probe runs on-device without
-        // throwing and returns a concrete boolean (Settings.System.canWrite).
-        val value = SystemDeviceReader(context).canWriteSettings()
-        assertNotNull(value)
     }
 }

@@ -52,16 +52,10 @@ import {
   runBin,
 } from "../../elizaos/build.ts";
 import {
-  feedTypecheckPlan,
-  selectFeedWorkspaces,
-  typecheckFeedWorkspace,
-} from "../../feed/scripts/typecheck-workspace.ts";
-import {
   auditBuildTypecheck,
   isFullTscEmit,
   runAuditBuildTypecheck,
 } from "../audit-build-typecheck.mjs";
-import { prepareDistPathDeclarations } from "../prepare-dist-path-declarations.mjs";
 
 const repoRoot = path.resolve(import.meta.dir, "../../..");
 
@@ -239,37 +233,6 @@ describe("changed build entrypoints", () => {
     }
   });
 
-  test("feed typecheck planner emits required bootstrap steps before selected checks", async () => {
-    expect(selectFeedWorkspaces(["bun", "script", "apps/web"])).toEqual([
-      "apps/web",
-    ]);
-    const plan = feedTypecheckPlan(["apps/web"]);
-    expect(plan).toMatchObject({
-      needsAgentDeclarations: true,
-      needsApiDeclarations: true,
-      needsA2aDeclarations: true,
-      needsCliDeclarationDependencies: true,
-    });
-
-    const calls: string[] = [];
-    await typecheckFeedWorkspace(["bun", "script", "apps/web"], {
-      emitDeclarations: async (workspace) => calls.push(`emit:${workspace}`),
-      runTypecheck: async (workspace) => calls.push(`check:${workspace}`),
-    });
-    expect(calls).toEqual([
-      "emit:packages/agents",
-      "emit:packages/api",
-      "emit:packages/a2a",
-      "emit:packages/shared",
-      "emit:packages/db",
-      "emit:packages/core",
-      "emit:packages/engine",
-      "emit:packages/pack-default",
-      "emit:packages/mcp",
-      "check:apps/web",
-    ]);
-  });
-
   test("repo compiler audit reports violations and success exit codes", () => {
     expect(isFullTscEmit("tsc6 -p tsconfig.json")).toBe(true);
     expect(isFullTscEmit("tsc6 -p tsconfig.json --noCheck")).toBe(false);
@@ -351,31 +314,6 @@ describe("changed build entrypoints", () => {
         allow: { doubleCheck: new Set(), tscTypecheck: new Set() },
       }),
     ).toBe(0);
-  });
-
-  test("prepare dist declaration runner returns subprocess status", () => {
-    const emit = { label: "fixture", cwd: process.cwd(), args: ["--version"] };
-    expect(
-      prepareDistPathDeclarations({
-        tsc: "tsc6",
-        emits: [emit],
-        spawnSync: () => ({ status: 0 }),
-      }),
-    ).toBe(0);
-    expect(
-      prepareDistPathDeclarations({
-        tsc: "tsc6",
-        emits: [emit],
-        spawnSync: () => ({ status: 2 }),
-      }),
-    ).toBe(2);
-    expect(
-      prepareDistPathDeclarations({
-        tsc: "tsc6",
-        emits: [emit],
-        spawnSync: () => ({ status: null, error: new Error("missing") }),
-      }),
-    ).toBe(1);
   });
 
   test("plugin build driver import stays runnable on the no-target path", async () => {

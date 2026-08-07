@@ -1,9 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/search
- *
- * `search` sub-mode of the PLUGIN action. Searches the elizaOS
- * plugin registry by free-form query.
- */
+/** Searches the elizaOS plugin registry from a free-form query. */
 
 import { logger } from "../../../../logger.ts";
 import type {
@@ -11,6 +6,10 @@ import type {
 	HandlerCallback,
 } from "../../../../types/components.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
+import {
+	describeUserReference,
+	userReferenceLogView as queryLogView,
+} from "../../../../utils/reference-echo.ts";
 import type { PluginManagerService } from "../../services/pluginManagerService.ts";
 
 export interface SearchInput {
@@ -18,6 +17,10 @@ export interface SearchInput {
 	query: string;
 	callback?: HandlerCallback;
 }
+
+// Blob-safe rendering rationale lives in utils/reference-echo.ts.
+const describeQuery = (query: string): string =>
+	describeUserReference(query, "that request");
 
 export async function runSearch({
 	runtime,
@@ -40,11 +43,11 @@ export async function runSearch({
 		return { success: false, text };
 	}
 
-	logger.info(`[plugin-manager] search query="${query}"`);
+	logger.info(`[plugin-manager] search query="${queryLogView(query)}"`);
 	const results = await service.searchRegistry(query);
 
 	if (results.length === 0) {
-		const text = `No plugins found matching "${query}". Try keywords like database, twitter, solana, voice.`;
+		const text = `No plugins found matching ${describeQuery(query)}. Try keywords like database, twitter, solana, voice.`;
 		await callback?.({ text });
 		// The empty-result message is the complete answer: verified +
 		// turnComplete make it the sole delivery instead of double-messaging
@@ -60,7 +63,7 @@ export async function runSearch({
 	}
 
 	const lines: string[] = [
-		`Found ${results.length} plugin(s) matching "${query}":`,
+		`Found ${results.length} plugin(s) matching ${describeQuery(query)}:`,
 		"",
 	];
 	results.forEach((plugin, idx) => {
@@ -85,7 +88,11 @@ export async function runSearch({
 		userFacingText: text,
 		verifiedUserFacing: true,
 		turnComplete: true,
-		values: { mode: "search", count: results.length, query },
+		values: {
+			mode: "search",
+			count: results.length,
+			query: queryLogView(query),
+		},
 		data: { results },
 	};
 }

@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for desktop build mjs. */
+/**
+ * Drives the Electrobun desktop build for a selected app (--app=<name>): runs
+ * preflight checks (Bun version, electrobun view export), verifies the renderer
+ * was rebuilt, applies the optional-pack build profile, and invokes the
+ * Electrobun packaging pipeline.
+ */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -196,19 +201,10 @@ const CORE_PACKAGE_DIR = resolveWorkspacePackageDir("core");
 const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-agent-orchestrator",
 );
-const APP_MODEL_TESTER_PACKAGE_DIR =
-  resolveWorkspacePluginDir("app-model-tester");
 const PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-local-inference",
 );
-const PLUGIN_REMOTE_MANIFEST_PACKAGE_DIR = resolveWorkspacePackageDir(
-  "plugin-remote-manifest",
-);
-const PLUGIN_WORKER_RUNTIME_PACKAGE_DIR = resolveWorkspacePackageDir(
-  "plugin-worker-runtime",
-);
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
-const SECURITY_PACKAGE_DIR = resolveWorkspacePackageDir("security");
 const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
 const VAULT_PACKAGE_DIR = resolveWorkspacePackageDir("vault");
 const DESKTOP_BUILD_TMP_DIR = path.join(ELECTROBUN_DIR, "tmp");
@@ -921,28 +917,15 @@ function ensureWorkspaceRuntimePackagesBuilt() {
     "@elizaos/cloud-sdk",
     CLOUD_SDK_PACKAGE_DIR,
   );
-  ensureWorkspaceRuntimePackageBuilt("@elizaos/security", SECURITY_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt("@elizaos/vault", VAULT_PACKAGE_DIR);
-  ensureWorkspaceRuntimePackageBuilt(
-    "@elizaos/plugin-remote-manifest",
-    PLUGIN_REMOTE_MANIFEST_PACKAGE_DIR,
-  );
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-agent-orchestrator",
     PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,
-  );
-  ensureWorkspaceRuntimePackageBuilt(
-    "@elizaos/app-model-tester",
-    APP_MODEL_TESTER_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt("@elizaos/ui", UI_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-local-inference",
     PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR,
-  );
-  ensureWorkspaceRuntimePackageBuilt(
-    "@elizaos/plugin-worker-runtime",
-    PLUGIN_WORKER_RUNTIME_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt("@elizaos/agent", AGENT_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);

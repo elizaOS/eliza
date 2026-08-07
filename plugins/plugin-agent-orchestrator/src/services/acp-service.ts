@@ -10,7 +10,7 @@
  * lease routes the sub-agent's inference through the parent (revoked when the
  * session ends), credential-proxy and model-gateway env is injected while
  * denied environment keys are stripped, and Codex runs get sandbox/approval
- * configuration with a Landlock-availability fallback. A single process-wide
+ * configuration with a Landlock-availability fallback (fail-closed when no operator override). A single process-wide
  * SIGTERM/SIGINT handler fans out to every live instance so multi-tenant hosts,
  * test runners, and hot-reload cycles don't leak per-instance listeners.
  */
@@ -38,20 +38,20 @@ import {
   ElizaError,
   type IAgentRuntime,
   Service,
+  TRACE_ENV,
 } from "@elizaos/core";
 import { isAndroidMobile } from "@elizaos/shared";
 import { NativeAcpClient } from "./acp-native-transport.js";
-import {
-  formatAcpCommand,
-  provisionWorkspaceElizaCodeAcp,
-} from "./acp-provisioning.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
+  CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV,
   type CodexSandboxMode,
   detectLandlockAvailability,
   isCodexLandlockPanic,
+  noLandlockFallbackRequiredMessage,
   normalizeCodexApprovalPolicy,
   normalizeCodexSandboxMode,
+  resolveNoLandlockSandboxMode,
 } from "./codex-sandbox.js";
 import {
   accountMetaFromSessionMetadata,
@@ -138,6 +138,7 @@ import {
   getSharedWorkspaceRegistry,
   resolveDiskBudgetConfig,
   type WorkspaceRegistry,
+  workspaceDiskBudgetError,
 } from "./workspace-registry.js";
 
 export {
@@ -299,7 +300,8 @@ export function resolveCodexAcpInitialAgentMode(
   }
   return mode;
 }
-const CODEX_NO_LANDLOCK_SANDBOX_MODE: CodexSandboxMode = "danger-full-access";
+// No silent host-wide default: when Landlock is unavailable the operator must
+// set ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE explicitly (fail-closed).
 const CODEX_NO_LANDLOCK_APPROVAL_POLICY = "never";
 /**
  * Effort levels the Claude Code CLI honors via CLAUDE_CODE_EFFORT_LEVEL (its
@@ -356,25 +358,6 @@ export function normalizeClaudeAcpModelId(
     .replace(/(?:\s*\[[0-9]+[a-zA-Z]+\])+$/u, "")
     .trim();
   return normalized || undefined;
-}
-
-/**
- * Provision the workspace-native ACP executable on first use, crash-safely.
- * Development and self-hosted checkouts deliberately do not require a global
- * npm install: the package is built into its normal dist directory and launched
- * with the same Bun executable that performed the build.
- *
- * Delegates to the advisory-lock and atomic-publish protocol in
- * `acp-provisioning.ts` (#16169). The thin adapter preserves the string command
- * contract while the formatter quotes paths only when the downstream parser
- * needs it.
- */
-export function ensureWorkspaceElizaCodeAcp(
-  startDir: string = process.cwd(),
-): string | undefined {
-  const result = provisionWorkspaceElizaCodeAcp(startDir);
-  if (!result) return undefined;
-  return formatAcpCommand(result);
 }
 
 async function runGitForAcp(
@@ -434,8 +417,7 @@ const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
 const ACP_METADATA_SPAWN_MODEL = "spawnModel";
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
-const SESSION_GIT_WRAPPER = `#!/usr/bin/env node
-const { spawn, spawnSync } = require("node:child_process");
+const SESSION_GIT_WRAPPER_BODY = `const { spawn, spawnSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -689,6 +671,24 @@ const result = run(args);
 if (result.signal) process.kill(process.pid, result.signal);
 process.exit(result.status ?? 1);
 `;
+
+function sessionGitWrapper(): string {
+  const interpreter = process.versions.bun
+    ? findExecutableOnPath("node")
+    : process.execPath;
+  if (!interpreter) {
+    throw new Error("Cannot create the ACP git wrapper without a Node runtime");
+  }
+  if (/\s/.test(interpreter)) {
+    throw new Error(
+      `Cannot create the ACP git wrapper with a whitespace-containing runtime path: ${interpreter}`,
+    );
+  }
+  // The wrapper nests synchronous git processes, which deadlocks if a Bun test
+  // process synchronously invokes another Bun process. A direct Node shebang
+  // also avoids an extra /usr/bin/env process at the command boundary.
+  return `#!${interpreter}\n${SESSION_GIT_WRAPPER_BODY}`;
+}
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
 // Terminal (stopped/errored) sessions are kept this long for any post-completion
 // reference, then reclaimed by the health-check sweep so the durable session
@@ -822,6 +822,12 @@ export class AcpService extends Service {
   // need the exact latest prompt turn so a retry cannot re-consume an older
   // completion proof from the same long-lived ACP session.
   private readonly turnOutputBuffers = new Map<string, string[]>();
+  // Compact per-session trail of the most recent session events. The output
+  // buffer only holds assistant text and *terminal* tool output, so a session
+  // that dies mid-tool-call (the common hang) leaves it empty — the trail is
+  // what still tells the state-lost forensics WHAT the agent was doing when it
+  // died. Recorded at the emitSessionEvent choke point (both transports).
+  private readonly eventTrails = new Map<string, SessionEventTrailEntry[]>();
   // Sessions whose raw stdout has been teed to disk at least once. Drives the
   // `task_complete` stdoutLogPath reference: only sessions that actually wrote a
   // file get the path attached, so the task document never points at a
@@ -1104,7 +1110,7 @@ export class AcpService extends Service {
     await mkdir(wrapperDir, { recursive: true });
     await copyFile(repoIndex, baseFile);
     await copyFile(repoIndex, indexFile);
-    await writeFile(wrapperFile, SESSION_GIT_WRAPPER, "utf8");
+    await writeFile(wrapperFile, sessionGitWrapper(), "utf8");
     await chmod(wrapperFile, 0o755);
     return {
       env: {
@@ -1254,11 +1260,9 @@ export class AcpService extends Service {
       });
     }
     if (!decision.allowed) {
-      throw new Error(
-        `workspace disk budget exceeded (${decision.reason}): ` +
-          `used=${decision.usedBytes} free=${decision.freeBytes} ` +
-          `cap=${config.capBytes} minFree=${config.minFreeBytes} root=${targetRoot}`,
-      );
+      // Human message; byte-level fields ride the error context and the
+      // registry's refusal warn log, never chat-bound prose.
+      throw workspaceDiskBudgetError(decision, config, targetRoot);
     }
   }
 
@@ -1463,6 +1467,54 @@ export class AcpService extends Service {
     await this.cleanOrphanedScratchWorkdirs();
   }
 
+  /**
+   * Capture WHY a mid-flight sub-agent vanished before its output buffer is
+   * reclaimed. A session that "lost state" left no exit code in the store, so
+   * the tail of its ACP output stream is the only breadcrumb for diagnosing the
+   * crash — emit it at warn with the session identity and idle time. Called at
+   * both state-lost sites (the background health-check and the send-prompt
+   * fast-fail); without it a dead sub-agent leaves no forensic trail because the
+   * session self-heals and its buffer is deleted.
+   */
+  private logSubAgentStateLost(
+    session: Pick<
+      SessionInfo,
+      "id" | "acpxSessionId" | "agentType" | "workdir" | "pid" | "status"
+    > & { lastActivityAt?: Date | string },
+    phase: string,
+  ): void {
+    const buffered = this.outputBuffers.get(session.id) ?? [];
+    const tail = buffered.slice(-40).join("");
+    const lastActivityMs = session.lastActivityAt
+      ? new Date(session.lastActivityAt).getTime()
+      : Number.NaN;
+    this.log(
+      "warn",
+      "sub-agent state lost; diagnostics captured before reclaim",
+      {
+        phase,
+        sessionId: session.id,
+        acpxSessionId: session.acpxSessionId,
+        agentType: session.agentType,
+        workdir: session.workdir,
+        pid: session.pid,
+        status: session.status,
+        idleMs: Number.isFinite(lastActivityMs)
+          ? Date.now() - lastActivityMs
+          : undefined,
+        outputLines: buffered.length,
+        tailOutput: tail ? tail.slice(-2000) : "(no buffered output)",
+        // The buffer only holds assistant text + terminal tool output, so a
+        // mid-tool death leaves it empty; the event trail still shows what the
+        // agent was doing. Render compactly so one warn line reads as a timeline.
+        recentEvents: (this.eventTrails.get(session.id) ?? []).map(
+          (entry) =>
+            `${entry.at} ${entry.event}${entry.hint ? ` — ${entry.hint}` : ""}`,
+        ),
+      },
+    );
+  }
+
   private async runHealthCheck(): Promise<void> {
     if (!this.started) return;
     let sessions: SessionInfo[];
@@ -1506,6 +1558,7 @@ export class AcpService extends Service {
       if (sessionTransportMode(s, this.transportMode) === "native") continue;
       const { exists } = await this.acpxSessionStateStat(s.acpxSessionId);
       if (!exists) {
+        this.logSubAgentStateLost(s, "health-check");
         // Descriptive status, NOT an imperative. The old text literally said
         // "spawn a fresh sub-agent to continue", which the planner obeyed
         // verbatim every cycle — the load-bearing line of the respawn loop.
@@ -1561,6 +1614,7 @@ export class AcpService extends Service {
     for (const id of swept) {
       this.outputBuffers.delete(id);
       this.turnOutputBuffers.delete(id);
+      this.eventTrails.delete(id);
       this.changedPathsBySession.delete(id);
       this.orchestratorOwnedArtifactsBySession.delete(id);
       this.nativeClients.delete(id);
@@ -2022,6 +2076,7 @@ export class AcpService extends Service {
     ) {
       const exists = await this.hasAcpxSessionState(session.acpxSessionId);
       if (!exists) {
+        this.logSubAgentStateLost(session, "send-prompt");
         const message =
           "Sub-agent state was lost (process exited without persisting). No automatic action taken.";
         await this.store.updateStatus(sessionId, "errored", message);
@@ -2208,6 +2263,11 @@ export class AcpService extends Service {
       try {
         await this.stopNativeClient(sessionId);
         await this.store.updateStatus(sessionId, "stopped");
+        // `closeSession()` is an awaited teardown boundary. Revoke before the
+        // terminal event so callers cannot observe a closed session whose
+        // leased model credential is still live; the event-side revoke then
+        // becomes an idempotent no-op.
+        await this.revokeModelLease(sessionId, "closeSession:native");
         this.emitSessionEvent(sessionId, "stopped", {
           sessionId,
           response: this.lastOutput(sessionId),
@@ -2259,6 +2319,8 @@ export class AcpService extends Service {
       );
     }
     await this.store.updateStatus(sessionId, "stopped");
+    // Keep CLI close parity with the native awaited teardown contract.
+    await this.revokeModelLease(sessionId, "closeSession:cli");
     this.emitSessionEvent(sessionId, "stopped", {
       sessionId,
       response: this.lastOutput(sessionId),
@@ -2282,6 +2344,7 @@ export class AcpService extends Service {
     await this.store.delete(sessionId);
     this.outputBuffers.delete(sessionId);
     this.turnOutputBuffers.delete(sessionId);
+    this.eventTrails.delete(sessionId);
     this.changedPathsBySession.delete(sessionId);
     this.orchestratorOwnedArtifactsBySession.delete(sessionId);
     this.persistedStdoutSessions.delete(sessionId);
@@ -2629,15 +2692,32 @@ export class AcpService extends Service {
   }
 
   private codexNoLandlockSandboxMode(): CodexSandboxMode {
-    const raw = this.setting("ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE");
-    const mode = normalizeCodexSandboxMode(raw);
+    const raw = this.setting(CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV);
+    const mode = resolveNoLandlockSandboxMode(raw);
     if (raw?.trim() && !mode) {
       this.log("warn", "Ignoring invalid Codex ACP no-Landlock sandbox mode", {
         value: raw,
         supported: ["read-only", "workspace-write", "danger-full-access"],
       });
     }
-    return mode ?? CODEX_NO_LANDLOCK_SANDBOX_MODE;
+    // Fail closed: when no operator-owned override is configured, do not
+    // silently widen a workspace-scoped task to host-wide filesystem access.
+    // Operators in container/VM-sandboxed deployments must explicitly set
+    // ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE (e.g. "danger-full-access")
+    // to permit this escalation. `mode` is already null for empty/invalid raw.
+    if (!mode) {
+      throw new ElizaError(
+        `Landlock unavailable and no operator-configured ${CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV} fallback`,
+        {
+          code: "CODEX_NO_LANDLOCK_NO_FALLBACK",
+          context: {
+            required: noLandlockFallbackRequiredMessage(),
+          },
+          severity: "fatal",
+        },
+      );
+    }
+    return mode;
   }
 
   private validateManagedCodexAcpModeConfiguration(): void {
@@ -2767,6 +2847,8 @@ export class AcpService extends Service {
       const updated = await this.store.get(id);
       return toSpawnResult(updated ?? { ...session, status: "ready" });
     } catch (err) {
+      // error-policy:J2 persist and emit the failed session boundary, then
+      // preserve typed failures or wrap unknown failures with session context.
       // error-policy:J6 best-effort teardown of the failed client; the spawn
       // failure `err` is rethrown/handled below.
       await client?.close().catch(() => undefined);
@@ -2780,7 +2862,12 @@ export class AcpService extends Service {
         message,
         ...this.authFailureFields(message, session.agentType),
       });
-      throw new Error(message);
+      if (err instanceof ElizaError) throw err;
+      throw new ElizaError(message, {
+        code: "ACP_NATIVE_SESSION_SPAWN_FAILED",
+        cause: err,
+        context: { sessionId: id, agentType: session.agentType },
+      });
     }
   }
 
@@ -2888,8 +2975,24 @@ export class AcpService extends Service {
       ) {
         throw new Error(message);
       }
-      const fallbackSandboxMode = this.codexNoLandlockSandboxMode();
-      const fallbackMode = this.managedCodexAcpInitialAgentMode(true);
+      let fallbackSandboxMode: CodexSandboxMode;
+      let fallbackMode: CodexAcpInitialAgentMode | undefined;
+      try {
+        fallbackSandboxMode = this.codexNoLandlockSandboxMode();
+        fallbackMode = this.managedCodexAcpInitialAgentMode(true);
+      } catch (fallbackErr) {
+        // error-policy:J2 context-adding rethrow: attach failed AND no operator
+        // fallback is configured. Preserve both — the Landlock symptom in
+        // `message` and the env-var remedy from fallbackErr.
+        throw new ElizaError(message, {
+          code: "CODEX_NO_LANDLOCK_NO_FALLBACK",
+          cause: fallbackErr,
+          context: {
+            required: noLandlockFallbackRequiredMessage(),
+          },
+          severity: "fatal",
+        });
+      }
       this.log(
         "warn",
         "Codex ACP Landlock unavailable; retrying with sandbox fallback",
@@ -3169,16 +3272,13 @@ export class AcpService extends Service {
         this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
         "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
       );
-    // The elizaos native agent is the eliza-code ACP server
-    // (packages/examples/code, bin `eliza-code-acp`). The elizaos CLI has no
-    // ACP mode, so the bare-name fallback below would spawn the wrong binary —
-    // resolve to the eliza-code bin unless an explicit command is configured.
+    // The elizaOS CLI has no ACP mode; the separately installed eliza-code ACP
+    // server is the native adapter for this agent type.
     if (normalizedAgentType === "elizaos")
       return (
         this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ??
         findExecutableOnPath("eliza-code-acp") ??
-        ensureWorkspaceElizaCodeAcp() ??
-        "npx -y --package @elizaos/example-code@2.0.0-beta.1 eliza-code-acp"
+        "eliza-code-acp"
       );
     return String(normalizedAgentType);
   }
@@ -3810,6 +3910,7 @@ export class AcpService extends Service {
     event: SessionEventName,
     data: unknown,
   ): void {
+    this.recordEventTrail(sessionId, event, data);
     for (const callback of [...this.sessionCallbacks]) {
       try {
         callback(sessionId, event, data);
@@ -4109,7 +4210,7 @@ export class AcpService extends Service {
       if (normalizedConfigured) env.ANTHROPIC_MODEL = normalizedConfigured;
     }
     if (childSessionId?.trim()) {
-      env.PARALLAX_SESSION_ID = childSessionId.trim();
+      env[TRACE_ENV.SESSION_ID] = childSessionId.trim();
     }
     if (
       agentType === "codex" &&
@@ -4466,6 +4567,23 @@ export class AcpService extends Service {
     }
   }
 
+  private recordEventTrail(
+    sessionId: string,
+    event: SessionEventName,
+    data: unknown,
+  ): void {
+    const trail = this.eventTrails.get(sessionId) ?? [];
+    trail.push({
+      at: new Date().toISOString(),
+      event,
+      hint: eventTrailHint(data),
+    });
+    if (trail.length > EVENT_TRAIL_MAX_ENTRIES) {
+      trail.splice(0, trail.length - EVENT_TRAIL_MAX_ENTRIES);
+    }
+    this.eventTrails.set(sessionId, trail);
+  }
+
   // Tool-call arg keys that carry a target file path / signal a write.
   private static readonly EDIT_PATH_KEYS = [
     "filePath",
@@ -4701,6 +4819,41 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+interface SessionEventTrailEntry {
+  at: string;
+  event: string;
+  hint?: string;
+}
+
+const EVENT_TRAIL_MAX_ENTRIES = 15;
+const EVENT_TRAIL_HINT_MAX_CHARS = 120;
+
+/**
+ * Distills a session-event payload into a one-line forensic hint for the
+ * event trail. Purely structural key probes on the shapes emitSessionEvent
+ * callers actually pass (tool events carry a toolCall with title/name/kind,
+ * text events carry `text`, errors carry `message`/`failureKind`) — an
+ * unrecognized payload yields no hint rather than a guessed one.
+ */
+function eventTrailHint(data: unknown): string | undefined {
+  const record = asRecord(data);
+  if (!record) return undefined;
+  const toolCall = asRecord(record.toolCall);
+  const candidates = [
+    toolCall?.title,
+    toolCall?.name,
+    toolCall?.kind,
+    record.text,
+    record.message,
+    record.failureKind,
+  ];
+  const hint = candidates.find(
+    (candidate): candidate is string =>
+      typeof candidate === "string" && candidate.trim().length > 0,
+  );
+  return hint?.trim().slice(0, EVENT_TRAIL_HINT_MAX_CHARS);
 }
 
 export interface NormalizedUsage {

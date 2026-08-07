@@ -22,7 +22,10 @@ export function resolveViteCommand({
   if (!existsSync(viteCli)) {
     throw new Error(`Vite CLI not found at ${viteCli}. Run bun install first.`);
   }
-  const args = ["--import", "tsx", viteCli];
+  // Vite's default config loader bundles vite.config.ts with esbuild before it
+  // can listen. This process already installs tsx, so Node can load the config
+  // directly and avoid a redundant multi-second bundle on every dev startup.
+  const args = ["--import", "tsx", viteCli, "--configLoader", "native"];
   if (force) args.push("--force");
   if (port !== undefined) args.push("--port", String(port));
   return { command: nodePath, args };

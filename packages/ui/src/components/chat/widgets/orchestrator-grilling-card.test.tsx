@@ -1,3 +1,4 @@
+/** Verifies OrchestratorGrillingCard through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // OrchestratorGrillingCard: renders the goal, verdict, and one row per criterion,

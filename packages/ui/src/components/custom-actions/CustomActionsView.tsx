@@ -242,7 +242,7 @@ export function CustomActionsView() {
       className={`${CUSTOM_ACTIONS_PANEL_CLASS} flex flex-1 flex-col items-center justify-center px-6 py-14 text-center`}
     >
       <div className="max-w-md space-y-3">
-        <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+        <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
           {t("customactionsview.CustomActions")}
         </div>
         <h2 className="text-xl font-semibold text-txt">
@@ -278,7 +278,7 @@ export function CustomActionsView() {
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
             {t("customactionsview.CustomActions")}
           </div>
           <div className="space-y-1">
@@ -315,7 +315,7 @@ export function CustomActionsView() {
       <div className={`${CUSTOM_ACTIONS_PANEL_CLASS} p-3 sm:p-4`}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex-1 space-y-2">
-            <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+            <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
               {t("customactionsview.SearchAndManage")}
             </div>
             <Input
@@ -381,7 +381,7 @@ export function CustomActionsView() {
                 <div className="flex w-full flex-1 flex-col gap-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
-                      <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted/70">
+                      <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
                         {t("customactionsview.Handler")}
                       </div>
                       <h3 className="flex-1 break-words text-base font-semibold text-txt">

@@ -3,7 +3,7 @@
  * launcher, banner, and overlay contexts.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { TopicChipsBar } from "./TopicChipsBar";
+import { ShellTopicChipsBar } from "./TopicChipsBar";
 
 /**
  * Topic chips bar (#8928) — the channel's current topics above the transcript.
@@ -11,7 +11,7 @@ import { TopicChipsBar } from "./TopicChipsBar";
  */
 const meta = {
   title: "Shell/TopicChipsBar",
-  component: TopicChipsBar,
+  component: ShellTopicChipsBar,
   parameters: { layout: "padded" },
   decorators: [
     (Story) => (
@@ -29,7 +29,7 @@ const meta = {
     ),
   ],
   args: { onSelectTopic: () => {} },
-} satisfies Meta<typeof TopicChipsBar>;
+} satisfies Meta<typeof ShellTopicChipsBar>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

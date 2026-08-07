@@ -202,6 +202,12 @@ export interface VoiceChatOptions {
   lang?: string;
   /** Saved voice configuration — switches TTS provider when set */
   voiceConfig?: VoiceConfig | null;
+  /**
+   * Trusted same-origin TTS route owned by the active realtime voice lane.
+   * This lets shell playback reuse that lane's provider without persisting a
+   * dev-only endpoint or silently falling back to a different voice.
+   */
+  ttsRouteOverride?: string;
 }
 
 export interface VoiceAssistantSpeechTelemetry {
@@ -224,6 +230,13 @@ export interface QueueAssistantSpeechOptions {
    * additional visible assistant turns from the same voice response.
    */
   replace?: boolean;
+  /**
+   * Previous temporary message id when persistence promotes the same streaming
+   * assistant response to its authoritative server id. The queue preserves its
+   * spoken prefix only when this id matches the active response and the new
+   * text is identical or an extension.
+   */
+  continuationOfMessageId?: string;
   telemetry?: VoiceAssistantSpeechTelemetry;
   /** Emotion hint forwarded to the TTS provider (see SpeakTask.emotion). */
   emotion?: Emotion;

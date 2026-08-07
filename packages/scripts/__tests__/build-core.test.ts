@@ -134,8 +134,9 @@ describe("build-core package set (issue #10200)", () => {
   test("package-local core build prepares logger before core declarations", () => {
     const body = corePrebuildScript();
     expect(body).toContain("bun run --cwd ../logger build");
+    expect(body).toContain("bun run --cwd ../cloud/routing build");
     expect(body.indexOf("../logger build")).toBeLessThan(
-      body.indexOf("../contracts build"),
+      body.indexOf("../cloud/routing build"),
     );
   });
 });

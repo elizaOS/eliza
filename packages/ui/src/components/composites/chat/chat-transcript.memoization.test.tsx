@@ -1,3 +1,4 @@
+/** Verifies ChatTranscript memoization through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Guards ChatTranscript's row memoization: unchanged historical rows must not

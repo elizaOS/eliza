@@ -1,3 +1,4 @@
+/** Verifies inline widget parser edge cases through the package's configured test harness. */
 // Edge cases for the inline-widget region finders (choice / followups / form /
 // task): adjacent markers, unicode payloads, duplicate ids, stable offsets in
 // long messages, title capping, and rejection of malformed lookalike markers.

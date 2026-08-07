@@ -15,8 +15,14 @@ import {
 } from "@/lib/services/voice-usage-meter";
 import { logger } from "@/lib/utils/logger";
 import {
+  isFishAudioDataGovernanceApproved,
+  isFishRealtimeTtsEnabled,
+  isFishRealtimeTtsRequested,
   isVoiceRealtimeWsEnabled,
   resolveElizaModel,
+  resolveFishRealtimeFirstAudioTimeoutMs,
+  resolveFishRealtimeModel,
+  resolveFishRealtimeSampleRate,
   resolveMaxSessions,
   resolveVoiceUsageLimits,
   type VoiceRealtimeEnv,
@@ -35,7 +41,8 @@ import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
 import { createInternalElizaConversationFetchFactory } from "../lib/internal-eliza-conversation-fetch";
 import {
   createWorkerCartesiaFactory,
-  createWorkerDeepgramFluxFactory,
+  createWorkerCartesiaInkFactory,
+  createWorkerFishAudioFactory,
   isWorkerOutboundWsAvailable,
 } from "../lib/provider-socket-factory";
 import { VoiceSession } from "../lib/session";
@@ -94,18 +101,41 @@ app.get("/", (c) => {
     );
   }
 
-  const deepgramApiKey = env.DEEPGRAM_API_KEY;
   const cartesiaApiKey = env.CARTESIA_API_KEY;
   const cartesiaVoiceId = env.VOICE_REALTIME_CARTESIA_VOICE_ID;
+  const fishAudioRequested = isFishRealtimeTtsRequested(env);
+  const fishAudioGovernanceApproved = isFishAudioDataGovernanceApproved(env);
+  if (fishAudioRequested && !fishAudioGovernanceApproved) {
+    logger.error(
+      "[voice-session-ws] Fish Audio requested without data-governance approval; refusing upgrade",
+    );
+    return c.json(
+      {
+        error: "Fish Audio is unavailable pending data-governance approval",
+        code: "fish_audio_data_governance_unapproved",
+      },
+      503,
+    );
+  }
+  const fishAudioEnabled = isFishRealtimeTtsEnabled(env);
+  const fishAudioApiKey = env.FISH_AUDIO_API_KEY;
+  const fishAudioReferenceId =
+    env.FISH_AUDIO_REFERENCE_ID ?? env.FISH_AUDIO_VOICE_ID;
+  const fishAudioModel = resolveFishRealtimeModel(env);
+  const fishAudioSampleRate = resolveFishRealtimeSampleRate(env);
   const elizaEndpoint = env.VOICE_REALTIME_ELIZA_ENDPOINT;
   // The WS is headerless (WebView 113), so the client's Authorization is not
   // usable for the LLM leg. The server presents its own held credential; the
   // user identity comes from the verified voice-token claims, never the client.
   const elizaAuthorization = env.VOICE_REALTIME_ELIZA_AUTHORIZATION;
   if (
-    !deepgramApiKey ||
     !cartesiaApiKey ||
     !cartesiaVoiceId ||
+    (fishAudioEnabled &&
+      (!fishAudioApiKey ||
+        !fishAudioReferenceId ||
+        !fishAudioModel ||
+        fishAudioSampleRate !== 16_000)) ||
     !elizaEndpoint ||
     !elizaAuthorization
   ) {
@@ -218,11 +248,18 @@ app.get("/", (c) => {
         agentId: claims.agentId,
         conversationId: claims.conversationId,
         tokenExpSeconds,
-        deepgramApiKey,
-        deepgramWebSocketFactory: createWorkerDeepgramFluxFactory(),
         cartesiaApiKey,
+        cartesiaInkWebSocketFactory: createWorkerCartesiaInkFactory(),
         cartesiaVoiceId,
         cartesiaWebSocketFactory: createWorkerCartesiaFactory(),
+        fishAudioEnabled,
+        fishAudioApiKey,
+        fishAudioReferenceId,
+        fishAudioModel,
+        fishAudioSampleRate,
+        fishAudioFirstAudioTimeoutMs:
+          resolveFishRealtimeFirstAudioTimeoutMs(env),
+        fishAudioWebSocketFactory: createWorkerFishAudioFactory(),
         elizaEndpoint,
         elizaAuthorization,
         elizaModel: resolveElizaModel(env),

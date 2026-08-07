@@ -71,6 +71,7 @@ const fixtures = [
 
 const overlayCtx = () => ({
   exitToApps: vi.fn(),
+  uiTheme: "light" as const,
   // Mirror the host's i18n contract: return the provided defaultValue.
   t: (key: string, opts?: { defaultValue?: string }) =>
     opts?.defaultValue ?? key,

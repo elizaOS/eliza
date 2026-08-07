@@ -239,6 +239,8 @@ function hasIosFullBunSmokeRequest(): boolean {
       "1"
     );
   } catch {
+    // error-policy:J4 storage can be unavailable in restricted WebViews; an
+    // absent smoke request is the explicit degraded state.
     return false;
   }
 }
@@ -249,6 +251,8 @@ function readPersistedRuntimeMode(): string | null {
       globalThis.localStorage?.getItem("eliza:mobile-runtime-mode") ?? null
     );
   } catch {
+    // error-policy:J4 storage can be unavailable in restricted WebViews; no
+    // persisted mode means the build/runtime policy decides the mode.
     return null;
   }
 }
@@ -267,6 +271,8 @@ function isNativeIos(): boolean {
   try {
     return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
   } catch {
+    // error-policy:J4 Capacitor may be absent in browser previews, where the
+    // native iOS transport is explicitly unavailable.
     return false;
   }
 }
@@ -304,6 +310,8 @@ function isLoopbackLocalAgentUrl(value: string): boolean {
         hostname === "[::1]")
     );
   } catch {
+    // error-policy:J3 URL input crosses the renderer boundary; invalid input
+    // is an explicit non-loopback result.
     return false;
   }
 }
@@ -425,6 +433,8 @@ function isFullBunRuntimePluginAvailable(): boolean {
     };
     return capacitor.isPluginAvailable?.("ElizaBunRuntime") === true;
   } catch {
+    // error-policy:J4 plugin discovery is optional outside a native shell;
+    // unavailable is distinct from a failed native runtime call.
     return false;
   }
 }
@@ -456,6 +466,8 @@ export function isIosInProcessLocalAgentUrl(url: string): boolean {
       return false;
     }
   } catch {
+    // error-policy:J3 callers may supply arbitrary URL text; invalid input is
+    // explicitly outside the in-process transport.
     return false;
   }
   return isNativeIos() && isMobileLocalAgentUrl(url);
@@ -620,6 +632,8 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       });
       return runtime;
     } catch (error) {
+      // error-policy:J4 non-strict dev builds may use the compatibility engine;
+      // strict production builds rethrow below as a startup failure.
       const message = error instanceof Error ? error.message : String(error);
       recordIosNativeAgentBootPhase("error", message);
       if (strict) {
@@ -636,6 +650,8 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
     if (!runtime) fullBunRuntime = null;
     return runtime;
   } catch (error) {
+    // error-policy:J2 clear the rejected singleton so a later retry is
+    // possible, then preserve the original startup failure.
     fullBunRuntime = null;
     throw error;
   }
@@ -657,6 +673,8 @@ async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
       "@elizaos/capacitor-bun-runtime"
     )) as Partial<FullBunRuntimeModule>;
   } catch {
+    // error-policy:J4 source-mode/browser builds may not bundle the native
+    // module; Capacitor's registered plugin proxy is resolved below instead.
     mod = null;
   }
   appendIosBootTrace("engine-import-done", {
@@ -886,7 +904,8 @@ async function dispatchIosLocalAgentRequest(
       const streamed = await tryFullBunStreamingResponse(options);
       if (streamed) return streamed;
     } catch {
-      // Stream couldn't start — fall through to the buffered request path.
+      // error-policy:J4 native streaming is an optimization over the same
+      // request contract; the buffered bridge is the explicit fallback.
     }
   }
 
@@ -1048,6 +1067,8 @@ export function installIosLocalAgentFetchBridge(): void {
           : "http://localhost",
       );
     } catch {
+      // error-policy:J3 an invalid fetch URL remains owned by the platform
+      // fetch implementation and is never redirected into native IPC.
       return original(input, init);
     }
 

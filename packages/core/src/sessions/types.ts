@@ -1,15 +1,9 @@
 /**
- * Session types for elizaOS.
- *
- * Defines the core data structures for session management including
- * session entries, scopes, origins, and related metadata.
- *
- * Note: Some session-related types (SessionOrigin, SessionModelOverride, etc.)
+ * Contracts for session entries, scopes, origins, and metadata.
+ * Some session-related types (SessionOrigin, SessionModelOverride, etc.)
  * are defined in types/memory.ts to avoid circular dependencies. This module
  * imports them for use in SessionEntry but does not re-export them to avoid
  * duplicate exports when both sessions and types are exported from index.
- *
- * @module sessions/types
  */
 
 import type { SessionOrigin, SessionSkillsSnapshot } from "../types/memory.js";

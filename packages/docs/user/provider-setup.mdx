@@ -10,21 +10,13 @@ A provider is the model service that answers your agent's messages.
 
 | Route | Use it when |
 |-------|-------------|
-| `Cloud API` | you have an API key from Anthropic, OpenAI, OpenRouter, Groq, or another cloud provider |
-| `Ollama` | you want Eliza fully local with no API key |
+| `Direct API` | you have a key for a provider recognized by the runtime registry |
+| `Local inference` | you use a packaged local model or an explicitly installed local provider |
 | `Eliza Cloud` | you want a managed backend with no local setup |
 
-Common cloud providers:
-
-- OpenAI
-- Anthropic
-- OpenRouter
-- Gemini
-- Groq
-- NEAR AI
-- xAI
-
-For detailed setup instructions, environment variables, and all 19 supported inference backends, see the [Model Providers](/model-providers) reference.
+For the exact automatic provider mapping and configuration rules, see
+[Model Providers](/model-providers). Provider plugins that are not in that map
+must be installed and enabled explicitly.
 
 ## Connect it in Eliza
 
@@ -35,7 +27,7 @@ For detailed setup instructions, environment variables, and all 19 supported inf
 5. Run the connection test.
 6. Pick a model if needed.
 
-## Ollama
+## Optional Ollama setup
 
 Make sure Ollama is running before you test it. Verify with:
 
@@ -50,6 +42,9 @@ ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-
 ```
 
 To see which models you already have: `ollama list`.
+
+Ollama is an explicit provider integration, not an automatically loaded
+first-party provider in the current registry map.
 
 ## Remote backends
 
@@ -85,9 +80,10 @@ Chat and voice can use different providers. Fix the chat route separately.
 
 Confirm which machine owns provider routing.
 
-## All 19 providers
+## Provider reference
 
-See [Model Providers](/model-providers) for the full list of supported providers, env variables, fallback chains, and advanced configuration.
+See [Model Providers](/model-providers) for automatic credential detection,
+explicit plugin selection, and runtime routing.
 
 ## Next
 

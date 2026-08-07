@@ -63,9 +63,7 @@ models/
 :memory:
 .cursor
 .turbo
-AGENTS.md
 .cursor/rules/elizaos
-CLAUDE.md
 .cursorignore
 dist
 node_modules

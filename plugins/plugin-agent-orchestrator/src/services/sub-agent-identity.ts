@@ -33,7 +33,7 @@ const IDENTITY_FILENAMES = ["AGENTS.md", "CLAUDE.md"] as const;
  * facts are stated accurately: `memory` is global semantic search (not the
  * originating room's recent messages), `parent-context` exposes the originating
  * task goal + latest decisions, and the endpoints only work when
- * `PARALLAX_SESSION_ID` is wired.
+ * `ORCHESTRATOR_SESSION_ID` is wired.
  *
  * Carries a `{{BROKER_SECTION}}` placeholder that {@link buildSubAgentIdentityMd}
  * fills with the parent-agent broker section only when the broker is actually
@@ -85,9 +85,9 @@ desktop/app UI yourself, so report results in words, never as UI commands.
 ## Reading parent state (optional — only if the task needs it)
 
 If the task depends on context not in the prompt, you can GET read-only parent
-state, but only when the bridge is wired (env var \`PARALLAX_SESSION_ID\` set):
+state, but only when the bridge is wired (env var \`ORCHESTRATOR_SESSION_ID\` set):
 
-- \`curl "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${PARALLAX_SESSION_ID}/parent-context"\`
+- \`curl "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${ORCHESTRATOR_SESSION_ID}/parent-context"\`
   → parent character, originating room, model prefs, your workdir, and
   \`originatingTask\` (the goal, acceptance criteria, and latest decisions of the
   task you serve — read this after a resume to know what you are working on).
@@ -105,14 +105,14 @@ If a task truly requires a credential that is not in your sealed environment
 (for example \`OPENAI_API_KEY\`), request it through the parent credential bridge
 instead of asking the user in chat and instead of printing secrets:
 
-1. \`POST "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${PARALLAX_SESSION_ID}/credentials/request"\`
+1. \`POST "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${ORCHESTRATOR_SESSION_ID}/credentials/request"\`
    with JSON \`{"credentialKeys":["OPENAI_API_KEY"]}\`.
 2. The response includes \`credentialScopeId\`, \`scopedToken\`, \`expiresAt\`,
    and \`sensitiveRequestIds\`. Treat \`scopedToken\` like a bearer secret:
    keep it only in process memory or a private scratch file inside this
    workspace; never print it, commit it, or include it in a final answer.
 3. Poll
-   \`GET "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${PARALLAX_SESSION_ID}/credentials/OPENAI_API_KEY?token=<scopedToken>"\`
+   \`GET "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${ORCHESTRATOR_SESSION_ID}/credentials/OPENAI_API_KEY?token=<scopedToken>"\`
    until the parent returns the value or a terminal error. The value is
    single-use; keep it in memory, use it for the required command, and never
    echo it to stdout/stderr.
@@ -120,7 +120,7 @@ instead of asking the user in chat and instead of printing secrets:
 All bridge endpoints are loopback-only and auth is the path-embedded session id.
 The parent-state endpoints are GET-only/read-only; the credential endpoints are
 the only write-like bridge calls, and they only ask the parent owner to approve
-a scoped one-shot secret. If \`PARALLAX_SESSION_ID\` is unset, the bridge is not
+a scoped one-shot secret. If \`ORCHESTRATOR_SESSION_ID\` is unset, the bridge is not
 wired for your spawn — skip it. For a self-contained task, never touch the
 bridge.
 
@@ -149,6 +149,11 @@ the other end, only chat. Make that message the answer itself:
   A script you wrote but never ran is NOT the deliverable — it returns nothing,
   the answer the user asked for is missing, and you force a wasteful re-spawn.
   The value must come from a real execution, not from unexecuted code.
+- NEVER include absolute filesystem paths, workspace/session ids, or other
+  internal identifiers in the final message. Your workspace (and its
+  \`task-<uuid>\` path shape) is internal infrastructure the user cannot see or
+  browse — refer to a file by bare name or workspace-relative path, or omit
+  the path entirely when the deliverable itself is the answer.
 - Do NOT narrate your process. No "I'll load the workspace context first",
   "checking the workspace shape", "rg is not installed so I'll use…", "the file
   already exists, reading it before editing", no step-by-step play-by-play, no

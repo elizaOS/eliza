@@ -117,7 +117,7 @@ const PATH_SPECS = new Map(
  * with override:false, so the env injected here wins over any plugin-local
  * .env. Lane 5 runs the shared live-e2e vitest lane; its include globs are
  * derived from the resolved eliza workspace root
- * (packages/test/vitest/e2e.config.ts), so the same command collects the PA
+ * (packages/scripts/vitest/e2e.config.ts), so the same command collects the PA
  * live e2e files from both the flat elizaOS checkout and the nested `eliza/`
  * consumer layout.
  */
@@ -131,7 +131,7 @@ const LANES = [
       "vitest",
       "run",
       "--config",
-      "packages/test/vitest/integration.config.ts",
+      "packages/scripts/vitest/integration.config.ts",
       "plugins/plugin-personal-assistant/test/owner-agent-permission-matrix.integration.test.ts",
     ],
     logPath: () => join(STATUS_DIR, "owner-agent-permission-matrix.txt"),
@@ -140,7 +140,7 @@ const LANES = [
     n: 2,
     pathId: "google.oauth-owner",
     env: { TEST_LANE: "post-merge", ELIZA_LIVE_TEST: "1" },
-    command: ["bun", "run", "--cwd", "plugins/plugin-google", "test"],
+    command: ["bun", "run", "--cwd", "plugins/plugin-google-workspace", "test"],
     logPath: () => join(STATUS_DIR, "plugin-google-live.txt"),
   },
   {
@@ -172,7 +172,7 @@ const LANES = [
       "vitest",
       "run",
       "--config",
-      "packages/test/vitest/live-e2e.config.ts",
+      "packages/scripts/vitest/live-e2e.config.ts",
       ...PA_LIVE_E2E_FILES,
     ],
     logPath: (sessionDir) => join(sessionDir, "pa-live-e2e.txt"),

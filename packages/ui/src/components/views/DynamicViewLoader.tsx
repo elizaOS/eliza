@@ -84,6 +84,7 @@ import {
   SurfaceRealmDeniedError,
   type SurfaceRealmScope,
 } from "../../surface-realm-broker";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
 import {
   formatDetailTimestamp,
@@ -423,33 +424,16 @@ function resolveSurfaceRealmScopeForHostExternal(
 }
 
 async function importUiRootCompat(): Promise<Record<string, unknown>> {
-  // The root barrel re-exports the RAW navigation/storage helpers (via
-  // `export * from "./app-navigate-view"` and `export * from "./bridge/index"`),
-  // which reach host `window.history` / `window.localStorage` directly. Exposing
-  // that unbrokered would let an in-process view bypass the manifest broker by
-  // importing from `@elizaos/ui` instead of the wrapped `@elizaos/ui/*` subpaths.
-  // Overlay the SAME wrapped versions the subpath compat modules expose so the
-  // sensitive nav/storage symbols route through the active surface-realm scope no
-  // matter which specifier the view imports; every other root export is untouched.
+  // The root package is deliberately limited to design-system primitives. The
+  // brokered navigation and bridge adapters are overlaid for older view bundles
+  // that still request those names from the root specifier; raw shell-global
+  // channels are not part of the root namespace and therefore cannot leak here.
   const [rootModule, appNavigateView, bridge] = await Promise.all([
     import("../../index.ts"),
     importUiAppNavigateViewCompat(),
     importUiBridgeCompat(),
   ]);
-  // The bridge barrel re-exports the shell-privileged raw-global channel, and
-  // the root barrel re-exports the bridge barrel — so the channel keys are on
-  // `root` too. Object spread cannot DELETE a key `root` already carries (the
-  // stripped `bridge` spread only overrides keys it still has), so strip the
-  // channel from root explicitly here or a view importing it from `@elizaos/ui`
-  // (root) instead of `@elizaos/ui/bridge` would still get the real channel and
-  // disarm its own guard.
-  const {
-    runAsPrivilegedShell: _rootRunAsPrivilegedShell,
-    shellHistory: _rootShellHistory,
-    shellLocalStorage: _rootShellLocalStorage,
-    ...root
-  } = rootModule;
-  return { ...root, ...appNavigateView, ...bridge };
+  return { ...rootModule, ...appNavigateView, ...bridge };
 }
 
 async function importUiAppNavigateViewCompat(): Promise<
@@ -693,7 +677,7 @@ const DEV_POLL_INTERVAL_MS = 2000;
  * host React singleton, the API client, and the native bridges via the
  * host-external map), so it runs with full app privilege. Only ever import a
  * bundle served by THIS origin: a cross-origin `bundleUrl` (which an untrusted
- * remote-plugin descriptor can announce) would be arbitrary attacker code
+ * view descriptor can announce) would be arbitrary attacker code
  * executing against the user's authenticated session. Every shipped view is
  * same-origin (`/api/views/<id>/bundle.js`); a future remote/CDN bundle must add
  * Subresource-Integrity before this gate can be relaxed.
@@ -1344,10 +1328,11 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       .catch((err) => {
         if (cancelled) return;
         const error = err instanceof Error ? err : new Error(String(err));
-        console.error(
-          `DynamicViewLoader failed to load view "${viewIdRef.current}" from ${bundleUrl}`,
+        reportRendererDiagnostic({
+          scope: "dynamic-view.load",
           error,
-        );
+          context: { viewId: viewIdRef.current, bundleUrl },
+        });
         setLoadError(error);
       });
 

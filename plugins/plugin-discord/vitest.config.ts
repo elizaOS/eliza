@@ -7,7 +7,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../packages/test/vitest/default.config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const pluginRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(pluginRoot, "../..");
@@ -51,9 +51,9 @@ export default defineConfig({
 			"actions/**/*.test.ts",
 			"test/**/*.test.ts",
 		],
-		// `*.harness.test.ts` boot a real PGLite runtime and need the workspace
-		// source aliases from vitest.harness.config.ts — run via `test:harness`.
-		exclude: ["**/node_modules/**", "dist/**", "**/*.harness.test.ts"],
+		// `*.real.test.ts` boot a real PGLite runtime and need the workspace
+		// source aliases from vitest.real-runtime.config.ts — run via `test:real-runtime`.
+		exclude: ["**/node_modules/**", "dist/**", "**/*.real.test.ts"],
 		environment: "node",
 		testTimeout: 60_000,
 		root: pluginRoot,
@@ -68,7 +68,7 @@ export default defineConfig({
 				"dist/**",
 				"node_modules/**",
 				"vitest.config.ts",
-				"vitest.harness.config.ts",
+				"vitest.real-runtime.config.ts",
 				"build.ts",
 			],
 		},

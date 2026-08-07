@@ -51,7 +51,7 @@ function aggregateReport(): AggregateReport {
     runId: "run-1",
     startedAtIso: "2026-05-23T00:00:00.000Z",
     completedAtIso: "2026-05-23T00:01:00.000Z",
-    providerName: "deterministic-llm-proxy",
+    providerName: "deterministic-model-provider",
     executionProfile: null,
     scenarios: [
       {
@@ -75,7 +75,7 @@ function aggregateReport(): AggregateReport {
         finalChecks: [],
         actionsCalled: [{ name: "CREATE_TASK" } as never],
         failedAssertions: [],
-        providerName: "deterministic-llm-proxy",
+        providerName: "deterministic-model-provider",
       },
     ],
     evidenceSummary: {

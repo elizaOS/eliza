@@ -1,3 +1,4 @@
+/** Verifies voice-session-pcm Float32↔Int16 correctness (golden vectors) through the package's configured test harness. */
 import { describe, expect, it } from "vitest";
 
 import {

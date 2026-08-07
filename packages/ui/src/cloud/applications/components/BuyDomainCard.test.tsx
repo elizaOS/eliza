@@ -1,3 +1,4 @@
+/** Verifies BuyDomainCard (#10246) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

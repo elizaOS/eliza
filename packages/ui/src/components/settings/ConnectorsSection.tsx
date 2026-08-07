@@ -6,7 +6,13 @@
  * adapter/target registries.
  */
 
-import { type LucideIcon, type LucideProps, Puzzle, Save } from "lucide-react";
+import {
+  ChevronDown,
+  type LucideIcon,
+  type LucideProps,
+  Puzzle,
+  Save,
+} from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -306,8 +312,8 @@ function ConnectorRow({
   const icon = useMemo(() => connectorIcon(plugin), [plugin]);
 
   return (
-    <details className="group" data-connector={plugin.id}>
-      <summary className="cursor-pointer select-none list-none">
+    <details className="group relative" data-connector={plugin.id}>
+      <summary className="cursor-pointer select-none list-none pr-14">
         <SettingsRow
           icon={icon}
           label={
@@ -319,15 +325,21 @@ function ConnectorRow({
               />
             </span>
           }
-          control={
-            <ConnectorEnableSwitch
-              plugin={plugin}
-              busy={busy}
-              onToggle={onToggle}
+          trailing={
+            <ChevronDown
+              aria-hidden
+              className="h-4 w-4 shrink-0 text-muted transition-transform group-open:rotate-180"
             />
           }
         />
       </summary>
+      <div className="absolute right-0 top-3 z-10">
+        <ConnectorEnableSwitch
+          plugin={plugin}
+          busy={busy}
+          onToggle={onToggle}
+        />
+      </div>
       <div className="pb-3 pl-[30px]">
         <ConnectorBody plugin={plugin} />
       </div>

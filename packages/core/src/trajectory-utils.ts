@@ -29,6 +29,7 @@ import {
 	type JsonValue,
 	type Trajectory,
 } from "./features/trajectories/types";
+import { stringifyForDiagnostics } from "./runtime/json-output";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker";
 import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
@@ -78,8 +79,8 @@ export type TrajectoryLlmCallDetails = {
 	finishReason?: string;
 	providerMetadata?: unknown;
 	reasoning?: string;
-	temperature: number;
-	maxTokens: number;
+	temperature?: number;
+	maxTokens?: number;
 	maxTokensOmitted?: boolean;
 	/**
 	 * High-level model-call category. Prefer the canonical taxonomy in
@@ -91,8 +92,8 @@ export type TrajectoryLlmCallDetails = {
 	 * Precise call-site label, e.g. `runtime.useModel`, `ai.generateText`,
 	 * or `openai.chat.completions.create`.
 	 */
-	actionType: string;
-	latencyMs: number;
+	actionType?: string;
+	latencyMs?: number;
 	promptTokens?: number;
 	completionTokens?: number;
 	cacheReadInputTokens?: number;
@@ -437,10 +438,10 @@ type TrajectoryStartOptions = {
 
 type TrajectoryStepState = {
 	timestamp: number;
-	agentBalance: number;
-	agentPoints: number;
-	agentPnL: number;
-	openPositions: number;
+	agentBalance?: number;
+	agentPoints?: number;
+	agentPnL?: number;
+	openPositions?: number;
 };
 
 type TrajectoryStepKindLike = "llm" | "action";
@@ -983,10 +984,6 @@ export async function withStandaloneTrajectory<T>(
 			? String(
 					trajectoryLogger.startStep(trajectoryId, {
 						timestamp: Date.now(),
-						agentBalance: 0,
-						agentPoints: 0,
-						agentPnL: 0,
-						openPositions: 0,
 					}),
 				).trim() || trajectoryId
 			: trajectoryId;
@@ -1133,11 +1130,7 @@ export async function recordLlmCall<T>(
 }
 
 function tryStringify(value: unknown): string {
-	try {
-		return JSON.stringify({ response: value });
-	} catch {
-		return String(value);
-	}
+	return stringifyForDiagnostics({ response: value });
 }
 
 function generateChildStepId(prefix: string): string {
@@ -1179,10 +1172,6 @@ async function withChildTrajectoryStep<T>(
 		try {
 			const startedStepId = trajectoryLogger.startStep(trajectoryId, {
 				timestamp: Date.now(),
-				agentBalance: 0,
-				agentPoints: 0,
-				agentPnL: 0,
-				openPositions: 0,
 			});
 			const normalizedStartedStepId =
 				typeof startedStepId === "string" ? startedStepId.trim() : "";
@@ -1193,6 +1182,8 @@ async function withChildTrajectoryStep<T>(
 				childStepId = normalizedStartedStepId;
 			}
 		} catch (error) {
+			// error-policy:J7 Child-step recording is diagnostic and cannot block
+			// the operation whose parent trajectory remains active.
 			runtime.reportError("TrajectoryChildStep.start", error, {
 				purpose: options.purpose,
 				actionName: options.actionName,
@@ -1328,7 +1319,13 @@ export async function spawnWithTrajectoryLink<T>(
 					stepId: handle.parentStepId,
 					appendChildSteps: [childStepId.trim()],
 				});
-			} catch {
+			} catch (error) {
+				// error-policy:J7 trajectory linkage diagnostics must not fail the
+				// action path; report the write failure and return the failed signal.
+				runtime.reportError("Trajectory.linkChild", error, {
+					parentStepId: handle.parentStepId,
+					childStepId,
+				});
 				return false;
 			}
 		},

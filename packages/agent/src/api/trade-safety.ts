@@ -43,9 +43,9 @@ export function recordAgentAutoTrade(log?: (msg: string) => void): boolean {
   return true;
 }
 
-type LocalTradeExecutionOptions = {
+export interface LocalTradeExecutionOptions {
   consumeAgentQuota?: boolean;
-};
+}
 
 /**
  * Returns true if local-key execution is permitted for the given actor.

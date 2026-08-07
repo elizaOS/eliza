@@ -1,3 +1,4 @@
+/** Verifies scoreWorkbenchDiarization (#9427) through the package's configured test harness. */
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {

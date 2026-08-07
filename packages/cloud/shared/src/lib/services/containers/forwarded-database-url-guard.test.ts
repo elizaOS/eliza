@@ -86,7 +86,6 @@ describe("databaseIdentityKey", () => {
   test("pglite://memory keeps its host-based key (has a hostname, no default pg port)", () => {
     // Non-Postgres scheme => no port defaulting; the key is stable + matches
     // an identical forwarded pglite://memory, which is all the guard needs.
-    expect(databaseIdentityKey("pglite://memory")).toBe(databaseIdentityKey("pglite://memory"));
     expect(databaseIdentityKey("pglite://memory")).not.toBe(databaseIdentityKey("pglite://other"));
   });
 });

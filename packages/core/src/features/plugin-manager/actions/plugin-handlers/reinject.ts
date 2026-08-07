@@ -1,9 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/reinject
- *
- * `reinject` sub-mode of the PLUGIN action. Removes an ejected
- * plugin's local copy so the agent falls back to the npm-installed version.
- */
+/** Removes a managed local plugin copy so package resolution uses the installed release. */
 
 import type {
 	ActionResult,

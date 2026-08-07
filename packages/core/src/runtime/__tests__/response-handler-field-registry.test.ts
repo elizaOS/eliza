@@ -20,6 +20,7 @@ const ROOM = "00000000-0000-0000-0000-00000000000a";
 function fakeRuntime(): IAgentRuntime {
 	const warnCalls: unknown[][] = [];
 	return {
+		reportError: () => undefined,
 		agentId: "00000000-0000-0000-0000-000000000001",
 		logger: {
 			debug: () => undefined,

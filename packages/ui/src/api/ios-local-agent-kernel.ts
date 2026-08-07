@@ -51,6 +51,14 @@ import type {
 import { AGENT_MODEL_SLOTS } from "../services/local-inference/types";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
 import type { MemoryBrowseItem } from "./client-types-chat";
+import {
+  buildMobileLoadOptions,
+  fallbackMobileTotalRamGb,
+  gpuBackendForMobile,
+  mobileRecommendedBucket,
+  normalizeMobilePlatform,
+  positiveFiniteNumber,
+} from "./ios-local-agent-mobile-policy";
 import type { IttpAgentRequestContext } from "./ittp-agent-transport";
 
 const STORAGE_PREFIX = "eliza:ios-local-agent";
@@ -1724,61 +1732,6 @@ function catalogForAvailableModel(model: {
     .find((candidate) => haystack.includes(candidate.id.toLowerCase()));
 }
 
-function mobileRecommendedBucket(
-  totalRamGb: number,
-): HardwareProbe["recommendedBucket"] {
-  if (totalRamGb >= 32) return "xl";
-  if (totalRamGb >= 16) return "large";
-  if (totalRamGb >= 12) return "mid";
-  return "small";
-}
-
-function positiveFiniteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value
-    : null;
-}
-
-function fallbackMobileTotalRamGb(platform: "ios" | "android"): number {
-  const browserMemory =
-    typeof navigator === "undefined"
-      ? null
-      : positiveFiniteNumber(
-          (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
-        );
-  if (browserMemory) return browserMemory;
-  return platform === "ios" ? 8 : 4;
-}
-
-function normalizeMobilePlatform(
-  platform: "ios" | "android" | "web" | undefined,
-): "ios" | "android" {
-  return platform === "android" ? "android" : "ios";
-}
-
-function gpuBackendForMobile(
-  platform: "ios" | "android",
-  backend?: "metal" | "vulkan" | "gpu-delegate",
-): "metal" | "vulkan" {
-  if (backend === "vulkan") return "vulkan";
-  return platform === "android" ? "vulkan" : "metal";
-}
-
-function mobileContextSize(
-  hardware: HardwareProbe,
-  catalog: CatalogModel | undefined,
-): number {
-  const target = catalog?.contextLength ?? 4096;
-  if (hardware.totalRamGb >= 12) return Math.min(target, 8192);
-  if (hardware.totalRamGb >= 8) return Math.min(target, 6144);
-  return Math.min(target, 4096);
-}
-
-function mobileThreadCount(hardware: HardwareProbe): number {
-  if (!Number.isFinite(hardware.cpuCores) || hardware.cpuCores <= 0) return 0;
-  return Math.max(2, Math.min(Math.floor(hardware.cpuCores) - 1, 6));
-}
-
 function _companionInstalled(
   installed: InstalledModel[],
   modelId: string,
@@ -1884,33 +1837,6 @@ async function hardwareProbe(): Promise<HardwareProbe> {
   };
 }
 
-function buildMobileLoadOptions(
-  model: InstalledModel,
-  installed: InstalledModel[],
-  hardware: HardwareProbe,
-): CapacitorLlamaLoadOptions {
-  void installed;
-  const catalog = findCatalogModel(model.id);
-  const mtp = catalog?.runtime?.mtp;
-  const options: CapacitorLlamaLoadOptions = {
-    modelPath: model.path,
-    contextSize: mobileContextSize(hardware, catalog),
-    useGpu: hardware.mobile?.gpuSupported !== false,
-    maxThreads: mobileThreadCount(hardware),
-  };
-  return {
-    ...options,
-    draftContextSize: options.contextSize,
-    draftMin: mtp?.draftMin ?? 1,
-    draftMax: mtp?.draftMax ?? 1,
-    speculativeSamples: Math.min(mtp?.draftMax ?? 1, 4),
-    mobileSpeculative: true,
-    cacheTypeK: catalog?.runtime?.kvCache?.typeK,
-    cacheTypeV: catalog?.runtime?.kvCache?.typeV,
-    disableThinking: true,
-  };
-}
-
 function runtimeSignature(options: CapacitorLlamaLoadOptions): string {
   return [
     options.modelPath,
@@ -1982,7 +1908,7 @@ async function ensureActiveModelLoadedImpl(): Promise<void> {
     throw new Error("Native Eliza-1 runtime is not available on this build.");
   }
   const hardware = await hardwareProbe();
-  const loadOptions = buildMobileLoadOptions(model, installed, hardware);
+  const loadOptions = buildMobileLoadOptions(model, hardware);
   const signature = runtimeSignature(loadOptions);
   // error-policy:J4 already-loaded probe — an unanswerable probe falls
   // through to the real llama.load below, whose failure throws to the caller.
@@ -3076,7 +3002,7 @@ async function activateModel(
         );
       }
     }
-    const loadOptions = buildMobileLoadOptions(model, installed, hardware);
+    const loadOptions = buildMobileLoadOptions(model, hardware);
     await llama.load(loadOptions);
     loadedRuntimeSignature = runtimeSignature(loadOptions);
     const state: ActiveModelState = {
@@ -3525,33 +3451,6 @@ export async function handleIosLocalAgentRequest(
 
   if (pathname.startsWith("/api/secrets/")) {
     return unavailableLocalBackendRoute("secrets_manager_unavailable");
-  }
-
-  if (method === "GET" && pathname === "/api/training/auto/config") {
-    return json({ enabled: false });
-  }
-
-  if (method === "GET" && pathname === "/api/training/auto/status") {
-    return json({ enabled: false, running: false, jobs: [] });
-  }
-
-  if (
-    method === "GET" &&
-    (pathname === "/api/training/status" ||
-      pathname === "/api/training/datasets" ||
-      pathname === "/api/training/jobs" ||
-      pathname === "/api/training/models" ||
-      pathname === "/api/training/inference/endpoints")
-  ) {
-    if (pathname.endsWith("/status")) return json({ available: false });
-    if (pathname.endsWith("/datasets")) return json({ datasets: [] });
-    if (pathname.endsWith("/jobs")) return json({ jobs: [] });
-    if (pathname.endsWith("/models")) return json({ models: [] });
-    return json({ endpoints: [] });
-  }
-
-  if (pathname.startsWith("/api/training/")) {
-    return unavailableLocalBackendRoute("training_service_unavailable");
   }
 
   if (

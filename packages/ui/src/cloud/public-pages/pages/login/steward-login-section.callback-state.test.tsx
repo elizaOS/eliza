@@ -1,3 +1,4 @@
+/** Verifies StewardLoginSection — OAuth callback completion state (#13519) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

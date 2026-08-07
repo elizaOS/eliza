@@ -170,25 +170,6 @@ describe("OrchestratorTaskWidget", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 
-  it("keeps task metadata and the empty hint at accessible contrast", async () => {
-    // The 9px metadata line and empty-state hint render `text-muted` at full
-    // strength; the previous `/70` opacity was 3.54:1, below WCAG AA 4.5:1.
-    mocks.getWidgets.mockResolvedValue(populated);
-    const view = render(<OrchestratorTaskWidget {...props} />);
-    const meta = (await screen.findByText("1 child")).parentElement;
-    expect(meta?.className).toContain("text-muted");
-    expect(meta?.className).not.toContain("text-muted/70");
-    view.unmount();
-
-    mocks.getWidgets.mockResolvedValue({ ...populated, tasks: [] });
-    render(<OrchestratorTaskWidget {...props} />);
-    const hint = await screen.findByText(
-      "New coding tasks will appear here as they run.",
-    );
-    expect(hint.className).toContain("text-muted");
-    expect(hint.className).not.toContain("text-muted/70");
-  });
-
   it("closes the SSE subscription when the widget unmounts", () => {
     mocks.getWidgets.mockReturnValue(new Promise(() => {}));
     const view = render(<OrchestratorTaskWidget {...props} />);

@@ -22,6 +22,8 @@ import { resolveStateDir } from "@elizaos/core";
 import {
   getCloudSecret,
   resolveApiSecurityConfig,
+  resolveDesktopApiPort,
+  resolveDesktopUiPort,
   resolveServerOnlyPort,
 } from "@elizaos/shared";
 
@@ -65,11 +67,6 @@ export const MODEL_KEY_VARS = [
   { key: "PERPLEXITY_API_KEY", label: "Perplexity" },
   { key: "ZAI_API_KEY", alias: "Z_AI_API_KEY", label: "Zai" },
   { key: "MOONSHOT_API_KEY", alias: "KIMI_API_KEY", label: "Kimi / Moonshot" },
-  {
-    key: "AI_GATEWAY_API_KEY",
-    alias: "AIGATEWAY_API_KEY",
-    label: "Vercel AI Gateway",
-  },
   { key: "ELIZAOS_CLOUD_API_KEY", label: "elizaOS Cloud" },
   { key: "OLLAMA_BASE_URL", label: "Ollama (local)" },
 ] as const;
@@ -106,13 +103,13 @@ export function checkRuntime(): CheckResult {
   const ver = process.version;
   const match = ver.match(/^v(\d+)/);
   const major = match ? Number(match[1]) : 0;
-  if (major < 22) {
+  if (major < 24) {
     return {
       label: "Runtime",
       category: "system",
       status: "fail",
-      detail: `Node.js ${ver} (requires >=22)`,
-      fix: "Install Node.js 22+ — https://nodejs.org",
+      detail: `Node.js ${ver} (requires >=24)`,
+      fix: "Install Node.js 24+ — https://nodejs.org",
     };
   }
   return {
@@ -587,8 +584,8 @@ export async function runAllChecks(
   }
 
   const portResults = await Promise.all([
-    checkPort(opts.apiPort ?? 31337),
-    checkPort(opts.uiPort ?? 2138),
+    checkPort(opts.apiPort ?? resolveDesktopApiPort(env)),
+    checkPort(opts.uiPort ?? resolveDesktopUiPort(env)),
   ]);
 
   return [...sync, ...portResults];

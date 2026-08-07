@@ -34,11 +34,16 @@
  * no one-sided vertical line. Applied as `box-shadow` so the sheet and the
  * cards share one token.
  */
-export const LIQUID_GLASS_EDGE_SHADOW = [
-  "inset 0 1px 0 0 rgb(255 255 255 / 50%)",
-  "inset 0 -1px 0 0 rgb(255 255 255 / 14%)",
-  "inset 0 -20px 40px -26px rgb(0 0 0 / 42%)",
-].join(", ");
+export function liquidGlassEdgeShadow(opacity = 1): string {
+  const strength = Math.max(0, Math.min(1, opacity));
+  return [
+    `inset 0 1px 0 0 rgb(255 255 255 / ${(0.5 * strength).toFixed(4)})`,
+    `inset 0 -1px 0 0 rgb(255 255 255 / ${(0.14 * strength).toFixed(4)})`,
+    `inset 0 -20px 40px -26px rgb(0 0 0 / ${(0.42 * strength).toFixed(4)})`,
+  ].join(", ");
+}
+
+export const LIQUID_GLASS_EDGE_SHADOW = liquidGlassEdgeShadow();
 
 /**
  * Specular sheen for the surface `background-image`: a soft radial highlight
@@ -73,12 +78,12 @@ ${selector}::before {
     rgba(255, 255, 255, 0.24) 100%
   );
   -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
+    linear-gradient(rgb(0 0 0) 0 0) content-box,
+    linear-gradient(rgb(0 0 0) 0 0);
   -webkit-mask-composite: xor;
   mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
+    linear-gradient(rgb(0 0 0) 0 0) content-box,
+    linear-gradient(rgb(0 0 0) 0 0);
   mask-composite: exclude;
   pointer-events: none;
 }`;

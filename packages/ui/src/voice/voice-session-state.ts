@@ -174,6 +174,9 @@ export function applyServerEvent(
       return { ...state, phase: "speaking", traceId: event.traceId };
     case "speaking_end":
       return { ...state, phase: "complete", traceId: event.traceId };
+    case "navigate_view":
+      // Navigation is a shell side effect; the voice phase remains unchanged.
+      return { ...state, traceId: event.traceId };
     case "interrupted":
       return {
         ...state,

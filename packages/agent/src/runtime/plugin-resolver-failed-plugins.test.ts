@@ -100,4 +100,31 @@ describe("plugin-load failure reporting", () => {
       await rm(workspace, { recursive: true, force: true });
     }
   });
+
+  it("does not report an uninstalled optional config entry as a failed plugin", async () => {
+    const previousCwd = process.cwd();
+    const workspace = await mkdtemp(
+      path.join(tmpdir(), "eliza-plugin-optional-"),
+    );
+
+    try {
+      process.chdir(workspace);
+      await resolvePlugins(
+        {
+          plugins: {
+            allow: [],
+            entries: { "fixture-not-installed": { enabled: true } },
+          },
+        },
+        { quiet: true },
+      );
+
+      expect(getLastFailedPluginNames()).not.toContain(
+        "@elizaos/plugin-fixture-not-installed",
+      );
+    } finally {
+      process.chdir(previousCwd);
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
 });

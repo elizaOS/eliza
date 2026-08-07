@@ -1,7 +1,5 @@
 /**
- * @module features/trust/actions/trust
- *
- * Unified TRUST umbrella action. The discriminator parameter `action` selects
+ * Unified trust action whose `action` discriminator selects
  * one of:
  *   - `evaluate` — read a trust profile for an entity
  *   - `record_interaction` — log a trust-affecting interaction

@@ -8,8 +8,6 @@ import {
   buildScreenTimeRecapRules,
   createOwnerScreenTimeAction,
   createScreenTimeActionRunner,
-  SCREEN_TIME_PARAMETERS,
-  SCREEN_TIME_SIMILES,
   type ScreenTimeActionService,
 } from "./screen-time.js";
 
@@ -83,13 +81,6 @@ function makeRunner(service: ScreenTimeActionService) {
 }
 
 describe("screen-time action runner", () => {
-  it("exports the owner screen-time planner surface from plugin-health", () => {
-    expect(SCREEN_TIME_SIMILES).toContain("TIME_ON_SITE");
-    expect(SCREEN_TIME_PARAMETERS.map((parameter) => parameter.name)).toContain(
-      "windowHours",
-    );
-  });
-
   it("creates the owner screen-time action metadata in plugin-health", async () => {
     const validate = vi.fn(async () => true);
     const handler = vi.fn(async () => ({

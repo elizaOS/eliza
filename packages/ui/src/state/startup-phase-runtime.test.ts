@@ -71,11 +71,6 @@ describe("runStartingRuntime", () => {
         complete: true,
         requiredGate: null,
       },
-      remotes: {
-        seeded: true,
-        requiredStarted: true,
-        errors: [],
-      },
       localModel: {
         backgroundDownloadQueued: false,
         blocking: false,

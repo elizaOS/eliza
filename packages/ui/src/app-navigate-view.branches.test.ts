@@ -1,3 +1,4 @@
+/** Verifies createNavigateViewHandler guard + fallthrough branches through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

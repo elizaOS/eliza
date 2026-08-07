@@ -1,11 +1,8 @@
 /**
  * Default privacy redactor for the tool-call cache.
  *
- * The full trajectory privacy filter operates on a richer trajectory shape
- * (steps, llmCalls, metadata) and exists in `plugins/plugin-training`. Pulling
- * that dependency into app-core would invert the layer order, so we keep a
- * focused redactor here that mirrors the credential + geo passes from that
- * filter and is applied to every disk write.
+ * This focused redactor covers the credential and location data that may enter
+ * cached tool results and is applied to every disk write.
  *
  * The redactor walks the value tree and replaces:
  *   - common API key shapes (`sk-…`, `Bearer …`, `ghp_…`, `AKIA…`)

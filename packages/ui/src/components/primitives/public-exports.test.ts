@@ -1,3 +1,4 @@
+/** Verifies chat primitive public exports through the package's configured test harness. */
 import { describe, expect, it } from "vitest";
 import {
   Attachment as ComponentAttachment,

@@ -40,6 +40,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
+    // *.real.test.ts files run only in the dedicated real/live lane
+    // (packages/scripts/vitest/real.config.ts), never in the default suite.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/*.real.test.ts"],
     testTimeout: 15_000,
     pool: "forks",
     server: {

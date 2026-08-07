@@ -4,19 +4,16 @@
  * deterministic CI install paths on ONE concrete Bun version so a stale bump or
  * a regression back to floating `canary`/`latest` cannot slip through unnoticed.
  *
- * Background: `bun install --frozen-lockfile` fails when Bun reserializes
- * bun.lock to lockfileVersion 2, which floating `canary`/`latest` do on their
- * own cadence (#11184/#9454); the repo's packageManager `bun@1.4.0-canary.1` is
- * also unresolvable in CI. So the required test/build gates pin a concrete Bun
- * version rather than tracking the moving channel. The canonical value lives in
- * `.github/ci-bun-version.json` — GitHub Actions cannot interpolate a file into
- * `${{ }}` at parse time, so the literal is repeated in each workflow and this
- * contract is what guarantees those copies never drift from the source of truth.
+ * Required test/build gates pin the stable packageManager version rather than
+ * tracking a moving channel. The canonical value lives in
+ * `.github/ci-bun-version.json`; GitHub Actions cannot interpolate a file into
+ * `${{ }}` at parse time, so the literal is repeated and this contract keeps all
+ * copies in lockstep.
  *
  * Two invariants, checked statically against the checked-in YAML (no workflow is
  * executed):
  *
- *   1. No divergent concrete pin. Every `bun-version:`/`BUN_VERSION:` value in
+ *   1. packageManager and every `bun-version:`/`BUN_VERSION:` value in
  *      `.github/workflows` that is a concrete version (a semver, not a `${{ }}`
  *      expression and not floating `canary`/`latest`) must equal the canonical
  *      version. This catches a second concrete pin drifting away from the rest.
@@ -44,6 +41,7 @@ const DEFAULT_REPO_ROOT = resolve(
 
 const VERSION_FILE = ".github/ci-bun-version.json";
 const WORKFLOW_DIR = ".github/workflows";
+const SETUP_ACTION = ".github/actions/setup-bun-workspace/action.yml";
 
 // Required, scheduled, and deploy-critical install lanes that must stay on the
 // concrete pin. The required `ci-ok` aggregate (test.yml), main gate (ci.yaml),
@@ -55,9 +53,8 @@ const GATE_WORKFLOWS = [
   "app-aesthetic-audit.yml",
   "develop-exhaustive.yml",
   "ci-full-matrix-proof.yml",
-  "benchmark-tests.yml",
+  "windows-ci.yml",
   "windows-desktop-preload-smoke.yml",
-  "feed-env-audit.yml",
 ];
 
 // A concrete pin: a plain semver, optionally with a prerelease/build suffix.
@@ -73,8 +70,7 @@ function assert(condition, message) {
 
 // Extract every `bun-version:`/`BUN_VERSION:` value wired in a workflow, as
 // `{ key, raw }` with the inline comment and surrounding quotes stripped. Only
-// real YAML key wiring counts — a version named in a `#` comment (e.g. the
-// unresolvable `bun@1.4.0-canary.1` rationale) is never treated as a pin.
+// real YAML key wiring counts; a version named only in a comment is ignored.
 function bunVersionValues(text) {
   const out = [];
   for (const line of text.split("\n")) {
@@ -113,18 +109,69 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     `${VERSION_FILE}: "version" must not float (${canonical})`,
   );
 
+  const packageManager = JSON.parse(read("package.json")).packageManager;
+  assert(
+    packageManager === `bun@${canonical}`,
+    `package.json: packageManager must be bun@${canonical} to match ${VERSION_FILE}, got ${JSON.stringify(packageManager)}`,
+  );
+
   const workflowFiles = readdirSync(resolve(repoRoot, WORKFLOW_DIR)).filter(
     (name) => name.endsWith(".yml") || name.endsWith(".yaml"),
   );
 
-  // --- Invariant 1: no concrete pin diverges from the source of truth. ---
+  const setupAction = read(SETUP_ACTION);
+  const setupLines = setupAction.split("\n");
+  const setupBunStart = setupLines.findIndex(
+    (line) => line.trim() === "bun-version:",
+  );
+  const setupBunEnd = setupLines.findIndex(
+    (line, index) =>
+      index > setupBunStart && /^  [A-Za-z0-9_-]+:\s*$/u.test(line),
+  );
+  const setupBunInput = setupLines
+    .slice(setupBunStart, setupBunEnd === -1 ? undefined : setupBunEnd)
+    .join("\n");
+  assert(
+    setupBunInput?.includes(`default: "${canonical}"`),
+    `${SETUP_ACTION}: bun-version default must be ${canonical}`,
+  );
+  assert(
+    !setupAction.includes("--no-frozen-lockfile"),
+    `${SETUP_ACTION}: dependency setup may not bypass the committed lockfile`,
+  );
+
+  // --- Invariant 1: no workflow may float or diverge from the source of truth. ---
   const concretePins = [];
   for (const name of workflowFiles) {
     const rel = join(WORKFLOW_DIR, name);
-    for (const { raw } of bunVersionValues(read(rel))) {
-      if (isExpression(raw) || FLOATING.has(raw) || !CONCRETE_PIN.test(raw)) {
+    const workflow = read(rel);
+    assert(
+      !workflow.includes("--no-frozen-lockfile"),
+      `${rel}: repository installs may not bypass the committed lockfile`,
+    );
+    for (const line of workflow.split("\n")) {
+      const trimmed = line.trim();
+      if (
+        trimmed.startsWith("#") ||
+        trimmed.startsWith("echo ") ||
+        trimmed.includes("`bun install`")
+      ) {
         continue;
       }
+      if (trimmed.includes("bun install")) {
+        assert(
+          trimmed.includes("--frozen-lockfile"),
+          `${rel}: repository install must include --frozen-lockfile: ${trimmed}`,
+        );
+      }
+    }
+    for (const { raw } of bunVersionValues(workflow)) {
+      if (isExpression(raw)) continue;
+      assert(
+        !FLOATING.has(raw),
+        `${rel}: Bun version must not float (${raw}); pin ${canonical}`,
+      );
+      if (!CONCRETE_PIN.test(raw)) continue;
       assert(
         raw === canonical,
         `${rel}: pins Bun ${raw}, but the canonical CI Bun version is ${canonical} ` +

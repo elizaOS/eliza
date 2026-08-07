@@ -1,3 +1,4 @@
+/** Verifies WorkflowSteps through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // WorkflowSteps: renders step k/N progress, per-step status data attributes,

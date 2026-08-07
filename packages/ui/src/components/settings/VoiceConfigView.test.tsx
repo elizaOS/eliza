@@ -1,3 +1,4 @@
+/** Verifies VoiceConfigView Swabble audio meter listener lifecycle through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

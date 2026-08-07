@@ -1,3 +1,4 @@
+/** Verifies useComposerKeydown through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Contract tests for the shared composer core (keydown + paste) — the one
@@ -200,11 +201,6 @@ describe("useComposerPaste", () => {
     fireEvent.paste(screen.getByTestId("input"), pasteEvent([], "hello"));
     expect(addFiles).not.toHaveBeenCalled();
     expect(attachText).not.toHaveBeenCalled();
-  });
-
-  it("returns no handler on surfaces without outbound attachments", () => {
-    render(<PasteHarness />);
-    fireEvent.paste(screen.getByTestId("input"), pasteEvent([], "hello"));
   });
 });
 

@@ -19,7 +19,7 @@
  *     1. --provider-env <file.json>  (a JSON object of env vars; what S1 writes)
  *     2. $HARVEST_PROVIDER_ENV_FILE  (same, via env)
  *     3. current process env if it already carries ELIZA_CHAT_VIA_CLI / an API key
- *     4. --deterministic  → SCENARIO_USE_LLM_PROXY=1 (offline driver self-test)
+ *     4. --deterministic  → SCENARIO_USE_DETERMINISTIC_MODEL=1 (offline driver self-test)
  *   For the real Stage-2 run, S1 emits { "ELIZA_CHAT_VIA_CLI": "codex",
  *   "ELIZA_CLI_CODEX_MODEL": "gpt-5.5" }.
  *
@@ -85,7 +85,7 @@ function loadProviderEnv() {
   if (DETERMINISTIC) {
     return {
       source: "deterministic-proxy",
-      env: { SCENARIO_USE_LLM_PROXY: "1" },
+      env: { SCENARIO_USE_DETERMINISTIC_MODEL: "1" },
     };
   }
   if (process.env.ELIZA_CHAT_VIA_CLI) {

@@ -17,15 +17,13 @@ import {
   CapabilityError,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
+  isLoopbackHost,
+  isPrivateIpAddress,
   type JsonObject,
+  normalizeHostLike,
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/core";
-import {
-  isBlockedPrivateOrLinkLocalIp,
-  isLoopbackHost,
-  normalizeHostLike,
-} from "../security/network-policy.ts";
 import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,
@@ -921,7 +919,7 @@ function requireHttpUrl(value: unknown, field: string): string {
     host.endsWith(".local") ||
     host.endsWith(".internal") ||
     isLoopbackHost(host) ||
-    (net.isIP(host) !== 0 && isBlockedPrivateOrLinkLocalIp(host))
+    (net.isIP(host) !== 0 && isPrivateIpAddress(host))
   ) {
     throw new Error(
       `${field} must not target a private, loopback, link-local, or internal address.`,

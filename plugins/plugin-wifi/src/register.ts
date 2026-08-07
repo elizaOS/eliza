@@ -5,7 +5,7 @@
  * loading this module remains safe on those platforms.
  */
 
-import { isElizaOS } from "@elizaos/ui";
+import { isElizaOS } from "@elizaos/ui/platform/init";
 import { registerWifiApp } from "./components/wifi-app";
 
 if (isElizaOS()) {

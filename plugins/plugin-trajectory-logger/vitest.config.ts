@@ -7,7 +7,6 @@ import { defineConfig } from "vitest/config";
 // them (and @testing-library/react) from the workspace UI package, which depends
 // on them directly, so the bare `react` import in the view components and the
 // jsdom render tests load at test time without a per-package dependency.
-// Mirrors plugins/app-model-tester/vitest.config.ts.
 const requireFromUi = createRequire(
   path.resolve(__dirname, "../../packages/ui/package.json"),
 );

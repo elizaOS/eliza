@@ -42,6 +42,10 @@ import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import {
+  StatusBadge as SharedStatusBadge,
+  type StatusVariant,
+} from "../ui/status-badge";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { SettingsGroup, SettingsStack } from "./settings-layout";
@@ -237,25 +241,27 @@ function AccessInfoRow({
   );
 }
 
-function StatusBadge({
+function SecurityStatusBadge({
   children,
   tone = "neutral",
 }: {
   children: ReactNode;
   tone?: "neutral" | "ok" | "warn" | "danger";
 }) {
+  const variant: StatusVariant =
+    tone === "ok"
+      ? "success"
+      : tone === "warn"
+        ? "warning"
+        : tone === "danger"
+          ? "danger"
+          : "muted";
   return (
-    <span
-      className={cn(
-        "inline-flex w-fit shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium",
-        tone === "ok" && "border-ok/35 bg-ok/12 text-ok",
-        tone === "warn" && "border-warn/40 bg-warn/14 text-warn",
-        tone === "danger" && "border-danger/40 bg-danger/10 text-danger",
-        tone === "neutral" && "border-border/60 bg-bg/70 text-muted",
-      )}
-    >
-      {children}
-    </span>
+    <SharedStatusBadge
+      label={children}
+      variant={variant}
+      className="w-fit shrink-0 rounded-full px-2.5 py-1 text-xs font-medium normal-case"
+    />
   );
 }
 
@@ -456,7 +462,7 @@ function AccessModeSection({
           <div className="text-sm font-medium text-txt-strong">{title}</div>
           <p className="max-w-2xl text-sm leading-6 text-muted">{detail}</p>
         </div>
-        <StatusBadge tone={statusTone}>
+        <SecurityStatusBadge tone={statusTone}>
           {state.phase === "loading" ? (
             <span className="inline-flex items-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -465,7 +471,7 @@ function AccessModeSection({
           ) : (
             status
           )}
-        </StatusBadge>
+        </SecurityStatusBadge>
       </div>
       <div className="flex flex-col">
         <AccessInfoRow
@@ -473,9 +479,9 @@ function AccessModeSection({
             defaultValue: "Remote password",
           })}
           value={
-            <StatusBadge tone={remotePasswordTone}>
+            <SecurityStatusBadge tone={remotePasswordTone}>
               {remotePasswordValue}
-            </StatusBadge>
+            </SecurityStatusBadge>
           }
           detail={remotePasswordDetail}
         />

@@ -65,7 +65,6 @@ class WebsiteBlockerStateStoreInstrumentedTest {
         )
 
         assertNull(WebsiteBlockerStateStore.load(context))
-        assertNull(WebsiteBlockerStateStore.load(context))
     }
 
     @Test

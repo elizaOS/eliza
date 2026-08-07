@@ -17,6 +17,7 @@ import path from "node:path";
 import { detectGpu } from "./gpu-detect";
 import type { Eliza1Backend, Eliza1DeviceCaps } from "./manifest";
 import { elizaModelsDir } from "./paths";
+import { readSystemMemory, type SystemMemory } from "./system-memory";
 import type {
 	CpuFeatureProbe,
 	HardwareProbe,
@@ -345,9 +346,11 @@ export function detectOpenVinoDevices(
  * Read current system + GPU state. Cheap enough to call per-request; no
  * internal caching so the UI always reflects live VRAM usage.
  */
-export async function probeHardware(): Promise<HardwareProbe> {
-	const totalRamBytes = os.totalmem();
-	const freeRamBytes = os.freemem();
+export async function probeHardware(
+	memory: SystemMemory = readSystemMemory(),
+): Promise<HardwareProbe> {
+	const totalRamBytes = memory.totalBytes;
+	const freeRamBytes = memory.freeBytes;
 	const cpuCores = os.cpus().length;
 	const platform = process.platform;
 	const arch = process.arch;

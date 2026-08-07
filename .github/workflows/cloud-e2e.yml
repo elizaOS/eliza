@@ -12,11 +12,8 @@ on:
       - "packages/cloud/shared/**"
       - "packages/cloud/services/**"
       - "packages/cloud/sdk/**"
-      - "packages/test/cloud-mocks/**"
-      - "packages/test/cloud-e2e/**"
-      # The showcase loop (#9300) deploys + validates these example apps, so an
-      # edit to either app must trigger the showcase e2e + brand-lint lane.
-      - "packages/examples/cloud/**"
+      - "packages/cloud/test-mocks/**"
+      - "packages/cloud/e2e/**"
       - ".github/workflows/cloud-e2e.yml"
   workflow_dispatch:
 
@@ -31,7 +28,7 @@ permissions:
 jobs:
   e2e:
     name: Mock-stack E2E
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     env:
       NODE_ENV: test
@@ -72,8 +69,8 @@ jobs:
         with:
           name: cloud-e2e-playwright-${{ github.run_attempt }}
           path: |
-            packages/test/cloud-e2e/playwright-report
-            packages/test/cloud-e2e/test-results
+            packages/cloud/e2e/playwright-report
+            packages/cloud/e2e/test-results
           retention-days: 7
           if-no-files-found: ignore
 
@@ -83,7 +80,7 @@ jobs:
         with:
           name: cloud-e2e-process-logs-${{ github.run_attempt }}
           path: |
-            packages/test/cloud-e2e/.logs
+            packages/cloud/e2e/.logs
           retention-days: 7
           include-hidden-files: true
           if-no-files-found: ignore

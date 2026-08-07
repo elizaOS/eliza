@@ -27,12 +27,13 @@ mic → ASR → drafter ∥ verifier → chunker → TTS pipeline (see
 
 ```bash
 # The mock-only CLI path is disabled. Use the real VoiceBench runner:
-packages/benchmarks/voicebench/run.sh --profile=groq \
-  --dataset=packages/benchmarks/voicebench/fixtures/manifest-groq.json
+# from https://github.com/elizaOS/benchmarks
+voicebench/run.sh --profile=groq \
+  --dataset=voicebench/fixtures/manifest-groq.json
 
 # Compare to a recorded baseline; exit 1 on regression
-packages/benchmarks/voicebench/run.sh --profile=elevenlabs \
-  --dataset=packages/benchmarks/voicebench/fixtures/manifest-elevenlabs.json
+voicebench/run.sh --profile=elevenlabs \
+  --dataset=voicebench/fixtures/manifest-elevenlabs.json
 ```
 
 ### Running on GPU (single-GPU tier)

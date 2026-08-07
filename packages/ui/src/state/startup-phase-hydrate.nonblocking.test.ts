@@ -1,3 +1,4 @@
+/** Verifies runHydrating — non-blocking first-load (F2) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

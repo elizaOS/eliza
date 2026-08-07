@@ -1,3 +1,4 @@
+/** Verifies ChatWidgetHarness through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";

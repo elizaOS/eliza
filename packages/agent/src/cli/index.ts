@@ -75,12 +75,8 @@ export async function runAutonomousCli(
       const { installProcessCrashGuards } = await import("@elizaos/shared");
       installProcessCrashGuards({ onUncaughtException: "restart" });
     }
-    const keepAlive = setInterval(() => {}, 1 << 30);
-    const { startEliza } = await import("../runtime/index.ts");
-    const runtime = await startEliza({ serverOnly: true }).catch((error) => {
-      clearInterval(keepAlive);
-      throw error;
-    });
+    const { startElizaProcess } = await import("../runtime/index.ts");
+    const runtime = await startElizaProcess({ serverOnly: true });
     // AOSP-only post-boot wiring. The upstream `startEliza` does not
     // register local-inference handlers — that lives in the
     // `@elizaos/app-core` runtime wrapper, which the mobile agent
@@ -91,7 +87,7 @@ export async function runAutonomousCli(
     // `ELIZA_LOCAL_LLAMA !== "1"`.
     if (runtime && process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
       const { ensureAospLocalInferenceHandlers } = await import(
-        "@elizaos/plugin-aosp-local-inference"
+        "@elizaos/plugin-native-inference"
       );
       await ensureAospLocalInferenceHandlers(runtime);
     } else if (

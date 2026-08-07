@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for ensure electrobun core mjs. */
+/**
+ * Ensures the Electrobun core binary for a target os/arch is present in the
+ * workspace, downloading it when missing; --check verifies presence without
+ * downloading.
+ */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

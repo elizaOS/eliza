@@ -45,10 +45,6 @@ export async function startAutonomousTick(
 
 	const envState: EnvironmentState = {
 		timestamp: Date.now(),
-		agentBalance: 0,
-		agentPoints: 0,
-		agentPnL: 0,
-		openPositions: 0,
 	};
 
 	trajectoryLogger.startStep(trajectoryId, envState);
@@ -114,8 +110,12 @@ export async function loggedLLMCall(
 		userPrompt: options.userPrompt,
 		response: result.text,
 		reasoning: result.reasoning,
-		temperature: options.temperature || 0.7,
-		maxTokens: options.maxTokens || 8192,
+		...(options.temperature !== undefined
+			? { temperature: options.temperature }
+			: {}),
+		...(options.maxTokens !== undefined
+			? { maxTokens: options.maxTokens }
+			: {}),
 		purpose: options.purpose || "action",
 		actionType: options.actionType,
 		promptTokens: result.tokens?.prompt,

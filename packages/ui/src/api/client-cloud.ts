@@ -63,41 +63,19 @@ import type {
   SandboxStartResponse,
   SandboxWindowInfo,
 } from "./client-types";
+import {
+  DEFAULT_DIRECT_CLOUD_BASE_URL,
+  DIRECT_ELIZA_CLOUD_API_BY_HOST,
+  resolveDirectCloudAuthApiBase,
+  resolveDirectCloudWebBase,
+} from "./direct-cloud-endpoints";
 
 // ---------------------------------------------------------------------------
 // Module-level constants
 // ---------------------------------------------------------------------------
 
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
-const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://elizacloud.ai";
-const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
-const STAGING_DIRECT_CLOUD_BASE_URL = "https://staging.elizacloud.ai";
-const STAGING_DIRECT_CLOUD_API_BASE_URL = "https://api-staging.elizacloud.ai";
 const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 15_000;
-const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
-  ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
-  ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
-  ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
-  ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
-  ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
-  ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
-  ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
-  ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
-]);
-// Also normalizes non-API site hosts (www/app/dev -> apex): a browser
-// navigation must never be pointed through the API worker or www redirect edge.
-// The former serves JSON that mobile Safari can download as document.txt; the
-// latter adds the redirect hop the owner capture attributed to www (#15143).
-const DIRECT_ELIZA_CLOUD_WEB_BY_HOST = new Map([
-  ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
-  ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
-  ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
-  ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
-  ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
-  ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
-  ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
-  ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
-]);
 
 type DirectCloudAgent = {
   id?: string;
@@ -425,28 +403,10 @@ function resolveBrowserCloudApiRequestUrl(url: string): string {
  * base, which can be an API host whose JSON responses mobile browsers download
  * as files instead of rendering (#15143).
  */
-export function resolveDirectCloudWebBase(cloudBase: string): string {
-  const normalized = cloudBase.replace(/\/+$/, "");
-  try {
-    const host = new URL(normalized).hostname.toLowerCase();
-    return DIRECT_ELIZA_CLOUD_WEB_BY_HOST.get(host) ?? normalized;
-  } catch {
-    // Fall back to the provided base below.
-  }
-  return normalized;
-}
-
-export function resolveDirectCloudAuthApiBase(cloudBase: string): string {
-  const normalized = cloudBase.replace(/\/+$/, "");
-  try {
-    const url = new URL(normalized);
-    const host = url.hostname.toLowerCase();
-    return DIRECT_ELIZA_CLOUD_API_BY_HOST.get(host) ?? normalized;
-  } catch {
-    // Fall back to the provided base below.
-  }
-  return normalized;
-}
+export {
+  resolveDirectCloudAuthApiBase,
+  resolveDirectCloudWebBase,
+} from "./direct-cloud-endpoints";
 
 function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   const baseUrl = client.getBaseUrl().trim();
@@ -3464,16 +3424,22 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
           // "it creates multiple agents" report. Only an authoritative success
           // list may conclude the user has no agent to reuse; otherwise surface
           // the error so the caller can retry rather than duplicate.
-          return await this.getCloudCompatAgents().catch((cause) => ({
+          return await this.getCloudCompatAgents().catch((cause: unknown) => ({
             success: false as const,
             data: [] as CloudCompatAgent[],
             error: cause instanceof Error ? cause.message : undefined,
+            cause,
           }));
         })();
     if (!list.success) {
+      // Keep the original rejection on the cause chain: callers (the join
+      // flow's stale-binding recovery) classify the structural agent-gone
+      // shape by status/code via `isCloudAgentGoneError`, which the flattened
+      // message alone cannot carry.
       throw new Error(
         list.error ||
           "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
+        { cause: "cause" in list ? list.cause : undefined },
       );
     }
     // Dedicated mode must not bind a temporary shared bridge as if it were a

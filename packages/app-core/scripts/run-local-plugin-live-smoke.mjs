@@ -1,15 +1,21 @@
-/** Supports app-core build, packaging, or development orchestration for run local plugin live smoke mjs. */
+/**
+ * Runs the plugin-lifecycle live E2E against the local plugin the caller's cwd
+ * points at: checks plugins.json membership and that prerequisite runtime
+ * packages are built, then invokes vitest with the live-e2e config.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-// Script lives at eliza/packages/app-core/scripts/ — repo root is 4 levels up.
-const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+// Script lives at packages/app-core/scripts/ — repository root is 3 levels up.
+const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..");
 const cwd = path.resolve(process.cwd());
-const pluginsManifestPath = path.join(repoRoot, "plugins.json");
+const pluginsManifestCandidates = [
+  path.join(repoRoot, "plugins.json"),
+  path.join(path.dirname(repoRoot), "plugins.json"),
+];
 const liveTestPath = path.join(
   repoRoot,
-  "eliza",
   "packages",
   "app-core",
   "test",
@@ -18,12 +24,12 @@ const liveTestPath = path.join(
 );
 const vitestConfigPath = path.join(
   repoRoot,
-  "eliza/packages/test/vitest/live-e2e.config.ts",
+  "packages/scripts/vitest/live-e2e.config.ts",
 );
 const runtimePackageBuildPrerequisites = [
   {
     name: "@elizaos/agent",
-    packageRoot: path.join(repoRoot, "eliza", "packages", "agent"),
+    packageRoot: path.join(repoRoot, "packages", "agent"),
     requiredPaths: [
       path.join("dist", "index.js"),
       path.join("dist", "services", "app-package-modules.js"),
@@ -34,14 +40,13 @@ const runtimePackageBuildPrerequisites = [
   },
   {
     name: "@elizaos/app-core",
-    packageRoot: path.join(repoRoot, "eliza", "packages", "app-core"),
+    packageRoot: path.join(repoRoot, "packages", "app-core"),
     requiredPaths: [path.join("dist", "index.js")],
   },
   {
     name: "@elizaos/plugin-personal-assistant",
     packageRoot: path.join(
       repoRoot,
-      "eliza",
       "plugins",
       "plugin-personal-assistant",
     ),
@@ -68,9 +73,6 @@ function derivePluginId(name) {
 
 function resolvePackageRoot(dirName) {
   const candidates = [
-    path.join(repoRoot, "eliza", "plugins", dirName, "typescript"),
-    path.join(repoRoot, "eliza", "plugins", dirName),
-    path.join(repoRoot, "eliza", "packages", dirName),
     path.join(repoRoot, "plugins", dirName, "typescript"),
     path.join(repoRoot, "plugins", dirName),
     path.join(repoRoot, "packages", dirName),
@@ -86,11 +88,16 @@ function resolvePackageRoot(dirName) {
 }
 
 function resolvePluginCandidates() {
-  if (!fs.existsSync(pluginsManifestPath)) {
-    return [];
+  let manifest;
+  for (const manifestPath of pluginsManifestCandidates) {
+    if (!fs.existsSync(manifestPath)) continue;
+    const candidate = readJson(manifestPath);
+    if (Array.isArray(candidate.plugins) && candidate.plugins.length > 0) {
+      manifest = candidate;
+      break;
+    }
   }
-
-  const manifest = readJson(pluginsManifestPath);
+  if (!manifest) return [];
   const candidates = [];
 
   for (const plugin of manifest.plugins ?? []) {
@@ -226,8 +233,8 @@ const result = spawnSync(
     "vitest",
     "run",
     "--config",
-    "eliza/packages/test/vitest/live-e2e.config.ts",
-    "eliza/packages/app-core/test/live-agent/plugin-lifecycle.live.e2e.test.ts",
+    "packages/scripts/vitest/live-e2e.config.ts",
+    "packages/app-core/test/live-agent/plugin-lifecycle.live.e2e.test.ts",
   ],
   {
     cwd: repoRoot,

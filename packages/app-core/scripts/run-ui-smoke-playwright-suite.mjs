@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for run ui smoke playwright suite mjs. */
+/**
+ * Launches the app package's UI-smoke Playwright runner
+ * (scripts/run-ui-playwright.mjs), resolving the app dir across repo layouts
+ * and reserving free localhost ports for the stub API and UI before spawning.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";

@@ -202,6 +202,19 @@ the app UID; ordinary apps cannot reach the unexported receiver. The private
 state survives reboot and in-place update, but correctly disappears on app
 data clear or uninstall. Unknown actions are ignored.
 
+The direct debug APK can also use an adb-reversed Mac runtime without weakening
+the Cloud/Play network policy. Its isolated debug source set permits cleartext
+only for `127.0.0.1` and `localhost`; the base policy remains deny-by-default.
+Use a phone-side port other than `31337`, because that port is the canonical
+identity of the bundled Android agent:
+
+```bash
+adb reverse tcp:31338 tcp:31337
+adb shell am start -W -a android.intent.action.VIEW \
+  -d 'elizaos://first-run/runtime/remote?api=http%3A%2F%2F127.0.0.1%3A31338' \
+  ai.elizaos.app
+```
+
 When all gates pass, a low-importance ongoing notification makes the lifecycle
 honest and lets the service observe only Android's two daltonizer keys. It
 writes `accessibility_display_daltonizer_enabled=0` and
@@ -275,9 +288,11 @@ usage stats, MediaProjection/SurfaceControl screen capture, Accessibility
 input control, and the AOSP-only accessibility and notification-listener
 service declarations.
 
-The release APK is staged at
-`<repoRoot>/packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk` (or
-the brand-aware vendor dir resolved from `app.config.ts > aosp:`).
+The release APK is staged into the `elizaOS/os` checkout at
+`$ELIZAOS_OS_REPO_ROOT/packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk`
+(or the brand-aware vendor dir resolved from `app.config.ts > aosp:`). When the
+environment variable is unset, the build uses a sibling `../os` checkout.
+
 ## Pinned debug signing key
 
 Debug APKs use one repository-managed, non-production signing key so `adb install -r` works across CI and local rebuilds. Debug keystores are public development credentials, not release secrets. The release signing path remains separate and secret-backed.

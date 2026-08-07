@@ -174,6 +174,7 @@ describe("DocumentService — batched fragment embedding (TEXT_EMBEDDING_BATCH)"
 	test("batch returns the wrong vector count → falls back to serial (no fragment left unembedded)", async () => {
 		let batchCalls = 0;
 		let serialEmbedCalls = 0;
+		const reportedErrors: unknown[] = [];
 		const captured: Captured = { fragments: [], documents: [] };
 
 		const runtime = createMockRuntime({
@@ -195,6 +196,9 @@ describe("DocumentService — batched fragment embedding (TEXT_EMBEDDING_BATCH)"
 				memory.embedding = vecOf(memory.content.text ?? "");
 				return memory;
 			},
+			reportError: (_scope, error) => {
+				reportedErrors.push(error);
+			},
 		});
 
 		const service = new DocumentService(runtime);
@@ -204,6 +208,7 @@ describe("DocumentService — batched fragment embedding (TEXT_EMBEDDING_BATCH)"
 		// Batch was attempted exactly once, then abandoned for the serial path.
 		expect(batchCalls).toBe(1);
 		expect(serialEmbedCalls).toBe(captured.fragments.length);
+		expect(reportedErrors).toHaveLength(1);
 		// No fragment left unembedded; each carries the vector for its own text.
 		for (const fragment of captured.fragments) {
 			expect(fragment.embedding).toBeDefined();

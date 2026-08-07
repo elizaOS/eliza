@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for ensure bundled workspaces mjs. */
+/**
+ * Postinstall guard that builds the workspace plugins whose dist artifacts
+ * downstream packaging consumes directly (currently
+ * @elizaos/plugin-agent-skills), building each only when its artifact is
+ * missing or older than its manifest.
+ */
 
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";

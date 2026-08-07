@@ -52,6 +52,12 @@ export interface AgentLifecycleRouteContext
   onRestart?: (() => Promise<AgentRuntime | null>) | undefined;
   /** Post-swap rewiring (streams, model broadcast) — mirrors the restart route. */
   onRuntimeSwapped?: (() => void) | undefined;
+  onRuntimeActivated?:
+    | ((
+        previousRuntime: AgentRuntime | null,
+        activeRuntime: AgentRuntime,
+      ) => void | Promise<void>)
+    | undefined;
 }
 
 type AutonomyToggleService = {
@@ -112,6 +118,7 @@ export async function handleAgentLifecycleRoutes(
       state.agentState = "starting";
       state.startedAt = Date.now();
       try {
+        const previousRuntime = state.runtime;
         const booted = await ctx.onRestart();
         if (!booted) {
           state.agentState = "error";
@@ -125,6 +132,7 @@ export async function handleAgentLifecycleRoutes(
         state.model = detectRuntimeModel(booted);
         state.startedAt = Date.now();
         ctx.onRuntimeSwapped?.();
+        await ctx.onRuntimeActivated?.(previousRuntime, booted);
       } catch (err) {
         // error-policy:J1 boundary translation — the boot failure becomes a
         // structured 500 + reported state "error"; never a fake "running".

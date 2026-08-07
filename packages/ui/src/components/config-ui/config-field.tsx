@@ -41,7 +41,7 @@ export function ConfigField({
           : `field-${renderProps.key}`
       }
       className={`py-2.5 group/field ${
-        renderProps.readonly ? "opacity-50 pointer-events-none" : ""
+        renderProps.readonly ? "pointer-events-none" : ""
       } ${isRequiredEmpty ? "relative" : ""}`}
     >
       {/* Required-but-empty accent bar */}

@@ -4,14 +4,45 @@
  */
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const require = createRequire(import.meta.url);
+const here = path.dirname(fileURLToPath(import.meta.url));
+const elizaRoot = path.resolve(here, "../..");
+const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
+const vaultSrc = path.join(elizaRoot, "packages", "vault", "src");
+const baseAliases = Array.isArray(baseConfig.resolve?.alias)
+  ? baseConfig.resolve.alias
+  : [];
 
 export default defineConfig({
+  ...baseConfig,
   resolve: {
+    ...baseConfig.resolve,
     // Pin one React copy so jsdom view tests do not mix workspace and hoisted peers.
     alias: [
+      {
+        find: /^@elizaos\/plugin-elizacloud\/cloud\/managed-payment-clients$/,
+        replacement: path.join(
+          here,
+          "../plugin-elizacloud/src/cloud/managed-payment-clients.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: path.join(uiSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.join(uiSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/vault$/,
+        replacement: path.join(vaultSrc, "index.ts"),
+      },
+      ...baseAliases,
       {
         find: /^react$/,
         replacement: path.dirname(require.resolve("react/package.json")),
@@ -35,6 +66,7 @@ export default defineConfig({
     ],
   },
   test: {
+    ...baseConfig.test,
     // .test.ts run in the default node environment. View component tests live in
     // .test.tsx files and opt into jsdom via a `// @vitest-environment jsdom`
     // docblock at the top of each file.

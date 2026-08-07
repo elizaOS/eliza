@@ -1,3 +1,4 @@
+/** Verifies MessageContent slash-command bolding through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // A user message that is a slash command renders the leading `/command` token

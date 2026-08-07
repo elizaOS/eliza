@@ -18,7 +18,6 @@ describe("invite tokens", () => {
   });
 
   test("hashInviteToken is a deterministic SHA-256 hex (known-answer)", () => {
-    expect(hashInviteToken("token-abc")).toBe(hashInviteToken("token-abc"));
     expect(hashInviteToken("token-abc")).toMatch(/^[0-9a-f]{64}$/);
     // NIST SHA-256("abc") — proves it is really SHA-256, not some other digest.
     expect(hashInviteToken("abc")).toBe(

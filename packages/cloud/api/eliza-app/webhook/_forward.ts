@@ -297,6 +297,31 @@ async function validateLocalWebhookSignature(
   return { body };
 }
 
+/**
+ * Meta verifies a WhatsApp callback URL by calling it with a `GET` carrying
+ * `hub.mode=subscribe`, `hub.verify_token` and `hub.challenge`, and no
+ * signature header — there is no body to sign. Running the HMAC check on that
+ * request can therefore only ever fail, which is what made the callback URL
+ * impossible to register: Meta's challenge was answered 401 before it was read.
+ *
+ * The handshake carries its own credential. The gateway compares
+ * `hub.verify_token` against the token configured for the project (or the
+ * agent) and echoes the challenge, so skipping the body signature here removes
+ * a check that proves nothing and leaves the one that does.
+ */
+function isWhatsAppVerificationHandshake(
+  c: AppContext,
+  platform: GatewayPlatform,
+): boolean {
+  return (
+    platform === "whatsapp" &&
+    c.req.method === "GET" &&
+    c.req.query("hub.mode") === "subscribe" &&
+    Boolean(c.req.query("hub.verify_token")) &&
+    Boolean(c.req.query("hub.challenge"))
+  );
+}
+
 interface ForwardOptions {
   body?: BodyInit | null;
 }
@@ -398,8 +423,14 @@ export async function forwardToWebhookGateway(
     );
   }
 
-  const validation = await validateLocalWebhookSignature(c, platform);
-  if (validation.response) return validation.response;
+  let signedBody: string | undefined;
+  if (isWhatsAppVerificationHandshake(c, platform)) {
+    logger.info("[ElizaAppWebhook] forwarding WhatsApp verification handshake");
+  } else {
+    const validation = await validateLocalWebhookSignature(c, platform);
+    if (validation.response) return validation.response;
+    signedBody = validation.body;
+  }
 
   const project =
     readStringEnv(c, ["ELIZA_APP_WEBHOOK_PROJECT"]) ?? "eliza-app";
@@ -410,7 +441,7 @@ export async function forwardToWebhookGateway(
 
   return proxyRequest(c, target, "webhook gateway", {
     ...options,
-    body: options.body ?? validation.body,
+    body: options.body ?? signedBody,
     stampGatewaySecret: true,
   });
 }

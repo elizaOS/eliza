@@ -95,19 +95,18 @@ describe("sendDraft outboundDraftOptionsFromMessage — structured extraction wi
 		});
 	});
 
-	it("degrades gracefully (no guessed fields) when the model call fails", async () => {
+	it("surfaces a model failure instead of treating it as missing user input", async () => {
 		const useModel = vi.fn().mockRejectedValue(new Error("model unavailable"));
 		const runtime = { useModel } as unknown as IAgentRuntime;
 
-		const out = await outboundDraftOptionsFromMessage(
-			runtime,
-			msg("send something to someone"),
-			undefined,
-		);
+		await expect(
+			outboundDraftOptionsFromMessage(
+				runtime,
+				msg("send something to someone"),
+				undefined,
+			),
+		).rejects.toThrow("model unavailable");
 
 		expect(useModel).toHaveBeenCalledTimes(1);
-		expect(out?.parameters?.source).toBeUndefined();
-		expect(out?.parameters?.body).toBeUndefined();
-		expect(out?.parameters?.to).toBeUndefined();
 	});
 });

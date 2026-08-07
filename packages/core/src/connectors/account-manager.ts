@@ -1137,15 +1137,9 @@ function ownerBindingKey(
 
 function resolveStorage(runtime?: IAgentRuntime): ConnectorAccountStorage {
 	if (runtime && typeof runtime.getService === "function") {
-		try {
-			const service = runtime.getService(
-				CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
-			);
-			if (isConnectorAccountStorage(service)) {
-				return service;
-			}
-		} catch {
-			// Fall through to in-memory fallback.
+		const service = runtime.getService(CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE);
+		if (isConnectorAccountStorage(service)) {
+			return service;
 		}
 		const adapter = (runtime as { adapter?: unknown }).adapter;
 		if (isConnectorAccountDatabaseAdapter(adapter)) {
@@ -1406,10 +1400,20 @@ export class ConnectorAccountManager extends Service {
 				this,
 			);
 		} catch (err) {
-			await this.storage.updateOAuthFlow(providerId, flow.id, {
-				status: "failed",
-				error: err instanceof Error ? err.message : String(err),
-			});
+			// error-policy:J2 Persist the explicit failed OAuth state before
+			// preserving the provider failure.
+			try {
+				await this.storage.updateOAuthFlow(providerId, flow.id, {
+					status: "failed",
+					error: err instanceof Error ? err.message : String(err),
+				});
+			} catch (persistenceError) {
+				// error-policy:J2 Preserve both the OAuth and state-write failures.
+				throw new AggregateError(
+					[err, persistenceError],
+					`OAuth start and failure-state persistence failed for ${providerId}`,
+				);
+			}
 			throw err;
 		}
 		const updated = await this.storage.updateOAuthFlow(providerId, flow.id, {
@@ -1636,21 +1640,17 @@ export function getConnectorAccountManager(
 	storage?: ConnectorAccountStorage,
 ): ConnectorAccountManager {
 	if (runtime) {
-		try {
-			const service = runtime.getService(CONNECTOR_ACCOUNT_SERVICE_TYPE);
-			if (service instanceof ConnectorAccountManager) {
-				if (storage) service.setStorage(storage);
-				return service;
-			}
-			if (
-				service &&
-				"registerProvider" in service &&
-				"evaluatePolicy" in service
-			) {
-				return service as ConnectorAccountManager;
-			}
-		} catch {
-			// Fall through to per-runtime manager.
+		const service = runtime.getService(CONNECTOR_ACCOUNT_SERVICE_TYPE);
+		if (service instanceof ConnectorAccountManager) {
+			if (storage) service.setStorage(storage);
+			return service;
+		}
+		if (
+			service &&
+			"registerProvider" in service &&
+			"evaluatePolicy" in service
+		) {
+			return service as ConnectorAccountManager;
 		}
 
 		const existing = runtimeManagers.get(runtime);

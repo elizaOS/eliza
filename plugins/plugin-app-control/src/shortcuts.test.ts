@@ -16,8 +16,18 @@ const MATCH_CONTEXT = {
 } as const;
 
 describe("viewNavigationShortcuts (#8791)", () => {
-	it("are registered on the app-control plugin", () => {
-		expect(appControlPlugin.shortcuts).toEqual(viewNavigationShortcuts);
+	it("remain compatibility exports but are not registered ahead of the model", () => {
+		expect(appControlPlugin.shortcuts ?? []).toEqual([]);
+		expect(
+			appControlPlugin.responseHandlerEvaluators?.map(
+				(evaluator) => evaluator.name,
+			),
+		).not.toContain("app-control.view-command-shortcut");
+		expect(
+			appControlPlugin.responseHandlerEvaluators?.map(
+				(evaluator) => evaluator.name,
+			),
+		).not.toContain("app-control.view-followup-routing");
 	});
 
 	it("resolves explicit typed and ASR-normalized view navigation to VIEWS", () => {
@@ -25,9 +35,11 @@ describe("viewNavigationShortcuts (#8791)", () => {
 			"open settings",
 			"open notes",
 			"go home",
+			"go back",
 			"return to the main screen",
 			"open the home dashboard",
 			"show me my calendar",
+			"open calender",
 			"hey can you open settings please",
 			"open app builder",
 			"check my messages",
@@ -71,6 +83,16 @@ describe("viewNavigationShortcuts (#8791)", () => {
 		).toBeNull();
 		expect(
 			matchShortcut(viewNavigationShortcuts, "tell me a joke", MATCH_CONTEXT),
+		).toBeNull();
+		expect(
+			matchShortcut(viewNavigationShortcuts, "back", MATCH_CONTEXT),
+		).toBeNull();
+		expect(
+			matchShortcut(
+				viewNavigationShortcuts,
+				"go back over the paragraph",
+				MATCH_CONTEXT,
+			),
 		).toBeNull();
 	});
 });

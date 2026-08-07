@@ -4,7 +4,7 @@
  * reconnect across restarts. Owned by BaileysConnection / BaileysClient.
  */
 import type { AuthenticationState } from "@whiskeysockets/baileys";
-import { useMultiFileAuthState } from "@whiskeysockets/baileys";
+import { useMultiFileAuthState as loadMultiFileAuthState } from "@whiskeysockets/baileys";
 
 export class BaileysAuthManager {
   private readonly authDir: string;
@@ -16,7 +16,7 @@ export class BaileysAuthManager {
   }
 
   async initialize(): Promise<AuthenticationState> {
-    const result = await useMultiFileAuthState(this.authDir);
+    const result = await loadMultiFileAuthState(this.authDir);
     this.state = result.state;
     this.saveCreds = result.saveCreds;
     return this.state;

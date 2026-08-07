@@ -1,3 +1,4 @@
+/** Verifies SandboxedViewFrame — real isolation path (#14180) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // The REAL sandboxed-iframe isolation path (#14180). Mounts the actual

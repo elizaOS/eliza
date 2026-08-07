@@ -23,6 +23,7 @@ import {
 	type User,
 } from "discord.js";
 import { isDiscordUserAddressed } from "./addressing";
+import { DISCORD_SERVICE_NAME } from "./constants";
 import { type ChannelDebouncer, createChannelDebouncer } from "./debouncer";
 import {
 	getDiscordMessageCoalesceConfig,
@@ -34,6 +35,7 @@ import {
 	diffRolePermissions,
 	fetchAuditEntry,
 } from "./permissionEvents";
+import { waitForDiscordIngressReadiness } from "./readiness";
 import type { DiscordService } from "./service";
 import {
 	handleAutocomplete as handleBuiltinAutocomplete,
@@ -69,6 +71,7 @@ export interface DiscordServiceInternals {
 	allowAllSlashCommands: Set<string>;
 	slashCommands: DiscordSlashCommand[];
 	timeouts: ReturnType<typeof setTimeout>[];
+	clientReadyPromise?: Promise<void> | null;
 
 	// Methods
 	isChannelAllowed(channelId: string): boolean;
@@ -334,6 +337,25 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					isBot: message.author.bot,
 				},
 				"Ignoring message from bot or self",
+			);
+			return;
+		}
+
+		// `messageCreate` may arrive as soon as the gateway reports ClientReady,
+		// while the async ready sequence is still hydrating canonical owner aliases.
+		// Gate every ingress branch here, including listen-only ingestion, and keep
+		// the MessageManager gate as defense for direct/replay callers.
+		try {
+			await waitForDiscordIngressReadiness(service.clientReadyPromise);
+		} catch (error) {
+			service.runtime.reportError(
+				"discord:gateway-message-before-ready",
+				error,
+				{
+					accountId,
+					messageId: message.id,
+					channelId: message.channel.id,
+				},
 			);
 			return;
 		}
@@ -641,6 +663,23 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					"Error handling Discord autocomplete interaction",
 				);
 			}
+			return;
+		}
+
+		// Commands, modals, and components can enter the same privileged runtime
+		// paths as messages. Do not let them race canonical owner hydration either.
+		try {
+			await waitForDiscordIngressReadiness(service.clientReadyPromise);
+		} catch (error) {
+			service.runtime.reportError(
+				`${DISCORD_SERVICE_NAME}:gateway-interaction-before-ready`,
+				error,
+				{
+					accountId,
+					interactionId: interaction.id,
+					interactionType: interaction.type,
+				},
+			);
 			return;
 		}
 
@@ -1154,6 +1193,55 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			}
 		});
 	} // end if (isAuditLogEnabled)
+
+	// ── gateway shard lifecycle ────────────────────────────────────────
+	// Observability only. A live incident (2026-08-02 04:01 UTC) lost a
+	// MESSAGE_CREATE dispatch with zero process-side evidence: no ingress
+	// log, no memory, no trajectory — the connection was delivering events
+	// 39s before and 31s after. Without these handlers a silent zombie
+	// resume/re-identify that drops a dispatch is unattributable; with them,
+	// any recurrence carries a shard-lifecycle timestamp to correlate.
+	// Deliberately no recovery/backfill here — replaying missed history has
+	// duplicate-delivery risk and stays gated on an attributed recurrence.
+	service.client.on("shardDisconnect", (event, shardId) => {
+		service.runtime.logger.warn(
+			{
+				src: "plugin:discord",
+				agentId: service.runtime.agentId,
+				shardId,
+				code: event?.code,
+			},
+			"Gateway shard disconnected",
+		);
+	});
+	service.client.on("shardResume", (shardId, replayedEvents) => {
+		service.runtime.logger.warn(
+			{
+				src: "plugin:discord",
+				agentId: service.runtime.agentId,
+				shardId,
+				replayedEvents,
+			},
+			"Gateway shard resumed",
+		);
+	});
+	service.client.on("shardError", (error, shardId) => {
+		service.runtime.logger.warn(
+			{
+				src: "plugin:discord",
+				agentId: service.runtime.agentId,
+				shardId,
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Gateway shard error",
+		);
+	});
+	service.client.on("invalidated", () => {
+		service.runtime.logger.error(
+			{ src: "plugin:discord", agentId: service.runtime.agentId },
+			"Gateway session invalidated — client will not auto-reconnect",
+		);
+	});
 
 	return { channelDebouncer };
 }

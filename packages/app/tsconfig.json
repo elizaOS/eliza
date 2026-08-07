@@ -16,41 +16,16 @@
       ],
       "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
       "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
-      "@elizaos/plugin-vector-browser/register": [
-        "../../plugins/plugin-vector-browser/src/register.ts"
-      ],
-      "@elizaos/plugin-shopify": ["../../plugins/plugin-shopify/src/index.ts"],
-      "@elizaos/plugin-training": [
-        "../../plugins/plugin-training/src/index.ts"
-      ],
-      "@elizaos/plugin-wallet-ui": [
-        "../../plugins/plugin-wallet-ui/src/index.ts"
+      "@elizaos/plugin-wallet/ui": [
+        "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../../plugins/plugin-capacitor-bridge/src/index.ts"
-      ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../../plugins/plugin-capacitor-bridge/src/*"
-      ],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
-      ],
-      "@elizaos/plugin-local-inference": [
-        "../../plugins/plugin-local-inference/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/runtime": [
-        "../../plugins/plugin-local-inference/src/runtime/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/routes": [
-        "../../plugins/plugin-local-inference/src/routes/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/services": [
-        "../../plugins/plugin-local-inference/src/services/index.ts"
       ],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
@@ -71,7 +46,9 @@
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
+      "@elizaos/plugin-google-workspace": [
+        "../../plugins/plugin-google-workspace/src/index.ts"
+      ],
       "@elizaos/plugin-telegram": [
         "../../plugins/plugin-telegram/src/index.ts"
       ],
@@ -79,6 +56,33 @@
       "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
+      "react": ["../../node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
+      "react/jsx-dev-runtime": [
+        "../../node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
+      "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/runtime": [
+        "../../plugins/plugin-local-inference/src/runtime/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/routes": [
+        "../../plugins/plugin-local-inference/src/routes/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/services": [
+        "../../plugins/plugin-local-inference/src/services/index.ts"
+      ],
       "@elizaos/capacitor-agent": [
         "../../plugins/plugin-native-agent/src/index.ts"
       ],
@@ -114,23 +118,7 @@
       ],
       "@elizaos/capacitor-websiteblocker": [
         "../../plugins/plugin-native-websiteblocker/src/index.ts"
-      ],
-      "@elizaos/ui": ["../ui/src/index.ts"],
-      "@elizaos/ui/*": ["../ui/src/*"],
-      "@elizaos/import-conversations": ["../import-conversations/src/index.ts"],
-      "@elizaos/import-conversations/*": ["../import-conversations/src/*"],
-      "@elizaos/import-conversations/browser": [
-        "../import-conversations/src/browser.ts"
-      ],
-      "@elizaos/cloud-ui": ["../cloud-ui/src/index.ts"],
-      "@elizaos/cloud-ui/*": ["../cloud-ui/src/*"],
-      "react": ["../../node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
-      "react/jsx-dev-runtime": [
-        "../../node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ],
-      "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
-      "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"]
+      ]
     }
   }
 }

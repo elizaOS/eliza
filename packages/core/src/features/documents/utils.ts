@@ -43,17 +43,21 @@ export async function extractTextFromFileBuffer(
 			const result = await mammoth.extractRawText({ buffer: fileBuffer });
 			return result.value;
 		} catch (docxError) {
+			// error-policy:J2 Add document identity while preserving the parser cause.
 			const errorMessage =
 				docxError instanceof Error ? docxError.message : String(docxError);
 			throw new Error(
 				`Failed to parse DOCX file ${originalFilename}: ${errorMessage}`,
+				{ cause: docxError },
 			);
 		}
 	} else if (
 		lowerContentType === "application/msword" ||
 		originalFilename.toLowerCase().endsWith(".doc")
 	) {
-		return `[Microsoft Word Document: ${originalFilename}]\n\nThis document was indexed for search but cannot be displayed directly in the browser. The original document content is preserved for retrieval purposes.`;
+		throw new Error(
+			`Legacy Microsoft Word documents are not supported: ${originalFilename}`,
+		);
 	} else if (
 		lowerContentType.startsWith("text/") ||
 		PLAIN_TEXT_CONTENT_TYPES.includes(lowerContentType)
@@ -84,9 +88,11 @@ export async function extractTextFromFileBuffer(
 				);
 			}
 			return textContent;
-		} catch (_fallbackError) {
+		} catch (fallbackError) {
+			// error-policy:J2 Preserve the failed UTF-8 validation as the cause.
 			throw new Error(
 				`Unsupported content type: ${contentType} for ${originalFilename}. Fallback to plain text failed`,
+				{ cause: fallbackError },
 			);
 		}
 	}
@@ -109,7 +115,7 @@ export async function convertPdfToTextFromBuffer(
 		});
 
 		if (result.text.trim().length === 0) {
-			return "";
+			throw new Error("PDF contained no extractable text");
 		}
 
 		const cleanedText = result.text
@@ -121,8 +127,11 @@ export async function convertPdfToTextFromBuffer(
 
 		return cleanedText;
 	} catch (error) {
+		// error-policy:J2 Preserve the PDF parser failure as the conversion cause.
 		const errorMessage = error instanceof Error ? error.message : String(error);
-		throw new Error(`Failed to convert PDF to text: ${errorMessage}`);
+		throw new Error(`Failed to convert PDF to text: ${errorMessage}`, {
+			cause: error,
+		});
 	}
 }
 
@@ -394,6 +403,8 @@ export function normalizeS3Url(url: string): string {
 		const urlObj = new URL(url);
 		return `${urlObj.origin}${urlObj.pathname}`;
 	} catch {
+		// error-policy:J3 URL normalization accepts untrusted strings; malformed
+		// input remains explicitly unchanged rather than partially rewritten.
 		return url;
 	}
 }
@@ -431,15 +442,11 @@ export function generateContentBasedId(
 	let contentForHashing: string;
 
 	if (looksLikeBase64(content)) {
-		try {
-			const decoded = Buffer.from(content, "base64").toString("utf8");
-			if (!decoded.includes("\ufffd") || contentType?.includes("pdf")) {
-				contentForHashing = content.slice(0, maxChars);
-			} else {
-				contentForHashing = decoded.slice(0, maxChars);
-			}
-		} catch {
+		const decoded = Buffer.from(content, "base64").toString("utf8");
+		if (decoded.includes("\ufffd") || contentType?.includes("pdf")) {
 			contentForHashing = content.slice(0, maxChars);
+		} else {
+			contentForHashing = decoded.slice(0, maxChars);
 		}
 	} else {
 		contentForHashing = content.slice(0, maxChars);

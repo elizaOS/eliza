@@ -5,7 +5,6 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,6 +15,7 @@ import {
   verifyReleaseCandidate,
 } from "../lib/release-candidate.mjs";
 import { stableStringify } from "../lib/release-contract.mjs";
+import { execFileSync } from "../lib/spawn-sync-captured.mjs";
 import { main as candidateMain } from "../release-candidate.mjs";
 
 const roots: string[] = [];

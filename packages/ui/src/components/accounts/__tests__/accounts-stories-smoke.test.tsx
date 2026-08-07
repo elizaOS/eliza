@@ -1,3 +1,4 @@
+/** Verifies accounts stories smoke through the package's configured test harness. */
 // @vitest-environment jsdom
 /** jsdom smoke gate: renders every accounts/ Storybook story and asserts it mounts without throwing. */
 import { smokeStoryModules } from "../../../../test/portable-stories";

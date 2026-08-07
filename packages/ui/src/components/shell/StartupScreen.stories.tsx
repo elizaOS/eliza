@@ -4,6 +4,8 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp, withMockApp } from "../../storybook/mock-providers.helpers";
+import { PairingView } from "./PairingView";
+import { StartupFailureView } from "./StartupFailureView";
 import { StartupScreen } from "./StartupScreen";
 import { StartupShell } from "./StartupShell";
 import type { StartupShellView } from "./startup-shell-types";
@@ -63,6 +65,56 @@ export const Loading: Story = {
   ),
 };
 
+const loadingPhaseStory = (phase: string, status: string): Story => ({
+  play: waitForSplash,
+  render: () => <ShellStory view={{ kind: "loading", phase, status }} />,
+});
+
+export const RestoringSession = loadingPhaseStory(
+  "restoring-session",
+  "Restoring your session…",
+);
+
+export const ResolvingTarget = loadingPhaseStory(
+  "resolving-target",
+  "Finding your agent…",
+);
+
+export const StartingRuntime = loadingPhaseStory(
+  "starting-runtime",
+  "Starting your agent…",
+);
+
+export const HydratingWorkspace = loadingPhaseStory(
+  "hydrating",
+  "Preparing your workspace…",
+);
+
+export const LongTranslationLargeText: Story = {
+  ...loadingPhaseStory(
+    "polling-backend",
+    "Connecting securely to your agent and preparing everything you need for this conversation…",
+  ),
+  decorators: [
+    (Story) => (
+      <div style={{ fontSize: "125%" }}>
+        <Story />
+      </div>
+    ),
+  ],
+};
+
+export const DarkReducedMotion: Story = {
+  ...loadingPhaseStory("starting-runtime", "Starting your agent…"),
+  decorators: [
+    (Story) => (
+      <div className="dark motion-reduce:[&_*]:!animate-none">
+        <Story />
+      </div>
+    ),
+  ],
+};
+
 export const Pairing: Story = {
   // PairingView reads the pairing slice via useAppSelectorShallow — give it a
   // concrete shape (an empty code, pairing enabled) so it renders the entry
@@ -78,6 +130,21 @@ export const Pairing: Story = {
     }),
   ],
   render: () => <ShellStory view={{ kind: "pairing" }} />,
+  parameters: { viewport: { defaultViewport: "mobile1" } },
+};
+
+export const PairingViewDirect: Story = {
+  decorators: [
+    mockApp({
+      pairingEnabled: true,
+      pairingExpiresAt: null,
+      pairingCodeInput: "",
+      pairingError: null,
+      pairingBusy: false,
+    }),
+  ],
+  render: () => <PairingView />,
+  parameters: { viewport: { defaultViewport: "mobile1" } },
 };
 
 export const ErrorState: Story = {
@@ -91,6 +158,54 @@ export const ErrorState: Story = {
             "Could not reach the agent backend at http://localhost:7777.",
           phase: "starting-backend",
           detail: "ECONNREFUSED 127.0.0.1:7777",
+        },
+      }}
+    />
+  ),
+};
+
+export const FailureViewDirect: Story = {
+  render: () => (
+    <StartupFailureView
+      error={{
+        reason: "backend-unreachable",
+        message: "Could not reach the local agent backend.",
+        phase: "starting-backend",
+        detail: "ECONNREFUSED 127.0.0.1:7777",
+      }}
+      onRetry={() => {}}
+    />
+  ),
+};
+
+export const AgentFailed: Story = {
+  render: () => (
+    <ShellStory
+      view={{
+        kind: "error",
+        error: {
+          reason: "agent-error",
+          message: "The runtime exited before it could answer.",
+          phase: "starting-runtime",
+          detail: "Process exited with status 1\nCorrelation: startup-demo-1",
+        },
+      }}
+    />
+  ),
+};
+
+export const OfflineMobile: Story = {
+  parameters: { viewport: { defaultViewport: "mobile1" } },
+  render: () => (
+    <ShellStory
+      view={{
+        kind: "error",
+        error: {
+          reason: "backend-unreachable",
+          message: "The network request could not reach your agent.",
+          phase: "polling-backend",
+          detail:
+            "NetworkError: The internet connection appears to be offline.",
         },
       }}
     />

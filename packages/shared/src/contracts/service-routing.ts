@@ -1,6 +1,6 @@
 /**
- * Re-exports pure service-routing type contracts from @elizaos/contracts.
- * Runtime helpers (builders, normalizers, constants) remain here in @elizaos/shared.
+ * Re-exports runtime-owned service-routing contracts from @elizaos/core.
+ * Shared builders and normalizers remain here for non-runtime consumers.
  */
 
 export type {
@@ -22,7 +22,7 @@ export type {
   ServiceRouteConfig,
   ServiceRoutingConfig,
   ServiceTransport,
-} from "@elizaos/contracts";
+} from "@elizaos/core";
 
 import type {
   DeploymentTargetConfig,
@@ -42,7 +42,7 @@ import type {
   ServiceRouteConfig,
   ServiceRoutingConfig,
   ServiceTransport,
-} from "@elizaos/contracts";
+} from "@elizaos/core";
 import { asRecord } from "../type-guards.js";
 
 // Bare Cerebras id (not an OpenRouter "openai/…:nitro" variant) so the default

@@ -73,7 +73,7 @@ export function WidgetVisibilityEditor({
                       <span className="truncate text-xs text-txt">
                         {candidate.label}
                       </span>
-                      <span className="truncate text-3xs uppercase tracking-wider text-muted/70">
+                      <span className="truncate text-3xs uppercase tracking-wider text-muted">
                         {candidate.pluginId}
                       </span>
                     </div>

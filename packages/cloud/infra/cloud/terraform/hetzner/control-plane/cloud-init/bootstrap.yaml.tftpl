@@ -12,7 +12,7 @@
 # Secrets (DATABASE_URL, KV_REST_API_*, STEWARD_*, HCLOUD_TOKEN, etc.) are NOT
 # baked in here. The operator copies `cloud/.env.local` to `/opt/eliza/cloud/.env.local`
 # in a follow-up step (one-shot, out-of-band) using `scp` or the existing
-# `packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs` script.
+# `packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.mjs` script.
 #
 # Ingress is terminated by Cloudflare (zone elizacloud.ai, SSL mode = "Full",
 # DNS record for this VM is proxied through CF). nginx on this host accepts

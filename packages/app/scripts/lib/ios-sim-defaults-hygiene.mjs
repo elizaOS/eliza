@@ -7,6 +7,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { resolveSmokeCommand } from "./smoke-command-proxy.mjs";
 
 const EXACT_SMOKE_KEYS = new Set([
   "elizaos:active-server",
@@ -139,7 +140,8 @@ export function selectIosSmokePreferenceKeys(entries, options = {}) {
 
 function execText(command, args, options = {}) {
   try {
-    return execFileSync(command, args, {
+    const invocation = resolveSmokeCommand(command, args);
+    return execFileSync(invocation.command, invocation.args, {
       cwd: options.cwd,
       env: process.env,
       encoding: "utf8",

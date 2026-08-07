@@ -6,8 +6,8 @@
 import crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { ElizaError } from "../../errors.ts";
 import type { IAgentRuntime } from "../../types/index.ts";
-import { logger } from "../../types/index.ts";
 import { resolveStateDir } from "../../utils/state-dir";
 
 // --- Inlined types ---
@@ -186,14 +186,20 @@ export class TaskClipboardService {
 					.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
 			};
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+			// error-policy:J3 A missing store is the designed empty state. Corrupt or
+			// unreadable stores are failures and must not look newly initialized.
+			if (
+				typeof error === "object" &&
+				error !== null &&
+				Reflect.get(error, "code") === "ENOENT"
+			) {
 				return createDefaultStore();
 			}
-			logger.warn(
-				"[TaskClipboardService] Failed to read task clipboard store:",
-				error instanceof Error ? error.message : String(error),
-			);
-			return createDefaultStore();
+			throw new ElizaError("Failed to read task clipboard store", {
+				code: "TASK_CLIPBOARD_READ_FAILED",
+				cause: error,
+				context: { storePath },
+			});
 		}
 	}
 

@@ -1,3 +1,4 @@
+/** Verifies sanitizePatchValue (prototype-pollution guard) through the package's configured test harness. */
 // Unit coverage for the load-bearing chat parser helpers (#9304). `parseSegments`
 // and the JSONL-patch → UiSpec compiler are the single source of truth both chat
 // surfaces (ChatView `MessageContent` + overlay `InlineWidgetText`) now share, so

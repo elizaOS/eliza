@@ -1,4 +1,4 @@
-import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
+import { type OverlayApp, registerOverlayApp } from "@elizaos/shared";
 
 export const DEVICE_SETTINGS_APP_NAME = "@elizaos/plugin-native-settings";
 

@@ -4,6 +4,8 @@
  * and strip leaked tool-call markup / punctuation-only replies. Used wherever
  * the runtime must salvage structure from a weak model's not-quite-valid JSON.
  */
+import { formatError } from "../utils/format-error.ts";
+
 export function parseJsonObject<T extends object>(raw: string): T | null {
 	const trimmed = raw.trim();
 	if (!trimmed) {
@@ -217,7 +219,35 @@ function escapeRawJsonStringChar(char: string): string {
 }
 
 export function stringifyForModel(value: unknown): string {
-	return JSON.stringify(value, null, 2);
+	const serialized = JSON.stringify(value, null, 2);
+	if (serialized === undefined) {
+		throw new TypeError("Model prompt data is not JSON-serializable");
+	}
+	return serialized;
+}
+
+/** Serialize diagnostic context without allowing hostile or cyclic values to mask the original event. */
+export function stringifyForDiagnostics(value: unknown): string {
+	if (typeof value === "string") return value;
+	const seen = new WeakSet<object>();
+	try {
+		const serialized = JSON.stringify(
+			value,
+			(_key, nestedValue: unknown) => {
+				if (typeof nestedValue === "bigint") return `${nestedValue}n`;
+				if (nestedValue && typeof nestedValue === "object") {
+					if (seen.has(nestedValue)) return "[Circular]";
+					seen.add(nestedValue);
+				}
+				return nestedValue;
+			},
+			2,
+		);
+		return serialized ?? formatError(value);
+	} catch {
+		// error-policy:J7 diagnostic serialization must not mask the event being reported
+		return formatError(value);
+	}
 }
 
 /**

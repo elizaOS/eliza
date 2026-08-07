@@ -13,8 +13,7 @@ instead of opening direct host access from arbitrary UI or agent code.
 
 Use these plugin boundaries for sandbox-capable features:
 
-- `@elizaos/plugin-shell` owns shell command execution.
-- `@elizaos/plugin-coding-tools` owns coding and repository automation tools.
+- `@elizaos/plugin-coding-tools` owns shell command execution and coding and repository automation tools.
 - `agent-orchestrator` owns agent sandbox lifecycle coordination.
 
 Mobile cloud builds must not include local sandbox backends. Store-gated

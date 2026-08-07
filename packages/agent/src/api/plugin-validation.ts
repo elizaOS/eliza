@@ -309,13 +309,13 @@ export function validateRuntimeContext(
  * @param plugins - Array of resolved plugin names.
  * @param providers - Array of resolved provider names.
  * @param context - The runtime context object to inspect.
- * @param log - Logger function (defaults to console.debug).
+ * @param log - Structured debug logger supplied by the host.
  */
 export function debugLogResolvedContext(
   plugins: string[],
   providers: string[],
   context: Record<string, unknown>,
-  log: (msg: string) => void = console.debug,
+  log: (msg: string) => void,
 ): void {
   log("[eliza:debug] ══════ Resolved Plugin/Provider Context ══════");
   log(`[eliza:debug] Plugins loaded (${plugins.length}):`);

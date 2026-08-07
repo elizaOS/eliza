@@ -1,8 +1,7 @@
 // Pins the GitHub-native Turbo cache contract (#12341) against synthetic repo
-// trees: a clean adopter passes, an adopter that re-adds the Vercel SaaS
-// remote-cache env fails, and an unpinned/floating actions/cache ref fails.
-// Also runs the shipped contract against the real repo so the guard stays true
-// as the migration proceeds. Deterministic — no workflow is executed.
+// trees: the canonical shared setup passes, re-adding the Vercel SaaS cache
+// anywhere fails, and an unpinned/floating actions/cache ref fails. Also runs
+// the shipped contract against the real repo. Deterministic — no workflow runs.
 import { describe, expect, test } from "bun:test";
 import {
   mkdirSync,
@@ -23,18 +22,6 @@ const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CI_BUN_VERSION = JSON.parse(
   readFileSync(join(REAL_REPO_ROOT, ".github", "ci-bun-version.json"), "utf8"),
 ).version;
-
-const SHIM_YAML = `name: "GitHub-native Turbo cache"
-description: "test shim"
-runs:
-  using: "composite"
-  steps:
-    - run: node packages/scripts/turbo-cache-key.mjs --github-output
-      shell: bash
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      with:
-        path: .turbo
-`;
 
 const WORKSPACE_SETUP_YAML = `name: "Setup Bun Workspace"
 runs:
@@ -62,17 +49,17 @@ runs:
         no-cache: true
 `;
 
-const CLEAN_ADOPTER = `name: Clean adopter
+const CLEAN_WORKFLOW = `name: Clean workflow
 on: [workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: ./.github/actions/turbo-cache-github
+      - uses: ./.github/actions/setup-bun-workspace
       - run: bun run build
 `;
 
-const SAAS_READDER = `name: Regressing adopter
+const SAAS_READDER = `name: Regressing workflow
 on: [workflow_dispatch]
 jobs:
   build:
@@ -82,27 +69,19 @@ jobs:
       TURBO_TEAM: \${{ vars.TURBO_TEAM }}
       TURBO_CACHE: remote:rw
     steps:
-      - uses: ./.github/actions/turbo-cache-github
+      - uses: ./.github/actions/setup-bun-workspace
       - run: bun run build
 `;
 
 function buildRepo({
-  shim = SHIM_YAML,
   workspaceSetup = WORKSPACE_SETUP_YAML,
   workflows = {},
 }) {
   const root = mkdtempSync(join(tmpdir(), "turbo-cache-contract-"));
-  mkdirSync(join(root, ".github", "actions", "turbo-cache-github"), {
-    recursive: true,
-  });
   mkdirSync(join(root, ".github", "actions", "setup-bun-workspace"), {
     recursive: true,
   });
   mkdirSync(join(root, ".github", "workflows"), { recursive: true });
-  writeFileSync(
-    join(root, ".github", "actions", "turbo-cache-github", "action.yml"),
-    shim,
-  );
   writeFileSync(
     join(root, ".github", "actions", "setup-bun-workspace", "action.yml"),
     workspaceSetup,
@@ -114,21 +93,20 @@ function buildRepo({
 }
 
 describe("ci-turbo-cache-contract", () => {
-  test("passes a clean adopter that uses the shim without SaaS env", () => {
-    const root = buildRepo({ workflows: { "clean.yml": CLEAN_ADOPTER } });
+  test("passes the canonical shared setup with no SaaS env", () => {
+    const root = buildRepo({ workflows: { "clean.yml": CLEAN_WORKFLOW } });
     try {
-      const { adopters } = runContract(root);
-      expect(adopters).toEqual([".github/workflows/clean.yml"]);
+      expect(runContract(root)).toEqual({ workflowCount: 1 });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  test("fails when an adopting workflow re-adds the SaaS remote cache env", () => {
+  test("fails when any workflow re-adds the SaaS remote cache env", () => {
     const root = buildRepo({ workflows: { "regress.yml": SAAS_READDER } });
     try {
       expect(() => runContract(root)).toThrow(
-        /still wires the SaaS remote cache/,
+        /must not wire the SaaS remote cache/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -136,13 +114,13 @@ describe("ci-turbo-cache-contract", () => {
   });
 
   test("fails when actions/cache is not pinned to a full commit SHA", () => {
-    const floatingShim = SHIM_YAML.replace(
+    const floatingSetup = WORKSPACE_SETUP_YAML.replace(
       "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
       "actions/cache@v4",
     );
     const root = buildRepo({
-      shim: floatingShim,
-      workflows: { "clean.yml": CLEAN_ADOPTER },
+      workspaceSetup: floatingSetup,
+      workflows: { "clean.yml": CLEAN_WORKFLOW },
     });
     try {
       expect(() => runContract(root)).toThrow(
@@ -153,30 +131,30 @@ describe("ci-turbo-cache-contract", () => {
     }
   });
 
-  test("fails when the shim itself wires the SaaS remote cache", () => {
-    const dirtyShim = SHIM_YAML.replace(
+  test("fails when workspace setup wires the SaaS remote cache", () => {
+    const dirtySetup = WORKSPACE_SETUP_YAML.replace(
       "  steps:",
       "  env:\n    TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}\n  steps:",
     );
-    const root = buildRepo({ shim: dirtyShim });
+    const root = buildRepo({ workspaceSetup: dirtySetup });
     try {
       expect(() => runContract(root)).toThrow(
-        /shim must not wire the SaaS remote cache/,
+        /must not wire the SaaS remote cache/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  test("fails when workspace setup nests the cache shim", () => {
-    const nestedSetup = WORKSPACE_SETUP_YAML.replace(
-      / {4}- name: Restore and save Turbo cache[\s\S]*$/,
-      "    - uses: ./.github/actions/turbo-cache-github\n",
+  test("fails when workspace setup drops the deterministic cache key", () => {
+    const unkeyedSetup = WORKSPACE_SETUP_YAML.replace(
+      "run: node packages/scripts/turbo-cache-key.mjs --github-output",
+      "run: echo no-key",
     );
-    const root = buildRepo({ workspaceSetup: nestedSetup });
+    const root = buildRepo({ workspaceSetup: unkeyedSetup });
     try {
       expect(() => runContract(root)).toThrow(
-        /must not nest the Turbo cache shim/,
+        /must key off the deterministic turbo-cache-key hash/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -310,8 +288,11 @@ describe("ci-turbo-cache-contract", () => {
     )?.[0];
     expect(typecheckJob).toMatch(/cache-bun-install:\s*["']false["']/);
     expect(buildJob).toMatch(/cache-bun-install:\s*["']false["']/);
+    // 45m ceiling is deliberate: quality-fork.yml documents the measured cold
+    // build+homepage worst case that the old 32m ceiling kept cancelling.
     expect(buildJob).toMatch(/timeout-minutes:\s*45/);
     expect(buildJob).toMatch(/run:\s*bun run build/);
+    expect(buildJob).toMatch(/run:\s*bun run test:e2e --workers=1/);
     expect(buildJob).not.toMatch(/continue-on-error|\|\| true/);
 
     const setup = readFileSync(
@@ -330,8 +311,8 @@ describe("ci-turbo-cache-contract", () => {
     );
   });
 
-  test("the real repo satisfies the contract (shim pinned, no mixing)", () => {
-    const { adopters } = runContract(REAL_REPO_ROOT);
-    expect(Array.isArray(adopters)).toBe(true);
+  test("the real repo satisfies the canonical cache contract", () => {
+    const { workflowCount } = runContract(REAL_REPO_ROOT);
+    expect(workflowCount).toBeGreaterThan(0);
   });
 });

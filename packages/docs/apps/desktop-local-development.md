@@ -1,10 +1,10 @@
 ---
 title: Desktop local development
 sidebarTitle: Local development
-description: Why and how the Eliza desktop dev orchestrator (eliza/packages/app-core/scripts/dev-platform.mjs) runs Vite, the API, and Electrobun together — environment variables, signals, and shutdown behavior.
+description: How the desktop development orchestrator runs Vite, the API, and Electrobun together.
 ---
 
-The **desktop dev stack** is not a single binary. `bun run dev:desktop` and `bun run dev:desktop:watch` run `eliza/packages/app-core/scripts/dev-platform.mjs`, which **orchestrates** separate processes: optional one-off `vite build`, optional repo-root `tsdown`, then long-lived **Vite** (when `ELIZA_DESKTOP_VITE_WATCH=1`), **`bun --watch` API**, and **Electrobun**.
+The **desktop dev stack** is not a single binary. `bun run dev:desktop` and `bun run dev:desktop:watch` run `packages/app-core/scripts/dev-platform.mjs`, which orchestrates the renderer, API, and Electrobun processes.
 
 **Why orchestrate?** Electrobun needs (a) a renderer URL, (b) often a running dashboard API, and (c) in dev, a root `dist/` bundle for the embedded Eliza runtime. Doing that manually is error-prone; one script keeps ports, env vars, and shutdown consistent.
 
@@ -35,9 +35,9 @@ On a **TTY**, tables may use a **Unicode box frame** and a large **figlet-style*
 If you explicitly need file output on every save (e.g. debugging Rollup behavior):
 
 ```bash
-ELIZA_DESKTOP_VITE_WATCH=1 bun eliza/packages/app-core/scripts/dev-platform.mjs -- --rollup-watch
+ELIZA_DESKTOP_VITE_WATCH=1 bun packages/app-core/scripts/dev-platform.mjs -- --rollup-watch
 # or env-only:
-ELIZA_DESKTOP_VITE_WATCH=1 ELIZA_DESKTOP_VITE_BUILD_WATCH=1 bun eliza/packages/app-core/scripts/dev-platform.mjs
+ELIZA_DESKTOP_VITE_WATCH=1 ELIZA_DESKTOP_VITE_BUILD_WATCH=1 bun packages/app-core/scripts/dev-platform.mjs
 ```
 
 **Why this is opt-in:** `vite build --watch` still runs Rollup production emits; “3 modules transformed” can still mean **seconds** rewriting multi‑MB chunks. The default watch path uses the **Vite dev server** instead.
@@ -102,7 +102,7 @@ Eliza’s pinned **Electrobun** config types (as of the version in this repo) do
 
 ## Why `vite build` is sometimes skipped
 
-Before starting services, the script checks `viteRendererBuildNeeded()` (`scripts/lib/vite-renderer-dist-stale.mjs`): compare `packages/app/dist/index.html` mtime against `packages/app/src`, `vite.config.ts`, shared packages (`eliza/packages/ui`, `eliza/packages/app-core`), etc.
+Before starting services, the script checks `viteRendererBuildNeeded()` in `packages/app-core/scripts/lib/vite-renderer-dist-stale.mjs`: compare `packages/app/dist/index.html` mtime against the renderer and shared-package sources.
 
 **Why mtime, not a full dependency graph?** It is a **cheap, local-first** heuristic so restarts do not pay 10–30s for a redundant production build when sources did not change. Override when you need a clean bundle.
 
@@ -126,7 +126,7 @@ If you **Quit** from the native menu, Electrobun exits with code 0 while **Vite 
 
 ## Port cleanup before Vite (`killUiListenPort`)
 
-Before binding the UI port, the script tries to kill whatever is already listening (**why:** stale Vite or a crashed run leaves `EADDRINUSE`). Implementation: `scripts/lib/kill-ui-listen-port.mjs` (Unix: `lsof`; Windows: `netstat` + `taskkill`).
+Before binding the UI port, the script tries to kill whatever is already listening (**why:** stale Vite or a crashed run leaves `EADDRINUSE`). Implementation: `packages/app-core/scripts/lib/kill-ui-listen-port.mjs` (Unix: `lsof`; Windows: `netstat` + `taskkill`).
 
 ## Process trees and `kill-process-tree`
 
@@ -177,7 +177,7 @@ Browser smoke tests target the **same renderer URL** Electrobun loads in watch m
 
 **Why Playwright:** the app already ships Playwright for renderer and packaged checks, so the browser smoke flows now use the same supported stack instead of a separate TestCafe toolchain. This removes the vulnerable `replicator` dependency entirely and keeps the UI E2E surface on one runner.
 
-**Dependency:** Playwright lives in **`@elizaai/app`** and the smoke specs live in `packages/app/test/ui-smoke/`. A normal root `bun install` still hoists workspace packages; these browser checks are opt-in through the app package scripts.
+**Dependency:** Playwright lives in **`@elizaos/app`** and the smoke specs live in `packages/app/test/ui-smoke/`. A normal root `bun install` still hoists workspace packages; these browser checks are opt-in through the app package scripts.
 
 **Browser runtime:** the suite uses Playwright Chromium. Install the browser once with `cd packages/app && bunx playwright install chromium` if it is not already present on the machine.
 
@@ -187,7 +187,7 @@ Browser smoke tests target the **same renderer URL** Electrobun loads in watch m
 | `bun run --cwd packages/app test:e2e test/ui-smoke/settings-chat-control.spec.ts` | Runs the companion media settings persistence smoke. |
 | `bun run --cwd packages/app test:desktop:packaged` | Runs the packaged renderer smoke against `packages/app/dist/index.html`; skips if `dist` is missing. |
 
-**Full test matrix:** `bun run test` does **not** run Playwright UI smoke by default. Set **`ELIZA_TEST_UI_PLAYWRIGHT=1`** to append the UI suite to `test/scripts/test-parallel.mjs` (serial, after Vitest e2e). `ELIZA_TEST_UI_TESTCAFE=1` is still accepted as a legacy alias.
+**Full test matrix:** `bun run test` does **not** run Playwright UI smoke by default. Set **`ELIZA_TEST_UI_PLAYWRIGHT=1`** to append the UI suite to `packages/app-core/test/scripts/test-parallel.mjs` (serial, after Vitest e2e). `ELIZA_TEST_UI_TESTCAFE=1` is still accepted as a legacy alias.
 
 **Path A vs native webview (Phase B):** These specs still target the renderer URL, not the embedded Electrobun webview. Packaged/native behaviors remain covered by **`bun run --cwd packages/app test:desktop:packaged`**, **`bun run --cwd packages/app test:e2e`**, and the [release regression checklist](/build-and-release).
 
@@ -196,23 +196,21 @@ Browser smoke tests target the **same renderer URL** Electrobun loads in watch m
 | Piece | Role |
 |-------|------|
 | `.cursor/rules/eliza-desktop-dev-observability.mdc` | Cursor: when to use stack / screenshot / console hooks (**why:** product does not auto-scan localhost) |
-| `scripts/dev-platform.mjs` | Orchestrator; sets env for stack / screenshot / log path |
-| `scripts/lib/vite-renderer-dist-stale.mjs` | When `vite build` is needed |
-| `scripts/lib/kill-ui-listen-port.mjs` | Free UI port |
-| `scripts/lib/kill-process-tree.mjs` | Scoped tree kill |
+| `packages/app-core/scripts/dev-platform.mjs` | Orchestrator; sets env for stack / screenshot / log path |
+| `packages/app-core/scripts/lib/vite-renderer-dist-stale.mjs` | When `vite build` is needed |
+| `packages/app-core/scripts/lib/kill-ui-listen-port.mjs` | Free UI port |
+| `packages/app-core/scripts/lib/kill-process-tree.mjs` | Scoped tree kill |
 | `packages/app-core/scripts/lib/desktop-stack-status.mjs` | Port + HTTP probes for `desktop:stack-status` |
 | `packages/app-core/scripts/desktop-stack-status.mjs` | CLI entry for agents (`--json`) |
-| `eliza/packages/app-core/src/api/dev-stack.ts` | Payload for `GET /api/dev/stack` |
-| `eliza/packages/app-core/src/api/dev-console-log.ts` | Safe tail read for `GET /api/dev/console-log` |
+| `packages/app-core/src/api/dev-stack.ts` | Payload for `GET /api/dev/stack` |
+| `packages/app-core/src/api/dev-console-log.ts` | Safe tail read for `GET /api/dev/console-log` |
 | `packages/app-core/platforms/electrobun/src/index.ts` | `resolveRendererUrl()`; starts screenshot dev server when enabled |
 | `packages/app-core/platforms/electrobun/src/screenshot-dev-server.ts` | Loopback PNG server (proxied as `/api/dev/cursor-screenshot`) |
 | `packages/app/playwright.ui-smoke.config.ts` | Playwright config for renderer smoke specs |
 | `packages/app/playwright.ui-packaged.config.ts` | Playwright config for packaged `file://` smoke |
 | `packages/app/test/ui-smoke/ui-smoke.spec.ts` | Main UI traversal + `TAB_PATHS` parity (e.g. `/apps` disabled) |
-| `packages/app/test/ui-smoke/settings-chat-companion.spec.ts` | Companion media settings persistence |
-| `packages/app/test/ui-smoke/packaged-hash.spec.ts` | `file://` + hash routing parity |
+| `packages/app/test/ui-smoke/settings-chat-control.spec.ts` | Settings controls exercised through chat |
 
 ## See also
 
 - [Desktop app (Electrobun)](/apps/desktop) — runtime modes, IPC, downloads
-- [Electrobun startup and exception handling](/electrobun-startup) — why main-process try/catch stays

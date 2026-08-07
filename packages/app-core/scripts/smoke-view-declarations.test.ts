@@ -21,7 +21,7 @@ const repoRoot = path.resolve(
   "..",
 );
 
-const REMOVED_PLUGIN_IDS = ["shopify", "steward", "social-alpha"];
+const REMOVED_PLUGIN_IDS = ["removed-plugin-fixture"];
 
 describe("smoke view declaration parity (#15791)", () => {
   it("every shipped declaration maps to a plugin that still registers it", () => {
@@ -43,30 +43,50 @@ describe("smoke view declaration parity (#15791)", () => {
     }
   });
 
-  it("fails parity when a deleted plugin id is (re)introduced", () => {
-    const withRemoved = [
-      ...smokeViewDeclarations,
-      ["shopify", "Shopify", "plugin-shopify", "/shopify", "ShopifyView"],
-    ];
-    const { ok, missing } = checkSmokeViewParity(repoRoot, withRemoved);
-    expect(ok).toBe(false);
-    expect(missing.map((entry) => entry.id)).toContain("shopify");
-    expect(missing.find((entry) => entry.id === "shopify")?.reason).toBe(
-      "plugin-directory-missing",
+  it("declares the canonical Notes and Calendar views used by the visual audit", () => {
+    expect(smokeViewDeclarations).toEqual(
+      expect.arrayContaining([
+        ["notes", "Notes", "plugin-notes", "/notes", "NotesView"],
+        [
+          "calendar",
+          "Calendar",
+          "plugin-calendar",
+          "/calendar",
+          "CalendarView",
+        ],
+      ]),
+    );
+    expect(smokeViewDeclarations.map(([id]) => id)).not.toContain(
+      "simple-calendar",
     );
   });
 
+  it("fails parity when a deleted plugin id is (re)introduced", () => {
+    const withRemoved = [
+      ...smokeViewDeclarations,
+      [
+        "removed-plugin-fixture",
+        "Removed Plugin",
+        "plugin-removed-fixture",
+        "/removed-plugin",
+        "RemovedPluginView",
+      ],
+    ];
+    const { ok, missing } = checkSmokeViewParity(repoRoot, withRemoved);
+    expect(ok).toBe(false);
+    expect(missing.map((entry) => entry.id)).toContain(
+      "removed-plugin-fixture",
+    );
+    expect(
+      missing.find((entry) => entry.id === "removed-plugin-fixture")?.reason,
+    ).toBe("plugin-directory-missing");
+  });
+
   it("fails parity when a live plugin no longer exports the declared component", () => {
-    // polymarket exists, but a bogus export name must be rejected — this is the
+    // notes exists, but a bogus export name must be rejected — this is the
     // "a route cannot pass against the wrong component" guard.
     const wrongComponent = [
-      [
-        "polymarket",
-        "Polymarket",
-        "plugin-polymarket",
-        "/polymarket",
-        "NotARealPolymarketExport",
-      ],
+      ["notes", "Notes", "plugin-notes", "/notes", "NotARealNotesExport"],
     ];
     const { ok, missing } = checkSmokeViewParity(repoRoot, wrongComponent);
     expect(ok).toBe(false);
@@ -77,7 +97,7 @@ describe("smoke view declaration parity (#15791)", () => {
 describe("view bundle provenance (#15791)", () => {
   it("serves the real built bundle when present", () => {
     const provenance = resolveBundleProvenance({
-      viewId: "polymarket",
+      viewId: "notes",
       realBundleExists: true,
       requireRealBundle: false,
     });
@@ -90,7 +110,7 @@ describe("view bundle provenance (#15791)", () => {
 
   it("audit mode fails observably instead of fabricating a bundle", () => {
     const provenance = resolveBundleProvenance({
-      viewId: "polymarket",
+      viewId: "notes",
       realBundleExists: false,
       requireRealBundle: true,
     });

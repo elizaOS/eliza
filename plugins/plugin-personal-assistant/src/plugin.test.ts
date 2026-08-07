@@ -92,16 +92,16 @@ describe("LifeOps Google plugin registration", () => {
     ).resolves.toBe(true);
   });
 
-  it("declares plugin-google for app and route plugin dependency resolution", () => {
+  it("declares plugin-google-workspace for app and route plugin dependency resolution", () => {
     expect(personalAssistantPlugin.dependencies).toContain(
-      "@elizaos/plugin-google",
+      "@elizaos/plugin-google-workspace",
     );
     expect(personalAssistantRoutesPlugin.dependencies).toContain(
-      "@elizaos/plugin-google",
+      "@elizaos/plugin-google-workspace",
     );
   });
 
-  it("registers plugin-google when LifeOps is registered directly", async () => {
+  it("registers plugin-google-workspace when LifeOps is registered directly", async () => {
     const { runtime, plugins, registerPlugin } =
       createRuntimeWithPluginRegistration();
 
@@ -135,7 +135,7 @@ describe("LifeOps Google plugin registration", () => {
     );
   });
 
-  it("does not register plugin-google twice", async () => {
+  it("does not register plugin-google-workspace twice", async () => {
     const { runtime, registerPlugin } = createRuntimeWithPluginRegistration([
       {
         name: "google",

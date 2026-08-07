@@ -16,5 +16,3 @@ export const Updater = {};
 export const WGPU = {};
 export const webgpu = {};
 export const Electrobun = { events: { on: () => {} } };
-
-export default Electrobun;

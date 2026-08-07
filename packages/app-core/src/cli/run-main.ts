@@ -23,9 +23,10 @@ import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
 import { registerSubCliByName } from "./program/register.subclis";
 
 /** Commands that boot a long-running server we must keep alive across faults. */
-const LONG_RUNNING_COMMANDS = new Set(["start", "serve"]);
+const LONG_RUNNING_COMMANDS = new Set(["run", "serve", "start"]);
 
-function isLongRunningServerCommand(argv: string[]): boolean {
+/** @internal Exported for focused command-classification tests. */
+export function isLongRunningServerCommand(argv: string[]): boolean {
   const primary = getPrimaryCommand(argv);
   return primary != null && LONG_RUNNING_COMMANDS.has(primary);
 }
@@ -90,17 +91,8 @@ function registerCliRestartHandler(): void {
 }
 
 async function loadDotEnv(): Promise<void> {
-  try {
-    const { config } = await import("dotenv");
-    config({ quiet: true });
-  } catch (err) {
-    if (
-      (err as NodeJS.ErrnoException).code !== "MODULE_NOT_FOUND" &&
-      (err as NodeJS.ErrnoException).code !== "ERR_MODULE_NOT_FOUND"
-    ) {
-      throw err;
-    }
-  }
+  const { config } = await import("dotenv");
+  config({ quiet: true });
 }
 
 export async function runCli(argv: string[] = process.argv) {

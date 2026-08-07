@@ -25,6 +25,7 @@ function ScrollArea({
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
+        tabIndex={0}
         data-slot="scroll-area-viewport"
         className={cn(
           " h-full w-full rounded-[inherit] transition-[color,box-shadow] outline-none  ",

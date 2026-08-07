@@ -7,10 +7,8 @@
     "turbo.json",
     "tsconfig.json",
     "tsconfig.base.json",
-    "tsconfig.dist-paths.json",
     "tsconfig.build.template.json",
-    "plugins/tsconfig.build.shared.json",
-    "packages/feed/packages/tsconfig.base.json"
+    "plugins/tsconfig.build.shared.json"
   ],
   "globalEnv": [
     "BUN_PATH",
@@ -96,44 +94,6 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/lifeops-bench#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
-    "@elizaos/example-browser-extension-safari#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
-    "@elizaos/example-clone-ur-crush#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": [".next/**", "!.next/cache/**"]
-    },
-    "@elizaos/ios-native-deps#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "env": [
-        "DEVELOPER_DIR",
-        "ELIZA_IOS_MIN_VERSION",
-        "ELIZA_LLAMA_BUILD_IOS",
-        "ELIZA_LLAMA_FORCE_REBUILD",
-        "ELIZA_LLAMA_SIM_METAL",
-        "ELIZA_SQLITE_VEC_BUILD_IOS",
-        "ELIZA_SQLITE_VEC_FORCE_REBUILD",
-        "LLAMA_CPP_REPO",
-        "SQLITE_VEC_REPO"
-      ],
-      "inputs": [
-        "package.json",
-        "VERSIONS",
-        "llama.cpp/build-ios.sh",
-        "llama.cpp/shim/**",
-        "sqlite-vec/build-ios.sh"
-      ],
-      "outputs": [
-        ".turbo/native-deps-build/**",
-        "llama.cpp/dist/**",
-        "sqlite-vec/dist/**"
-      ]
-    },
     "@elizaos/prompts#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": [
@@ -159,37 +119,12 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/ui#build": {
-      "dependsOn": [
-        "@elizaos/cloud-sdk#build",
-        "@elizaos/core#build",
-        "@elizaos/import-conversations#build",
-        "@elizaos/shared#build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
-    "@elizaos/example-app-capacitor-backend#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-aosp-local-inference#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
-    "eliza-next-example#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
-    "elizaos-plugin-echo#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
     "@elizaos/core#build": {
-      "dependsOn": [
-        "@elizaos/contracts#build",
-        "@elizaos/logger#build",
-        "@elizaos/cloud-routing#build"
-      ],
+      "dependsOn": ["@elizaos/logger#build", "@elizaos/cloud-routing#build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**", "src/i18n/generated/**"],
       "inputs": [
@@ -199,10 +134,6 @@
         "$TURBO_ROOT$/packages/shared/scripts/generate-keywords.mjs",
         "$TURBO_ROOT$/packages/shared/src/i18n/keywords/*.keywords.json"
       ]
-    },
-    "@elizaos/contracts#build": {
-      "dependsOn": [],
-      "outputs": ["dist/**"]
     },
     "@elizaos/cloud-routing#build": {
       "dependsOn": [],
@@ -250,7 +181,6 @@
         "@elizaos/app-core#build",
         "@elizaos/plugin-sql#build",
         "@elizaos/plugin-telegram#build",
-        "@elizaos/plugin-streaming#build",
         "@elizaos/plugin-signal#build",
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-elizacloud#build",
@@ -271,18 +201,35 @@
         "@elizaos/ui#build",
         "@elizaos/app-core#build",
         "@elizaos/plugin-agent-skills#build",
+        "@elizaos/plugin-app-control#build",
         "@elizaos/plugin-app-manager#build",
+        "@elizaos/plugin-calendar#build",
         "@elizaos/plugin-inbox#build",
+        "@elizaos/plugin-wallet#build",
         "@elizaos/plugin-sql#build",
         "@elizaos/plugin-task-coordinator#build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/agent#typecheck": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/ui#build",
+        "@elizaos/plugin-agent-skills#build",
+        "@elizaos/plugin-app-control#build",
+        "@elizaos/plugin-app-manager#build",
+        "@elizaos/plugin-inbox#build",
+        "@elizaos/plugin-wallet#build",
+        "@elizaos/plugin-sql#build",
+        "@elizaos/plugin-task-coordinator#build",
+        "@elizaos/plugin-video#build"
       ],
       "outputs": []
     },
     "@elizaos/app-core#typecheck": {
       "dependsOn": [
         "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "@elizaos/agent#build",
         "^build"
       ],
       "outputs": []
@@ -306,29 +253,20 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
-    "@elizaos/example-code#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-tailscale#typecheck": {
-      "dependsOn": ["@elizaos/plugin-tunnel#build"],
-      "outputs": []
-    },
     "@elizaos/plugin-calendar#typecheck": {
       "dependsOn": [],
       "outputs": []
     },
     "@elizaos/plugin-personal-assistant#typecheck": {
       "dependsOn": [
+        "@elizaos/agent#build",
         "@elizaos/plugin-blocker#build",
         "@elizaos/plugin-calendar#build",
-        "@elizaos/plugin-calendly#build",
         "@elizaos/plugin-finances#build",
         "@elizaos/plugin-goals#build",
         "@elizaos/plugin-health#build",
         "@elizaos/plugin-inbox#build",
         "@elizaos/plugin-reminders#build",
-        "@elizaos/plugin-remote-desktop#build",
         "@elizaos/plugin-x#build",
         "@elizaos/capacitor-mobile-signals#build",
         "@elizaos/macosreminders#build",
@@ -336,134 +274,21 @@
       ],
       "outputs": []
     },
-    "@elizaos/lifeops-bench#typecheck": {
-      "dependsOn": [
-        "@elizaos/plugin-calendar#build",
-        "@elizaos/plugin-personal-assistant#build"
-      ],
+    "@elizaos/plugin-vision#typecheck": {
+      "dependsOn": ["@elizaos/plugin-computeruse#build"],
       "outputs": []
     },
     "@elizaos/plugin-contacts#typecheck": {
-      "dependsOn": [
-        "@elizaos/capacitor-contacts#build",
-        "@elizaos/ui#build",
-        "^build"
-      ],
-      "outputs": []
-    },
-    "@elizaos/plugin-hyperliquid#typecheck": {
-      "dependsOn": [
-        "@elizaos/app-core#build",
-        "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "@elizaos/ui#build",
-        "^build"
-      ],
-      "outputs": []
-    },
-    "@elizaos/plugin-capacitor-bridge#typecheck": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
-      "outputs": []
-    },
-    "@elizaos/example-autonomous#typecheck": {
       "dependsOn": ["^build"],
       "outputs": []
     },
-    "@elizaos/example-telegram#typecheck": {
-      "dependsOn": [
-        "@elizaos/plugin-openai#build",
-        "@elizaos/plugin-sql#build",
-        "@elizaos/plugin-telegram#build"
-      ],
-      "outputs": []
-    },
-    "@elizaos/example-bluesky#typecheck": {
-      "dependsOn": [
-        "@elizaos/plugin-bluesky#build",
-        "@elizaos/plugin-openai#build",
-        "@elizaos/plugin-sql#build"
-      ],
-      "outputs": []
-    },
-    "@elizaos/example-chat#typecheck": {
-      "dependsOn": ["@elizaos/plugin-sql#build"],
-      "outputs": []
-    },
-    "@elizaos/gcp-examples#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/plugin-openai#build",
-        "@elizaos/plugin-sql#build"
-      ],
+    "@elizaos/plugin-capacitor-bridge#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
     "@elizaos/scenario-runner#typecheck": {
       "dependsOn": ["@elizaos/plugin-browser#build", "^build"],
       "outputs": []
-    },
-    "@elizaos/example-edad#typecheck": {
-      "dependsOn": ["@elizaos/cloud-sdk#build", "^build"],
-      "outputs": []
-    },
-    "@elizaos/example-trader-ts#typecheck": {
-      "dependsOn": ["@elizaos/plugin-wallet#build"],
-      "outputs": []
-    },
-    "@elizaos/example-a2a-server#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/example-app-electron#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/example-browser-extension-chrome#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/example-convex#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/example-rest-api-elysia#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/example-rest-api-express#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/example-rest-api-hono#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/example-xai-x#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "eliza-react-example#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-training#typecheck": {
-      "dependsOn": ["@elizaos/plugin-inbox#build", "^build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-sub-agent-claude-code#typecheck": {
-      "dependsOn": ["@elizaos/plugin-remote-manifest#build", "^build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-local-inference#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/gcp-examples#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/plugin-openai#build",
-        "@elizaos/plugin-sql#build"
-      ],
-      "outputs": ["dist/**"]
     },
     "format": {
       "outputs": []
@@ -492,6 +317,36 @@
     },
     "clean": {
       "cache": false
+    },
+    "@elizaos/ios-native-deps#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "env": [
+        "DEVELOPER_DIR",
+        "ELIZA_IOS_MIN_VERSION",
+        "ELIZA_LLAMA_BUILD_IOS",
+        "ELIZA_LLAMA_FORCE_REBUILD",
+        "ELIZA_LLAMA_SIM_METAL",
+        "ELIZA_SQLITE_VEC_BUILD_IOS",
+        "ELIZA_SQLITE_VEC_FORCE_REBUILD",
+        "LLAMA_CPP_REPO",
+        "SQLITE_VEC_REPO"
+      ],
+      "inputs": [
+        "package.json",
+        "VERSIONS",
+        "llama.cpp/build-ios.sh",
+        "llama.cpp/shim/**",
+        "sqlite-vec/build-ios.sh"
+      ],
+      "outputs": [
+        ".turbo/native-deps-build/**",
+        "llama.cpp/dist/**",
+        "sqlite-vec/dist/**"
+      ]
+    },
+    "@elizaos/plugin-native-inference#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
     }
   }
 }

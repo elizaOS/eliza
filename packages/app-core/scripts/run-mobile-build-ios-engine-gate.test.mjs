@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isIosAppStoreBuild,
+  resolveIosCapacitorSyncEnv,
   shouldIncludeIosFullBunEngine,
 } from "./run-mobile-build.mjs";
 
@@ -82,5 +83,24 @@ describe("iOS full-Bun engine embed gate", () => {
     };
     expect(isIosAppStoreBuild(env)).toBe(true);
     expect(shouldIncludeIosFullBunEngine(env)).toBe(true);
+  });
+
+  it("defers the full engine dependency until the repository Podfile is generated", () => {
+    const env = {
+      ELIZA_IOS_FULL_BUN_ENGINE: "1",
+      VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
+    };
+
+    expect(resolveIosCapacitorSyncEnv(env)).toEqual({
+      ELIZA_IOS_FULL_BUN_ENGINE: "0",
+      VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
+    });
+    expect(env.ELIZA_IOS_FULL_BUN_ENGINE).toBe("1");
+  });
+
+  it("preserves compatibility-only Capacitor sync environments", () => {
+    expect(
+      resolveIosCapacitorSyncEnv({ ELIZA_IOS_RUNTIME_MODE: "local" }),
+    ).toEqual({ ELIZA_IOS_RUNTIME_MODE: "local" });
   });
 });

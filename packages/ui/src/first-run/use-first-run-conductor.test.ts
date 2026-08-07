@@ -1,3 +1,4 @@
+/** Verifies useFirstRunConductor through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -2028,6 +2029,9 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
     expect(provider.text).toContain("__first_run__:back:runtime=");
 
     // The blocked on-device pick is refused with a fresh provider choice.
+    // Freeze the wall clock across both rejected picks: their retry turns must
+    // remain distinct even when the user moves faster than clock resolution.
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_789_000_000_000);
     expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
       true,
     );
@@ -2046,6 +2050,7 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
     // Configure-later is a full local runtime mode, so it retains the 8 GB
     // floor even though it does not download a model immediately.
     expect(tryHandleFirstRunAction("__first_run__:provider:other")).toBe(true);
+    nowSpy.mockRestore();
     await waitFor(() => {
       expect(
         transcript.current.some((m) =>

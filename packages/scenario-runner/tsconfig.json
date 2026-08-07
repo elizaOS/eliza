@@ -28,10 +28,6 @@
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/logger/*": ["../logger/src/*"],
-      "@elizaos/security": ["../security/src/index.ts"],
-      "@elizaos/security/*": ["../security/src/*"],
-      "@elizaos/contracts": ["../contracts/src/index.ts"],
-      "@elizaos/contracts/*": ["../contracts/src/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/vault/*": ["../vault/src/*"],
       "@elizaos/cloud-routing": ["../cloud/routing/src/index.ts"],
@@ -40,21 +36,10 @@
       "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
-      "@elizaos/import-conversations": ["../import-conversations/src/index.ts"],
-      "@elizaos/import-conversations/*": ["../import-conversations/src/*"],
-      "@elizaos/import-conversations/browser": [
-        "../import-conversations/src/browser.ts"
-      ],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../../plugins/plugin-capacitor-bridge/src/index.ts"
-      ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../../plugins/plugin-capacitor-bridge/src/*"
-      ],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
@@ -82,29 +67,8 @@
       "@elizaos/plugin-app-manager/*": [
         "../../plugins/plugin-app-manager/src/*"
       ],
-      "@elizaos/plugin-remote-manifest": [
-        "../plugin-remote-manifest/src/index.ts"
-      ],
-      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
-      "@elizaos/plugin-worker-runtime": [
-        "../plugin-worker-runtime/src/index.ts"
-      ],
-      "@elizaos/plugin-worker-runtime/*": ["../plugin-worker-runtime/src/*"],
       "@elizaos/plugin-commands": ["../../plugins/plugin-commands/index.ts"],
-      "@elizaos/plugin-native-filesystem": [
-        "../../plugins/plugin-native-filesystem/src/index.ts"
-      ],
       "@elizaos/plugin-github": ["../../plugins/plugin-github/src/index.ts"],
-      "@elizaos/plugin-gitpathologist": [
-        "../../plugins/plugin-gitpathologist/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference": [
-        "../../plugins/plugin-local-inference/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/*": [
-        "../../plugins/plugin-local-inference/src/*"
-      ],
-      "@elizaos/plugin-shell": ["../../plugins/plugin-shell/src/index.ts"],
       "@elizaos/plugin-scheduling": [
         "../../plugins/plugin-scheduling/src/index.ts"
       ],
@@ -114,9 +78,6 @@
         "../../plugins/plugin-telegram/src/index.ts"
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/plugin-streaming": [
-        "../../plugins/plugin-streaming/src/index.ts"
-      ],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-todos": ["../../plugins/plugin-todos/src/index.ts"],
@@ -126,8 +87,20 @@
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
       ],
-      "@elizaos/plugin-facewear": [
-        "../../plugins/plugin-facewear/src/index.ts"
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
+      ],
+      "@elizaos/plugin-native-filesystem": [
+        "../../plugins/plugin-native-filesystem/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../plugins/plugin-local-inference/src/*"
       ],
       "@elizaos/capacitor-appblocker": [
         "../../plugins/plugin-native-appblocker/src/index.ts"

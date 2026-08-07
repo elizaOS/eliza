@@ -68,6 +68,10 @@ export const SkyFallback: Story = {
           height: 320,
           borderRadius: 12,
           overflow: "hidden",
+          // `--background` is defined on the Storybook theme root. Resetting
+          // the inherited custom property is the only way to exercise the
+          // component's actual `var(--background, <sky>)` fallback.
+          ["--background" as string]: "initial",
         }}
       >
         <Story />

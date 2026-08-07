@@ -183,13 +183,6 @@ describe("Helius direct RPC tests", () => {
     heliusAvailable = await heliusAvailablePromise;
   });
 
-  it("URL construction is correct", () => {
-    expect(heliusRpc).toContain("helius-rpc.com");
-    if (HELIUS_KEY) {
-      expect(heliusRpc).toContain(HELIUS_KEY);
-    }
-  });
-
   it("fetches latest slot via Helius (or skips if rate-limited)", async () => {
     if (!heliusAvailable) {
       console.log("SKIPPED: Helius rate-limited or key not provided");

@@ -229,7 +229,7 @@ function BrowserTabCard({
             {tab.label}
           </span>
         </span>
-        <span className="block w-full truncate text-2xs leading-snug text-muted/70">
+        <span className="block w-full truncate text-2xs leading-snug text-muted">
           {tab.description}
         </span>
       </Button>
@@ -329,7 +329,7 @@ export function BrowserTabSwitcher({
             <div className="flex flex-col gap-4">
               {folded.sections.map((group) => (
                 <section key={group.key} aria-label={group.label}>
-                  <h3 className="px-1 pb-1.5 text-2xs font-semibold uppercase tracking-wide text-muted/70">
+                  <h3 className="px-1 pb-1.5 text-2xs font-semibold uppercase tracking-wide text-muted">
                     {group.label}
                   </h3>
                   <div

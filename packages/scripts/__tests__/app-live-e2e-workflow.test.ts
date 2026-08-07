@@ -7,8 +7,8 @@
  * Playwright reports the only test as skipped and the declared live job is green.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
 

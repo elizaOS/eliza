@@ -4,8 +4,8 @@
  * Headscale admin key into the GitHub Actions runner.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const workflowText = readFileSync(
   new URL(

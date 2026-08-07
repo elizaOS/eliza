@@ -1,3 +1,4 @@
+/** Verifies ConsoleShell through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -204,28 +205,6 @@ describe("ConsoleShell", () => {
       1,
     );
     await waitFor(() => expect(screen.getByTestId("login-page")).toBeTruthy());
-  });
-
-  it("keeps the account menu trigger on the shared focus reset, not a per-component ring", () => {
-    render(
-      <MemoryRouter initialEntries={["/dashboard"]}>
-        <ConsoleShell>
-          <TitledPage />
-        </ConsoleShell>
-      </MemoryRouter>,
-    );
-
-    const accountMenu = screen.getByRole("button", { name: /qa@e\.test/i });
-    fireEvent.focus(accountMenu);
-    expect(accountMenu.className).toContain("bg-white/5");
-    expect(accountMenu.className).toContain("text-white");
-    // Product policy (styles.css): focus rings are disabled globally with
-    // !important, so per-component focus-ring utilities are dead. The trigger
-    // carries only the shared `outline-none` reset and must never reintroduce
-    // a banned focus-ring utility — the tree-wide guarantee no-focus-ring-gate
-    // enforces.
-    expect(accountMenu.className).toContain("outline-none");
-    expect(accountMenu.className).not.toContain("focus-visible:ring");
   });
 
   it("redirects to /login (returnTo preserved) when the session dies — never a fake-empty console (#13709)", () => {

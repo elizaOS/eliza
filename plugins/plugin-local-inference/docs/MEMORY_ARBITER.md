@@ -11,7 +11,7 @@ into the arbiter in WS2–WS8:
 
 - `plugin-vision` (WS2 — Eliza-1 vision-describe)
 - `plugin-image-gen` (WS3 — image generation; future plugin)
-- `plugin-aosp-local-inference` (WS8 — AOSP bun:ffi backend)
+- `plugin-native-inference` (WS8 — AOSP bun:ffi backend)
 - `plugin-computeruse` (WS9 — screen + OCR pipelines that may share the
   arbiter's vision-embedding cache)
 
@@ -44,7 +44,7 @@ Live in this checkout:
   per-tier resident estimates, installed bundle footprints, and arbiter
   load/eviction/pressure telemetry. Add `--load` to exercise every
   installed Eliza-owned bundle with a short decode and RSS delta sample.
-- The `memperf` harness (`packages/benchmarks/memperf/run-all.mjs`) is wired
+- The `memperf` harness (now in https://github.com/elizaOS/benchmarks) is wired
   into CI as a budget / eviction-telemetry regression gate
   (`.github/workflows/memperf.yml`): exit `1` — a real `budgets.json` peak-RSS
   or co-residency eviction-count regression — fails the build; a model-absent
@@ -66,7 +66,7 @@ Before WS1, every plugin loaded its own models with no shared budget:
   `LocalInferenceEngine` + `SharedResourceRegistry`.
 - `plugin-vision` loads native vision/OCR helpers and VLM describers with
   no shared budget.
-- `plugin-aosp-local-inference` runs its bun:ffi llama.cpp binding in
+- `plugin-native-inference` runs its bun:ffi llama.cpp binding in
   its own world, no shared budget.
 
 The result on a 6 GB iPhone or an 8 GB low-tier Android is the app gets

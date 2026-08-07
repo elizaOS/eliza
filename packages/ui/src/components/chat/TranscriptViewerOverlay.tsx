@@ -521,7 +521,7 @@ export function TranscriptViewerOverlay({
             </div>
           ) : load.status === "error" ? (
             <p
-              className="py-8 text-sm text-[color:var(--danger,#f87171)]"
+              className="py-8 text-sm text-danger"
               data-testid="transcript-load-error"
             >
               {load.message}

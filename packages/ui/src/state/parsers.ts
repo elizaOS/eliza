@@ -124,9 +124,7 @@ export function parseStreamEventEnvelopeEvent(
   const ts = data.ts;
   const payload = data.payload;
   if (
-    (type !== "agent_event" &&
-      type !== "heartbeat_event" &&
-      type !== "training_event") ||
+    (type !== "agent_event" && type !== "heartbeat_event") ||
     typeof eventId !== "string" ||
     typeof ts !== "number" ||
     !isRecord(payload)

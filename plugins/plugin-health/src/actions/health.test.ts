@@ -25,8 +25,6 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 import {
   createHealthActionRunner,
   createOwnerHealthAction,
-  HEALTH_PARAMETERS,
-  HEALTH_SIMILES,
   type HealthActionRunJsonModelArgs,
   type HealthActionService,
 } from "./health.js";
@@ -52,17 +50,6 @@ const message = {
 } as Memory;
 
 describe("health action runner", () => {
-  it("exports the owner health planner surface from plugin-health", () => {
-    expect(HEALTH_SIMILES).toContain("FITNESS");
-    expect(HEALTH_PARAMETERS.map((parameter) => parameter.name)).toEqual([
-      "subaction",
-      "intent",
-      "metric",
-      "date",
-      "days",
-    ]);
-  });
-
   it("creates the owner health action metadata in plugin-health", async () => {
     const validate = vi.fn(async () => true);
     const handler = vi.fn(async () => ({

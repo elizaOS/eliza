@@ -11,12 +11,16 @@
  * exercises exactly the engine the session will use. It never picks the engine
  * itself: the router fails closed for `TEXT_TO_SPEECH` (#12253), so a broken
  * Kokoro surfaces its structured error here — logged at `warn` — instead of the
- * router silently swapping in edge-tts and reporting a healthy warmup. Warmup is
+ * router swapping providers and reporting a healthy warmup. Warmup is
  * a first-use-latency optimization; a failure is non-fatal (the model loads on
  * first real use) but is never masked by warming a different voice.
  *
- * Warmup is skipped for mobile, hot-reload respawns, explicit cloud-only
- * desktop runtimes, and ELIZA_SKIP_LOCAL_VOICE_WARMUP=1.
+ * Warmup is opt-in with ELIZA_ENABLE_VOICE_WARMUP=1 and remains skipped for
+ * mobile, hot-reload respawns, explicit cloud-only desktop runtimes, and
+ * ELIZA_SKIP_LOCAL_VOICE_WARMUP=1. Local-inference model activation already
+ * prewarms its own voice stack; an unconditional generic probe duplicated that
+ * work, made a potentially billable cloud call, and emitted boot errors on
+ * healthy text-only installs.
  */
 
 /** Minimal runtime surface we need — avoids importing the heavy AgentRuntime. */
@@ -25,6 +29,8 @@ export interface VoiceWarmupRuntime {
 }
 
 export interface VoiceWarmupGate {
+  /** ELIZA_ENABLE_VOICE_WARMUP explicitly opts into the generic model probe. */
+  enabled?: boolean;
   /** Running on a mobile platform (no local voice models shipped). */
   mobile: boolean;
   /** ELIZA_SKIP_LOCAL_VOICE_WARMUP is set. */
@@ -44,6 +50,7 @@ export interface VoiceWarmupGate {
 
 /** Pure policy: should we warm voice models in the background? */
 export function shouldWarmupVoice(gate: VoiceWarmupGate): boolean {
+  if (!gate.enabled) return false;
   if (gate.mobile) return false;
   if (gate.skipEnv) return false;
   if (gate.cloudOnly) return false;
