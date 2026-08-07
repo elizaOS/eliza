@@ -50,6 +50,11 @@ env:
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
   XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+  # App Live runs with disposable state on headless Linux. Bypass the native
+  # keychain path even if a stale D-Bus address makes the runner look graphical;
+  # @napi-rs/keyring can terminate the runtime before JavaScript can report it.
+  ELIZA_VAULT_DISABLE_KEYCHAIN: "1"
+  ELIZA_VAULT_PASSPHRASE: app-live-e2e-headless-vault-only
 
 jobs:
   # Real LOCAL chat turn through the live stack: a real app-core runtime + a real

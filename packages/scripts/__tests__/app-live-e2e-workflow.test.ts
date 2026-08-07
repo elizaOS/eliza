@@ -30,6 +30,7 @@ interface WorkflowJob {
 }
 
 interface Workflow {
+  env?: Record<string, string>;
   on?: Record<string, unknown>;
   jobs?: Record<string, WorkflowJob>;
 }
@@ -49,6 +50,13 @@ function namedStep(name: string): WorkflowStep {
 }
 
 describe("App Live E2E real Cloud job (#14357, #16194)", () => {
+  test("keeps every live runtime independent of a headless runner keychain", () => {
+    expect(workflow.env?.ELIZA_VAULT_DISABLE_KEYCHAIN).toBe("1");
+    expect(workflow.env?.ELIZA_VAULT_PASSPHRASE).toBe(
+      "app-live-e2e-headless-vault-only",
+    );
+  });
+
   test("maps the runtime key to the established repository-secret fallback", () => {
     expect(cloudJob?.env?.ELIZAOS_CLOUD_API_KEY).toBe(
       "$" + "{{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}",
