@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
+import { SECRET_SWAP_ENABLED_SETTING } from "../../security/secret-swap";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
@@ -17,7 +18,6 @@ import {
 	recordLlmCall,
 	type TrajectoryRuntimeLlmCallParams,
 } from "../../trajectory-utils";
-import { SECRET_SWAP_ENABLED_SETTING } from "../../security/secret-swap";
 import { type Character, ModelType, Service } from "../../types";
 
 class CapturingTrajectoryService extends Service {
@@ -128,7 +128,6 @@ describe("AgentRuntime.useModel trajectory accounting", () => {
 			response: "provider-result",
 		});
 	});
-
 
 	// Regression: the recording scope used to run the model body under a spread
 	// clone of the trajectory context. `useModel` mints the turn's swap sessions
@@ -257,8 +256,16 @@ describe("AgentRuntime.useModel trajectory accounting", () => {
 				runtime.useModel(ModelType.TEXT_SMALL, { prompt: "fallback" }),
 			),
 		).resolves.toBe("fallback-result");
-		expect(trajectory.calls).toHaveLength(1);
+		// Two entries: the billed-but-failed attempt is recorded with
+		// finishReason "error" (#17532 fix 3), then the successful fallback is
+		// recorded once by the generic recorder.
+		expect(trajectory.calls).toHaveLength(2);
 		expect(trajectory.calls[0]).toMatchObject({
+			actionType: "runtime.useModel",
+			provider: "failing-provider",
+			finishReason: "error",
+		});
+		expect(trajectory.calls[1]).toMatchObject({
 			actionType: "runtime.useModel",
 			provider: "fallback-provider",
 			response: "fallback-result",
