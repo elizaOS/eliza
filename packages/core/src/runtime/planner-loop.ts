@@ -3486,9 +3486,11 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
  * which either already SUCCEEDED — a repeat cannot return new information — or
  * already FAILED with the structural `data.retryable === false` marker — a
  * deterministic unavailability (e.g. PAGE_DELEGATE's PAGE_CHILD_UNAVAILABLE)
- * that cannot change within the turn. Neither kind is re-executed.
+ * that cannot change within the turn. Neither kind is re-executed. Archived
+ * (compacted) steps still count: mid-turn input-budget compaction moves steps
+ * to `archivedSteps`, and a settled call must stay settled across that move.
  */
-function partitionRedundantSucceededCalls(
+export function partitionRedundantSucceededCalls(
 	calls: PlannerToolCall[],
 	trajectory: PlannerTrajectory,
 ): {
@@ -3498,7 +3500,7 @@ function partitionRedundantSucceededCalls(
 } {
 	const succeeded = new Set<string>();
 	const failedNonRetryable = new Set<string>();
-	for (const step of trajectory.steps) {
+	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.toolCall || !step.result) continue;
 		const identity = toolCallIdentity(step.toolCall);
 		if (step.result.success === true) {
