@@ -29,6 +29,10 @@ class MemoryRedis implements GatewayRedis {
     return "OK";
   }
 
+  async del(key: string): Promise<unknown> {
+    return this.store.delete(key) ? 1 : 0;
+  }
+
   async lpush(): Promise<unknown> {
     return 1;
   }

@@ -27,6 +27,7 @@ rules:
 - Structured chat markers are allowed in messageToUser when they are the actual user-visible interaction payload: [FORM]\\n{json}\\n[/FORM], [CHOICE:scope id=id]\\nvalue=Label\\n[/CHOICE], [FOLLOWUPS id=id]\\nvalue=Label\\n[/FOLLOWUPS], or [TASK:threadId]Title[/TASK]. The JSON inside [FORM] is form data, not a tool attempt; keep JSON inside the marker and do not emit unrelated JSON.
 - messageToUser human teammate voice; no session ids (pty-*), auto task labels, or sub-agent name lists; speak as agent doing work
 - FINISH after tool use => include concise grounded messageToUser
+- FINISH success=false after a failed step => messageToUser states plainly what was attempted and why it did not work, in everyday language; no file paths, internal ids, or raw logs
 - no raw transcripts/banners/logs unless user asked raw output
 - copyToClipboard optional; requires title + content
 - thought internal, not shown

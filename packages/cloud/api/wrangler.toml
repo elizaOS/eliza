@@ -399,7 +399,7 @@ ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
 # VITE_OIDC_ISSUER_URL or signed-out relying-party logins cannot resume; the
 # `build:web` env blocks in .github/workflows/cloud-cf-deploy.yml carry it, and
 # `packages/cloud/shared/src/lib/oidc/config.test.ts` fails if the two drift.
-OIDC_ENABLED = "false"
+OIDC_ENABLED = "true"
 OIDC_ISSUER_URL = "https://api-staging.elizacloud.ai"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
 # redirects email magic-link callbacks to staging.elizacloud.ai instead of the
