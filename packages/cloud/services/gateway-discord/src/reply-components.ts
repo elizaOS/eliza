@@ -1,4 +1,5 @@
-/** Builds validated Discord link-button components for routed reply CTAs. */
+/** Builds validated, nonce-enforced Discord reply payloads and link CTAs. */
+import type { MessageReplyOptions } from "discord.js";
 
 /**
  * Link handoff returned by the cloud routing API. The URL is the same login
@@ -31,6 +32,9 @@ interface ActionRowComponent {
   type: 1;
   components: LinkButtonComponent[];
 }
+
+export const MANAGED_REPLY_UNAVAILABLE_TEXT =
+  "I couldn't finish that turn right now. Please try again in a moment.";
 
 /**
  * Converts a routed reply CTA into a Discord action row with one Link button.
@@ -69,4 +73,35 @@ export function buildReplyComponents(
       ],
     },
   ];
+}
+
+/**
+ * Binds an outbound reply to the inbound Discord snowflake. Discord rejects a
+ * duplicate nonce from the same bot for the next few minutes, so discord.js
+ * REST retries and the failure-notice fallback cannot double-post after an
+ * ambiguous timeout or 5xx response.
+ */
+export function buildManagedReplyOptions(
+  inboundMessageId: string,
+  content: string,
+  cta?: RoutedReplyCta | null,
+): MessageReplyOptions {
+  const components = buildReplyComponents(cta);
+  return {
+    content,
+    nonce: inboundMessageId,
+    enforceNonce: true,
+    ...(components ? { components } : {}),
+    allowedMentions: { repliedUser: false },
+  };
+}
+
+/** Uses the same nonce as the primary reply so fallback recovery is idempotent. */
+export function buildManagedFailureReplyOptions(
+  inboundMessageId: string,
+): MessageReplyOptions {
+  return buildManagedReplyOptions(
+    inboundMessageId,
+    MANAGED_REPLY_UNAVAILABLE_TEXT,
+  );
 }

@@ -191,50 +191,51 @@ export async function postManagedAgentMessageWithRetry(options: {
   };
 }
 
+export type ManagedReplyDeliveryOutcome =
+  | { state: "reply" }
+  | { state: "failure_notice"; primaryError?: string }
+  | {
+      state: "undeliverable";
+      primaryError?: string;
+      failureNoticeError: string;
+    };
+
 /**
- * Retry a Discord reply send on transient failures only.
- *
- * A routed reply that fails to send is a consumed turn from the user's view,
- * so transient send failures (network, Discord 5xx) get bounded retries.
- * Deterministic rejections (missing permission, cannot-DM, malformed payload:
- * Discord 4xx) fail immediately because replaying them cannot succeed.
+ * Makes at most one application-level primary send and one failure-notice
+ * send. The caller supplies the same enforced Discord nonce to both closures;
+ * discord.js owns its internal REST retries, while this boundary prevents a
+ * second logical reply and turns a genuine delivery failure into visible UI.
  */
-export async function sendReplyWithRetry(
-  send: () => Promise<unknown>,
-  options: {
-    maxAttempts?: number;
-    baseDelayMs?: number;
-    sleep?: (ms: number) => Promise<void>;
-    onAttemptFailure?: (info: { attempt: number; error: string }) => void;
-  } = {},
-): Promise<{ sent: boolean; attempts: number; error?: string }> {
-  const maxAttempts = options.maxAttempts ?? 3;
-  const baseDelayMs = options.baseDelayMs ?? 300;
-  const sleep = options.sleep ?? defaultSleep;
-
-  let lastError = "unknown";
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+export async function deliverManagedReply(options: {
+  sendReply?: () => Promise<unknown>;
+  sendFailureNotice: () => Promise<unknown>;
+}): Promise<ManagedReplyDeliveryOutcome> {
+  let primaryError: string | undefined;
+  if (options.sendReply) {
     try {
-      await send();
-      return { sent: true, attempts: attempt };
+      await options.sendReply();
+      return { state: "reply" };
     } catch (error) {
-      // error-policy:J4 Discord delivery failures become a bounded, explicit
-      // send result so callers can log the unavailable reply path.
-      lastError = error instanceof Error ? error.message : String(error);
-      options.onAttemptFailure?.({ attempt, error: lastError });
-
-      const status = (error as { status?: unknown })?.status;
-      const isDeterministic =
-        typeof status === "number" && status >= 400 && status < 500;
-      if (isDeterministic || attempt === maxAttempts) {
-        return { sent: false, attempts: attempt, error: lastError };
-      }
+      // error-policy:J4 A failed primary send degrades to a visibly distinct
+      // same-nonce notice; Discord deduplicates an ambiguously accepted reply.
+      primaryError = error instanceof Error ? error.message : String(error);
     }
-
-    const delay =
-      baseDelayMs * 2 ** (attempt - 1) * (0.5 + Math.random() * 0.5);
-    await sleep(delay);
   }
 
-  return { sent: false, attempts: maxAttempts, error: lastError };
+  try {
+    await options.sendFailureNotice();
+    return {
+      state: "failure_notice",
+      ...(primaryError ? { primaryError } : {}),
+    };
+  } catch (error) {
+    // error-policy:J4 The transport boundary reports a distinct undeliverable
+    // outcome after its one bounded fallback instead of recursing or hiding it.
+    return {
+      state: "undeliverable",
+      ...(primaryError ? { primaryError } : {}),
+      failureNoticeError:
+        error instanceof Error ? error.message : String(error),
+    };
+  }
 }

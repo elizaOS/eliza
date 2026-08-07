@@ -1,12 +1,12 @@
 /**
- * Exercises managed Discord egress retries with deterministic transport
- * failures, including the dropped-turn-on-401 regression.
+ * Exercises managed Discord route retries and bounded reply delivery with
+ * deterministic transport failures, including dropped-turn regressions.
  */
 import { describe, expect, test } from "bun:test";
 import {
+  deliverManagedReply,
   isRetryableRouteStatus,
   postManagedAgentMessageWithRetry,
-  sendReplyWithRetry,
 } from "../src/managed-message-egress";
 
 const noSleep = async () => {};
@@ -223,59 +223,83 @@ describe("isRetryableRouteStatus", () => {
   });
 });
 
-describe("sendReplyWithRetry", () => {
-  test("a transient Discord send failure retries and delivers", async () => {
-    let calls = 0;
-    const result = await sendReplyWithRetry(
-      async () => {
-        calls += 1;
-        if (calls === 1) {
-          const err = new Error("Internal Server Error") as Error & {
-            status: number;
-          };
-          err.status = 500;
-          throw err;
-        }
+describe("deliverManagedReply", () => {
+  test("delivers the primary reply without invoking the fallback", async () => {
+    let primaryCalls = 0;
+    let fallbackCalls = 0;
+    const result = await deliverManagedReply({
+      sendReply: async () => {
+        primaryCalls += 1;
       },
-      { sleep: noSleep },
-    );
+      sendFailureNotice: async () => {
+        fallbackCalls += 1;
+      },
+    });
 
-    expect(result.sent).toBe(true);
-    expect(result.attempts).toBe(2);
+    expect(result).toEqual({ state: "reply" });
+    expect(primaryCalls).toBe(1);
+    expect(fallbackCalls).toBe(0);
   });
 
-  test("BIDIRECTIONAL: a deterministic Discord 4xx (cannot DM user) fails on the first attempt", async () => {
-    let calls = 0;
-    const result = await sendReplyWithRetry(
-      async () => {
-        calls += 1;
-        const err = new Error("Cannot send messages to this user") as Error & {
+  test("a route failure with no primary reply sends one visible notice", async () => {
+    let fallbackCalls = 0;
+    const result = await deliverManagedReply({
+      sendFailureNotice: async () => {
+        fallbackCalls += 1;
+      },
+    });
+
+    expect(result).toEqual({ state: "failure_notice" });
+    expect(fallbackCalls).toBe(1);
+  });
+
+  test("an ambiguous primary failure makes one fallback attempt, never an application retry", async () => {
+    let primaryCalls = 0;
+    let fallbackCalls = 0;
+    const result = await deliverManagedReply({
+      sendReply: async () => {
+        primaryCalls += 1;
+        throw new Error("socket closed after request write");
+      },
+      sendFailureNotice: async () => {
+        fallbackCalls += 1;
+      },
+    });
+
+    expect(result).toEqual({
+      state: "failure_notice",
+      primaryError: "socket closed after request write",
+    });
+    expect(primaryCalls).toBe(1);
+    expect(fallbackCalls).toBe(1);
+  });
+
+  test("a deterministic 4xx is not retried and a failed fallback does not recurse", async () => {
+    let primaryCalls = 0;
+    let fallbackCalls = 0;
+    const result = await deliverManagedReply({
+      sendReply: async () => {
+        primaryCalls += 1;
+        const error = new Error(
+          "Cannot send messages to this user",
+        ) as Error & {
           status: number;
         };
-        err.status = 403;
-        throw err;
+        error.status = 403;
+        throw error;
       },
-      { sleep: noSleep },
-    );
-
-    expect(calls).toBe(1);
-    expect(result.sent).toBe(false);
-    expect(result.error).toContain("Cannot send messages to this user");
-  });
-
-  test("exhausted transient retries surface the failure instead of throwing", async () => {
-    let calls = 0;
-    const result = await sendReplyWithRetry(
-      async () => {
-        calls += 1;
-        throw new Error("ECONNRESET");
+      sendFailureNotice: async () => {
+        fallbackCalls += 1;
+        throw new Error("Cannot send messages to this user");
       },
-      { maxAttempts: 3, sleep: noSleep },
-    );
+    });
 
-    expect(calls).toBe(3);
-    expect(result.sent).toBe(false);
-    expect(result.attempts).toBe(3);
-    expect(result.error).toBe("ECONNRESET");
+    expect(result).toEqual({
+      state: "undeliverable",
+      primaryError: "Cannot send messages to this user",
+      failureNoticeError: "Cannot send messages to this user",
+    });
+    expect(primaryCalls).toBe(1);
+    expect(fallbackCalls).toBe(1);
   });
 });

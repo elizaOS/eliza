@@ -1,6 +1,11 @@
 /** Verifies routed reply CTAs become well-formed Discord link-button components. */
 import { describe, expect, test } from "bun:test";
-import { buildReplyComponents } from "../src/reply-components";
+import {
+  buildManagedFailureReplyOptions,
+  buildManagedReplyOptions,
+  buildReplyComponents,
+  MANAGED_REPLY_UNAVAILABLE_TEXT,
+} from "../src/reply-components";
 
 describe("buildReplyComponents", () => {
   test("a valid CTA becomes one action row with one style-5 link button", () => {
@@ -78,5 +83,26 @@ describe("buildReplyComponents", () => {
     expect(
       buildReplyComponents({ label: "Connect", url: atBound }),
     ).not.toBeNull();
+  });
+});
+
+describe("managed reply options", () => {
+  test("primary and fallback payloads share one enforced inbound-message nonce", () => {
+    const primary = buildManagedReplyOptions("123456789012345678", "hello", {
+      label: "Connect",
+      url: "https://example.com/connect",
+    });
+    const fallback = buildManagedFailureReplyOptions("123456789012345678");
+
+    expect(primary.nonce).toBe("123456789012345678");
+    expect(primary.enforceNonce).toBe(true);
+    expect(primary.allowedMentions).toEqual({ repliedUser: false });
+    expect(primary.components).toHaveLength(1);
+    expect(fallback).toEqual({
+      content: MANAGED_REPLY_UNAVAILABLE_TEXT,
+      nonce: "123456789012345678",
+      enforceNonce: true,
+      allowedMentions: { repliedUser: false },
+    });
   });
 });
