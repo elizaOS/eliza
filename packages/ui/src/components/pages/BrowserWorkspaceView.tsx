@@ -113,15 +113,17 @@ const BROWSER_NATIVE_SURFACE_POLICY =
           "Browser surface manifest must declare native-webview isolation to host native mobile tab surfaces",
         );
       })();
-// Selectors handed to `<electrobun-webview masks=…>` so the native OOPIF
-// surface doesn't paint over (or capture clicks within) React overlays
-// stacked on the same rect. Covers Radix Dialog/AlertDialog content
+// Selectors handed to every native Browser surface so the page doesn't paint
+// over (or capture clicks within) React chrome stacked on the same rect. The
+// chat selectors keep its pull sheet composited continuously over a full-size
+// page; the remainder covers Radix Dialog/AlertDialog content
 // (`role=dialog`/`alertdialog`), every Radix popper-based surface (Popover,
 // Tooltip, Dropdown, Select, HoverCard, ContextMenu — all wrapped in
 // `data-radix-popper-content-wrapper`), and the ActionNotice toast which
 // uses `role=status`. Polled by OverlaySyncController so overlays mounted
 // after the tab still get masked.
 const BROWSER_WORKSPACE_TAB_MASK_SELECTORS = [
+  '[data-testid="chat-sheet-surface"]',
   '[role="dialog"]',
   '[role="alertdialog"]',
   "[data-radix-popper-content-wrapper]",
@@ -1303,6 +1305,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     tabs: nativeSurfaceTabs,
     selectedTabId,
     overlayOpen: switcherOpen || browserWorkspaceConfirmOpen,
+    occlusionSelector: BROWSER_WORKSPACE_TAB_MASK_SELECTORS,
     policy: BROWSER_NATIVE_SURFACE_POLICY,
     lifecycle: BROWSER_SURFACE_MANIFEST.lifecycle,
   });
@@ -2448,15 +2451,14 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             : "pointer-events-none opacity-0";
           return (
             // The native WKWebView / Android WebView is layered over this
-            // placeholder by `useMobileNativeTabSurfaces`; the div only reserves
-            // and reports the on-screen rect (via the ref) the native surface
-            // tracks — it renders no page content itself. `bg-bg` keeps the slot
-            // themed during the gap before the native layer paints.
+            // placeholder by `useMobileNativeTabSurfaces`; the div only reports
+            // the full content rect. React chrome is composed through native
+            // occlusion holes, so the page is never resized around the chat.
             <div
               key={tab.id}
               ref={(el) => nativeTabSurfaces.registerSurfaceElement(tab.id, el)}
               aria-hidden={!active}
-              className={`absolute inset-x-0 top-0 bottom-[var(--eliza-chat-clearance,5.25rem)] bg-bg transition-opacity ${visibilityClass}`}
+              className={`absolute inset-0 h-full w-full bg-bg transition-opacity ${visibilityClass}`}
               style={{ colorScheme: uiTheme }}
             />
           );

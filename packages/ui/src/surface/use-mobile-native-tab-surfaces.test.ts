@@ -16,8 +16,10 @@ import type {
   NativeSurfacePolicy,
   NativeSurfaceShell,
   SurfaceBounds,
+  SurfaceOcclusionRect,
 } from "./native-surface-shell";
 import {
+  collectSurfaceOcclusionRects,
   type MobileNativeSurfaceTab,
   useMobileNativeTabSurfaces,
 } from "./use-mobile-native-tab-surfaces";
@@ -26,6 +28,7 @@ class RecordingShell implements NativeSurfaceShell {
   readonly commands: string[] = [];
   readonly created = new Map<string, NativeSurfaceCreateRequest>();
   readonly bounds = new Map<string, SurfaceBounds>();
+  readonly occlusions = new Map<string, readonly SurfaceOcclusionRect[]>();
   readonly navigations: Array<{ id: string; url: string }> = [];
   private readonly live = new Set<string>();
 
@@ -37,6 +40,10 @@ class RecordingShell implements NativeSurfaceShell {
   setBounds(id: string, bounds: SurfaceBounds): void {
     this.commands.push(`bounds:${id}`);
     this.bounds.set(id, bounds);
+  }
+  setOcclusionRects(id: string, rects: readonly SurfaceOcclusionRect[]): void {
+    this.commands.push(`occlusions:${id}`);
+    this.occlusions.set(id, rects);
   }
   navigate(id: string, url: string): void {
     this.commands.push(`navigate:${id}`);
@@ -114,6 +121,35 @@ describe("useMobileNativeTabSurfaces", () => {
     expect(shell.created.get("browser-tab:a")?.url).toBe("https://a.example");
   });
 
+  it("reads visible rounded host geometry in CSS pixels", () => {
+    const visible = elementAt({
+      left: 12.04,
+      top: 34.06,
+      width: 300,
+      height: 80,
+    });
+    visible.className = "overlay";
+    visible.style.borderRadius = "31.96px";
+    document.body.append(visible);
+    const hidden = elementAt({ left: 1, top: 2, width: 3, height: 4 });
+    hidden.className = "overlay";
+    hidden.style.display = "none";
+    document.body.append(hidden);
+    const nested = elementAt({ left: 20, top: 40, width: 100, height: 40 });
+    nested.className = "overlay";
+    document.body.append(nested);
+
+    expect(collectSurfaceOcclusionRects(".overlay", document)).toEqual([
+      {
+        x: 12,
+        y: 34.1,
+        width: 300,
+        height: 80,
+        cornerRadius: 32,
+      },
+    ]);
+  });
+
   it("does nothing while inactive (not on the native-mobile-webview path)", () => {
     const shell = new RecordingShell();
     renderHook(() =>
@@ -187,27 +223,77 @@ describe("useMobileNativeTabSurfaces", () => {
     expect(shell.commands).toContain("bg:browser-tab:a");
   });
 
-  it("backgrounds the native page while the global chat sheet is open", async () => {
+  it("keeps the native page foregrounded and updates its rounded chat hole while the sheet opens", async () => {
     const sheet = document.createElement("div");
-    sheet.dataset.testid = "chat-sheet";
+    sheet.dataset.testid = "chat-sheet-surface";
     sheet.dataset.chatState = "INPUT";
+    sheet.style.borderRadius = "32px";
+    let bounds = { left: 12, top: 700, width: 360, height: 60 };
+    sheet.getBoundingClientRect = () =>
+      ({
+        ...bounds,
+        x: bounds.left,
+        y: bounds.top,
+        right: bounds.left + bounds.width,
+        bottom: bounds.top + bounds.height,
+        toJSON: () => ({}),
+      }) as DOMRect;
     document.body.append(sheet);
     const shell = new RecordingShell();
-    renderHook(() => useMobileNativeTabSurfaces({ ...base, shell }));
+    renderHook(() =>
+      useMobileNativeTabSurfaces({
+        ...base,
+        occlusionSelector: '[data-testid="chat-sheet-surface"]',
+        shell,
+      }),
+    );
+
+    expect(shell.occlusions.get("browser-tab:a")).toEqual([
+      { x: 12, y: 700, width: 360, height: 60, cornerRadius: 32 },
+    ]);
+    expect(shell.commands.indexOf("occlusions:browser-tab:a")).toBeLessThan(
+      shell.commands.indexOf("fg:browser-tab:a"),
+    );
 
     shell.commands.length = 0;
     await act(async () => {
+      document.body.dataset.elizaLayoutShiftIntent = "transient";
+      bounds = { left: 0, top: 240, width: 384, height: 520 };
       sheet.dataset.chatState = "OPEN_HALF_OR_OVER";
-      await Promise.resolve();
+      sheet.style.borderRadius = "24px";
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+      );
     });
-    expect(shell.commands).toContain("bg:browser-tab:a");
+    expect(shell.occlusions.get("browser-tab:a")).toEqual([
+      { x: 0, y: 240, width: 384, height: 520, cornerRadius: 24 },
+    ]);
 
-    shell.commands.length = 0;
+    // MotionValue transforms do not require React or attribute writes. The
+    // canonical transient marker keeps native geometry following those frames.
     await act(async () => {
-      sheet.dataset.chatState = "INPUT";
-      await Promise.resolve();
+      bounds = { left: 0, top: 80, width: 384, height: 680 };
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+      );
     });
-    expect(shell.commands).toContain("fg:browser-tab:a");
+    expect(shell.occlusions.get("browser-tab:a")).toEqual([
+      { x: 0, y: 80, width: 384, height: 680, cornerRadius: 24 },
+    ]);
+
+    await act(async () => {
+      document.body.removeAttribute("data-eliza-layout-shift-intent");
+      bounds = { left: 12, top: 700, width: 360, height: 60 };
+      sheet.dataset.chatState = "INPUT";
+      sheet.style.borderRadius = "32px";
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+      );
+    });
+    expect(shell.occlusions.get("browser-tab:a")).toEqual([
+      { x: 12, y: 700, width: 360, height: 60, cornerRadius: 32 },
+    ]);
+    expect(shell.commands).not.toContain("bg:browser-tab:a");
   });
 
   it("navigates the tab's surface without recreating it", () => {
