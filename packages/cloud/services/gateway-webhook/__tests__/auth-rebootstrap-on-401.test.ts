@@ -1,10 +1,10 @@
-// Pins the 401 recovery contract: when the cloud Worker redeploys, the token
-// the gateway holds turns invalid until its scheduled refresh, up to ~48
-// minutes away — and every cloud call in that window runs post-ack, so each
-// 401 is a user-visible silence. Each call site must re-bootstrap once via the
-// injected reauth hook and retry; a second 401 follows the normal error path,
-// and a 404 must never trigger a re-bootstrap. The real reauth (single-flight
-// against the token endpoint) is pinned separately below.
+/**
+ * Verifies one-shot JWT recovery for gateway-to-cloud requests.
+ *
+ * The deterministic harness covers identity and webhook-config retries plus
+ * the real auth module's single-flight behavior. Handler-level onboarding
+ * recovery is exercised by the webhook end-to-end suite.
+ */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { GatewayRedis } from "../src/redis";
 import { resolveIdentity } from "../src/server-router";
@@ -19,6 +19,7 @@ class MemoryRedis implements GatewayRedis {
     try {
       return JSON.parse(value) as T;
     } catch {
+      // error-policy:J3 Test Redis mirrors string values that are not JSON.
       return value as T;
     }
   }
@@ -47,7 +48,7 @@ const STALE = { Authorization: "Bearer stale" };
 /** Upstream that 401s stale tokens and serves fresh ones. */
 function upstream(body: unknown): { calls: Array<string | null> } {
   const seen: Array<string | null> = [];
-  globalThis.fetch = mock(async (input: unknown, init?: RequestInit) => {
+  globalThis.fetch = mock(async (_input: unknown, init?: RequestInit) => {
     const auth = new Headers(init?.headers as HeadersInit).get("authorization");
     seen.push(auth);
     if (auth === "Bearer stale") {
@@ -159,8 +160,8 @@ describe("resolveWebhookConfig re-bootstraps once on 401", () => {
 
 describe("reacquireAuthHeader is single-flight", () => {
   test("concurrent 401 recoveries share one bootstrap request", async () => {
-    // Drive the REAL auth module: init against a stub token endpoint, then
-    // fire concurrent reacquisitions and count how many bootstrap POSTs land.
+    // Drive the auth module against a stub token endpoint, then count the
+    // bootstrap POSTs from concurrent reacquisitions.
     let bootstraps = 0;
     globalThis.fetch = mock(async (input: unknown) => {
       if (String(input).endsWith("/api/internal/auth/token")) {
@@ -194,8 +195,7 @@ describe("reacquireAuthHeader is single-flight", () => {
       reacquireAuthHeader(),
     ]);
 
-    // One shared bootstrap for the burst, and every caller gets the SAME
-    // fresh token from it.
+    // One shared bootstrap serves the burst and returns one fresh token.
     expect(bootstraps).toBe(2);
     for (const header of headers) {
       expect(header).toEqual({ Authorization: "Bearer tok-2" });

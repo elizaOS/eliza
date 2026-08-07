@@ -1,4 +1,4 @@
-// Handles webhook gateway auth behavior for authenticated connector fan-in.
+/** Handles webhook gateway authentication for authenticated connector fan-in. */
 import { logger } from "./logger";
 
 const HTTP_TIMEOUT_MS = 10_000;
@@ -143,12 +143,14 @@ let reacquireInFlight: Promise<void> | null = null;
 
 /**
  * Re-bootstraps the JWT and returns a fresh header. Single-flight: a Worker
- * redeploy invalidates the token for EVERY in-flight message at once, and
+ * redeploy invalidates the token for every in-flight message at once, and
  * without the latch each 401 would race its own bootstrap against the token
  * endpoint. Callers retry their request exactly once with the fresh header; a
  * second 401 follows the normal error path.
  */
-export async function reacquireAuthHeader(): Promise<{ Authorization: string }> {
+export async function reacquireAuthHeader(): Promise<{
+  Authorization: string;
+}> {
   reacquireInFlight ??= acquireToken().finally(() => {
     reacquireInFlight = null;
   });

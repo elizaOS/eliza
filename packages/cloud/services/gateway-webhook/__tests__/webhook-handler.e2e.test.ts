@@ -1,4 +1,4 @@
-// Exercises the gateway-webhook webhook handler.e2e path with deterministic cloud service fixtures.
+/** Exercises gateway webhook routing with deterministic cloud-service fixtures. */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type {
   ChatEvent,
@@ -203,6 +203,77 @@ describe("gateway webhook handler e2e routing", () => {
       platformUserId: "+15551234567",
       platformDisplayName: "Ada",
     });
+  });
+
+  test("retries onboarding once with fresh auth and the same idempotency key", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM_onboarding_retry" });
+    const adapter = createAdapter(event);
+    const reauth = mock(async () => ({ Authorization: "Bearer fresh" }));
+    const onboardingRequests: Array<{
+      authorization: string | null;
+      idempotencyKey: string | null;
+    }> = [];
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(JSON.stringify({ success: false }), {
+          status: 404,
+        });
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+      ) {
+        onboardingRequests.push({
+          authorization: request.headers.get("authorization"),
+          idempotencyKey: request.headers.get("idempotency-key"),
+        });
+        if (onboardingRequests.length === 1) {
+          return new Response("unauthorized", { status: 401 });
+        }
+        return new Response(
+          JSON.stringify({ data: { reply: "fresh-token reply" } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer stale" }),
+        reacquireAuthHeader: reauth,
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(
+      () => adapter.replies.length === 1,
+      "retried onboarding reply",
+    );
+    expect(reauth).toHaveBeenCalledTimes(1);
+    expect(onboardingRequests).toEqual([
+      {
+        authorization: "Bearer stale",
+        idempotencyKey: event.messageId,
+      },
+      {
+        authorization: "Bearer fresh",
+        idempotencyKey: event.messageId,
+      },
+    ]);
+    expect(adapter.replies).toEqual(["fresh-token reply"]);
   });
 
   test("routes linked Twilio identity to the running agent server and sends the agent reply", async () => {

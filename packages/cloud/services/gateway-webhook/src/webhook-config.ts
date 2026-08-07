@@ -1,4 +1,4 @@
-// Handles webhook gateway webhook config behavior for authenticated connector fan-in.
+/** Resolves shared and per-agent webhook configuration for connector fan-in. */
 import type { Platform, WebhookConfig } from "./adapters/types";
 import { reacquireAuthHeader } from "./auth";
 import { logger } from "./logger";

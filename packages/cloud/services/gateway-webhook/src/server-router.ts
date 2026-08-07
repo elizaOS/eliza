@@ -1,4 +1,4 @@
-// Handles webhook gateway server router behavior for authenticated connector fan-in.
+/** Routes authenticated connector traffic to cloud identities and agent servers. */
 import { readFileSync } from "node:fs";
 import { reacquireAuthHeader } from "./auth";
 import { getHashTargets, refreshHashRing } from "./hash-router";

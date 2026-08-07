@@ -1,4 +1,4 @@
-// Handles webhook gateway webhook handler behavior for authenticated connector fan-in.
+/** Handles authenticated connector webhooks from verification through reply delivery. */
 import type {
   ChatEvent,
   Platform,
@@ -22,6 +22,7 @@ interface HandlerDeps {
   redis: GatewayRedis;
   cloudBaseUrl: string;
   getAuthHeader: () => { Authorization: string };
+  reacquireAuthHeader?: () => Promise<Record<string, string>>;
 }
 
 export async function handleWebhook(
@@ -32,6 +33,7 @@ export async function handleWebhook(
   agentId?: string,
 ): Promise<Response> {
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
+  const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
 
   const rawBody = await request.text();
@@ -45,6 +47,7 @@ export async function handleWebhook(
     adapter.platform,
     project,
     agentId,
+    reauth,
   );
   if (!config) {
     logger.warn("No webhook config found", {
@@ -112,6 +115,7 @@ async function processMessage(
   explicitAgentId?: string,
 ): Promise<void> {
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
+  const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
 
   const identity = await resolveIdentity(
@@ -121,6 +125,7 @@ async function processMessage(
     adapter.platform,
     event.senderId,
     event.senderName,
+    reauth,
   );
 
   if (!identity) {
@@ -244,9 +249,9 @@ async function sendOnboardingReply(
   config: WebhookConfig,
   event: ChatEvent,
   deps: HandlerDeps,
-  reauth: () => Promise<Record<string, string>> = reacquireAuthHeader,
 ): Promise<void> {
   const { cloudBaseUrl, getAuthHeader } = deps;
+  const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
 
   const postOnboarding = (authHeader: Record<string, string>) =>
     fetch(`${cloudBaseUrl}/api/eliza-app/onboarding/chat`, {
@@ -281,6 +286,7 @@ async function sendOnboardingReply(
     }
 
     if (!response.ok) {
+      // error-policy:J1 Preserve optional upstream diagnostics at this boundary.
       const body = await response.text().catch(() => "");
       throw new Error(
         `onboarding chat failed (${response.status}) ${body.slice(0, 200)}`,
