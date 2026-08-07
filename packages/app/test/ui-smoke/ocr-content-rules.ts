@@ -128,16 +128,24 @@ export function normalize(text: string): string {
 function containsExpectedText(haystack: string, label: string): boolean {
   const needle = normalize(label);
   if (!needle) return false;
+  const compactNeedle = needle.replaceAll(" ", "");
+
+  // Short anchors match inside unrelated noise tokens under a bare substring
+  // test — "SOL" hits inside the garbled token "esol", "ETH" inside "method".
+  // That matters most in exactly the low-confidence regime where scrambled
+  // glyphs are likeliest, so require a token boundary for them. `normalize`
+  // has already collapsed the haystack to single-space-separated tokens, so
+  // padding both sides is a sufficient boundary test.
+  if (compactNeedle.length < 6) {
+    return ` ${haystack} `.includes(` ${needle} `);
+  }
+
   if (haystack.includes(needle)) return true;
 
-  // Tesseract sometimes joins adjacent words ("New note" → "Newnote").
-  // Require six real characters so removing spaces cannot make tiny labels
-  // such as "on" or "go" match inside unrelated words.
-  const compactNeedle = needle.replaceAll(" ", "");
-  return (
-    compactNeedle.length >= 6 &&
-    haystack.replaceAll(" ", "").includes(compactNeedle)
-  );
+  // Tesseract sometimes joins adjacent words ("New note" → "Newnote"). Six
+  // real characters is enough specificity that removing spaces cannot make
+  // the needle match inside an unrelated word.
+  return haystack.replaceAll(" ", "").includes(compactNeedle);
 }
 
 /**
