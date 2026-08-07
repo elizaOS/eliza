@@ -5,6 +5,7 @@ import type {
   PlatformAdapter,
   WebhookConfig,
 } from "./adapters/types";
+import { reacquireAuthHeader } from "./auth";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
 import {
@@ -243,34 +244,41 @@ async function sendOnboardingReply(
   config: WebhookConfig,
   event: ChatEvent,
   deps: HandlerDeps,
+  reauth: () => Promise<Record<string, string>> = reacquireAuthHeader,
 ): Promise<void> {
   const { cloudBaseUrl, getAuthHeader } = deps;
 
-  try {
-    const response = await fetch(
-      `${cloudBaseUrl}/api/eliza-app/onboarding/chat`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // The onboarding route and its session coordinator both keep a replay
-          // ledger on this header. Without it the only protection against a
-          // platform redelivering a message is the 5-minute dedup key, and a
-          // later retry would append the message to the transcript twice and
-          // re-enter provisioning.
-          "Idempotency-Key": event.messageId,
-          ...getAuthHeader(),
-        },
-        body: JSON.stringify({
-          sessionId: `platform:${adapter.platform}:${event.senderId}`,
-          message: event.text,
-          platform: adapter.platform,
-          platformUserId: event.senderId,
-          platformDisplayName: event.senderName,
-        }),
-        signal: AbortSignal.timeout(30_000),
+  const postOnboarding = (authHeader: Record<string, string>) =>
+    fetch(`${cloudBaseUrl}/api/eliza-app/onboarding/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // The onboarding route and its session coordinator both keep a replay
+        // ledger on this header. Without it the only protection against a
+        // platform redelivering a message is the 5-minute dedup key, and a
+        // later retry would append the message to the transcript twice and
+        // re-enter provisioning.
+        "Idempotency-Key": event.messageId,
+        ...authHeader,
       },
-    );
+      body: JSON.stringify({
+        sessionId: `platform:${adapter.platform}:${event.senderId}`,
+        message: event.text,
+        platform: adapter.platform,
+        platformUserId: event.senderId,
+        platformDisplayName: event.senderName,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+  try {
+    let response = await postOnboarding(getAuthHeader());
+    // A Worker redeploy strands the cached token until its scheduled refresh;
+    // the Idempotency-Key above makes this replay safe. One retry, then the
+    // normal error path.
+    if (response.status === 401) {
+      response = await postOnboarding(await reauth());
+    }
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");

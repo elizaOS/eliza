@@ -1,5 +1,6 @@
 // Handles webhook gateway webhook config behavior for authenticated connector fan-in.
 import type { Platform, WebhookConfig } from "./adapters/types";
+import { reacquireAuthHeader } from "./auth";
 import { logger } from "./logger";
 import { getProjectEnv } from "./project-config";
 import type { GatewayRedis } from "./redis";
@@ -57,6 +58,7 @@ export async function resolveWebhookConfig(
   platform: Platform,
   project: string,
   agentId?: string,
+  reauth: () => Promise<Record<string, string>> = reacquireAuthHeader,
 ): Promise<WebhookConfig | null> {
   if (!agentId) {
     return buildSharedWebhookConfig(platform, project);
@@ -72,10 +74,18 @@ export async function resolveWebhookConfig(
     const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
     try {
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         headers: authHeader,
         signal: controller.signal,
       });
+      // Same 401 shape as resolveIdentity: a Worker redeploy strands the
+      // cached token until the scheduled refresh. One re-bootstrapped retry.
+      if (res.status === 401) {
+        res = await fetch(url, {
+          headers: await reauth(),
+          signal: controller.signal,
+        });
+      }
 
       if (res.status === 404) {
         await redis.set(cacheKey, JSON.stringify({ notFound: true }), {

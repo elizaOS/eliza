@@ -139,6 +139,23 @@ export async function initAuth(authConfig: AuthConfig): Promise<void> {
   await acquireToken();
 }
 
+let reacquireInFlight: Promise<void> | null = null;
+
+/**
+ * Re-bootstraps the JWT and returns a fresh header. Single-flight: a Worker
+ * redeploy invalidates the token for EVERY in-flight message at once, and
+ * without the latch each 401 would race its own bootstrap against the token
+ * endpoint. Callers retry their request exactly once with the fresh header; a
+ * second 401 follows the normal error path.
+ */
+export async function reacquireAuthHeader(): Promise<{ Authorization: string }> {
+  reacquireInFlight ??= acquireToken().finally(() => {
+    reacquireInFlight = null;
+  });
+  await reacquireInFlight;
+  return getAuthHeader();
+}
+
 export function getAuthHeader(): { Authorization: string } {
   if (!accessToken) {
     throw new Error("No access token available - call initAuth first");
