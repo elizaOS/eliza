@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 
+import {
+  awaitingApprovalMessage,
+  loadActionRequiredWorkflowPaths,
+} from "../../packages/scripts/github-actions-approval.mjs";
+
 const LABELS = new Set([
   "security",
   "security issue",
@@ -15,6 +20,7 @@ const PATHS = [
   /(^|\/)(contracts?|migrations)(\/|$)/i,
 ];
 const REQUIRED_CHECKS = ["gitleaks"];
+const REQUIRED_WORKFLOW_PATHS = [".github/workflows/gitleaks.yml"];
 const SUCCESS = new Set(["success"]);
 const TERMINAL = new Set([
   "success",
@@ -116,6 +122,7 @@ function requiredChecksCompletedBy(checks, deadline) {
 
 export async function waitForRequiredChecks({
   loadChecks,
+  loadActionRequiredPaths = async () => [],
   timeoutMs,
   completionGraceMs,
   intervalMs,
@@ -128,6 +135,14 @@ export async function waitForRequiredChecks({
   let completionGraceUsed = false;
 
   for (;;) {
+    const actionRequiredPaths = await loadActionRequiredPaths();
+    const heldRequiredPaths = REQUIRED_WORKFLOW_PATHS.filter((path) =>
+      actionRequiredPaths.includes(path),
+    );
+    if (heldRequiredPaths.length > 0) {
+      throw new Error(awaitingApprovalMessage(heldRequiredPaths));
+    }
+
     const checks = await loadChecks();
     const state = evaluate(checks);
     if (state.failed.length) {
@@ -233,6 +248,15 @@ async function live() {
       }
       return checkRuns;
     },
+    loadActionRequiredPaths: () =>
+      loadActionRequiredWorkflowPaths({
+        repository: `${owner}/${repo}`,
+        headSha: pull.head.sha,
+        requestJson: (url) => {
+          const parsed = new URL(url);
+          return api(`${parsed.pathname}${parsed.search}`, token);
+        },
+      }),
   });
   console.log("deterministic security checks completed successfully");
 }
