@@ -10,6 +10,7 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 const hoisted = vi.hoisted(() => ({
   queueAssistantSpeech: vi.fn(),
   stopSpeaking: vi.fn(),
+  voiceChatOptions: null as Record<string, unknown> | null,
   cfg: {
     isSpeaking: false,
     voiceBootstrapTick: 1,
@@ -21,24 +22,27 @@ const hoisted = vi.hoisted(() => ({
 
 // The single TTS engine — mocked to capture the output calls the overlay makes.
 vi.mock("../../hooks/useVoiceChat", () => ({
-  useVoiceChat: () => ({
-    queueAssistantSpeech: hoisted.queueAssistantSpeech,
-    stopSpeaking: hoisted.stopSpeaking,
-    isSpeaking: hoisted.cfg.isSpeaking,
-    // Unused by the output hook, present to satisfy the shape.
-    isListening: false,
-    captureMode: "idle",
-    mouthOpen: 0,
-    interimTranscript: "",
-    supported: true,
-    usingAudioAnalysis: false,
-    toggleListening: () => {},
-    startListening: async () => {},
-    stopListening: async () => {},
-    speak: () => {},
-    voiceUnlockedGeneration: 0,
-    assistantTtsQuality: "standard",
-  }),
+  useVoiceChat: (options: Record<string, unknown>) => {
+    hoisted.voiceChatOptions = options;
+    return {
+      queueAssistantSpeech: hoisted.queueAssistantSpeech,
+      stopSpeaking: hoisted.stopSpeaking,
+      isSpeaking: hoisted.cfg.isSpeaking,
+      // Unused by the output hook, present to satisfy the shape.
+      isListening: false,
+      captureMode: "idle",
+      mouthOpen: 0,
+      interimTranscript: "",
+      supported: true,
+      usingAudioAnalysis: false,
+      toggleListening: () => {},
+      startListening: async () => {},
+      stopListening: async () => {},
+      speak: () => {},
+      voiceUnlockedGeneration: 0,
+      assistantTtsQuality: "standard",
+    };
+  },
 }));
 
 vi.mock("../../voice/useVoiceConfig", () => ({
@@ -79,6 +83,7 @@ const BASE: ShellVoiceOutputOptions = {
   toggleAgentVoiceMute: vi.fn(),
   uiLanguage: "en",
   cloudConnected: false,
+  realtimeVoiceEnabled: false,
 };
 
 function render(initial: ShellVoiceOutputOptions) {
@@ -96,11 +101,21 @@ beforeEach(() => {
   hoisted.cfg.isSpeaking = false;
   hoisted.cfg.voiceBootstrapTick = 1;
   hoisted.cfg.voiceConfig = { provider: "local-inference" };
+  hoisted.voiceChatOptions = null;
 });
 
 afterEach(cleanup);
 
 describe("useShellVoiceOutput", () => {
+  it("routes shell playback through the realtime Cartesia gateway", () => {
+    render({ ...BASE, realtimeVoiceEnabled: true });
+
+    expect(hoisted.voiceChatOptions).toMatchObject({
+      voiceConfig: { provider: "eliza-cloud" },
+      ttsRouteOverride: "/api/v1/voice/tts",
+    });
+  });
+
   it("speaks the assistant reply after a voice turn", () => {
     const { rerender } = render({
       ...BASE,

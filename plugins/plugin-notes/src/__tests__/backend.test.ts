@@ -382,14 +382,14 @@ describe("Notes capabilities", () => {
     await expect(
       serverInteract(
         "create-note",
-        { title: "First runtime", body: "A" },
+        { content: "First runtime\nA" },
         { runtime: firstRuntime },
       ),
     ).resolves.toMatchObject({ success: true });
     await expect(
       serverInteract(
         "create-note",
-        { title: "Second runtime", body: "B" },
+        { content: "Second runtime\nB" },
         { runtime: secondRuntime },
       ),
     ).resolves.toMatchObject({ success: true });
@@ -411,7 +411,7 @@ describe("Notes capabilities", () => {
 
     const createdNote = await interact(
       "create-note",
-      { title: "Workbench", body: "First draft", color: "yellow" },
+      { content: "Workbench\nFirst draft", color: "yellow" },
       service,
     );
     expect(createdNote).toMatchObject({ success: true });
@@ -423,7 +423,7 @@ describe("Notes capabilities", () => {
     });
 
     await expect(
-      interact("get-notes", { title: "Workbench" }, service),
+      interact("get-notes", { query: "Workbench" }, service),
     ).resolves.toMatchObject({
       success: true,
       data: { notes: [{ id: noteId, title: "Workbench" }] },
@@ -431,7 +431,11 @@ describe("Notes capabilities", () => {
 
     const updatedNote = await interact(
       "update-note",
-      { query: "Workbench", body: "Polished draft", color: "green" },
+      {
+        query: "Workbench",
+        content: "Workbench\nPolished draft",
+        color: "green",
+      },
       service,
     );
     expect(updatedNote).toMatchObject({ success: true });
@@ -446,7 +450,7 @@ describe("Notes capabilities", () => {
     await expect(
       interact(
         "update-note",
-        { oldTitle: "Workbench", title: "Workbench ready" },
+        { query: "Workbench", content: "Workbench ready\nPolished draft" },
         service,
       ),
     ).resolves.toMatchObject({ success: true });
@@ -472,16 +476,8 @@ describe("Notes capabilities", () => {
     });
     expect(service.listNotes()).toEqual([]);
 
-    await interact(
-      "create-note",
-      { title: "One", body: "", color: "slate" },
-      service,
-    );
-    await interact(
-      "create-note",
-      { title: "Two", body: "", color: "rose" },
-      service,
-    );
+    await interact("create-note", { content: "One", color: "slate" }, service);
+    await interact("create-note", { content: "Two", color: "rose" }, service);
     const clearedNotes = await interact("clear-notes", {}, service);
     expect(clearedNotes).toMatchObject({
       success: true,
@@ -497,19 +493,19 @@ describe("Notes capabilities", () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
       "create-note",
-      { title: "Daily plan", body: "Morning", color: "yellow" },
+      { content: "Daily plan\nMorning", color: "yellow" },
       service,
     );
     await interact(
       "create-note",
-      { title: "Daily plan", body: "Evening", color: "rose" },
+      { content: "Daily plan\nEvening", color: "rose" },
       service,
     );
 
     await expect(
       interact(
         "update-note",
-        { query: "Daily plan", body: "Changed" },
+        { query: "Daily plan", content: "Daily plan\nChanged" },
         service,
       ),
     ).resolves.toMatchObject({
@@ -519,7 +515,7 @@ describe("Notes capabilities", () => {
     await expect(
       interact(
         "update-note",
-        { query: "does not exist", body: "Changed" },
+        { query: "does not exist", content: "Changed" },
         service,
       ),
     ).resolves.toMatchObject({
@@ -535,7 +531,7 @@ describe("Notes capabilities", () => {
   it("returns explicit failures for invalid input and rejects undeclared capabilities", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await expect(
-      interact("create-note", { title: "   " }, service),
+      interact("create-note", { content: "   " }, service),
     ).resolves.toMatchObject({
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },

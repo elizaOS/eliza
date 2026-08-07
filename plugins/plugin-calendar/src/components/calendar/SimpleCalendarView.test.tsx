@@ -20,6 +20,7 @@ vi.mock("../../hooks/useCalendarWeek.js", () => ({
 }));
 
 vi.mock("@elizaos/ui/events", () => ({
+  NETWORK_STATUS_CHANGE_EVENT: "eliza:network-status-change",
   VIEW_EVENTS: { VIEW_REFRESH: "view:refresh" },
   useViewEvent: (eventType: string, callback: () => void) => {
     fixtures.viewEvents.set(eventType, callback);
@@ -113,7 +114,11 @@ describe("SimpleCalendarView", () => {
     expect(
       screen.getByRole("main", { name: "Calendar. 2 events" }),
     ).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "August 2026" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Choose month and year. Current month is August 2026",
+      }),
+    ).toBeTruthy();
     expect(screen.getByText("Demo")).toBeTruthy();
     expect(screen.getByText("Team sync")).toBeTruthy();
     expect(
@@ -122,10 +127,6 @@ describe("SimpleCalendarView", () => {
     expect(screen.getByRole("button", { name: /Previous month/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Next month/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Today" })).toBeTruthy();
-    expect(
-      screen.getByLabelText("Choose calendar month and year"),
-    ).toBeTruthy();
-
     const augustSixth = screen.getByRole("button", {
       name: "Thursday, August 6, 2026",
     });
@@ -142,9 +143,15 @@ describe("SimpleCalendarView", () => {
     fixtures.calendar.mockReturnValue(calendarState({ goToDate }));
     render(<SimpleCalendarView />);
 
-    fireEvent.change(screen.getByLabelText("Choose calendar month and year"), {
-      target: { value: "2027-03" },
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Choose month and year. Current month is August 2026",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Calendar year"), {
+      target: { value: "2027" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Mar" }));
 
     expect(goToDate).toHaveBeenCalledTimes(1);
     expect(goToDate.mock.calls[0]?.[0]).toEqual(

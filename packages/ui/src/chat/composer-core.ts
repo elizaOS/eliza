@@ -1,10 +1,10 @@
 /**
  * Headless composer core shared by every chat input surface. One
  * implementation of the composer keyboard contract — IME-safe Enter-to-send
- * (#9148), slash-menu key interception, Shift+Enter newline, Escape — and of
- * the clipboard contract — a pasted image/file attaches, an oversized text
- * paste becomes a collapsed text-attachment chip, small text falls through to
- * the input (#12188 Phase 3).
+ * (#9148), slash-menu and optional sent-history interception, Shift+Enter
+ * newline, Escape — and of the clipboard contract — a pasted image/file
+ * attaches, an oversized text paste becomes a collapsed text-attachment chip,
+ * small text falls through to the input (#12188 Phase 3).
  *
  * Together with `useChatComposerOrLocal` (draft state,
  * state/ChatComposerContext.hooks.ts) and `usePushToTalk` (mic hold machine,
@@ -61,7 +61,7 @@ export interface ComposerSlashKeydown {
   dismiss(): void;
 }
 
-export interface ComposerKeydownOptions {
+export interface ComposerKeydownOptions<T extends HTMLElement = HTMLElement> {
   /** Enter (no Shift, no composing IME) sends. */
   onSend: () => void;
   /** Slash-menu interception, consulted while its `open` flag is true. */
@@ -71,6 +71,11 @@ export interface ComposerKeydownOptions {
    * Return true when consumed so the core preventDefaults it.
    */
   onEscape?: () => boolean;
+  /**
+   * Physical ArrowUp/ArrowDown history navigation. The surface owns its history
+   * source and returns true only when it consumed the key.
+   */
+  onHistory?: (direction: -1 | 1, event: ReactKeyboardEvent<T>) => boolean;
   /** Ignore every key while locked (mirrors the disabled-input guard). */
   locked?: boolean;
 }
@@ -78,18 +83,19 @@ export interface ComposerKeydownOptions {
 /**
  * The one composer keydown handler. Ordering is the contract: locked guard →
  * IME-commit Enter passthrough → slash-menu interception (ArrowUp/ArrowDown/
- * Tab/Enter/Escape) → Enter sends (Shift+Enter falls through as a newline) →
- * Escape surface hook. Returns a stable handler; options are read through a
- * ref so surfaces may pass fresh closures every render.
+ * Tab/Enter/Escape) → optional sent-history interception → Enter sends
+ * (Shift+Enter falls through as a newline) → Escape surface hook. Returns a
+ * stable handler; options are read through a ref so surfaces may pass fresh
+ * closures every render.
  */
 export function useComposerKeydown<T extends HTMLElement>(
-  options: ComposerKeydownOptions,
+  options: ComposerKeydownOptions<T>,
 ): (event: ReactKeyboardEvent<T>) => void {
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
   return useCallback((event: ReactKeyboardEvent<T>) => {
-    const { onSend, slash, onEscape, locked } = optionsRef.current;
+    const { onSend, slash, onEscape, onHistory, locked } = optionsRef.current;
     if (locked) return;
     if (isImeComposingEnter(event)) return;
     if (slash?.open) {
@@ -121,6 +127,14 @@ export function useComposerKeydown<T extends HTMLElement>(
         slash.dismiss();
         return;
       }
+    }
+    if (event.key === "ArrowUp" && onHistory?.(-1, event)) {
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "ArrowDown" && onHistory?.(1, event)) {
+      event.preventDefault();
+      return;
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();

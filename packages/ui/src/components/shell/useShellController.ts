@@ -1598,6 +1598,7 @@ export function useShellController(): ShellController {
       connected: elizaCloudConnected,
       proxyAvailable: elizaCloudVoiceProxyAvailable,
     }),
+    realtimeVoiceEnabled,
   });
   // Wire the forward ref so the conversation-switch / clear handlers (defined
   // above `voiceOutput`) can stop in-flight assistant speech at gesture time.

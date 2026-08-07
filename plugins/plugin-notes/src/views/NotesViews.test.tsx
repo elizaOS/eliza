@@ -173,8 +173,9 @@ describe("chat-only presentation", () => {
 
     const notes = render(<NotesView />);
 
-    expect(screen.getByText("Release checklist")).toBeTruthy();
-    expect(screen.getByText("Verify the signed build")).toBeTruthy();
+    expect(
+      notes.container.querySelector('[data-agent-id="note-1"] p')?.textContent,
+    ).toBe("Release checklist\nVerify the signed build");
     expect(
       notes.container
         .querySelector("[data-agent-id]")

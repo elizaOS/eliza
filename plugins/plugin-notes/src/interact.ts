@@ -13,7 +13,7 @@ import {
 } from "@elizaos/core";
 import { getNotesService, type NotesService } from "./service.js";
 import type { NotesSnapshot, StickyNote } from "./types.js";
-import { isRecord } from "./validation.js";
+import { isRecord, parseNoteContent } from "./validation.js";
 
 export interface NotesInteractResult {
   success: boolean;
@@ -89,59 +89,6 @@ function assertOnlyParams(
   }
 }
 
-function withoutParams(
-  params: Record<string, unknown>,
-  excluded: readonly string[],
-): Record<string, unknown> {
-  const excludedKeys = new Set(excluded);
-  return Object.fromEntries(
-    Object.entries(params).filter(([key]) => !excludedKeys.has(key)),
-  );
-}
-
-function updatePatch(
-  params: Record<string, unknown>,
-  selectors: readonly string[],
-): Record<string, unknown> {
-  const patch = withoutParams(params, [...selectors, "newTitle"]);
-  if (Object.hasOwn(params, "newTitle")) patch.title = params.newTitle;
-  return patch;
-}
-
-function normalizeRenameParams(
-  params: Record<string, unknown>,
-  capability: string,
-): Record<string, unknown> {
-  if (!Object.hasOwn(params, "oldTitle")) return params;
-  if (Object.hasOwn(params, "id") || Object.hasOwn(params, "query")) {
-    throw new ElizaError(
-      `${capability} oldTitle cannot be combined with id or query.`,
-      {
-        code: "NOTES_VALIDATION_FAILED",
-        context: { fields: ["oldTitle", "id", "query"] },
-        severity: "ephemeral",
-      },
-    );
-  }
-  if (Object.hasOwn(params, "title") && Object.hasOwn(params, "newTitle")) {
-    throw new ElizaError(
-      `${capability} accepts title or newTitle as the replacement, not both.`,
-      {
-        code: "NOTES_VALIDATION_FAILED",
-        context: { fields: ["title", "newTitle"] },
-        severity: "ephemeral",
-      },
-    );
-  }
-  const normalized: Record<string, unknown> = {
-    ...params,
-    title: params.oldTitle,
-  };
-  if (Object.hasOwn(params, "title")) normalized.newTitle = params.title;
-  delete normalized.oldTitle;
-  return normalized;
-}
-
 function summarizeNotes(notes: StickyNote[]): string {
   if (notes.length === 0) return "You don't have any notes yet.";
   const visible = notes
@@ -157,12 +104,12 @@ function summarizeNotes(notes: StickyNote[]): string {
 
 type NoteSelector =
   | { selector: "id"; value: string }
-  | { selector: "title" | "query"; value: string };
+  | { selector: "query"; value: string };
 
 function parseLookupTarget(
   params: Record<string, unknown>,
   capability: string,
-  selectorNames: readonly ("id" | "title" | "query")[],
+  selectorNames: readonly ("id" | "query")[],
 ): NoteSelector {
   const providedSelectors = selectorNames.filter((name) =>
     Object.hasOwn(params, name),
@@ -198,21 +145,6 @@ function parseLookupTarget(
   }
   const value = selectorValue.trim();
   return selector === "id" ? { selector, value } : { selector, value };
-}
-
-function parseNamedLookupTarget(
-  params: Record<string, unknown>,
-  capability: string,
-): { selector: "title" | "query"; value: string } {
-  const target = parseLookupTarget(params, capability, ["title", "query"]);
-  if (target.selector === "id") {
-    throw new ElizaError("Named lookup unexpectedly resolved an id selector.", {
-      code: "NOTES_LOOKUP_RESOLUTION_FAILED",
-      context: { capability },
-      severity: "fatal",
-    });
-  }
-  return target;
 }
 
 function success(
@@ -269,23 +201,19 @@ async function dispatchCapability(
 ): Promise<NotesInteractResult> {
   const params = paramsRecord(paramsValue);
   if (capability === "get-notes") {
-    assertOnlyParams(params, ["title", "query"]);
+    assertOnlyParams(params, ["query"]);
     const target =
       Object.keys(params).length === 0
         ? null
-        : parseNamedLookupTarget(params, capability);
+        : parseLookupTarget(params, capability, ["query"]);
     const notes = target
-      ? [service.getNoteByLookup(target.selector, target.value)]
+      ? [service.getNoteByLookup("query", target.value)]
       : service.listNotes();
     return success(service, summarizeNotes(notes), { notes });
   }
   if (capability === "get-note") {
-    assertOnlyParams(params, ["id", "title", "query"]);
-    const target = parseLookupTarget(params, capability, [
-      "id",
-      "title",
-      "query",
-    ]);
+    assertOnlyParams(params, ["id", "query"]);
+    const target = parseLookupTarget(params, capability, ["id", "query"]);
     const note =
       target.selector === "id"
         ? service.getNote(target.value)
@@ -293,8 +221,12 @@ async function dispatchCapability(
     return success(service, sentence(noteSummary(note)), { note });
   }
   if (capability === "create-note") {
-    const { value: note, snapshot } =
-      await service.createNoteWithCommit(params);
+    assertOnlyParams(params, ["content", "color"]);
+    const input = {
+      ...parseNoteContent(params.content),
+      ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
+    };
+    const { value: note, snapshot } = await service.createNoteWithCommit(input);
     return mutationSuccess(
       snapshot,
       capability,
@@ -304,19 +236,14 @@ async function dispatchCapability(
     );
   }
   if (capability === "update-note") {
-    assertOnlyParams(params, [
-      "id",
-      "oldTitle",
-      "title",
-      "query",
-      "newTitle",
-      "body",
-      "color",
-    ]);
-    const normalized = normalizeRenameParams(params, capability);
-    const selectors = ["id", "title", "query"] as const;
-    const target = parseLookupTarget(normalized, capability, selectors);
-    const patch = updatePatch(normalized, selectors);
+    assertOnlyParams(params, ["id", "query", "content", "color"]);
+    const target = parseLookupTarget(params, capability, ["id", "query"]);
+    const patch: Record<string, unknown> = {
+      ...(Object.hasOwn(params, "content")
+        ? parseNoteContent(params.content)
+        : {}),
+      ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
+    };
     const { value: note, snapshot } =
       target.selector === "id"
         ? await service.updateNoteWithCommit(target.value, patch)
@@ -334,12 +261,8 @@ async function dispatchCapability(
     );
   }
   if (capability === "delete-note") {
-    assertOnlyParams(params, ["id", "title", "query"]);
-    const target = parseLookupTarget(params, capability, [
-      "id",
-      "title",
-      "query",
-    ]);
+    assertOnlyParams(params, ["id", "query"]);
+    const target = parseLookupTarget(params, capability, ["id", "query"]);
     const { value: note, snapshot } =
       target.selector === "id"
         ? await service.deleteNoteWithCommit(target.value)

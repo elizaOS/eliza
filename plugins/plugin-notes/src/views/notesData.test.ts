@@ -47,7 +47,7 @@ describe("Notes browser interaction broker", () => {
     transport.fetchWithCsrf.mockResolvedValueOnce(brokerResponse(4));
 
     await expect(
-      interact("create-note", { title: "Brokered note" }),
+      interact("create-note", { content: "Brokered note" }),
     ).resolves.toMatchObject({ success: true, state: { revision: 4 } });
 
     expect(transport.fetchWithCsrf).toHaveBeenCalledWith(
@@ -56,7 +56,7 @@ describe("Notes browser interaction broker", () => {
         method: "POST",
         body: JSON.stringify({
           capability: "create-note",
-          params: { title: "Brokered note" },
+          params: { content: "Brokered note" },
         }),
       }),
     );

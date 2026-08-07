@@ -18,6 +18,7 @@ import {
 const ENTITY_ID_PATTERN = /^[a-z][a-z0-9-]{2,127}$/;
 const MAX_TITLE_LENGTH = 240;
 const MAX_BODY_LENGTH = 20_000;
+const MAX_NOTE_CONTENT_LENGTH = 20_000;
 
 function validationError(message: string, field: string): ElizaError {
   return new ElizaError(message, {
@@ -93,6 +94,30 @@ function parseText(value: unknown, field: string): string {
     allowEmpty: true,
     maxLength: MAX_BODY_LENGTH,
   });
+}
+
+/**
+ * Split the one user-authored note field into the storage schema's stable list
+ * label and remainder. The first line is the label; overflow and later lines
+ * stay in the body, so the transformation never asks a model to invent text or
+ * discards user content.
+ */
+export function parseNoteContent(
+  value: unknown,
+  field = "content",
+): Pick<CreateNoteInput, "title" | "body"> {
+  const content = parseString(value, field, {
+    allowEmpty: false,
+    maxLength: MAX_NOTE_CONTENT_LENGTH,
+  });
+  const [firstLine = "", ...remainingLines] = content.split(/\r?\n/);
+  const title = firstLine.slice(0, MAX_TITLE_LENGTH).trim();
+  const overflow = firstLine.slice(MAX_TITLE_LENGTH).trim();
+  const body = [overflow, ...remainingLines].join("\n").trim();
+  return {
+    title: parseRequiredTitle(title, `${field}.firstLine`),
+    body: parseText(body, `${field}.remainder`),
+  };
 }
 
 export function parseEntityId(value: unknown, field = "id"): string {
