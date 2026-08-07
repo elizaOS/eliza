@@ -80,6 +80,108 @@ describe("eliza sse bridge", () => {
     expect(result).toEqual({ completed: true, aborted: false });
   });
 
+  test("speaks only the terminal action reply when callback snapshots are replaced", async () => {
+    const deltas: string[] = [];
+    const fetchImpl = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({
+          type: "token",
+          fullText: "Changed to warm.",
+        })}\n\n`,
+        `data: ${JSON.stringify({
+          type: "token",
+          fullText: "Okay, I changed my personality to warm.",
+        })}\n\n`,
+        `data: ${JSON.stringify({
+          type: "done",
+          fullText: "Okay, I changed my personality to warm.",
+          actionResults: [
+            {
+              actionName: "UPDATE_CHARACTER",
+              success: true,
+            },
+          ],
+        })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "make your personality warmer",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-action-replacement",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      (delta) => deltas.push(delta),
+    );
+
+    expect(deltas).toEqual(["Okay, I changed my personality to warm."]);
+    expect(result).toEqual({ completed: true, aborted: false });
+  });
+
+  test("fails truthfully when a snapshot rewrites text already sent to speech", async () => {
+    const deltas: string[] = [];
+    const fetchImpl = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({ type: "token", text: "Opened Notes." })}\n\n`,
+        `data: ${JSON.stringify({
+          type: "token",
+          fullText: "Created a note instead.",
+        })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    await expect(
+      streamElizaConversation(
+        {
+          endpoint: "http://x",
+          authorization: "Bearer s",
+          model: "m",
+          transcript: "open workflows",
+          agentId: "agent-1",
+          conversationId: "conv-1",
+          traceId: "trace-divergent-action",
+          signal: new AbortController().signal,
+          fetchImpl,
+        },
+        (delta) => deltas.push(delta),
+      ),
+    ).rejects.toMatchObject({ code: "protocol_error" });
+    expect(deltas).toEqual(["Opened Notes."]);
+  });
+
+  test("rejects an unterminated action snapshot instead of fabricating completion", async () => {
+    const deltas: string[] = [];
+    const fetchImpl = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({
+          type: "token",
+          fullText: "Changed to warm.",
+        })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    await expect(
+      streamElizaConversation(
+        {
+          endpoint: "http://x",
+          authorization: "Bearer s",
+          model: "m",
+          transcript: "make your personality warmer",
+          agentId: "agent-1",
+          conversationId: "conv-1",
+          traceId: "trace-unterminated-action",
+          signal: new AbortController().signal,
+          fetchImpl,
+        },
+        (delta) => deltas.push(delta),
+      ),
+    ).rejects.toMatchObject({ code: "protocol_error" });
+    expect(deltas).toEqual([]);
+  });
+
   test("propagates the voice trace header", async () => {
     let seenHeader: string | null = null;
     const fetchImpl = (async (_url: string, init: RequestInit) => {
@@ -140,6 +242,7 @@ describe("eliza sse bridge", () => {
       metadata: {
         clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
       },
+      streamProtocol: "delta-v2",
     });
     expect(seenHeaders?.get("Authorization")).toBe("Bearer s");
     expect(seenHeaders?.get("X-Service-Key")).toBe("Bearer s");

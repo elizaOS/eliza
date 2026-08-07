@@ -362,6 +362,36 @@ function makeCanonicalChunkFetch(
   }) as unknown as typeof fetch;
 }
 
+function makeActionSnapshotFetch(
+  snapshots: string[],
+  terminalText: string,
+): typeof fetch {
+  return (async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const fullText of snapshots) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "token", fullText })}\n\n`,
+            ),
+          );
+        }
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: "done", fullText: terminalText })}\n\n`,
+          ),
+        );
+        controller.close();
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  }) as unknown as typeof fetch;
+}
+
 function makeControlledCanonicalChunkFetch(): {
   fetchImpl: typeof fetch;
   enqueueChunk: (chunk: string) => void;
@@ -533,6 +563,7 @@ describe("voice-session WS lifecycle", () => {
     expect(requests[0].body).toEqual({
       text: "hello agent",
       metadata: { clientTransport: "realtime_voice" },
+      streamProtocol: "delta-v2",
     });
     expect(requests[0].headers.authorization).toBe("Bearer eliza-server");
     expect(requests[0].headers["x-service-key"]).toBe("Bearer eliza-server");
@@ -1030,6 +1061,31 @@ describe("voice-session WS lifecycle", () => {
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("action callback replacement reaches Cartesia as one authoritative reply", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeActionSnapshotFetch(
+        ["Changed to warm.", "Okay, I changed my personality to warm."],
+        "Okay, I changed my personality to warm.",
+      ),
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "make your personality warmer");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe("Okay, I changed my personality to warm.");
+    expect(cartesia.sentText()).not.toContain("Changed to warm.Okay");
+    expect(client.controlTypes()).toContain("llm_first_text");
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
   });
 
   test("canonical incremental SSE chunk reaches Cartesia before stream completion", async () => {

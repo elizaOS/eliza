@@ -9,7 +9,10 @@
  *   - propagate an `AbortSignal` so an interruption cancels the in-flight fetch,
  *     which cancels the upstream provider stream (the route's tee/abort seam);
  *   - decode canonical `chunk`, local runtime `type=token`, and OpenAI-shaped
- *     `delta.content` frames into a plain string stream for phrase aggregation.
+ *     `delta.content` frames into one authoritative text stream for phrase
+ *     aggregation. Local action callbacks arrive as replaceable snapshots, so
+ *     they stay buffered until the terminal frame selects the one reply TTS
+ *     may speak.
  *
  * It holds no provider key; the canonical route owns auth, billing, and
  * persistence. `fetchImpl` is injectable so the
@@ -25,6 +28,7 @@ export const VOICE_AGENT_HEADER = "X-Eliza-Agent-Id";
 export const VOICE_CONVERSATION_HEADER = "X-Eliza-Conversation-Id";
 export const VOICE_ORGANIZATION_HEADER = "X-Eliza-Organization-Id";
 export const VOICE_USER_HEADER = "X-Eliza-User-Id";
+export const VOICE_STREAM_PROTOCOL = "delta-v2" as const;
 
 export interface ElizaSseBridgeRequest {
   /** API origin hosting the canonical agent conversation routes. */
@@ -53,7 +57,7 @@ export interface ElizaSseBridgeRequest {
 }
 
 export interface ElizaSseBridgeResult {
-  /** True if the stream completed normally (saw `[DONE]` or clean end). */
+  /** True only after an explicit `[DONE]` or structured terminal frame. */
   completed: boolean;
   /** True if the stream was aborted (interruption / disconnect). */
   aborted: boolean;
@@ -88,7 +92,8 @@ export class ElizaSseBridgeError extends Error {
 
 /**
  * Stream LLM text deltas for a turn. Invokes `onDelta` for each non-empty
- * content token as it arrives. Resolves when the stream ends or is aborted.
+ * content token as it arrives. Resolves on an explicit terminal frame or abort;
+ * an unframed EOF is a protocol failure because it cannot authorize snapshots.
  */
 export async function streamElizaConversation(
   request: ElizaSseBridgeRequest,
@@ -125,6 +130,9 @@ export async function streamElizaConversation(
         metadata: {
           clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
         },
+        // Snapshot-only action replies must remain distinguishable from model
+        // deltas. The local loopback adapter preserves this exact negotiation.
+        streamProtocol: VOICE_STREAM_PROTOCOL,
       }),
       signal: request.signal,
     });
@@ -176,6 +184,48 @@ export async function streamElizaConversation(
   const decoder = new TextDecoder();
   let buffered = "";
   let eventType = "";
+  let emittedText = "";
+  let pendingSnapshot: string | null = null;
+  const emitDelta = (text: string): void => {
+    if (!text) return;
+    emittedText += text;
+    onDelta(text);
+  };
+  const applyTextUpdate = (update: VoiceTextUpdate): void => {
+    if (update.kind === "delta") {
+      if (pendingSnapshot !== null && emittedText.length === 0) {
+        pendingSnapshot += update.text;
+        return;
+      }
+      emitDelta(update.text);
+      return;
+    }
+
+    if (emittedText.length === 0) {
+      pendingSnapshot = update.text;
+      return;
+    }
+    if (update.text === emittedText) return;
+    throw new ElizaSseBridgeError(
+      "Eliza agent stream replaced text that had already become speakable",
+      "protocol_error",
+    );
+  };
+  const finishAuthoritativeText = (payload: string): void => {
+    const terminal = extractTerminalText(payload);
+    const terminalText = terminal.present ? terminal.text : pendingSnapshot;
+    pendingSnapshot = null;
+    if (!terminalText) return;
+    if (emittedText.length === 0) {
+      emitDelta(terminalText);
+      return;
+    }
+    if (terminalText === emittedText) return;
+    throw new ElizaSseBridgeError(
+      "Eliza agent terminal reply diverged from text already sent to speech",
+      "protocol_error",
+    );
+  };
   try {
     for (;;) {
       let chunk: Awaited<ReturnType<typeof reader.read>>;
@@ -212,6 +262,7 @@ export async function streamElizaConversation(
         if (payload === "") continue;
         const payloadType = extractPayloadType(payload);
         if (payload === "[DONE]" || eventType === "done" || payloadType === "done") {
+          finishAuthoritativeText(payload);
           const viewHandoff = payload === "[DONE]" ? null : extractViewHandoff(payload);
           return {
             completed: true,
@@ -225,8 +276,8 @@ export async function streamElizaConversation(
             "upstream_error",
           );
         }
-        const delta = extractDeltaContent(payload);
-        if (delta) onDelta(delta);
+        const update = extractTextUpdate(payload);
+        if (update) applyTextUpdate(update);
       }
     }
   } finally {
@@ -245,7 +296,10 @@ export async function streamElizaConversation(
   }
 
   if (request.signal.aborted) return { completed: false, aborted: true };
-  return { completed: true, aborted: false };
+  throw new ElizaSseBridgeError(
+    "Eliza agent stream ended before its terminal reply",
+    "protocol_error",
+  );
 }
 
 function canonicalConversationStreamUrl(
@@ -369,7 +423,9 @@ function extractPayloadType(payload: string): string | null {
   }
 }
 
-function extractDeltaContent(payload: string): string | null {
+type VoiceTextUpdate = { kind: "delta"; text: string } | { kind: "snapshot"; text: string };
+
+function extractTextUpdate(payload: string): VoiceTextUpdate | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
@@ -383,23 +439,63 @@ function extractDeltaContent(payload: string): string | null {
   if (typeof parsed !== "object" || parsed === null) return null;
   // Canonical agent message streams emit event:chunk with a top-level chunk.
   const canonicalChunk = (parsed as { chunk?: unknown }).chunk;
-  if (typeof canonicalChunk === "string" && canonicalChunk.length > 0) return canonicalChunk;
-  const localToken = parsed as { type?: unknown; text?: unknown };
+  if (typeof canonicalChunk === "string" && canonicalChunk.length > 0) {
+    return { kind: "delta", text: canonicalChunk };
+  }
+  const localToken = parsed as {
+    type?: unknown;
+    text?: unknown;
+    fullText?: unknown;
+  };
   if (
     localToken.type === "token" &&
     typeof localToken.text === "string" &&
     localToken.text.length > 0
   ) {
-    return localToken.text;
+    return { kind: "delta", text: localToken.text };
+  }
+  if (
+    localToken.type === "token" &&
+    typeof localToken.fullText === "string" &&
+    localToken.fullText.length > 0
+  ) {
+    return { kind: "snapshot", text: localToken.fullText };
   }
   const choices = (parsed as { choices?: unknown }).choices;
   if (!Array.isArray(choices) || choices.length === 0) return null;
   const first = choices[0] as { delta?: { content?: unknown }; text?: unknown };
   const content = first?.delta?.content;
-  if (typeof content === "string" && content.length > 0) return content;
+  if (typeof content === "string" && content.length > 0) {
+    return { kind: "delta", text: content };
+  }
   // Some providers stream `text` on legacy completions; accept it too.
-  if (typeof first?.text === "string" && first.text.length > 0) return first.text;
+  if (typeof first?.text === "string" && first.text.length > 0) {
+    return { kind: "delta", text: first.text };
+  }
   return null;
+}
+
+function extractTerminalText(payload: string): {
+  present: boolean;
+  text: string;
+} {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch (ignoredError) {
+    void ignoredError;
+    // error-policy:J3 terminal SSE text is untrusted; malformed JSON cannot
+    // become speakable content.
+    return { present: false, text: "" };
+  }
+  if (!isRecord(parsed)) return { present: false, text: "" };
+  if (typeof parsed.fullText === "string") {
+    return { present: true, text: parsed.fullText };
+  }
+  if (typeof parsed.text === "string") {
+    return { present: true, text: parsed.text };
+  }
+  return { present: false, text: "" };
 }
 
 function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
