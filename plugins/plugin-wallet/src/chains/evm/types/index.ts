@@ -148,6 +148,7 @@ export interface SwapParams {
   readonly fromToken: Address;
   readonly toToken: Address;
   readonly amount: string;
+  readonly slippageBps?: number;
 }
 
 export const SwapParamsSchema = z.object({
@@ -196,6 +197,7 @@ export interface BridgeParams {
   readonly toToken: Address;
   readonly amount: string;
   readonly toAddress?: Address;
+  readonly slippageBps?: number;
 }
 
 export const BridgeParamsSchema = z.object({

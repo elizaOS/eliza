@@ -391,6 +391,7 @@ export class EvmWalletChainHandler implements WalletChainHandler {
       fromToken,
       toToken,
       amount,
+      slippageBps: params.slippageBps,
     });
     return transactionToExecution(
       {

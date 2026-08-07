@@ -384,7 +384,10 @@ export class BridgeAction {
       toAddress: params.toAddress ?? fromAddress,
       options: {
         order: "RECOMMENDED",
-        slippage: DEFAULT_SLIPPAGE_PERCENT,
+        slippage:
+          params.slippageBps === undefined
+            ? DEFAULT_SLIPPAGE_PERCENT
+            : params.slippageBps / 10000,
         maxPriceImpact: MAX_PRICE_IMPACT,
         allowSwitchChain: true,
       },
@@ -586,6 +589,7 @@ export async function routeEvmBridge(
         toToken: (params.toToken ?? params.fromToken) as Address,
         amount: params.amount as string,
         toAddress: params.recipient as Address | undefined,
+        slippageBps: params.slippageBps,
       });
 
       const topRoute = quote.routes[0];
@@ -639,6 +643,7 @@ export async function routeEvmBridge(
     toToken: (params.toToken ?? params.fromToken) as Address,
     amount: params.amount as string,
     toAddress: params.recipient as Address | undefined,
+    slippageBps: params.slippageBps,
   });
 
   logger.debug(

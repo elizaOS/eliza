@@ -163,7 +163,10 @@ export class SwapAction {
       toToken: resolvedToToken as Address,
     };
 
-    const slippageLevels = [0.01, 0.015, 0.02];
+    // A confirmed slippageBps is the tolerance the user approved, so quote at
+    // exactly that level; only the unstated case escalates through the ladder.
+    const slippageLevels =
+      params.slippageBps === undefined ? [0.01, 0.015, 0.02] : [params.slippageBps / 10000];
     let lastError: Error | undefined;
     let attemptCount = 0;
 

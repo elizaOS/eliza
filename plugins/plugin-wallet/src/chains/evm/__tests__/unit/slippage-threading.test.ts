@@ -1,0 +1,226 @@
+/**
+ * Regression tests for confirmed-slippage threading on the EVM swap and
+ * bridge paths. The wallet router binds `slippageBps` into the confirmation
+ * pending key, but the EVM execution path dropped it: `executeSwap` called
+ * `SwapAction.swap` without it (so quotes escalated 1% -> 1.5% -> 2%
+ * regardless of the confirmed value) and both `routeEvmBridge` quote sites
+ * hardcoded `DEFAULT_SLIPPAGE_PERCENT`. These tests pin the confirmed value
+ * reaching the Li.Fi quote layer and the defaults holding when no slippage
+ * was stated. Network boundaries (Li.Fi `getRoutes`, bebop/kyberswap fetch)
+ * are mocked; the routing and slippage math under test is the real
+ * production code.
+ */
+import type { IAgentRuntime } from "@elizaos/core";
+import { arbitrum, base } from "viem/chains";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WalletRouterContext } from "../../../../types/wallet-router.js";
+import { SwapAction } from "../../actions/swap";
+import { routeEvmBridge } from "../../bridge-router";
+import { createEvmWalletChainHandler } from "../../chain-handler";
+import { NATIVE_TOKEN_ADDRESS } from "../../constants";
+import type { WalletProvider } from "../../providers/wallet";
+
+const { getRoutesMock, initWalletProviderMock } = vi.hoisted(() => ({
+  getRoutesMock: vi.fn(),
+  initWalletProviderMock: vi.fn(),
+}));
+
+vi.mock("@lifi/sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@lifi/sdk")>();
+  return { ...actual, getRoutes: getRoutesMock };
+});
+
+vi.mock("../../providers/wallet", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../providers/wallet")>();
+  return { ...actual, initWalletProvider: initWalletProviderMock };
+});
+
+const ACCOUNT = "0x1111111111111111111111111111111111111111";
+const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const HASH = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+function createFakeWalletProvider(): WalletProvider {
+  return {
+    chains: { base, arbitrum },
+    getSupportedChains: () => ["base", "arbitrum"],
+    getChainConfigs: (name: string) => (name === "arbitrum" ? arbitrum : base),
+    getWalletClient: () => ({
+      account: { address: ACCOUNT },
+      getAddresses: async () => [ACCOUNT],
+      sendTransaction: vi.fn(async () => HASH),
+    }),
+    getPublicClient: () => ({
+      readContract: vi.fn(async () => 6),
+    }),
+  } as unknown as WalletProvider;
+}
+
+const context = {
+  runtime: {} as IAgentRuntime,
+  walletBackend: null,
+  walletServices: [],
+  tokenDataService: null,
+} satisfies WalletRouterContext;
+
+/** Slippage fraction seen by each Li.Fi `getRoutes` call, in call order. */
+function quotedSlippages(): number[] {
+  return getRoutesMock.mock.calls.map(
+    (call: unknown[]) => (call[0] as { options?: { slippage?: number } }).options?.slippage ?? -1
+  );
+}
+
+beforeEach(() => {
+  getRoutesMock.mockReset();
+  getRoutesMock.mockResolvedValue({ routes: [] });
+  initWalletProviderMock.mockReset();
+  initWalletProviderMock.mockImplementation(async () => createFakeWalletProvider());
+  // Bebop/KyberSwap quote fetches fail fast; the Li.Fi quote path (mocked
+  // getRoutes) is the slippage witness for both swap and bridge.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({ ok: false, status: 500, statusText: "stubbed" }))
+  );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("EVM confirmed slippage threading", () => {
+  it("forwards confirmed slippageBps from the wallet router to SwapAction.swap", async () => {
+    const swapSpy = vi.spyOn(SwapAction.prototype, "swap").mockResolvedValue({
+      hash: HASH,
+      from: ACCOUNT,
+      to: USDC,
+      value: 0n,
+      data: "0x",
+      chainId: base.id,
+    });
+    const handler = createEvmWalletChainHandler("base", base, {
+      walletProvider: createFakeWalletProvider(),
+    });
+
+    await handler.executeSwap(
+      {
+        subaction: "swap",
+        chain: "base",
+        fromToken: "ETH",
+        toToken: USDC,
+        amount: "1",
+        slippageBps: 10,
+        mode: "execute",
+        dryRun: false,
+      },
+      context
+    );
+
+    expect(swapSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chain: "base",
+        fromToken: NATIVE_TOKEN_ADDRESS,
+        toToken: USDC,
+        amount: "1",
+        slippageBps: 10,
+      })
+    );
+  });
+
+  it("quotes the swap at exactly the confirmed slippage (10 bps -> 0.001)", async () => {
+    const action = new SwapAction(createFakeWalletProvider());
+
+    await expect(
+      action.swap({
+        chain: "base",
+        fromToken: NATIVE_TOKEN_ADDRESS,
+        toToken: USDC,
+        amount: "1",
+        slippageBps: 10,
+      })
+    ).rejects.toThrow("No routes found");
+
+    expect(quotedSlippages()).toEqual([0.001]);
+  });
+
+  it("keeps the default 1% first quote when no swap slippage was stated", async () => {
+    const action = new SwapAction(createFakeWalletProvider());
+
+    await expect(
+      action.swap({
+        chain: "base",
+        fromToken: NATIVE_TOKEN_ADDRESS,
+        toToken: USDC,
+        amount: "1",
+      })
+    ).rejects.toThrow("No routes found");
+
+    expect(quotedSlippages()).toEqual([0.01]);
+  });
+
+  it("quotes the bridge at exactly the confirmed slippage (50 bps -> 0.005)", async () => {
+    await expect(
+      routeEvmBridge(
+        {
+          subaction: "bridge",
+          chain: "base",
+          toChain: "arbitrum",
+          fromToken: NATIVE_TOKEN_ADDRESS,
+          toToken: NATIVE_TOKEN_ADDRESS,
+          amount: "0.5",
+          slippageBps: 50,
+          mode: "execute",
+          dryRun: false,
+        },
+        context,
+        "base",
+        base
+      )
+    ).rejects.toThrow("No bridge routes found");
+
+    expect(quotedSlippages()).toEqual([0.005]);
+  });
+
+  it("keeps the default bridge slippage when none was stated", async () => {
+    await expect(
+      routeEvmBridge(
+        {
+          subaction: "bridge",
+          chain: "base",
+          toChain: "arbitrum",
+          fromToken: NATIVE_TOKEN_ADDRESS,
+          toToken: NATIVE_TOKEN_ADDRESS,
+          amount: "0.5",
+          mode: "execute",
+          dryRun: false,
+        },
+        context,
+        "base",
+        base
+      )
+    ).rejects.toThrow("No bridge routes found");
+
+    expect(quotedSlippages()).toEqual([0.01]);
+  });
+
+  it("threads confirmed slippage through the prepare-mode bridge quote", async () => {
+    const result = await routeEvmBridge(
+      {
+        subaction: "bridge",
+        chain: "base",
+        toChain: "arbitrum",
+        fromToken: NATIVE_TOKEN_ADDRESS,
+        toToken: NATIVE_TOKEN_ADDRESS,
+        amount: "0.5",
+        slippageBps: 50,
+        mode: "prepare",
+        dryRun: false,
+      },
+      context,
+      "base",
+      base
+    );
+
+    expect(result.status).toBe("prepared");
+    expect(quotedSlippages()).toEqual([0.005]);
+  });
+});
