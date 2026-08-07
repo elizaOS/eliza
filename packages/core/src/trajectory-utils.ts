@@ -1458,6 +1458,7 @@ async function withChildTrajectoryStep<T>(
 					appendChildSteps: [childStepId],
 				});
 			},
+			{ kind: "diagnostic" },
 		);
 	}
 }

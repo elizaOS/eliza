@@ -8657,6 +8657,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				args.runtime,
 				"trajectory-finalization",
 				() => finalizeTrajectory(false),
+				"diagnostic",
 			);
 			if (settledFactsOutcome === undefined) {
 				detachPostDeliverySideEffect(
@@ -9037,7 +9038,7 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
 /**
  * Tracks the latest response ID per agent+room to handle message superseding
  */
-const latestResponseIds = new Map<string, Map<string, string>>();
+const latestResponseIds = new Map<string, Map<string, string[]>>();
 const INFERENCE_TIMING_LOG_TYPE = "inference_timing";
 const INFERENCE_TIMING_LOG_RETENTION = 4_096;
 const INFERENCE_TIMING_LOG_SWEEP_INTERVAL = 64;
@@ -9118,22 +9119,31 @@ function clearLatestResponseId(
 		return;
 	}
 
-	if (agentMap.get(roomId) !== responseId) {
+	const roomResponses = agentMap.get(roomId);
+	if (!roomResponses) {
 		return;
 	}
-
-	agentMap.delete(roomId);
+	const responseIndex = roomResponses.lastIndexOf(responseId);
+	if (responseIndex < 0) return;
+	roomResponses.splice(responseIndex, 1);
+	if (roomResponses.length === 0) agentMap.delete(roomId);
 	if (agentMap.size === 0) {
 		latestResponseIds.delete(agentId);
 	}
+}
+
+function getLatestResponseId(agentId: UUID, roomId: UUID): string | undefined {
+	const roomResponses = latestResponseIds.get(agentId)?.get(roomId);
+	return roomResponses?.[roomResponses.length - 1];
 }
 
 function detachPostDeliverySideEffect(
 	runtime: Pick<IAgentRuntime, "agentId" | "reportError">,
 	label: string,
 	task: () => Promise<unknown>,
+	kind: "room-state" | "diagnostic" = "room-state",
 ): void {
-	void trackPostDeliveryTask(runtime, label, task);
+	void trackPostDeliveryTask(runtime, label, task, { kind });
 }
 
 export function isSimpleReplyResponse(
@@ -10845,11 +10855,12 @@ export class DefaultMessageService implements IMessageService {
 					// Track this response ID - ensure map exists for this agent
 					let agentResponses = latestResponseIds.get(runtime.agentId);
 					if (!agentResponses) {
-						agentResponses = new Map<string, string>();
+						agentResponses = new Map<string, string[]>();
 						latestResponseIds.set(runtime.agentId, agentResponses);
 					}
 
-					const previousResponseId = agentResponses.get(message.roomId);
+					const roomResponses = agentResponses.get(message.roomId) ?? [];
+					const previousResponseId = roomResponses[roomResponses.length - 1];
 					if (previousResponseId) {
 						logger.debug(
 							{
@@ -10861,7 +10872,8 @@ export class DefaultMessageService implements IMessageService {
 							"Updating response ID",
 						);
 					}
-					agentResponses.set(message.roomId, responseId);
+					roomResponses.push(responseId);
+					agentResponses.set(message.roomId, roomResponses);
 
 					// Start run tracking with roomId for proper log association
 					const runId = runtime.startRun(message.roomId);
@@ -11084,6 +11096,7 @@ export class DefaultMessageService implements IMessageService {
 									message,
 									inferenceSummary,
 								),
+							"diagnostic",
 						);
 					}
 
@@ -11126,8 +11139,9 @@ export class DefaultMessageService implements IMessageService {
 		// hundred ms worst case, and a no-op when nothing is pending.
 		await this.awaitDeliveredReplyPersistence(runtime, message.roomId);
 
-		const agentResponses = latestResponseIds.get(runtime.agentId);
-		if (!agentResponses) throw new Error("Agent responses map not found");
+		if (!latestResponseIds.has(runtime.agentId)) {
+			throw new Error("Agent responses map not found");
+		}
 
 		// Skip messages from self (unless it's an autonomous message)
 		const isAutonomousMessage =
@@ -11542,9 +11556,10 @@ export class DefaultMessageService implements IMessageService {
 					}
 					const text = proposedText;
 					if (!text || !message.id) return false;
-					const currentResponseId = latestResponseIds
-						.get(runtime.agentId)
-						?.get(message.roomId);
+					const currentResponseId = getLatestResponseId(
+						runtime.agentId,
+						message.roomId,
+					);
 					if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 						runtime.logger.info(
 							{
@@ -11960,7 +11975,10 @@ export class DefaultMessageService implements IMessageService {
 			// Keep only a deliverable response carrying the explicit REPLY/RESPOND
 			// marker. Action results opt into the user channel through userFacingText,
 			// and that path constructs the same explicit reply marker.
-			const currentResponseId = agentResponses.get(message.roomId);
+			const currentResponseId = getLatestResponseId(
+				runtime.agentId,
+				message.roomId,
+			);
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 				const keepReason = resolveSupersededResponseKeepReason(responseContent);
 				if (keepReason) {
@@ -12223,7 +12241,10 @@ export class DefaultMessageService implements IMessageService {
 			);
 
 			// Check if we still have the latest response ID
-			const currentResponseId = agentResponses.get(message.roomId);
+			const currentResponseId = getLatestResponseId(
+				runtime.agentId,
+				message.roomId,
+			);
 
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 				runtime.logger.info(
