@@ -46,6 +46,11 @@ env:
   CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  # The Anthropic repository credential can be present but unfunded. The App
+  # Live chat lane already validates this repository's OpenAI key, so use that
+  # funded provider for the mandatory walkthrough screenshot review too.
+  AI_QA_VISION_BACKEND: openai
+  AI_QA_VISION_MODEL: gpt-5-mini
   GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
