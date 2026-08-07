@@ -2456,7 +2456,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               key={tab.id}
               ref={(el) => nativeTabSurfaces.registerSurfaceElement(tab.id, el)}
               aria-hidden={!active}
-              className={`absolute inset-0 h-full w-full bg-bg transition-opacity ${visibilityClass}`}
+              className={`absolute inset-x-0 top-0 bottom-[var(--eliza-chat-clearance,5.25rem)] bg-bg transition-opacity ${visibilityClass}`}
               style={{ colorScheme: uiTheme }}
             />
           );
