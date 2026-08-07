@@ -417,9 +417,12 @@ describe("useMobileNativeTabSurfaces", () => {
 
   it("does nothing while inactive (not on the native-mobile-webview path)", () => {
     const shell = new RecordingShell();
-    renderHook(() =>
+    const { unmount } = renderHook(() =>
       useMobileNativeTabSurfaces({ ...base, active: false, shell }),
     );
+    act(() => document.dispatchEvent(new Event(APP_PAUSE_EVENT)));
+    act(() => document.dispatchEvent(new Event(APP_RESUME_EVENT)));
+    unmount();
     expect(shell.commands).toEqual([]);
   });
 

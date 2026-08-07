@@ -897,6 +897,7 @@ export function useMobileNativeTabSurfaces(
     if (typeof document === "undefined") return;
     const pause = (): void => {
       processPresentationPaused = true;
+      if (managedTabIds.current.size === 0) return;
       cancelCommand(HOST_VISIBILITY_COMMAND);
       issueCommand(HOST_VISIBILITY_COMMAND, "paused", () =>
         activeShell.presentSurface(null),
@@ -904,6 +905,7 @@ export function useMobileNativeTabSurfaces(
     };
     const resume = (): void => {
       processPresentationPaused = false;
+      if (managedTabIds.current.size === 0) return;
       retry();
       cancelCommand(HOST_VISIBILITY_COMMAND);
       syncVisibility(true);
@@ -940,6 +942,7 @@ export function useMobileNativeTabSurfaces(
   useEffect(() => {
     const managed = managedTabIds.current;
     return () => {
+      const hadManagedSurfaces = managed.size > 0;
       cancelCommand(HOST_VISIBILITY_COMMAND);
       for (const tabId of managed) {
         const id = surfaceIdOf(tabId);
@@ -961,7 +964,7 @@ export function useMobileNativeTabSurfaces(
         );
       }
       managed.clear();
-      if (!hasSurfaceLeases(activeShell)) {
+      if (hadManagedSurfaces && !hasSurfaceLeases(activeShell)) {
         // error-policy:J5 the process-scoped shell reports teardown failure;
         // this retired hook must not retry over a newer mount's generation.
         activeShell.presentSurface(null).then(
