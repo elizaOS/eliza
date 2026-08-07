@@ -863,6 +863,10 @@ export function createVoiceSessionClient(
   ): Promise<void> {
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
     clearRotationTimer();
+    // The transport is already gone, so publish that fact before a browser
+    // driver is allowed to delay microphone teardown. Later retry attempts
+    // re-arm the caller's connect watchdog from inside the loop.
+    setState({ ...state, phase: "connecting", lastError: null });
     // Stop capture (a dead socket must not keep the mic hot) but KEEP playback
     // context so an autoplay unlock survives the reconnect.
     await teardownMic();
@@ -901,10 +905,11 @@ export function createVoiceSessionClient(
       attempt += 1;
       mark(`reconnect_remint(${currentReason})`, state.traceId);
       try {
-        // Show the truthful transport phase for the whole attempt (backoff
-        // included) — the mic is down, so `listening` would be a lie — and
-        // give the caller's connect watchdog a fresh per-attempt arm.
-        setState({ ...state, phase: "connecting", lastError: null });
+        // Each retry after the immediate attempt gives the caller's connect
+        // watchdog a fresh arm before its backoff begins.
+        if (attempt > 1) {
+          setState({ ...state, phase: "connecting", lastError: null });
+        }
         if (attempt > 1) await waitForReconnectBackoff(attempt, generation);
         // Reconnect ALWAYS re-mints; the old token is revoked/expired and
         // cannot reconnect (contract §7.1).
