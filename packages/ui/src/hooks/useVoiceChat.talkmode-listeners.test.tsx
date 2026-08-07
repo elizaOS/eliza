@@ -1,3 +1,4 @@
+/** Verifies useVoiceChat talk-mode listener registration (FIX 1) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";

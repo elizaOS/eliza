@@ -20,7 +20,7 @@ on:
       # ANDROID_KEYSTORE_BASE64 being non-empty) skips with a clear
       # warning when the secrets are absent, instead of aborting the
       # whole release pipeline at workflow startup with no logs. Same
-      # pattern as publish-apt-repo.yml (PR #7976) and update-homebrew.yml.
+      # pattern as the other reusable release workflows.
       ANDROID_KEYSTORE_BASE64:
         required: false
       ANDROID_KEYSTORE_PASSWORD:
@@ -60,7 +60,7 @@ env:
 jobs:
   build-aab:
     name: Build Signed AAB
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     outputs:
       version_name: ${{ steps.version.outputs.name }}
       version_code: ${{ steps.version.outputs.code }}
@@ -70,7 +70,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Java
-        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: "temurin"
           java-version: ${{ env.JAVA_VERSION }}
@@ -83,7 +83,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "canary"
+          bun-version: "1.3.14"
 
       - name: Determine version
         id: version
@@ -163,8 +163,7 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: bun install
-
+        run: bun install --frozen-lockfile
       - name: Build workspace web runtime packages
         run: |
           bun run --cwd packages/core build
@@ -315,7 +314,7 @@ jobs:
     name: Publish to Play Store
     needs: build-aab
     if: needs.build-aab.outputs.play_store_ready == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -367,7 +366,7 @@ jobs:
     name: Release Summary
     needs: [build-aab, publish-play-store]
     if: always()
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Summary
         run: |

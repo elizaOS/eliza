@@ -1,3 +1,4 @@
+/** Verifies inline-widget matrix gate (#9304) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -78,14 +79,12 @@ describe("inline-widget matrix gate (#9304)", () => {
   });
 
   for (const kind of BUILTIN_INLINE_KINDS) {
-    it(`'${kind}' parses its marker into >=1 region and renders without throwing`, () => {
+    it(`'${kind}' parses its marker into >=1 region and renders it`, () => {
       const def = getInlineWidget(kind);
       expect(def, `${kind} must be registered`).toBeDefined();
       const regions = def?.parse(SAMPLE[kind]) ?? [];
       expect(regions.length, `${kind} parse`).toBeGreaterThanOrEqual(1);
-      expect(() =>
-        render(<div>{def?.render(regions[0]?.data, ctx, `k-${kind}`)}</div>),
-      ).not.toThrow();
+      render(<div>{def?.render(regions[0]?.data, ctx, `k-${kind}`)}</div>);
     });
   }
 

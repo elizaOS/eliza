@@ -1,3 +1,4 @@
+/** Verifies StewardLoginSection email magic-link companion code through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

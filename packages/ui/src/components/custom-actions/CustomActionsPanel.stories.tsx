@@ -102,6 +102,7 @@ type Story = StoryObj<typeof meta>;
 export const Open: Story = {};
 
 export const Closed: Story = {
+  tags: ["story-gate-expect-blank"],
   args: {
     open: false,
   },

@@ -1,3 +1,4 @@
+/** Verifies certifyScrollGeometry through the package's configured test harness. */
 // @vitest-environment node
 //
 // Unit coverage for the PURE scroll + tap-target certification verdict math

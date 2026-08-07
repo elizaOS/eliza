@@ -13,6 +13,7 @@
 
 import { lazy, type ReactNode, Suspense, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { CloudRouteErrorBoundary } from "./CloudRouteErrorBoundary";
 import { isPlaceholderValue, readStoredToken } from "./StewardProviderShared";
 import {
@@ -182,9 +183,10 @@ export function StewardAuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     hasLoggedConfigError.current = true;
-    console.error(
-      "Steward API URL is invalid; Steward auth will not function.",
-    );
+    reportRendererDiagnostic({
+      scope: "steward.invalid-api-url",
+      error: new Error("Steward API URL is invalid"),
+    });
   }, [hasValidUrl, playwrightTestAuthEnabled]);
 
   if (playwrightTestAuthEnabled) {

@@ -18,12 +18,8 @@
  * sent to SSE/WS clients. This service registers on `start()` and
  * unsubscribes on `stop()`.
  *
- * Privacy filter: the privacy filter at
- * `eliza/plugins/plugin-training/src/core/privacy-filter.ts` exists for
- * trajectory exports — it anonymizes user-content trajectories before
- * disk/cloud writes. Messages this service writes are agent-authored
- * verification results and contain no user trajectory data, so the
- * filter does not apply here.
+ * Messages this service writes are agent-authored verification results and
+ * contain no user trajectory data.
  *
  * Owner gating: this service only writes to the originRoomId that the
  * dispatcher itself stamped onto the START_CODING_TASK metadata. The

@@ -21,8 +21,8 @@ import {
 	createSettingsAction,
 } from "@elizaos/plugin-app-control";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../test/helpers/live-provider";
+import { itIf } from "../helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../helpers/live-provider";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 

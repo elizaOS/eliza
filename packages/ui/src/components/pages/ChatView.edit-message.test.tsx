@@ -1,3 +1,4 @@
+/** Verifies chat transcript edit-and-resend (useChatSend.handleChatEdit) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Edit-and-resend coverage for the chat transcript's per-message edit action

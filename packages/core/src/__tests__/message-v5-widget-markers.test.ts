@@ -121,6 +121,8 @@ function makeRuntime(opts: {
 		},
 		actions: opts.actions,
 		providers: [],
+		getRoom: vi.fn(async () => null),
+		reportError: vi.fn(),
 		responseHandlerFieldRegistry,
 		responseHandlerFieldEvaluators: [
 			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,

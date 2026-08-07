@@ -35,22 +35,24 @@ describe("readActionRolePolicy", () => {
 		expect(readActionRolePolicy()).toEqual({});
 	});
 
-	it("parses + normalizes roles and drops invalid ones", () => {
+	it("parses + normalizes roles and rejects invalid entries", () => {
 		setPolicy(
 			JSON.stringify({ SHELL: "guest", BROWSER: "MEMBER", EVIL: "superuser" }),
 		);
-		// roles uppercased/normalized; the unknown "superuser" role is dropped
-		expect(readActionRolePolicy()).toEqual({
-			SHELL: "GUEST",
-			BROWSER: "MEMBER",
-		});
+		expect(() => readActionRolePolicy()).toThrow(
+			"ACTION_ROLE_POLICY contains an invalid role",
+		);
 	});
 
-	it("is empty for malformed JSON or a non-object", () => {
+	it("rejects malformed JSON and non-object policies", () => {
 		setPolicy("not json");
-		expect(readActionRolePolicy()).toEqual({});
+		expect(() => readActionRolePolicy()).toThrow(
+			"Failed to parse ACTION_ROLE_POLICY",
+		);
 		setPolicy("[1,2,3]");
-		expect(readActionRolePolicy()).toEqual({});
+		expect(() => readActionRolePolicy()).toThrow(
+			"ACTION_ROLE_POLICY must be a JSON object",
+		);
 	});
 
 	it("caches the parse until explicitly reset", () => {

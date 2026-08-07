@@ -2,14 +2,15 @@
  * Pins the Windows command-coverage contract (#13402) against synthetic
  * workflow and inventory trees. Dropping an inventoried command from the matrix
  * throws (RED), keeping all present passes (GREEN), adding a new command is
- * allowed, and the shipped repo satisfies its own inventory. Static only: no
- * workflow is executed.
+ * allowed, and the shipped repo satisfies its own inventory. Subprocess checks
+ * also pin direct-versus-imported entrypoint behavior in both supported runtimes.
  */
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const {
   parseWindowsCommands,
@@ -21,6 +22,16 @@ const {
 );
 
 const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
+const CONTRACT_SCRIPT = fileURLToPath(
+  new URL("../ci-windows-command-coverage-contract.mjs", import.meta.url),
+);
+
+function runRuntime(command: string, args: string[]) {
+  return spawnSync(command, args, {
+    cwd: REAL_REPO_ROOT,
+    encoding: "utf8",
+  });
+}
 
 // Two lanes with two commands each is enough to exercise both the multi-lane
 // flatten and the per-lane list boundary. Indentation matches windows-ci.yml
@@ -161,4 +172,31 @@ describe("ci-windows-command-coverage-contract", () => {
     expect(result.inventoryCount).toBeGreaterThan(0);
     expect(result.commandCount).toBeGreaterThanOrEqual(result.inventoryCount);
   });
+
+  for (const [runtime, command] of [
+    ["Node", "node"],
+    ["Bun", process.execPath],
+  ] as const) {
+    test(`${runtime}: direct invocation executes the contract`, () => {
+      const result = runRuntime(command, [CONTRACT_SCRIPT]);
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain(
+        "ci windows command coverage contract passed",
+      );
+    });
+
+    test(`${runtime}: importing the module does not execute the contract`, () => {
+      const moduleUrl = pathToFileURL(CONTRACT_SCRIPT).href;
+      const result = runRuntime(command, [
+        "--eval",
+        `await import(${JSON.stringify(moduleUrl)}); console.log("imported-only")`,
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout.trim()).toBe("imported-only");
+    });
+  }
 });

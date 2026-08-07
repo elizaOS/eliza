@@ -39,7 +39,7 @@ import type {
   LifeOpsSubscriptionDiscoveryRequest,
   LifeOpsSubscriptionExecutor,
 } from "@elizaos/plugin-finances/subscriptions-types";
-import type { GoogleDriveFile } from "@elizaos/plugin-google";
+import type { GoogleDriveFile } from "@elizaos/plugin-google-workspace";
 import type {
   HealthBackend,
   HealthDailySummary,

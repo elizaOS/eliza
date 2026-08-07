@@ -1,6 +1,6 @@
 // Persists shared runtime history records for cloud services through the shared DB boundary.
 import { and, eq } from "drizzle-orm";
-
+import { mergeSharedRuntimeHistoryMessages } from "../../lib/services/shared-runtime/shared-runtime-history-policy";
 import { dbRead, dbWrite } from "../client";
 import {
   type SharedRuntimeHistoryMessage,
@@ -8,11 +8,14 @@ import {
 } from "../schemas/shared-runtime-history";
 import { jsonbParam } from "../utils/jsonb";
 
+export { mergeSharedRuntimeHistoryMessages } from "../../lib/services/shared-runtime/shared-runtime-history-policy";
+
 /**
  * Durable persistence for shared-runtime (Tier-0) conversation history. Replaces
  * the request-cache store (a no-op when `CACHE_ENABLED=false` on the Worker) so
  * a shared agent keeps cross-turn memory and `GET .../messages` returns history.
- * One canonical row per `(agentId, channelId)`, upserted with the capped list.
+ * One canonical row per `(agentId, channelId)`, updated with row-locked merges
+ * so late mirrors and direct writers append/update by stable message id.
  */
 export class SharedRuntimeHistoryRepository {
   async get(agentId: string, channelId: string): Promise<SharedRuntimeHistoryMessage[]> {
@@ -41,30 +44,56 @@ export class SharedRuntimeHistoryRepository {
     return deleted.length;
   }
 
-  async upsert(
+  async merge(
     agentId: string,
     channelId: string,
     messages: SharedRuntimeHistoryMessage[],
-  ): Promise<void> {
-    const now = new Date();
-    await dbWrite
-      .insert(sharedRuntimeHistory)
-      .values({
-        agent_id: agentId,
-        channel_id: channelId,
-        // Bind JSONB explicitly as a JSON string (Neon serverless driver can
-        // mis-bind raw JS arrays/objects as query params). The insert value
-        // type accepts a raw `SQL` expression per column, so no cast is needed.
-        messages: jsonbParam(messages),
-        updated_at: now,
-      })
-      .onConflictDoUpdate({
-        target: [sharedRuntimeHistory.agent_id, sharedRuntimeHistory.channel_id],
-        set: {
-          messages: jsonbParam(messages),
+    limit: number,
+  ): Promise<SharedRuntimeHistoryMessage[]> {
+    const merged = await dbWrite.transaction(async (tx) => {
+      const now = new Date();
+      await tx
+        .insert(sharedRuntimeHistory)
+        .values({
+          agent_id: agentId,
+          channel_id: channelId,
+          messages: jsonbParam([]),
           updated_at: now,
-        },
-      });
+        })
+        .onConflictDoNothing({
+          target: [sharedRuntimeHistory.agent_id, sharedRuntimeHistory.channel_id],
+        });
+      const [row] = await tx
+        .select()
+        .from(sharedRuntimeHistory)
+        .where(
+          and(
+            eq(sharedRuntimeHistory.agent_id, agentId),
+            eq(sharedRuntimeHistory.channel_id, channelId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const next = mergeSharedRuntimeHistoryMessages(
+        Array.isArray(row?.messages) ? row.messages : [],
+        messages,
+        limit,
+      );
+      await tx
+        .update(sharedRuntimeHistory)
+        .set({
+          messages: jsonbParam(next),
+          updated_at: now,
+        })
+        .where(
+          and(
+            eq(sharedRuntimeHistory.agent_id, agentId),
+            eq(sharedRuntimeHistory.channel_id, channelId),
+          ),
+        );
+      return next;
+    });
+    return merged;
   }
 }
 

@@ -4,6 +4,7 @@
  * an in-process keyed queue over the cache-backed store.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type {
   RuntimeDurableObjectNamespace,
   RuntimeDurableObjectStub,
@@ -71,6 +72,7 @@ export interface OnboardingChatInput {
   authenticatedUser?: {
     userId: string;
     organizationId: string;
+    telegramId?: string;
   } | null;
   trustedPlatformIdentity?: boolean;
   /** Stable transport delivery id. Replays return the original result. */
@@ -426,6 +428,39 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   return session;
 }
 
+function assertAuthenticatedTelegramIdentity(
+  session: OnboardingSession,
+  input: OnboardingChatInput,
+): void {
+  if (
+    !input.authenticatedUser ||
+    input.trustedPlatformIdentity === true ||
+    session.platformIdentityTrusted !== true
+  ) {
+    return;
+  }
+
+  if (session.platform !== "telegram") {
+    return;
+  }
+  const signedPlatformId = input.authenticatedUser.telegramId;
+  if (signedPlatformId === session.platformUserId) {
+    return;
+  }
+
+  throw new ElizaError(
+    "The authenticated messaging identity does not match this onboarding session",
+    {
+      code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+      context: {
+        platform: session.platform,
+        hasSignedPlatformIdentity: Boolean(signedPlatformId),
+      },
+      severity: "ephemeral",
+    },
+  );
+}
+
 function getOnboardingAppUrl(): string {
   const env = getCloudAwareEnv();
   const configured =
@@ -667,6 +702,7 @@ export async function runOnboardingChatWithStore(
   }
 
   if (input.authenticatedUser) {
+    assertAuthenticatedTelegramIdentity(session, input);
     session = {
       ...session,
       userId: input.authenticatedUser.userId,
@@ -725,11 +761,14 @@ export async function runOnboardingChatWithStore(
     handoffComplete = copied.copied;
   }
 
-  const loginUrl = onboardingAppPath(
-    `/get-started/?onboardingSession=${encodeURIComponent(
-      session.continuationToken ?? session.id,
-    )}`,
-  );
+  const loginParams = new URLSearchParams({
+    onboardingSession: session.continuationToken ?? session.id,
+  });
+  if (session.platform === "telegram") {
+    loginParams.set("method", "telegram");
+    loginParams.set("link", "true");
+  }
+  const loginUrl = onboardingAppPath(`/get-started/?${loginParams.toString()}`);
   const panelUrl = controlPanelUrl(session.agentId);
   const reply = generateOnboardingReply({
     session,

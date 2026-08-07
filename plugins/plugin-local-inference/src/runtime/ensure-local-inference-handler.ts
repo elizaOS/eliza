@@ -21,8 +21,6 @@
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
 
-import { existsSync, linkSync, mkdirSync, symlinkSync } from "node:fs";
-import path from "node:path";
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
@@ -77,6 +75,7 @@ import {
 	selectEmbeddingPresetFromHardware,
 } from "./embedding-presets";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
+import { resolveFusedEmbeddingBundleRoot } from "./fused-embedding-bundle";
 
 type GenerateTextHandler = (
 	runtime: IAgentRuntime,
@@ -130,6 +129,7 @@ type RuntimeWithModelRegistration = AgentRuntime & {
 		handler: LocalModelHandler,
 		provider: string,
 		priority?: number,
+		metadata?: { local?: boolean; streamable?: boolean },
 	) => void;
 };
 
@@ -674,58 +674,6 @@ function resolveDesktopEmbeddingConfig(
 }
 
 /**
- * Resolve (or stage) the bundle root the fused `eliza_inference_embed` should
- * anchor at for the dedicated embedding model. The fused C side embeds over the
- * single GGUF under `<root>/text/`, so we must point it at an isolated bundle
- * that contains ONLY the embedding model — never the chat bundle's text model
- * (whose decoder-as-embedder output has a different dimension). Resolution:
- *   1. `ELIZA_EMBED_BUNDLE_ROOT` — explicit override.
- *   2. The model already lives under a `text/` dir (`<root>/text/<model>.gguf`).
- *   3. `<modelsDir>/text/<model>` exists → anchor at `<modelsDir>`.
- *   4. Otherwise STAGE the dedicated embedding GGUF as the sole entry under
- *      `<modelsDir>/.eliza-embed-bundle/text/` (hardlink, symlink fallback) so
- *      the fused lib loads gte-small (384-dim bi-encoder, SQL dim384) — the
- *      same model the retired libllama path used, now through the fused lib.
- * Returns null only when the embedding GGUF is not present (boot warmup may
- * still be downloading) — the handler then raises LocalInferenceUnavailable and
- * the runtime falls through to the next embedding provider.
- */
-function resolveFusedEmbedBundleRoot(
-	cfg: DesktopEmbeddingConfig,
-): string | null {
-	const override = process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim();
-	if (override && existsSync(path.join(override, "text"))) return override;
-	const modelPath = path.resolve(cfg.modelsDir, cfg.model);
-	const parent = path.dirname(modelPath);
-	if (path.basename(parent) === "text" && existsSync(modelPath)) {
-		return path.dirname(parent);
-	}
-	if (existsSync(path.join(cfg.modelsDir, "text", cfg.model))) {
-		return cfg.modelsDir;
-	}
-	if (!existsSync(modelPath)) return null;
-	const root = path.join(cfg.modelsDir, ".eliza-embed-bundle");
-	const textDir = path.join(root, "text");
-	const staged = path.join(textDir, path.basename(cfg.model));
-	try {
-		mkdirSync(textDir, { recursive: true });
-		if (!existsSync(staged)) {
-			try {
-				linkSync(modelPath, staged);
-			} catch {
-				symlinkSync(modelPath, staged);
-			}
-		}
-		return root;
-	} catch (err) {
-		logger.warn(
-			`[local-inference] could not stage the fused embed bundle for "${cfg.model}": ${String(err)}`,
-		);
-		return null;
-	}
-}
-
-/**
  * Lazily-resolved fused embedding handle. When the fused `libelizainference`
  * (ABI v9) is present, reports `embedSupported()`, and a `<root>/text/` bundle
  * root resolves for the embedding model, the desktop TEXT_EMBEDDING handler
@@ -733,13 +681,44 @@ function resolveFusedEmbedBundleRoot(
  * resident text vocab — retiring the node-llama-cpp / libllama embedding path.
  * `null` once resolution fails (the handler then falls back).
  */
-let fusedEmbedHandlePromise: Promise<{
+type FusedEmbeddingHandle = {
 	ffi: import("../services/voice/ffi-bindings").ElizaInferenceFfi;
 	ctx: import("../services/voice/ffi-bindings").ElizaInferenceContextHandle;
 	embed: NonNullable<
 		import("../services/voice/ffi-bindings").ElizaInferenceFfi["embed"]
 	>;
-} | null> | null;
+};
+
+let fusedEmbedHandlePromise: Promise<FusedEmbeddingHandle | null> | null = null;
+let liveFusedEmbeddingHandle: FusedEmbeddingHandle | null = null;
+let fusedEmbeddingExitCleanupInstalled = false;
+
+function installFusedEmbeddingExitCleanup(): void {
+	if (fusedEmbeddingExitCleanupInstalled) return;
+	fusedEmbeddingExitCleanupInstalled = true;
+	process.once("exit", () => {
+		const handle = liveFusedEmbeddingHandle;
+		liveFusedEmbeddingHandle = null;
+		if (!handle) return;
+		try {
+			handle.ffi.destroy(handle.ctx);
+		} catch (error) {
+			// error-policy:J6 process-exit teardown is best-effort; the process is
+			// already terminating, but the dylib close must still be attempted.
+			logger.debug(
+				`[local-inference] fused embedding context teardown failed during exit: ${String(error)}`,
+			);
+		}
+		try {
+			handle.ffi.close();
+		} catch (error) {
+			// error-policy:J6 process-exit teardown cannot be retried safely.
+			logger.debug(
+				`[local-inference] fused embedding library close failed during exit: ${String(error)}`,
+			);
+		}
+	});
+}
 
 // A null resolution is retried on the next embed rather than cached for the
 // process lifetime — the boot dimension-probe can call getFusedEmbeddingHandle
@@ -767,7 +746,20 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 			const { resolveFusedLibraryPath } = await import(
 				"../services/desktop-fused-ffi-backend-runtime"
 			);
-			const bundleRoot = resolveFusedEmbedBundleRoot(cfg);
+			let bundleRoot: string | null;
+			try {
+				bundleRoot = resolveFusedEmbeddingBundleRoot({
+					...cfg,
+					override: process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim(),
+				});
+			} catch (error) {
+				// error-policy:J4 a failed local artifact stage is an explicit
+				// unavailable provider state; the runtime can select another provider.
+				logger.warn(
+					`[local-inference] could not stage the fused embed bundle for "${cfg.model}": ${String(error)}`,
+				);
+				return null;
+			}
 			if (!bundleRoot) {
 				logger.warn(
 					`[local-inference] fused embed unavailable: no bundle root for "${cfg.model}" under "${cfg.modelsDir}"`,
@@ -797,10 +789,13 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				return null;
 			}
 			const ctx = ffi.create(bundleRoot);
+			const handle = { ffi, ctx, embed: ffi.embed };
+			liveFusedEmbeddingHandle = handle;
+			installFusedEmbeddingExitCleanup();
 			logger.info(
 				`[local-inference] Desktop embeddings via fused libelizainference (eliza_inference_embed) anchored at ${bundleRoot} — node-llama-cpp embedding path retired`,
 			);
-			return { ffi, ctx, embed: ffi.embed };
+			return handle;
 		})().catch((e) => {
 			logger.warn(
 				`[local-inference] fused embed init threw: ${e instanceof Error ? e.message : String(e)}`,
@@ -832,7 +827,8 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
  * Desktop TEXT_EMBEDDING handler over the FUSED `libelizainference`
  * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (gte-small,
  * 384-dim — an exact match for plugin-sql's dim384 column) is staged as the
- * sole entry of an isolated fused embed bundle (see `resolveFusedEmbedBundleRoot`)
+ * sole entry of an isolated fused embed bundle (see
+ * `resolveFusedEmbeddingBundleRoot`)
  * so the fused lib loads it directly. libllama is retired: there is no
  * capacitor/libllama fallback. When the fused embed cannot resolve (no bun:ffi,
  * no fused lib, or the embedding GGUF is still downloading) this throws so the
@@ -1273,7 +1269,7 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
  * process via `bun:ffi` (the AOSP plugin's loader; libllama is retired). The
  * loader stays inactive at runtime when neither `ELIZA_LOCAL_LLAMA === "1"`
  * (kept as the legacy opt-in env name) nor `process.arch === "riscv64"` is
- * true (see `isAospEnabled` in `@elizaos/plugin-aosp-local-inference`), so the
+ * true (see `isAospEnabled` in `@elizaos/plugin-native-inference`), so the
  * dynamic import below is safe on every platform; we only attempt registration
  * when one of the triggers fires.
  *
@@ -1354,7 +1350,7 @@ async function tryRegisterAospLlamaLoader(
 		) => Promise<{
 			registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
 		}>;
-		const mod = await dynamicImport("@elizaos/plugin-aosp-local-inference");
+		const mod = await dynamicImport("@elizaos/plugin-native-inference");
 		if (typeof mod.registerAospLlamaLoader !== "function") {
 			logger.error(
 				"[local-inference] AOSP llama adapter import resolved but missing registerAospLlamaLoader export",
@@ -1541,21 +1537,25 @@ export async function ensureLocalInferenceHandler(
 		);
 	}
 
-	// Pre-flight: if no backend is available, skip handler registration
-	// entirely so we don't advertise a handler that will throw. The device
-	// bridge is always "available" in the sense that it parks calls until a
-	// device connects, so if it is enabled we always register handlers.
-	if (
-		!bionicHostRegistered &&
-		!aospRegistered &&
-		!capacitorRegistered &&
-		!deviceBridgeEnabled &&
-		!(await localInferenceEngine.available())
-	) {
+	// Text/voice availability and embedding availability are independent on
+	// desktop. gte-small uses the dedicated fused embedding entry point and can
+	// be present even when no generative model/backend is active. The old
+	// process-wide preflight returned here and therefore never registered the
+	// perfectly usable local 384-dim embedder; the runtime then pinned Eliza
+	// Cloud's synthetic 1536-dim probe and every real embedding hit the network.
+	// Keep text handlers registered (their router gate already drops unavailable
+	// local candidates), but only advertise voice/vision when a general backend
+	// is actually available.
+	const generalBackendAvailable =
+		bionicHostRegistered ||
+		aospRegistered ||
+		capacitorRegistered ||
+		deviceBridgeEnabled ||
+		(await localInferenceEngine.available());
+	if (!generalBackendAvailable) {
 		logger.debug(
-			"[local-inference] No local inference backend available; skipping model registration",
+			"[local-inference] No general local inference backend available; local text candidates stay dormant while the independent desktop embedding path remains registered",
 		);
-		return;
 	}
 
 	// First-light convenience: when exactly one model is installed and no
@@ -1605,6 +1605,7 @@ export async function ensureLocalInferenceHandler(
 				makeHandler(slot),
 				provider,
 				LOCAL_INFERENCE_PRIORITY,
+				{ local: true, streamable: true },
 			);
 		} catch (err) {
 			logger.warn(
@@ -1662,50 +1663,52 @@ export async function ensureLocalInferenceHandler(
 		);
 	}
 
-	try {
-		runtimeWithRegistration.registerModel(
-			ModelType.TEXT_TO_SPEECH,
-			makeTextToSpeechHandler(),
-			provider,
-			LOCAL_INFERENCE_PRIORITY,
-		);
-		// TRANSCRIPTION is registered default-on at the local-inference floor
-		// priority (0). It is the last-resort handler: any cloud / other-plugin
-		// TRANSCRIPTION handler registers above 0 and wins. When the handler
-		// does run, it drives the fused libelizainference ASR runtime — the sole
-		// on-device transcriber (Gemma ASR streaming → fused batch interim →
-		// AsrUnavailableError) via the engine's armed voice bridge — see
-		// makeTranscriptionHandler / EngineVoiceBridge.createStreamingTranscriber.
-		// (The old ELIZA_LOCAL_TRANSCRIPTION env gate is removed — voice is a
-		// first-class Eliza-1 surface, not opt-in.)
-		// On the bionic-delegated path the fused lib lives in the app process, not
-		// this musl agent — so transcription + vision must forward audio/image
-		// bytes to the bionic host (op="asr" / op="image") rather than the
-		// in-process engine / memory-arbiter, which can't load the lib here.
-		runtimeWithRegistration.registerModel(
-			ModelType.TRANSCRIPTION,
-			bionicHostRegistered
-				? makeBionicTranscriptionHandler()
-				: makeTranscriptionHandler(),
-			provider,
-			LOCAL_INFERENCE_PRIORITY,
-		);
-		runtimeWithRegistration.registerModel(
-			ModelType.IMAGE_DESCRIPTION,
-			bionicHostRegistered
-				? makeBionicImageDescriptionHandler()
-				: makeImageDescriptionHandler(),
-			provider,
-			LOCAL_INFERENCE_PRIORITY,
-		);
-		logger.info(
-			`[local-inference] Registered ${provider} voice and vision handlers for TEXT_TO_SPEECH / TRANSCRIPTION / IMAGE_DESCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}${bionicHostRegistered ? " (bionic-host delegated)" : ""}`,
-		);
-	} catch (err) {
-		logger.warn(
-			"[local-inference] Could not register local voice/vision handlers",
-			err instanceof Error ? err.message : String(err),
-		);
+	if (generalBackendAvailable) {
+		try {
+			runtimeWithRegistration.registerModel(
+				ModelType.TEXT_TO_SPEECH,
+				makeTextToSpeechHandler(),
+				provider,
+				LOCAL_INFERENCE_PRIORITY,
+			);
+			// TRANSCRIPTION is registered default-on at the local-inference floor
+			// priority (0). It is the last-resort handler: any cloud / other-plugin
+			// TRANSCRIPTION handler registers above 0 and wins. When the handler
+			// does run, it drives the fused libelizainference ASR runtime — the sole
+			// on-device transcriber (Gemma ASR streaming → fused batch interim →
+			// AsrUnavailableError) via the engine's armed voice bridge — see
+			// makeTranscriptionHandler / EngineVoiceBridge.createStreamingTranscriber.
+			// (The old ELIZA_LOCAL_TRANSCRIPTION env gate is removed — voice is a
+			// first-class Eliza-1 surface, not opt-in.)
+			// On the bionic-delegated path the fused lib lives in the app process, not
+			// this musl agent — so transcription + vision must forward audio/image
+			// bytes to the bionic host (op="asr" / op="image") rather than the
+			// in-process engine / memory-arbiter, which can't load the lib here.
+			runtimeWithRegistration.registerModel(
+				ModelType.TRANSCRIPTION,
+				bionicHostRegistered
+					? makeBionicTranscriptionHandler()
+					: makeTranscriptionHandler(),
+				provider,
+				LOCAL_INFERENCE_PRIORITY,
+			);
+			runtimeWithRegistration.registerModel(
+				ModelType.IMAGE_DESCRIPTION,
+				bionicHostRegistered
+					? makeBionicImageDescriptionHandler()
+					: makeImageDescriptionHandler(),
+				provider,
+				LOCAL_INFERENCE_PRIORITY,
+			);
+			logger.info(
+				`[local-inference] Registered ${provider} voice and vision handlers for TEXT_TO_SPEECH / TRANSCRIPTION / IMAGE_DESCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}${bionicHostRegistered ? " (bionic-host delegated)" : ""}`,
+			);
+		} catch (err) {
+			logger.warn(
+				"[local-inference] Could not register local voice/vision handlers",
+				err instanceof Error ? err.message : String(err),
+			);
+		}
 	}
 
 	logger.info(

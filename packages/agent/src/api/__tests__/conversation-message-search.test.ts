@@ -9,7 +9,7 @@
  * The unit under test is the route handler; `runtime.searchMessages` is a
  * collaborator whose REAL implementation is proven against a live PGlite store
  * in `plugins/plugin-sql/.../message-search-fts.test.ts` (18 edge cases) and
- * `packages/benchmarks/searchbench` (10k corpus). Here it is backed by a
+ * the searchbench suite in https://github.com/elizaOS/benchmarks (10k corpus). Here it is backed by a
  * faithful in-test model of that contract — fold the query, keep a row when
  * every query term is present or the whole folded query is a substring, rank
  * corpus-wide by match count then recency, then window — so the handler runs

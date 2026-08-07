@@ -1,3 +1,4 @@
+/** Verifies usePushToTalk through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Unit-tests the shared push-to-talk hold state machine against a real button

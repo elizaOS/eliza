@@ -9,8 +9,8 @@
 import { openai } from "@ai-sdk/openai";
 import { streamText } from "ai";
 import { Hono } from "hono";
+import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUser } from "@/lib/auth/workers-hono-auth";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -18,7 +18,7 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
-    await requireUser(c);
+    await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
 
     const body = ((await c.req.json().catch(() => ({}))) ?? {}) as {
       seed?: string | number;

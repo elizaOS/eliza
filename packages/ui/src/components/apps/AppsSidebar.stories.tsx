@@ -51,8 +51,8 @@ const apps: RegistryAppInfo[] = [
     category: "utility",
   }),
   makeApp({
-    name: "@elizaos/plugin-hyperliquid",
-    displayName: "Hyperliquid",
+    name: "@elizaos/plugin-wallet",
+    displayName: "Wallet",
     category: "platform",
   }),
   makeApp({

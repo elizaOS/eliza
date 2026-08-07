@@ -15,7 +15,7 @@ import dotenv from "dotenv";
 
 const testFile =
   "eliza/plugins/plugin-personal-assistant/test/journey-cerebras-eval.live.e2e.test.ts";
-const vitestConfig = "eliza/packages/test/vitest/live-e2e.config.ts";
+const vitestConfig = "eliza/packages/scripts/vitest/live-e2e.config.ts";
 
 export function resolveJourneyEvalPaths(moduleUrl = import.meta.url) {
   const here = path.dirname(fileURLToPath(moduleUrl));

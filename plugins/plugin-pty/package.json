@@ -88,7 +88,7 @@
       },
       "ELIZA_CODE_BIN": {
         "type": "string",
-        "description": "Absolute path to the interactive eliza-code binary (dist/index.js). Auto-resolved from the workspace when unset.",
+        "description": "Absolute path to an installed interactive eliza-code binary (dist/index.js).",
         "required": false,
         "sensitive": false
       },

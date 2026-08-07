@@ -25,8 +25,8 @@
  * Scope:
  *   - (a) orphan: the root package.json scripts block (the dumping ground).
  *   - (b) no-op: first-party shipping packages — root + packages/, plugins/,
- *     apps/ — minus the vendored/demo/scaffold subtrees packages/examples/**,
- *     packages/feed/**, packages/benchmarks/** and packages/elizaos/templates/**,
+ *     apps/ — minus package-owned nested workspaces and
+ *     packages/elizaos/templates/**,
  *     which legitimately ship `echo "no toolchain; skipping"` placeholders.
  *   - (c) broken refs: the root scripts block only. Sub-package script paths are
  *     out of scope — the tree holds scaffolding templates and optional nested
@@ -40,6 +40,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isScriptTestPath } from "./lib/script-test-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
@@ -114,11 +115,13 @@ const ALLOWED_EXACT = new Set([
   "audit:type-duplication:self-test",
   "audit:tee-secret-leak:self-test",
   "audit:alias-read-guard:self-test",
-  "check:loadperf-bundle:json",
+  "audit:test-integrity:no-vi-mocks",
+  "mvp:closeout-audit",
   "check:pr-evidence",
   "evidence:pr",
   "evidence:open",
   "evidence:review:no-open",
+  "evidence:certify",
   "seed:messages",
 ]);
 
@@ -133,16 +136,12 @@ const ALLOWED_EXACT = new Set([
  */
 const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
   [
+    "run-scenario-benchmark.mjs",
+    "scenario-runner weekly report harness invoked by packages/training/scripts/collect_trajectories.py; its CI workflow moved to https://github.com/elizaOS/benchmarks",
+  ],
+  [
     "audit-bin-export-subpaths.mjs",
     "static guard for the #8000 bin/exports bug class; run by hand during release review",
-  ],
-  [
-    "benchmark-to-training-dataset.mjs",
-    "one-shot benchmark→training-dataset converter, invoked manually with explicit paths",
-  ],
-  [
-    "check-i18n.mjs",
-    "strict i18n linter run on demand; not yet wired into verify",
   ],
   [
     "audit-turbo-build-deps.self-test.mjs",
@@ -223,15 +222,6 @@ const ROOT_CWD_WRAPPER_ALLOWLIST = new Map([
   ["cloud:e2e", "cloud E2E package entrypoint"],
   ["cloud:e2e:headed", "cloud E2E headed mode entrypoint"],
   ["cloud:e2e:ui", "cloud E2E UI mode entrypoint"],
-  [
-    "bench:personality:calibrate",
-    "personality benchmark calibration entrypoint",
-  ],
-  ["bench:eliza-1", "benchmark suite root entrypoint"],
-  ["bench:recall", "benchmark suite root entrypoint"],
-  ["bench:recall:1k", "benchmark suite root entrypoint"],
-  ["bench:three-agent", "benchmark suite root entrypoint"],
-  ["bench:three-agent:smoke", "benchmark suite root entrypoint"],
   ["db:cloud:generate", "cloud shared database root entrypoint"],
   ["db:cloud:studio", "cloud shared database root entrypoint"],
 ]);
@@ -240,9 +230,6 @@ const NOOP_GATE_KEYS = /^(lint|typecheck|test|build)(:|$)/;
 // Demo / vendored / scaffold subtrees that legitimately ship placeholder scripts
 // or reference paths that only exist after scaffolding. Out of the no-op gate.
 const EXCLUDED_SUBTREES = [
-  "packages/examples",
-  "packages/feed",
-  "packages/benchmarks",
   "packages/elizaos/templates",
 ];
 const SKIP_DIRS = new Set([
@@ -437,6 +424,7 @@ function auditScriptFiles(root) {
 
   const failures = [];
   for (const name of files) {
+    if (isScriptTestPath(`packages/scripts/${name}`)) continue;
     if (ORPHAN_SCRIPT_FILE_ALLOWLIST.has(name)) continue;
     if (nonScriptCorpus.includes(name)) continue;
     // Referenced by any OTHER script file (spawn/exec/import/string mention)?
@@ -457,7 +445,11 @@ function auditScriptFiles(root) {
 // Directories the plugin-coupling check scans for generic scripts. Both trees
 // hold plugin-agnostic build/test/dev automation that must discover plugins via
 // the shared seam + per-package metadata, not by naming plugin sets inline.
-const PLUGIN_COUPLING_SCAN_DIRS = ["scripts", path.join("packages", "scripts")];
+const PLUGIN_COUPLING_SCAN_DIRS = [
+  "scripts",
+  path.join("packages", "scripts"),
+  path.join("packages", "cloud", "scripts"),
+];
 const PLUGIN_COUPLING_FILE_TOKEN = /\.(mjs|cjs|js|mts|cts|ts|tsx)$/;
 // A `plugins/plugin-<name>` or `@elizaos/plugin-<name>` literal hardcoded in a
 // generic script. `<name>` is the package suffix; subpaths/quotes are trimmed by

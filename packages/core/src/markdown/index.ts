@@ -1,15 +1,4 @@
-/**
- * Markdown utilities for elizaOS.
- *
- * Provides:
- * - Code fence parsing
- * - Inline code span detection
- * - YAML frontmatter extraction
- * - Markdown to IR conversion
- * - Markdown-aware text chunking
- *
- * @module markdown
- */
+/** Public surface for Markdown parsing, intermediate representation, and safe chunking. */
 
 export { chunkByParagraph, chunkMarkdownText, chunkText } from "./chunk.js";
 

@@ -58,7 +58,6 @@ import {
 } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
-import { seedFirstPartyRemotePluginsForStartup } from "./first-party-remotes";
 import {
   appendKioskShellModeParam,
   appendShellModeParam,
@@ -88,7 +87,6 @@ import {
   configureDesktopLocalApiAuth,
   getAgentManager,
   getDiagnosticLogPath,
-  getHealthPollTimeoutMs,
   getStartupDiagnosticLogTail,
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
@@ -102,7 +100,6 @@ import {
   setTrafficLightsPosition,
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
-import { getRemotePluginHost } from "./native/remote-plugin-host";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import { getPersistedDeployment } from "./persisted-deployment";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
@@ -1897,14 +1894,7 @@ async function _startAgent(): Promise<void> {
   });
 
   try {
-    const remotePluginHost = getRemotePluginHost();
-    remotePluginHost.startWorker("eliza.runtime");
-    await remotePluginHost.invokeWorker({
-      id: "eliza.runtime",
-      method: "runtime.start",
-      timeoutMs: getHealthPollTimeoutMs() + 5_000,
-    });
-    const status = getAgentManager().getStatus();
+    const status = await getAgentManager().start();
 
     if (status.state === "running" && status.port) {
       const apiBase = `http://127.0.0.1:${status.port}`;
@@ -2673,7 +2663,6 @@ async function main(): Promise<void> {
   recordStartupPhase("window_ready", {
     pid: process.pid,
   });
-  seedFirstPartyRemotePluginsForStartup();
 
   // Per-window RPC tracking: surface windows each get their own typed
   // RPC built up front via createDesktopRpc, baked into the BrowserWindow

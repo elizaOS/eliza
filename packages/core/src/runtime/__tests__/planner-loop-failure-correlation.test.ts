@@ -86,6 +86,37 @@ async function withCodingFullSurface<T>(run: () => Promise<T>): Promise<T> {
 }
 
 describe("planner-loop failed-operation correlation", () => {
+	it("finishes with the just-failed action when its evaluator violates protocol", async () => {
+		const runtime = {
+			useModel: vi.fn().mockResolvedValueOnce(
+				plannerToolCall("home", "VIEWS", {
+					action: "show",
+					view: "home",
+				}),
+			),
+		};
+		const failure = 'No view matches "home".';
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi.fn().mockResolvedValueOnce({
+				success: false,
+				text: failure,
+				userFacingText: failure,
+			}),
+			evaluate: vi.fn().mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE",
+				thought: "Invalid evaluator envelope.",
+				protocolFailure: true,
+			}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(failure);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
 	it("clears a failure only for the same operation despite argument key order", async () => {
 		const runtime = {
 			useModel: vi
@@ -150,6 +181,199 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe("The note was updated.");
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+	});
+
+	it("clears a schema rejection when the retry removes only the rejected argument", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(
+					plannerToolCall("search-invalid-room", "MEMORY_SEARCH", {
+						action: "search",
+						query: "bitcoin",
+						type: "messages",
+						roomId: "current",
+					}),
+				)
+				.mockResolvedValueOnce(
+					plannerToolCall("search-corrected", "MEMORY_SEARCH", {
+						action: "search",
+						query: "bitcoin",
+						type: "messages",
+					}),
+				),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "roomId did not match the UUID schema",
+					data: {
+						parameterErrors: ["roomId did not match the UUID schema"],
+						invalidParameterNames: ["roomId"],
+					},
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "Found four matching messages.",
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Retry without the rejected room filter.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH",
+					thought: "The corrected search completed.",
+					messageToUser: "You mentioned bitcoin three times.",
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("You mentioned bitcoin three times.");
+	});
+
+	it("clears a failure when the retry differs only in free-text description narration (live incident: builders re-narrate retried commands, and the stale failure authority replaced their terminal completion proof)", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "verify-1",
+							name: "SHELL",
+							arguments: {
+								action: "run",
+								command: "bun run typecheck && bun run lint && bun run test",
+								description: "Run the verification commands",
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "verify-2",
+							name: "SHELL",
+							arguments: {
+								action: "run",
+								command: "bun run typecheck && bun run lint && bun run test",
+								description: "Re-run verification after formatting fixes",
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply",
+							name: "REPLY",
+							arguments: { text: 'APP_CREATE_DONE {"appName":"demo"}' },
+						},
+					],
+				}),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "lint failed",
+					text: "biome check failed on generated code",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "all checks pass",
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Fix formatting and re-run.",
+				})
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Emit the completion proof.",
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toContain("APP_CREATE_DONE");
+	});
+
+	it("keeps description operative for tools whose description is the mutation payload", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(
+					plannerToolCall("task-a", "TASKS_CREATE", {
+						description: "Repair project A",
+					}),
+				)
+				.mockResolvedValueOnce(
+					plannerToolCall("task-b", "TASKS_CREATE", {
+						description: "Repair project B",
+					}),
+				)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply",
+							name: "REPLY",
+							arguments: { text: "Both repair tasks were created." },
+						},
+					],
+				}),
+		};
+		const taskFailure = "Project A task creation failed.";
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "task-a-failure",
+					text: taskFailure,
+					userFacingText: taskFailure,
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "Project B task created.",
+					userFacingText: "Project B task created.",
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Create the other task.",
+				})
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Invalid evaluator envelope.",
+					protocolFailure: true,
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(taskFailure);
+		expect(result.finalMessage).not.toContain("Both repair tasks");
 	});
 
 	it("keeps a failed SHELL command authoritative when an unrelated command succeeds before REPLY", async () => {

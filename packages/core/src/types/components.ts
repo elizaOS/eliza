@@ -471,6 +471,20 @@ export interface Action {
 	suppressEarlyReply?: boolean;
 
 	/**
+	 * When true, this action performs an asynchronous handoff: its handler
+	 * returns while the real work continues in the background (e.g. spawning a
+	 * coding sub-agent) and the user-visible result arrives later through a
+	 * separate delivery path.
+	 *
+	 * The message service uses this to decide whether a Stage-1 pre-planner
+	 * early ack is warranted on latency-sensitive channels (voice): only turns
+	 * whose candidate actions include an async-handoff action get an early
+	 * ack, so synchronous retrieval turns deliver one reply — the answer — on
+	 * every channel. Promoted subactions inherit the parent's flag.
+	 */
+	asyncHandoff?: boolean;
+
+	/**
 	 * When true, runtime-level action result finalizers must not store this
 	 * action's visible result text in task clipboard state.
 	 */

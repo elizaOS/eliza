@@ -1,3 +1,4 @@
+/** Verifies ChatOverlay ThreadLine proactive suggestion (#8792) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Proactive-suggestion affordance on the SHIPPED chat surface (#8792/#11387):

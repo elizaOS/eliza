@@ -1,9 +1,3 @@
-/**
- * Plugin System
- *
- * Provides plugin discovery, manifest loading, and registration utilities.
- *
- * @module plugins
- */
+/** Public surface for plugin discovery, manifest loading, and registration. */
 
 export * from "./native-features";

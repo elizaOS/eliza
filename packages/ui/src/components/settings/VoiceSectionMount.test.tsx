@@ -1,3 +1,4 @@
+/** Verifies VoiceSectionMount — wake-word toggle wiring (FIX 3) through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Mounts VoiceSectionMount (the fetch-and-persist wrapper around VoiceSection)

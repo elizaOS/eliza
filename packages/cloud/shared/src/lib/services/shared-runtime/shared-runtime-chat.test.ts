@@ -8,7 +8,6 @@
 process.env.MOCK_REDIS = "1";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { APICallError } from "ai";
 
 let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
@@ -18,10 +17,40 @@ let admissionError: Error | null;
 let billError: Error | null;
 let billingGate: Promise<void> | null;
 let releaseBilling = () => {};
+let streamAbortSignal: AbortSignal | undefined;
 const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 let characterReads = 0;
+
+class ApiInsufficientCreditsError extends Error {}
+
+class ApiRateLimitError extends Error {
+  retryAfter?: number;
+
+  constructor(message: string, retryAfter?: number) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfter = retryAfter;
+  }
+}
+
+mock.module("../../api/errors", () => ({
+  InsufficientCreditsError: ApiInsufficientCreditsError,
+  RateLimitError: ApiRateLimitError,
+}));
+
+mock.module("../../pricing", () => ({
+  getProviderFromModel: () => "openai",
+}));
+
+mock.module("../../utils/logger", () => ({
+  logger: {
+    warn: mock(() => undefined),
+    error: mock(() => undefined),
+  },
+}));
+
 const payoutAwareReservation = {
   reservedAmount: 0.01,
   reservationTransactionId: "reservation-1",
@@ -45,6 +74,23 @@ const enforceOrgRateLimit = mock(async () => {
 mock.module("../../middleware/rate-limit", () => ({
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError: TestOrgRateLimitCacheNotReadyError,
+}));
+
+const admissionSnapshot = {
+  balance: { balanceUsd: 10, balanceAt: Date.now(), balanceRevision: 1 },
+  rateLimits: {
+    completionsRpm: 120,
+    embeddingsRpm: 120,
+    standardRpm: 120,
+    strictRpm: 30,
+  },
+};
+class TestInferenceAdmissionSnapshotCacheWarmingError extends Error {}
+const getInferenceAdmissionSnapshotCacheOnly = mock(async () => admissionSnapshot);
+mock.module("../inference-admission-snapshot", () => ({
+  getInferenceAdmissionSnapshotCacheOnly,
+  InferenceAdmissionSnapshotCacheWarmingError: TestInferenceAdmissionSnapshotCacheWarmingError,
+  inferenceRateLimitConfig: () => ({ windowMs: 60_000, maxRequests: 120 }),
 }));
 
 const admitOrganizationInference = mock(
@@ -106,14 +152,63 @@ mock.module("../../../db/repositories/characters", () => ({
 }));
 mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
-  runSharedAgentTurn: async () => {
+  runSharedAgentTurn: async (input: { messageIds?: { user: string; assistant: string } }) => {
     if (turnError) throw turnError;
-    return turn;
+    const history = Array.isArray(turn.history)
+      ? turn.history.map((message, index) =>
+          index === turn.history.length - 2
+            ? { ...message, id: input.messageIds?.user }
+            : index === turn.history.length - 1
+              ? { ...message, id: input.messageIds?.assistant }
+              : message,
+        )
+      : turn.history;
+    return { ...turn, history };
   },
-  runSharedAgentTurnStream: async () => {
+  runSharedAgentTurnStream: async (input: { abortSignal?: AbortSignal }) => {
     if (streamTurnError) throw streamTurnError;
+    streamAbortSignal = input.abortSignal;
     return streamTurn;
   },
+}));
+
+class TestInferenceAdmissionDispatchMarkError extends Error {}
+
+mock.module("../inference-admission-gate", () => ({
+  InferenceAdmissionDispatchMarkError: TestInferenceAdmissionDispatchMarkError,
+  isInferenceAdmissionDispatchMarkError: (error: unknown) =>
+    error instanceof TestInferenceAdmissionDispatchMarkError ||
+    (error as { cause?: unknown })?.cause instanceof TestInferenceAdmissionDispatchMarkError,
+}));
+
+mock.module("../inference-billing-fast-path", () => ({
+  InferenceBalanceCacheWarmingError: class InferenceBalanceCacheWarmingError extends Error {},
+}));
+
+class MockAPICallError extends Error {
+  statusCode?: number;
+
+  constructor(options: { message: string; statusCode?: number }) {
+    super(options.message);
+    this.statusCode = options.statusCode;
+  }
+
+  static isInstance(value: unknown): value is MockAPICallError {
+    return value instanceof MockAPICallError;
+  }
+}
+
+class MockRetryError extends Error {
+  lastError?: unknown;
+
+  static isInstance(value: unknown): value is MockRetryError {
+    return value instanceof MockRetryError;
+  }
+}
+
+mock.module("ai", () => ({
+  APICallError: MockAPICallError,
+  RetryError: MockRetryError,
 }));
 
 // Sibling suites in the same bun process mock ../../cache/client globally with
@@ -174,16 +269,39 @@ const rpc = {
   params: { text: "hello", roomId: "room-1" },
 };
 
+type TestMessage = {
+  id?: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt?: number;
+  interrupted?: boolean;
+};
+
 function harness() {
-  let history = [{ role: "assistant" as const, content: "prior" }];
+  let history: TestMessage[] = [{ role: "assistant", content: "prior" }];
   const background: Promise<unknown>[] = [];
+  const merge = (messages: TestMessage[]): TestMessage[] => {
+    const byId = new Map<string, TestMessage>();
+    for (const message of [...history, ...messages]) {
+      byId.set(
+        "id" in message && typeof message.id === "string"
+          ? message.id
+          : `${message.role}\u0000${"createdAt" in message ? message.createdAt : ""}\u0000${message.content}`,
+        message,
+      );
+    }
+    history = [...byId.values()];
+    return history;
+  };
   return {
     background,
     historyStore: {
       load: async () => history,
-      save: async (_agentId: string, _channelId: string, next: typeof history) => {
+      save: async (_agentId: string, _channelId: string, next: TestMessage[]) => {
         history = next;
       },
+      merge: async (_agentId: string, _channelId: string, messages: TestMessage[]) =>
+        merge(messages),
     },
     executionCtx: {
       waitUntil: (promise: Promise<unknown>) => background.push(promise),
@@ -202,11 +320,13 @@ beforeEach(() => {
   streamTurnError = null;
   characterReads = 0;
   enforceOrgRateLimit.mockClear();
+  getInferenceAdmissionSnapshotCacheOnly.mockClear();
   admitOrganizationInference.mockClear();
   orgRateLimitResult = null;
   orgRateLimitError = null;
   billingGate = null;
   releaseBilling = () => {};
+  streamAbortSignal = undefined;
   turn = {
     degraded: false,
     reply: "hello back",
@@ -231,7 +351,7 @@ beforeEach(() => {
 
 function wrappedProviderError(statusCode: number): Error {
   return new Error("shared turn failed", {
-    cause: new APICallError({
+    cause: new MockAPICallError({
       message: `provider returned ${statusCode}`,
       url: "https://provider.example/v1/chat/completions",
       requestBodyValues: {},
@@ -269,6 +389,7 @@ describe("SharedRuntimeChatService", () => {
     expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
       cacheOnly: true,
       executionCtx: h.executionCtx,
+      config: { windowMs: 60_000, maxRequests: 120 },
     });
     const admissionContext = admitOrganizationInference.mock.calls[0]?.[0].context;
     expect(admissionContext?.metadata).toMatchObject({
@@ -278,7 +399,7 @@ describe("SharedRuntimeChatService", () => {
     });
     expect(admissionContext?.metadata).not.toHaveProperty("prompt");
     expect(JSON.stringify(admissionContext)).not.toContain("hello");
-    expect(h.history()).toHaveLength(2);
+    expect(h.history()).toHaveLength(3);
     expect(h.background).toHaveLength(2);
     expect(settleCalls).toHaveLength(0);
     releaseBilling();
@@ -312,6 +433,7 @@ describe("SharedRuntimeChatService", () => {
     expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
       cacheOnly: true,
       executionCtx: h.executionCtx,
+      config: { windowMs: 60_000, maxRequests: 120 },
     });
     expect(admitOrganizationInference).not.toHaveBeenCalled();
   });
@@ -466,6 +588,105 @@ describe("SharedRuntimeChatService", () => {
       "Shared runtime stream failed",
     );
     expect(settleCalls).toEqual([]);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("stream response-body cancellation awaits interrupted history persistence", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    let releaseProvider = () => {};
+    const providerGate = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    let providerCancelReason: unknown;
+    streamTurn = {
+      degraded: false,
+      cancel: async (reason: unknown) => {
+        providerCancelReason = reason;
+        releaseProvider();
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "partial " };
+        await providerGate;
+      })(),
+    };
+
+    const response = await service.stream(agent, rpc, h);
+    const reader = response.body!.getReader();
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain("partial");
+    await reader.cancel("barge-in");
+
+    expect(h.history()).toHaveLength(3);
+    expect(h.history()[1]).toMatchObject({
+      id: expect.any(String),
+      role: "user",
+      content: "hello",
+    });
+    expect(h.history()[2]).toMatchObject({
+      id: expect.any(String),
+      role: "assistant",
+      content: "partial",
+      interrupted: true,
+    });
+    expect(streamAbortSignal?.aborted).toBe(true);
+    expect(streamAbortSignal?.reason).toBe("barge-in");
+    expect(providerCancelReason).toBe("barge-in");
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("stream finalization retries after a failed history write", async () => {
+    const service = new SharedRuntimeChatService();
+    let attempts = 0;
+    let history: TestMessage[] = [{ role: "assistant", content: "prior" }];
+    const h = {
+      background: [] as Promise<unknown>[],
+      historyStore: {
+        load: async () => history,
+        save: async (_agentId: string, _channelId: string, next: TestMessage[]) => {
+          history = next;
+        },
+        merge: async (_agentId: string, _channelId: string, messages: TestMessage[]) => {
+          attempts++;
+          if (attempts === 1) throw new Error("durable put failed");
+          history = [...history, ...messages];
+          return history;
+        },
+      },
+      executionCtx: {
+        waitUntil: (promise: Promise<unknown>) => h.background.push(promise),
+      },
+    };
+    let releaseProvider = () => {};
+    const providerGate = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "partial" };
+        await providerGate;
+        yield { type: "finish", text: "final", usage: { inputTokens: 1, outputTokens: 1 } };
+      })(),
+    };
+
+    const response = await service.stream(agent, rpc, h);
+    const reader = response.body!.getReader();
+    await reader.read();
+    await expect(reader.cancel("first cancel")).rejects.toThrow("durable put failed");
+    expect(history).toHaveLength(1);
+
+    releaseProvider();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.all(h.background);
+
+    expect(attempts).toBe(2);
+    expect(history.at(-2)).toMatchObject({ role: "user", content: "hello" });
+    expect(history.at(-1)).toMatchObject({
+      role: "assistant",
+      content: "partial",
+      interrupted: true,
+    });
     expect(settleUnknownCalls).toBe(1);
   });
 });

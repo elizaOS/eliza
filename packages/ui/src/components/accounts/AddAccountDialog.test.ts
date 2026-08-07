@@ -1,3 +1,4 @@
+/** Verifies subscriptionOAuthModeForHostname through the package's configured test harness. */
 import { describe, expect, it } from "vitest";
 import { subscriptionOAuthModeForHostname } from "./subscription-oauth-mode";
 

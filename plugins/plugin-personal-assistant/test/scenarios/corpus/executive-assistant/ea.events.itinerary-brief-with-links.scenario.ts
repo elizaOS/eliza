@@ -1,0 +1,86 @@
+/** Scenario fixture for ea events itinerary brief with links; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+
+import {
+  expectConnectorDispatch,
+  expectScenarioToCallAction,
+  expectTurnToCallAction,
+  judgeRubric,
+} from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+
+export default scenario({
+  lane: "live-only",
+  id: "ea.events.itinerary-brief-with-links",
+  title: "Build an event-day itinerary brief with links and times",
+  domain: "executive-assistant",
+  tags: ["executive-assistant", "travel", "calendar", "transcript-derived"],
+  description:
+    "Transcript-derived case: push an itinerary with event locations, time slots, attendees, and links.",
+  isolation: "per-scenario",
+  requires: {
+    plugins: ["@elizaos/plugin-agent-skills"],
+  },
+  rooms: [
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "EA Itinerary Brief With Links",
+    },
+  ],
+  turns: [
+    {
+      kind: "message",
+      name: "request-itinerary",
+      room: "main",
+      text: "Give me today's itinerary with all the event links, locations, and time slots.",
+      assertTurn: expectTurnToCallAction({
+        acceptedActions: ["CALENDAR", "RELATIONSHIP"],
+        description: "event itinerary briefing",
+        includesAny: ["itinerary", "links", "location", "time"],
+      }),
+      // Derived content: a real itinerary carries concrete clock times or
+      // actual URLs — no ":"-form time or "http" appears in any user turn,
+      // so a reply that parrots "itinerary/links/locations" cannot pass.
+      responseIncludesAny: ["http", ":00", ":15", ":30", ":45"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must be a structured itinerary listing today's events with their times, locations, and join/meeting links. A paragraph summary without concrete times or links fails.",
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "selectedAction",
+      actionName: ["CALENDAR", "RELATIONSHIP"],
+    },
+    {
+      type: "connectorDispatchOccurred",
+      channel: ["dashboard", "desktop"],
+    },
+    {
+      type: "custom",
+      name: "ea-itinerary-action-coverage",
+      predicate: expectScenarioToCallAction({
+        acceptedActions: ["CALENDAR", "RELATIONSHIP"],
+        description: "event itinerary briefing",
+        includesAny: ["itinerary", "links", "location", "time"],
+      }),
+    },
+    {
+      type: "custom",
+      name: "ea-itinerary-dispatch-side-effect",
+      predicate: expectConnectorDispatch({
+        channel: ["dashboard", "desktop"],
+        description: "itinerary delivered to the requesting surface",
+      }),
+    },
+    judgeRubric({
+      name: "ea-itinerary-rubric",
+      threshold: 0.7,
+      description:
+        "End-to-end: the assistant produced a real itinerary with concrete times, locations, and meeting links and surfaced it back on the requesting channel.",
+    }),
+  ],
+});

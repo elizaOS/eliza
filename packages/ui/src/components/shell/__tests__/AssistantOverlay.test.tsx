@@ -1,3 +1,4 @@
+/** Verifies AssistantOverlay through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // AssistantOverlay's phase gating: renders nothing while idle/booting and shows

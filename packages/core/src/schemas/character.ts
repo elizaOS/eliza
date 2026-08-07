@@ -401,6 +401,8 @@ export function parseAndValidateCharacter(
 		const parsed = JSON.parse(jsonString);
 		return validateCharacter(parsed);
 	} catch (error) {
+		// error-policy:J3 character JSON is untrusted input; parsing failure is a
+		// structured invalid result rather than an exception.
 		return {
 			success: false,
 			error: {

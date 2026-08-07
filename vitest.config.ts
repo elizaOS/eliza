@@ -85,6 +85,10 @@ export default defineConfig({
         replacement: path.join(root, "packages/core/src/index.node.ts"),
       },
       {
+        find: /^@elizaos\/core\/atomic-json$/,
+        replacement: path.join(root, "packages/core/src/utils/atomic-json.ts"),
+      },
+      {
         // "./node" is an exports-map subpath (→ index.node.ts), not a real
         // src path, so it must be pinned before the generic src/$1 rewrite.
         find: /^@elizaos\/core\/node$/,
@@ -108,7 +112,7 @@ export default defineConfig({
         // exports resolve to `dist/*.js` and vite fails with "Cannot find
         // package '@elizaos/auth/...'". Pin both the barrel and subpaths to
         // source so targeted tests (e.g. remote-plugin-adapter → app-package
-        // -modules → `@elizaos/auth/atomic-json`) resolve without a build.
+        // -modules → `@elizaos/core/atomic-json`) resolve without a build.
         find: /^@elizaos\/auth$/,
         replacement: path.join(root, "packages/auth/src/index.ts"),
       },

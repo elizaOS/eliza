@@ -1,3 +1,0 @@
-[[!meta title="First steps with Tails"]]
-
-[[!inline pages="doc/first_steps.index" raw="yes" sort="age"]]

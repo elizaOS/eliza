@@ -1,5 +1,5 @@
 /** Implements Electrobun desktop launch store ts behavior for app-core shell integration. */
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import { createUnknownDatabaseSnapshot } from "../database";
 import type {
   LaunchEvent,
@@ -35,11 +35,6 @@ function emptySnapshot(now: () => Date): LaunchSnapshot {
       checked: false,
       complete: null,
       requiredGate: null,
-    },
-    remotes: {
-      seeded: false,
-      requiredStarted: false,
-      errors: [],
     },
     localModel: {
       backgroundDownloadQueued: false,

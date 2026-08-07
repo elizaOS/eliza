@@ -20,6 +20,7 @@ import { wordErrorRate } from "@elizaos/shared/voice-wer";
 import type { ElizaClient } from "../../api/client-base";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { resolveApiUrl } from "../../utils";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { startLocalAsrRecorder } from "../local-asr-capture";
 import {
   isLocalInferenceAsrReady,
@@ -156,10 +157,11 @@ async function playThroughDestination(
       // error-policy:J4 a stuck-suspended context surfaces as started:false /
       // outputObserved:false in the returned playback result
       await ctx.resume().catch((error) => {
-        console.warn(
-          "[voice-selftest] AudioContext resume failed before playback probe",
+        reportRendererDiagnostic({
+          scope: "voice-selftest.audio-context-resume",
+          severity: "warning",
           error,
-        );
+        });
       });
       if (ctx.state === "suspended") {
         throw new Error(

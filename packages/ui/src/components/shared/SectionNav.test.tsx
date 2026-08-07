@@ -1,3 +1,4 @@
+/** Verifies isSectionPath through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -263,7 +264,7 @@ describe("SectionTabStrip agent surface", () => {
     });
     expect(
       screen
-        .getByRole("button", { name: "Shared" })
+        .getByRole("button", { name: "Shared knowledge" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
   });

@@ -12,7 +12,6 @@ import type {
   ResponseHandlerResult,
   State,
 } from "@elizaos/core";
-import { createMockedTestRuntime } from "../../../packages/test/mocks/helpers/mock-runtime.ts";
 import { workThreadAction } from "../src/actions/work-thread.ts";
 import {
   type ThreadOp,
@@ -20,6 +19,7 @@ import {
 } from "../src/lifeops/work-threads/field-evaluator-thread-ops.ts";
 import { createWorkThreadStore } from "../src/lifeops/work-threads/store.ts";
 import { workThreadsProvider } from "../src/providers/work-threads.ts";
+import { createMockedTestRuntime } from "../test/support/helpers/mock-runtime.ts";
 
 type Sample = {
   name: string;

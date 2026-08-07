@@ -43,6 +43,15 @@ export class BootTimer {
 
   constructor(private readonly label = "[boot]") {}
 
+  /**
+   * Start a fresh lap window without recording the idle gap as phase work.
+   * Deferred startup uses this after its scheduler handoff so its first lap
+   * measures the operation itself rather than time spent waiting to be kicked.
+   */
+  resetLapWindow(): void {
+    this.last = Date.now();
+  }
+
   lap(name: string): void {
     const now = Date.now();
     const ms = now - this.last;

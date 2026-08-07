@@ -1,8 +1,7 @@
 /**
  * Vite config that bundles the contacts dashboard view to `dist/views`,
- * aliasing the native `@elizaos/capacitor-contacts` bridge for the browser build.
+ * consuming the published native bridge through its package boundary.
  */
-import { fileURLToPath } from "node:url";
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default {
@@ -13,14 +12,4 @@ export default {
     outDir: "dist/views",
     componentExport: "ContactsView",
   }),
-  resolve: {
-    alias: {
-      "@elizaos/capacitor-contacts": fileURLToPath(
-        new URL(
-          "../../plugins/plugin-native-contacts/src/index.ts",
-          import.meta.url,
-        ),
-      ),
-    },
-  },
 };

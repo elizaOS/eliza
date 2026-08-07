@@ -50,7 +50,7 @@ permissions:
 
 jobs:
   build-and-publish:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
 
     env:
       SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
@@ -60,6 +60,9 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
           submodules: false
+
+      - name: Normalize runner root ownership for snapd
+        uses: ./.github/actions/normalize-snapd-root
 
       - name: Check Snap Store credentials
         id: creds_check

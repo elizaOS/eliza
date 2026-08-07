@@ -54,8 +54,6 @@ describe("runSharedAgentTurn (degraded path — no model configured)", () => {
     "OPENROUTER_API_KEY",
     "ANTHROPIC_API_KEY",
     "BITROUTER_API_KEY",
-    "AI_GATEWAY_API_KEY",
-    "AIGATEWAY_API_KEY",
     "GROQ_API_KEY",
   ] as const;
   const saved: Record<string, string | undefined> = {};

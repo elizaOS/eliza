@@ -120,6 +120,7 @@ function makeRuntime(service: ReturnType<typeof makeCalendarService>) {
 
 describe("calendar plugin HTTP routes", () => {
   it("registers only the provider-authenticated webhook directly", () => {
+    expect(calendarPlugin.dependencies).toEqual(["@elizaos/plugin-scheduling"]);
     expect(calendarPlugin.routes).toEqual(calendarHttpRoutes);
     expect(calendarHttpRoutes).toHaveLength(1);
     expect(calendarHttpRoutes[0]).toMatchObject({

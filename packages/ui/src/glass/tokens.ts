@@ -3,7 +3,7 @@
  * chrome element draws from. Before this module the shell had ten divergent
  * surface recipes (four blur strengths, five translucent fills, three border
  * idioms — see the fragmentation inventory in
- * `packages/docs/ongoing-development/liquid-glass-unification.md`); a surface
+ * `docs/ongoing-development/liquid-glass-unification.md`); a surface
  * now picks a VARIANT here instead of hand-rolling backdrop-filter values.
  *
  * The optical layers themselves (rim ring, sheen, edge shadow, Chromium edge

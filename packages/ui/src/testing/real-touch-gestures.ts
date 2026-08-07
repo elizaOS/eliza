@@ -166,15 +166,131 @@ export async function touchTap(page: Page, selector: string): Promise<void> {
   const { cx, cy } = await centerOf(page, selector);
   const client = await page.context().newCDPSession(page);
   try {
+    await page.evaluate((selector) => {
+      const target = document.querySelector(selector);
+      if (!target) throw new Error(`real-touch: no target for ${selector}`);
+      const root = globalThis as typeof globalThis & {
+        __elizaRealTouchTapProbe?: {
+          pointerId: number | null;
+          down: boolean;
+          terminal: "up" | "cancel" | null;
+        };
+      };
+      const probe: {
+        pointerId: number | null;
+        down: boolean;
+        terminal: "up" | "cancel" | null;
+      } = { pointerId: null, down: false, terminal: null };
+      root.__elizaRealTouchTapProbe = probe;
+      target.addEventListener(
+        "pointerdown",
+        (event) => {
+          const pointerEvent = event as PointerEvent;
+          probe.pointerId = pointerEvent.pointerId;
+          probe.down = true;
+        },
+        { once: true },
+      );
+      target.addEventListener(
+        "pointerup",
+        (event) => {
+          const pointerEvent = event as PointerEvent;
+          if (
+            pointerEvent.pointerId === probe.pointerId &&
+            probe.terminal === null
+          ) {
+            probe.terminal = "up";
+          }
+        },
+        { once: true },
+      );
+      target.addEventListener(
+        "pointercancel",
+        (event) => {
+          const pointerEvent = event as PointerEvent;
+          if (
+            pointerEvent.pointerId === probe.pointerId &&
+            probe.terminal === null
+          ) {
+            probe.terminal = "cancel";
+          }
+        },
+        { once: true },
+      );
+    }, selector);
     await client.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [point(cx, cy)],
     });
+    await page.waitForFunction(
+      () =>
+        (
+          globalThis as typeof globalThis & {
+            __elizaRealTouchTapProbe?: { down: boolean };
+          }
+        ).__elizaRealTouchTapProbe?.down === true,
+      undefined,
+      { timeout: 1500 },
+    );
+    // Keep the finger down for a physical two-frame dwell after pointerdown has
+    // reached the target. CDP command acknowledgement alone is compositor-side
+    // and can otherwise race the page's pointer/capture handlers on busy hosts.
+    await settleMainThread(page);
+    await settleMainThread(page);
     await client.send("Input.dispatchTouchEvent", {
       type: "touchEnd",
       touchPoints: [],
     });
+    await page.waitForFunction(
+      () =>
+        (
+          globalThis as typeof globalThis & {
+            __elizaRealTouchTapProbe?: {
+              terminal: "up" | "cancel" | null;
+            };
+          }
+        ).__elizaRealTouchTapProbe?.terminal === "up" ||
+        (
+          globalThis as typeof globalThis & {
+            __elizaRealTouchTapProbe?: {
+              terminal: "up" | "cancel" | null;
+            };
+          }
+        ).__elizaRealTouchTapProbe?.terminal === "cancel",
+      undefined,
+      { timeout: 1500 },
+    );
+    const terminal = await page.evaluate(
+      () =>
+        (
+          globalThis as typeof globalThis & {
+            __elizaRealTouchTapProbe?: {
+              terminal: "up" | "cancel" | null;
+            };
+          }
+        ).__elizaRealTouchTapProbe?.terminal,
+    );
+    if (terminal !== "up") {
+      throw new Error(`real-touch: tap ended with pointer${terminal}`);
+    }
+    // Keep the input session alive until the release has crossed two renderer
+    // frames. The target's native pointerup precedes React's delegated state
+    // commit; a physical next gesture begins from the released frame the user
+    // can see, so make that ordering part of this real-touch helper too.
+    await settleMainThread(page);
+    await settleMainThread(page);
   } finally {
+    try {
+      await page.evaluate(() => {
+        delete (
+          globalThis as typeof globalThis & {
+            __elizaRealTouchTapProbe?: unknown;
+          }
+        ).__elizaRealTouchTapProbe;
+      });
+    } catch {
+      // error-policy:J6 The page may close during teardown; the probe is page-local.
+    }
     await client.detach();
   }
 }

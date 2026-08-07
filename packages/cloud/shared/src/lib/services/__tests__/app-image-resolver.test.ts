@@ -58,13 +58,13 @@ describe("makeBuildFromRepoResolver", () => {
       metadata: {
         repoUrl: "https://github.com/elizaOS/eliza.git",
         ref: "develop",
-        dockerfile: "packages/examples/cloud/edad/Dockerfile.cloud",
+        dockerfile: "apps/example/Dockerfile.cloud",
       },
       repoUrl: "https://github.com/linked/repo.git",
     });
 
     expect(ref).toBe("r/app-aaaaaaaaaaaa4aaa8aaaaaaa:develop");
-    expect(cmds[0]).toContain("--file 'packages/examples/cloud/edad/Dockerfile.cloud'");
+    expect(cmds[0]).toContain("--file 'apps/example/Dockerfile.cloud'");
     expect(cmds[0]).toContain("'https://github.com/elizaOS/eliza.git#develop'");
     expect(cmds[0]).not.toContain("https://github.com/linked/repo.git");
   });

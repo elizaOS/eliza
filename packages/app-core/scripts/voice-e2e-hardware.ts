@@ -21,25 +21,25 @@ const DEFAULT_PHRASE = "Eliza local voice end to end check.";
 const GGUF_MIN_BYTES = 1024 * 1024;
 
 type BargeInInterruptionInput =
-  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").BargeInInterruptionInput;
+  import("@elizaos/plugin-local-inference/services/voice/e2e-harness").BargeInInterruptionInput;
 type FirstResponseLatencyInput =
-  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").FirstResponseLatencyInput;
+  import("@elizaos/plugin-local-inference/services/voice/e2e-harness").FirstResponseLatencyInput;
 type OptimisticRollbackRestartInput =
-  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").OptimisticRollbackRestartInput;
+  import("@elizaos/plugin-local-inference/services/voice/e2e-harness").OptimisticRollbackRestartInput;
 type PauseContinuationInput =
-  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").PauseContinuationInput;
+  import("@elizaos/plugin-local-inference/services/voice/e2e-harness").PauseContinuationInput;
 type RequiredVoiceArtifact =
-  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").RequiredVoiceArtifact;
+  import("@elizaos/plugin-local-inference/services/voice/e2e-harness").RequiredVoiceArtifact;
 type VoiceE2eCaseResult =
-  import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness").VoiceE2eCaseResult;
+  import("@elizaos/plugin-local-inference/services/voice/e2e-harness").VoiceE2eCaseResult;
 type VoiceE2eHarnessModule =
-  typeof import("../../../plugins/plugin-local-inference/src/services/voice/e2e-harness");
+  typeof import("@elizaos/plugin-local-inference/services/voice/e2e-harness");
 type ElizaInferenceContextHandle =
-  import("../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings").ElizaInferenceContextHandle;
+  import("@elizaos/plugin-local-inference/services/voice/ffi-bindings").ElizaInferenceContextHandle;
 type ElizaInferenceFfi =
-  import("../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings").ElizaInferenceFfi;
+  import("@elizaos/plugin-local-inference/services/voice/ffi-bindings").ElizaInferenceFfi;
 type ElizaInferenceFfiModule =
-  typeof import("../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings");
+  typeof import("@elizaos/plugin-local-inference/services/voice/ffi-bindings");
 
 let assertRequiredVoiceArtifacts: VoiceE2eHarnessModule["assertRequiredVoiceArtifacts"];
 let scoreBargeInInterruption: VoiceE2eHarnessModule["scoreBargeInInterruption"];
@@ -62,10 +62,10 @@ async function loadPluginModules(): Promise<void> {
     summarizeVoiceE2e,
     VoiceE2eHarnessError,
   } = await import(
-    "../../../plugins/plugin-local-inference/src/services/voice/e2e-harness"
+    "@elizaos/plugin-local-inference/services/voice/e2e-harness"
   ));
   ({ loadElizaInferenceFfi } = await import(
-    "../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings"
+    "@elizaos/plugin-local-inference/services/voice/ffi-bindings"
   ));
 }
 

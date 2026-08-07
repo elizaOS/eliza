@@ -105,11 +105,6 @@ describe("cloudLinkSensitiveRequestAdapter", () => {
     }
   });
 
-  it("declares the cloud_authenticated_link target", () => {
-    const adapter = createCloudLinkSensitiveRequestAdapter();
-    expect(adapter.target).toBe("cloud_authenticated_link");
-  });
-
   it("returns the cloud sensitive-request URL for secret kind", async () => {
     const adapter = createCloudLinkSensitiveRequestAdapter({
       resolveCloudBase: () => "https://www.elizacloud.ai",

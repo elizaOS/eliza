@@ -4,9 +4,8 @@
  * These types describe table structures as plain data objects, enabling any
  * database backend to interpret them without depending on a specific ORM.
  *
- * Promoted from the runtime-migrator's internal snapshot format so that core
- * can define canonical schemas that any adapter (Drizzle, Knex, raw SQL, etc.)
- * can consume.
+ * Core defines the canonical format so adapters such as Drizzle, Knex, or raw
+ * SQL can consume the same schema without an ORM dependency.
  */
 
 /** Column definition — describes a single column in a table. */

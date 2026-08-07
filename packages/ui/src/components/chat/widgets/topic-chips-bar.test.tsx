@@ -1,3 +1,4 @@
+/** Verifies TopicChipsBar through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // TopicChipsBar: empty state with no topics, one chip per topic with selection

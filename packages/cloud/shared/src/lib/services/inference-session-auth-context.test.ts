@@ -25,6 +25,15 @@ let getUser:
   | undefined;
 let userReads = 0;
 let moderationReads = 0;
+const ADMISSION = {
+  balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
+  rateLimits: {
+    completionsRpm: 60,
+    embeddingsRpm: 100,
+    standardRpm: 30,
+    strictRpm: 5,
+  },
+};
 
 mock.module("../auth/steward-client", () => ({
   verifyStewardTokenCached: async () => claims,
@@ -50,6 +59,10 @@ mock.module("./admin", () => ({
 
 mock.module("../steward-sync", () => ({
   syncUserFromSteward: async () => undefined,
+}));
+
+mock.module("./inference-admission-snapshot", () => ({
+  loadInferenceAdmissionSnapshot: async () => ADMISSION,
 }));
 
 const { __clearInferenceSessionAuthHydrations, resolveInferenceSessionAuthContext } = await import(

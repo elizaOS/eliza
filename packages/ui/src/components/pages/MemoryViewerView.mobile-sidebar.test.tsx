@@ -1,3 +1,4 @@
+/** Verifies MemoryViewerView mobile sidebar header trigger through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Memories on mobile: guards that the people/filter sidebar opens from the

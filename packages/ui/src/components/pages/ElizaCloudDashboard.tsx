@@ -636,6 +636,9 @@ export function CloudDashboard() {
           </Button>
           <Button
             variant="link"
+            aria-label={t("elizaclouddashboard.LearnMore", {
+              defaultValue: "Learn more about Eliza Cloud",
+            })}
             className="h-8 px-2 text-xs text-muted"
             onClick={() => void openExternalUrl(ELIZA_CLOUD_WEB_URL)}
           >
@@ -1015,6 +1018,7 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
         Sign-in window did not open?
       </p>
       <Button
+        aria-label="Open Eliza Cloud sign-in in your browser"
         variant="ghost"
         className="block h-auto w-full whitespace-normal break-all px-0 py-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
         onClick={() => void openExternalUrl(browserUrl)}

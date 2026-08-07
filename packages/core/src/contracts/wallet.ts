@@ -1,9 +1,8 @@
 /**
  * Wallet API contracts.
  *
- * Type contracts moved to @elizaos/contracts (Phase 5A). Re-export here
- * so existing consumers that import from this module keep compiling.
- * Runtime helpers (normalizers, constants) remain here.
+ * Pure shapes live beside this module in wallet-types; runtime helpers,
+ * normalizers, and constants remain here.
  */
 
 import type {
@@ -93,7 +92,7 @@ import type {
 	WalletTradingProfileSummary,
 	WalletTradingProfileTokenBreakdown,
 	WalletTradingProfileWindow,
-} from "@elizaos/contracts";
+} from "./wallet-types.js";
 
 export type {
 	BscTradeExecuteRequest,
@@ -185,7 +184,7 @@ export type {
 };
 
 // ---------------------------------------------------------------------------
-// Runtime helpers — constants and normalizers not in @elizaos/contracts.
+// Runtime helpers — constants and normalizers over the pure wallet shapes.
 // ---------------------------------------------------------------------------
 
 export const WALLET_RPC_PROVIDER_OPTIONS = {

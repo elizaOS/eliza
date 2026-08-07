@@ -1,3 +1,4 @@
+/** Verifies MessageContent code blocks through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // A reply containing a fenced code block renders it via the CodeBlock primitive

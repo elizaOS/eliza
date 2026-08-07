@@ -11,9 +11,11 @@ export default defineConfig({
 	entry: {
 		index: "src/index.ts",
 		"android/bridge": "src/android/bridge.ts",
+		"android/dispatch": "src/android/dispatch.ts",
 		"ios/bridge": "src/ios/bridge.ts",
 		"mobile-device-bridge-bootstrap": "src/mobile-device-bridge-bootstrap.ts",
 		"shared/fs-shim": "src/shared/fs-shim.ts",
+		"shared/stdio-bridge": "src/shared/stdio-bridge.ts",
 	},
 	format: ["esm"],
 	dts: false,

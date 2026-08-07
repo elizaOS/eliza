@@ -9,7 +9,7 @@ import type { ConnectorAccountManager, IAgentRuntime } from "@elizaos/core";
 import {
   createGoogleConnectorAccountProvider,
   GoogleCalendarSyncTokenExpiredError,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google-workspace";
 import {
   getScheduledTaskRunner,
   ScheduledTaskRunnerService,

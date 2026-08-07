@@ -1,7 +1,7 @@
 /**
  * External-API contract test for @elizaos/capacitor-wifi.
  *
- * Source of truth: plugins/plugin-native-wifi/src/definitions.ts (the published
+ * Source of truth: /capacitor-wifi/definitions.ts (the published
  * @elizaos/capacitor-wifi types), which vitest aliases `@elizaos/capacitor-wifi`
  * to via vitest.config.ts. The fixtures below are typed against the REAL
  * exported interfaces (WiFiNetwork / ListNetworksResult / ConnectResult /

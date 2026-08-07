@@ -30,6 +30,7 @@ import path from "node:path";
 
 import type { CharacterInput } from "./character";
 import { parseCharacter } from "./character";
+import { ElizaError } from "./errors";
 import { type PluginResolver, resolvePlugins } from "./plugin";
 import {
 	ensureAgentInfrastructure,
@@ -254,10 +255,13 @@ export async function loadCharacters(
 				const json = JSON.parse(raw) as CharacterInput;
 				results.push(loadOneCharacterFromObject(json));
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				throw new Error(
-					`loadCharacters: failed to load ${resolved}: ${message}`,
-				);
+				// error-policy:J2 Preserve filesystem/JSON causes while adding the
+				// resolved character source that failed.
+				throw new ElizaError("Failed to load character source", {
+					code: "CHARACTER_SOURCE_LOAD_FAILED",
+					cause: error,
+					context: { source: resolved },
+				});
 			}
 		} else {
 			results.push(loadOneCharacterFromObject(source));

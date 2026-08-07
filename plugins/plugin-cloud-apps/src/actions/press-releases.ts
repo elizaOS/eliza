@@ -16,7 +16,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, unwrapUserMessageText } from "@elizaos/core";
 import {
   getCloudClient,
   matchByReference,
@@ -86,7 +86,7 @@ function releaseReference(message: Memory, options: unknown): string {
   const rec = readOpt(options);
   return (
     readString(rec, "releaseId", "pressReleaseId", "title", "name", "query") ??
-    (message.content?.text ?? "").trim()
+    unwrapUserMessageText(message)
   );
 }
 

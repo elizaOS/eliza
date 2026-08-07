@@ -277,47 +277,17 @@ function hasPositiveAmount(value: string | null | undefined): boolean {
   return Number.isFinite(parsed) && parsed > 0;
 }
 
-interface HyperliquidLiveStatus {
-  publicReadReady?: boolean;
-  signerReady?: boolean;
-  executionReady?: boolean;
-  executionBlockedReason?: string | null;
-  accountAddress?: string | null;
-}
-
-interface PolymarketLiveStatus {
-  publicReads?: {
-    ready?: boolean;
-  };
-  trading?: {
-    ready?: boolean;
-    credentialsReady?: boolean;
-    reason?: string | null;
-    missing?: readonly string[];
-  };
-}
-
 async function renderWalletLiveState(): Promise<string | null> {
-  const [config, balances, nfts, profile, hyperliquidStatus, polymarketStatus] =
-    await Promise.all([
-      fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
-      fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
-      fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
-      fetchLocalJson<WalletTradingProfileResponse>(
-        "/api/wallet/trading/profile?window=24h&source=all",
-      ),
-      fetchLocalJson<HyperliquidLiveStatus>("/api/hyperliquid/status"),
-      fetchLocalJson<PolymarketLiveStatus>("/api/polymarket/status"),
-    ]);
+  const [config, balances, nfts, profile] = await Promise.all([
+    fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
+    fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
+    fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
+    fetchLocalJson<WalletTradingProfileResponse>(
+      "/api/wallet/trading/profile?window=24h&source=all",
+    ),
+  ]);
 
-  if (
-    !config &&
-    !balances &&
-    !nfts &&
-    !profile &&
-    !hyperliquidStatus &&
-    !polymarketStatus
-  ) {
+  if (!config && !balances && !nfts && !profile) {
     return "Live wallet state: unavailable from the Wallet API.";
   }
 
@@ -386,28 +356,6 @@ async function renderWalletLiveState(): Promise<string | null> {
     lines.push(
       `- 24h activity: ${profile.summary.totalSwaps} swap${profile.summary.totalSwaps === 1 ? "" : "s"}, realized P&L ${profile.summary.realizedPnlBnb} BNB, volume ${profile.summary.volumeBnb} BNB.`,
     );
-  }
-
-  if (hyperliquidStatus) {
-    lines.push(
-      `- Hyperliquid native: public reads ${readyLabel(hyperliquidStatus.publicReadReady)}, signer ${readyLabel(hyperliquidStatus.signerReady)}, execution ${readyLabel(hyperliquidStatus.executionReady)}, account ${shortAddress(hyperliquidStatus.accountAddress)}.`,
-    );
-    if (hyperliquidStatus.executionBlockedReason) {
-      lines.push(
-        `- Hyperliquid execution blocked: ${hyperliquidStatus.executionBlockedReason}`,
-      );
-    }
-  }
-
-  if (polymarketStatus) {
-    lines.push(
-      `- Polymarket native: public reads ${readyLabel(polymarketStatus.publicReads?.ready)}, credentials ${readyLabel(polymarketStatus.trading?.credentialsReady)}, trading ${readyLabel(polymarketStatus.trading?.ready)}.`,
-    );
-    if (polymarketStatus.trading?.reason) {
-      lines.push(
-        `- Polymarket trading blocked: ${polymarketStatus.trading.reason}`,
-      );
-    }
   }
 
   return lines.join("\n");

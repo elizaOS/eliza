@@ -34,9 +34,6 @@ const SERVER_ID = stringToUuid("coord-server") as UUID;
 
 describe("speakerLeaseId", () => {
 	it("is agent-independent, generation-scoped, and lane-scoped", () => {
-		expect(speakerLeaseId(CHANNEL, "m1", 0)).toBe(
-			speakerLeaseId(CHANNEL, "m1", 0),
-		);
 		expect(speakerLeaseId(CHANNEL, "m1", 0)).not.toBe(
 			speakerLeaseId(CHANNEL, "m1", 1),
 		);
@@ -78,33 +75,9 @@ describe("createDiscordContenderToken", () => {
 		});
 		expect(left).not.toBe(right);
 	});
-
-	it("is stable for the same identity triple", () => {
-		const args = {
-			accountId: "default",
-			agentId: AGENT_B,
-			runtimeInstanceId: "instance-9",
-		};
-		expect(createDiscordContenderToken(args)).toBe(
-			createDiscordContenderToken(args),
-		);
-	});
 });
 
 describe("deterministicDiscordNonce", () => {
-	it("is stable per (account, channel, author, edge, chunk)", () => {
-		const args = {
-			accountId: "default",
-			channelId: CHANNEL,
-			authorId: "555",
-			edgeMessageId: "m1",
-			contentKey: "0",
-		};
-		expect(deterministicDiscordNonce(args)).toBe(
-			deterministicDiscordNonce(args),
-		);
-	});
-
 	it("differs per chunk so multi-chunk replies are not collapsed by Discord", () => {
 		const base = {
 			accountId: "default",

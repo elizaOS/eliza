@@ -341,8 +341,8 @@ async function createCodingContainer(
   }
 
   // ── Enqueue the (existing, image-capable) provision job + kick the daemon ──
-  // Enqueue against `provisionRow` — updateAgentEnvironment bumps `updated_at`,
-  // and enqueueAgentProvisionOnce gates on `expectedUpdatedAt`.
+  // Enqueue against `provisionRow`; the revision binds the job to the exact
+  // environment write that prepared this launch.
   let enqueue: Awaited<
     ReturnType<typeof provisioningJobService.enqueueAgentProvisionOnce>
   >;
@@ -352,7 +352,7 @@ async function createCodingContainer(
       organizationId: user.organization_id,
       userId: user.id,
       agentName: provisionRow.agent_name ?? provisionRow.id,
-      expectedUpdatedAt: provisionRow.updated_at,
+      expectedLifecycleRevision: provisionRow.lifecycle_revision,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

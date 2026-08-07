@@ -100,7 +100,7 @@ export interface AdminMonoMetaProps
 export function AdminMonoMeta({ className, ...props }: AdminMonoMetaProps) {
   return (
     <span
-      className={cn("text-2xs font-mono text-muted/70", className)}
+      className={cn("text-2xs font-mono text-muted", className)}
       {...props}
     />
   );
@@ -162,7 +162,7 @@ export function AdminSegmentedTab({
     <button
       type="button"
       className={cn(
-        "flex-1 rounded-none border-b-2 px-4 py-2.5 text-xs-tight font-bold tracking-[0.1em] transition-[border-color,color,background-color]",
+        "flex-1 rounded-none border-b px-4 py-2.5 text-xs-tight font-bold tracking-[0.1em] transition-[border-color,color,background-color]",
         active
           ? "border-accent text-accent"
           : "border-transparent text-muted-strong hover:text-txt",

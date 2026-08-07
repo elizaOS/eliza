@@ -185,57 +185,6 @@ function resolveDevStateDir() {
 
 const BUN_EXECUTABLE = process.versions?.bun ? process.execPath : "bun";
 
-function resolveElizaPackageDir(packageName) {
-  return isElizaMonorepo
-    ? path.join(elizaRoot, "eliza", "packages", packageName)
-    : path.join(elizaRoot, "packages", packageName);
-}
-
-function buildWorkspacePackageAsync(packageName, packageDir) {
-  console.log(`[eliza] Building ${packageName} for desktop startup...`);
-  return new Promise((resolve, reject) => {
-    const child = spawn(BUN_EXECUTABLE, ["run", "build"], {
-      cwd: packageDir,
-      env: { ...process.env },
-      stdio: "inherit",
-    });
-    child.on("error", reject);
-    child.on("exit", (code) =>
-      code === 0
-        ? resolve()
-        : reject(new Error(`${packageName} build exited with code ${code}`)),
-    );
-  });
-}
-
-// These three runtime packages have no build interdependency among themselves,
-// so any that are missing their dist entry are built concurrently rather than
-// in series. Each existing dist is skipped (fast path), so a warm tree returns
-// immediately with no spawned processes.
-async function ensureDesktopRuntimePackagesBuilt() {
-  const targets = [
-    ["@elizaos/security", resolveElizaPackageDir("security")],
-    [
-      "@elizaos/plugin-remote-manifest",
-      resolveElizaPackageDir("plugin-remote-manifest"),
-    ],
-    [
-      "@elizaos/plugin-worker-runtime",
-      resolveElizaPackageDir("plugin-worker-runtime"),
-    ],
-  ];
-  const stale = [];
-  for (const [name, dir] of targets) {
-    if (!existsSync(path.join(dir, "package.json"))) {
-      throw new Error(`Missing ${name} package at ${dir}`);
-    }
-    if (!existsSync(path.join(dir, "dist/index.js"))) stale.push([name, dir]);
-  }
-  await Promise.all(
-    stale.map(([name, dir]) => buildWorkspacePackageAsync(name, dir)),
-  );
-}
-
 function syncRendererPublicAssets() {
   const syncScript = path.join(
     bundleRoot,
@@ -496,7 +445,6 @@ export * from ${JSON.stringify(entryTs)};
 }
 
 ensureBunRootPackageLink("jsdom");
-await ensureDesktopRuntimePackagesBuilt();
 
 async function allocateDistinctLoopbackPort(preferredPort, reservedPorts) {
   let candidate = preferredPort;

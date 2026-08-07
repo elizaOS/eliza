@@ -1,5 +1,5 @@
 /**
- * Integration test: Google Drive / Docs / Sheets through @elizaos/plugin-google.
+ * Integration test: Google Drive / Docs / Sheets through @elizaos/plugin-google-workspace.
  *
  * Gated on GOOGLE_OAUTH_TEST_TOKEN being set (a valid Bearer access token
  * with at least the drive.readonly scope). When absent, all live tests skip
@@ -16,10 +16,10 @@
 import {
   GoogleApiClientFactory,
   GoogleDriveClient,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google-workspace";
 import { OAuth2Client } from "google-auth-library";
 import { describe, expect, it } from "vitest";
-import { itIf } from "../../../packages/test/helpers/conditional-tests.ts";
+import { itIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
 
 const SKIP_REASON = process.env.SKIP_REASON?.trim();
 const ACCESS_TOKEN = process.env.GOOGLE_OAUTH_TEST_TOKEN?.trim() ?? "";
@@ -43,7 +43,7 @@ function driveClient(): GoogleDriveClient {
   );
 }
 
-describe("Integration: plugin-google Drive client", () => {
+describe("Integration: plugin-google-workspace Drive client", () => {
   it.skipIf(LIVE_CREDS_AVAILABLE)(
     "documents that live google-drive tests are skipped when GOOGLE_OAUTH_TEST_TOKEN is absent",
     () => {

@@ -1,3 +1,4 @@
+/** Verifies planMobileRuntimeModeReconcile — the unusability predicate through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

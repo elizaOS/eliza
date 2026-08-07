@@ -611,6 +611,54 @@ describe("action catalogue and retrieval", () => {
 		}
 	});
 
+	// Habit/reminder-shaped invented names must hint the owner-life umbrella AND
+	// the TRIGGER scheduler, so deployments without plugin-personal-assistant
+	// keep the only real scheduled-work capability on the planner surface.
+	it("hints habit/routine candidates at OWNER_ROUTINES and TRIGGER", () => {
+		for (const candidate of [
+			"ADD_HABIT",
+			"CREATE_HABIT",
+			"CREATE_ROUTINE",
+			"DAILY_HABIT",
+			"HABIT_CREATE",
+			"NEW_HABIT",
+			"SAVE_HABIT",
+			"SET_HABIT",
+			"TRACK_HABIT",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual([
+				"OWNER_ROUTINES",
+				"TRIGGER",
+			]);
+		}
+		// Lookup is keyed on the normalized UPPER_SNAKE form: camelCase and
+		// spaced/mixed-case emissions hit the same rows.
+		expect(parentAliasesForCandidateAction("setHabit")).toEqual([
+			"OWNER_ROUTINES",
+			"TRIGGER",
+		]);
+	});
+
+	it("hints reminder candidates at OWNER_REMINDERS and TRIGGER", () => {
+		for (const candidate of [
+			"ADD_REMINDER",
+			"CREATE_REMINDER",
+			"DAILY_REMINDER",
+			"NEW_REMINDER",
+			"RECURRING_REMINDER",
+			"REMINDER_CREATE",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual([
+				"OWNER_REMINDERS",
+				"TRIGGER",
+			]);
+		}
+		expect(parentAliasesForCandidateAction("create reminder")).toEqual([
+			"OWNER_REMINDERS",
+			"TRIGGER",
+		]);
+	});
+
 	it("leaves non-permission candidates off the SETTINGS parent", () => {
 		// A bare person-scoped access revoke is BLOCK, not a settings write; view /
 		// app surface candidates keep their existing VIEWS/APP hints untouched.

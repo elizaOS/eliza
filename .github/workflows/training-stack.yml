@@ -51,7 +51,7 @@ jobs:
     name: CPU smoke (lint + import)
     # Pull requests can contain fork-controlled Dockerfiles and scripts, so
     # they must never execute on the persistent self-hosted fleet.
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -86,10 +86,22 @@ jobs:
       - name: Install ruff (host)
         # ruff lint is fast on the host and gives a clean GitHub
         # Annotations surface — no need to shell into the container.
-        run: pipx install ruff || pip install --user ruff
+        # Ruff 0.16 expands its implicit default from 59 to 413 rules, so keep
+        # this existing gate stable until that rule migration is reviewed.
+        run: |
+          set -euo pipefail
+          if command -v pipx >/dev/null 2>&1; then
+            pipx install --force ruff==0.15.22
+            ruff_bin="$(pipx environment --value PIPX_BIN_DIR)/ruff"
+          else
+            python -m pip install --user --force-reinstall ruff==0.15.22
+            ruff_bin="$(python -m site --user-base)/bin/ruff"
+          fi
+          test "$("$ruff_bin" --version)" = "ruff 0.15.22"
+          echo "RUFF_BIN=$ruff_bin" >> "$GITHUB_ENV"
 
       - name: Lint packages/training/scripts/
-        run: ruff check packages/training/scripts/
+        run: '"$RUFF_BIN" check packages/training/scripts/'
 
       - name: Import probe — model_registry
         # The whole point of this lane: catch import-time errors in the

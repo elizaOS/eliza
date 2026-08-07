@@ -66,6 +66,9 @@ export interface PullGestureOptions {
   onCancel?: () => void;
   /** Enable horizontal swipe recognition. Defaults to true when swipe handlers exist. */
   swipeEnabled?: boolean;
+  /** Cancel touch pointerdown's compatibility mouse/click sequence. Use on
+   *  gesture-owned controls whose tap callback moves the hit target. */
+  preventTouchCompatibilityEvents?: boolean;
   /** Minimum vertical travel (px) to count as a pull. Default 56. */
   distanceThreshold?: number;
   /** Minimum vertical speed (px/ms) to count as a flick. Default 0.5. */
@@ -113,6 +116,7 @@ export function usePullGesture(
     onSettleFree,
     onCancel,
     swipeEnabled = true,
+    preventTouchCompatibilityEvents = false,
     distanceThreshold = DEFAULT_PULL_DISTANCE,
     velocityThreshold = DEFAULT_PULL_VELOCITY,
     distanceThresholdX = DEFAULT_SWIPE_DISTANCE,
@@ -180,6 +184,13 @@ export function usePullGesture(
         event.pointerType !== "mouse"
       )
         return;
+      // Pointer-driven controls resolve their tap in `finish`. When that tap
+      // moves or replaces the control, a touch compatibility click can be
+      // re-hit-tested onto the newly exposed element (for example, the chat
+      // composer) and perform an unrelated default action such as focus.
+      if (preventTouchCompatibilityEvents && event.pointerType === "touch") {
+        event.preventDefault();
+      }
       // A press that reaches here is the primary pointer (a secondary touch
       // finger returned above), so it is the ONLY pointer down and it begins a
       // fresh gesture. Any `start` still held is therefore stale and must be
@@ -216,7 +227,13 @@ export function usePullGesture(
         }
       }
     },
-    [hasSwipe, hasVerticalPull, onStart, eventTime],
+    [
+      hasSwipe,
+      hasVerticalPull,
+      onStart,
+      eventTime,
+      preventTouchCompatibilityEvents,
+    ],
   );
 
   const onPointerMove = React.useCallback(

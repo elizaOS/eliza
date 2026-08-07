@@ -223,7 +223,7 @@ describe("generate-video — poll timeout with a live upstream job must NOT refu
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.success).toBe(false);
     expect(body.status).toBe("pending");
-    expect(body.id).toBe("gen-pending-1");
+    expect(body.id).toEqual(expect.any(String));
     expect(body.requestId).toBe("fal-req-42");
 
     expect(generationsCreate).toHaveBeenCalledTimes(1);
@@ -232,6 +232,7 @@ describe("generate-video — poll timeout with a live upstream job must NOT refu
       unknown
     >;
     expect(created.status).toBe("pending");
+    expect(created.id).toBe(body.id);
     expect(created.job_id).toBe("fal-req-42");
     expect(created.organization_id).toBe(ORG);
     expect(created.metadata).toEqual({
@@ -252,7 +253,9 @@ describe("generate-video — poll timeout with a live upstream job must NOT refu
 
     const res = await post();
 
-    expect(res.status).toBeGreaterThanOrEqual(500);
+    // Persistence is a detached control-plane tail. The response remains a
+    // truthful upstream-pending acknowledgement instead of waiting on the DB.
+    expect(res.status).toBe(202);
     // Refunding here could refund a render that still completes upstream; the
     // stranded-reservation sweep settles the hold instead.
     expect(ledger.reconcileCalls).toBe(0);

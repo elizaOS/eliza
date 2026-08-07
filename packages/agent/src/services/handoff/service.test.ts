@@ -10,11 +10,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it } from "vitest";
-import {
-  HANDOFF_SERVICE,
-  HandoffService,
-  resolveHandoffService,
-} from "./service.ts";
+import { HandoffService, resolveHandoffService } from "./service.ts";
 import { evaluateResume } from "./store.ts";
 
 function makeRuntime(): IAgentRuntime {
@@ -36,11 +32,6 @@ function makeRuntime(): IAgentRuntime {
 }
 
 describe("HandoffService", () => {
-  it("exposes the canonical serviceType literal", () => {
-    expect(HandoffService.serviceType).toBe("eliza_handoff");
-    expect(HANDOFF_SERVICE).toBe("eliza_handoff");
-  });
-
   it("enter + status + exit lifecycle works through the service store", async () => {
     const runtime = makeRuntime();
     const service = await HandoffService.start(runtime);

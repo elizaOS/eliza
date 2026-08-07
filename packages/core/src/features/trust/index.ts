@@ -127,10 +127,17 @@ async function ensureAdminRoleOnInit(runtime: IAgentRuntime): Promise<void> {
 			"[Trust] Bootstrapped admin role for app user",
 		);
 	} catch (error) {
+		// error-policy:J2 Trust initialization cannot claim a secure role model
+		// when its configured administrator could not be persisted.
+		runtime.reportError("TrustPlugin.bootstrapAdmin", error, {
+			adminEntityId,
+			worldId,
+		});
 		logger.warn(
 			{ error, adminEntityId, worldId },
 			"[Trust] Failed to bootstrap admin role on init",
 		);
+		throw error;
 	}
 }
 

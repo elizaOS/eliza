@@ -3,7 +3,7 @@
  *
  * On AOSP the canonical fast path is stable-diffusion.cpp built into
  * `libstable-diffusion-jni.so` and exposed through a JNI surface in
- * `@elizaos/plugin-aosp-local-inference`. The shim mirrors the pattern
+ * `@elizaos/plugin-native-inference`. The shim mirrors the pattern
  * WS2 uses for `eliza_llama_mtmd_*`: a small set of `eliza_llama_imagegen_*`
  * symbols that bun:ffi opens via the same `dlopen` path the text-gen
  * binding uses.
@@ -56,7 +56,7 @@
  * Publishing pipeline (Android APK + AOSP system app):
  *
  *   Build (libstable-diffusion-jni.so per ABI):
- *     # cd plugins/plugin-aosp-local-inference/native
+ *     # cd plugins/plugin-native-inference/native
  *     # NDK r26+ required for Vulkan compute compatibility on Snapdragon 8 Gen 3.
  *     cmake -B build-arm64-v8a -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
  *       -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 \

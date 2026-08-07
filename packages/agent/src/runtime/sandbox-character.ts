@@ -155,10 +155,12 @@ export function applySandboxCharacterFromEnv(
 
   const agents = config.agents as ElizaConfig["agents"] | undefined;
   const list = Array.isArray(agents?.list) ? [...agents.list] : [];
-  // Replace any existing primary entry; the injected character is authoritative.
-  const existingIdx = list.findIndex((a) => a?.default) ?? -1;
+  // buildCharacterFromConfig consumes list[0], so the authoritative injected
+  // identity must occupy that position even when a persisted default is later.
+  const existingIdx = list.findIndex((a) => a?.default);
   if (existingIdx >= 0) {
-    list[existingIdx] = { ...list[existingIdx], ...entry };
+    const [existing] = list.splice(existingIdx, 1);
+    list.unshift({ ...existing, ...entry });
   } else {
     list.unshift(entry);
   }
@@ -199,6 +201,15 @@ export function applySandboxCharacterFromEnv(
   return config;
 }
 
+/** Apply the complete provisioned identity contract for initial boot or reload. */
+export function applySandboxIdentityFromEnv(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  applySandboxCharacterFromEnv(config, env);
+  return resolveSandboxRouteAgentId(env);
+}
+
 /** Connector bot-token env vars that trigger a direct platform connection. */
 const CONNECTOR_TOKEN_ENV_KEYS = [
   "DISCORD_API_TOKEN",
@@ -236,6 +247,21 @@ export function applySandboxConnectorOwnership(
   if (sandboxOwnsConnectors(env)) return;
 
   const stripped: string[] = [];
+  const stripRecordKeys = (
+    value: unknown,
+    keys: readonly string[],
+    recordPath: string,
+  ): void => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const record = value as Record<string, unknown>;
+    for (const key of keys) {
+      if (key in record) {
+        delete record[key];
+        stripped.push(`${recordPath}.${key}`);
+      }
+    }
+  };
+
   for (const key of CONNECTOR_TOKEN_ENV_KEYS) {
     if (env[key]) {
       delete env[key];
@@ -246,12 +272,41 @@ export function applySandboxConnectorOwnership(
   // Also drop the connector config blocks so nothing downstream
   // (plugin auto-enable, a later applyConnectorSecretsToEnv) re-derives the
   // token from config and reconnects.
-  if (config?.connectors && typeof config.connectors === "object") {
-    for (const key of CONNECTOR_CONFIG_KEYS) {
-      if (key in config.connectors) {
-        delete (config.connectors as Record<string, unknown>)[key];
-        stripped.push(`config.connectors.${key}`);
-      }
+  if (config) {
+    stripRecordKeys(
+      config.connectors,
+      CONNECTOR_CONFIG_KEYS,
+      "config.connectors",
+    );
+    stripRecordKeys(
+      (config as Record<string, unknown>).channels,
+      CONNECTOR_CONFIG_KEYS,
+      "config.channels",
+    );
+
+    const configEnv = config.env as Record<string, unknown> | undefined;
+    stripRecordKeys(configEnv, CONNECTOR_TOKEN_ENV_KEYS, "config.env");
+    stripRecordKeys(
+      configEnv?.vars,
+      CONNECTOR_TOKEN_ENV_KEYS,
+      "config.env.vars",
+    );
+
+    for (const [index, agent] of (config.agents?.list ?? []).entries()) {
+      const settings = agent?.settings as Record<string, unknown> | undefined;
+      const settingsPath = `config.agents.list[${index}].settings`;
+      stripRecordKeys(settings, CONNECTOR_CONFIG_KEYS, settingsPath);
+      stripRecordKeys(settings, CONNECTOR_TOKEN_ENV_KEYS, settingsPath);
+      stripRecordKeys(
+        settings?.extra,
+        CONNECTOR_TOKEN_ENV_KEYS,
+        `${settingsPath}.extra`,
+      );
+      stripRecordKeys(
+        settings?.secrets,
+        CONNECTOR_TOKEN_ENV_KEYS,
+        `${settingsPath}.secrets`,
+      );
     }
   }
 
@@ -260,4 +315,24 @@ export function applySandboxConnectorOwnership(
       `[sandbox-character] Gateway owns connectors; not connecting directly (cleared ${stripped.join(", ")} to avoid double-connect). Set ELIZA_SANDBOX_OWNS_CONNECTORS=1 to connect from the container instead.`,
     );
   }
+}
+
+/**
+ * Apply the provisioned config transformations in their required order.
+ * Connector projection runs after identity injection so container-owned
+ * character connectors are discoverable, while ownership runs last so a
+ * gateway-owned container cannot retain credentials projected from config.
+ */
+export function prepareSandboxRuntimeConfig(
+  config: ElizaConfig,
+  projectConnectorSecrets: (
+    config: ElizaConfig,
+    env: NodeJS.ProcessEnv,
+  ) => void,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const routeAgentId = applySandboxIdentityFromEnv(config, env);
+  projectConnectorSecrets(config, env);
+  applySandboxConnectorOwnership(env, config);
+  return routeAgentId;
 }

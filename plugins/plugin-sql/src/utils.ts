@@ -42,7 +42,7 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
     process.env.ELIZA_BENCH_DISABLE_DOTENV === "1" ||
     process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY === "1";
   if (!dotenvDisabled && existsSync(envPath)) {
-    dotenv.config({ path: envPath });
+    dotenv.config({ path: envPath, quiet: true });
   }
 
   let monoPath: string | undefined;

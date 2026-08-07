@@ -4,46 +4,46 @@
 # Eliza Cloud doesn't ship a public CLI for model registration today;
 # routing is configured by:
 #   1. Adding a catalog entry per `vast/eliza-1-<size>` model id in
-#      `eliza/cloud/packages/lib/models/catalog.ts` so the Worker
+#      `packages/cloud/shared/src/lib/models/catalog.ts` so the Worker
 #      knows the model exists and which provider to forward to.
 #   2. Upserting a Vast template per size (one-time per quant flavor)
-#      via `eliza/cloud/scripts/vast/upsert-template.ts`.
+#      via `packages/cloud/scripts/vast/upsert-template.ts`.
 #   3. Provisioning a Vast Serverless endpoint per template via
-#      `eliza/cloud/scripts/vast/provision-endpoint.ts`.
+#      `packages/cloud/scripts/vast/provision-endpoint.ts`.
 #   4. Setting the resulting `VAST_BASE_URL` and `VAST_API_KEY`
 #      wrangler secrets so the Cloud Worker can authenticate.
 #
 # This script does step 2 + step 3 for all three sizes in sequence,
-# pulling the env from `../vast-pyworker/eliza-1-<size>.json`. The
+# pulling the env from the cloud service's canonical manifests. The
 # catalog edit (step 1) is a manual one-line PR per size — see
 # `../README.md` for the exact diff.
 #
 # Required env:
 #   VASTAI_API_KEY     — vastai_… key with template + endpoint perms
-#   PYWORKER_REPO      — git URL of the cloud/ repo (default: elizaOS/cloud)
+#   PYWORKER_REPO      — git URL of the eliza monorepo (default: elizaOS/eliza)
 #   PYWORKER_REF       — pinned commit / branch / tag
 #
 # Optional env:
-#   ELIZA_CLOUD_REPO_ROOT — path to the eliza/cloud checkout (default:
-#                           /home/shaw/eliza/eliza/cloud)
+#   ELIZA_REPO_ROOT       — path to the eliza monorepo (default: derived from
+#                           this script's repository location)
 #   SIZES                 — space-separated subset (default: "2b 9b 27b")
 #   DRY_RUN               — set to 1 to print commands without executing
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MANIFEST_DIR="${SCRIPT_DIR}/../vast-pyworker"
-ELIZA_CLOUD_REPO_ROOT="${ELIZA_CLOUD_REPO_ROOT:-/home/shaw/eliza/eliza/cloud}"
+ELIZA_REPO_ROOT="${ELIZA_REPO_ROOT:-$(cd "${SCRIPT_DIR}/../../../.." && pwd)}"
+MANIFEST_DIR="${ELIZA_REPO_ROOT}/packages/cloud/services/vast-pyworker/manifests"
 SIZES="${SIZES:-2b 9b 27b}"
 DRY_RUN="${DRY_RUN:-0}"
 
 : "${VASTAI_API_KEY:?Set VASTAI_API_KEY=vastai_…}"
-: "${PYWORKER_REPO:=https://github.com/elizaOS/cloud.git}"
+: "${PYWORKER_REPO:=https://github.com/elizaOS/eliza.git}"
 : "${PYWORKER_REF:?Set PYWORKER_REF to a pinned commit / branch / tag}"
 
-if [ ! -d "$ELIZA_CLOUD_REPO_ROOT" ]; then
-  echo "[register] eliza/cloud checkout not found at $ELIZA_CLOUD_REPO_ROOT" >&2
-  echo "[register] set ELIZA_CLOUD_REPO_ROOT to override." >&2
+if [ ! -f "$ELIZA_REPO_ROOT/package.json" ]; then
+  echo "[register] eliza checkout not found at $ELIZA_REPO_ROOT" >&2
+  echo "[register] set ELIZA_REPO_ROOT to override." >&2
   exit 1
 fi
 if [ ! -x "$(command -v jq)" ]; then
@@ -73,20 +73,21 @@ for size in $SIZES; do
 
   model_repo=$(jq -r '.vast_template_env.MODEL_REPO' "$manifest")
   model_alias=$(jq -r '.vast_template_env.MODEL_ALIAS' "$manifest")
-  template_name="eliza-cloud-eliza-1-${size}-vllm"
+  template_name="eliza-cloud-eliza-1-${size}-gguf"
 
   # Step 2: upsert Vast template (idempotent).
-  template_id_var="VAST_TEMPLATE_ID_${size^^}"
+  template_id_var="VAST_TEMPLATE_ID_$(printf '%s' "$size" | tr '[:lower:]' '[:upper:]')"
   echo "[register] upserting template ${template_name} (model=${model_repo})"
   template_output=$(
     VASTAI_API_KEY="$VASTAI_API_KEY" \
     VAST_TEMPLATE_NAME="$template_name" \
+    VAST_RUNTIME=llama \
+    ELIZA_VAST_MANIFEST="$manifest" \
     PYWORKER_REPO="$PYWORKER_REPO" \
     PYWORKER_REF="$PYWORKER_REF" \
     MODEL_REPO="$model_repo" \
     MODEL_ALIAS="$model_alias" \
-    run bun "${ELIZA_CLOUD_REPO_ROOT}/scripts/vast/upsert-template.ts" \
-      || true
+    run bun "${ELIZA_REPO_ROOT}/packages/cloud/scripts/vast/upsert-template.ts"
   )
   echo "$template_output"
   if [ "$DRY_RUN" = "1" ]; then continue; fi
@@ -102,7 +103,7 @@ for size in $SIZES; do
   echo "[register] provisioning endpoint for template ${template_id}"
   VASTAI_API_KEY="$VASTAI_API_KEY" \
   VAST_TEMPLATE_ID="$template_id" \
-    run bun "${ELIZA_CLOUD_REPO_ROOT}/scripts/vast/provision-endpoint.ts"
+    run bun "${ELIZA_REPO_ROOT}/packages/cloud/scripts/vast/provision-endpoint.ts"
 done
 
 cat <<'POSTSTEPS'
@@ -110,7 +111,7 @@ cat <<'POSTSTEPS'
 
 Next manual steps (one-time, per size):
   1. Add a catalog entry per Vast alias in
-     eliza/cloud/packages/lib/models/catalog.ts
+     packages/cloud/shared/src/lib/models/catalog.ts
      (mirror the existing vast/eliza-1-27b row).
   2. Push wrangler secrets so the Cloud Worker can reach the endpoint:
        wrangler secret put VAST_BASE_URL    # e.g. https://run.vast.ai/route/<endpoint-id>
@@ -119,7 +120,6 @@ Next manual steps (one-time, per size):
      will now route through VastProvider.
 
 Reference docs:
-  - eliza/cloud/services/vast-pyworker/README.md (existing pyworker spec)
-  - cloud/vast-pyworker/README.md (per-size manifests)
-  - cloud/README.md (top-level deployment matrix)
+  - packages/cloud/services/vast-pyworker/README.md
+  - packages/training/cloud/README.md
 POSTSTEPS

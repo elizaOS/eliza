@@ -31,10 +31,6 @@ import {
   OrgRateLimitCacheNotReadyError,
 } from "@/lib/middleware/rate-limit";
 import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
   bindGatewayHandoffTelemetry,
   type GatewayHandoffTelemetry,
   type GatewayPreforwardTiming,
@@ -99,6 +95,8 @@ import type {
   CreditReservation,
 } from "@/lib/services/credits";
 import { isInferenceAdmissionDispatchMarkError } from "@/lib/services/inference-admission-gate";
+import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
+import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import {
   type InferenceAuthTelemetry,
   resolveInferenceAuthContext,
@@ -990,7 +988,7 @@ function unwrapProviderError(error: unknown): unknown {
   return error;
 }
 
-function getGatewayCallerFaultStatus(error: unknown): number | null {
+function getProviderCallerFaultStatus(error: unknown): number | null {
   if (!(error instanceof Error)) {
     return null;
   }
@@ -1005,17 +1003,6 @@ function getGatewayCallerFaultStatus(error: unknown): number | null {
   if (candidate === 400 || candidate === 404 || candidate === 429) {
     return candidate;
   }
-  if (
-    error.name === "GatewayInvalidRequestError" ||
-    error.name === "GatewayModelNotFoundError" ||
-    error.name === "GatewayRateLimitError"
-  ) {
-    return error.name === "GatewayInvalidRequestError"
-      ? 400
-      : error.name === "GatewayModelNotFoundError"
-        ? 404
-        : 429;
-  }
   return null;
 }
 
@@ -1025,9 +1012,9 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
     error instanceof Error
       ? error.message.toLowerCase()
       : String(error).toLowerCase();
-  const gatewayCallerFaultStatus = getGatewayCallerFaultStatus(providerError);
-  if (gatewayCallerFaultStatus !== null) {
-    return gatewayCallerFaultStatus;
+  const providerCallerFaultStatus = getProviderCallerFaultStatus(providerError);
+  if (providerCallerFaultStatus !== null) {
+    return providerCallerFaultStatus;
   }
 
   if (APICallError.isInstance(providerError)) {
@@ -1207,6 +1194,8 @@ function shouldUsePooledNoopReservation(params: {
 
 interface ChatCompletionsHandlerOptions {
   skipOrgRateLimit?: boolean;
+  /** Require this app scope and bill through its app accounting policy. */
+  requiredAppId?: string;
   /** Stable application trace id supplied by the outer Worker middleware. */
   traceId?: string;
   /**
@@ -1270,6 +1259,8 @@ export async function handleChatCompletionsPOST(
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
     let moderationAlreadyChecked = false;
+    let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+    let appScopeId: string | null = null;
 
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
@@ -1343,6 +1334,9 @@ export async function handleChatCompletionsPOST(
         organization_id: resolution.ctx.orgId,
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
+      admissionSnapshot = resolution.ctx.admission;
+      appScopeId =
+        "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null;
       // The resolver already verified not-suspended (cache hit = at populate;
       // origin miss = just now), so the synchronous moderation read is skipped.
       moderationAlreadyChecked = true;
@@ -1381,6 +1375,7 @@ export async function handleChatCompletionsPOST(
         ? enforceOrgRateLimit(user.organization_id, "completions", {
             cacheOnly: Boolean(options.executionCtx),
             executionCtx: options.executionCtx,
+            config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
           })
         : Promise.resolve(null);
     const requestPromise = req
@@ -1414,7 +1409,21 @@ export async function handleChatCompletionsPOST(
     if (orgRateLimited) return orgRateLimited;
 
     // 2. Prepare app monetization lookup
-    const requestedAppId = req.headers.get("X-App-Id");
+    const requestedAppId = options.requiredAppId ?? req.headers.get("X-App-Id");
+    if (requestedAppId && appScopeId && appScopeId !== requestedAppId) {
+      return addCorsHeaders(
+        Response.json(
+          {
+            error: {
+              message: "Access denied to this app",
+              type: "invalid_request_error",
+              code: "access_denied",
+            },
+          },
+          { status: 403 },
+        ),
+      );
+    }
     let appId: string | null = null;
     let useAppCredits = false;
     let monetizedApp: Awaited<ReturnType<typeof appsService.getById>> | null =
@@ -1512,14 +1521,22 @@ export async function handleChatCompletionsPOST(
     const skipCatalogLookup = modelUsesReasoningTokens(model);
     const monetizedAppPromise = requestedAppId
       ? options.executionCtx
-        ? appsService.getAuthorizedMonetizedAppForUserCacheOnly(
-            requestedAppId,
-            user,
-            { executionCtx: options.executionCtx },
-          )
-        : appsService
-            .getAuthorizedMonetizedAppForUser(requestedAppId, user)
-            .then((app) => ({ kind: "ready" as const, app: app ?? null }))
+        ? options.requiredAppId
+          ? appsService.getByIdCacheOnly(requestedAppId, {
+              executionCtx: options.executionCtx,
+            })
+          : appsService.getAuthorizedMonetizedAppForUserCacheOnly(
+              requestedAppId,
+              user,
+              { executionCtx: options.executionCtx },
+            )
+        : options.requiredAppId
+          ? appsService
+              .getById(requestedAppId)
+              .then((app) => ({ kind: "ready" as const, app: app ?? null }))
+          : appsService
+              .getAuthorizedMonetizedAppForUser(requestedAppId, user)
+              .then((app) => ({ kind: "ready" as const, app: app ?? null }))
       : Promise.resolve({ kind: "ready" as const, app: null });
     const platformCredentialConfigured =
       hasLanguageModelProviderConfigured(model);
@@ -1596,6 +1613,27 @@ export async function handleChatCompletionsPOST(
       );
     }
     monetizedApp = appResolution.app;
+    if (
+      options.requiredAppId &&
+      (!monetizedApp ||
+        (!monetizedApp.monetization_enabled &&
+          monetizedApp.organization_id !== user.organization_id))
+    ) {
+      return addCorsHeaders(
+        Response.json(
+          {
+            error: {
+              message: monetizedApp
+                ? "Access denied to this app"
+                : "App not found",
+              type: "invalid_request_error",
+              code: monetizedApp ? "access_denied" : "app_not_found",
+            },
+          },
+          { status: monetizedApp ? 403 : 404 },
+        ),
+      );
+    }
     appId = monetizedApp?.id ?? null;
     useAppCredits = Boolean(monetizedApp);
     const pooledCredential = pooledCredentialResolution.credential;
@@ -1750,6 +1788,7 @@ export async function handleChatCompletionsPOST(
             billingSource,
             affiliateCode,
             executionCtx: options.executionCtx,
+            admissionSnapshot,
           });
           settleReservation = admission.settle;
           settleUnknown = admission.settleUnknown;
@@ -1785,6 +1824,7 @@ export async function handleChatCompletionsPOST(
           apiKeyId: apiKey?.id ?? null,
           affiliateCode,
           executionCtx: options.executionCtx,
+          admissionSnapshot,
         });
         settleReservation = admission.settle;
         settleUnknown = admission.settleUnknown;
@@ -1992,9 +2032,8 @@ export async function handleChatCompletionsPOST(
             )
           : undefined,
     });
-    // Provider-configuration failures (missing/invalid provider keys) carry
-    // internal setup guidance ("... AI_GATEWAY_API_KEY ...") that must never
-    // reach a direct API caller; the raw detail is already in the log above.
+    // Provider-configuration failures carry internal setup guidance that must
+    // never reach a direct API caller; the raw detail is already in the log above.
     // To the caller the deterministic truth is that this deployment cannot
     // serve the requested model.
     if (isProviderConfigurationError(error)) {
@@ -3638,23 +3677,17 @@ honoRouter.options("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-honoRouter.post(
-  "/",
-  rateLimit(RateLimitPresets.RELAXED, {
-    bindingName: "CHAT_ROUTE_RATE_LIMITER",
-  }),
-  async (c) => {
-    try {
-      return await handleChatCompletionsPOST(c.req.raw, {
-        executionCtx: c.executionCtx,
-        traceId: c.get("traceId"),
-      });
-    } catch (error) {
-      // error-policy:J1 route boundary — every catch in v1/chat/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty completion). Credit reservations are released before rethrow on the streaming paths above.
-      return failureResponse(c, error);
-    }
-  },
-);
+honoRouter.post("/", async (c) => {
+  try {
+    return await handleChatCompletionsPOST(c.req.raw, {
+      executionCtx: c.executionCtx,
+      traceId: c.get("traceId"),
+    });
+  } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/chat/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty completion). Credit reservations are released before rethrow on the streaming paths above.
+    return failureResponse(c, error);
+  }
+});
 export default honoRouter;
 
 /**

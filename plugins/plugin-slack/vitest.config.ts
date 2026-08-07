@@ -1,20 +1,17 @@
 /**
- * Vitest config for the Slack plugin: aliases `@slack/*` SDKs to the shared
- * provider-SDK shims so unit tests run offline without a live workspace.
+ * Runs Slack connector tests against workspace source packages without a live workspace.
  */
 import { defineConfig } from "vitest/config";
-import {
-  providerSdkAliases,
-  providerSdkShimPlugin,
-} from "../../packages/test/vitest/provider-sdk-aliases";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
+
+const workspaceAliases = buildWorkspaceSourceAliases();
 
 export default defineConfig({
-  plugins: [providerSdkShimPlugin()],
   resolve: {
-    alias: providerSdkAliases,
+    alias: workspaceAliases,
   },
   test: {
-    alias: providerSdkAliases,
+    alias: workspaceAliases,
     include: ["src/**/*.test.ts"],
     environment: "node",
     testTimeout: 60_000,

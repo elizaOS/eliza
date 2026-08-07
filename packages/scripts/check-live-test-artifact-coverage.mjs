@@ -54,7 +54,7 @@ const NON_MODEL_EXCLUSION_RULES = [
     reason:
       "Playwright/browser UI or visual audit suite; capture belongs to UI screenshots/traces rather than model-call trajectory artifacts.",
     matches: (row) =>
-      /playwright|run-ui-playwright|run-e2e|aesthetic-audit|contact-sheet|web-views|cloud-wallet|homepage|os-homepage|llama-ui|packages\/test\/cloud-e2e/i.test(
+      /playwright|run-ui-playwright|run-e2e|aesthetic-audit|contact-sheet|web-views|cloud-wallet|homepage|llama-ui|packages\/test\/cloud-e2e/i.test(
         row.value,
       ),
   },
@@ -78,7 +78,7 @@ const NON_MODEL_EXCLUSION_RULES = [
     reason:
       "External device, hardware, OS, or mobile gateway validation; evidence is environment logs/device traces, not model-call artifacts.",
     matches: (row) =>
-      /bluebubbles|android-sms|riscv64|usb|virtual-usb|smartglasses|simulator|evenhub|sandbox-live|live-sandbox|mobile/i.test(
+      /bluebubbles|android-sms|riscv64|usb|virtual-usb|simulator|evenhub|sandbox-live|live-sandbox|mobile/i.test(
         row.value,
       ),
   },

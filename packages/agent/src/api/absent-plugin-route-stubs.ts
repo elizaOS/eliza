@@ -17,8 +17,8 @@
  * keyed by a stable `capabilityId`. Both host handlers resolve from this single
  * registry instead of re-typing the schema. A stub is intentionally limited to a
  * pure function of the request (path + query) — anything that reads live runtime
- * state (wallet addresses, on-disk training config) stays in its own handler and
- * is NOT a stub here, because those are not fabrications.
+ * state, such as wallet addresses, stays in its own handler and is NOT a stub
+ * here, because those responses are not fabrications.
  *
  * Guardrails:
  *  - `buildBody` must be deterministic and side-effect free (no I/O, no plugin

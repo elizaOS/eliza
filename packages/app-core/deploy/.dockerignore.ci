@@ -44,7 +44,6 @@ eliza/**/node_modules
 !eliza/packages/ui/node_modules/**
 eliza/packages/app-core/deploy/**/node_modules
 eliza/.turbo
-eliza/packages/benchmarks
 eliza/packages/examples
 eliza/apps
 eliza/cloud

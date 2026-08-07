@@ -5,7 +5,7 @@
  * Boots a REAL AgentRuntime (PGLite-backed) + the REAL app-core HTTP stack on
  * an ephemeral port via {@link startLiveRuntimeServer} (skipDeferredStartupWork),
  * then drives the routes over real HTTP on 127.0.0.1. No provider keys: the
- * routes asserted here do not call a model, so no LLM proxy is needed.
+ * routes asserted here do not call a model, so no model provider is needed.
  *
  * Loopback requests are trusted (no ELIZA_API_TOKEN / cloud-provisioned env), so
  * `/api/dev/stack` and `/api/dev/route-catalog` (loopback-only + authorized)

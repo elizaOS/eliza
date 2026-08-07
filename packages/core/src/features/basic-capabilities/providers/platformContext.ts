@@ -36,13 +36,9 @@ import { getMessageConnectorsWithHook } from "../../advanced-capabilities/action
 export const PLATFORM_CHAT_CONTEXT_PROVIDER_NAME = "PLATFORM_CHAT_CONTEXT";
 export const PLATFORM_USER_CONTEXT_PROVIDER_NAME = "PLATFORM_USER_CONTEXT";
 
-/** Pretty-print a provider payload as JSON; returns "" if it can't serialize. */
+/** Pretty-print a normalized provider payload as JSON. */
 function renderJson(payload: Record<string, ProviderValue>): string {
-	try {
-		return JSON.stringify(payload, null, 2);
-	} catch {
-		return "";
-	}
+	return JSON.stringify(payload, null, 2);
 }
 
 /** An empty (no prompt text) ProviderResult carrying only diagnostic values. */
@@ -373,6 +369,15 @@ export const platformChatContextProvider: Provider = {
 						);
 						return context ? normalizeChatContext(connector, context) : null;
 					} catch (error) {
+						// error-policy:J4 one connector may be unavailable without
+						// suppressing valid context returned by the other connectors.
+						runtime.reportError(
+							"PlatformChatContextProvider.connector",
+							error,
+							{
+								connector: connector.source,
+							},
+						);
 						runtime.logger.debug(
 							{
 								src: "provider:platformChatContext",
@@ -484,6 +489,15 @@ export const platformUserContextProvider: Provider = {
 						);
 						return context ? normalizeUserContext(connector, context) : null;
 					} catch (error) {
+						// error-policy:J4 preserve partial identity context from healthy
+						// connectors while surfacing the failed connector to the agent.
+						runtime.reportError(
+							"PlatformUserContextProvider.connector",
+							error,
+							{
+								connector: connector.source,
+							},
+						);
 						runtime.logger.debug(
 							{
 								src: "provider:platformUserContext",

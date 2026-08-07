@@ -1,3 +1,4 @@
+/** Verifies hydrateInitialConversation — chat always has a chat (#1) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Real test of the "chat must ALWAYS have a chat in it" guarantee (#1). The fix

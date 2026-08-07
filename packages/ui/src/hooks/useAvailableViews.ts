@@ -261,6 +261,19 @@ function isViewRegistryEntry(value: unknown): value is ViewRegistryEntry {
   );
 }
 
+export function enforceDynamicViewPolicy(
+  views: ViewRegistryEntry[],
+  dynamicLoadingAllowed: boolean,
+): ViewRegistryEntry[] {
+  if (dynamicLoadingAllowed) return views;
+  // Restricted native clients cannot execute agent-served JavaScript or
+  // frames. Enforce the platform policy locally as well as on the agent route:
+  // a gateway may omit X-Eliza-Platform and return the unfiltered registry.
+  // Removing those network entries lets the signed app-shell registrations
+  // fill the same ids in mergeWithAppShellViews below.
+  return views.filter((view) => !view.bundleUrl && !view.frameUrl);
+}
+
 async function fetchViewList(): Promise<ViewRegistryEntry[]> {
   const platform = getFrontendPlatform();
   const response = await fetchWithCsrf("/api/views", {
@@ -289,7 +302,7 @@ async function fetchViewList(): Promise<ViewRegistryEntry[]> {
       context: { status: response.status },
     });
   }
-  return data.views.map((view, index) => {
+  const views = data.views.map((view, index) => {
     if (!isViewRegistryEntry(view)) {
       throw new ElizaError(`GET /api/views entry ${index} is invalid`, {
         code: "VIEW_REGISTRY_RESPONSE_INVALID",
@@ -298,6 +311,10 @@ async function fetchViewList(): Promise<ViewRegistryEntry[]> {
     }
     return view;
   });
+  return enforceDynamicViewPolicy(
+    views,
+    platform === "web" || platform === "desktop",
+  );
 }
 
 /**
@@ -400,22 +417,20 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   views: "LayoutGrid",
   character: "Bot",
   "character-select": "Users",
-  automations: "Zap",
-  triggers: "Zap",
+  automations: "Clock3",
+  triggers: "Clock3",
   inventory: "Wallet",
   documents: "FileText",
   files: "FolderClosed",
   plugins: "Plug",
   skills: "Sparkles",
-  advanced: "BrainCircuit",
-  "fine-tuning": "BrainCircuit",
   trajectories: "Activity",
   transcripts: "FileText",
   relationships: "Network",
   experience: "GraduationCap",
   "character-skills": "Sparkles",
   memories: "BrainCircuit",
-  "my-apps": "LayoutGrid",
+  "my-apps": "Boxes",
   rolodex: "UsersRound",
   runtime: "Terminal",
   database: "Database",
@@ -552,7 +567,14 @@ function mergeViewRegistryEntries(
 function mergeWithAppShellViews(
   networkViews: ViewRegistryEntry[],
   appShellViews: ViewRegistryEntry[],
+  platform: ReturnType<typeof getFrontendPlatform>,
 ): ViewRegistryEntry[] {
+  // Native binaries must execute the signed in-process renderer when both the
+  // connected runtime and the app declare the same view. Web and desktop keep
+  // the runtime bundle so plugin reloads remain live during development.
+  if (platform === "ios" || platform === "android") {
+    return mergeViewRegistryEntries(appShellViews, [networkViews]);
+  }
   return mergeViewRegistryEntries(networkViews, [appShellViews]);
 }
 
@@ -612,8 +634,13 @@ export function useAvailableViews(
   );
   const networkViews =
     resource.status === "success" ? resource.data : EMPTY_VIEWS;
+  const platform = getFrontendPlatform();
   const views = useMemo(() => {
-    const merged = mergeWithAppShellViews(networkViews, appShellViews);
+    const merged = mergeWithAppShellViews(
+      networkViews,
+      appShellViews,
+      platform,
+    );
     // Native device-OS surfaces (phone, messages, contacts, camera) exist only
     // on the AOSP ElizaOS fork. Each such view declares `nativeOs: true` on its
     // `ViewDeclaration`; strip them from the view manager + router on every
@@ -621,7 +648,7 @@ export function useAvailableViews(
     // AOSP-gated home tiles (`nativeOs`) and the route gates in App.tsx.
     if (isAospShellEnabled()) return merged;
     return merged.filter((view) => !view.nativeOs);
-  }, [networkViews, appShellViews]);
+  }, [networkViews, appShellViews, platform]);
 
   return {
     views,

@@ -34,7 +34,7 @@ curl -X POST "https://elizacloud.ai/api/v1/messages" \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-sonnet-4-6",
+    "model": "YOUR_MODEL_ID",
     "max_tokens": 512,
     "messages": [
       {
@@ -61,7 +61,7 @@ claude
 
 | Field            | Type            | Required | Notes                                                       |
 | ---------------- | --------------- | -------- | ----------------------------------------------------------- |
-| `model`          | string          | yes      | Accepts Anthropic-style model ids such as `claude-sonnet-4-6` |
+| `model`          | string          | yes      | Model ID from `GET /api/v1/models`; bare `claude-*` IDs are normalized to the Anthropic provider |
 | `max_tokens`     | integer         | yes      | Output token cap                                            |
 | `messages`       | array           | yes      | Anthropic message array                                     |
 | `system`         | string or array | no       | Anthropic system prompt format                              |

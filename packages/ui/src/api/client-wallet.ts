@@ -25,12 +25,6 @@ import type {
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
-import type {
-  BrowserWorkspaceSolanaMessageSignatureResult,
-  BrowserWorkspaceSolanaTransactionResult,
-  BrowserWorkspaceWalletMessageSignatureResult,
-  BrowserWorkspaceWalletTransactionResult,
-} from "../components/pages/browser-workspace-wallet";
 import { ElizaClient } from "./client-base";
 import type {
   ApplyProductionWalletDefaultsResponse,
@@ -54,6 +48,12 @@ import type {
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
 } from "./client-types-steward";
+import type {
+  BrowserWorkspaceSolanaMessageSignatureResult,
+  BrowserWorkspaceSolanaTransactionResult,
+  BrowserWorkspaceWalletMessageSignatureResult,
+  BrowserWorkspaceWalletTransactionResult,
+} from "./client-types-wallet";
 
 // ---------------------------------------------------------------------------
 // Declaration merging

@@ -1,22 +1,9 @@
-// Observability boundary for optional-plugin dynamic imports (#12089 item 11 /
-// #12661). Route handlers pull optional plugin APIs via dynamic import; on the
-// mobile agent bundle many desktop/cloud plugins are deliberately excluded, so
-// their import REJECTS with a module-resolution error. The host must NOT let
-// that rejection 500 every renderer poll, so it falls back to a no-op API whose
-// handlers return `false` (route-dispatch then falls through to the normal 404).
-//
-// The old fallback swallowed BOTH failure modes into one silent debug line +
-// `new Proxy({}, { get: () => () => false })`:
-//   1. module-absent  — expected on the mobile bundle (benign, quiet fallthrough)
-//   2. present-but-broken / renamed-export — a real regression (a plugin that
-//      SHOULD load throws at import time, or an accessed handler export was
-//      removed/renamed). Under the old Proxy this was indistinguishable from (1):
-//      the route silently 404s forever and the drift is invisible.
-//
-// This module keeps the fail-safe fallthrough behavior but makes mode (2)
-// OBSERVABLE: genuine load errors warn (not debug), and the fallback Proxy warns
-// once per accessed-but-absent handler name so a renamed/removed export surfaces
-// instead of returning a silent `false`.
+/**
+ * Provides an observable fallback for optional-plugin route imports. Packages
+ * deliberately absent from mobile builds fall through to the normal 404,
+ * while broken transitive imports and missing handler exports warn instead of
+ * being misclassified as benign package absence (#12089, #12661).
+ */
 
 import { logger } from "@elizaos/core";
 

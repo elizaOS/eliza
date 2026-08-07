@@ -311,6 +311,18 @@ describe("CALENDAR_SOURCES action", () => {
     ).not.toContain("name");
   });
 
+  it("models source operations as parameters rather than unresolved child actions", () => {
+    expect(calendarSourcesAction.subActions).toBeUndefined();
+    expect(
+      calendarSourcesAction.parameters?.find(
+        (parameter) => parameter.name === "operation",
+      )?.schema,
+    ).toMatchObject({
+      type: "string",
+      enum: ["list", "select", "deselect", "connect", "reconnect"],
+    });
+  });
+
   it("hands ICS subscription creation to the owner instead of accepting a URL", async () => {
     const calendarService = {
       createIcsCalendarSource: vi.fn(),

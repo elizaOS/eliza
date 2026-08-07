@@ -1,3 +1,4 @@
+/** Verifies TaskEditor — cross-boundary migration through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Guards TaskEditor's cross-boundary schedule migration (#12177): when an

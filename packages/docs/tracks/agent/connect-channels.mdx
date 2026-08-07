@@ -1,56 +1,72 @@
 ---
 title: Connect Channels
-description: "Wire an Eliza agent into messaging platforms."
+description: "Configure the messaging connectors supported by the current elizaOS registry."
 ---
 
-Channels are plugins. To bring an agent into a platform, install the relevant `@elizaos/plugin-*` package, add it to your character's `plugins` array, and set the required environment variables.
+Messaging integrations are plugins selected from the `connectors` section of
+`eliza.json`. Adding a non-disabled connector entry causes the runtime to load
+the package mapped to that connector by the first-party registry.
 
-## Pick a channel
+## Supported connectors
 
-The full list of supported channels lives under [Connectors](/tracks/agent/connect-channels). The most common:
+This table mirrors
+[`packages/registry/src/first-party/channel-plugin-map.json`](https://github.com/elizaOS/eliza/blob/develop/packages/registry/src/first-party/channel-plugin-map.json).
+Required settings come from the generated first-party registry metadata.
 
-<CardGroup cols={2}>
-  <Card title="Discord" href="/connectors/discord" icon="discord" />
-  <Card title="Telegram" href="/connectors/telegram" icon="telegram" />
-  <Card title="Slack" href="/connectors/slack" icon="slack" />
-  <Card title="X (Twitter)" href="/connectors/twitter" icon="x-twitter" />
-  <Card title="WhatsApp" href="/connectors/whatsapp" icon="whatsapp" />
-  <Card title="iMessage" href="/connectors/imessage" icon="message" />
-  <Card title="Farcaster" href="/connectors/farcaster" icon="hashtag" />
-  <Card title="Bluesky" href="/connectors/bluesky" icon="cloud" />
-</CardGroup>
+| Connector key | Plugin package | Required setting |
+| --- | --- | --- |
+| `blooio` | `@elizaos/plugin-blooio` | `BLOOIO_API_KEY` |
+| `bluebubbles` | `@elizaos/plugin-bluebubbles` | `BLUEBUBBLES_PASSWORD` |
+| `discord` | `@elizaos/plugin-discord` | `DISCORD_API_TOKEN` |
+| `discordLocal` | `@elizaos/plugin-discord` | See the plugin's local-account setup |
+| `googlechat` | `@elizaos/plugin-google-workspace` | Google OAuth credentials |
+| `imessage` | `@elizaos/plugin-imessage` | macOS Messages access |
+| `matrix` | `@elizaos/plugin-matrix` | `MATRIX_ACCESS_TOKEN` |
+| `mattermost` | `@elizaos/plugin-mattermost` | `MATTERMOST_BOT_TOKEN` |
+| `msteams` | `@elizaos/plugin-msteams` | `MSTEAMS_APP_PASSWORD` |
+| `signal` | `@elizaos/plugin-signal` | `SIGNAL_ACCOUNT_NUMBER` |
+| `slack` | `@elizaos/plugin-slack` | `SLACK_APP_TOKEN`, `SLACK_BOT_TOKEN` |
+| `telegram` | `@elizaos/plugin-telegram` | `TELEGRAM_BOT_TOKEN` |
+| `twitter` or `x` | `@elizaos/plugin-x` | X OAuth or API credentials |
+| `wechat` | `@elizaos/plugin-wechat` | `WECHAT_API_KEY`, `WECHAT_PROXY_URL` |
+| `whatsapp` | `@elizaos/plugin-whatsapp` | WhatsApp Cloud API or local-session credentials |
 
-## Pattern
+## Configure a connector
 
-Every connector follows the same shape:
+Add a connector entry to the canonical config file. Connector-specific fields
+are projected to the environment variables expected by the plugin.
 
-```ts
-// character.ts
-export const character: Character = {
-  name: 'Eliza',
-  plugins: [
-    '@elizaos/plugin-sql',
-    '@elizaos/plugin-anthropic',
-    '@elizaos/plugin-discord',  // <- add the channel plugin
-  ],
-  settings: {
-    // optional per-plugin overrides
+```json5
+// ~/.local/state/eliza/eliza.json
+{
+  connectors: {
+    discord: {
+      token: "<discord-bot-token>",
+      applicationId: "<discord-application-id>",
+    },
   },
-};
+}
 ```
 
-```bash
-# .env — credentials per channel
-DISCORD_API_TOKEN=...
-DISCORD_APPLICATION_ID=...
-```
+An entry is enough to select the mapped plugin unless `enabled` is explicitly
+`false`. You can also put plugin settings directly in the process environment
+or the config's `env.vars` section. Restart the runtime after changing connector
+credentials.
 
-Restart the agent. The connector registers a service, opens its websocket / webhook / poll loop, and starts forwarding messages into the runtime.
+<Warning>
+Do not commit connector tokens. The config file may contain secrets and should
+remain owner-readable only; environment variables or the app's credential UI
+are preferable for shared projects.
+</Warning>
 
-## Owner vs. agent
+## Find every supported field
 
-Most connectors distinguish the **owner** (the human who configured the agent) from the **agent** itself. Owner DMs can trigger privileged actions; non-owner traffic is treated as public. See per-connector docs for owner-detection details.
+The registry is the source of truth for credential names, required fields, help
+text, and validation constraints:
 
-## Multiple channels at once
+- [`generated.json`](https://github.com/elizaOS/eliza/blob/develop/packages/registry/src/first-party/generated.json) contains the generated connector records.
+- [`CONNECTOR_ENV_MAP`](https://github.com/elizaOS/eliza/blob/develop/packages/agent/src/config/env-vars.ts) shows how `connectors.<name>` fields become environment variables.
+- The plugin's `registry-entry.json` and README document platform setup, scopes, webhook configuration, and optional behavior.
 
-An agent can listen on as many channels as you load. Each connector contributes to the same memory store, so context follows the user across channels.
+For a connector not listed above, install and enable its plugin explicitly. Do
+not assume that an older connector name is still recognized by the runtime.

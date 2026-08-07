@@ -1,3 +1,4 @@
+/** Verifies ElizaWalletSection states through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";

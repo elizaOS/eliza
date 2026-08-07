@@ -1,15 +1,13 @@
-/** Vitest config for the Matrix connector; aliases provider SDKs to shims so the suite runs offline. */
+/** Runs Matrix connector tests against workspace source packages. */
 import { defineConfig } from "vitest/config";
-import {
-  providerSdkAliases,
-  providerSdkShimPlugin,
-} from "../../packages/test/vitest/provider-sdk-aliases";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
+
+const workspaceAliases = buildWorkspaceSourceAliases();
 
 export default defineConfig({
   resolve: {
-    alias: providerSdkAliases,
+    alias: workspaceAliases,
   },
-  plugins: [providerSdkShimPlugin()],
   test: {
     include: ["__tests__/**/*.test.ts", "src/**/__tests__/**/*.test.ts"],
     globals: true,

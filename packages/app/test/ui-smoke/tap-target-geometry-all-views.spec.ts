@@ -119,11 +119,15 @@ async function collectControls(
       // they differ from the implicit role.
       const NATIVE_ROLE_OVERRIDES: Record<string, readonly string[]> = {
         button: [
+          "checkbox",
           "combobox",
+          "link",
           "menuitem",
           "menuitemcheckbox",
           "menuitemradio",
           "option",
+          "radio",
+          "switch",
           "tab",
         ],
         a: [
@@ -237,6 +241,11 @@ async function collectControls(
       }> = [];
 
       for (const el of nodes) {
+        // Machinery hidden from the accessibility tree (for example a file
+        // input driven by a visible upload button) is not an independent
+        // interactive control and must not be assigned a fabricated name.
+        if (el.closest('[aria-hidden="true"]')) continue;
+
         const name = accessibleName(el);
         const descriptor = describe(el, name);
         const tag = el.tagName.toLowerCase();
@@ -444,7 +453,22 @@ test.describe("tap-target rendered-geometry + role/DOM coherence gate", () => {
       await openAppPath(page, view.path);
       await page.locator("body").waitFor({ state: "visible", timeout: 60_000 });
 
-      const records = await collectControls(page, view.id);
+      // `openAppPath` proves the shell is ready, but many view bodies are lazy
+      // chunks. Poll the rendered controls so the gate measures the mounted
+      // view instead of treating its transient loading frame as an empty page.
+      let records: ControlRecord[] = [];
+      await expect
+        .poll(
+          async () => {
+            records = await collectControls(page, view.id);
+            return records.length;
+          },
+          {
+            message: `${view.id}: wait for an interactive control before measuring tap geometry`,
+            timeout: 60_000,
+          },
+        )
+        .toBeGreaterThan(0);
       allRecords.push(...records);
 
       expect(

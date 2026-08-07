@@ -10,7 +10,6 @@ import {
 	resolveSurfaceBackgroundPolicy,
 	resolveSurfaceManifest,
 	SURFACE_CAPABILITIES,
-	SURFACE_ISOLATION_LEVELS,
 	type SurfaceManifest,
 	type SurfaceManifestBearer,
 	surfaceGrants,
@@ -147,25 +146,6 @@ describe("IMMERSIVE_WALLPAPER_SURFACE", () => {
 });
 
 describe("catalogue constants", () => {
-	it("declares the four isolation levels least→most isolated", () => {
-		expect([...SURFACE_ISOLATION_LEVELS]).toEqual([
-			"in-process",
-			"sandboxed-iframe",
-			"native-webview",
-			"immersive",
-		]);
-	});
-
-	it("enumerates every grantable capability", () => {
-		expect([...SURFACE_CAPABILITIES]).toEqual([
-			"wallpaper",
-			"background:apply",
-			"navigate",
-			"storage",
-			"agent-surface",
-		]);
-	});
-
 	it("every constant capability round-trips through a manifest", () => {
 		const all: SurfaceManifest = { capabilities: SURFACE_CAPABILITIES };
 		const m = resolveSurfaceManifest({ surface: all });

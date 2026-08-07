@@ -174,6 +174,8 @@ export async function handleSecretsManagerRoute(
     try {
       parsed = JSON.parse(body || "{}");
     } catch {
+      // error-policy:J3 request JSON is untrusted input; malformed data is an
+      // explicit 400 response rather than a fabricated preferences object.
       sendJsonError(res, 400, "invalid JSON body");
       return true;
     }
@@ -210,6 +212,8 @@ export async function handleSecretsManagerRoute(
     try {
       parsed = JSON.parse(body || "{}");
     } catch {
+      // error-policy:J3 request JSON is untrusted input; malformed data is an
+      // explicit 400 response and no install job is created.
       sendJsonError(res, 400, "invalid JSON body");
       return true;
     }
@@ -315,6 +319,8 @@ export async function handleSecretsManagerRoute(
     try {
       parsed = JSON.parse(body || "{}");
     } catch {
+      // error-policy:J3 request JSON is untrusted input; malformed data is an
+      // explicit 400 response and no credential operation runs.
       sendJsonError(res, 400, "invalid JSON body");
       return true;
     }
@@ -346,6 +352,8 @@ export async function handleSecretsManagerRoute(
       });
       sendJson(res, 200, { ok: true, result });
     } catch (err) {
+      // error-policy:J1 the HTTP route boundary translates a backend sign-in
+      // rejection into a client-visible failure.
       const message = err instanceof Error ? err.message : "sign-in failed";
       sendJsonError(res, 400, message);
     }
@@ -359,6 +367,8 @@ export async function handleSecretsManagerRoute(
     try {
       parsed = JSON.parse(body || "{}");
     } catch {
+      // error-policy:J3 request JSON is untrusted input; malformed data is an
+      // explicit 400 response and does not select a backend.
       sendJsonError(res, 400, "invalid JSON body");
       return true;
     }
@@ -438,6 +448,8 @@ async function handleSavedLoginsRoute(
       );
       sendJson(res, 200, { ok: true, login: reveal });
     } catch (err) {
+      // error-policy:J1 the HTTP route boundary translates an unavailable
+      // saved login into an explicit client-visible failure.
       const message = err instanceof Error ? err.message : "reveal failed";
       sendJsonError(res, 404, message);
     }
@@ -451,6 +463,8 @@ async function handleSavedLoginsRoute(
     try {
       parsed = JSON.parse(body || "{}");
     } catch {
+      // error-policy:J3 request JSON is untrusted input; malformed data is an
+      // explicit 400 response and no login is persisted.
       sendJsonError(res, 400, "invalid JSON body");
       return true;
     }
@@ -512,6 +526,8 @@ async function handleSavedLoginsRoute(
       try {
         parsed = JSON.parse(body || "{}");
       } catch {
+        // error-policy:J3 request JSON is untrusted input; malformed data is an
+        // explicit 400 response and does not alter autofill policy.
         sendJsonError(res, 400, "invalid JSON body");
         return true;
       }

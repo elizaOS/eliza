@@ -34,7 +34,7 @@ import {
   buildScreenTimeRecapRules,
   SCREENTIME_RECAP_INSTRUCTIONS,
 } from "@elizaos/plugin-health/actions/screen-time";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildNarrativePrompt } from "../src/actions/brief.js";
 import {
   buildCreativeDraftPrompt,
@@ -224,9 +224,21 @@ function syntheticArtifact(task: VerifiableTask): OptimizedPromptArtifact {
 
 describe("optimized-prompt boot-load + production render (hermetic)", () => {
   const tempRoots: string[] = [];
+  const previousIntegrityKey = process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+  beforeAll(() => {
+    process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY = Buffer.alloc(
+      32,
+      0x5a,
+    ).toString("base64");
+  });
   afterAll(() => {
     for (const root of tempRoots)
       rmSync(root, { recursive: true, force: true });
+    if (previousIntegrityKey === undefined) {
+      delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+    } else {
+      process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY = previousIntegrityKey;
+    }
   });
 
   for (const task of VERIFIABLE_TASKS) {

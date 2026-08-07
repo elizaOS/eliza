@@ -29,6 +29,10 @@ import { MemoryType } from "../../../../types/memory.ts";
 import type { UUID } from "../../../../types/primitives.ts";
 import { hasActionContext } from "../../../../utils/action-validation.ts";
 import {
+	describeUserReference,
+	userReferenceLogView,
+} from "../../../../utils/reference-echo.ts";
+import {
 	getPersonalityStore,
 	type PersonalityStore,
 } from "../services/personality-store.ts";
@@ -143,6 +147,12 @@ async function recordAuditMemory(
 			PERSONALITY_AUDIT_TABLE,
 		);
 	} catch (error) {
+		// error-policy:J7 Audit persistence must not reverse an already-applied
+		// personality mutation, but the missing audit record remains observable.
+		runtime.reportError("PersonalityAction.auditMemory", error, {
+			op,
+			roomId: message.roomId,
+		});
 		logger.warn(
 			{
 				error: error instanceof Error ? error.message : String(error),
@@ -208,7 +218,6 @@ export const personalityAction: Action = {
 		"BE_LESS_RESPONSIVE",
 		"BE_MORE_AGREEABLE",
 		"SHUT_UP",
-		"STOP_TALKING",
 		"BE_VERBOSE",
 		"BE_WARMER",
 		"BE_COLDER",
@@ -549,7 +558,8 @@ async function runSetTrait(
 		return paramError("set_trait", text);
 	}
 	if (!isValidTraitValue(trait as "verbosity" | "tone" | "formality", value)) {
-		const text = `Invalid value '${value}' for trait '${trait}'.`;
+		// Blob-safe rendering rationale lives in utils/reference-echo.ts.
+		const text = `Invalid value ${describeUserReference(value, "that value")} for trait '${trait}'.`;
 		await args.callback?.({ text, thought: "Invalid value" });
 		return paramError("set_trait", text);
 	}
@@ -821,7 +831,8 @@ async function runLoadProfile(args: {
 	}
 	const profile = args.store.getProfile(name);
 	if (!profile) {
-		const text = `No profile named '${name}'. Try list_profiles.`;
+		// Blob-safe rendering rationale lives in utils/reference-echo.ts.
+		const text = `No profile named ${describeUserReference(name, "that profile")}. Try list_profiles.`;
 		await args.callback?.({ text, thought: "Unknown profile" });
 		return paramError("load_profile", text);
 	}
@@ -857,7 +868,9 @@ async function runSaveProfile(args: {
 	params: PersonalityParameters;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
-	const name = args.params.name?.trim();
+	// Clamped at save time: a blob-shaped planner name stored raw would
+	// re-broadcast wholesale on every later list_profiles render.
+	const name = userReferenceLogView(args.params.name?.trim() ?? "");
 	if (!name) {
 		const text = "save_profile requires `name`.";
 		await args.callback?.({ text, thought: "Missing name" });
@@ -867,7 +880,8 @@ async function runSaveProfile(args: {
 		args.params.description?.trim() || "User-saved personality profile";
 	const current = args.store.getSlot(GLOBAL_PERSONALITY_SCOPE);
 	const profile = args.store.snapshotSlotAsProfile(current, name, description);
-	const text = `Saved current global personality as '${name}'.`;
+	// Blob-safe rendering rationale lives in utils/reference-echo.ts.
+	const text = `Saved current global personality as ${describeUserReference(name, "that profile")}.`;
 	await args.callback?.({ text, actions: ["PERSONALITY"] });
 	return {
 		text,

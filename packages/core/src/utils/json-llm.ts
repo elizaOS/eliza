@@ -33,7 +33,9 @@ export function extractAndParseJSONObjectFromText(
 	// Use JSON5.parse directly - it already handles unquoted keys, single quotes, trailing commas
 	try {
 		return JSON5.parse(textToParse) as Record<string, unknown>;
-	} catch {
-		throw new Error("Failed to parse invalid JSON");
+	} catch (error) {
+		// error-policy:J2 Give callers a stable parse error while retaining the
+		// native JSON parser's location and syntax detail as the cause.
+		throw new Error("Failed to parse invalid JSON", { cause: error });
 	}
 }

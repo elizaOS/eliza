@@ -24,19 +24,19 @@ import { greetTestPlugin } from "./_fixtures/greet-test-plugin.ts";
 
 const GREETING_INPUT = "Hello!";
 
-type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
-  scenarioLlmFixtures?: {
+type RuntimeWithScenarioModelFixtures = AgentRuntime & {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
 
-function asRuntime(value: unknown): RuntimeWithScenarioLlmFixtures {
+function asRuntime(value: unknown): RuntimeWithScenarioModelFixtures {
   if (!value || typeof value !== "object" || !("registerPlugin" in value)) {
     throw new Error(
       "greeting-dynamic seed: runtime did not expose registerPlugin",
     );
   }
-  return value as RuntimeWithScenarioLlmFixtures;
+  return value as RuntimeWithScenarioModelFixtures;
 }
 
 function greetingRouteFixtures(): Array<Record<string, unknown>> {
@@ -92,7 +92,7 @@ export default scenario({
   domain: "convo",
   // Keyless-deterministic: the trivial GREET_USER plugin runs in-memory and the
   // routing fixtures registered below force action selection under the
-  // deterministic LLM proxy. No external service or secret required.
+  // deterministic model provider. No external service or secret required.
   tags: ["smoke", "convo", "greeting"],
   description:
     "Scripted port of the dynamic greeting scenario: sends a single greeting and verifies the GREET_USER action is captured with success=true.",
@@ -109,7 +109,7 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(greetTestPlugin satisfies Plugin);
-        runtime.scenarioLlmFixtures?.register(...greetingRouteFixtures());
+        runtime.scenarioModelFixtures?.register(...greetingRouteFixtures());
       },
     },
   ],

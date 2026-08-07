@@ -36,8 +36,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
-import { Badge } from "../../components/ui/badge";
 import { CopyButton } from "../../components/ui/copy-button";
+import { StatusBadge } from "../../components/ui/status-badge";
 import { ApiError } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type { UserMcpRecord } from "./lib/api-types";
@@ -169,7 +169,7 @@ export function McpDetailDrawer({
                 <div className="min-w-0">
                   <DrawerTitle className="flex items-center gap-2 flex-wrap">
                     <span className="truncate">{mcp.name}</span>
-                    <StatusBadge status={mcp.status} />
+                    <McpStatusBadge status={mcp.status} />
                     {mcp.x402_enabled && (
                       <span className="px-1.5 py-0.5 text-2xs rounded-full border border-accent/40 bg-accent-subtle text-accent">
                         x402
@@ -439,20 +439,23 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function StatusBadge({ status }: { status: UserMcpRecord["status"] }) {
-  const tone =
+export function McpStatusBadge({
+  status,
+}: {
+  status: UserMcpRecord["status"];
+}) {
+  const variant =
     status === "live"
-      ? "border-status-success/30 bg-status-success-bg text-status-success"
+      ? "success"
       : status === "suspended" || status === "deprecated"
-        ? "border-destructive/30 bg-status-danger-bg text-destructive"
-        : "border-border bg-bg-elevated text-muted";
+        ? "danger"
+        : "muted";
   return (
-    <Badge
-      variant="outline"
-      className={`text-2xs px-1.5 py-0 capitalize ${tone}`}
-    >
-      {status.replace("_", " ")}
-    </Badge>
+    <StatusBadge
+      label={status.replace("_", " ")}
+      variant={variant}
+      className="px-1.5 text-2xs font-medium capitalize"
+    />
   );
 }
 

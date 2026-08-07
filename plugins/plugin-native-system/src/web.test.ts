@@ -64,5 +64,11 @@ describe("SystemWeb fallback", () => {
     await expect(
       system.setVolume({ stream: "music", volume: 1 }),
     ).rejects.toThrow("music volume control is only available on Android.");
+    await expect(
+      system.setFlashlight({ enabled: "yes" as never }),
+    ).rejects.toThrow("enabled must be a boolean");
+    await expect(system.setFlashlight({ enabled: true })).rejects.toThrow(
+      "Flashlight control is only available on Android.",
+    );
   });
 });

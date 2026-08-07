@@ -44,6 +44,7 @@ export const WithAdAccounts: Story = {
 
 /** Dialog closed — renders nothing in the portal. */
 export const Closed: Story = {
+  tags: ["story-gate-expect-blank"],
   args: {
     open: false,
   },

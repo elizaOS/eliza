@@ -1,3 +1,4 @@
+/** Verifies resolveEffectiveVoiceConfig - ASR provider default through the package's configured test harness. */
 import { describe, expect, it } from "vitest";
 import type { VoiceConfig } from "../api/client-types-config";
 import { resolveEffectiveVoiceConfig } from "./voice-chat-types";

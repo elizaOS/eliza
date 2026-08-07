@@ -1,3 +1,4 @@
+/** Verifies ChatOverlay — reachable states through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Adversarial + fuzz coverage for the floating chat (ChatOverlay).

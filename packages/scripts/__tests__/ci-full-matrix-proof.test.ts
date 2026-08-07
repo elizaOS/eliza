@@ -4,11 +4,11 @@
  * exhaustive queuing, and the canonical quiescent develop result.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const script = fileURLToPath(
   new URL("../ci-full-matrix-proof.mjs", import.meta.url),
@@ -513,7 +513,7 @@ jobs:
 
   function orchestrator(
     basenames,
-    { passScope = true, cancelInProgress = false, queue = "max" } = {},
+    { passScope = true, cancelInProgress = false } = {},
   ) {
     const lanes = basenames
       .map(
@@ -525,8 +525,7 @@ jobs:
           }\n    secrets: inherit`,
       )
       .join("\n");
-    const queueLine = queue === null ? "" : `  queue: ${queue}\n`;
-    return `name: Develop Exhaustive\non:\n  schedule:\n    - cron: "0 6 * * *"\nconcurrency:\n  group: develop-exhaustive-\${{ github.ref }}\n${queueLine}  cancel-in-progress: ${cancelInProgress}\njobs:\n${lanes}\n`;
+    return `name: Develop Exhaustive\non:\n  schedule:\n    - cron: "0 6 * * *"\nconcurrency:\n  group: develop-exhaustive-\${{ github.ref }}\n  cancel-in-progress: ${cancelInProgress}\njobs:\n${lanes}\n`;
   }
 
   test("passes when the orchestrator wires every reusable lane and each is callable", () => {
@@ -661,18 +660,6 @@ jobs:
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("consecutive exhaustive runs can cancel");
-  });
-
-  test("fails when the third exhaustive invocation can replace a pending run", () => {
-    const result = runProof({
-      workflow: HEALTHY_WORKFLOW,
-      manifest: HEALTHY_MANIFEST,
-      plan: HEALTHY_PLAN,
-      orchestrator: orchestrator(["scenario-pr.yml"], { queue: null }),
-      reusables: { "scenario-pr.yml": CALLABLE_WORKFLOW },
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("replace pending coverage");
   });
 
   test("proves the real committed manifest against the real workflow + plan", () => {

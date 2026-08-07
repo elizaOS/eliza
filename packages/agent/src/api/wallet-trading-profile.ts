@@ -9,7 +9,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";
+import { writeJsonAtomicSync } from "@elizaos/core/atomic-json";
 import type {
   BscTradeSide,
   BscTradeTxStatus,

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import { DynamicViewError } from "./errors";
 import type { DynamicViewRegistry } from "./registry";
 import type {
@@ -36,18 +36,9 @@ interface DynamicViewCanvas {
   a2uiPush(options: { id: string; payload: JsonValue }): Promise<void>;
 }
 
-interface DynamicViewWorkerStatus {
-  state: string;
-}
-
-interface DynamicViewWorkerStatusProvider {
-  getWorkerStatus(id: string): DynamicViewWorkerStatus | null;
-}
-
 interface DynamicViewSessionManagerOptions {
   registry: DynamicViewRegistry;
   canvas: DynamicViewCanvas;
-  workerStatusProvider?: DynamicViewWorkerStatusProvider;
   now?: () => Date;
   sessionIdFactory?: () => string;
   maxSessionHistory?: number;
@@ -149,14 +140,6 @@ function createSessionPayload(
       title: manifest.title,
       source: manifest.source,
       placement: manifest.placement,
-      requiredRemotes: manifest.requiredRemotes ?? [],
-      eventSubscriptions: (manifest.eventSubscriptions ?? []).map(
-        (subscription) => ({
-          remoteId: subscription.remoteId,
-          events: subscription.events ?? [],
-        }),
-      ),
-      invokeTargets: manifest.invokeTargets ?? [],
     },
     metadata: session.metadata ?? null,
   };
@@ -174,7 +157,6 @@ function createEventPayload(params: DynamicViewPushParams): JsonValue {
 export class DynamicViewSessionManager {
   private readonly registry: DynamicViewRegistry;
   private readonly canvas: DynamicViewCanvas;
-  private readonly workerStatusProvider: DynamicViewWorkerStatusProvider | null;
   private readonly now: () => Date;
   private readonly sessionIdFactory: () => string;
   private readonly maxSessionHistory: number;
@@ -188,7 +170,6 @@ export class DynamicViewSessionManager {
   constructor(options: DynamicViewSessionManagerOptions) {
     this.registry = options.registry;
     this.canvas = options.canvas;
-    this.workerStatusProvider = options.workerStatusProvider ?? null;
     this.now = options.now ?? (() => new Date());
     this.sessionIdFactory = options.sessionIdFactory ?? (() => randomUUID());
     this.maxSessionHistory =
@@ -208,7 +189,6 @@ export class DynamicViewSessionManager {
     }
     const placement = params.placement ?? manifest.placement;
     this.assertPlacementSupported(placement);
-    this.assertRequiredRemotesAvailable(manifest);
     const url = resolveEntrypoint(manifest.entrypoint, this.entrypointBaseDir);
     const timestamp = nowIso(this.now);
     const session: DynamicViewSession = {
@@ -312,26 +292,6 @@ export class DynamicViewSessionManager {
         "DYNAMIC_VIEW_UNSUPPORTED_PLACEMENT",
         `Dynamic view placement is not supported yet: ${placement}`,
       );
-    }
-  }
-
-  private assertRequiredRemotesAvailable(manifest: DynamicViewManifest): void {
-    const requiredRemotes = manifest.requiredRemotes ?? [];
-    if (requiredRemotes.length === 0) return;
-    if (!this.workerStatusProvider) {
-      throw new DynamicViewError(
-        "DYNAMIC_VIEW_REQUIRED_REMOTE_UNAVAILABLE",
-        "Dynamic view requires Remote status checks, but no provider is configured.",
-      );
-    }
-    for (const remoteId of requiredRemotes) {
-      const status = this.workerStatusProvider.getWorkerStatus(remoteId);
-      if (status?.state !== "running") {
-        throw new DynamicViewError(
-          "DYNAMIC_VIEW_REQUIRED_REMOTE_UNAVAILABLE",
-          `Required Remote is not running: ${remoteId}`,
-        );
-      }
     }
   }
 

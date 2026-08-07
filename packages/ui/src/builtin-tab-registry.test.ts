@@ -68,12 +68,10 @@ describe("builtin-tab-registry: table integrity", () => {
 describe("resolveBuiltinTabId: alias resolution", () => {
   it("maps the known legacy aliases onto canonical ids", () => {
     expect(resolveBuiltinTabId("triggers")).toBe("automations");
-    expect(resolveBuiltinTabId("advanced")).toBe("fine-tuning");
   });
 
   it("returns canonical ids unchanged", () => {
     expect(resolveBuiltinTabId("automations")).toBe("automations");
-    expect(resolveBuiltinTabId("fine-tuning")).toBe("fine-tuning");
     expect(resolveBuiltinTabId("settings")).toBe("settings");
   });
 
@@ -176,7 +174,6 @@ describe("App.tsx drift guard: legacy central enumerations removed", () => {
     expect(fnBody).toContain("buildStaticTabRenderers()");
     // The alias / special-surface if-chain that lived at the tail of the old
     // renderStaticViewRouterTab is gone from its body.
-    expect(fnBody).not.toContain('tab === "fine-tuning" || tab === "advanced"');
     expect(fnBody).not.toContain(
       'tab === "character" || tab === "character-select"',
     );

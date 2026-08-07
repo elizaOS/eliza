@@ -1,3 +1,4 @@
+/** Verifies AppPageSidebar resize persistence (uncontrolled width) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Resize-drag persistence contract for the page sidebar wrapper: the width

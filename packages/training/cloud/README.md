@@ -6,20 +6,19 @@ columns name the canonical config file and the runtime that consumes it.
 
 | Size                | Local (Eliza)               | Ollama (local)                                    | vLLM (self-host)                                                   | Vast pyworker (autoscale)            | Eliza Cloud  |
 |---------------------|------------------------------|---------------------------------------------------|---------------------------------------------------------------------|--------------------------------------|--------------|
-| **eliza-1-2b**      | `ELIZA_MODEL=eliza-1-2b`    | `ollama/Modelfile.eliza-1-2b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-2b --gpu-target single`       | `vast-pyworker/eliza-1-2b.json`      | `vast/eliza-1-2b` (catalog entry pending) |
-| **eliza-1-9b**      | `ELIZA_MODEL=eliza-1-9b`    | `ollama/Modelfile.eliza-1-9b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-9b --gpu-target h100-2x`      | `vast-pyworker/eliza-1-9b.json`      | `vast/eliza-1-9b` (catalog entry pending) |
-| **eliza-1-27b**     | `ELIZA_MODEL=eliza-1-27b`   | `ollama/Modelfile.eliza-1-27b-q4_k_m`             | `serve_vllm.py --registry-key eliza-1-27b --gpu-target h200-2x`     | `vast-pyworker/eliza-1-27b.json`     | `vast/eliza-1-27b` (catalog entry pending) |
+| **eliza-1-2b**      | `ELIZA_MODEL=eliza-1-2b`    | `ollama/Modelfile.eliza-1-2b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-2b --gpu-target single`       | `packages/cloud/services/vast-pyworker/manifests/eliza-1-2b.json`      | `vast/eliza-1-2b` (catalog entry pending) |
+| **eliza-1-9b**      | `ELIZA_MODEL=eliza-1-9b`    | `ollama/Modelfile.eliza-1-9b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-9b --gpu-target h100-2x`      | `packages/cloud/services/vast-pyworker/manifests/eliza-1-9b.json`      | `vast/eliza-1-9b` (catalog entry pending) |
+| **eliza-1-27b**     | `ELIZA_MODEL=eliza-1-27b`   | `ollama/Modelfile.eliza-1-27b-q4_k_m`             | `serve_vllm.py --registry-key eliza-1-27b --gpu-target h200-2x`     | `packages/cloud/services/vast-pyworker/manifests/eliza-1-27b.json`     | `vast/eliza-1-27b` |
 
 The "catalog entry pending" annotation reflects that
-`eliza/cloud/packages/lib/models/catalog.ts` only has
+`packages/cloud/shared/src/lib/models/catalog.ts` only has
 `vast/eliza-1-27b` today. Adding the `vast/eliza-1-*` entries
 is a one-line PR per id (mirror the existing row), but is owned by the
-cloud monorepo, not this directory.
+the cloud runtime, not this directory.
 
-The `ELIZA_MODEL` env var is read by the runtime via
-`eliza/packages/app-core/src/runtime/local-model-resolver.ts`, which
-auto-picks the right quant flavor (gguf / polarquant / fp8 / bf16) for
-the detected GPU and pulls the matching HF sibling repo on first run.
+The runtime's local-inference plugin resolves the selected catalog model,
+downloads its artifacts, and selects a compatible backend for the detected
+hardware.
 
 ## Recommended pick per use case
 
@@ -39,8 +38,8 @@ the detected GPU and pulls the matching HF sibling repo on first run.
   `eliza-1-27b` bf16 via vLLM if FP8 is unavailable on the card.
 
 ### Multi-tenant prod — many concurrent users
-- **Cloud GPU**: `eliza-1-27b` via Eliza Cloud (`vast/eliza-1-27b`,
-  catalog entry pending). The `vast-pyworker/eliza-1-27b.json`
+- **Cloud GPU**: `eliza-1-27b` via Eliza Cloud (`vast/eliza-1-27b`). The
+  `packages/cloud/services/vast-pyworker/manifests/eliza-1-27b.json`
   manifest targets 2x H200 SXM at FP8 weights + FP8 KV. Vast
   Serverless autoscales workers based on queue depth. (TurboQuant KV
   per vLLM PR #38479 will halve the KV footprint once that lands in
@@ -109,11 +108,6 @@ cloud/
 │   ├── Modelfile.eliza-1-2b-q4_k_m
 │   ├── Modelfile.eliza-1-9b-q4_k_m
 │   └── Modelfile.eliza-1-27b-q4_k_m
-├── vast-pyworker/        ← Vast.ai serverless manifests
-│   ├── README.md
-│   ├── eliza-1-2b.json
-│   ├── eliza-1-9b.json
-│   └── eliza-1-27b.json
 └── scripts/
     └── eliza-cloud-register.sh   ← upsert templates + endpoints in one shot
 ```
@@ -123,8 +117,5 @@ Reference docs in the wider repo:
   for sizes, quant siblings, and KV budgets.
 - `training/scripts/inference/serve_vllm.py` — canonical vLLM CLI; all
   per-target args here mirror its `GPU_TARGETS` table.
-- `eliza/cloud/services/vast-pyworker/` — the existing pyworker that
+- `packages/cloud/services/vast-pyworker/` — the canonical manifests and pyworker that
   fronts the GGUF / llama-server path on Vast (Q6_K 27B today).
-- `eliza/packages/app-core/src/runtime/local-model-resolver.ts` —
-  the Eliza-side resolver that maps `ELIZA_MODEL=eliza-1-<size>` →
-  `(repo, quant, backend)` per detected GPU.

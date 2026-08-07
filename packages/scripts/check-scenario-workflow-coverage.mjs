@@ -1,11 +1,11 @@
 #!/usr/bin/env node
+
 /**
  * Audits scenario-catalog ownership across deterministic, credentialed, and
  * platform-gated lanes. Missing live prerequisites remain explicit deferrals
  * so a retired workflow cannot make unexecuted scenarios look covered.
  */
 
-import { spawnSync } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -18,6 +18,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { spawnSync } from "./lib/spawn-sync-captured.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -374,11 +375,11 @@ function matchesScenarioFileGlobs(file, fileGlobs) {
 
 const KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE = [
   {
-    glob: "packages/test/scenarios/activity/**/*.scenario.ts",
+    glob: "plugins/plugin-personal-assistant/test/scenarios/corpus/activity/**/*.scenario.ts",
     issue: "#10757",
   },
   {
-    glob: "packages/test/scenarios/selfcontrol/**/*.scenario.ts",
+    glob: "plugins/plugin-personal-assistant/test/scenarios/corpus/selfcontrol/**/*.scenario.ts",
     issue: "#10757",
   },
   {
@@ -847,7 +848,7 @@ export function main(argv = process.argv.slice(2)) {
 
   const covered = new Set();
   const coverageGlobs = [
-    "packages/test/scenarios/executive-assistant/*.scenario.ts",
+    "plugins/plugin-personal-assistant/test/scenarios/corpus/executive-assistant/*.scenario.ts",
     "packages/test/scenarios/connector-certification/*.scenario.ts",
   ];
   const prDeterministicDefaultIds = defaultScenarios

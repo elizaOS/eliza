@@ -134,6 +134,7 @@ mock.module("@/lib/services/ai-billing", () => ({
   },
   recordUsageAnalytics,
   reserveCredits,
+  reserveFlatUsageCredits: mock(),
 }));
 
 mock.module("@/lib/services/credits", () => ({

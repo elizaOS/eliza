@@ -1,3 +1,4 @@
+/** Verifies ModelDownloadWidget through the package's configured test harness. */
 // @vitest-environment jsdom
 import {
   cleanup,
@@ -36,17 +37,20 @@ import type {
   ModelHubSnapshot,
 } from "../../../services/local-inference/types";
 
-// The widget reads via the typed client (getLocalInferenceHub /
-// startLocalInferenceDownload) — mock both. getLocalInferenceHub is overridden
-// per-test; startLocalInferenceDownload is a spy we assert the retry against.
-const { getBaseUrlMock, getHubMock, startDownloadMock } = vi.hoisted(() => ({
-  getBaseUrlMock: vi.fn(() => "http://localhost:31337"),
-  getHubMock: vi.fn(),
-  startDownloadMock: vi.fn(),
-}));
+// The widget reads routing, hub readiness, and retry through the typed client.
+// Routing + hub responses vary per test; the download spy proves retry owns the
+// assigned model rather than reconstructing one from display text.
+const { getBaseUrlMock, getModelsConfigMock, getHubMock, startDownloadMock } =
+  vi.hoisted(() => ({
+    getBaseUrlMock: vi.fn(() => "http://localhost:31337"),
+    getModelsConfigMock: vi.fn(),
+    getHubMock: vi.fn(),
+    startDownloadMock: vi.fn(),
+  }));
 vi.mock("../../../api", () => ({
   client: {
     getBaseUrl: getBaseUrlMock,
+    getModelsConfig: getModelsConfigMock,
     getLocalInferenceHub: getHubMock,
     startLocalInferenceDownload: startDownloadMock,
   },
@@ -140,6 +144,8 @@ describe("ModelDownloadWidget", () => {
     runtimeModeMock.refetch.mockClear();
     getBaseUrlMock.mockReset();
     getBaseUrlMock.mockReturnValue("http://localhost:31337");
+    getModelsConfigMock.mockReset();
+    getModelsConfigMock.mockResolvedValue({});
     getHubMock.mockReset();
     startDownloadMock.mockReset();
     startDownloadMock.mockResolvedValue({ job: {} });
@@ -177,6 +183,44 @@ describe("ModelDownloadWidget", () => {
         container.querySelector('[data-testid="chat-widget-model-download"]'),
       ).toBeNull(),
     );
+  });
+
+  it("never flashes a local-model card when Cerebras serves a local runtime", async () => {
+    getModelsConfigMock.mockResolvedValue({
+      activeChat: {
+        provider: "cerebras",
+        family: "OPENAI",
+        endpoint: "https://api.cerebras.ai/v1",
+      },
+    });
+    getHubMock.mockResolvedValue(
+      hub({
+        TEXT_LARGE: slot({
+          state: "downloaded",
+          downloaded: true,
+          primaryDownloaded: true,
+        }),
+      }),
+    );
+
+    const { container } = render(<ModelDownloadWidget />);
+
+    await waitFor(() => expect(getModelsConfigMock).toHaveBeenCalledOnce());
+    expect(getHubMock).not.toHaveBeenCalled();
+    expect(
+      container.querySelector('[data-testid="chat-widget-model-download"]'),
+    ).toBeNull();
+  });
+
+  it("renders routing failure instead of inventing local-model readiness", async () => {
+    getModelsConfigMock.mockRejectedValue(new Error("routing unavailable"));
+
+    render(<ModelDownloadWidget />);
+
+    const card = await screen.findByTestId("chat-widget-model-download");
+    expect(card.textContent).toContain("Model route unavailable");
+    expect(card.textContent).toContain("Could not verify");
+    expect(getHubMock).not.toHaveBeenCalled();
   });
 
   it("renders the download percent while downloading", async () => {

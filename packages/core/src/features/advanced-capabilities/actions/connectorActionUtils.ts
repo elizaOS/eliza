@@ -627,6 +627,12 @@ export async function resolveTargetForConnector(
 				};
 			}
 		} catch (error) {
+			// error-policy:J4 Target resolution enriches an already explicit target;
+			// report resolver unavailability before using the caller's exact fields.
+			runtime.reportError("ConnectorAction.resolveTargets", error, {
+				source: connector.source,
+				query: explicit.query,
+			});
 			logger.warn(
 				`[CONNECTOR_ACTION] resolveTargets failed for ${connector.source}: ${error instanceof Error ? error.message : String(error)}`,
 			);

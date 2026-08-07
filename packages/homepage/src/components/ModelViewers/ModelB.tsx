@@ -39,9 +39,15 @@ import { useT } from "@/providers/I18nProvider";
 
 export interface ModelBHandle {
   spin: (direction?: 1 | -1) => void;
-  restartMessages: () => void;
+  restartMessages: (platform?: string, resetDelayMs?: number) => void;
   sendMessage: (text: string) => void;
   slideDown: () => void;
+}
+
+export interface ChatRenderState {
+  phase: "animating" | "terminal";
+  renderedMessages: number;
+  totalMessages: number;
 }
 
 interface ModelBProps {
@@ -50,6 +56,8 @@ interface ModelBProps {
   onWaitingChange?: (waiting: boolean) => void;
   onBackClick?: () => void;
   onVideoClick?: () => void;
+  onReady?: () => void;
+  onChatRenderStateChange?: (state: ChatRenderState) => void;
   onSwitcherDone?: () => void;
   onSwitcherOpen?: () => void;
   loginTitle?: string;
@@ -75,15 +83,19 @@ type SwitcherPhase = "idle" | "opening" | "open" | "closing";
 
 interface ModelRuntime {
   triggerSpin: ((direction: 1 | -1) => void) | null;
-  triggerRestartMessages: (() => void) | null;
+  triggerRestartMessages:
+    | ((platform?: string, resetDelayMs?: number) => void)
+    | null;
   triggerSendMessage: ((text: string) => void) | null;
   triggerSlideDown: (() => void) | null;
   invalidate: (() => void) | null;
   tryActive: boolean;
-  stopMessageAnimation: (() => void) | null;
+  settleMessageAnimation: (() => void) | null;
   onWaitingChange: ((waiting: boolean) => void) | null;
   onBackClick: (() => void) | null;
   onVideoClick: (() => void) | null;
+  onReady: (() => void) | null;
+  onChatRenderStateChange: ((state: ChatRenderState) => void) | null;
   onSwitcherDone: (() => void) | null;
   onSwitcherOpen: (() => void) | null;
   switcherOpenFiredEarly: boolean;
@@ -115,10 +127,12 @@ function createModelRuntime(): ModelRuntime {
     triggerSlideDown: null,
     invalidate: null,
     tryActive: false,
-    stopMessageAnimation: null,
+    settleMessageAnimation: null,
     onWaitingChange: null,
     onBackClick: null,
     onVideoClick: null,
+    onReady: null,
+    onChatRenderStateChange: null,
     onSwitcherDone: null,
     onSwitcherOpen: null,
     switcherOpenFiredEarly: false,
@@ -318,6 +332,9 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
   const scrollYRef = useRef(0);
   const msgTimeoutRef = useRef(0);
   const msgAnimFrameRef = useRef(0);
+  const replayResetTimeoutRef = useRef(0);
+  const terminalRenderFrameRef = useRef(0);
+  const terminalReadyFrameRef = useRef(0);
   const extraMessagesRef = useRef<ExtraMessage[]>([]);
   const sendAnimFrameRef = useRef(0);
   const extraScrollRef = useRef(0);
@@ -485,42 +502,128 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
 
       animFrame = requestAnimationFrame(animateOffset);
 
-      // Animate messages one by one with slide-up animation
       let count = 0;
+      let messageGeneration = 0;
 
-      const startMessages = (delay: number) => {
+      const cancelMessageSchedule = () => {
+        clearTimeout(msgTimeoutRef.current);
+        clearTimeout(replayResetTimeoutRef.current);
+        cancelAnimationFrame(msgAnimFrameRef.current);
+        cancelAnimationFrame(terminalRenderFrameRef.current);
+        cancelAnimationFrame(terminalReadyFrameRef.current);
+      };
+
+      const reportChatState = (
+        phase: ChatRenderState["phase"],
+        renderedMessages: number,
+      ) => {
+        runtime.onChatRenderStateChange?.({
+          phase,
+          renderedMessages,
+          totalMessages: getMessageCount(),
+        });
+      };
+
+      const renderIntroFrame = (
+        renderedMessages: number,
+        lastMessageProgress: number,
+        scrollY = scrollYRef.current,
+      ) => {
+        chatTexture.image = renderChatToCanvas(
+          chatTexture.image as HTMLCanvasElement,
+          renderedMessages,
+          avatarImg,
+          lastMessageProgress,
+          0,
+          scrollY,
+          extraMessagesRef.current,
+          runtime.switcherProgress,
+          runtime.switcherShiftProgress,
+          runtime.switcherFinalProgress,
+          runtime.switcherPhase === "closing",
+          runtime.loginTitle,
+          runtime.loginSubtitle,
+        );
+        chatTexture.needsUpdate = true;
+        invalidate();
+      };
+
+      const commitTerminalIntro = (expectedGeneration: number) => {
+        if (cancelled || expectedGeneration !== messageGeneration) return;
+
+        cancelMessageSchedule();
+        const totalMessages = getMessageCount();
+        count = totalMessages;
+        msgCountRef.current = totalMessages;
+        const preloadScroll = measurePreloadedScrollHeight(totalMessages);
+        const finalScroll = runtime.tryActive
+          ? Math.max(preloadScroll - 27, 0) + extraScrollRef.current
+          : 0;
+        scrollYRef.current = finalScroll;
+        renderIntroFrame(totalMessages, 1, finalScroll);
+
+        // R3F renders after useFrame callbacks. The second browser frame makes
+        // readiness describe pixels that have passed through that render.
+        terminalRenderFrameRef.current = requestAnimationFrame(() => {
+          if (cancelled || expectedGeneration !== messageGeneration) return;
+          invalidate();
+          terminalReadyFrameRef.current = requestAnimationFrame(() => {
+            if (cancelled || expectedGeneration !== messageGeneration) return;
+            reportChatState("terminal", totalMessages);
+          });
+        });
+      };
+
+      const startMessages = (
+        delay: number,
+        expectedGeneration = ++messageGeneration,
+      ) => {
+        if (expectedGeneration !== messageGeneration) return;
         count = 0;
         msgCountRef.current = 0;
+        reportChatState("animating", 0);
+
+        if (runtime.tryActive) {
+          commitTerminalIntro(expectedGeneration);
+          return;
+        }
 
         const animateMessage = () => {
-          count++;
-          msgCountRef.current = count;
-          if (count > getMessageCount() || cancelled || runtime.tryActive)
+          if (cancelled || expectedGeneration !== messageGeneration) return;
+          if (runtime.tryActive) {
+            commitTerminalIntro(expectedGeneration);
             return;
+          }
 
+          count += 1;
+          msgCountRef.current = count;
           const duration = 300;
           const startTime = performance.now();
 
           const tick = (now: number) => {
-            if (cancelled) return;
+            if (cancelled || expectedGeneration !== messageGeneration) return;
+            if (runtime.tryActive) {
+              commitTerminalIntro(expectedGeneration);
+              return;
+            }
+
             const elapsed = now - startTime;
             const t = Math.min(elapsed / duration, 1);
             const eased = 1 - (1 - t) ** 3;
-
-            chatTexture.image = renderChatToCanvas(
-              chatTexture.image as HTMLCanvasElement,
-              count,
-              avatarImg,
-              eased,
-            );
-            chatTexture.needsUpdate = true;
-            invalidate();
+            renderIntroFrame(count, eased, 0);
 
             if (t < 1) {
               msgAnimFrameRef.current = requestAnimationFrame(tick);
-            } else if (count < getMessageCount() && !runtime.tryActive) {
-              msgTimeoutRef.current = window.setTimeout(animateMessage, 700);
+              return;
             }
+
+            if (count < getMessageCount()) {
+              reportChatState("animating", count);
+              msgTimeoutRef.current = window.setTimeout(animateMessage, 700);
+              return;
+            }
+
+            commitTerminalIntro(expectedGeneration);
           };
 
           msgAnimFrameRef.current = requestAnimationFrame(tick);
@@ -529,33 +632,45 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
         msgTimeoutRef.current = window.setTimeout(animateMessage, delay);
       };
 
-      runtime.stopMessageAnimation = () => {
-        clearTimeout(msgTimeoutRef.current);
-        cancelAnimationFrame(msgAnimFrameRef.current);
+      runtime.settleMessageAnimation = () => {
+        commitTerminalIntro(messageGeneration);
       };
 
-      runtime.triggerRestartMessages = () => {
-        clearTimeout(msgTimeoutRef.current);
-        cancelAnimationFrame(msgAnimFrameRef.current);
+      runtime.triggerRestartMessages = (platform, resetDelayMs = 0) => {
+        messageGeneration += 1;
+        const replayGeneration = messageGeneration;
+        cancelMessageSchedule();
         cancelAnimationFrame(sendAnimFrameRef.current);
         clearTimeout(typingTimeoutRef.current);
         clearTimeout(responseTimeoutRef.current);
         cancelAnimationFrame(typingAnimFrameRef.current);
         cancelAnimationFrame(responseAnimFrameRef.current);
         runtime.onWaitingChange?.(false);
-        count = 0;
-        msgCountRef.current = 0;
-        extraMessagesRef.current = [];
-        extraScrollRef.current = 0;
-        chatTexture.image = renderChatToCanvas(
-          chatTexture.image as HTMLCanvasElement,
-          0,
-          avatarImg,
-          1,
-        );
-        chatTexture.needsUpdate = true;
-        invalidate();
-        startMessages(500);
+        if (platform) {
+          runtime.platform = platform;
+          setChatPlatform(platform);
+        }
+        reportChatState("animating", 0);
+
+        const resetAndStart = () => {
+          if (cancelled || replayGeneration !== messageGeneration) return;
+          count = 0;
+          msgCountRef.current = 0;
+          scrollYRef.current = 0;
+          extraMessagesRef.current = [];
+          extraScrollRef.current = 0;
+          renderIntroFrame(0, 1, 0);
+          startMessages(500, replayGeneration);
+        };
+
+        if (resetDelayMs > 0) {
+          replayResetTimeoutRef.current = window.setTimeout(
+            resetAndStart,
+            resetDelayMs,
+          );
+        } else {
+          resetAndStart();
+        }
       };
 
       runtime.triggerSendMessage = (text: string) => {
@@ -691,15 +806,18 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
       cancelAnimationFrame(animFrame);
       clearTimeout(spinTimeoutRef.current);
       clearTimeout(msgTimeoutRef.current);
+      clearTimeout(replayResetTimeoutRef.current);
       clearTimeout(typingTimeoutRef.current);
       clearTimeout(responseTimeoutRef.current);
       cancelAnimationFrame(msgAnimFrameRef.current);
+      cancelAnimationFrame(terminalRenderFrameRef.current);
+      cancelAnimationFrame(terminalReadyFrameRef.current);
       cancelAnimationFrame(sendAnimFrameRef.current);
       cancelAnimationFrame(typingAnimFrameRef.current);
       cancelAnimationFrame(responseAnimFrameRef.current);
       runtime.triggerRestartMessages = null;
       runtime.triggerSendMessage = null;
-      runtime.stopMessageAnimation = null;
+      runtime.settleMessageAnimation = null;
       if (initialized) {
         scene.traverse((child: THREE.Object3D) => {
           if (!(child instanceof THREE.Mesh)) return;
@@ -902,6 +1020,8 @@ function FovZoom({ runtime }: { runtime: ModelRuntime }) {
   const initialized = useRef(false);
   const started = useRef(false);
   const completed = useRef(false);
+  const readinessFrame = useRef(0);
+  const renderedReadinessFrame = useRef(0);
   const invalidate = useThree((state) => state.invalidate);
 
   useEffect(() => {
@@ -909,7 +1029,11 @@ function FovZoom({ runtime }: { runtime: ModelRuntime }) {
       started.current = true;
       invalidate();
     }, runtime.introDelay);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearTimeout(timeout);
+      cancelAnimationFrame(readinessFrame.current);
+      cancelAnimationFrame(renderedReadinessFrame.current);
+    };
   }, [invalidate, runtime]);
 
   useFrame((state, delta) => {
@@ -926,6 +1050,14 @@ function FovZoom({ runtime }: { runtime: ModelRuntime }) {
         completed.current = true;
         runtime.cameraZoomDone = true;
         state.invalidate();
+        // R3F renders after useFrame callbacks. Readiness is observable only
+        // after the final camera projection has reached the canvas.
+        readinessFrame.current = requestAnimationFrame(() => {
+          state.invalidate();
+          renderedReadinessFrame.current = requestAnimationFrame(() => {
+            runtime.onReady?.();
+          });
+        });
       }
       return;
     }
@@ -948,6 +1080,8 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
     onWaitingChange,
     onBackClick,
     onVideoClick,
+    onReady,
+    onChatRenderStateChange,
     onSwitcherDone,
     onSwitcherOpen,
     loginTitle,
@@ -967,7 +1101,7 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
     runtime.tryActive = tryActive;
     runtime.chatDirty = true;
     if (tryActive) {
-      runtime.stopMessageAnimation?.();
+      runtime.settleMessageAnimation?.();
     }
     runtime.invalidate?.();
   }, [runtime, tryActive]);
@@ -1018,6 +1152,14 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   }, [onVideoClick, runtime]);
 
   useEffect(() => {
+    runtime.onReady = onReady ?? null;
+  }, [onReady, runtime]);
+
+  useEffect(() => {
+    runtime.onChatRenderStateChange = onChatRenderStateChange ?? null;
+  }, [onChatRenderStateChange, runtime]);
+
+  useEffect(() => {
     runtime.onSwitcherOpen = onSwitcherOpen ?? null;
   }, [onSwitcherOpen, runtime]);
 
@@ -1038,8 +1180,8 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
     spin(direction: 1 | -1 = 1) {
       runtime.triggerSpin?.(direction);
     },
-    restartMessages() {
-      runtime.triggerRestartMessages?.();
+    restartMessages(platform?: string, resetDelayMs?: number) {
+      runtime.triggerRestartMessages?.(platform, resetDelayMs);
     },
     sendMessage(text: string) {
       runtime.triggerSendMessage?.(text);
@@ -1050,7 +1192,7 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   }));
 
   return (
-    <div className="fixed inset-0">
+    <div className="fixed inset-0" data-phone-scene>
       <Canvas
         camera={{ position: [0, 8, 0.6], fov: 45 }}
         dpr={[1, 1.5]}

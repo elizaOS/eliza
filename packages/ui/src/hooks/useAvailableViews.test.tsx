@@ -5,6 +5,8 @@
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerAppShellPage } from "../app-shell-registry";
+import { resetUiRegistryHostForTests } from "../registry-host";
 import { emitViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
 import { __resetResourceCache } from "./resource-cache";
@@ -58,6 +60,7 @@ function view(
 
 describe("useAvailableViews", () => {
   beforeEach(() => {
+    resetUiRegistryHostForTests();
     __resetResourceCache();
     client.getBaseUrl.mockReturnValue("");
     fetchWithCsrf.mockReset();
@@ -66,6 +69,7 @@ describe("useAvailableViews", () => {
   });
 
   afterEach(() => {
+    resetUiRegistryHostForTests();
     vi.clearAllTimers();
     vi.useRealTimers();
   });
@@ -146,11 +150,83 @@ describe("useAvailableViews", () => {
     expect(fetchWithCsrf).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the signed in-process page instead of remote JavaScript on Android", async () => {
+    getFrontendPlatform.mockReturnValue("android");
+    registerAppShellPage({
+      id: "calendar",
+      pluginId: "@elizaos/plugin-calendar",
+      label: "Calendar",
+      path: "/calendar",
+      surface: { header: "fullscreen" },
+      Component: () => null,
+    });
+    fetchWithCsrf.mockResolvedValueOnce(
+      response(200, {
+        views: [
+          view("calendar", {
+            path: "/calendar",
+            bundleUrl: "/api/views/calendar/bundle.js",
+          }),
+        ],
+      }),
+    );
+
+    const { result } = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const calendar = result.current.views.find(
+      (entry) => entry.id === "calendar",
+    );
+    expect(calendar).toEqual(
+      expect.objectContaining({
+        id: "calendar",
+        path: "/calendar",
+        pluginName: "@elizaos/plugin-calendar",
+      }),
+    );
+    expect(calendar?.bundleUrl).toBeUndefined();
+    expect(fetchWithCsrf).toHaveBeenCalledWith("/api/views", {
+      headers: { "X-Eliza-Platform": "android" },
+    });
+  });
+
+  it("keeps the runtime bundle authoritative on desktop", async () => {
+    getFrontendPlatform.mockReturnValue("desktop");
+    registerAppShellPage({
+      id: "calendar",
+      pluginId: "@elizaos/plugin-calendar",
+      label: "Calendar",
+      path: "/calendar",
+      Component: () => null,
+    });
+    fetchWithCsrf.mockResolvedValueOnce(
+      response(200, {
+        views: [
+          view("calendar", {
+            path: "/calendar",
+            bundleUrl: "/api/views/calendar/bundle.js",
+          }),
+        ],
+      }),
+    );
+
+    const { result } = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.views).toContainEqual(
+      expect.objectContaining({
+        id: "calendar",
+        bundleUrl: "/api/views/calendar/bundle.js",
+        pluginName: "test-plugin",
+      }),
+    );
+  });
+
   it("accepts the current view-capability transport contract", async () => {
     fetchWithCsrf.mockResolvedValueOnce(
       response(200, {
         views: [
-          view("birdclaw", {
+          view("cockpit", {
             capabilities: [
               {
                 id: "get-state",
@@ -168,7 +244,7 @@ describe("useAvailableViews", () => {
     expect(result.current.error).toBeNull();
     expect(result.current.views).toEqual([
       expect.objectContaining({
-        id: "birdclaw",
+        id: "cockpit",
         capabilities: [
           {
             id: "get-state",
@@ -310,6 +386,12 @@ describe("useAvailableViews", () => {
         builtin: true,
         visibleInManager: false,
         desktopTabEnabled: true,
+      }),
+    );
+    expect(routable.result.current.views).toContainEqual(
+      expect.objectContaining({
+        id: "my-apps",
+        icon: "Boxes",
       }),
     );
   });

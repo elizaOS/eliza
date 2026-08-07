@@ -204,7 +204,7 @@ export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
     description: "Discover and connect to nearby Bluetooth accessories",
     icon: "bluetooth",
     platforms: ["ios", "android"],
-    requiredForFeatures: ["facewear", "gateway"],
+    requiredForFeatures: ["gateway"],
   },
   {
     id: "app-blocking",

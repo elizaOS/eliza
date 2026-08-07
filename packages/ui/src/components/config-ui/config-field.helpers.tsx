@@ -271,7 +271,7 @@ function NumberFieldInner({ fp: props }: { fp: FieldRenderProps }) {
         )}
       </div>
       {hasRange && (
-        <div className="text-2xs text-muted mt-0.5 opacity-70">
+        <div className="text-2xs text-muted mt-0.5">
           {minVal != null && maxVal != null
             ? `Range: ${minVal}–${maxVal}${unit ? ` ${unit}` : ""}`
             : minVal != null
@@ -313,6 +313,7 @@ function BooleanFieldInner({ fp: props }: { fp: FieldRenderProps }) {
       data-field-type="boolean"
     >
       <Switch
+        aria-label={props.hint.label ?? props.key}
         checked={localVal}
         disabled={props.readonly}
         onCheckedChange={() => {
@@ -412,6 +413,7 @@ export function RenderSelectField(props: FieldRenderProps) {
       }}
     >
       <SelectTrigger
+        aria-label={props.hint.label ?? props.key}
         className={inputCls(!!props.errors?.length)}
         data-config-key={props.key}
         data-field-type="select"

@@ -245,7 +245,7 @@ export function MembersList({
                           type="button"
                           className="p-2 hover:bg-surface transition-colors border border-border"
                         >
-                          <UserMinus className="h-4 w-4 text-[#EB4335]" />
+                          <UserMinus className="h-4 w-4 text-danger" />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent className="bg-popover border border-brand-surface">
@@ -271,7 +271,7 @@ export function MembersList({
                           </AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => onRemove(member.id)}
-                            className="bg-[#EB4335] hover:bg-[#EB4335]/90 text-white"
+                            className="bg-danger hover:bg-danger/90 text-danger-fg"
                           >
                             {t("cloud.membersList.remove", {
                               defaultValue: "Remove",

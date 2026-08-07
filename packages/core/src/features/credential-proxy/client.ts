@@ -18,7 +18,6 @@
  *     (the proxy is trusted operator config and is commonly a private/localhost
  *     sidecar, so the default public-only policy would wrongly block it).
  *
- * @module features/credential-proxy/client
  */
 
 import { createHash, createHmac } from "node:crypto";

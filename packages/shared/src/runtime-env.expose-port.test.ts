@@ -4,13 +4,9 @@
  * table (with surrounding-whitespace tolerance) and the unset default of false.
  */
 import { describe, expect, it } from "vitest";
-import { API_EXPOSE_PORT_KEYS, resolveApiExposePort } from "./runtime-env";
+import { resolveApiExposePort } from "./runtime-env";
 
 describe("resolveApiExposePort", () => {
-  it("uses ELIZA_API_EXPOSE_PORT as its single key", () => {
-    expect(API_EXPOSE_PORT_KEYS).toEqual(["ELIZA_API_EXPOSE_PORT"]);
-  });
-
   it.each(["1", "true", "yes", "y", "on", "enabled", " true "])(
     "returns true for truthy value: %s",
     (value) => {

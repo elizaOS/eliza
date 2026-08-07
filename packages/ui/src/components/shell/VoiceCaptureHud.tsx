@@ -262,7 +262,7 @@ export function VoiceCaptureHud() {
               data-testid="voice-capture-hud-line"
               className="flex items-baseline gap-1 whitespace-nowrap tabular-nums"
             >
-              <span className="text-white/40">+{line.offsetMs}</span>
+              <span className="text-white/60">+{line.offsetMs}</span>
               <span className={line.bad ? "text-red-400" : "text-emerald-300"}>
                 {line.step}
               </span>

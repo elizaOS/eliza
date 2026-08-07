@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for benchmark preflight mjs. */
+/**
+ * Prepares the Python side of a benchmark run: validates that the venv path
+ * stays inside --workspace, resets it in cold mode, creates it with python3 -m
+ * venv, installs the API requirements, and can emit shell exports for the
+ * caller (--dry-run prints the plan).
+ */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";

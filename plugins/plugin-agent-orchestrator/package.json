@@ -76,7 +76,7 @@
     "@octokit/rest": "^22.0.0",
     "@smithers-orchestrator/engine": "0.29.0",
     "coding-agent-adapters": "0.16.3",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "0.45.2",
     "effect": "^3.21.1",
     "universal-user-agent": "^7.0.3",
     "@elizaos/auth": "workspace:*"
@@ -193,9 +193,8 @@
       },
       "ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE": {
         "type": "string",
-        "description": "Codex ACP sandbox_mode used when Linux Landlock is unavailable.",
+        "description": "Codex ACP sandbox_mode used when Linux Landlock is unavailable. Required for fail-closed no-Landlock fallback; no default (unset throws CODEX_NO_LANDLOCK_NO_FALLBACK).",
         "required": false,
-        "default": "danger-full-access",
         "sensitive": false
       },
       "ELIZA_CODEX_ACP_APPROVAL_POLICY": {

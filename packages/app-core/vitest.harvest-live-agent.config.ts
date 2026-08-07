@@ -24,7 +24,7 @@ export default {
     ...baseConfig.resolve,
     // The default config aliases only the main workspace packages to source.
     // The live-agent lanes also dynamically import first-party PLUGINS
-    // (@elizaos/plugin-birdclaw, …) whose dist is absent in a fresh worktree, so
+    // (@elizaos/plugin-gitpathologist, …) whose dist is absent in a fresh worktree, so
     // Vite must resolve them via each package's `eliza-source` export condition
     // (source .ts) instead of the default (dist). Kept first so source wins.
     conditions: [

@@ -68,9 +68,7 @@ export function ViewStatusFrame({
           </div>
           <div className="min-w-0 text-left">
             <div className="text-sm font-semibold">{title}</div>
-            {children ? (
-              <div className="mt-1 text-xs opacity-75">{children}</div>
-            ) : null}
+            {children ? <div className="mt-1 text-xs">{children}</div> : null}
           </div>
         </div>
         {actions ? (
@@ -160,7 +158,7 @@ export function ViewErrorState({
         })}
       </span>
       {error?.message ? (
-        <span className="mt-1 block break-words font-mono text-[10px] opacity-60">
+        <span className="mt-1 block break-words font-mono text-[10px]">
           {error.message}
         </span>
       ) : null}

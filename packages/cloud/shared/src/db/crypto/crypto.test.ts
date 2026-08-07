@@ -2,7 +2,7 @@
  * Unit tests for the cloud-shared crypto helpers.
  *
  * Uses the in-process MemoryKmsAdapter (auto-selected when NODE_ENV=test
- * by `createKmsClient()` from `@elizaos/security/kms`).
+ * by `createKmsClient()` from `@elizaos/core/security/kms`).
  */
 
 import { beforeEach, describe, expect, test } from "vitest";
