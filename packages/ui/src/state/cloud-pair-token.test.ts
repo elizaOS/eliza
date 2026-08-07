@@ -6,10 +6,10 @@
  * empty BOTH storages the write channel targets, or the boot adopter
  * re-adopts the dead credential on the next launch — and the agent-scoped
  * purge must destroy ONLY the proven agent's credentials, never unrelated
- * profiles. Per-agent keys (#17579) are cleared for the target agent only,
- * while the legacy global key is always cleared so a pre-#17579 bearer can
- * never be re-adopted by ANY agent after an explicit disconnect/sign-out.
- * jsdom + real storages; no network.
+ * profiles. Per-agent keys (#17579) are cleared for the target agent only.
+ * The legacy global key (unknown owner on a pre-migration install) is purged
+ * only by the GLOBAL clear — an agent-scoped clear must never destroy what
+ * may be another agent's only bearer. jsdom + real storages; no network.
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { cloudPairTokenKeyForAgent } from "../components/auth/CloudPairRelay";
@@ -87,10 +87,13 @@ describe("clearCloudPairApiToken", () => {
     sessionStorage.clear();
   });
 
-  it("removes the target agent's per-agent key AND the legacy global key from BOTH storages", () => {
+  it("removes ONLY the target agent's per-agent key from BOTH storages", () => {
     const agentKey = cloudPairTokenKeyForAgent("agent-a");
     localStorage.setItem(agentKey, "stale-key");
     sessionStorage.setItem(agentKey, "stale-key");
+    // The legacy key predates owner binding — on a pre-migration install it
+    // may hold a DIFFERENT agent's only bearer, so a scoped clear for agent-a
+    // must leave it alone.
     localStorage.setItem(LEGACY_KEY, "legacy-key");
     sessionStorage.setItem(LEGACY_KEY, "legacy-key");
     // Another agent's scoped key must survive an explicit sign-out for agent-a.
@@ -102,20 +105,26 @@ describe("clearCloudPairApiToken", () => {
 
     expect(localStorage.getItem(agentKey)).toBeNull();
     expect(sessionStorage.getItem(agentKey)).toBeNull();
-    expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
-    expect(sessionStorage.getItem(LEGACY_KEY)).toBeNull();
+    expect(localStorage.getItem(LEGACY_KEY)).toBe("legacy-key");
+    expect(sessionStorage.getItem(LEGACY_KEY)).toBe("legacy-key");
     expect(localStorage.getItem(otherAgentKey)).toBe("keep-agent-b");
     expect(localStorage.getItem("eliza:unrelated")).toBe("keep-me");
   });
 
-  it("clears the legacy global key even without a target agent id", () => {
+  it("clears every scoped key AND the legacy global key on a global clear", () => {
     localStorage.setItem(LEGACY_KEY, "legacy-key");
     sessionStorage.setItem(LEGACY_KEY, "legacy-key");
+    const agentAKey = cloudPairTokenKeyForAgent("agent-a");
+    const agentBKey = cloudPairTokenKeyForAgent("agent-b");
+    localStorage.setItem(agentAKey, "key-a");
+    sessionStorage.setItem(agentBKey, "key-b");
 
     clearCloudPairApiToken();
 
     expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
     expect(sessionStorage.getItem(LEGACY_KEY)).toBeNull();
+    expect(localStorage.getItem(agentAKey)).toBeNull();
+    expect(sessionStorage.getItem(agentBKey)).toBeNull();
   });
 
   it("is a safe no-op when the key is absent", () => {
@@ -153,7 +162,9 @@ describe("clearStalePairCredentialsForAgent", () => {
 
     expect(localStorage.getItem(agentKey)).toBeNull();
     expect(sessionStorage.getItem(agentKey)).toBeNull();
-    expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
+    // The legacy key has no owner binding, so an agent-scoped purge leaves it
+    // for the global disconnect/sign-out path to clear.
+    expect(localStorage.getItem(LEGACY_KEY)).toBe("legacy-bearer");
     const active = JSON.parse(
       localStorage.getItem(ACTIVE_SERVER_KEY) ?? "{}",
     ) as { accessToken?: string; apiBase?: string };

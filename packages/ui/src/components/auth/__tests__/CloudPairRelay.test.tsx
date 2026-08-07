@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_BOOT_CONFIG,
@@ -281,9 +281,16 @@ describe("CloudPairRelay", () => {
     );
   });
 
-  it("pairs, stores the returned API key, and redirects without showing LoginView", async () => {
+  it("falls back to a visible session-only install when no owning agent resolves", async () => {
+    // The jsdom default origin is NOT a dedicated agent base and no boot
+    // apiBase overrides it, so the relay cannot resolve an owner. The one-time
+    // pair token is already spent, so the exchanged bearer must be installed
+    // for the live session (in-memory only — never a durable unscoped write)
+    // and the user must see a visibly distinct session-only state, never a
+    // plain success.
     const onPaired = vi.fn();
     const persistFn = vi.fn();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     render(
       <CloudPairRelay
@@ -298,13 +305,25 @@ describe("CloudPairRelay", () => {
     expect(screen.queryByText("Display name")).toBeNull();
     expect(screen.queryByText("Password")).toBeNull();
 
-    await waitFor(() => expect(onPaired).toHaveBeenCalledOnce());
-    // A dedicated origin (the jsdom default origin is NOT a dedicated agent
-    // base and no boot apiBase overrides it) cannot resolve an owning agent, so
-    // the relay must NOT persist an unscoped/empty-owner credential — it no-ops
-    // and defers to onPaired rather than hard-throwing after the one-time token
-    // was already consumed.
+    await screen.findByText("Signed in for this session only");
+    // The durable writer must never run without a proven owner, and the relay
+    // must not auto-redirect as if pairing fully succeeded.
     expect(persistFn).not.toHaveBeenCalled();
+    expect(onPaired).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+
+    // The bearer is live for THIS page session…
+    expect(getElizaApiToken()).toBe("agent-key");
+    expect(getBootConfig().apiToken).toBe("agent-key");
+    // …but nothing was stamped into storage.
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+
+    // The user continues explicitly, not via a silent success redirect.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue to your agent" }),
+    );
+    expect(onPaired).toHaveBeenCalledOnce();
   });
 
   it("resolves the owning agent from the boot apiBase when served from a non-dedicated origin, and persists for real (default persistFn)", async () => {

@@ -200,6 +200,29 @@ function tryPersistBrowserStorage(
 }
 
 /**
+ * Install the exchanged cloud-pair bearer for the LIVE page session only:
+ * boot config, the global API token, the boot-config global, and the
+ * steward-token-sync broadcast. No storage is written, so nothing survives a
+ * reload. This is the fallback for a pairing whose owning agent cannot be
+ * resolved — the one-time pair token is already spent, so the bearer must not
+ * be dropped, but an unowned credential must never be stamped durably.
+ */
+export function installCloudPairApiTokenForSession(apiToken: string): void {
+  const token = apiToken.trim();
+  if (!token) throw new Error("Missing cloud pair API token.");
+
+  const nextConfig = { ...getBootConfig(), apiToken: token };
+  setBootConfig(nextConfig);
+  setElizaApiToken(token);
+  (globalThis as Record<string, unknown>).__ELIZA_APP_BOOT_CONFIG__ =
+    nextConfig;
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("steward-token-sync"));
+  }
+}
+
+/**
  * Persist the durable cloud-pair API token scoped to its owning agent.
  *
  * The token is written under the per-agent key (`eliza:cloud-pair:api-token:
@@ -233,11 +256,7 @@ export function persistCloudPairApiToken(
     token,
   );
 
-  const nextConfig = { ...getBootConfig(), apiToken: token };
-  setBootConfig(nextConfig);
-  setElizaApiToken(token);
-  (globalThis as Record<string, unknown>).__ELIZA_APP_BOOT_CONFIG__ =
-    nextConfig;
+  installCloudPairApiTokenForSession(token);
 
   if (persistedInSession || persistedDurably) {
     // Legacy single-key format is now superseded by the per-agent key. Only
@@ -254,10 +273,6 @@ export function persistCloudPairApiToken(
         // authority now.
       }
     }
-  }
-
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("steward-token-sync"));
   }
 
   if (!(persistedInSession || persistedDurably)) {
@@ -298,6 +313,7 @@ export function resolveCloudHostedAgentUrl(
 
 type CloudPairStatus =
   | { phase: "pairing" }
+  | { phase: "session-only" }
   | { phase: "error"; title: string; message: string };
 
 export type CloudPairExchangeFn = (
@@ -486,17 +502,22 @@ export function CloudPairRelay({
           : null;
         if (owner) {
           persistFn(apiToken, owner);
-        } else {
-          // A pairing target that cannot be resolved to a dedicated cloud
-          // agent is not one we may stamp or mirror the credential onto.
-          // Best-effort degrade WITHOUT consuming-throwing: the one-time
-          // token is already spent, so fail soft and let onPaired proceed.
-          console.warn(
-            "Cloud pair exchange succeeded but no owning agent could be " +
-              "resolved from origin or boot base; credential not persisted.",
-          );
+          onPaired();
+          return;
         }
-        onPaired();
+        // A pairing target that cannot be resolved to a dedicated cloud
+        // agent is not one we may stamp or mirror the credential durably.
+        // The one-time token is already spent, so the exchanged bearer is
+        // installed for THIS page session only (no storage write) and the
+        // user sees a visibly distinct session-only state — never a plain
+        // success that silently dropped the credential.
+        console.warn(
+          "Cloud pair exchange succeeded but no owning agent could be " +
+            "resolved from origin or boot base; credential installed for " +
+            "this session only, not persisted.",
+        );
+        installCloudPairApiTokenForSession(apiToken);
+        setStatus({ phase: "session-only" });
       })
       .catch((error) => {
         if (!active || controller.signal.aborted) return;
@@ -509,7 +530,20 @@ export function CloudPairRelay({
     };
   }, [exchangeFn, onPaired, persistFn, token]);
 
-  const isPairing = status.phase === "pairing";
+  const title =
+    status.phase === "pairing"
+      ? "Signing in to your agent"
+      : status.phase === "session-only"
+        ? "Signed in for this session only"
+        : status.title;
+  const message =
+    status.phase === "pairing"
+      ? "This tab will continue automatically."
+      : status.phase === "session-only"
+        ? "This device could not identify the agent that owns this sign-in, " +
+          "so it was not saved. You are signed in for this tab only and will " +
+          "need a fresh sign-in link from Eliza Cloud next time."
+        : status.message;
   return (
     // Scroll instead of clipping on short viewports (Light Phone III, 1080×1240):
     // `overflow-y-auto` + the inner block's `my-auto` centers when it fits and
@@ -518,12 +552,22 @@ export function CloudPairRelay({
       <div className="my-auto w-full max-w-[24rem]">
         <div className="mx-auto mb-6 h-2 w-2 rotate-45 bg-[#f3a51f]" />
         <p className="mb-4 text-sm font-semibold text-white/45">Eliza</p>
-        <h1 className="text-2xl font-semibold text-white">
-          {isPairing ? "Signing in to your agent" : status.title}
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-white/60">
-          {isPairing ? "This tab will continue automatically." : status.message}
+        <h1 className="text-2xl font-semibold text-white">{title}</h1>
+        <p
+          className="mt-3 text-sm leading-6 text-white/60"
+          role={status.phase === "session-only" ? "status" : undefined}
+        >
+          {message}
         </p>
+        {status.phase === "session-only" ? (
+          <button
+            className="mt-7 inline-flex min-h-11 items-center justify-center rounded-md bg-[#f3a51f] px-5 text-sm font-semibold text-[#101010] transition hover:bg-[#c97710]"
+            onClick={() => onPaired()}
+            type="button"
+          >
+            Continue to your agent
+          </button>
+        ) : null}
       </div>
     </main>
   );
