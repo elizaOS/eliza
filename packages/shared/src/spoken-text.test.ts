@@ -51,5 +51,27 @@ describe("sanitizeSpeechText", () => {
   it("rewrites I am to I'm so Kokoro/espeak does not say yam", () => {
     expect(sanitizeSpeechText("I am ready.")).toBe("I'm ready.");
     expect(sanitizeSpeechText("Yes, I am here.")).toBe("Yes, I'm here.");
+    expect(sanitizeSpeechText("I am Eliza.")).toBe("I'm Eliza.");
+    expect(sanitizeSpeechText("I am not sure.")).toBe("I'm not sure.");
+  });
+
+  it("leaves a stranded am expanded — English cannot contract it", () => {
+    expect(sanitizeSpeechText("Yes, I am.")).toBe("Yes, I am.");
+    expect(sanitizeSpeechText("Here I am!")).toBe("Here I am!");
+    expect(sanitizeSpeechText("That is who I am.")).toBe("That is who I am.");
+    expect(sanitizeSpeechText("Tell me who I am and I am done.")).toBe(
+      "Tell me who I am and I'm done.",
+    );
+  });
+
+  it("preserves casing instead of collapsing emphasis to I'm", () => {
+    expect(sanitizeSpeechText("I AM READY")).toBe("I AM READY");
+    expect(sanitizeSpeechText("yes i am ready")).toBe("yes i am ready");
+  });
+
+  it("does not contract across a following clause boundary", () => {
+    expect(sanitizeSpeechText("I am, however, ready.")).toBe(
+      "I am, however, ready.",
+    );
   });
 });

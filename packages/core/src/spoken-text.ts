@@ -67,10 +67,21 @@ function sanitizeSpeechPunctuation(input: string): string {
 
 /**
  * Lexical tweaks for TTS engines that mis-phonemize common English.
- * Kokoro/espeak-ng often renders "I am" as /jæm/ ("yam").
+ * Kokoro/espeak-ng often renders "I am" as /jæm/ ("yam"), so contract it — but
+ * English cannot contract a stranded `am`. "Yes, I am." and "who I am and ..."
+ * must stay expanded, so only contract when a predicate complement follows:
+ * whitespace, then something that is neither punctuation nor a coordinating
+ * conjunction. The match is case-sensitive so "I AM" keeps its emphasis casing
+ * instead of collapsing to "I'm".
+ *
+ * Kept byte-identical in behaviour with the `@elizaos/shared` copy; core cannot
+ * import shared (the dependency runs the other way).
  */
+const CONTRACTIBLE_I_AM =
+	/\bI am\b(?=\s+(?!and\b|or\b|but\b|nor\b|yet\b)[^\s.,;:!?—–-])/g;
+
 function fixSpeechPronunciations(input: string): string {
-	return input.replace(/\bI am\b/gi, "I'm");
+	return input.replace(CONTRACTIBLE_I_AM, "I'm");
 }
 
 export function sanitizeSpeechText(input: string): string {
