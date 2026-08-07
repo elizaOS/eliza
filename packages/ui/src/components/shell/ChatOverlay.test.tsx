@@ -2331,9 +2331,8 @@ describe("ChatOverlay", () => {
   });
 
   it("returns to the launcher from the chat-actions menu", () => {
-    const onNavigate = vi.fn();
-    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
-    render(<ChatOverlay controller={makeController()} />);
+    const navigateHome = vi.fn();
+    render(<ChatOverlay controller={makeController({ navigateHome })} />);
 
     const plus = screen.getByTestId("chat-composer-plus");
     fireEvent.pointerDown(plus, {
@@ -2348,14 +2347,7 @@ describe("ChatOverlay", () => {
     });
     fireEvent.click(screen.getByText("Back to Home"));
 
-    expect(onNavigate).toHaveBeenCalledTimes(1);
-    expect((onNavigate.mock.calls[0][0] as CustomEvent).detail).toEqual({
-      viewId: "views",
-      viewPath: "/views",
-      viewLabel: "Home",
-      source: "user",
-    });
-    window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    expect(navigateHome).toHaveBeenCalledTimes(1);
   });
 
   it.each(["half", "full"] as const)(
