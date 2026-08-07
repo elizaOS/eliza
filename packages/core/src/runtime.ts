@@ -385,10 +385,89 @@ interface CachedProviderResult extends ProviderResult {
 
 interface InFlightProviderExecution {
 	promise: Promise<ProviderResult>;
+	// The execution owns its abort authority: callers race the shared promise
+	// against their OWN turn signal and this controller fires only when the
+	// last interested caller has aborted. Wiring the work directly to the
+	// first caller's signal would swallow a later coalesced waiter's "stop"
+	// entirely, and push the first caller's abort reason into turns that never
+	// requested it.
+	controller: AbortController;
+	// Every consumer of this execution MUST attach through awaitProviderExecution
+	// rather than awaiting `promise` directly: an uncounted caller would not
+	// register as a waiter, so the accounting below could abort the shared
+	// work out from under it.
+	waiters: number;
 	startedAt: number;
 	startedAtMonotonic: number;
 	timeoutMs?: number;
 	timeoutMode: "fail" | "degrade";
+}
+
+// Per-waiter cancellation boundary for a (possibly coalesced) provider
+// execution. Each caller observes its own signal: an aborting waiter rejects
+// immediately with ITS reason while the shared work keeps running for the
+// remaining callers, and the shared work is aborted exactly when the caller
+// count drops to zero — so a lone caller's abort still reaches the provider.
+//
+// EVERY attached caller counts toward `waiters`, including callers with no
+// signal (composeState outside any turn or streaming context — signalFor and
+// getStreamingContext are both legitimately undefined there). The abort
+// condition reads `waiters` as "is anyone still interested", so exempting
+// signal-less callers would let a cancelling waiter abort work an uncounted
+// caller is still awaiting.
+//
+// `evict` removes the in-flight map entry for this execution. It must run
+// SYNCHRONOUSLY, immediately before `controller.abort()`, rather than being
+// left to the `promise.then(cleanup, cleanup)` at the call site: that cleanup
+// only fires once the shared promise finishes unwinding through
+// withProviderDeadline/withProviderStep, a microtask or more after the
+// synchronous abort. A composeState call landing in that window would
+// otherwise `get()` the dying execution and inherit an abort reason it never
+// asked for. Evicting here makes the entry unreachable at the moment it stops
+// being viable instead of when its promise settles.
+function awaitProviderExecution(
+	execution: InFlightProviderExecution,
+	signal: AbortSignal | undefined,
+	evict: () => void,
+): Promise<ProviderResult> {
+	execution.waiters += 1;
+	let released = false;
+	const release = () => {
+		if (released) return false;
+		released = true;
+		execution.waiters -= 1;
+		return true;
+	};
+	if (!signal) {
+		return execution.promise.finally(release);
+	}
+	return new Promise<ProviderResult>((resolve, reject) => {
+		const settle = <V>(handler: (value: V) => void) => {
+			return (value: V) => {
+				if (!release()) return;
+				signal.removeEventListener("abort", onAbort);
+				handler(value);
+			};
+		};
+		const onAbort = settle(() => {
+			if (execution.waiters === 0) {
+				evict();
+				execution.controller.abort(signal.reason);
+			}
+			reject(signal.reason ?? new Error("Provider execution aborted"));
+		});
+		// Attach the settle handlers to `execution.promise` BEFORE checking
+		// `signal.aborted`: an already-aborted caller still needs a rejection
+		// handler wired up, or the shared promise's eventual rejection (driven
+		// by the `controller.abort()` below) goes unhandled and crashes the
+		// process under Node's default unhandled-rejection behavior.
+		execution.promise.then(settle(resolve), settle(reject));
+		if (signal.aborted) {
+			onAbort(undefined);
+			return;
+		}
+		signal.addEventListener("abort", onAbort, { once: true });
+	});
 }
 
 export function calculateProviderOverlaps(
@@ -2623,6 +2702,13 @@ export class AgentRuntime implements IAgentRuntime {
 		this.eventHandlers.clear();
 		this.events = {};
 		this.stateCache.clear();
+		// Abort before dropping the map. Each execution owns the only handle to
+		// its provider work — no caller retains the controller — so clearing
+		// alone would strand in-flight provider calls past teardown with nothing
+		// left able to cancel them.
+		for (const execution of this.providerExecutionsInFlight.values()) {
+			execution.controller.abort(new Error("Runtime stopped"));
+		}
 		this.providerExecutionsInFlight.clear();
 		this.roomReadMemo.invalidate();
 		this.roomMessagesMemo.invalidate();
@@ -4796,6 +4882,11 @@ export class AgentRuntime implements IAgentRuntime {
 					const timeoutMode = provider.timeoutMode ?? "fail";
 					const startedAt = Date.now();
 					const startedAtMonotonic = performance.now();
+					// The work is deliberately NOT wired to this caller's signal:
+					// coalesced waiters each race the shared promise against their own
+					// signal in awaitProviderExecution, and the dedicated controller
+					// aborts the provider only when no interested caller remains.
+					const workController = new AbortController();
 					const promise = withProviderDeadline(
 						(signal) =>
 							withProviderStep(providerRuntime, provider.name, () =>
@@ -4805,10 +4896,12 @@ export class AgentRuntime implements IAgentRuntime {
 							),
 						providerBudgetMs,
 						provider.name,
-						providerSignal,
+						workController.signal,
 					);
 					execution = {
 						promise,
+						controller: workController,
+						waiters: 0,
 						startedAt,
 						startedAtMonotonic,
 						timeoutMs: providerBudgetMs,
@@ -4816,18 +4909,38 @@ export class AgentRuntime implements IAgentRuntime {
 					};
 					if (inFlightKey !== null) {
 						this.providerExecutionsInFlight.set(inFlightKey, execution);
-						const cleanup = () => {
-							if (
-								this.providerExecutionsInFlight.get(inFlightKey) === execution
-							) {
-								this.providerExecutionsInFlight.delete(inFlightKey);
-							}
-						};
-						void promise.then(cleanup, cleanup);
 					}
 				}
+				// Hoisted so BOTH the owner path (the `execution` just created
+				// above) and the coalesced path (the `execution` fetched from the
+				// map before this `if`) can evict the SAME map entry the moment it
+				// stops being viable, rather than waiting for `promise` to unwind.
+				// Identity-checked against the specific execution this call
+				// attached to, so a later execution occupying the same key is
+				// never evicted by a stale caller; idempotent so calling it
+				// synchronously from awaitProviderExecution's abort path AND again
+				// from `promise.then(evict, evict)` below is harmless.
+				const attachedExecution = execution;
+				const evict =
+					inFlightKey !== null
+						? () => {
+								if (
+									this.providerExecutionsInFlight.get(inFlightKey) ===
+									attachedExecution
+								) {
+									this.providerExecutionsInFlight.delete(inFlightKey);
+								}
+							}
+						: () => {};
+				if (!providerCoalesced && inFlightKey !== null) {
+					void attachedExecution.promise.then(evict, evict);
+				}
 				try {
-					const result = await execution.promise;
+					const result = await awaitProviderExecution(
+						execution,
+						providerSignal,
+						evict,
+					);
 					const endedAt = Date.now();
 					const duration = performance.now() - execution.startedAtMonotonic;
 					recordInferenceSpan(`provider:${provider.name}`, duration, {
