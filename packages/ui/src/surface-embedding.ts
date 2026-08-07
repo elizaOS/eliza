@@ -3,7 +3,8 @@
  * web-content embedding its page actually renders into, per host platform — the
  * enforcement half of the isolation catalogue (#14181, parent #13452). The
  * catalogue in `surface-isolation.ts` *documents* that `native-webview` views
- * embed a native child web-content surface with its own renderer process; this
+ * embed a native child web-content surface with the strongest platform renderer
+ * boundary; this
  * module is what makes that documentation authoritative: the Browser view's tab
  * renderer reads the resolved manifest through {@link resolveBrowserTabRenderPath}
  * and hands out a native child surface ONLY when the manifest declares
@@ -15,7 +16,7 @@
  * storage, and a crash/heavy-load in it must not reach the shell. On desktop
  * that separation is a real, distinct renderer process (the Electron/Electrobun
  * `WebContentsView` / CEF OOPIF the Browser view already mounts); on a native
- * mobile shell it is a layered native web surface in its own renderer process;
+ * mobile shell it is a layered native web surface outside the host renderer;
  * this resolver is the single decision point that selects the right one.
  *
  * Consumer: `packages/ui/src/components/pages/BrowserWorkspaceView.tsx` (the tab
@@ -42,8 +43,9 @@ import type { BrowserWorkspaceMode } from "./api/browser-contracts";
  *    resolved manifest declares `native-webview` on the desktop shell.
  *  - `native-mobile-webview` — a native mobile child web surface: an iOS
  *    `WKWebView` on its own `WKProcessPool` + non-persistent data store, or an
- *    Android out-of-process `WebView` with its own storage profile. Same
- *    separate-process isolation as desktop, for the Capacitor mobile shell.
+ *    Android out-of-app `WebView` with its own storage profile. Android may
+ *    reuse its sandboxed renderer across sibling WebViews, while still keeping
+ *    it outside the app/host process.
  *    Selected only when the resolved manifest declares `native-webview` and the
  *    host is a native mobile shell.
  *  - `sandboxed-iframe` — a sandboxed in-realm `<iframe>` (a plain web host has
@@ -65,9 +67,9 @@ export type BrowserTabRenderPath =
  * browser, which reports `mode: "web"` too, so it cannot be inferred from mode
  * alone; the caller passes it explicitly).
  *
- * The one enforced invariant (#14181/#15245): the two separate-renderer-process
- * paths — `native-child-webview` (desktop) and `native-mobile-webview` (native
- * mobile shell) — are returned **iff** the manifest declares
+ * The one enforced invariant (#14181/#15245): the two native-child paths —
+ * `native-child-webview` (desktop) and `native-mobile-webview` (native mobile
+ * shell) — are returned **iff** the manifest declares
  * `isolation: "native-webview"` AND the host can actually host a native child
  * surface. Any other isolation level, on any host, can never resolve to either
  * native path: it degrades to the in-realm sandboxed iframe (or the cloud
