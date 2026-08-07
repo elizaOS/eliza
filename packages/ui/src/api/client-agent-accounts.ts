@@ -9,8 +9,8 @@ import type {
   LinkedAccountProviderId,
   ServiceRouteAccountStrategy,
 } from "@elizaos/shared";
-import { ElizaClient } from "./client-base";
 import { parseAccountsListResponse } from "./client-agent-accounts-validator";
+import { ElizaClient } from "./client-base";
 
 export type AccountStrategy = ServiceRouteAccountStrategy;
 

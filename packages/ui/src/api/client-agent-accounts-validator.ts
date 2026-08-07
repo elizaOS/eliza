@@ -5,13 +5,13 @@
  * provider and linked-account fields are required and must fail closed.
  */
 
+import { ElizaError } from "@elizaos/core";
 import {
   LINKED_ACCOUNT_ACCOUNT_SOURCES,
   LINKED_ACCOUNT_HEALTH_STATES,
   LINKED_ACCOUNT_PROVIDER_IDS,
   SERVICE_ROUTE_ACCOUNT_STRATEGIES,
-} from "@elizaos/contracts";
-import { ElizaError } from "@elizaos/core";
+} from "@elizaos/core/contracts/service-routing-types";
 import type { AccountsListResponse } from "./client-agent";
 
 /** Stable classification for malformed account inventory responses. */
