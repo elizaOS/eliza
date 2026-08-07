@@ -137,7 +137,10 @@ describe("runAgentSessionRecovery", () => {
       agentId: "23766030-0000-0000-0000-000000000000",
       expectedOrigin: "https://agent.elizacloud.ai",
     });
-    expect(persistPairApiToken).toHaveBeenCalledWith("agent-api-key");
+    expect(persistPairApiToken).toHaveBeenCalledWith(
+      "agent-api-key",
+      "23766030-0000-0000-0000-000000000000",
+    );
     expect(onPairedInProcess).toHaveBeenCalledWith("agent-api-key");
   });
 

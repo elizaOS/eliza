@@ -4,7 +4,13 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_BOOT_CONFIG,
@@ -21,6 +27,7 @@ import {
   CloudHostedAgentAuthNotice,
   CloudPairExchangeError,
   CloudPairRelay,
+  cloudPairTokenKeyForAgent,
   exchangeAuthenticatedNativeCloudPairToken,
   exchangeCloudPairToken,
   getCloudPairTokenFromLocation,
@@ -203,29 +210,99 @@ describe("CloudPairRelay", () => {
     });
   });
 
-  it("persists the paired API key into the app token channels", () => {
-    persistCloudPairApiToken(" agent-key ");
+  it("persists the paired API key into the per-agent storage keys", () => {
+    persistCloudPairApiToken(" agent-key ", "agent-123");
 
     expect(getBootConfig().apiToken).toBe("agent-key");
     expect(getElizaApiToken()).toBe("agent-key");
+    expect(
+      window.sessionStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
+    ).toBe("agent-key");
+    expect(
+      window.localStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
+    ).toBe("agent-key");
+    // The legacy global key is migrated away once the scoped write lands.
     expect(window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY)).toBe(
-      "agent-key",
+      null,
     );
     expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
-      "agent-key",
+      null,
     );
     expect(
       (globalThis as Record<string, unknown>).__ELIZA_APP_BOOT_CONFIG__,
     ).toEqual(expect.objectContaining({ apiToken: "agent-key" }));
   });
 
-  it("pairs, stores the returned API key, and redirects without showing LoginView", async () => {
+  it("refuses to persist a token without an owning agent id", () => {
+    expect(() => persistCloudPairApiToken("agent-key", "  ")).toThrow(
+      /owner agent id/,
+    );
+  });
+
+  it("keeps a legacy global token when BOTH scoped writes fail", () => {
+    window.localStorage.setItem(CLOUD_PAIR_LOCAL_STORAGE_KEY, "legacy-key");
+    window.sessionStorage.setItem(CLOUD_PAIR_SESSION_STORAGE_KEY, "legacy-key");
+    // jsdom's Storage getters hand back a fresh proxy per access, so spying on
+    // `setItem` never intercepts the write. Replace the getters with failing
+    // storages for the duration of the call instead.
+    const realLocal = window.localStorage;
+    const realSession = window.sessionStorage;
+    const failingStorage = () => ({
+      setItem: () => {
+        throw new Error("quota exceeded");
+      },
+      getItem: () => null,
+      removeItem: () => {
+        /* no-op */
+      },
+    });
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get: failingStorage,
+    });
+    Object.defineProperty(window, "sessionStorage", {
+      configurable: true,
+      get: failingStorage,
+    });
+
+    try {
+      // Neither storage channel accepted the write, so persistence fails
+      // loudly (pre-existing contract) and the legacy key is never touched.
+      expect(() => persistCloudPairApiToken("agent-key", "agent-123")).toThrow(
+        /could not be stored/,
+      );
+    } finally {
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        get: () => realLocal,
+      });
+      Object.defineProperty(window, "sessionStorage", {
+        configurable: true,
+        get: () => realSession,
+      });
+    }
+    // Legacy key survives because no scoped write landed.
+    expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
+      "legacy-key",
+    );
+  });
+
+  it("falls back to a visible session-only install when no owning agent resolves", async () => {
+    // The jsdom default origin is NOT a dedicated agent base and no boot
+    // apiBase overrides it, so the relay cannot resolve an owner. The one-time
+    // pair token is already spent, so the exchanged bearer must be installed
+    // for the live session (in-memory only — never a durable unscoped write)
+    // and the user must see a visibly distinct session-only state, never a
+    // plain success.
     const onPaired = vi.fn();
+    const persistFn = vi.fn();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     render(
       <CloudPairRelay
         token="pair-token"
         exchangeFn={vi.fn(async () => "agent-key")}
+        persistFn={persistFn}
         onPaired={onPaired}
       />,
     );
@@ -234,14 +311,66 @@ describe("CloudPairRelay", () => {
     expect(screen.queryByText("Display name")).toBeNull();
     expect(screen.queryByText("Password")).toBeNull();
 
-    await waitFor(() => expect(onPaired).toHaveBeenCalledOnce());
+    await screen.findByText("Signed in for this session only");
+    // The durable writer must never run without a proven owner, and the relay
+    // must not auto-redirect as if pairing fully succeeded.
+    expect(persistFn).not.toHaveBeenCalled();
+    expect(onPaired).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+
+    // The bearer is live for THIS page session…
+    expect(getElizaApiToken()).toBe("agent-key");
     expect(getBootConfig().apiToken).toBe("agent-key");
-    expect(window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY)).toBe(
-      "agent-key",
+    // …but nothing was stamped into storage.
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+
+    // The user continues explicitly, not via a silent success redirect.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue to your agent" }),
     );
-    expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
-      "agent-key",
+    expect(onPaired).toHaveBeenCalledOnce();
+  });
+
+  it("resolves the owning agent from the boot apiBase when served from a non-dedicated origin, and persists for real (default persistFn)", async () => {
+    // The writer must mirror the boot adopter's resolution (main.tsx): an app
+    // served from a non-dedicated origin that targets a dedicated agent via the
+    // boot apiBase still persists the token under the per-agent key (#17579).
+    const onPaired = vi.fn();
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      apiBase: "https://agent-123.elizacloud.ai",
+    });
+
+    expect(
+      window.localStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
+    ).toBeNull();
+    expect(
+      window.sessionStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
+    ).toBeNull();
+
+    // Render with the DEFAULT persistFn so this exercises the real storage path
+    // (localStorage + sessionStorage), not a mock.
+    render(
+      <CloudPairRelay
+        token="pair-token"
+        exchangeFn={vi.fn(async () => "agent-key")}
+        onPaired={onPaired}
+      />,
     );
+
+    await waitFor(() => expect(onPaired).toHaveBeenCalledOnce());
+
+    const scoped = cloudPairTokenKeyForAgent("agent-123");
+    expect(window.localStorage.getItem(scoped)).toBe("agent-key");
+    expect(window.sessionStorage.getItem(scoped)).toBe("agent-key");
+    // Legacy global key is superseded and removed once the scoped write lands.
+    expect(
+      window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY),
+    ).toBeNull();
+    expect(
+      window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY),
+    ).toBeNull();
   });
 
   it("shows a clean Cloud-pair error instead of the local password form", async () => {
