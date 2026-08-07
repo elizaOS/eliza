@@ -31,6 +31,7 @@ process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS ||= "1";
+process.env.CACHE_ENABLED = "true";
 
 // Stub the non-billing fire-and-forget side-effects the deduct success path kicks
 // off — NOT the code under test. The deduct + guard SQL runs real against PGlite.
