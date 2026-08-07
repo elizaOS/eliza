@@ -1,3 +1,4 @@
+import path from "node:path";
 import { CapabilityError, type IAgentRuntime, type UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -384,7 +385,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
     expect(config.provider).toBe("e2b");
     expect(config.apiKey).toBe("key");
     expect(config.workdir).toBe("/work");
-    expect(config.hostWorkspaceRoot).toBe("/repo");
+    expect(config.hostWorkspaceRoot).toBe(path.resolve("/repo"));
   });
 
   it("resolves Eliza Cloud runner settings", () => {

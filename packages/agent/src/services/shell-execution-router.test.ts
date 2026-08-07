@@ -53,9 +53,12 @@ describe("runShell", () => {
   });
 
   it("local-yolo runs commands on the host", async () => {
+    // process.execPath instead of /bin/sh: this test needs a real, unmocked
+    // process to actually run, and /bin/sh doesn't exist on Windows. The
+    // current runtime executable is available on every platform.
     const result = await runShell({
-      command: "/bin/sh",
-      args: ["-c", "printf hello"],
+      command: process.execPath,
+      args: ["-e", "process.stdout.write('hello')"],
       toolName: "test:host",
       timeoutMs: 5_000,
     });
@@ -67,8 +70,8 @@ describe("runShell", () => {
 
   it("local-yolo defaults to local-yolo when no mode is set", async () => {
     const result = await runShell({
-      command: "/bin/sh",
-      args: ["-c", "echo hello"],
+      command: process.execPath,
+      args: ["-e", "process.stdout.write('hello\\n')"],
       toolName: "test:default",
       timeoutMs: 5_000,
     });

@@ -1,5 +1,11 @@
 import { isSafeExecutableValue } from "@elizaos/shared";
-import { z } from "zod";
+// Default import, not `import { z } from "zod"`: under this package's vitest
+// config, Bun's static CJS-named-export detection for zod's `z` export is
+// unreliable for some import graphs (confirmed: named import resolves to
+// undefined while every other zod export resolves fine). zod's default
+// export is the same `z` namespace object, and default-export interop does
+// not depend on that static named-export scan, so it resolves consistently.
+import z from "zod";
 import {
   DEFAULT_MODEL_CONTEXT_WINDOW,
   DEFAULT_MODEL_MAX_TOKENS,
