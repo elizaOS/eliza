@@ -38,12 +38,12 @@ import { DiscordIcon } from "../../../../cloud-ui/components/icons";
 import { Alert, AlertDescription } from "../../../../components/primitives";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
-import { isCloudAuthHandoffSurface } from "../../../auth/cloud-auth-complete-signal";
 import {
   canNavigateSameTabForBlockedPopup,
   preOpenCloudLoginWindow,
 } from "../../../../state/cloud-login-launch";
 import { navigatePreOpenedWindow } from "../../../../utils/openExternalUrl";
+import { isCloudAuthHandoffSurface } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
@@ -782,9 +782,7 @@ export default function StewardLoginSection() {
     // Popup name matches CLOUD_LOGIN_POPUP_NAME ("eliza-cloud-auth") — keep
     // the default argument so partial mocks of cloud-login-launch still work.
     const alreadyHandoffSurface = isCloudAuthHandoffSurface();
-    const authWindow = alreadyHandoffSurface
-      ? null
-      : preOpenCloudLoginWindow();
+    const authWindow = alreadyHandoffSurface ? null : preOpenCloudLoginWindow();
     setLoading(provider);
     setError(null);
     const host = window.location.hostname.toLowerCase();

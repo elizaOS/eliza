@@ -8,11 +8,11 @@ import { AlertCircle, CheckCircle2, Key, Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "../../../../components/primitives";
 import {
   publishCloudAuthComplete,
   subscribeCloudAuthComplete,
 } from "../../../auth/cloud-auth-complete-signal";
-import { Button } from "../../../../components/primitives";
 import { ApiError, apiFetch } from "../../../lib/api-client";
 import { useSessionAuth } from "../../../lib/use-session-auth";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
@@ -246,6 +246,7 @@ export default function CliLoginPage() {
     if (!sessionId || !ready || !authenticated) return;
     if (completionFiredRef.current) return;
     completionFiredRef.current = true;
+    const activeSessionId = sessionId;
 
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(), COMPLETE_TIMEOUT_MS);
@@ -254,11 +255,11 @@ export default function CliLoginPage() {
       setCompletion({ status: "completing" });
       try {
         const response = await apiFetch(
-          `/api/auth/cli-session/${sessionId}/complete`,
+          `/api/auth/cli-session/${activeSessionId}/complete`,
           { method: "POST", json: {}, signal: abort.signal },
         );
         const data = (await response.json()) as { keyPrefix: string };
-        notifyCliLoginComplete(sessionId, launchReturnTo);
+        notifyCliLoginComplete(activeSessionId, launchReturnTo);
 
         // Live opener: the app tab owns continuation (poll / postMessage).
         // Close this surface and never navigate returnTo — that would open a

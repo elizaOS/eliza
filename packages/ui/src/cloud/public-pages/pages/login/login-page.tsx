@@ -9,8 +9,8 @@ import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { CheckCircle2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
 import { Button } from "../../../../components/primitives";
+import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
 

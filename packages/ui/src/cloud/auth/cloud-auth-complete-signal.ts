@@ -61,7 +61,10 @@ export function publishCloudAuthComplete(sessionId: string): void {
 export function subscribeCloudAuthComplete(
   onComplete: (message: CloudAuthCompleteMessage) => void,
 ): () => void {
-  if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") {
+  if (
+    typeof window === "undefined" ||
+    typeof BroadcastChannel === "undefined"
+  ) {
     return () => {};
   }
   let channel: BroadcastChannel;
