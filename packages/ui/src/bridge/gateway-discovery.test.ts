@@ -11,7 +11,7 @@ const { loggerWarn } = vi.hoisted(() => ({ loggerWarn: vi.fn() }));
 const isFeatureAvailable = vi.fn<(feature: string) => boolean>();
 const getPlugins = vi.fn<() => { gateway: { plugin: unknown } }>();
 const isElectrobunRuntime = vi.fn<() => boolean>();
-const invokeDesktopBridgeRequest =
+const invokeDesktopBridgeRequestWithTimeout =
   vi.fn<
     (options: { rpcMethod: string; params?: unknown }) => Promise<unknown>
   >();
@@ -26,10 +26,10 @@ vi.mock("./electrobun-runtime", () => ({
 }));
 
 vi.mock("./electrobun-rpc", () => ({
-  invokeDesktopBridgeRequest: (options: {
+  invokeDesktopBridgeRequestWithTimeout: (options: {
     rpcMethod: string;
     params?: unknown;
-  }) => invokeDesktopBridgeRequest(options),
+  }) => invokeDesktopBridgeRequestWithTimeout(options),
 }));
 
 vi.mock("@elizaos/logger", () => ({
@@ -50,6 +50,7 @@ const ENDPOINT = {
   tlsEnabled: false,
   isLocal: true,
 };
+const ok = <T>(value: T) => ({ status: "ok" as const, value });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -62,8 +63,20 @@ describe("discoverGatewayEndpoints — capability gate", () => {
   it("returns nothing without scanning when discovery is unsupported", async () => {
     isFeatureAvailable.mockReturnValue(false);
 
-    await expect(discoverGatewayEndpoints()).resolves.toEqual([]);
-    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
+    await expect(discoverGatewayEndpoints()).resolves.toEqual({
+      status: "unsupported",
+      gateways: [],
+      detail: "Gateway discovery is unsupported on this platform",
+    });
+    expect(invokeDesktopBridgeRequestWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it("reports an unavailable native plugin distinctly from an empty scan", async () => {
+    await expect(discoverGatewayEndpoints()).resolves.toEqual({
+      status: "unavailable",
+      gateways: [],
+      detail: "Native gateway discovery plugin is unavailable",
+    });
   });
 });
 
@@ -75,13 +88,14 @@ describe("discoverGatewayEndpoints — Capacitor native transport", () => {
       gateway: { plugin: { startDiscovery, stopDiscovery } },
     });
 
-    await expect(discoverGatewayEndpoints({ timeoutMs: 25 })).resolves.toEqual([
-      ENDPOINT,
-    ]);
+    await expect(discoverGatewayEndpoints({ timeoutMs: 25 })).resolves.toEqual({
+      status: "ok",
+      gateways: [ENDPOINT],
+    });
     expect(startDiscovery).toHaveBeenCalledWith({ timeout: 25 });
     expect(stopDiscovery).toHaveBeenCalledTimes(1);
     // Native must not be routed through the desktop bridge.
-    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
+    expect(invokeDesktopBridgeRequestWithTimeout).not.toHaveBeenCalled();
   });
 
   it("degrades to an empty scan when the native plugin throws", async () => {
@@ -91,9 +105,11 @@ describe("discoverGatewayEndpoints — Capacitor native transport", () => {
       gateway: { plugin: { startDiscovery, stopDiscovery } },
     });
 
-    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual(
-      [],
-    );
+    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual({
+      status: "failed",
+      gateways: [],
+      detail: "Native gateway discovery failed",
+    });
     expect(stopDiscovery).toHaveBeenCalledTimes(1);
   });
 
@@ -109,9 +125,33 @@ describe("discoverGatewayEndpoints — Capacitor native transport", () => {
       },
     });
 
-    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual([
-      ENDPOINT,
-    ]);
+    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual({
+      status: "ok",
+      gateways: [ENDPOINT],
+    });
+  });
+
+  it("reports a best-effort native stop failure without rejecting the scan", async () => {
+    const stopDiscovery = vi.fn().mockRejectedValue(new Error("stop failed"));
+    getPlugins.mockReturnValue({
+      gateway: {
+        plugin: {
+          startDiscovery: vi.fn().mockResolvedValue({ gateways: [ENDPOINT] }),
+          stopDiscovery,
+        },
+      },
+    });
+
+    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual({
+      status: "ok",
+      gateways: [ENDPOINT],
+    });
+    await vi.waitFor(() => {
+      expect(loggerWarn).toHaveBeenCalledWith(
+        { error: expect.any(Error) },
+        "[gateway-discovery] Failed to stop native discovery",
+      );
+    });
   });
 });
 
@@ -121,23 +161,26 @@ describe("discoverGatewayEndpoints — Electrobun desktop transport", () => {
   });
 
   it("collects gateways that arrive after the scan window, not the empty start payload", async () => {
-    invokeDesktopBridgeRequest.mockImplementation(async ({ rpcMethod }) => {
-      // The desktop backend arms the browser and returns its cold cache.
-      if (rpcMethod === "gatewayStartDiscovery") {
-        return { gateways: [], status: "Discovery started" };
-      }
-      // Responses land on the browser's `up` events during the window.
-      if (rpcMethod === "gatewayGetDiscoveredGateways") {
-        return { gateways: [ENDPOINT] };
-      }
-      return undefined;
+    invokeDesktopBridgeRequestWithTimeout.mockImplementation(
+      async ({ rpcMethod }) => {
+        // The desktop backend arms the browser and returns its cold cache.
+        if (rpcMethod === "gatewayStartDiscovery") {
+          return ok({ gateways: [], status: "Discovery started" });
+        }
+        // Responses land on the browser's `up` events during the window.
+        if (rpcMethod === "gatewayGetDiscoveredGateways") {
+          return ok({ gateways: [ENDPOINT] });
+        }
+        return ok(undefined);
+      },
+    );
+
+    await expect(discoverGatewayEndpoints({ timeoutMs: 10 })).resolves.toEqual({
+      status: "ok",
+      gateways: [ENDPOINT],
     });
 
-    await expect(discoverGatewayEndpoints({ timeoutMs: 10 })).resolves.toEqual([
-      ENDPOINT,
-    ]);
-
-    const methods = invokeDesktopBridgeRequest.mock.calls.map(
+    const methods = invokeDesktopBridgeRequestWithTimeout.mock.calls.map(
       ([options]) => options.rpcMethod,
     );
     expect(methods).toContain("gatewayStartDiscovery");
@@ -145,77 +188,126 @@ describe("discoverGatewayEndpoints — Electrobun desktop transport", () => {
     expect(methods).toContain("gatewayStopDiscovery");
   });
 
-  it("does not arm the backend stop timer, so the collect read stays in-session", async () => {
-    invokeDesktopBridgeRequest.mockResolvedValue({ gateways: [] });
+  it("arms a backend backstop after the UI collection window", async () => {
+    invokeDesktopBridgeRequestWithTimeout.mockResolvedValue(
+      ok({ gateways: [], status: "Discovery started" }),
+    );
 
     await discoverGatewayEndpoints({ timeoutMs: 5 });
 
-    const start = invokeDesktopBridgeRequest.mock.calls.find(
+    const start = invokeDesktopBridgeRequestWithTimeout.mock.calls.find(
       ([options]) => options.rpcMethod === "gatewayStartDiscovery",
     );
-    expect(start?.[0].params).toEqual({});
+    expect(start?.[0].params).toEqual({ timeout: 505 });
   });
 
-  it("falls back to the start payload's warm cache when the collect read is empty", async () => {
-    invokeDesktopBridgeRequest.mockImplementation(async ({ rpcMethod }) => {
-      if (rpcMethod === "gatewayStartDiscovery") {
-        return { gateways: [ENDPOINT], status: "Already discovering" };
-      }
-      return null;
-    });
-
-    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual([
-      ENDPOINT,
-    ]);
-  });
-
-  it("returns empty and skips collection when no desktop bridge is present", async () => {
-    invokeDesktopBridgeRequest.mockResolvedValue(null);
-
-    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual(
-      [],
+  it("falls back to the start payload's warm cache when collection is unavailable", async () => {
+    invokeDesktopBridgeRequestWithTimeout.mockImplementation(
+      async ({ rpcMethod }) => {
+        if (rpcMethod === "gatewayStartDiscovery") {
+          return ok({ gateways: [ENDPOINT], status: "Already discovering" });
+        }
+        if (rpcMethod === "gatewayGetDiscoveredGateways") {
+          return { status: "missing" };
+        }
+        return ok(undefined);
+      },
     );
 
-    const methods = invokeDesktopBridgeRequest.mock.calls.map(
+    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual({
+      status: "ok",
+      gateways: [ENDPOINT],
+    });
+  });
+
+  it("reports unavailable and skips collection when no desktop bridge is present", async () => {
+    invokeDesktopBridgeRequestWithTimeout.mockResolvedValue({
+      status: "missing",
+    });
+
+    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual({
+      status: "unavailable",
+      gateways: [],
+      detail: "Desktop gateway discovery bridge is unavailable",
+    });
+
+    const methods = invokeDesktopBridgeRequestWithTimeout.mock.calls.map(
       ([options]) => options.rpcMethod,
     );
     expect(methods).not.toContain("gatewayGetDiscoveredGateways");
   });
 
-  it("degrades to an empty scan and still stops discovery when the bridge throws", async () => {
-    invokeDesktopBridgeRequest.mockImplementation(async ({ rpcMethod }) => {
-      if (rpcMethod === "gatewayStartDiscovery") {
-        throw new Error("bridge closed");
-      }
-      return undefined;
-    });
-
-    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual(
-      [],
+  it("reports a failed start without fabricating a healthy empty scan", async () => {
+    invokeDesktopBridgeRequestWithTimeout.mockImplementation(
+      async ({ rpcMethod }) => {
+        if (rpcMethod === "gatewayStartDiscovery") {
+          return { status: "rejected", error: new Error("bridge closed") };
+        }
+        return ok(undefined);
+      },
     );
-    const methods = invokeDesktopBridgeRequest.mock.calls.map(
+
+    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual({
+      status: "failed",
+      gateways: [],
+      detail: "Desktop gateway discovery failed to start",
+    });
+    const methods = invokeDesktopBridgeRequestWithTimeout.mock.calls.map(
       ([options]) => options.rpcMethod,
     );
-    expect(methods).toContain("gatewayStopDiscovery");
+    expect(methods).not.toContain("gatewayStopDiscovery");
+  });
+
+  it("preserves the backend's explicit unavailable status", async () => {
+    invokeDesktopBridgeRequestWithTimeout.mockResolvedValue(
+      ok({
+        gateways: [],
+        status: "Discovery unavailable (no mDNS module)",
+      }),
+    );
+
+    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual({
+      status: "unavailable",
+      gateways: [],
+      detail: "Discovery unavailable (no mDNS module)",
+    });
+  });
+
+  it("bounds a wedged desktop start request", async () => {
+    invokeDesktopBridgeRequestWithTimeout.mockResolvedValue({
+      status: "timeout",
+    });
+
+    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual({
+      status: "timeout",
+      gateways: [],
+      detail: "Desktop gateway discovery did not start in time",
+    });
   });
 
   it("reports a best-effort stop failure without rejecting a successful scan", async () => {
-    invokeDesktopBridgeRequest.mockImplementation(async ({ rpcMethod }) => {
-      if (rpcMethod === "gatewayGetDiscoveredGateways") {
-        return { gateways: [ENDPOINT] };
-      }
-      if (rpcMethod === "gatewayStopDiscovery") {
-        throw new Error("stop failed");
-      }
-      return { gateways: [] };
-    });
+    invokeDesktopBridgeRequestWithTimeout.mockImplementation(
+      async ({ rpcMethod }) => {
+        if (rpcMethod === "gatewayStartDiscovery") {
+          return ok({ gateways: [], status: "Discovery started" });
+        }
+        if (rpcMethod === "gatewayGetDiscoveredGateways") {
+          return ok({ gateways: [ENDPOINT] });
+        }
+        if (rpcMethod === "gatewayStopDiscovery") {
+          return { status: "rejected", error: new Error("stop failed") };
+        }
+        return ok(undefined);
+      },
+    );
 
-    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual([
-      ENDPOINT,
-    ]);
+    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual({
+      status: "ok",
+      gateways: [ENDPOINT],
+    });
     await vi.waitFor(() => {
       expect(loggerWarn).toHaveBeenCalledWith(
-        { error: expect.any(Error) },
+        { status: "rejected", error: expect.any(Error) },
         "[gateway-discovery] Failed to stop desktop discovery",
       );
     });
@@ -224,11 +316,48 @@ describe("discoverGatewayEndpoints — Electrobun desktop transport", () => {
   it("never consults the Capacitor plugin registry on desktop", async () => {
     const startDiscovery = vi.fn();
     getPlugins.mockReturnValue({ gateway: { plugin: { startDiscovery } } });
-    invokeDesktopBridgeRequest.mockResolvedValue({ gateways: [] });
+    invokeDesktopBridgeRequestWithTimeout.mockResolvedValue(
+      ok({ gateways: [], status: "Discovery started" }),
+    );
 
     await discoverGatewayEndpoints({ timeoutMs: 5 });
 
     expect(startDiscovery).not.toHaveBeenCalled();
+  });
+
+  it("sanitizes LAN-supplied connection fields and carries a valid fingerprint", async () => {
+    const fingerprint = "A".repeat(64);
+    invokeDesktopBridgeRequestWithTimeout.mockImplementation(
+      async ({ rpcMethod }) => {
+        if (rpcMethod === "gatewayStartDiscovery") {
+          return ok({ gateways: [], status: "Discovery started" });
+        }
+        if (rpcMethod === "gatewayGetDiscoveredGateways") {
+          return ok({
+            gateways: [
+              {
+                ...ENDPOINT,
+                lanHost: " bad/path ",
+                tailnetDns: 42,
+                gatewayPort: 70_000,
+                tlsFingerprintSha256: fingerprint,
+              },
+            ],
+          });
+        }
+        return ok(undefined);
+      },
+    );
+
+    await expect(discoverGatewayEndpoints({ timeoutMs: 5 })).resolves.toEqual({
+      status: "ok",
+      gateways: [
+        {
+          ...ENDPOINT,
+          tlsFingerprintSha256: fingerprint.toLowerCase(),
+        },
+      ],
+    });
   });
 });
 
@@ -253,5 +382,17 @@ describe("endpoint address resolution", () => {
         tlsEnabled: true,
       }),
     ).toBe("https://studio.local:8443");
+    expect(gatewayEndpointToApiBase({ ...ENDPOINT, host: "fe80::1" })).toBe(
+      "http://[fe80::1]:2138",
+    );
+  });
+
+  it("rejects malformed direct endpoint inputs", () => {
+    expect(() =>
+      gatewayEndpointToApiBase({ ...ENDPOINT, host: "bad/path" }),
+    ).toThrow("Gateway endpoint has no valid host");
+    expect(() =>
+      gatewayEndpointToApiBase({ ...ENDPOINT, gatewayPort: 70_000 }),
+    ).toThrow("Gateway endpoint has no valid port");
   });
 });
