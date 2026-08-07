@@ -39,6 +39,7 @@ function makePreset(): SpeakerPreset {
 
 class FakeBackend implements TtsBackend {
 	calls = 0;
+	voiceIds: string[] = [];
 	cancelObserved: number[] = [];
 	delay = 0;
 	samplesPerToken = 8;
@@ -50,6 +51,7 @@ class FakeBackend implements TtsBackend {
 		onKernelTick?: () => void;
 	}): Promise<AudioChunk> {
 		this.calls++;
+		this.voiceIds.push(args.preset.voiceId);
 		const tokenCount = args.phrase.toIndex - args.phrase.fromIndex + 1;
 		const len = Math.max(1, tokenCount * this.samplesPerToken);
 		if (this.delay > 0) {
@@ -680,6 +682,29 @@ describe("VoiceScheduler end-to-end", () => {
 
 		expect(backend.calls).toBe(1);
 		expect(Array.from(second.pcm)).toEqual(Array.from(first.pcm));
+	});
+
+	it("keeps per-request voice overrides isolated from the scheduler preset and cache", async () => {
+		const backend = new FakeBackend();
+		const preset = makePreset();
+		const sched = new VoiceScheduler(
+			{
+				chunkerConfig: { maxTokensPerPhrase: 10 },
+				preset,
+				ringBufferCapacity: 4096,
+				sampleRate: 24000,
+			},
+			{ backend },
+		);
+
+		await sched.synthesizeText("Same phrase.", undefined, "  af_heart  ");
+		await sched.synthesizeText("Same phrase.");
+		await sched.synthesizeText("Same phrase.");
+
+		expect(backend.voiceIds).toEqual(["af_heart", "default"]);
+		expect(backend.calls).toBe(2);
+		expect(preset.voiceId).toBe("default");
+		expect(sched.preset.voiceId).toBe("default");
 	});
 
 	it("pauses TTS on a provisional barge-in, resumes on a blip (no audio lost)", async () => {
