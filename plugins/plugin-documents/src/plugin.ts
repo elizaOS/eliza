@@ -170,7 +170,9 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
         body: JSON.parse(text),
       };
     } catch {
-      // Fall through to raw text body if JSON parse fails.
+      // error-policy:J3 the handler declared JSON but the bytes are not;
+      // fall through to the raw text body rather than fabricating a parsed
+      // object the caller would treat as valid.
     }
   }
   return {
@@ -222,6 +224,9 @@ function documentRouteHandler(): (
           try {
             return JSON.parse(ctx.rawBody) as T;
           } catch {
+            // error-policy:J3 a malformed raw body resolves to an explicit
+            // absent body, which callers already handle, rather than a
+            // fake-valid parsed object.
             return null;
           }
         }
