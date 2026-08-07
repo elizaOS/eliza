@@ -31,6 +31,23 @@ describe("v5 evaluator skeleton", () => {
 		expect(evaluatorTemplate).toContain("The JSON inside [FORM] is form data");
 	});
 
+	it("teaches the model to omit post-tool process-status bubbles and keep acks task-dynamic", () => {
+		// Contract for dual-bubble / canned-ack bugs: after verifiedUserFacing
+		// tool text, the evaluator must not invent a second process-status
+		// message; any brief ack must be dynamic from the user's ask, not a
+		// fixed phrase list enforced by regex in the runtime.
+		expect(evaluatorTemplate).toContain("verifiedUserFacing=true");
+		expect(evaluatorTemplate).toContain(
+			"omit messageToUser entirely unless you add NEW task-grounded substance",
+		);
+		expect(evaluatorTemplate).toContain(
+			"dynamic and task-specific",
+		);
+		expect(evaluatorTemplate).toContain(
+			"Do not rely on a fixed canned phrase list",
+		);
+	});
+
 	it("normalizes evaluator routes and next tool recommendations", () => {
 		const output = parseEvaluatorOutput(`{
   "success": true,
