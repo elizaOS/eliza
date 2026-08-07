@@ -135,18 +135,49 @@ function readValidatedSolanaAddress(value: string | undefined): string | null {
   }
 }
 
+// A configured-but-unusable key is an operator misconfiguration, not an absent
+// wallet: the address resolves to null and every downstream balance and signing
+// surface then reports "no wallet" with no indication why. The validator already
+// names the defect, so surface it rather than discarding it.
+//
+// These derivations run per wallet request, so the warning is keyed on the
+// offending value to stay a one-line boot-time signal instead of per-request
+// noise. Only the validator's diagnosis is logged, never the key: the messages
+// are shape descriptions ("Must be 64 hex characters") and at most echo the one
+// character that failed base58 decoding.
+const warnedInvalidKeys = new Set<string>();
+
+function warnInvalidKeyOnce(
+  envKey: string,
+  value: string,
+  reason: string | null,
+): void {
+  const fingerprint = `${envKey}:${value.length}:${reason ?? ""}`;
+  if (warnedInvalidKeys.has(fingerprint)) return;
+  warnedInvalidKeys.add(fingerprint);
+  logger.warn(`[wallet] ${envKey} is set but unusable: ${reason ?? "unknown"}`);
+}
+
 function deriveLocalEvmAddress(): string | null {
   const evmKey = process.env.EVM_PRIVATE_KEY?.trim();
   if (!evmKey || PLACEHOLDER_RE.test(evmKey)) return null;
   const validated = validateEvmPrivateKey(evmKey);
-  return validated.valid ? validated.address : null;
+  if (!validated.valid) {
+    warnInvalidKeyOnce("EVM_PRIVATE_KEY", evmKey, validated.error);
+    return null;
+  }
+  return validated.address;
 }
 
 function deriveLocalSolanaAddress(): string | null {
   const solKey = process.env.SOLANA_PRIVATE_KEY?.trim();
   if (!solKey || PLACEHOLDER_RE.test(solKey)) return null;
   const validated = validateSolanaPrivateKey(solKey);
-  return validated.valid ? validated.address : null;
+  if (!validated.valid) {
+    warnInvalidKeyOnce("SOLANA_PRIVATE_KEY", solKey, validated.error);
+    return null;
+  }
+  return validated.address;
 }
 
 function readStewardEvmAddress(): string | null {
