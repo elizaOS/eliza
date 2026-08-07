@@ -52,7 +52,6 @@ import {
   CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
-  dispatchNavigateViewEvent,
   ELIZA_BACK_INTENT_EVENT,
   NAVIGATE_VIEW_EVENT,
   type NavigateViewDetail,
@@ -1206,6 +1205,7 @@ export function ChatOverlay({
     needsAudioUnlock,
     unlockAudio,
     openSettings,
+    navigateHome,
     currentTab,
     stop,
     speak,
@@ -6305,13 +6305,8 @@ export function ChatOverlay({
                     <DropdownMenuItem
                       className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
                       onSelect={() => {
+                        navigateHome?.();
                         collapseToPill();
-                        dispatchNavigateViewEvent({
-                          viewId: "views",
-                          viewPath: "/views",
-                          viewLabel: "Home",
-                          source: "user",
-                        });
                       }}
                     >
                       <House
