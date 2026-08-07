@@ -32,9 +32,15 @@ vi.mock("./electrobun-rpc", () => ({
   }) => invokeDesktopBridgeRequestWithTimeout(options),
 }));
 
-vi.mock("@elizaos/logger", () => ({
-  logger: { warn: loggerWarn, info: vi.fn(), debug: vi.fn(), error: vi.fn() },
-}));
+vi.mock("@elizaos/logger", () => {
+  const logger = {
+    warn: loggerWarn,
+    info: vi.fn(),
+    debug: vi.fn(),
+    error: vi.fn(),
+  };
+  return { logger, createLogger: () => logger };
+});
 
 import {
   discoverGatewayEndpoints,
