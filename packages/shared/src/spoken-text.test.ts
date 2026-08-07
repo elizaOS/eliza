@@ -48,14 +48,30 @@ describe("sanitizeSpeechText", () => {
     ).toBe("Wait! Are you sure?");
   });
 
-  it("rewrites I am to I'm so Kokoro/espeak does not say yam", () => {
+  it("rewrites I am so Kokoro/espeak does not say yam", () => {
     expect(sanitizeSpeechText("I am ready.")).toBe("I'm ready.");
     expect(sanitizeSpeechText("Yes, I am here.")).toBe("Yes, I'm here.");
     expect(sanitizeSpeechText("I am Eliza.")).toBe("I'm Eliza.");
     expect(sanitizeSpeechText("I am not sure.")).toBe("I'm not sure.");
   });
 
-  it("leaves a stranded am expanded — English cannot contract it", () => {
+  // A stranded copula cannot contract. A following-token test alone is not
+  // enough — each of these has a word after "am" and is still ungrammatical
+  // when contracted, so the preceding antecedent is what has to block it.
+  it("leaves a copula stranded by wh-movement or fronting expanded", () => {
+    expect(sanitizeSpeechText("Here I am at last.")).toBe("Here I am at last.");
+    expect(sanitizeSpeechText("That is who I am today.")).toBe(
+      "That is who I am today.",
+    );
+    expect(sanitizeSpeechText("I know who I am now.")).toBe(
+      "I know who I am now.",
+    );
+    expect(sanitizeSpeechText("Wherever I am is home.")).toBe(
+      "Wherever I am is home.",
+    );
+  });
+
+  it("leaves a clause-final am expanded", () => {
     expect(sanitizeSpeechText("Yes, I am.")).toBe("Yes, I am.");
     expect(sanitizeSpeechText("Here I am!")).toBe("Here I am!");
     expect(sanitizeSpeechText("That is who I am.")).toBe("That is who I am.");
@@ -64,14 +80,20 @@ describe("sanitizeSpeechText", () => {
     );
   });
 
-  it("preserves casing instead of collapsing emphasis to I'm", () => {
-    expect(sanitizeSpeechText("I AM READY")).toBe("I AM READY");
-    expect(sanitizeSpeechText("yes i am ready")).toBe("yes i am ready");
+  // "I AM" and "i am" mis-phonemize identically, so both must be fixed; the
+  // replacement re-applies the observed casing rather than normalising it.
+  it("contracts every casing and preserves it", () => {
+    expect(sanitizeSpeechText("I AM READY")).toBe("I'M READY");
+    expect(sanitizeSpeechText("yes i am ready")).toBe("yes i'm ready");
   });
 
   it("does not contract across a following clause boundary", () => {
     expect(sanitizeSpeechText("I am, however, ready.")).toBe(
       "I am, however, ready.",
     );
+  });
+
+  it("does not match a word that merely starts with am", () => {
+    expect(sanitizeSpeechText("I ambient noise")).toBe("I ambient noise");
   });
 });

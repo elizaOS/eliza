@@ -67,21 +67,46 @@ function sanitizeSpeechPunctuation(input: string): string {
 
 /**
  * Lexical tweaks for TTS engines that mis-phonemize common English.
- * Kokoro/espeak-ng often renders "I am" as /jæm/ ("yam"), so contract it — but
- * English cannot contract a stranded `am`. "Yes, I am." and "who I am and ..."
- * must stay expanded, so only contract when a predicate complement follows:
- * whitespace, then something that is neither punctuation nor a coordinating
- * conjunction. The match is case-sensitive so "I AM" keeps its emphasis casing
- * instead of collapsing to "I'm".
  *
- * Kept byte-identical in behaviour with the `@elizaos/shared` copy; core cannot
- * import shared (the dependency runs the other way).
+ * Kokoro/espeak-ng renders "I am" as /jæm/ ("yam"), so contract it — but English
+ * blocks contraction wherever the copula is STRANDED, i.e. its complement has
+ * moved left out of the clause. Two things have to hold:
+ *
+ *   before: the match is not preceded by a wh-word or a fronted deictic, which
+ *           is what strands it — "who I am today", "Here I am at last",
+ *           "Wherever I am is home" are all ungrammatical when contracted.
+ *   after:  a predicate complement actually follows — not punctuation (which
+ *           strands it at a clause end: "Yes, I am.") and not a coordinator
+ *           ("who I am and ...").
+ *
+ * A following-token test alone is not sufficient: it accepts "Here I am at
+ * last" because a word follows. Both directions are required.
+ *
+ * The match is case-insensitive because "I AM" and "i am" mis-phonemize exactly
+ * the same way; the replacement re-applies the observed casing.
+ *
+ * `@elizaos/shared` carries its own copy of this rule (core cannot import
+ * shared — the dependency runs the other way). The two are kept in step by
+ * their respective suites, which assert the same contraction cases; nothing
+ * mechanically binds them, so they are not assumed identical elsewhere.
  */
-const CONTRACTIBLE_I_AM =
-	/\bI am\b(?=\s+(?!and\b|or\b|but\b|nor\b|yet\b)[^\s.,;:!?—–-])/g;
+const STRANDING_ANTECEDENT =
+	"who|whom|whose|what|whatever|whoever|which|where|wherever|when|whenever|why|how|however|here|there";
+
+const CONTRACTIBLE_I_AM = new RegExp(
+	`(?<!\\b(?:${STRANDING_ANTECEDENT})\\s)\\b(I)(\\s+)(am)\\b(?=\\s+(?!and\\b|or\\b|but\\b|nor\\b|yet\\b)[^\\s.,;:!?])`,
+	"gi",
+);
 
 function fixSpeechPronunciations(input: string): string {
-	return input.replace(CONTRACTIBLE_I_AM, "I'm");
+	return input.replace(
+		CONTRACTIBLE_I_AM,
+		(_match, i: string, _sp, am: string) => {
+			if (i === "I" && am === "AM") return "I'M";
+			if (i === "i") return "i'm";
+			return "I'm";
+		},
+	);
 }
 
 export function sanitizeSpeechText(input: string): string {

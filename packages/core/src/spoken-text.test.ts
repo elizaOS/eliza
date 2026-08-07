@@ -19,7 +19,22 @@ describe("sanitizeSpeechText — I am contraction", () => {
 		expect(sanitizeSpeechText("Yes, I am here.")).toBe("Yes, I'm here.");
 	});
 
-	it("leaves a stranded am expanded — English cannot contract it", () => {
+	// A stranded copula cannot contract. Each of these has a word after "am",
+	// so a following-token test alone would wrongly accept them.
+	it("leaves a copula stranded by wh-movement or fronting expanded", () => {
+		expect(sanitizeSpeechText("Here I am at last.")).toBe("Here I am at last.");
+		expect(sanitizeSpeechText("That is who I am today.")).toBe(
+			"That is who I am today.",
+		);
+		expect(sanitizeSpeechText("I know who I am now.")).toBe(
+			"I know who I am now.",
+		);
+		expect(sanitizeSpeechText("Wherever I am is home.")).toBe(
+			"Wherever I am is home.",
+		);
+	});
+
+	it("leaves a clause-final am expanded", () => {
 		expect(sanitizeSpeechText("Yes, I am.")).toBe("Yes, I am.");
 		expect(sanitizeSpeechText("Here I am!")).toBe("Here I am!");
 		expect(sanitizeSpeechText("That is who I am.")).toBe("That is who I am.");
@@ -28,9 +43,9 @@ describe("sanitizeSpeechText — I am contraction", () => {
 		);
 	});
 
-	it("preserves casing instead of collapsing emphasis to I'm", () => {
-		expect(sanitizeSpeechText("I AM READY")).toBe("I AM READY");
-		expect(sanitizeSpeechText("yes i am ready")).toBe("yes i am ready");
+	it("contracts every casing and preserves it", () => {
+		expect(sanitizeSpeechText("I AM READY")).toBe("I'M READY");
+		expect(sanitizeSpeechText("yes i am ready")).toBe("yes i'm ready");
 	});
 
 	it("does not contract across a following clause boundary", () => {
