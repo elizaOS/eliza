@@ -26,6 +26,7 @@ const shaderBackgroundPath = resolve(
   __dirname,
   "../src/components/ShaderBackground/ShaderBackground.tsx",
 );
+const visualRegressionSpecPath = resolve(__dirname, "./e2e/visual.spec.ts");
 const globalStylesPath = resolve(__dirname, "../src/index.css");
 const iphoneModelPath = resolve(
   __dirname,
@@ -81,6 +82,17 @@ test("landing keeps WebGL deferred and render loops demand-driven", () => {
   assert.match(shaderBackground, /1000 \/ 30/);
   assert.match(packageJson.scripts.postbuild, /prune-unused-static-assets/);
   assert.match(pruneAssets, /"brand\/background", "product"/);
+});
+
+test("visual regression compares the quality-validated capture itself", () => {
+  const visualSpec = readFileSync(visualRegressionSpecPath, "utf8");
+
+  assert.match(
+    visualSpec,
+    /const screenshot = await captureScreenshotWithQualityRetry\(/,
+  );
+  assert.match(visualSpec, /expect\(screenshot\)\.toMatchSnapshot\(/);
+  assert.doesNotMatch(visualSpec, /\.toHaveScreenshot\(/);
 });
 
 test("large visual assets receive a durable browser cache policy", () => {
