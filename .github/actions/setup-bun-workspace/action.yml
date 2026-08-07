@@ -191,9 +191,18 @@ runs:
           echo "::warning::passwordless sudo unavailable; apt lock contention stays fatal for this job"
           exit 0
         fi
-        printf 'DPkg::Lock::Timeout "600";\n' \
-          | sudo tee /etc/apt/apt.conf.d/99-eliza-ci-dpkg-lock-timeout >/dev/null
-        echo "apt will wait up to 600s for the dpkg frontend lock"
+        if [ ! -d /etc/apt/apt.conf.d ]; then
+          echo "::notice::no apt configuration directory; nothing to configure on this runner"
+          exit 0
+        fi
+        # A runner this cannot be written on still installs fine whenever the
+        # lock is free, so warn rather than fail the whole setup here.
+        if printf 'DPkg::Lock::Timeout "600";\n' \
+          | sudo tee /etc/apt/apt.conf.d/99-eliza-ci-dpkg-lock-timeout >/dev/null; then
+          echo "apt will wait up to 600s for the dpkg frontend lock"
+        else
+          echo "::warning::could not write the apt dpkg lock timeout; apt lock contention stays fatal for this job"
+        fi
 
     - name: Install protoc
       # protoc is required even when install-native-deps=false because Rust
