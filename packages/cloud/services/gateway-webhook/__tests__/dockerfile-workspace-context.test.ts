@@ -100,10 +100,14 @@ describe("service Dockerfiles can resolve their workspace dependencies", () => {
   test("this service builds from the repository root, and says so", () => {
     for (const expected of ["gateway-webhook", "gateway-discord"]) {
       const gateway = services.find((s) => s.name === expected);
-      expect(gateway?.workspaceDeps).toContain("@elizaos/cloud-services-common");
+      expect(gateway?.workspaceDeps).toContain(
+        "@elizaos/cloud-services-common",
+      );
       // The path prefix is what proves the context: a repo-root build addresses
       // its own files through the full path, a directory-scoped one does not.
-      expect(gateway?.dockerfile).toContain(`packages/cloud/services/${expected}`);
+      expect(gateway?.dockerfile).toContain(
+        `packages/cloud/services/${expected}`,
+      );
       expect(gateway?.dockerfile).toContain("packages/cloud/services/_common");
     }
   });
