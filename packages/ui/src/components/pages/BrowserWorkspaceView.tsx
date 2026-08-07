@@ -1,6 +1,11 @@
 /**
  * The Browser workspace view (`/browser`): a tabbed embedded-browser surface
- * with a collapsible sidebar for tab management and companion-bridge status.
+ * whose tabs fold into a switcher sheet, with companion-bridge status.
+ *
+ * The builtin registry declares this view `header: "fullscreen"`, so the shell
+ * mounts it edge-to-edge and the view owns its chrome: a floating glass
+ * toolbar and a rounded web-surface panel over the opaque app background —
+ * the same fullscreen framing the Notes and Calendar views use.
  *
  * Tabs, navigation, and snapshots flow through the `client` browser API; on
  * native the tabs render via a registered renderer impl
@@ -31,7 +36,6 @@ import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import { useAppSelectorShallow } from "../../state";
 import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
@@ -42,13 +46,11 @@ import {
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
 import { PagePanel } from "../composites/page-panel";
-import { ViewHeader } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
 import { Input } from "../ui/input";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
-import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
 import {
   type BrowserSwitcherTab,
   BrowserTabFoldControl,
@@ -2181,7 +2183,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   });
 
   const navNode = (
-    <div className="flex items-center gap-2 px-3 py-2">
+    <div className="flex flex-wrap items-center gap-2 px-3 py-2">
       {/* Folded tabs (#13596): one compact count control opens the switcher —
           no permanent tab strip. It names the active tab so the user always
           knows which page is live even with the rest folded away. */}
@@ -2307,7 +2309,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })}
         data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}
-        className="h-11 min-w-0 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
+        className="h-11 min-w-[10rem] flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
       />
       <BrowserNavButton
         agentId="go"
@@ -2378,7 +2380,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const browserSurface = (
     <div
       ref={browserSurfaceRef}
-      className="relative flex-1 min-h-0 overflow-hidden bg-bg"
+      className="relative flex-1 min-h-0 overflow-hidden"
     >
       {watchBannerLabel ? (
         <div
@@ -2413,110 +2415,119 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto pt-3 pb-[calc(var(--eliza-chat-clearance,5.25rem)+1rem)] pe-[var(--eliza-chat-side-clearance,0px)]">
-            <PagePanel.Empty
-              variant="inset"
-              className="flex-none py-1 sm:py-2"
-              icon={<Globe className="h-6 w-6" aria-hidden />}
-              title={t("browserworkspace.EmptyTitle", {
-                defaultValue: "No page open",
-              })}
-              action={
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="min-h-11 gap-1.5"
-                  onClick={() =>
-                    void runBrowserWorkspaceAction("open:home", async () => {
-                      await openNewBrowserWorkspaceTab(
-                        BROWSER_WORKSPACE_DEFAULT_HOME_URL,
-                        "user",
-                      );
-                    })
-                  }
-                >
-                  <Plus className="h-4 w-4" aria-hidden />
-                  {t("browserworkspace.OpenWebsite", {
-                    defaultValue: "Open a website",
-                  })}
-                </Button>
-              }
-            />
-            {workspace.mode === "web" &&
-            browserBridgeSupported &&
-            !browserBridgeUnsupportedInNativeLocalMode ? (
-              <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 [@media(orientation:landscape)_and_(max-height:520px)]:pb-[var(--eliza-chat-clearance,5.25rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pe-[var(--eliza-chat-side-clearance,0px)] sm:grid-cols-3">
-                <div className="text-center text-[11px] text-muted sm:col-span-3">
-                  {browserBridgeConnected
-                    ? t("browserworkspace.BrowserBridgeConnected", {
-                        defaultValue: "Browser Bridge connected",
+          // The designed-empty column centers with margin-auto INSIDE the
+          // scroller (not justify-center on the scroller itself) so a short
+          // viewport degrades to a scrollable top-aligned column instead of
+          // clipping the heading above the scroll origin.
+          <div className="flex h-full min-h-0 flex-col overflow-y-auto pt-3 pb-[calc(var(--eliza-chat-clearance,5.25rem)+1rem)] pe-[var(--eliza-chat-side-clearance,0px)]">
+            <div className="m-auto flex w-full min-w-0 flex-col items-center">
+              <PagePanel.Empty
+                variant="inset"
+                className="flex-none py-1 sm:py-2"
+                icon={<Globe className="h-6 w-6" aria-hidden />}
+                title={t("browserworkspace.EmptyTitle", {
+                  defaultValue: "No page open",
+                })}
+                action={
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="min-h-11 gap-1.5"
+                    onClick={() =>
+                      void runBrowserWorkspaceAction("open:home", async () => {
+                        await openNewBrowserWorkspaceTab(
+                          BROWSER_WORKSPACE_DEFAULT_HOME_URL,
+                          "user",
+                        );
                       })
-                    : browserBridgeAvailable
-                      ? t("browserworkspace.BrowserBridgeAvailable", {
-                          defaultValue: "Browser Bridge available",
+                    }
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                    {t("browserworkspace.OpenWebsite", {
+                      defaultValue: "Open a website",
+                    })}
+                  </Button>
+                }
+              />
+              {/* Bottom + side chat clearance is reserved once, on the scroller
+                above — repeating it on this grid double-counted the inset in
+                short landscape and squeezed the column off-canvas. */}
+              {workspace.mode === "web" &&
+              browserBridgeSupported &&
+              !browserBridgeUnsupportedInNativeLocalMode ? (
+                <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 sm:grid-cols-3">
+                  <div className="text-center text-[11px] text-muted sm:col-span-3">
+                    {browserBridgeConnected
+                      ? t("browserworkspace.BrowserBridgeConnected", {
+                          defaultValue: "Browser Bridge connected",
                         })
-                      : t("browserworkspace.BrowserBridgeNotConnected", {
-                          defaultValue:
-                            "Let the agent drive your real Chrome tabs",
-                        })}
+                      : browserBridgeAvailable
+                        ? t("browserworkspace.BrowserBridgeAvailable", {
+                            defaultValue: "Browser Bridge available",
+                          })
+                        : t("browserworkspace.BrowserBridgeNotConnected", {
+                            defaultValue:
+                              "Let the agent drive your real Chrome tabs",
+                          })}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busyAction !== null}
+                    onClick={() => void installBrowserBridgeExtension()}
+                    className="min-h-11 sm:col-span-3"
+                  >
+                    {t("browserworkspace.InstallBrowserBridge", {
+                      defaultValue: "Install Agent Browser Bridge",
+                    })}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={
+                      busyAction !== null ||
+                      !browserBridgePackageStatus?.chromeBuildPath
+                    }
+                    onClick={() => void revealBrowserBridgeFolder()}
+                    className="min-h-11 min-w-0"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    <span className="truncate">
+                      {t("browserworkspace.OpenBrowserBridgeFolder", {
+                        defaultValue: "Open extension folder",
+                      })}
+                    </span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busyAction !== null}
+                    onClick={() => void openBrowserBridgeChromeExtensions()}
+                    className="min-h-11 min-w-0"
+                  >
+                    <span className="truncate">
+                      {t("browserworkspace.OpenChromeExtensions", {
+                        defaultValue: "Open Chrome extensions",
+                      })}
+                    </span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={browserBridgeLoading || busyAction !== null}
+                    onClick={() => void refreshBrowserBridgeConnection()}
+                    className="min-h-11 min-w-0"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    <span className="truncate">
+                      {t("browserworkspace.RefreshBrowserBridge", {
+                        defaultValue: "Refresh connection",
+                      })}
+                    </span>
+                  </Button>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busyAction !== null}
-                  onClick={() => void installBrowserBridgeExtension()}
-                  className="min-h-11 sm:col-span-3"
-                >
-                  {t("browserworkspace.InstallBrowserBridge", {
-                    defaultValue: "Install Agent Browser Bridge",
-                  })}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={
-                    busyAction !== null ||
-                    !browserBridgePackageStatus?.chromeBuildPath
-                  }
-                  onClick={() => void revealBrowserBridgeFolder()}
-                  className="min-h-11 min-w-0"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                  <span className="truncate">
-                    {t("browserworkspace.OpenBrowserBridgeFolder", {
-                      defaultValue: "Open extension folder",
-                    })}
-                  </span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busyAction !== null}
-                  onClick={() => void openBrowserBridgeChromeExtensions()}
-                  className="min-h-11 min-w-0"
-                >
-                  <span className="truncate">
-                    {t("browserworkspace.OpenChromeExtensions", {
-                      defaultValue: "Open Chrome extensions",
-                    })}
-                  </span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={browserBridgeLoading || busyAction !== null}
-                  onClick={() => void refreshBrowserBridgeConnection()}
-                  className="min-h-11 min-w-0"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  <span className="truncate">
-                    {t("browserworkspace.RefreshBrowserBridge", {
-                      defaultValue: "Refresh connection",
-                    })}
-                  </span>
-                </Button>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         )
       ) : browserTabRenderPath === "native-child-webview" ? (
@@ -2751,36 +2762,39 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     </div>
   );
 
-  // Uniform top bar (#13451/#13596): a bare-icon ViewHeader with a centered
-  // "Browser" title sits ABOVE the browser toolbar (URL bar + folded-tab
-  // control), never replacing it. The toolbar stays inside WorkspaceLayout's
-  // contentHeader; the ViewHeader is a sibling stacked on top so back always
-  // returns to the launcher and the header reads identically to every other
-  // view. Tabs are folded into the switcher (no `sidebar` prop) so the surface
-  // is single-column and the browser never grows an unbounded tab strip.
+  // Fullscreen surface framing (parity with Notes/Calendar): the shell mounts
+  // this view edge-to-edge (`header: "fullscreen"` in the builtin registry), so
+  // the view owns its whole chrome — no host ViewHeader row, no workspace
+  // chrome. The toolbar (folded-tab control + URL bar) floats as a glass panel
+  // over the opaque app background using the same clamp gutter, safe-area
+  // padding, and glass material the Notes and Calendar views use, and the web
+  // surface fills the remaining height as a second rounded panel. Tabs stay
+  // folded into the switcher (no permanent tab strip), matching #13596.
   const mainNode = (
-    <div className="flex h-full min-h-0 w-full flex-col">
-      <ViewHeader
-        title={t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
-      />
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <WorkspaceLayout
-          contentHeader={navNode}
-          contentHeaderClassName="mb-0"
-          headerPlacement="inside"
-          contentPadding={false}
-          contentClassName="overflow-hidden"
-          contentInnerClassName="min-h-0 overflow-hidden"
-        >
-          {browserSurface}
-        </WorkspaceLayout>
+    <main
+      aria-label={t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
+      data-testid="browser-workspace-view"
+      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-[clamp(8px,1.6vw,14px)] overflow-hidden bg-bg px-[clamp(8px,2.4vw,24px)] pt-[calc(clamp(8px,2.4vw,24px)+var(--safe-area-top,0px))] pb-[clamp(8px,2.4vw,24px)]"
+    >
+      <div
+        data-testid="browser-workspace-toolbar"
+        className="shrink-0 rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.10),0_18px_48px_rgba(0,0,0,.20)] backdrop-blur-[24px] backdrop-saturate-[1.45]"
+      >
+        {navNode}
       </div>
-    </div>
+      {/* The web-surface panel carries fill + radius only — no box-shadow.
+          A shadow on this near-full-viewport panel reads as visual furniture
+          (and the minimalism occupancy scan rightly counts it as such in
+          short landscape); the toolbar above keeps the full glass treatment. */}
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)]">
+        {browserSurface}
+      </div>
+    </main>
   );
 
   return (
     <ShellViewAgentSurface viewId="browser">
-      <AppWorkspaceChrome testId="browser-workspace-view" main={mainNode} />
+      {mainNode}
       <BrowserTabSwitcher
         open={switcherOpen}
         onOpenChange={setSwitcherOpen}

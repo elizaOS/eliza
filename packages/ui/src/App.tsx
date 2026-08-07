@@ -223,6 +223,7 @@ import {
 import {
   isImmersiveWallpaperRoute,
   resolveBuiltinBackgroundPolicy,
+  resolveBuiltinRoutedViewManifest,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
 // DesktopTabBar stays static: it is already pulled
@@ -880,6 +881,17 @@ function resolveActiveViewSurface({
       manifest: resolveSurfaceManifest(registeredView),
       viewId: registeredView.id,
     };
+  }
+
+  // Builtin routed content views resolve through the same declarative registry
+  // the background resolver reads, so a builtin's declared framing (e.g. the
+  // Browser's `header: "fullscreen"`) drives the identical full-bleed shell
+  // path a registered fullscreen page (Notes, Calendar) takes. Immersive
+  // wallpaper surfaces return null here — they keep their dedicated shell
+  // branches.
+  const builtinManifest = resolveBuiltinRoutedViewManifest(tab);
+  if (builtinManifest) {
+    return { manifest: builtinManifest, viewId: resolveBuiltinTabId(tab) };
   }
 
   return { manifest: resolveSurfaceManifest(null), viewId: tab };
@@ -1643,13 +1655,11 @@ function routedShellMainClass(tab: string): string {
   // double-counted the clearance the wrapper already reserves, leaving an
   // oversized empty band under every view (the recurring "too much space at the
   // bottom" report). Bottom clearance is reserved exactly once, downstream.
-  // Views that own their full surface (browser/apps/views/background) still get
-  // zero padding.
+  // Views that own their full surface (apps/views/background) still get zero
+  // padding. (The browser no longer routes here at all — its fullscreen header
+  // takes the full-bleed shell path, like Notes/Calendar.)
   const pagePadding =
-    tab === "browser" ||
-    tab === "apps" ||
-    tab === "views" ||
-    tab === "background"
+    tab === "apps" || tab === "views" || tab === "background"
       ? ""
       : "px-2 sm:px-3 pt-[var(--view-pad-top)]";
   return `flex flex-1 min-h-0 min-w-0 overflow-hidden ${pagePadding}`;

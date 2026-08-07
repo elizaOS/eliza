@@ -96,6 +96,12 @@ const ALLOWED_BLUR = new Set<string>([
   // Comment-only reference (documents the notification-stack blur it mirrors);
   // no runtime backdrop-filter of its own.
   "packages/ui/src/hooks/useHorizontalPager.ts",
+  // The Browser's fullscreen floating glass toolbar — the same panel material
+  // the Notes/Calendar fullscreen views use (their inline styles live in
+  // plugin bundles outside this gate's roots). One static toolbar panel, not a
+  // scroll-path surface; declared here so the fullscreen views stay visually
+  // identical across builtin and plugin surfaces.
+  "packages/ui/src/components/pages/BrowserWorkspaceView.tsx",
 ]);
 
 describe("no backdrop-blur gate (#9141, battery)", () => {

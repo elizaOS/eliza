@@ -34,6 +34,7 @@ import {
   PILL_MORPH_MIN_SCALE,
   pillHandleCounterScale,
   pillMorphScale,
+  sheetBlackoutProgress,
 } from "./ChatOverlay";
 import type { ShellController } from "./useShellController";
 
@@ -166,6 +167,59 @@ describe("handle fade through the maximize over-pull (grabberBarOpacity)", () =>
     expect(grabberBarOpacity(0, 0)).toBe(0);
     expect(grabberBarOpacity(0.55, 0)).toBe(0);
     expect(grabberBarOpacity(0.95, 0)).toBeCloseTo(1, 10);
+  });
+});
+
+describe("open-sheet blackout (sheetBlackoutProgress)", () => {
+  it("keeps the resting glass at zero reveal and lands opaque at the half detent", () => {
+    // Closed thread: the composer keeps the translucent glass fill.
+    expect(sheetBlackoutProgress(0, 353, 0)).toBe(0);
+    // Mid-drag: the blend tracks the revealed height continuously.
+    expect(sheetBlackoutProgress(176.5, 353, 0)).toBeCloseTo(0.5, 10);
+    // At (and past) HALF the fill is fully the opaque panel --bg.
+    expect(sheetBlackoutProgress(353, 353, 0)).toBe(1);
+    expect(sheetBlackoutProgress(700, 353, 0)).toBe(1);
+  });
+
+  it("folds the maximize shape morph in so full-bleed can never read MORE translucent", () => {
+    expect(sheetBlackoutProgress(0, 353, 1)).toBe(1);
+    expect(sheetBlackoutProgress(100, 353, 0.8)).toBeCloseTo(0.8, 10);
+  });
+
+  it("treats a degenerate half detent as no reveal instead of dividing by zero", () => {
+    expect(sheetBlackoutProgress(200, 0, 0)).toBe(0);
+    expect(sheetBlackoutProgress(200, 0, 0.4)).toBeCloseTo(0.4, 10);
+  });
+
+  it("blends the live sheet surface to the opaque --bg once the drag crosses the half detent", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const el = grabber();
+    const surface = () =>
+      screen.getByTestId("chat-sheet-surface") as HTMLElement;
+
+    const now = vi.spyOn(performance, "now");
+    const eventTime = vi
+      .spyOn(Event.prototype, "timeStamp", "get")
+      .mockImplementation(() => performance.now() || Number.MIN_VALUE);
+    now.mockReturnValue(0);
+    fireEvent.pointerDown(el, { clientY: 800, pointerId: 1 });
+    // jsdom viewport: halfH is 353 — drag the thread 500px up, past HALF.
+    now.mockReturnValue(400);
+    fireEvent.pointerMove(el, { clientY: 300, pointerId: 1 });
+    await waitFor(() =>
+      expect(surface().style.backgroundColor).toContain("var(--bg) 100"),
+    );
+    now.mockReturnValue(3000);
+    fireEvent.pointerUp(el, { clientY: 300, pointerId: 1 });
+    eventTime.mockRestore();
+    now.mockRestore();
+
+    // Resting open past HALF (a deliberate drag free-rests where the finger
+    // left it): the blackout holds — no glass re-frost.
+    await waitFor(() => {
+      expect(sheet().getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
+      expect(surface().style.backgroundColor).toContain("var(--bg) 100");
+    });
   });
 });
 
