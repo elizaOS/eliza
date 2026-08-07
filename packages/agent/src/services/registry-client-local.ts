@@ -162,6 +162,32 @@ function isMissingPathError(err: unknown): err is NodeJS.ErrnoException {
   );
 }
 
+type LocalDiscoveryJson<T> =
+  | { readonly status: "valid"; readonly value: T }
+  | { readonly status: "missing" }
+  | { readonly status: "invalid" };
+
+async function readLocalDiscoveryJson<T>(
+  filePath: string,
+): Promise<LocalDiscoveryJson<T>> {
+  try {
+    const value = await readJsonFile<T>(filePath);
+    return value === null ? { status: "missing" } : { status: "valid", value };
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    // error-policy:J3 workspace metadata is untrusted discovery input. One
+    // malformed candidate is reported and rejected without hiding valid peers.
+    logger.warn(
+      {
+        file: filePath,
+        error: error.message,
+      },
+      "[LocalRegistry] Ignoring malformed local package metadata",
+    );
+    return { status: "invalid" };
+  }
+}
+
 async function readDirectoryEntries(
   dirPath: string,
   label: string,
@@ -487,14 +513,18 @@ async function discoverLocalWorkspaceApps(): Promise<
   }
 
   for (const { packageDir, dirName } of packageCandidates.values()) {
-    const packageJson = await readJsonFile<LocalPackageJson>(
+    const packageJsonResult = await readLocalDiscoveryJson<LocalPackageJson>(
       path.join(packageDir, "package.json"),
     );
-    if (!packageJson) continue;
+    if (packageJsonResult.status !== "valid") continue;
+    const packageJson = packageJsonResult.value;
 
-    const manifest = await readJsonFile<LocalPluginManifest>(
+    const manifestResult = await readLocalDiscoveryJson<LocalPluginManifest>(
       path.join(packageDir, "elizaos.plugin.json"),
     );
+    if (manifestResult.status === "invalid") continue;
+    const manifest =
+      manifestResult.status === "valid" ? manifestResult.value : null;
     if (!isDiscoverableAppPackage(packageJson, manifest)) continue;
 
     const info = buildDiscoveredEntry(
@@ -548,21 +578,29 @@ async function discoverLocalWorkspaceApps(): Promise<
       }
 
       for (const pkgDir of pkgDirs) {
-        const pkgJson = await readJsonFile<LocalPackageJson>(
-          path.join(pkgDir, "package.json"),
-        );
-        if (!pkgJson?.name) continue;
-        const manifest = await readJsonFile<LocalPluginManifest>(
-          path.join(pkgDir, "elizaos.plugin.json"),
-        );
+        const packageJsonResult =
+          await readLocalDiscoveryJson<LocalPackageJson>(
+            path.join(pkgDir, "package.json"),
+          );
+        if (packageJsonResult.status !== "valid") continue;
+        const pkgJson = packageJsonResult.value;
+        const packageName = pkgJson.name;
+        if (!packageName) continue;
+        const manifestResult =
+          await readLocalDiscoveryJson<LocalPluginManifest>(
+            path.join(pkgDir, "elizaos.plugin.json"),
+          );
+        if (manifestResult.status === "invalid") continue;
+        const manifest =
+          manifestResult.status === "valid" ? manifestResult.value : null;
         if (!isDiscoverableAppPackage(pkgJson, manifest)) continue;
-        if (discovered.has(pkgJson.name)) continue;
+        if (discovered.has(packageName)) continue;
 
-        const dirName = pkgJson.name
+        const dirName = packageName
           .replace(/^@[^/]+\//, "")
           .replace(/^plugin-/, "app-");
         const info = buildDiscoveredEntry(pkgDir, dirName, pkgJson, manifest);
-        if (info) discovered.set(info.name, info);
+        if (info) discovered.set(packageName, info);
       }
     }
   } catch {
@@ -588,10 +626,14 @@ async function discoverNodeModulePlugins(): Promise<
       if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
 
       const packageDir = path.join(elizaosDir, entry.name);
-      const packageJson = await readJsonFile<LocalPluginPackageJson>(
-        path.join(packageDir, "package.json"),
-      );
-      if (!packageJson?.name) continue;
+      const packageJsonResult =
+        await readLocalDiscoveryJson<LocalPluginPackageJson>(
+          path.join(packageDir, "package.json"),
+        );
+      if (packageJsonResult.status !== "valid") continue;
+      const packageJson = packageJsonResult.value;
+      const packageName = packageJson.name;
+      if (!packageName) continue;
 
       if (!isLocalPluginPackage(packageJson)) continue;
 
@@ -601,8 +643,8 @@ async function discoverNodeModulePlugins(): Promise<
       const version = packageJson.version ?? null;
       const localPath = await resolveLocalPackagePath(packageDir);
 
-      discovered.set(packageJson.name, {
-        name: packageJson.name,
+      discovered.set(packageName, {
+        name: packageName,
         gitRepo: repo.gitRepo,
         gitUrl: repo.gitUrl,
         description: packageJson.description ?? "",
@@ -611,7 +653,7 @@ async function discoverNodeModulePlugins(): Promise<
         stars: 0,
         language: "TypeScript",
         npm: {
-          package: packageJson.name,
+          package: packageName,
           v0Version: null,
           v1Version: null,
           v2Version: version,
@@ -647,21 +689,25 @@ async function discoverPackagesFolderPlugins(): Promise<
       if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
 
       const packageDir = path.join(packagesDir, entry.name);
-      const packageJson = await readJsonFile<LocalPluginPackageJson>(
-        path.join(packageDir, "package.json"),
-      );
-      if (!packageJson?.name) continue;
+      const packageJsonResult =
+        await readLocalDiscoveryJson<LocalPluginPackageJson>(
+          path.join(packageDir, "package.json"),
+        );
+      if (packageJsonResult.status !== "valid") continue;
+      const packageJson = packageJsonResult.value;
+      const packageName = packageJson.name;
+      if (!packageName) continue;
 
       if (!isLocalPluginPackage(packageJson)) continue;
       if (packageJson.elizaos?.kind === "app") continue;
-      if (!packageJson.name.startsWith("@elizaos/plugin-")) continue;
+      if (!packageName.startsWith("@elizaos/plugin-")) continue;
 
       const repo = parseRepositoryMetadata(packageJson.repository);
       const version = packageJson.version ?? null;
       const localPath = await resolveLocalPackagePath(packageDir);
 
-      discovered.set(packageJson.name, {
-        name: packageJson.name,
+      discovered.set(packageName, {
+        name: packageName,
         gitRepo: repo.gitRepo,
         gitUrl: repo.gitUrl,
         description: packageJson.description ?? "",
@@ -670,7 +716,7 @@ async function discoverPackagesFolderPlugins(): Promise<
         stars: 0,
         language: "TypeScript",
         npm: {
-          package: packageJson.name,
+          package: packageName,
           v0Version: null,
           v1Version: null,
           v2Version: version,
