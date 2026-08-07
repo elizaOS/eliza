@@ -5,6 +5,7 @@ import {
   EthereumTransaction,
   getEthereumOldestTransaction,
   getEthereumTransactions,
+  isLikelySpamNftTransaction,
 } from "./moralis";
 import { requireBlockchainConnector } from "./chains/registry";
 import { WRAPPED_NATIVE_ASSET_ID } from "./providers/priceProvider";
@@ -88,6 +89,42 @@ function deriveRecentEthereumTokenActivity(
   return Array.from(activityByContract.values())
     .sort((a, b) => (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0))
     .slice(0, MAX_RECENT_TOKEN_ACTIVITY_ITEMS);
+}
+
+// Shared by all three EVM branches (ethereum/bnb/base). Classifies each
+// fetched transaction's likelySpam via isLikelySpamNftTransaction
+// (Moralis's possible_spam flag OR null-address-mint - see moralis.ts for
+// why verified_collection/category/multi-sender counting were tested and
+// rejected). recentTransactions keeps every transaction, spam included -
+// nothing is hidden from callers reading the full list (nftHoldings,
+// evidence records, etc. are untouched by this entirely). Only
+// nonSpamRecentTransactions - the one thing that feeds
+// transactionCountSample/activityLevel/scoring - excludes them.
+function buildEvmRecentTransactions(rawTransactions: EthereumTransaction[]): {
+  recentTransactions: WalletRecentTransaction[];
+  nonSpamRecentTransactions: WalletRecentTransaction[];
+  spamNftTransactionCount: number;
+} {
+  const recentTransactions: WalletRecentTransaction[] = rawTransactions.map(
+    (transaction) => ({
+      transactionId: transaction.hash,
+      blockHeight: transaction.blockNumber ?? undefined,
+      blockTime: transaction.blockTimestamp ?? undefined,
+      status: transaction.status === "failed" ? "failed" : "success",
+      likelySpam: isLikelySpamNftTransaction(transaction),
+    }),
+  );
+
+  const nonSpamRecentTransactions = recentTransactions.filter(
+    (transaction) => !transaction.likelySpam,
+  );
+
+  return {
+    recentTransactions,
+    nonSpamRecentTransactions,
+    spamNftTransactionCount:
+      recentTransactions.length - nonSpamRecentTransactions.length,
+  };
 }
 
 export async function investigateWallet(
@@ -490,14 +527,11 @@ warnings: [],
         const normalizedRecentParsedTransactions =
           rawTransactions.map(parseEthereumTransaction);
 
-        const recentTransactions: WalletRecentTransaction[] =
-          rawTransactions.map((transaction) => ({
-            transactionId: transaction.hash,
-            blockHeight: transaction.blockNumber ?? undefined,
-            blockTime: transaction.blockTimestamp ?? undefined,
-            status:
-              transaction.status === "failed" ? "failed" : "success",
-          }));
+        const {
+          recentTransactions,
+          nonSpamRecentTransactions,
+          spamNftTransactionCount,
+        } = buildEvmRecentTransactions(rawTransactions);
 
         const oldestTransaction =
           await getEthereumOldestTransaction(walletAddress, "eth");
@@ -543,6 +577,12 @@ warnings: [],
         if (recentTokenActivity.length > 0) {
           investigationWarnings.push(
             `Showing ${recentTokenActivity.length} token(s) seen in recent activity (not a complete holdings list) as a fallback, since the full token list couldn't be retrieved for this wallet - these reflect recent transfers, not current balances, and may not represent the wallet's largest actual holdings.`,
+          );
+        }
+
+        if (spamNftTransactionCount > 0) {
+          investigationWarnings.push(
+            `${spamNftTransactionCount} likely spam/airdrop NFT transaction(s) were excluded from the activity sample used for transactionCountSample/activityLevel (still visible in the full recentTransactions list below, each flagged with likelySpam: true). This filter catches known patterns (Moralis's own spam flag, plus NFTs minted directly from the null address) - it does not catch all forms of NFT spam, such as mass-distribution campaigns disguised as legitimate marketplace activity.`,
           );
         }
 
@@ -614,7 +654,7 @@ warnings: [],
           address: walletAddress,
           balance: walletBalance,
           tokenHoldings,
-          recentTransactions,
+          recentTransactions: nonSpamRecentTransactions,
           oldestTransactionId: oldestTransaction?.hash,
           oldestTransactionTimestamp:
             oldestTransaction?.blockTimestamp ?? undefined,
@@ -704,7 +744,7 @@ warnings: [],
           evidence,
           evidenceRecords,
           recentTransactions,
-          transactionCountSample: recentTransactions.length,
+          transactionCountSample: nonSpamRecentTransactions.length,
           activity,
           age,
           funding,
@@ -720,7 +760,7 @@ warnings: [],
           skunkScore,
           summary: `Wallet found. Current balance: ${ethBalance.toFixed(
             6,
-          )} ETH. Recent transaction sample: ${recentTransactions.length}.`,
+          )} ETH. Recent transaction sample: ${nonSpamRecentTransactions.length}.`,
           warnings: investigationWarnings,
         };
       } catch (error) {
@@ -783,14 +823,11 @@ warnings: [],
         const normalizedRecentParsedTransactions =
           rawTransactions.map(parseEthereumTransaction);
 
-        const recentTransactions: WalletRecentTransaction[] =
-          rawTransactions.map((transaction) => ({
-            transactionId: transaction.hash,
-            blockHeight: transaction.blockNumber ?? undefined,
-            blockTime: transaction.blockTimestamp ?? undefined,
-            status:
-              transaction.status === "failed" ? "failed" : "success",
-          }));
+        const {
+          recentTransactions,
+          nonSpamRecentTransactions,
+          spamNftTransactionCount,
+        } = buildEvmRecentTransactions(rawTransactions);
 
         const oldestTransaction =
           await getEthereumOldestTransaction(walletAddress, "bsc");
@@ -836,6 +873,12 @@ warnings: [],
         if (recentTokenActivity.length > 0) {
           investigationWarnings.push(
             `Showing ${recentTokenActivity.length} token(s) seen in recent activity (not a complete holdings list) as a fallback, since the full token list couldn't be retrieved for this wallet - these reflect recent transfers, not current balances, and may not represent the wallet's largest actual holdings.`,
+          );
+        }
+
+        if (spamNftTransactionCount > 0) {
+          investigationWarnings.push(
+            `${spamNftTransactionCount} likely spam/airdrop NFT transaction(s) were excluded from the activity sample used for transactionCountSample/activityLevel (still visible in the full recentTransactions list below, each flagged with likelySpam: true). This filter catches known patterns (Moralis's own spam flag, plus NFTs minted directly from the null address) - it does not catch all forms of NFT spam, such as mass-distribution campaigns disguised as legitimate marketplace activity.`,
           );
         }
 
@@ -904,7 +947,7 @@ warnings: [],
           address: walletAddress,
           balance: walletBalance,
           tokenHoldings,
-          recentTransactions,
+          recentTransactions: nonSpamRecentTransactions,
           oldestTransactionId: oldestTransaction?.hash,
           oldestTransactionTimestamp:
             oldestTransaction?.blockTimestamp ?? undefined,
@@ -994,7 +1037,7 @@ warnings: [],
           evidence,
           evidenceRecords,
           recentTransactions,
-          transactionCountSample: recentTransactions.length,
+          transactionCountSample: nonSpamRecentTransactions.length,
           activity,
           age,
           funding,
@@ -1010,7 +1053,7 @@ warnings: [],
           skunkScore,
           summary: `Wallet found. Current balance: ${bnbBalance.toFixed(
             6,
-          )} BNB. Recent transaction sample: ${recentTransactions.length}.`,
+          )} BNB. Recent transaction sample: ${nonSpamRecentTransactions.length}.`,
           warnings: investigationWarnings,
         };
       } catch (error) {
@@ -1071,14 +1114,11 @@ warnings: [],
         const normalizedRecentParsedTransactions =
           rawTransactions.map(parseEthereumTransaction);
 
-        const recentTransactions: WalletRecentTransaction[] =
-          rawTransactions.map((transaction) => ({
-            transactionId: transaction.hash,
-            blockHeight: transaction.blockNumber ?? undefined,
-            blockTime: transaction.blockTimestamp ?? undefined,
-            status:
-              transaction.status === "failed" ? "failed" : "success",
-          }));
+        const {
+          recentTransactions,
+          nonSpamRecentTransactions,
+          spamNftTransactionCount,
+        } = buildEvmRecentTransactions(rawTransactions);
 
         const oldestTransaction =
           await getEthereumOldestTransaction(walletAddress, "base");
@@ -1124,6 +1164,12 @@ warnings: [],
         if (recentTokenActivity.length > 0) {
           investigationWarnings.push(
             `Showing ${recentTokenActivity.length} token(s) seen in recent activity (not a complete holdings list) as a fallback, since the full token list couldn't be retrieved for this wallet - these reflect recent transfers, not current balances, and may not represent the wallet's largest actual holdings.`,
+          );
+        }
+
+        if (spamNftTransactionCount > 0) {
+          investigationWarnings.push(
+            `${spamNftTransactionCount} likely spam/airdrop NFT transaction(s) were excluded from the activity sample used for transactionCountSample/activityLevel (still visible in the full recentTransactions list below, each flagged with likelySpam: true). This filter catches known patterns (Moralis's own spam flag, plus NFTs minted directly from the null address) - it does not catch all forms of NFT spam, such as mass-distribution campaigns disguised as legitimate marketplace activity.`,
           );
         }
 
@@ -1193,7 +1239,7 @@ warnings: [],
           address: walletAddress,
           balance: walletBalance,
           tokenHoldings,
-          recentTransactions,
+          recentTransactions: nonSpamRecentTransactions,
           oldestTransactionId: oldestTransaction?.hash,
           oldestTransactionTimestamp:
             oldestTransaction?.blockTimestamp ?? undefined,
@@ -1283,7 +1329,7 @@ warnings: [],
           evidence,
           evidenceRecords,
           recentTransactions,
-          transactionCountSample: recentTransactions.length,
+          transactionCountSample: nonSpamRecentTransactions.length,
           activity,
           age,
           funding,
@@ -1299,7 +1345,7 @@ warnings: [],
           skunkScore,
           summary: `Wallet found. Current balance: ${ethBalance.toFixed(
             6,
-          )} ETH. Recent transaction sample: ${recentTransactions.length}.`,
+          )} ETH. Recent transaction sample: ${nonSpamRecentTransactions.length}.`,
           warnings: investigationWarnings,
         };
       } catch (error) {

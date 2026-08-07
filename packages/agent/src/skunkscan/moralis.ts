@@ -346,6 +346,25 @@ export type MoralisContractInteraction = {
   spender?: string;
 };
 
+// possible_spam and verified_collection are Moralis's own native spam/scam
+// classification, confirmed live against the actual /wallets/{address}/
+// history response (not just docs) - see isLikelySpamNftTransfer below for
+// how this is used. Live-verified: possible_spam alone catches only ~44%
+// of confirmed-spam NFT receipts on a real test wallet (4/9) - it's a real
+// signal, not a complete one, which is why it's combined with the
+// null-address-mint check rather than relied on alone.
+export type MoralisNftTransfer = {
+  token_address?: string;
+  token_id?: string;
+  token_name?: string;
+  from_address?: string;
+  to_address?: string;
+  value?: string;
+  direction?: string;
+  possible_spam?: boolean;
+  verified_collection?: boolean;
+};
+
 export type MoralisWalletTransaction = {
   hash?: string;
   block_number?: string;
@@ -359,6 +378,7 @@ export type MoralisWalletTransaction = {
   native_transfers?: MoralisNativeTransfer[];
   erc20_transfers?: MoralisErc20Transfer[];
   contract_interactions?: MoralisContractInteraction[] | null;
+  nft_transfers?: MoralisNftTransfer[];
 };
 
 export type MoralisWalletTransactionsResponse = {
@@ -377,7 +397,60 @@ export type EthereumTransaction = {
   nativeTransfers: MoralisNativeTransfer[];
   tokenTransfers: MoralisErc20Transfer[];
   contractInteractions: MoralisContractInteraction[];
+  nftTransfers: MoralisNftTransfer[];
 };
+
+// The canonical EVM null/genesis address - already used the same way in
+// exposure/staticRegistry.ts and labels/staticRegistry.ts ("Null:
+// 0x000...000 (genesis/null address)"). Minting an NFT directly from this
+// address (rather than a real seller/marketplace) is the single strongest
+// signal found during live investigation: 7 of 9 confirmed-spam NFT
+// receipts on a real test wallet were minted from this address.
+const EVM_NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+// Validated, narrow-scope spam signal (Ethereum/BSC/Base only - Solana has
+// no equivalent and is out of scope here): possible_spam is Moralis's own
+// flag OR the transfer was minted directly from the null address. Combined
+// because live testing showed possible_spam alone misses real spam (5 of 9
+// confirmed-spam receipts on one test wallet were NOT flagged), while
+// null-address-mint alone would miss anything Moralis's own detector does
+// catch that isn't a direct mint.
+//
+// Deliberately does NOT include: verified_collection (live-tested, proven
+// unreliable - a real mass-distribution spam collection, "World Cups"/
+// WCUPS, showed verified_collection: true because it uses OpenSea's own
+// verified SeaDrop minting standard), transaction-level category (also
+// live-tested and proven unreliable - all 98 of that same spam wallet's
+// entries were categorized "nft purchase" by Moralis, indistinguishable
+// from a genuine collector's real purchases), or same-contract/multi-
+// sender counting (live-tested against real collector wallets and produced
+// confirmed false positives - a real trader legitimately buying multiple
+// items of the same blue-chip collection from different sellers looks
+// identical to mass-distribution by this measure alone). The
+// "mass-distribution disguised as real marketplace activity" pattern this
+// leaves uncaught is a known, deliberately deferred gap - see the
+// transparency note this feeds into wallet.ts.
+export function isLikelySpamNftTransfer(
+  transfer: MoralisNftTransfer,
+): boolean {
+  return (
+    transfer.possible_spam === true ||
+    transfer.from_address?.toLowerCase() === EVM_NULL_ADDRESS
+  );
+}
+
+// A transaction is classified spam only when EVERY nft transfer within it
+// matches the spam signal - conservative on purpose, so a transaction
+// mixing spam and non-spam content (or NFT activity alongside real
+// native/token transfers) is never misclassified.
+export function isLikelySpamNftTransaction(
+  transaction: EthereumTransaction,
+): boolean {
+  return (
+    transaction.nftTransfers.length > 0 &&
+    transaction.nftTransfers.every(isLikelySpamNftTransfer)
+  );
+}
 
 function toUnixSeconds(isoTimestamp: string | undefined): number | null {
   if (!isoTimestamp) {
@@ -420,6 +493,9 @@ function toEthereumTransaction(
       : [],
     contractInteractions: Array.isArray(transaction.contract_interactions)
       ? transaction.contract_interactions
+      : [],
+    nftTransfers: Array.isArray(transaction.nft_transfers)
+      ? transaction.nft_transfers
       : [],
   };
 }
