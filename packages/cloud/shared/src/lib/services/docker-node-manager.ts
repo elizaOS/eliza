@@ -114,16 +114,20 @@ export function __resetPlacementTimeoutStateForTests(): void {
 }
 
 /** Matches only the docker-ssh timeout signature in an error or its causes. */
-export function isDockerCommandTimeoutError(error: unknown): boolean {
+export function isDockerSshCommandTimeoutError(
+  error: unknown,
+  commandFirstToken?: string,
+): boolean {
   const visited = new Set<unknown>();
   let current: unknown = error;
 
   while (current !== undefined && current !== null && !visited.has(current)) {
     visited.add(current);
     const message = current instanceof Error ? current.message : String(current);
+    const commandSuffix = commandFirstToken ? `: ${commandFirstToken} [redacted]` : " [redacted]";
     if (
       message.includes("[docker-ssh] Command timed out after") &&
-      message.endsWith(": docker [redacted]")
+      message.endsWith(commandSuffix)
     ) {
       return true;
     }
@@ -144,7 +148,7 @@ export function notePlacementCommandFailure(
   error: unknown,
   nowMs = Date.now(),
 ): void {
-  if (!isDockerCommandTimeoutError(error)) return;
+  if (!isDockerSshCommandTimeoutError(error, "docker")) return;
   const state = placementTimeoutState.get(nodeId) ?? {
     timeoutsMs: [],
     quarantinedUntilMs: 0,
@@ -269,6 +273,11 @@ export interface NodeSelectionOptions {
    * if the blue landed on the same node as the old.
    */
   excludeNodeId?: string;
+  /**
+   * Refuse transient IO pressure only while selecting new placement. Sticky
+   * stateful routing and autoscaler readiness must remain liveness-only.
+   */
+  enforcePlacementIoPressure?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -292,11 +301,6 @@ function isAutoscaledNode(node: DockerNode): boolean {
 
 function prePullPidFile(marker: string): string {
   return `${PREPULL_PID_DIR}/eliza-prepull-${marker}.pid`;
-}
-
-export function isPrePullTimeoutError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("Command timed out after");
 }
 
 export function buildTrackedPrePullCommand(
@@ -399,28 +403,59 @@ export class DockerNodeManager {
       .filter((candidate) => candidate.node.node_id !== options.excludeNodeId)
       .sort((a, b) => b.available - a.available);
 
-    const quarantined = candidates.filter((candidate) =>
-      isNodePlacementQuarantined(candidate.node.node_id),
-    );
+    const compatibleCandidates = candidates.filter((candidate) => {
+      if (isNodeMetadataCompatible(candidate.node, options.requiredPlatform)) {
+        return true;
+      }
+      logger.warn("[docker-node-manager] Skipping node with incompatible architecture", {
+        nodeId: candidate.node.node_id,
+        requiredPlatform: options.requiredPlatform,
+        metadata: candidate.node.metadata,
+      });
+      return false;
+    });
+    const nowMs = Date.now();
+    const selectable: typeof compatibleCandidates = [];
+    const quarantined: Array<{
+      candidate: (typeof compatibleCandidates)[number];
+      quarantinedUntilMs: number;
+    }> = [];
+    for (const candidate of compatibleCandidates) {
+      const quarantinedUntilMs =
+        placementTimeoutState.get(candidate.node.node_id)?.quarantinedUntilMs ?? 0;
+      if (quarantinedUntilMs > nowMs) {
+        quarantined.push({ candidate, quarantinedUntilMs });
+      } else {
+        selectable.push(candidate);
+      }
+    }
     if (quarantined.length > 0) {
       logger.warn("[docker-node-manager] Skipping quarantined nodes during selection", {
-        nodeIds: quarantined.map((candidate) => candidate.node.node_id),
+        nodeIds: quarantined.map(({ candidate }) => candidate.node.node_id),
       });
     }
-    const selectable = candidates.filter(
-      (candidate) => !isNodePlacementQuarantined(candidate.node.node_id),
-    );
+
+    if (selectable.length === 0 && quarantined.length > 0) {
+      const fallback = quarantined.reduce((oldest, current) =>
+        current.quarantinedUntilMs < oldest.quarantinedUntilMs ? current : oldest,
+      );
+      selectable.push(fallback.candidate);
+      logger.warn(
+        "[docker-node-manager] Overriding placement quarantine because every capacity-bearing node is quarantined",
+        {
+          nodeId: fallback.candidate.node.node_id,
+          quarantinedUntilMs: fallback.quarantinedUntilMs,
+        },
+      );
+    }
 
     for (const candidate of selectable) {
-      if (!isNodeMetadataCompatible(candidate.node, options.requiredPlatform)) {
-        logger.warn("[docker-node-manager] Skipping node with incompatible architecture", {
-          nodeId: candidate.node.node_id,
-          requiredPlatform: options.requiredPlatform,
-          metadata: candidate.node.metadata,
-        });
-        continue;
-      }
-      if (!(await this.ensureNodeReady(candidate.node, options))) {
+      if (
+        !(await this.ensureNodeReady(candidate.node, {
+          ...options,
+          enforcePlacementIoPressure: true,
+        }))
+      ) {
         continue;
       }
       logger.info(
@@ -713,16 +748,16 @@ export class DockerNodeManager {
     try {
       const ssh = this.sshClientForNode(node);
       await ssh.connect();
-      // PSI is read in the same round trip: `docker info` answers from daemon
-      // memory even on a node too IO-starved to finish a `docker create`
-      // (#17880), so daemon liveness alone cannot green-light placement. The
-      // `&&` keeps a failing `docker info` rejecting exec with its own exit
-      // code (the unreachable/catch path below), exactly as the pre-PSI probe
-      // did; the PSI read is only appended to a successful probe.
-      const probeOutput = await ssh.exec(
-        `docker info --format '{{.ID}}|{{.Architecture}}' && { echo '${READINESS_PROBE_PSI_MARKER}'; cat /proc/pressure/io 2>/dev/null || true; }`,
-        10_000,
-      );
+      const dockerInfoCommand = "docker info --format '{{.ID}}|{{.Architecture}}'";
+      // Placement reads PSI in the same round trip because `docker info`
+      // answers from daemon memory even when IO stalls `docker create`. Other
+      // callers use this method as a liveness probe for sticky stateful routing
+      // and autoscaler bootstrap, where transient pressure must not reroute or
+      // reject the node.
+      const probeCommand = options.enforcePlacementIoPressure
+        ? `${dockerInfoCommand} && { echo '${READINESS_PROBE_PSI_MARKER}'; cat /proc/pressure/io 2>/dev/null || true; }`
+        : dockerInfoCommand;
+      const probeOutput = await ssh.exec(probeCommand, 10_000);
       const [dockerSection = "", psiSection = ""] = probeOutput.split(READINESS_PROBE_PSI_MARKER);
       const { dockerId, architecture } = parseDockerInfoProbe(dockerSection);
       if (dockerId.trim()) {
@@ -737,7 +772,9 @@ export class DockerNodeManager {
           });
           return false;
         }
-        const ioPressure = parseIoPressureFullAvg60(psiSection);
+        const ioPressure = options.enforcePlacementIoPressure
+          ? parseIoPressureFullAvg60(psiSection)
+          : null;
         if (ioPressure !== null && ioPressure >= PLACEMENT_MAX_IO_PRESSURE_FULL_AVG60) {
           // No DB status write: IO overload is transient and node-status flips
           // are reserved for dead/unreachable daemons (see the canonical-node
@@ -933,7 +970,7 @@ export class DockerNodeManager {
             image,
             error: message,
           });
-          if (isPrePullTimeoutError(error)) {
+          if (isDockerSshCommandTimeoutError(error)) {
             // A timed-out `docker pull` is NOT stopped by DockerSSHClient's
             // channel-close (that only sends SIGHUP, which a detached `docker
             // pull` ignores), so it can keep running. The tracked wrapper leaves

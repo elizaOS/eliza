@@ -6,8 +6,9 @@
  * only node with free slots precisely when the fleet is saturated), and then
  * times out every `docker create`. These tests drive the REAL manager with a
  * stubbed SSH client + repository and assert that (1) measured docker-command
- * timeouts quarantine a node out of selection, and (2) a node reporting
- * pathological /proc/pressure/io is refused at readiness time.
+ * timeouts quarantine a node out of selection with an all-quarantined escape
+ * hatch, and (2) pathological /proc/pressure/io blocks only new placement,
+ * never sticky stateful routing or autoscaler liveness checks.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -226,38 +227,75 @@ describe("getAvailableNode under quarantine", () => {
     expect(selected?.node_id).toBe("node-ok");
   });
 
-  test("returns null when every capacity-bearing node is quarantined, without probing them", async () => {
+  test("overrides the oldest quarantine when every capacity-bearing node is quarantined", async () => {
     const manager = DockerNodeManager.getInstance();
-    enabledNodes = [node("node-quarantined")];
+    enabledNodes = [node("node-newer"), node("node-older")];
+    const nowMs = Date.now();
     for (let attempt = 0; attempt < 3; attempt++) {
-      notePlacementCommandFailure("node-quarantined", TIMEOUT_ERROR);
+      notePlacementCommandFailure("node-older", TIMEOUT_ERROR, nowMs - MINUTE);
+      notePlacementCommandFailure("node-newer", TIMEOUT_ERROR, nowMs);
     }
+    sshMock.exec.mockResolvedValue(probeOutput(HEALTHY_PSI));
+
+    const selected = await manager.getAvailableNode();
+
+    expect(selected?.node_id).toBe("node-older");
+    expect(sshMock.exec).toHaveBeenCalledTimes(1);
+  });
+
+  test("an incompatible available node cannot suppress a compatible quarantine fallback", async () => {
+    const manager = DockerNodeManager.getInstance();
+    const incompatible = node("node-arm64");
+    incompatible.metadata = { architecture: "arm64" };
+    enabledNodes = [incompatible, node("node-amd64-quarantined")];
+    const nowMs = Date.now();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      notePlacementCommandFailure("node-amd64-quarantined", TIMEOUT_ERROR, nowMs);
+    }
+    sshMock.exec.mockResolvedValue(probeOutput(HEALTHY_PSI));
+
+    const selected = await manager.getAvailableNode({
+      requiredPlatform: "linux/amd64",
+    });
+
+    expect(selected?.node_id).toBe("node-amd64-quarantined");
+    expect(sshMock.exec).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("placement-scoped IO-pressure gate", () => {
+  test("refuses an IO-starved node during new placement", async () => {
+    const manager = DockerNodeManager.getInstance();
+    enabledNodes = [node("node-starved")];
+    sshMock.exec.mockResolvedValue(probeOutput(OUTAGE_PSI));
 
     const selected = await manager.getAvailableNode();
 
     expect(selected).toBeNull();
-    // Quarantine is decided before the SSH probe — a drowning node must not
-    // receive even probe traffic from selection.
-    expect(sshMock.exec).not.toHaveBeenCalled();
-  });
-});
-
-describe("ensureNodeReady IO-pressure gate", () => {
-  test("refuses an IO-starved node and does not mark it healthy", async () => {
-    const manager = DockerNodeManager.getInstance();
-    sshMock.exec.mockResolvedValue(probeOutput(OUTAGE_PSI));
-
-    const ready = await manager.ensureNodeReady(node("node-starved"));
-
-    expect(ready).toBe(false);
     expect(repoCalls.updateStatus).toEqual([]);
+  });
+
+  test("does not apply placement pressure policy to a direct liveness probe", async () => {
+    const manager = DockerNodeManager.getInstance();
+    sshMock.exec.mockResolvedValue("docker-id-1|x86_64");
+
+    const ready = await manager.ensureNodeReady(node("node-sticky"));
+
+    expect(ready).toBe(true);
+    expect(sshMock.exec).toHaveBeenCalledWith(
+      "docker info --format '{{.ID}}|{{.Architecture}}'",
+      10_000,
+    );
+    expect(repoCalls.updateStatus).toEqual([{ nodeId: "node-sticky", status: "healthy" }]);
   });
 
   test("accepts a node with healthy IO pressure", async () => {
     const manager = DockerNodeManager.getInstance();
     sshMock.exec.mockResolvedValue(probeOutput(HEALTHY_PSI));
 
-    const ready = await manager.ensureNodeReady(node("node-ok"));
+    const ready = await manager.ensureNodeReady(node("node-ok"), {
+      enforcePlacementIoPressure: true,
+    });
 
     expect(ready).toBe(true);
     expect(repoCalls.updateStatus).toEqual([{ nodeId: "node-ok", status: "healthy" }]);
@@ -269,7 +307,9 @@ describe("ensureNodeReady IO-pressure gate", () => {
     const manager = DockerNodeManager.getInstance();
     sshMock.exec.mockResolvedValue(probeOutput(HEALTHY_BUSY_PSI));
 
-    const ready = await manager.ensureNodeReady(node("node-busy"));
+    const ready = await manager.ensureNodeReady(node("node-busy"), {
+      enforcePlacementIoPressure: true,
+    });
 
     expect(ready).toBe(true);
     expect(repoCalls.updateStatus).toEqual([{ nodeId: "node-busy", status: "healthy" }]);
@@ -279,7 +319,9 @@ describe("ensureNodeReady IO-pressure gate", () => {
     const manager = DockerNodeManager.getInstance();
     sshMock.exec.mockResolvedValue(probeOutput(null));
 
-    const ready = await manager.ensureNodeReady(node("node-old-kernel"));
+    const ready = await manager.ensureNodeReady(node("node-old-kernel"), {
+      enforcePlacementIoPressure: true,
+    });
 
     expect(ready).toBe(true);
     expect(repoCalls.updateStatus).toEqual([{ nodeId: "node-old-kernel", status: "healthy" }]);
