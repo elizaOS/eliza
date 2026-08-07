@@ -124,12 +124,15 @@ function uniquePaths(paths: string[]): string[] {
   return ordered;
 }
 
-function resolveWorkspaceRoots(): string[] {
-  const envRoot = process.env.ELIZA_WORKSPACE_ROOT?.trim();
+export function resolveWorkspaceRootsForDiscovery(options: {
+  readonly moduleDir: string;
+  readonly cwd: string;
+  readonly envRoot?: string;
+}): string[] {
+  const envRoot = options.envRoot?.trim();
   if (envRoot) return uniquePaths([envRoot]);
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const packageRoot = path.resolve(moduleDir, "..", "..");
-  const cwd = process.cwd();
+  const packageRoot = path.resolve(options.moduleDir, "..", "..");
+  const cwd = options.cwd;
   const roots = [
     packageRoot,
     cwd,
@@ -150,7 +153,19 @@ function resolveWorkspaceRoots(): string[] {
     walk = parent;
   }
 
-  return uniquePaths(roots);
+  const anchors = new Set([path.resolve(packageRoot), path.resolve(cwd)]);
+  return uniquePaths(roots).filter(
+    (candidate) =>
+      anchors.has(candidate) || !path.basename(candidate).startsWith("."),
+  );
+}
+
+function resolveWorkspaceRoots(): string[] {
+  return resolveWorkspaceRootsForDiscovery({
+    moduleDir: path.dirname(fileURLToPath(import.meta.url)),
+    cwd: process.cwd(),
+    envRoot: process.env.ELIZA_WORKSPACE_ROOT,
+  });
 }
 
 function isMissingPathError(err: unknown): err is NodeJS.ErrnoException {

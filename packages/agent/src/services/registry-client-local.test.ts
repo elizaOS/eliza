@@ -5,7 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyLocalWorkspaceApps } from "./registry-client-local.ts";
+import {
+  applyLocalWorkspaceApps,
+  resolveWorkspaceRootsForDiscovery,
+} from "./registry-client-local.ts";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
 const temporaryRoots: string[] = [];
@@ -32,6 +35,27 @@ afterEach(async () => {
 });
 
 describe("applyLocalWorkspaceApps", () => {
+  it("does not treat an implicit hidden worktree container as a workspace", () => {
+    const roots = resolveWorkspaceRootsForDiscovery({
+      moduleDir: "/repo/.worktrees/feature/packages/agent/src/services",
+      cwd: "/repo/.worktrees/feature",
+    });
+
+    expect(roots).toContain("/repo/.worktrees/feature");
+    expect(roots).not.toContain("/repo/.worktrees");
+    expect(roots).toContain("/repo");
+  });
+
+  it("honors an explicitly configured hidden workspace root", () => {
+    expect(
+      resolveWorkspaceRootsForDiscovery({
+        moduleDir: "/repo/packages/agent/src/services",
+        cwd: "/repo",
+        envRoot: "/repo/.workspaces",
+      }),
+    ).toEqual(["/repo/.workspaces"]);
+  });
+
   it("reports and rejects one malformed candidate while preserving valid peers", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-registry-"));
     temporaryRoots.push(root);
