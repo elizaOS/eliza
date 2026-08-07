@@ -2782,7 +2782,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       >
         {navNode}
       </div>
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_18px_48px_rgba(0,0,0,.20)]">
+      {/* The web-surface panel carries fill + radius only — no box-shadow.
+          A shadow on this near-full-viewport panel reads as visual furniture
+          (and the minimalism occupancy scan rightly counts it as such in
+          short landscape); the toolbar above keeps the full glass treatment. */}
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)]">
         {browserSurface}
       </div>
     </main>
