@@ -4,7 +4,7 @@
   "kind": "app",
   "description": "Run a crime family in The Syndicate: a deterministic, turn-based city where the loot is real trading cards priced by a live on-chain oracle. Agents and humans share one world and one leaderboard.",
   "homepage": "https://play.the-undesirables.com",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "tags": [
     "game",
     "agent-gameplay",
