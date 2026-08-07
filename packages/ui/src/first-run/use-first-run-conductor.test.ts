@@ -131,6 +131,7 @@ import {
   ConversationMessagesCtx,
   type ConversationMessagesValue,
 } from "../state/ConversationMessagesContext.hooks";
+import { CLOUD_LOGIN_POPUP_NAME } from "../state/cloud-login-launch";
 import type { AppContextValue } from "../state/internal";
 import { classifyDeviceRamTier } from "./device-ram-tier";
 import {
@@ -268,6 +269,11 @@ async function waitForTurn(
 beforeEach(() => {
   ensureLocalStorage().clear();
   vi.clearAllMocks();
+  // jsdom's window.open is unimplemented and logs a console error the setup
+  // gate would flag; the flow launchers claim a real popup on every runtime /
+  // provider pick, so default it to the popup-blocked (null) signal. Tests
+  // that assert the popup lifecycle re-configure this same spy.
+  vi.spyOn(window, "open").mockReturnValue(null);
   mocks.deviceRamTier = null;
   mocks.client.listLocalAgentBackups.mockResolvedValue([]);
   // `clearAllMocks` resets call history but NOT implementations, so restore the
@@ -967,6 +973,48 @@ describe("useFirstRunConductor", () => {
     });
     expect(turn("first-run:cloud-oauth")?.secretRequest?.form).toBeUndefined();
 
+    unmount();
+  });
+
+  it("closes the gesture-claimed popup when a LOCAL finish never reaches interactive login", async () => {
+    // The provider tap claims the popup synchronously (gesture window), but a
+    // local-runtime finish never consumes it — the launcher's finally must
+    // close the stray about:blank window instead of leaking it (#17572).
+    const close = vi.fn();
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: false, close } as unknown as Window);
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(openSpy).toHaveBeenCalledWith("about:blank", CLOUD_LOGIN_POPUP_NAME);
+    await waitFor(() => {
+      expect(close).toHaveBeenCalledTimes(1);
+    });
+    unmount();
+  });
+
+  it("closes the gesture-claimed popup when an already-authenticated cloud provision skips login", async () => {
+    // Token + connection are live (beforeEach defaults), so getCloudAuthToken
+    // short-circuits and interactive login never consumes the claimed handle.
+    const close = vi.fn();
+    vi.spyOn(window, "open").mockReturnValue({
+      closed: false,
+      close,
+    } as unknown as Window);
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitFor(() => {
+      expect(close).toHaveBeenCalledTimes(1);
+    });
     unmount();
   });
 

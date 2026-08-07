@@ -75,7 +75,10 @@ import {
 import { APP_RESUME_EVENT } from "../events";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
-import { claimCloudLoginWindow } from "../state/cloud-login-launch";
+import {
+  claimCloudLoginWindow,
+  releaseClaimedCloudLoginWindow,
+} from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import { startTutorial } from "../tutorial/tutorial-service";
 import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
@@ -818,6 +821,10 @@ export function useFirstRunConductor(): void {
       .catch((err: unknown) => seedError(cloudFailureMessage(err)))
       .finally(() => {
         busyRef.current = false;
+        // Paths that never reach interactive login (already-authenticated
+        // cloud sessions short-circuit before the popup is consumed) must not
+        // leave the gesture-claimed about:blank window open.
+        releaseClaimedCloudLoginWindow();
       });
   }, [handleOutcome, seedError]);
 
@@ -831,6 +838,8 @@ export function useFirstRunConductor(): void {
       .then(handleOutcome)
       .finally(() => {
         busyRef.current = false;
+        // Local-runtime finishes never consume the claimed popup — close it.
+        releaseClaimedCloudLoginWindow();
       });
   }, [handleOutcome]);
 

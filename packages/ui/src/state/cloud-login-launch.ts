@@ -107,6 +107,10 @@ let stashedCloudLoginWindow: Window | null = null;
  * (possibly async) interactive login entry point. Returns the stashed window.
  */
 export function claimCloudLoginWindow(): Window | null {
+  // A re-claim before the previous handle was consumed (e.g. the user taps a
+  // launcher again after a flow that never reached interactive login) would
+  // otherwise strand the earlier about:blank popup forever — close it first.
+  releaseClaimedCloudLoginWindow();
   stashedCloudLoginWindow = preOpenCloudLoginWindow();
   return stashedCloudLoginWindow;
 }
@@ -119,6 +123,19 @@ export function takeClaimedCloudLoginWindow(): Window | null {
   const claimed = stashedCloudLoginWindow;
   stashedCloudLoginWindow = null;
   return claimed;
+}
+
+/**
+ * Close and discard an unconsumed gesture-claimed popup. Flow launchers call
+ * this in their `.finally` so paths that never reach interactive login (local
+ * runtime finish, already-authenticated cloud provision) don't leave a stray
+ * about:blank window open. A no-op when the handle was already consumed.
+ */
+export function releaseClaimedCloudLoginWindow(): void {
+  const claimed = takeClaimedCloudLoginWindow();
+  if (claimed && !claimed.closed) {
+    claimed.close();
+  }
 }
 
 /**

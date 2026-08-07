@@ -282,6 +282,10 @@ async function runStorm(opts: {
 beforeEach(() => {
   ensureLocalStorage().clear();
   vi.clearAllMocks();
+  // jsdom's window.open is unimplemented and logs a console error the setup
+  // gate would flag; the flow launchers claim a real popup on every runtime /
+  // provider pick, so default it to the popup-blocked (null) signal.
+  vi.spyOn(window, "open").mockReturnValue(null);
   mocks.client.listLocalAgentBackups.mockResolvedValue([]);
   mocks.client.getCloudCompatAgents.mockResolvedValue({
     success: true,
