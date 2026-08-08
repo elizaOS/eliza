@@ -563,23 +563,120 @@ type ModelPayloadMessage = {
   name?: unknown;
 };
 
-function messageContentToText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (typeof part === "string") return part;
-        if (!part || typeof part !== "object") return "";
-        const record = part as Record<string, unknown>;
-        if (typeof record.text === "string") return record.text;
-        if (typeof record.content === "string") return record.content;
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n");
+// Compactors operate on plain text, but model messages also carry structured
+// parts. An enumerable symbol survives the exact object spreads used for the
+// protected tail while remaining invisible to JSON/model payloads, letting us
+// re-emit untouched provider-neutral envelopes without reconstructing them.
+const SOURCE_PAYLOAD_MESSAGE = Symbol(
+  "promptOptimization.sourcePayloadMessage",
+);
+
+type SourcePayloadMessage = {
+  raw: Record<string, unknown>;
+  projectionKey: string;
+  structureKey: string;
+  projectedText: string;
+};
+
+type PromptCompactorMessage = CompactorMessage & {
+  [SOURCE_PAYLOAD_MESSAGE]?: SourcePayloadMessage;
+};
+
+type ContentProjection = {
+  text: string;
+  toolCalls?: NonNullable<CompactorMessage["toolCalls"]>;
+  toolCallId?: string;
+  toolName?: string;
+};
+
+function stringifyProjectedValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    // error-policy:J3 model content can include cyclic host objects; the string
+    // form is an explicit token-budget projection, never the outbound payload.
+    return String(value);
   }
-  if (content == null) return "";
-  return String(content);
+}
+
+function toolResultOutputToText(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return stringifyProjectedValue(value);
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.type === "string" &&
+    (record.type === "text" || record.type === "error-text")
+  ) {
+    return stringifyProjectedValue(record.value);
+  }
+  if (
+    typeof record.type === "string" &&
+    (record.type === "json" || record.type === "error-json")
+  ) {
+    return stringifyProjectedValue(record.value);
+  }
+  return stringifyProjectedValue(value);
+}
+
+function contentPartText(part: unknown): string | null {
+  if (typeof part === "string") return part;
+  if (!part || typeof part !== "object" || Array.isArray(part)) return null;
+  const record = part as Record<string, unknown>;
+  if (record.type === "tool-result") {
+    return toolResultOutputToText(record.output ?? record.result);
+  }
+  if (typeof record.text === "string") return record.text;
+  if (typeof record.content === "string") return record.content;
+  return null;
+}
+
+function projectMessageContent(
+  content: unknown,
+  role: string,
+): ContentProjection {
+  if (!Array.isArray(content)) {
+    return { text: stringifyProjectedValue(content) };
+  }
+
+  const text: string[] = [];
+  const contentToolCalls: NonNullable<CompactorMessage["toolCalls"]> = [];
+  let toolCallId: string | undefined;
+  let toolName: string | undefined;
+
+  for (const part of content) {
+    const projectedText = contentPartText(part);
+    if (projectedText) text.push(projectedText);
+    if (!part || typeof part !== "object" || Array.isArray(part)) continue;
+    const record = part as Record<string, unknown>;
+    if (role === "assistant" && record.type === "tool-call") {
+      const normalized = normalizeToolCalls([record]);
+      if (normalized) contentToolCalls.push(...normalized);
+    }
+    if (role === "tool" && record.type === "tool-result") {
+      toolCallId ??=
+        typeof record.toolCallId === "string"
+          ? record.toolCallId
+          : typeof record.id === "string"
+            ? record.id
+            : undefined;
+      toolName ??=
+        typeof record.toolName === "string"
+          ? record.toolName
+          : typeof record.name === "string"
+            ? record.name
+            : undefined;
+    }
+  }
+
+  return {
+    text: text.join("\n"),
+    ...(contentToolCalls.length > 0 ? { toolCalls: contentToolCalls } : {}),
+    ...(toolCallId ? { toolCallId } : {}),
+    ...(toolName ? { toolName } : {}),
+  };
 }
 
 function normalizeToolCalls(value: unknown): CompactorMessage["toolCalls"] {
@@ -592,15 +689,23 @@ function normalizeToolCalls(value: unknown): CompactorMessage["toolCalls"] {
       record.function && typeof record.function === "object"
         ? (record.function as Record<string, unknown>)
         : null;
-    const id = typeof record.id === "string" ? record.id : "";
-    const name =
-      typeof record.name === "string"
-        ? record.name
-        : typeof fn?.name === "string"
-          ? fn.name
+    const id =
+      typeof record.toolCallId === "string"
+        ? record.toolCallId
+        : typeof record.id === "string"
+          ? record.id
           : "";
+    const name =
+      typeof record.toolName === "string"
+        ? record.toolName
+        : typeof record.name === "string"
+          ? record.name
+          : typeof fn?.name === "string"
+            ? fn.name
+            : "";
     if (!id || !name) continue;
     const argsRaw =
+      record.input ??
       record.arguments ??
       record.args ??
       (fn ? (fn.arguments ?? fn.args) : undefined);
@@ -614,6 +719,8 @@ function normalizeToolCalls(value: unknown): CompactorMessage["toolCalls"] {
           parsedArgs = parsed as Record<string, unknown>;
         }
       } catch {
+        // error-policy:J3 non-JSON tool arguments remain explicit raw text in
+        // the compactor projection while the source envelope stays untouched.
         parsedArgs = { raw: argsRaw };
       }
     }
@@ -622,9 +729,45 @@ function normalizeToolCalls(value: unknown): CompactorMessage["toolCalls"] {
   return out.length > 0 ? out : undefined;
 }
 
-function normalizePayloadMessages(value: unknown): CompactorMessage[] | null {
+function mergeToolCalls(
+  ...groups: Array<CompactorMessage["toolCalls"]>
+): CompactorMessage["toolCalls"] {
+  const merged: NonNullable<CompactorMessage["toolCalls"]> = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    for (const call of group ?? []) {
+      if (seen.has(call.id)) continue;
+      seen.add(call.id);
+      merged.push(call);
+    }
+  }
+  return merged.length > 0 ? merged : undefined;
+}
+
+function compactorProjectionKey(message: CompactorMessage): string {
+  return JSON.stringify({
+    role: message.role,
+    content: message.content,
+    toolCalls: message.toolCalls,
+    toolCallId: message.toolCallId,
+    toolName: message.toolName,
+  });
+}
+
+function compactorStructureKey(message: CompactorMessage): string {
+  return JSON.stringify({
+    role: message.role,
+    toolCalls: message.toolCalls,
+    toolCallId: message.toolCallId,
+    toolName: message.toolName,
+  });
+}
+
+function normalizePayloadMessages(
+  value: unknown,
+): PromptCompactorMessage[] | null {
   if (!Array.isArray(value)) return null;
-  const out: CompactorMessage[] = [];
+  const out: PromptCompactorMessage[] = [];
   for (const item of value) {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
       return null;
@@ -633,33 +776,44 @@ function normalizePayloadMessages(value: unknown): CompactorMessage[] | null {
     const role = typeof record.role === "string" ? record.role : "";
     if (
       role !== "system" &&
+      role !== "developer" &&
       role !== "user" &&
       role !== "assistant" &&
       role !== "tool"
     ) {
       return null;
     }
-    const content = messageContentToText(record.content);
-    const toolCalls = normalizeToolCalls(record.toolCalls ?? record.tool_calls);
+    const projectedContent = projectMessageContent(record.content, role);
+    const toolCalls = mergeToolCalls(
+      normalizeToolCalls(record.toolCalls ?? record.tool_calls),
+      projectedContent.toolCalls,
+    );
     const toolCallId =
       typeof record.toolCallId === "string"
         ? record.toolCallId
         : typeof record.tool_call_id === "string"
           ? record.tool_call_id
-          : undefined;
+          : projectedContent.toolCallId;
     const toolName =
       typeof record.toolName === "string"
         ? record.toolName
         : typeof record.name === "string"
           ? record.name
-          : undefined;
-    out.push({
+          : projectedContent.toolName;
+    const normalized: PromptCompactorMessage = {
       role,
-      content,
+      content: projectedContent.text,
       ...(toolCalls ? { toolCalls } : {}),
       ...(toolCallId ? { toolCallId } : {}),
       ...(toolName ? { toolName } : {}),
-    });
+    };
+    normalized[SOURCE_PAYLOAD_MESSAGE] = {
+      raw: item as Record<string, unknown>,
+      projectionKey: compactorProjectionKey(normalized),
+      structureKey: compactorStructureKey(normalized),
+      projectedText: projectedContent.text,
+    };
+    out.push(normalized);
   }
   return out;
 }
@@ -684,27 +838,97 @@ function renderMessagesForTelemetry(messages: CompactorMessage[]): string {
     .join("\n");
 }
 
+function rewriteSourceContentText(
+  content: unknown,
+  originalText: string,
+  nextText: string,
+): unknown {
+  if (!Array.isArray(content)) return nextText;
+  if (nextText === originalText) return content;
+
+  const textIndexes = content.flatMap((part, index) =>
+    contentPartText(part) !== null &&
+    (!part ||
+      typeof part !== "object" ||
+      (part as Record<string, unknown>).type !== "tool-result")
+      ? [index]
+      : [],
+  );
+  if (textIndexes.length === 0) {
+    return nextText ? [{ type: "text", text: nextText }, ...content] : content;
+  }
+
+  if (nextText.startsWith(originalText)) {
+    const suffix = nextText.slice(originalText.length);
+    const lastTextIndex = textIndexes[textIndexes.length - 1];
+    return content.map((part, index) => {
+      if (index !== lastTextIndex) return part;
+      if (typeof part === "string") return `${part}${suffix}`;
+      const record = part as Record<string, unknown>;
+      if (typeof record.text === "string") {
+        return { ...record, text: `${record.text}${suffix}` };
+      }
+      return {
+        ...record,
+        content: `${String(record.content ?? "")}${suffix}`,
+      };
+    });
+  }
+
+  const firstTextIndex = textIndexes[0];
+  const removedTextIndexes = new Set(textIndexes.slice(1));
+  return content.flatMap((part, index) => {
+    if (removedTextIndexes.has(index)) return [];
+    if (index !== firstTextIndex) return [part];
+    if (typeof part === "string") return [nextText];
+    const record = part as Record<string, unknown>;
+    return [
+      typeof record.text === "string"
+        ? { ...record, text: nextText }
+        : { ...record, content: nextText },
+    ];
+  });
+}
+
+function sourcePayloadMessage(
+  message: PromptCompactorMessage,
+): Record<string, unknown> | null {
+  const source = message[SOURCE_PAYLOAD_MESSAGE];
+  if (!source) return null;
+  if (compactorProjectionKey(message) === source.projectionKey) {
+    return { ...source.raw };
+  }
+  if (compactorStructureKey(message) !== source.structureKey) return null;
+  return {
+    ...source.raw,
+    content: rewriteSourceContentText(
+      source.raw.content,
+      source.projectedText,
+      message.content,
+    ),
+  };
+}
+
 function compactorMessagesToPayloadMessages(
-  messages: CompactorMessage[],
+  messages: PromptCompactorMessage[],
 ): Array<Record<string, unknown>> {
   return messages.map((message) => {
+    const source = sourcePayloadMessage(message);
+    if (source) return source;
     const record: Record<string, unknown> = {
       role: message.role,
       content: message.content,
     };
     if (message.role === "assistant" && message.toolCalls?.length) {
-      record.tool_calls = message.toolCalls.map((call) => ({
+      record.toolCalls = message.toolCalls.map((call) => ({
         id: call.id,
-        type: "function",
-        function: {
-          name: call.name,
-          arguments: JSON.stringify(call.arguments),
-        },
+        name: call.name,
+        arguments: call.arguments,
       }));
     }
     if (message.role === "tool") {
-      if (message.toolCallId) record.tool_call_id = message.toolCallId;
-      if (message.toolName) record.name = message.toolName;
+      if (message.toolCallId) record.toolCallId = message.toolCallId;
+      if (message.toolName) record.toolName = message.toolName;
     }
     return record;
   });
