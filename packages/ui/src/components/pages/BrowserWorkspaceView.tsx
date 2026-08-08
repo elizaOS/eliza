@@ -560,7 +560,12 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   );
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
+  const workspaceRootRef = useRef<HTMLElement | null>(null);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
+  const registeredIframeElementsRef = useRef(new WeakSet<HTMLIFrameElement>());
+  const iframeFocusReturnTargetsRef = useRef(
+    new WeakMap<HTMLIFrameElement, HTMLElement | null>(),
+  );
   const electrobunWebviewRefs = useRef(
     new Map<string, WebviewTagElement | null>(),
   );
@@ -927,6 +932,47 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     [browserTabRenderPath, loadWorkspace],
   );
 
+  const captureBrowserWorkspaceIframeFocusReturn = useCallback(
+    (iframe: HTMLIFrameElement) => {
+      if (typeof document === "undefined") return;
+      const activeElement = document.activeElement;
+      iframeFocusReturnTargetsRef.current.set(
+        iframe,
+        activeElement instanceof HTMLElement &&
+          activeElement !== document.body &&
+          activeElement !== iframe &&
+          activeElement.isConnected
+          ? activeElement
+          : null,
+      );
+    },
+    [],
+  );
+
+  const restoreBrowserWorkspaceIframeFocus = useCallback(
+    (iframe: HTMLIFrameElement) => {
+      if (
+        typeof document === "undefined" ||
+        !iframeFocusReturnTargetsRef.current.has(iframe)
+      ) {
+        return;
+      }
+      const returnTarget = iframeFocusReturnTargetsRef.current.get(iframe);
+      iframeFocusReturnTargetsRef.current.delete(iframe);
+
+      // Embedded pages may autofocus after the shell has already preserved the
+      // composer across an agent-requested view change. Restore only when the
+      // iframe actually took focus, and consume the handoff so later in-page
+      // navigation remains entirely under the user's control.
+      if (document.activeElement !== iframe) return;
+      const focusTarget = returnTarget?.isConnected
+        ? returnTarget
+        : workspaceRootRef.current;
+      focusTarget?.focus({ preventScroll: true });
+    },
+    [],
+  );
+
   const navigateSelectedBrowserWorkspaceTab = useCallback(
     async (rawUrl: string) => {
       if (selectedTab && isInternalBrowserWorkspaceTab(selectedTab)) {
@@ -974,6 +1020,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         // directly via the ref in embedded web mode only.
         const iframe = iframeRefs.current.get(selectedTabId);
         if (iframe && iframe.src !== tab.url) {
+          captureBrowserWorkspaceIframeFocusReturn(iframe);
           iframe.src = tab.url;
         }
       } else if (workspace.mode === "desktop") {
@@ -986,6 +1033,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     },
     [
       browserTabRenderPath,
+      captureBrowserWorkspaceIframeFocusReturn,
       loadWorkspace,
       openNewBrowserWorkspaceTab,
       selectedTab,
@@ -1001,9 +1049,13 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         iframeRefs.current.delete(tabId);
         return;
       }
+      if (!registeredIframeElementsRef.current.has(iframe)) {
+        registeredIframeElementsRef.current.add(iframe);
+        captureBrowserWorkspaceIframeFocusReturn(iframe);
+      }
       iframeRefs.current.set(tabId, iframe);
     },
-    [],
+    [captureBrowserWorkspaceIframeFocusReturn],
   );
 
   // Keep a ref so the host-message handler always sees the latest wallet
@@ -1974,6 +2026,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     if (workspace.mode === "web") {
       const iframe = iframeRefs.current.get(selectedTab.id);
       if (iframe) {
+        captureBrowserWorkspaceIframeFocusReturn(iframe);
         iframe.src = selectedTab.url;
       }
       return;
@@ -1984,7 +2037,13 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       return;
     }
     await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
-  }, [browserTabRenderPath, nativeTabSurfaces, selectedTab, workspace.mode]);
+  }, [
+    browserTabRenderPath,
+    captureBrowserWorkspaceIframeFocusReturn,
+    nativeTabSurfaces,
+    selectedTab,
+    workspace.mode,
+  ]);
 
   const installBrowserBridgeExtension = useCallback(async () => {
     await runBrowserWorkspaceAction(
@@ -2683,11 +2742,12 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               // that cross-origin without an extension content script.
               className={`absolute inset-0 h-full w-full border-0 bg-bg transition-opacity ${visibilityClass}`}
               style={{ colorScheme: uiTheme }}
-              onLoad={() =>
-                highlighted
-                  ? postBrowserWalletReady(tab, browserWalletState)
-                  : undefined
-              }
+              onLoad={(event) => {
+                restoreBrowserWorkspaceIframeFocus(event.currentTarget);
+                if (highlighted) {
+                  postBrowserWalletReady(tab, browserWalletState);
+                }
+              }}
             />
           );
         })
@@ -2809,8 +2869,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   // folded into the switcher (no permanent tab strip), matching #13596.
   const mainNode = (
     <main
+      ref={workspaceRootRef}
       aria-label={t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
       data-testid="browser-workspace-view"
+      tabIndex={-1}
       className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-[clamp(8px,1.6vw,14px)] overflow-hidden bg-bg px-[clamp(8px,2.4vw,24px)] pt-[calc(clamp(8px,2.4vw,24px)+var(--safe-area-top,0px))] pb-[clamp(8px,2.4vw,24px)]"
     >
       <div

@@ -1,14 +1,13 @@
 /**
  * Verifies the Browser view's fullscreen chrome contract: with the builtin
- * registry declaring `header: "fullscreen"`, the view owns its whole surface —
- * no shared ViewHeader row, a floating glass toolbar, and the workspace root
- * as a `<main>` landmark. Renders the real component in jsdom with the API
- * client mocked (deterministic empty workspace).
+ * registry declaring `header: "fullscreen"`, the view owns its whole surface
+ * and embedded page loads cannot take focus from the control that opened it.
+ * Renders the real component in jsdom with deterministic workspace API data.
  */
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../state", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../state")>();
@@ -47,9 +46,7 @@ vi.mock("../../api", async (importOriginal) => {
       ...actual.client,
       fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
       getWalletConfig: vi.fn().mockRejectedValue(new Error("no api in test")),
-      getBrowserWorkspace: vi
-        .fn()
-        .mockResolvedValue({ mode: "embedded", tabs: [] }),
+      getBrowserWorkspace: vi.fn().mockResolvedValue({ mode: "web", tabs: [] }),
       snapshotBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
@@ -57,7 +54,31 @@ vi.mock("../../api", async (importOriginal) => {
   };
 });
 
+import { client } from "../../api";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
+
+const GOOGLE_WORKSPACE = {
+  mode: "web" as const,
+  tabs: [
+    {
+      id: "tab-1",
+      title: "Google",
+      url: "https://www.google.com/webhp?igu=1",
+      partition: "persist:test",
+      visible: true,
+      createdAt: "2026-08-08T00:00:00.000Z",
+      updatedAt: "2026-08-08T00:00:00.000Z",
+      lastFocusedAt: null,
+    },
+  ],
+};
+
+beforeEach(() => {
+  vi.mocked(client.getBrowserWorkspace).mockResolvedValue({
+    mode: "web",
+    tabs: [],
+  });
+});
 
 afterEach(() => {
   cleanup();
@@ -91,5 +112,42 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(
       toolbar.contains(screen.getByTestId("browser-workspace-address-input")),
     ).toBe(true);
+  });
+
+  it("returns delayed iframe autofocus to the control that opened Browser exactly once", async () => {
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
+    const composer = document.createElement("textarea");
+    document.body.append(composer);
+    composer.focus();
+
+    try {
+      render(<BrowserWorkspaceView />);
+      const iframe = await screen.findByTitle("Google");
+      iframe.focus();
+      fireEvent.load(iframe);
+      expect(document.activeElement).toBe(composer);
+
+      // The return target is consumed by the initial app-requested load. A
+      // later page navigation may keep focus inside the browser normally.
+      iframe.focus();
+      fireEvent.load(iframe);
+      expect(document.activeElement).toBe(iframe);
+    } finally {
+      composer.remove();
+    }
+  });
+
+  it("uses the Browser surface as a neutral focus target when no prior control exists", async () => {
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    render(<BrowserWorkspaceView />);
+    const iframe = await screen.findByTitle("Google");
+    iframe.focus();
+    fireEvent.load(iframe);
+
+    expect(document.activeElement).toBe(
+      screen.getByTestId("browser-workspace-view"),
+    );
   });
 });
