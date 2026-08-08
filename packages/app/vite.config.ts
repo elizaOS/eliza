@@ -1031,6 +1031,15 @@ function appShellMetadataPlugin(): Plugin {
     2,
   )}\n`;
 
+  // WCAG 2.2 SC 1.4.4: web/desktop builds must not disable user zoom. Native
+  // Capacitor builds keep the touch-viewport lockdown because they run in a
+  // captive WebView with no browser chrome — zoom there is a pinch gesture that
+  // interferes with in-app interactions, not an accessibility mechanism.
+  const VIEWPORT_CONTENT_NATIVE =
+    "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
+  const VIEWPORT_CONTENT_WEB =
+    "width=device-width, initial-scale=1.0, viewport-fit=cover";
+
   const replacements = new Map<string, string>([
     ["__APP_NAME__", APP_SHELL_METADATA.appName],
     ["__APP_DESCRIPTION__", APP_SHELL_METADATA.description],
@@ -1039,6 +1048,12 @@ function appShellMetadataPlugin(): Plugin {
     ["__APP_THEME_COLOR__", APP_SHELL_METADATA.themeColor],
     ["__APP_CSP_LOCAL_HTTP__", localHttpSources],
     ["__APP_CSP_LOCAL_CONNECT__", localConnectSources],
+    [
+      "__APP_VIEWPORT_CONTENT__",
+      IS_CAPACITOR_MOBILE_BUILD
+        ? VIEWPORT_CONTENT_NATIVE
+        : VIEWPORT_CONTENT_WEB,
+    ],
   ]);
 
   return {
