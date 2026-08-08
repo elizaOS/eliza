@@ -304,6 +304,39 @@ function MonthControls({
   const month = formatMonth(cursor);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerYear, setPickerYear] = useState(cursor.getFullYear());
+  // Month navigation must stay chat/voice-drivable: these ids ("prev",
+  // "today", "next", plus the month-year picker) are the stable agent-bridge
+  // contract the view-inventory smoke asserts, mirroring the retired unified
+  // CalendarView's spatial ids. The labels double as the accessible names.
+  const prevControl = useAgentElement<HTMLButtonElement>({
+    id: "prev",
+    label: `Previous month, ${month}`,
+    role: "button",
+    group: "calendar-nav",
+    onActivate: onPrevious,
+  });
+  const nextControl = useAgentElement<HTMLButtonElement>({
+    id: "next",
+    label: `Next month, ${month}`,
+    role: "button",
+    group: "calendar-nav",
+    onActivate: onNext,
+  });
+  const todayControl = useAgentElement<HTMLButtonElement>({
+    id: "today",
+    label: "Today",
+    role: "button",
+    group: "calendar-nav",
+    onActivate: onToday,
+  });
+  const monthPickerControl = useAgentElement<HTMLButtonElement>({
+    id: "month-picker",
+    label: `Choose month and year. Current month is ${month}`,
+    role: "button",
+    group: "calendar-nav",
+    status: pickerOpen ? "open" : "closed",
+    onActivate: () => setPickerOpen(true),
+  });
   useEffect(() => setPickerYear(cursor.getFullYear()), [cursor]);
   const yearOptions = useMemo(
     () =>
@@ -343,6 +376,8 @@ function MonthControls({
       }}
     >
       <button
+        ref={prevControl.ref}
+        {...prevControl.agentProps}
         type="button"
         aria-label={`Previous month, ${month}`}
         title="Previous month"
@@ -354,6 +389,8 @@ function MonthControls({
       <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
         <PopoverTrigger asChild>
           <button
+            ref={monthPickerControl.ref}
+            {...monthPickerControl.agentProps}
             type="button"
             aria-label={`Choose month and year. Current month is ${month}`}
             style={{
@@ -470,6 +507,8 @@ function MonthControls({
         </PopoverContent>
       </Popover>
       <button
+        ref={nextControl.ref}
+        {...nextControl.agentProps}
         type="button"
         aria-label={`Next month, ${month}`}
         title="Next month"
@@ -479,6 +518,8 @@ function MonthControls({
         <ChevronRight size={19} aria-hidden />
       </button>
       <button
+        ref={todayControl.ref}
+        {...todayControl.agentProps}
         type="button"
         onClick={onToday}
         style={{

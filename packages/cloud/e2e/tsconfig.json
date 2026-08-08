@@ -18,7 +18,11 @@
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"]
     },
-    "lib": ["ES2022", "DOM"]
+    // Matches the repository base. This package typechecks cloud-shared through
+    // the path mappings above, and that code targets a newer library than
+    // ES2022 (Array.prototype.toReversed is ES2023), so pinning lower here fails
+    // on its dependency's source rather than on anything in this package.
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
   "include": ["src", "tests", "scripts", "playwright.config.ts"]
 }

@@ -209,14 +209,23 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Both wallet readers key the cache on the LOWERCASED address, because that is
+   * the value the repository actually queries on. Keying on the caller's
+   * spelling gave an EIP-55 address its own entry that `invalidateCache` — which
+   * only knows the stored lowercase form — could never delete, so an update was
+   * invisible to any caller that passed a checksummed address until the TTL
+   * expired.
+   */
   async getByWalletAddress(walletAddress: string): Promise<User | undefined> {
-    const cacheKey = CacheKeys.user.byWalletAddress(walletAddress);
+    const lookupAddress = walletAddress.toLowerCase();
+    const cacheKey = CacheKeys.user.byWalletAddress(lookupAddress);
     const cached = await cache.get<User>(cacheKey);
     if (cached) {
       logger.debug("[UsersService] Cache hit for user byWalletAddress");
       return cached;
     }
-    const user = await usersRepository.findByWalletAddress(walletAddress);
+    const user = await usersRepository.findByWalletAddress(lookupAddress);
     if (user) {
       await cache.set(cacheKey, user, CacheTTL.user.byWalletAddress);
       logger.debug("[UsersService] Cached user data byWalletAddress");
@@ -227,13 +236,14 @@ export class UsersService {
   async getByWalletAddressWithOrganization(
     walletAddress: string,
   ): Promise<UserWithOrganization | undefined> {
-    const cacheKey = CacheKeys.user.byWalletAddressWithOrg(walletAddress);
+    const lookupAddress = walletAddress.toLowerCase();
+    const cacheKey = CacheKeys.user.byWalletAddressWithOrg(lookupAddress);
     const cached = await cache.get<UserWithOrganization>(cacheKey);
     if (cached) {
       logger.debug("[UsersService] Cache hit for user byWalletAddressWithOrg");
       return cached;
     }
-    const user = await usersRepository.findByWalletAddressWithOrganization(walletAddress);
+    const user = await usersRepository.findByWalletAddressWithOrganization(lookupAddress);
     if (user) {
       await cache.set(cacheKey, user, CacheTTL.user.byWalletAddressWithOrg);
       logger.debug("[UsersService] Cached user data byWalletAddressWithOrg");

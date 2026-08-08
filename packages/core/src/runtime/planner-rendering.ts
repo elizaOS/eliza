@@ -6,6 +6,7 @@
  */
 import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
+import { tailWellFormed, truncateWellFormed } from "../utils/well-formed";
 import { stringifyForModel } from "./json-output";
 import type { PlannerStep, PlannerToolResult } from "./planner-types";
 import {
@@ -78,17 +79,19 @@ export function truncateToolResultText(
 		const preservedChars = headChars + tailChars;
 		const truncatedCount = text.length - preservedChars;
 		if (truncatedCount <= 0) {
-			return text.slice(0, limit);
+			return truncateWellFormed(text, limit);
 		}
 		const marker = markerFor(truncatedCount);
 		if (preservedChars + marker.length <= limit) {
-			const head = text.slice(0, headChars);
-			const tail = text.slice(text.length - tailChars);
+			// Surrogate-safe cuts: a plain slice landing mid-emoji leaves a lone
+			// surrogate that strict provider JSON parsers reject (#18025).
+			const head = truncateWellFormed(text, headChars);
+			const tail = tailWellFormed(text, tailChars);
 			return `${head}${marker}${tail}`;
 		}
 	}
 
-	return text.slice(0, limit);
+	return truncateWellFormed(text, limit);
 }
 
 /**

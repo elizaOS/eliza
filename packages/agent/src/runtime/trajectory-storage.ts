@@ -5,17 +5,20 @@
  * logger, and the DatabaseTrajectoryLogger service class.
  */
 
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import {
   logger as coreLogger,
   ElizaError,
   type IAgentRuntime,
+  type JsonValue,
   Service,
+  sanitizeTrajectoryJsonObject,
 } from "@elizaos/core";
 import type {
   Trajectory,
+  TrajectoryActionAttempt,
   TrajectoryExportResult,
-  TrajectoryListItem,
   TrajectoryListOptions,
   TrajectoryListResult,
   TrajectorySkillInvocation,
@@ -39,11 +42,13 @@ import {
   ensureStep,
   ensureTrajectoriesTable,
   executeRawSql,
+  executeRawSqlTransaction,
   extractInsightsFromResponse,
-  extractRows,
+  extractRequiredRows,
   hasRuntimeDb,
   lastWritePromises,
   loadTrajectoryById,
+  loadTrajectoryByStepId,
   mergeMetadata,
   normalizeLlmCallPayload,
   normalizeProviderAccessPayload,
@@ -53,7 +58,6 @@ import {
   type PersistedLlmCall,
   type PersistedProviderAccess,
   type PersistedTrajectory,
-  parsePersistedTrajectoryRow,
   patchedLoggers,
   pushChatExchange,
   readOrchestratorTrajectoryContext,
@@ -67,10 +71,8 @@ import {
   sqlQuote,
   stepWriteQueues,
   toArchiveSafeTimestamp,
-  toNumber,
   toOptionalNumber,
   toText,
-  truncateRecord,
   warnRuntime,
   writeCompressedJsonlRows,
 } from "./trajectory-internals.ts";
@@ -100,21 +102,632 @@ function trajectoryOperationError(
   });
 }
 
+type BridgeStepState = {
+  timestamp?: number;
+  kind?: TrajectoryStepKind;
+  parentStepId?: string;
+  evaluatorName?: string;
+};
+
+type TrajectoryBridgeState = {
+  trajectoryIdByStepId: Map<string, string>;
+  activeStepIdByTrajectoryId: Map<string, string>;
+};
+
+const trajectoryBridgeStates = new WeakMap<object, TrajectoryBridgeState>();
+const closedTrajectoryStepIds = new WeakMap<object, Map<string, true>>();
+const stoppingTrajectoryBridges = new WeakSet<object>();
+const MAX_CLOSED_TRAJECTORY_STEP_IDS = 10_000;
+
+function rememberClosedTrajectoryStep(
+  runtime: IAgentRuntime,
+  stepId: string,
+): void {
+  const runtimeKey = runtime as object;
+  let closed = closedTrajectoryStepIds.get(runtimeKey);
+  if (!closed) {
+    closed = new Map<string, true>();
+    closedTrajectoryStepIds.set(runtimeKey, closed);
+  }
+  closed.delete(stepId);
+  closed.set(stepId, true);
+  while (closed.size > MAX_CLOSED_TRAJECTORY_STEP_IDS) {
+    const oldest = closed.keys().next().value;
+    if (typeof oldest !== "string") break;
+    closed.delete(oldest);
+  }
+}
+
+function isClosedTrajectoryStep(
+  runtime: IAgentRuntime,
+  stepId: string,
+): boolean {
+  return closedTrajectoryStepIds.get(runtime as object)?.has(stepId) === true;
+}
+
+function acceptsNewTrajectoryCapture(
+  runtime: IAgentRuntime,
+  enabled: boolean,
+): boolean {
+  return enabled && !stoppingTrajectoryBridges.has(runtime as object);
+}
+
+function reportLateTrajectoryCapture(
+  runtime: IAgentRuntime,
+  stepId: string,
+  captureType: "llm" | "provider",
+): void {
+  rememberClosedTrajectoryStep(runtime, stepId);
+  const error = new ElizaError(
+    "Trajectory capture arrived after terminalization",
+    {
+      code: "TRAJECTORY_OWNER_CLOSED",
+      context: { stepId, captureType },
+    },
+  );
+  warnRuntime(runtime, "Rejected late trajectory capture", error);
+  runtime.reportError("TrajectoryStorage.lateCapture", error, {
+    stepId,
+    captureType,
+    diagnosticOnly: true,
+  });
+}
+
+function acceptsTrajectoryStepCapture(
+  runtime: IAgentRuntime,
+  enabled: boolean,
+  stepId: string,
+  captureType: "llm" | "provider",
+): boolean {
+  if (!acceptsNewTrajectoryCapture(runtime, enabled)) return false;
+  if (!isClosedTrajectoryStep(runtime, stepId)) return true;
+  reportLateTrajectoryCapture(runtime, stepId, captureType);
+  return false;
+}
+
+function reportInvalidTrajectoryCapture(
+  runtime: IAgentRuntime,
+  captureType: "llm" | "provider",
+  error: unknown,
+): void {
+  warnRuntime(runtime, "Rejected invalid trajectory capture", error);
+  runtime.reportError("TrajectoryStorage.captureValidation", error, {
+    captureType,
+    diagnosticOnly: true,
+  });
+}
+
+function readRequiredCount(
+  result: unknown,
+  field: string,
+  context: Record<string, unknown> = {},
+): number {
+  const row = asRecord(extractRequiredRows(result, context)[0]);
+  const value = toOptionalNumber(row?.[field]);
+  if (value === undefined || !Number.isInteger(value) || value < 0) {
+    throw new ElizaError("Trajectory count row is invalid", {
+      code: "TRAJECTORY_ROW_INVALID",
+      context: { ...context, field },
+    });
+  }
+  return value;
+}
+
+function readRequiredNonNegativeNumber(
+  row: Record<string, unknown> | null,
+  field: string,
+  context: Record<string, unknown> = {},
+): number {
+  const value = toOptionalNumber(row?.[field]);
+  if (value === undefined || value < 0) {
+    throw new ElizaError("Trajectory numeric row is invalid", {
+      code: "TRAJECTORY_ROW_INVALID",
+      context: { ...context, field },
+    });
+  }
+  return value;
+}
+
+// startStep must return before its database write can run, so child ownership
+// stays in runtime memory until terminalization has drained that owner's queue.
+function getTrajectoryBridgeState(
+  runtime: IAgentRuntime,
+): TrajectoryBridgeState {
+  const runtimeKey = runtime as object;
+  let state = trajectoryBridgeStates.get(runtimeKey);
+  if (!state) {
+    state = {
+      trajectoryIdByStepId: new Map<string, string>(),
+      activeStepIdByTrajectoryId: new Map<string, string>(),
+    };
+    trajectoryBridgeStates.set(runtimeKey, state);
+  }
+  return state;
+}
+
+function rememberTrajectoryStep(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  stepId: string,
+): void {
+  const state = getTrajectoryBridgeState(runtime);
+  closedTrajectoryStepIds.get(runtime as object)?.delete(trajectoryId);
+  closedTrajectoryStepIds.get(runtime as object)?.delete(stepId);
+  state.trajectoryIdByStepId.set(trajectoryId, trajectoryId);
+  state.trajectoryIdByStepId.set(stepId, trajectoryId);
+  state.activeStepIdByTrajectoryId.set(trajectoryId, stepId);
+}
+
+function resolveBridgeTrajectoryId(
+  runtime: IAgentRuntime,
+  stepIdOrTrajectoryId: string,
+): string {
+  return (
+    trajectoryBridgeStates
+      .get(runtime as object)
+      ?.trajectoryIdByStepId.get(stepIdOrTrajectoryId) ?? stepIdOrTrajectoryId
+  );
+}
+
+function releaseAllTrajectoryBridgeState(runtime: IAgentRuntime): void {
+  const state = trajectoryBridgeStates.get(runtime as object);
+  if (state) {
+    for (const stepId of state.trajectoryIdByStepId.keys()) {
+      rememberClosedTrajectoryStep(runtime, stepId);
+    }
+  }
+  trajectoryBridgeStates.delete(runtime as object);
+}
+
+function releaseTrajectoryBridgeState(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+): void {
+  const runtimeKey = runtime as object;
+  rememberClosedTrajectoryStep(runtime, trajectoryId);
+  const state = trajectoryBridgeStates.get(runtimeKey);
+  if (!state) return;
+
+  state.activeStepIdByTrajectoryId.delete(trajectoryId);
+  for (const [stepId, ownerId] of state.trajectoryIdByStepId) {
+    if (ownerId === trajectoryId) {
+      rememberClosedTrajectoryStep(runtime, stepId);
+      state.trajectoryIdByStepId.delete(stepId);
+    }
+  }
+  if (
+    state.trajectoryIdByStepId.size === 0 &&
+    state.activeStepIdByTrajectoryId.size === 0
+  ) {
+    trajectoryBridgeStates.delete(runtimeKey);
+  }
+}
+
+/** Reports bridge ownership cardinality without exposing mutable state. */
+export function __getTrajectoryBridgeStateCountsForTests(
+  runtime: IAgentRuntime,
+): { stepMappings: number; activeOwners: number } {
+  const state = trajectoryBridgeStates.get(runtime as object);
+  return {
+    stepMappings: state?.trajectoryIdByStepId.size ?? 0,
+    activeOwners: state?.activeStepIdByTrajectoryId.size ?? 0,
+  };
+}
+
+function normalizeJsonRecord(
+  value: unknown,
+  field:
+    | "parameters"
+    | "result"
+    | "rewardComponents"
+    | "finalMetrics"
+    | "providerData"
+    | "providerQuery",
+): Record<string, JsonValue> {
+  const record = sanitizeTrajectoryJsonObject(value);
+  if (!record) {
+    throw new ElizaError(`Trajectory ${field} must be an object`, {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { field },
+    });
+  }
+  return record as Record<string, JsonValue>;
+}
+
+function normalizeSettledAction(
+  value: unknown,
+  rewardInfo?: unknown,
+): TrajectoryActionAttempt {
+  const action = asRecord(value);
+  const actionType =
+    typeof action?.actionType === "string" ? action.actionType.trim() : "";
+  const actionName =
+    typeof action?.actionName === "string" ? action.actionName.trim() : "";
+  if (
+    !action ||
+    !actionType ||
+    !actionName ||
+    typeof action.success !== "boolean"
+  ) {
+    throw new ElizaError("Trajectory action settlement is incomplete", {
+      code: "TRAJECTORY_ACTION_SETTLEMENT_INVALID",
+      context: { actionName, actionType },
+    });
+  }
+
+  const rewardRecord =
+    rewardInfo === undefined ? undefined : asRecord(rewardInfo);
+  if (rewardInfo !== undefined && !rewardRecord) {
+    throw new ElizaError("Trajectory reward settlement is invalid", {
+      code: "TRAJECTORY_ACTION_SETTLEMENT_INVALID",
+      context: { actionName, actionType, field: "rewardInfo" },
+    });
+  }
+  const rewardValue = rewardRecord?.reward;
+  if (
+    rewardValue !== undefined &&
+    (typeof rewardValue !== "number" || !Number.isFinite(rewardValue))
+  ) {
+    throw new ElizaError("Trajectory reward settlement is invalid", {
+      code: "TRAJECTORY_ACTION_SETTLEMENT_INVALID",
+      context: { actionName, actionType, field: "reward" },
+    });
+  }
+  for (const field of ["error", "reasoning", "llmCallId"] as const) {
+    if (action[field] !== undefined && typeof action[field] !== "string") {
+      throw new ElizaError("Trajectory action settlement is invalid", {
+        code: "TRAJECTORY_ACTION_SETTLEMENT_INVALID",
+        context: { actionName, actionType, field },
+      });
+    }
+  }
+  return {
+    attemptId: randomUUID(),
+    timestamp: Date.now(),
+    actionType,
+    actionName,
+    parameters: normalizeJsonRecord(action.parameters, "parameters"),
+    success: action.success,
+    ...(action.result !== undefined
+      ? { result: normalizeJsonRecord(action.result, "result") }
+      : {}),
+    ...(typeof action.error === "string" ? { error: action.error } : {}),
+    ...(typeof action.reasoning === "string"
+      ? { reasoning: action.reasoning }
+      : {}),
+    ...(typeof action.llmCallId === "string"
+      ? { llmCallId: action.llmCallId }
+      : {}),
+    ...(typeof rewardValue === "number"
+      ? { immediateReward: rewardValue }
+      : {}),
+  };
+}
+
+function startChildTrajectoryStep(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  state: BridgeStepState = {},
+  shouldWrite: () => boolean = () => true,
+): string {
+  const stateRecord = asRecord(state);
+  if (!stateRecord) {
+    throw new ElizaError("Trajectory child step state is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { field: "state" },
+    });
+  }
+  const timestamp =
+    stateRecord.timestamp === undefined
+      ? Date.now()
+      : typeof stateRecord.timestamp === "number" &&
+          Number.isFinite(stateRecord.timestamp) &&
+          stateRecord.timestamp >= 0
+        ? stateRecord.timestamp
+        : null;
+  const kind = stateRecord.kind;
+  const parentStepId =
+    stateRecord.parentStepId === undefined
+      ? undefined
+      : normalizeStepId(stateRecord.parentStepId);
+  const evaluatorName =
+    stateRecord.evaluatorName === undefined
+      ? undefined
+      : typeof stateRecord.evaluatorName === "string" &&
+          stateRecord.evaluatorName.trim().length > 0
+        ? stateRecord.evaluatorName.trim()
+        : null;
+  if (
+    timestamp === null ||
+    (kind !== undefined &&
+      kind !== "llm" &&
+      kind !== "action" &&
+      kind !== "evaluator") ||
+    (stateRecord.parentStepId !== undefined && !parentStepId) ||
+    evaluatorName === null
+  ) {
+    throw new ElizaError("Trajectory child step state is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { field: "state" },
+    });
+  }
+  const normalizedParentStepId =
+    typeof parentStepId === "string" ? parentStepId : undefined;
+  const normalizedEvaluatorName =
+    typeof evaluatorName === "string" ? evaluatorName : undefined;
+  const normalizedTrajectoryId = normalizeStepId(
+    resolveBridgeTrajectoryId(runtime, trajectoryId),
+  );
+  if (!normalizedTrajectoryId) {
+    throw new ElizaError("Trajectory child step requires a parent trajectory", {
+      code: "TRAJECTORY_PARENT_REQUIRED",
+    });
+  }
+
+  const stepId = randomUUID();
+  rememberTrajectoryStep(runtime, normalizedTrajectoryId, stepId);
+  const writePromise = enqueueStepWrite(
+    runtime,
+    normalizedTrajectoryId,
+    async () => {
+      if (!shouldWrite()) return;
+      const tableReady = await ensureTrajectoriesTable(runtime);
+      if (!tableReady) return;
+      const trajectory = await loadTrajectoryById(
+        runtime,
+        normalizedTrajectoryId,
+      );
+      if (!trajectory) {
+        throw new ElizaError(
+          "Parent trajectory is unavailable for child step",
+          {
+            code: "TRAJECTORY_PARENT_NOT_FOUND",
+            context: { trajectoryId: normalizedTrajectoryId, stepId },
+          },
+        );
+      }
+      const step = ensureStep(trajectory, stepId, timestamp);
+      if (kind !== undefined) step.kind = kind;
+      if (normalizedEvaluatorName !== undefined) {
+        step.evaluatorName = normalizedEvaluatorName;
+      }
+      if (normalizedParentStepId !== undefined) {
+        step.parentStepId = normalizedParentStepId;
+        const parentStep = ensureStep(
+          trajectory,
+          normalizedParentStepId,
+          timestamp,
+        );
+        if (!parentStep.childSteps?.includes(stepId)) {
+          parentStep.childSteps = [...(parentStep.childSteps ?? []), stepId];
+        }
+      }
+      trajectory.startTime = Math.min(trajectory.startTime, timestamp);
+      trajectory.updatedAt = new Date(timestamp).toISOString();
+      await saveTrajectory(runtime, trajectory, {
+        changedStepIds:
+          normalizedParentStepId !== undefined
+            ? [normalizedParentStepId, stepId]
+            : [stepId],
+      });
+    },
+  );
+  lastWritePromises.set(runtime as object, writePromise);
+  return stepId;
+}
+
+function completeTrajectoryAction(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  stepId: string,
+  actionValue: unknown,
+  rewardInfo?: unknown,
+  shouldWrite: () => boolean = () => true,
+): void {
+  const normalizedTrajectoryId = normalizeStepId(
+    resolveBridgeTrajectoryId(runtime, trajectoryId),
+  );
+  const normalizedStepId = normalizeStepId(stepId);
+  if (!normalizedTrajectoryId || !normalizedStepId) {
+    throw new ElizaError(
+      "Trajectory action settlement requires its real step",
+      {
+        code: "TRAJECTORY_ACTION_STEP_REQUIRED",
+      },
+    );
+  }
+  rememberTrajectoryStep(runtime, normalizedTrajectoryId, normalizedStepId);
+  const action = normalizeSettledAction(actionValue, rewardInfo);
+  const rewardComponentsValue = asRecord(rewardInfo)?.components;
+  const rewardComponents =
+    rewardComponentsValue === undefined
+      ? undefined
+      : normalizeJsonRecord(rewardComponentsValue, "rewardComponents");
+  const writePromise = enqueueStepWrite(
+    runtime,
+    normalizedTrajectoryId,
+    async () => {
+      if (!shouldWrite()) return;
+      const tableReady = await ensureTrajectoriesTable(runtime);
+      if (!tableReady) return;
+      const trajectory = await loadTrajectoryById(
+        runtime,
+        normalizedTrajectoryId,
+      );
+      if (!trajectory) {
+        throw new ElizaError(
+          "Parent trajectory is unavailable at action settlement",
+          {
+            code: "TRAJECTORY_PARENT_NOT_FOUND",
+            context: {
+              trajectoryId: normalizedTrajectoryId,
+              stepId: normalizedStepId,
+            },
+          },
+        );
+      }
+      const step = ensureStep(trajectory, normalizedStepId, action.timestamp);
+      step.kind = "action";
+      step.action = action;
+      if (action.immediateReward !== undefined) {
+        trajectory.totalReward += action.immediateReward;
+      }
+      if (rewardComponents !== undefined) {
+        trajectory.rewardComponents = {
+          ...trajectory.rewardComponents,
+          ...rewardComponents,
+        };
+      }
+      trajectory.updatedAt = new Date(action.timestamp).toISOString();
+      await saveTrajectory(runtime, trajectory, {
+        changedStepIds: [normalizedStepId],
+      });
+    },
+  );
+  lastWritePromises.set(runtime as object, writePromise);
+}
+
+async function terminalizeBridgeTrajectory(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  status: TrajectoryStatus,
+  finalMetrics?: Record<string, unknown>,
+  shouldWrite: () => boolean = () => true,
+): Promise<void> {
+  const writePromise = enqueueStepWrite(runtime, trajectoryId, async () => {
+    if (!shouldWrite()) return;
+    const tableReady = await ensureTrajectoriesTable(runtime);
+    if (!tableReady) return;
+
+    await writeCompletedTrajectoryStep({
+      runtime,
+      stepId: trajectoryId,
+      status,
+      createStepIfMissing: false,
+      finalMetrics,
+    });
+  });
+
+  lastWritePromises.set(runtime as object, writePromise);
+  await writePromise;
+  // A capture can chain behind terminalization while its database work is in
+  // flight; drain the newest tail before child routing is released. Failed
+  // durability retains ownership so an explicit retry can address the same
+  // parent rather than fabricating a new route.
+  await flushTrajectoryWrites(runtime, trajectoryId);
+  releaseTrajectoryBridgeState(runtime, trajectoryId);
+}
+
 // ---------------------------------------------------------------------------
 // appendLlmCall / appendProviderAccess
 // ---------------------------------------------------------------------------
 
+function nextTrajectoryUpdatedAt(
+  persistedUpdatedAt: string,
+  candidateTimestamp: number,
+): string {
+  const persistedTimestamp = Date.parse(persistedUpdatedAt);
+  return new Date(
+    Math.max(
+      candidateTimestamp,
+      Number.isFinite(persistedTimestamp)
+        ? persistedTimestamp + 1
+        : candidateTimestamp,
+    ),
+  ).toISOString();
+}
+
+async function yieldTrajectoryWriteRetry(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+const MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS = 3;
+
+type ActiveCaptureRetryState = {
+  attempt: number;
+  recordId: string;
+  timestamp: number;
+};
+
+async function saveActiveTrajectoryCapture(
+  runtime: IAgentRuntime,
+  trajectory: PersistedTrajectory,
+  stepId: string,
+  captureType: "llm" | "provider",
+  expectedUpdatedAt: string,
+): Promise<"saved" | "closed" | "conflict"> {
+  try {
+    await saveTrajectory(runtime, trajectory, {
+      changedStepIds: [stepId],
+      requireActiveExisting: true,
+      expectedUpdatedAt,
+    });
+    return "saved";
+  } catch (error) {
+    // error-policy:J7 A terminal owner rejects late telemetry without failing
+    // the agent loop; active version conflicts are retried by the capture owner.
+    const errorCode = asRecord(error)?.code;
+    if (errorCode === "TRAJECTORY_OWNER_CLOSED") {
+      releaseTrajectoryBridgeState(runtime, trajectory.id);
+      reportLateTrajectoryCapture(runtime, stepId, captureType);
+      return "closed";
+    }
+    if (errorCode === "TRAJECTORY_WRITE_CONFLICT") {
+      const latest = await loadTrajectoryByStepId(runtime, stepId);
+      if (latest && latest.status !== "active") {
+        releaseTrajectoryBridgeState(runtime, latest.id);
+        reportLateTrajectoryCapture(runtime, stepId, captureType);
+        return "closed";
+      }
+      if (latest) return "conflict";
+    }
+    throw error;
+  }
+}
+
 async function appendLlmCall(
   runtime: IAgentRuntime,
+  trajectoryId: string,
   stepId: string,
   params: Record<string, unknown>,
+  retryState?: ActiveCaptureRetryState,
 ): Promise<void> {
   if (shouldSuppressNoInputEmbeddingCall(params)) return;
 
-  const now = toNumber(params.timestamp, Date.now());
+  const now =
+    retryState?.timestamp ??
+    (typeof params.timestamp === "number" ? params.timestamp : Date.now());
+  const callId =
+    retryState?.recordId ??
+    (typeof params.callId === "string" ? params.callId : randomUUID());
+  const attempt = retryState?.attempt ?? 0;
+  const persisted = await loadTrajectoryByStepId(runtime, trajectoryId);
+  if (!persisted && trajectoryId !== stepId) {
+    throw new ElizaError("Parent trajectory is unavailable for LLM capture", {
+      code: "TRAJECTORY_PARENT_NOT_FOUND",
+      context: { trajectoryId, stepId },
+    });
+  }
+  if (persisted && persisted.status !== "active") {
+    releaseTrajectoryBridgeState(runtime, persisted.id);
+    reportLateTrajectoryCapture(runtime, stepId, "llm");
+    return;
+  }
   const trajectory =
-    (await loadTrajectoryById(runtime, stepId)) ??
-    createBaseTrajectory(stepId, now);
+    persisted ?? createBaseTrajectory(trajectoryId, now, runtime.agentId);
+  const expectedUpdatedAt = trajectory.updatedAt;
+
+  // A retry may observe its own prior durable write after a transport-level
+  // ambiguity. Record identity makes the operation idempotent across reloads.
+  if (
+    trajectory.steps.some((candidate) =>
+      candidate.llmCalls.some(
+        (candidateCall) => candidateCall.callId === callId,
+      ),
+    )
+  ) {
+    return;
+  }
 
   trajectory.source = trajectory.source || "runtime";
   trajectory.status =
@@ -122,39 +735,72 @@ async function appendLlmCall(
 
   const orchestratorCtx = readOrchestratorTrajectoryContext(runtime);
 
-  const fullResponse = toText(params.response, "");
-  const purpose =
-    orchestratorCtx?.decisionType ?? toText(params.purpose, "action");
+  const fullResponse = params.response as string;
+  const purpose = orchestratorCtx?.decisionType ?? (params.purpose as string);
   const insights = extractInsightsFromResponse(fullResponse, purpose);
 
   const step = ensureStep(trajectory, stepId, now);
-  const call = enrichTrajectoryLlmCall({
-    callId: toText(params.callId, `${stepId}-call-${step.llmCalls.length + 1}`),
+  const call: PersistedLlmCall = enrichTrajectoryLlmCall({
+    callId,
     timestamp: now,
-    provider: toText(params.provider, ""),
-    model: toText(params.model, "unknown"),
-    modelType: toText(params.modelType, ""),
-    systemPrompt: toText(params.systemPrompt, ""),
-    userPrompt: toText(params.userPrompt ?? params.input, ""),
-    prompt: toText(params.prompt ?? params.userPrompt ?? params.input, ""),
-    messages: Array.isArray(params.messages) ? params.messages : undefined,
-    tools: params.tools,
-    toolChoice: params.toolChoice,
-    output: params.output,
-    responseSchema: params.responseSchema,
-    providerOptions: params.providerOptions,
+    model: params.model as string,
     response: fullResponse,
-    toolCalls: Array.isArray(params.toolCalls) ? params.toolCalls : undefined,
-    finishReason: toText(params.finishReason, ""),
-    providerMetadata: params.providerMetadata,
-    temperature: toNumber(params.temperature, 0),
-    maxTokens: toNumber(params.maxTokens, 0),
     purpose,
     actionType: orchestratorCtx
       ? "orchestrator.useModel"
-      : toText(params.actionType, "runtime.useModel"),
-    latencyMs: toNumber(params.latencyMs, 0),
-  }) as PersistedLlmCall;
+      : (params.actionType as string),
+    ...(typeof params.stepType === "string"
+      ? { stepType: params.stepType }
+      : {}),
+    ...(Array.isArray(params.tags) ? { tags: params.tags as string[] } : {}),
+    ...(typeof params.provider === "string"
+      ? { provider: params.provider }
+      : {}),
+    ...(typeof params.modelType === "string"
+      ? { modelType: params.modelType }
+      : {}),
+    ...(typeof params.systemPrompt === "string"
+      ? { systemPrompt: params.systemPrompt }
+      : {}),
+    ...(typeof (params.userPrompt ?? params.input) === "string"
+      ? { userPrompt: (params.userPrompt ?? params.input) as string }
+      : {}),
+    ...(typeof (params.prompt ?? params.userPrompt ?? params.input) === "string"
+      ? {
+          prompt: (params.prompt ??
+            params.userPrompt ??
+            params.input) as string,
+        }
+      : {}),
+    ...(Array.isArray(params.messages) ? { messages: params.messages } : {}),
+    ...(params.tools !== undefined ? { tools: params.tools } : {}),
+    ...(params.toolChoice !== undefined
+      ? { toolChoice: params.toolChoice }
+      : {}),
+    ...(params.output !== undefined ? { output: params.output } : {}),
+    ...(params.responseSchema !== undefined
+      ? { responseSchema: params.responseSchema }
+      : {}),
+    ...(params.providerOptions !== undefined
+      ? { providerOptions: params.providerOptions }
+      : {}),
+    ...(Array.isArray(params.toolCalls) ? { toolCalls: params.toolCalls } : {}),
+    ...(typeof params.finishReason === "string"
+      ? { finishReason: params.finishReason }
+      : {}),
+    ...(params.providerMetadata !== undefined
+      ? { providerMetadata: params.providerMetadata }
+      : {}),
+    ...(typeof params.temperature === "number"
+      ? { temperature: params.temperature }
+      : {}),
+    ...(typeof params.maxTokens === "number"
+      ? { maxTokens: params.maxTokens }
+      : {}),
+    ...(typeof params.latencyMs === "number"
+      ? { latencyMs: params.latencyMs }
+      : {}),
+  });
 
   const promptTokens = toOptionalNumber(params.promptTokens);
   const completionTokens = toOptionalNumber(params.completionTokens);
@@ -201,12 +847,25 @@ async function appendLlmCall(
   if (typeof params.tokenUsageEstimated === "boolean") {
     call.tokenUsageEstimated = params.tokenUsageEstimated;
   }
+  if (typeof params.maxTokensOmitted === "boolean") {
+    call.maxTokensOmitted = params.maxTokensOmitted;
+  }
+  const reasoningTokens = toOptionalNumber(params.reasoningTokens);
+  if (reasoningTokens !== undefined) {
+    call.reasoningTokens = reasoningTokens;
+  }
+  if (Array.isArray(params.providerOrder)) {
+    call.providerOrder = params.providerOrder as string[];
+  }
+  if (Array.isArray(params.providerAttributions)) {
+    call.providerAttributions = params.providerAttributions as NonNullable<
+      PersistedLlmCall["providerAttributions"]
+    >;
+  }
 
   step.llmCalls.push(call);
-  // M14: when the LLM call carries an evaluation purpose, the enclosing
-  // step represents an evaluator turn. Mark the step `kind: "evaluator"`
-  // and stash the evaluator name (when supplied) so the trajectory viewer
-  // and training pipelines can isolate the evaluator seam.
+  // Direct legacy capture can lack child-start metadata, so evaluation purpose
+  // remains a strict fallback for evaluator ownership.
   if (purpose === "evaluation") {
     step.kind = "evaluator";
     const evaluatorNameRaw = toText(params.evaluatorName, "");
@@ -216,7 +875,7 @@ async function appendLlmCall(
   }
   trajectory.startTime = Math.min(trajectory.startTime, now);
   trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
-  trajectory.updatedAt = new Date(now).toISOString();
+  trajectory.updatedAt = nextTrajectoryUpdatedAt(expectedUpdatedAt, now);
 
   if (insights.length > 0) {
     const meta = trajectory.metadata as Record<string, unknown>;
@@ -225,19 +884,6 @@ async function appendLlmCall(
       : [];
     meta.insights = [...existing, ...insights].slice(-20);
     trajectory.metadata = meta;
-  }
-
-  if (
-    !orchestratorCtx &&
-    trajectory.source === "chat" &&
-    shouldRunObservationExtraction(runtime)
-  ) {
-    pushChatExchange(runtime, {
-      userPrompt: toText(params.userPrompt ?? params.input, ""),
-      response: fullResponse,
-      trajectoryId: trajectory.id,
-      timestamp: now,
-    });
   }
 
   if (orchestratorCtx) {
@@ -264,18 +910,89 @@ async function appendLlmCall(
     trajectory.metadata = meta;
   }
 
-  await saveTrajectory(runtime, trajectory);
+  const saveResult = await saveActiveTrajectoryCapture(
+    runtime,
+    trajectory,
+    stepId,
+    "llm",
+    expectedUpdatedAt,
+  );
+  if (saveResult === "closed") return;
+  if (saveResult === "conflict") {
+    if (attempt + 1 >= MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS) {
+      throw new ElizaError("Trajectory changed during LLM capture", {
+        code: "TRAJECTORY_WRITE_CONFLICT",
+        context: {
+          trajectoryId: trajectory.id,
+          stepId,
+          attempts: MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS,
+        },
+      });
+    }
+    await yieldTrajectoryWriteRetry();
+    await appendLlmCall(runtime, trajectoryId, stepId, params, {
+      attempt: attempt + 1,
+      recordId: callId,
+      timestamp: now,
+    });
+    return;
+  }
+  if (
+    !orchestratorCtx &&
+    trajectory.source === "chat" &&
+    shouldRunObservationExtraction(runtime)
+  ) {
+    pushChatExchange(runtime, {
+      userPrompt: toText(params.userPrompt ?? params.input, ""),
+      response: fullResponse,
+      trajectoryId: trajectory.id,
+      timestamp: now,
+    });
+  }
 }
 
 async function appendProviderAccess(
   runtime: IAgentRuntime,
+  trajectoryId: string,
   stepId: string,
   params: Record<string, unknown>,
+  retryState?: ActiveCaptureRetryState,
 ): Promise<void> {
-  const now = toNumber(params.timestamp, Date.now());
+  const now =
+    retryState?.timestamp ??
+    (typeof params.timestamp === "number" ? params.timestamp : Date.now());
+  const providerId =
+    retryState?.recordId ??
+    (typeof params.providerId === "string" ? params.providerId : randomUUID());
+  const attempt = retryState?.attempt ?? 0;
+  const persisted = await loadTrajectoryByStepId(runtime, trajectoryId);
+  if (!persisted && trajectoryId !== stepId) {
+    throw new ElizaError(
+      "Parent trajectory is unavailable for provider capture",
+      {
+        code: "TRAJECTORY_PARENT_NOT_FOUND",
+        context: { trajectoryId, stepId },
+      },
+    );
+  }
+  if (persisted && persisted.status !== "active") {
+    releaseTrajectoryBridgeState(runtime, persisted.id);
+    reportLateTrajectoryCapture(runtime, stepId, "provider");
+    return;
+  }
   const trajectory =
-    (await loadTrajectoryById(runtime, stepId)) ??
-    createBaseTrajectory(stepId, now);
+    persisted ?? createBaseTrajectory(trajectoryId, now, runtime.agentId);
+  const expectedUpdatedAt = trajectory.updatedAt;
+
+  if (
+    trajectory.steps.some((candidate) =>
+      candidate.providerAccesses.some(
+        (candidateAccess) => candidateAccess.providerId === providerId,
+      ),
+    )
+  ) {
+    return;
+  }
 
   trajectory.source = trajectory.source || "runtime";
   trajectory.status =
@@ -283,33 +1000,36 @@ async function appendProviderAccess(
 
   const step = ensureStep(trajectory, stepId, now);
   const access: PersistedProviderAccess = {
-    providerId: toText(
-      params.providerId,
-      `${stepId}-provider-${step.providerAccesses.length + 1}`,
-    ),
-    providerName: toText(params.providerName, "unknown"),
+    providerId,
+    providerName: params.providerName as string,
     timestamp: now,
-    startedAt: typeof params.startedAt === "number" ? params.startedAt : null,
-    endedAt: typeof params.endedAt === "number" ? params.endedAt : null,
-    durationMs:
-      typeof params.durationMs === "number" ? params.durationMs : null,
-    overlapsWith: Array.isArray(params.overlapsWith)
-      ? params.overlapsWith.flatMap((entry) => {
-          const record = asRecord(entry);
-          if (!record) return [];
-          const providerName = toText(record.providerName, "");
-          const overlapMs = record.overlapMs;
-          return providerName && typeof overlapMs === "number"
-            ? [{ providerName, overlapMs }]
-            : [];
-        })
-      : [],
-    data: truncateRecord(asRecord(params.data) ?? {}),
+    ...(typeof params.startedAt === "number"
+      ? { startedAt: params.startedAt }
+      : {}),
+    ...(typeof params.endedAt === "number" ? { endedAt: params.endedAt } : {}),
+    ...(typeof params.durationMs === "number"
+      ? { durationMs: params.durationMs }
+      : {}),
+    ...(Array.isArray(params.overlapsWith)
+      ? {
+          overlapsWith: params.overlapsWith.map((entry) => {
+            const record = asRecord(entry) as {
+              providerName: string;
+              overlapMs: number;
+            };
+            return {
+              providerName: record.providerName,
+              overlapMs: record.overlapMs,
+            };
+          }),
+        }
+      : {}),
+    data: normalizeJsonRecord(params.data, "providerData"),
     query: (() => {
-      const queryRecord = asRecord(params.query);
-      return queryRecord ? truncateRecord(queryRecord) : undefined;
+      if (params.query === undefined) return undefined;
+      return normalizeJsonRecord(params.query, "providerQuery");
     })(),
-    purpose: toText(params.purpose, "provider"),
+    purpose: params.purpose as string,
   };
   if (typeof params.runId === "string") {
     access.runId = params.runId;
@@ -326,13 +1046,47 @@ async function appendProviderAccess(
   if (typeof params.createdAt === "string") {
     access.createdAt = params.createdAt;
   }
+  if (typeof params.sha256 === "string") {
+    access.sha256 = params.sha256;
+  }
+  for (const field of [
+    "tokenCount",
+    "position",
+    "spanStart",
+    "spanEnd",
+  ] as const) {
+    if (typeof params[field] === "number") access[field] = params[field];
+  }
 
   step.providerAccesses.push(access);
   trajectory.startTime = Math.min(trajectory.startTime, now);
   trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
-  trajectory.updatedAt = new Date(now).toISOString();
+  trajectory.updatedAt = nextTrajectoryUpdatedAt(expectedUpdatedAt, now);
 
-  await saveTrajectory(runtime, trajectory);
+  const saveResult = await saveActiveTrajectoryCapture(
+    runtime,
+    trajectory,
+    stepId,
+    "provider",
+    expectedUpdatedAt,
+  );
+  if (saveResult !== "conflict") return;
+  if (attempt + 1 >= MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS) {
+    throw new ElizaError("Trajectory changed during provider capture", {
+      code: "TRAJECTORY_WRITE_CONFLICT",
+      context: {
+        trajectoryId: trajectory.id,
+        stepId,
+        attempts: MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS,
+      },
+    });
+  }
+  await yieldTrajectoryWriteRetry();
+  await appendProviderAccess(runtime, trajectoryId, stepId, params, {
+    attempt: attempt + 1,
+    recordId: providerId,
+    timestamp: now,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -344,21 +1098,37 @@ async function writeStartedTrajectoryStep({
   stepId,
   source,
   metadata,
-}: StartStepOptions): Promise<void> {
+  traceId,
+  episodeId,
+  groupIndex,
+  createInitialStep = true,
+}: StartStepOptions & {
+  traceId?: string;
+  episodeId?: string;
+  groupIndex?: number;
+  createInitialStep?: boolean;
+}): Promise<void> {
   const now = Date.now();
+  const existing = await loadTrajectoryById(runtime, stepId);
   const trajectory =
-    (await loadTrajectoryById(runtime, stepId)) ??
-    createBaseTrajectory(stepId, now, source, metadata);
+    existing ??
+    createBaseTrajectory(stepId, now, runtime.agentId, source, metadata);
+  if (!existing && !createInitialStep) trajectory.steps = [];
 
   trajectory.source = source?.trim() || trajectory.source || "runtime";
   trajectory.status = "active";
   trajectory.metadata = mergeMetadata(trajectory.metadata, metadata);
+  if (traceId !== undefined) trajectory.traceId = traceId;
+  if (episodeId !== undefined) trajectory.episodeId = episodeId;
+  if (groupIndex !== undefined) trajectory.groupIndex = groupIndex;
   trajectory.startTime = Math.min(trajectory.startTime, now);
   trajectory.endTime = null;
-  ensureStep(trajectory, stepId, now);
+  if (createInitialStep) ensureStep(trajectory, stepId, now);
   trajectory.updatedAt = new Date(now).toISOString();
 
-  await saveTrajectory(runtime, trajectory);
+  await saveTrajectory(runtime, trajectory, {
+    changedStepIds: createInitialStep ? [stepId] : [],
+  });
 }
 
 async function writeCompletedTrajectoryStep({
@@ -367,36 +1137,88 @@ async function writeCompletedTrajectoryStep({
   status = "completed",
   source,
   metadata,
-}: CompleteStepOptions): Promise<void> {
-  const now = Date.now();
-  const trajectory =
-    (await loadTrajectoryById(runtime, stepId)) ??
-    createBaseTrajectory(stepId, now, source, metadata);
+  createStepIfMissing = true,
+  finalMetrics,
+}: CompleteStepOptions & {
+  createStepIfMissing?: boolean;
+  finalMetrics?: Record<string, unknown>;
+}): Promise<void> {
+  const maximumWriteAttempts = 3;
+  for (let attempt = 0; attempt < maximumWriteAttempts; attempt += 1) {
+    const now = Date.now();
+    const persisted = await loadTrajectoryById(runtime, stepId);
+    if (!persisted && !createStepIfMissing) {
+      throw new ElizaError(
+        "Parent trajectory is unavailable at terminalization",
+        {
+          code: "TRAJECTORY_PARENT_NOT_FOUND",
+          context: { trajectoryId: stepId, status },
+        },
+      );
+    }
+    const trajectory =
+      persisted ??
+      createBaseTrajectory(stepId, now, runtime.agentId, source, metadata);
+    const expectedUpdatedAt = persisted?.updatedAt;
 
-  trajectory.source = source?.trim() || trajectory.source || "runtime";
-  trajectory.status = normalizeStatus(status, "completed");
-  trajectory.metadata = mergeMetadata(trajectory.metadata, metadata);
-  const previousStartTime =
-    typeof trajectory.startTime === "number" &&
-    Number.isFinite(trajectory.startTime)
-      ? trajectory.startTime
-      : now;
-  trajectory.startTime = Math.min(previousStartTime, now);
-  const previousEndTime =
-    typeof trajectory.endTime === "number" &&
-    Number.isFinite(trajectory.endTime) &&
-    trajectory.endTime >= trajectory.startTime
-      ? trajectory.endTime
-      : now;
-  trajectory.endTime = Math.max(previousEndTime, now, trajectory.startTime);
-  ensureStep(trajectory, stepId, now);
-  trajectory.updatedAt = new Date(now).toISOString();
+    trajectory.source = source?.trim() || trajectory.source || "runtime";
+    trajectory.status = normalizeStatus(status, "completed");
+    trajectory.metadata = mergeMetadata(trajectory.metadata, metadata);
+    const previousStartTime =
+      typeof trajectory.startTime === "number" &&
+      Number.isFinite(trajectory.startTime)
+        ? trajectory.startTime
+        : now;
+    trajectory.startTime = Math.min(previousStartTime, now);
+    const previousEndTime =
+      typeof trajectory.endTime === "number" &&
+      Number.isFinite(trajectory.endTime) &&
+      trajectory.endTime >= trajectory.startTime
+        ? trajectory.endTime
+        : now;
+    trajectory.endTime = Math.max(previousEndTime, now, trajectory.startTime);
+    if (createStepIfMissing && trajectory.steps.length === 0) {
+      ensureStep(trajectory, stepId, now);
+    }
+    if (finalMetrics !== undefined) {
+      const normalizedMetrics = normalizeJsonRecord(
+        finalMetrics,
+        "finalMetrics",
+      );
+      trajectory.metrics = { ...trajectory.metrics, ...normalizedMetrics };
+    }
+    trajectory.updatedAt = expectedUpdatedAt
+      ? nextTrajectoryUpdatedAt(expectedUpdatedAt, now)
+      : new Date(now).toISOString();
 
-  await saveTrajectory(runtime, trajectory);
+    try {
+      await saveTrajectory(runtime, trajectory, {
+        changedStepIds:
+          createStepIfMissing && trajectory.steps.length === 1 ? [stepId] : [],
+        requireActiveExisting: persisted !== null,
+        ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+      });
+      return;
+    } catch (error) {
+      // error-policy:J7 Terminal telemetry retries an active version conflict;
+      // exhausted or non-conflict durability failures still reject to caller.
+      if (
+        asRecord(error)?.code === "TRAJECTORY_WRITE_CONFLICT" &&
+        attempt + 1 < maximumWriteAttempts
+      ) {
+        await yieldTrajectoryWriteRetry();
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
-function buildTrajectoryWhereClauses(options: TrajectoryListOptions): string[] {
-  const whereClauses: string[] = [];
+function buildTrajectoryWhereClauses(
+  options: TrajectoryListOptions,
+  agentId: string,
+): string[] {
+  const whereClauses: string[] = [`agent_id = ${sqlQuote(agentId)}`];
   if (options.source) {
     whereClauses.push(`source = ${sqlQuote(options.source)}`);
   }
@@ -411,7 +1233,7 @@ function buildTrajectoryWhereClauses(options: TrajectoryListOptions): string[] {
     const quotedPattern = sqlQuote(`%${escaped}%`);
     whereClauses.push(
       `(
-        LOWER(COALESCE(CAST(metadata AS TEXT), '')) LIKE ${quotedPattern}
+        LOWER(COALESCE(CAST(metadata_json AS TEXT), CAST(metadata AS TEXT), '')) LIKE ${quotedPattern}
         OR LOWER(COALESCE(CAST(steps_json AS TEXT), '')) LIKE ${quotedPattern}
       )`,
     );
@@ -448,7 +1270,7 @@ function buildTrajectoryWhereClauses(options: TrajectoryListOptions): string[] {
         LOWER(COALESCE(id, '')) LIKE ${quotedPattern}
         OR LOWER(COALESCE(scenario_id, '')) LIKE ${quotedPattern}
         OR LOWER(COALESCE(batch_id, '')) LIKE ${quotedPattern}
-        OR LOWER(COALESCE(CAST(metadata AS TEXT), '')) LIKE ${quotedPattern}
+        OR LOWER(COALESCE(CAST(metadata_json AS TEXT), CAST(metadata AS TEXT), '')) LIKE ${quotedPattern}
         OR LOWER(COALESCE(CAST(steps_json AS TEXT), '')) LIKE ${quotedPattern}
       )`,
     );
@@ -456,8 +1278,11 @@ function buildTrajectoryWhereClauses(options: TrajectoryListOptions): string[] {
   return whereClauses;
 }
 
-function buildTrajectoryWhereClause(options: TrajectoryListOptions): string {
-  const whereClauses = buildTrajectoryWhereClauses(options);
+function buildTrajectoryWhereClause(
+  options: TrajectoryListOptions,
+  agentId: string,
+): string {
+  const whereClauses = buildTrajectoryWhereClauses(options, agentId);
   return whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 }
 
@@ -465,26 +1290,29 @@ async function loadPersistedTrajectoriesForExport(
   runtime: IAgentRuntime,
   options: RuntimeTrajectoryExportOptions,
 ): Promise<PersistedTrajectory[]> {
-  if (!hasRuntimeDb(runtime)) {
-    return [];
-  }
+  requireTrajectoryDatabase(runtime);
 
   const tableReady = await ensureTrajectoriesTable(runtime);
   if (!tableReady) {
-    return [];
+    throw new ElizaError("Trajectory schema is unavailable", {
+      code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+    });
   }
 
-  const whereClauses = buildTrajectoryWhereClauses({
-    source: options.source,
-    status: options.status,
-    runId: options.runId,
-    startDate: options.startDate,
-    endDate: options.endDate,
-    search: options.search,
-    scenarioId: options.scenarioId,
-    traceId: options.traceId,
-    batchId: options.batchId,
-  });
+  const whereClauses = buildTrajectoryWhereClauses(
+    {
+      source: options.source,
+      status: options.status,
+      runId: options.runId,
+      startDate: options.startDate,
+      endDate: options.endDate,
+      search: options.search,
+      scenarioId: options.scenarioId,
+      traceId: options.traceId,
+      batchId: options.batchId,
+    },
+    runtime.agentId,
+  );
   if (options.trajectoryIds && options.trajectoryIds.length > 0) {
     const ids = options.trajectoryIds
       .map((id) => id.trim())
@@ -501,19 +1329,35 @@ async function loadPersistedTrajectoriesForExport(
       runtime,
       `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC LIMIT 10000`,
     );
-    const rows = extractRows(result);
-    return rows
-      .map((row) => {
-        const record = asRecord(row);
-        if (!record) return null;
-        return parsePersistedTrajectoryRow(
-          record,
-          toText(record.id ?? record.trajectory_id, ""),
-        );
-      })
-      .filter((trajectory): trajectory is PersistedTrajectory =>
-        Boolean(trajectory),
-      );
+    const rows = extractRequiredRows(result, {
+      operation: "load trajectories for export",
+      agentId: runtime.agentId,
+    });
+    const trajectories: PersistedTrajectory[] = [];
+    for (const row of rows) {
+      const record = asRecord(row);
+      if (!record) {
+        throw new ElizaError("Trajectory export row is invalid", {
+          code: "TRAJECTORY_ROW_INVALID",
+        });
+      }
+      const trajectoryId = toText(record.id ?? record.trajectory_id, "").trim();
+      if (!trajectoryId) {
+        throw new ElizaError("Trajectory export row has no id", {
+          code: "TRAJECTORY_ROW_INVALID",
+          context: { field: "id" },
+        });
+      }
+      const trajectory = await loadTrajectoryById(runtime, trajectoryId);
+      if (!trajectory) {
+        throw new ElizaError("Trajectory disappeared during export", {
+          code: "TRAJECTORY_ROW_INVALID",
+          context: { trajectoryId },
+        });
+      }
+      trajectories.push(trajectory);
+    }
+    return trajectories;
   } catch (error) {
     // error-policy:J2 a failed export query is not an empty export.
     throw trajectoryOperationError("raw export", error);
@@ -563,6 +1407,28 @@ export async function installDatabaseTrajectoryLogger(
     }
   }
 
+  let fallbackEnabled =
+    typeof logger.isEnabled === "function"
+      ? logger.isEnabled()
+      : shouldEnableByDefault;
+  const originalSetEnabled =
+    typeof logger.setEnabled === "function"
+      ? logger.setEnabled.bind(logger)
+      : undefined;
+  if (originalSetEnabled) {
+    logger.setEnabled = (enabled: boolean): void => {
+      originalSetEnabled(enabled);
+      fallbackEnabled = enabled;
+      if (!enabled) releaseAllTrajectoryBridgeState(runtime);
+    };
+  }
+  const bridgeIsEnabled = (): boolean =>
+    typeof logger.isEnabled === "function"
+      ? logger.isEnabled()
+      : fallbackEnabled;
+  const bridgeAcceptsCapture = (): boolean =>
+    acceptsNewTrajectoryCapture(runtime, bridgeIsEnabled());
+
   if (Array.isArray(logger.llmCalls)) {
     logger.llmCalls.splice(0, logger.llmCalls.length);
   }
@@ -574,39 +1440,75 @@ export async function installDatabaseTrajectoryLogger(
   // the same owner. Forwarding into the original core writer would make one
   // event mutate two incompatible step/reward shapes in the shared table.
   logger.logLlmCall = (...args: unknown[]) => {
-    const normalized = normalizeLlmCallPayload(args);
+    if (!bridgeAcceptsCapture()) return;
+    let normalized: ReturnType<typeof normalizeLlmCallPayload>;
+    try {
+      normalized = normalizeLlmCallPayload(args);
+    } catch (error) {
+      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
+      reportInvalidTrajectoryCapture(runtime, "llm", error);
+      return;
+    }
     if (!normalized) return;
+    if (
+      !acceptsTrajectoryStepCapture(
+        runtime,
+        bridgeIsEnabled(),
+        normalized.stepId,
+        "llm",
+      )
+    )
+      return;
+    const trajectoryId = resolveBridgeTrajectoryId(runtime, normalized.stepId);
 
-    const writePromise = enqueueStepWrite(
-      runtime,
-      normalized.stepId,
-      async () => {
-        const tableReady = await ensureTrajectoriesTable(runtime);
-        if (!tableReady) return;
-        await appendLlmCall(runtime, normalized.stepId, normalized.params);
-      },
-    );
+    const writePromise = enqueueStepWrite(runtime, trajectoryId, async () => {
+      if (!bridgeIsEnabled()) return;
+      const tableReady = await ensureTrajectoriesTable(runtime);
+      if (!tableReady) return;
+      await appendLlmCall(
+        runtime,
+        trajectoryId,
+        normalized.stepId,
+        normalized.params,
+      );
+    });
     const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
   };
 
   logger.logProviderAccess = (...args: unknown[]) => {
-    const normalized = normalizeProviderAccessPayload(args);
+    if (!bridgeAcceptsCapture()) return;
+    let normalized: ReturnType<typeof normalizeProviderAccessPayload>;
+    try {
+      normalized = normalizeProviderAccessPayload(args);
+    } catch (error) {
+      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
+      reportInvalidTrajectoryCapture(runtime, "provider", error);
+      return;
+    }
     if (!normalized) return;
+    if (
+      !acceptsTrajectoryStepCapture(
+        runtime,
+        bridgeIsEnabled(),
+        normalized.stepId,
+        "provider",
+      )
+    )
+      return;
+    const trajectoryId = resolveBridgeTrajectoryId(runtime, normalized.stepId);
 
-    const writePromise = enqueueStepWrite(
-      runtime,
-      normalized.stepId,
-      async () => {
-        const tableReady = await ensureTrajectoriesTable(runtime);
-        if (!tableReady) return;
-        await appendProviderAccess(
-          runtime,
-          normalized.stepId,
-          normalized.params,
-        );
-      },
-    );
+    const writePromise = enqueueStepWrite(runtime, trajectoryId, async () => {
+      if (!bridgeIsEnabled()) return;
+      const tableReady = await ensureTrajectoriesTable(runtime);
+      if (!tableReady) return;
+      await appendProviderAccess(
+        runtime,
+        trajectoryId,
+        normalized.stepId,
+        normalized.params,
+      );
+    });
     const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
   };
@@ -624,19 +1526,47 @@ export async function installDatabaseTrajectoryLogger(
         source?: string;
         metadata?: Record<string, unknown>;
         scenarioId?: string;
+        traceId?: string;
+        episodeId?: string;
         batchId?: string;
+        groupIndex?: number;
       },
     ) => Promise<string>;
-    startStep?: (trajectoryId: string) => string;
+    startStep?: (trajectoryId: string, state?: BridgeStepState) => string;
+    getCurrentStepId?: (trajectoryId: string) => string | null;
+    completeStep?: (
+      trajectoryId: string,
+      actionOrStepId: string | Record<string, unknown>,
+      actionOrReward?: Record<string, unknown>,
+      rewardInfo?: Record<string, unknown>,
+    ) => void;
+    flushWriteQueue?: (trajectoryId?: string) => Promise<void>;
     endTrajectory?: (
       stepIdOrTrajectoryId: string,
       status?: string,
+      finalMetrics?: Record<string, unknown>,
     ) => Promise<void>;
+    releaseTrajectoryOwnership?: (stepIdOrTrajectoryId: string) => void;
     listTrajectories?: (
       options?: TrajectoryListOptions,
     ) => Promise<TrajectoryListResult>;
     getTrajectoryDetail?: (trajectoryId: string) => Promise<Trajectory | null>;
     getStats?: () => Promise<unknown>;
+    stop?: () => Promise<void>;
+  };
+
+  const originalStop =
+    typeof loggerAny.stop === "function"
+      ? loggerAny.stop.bind(loggerAny)
+      : undefined;
+  loggerAny.stop = async (): Promise<void> => {
+    stoppingTrajectoryBridges.add(runtime as object);
+    try {
+      await flushTrajectoryWrites(runtime);
+      await originalStop?.();
+    } finally {
+      releaseAllTrajectoryBridgeState(runtime);
+    }
   };
 
   loggerAny.startTrajectory = async (
@@ -648,19 +1578,46 @@ export async function installDatabaseTrajectoryLogger(
       source?: string;
       metadata?: Record<string, unknown>;
       scenarioId?: string;
+      traceId?: string;
+      episodeId?: string;
       batchId?: string;
+      groupIndex?: number;
     },
   ): Promise<string> => {
+    if (!bridgeAcceptsCapture()) return randomUUID();
     const isLegacySignature = typeof options?.agentId === "string";
     const stepId = isLegacySignature
       ? stepIdOrAgentId
       : `step-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const startMetadata = normalizeTrajectoryMetadata(options?.metadata, {
-      scenarioId: options?.scenarioId,
-      batchId: options?.batchId,
-    }).metadata;
+    const startMetadata = normalizeTrajectoryMetadata(
+      {
+        ...(options?.metadata ?? {}),
+        ...(options?.roomId !== undefined ? { roomId: options.roomId } : {}),
+        ...(options?.entityId !== undefined
+          ? { entityId: options.entityId }
+          : {}),
+        ...(options?.traceId !== undefined
+          ? {
+              correlation: {
+                traceId: options.traceId,
+                ...(options.roomId !== undefined
+                  ? { roomId: options.roomId }
+                  : {}),
+                ...(options.scenarioId !== undefined
+                  ? { runId: options.scenarioId }
+                  : {}),
+              },
+            }
+          : {}),
+      },
+      {
+        scenarioId: options?.scenarioId,
+        batchId: options?.batchId,
+      },
+    ).metadata;
 
     const writePromise = enqueueStepWrite(runtime, stepId, async () => {
+      if (!bridgeIsEnabled()) return;
       const tableReady = await ensureTrajectoriesTable(runtime);
       if (!tableReady) return;
 
@@ -669,41 +1626,132 @@ export async function installDatabaseTrajectoryLogger(
         stepId,
         source: options?.source ?? "chat",
         metadata: startMetadata,
+        traceId: options?.traceId,
+        episodeId: options?.episodeId,
+        groupIndex: options?.groupIndex,
+        createInitialStep: false,
       });
     });
 
     const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
+    rememberTrajectoryStep(runtime, stepId, stepId);
 
     return stepId;
   };
 
-  loggerAny.startStep = (trajectoryId: string): string => {
-    return trajectoryId;
+  loggerAny.startStep = (
+    trajectoryId: string,
+    state: BridgeStepState = {},
+  ): string => {
+    if (!bridgeAcceptsCapture()) return randomUUID();
+    return startChildTrajectoryStep(
+      runtime,
+      trajectoryId,
+      state,
+      bridgeIsEnabled,
+    );
+  };
+
+  loggerAny.getCurrentStepId = (trajectoryId: string): string | null => {
+    if (!bridgeAcceptsCapture()) return null;
+    const ownerId = resolveBridgeTrajectoryId(runtime, trajectoryId);
+    return (
+      trajectoryBridgeStates
+        .get(runtime as object)
+        ?.activeStepIdByTrajectoryId.get(ownerId) ?? null
+    );
+  };
+
+  loggerAny.completeStep = (
+    trajectoryId: string,
+    actionOrStepId: string | Record<string, unknown>,
+    actionOrReward?: Record<string, unknown>,
+    rewardInfo?: Record<string, unknown>,
+  ): void => {
+    if (!bridgeAcceptsCapture()) return;
+    const explicitStepId =
+      typeof actionOrStepId === "string" ? actionOrStepId : undefined;
+    const action = explicitStepId ? actionOrReward : actionOrStepId;
+    const reward = explicitStepId ? rewardInfo : actionOrReward;
+    const ownerId = resolveBridgeTrajectoryId(runtime, trajectoryId);
+    const stepId =
+      explicitStepId ??
+      getTrajectoryBridgeState(runtime).activeStepIdByTrajectoryId.get(ownerId);
+    if (!stepId || !action) {
+      const error = new ElizaError("Trajectory action step is missing", {
+        code: "TRAJECTORY_ACTION_STEP_REQUIRED",
+        context: { trajectoryId: ownerId },
+      });
+      warnRuntime(
+        runtime,
+        "Trajectory action settlement did not identify an active child step",
+        error,
+      );
+      runtime.reportError("TrajectoryStorage.completeStep", error, {
+        trajectoryId: ownerId,
+        ...(stepId ? { stepId } : {}),
+        diagnosticOnly: true,
+      });
+      return;
+    }
+    try {
+      completeTrajectoryAction(
+        runtime,
+        ownerId,
+        stepId,
+        action,
+        reward,
+        bridgeIsEnabled,
+      );
+    } catch (error) {
+      // error-policy:J7 Action telemetry cannot rewrite an already-settled tool
+      // result, but malformed or unroutable settlement remains observable.
+      warnRuntime(runtime, "Trajectory action settlement failed", error);
+      runtime.reportError("TrajectoryStorage.completeStep", error, {
+        trajectoryId: ownerId,
+        stepId,
+        diagnosticOnly: true,
+      });
+    }
+  };
+
+  loggerAny.flushWriteQueue = async (trajectoryId?: string): Promise<void> => {
+    await flushTrajectoryWrites(runtime, trajectoryId);
   };
 
   loggerAny.endTrajectory = async (
     stepIdOrTrajectoryId: string,
     status = "completed",
+    finalMetrics?: Record<string, unknown>,
   ): Promise<void> => {
-    const writePromise = enqueueStepWrite(
+    if (!bridgeAcceptsCapture()) {
+      releaseTrajectoryBridgeState(
+        runtime,
+        resolveBridgeTrajectoryId(runtime, stepIdOrTrajectoryId),
+      );
+      return;
+    }
+    const trajectoryId = resolveBridgeTrajectoryId(
       runtime,
       stepIdOrTrajectoryId,
-      async () => {
-        const tableReady = await ensureTrajectoriesTable(runtime);
-        if (!tableReady) return;
-
-        await writeCompletedTrajectoryStep({
-          runtime,
-          stepId: stepIdOrTrajectoryId,
-          status: status as TrajectoryStatus,
-        });
-      },
     );
+    await terminalizeBridgeTrajectory(
+      runtime,
+      trajectoryId,
+      status as TrajectoryStatus,
+      finalMetrics,
+      bridgeIsEnabled,
+    );
+  };
 
-    const runtimeKey = runtime as object;
-    lastWritePromises.set(runtimeKey, writePromise);
-    await writePromise;
+  loggerAny.releaseTrajectoryOwnership = (
+    stepIdOrTrajectoryId: string,
+  ): void => {
+    releaseTrajectoryBridgeState(
+      runtime,
+      resolveBridgeTrajectoryId(runtime, stepIdOrTrajectoryId),
+    );
   };
 
   // Add query methods for API endpoints
@@ -714,31 +1762,35 @@ export async function installDatabaseTrajectoryLogger(
 
     const tableReady = await ensureTrajectoriesTable(runtime);
     if (!tableReady) {
-      return { trajectories: [], total: 0, offset: 0, limit: 50 };
+      throw new ElizaError("Trajectory schema is unavailable", {
+        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+      });
     }
 
     const limit = Math.min(500, Math.max(1, options.limit ?? 50));
     const offset = Math.max(0, options.offset ?? 0);
 
-    const whereClause = buildTrajectoryWhereClause(options);
+    const whereClause = buildTrajectoryWhereClause(options, runtime.agentId);
 
     try {
       const countResult = await executeRawSql(
         runtime,
         `SELECT count(*) AS total FROM trajectories ${whereClause}`,
       );
-      const countRow = asRecord(extractRows(countResult)[0]);
-      const total = toNumber(countRow?.total, 0);
+      const total = readRequiredCount(countResult, "total");
 
       const result = await executeRawSql(
         runtime,
         `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       );
 
-      const rows = extractRows(result);
-      const trajectories = rows
-        .map((row) => trajectoryRowToListItem(row, runtime.agentId))
-        .filter(Boolean) as TrajectoryListItem[];
+      const rows = extractRequiredRows(result, {
+        operation: "list trajectories",
+        agentId: runtime.agentId,
+      });
+      const trajectories = rows.map((row) =>
+        trajectoryRowToListItem(row, runtime.agentId),
+      );
 
       return { trajectories, total, offset, limit };
     } catch (error) {
@@ -753,7 +1805,11 @@ export async function installDatabaseTrajectoryLogger(
     requireTrajectoryDatabase(runtime);
 
     const tableReady = await ensureTrajectoriesTable(runtime);
-    if (!tableReady) return null;
+    if (!tableReady) {
+      throw new ElizaError("Trajectory schema is unavailable", {
+        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+      });
+    }
 
     const persisted = await loadTrajectoryById(runtime, trajectoryId);
     if (!persisted) return null;
@@ -778,27 +1834,63 @@ export async function installDatabaseTrajectoryLogger(
           COALESCE(sum(total_cache_read_input_tokens), 0) AS total_cache_read_input_tokens,
           COALESCE(sum(total_cache_creation_input_tokens), 0) AS total_cache_creation_input_tokens,
           COALESCE(avg(duration_ms), 0) AS avg_duration_ms
-        FROM trajectories`,
+        FROM trajectories
+        WHERE agent_id = ${sqlQuote(runtime.agentId)}`,
       );
-      const row = asRecord(extractRows(aggResult)[0]);
+      const row = asRecord(
+        extractRequiredRows(aggResult, {
+          operation: "trajectory statistics",
+          agentId: runtime.agentId,
+        })[0],
+      );
 
       const bySource = await computeBySource(runtime);
+      const statsContext = {
+        operation: "trajectory statistics",
+        agentId: runtime.agentId,
+      };
 
       return {
-        totalTrajectories: toNumber(row?.total, 0),
-        totalLlmCalls: toNumber(row?.total_llm_calls, 0),
-        totalProviderAccesses: toNumber(row?.total_provider_accesses, 0),
-        totalPromptTokens: toNumber(row?.total_prompt_tokens, 0),
-        totalCompletionTokens: toNumber(row?.total_completion_tokens, 0),
-        totalCacheReadInputTokens: toNumber(
-          row?.total_cache_read_input_tokens,
-          0,
+        totalTrajectories: readRequiredNonNegativeNumber(
+          row,
+          "total",
+          statsContext,
         ),
-        totalCacheCreationInputTokens: toNumber(
-          row?.total_cache_creation_input_tokens,
-          0,
+        totalLlmCalls: readRequiredNonNegativeNumber(
+          row,
+          "total_llm_calls",
+          statsContext,
         ),
-        averageDurationMs: toNumber(row?.avg_duration_ms, 0),
+        totalProviderAccesses: readRequiredNonNegativeNumber(
+          row,
+          "total_provider_accesses",
+          statsContext,
+        ),
+        totalPromptTokens: readRequiredNonNegativeNumber(
+          row,
+          "total_prompt_tokens",
+          statsContext,
+        ),
+        totalCompletionTokens: readRequiredNonNegativeNumber(
+          row,
+          "total_completion_tokens",
+          statsContext,
+        ),
+        totalCacheReadInputTokens: readRequiredNonNegativeNumber(
+          row,
+          "total_cache_read_input_tokens",
+          statsContext,
+        ),
+        totalCacheCreationInputTokens: readRequiredNonNegativeNumber(
+          row,
+          "total_cache_creation_input_tokens",
+          statsContext,
+        ),
+        averageDurationMs: readRequiredNonNegativeNumber(
+          row,
+          "avg_duration_ms",
+          statsContext,
+        ),
         bySource,
         byModel: {},
       };
@@ -830,50 +1922,12 @@ export async function installDatabaseTrajectoryLogger(
     };
   }
 
-  if (typeof loggerForRoutes.deleteTrajectories !== "function") {
-    loggerForRoutes.deleteTrajectories = async (
-      trajectoryIds: string[],
-    ): Promise<number> => {
-      if (trajectoryIds.length === 0) return 0;
-      requireTrajectoryDatabase(runtime);
-      const tableReady = await ensureTrajectoriesTable(runtime);
-      if (!tableReady) return 0;
+  loggerForRoutes.deleteTrajectories = async (
+    trajectoryIds: string[],
+  ): Promise<number> => deletePersistedTrajectoryRows(runtime, trajectoryIds);
 
-      const ids = trajectoryIds.map((id) => sqlQuote(id)).join(", ");
-      try {
-        await executeRawSql(
-          runtime,
-          `DELETE FROM trajectories WHERE id IN (${ids})`,
-        );
-        return trajectoryIds.length;
-      } catch (error) {
-        // error-policy:J2 deletion failures retain their database cause.
-        throw trajectoryOperationError("delete", error);
-      }
-    };
-  }
-
-  if (typeof loggerForRoutes.clearAllTrajectories !== "function") {
-    loggerForRoutes.clearAllTrajectories = async (): Promise<number> => {
-      requireTrajectoryDatabase(runtime);
-      const tableReady = await ensureTrajectoriesTable(runtime);
-      if (!tableReady) return 0;
-
-      try {
-        const countResult = await executeRawSql(
-          runtime,
-          "SELECT count(*) AS total FROM trajectories",
-        );
-        const countRow = asRecord(extractRows(countResult)[0]);
-        const total = toNumber(countRow?.total, 0);
-        await executeRawSql(runtime, "DELETE FROM trajectories");
-        return total;
-      } catch (error) {
-        // error-policy:J2 clearing failures cannot be reported as zero rows.
-        throw trajectoryOperationError("clear", error);
-      }
-    };
-  }
+  loggerForRoutes.clearAllTrajectories = async (): Promise<number> =>
+    clearPersistedTrajectoryRows(runtime);
 
   loggerForRoutes.exportTrajectories = async (
     options: RuntimeTrajectoryExportOptions,
@@ -972,15 +2026,25 @@ export async function annotateTrajectoryStep({
   if (!hasRuntimeDb(runtime)) return false;
   const normalizedStepId = normalizeStepId(stepId);
   if (!normalizedStepId) return false;
+  const trajectoryId = resolveBridgeTrajectoryId(runtime, normalizedStepId);
 
   const tableReady = await ensureTrajectoriesTable(runtime);
   if (!tableReady) return false;
 
-  await enqueueStepWrite(runtime, normalizedStepId, async () => {
+  await enqueueStepWrite(runtime, trajectoryId, async () => {
     const now = Date.now();
+    const persisted = await loadTrajectoryById(runtime, trajectoryId);
+    if (!persisted && trajectoryId !== normalizedStepId) {
+      throw new ElizaError(
+        "Parent trajectory is unavailable for child annotation",
+        {
+          code: "TRAJECTORY_PARENT_NOT_FOUND",
+          context: { trajectoryId, stepId: normalizedStepId },
+        },
+      );
+    }
     const trajectory =
-      (await loadTrajectoryById(runtime, normalizedStepId)) ??
-      createBaseTrajectory(normalizedStepId, now);
+      persisted ?? createBaseTrajectory(trajectoryId, now, runtime.agentId);
     const step = ensureStep(trajectory, normalizedStepId, now);
 
     if (kind !== undefined) {
@@ -991,7 +2055,7 @@ export async function annotateTrajectoryStep({
     }
     if (script !== undefined) {
       const capped = capScriptForPersistence(script);
-      step.script = capped.script;
+      step.script = script;
       if (capped.scriptHash !== undefined) {
         step.scriptHash = capped.scriptHash;
       } else {
@@ -1025,7 +2089,10 @@ export async function annotateTrajectoryStep({
 
     trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
     trajectory.updatedAt = new Date(now).toISOString();
-    await saveTrajectory(runtime, trajectory);
+    await saveTrajectory(runtime, trajectory, {
+      changedStepIds: [normalizedStepId],
+      updateLegacySnapshot: script !== undefined,
+    });
   });
 
   return true;
@@ -1041,17 +2108,19 @@ export async function completeTrajectoryStepInDatabase({
   if (!hasRuntimeDb(runtime)) return false;
   const normalizedStepId = normalizeStepId(stepId);
   if (!normalizedStepId) return false;
+  const trajectoryId = resolveBridgeTrajectoryId(runtime, normalizedStepId);
 
   const tableReady = await ensureTrajectoriesTable(runtime);
   if (!tableReady) return false;
 
-  await enqueueStepWrite(runtime, normalizedStepId, async () => {
+  await enqueueStepWrite(runtime, trajectoryId, async () => {
     await writeCompletedTrajectoryStep({
       runtime,
-      stepId: normalizedStepId,
+      stepId: trajectoryId,
       status,
       source,
       metadata,
+      createStepIfMissing: trajectoryId === normalizedStepId,
     });
   });
 
@@ -1061,10 +2130,14 @@ export async function completeTrajectoryStepInDatabase({
 export async function deletePersistedTrajectoryRows(
   runtime: IAgentRuntime,
   trajectoryIds: string[],
-): Promise<number | null> {
+): Promise<number> {
   requireTrajectoryDatabase(runtime);
   const tableReady = await ensureTrajectoriesTable(runtime);
-  if (!tableReady) return 0;
+  if (!tableReady) {
+    throw new ElizaError("Trajectory schema is unavailable", {
+      code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+    });
+  }
 
   const normalized = trajectoryIds
     .map((id) => id.trim())
@@ -1074,21 +2147,25 @@ export async function deletePersistedTrajectoryRows(
   const values = normalized.map((id) => sqlQuote(id)).join(", ");
 
   try {
-    const countResult = await executeRawSql(
-      runtime,
-      `SELECT count(*) AS total FROM trajectories WHERE id IN (${values})`,
-    );
-    const countRow = asRecord(extractRows(countResult)[0]);
-    const total = toNumber(countRow?.total, 0);
-    await executeRawSql(
-      runtime,
-      `DELETE FROM trajectory_steps WHERE trajectory_id IN (${values})`,
-    );
-    await executeRawSql(
-      runtime,
-      `DELETE FROM trajectories WHERE id IN (${values})`,
-    );
-    return total;
+    return await executeRawSqlTransaction(runtime, async (execute) => {
+      const owner = sqlQuote(runtime.agentId);
+      const countResult = await execute(
+        `SELECT count(*) AS total FROM trajectories
+         WHERE agent_id = ${owner} AND id IN (${values})`,
+      );
+      const total = readRequiredCount(countResult, "total", {
+        operation: "delete",
+      });
+      await execute(
+        `DELETE FROM trajectory_steps WHERE trajectory_id IN (
+           SELECT id FROM trajectories WHERE agent_id = ${owner} AND id IN (${values})
+         )`,
+      );
+      await execute(
+        `DELETE FROM trajectories WHERE agent_id = ${owner} AND id IN (${values})`,
+      );
+      return total;
+    });
   } catch (error) {
     // error-policy:J2 both parent and step deletion are one required operation.
     throw trajectoryOperationError("delete persisted rows", error);
@@ -1097,22 +2174,32 @@ export async function deletePersistedTrajectoryRows(
 
 export async function clearPersistedTrajectoryRows(
   runtime: IAgentRuntime,
-): Promise<number | null> {
+): Promise<number> {
   requireTrajectoryDatabase(runtime);
   const tableReady = await ensureTrajectoriesTable(runtime);
-  if (!tableReady) return 0;
+  if (!tableReady) {
+    throw new ElizaError("Trajectory schema is unavailable", {
+      code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+    });
+  }
 
   try {
-    const countResult = await executeRawSql(
-      runtime,
-      "SELECT count(*) AS total FROM trajectories",
-    );
-    const countRow = asRecord(extractRows(countResult)[0]);
-    const total = toNumber(countRow?.total, 0);
-    // Step rows are authoritative and must clear with their parent records.
-    await executeRawSql(runtime, "DELETE FROM trajectory_steps");
-    await executeRawSql(runtime, "DELETE FROM trajectories");
-    return total;
+    return await executeRawSqlTransaction(runtime, async (execute) => {
+      const owner = sqlQuote(runtime.agentId);
+      const countResult = await execute(
+        `SELECT count(*) AS total FROM trajectories WHERE agent_id = ${owner}`,
+      );
+      const total = readRequiredCount(countResult, "total", {
+        operation: "clear",
+      });
+      await execute(
+        `DELETE FROM trajectory_steps WHERE trajectory_id IN (
+           SELECT id FROM trajectories WHERE agent_id = ${owner}
+         )`,
+      );
+      await execute(`DELETE FROM trajectories WHERE agent_id = ${owner}`);
+      return total;
+    });
   } catch (error) {
     // error-policy:J2 clear failures cannot be represented as an absent result.
     throw trajectoryOperationError("clear persisted rows", error);
@@ -1125,18 +2212,39 @@ export async function clearPersistedTrajectoryRows(
  */
 export async function flushTrajectoryWrites(
   runtime: IAgentRuntime,
+  stepIdOrTrajectoryId?: string,
 ): Promise<void> {
   const runtimeKey = runtime as object;
-  const perStep = stepWriteQueues.get(runtimeKey);
-  if (perStep) {
-    const pending = Array.from(perStep.values());
-    if (pending.length > 0) {
-      await Promise.all(pending);
+  if (stepIdOrTrajectoryId) {
+    const trajectoryId = resolveBridgeTrajectoryId(
+      runtime,
+      stepIdOrTrajectoryId,
+    );
+    let pending = stepWriteQueues.get(runtimeKey)?.get(trajectoryId);
+    while (pending) {
+      await pending;
+      pending = stepWriteQueues.get(runtimeKey)?.get(trajectoryId);
     }
+    return;
   }
-  const lastWrite = lastWritePromises.get(runtimeKey);
-  if (lastWrite) {
-    await lastWrite;
+  let observedLastWrite: Promise<void> | undefined;
+  while (true) {
+    const pending = Array.from(stepWriteQueues.get(runtimeKey)?.values() ?? []);
+    const lastWrite = lastWritePromises.get(runtimeKey);
+    const snapshot = Array.from(
+      new Set([
+        ...pending,
+        ...(lastWrite && lastWrite !== observedLastWrite ? [lastWrite] : []),
+      ]),
+    );
+    if (snapshot.length === 0) return;
+    await Promise.all(snapshot);
+    const nextPending = Array.from(
+      stepWriteQueues.get(runtimeKey)?.values() ?? [],
+    );
+    const nextLastWrite = lastWritePromises.get(runtimeKey);
+    if (nextPending.length === 0 && nextLastWrite === lastWrite) return;
+    observedLastWrite = lastWrite;
   }
 }
 
@@ -1155,6 +2263,10 @@ export class DatabaseTrajectoryLogger extends Service {
     "Database-backed trajectory logging service for LLM call persistence";
 
   private enabled = shouldEnableTrajectoryLoggingByDefault();
+
+  private acceptsCapture(): boolean {
+    return acceptsNewTrajectoryCapture(this.runtime, this.enabled);
+  }
 
   /**
    * Static start method required by @elizaos/core runtime.
@@ -1184,7 +2296,13 @@ export class DatabaseTrajectoryLogger extends Service {
   }
 
   async stop(): Promise<void> {
-    await flushTrajectoryWrites(this.runtime);
+    stoppingTrajectoryBridges.add(this.runtime as object);
+    try {
+      await flushTrajectoryWrites(this.runtime);
+    } finally {
+      this.enabled = false;
+      releaseAllTrajectoryBridgeState(this.runtime);
+    }
   }
 
   isEnabled(): boolean {
@@ -1193,6 +2311,7 @@ export class DatabaseTrajectoryLogger extends Service {
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
+    if (!enabled) releaseAllTrajectoryBridgeState(this.runtime);
   }
 
   async startTrajectory(
@@ -1203,16 +2322,48 @@ export class DatabaseTrajectoryLogger extends Service {
       entityId?: string;
       source?: string;
       metadata?: Record<string, unknown>;
+      scenarioId?: string;
+      traceId?: string;
+      episodeId?: string;
+      batchId?: string;
+      groupIndex?: number;
     },
   ): Promise<string> {
-    if (!this.enabled) return stepIdOrAgentId;
+    if (!this.acceptsCapture()) return randomUUID();
 
     const isLegacySignature = typeof options?.agentId === "string";
     const stepId = isLegacySignature
       ? stepIdOrAgentId
       : `step-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const startMetadata = normalizeTrajectoryMetadata(
+      {
+        ...(options?.metadata ?? {}),
+        ...(options?.roomId !== undefined ? { roomId: options.roomId } : {}),
+        ...(options?.entityId !== undefined
+          ? { entityId: options.entityId }
+          : {}),
+        ...(options?.traceId !== undefined
+          ? {
+              correlation: {
+                traceId: options.traceId,
+                ...(options.roomId !== undefined
+                  ? { roomId: options.roomId }
+                  : {}),
+                ...(options.scenarioId !== undefined
+                  ? { runId: options.scenarioId }
+                  : {}),
+              },
+            }
+          : {}),
+      },
+      {
+        scenarioId: options?.scenarioId,
+        batchId: options?.batchId,
+      },
+    ).metadata;
 
     const writePromise = enqueueStepWrite(this.runtime, stepId, async () => {
+      if (!this.enabled) return;
       const tableReady = await ensureTrajectoriesTable(this.runtime);
       if (!tableReady) return;
 
@@ -1220,18 +2371,98 @@ export class DatabaseTrajectoryLogger extends Service {
         runtime: this.runtime,
         stepId,
         source: options?.source ?? "chat",
-        metadata: options?.metadata,
+        metadata: startMetadata,
+        traceId: options?.traceId,
+        episodeId: options?.episodeId,
+        groupIndex: options?.groupIndex,
+        createInitialStep: false,
       });
     });
 
     const runtimeKey = this.runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
+    rememberTrajectoryStep(this.runtime, stepId, stepId);
 
     return stepId;
   }
 
-  startStep(trajectoryId: string): string {
-    return trajectoryId;
+  startStep(trajectoryId: string, state: BridgeStepState = {}): string {
+    if (!this.acceptsCapture()) return randomUUID();
+    return startChildTrajectoryStep(
+      this.runtime,
+      trajectoryId,
+      state,
+      () => this.enabled,
+    );
+  }
+
+  getCurrentStepId(trajectoryId: string): string | null {
+    if (!this.acceptsCapture()) return null;
+    const ownerId = resolveBridgeTrajectoryId(this.runtime, trajectoryId);
+    return (
+      trajectoryBridgeStates
+        .get(this.runtime as object)
+        ?.activeStepIdByTrajectoryId.get(ownerId) ?? null
+    );
+  }
+
+  completeStep(
+    trajectoryId: string,
+    actionOrStepId: string | Record<string, unknown>,
+    actionOrReward?: Record<string, unknown>,
+    rewardInfo?: Record<string, unknown>,
+  ): void {
+    if (!this.acceptsCapture()) return;
+    const explicitStepId =
+      typeof actionOrStepId === "string" ? actionOrStepId : undefined;
+    const action = explicitStepId ? actionOrReward : actionOrStepId;
+    const reward = explicitStepId ? rewardInfo : actionOrReward;
+    const ownerId = resolveBridgeTrajectoryId(this.runtime, trajectoryId);
+    const stepId =
+      explicitStepId ??
+      getTrajectoryBridgeState(this.runtime).activeStepIdByTrajectoryId.get(
+        ownerId,
+      );
+    if (!stepId || !action) {
+      const error = new ElizaError("Trajectory action step is missing", {
+        code: "TRAJECTORY_ACTION_STEP_REQUIRED",
+        context: { trajectoryId: ownerId },
+      });
+      warnRuntime(
+        this.runtime,
+        "Trajectory action settlement did not identify an active child step",
+        error,
+      );
+      this.runtime.reportError("TrajectoryStorage.completeStep", error, {
+        trajectoryId: ownerId,
+        ...(stepId ? { stepId } : {}),
+        diagnosticOnly: true,
+      });
+      return;
+    }
+    try {
+      completeTrajectoryAction(
+        this.runtime,
+        ownerId,
+        stepId,
+        action,
+        reward,
+        () => this.enabled,
+      );
+    } catch (error) {
+      // error-policy:J7 Action telemetry cannot rewrite an already-settled tool
+      // result, but malformed or unroutable settlement remains observable.
+      warnRuntime(this.runtime, "Trajectory action settlement failed", error);
+      this.runtime.reportError("TrajectoryStorage.completeStep", error, {
+        trajectoryId: ownerId,
+        stepId,
+        diagnosticOnly: true,
+      });
+    }
+  }
+
+  async flushWriteQueue(trajectoryId?: string): Promise<void> {
+    await flushTrajectoryWrites(this.runtime, trajectoryId);
   }
 
   async annotateStep(params: {
@@ -1243,7 +2474,7 @@ export class DatabaseTrajectoryLogger extends Service {
     usedSkills?: string[];
     appendSkillInvocations?: TrajectorySkillInvocation[];
   }): Promise<void> {
-    if (!this.enabled) return;
+    if (!this.acceptsCapture()) return;
     await annotateTrajectoryStep({
       runtime: this.runtime,
       ...params,
@@ -1253,41 +2484,73 @@ export class DatabaseTrajectoryLogger extends Service {
   async endTrajectory(
     stepIdOrTrajectoryId: string,
     status: TrajectoryStatus = "completed",
+    finalMetrics?: Record<string, unknown>,
   ): Promise<void> {
-    if (!this.enabled) return;
-
-    const writePromise = enqueueStepWrite(
+    if (!this.acceptsCapture()) {
+      releaseTrajectoryBridgeState(
+        this.runtime,
+        resolveBridgeTrajectoryId(this.runtime, stepIdOrTrajectoryId),
+      );
+      return;
+    }
+    const trajectoryId = resolveBridgeTrajectoryId(
       this.runtime,
       stepIdOrTrajectoryId,
-      async () => {
-        const tableReady = await ensureTrajectoriesTable(this.runtime);
-        if (!tableReady) return;
-
-        await writeCompletedTrajectoryStep({
-          runtime: this.runtime,
-          stepId: stepIdOrTrajectoryId,
-          status,
-        });
-      },
     );
+    await terminalizeBridgeTrajectory(
+      this.runtime,
+      trajectoryId,
+      status,
+      finalMetrics,
+      () => this.enabled,
+    );
+  }
 
-    const runtimeKey = this.runtime as object;
-    lastWritePromises.set(runtimeKey, writePromise);
-    await writePromise;
+  releaseTrajectoryOwnership(stepIdOrTrajectoryId: string): void {
+    releaseTrajectoryBridgeState(
+      this.runtime,
+      resolveBridgeTrajectoryId(this.runtime, stepIdOrTrajectoryId),
+    );
   }
 
   logLlmCall(params: Record<string, unknown>): void {
-    if (!this.enabled) return;
-    const normalized = normalizeLlmCallPayload([params]);
+    if (!this.acceptsCapture()) return;
+    let normalized: ReturnType<typeof normalizeLlmCallPayload>;
+    try {
+      normalized = normalizeLlmCallPayload([params]);
+    } catch (error) {
+      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
+      reportInvalidTrajectoryCapture(this.runtime, "llm", error);
+      return;
+    }
     if (!normalized) return;
+    if (
+      !acceptsTrajectoryStepCapture(
+        this.runtime,
+        this.enabled,
+        normalized.stepId,
+        "llm",
+      )
+    )
+      return;
+    const trajectoryId = resolveBridgeTrajectoryId(
+      this.runtime,
+      normalized.stepId,
+    );
 
     const writePromise = enqueueStepWrite(
       this.runtime,
-      normalized.stepId,
+      trajectoryId,
       async () => {
+        if (!this.enabled) return;
         const tableReady = await ensureTrajectoriesTable(this.runtime);
         if (!tableReady) return;
-        await appendLlmCall(this.runtime, normalized.stepId, normalized.params);
+        await appendLlmCall(
+          this.runtime,
+          trajectoryId,
+          normalized.stepId,
+          normalized.params,
+        );
       },
     );
     const runtimeKey = this.runtime as object;
@@ -1295,18 +2558,40 @@ export class DatabaseTrajectoryLogger extends Service {
   }
 
   logProviderAccess(params: Record<string, unknown>): void {
-    if (!this.enabled) return;
-    const normalized = normalizeProviderAccessPayload([params]);
+    if (!this.acceptsCapture()) return;
+    let normalized: ReturnType<typeof normalizeProviderAccessPayload>;
+    try {
+      normalized = normalizeProviderAccessPayload([params]);
+    } catch (error) {
+      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
+      reportInvalidTrajectoryCapture(this.runtime, "provider", error);
+      return;
+    }
     if (!normalized) return;
+    if (
+      !acceptsTrajectoryStepCapture(
+        this.runtime,
+        this.enabled,
+        normalized.stepId,
+        "provider",
+      )
+    )
+      return;
+    const trajectoryId = resolveBridgeTrajectoryId(
+      this.runtime,
+      normalized.stepId,
+    );
 
     const writePromise = enqueueStepWrite(
       this.runtime,
-      normalized.stepId,
+      trajectoryId,
       async () => {
+        if (!this.enabled) return;
         const tableReady = await ensureTrajectoriesTable(this.runtime);
         if (!tableReady) return;
         await appendProviderAccess(
           this.runtime,
+          trajectoryId,
           normalized.stepId,
           normalized.params,
         );
@@ -1331,31 +2616,38 @@ export class DatabaseTrajectoryLogger extends Service {
 
     const tableReady = await ensureTrajectoriesTable(this.runtime);
     if (!tableReady) {
-      return { trajectories: [], total: 0, offset: 0, limit: 50 };
+      throw new ElizaError("Trajectory schema is unavailable", {
+        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+      });
     }
 
     const limit = Math.min(500, Math.max(1, options.limit ?? 50));
     const offset = Math.max(0, options.offset ?? 0);
 
-    const whereClause = buildTrajectoryWhereClause(options);
+    const whereClause = buildTrajectoryWhereClause(
+      options,
+      this.runtime.agentId,
+    );
 
     try {
       const countResult = await executeRawSql(
         this.runtime,
         `SELECT count(*) AS total FROM trajectories ${whereClause}`,
       );
-      const countRow = asRecord(extractRows(countResult)[0]);
-      const total = toNumber(countRow?.total, 0);
+      const total = readRequiredCount(countResult, "total");
 
       const result = await executeRawSql(
         this.runtime,
         `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       );
 
-      const rows = extractRows(result);
-      const trajectories = rows
-        .map((row) => trajectoryRowToListItem(row, this.runtime.agentId))
-        .filter(Boolean) as TrajectoryListItem[];
+      const rows = extractRequiredRows(result, {
+        operation: "list trajectories",
+        agentId: this.runtime.agentId,
+      });
+      const trajectories = rows.map((row) =>
+        trajectoryRowToListItem(row, this.runtime.agentId),
+      );
 
       return { trajectories, total, offset, limit };
     } catch (error) {
@@ -1369,7 +2661,11 @@ export class DatabaseTrajectoryLogger extends Service {
     requireTrajectoryDatabase(this.runtime);
 
     const tableReady = await ensureTrajectoriesTable(this.runtime);
-    if (!tableReady) return null;
+    if (!tableReady) {
+      throw new ElizaError("Trajectory schema is unavailable", {
+        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+      });
+    }
 
     const persisted = await loadTrajectoryById(this.runtime, trajectoryId);
     if (!persisted) return null;
@@ -1382,16 +2678,17 @@ export class DatabaseTrajectoryLogger extends Service {
 
     const tableReady = await ensureTrajectoriesTable(this.runtime);
     if (!tableReady) {
-      return { total: 0, byStatus: {}, bySource: {} };
+      throw new ElizaError("Trajectory schema is unavailable", {
+        code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+      });
     }
 
     try {
       const countResult = await executeRawSql(
         this.runtime,
-        "SELECT count(*) AS total FROM trajectories",
+        `SELECT count(*) AS total FROM trajectories WHERE agent_id = ${sqlQuote(this.runtime.agentId)}`,
       );
-      const countRow = asRecord(extractRows(countResult)[0]);
-      const total = toNumber(countRow?.total, 0);
+      const total = readRequiredCount(countResult, "total");
 
       const bySource = await computeBySource(this.runtime);
 
@@ -1408,16 +2705,11 @@ export class DatabaseTrajectoryLogger extends Service {
   }
 
   async deleteTrajectories(trajectoryIds: string[]): Promise<number> {
-    const result = await deletePersistedTrajectoryRows(
-      this.runtime,
-      trajectoryIds,
-    );
-    return result ?? 0;
+    return deletePersistedTrajectoryRows(this.runtime, trajectoryIds);
   }
 
   async clearAllTrajectories(): Promise<number> {
-    const result = await clearPersistedTrajectoryRows(this.runtime);
-    return result ?? 0;
+    return clearPersistedTrajectoryRows(this.runtime);
   }
 
   async exportTrajectories(
@@ -1462,14 +2754,25 @@ async function exportRawTrajectoriesToCompressedArchive(
       total_prompt_tokens, total_completion_tokens,
       total_cache_read_input_tokens, total_cache_creation_input_tokens,
       total_reward, scenario_id, batch_id, steps_json,
-      metadata, created_at, updated_at, episode_length, ai_judge_reward,
+      metadata_json AS metadata, created_at, updated_at, episode_length, ai_judge_reward,
       ai_judge_reasoning, archetype
     FROM trajectories
-    WHERE created_at < ${sqlQuote(cutoff)}`,
+    WHERE created_at < ${sqlQuote(cutoff)}
+      AND agent_id = ${sqlQuote(runtime.agentId)}`,
   );
-  const rawRows = extractRows(rawRowsResult)
-    .map((row) => asRecord(row))
-    .filter(Boolean) as Record<string, unknown>[];
+  const rawRows = extractRequiredRows(rawRowsResult, {
+    operation: "archive trajectories",
+    agentId: runtime.agentId,
+  }).map((row, index) => {
+    const record = asRecord(row);
+    if (!record) {
+      throw new ElizaError("Trajectory archive row is invalid", {
+        code: "TRAJECTORY_ROW_INVALID",
+        context: { index },
+      });
+    }
+    return record;
+  });
 
   if (rawRows.length === 0) {
     return { archivePath: "", rowCount: 0 };
@@ -1489,10 +2792,14 @@ async function exportRawTrajectoriesToCompressedArchive(
 export async function pruneOldTrajectories(
   runtime: IAgentRuntime,
   maxAgeDays = 30,
-): Promise<number | null> {
+): Promise<number> {
   requireTrajectoryDatabase(runtime);
   const tableReady = await ensureTrajectoriesTable(runtime);
-  if (!tableReady) return 0;
+  if (!tableReady) {
+    throw new ElizaError("Trajectory schema is unavailable", {
+      code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+    });
+  }
 
   const cutoff = new Date(
     Date.now() - maxAgeDays * 24 * 60 * 60 * 1000,
@@ -1533,13 +2840,14 @@ export async function pruneOldTrajectories(
           total_prompt_tokens, total_completion_tokens,
           total_cache_read_input_tokens, total_cache_creation_input_tokens,
           total_reward,
-          scenario_id, batch_id, metadata,
-          COALESCE(json_extract(metadata, '$.observations'), '[]'),
+          scenario_id, batch_id, metadata_json,
+          COALESCE(json_extract(metadata_json, '$.observations'), '[]'),
           ${sqlQuote(archivePath)},
           created_at, updated_at,
           ${sqlQuote(archivedAt)}
         FROM trajectories
-        WHERE created_at < ${sqlQuote(cutoff)}`,
+        WHERE created_at < ${sqlQuote(cutoff)}
+          AND agent_id = ${sqlQuote(runtime.agentId)}`,
       );
     } catch (sqliteError) {
       // error-policy:J2 the first dialect failure is retained if PostgreSQL's
@@ -1562,13 +2870,14 @@ export async function pruneOldTrajectories(
             total_prompt_tokens, total_completion_tokens,
             total_cache_read_input_tokens, total_cache_creation_input_tokens,
             total_reward,
-            scenario_id, batch_id, metadata,
-            COALESCE(metadata::json->>'observations', '[]'),
+            scenario_id, batch_id, metadata_json,
+            COALESCE(metadata_json::json->>'observations', '[]'),
             ${sqlQuote(archivePath)},
             created_at, updated_at,
             ${sqlQuote(archivedAt)}
           FROM trajectories
           WHERE created_at < ${sqlQuote(cutoff)}
+            AND agent_id = ${sqlQuote(runtime.agentId)}
           ON CONFLICT (id) DO NOTHING`,
         );
       } catch (postgresError) {
@@ -1580,19 +2889,27 @@ export async function pruneOldTrajectories(
     }
 
     // Step 3: Delete the archived rows from the main table.
-    const countResult = await executeRawSql(
-      runtime,
-      `SELECT count(*) AS total FROM trajectories WHERE created_at < ${sqlQuote(cutoff)}`,
-    );
-    const countRow = asRecord(extractRows(countResult)[0]);
-    const count = toNumber(countRow?.total, 0);
-    if (count > 0) {
-      await executeRawSql(
-        runtime,
-        `DELETE FROM trajectories WHERE created_at < ${sqlQuote(cutoff)}`,
+    return await executeRawSqlTransaction(runtime, async (execute) => {
+      const owner = sqlQuote(runtime.agentId);
+      const countResult = await execute(
+        `SELECT count(*) AS total FROM trajectories
+         WHERE created_at < ${sqlQuote(cutoff)} AND agent_id = ${owner}`,
       );
-    }
-    return count;
+      const count = readRequiredCount(countResult, "total", {
+        operation: "prune",
+      });
+      if (count > 0) {
+        await execute(`DELETE FROM trajectory_steps WHERE trajectory_id IN (
+          SELECT id FROM trajectories
+          WHERE created_at < ${sqlQuote(cutoff)} AND agent_id = ${owner}
+        )`);
+        await execute(
+          `DELETE FROM trajectories
+           WHERE created_at < ${sqlQuote(cutoff)} AND agent_id = ${owner}`,
+        );
+      }
+      return count;
+    });
   } catch (error) {
     // error-policy:J2 pruning is a write path; failed archive/delete work must
     // surface rather than look like a disabled pruning result.

@@ -28,9 +28,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import type { IAgentRuntime, Task, TaskWorker, UUID } from '@elizaos/core';
 import { stringToUuid } from '@elizaos/core';
@@ -89,6 +86,7 @@ import {
   registerWorkflowDispatchService,
   WORKFLOW_DISPATCH_SERVICE_TYPE,
 } from '../../src/services/workflow-dispatch';
+import { makeWorkflowPgliteStore } from '../pglite-test-store';
 
 setDefaultTimeout(60_000);
 
@@ -111,8 +109,8 @@ interface Harness {
  * WORKFLOW_DISPATCH all run for real against it.
  */
 async function makeHarness(): Promise<Harness> {
-  const dir = await mkdtemp(join(tmpdir(), 'wi6-trigger-'));
-  const client = new PGlite({ dataDir: join(dir, 'pglite') });
+  const store = makeWorkflowPgliteStore('wi6-trigger-');
+  const client = new PGlite({ dataDir: store.dataDir });
   const db = drizzle(client, { schema: dbSchema });
 
   const tasks = new Map<UUID, Task>();
@@ -185,7 +183,7 @@ async function makeHarness(): Promise<Harness> {
     async close() {
       await taskService.stop();
       await client.close();
-      await rm(dir, { recursive: true, force: true });
+      await store.cleanup();
     },
   };
 }

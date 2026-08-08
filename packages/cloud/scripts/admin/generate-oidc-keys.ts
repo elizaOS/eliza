@@ -18,6 +18,7 @@
  *   --audience         resource servers that must accept the ACCESS token
  *   --constant-claim   a fixed name=value pair for an RP that gates login on one
  *   --map-role/-group  translation into the RP's own roles/groups vocabulary
+ *   --wallet-email-fallback  admit wallet-only accounts and mint a no-reply address
  * The generated entry is run through the Worker's own registry parser before it
  * is printed, so an incoherent combination fails here rather than as a 503.
  *
@@ -187,6 +188,11 @@ if (clientId) {
     resource_audiences: list("audience"),
     require_pkce: hasFlag("require-pkce"),
     require_verified_email: !hasFlag("allow-unverified-email"),
+    // Off unless asked for: it is the only knob that changes what `email` can
+    // hold, and a relying party that wants inbox proof must keep the default. It
+    // WIDENS the verified-email gate, so pairing it with --allow-unverified-email
+    // is refused by the parser below rather than printed.
+    wallet_email_fallback: hasFlag("wallet-email-fallback"),
     roles_allowlist: list("roles-allowlist"),
     claims_policy: {
       groups: true,
@@ -229,6 +235,23 @@ if (clientId) {
   if (parsed.claims_mapping.mode === "replace") {
     console.log(
       "# Native roles/groups are DROPPED; only mapped values are emitted.",
+    );
+  }
+  if (parsed.wallet_email_fallback) {
+    console.log(
+      "# Wallet fallback:  a user with a VERIFIED wallet and NO stored email is admitted",
+    );
+    console.log(
+      "#                   and receives email=wallet-<32 hex>@users.noreply.<issuer hostname>",
+    );
+    console.log(
+      '#                   with email_verified=false and eliza_email_source="wallet".',
+    );
+    console.log(
+      "#                   That address has no mailbox by design; read eliza_email_source,",
+    );
+    console.log(
+      "#                   not email_verified, for identity assurance.",
     );
   }
   console.log(

@@ -46,36 +46,25 @@ describe("current_view state provider", () => {
 		expect(currentViewProvider.contexts).toEqual(["general"]);
 	});
 
-	it("makes an imminent explicit target authoritative over the current renderer", async () => {
-		h.getCurrentView.mockResolvedValue({
-			viewId: "settings",
-			viewLabel: "Settings",
-			viewPath: "/settings",
-			viewType: "gui",
-			updatedAt: "x",
-		});
+	it("makes an explicit target authoritative without waiting for the renderer", async () => {
+		h.getCurrentView.mockRejectedValue(new Error("renderer is offline"));
 		const r = await currentViewProvider.get(runtime, msg("open my wallet"), {
 			values: {},
 			data: {},
 			text: "",
 		});
 		expect(r.text).toContain("Requested view target: Wallet");
-		expect(r.text).toContain("still on Settings");
+		expect(r.text).toContain("Navigation has not completed yet");
 		expect(r.text).toContain("authoritative for this turn");
 		expect(r.text).not.toContain("acknowledge");
 		expect(r.text).toContain("Wallet");
 		expect(r.values?.switchingToViewId).toBe("wallet");
 		expect(r.values?.viewSwitchPending).toBe(true);
+		expect(h.getCurrentView).not.toHaveBeenCalled();
+		expect(reportError).not.toHaveBeenCalled();
 	});
 
 	it("uses the user request rather than a surface named in retrieved context", async () => {
-		h.getCurrentView.mockResolvedValue({
-			viewId: "chat",
-			viewLabel: "Messages",
-			viewPath: "/chat",
-			viewType: "gui",
-			updatedAt: "x",
-		});
 		const result = await currentViewProvider.get(
 			runtime,
 			msg(augmented("Open Notes")),
@@ -84,6 +73,7 @@ describe("current_view state provider", () => {
 		expect(result.text).toContain("Notes");
 		expect(result.text).not.toContain("Inbox");
 		expect(result.values?.switchingToViewId).toBe("notes");
+		expect(h.getCurrentView).not.toHaveBeenCalled();
 	});
 
 	it("reports a recent agent switch as state without requesting another acknowledgement", async () => {
@@ -152,7 +142,6 @@ describe("current_view state provider", () => {
 	});
 
 	it("reports an imminent target even with no prior current view", async () => {
-		h.getCurrentView.mockResolvedValue(null);
 		const r = await currentViewProvider.get(runtime, msg("open my wallet"), {
 			values: {},
 			data: {},
@@ -160,6 +149,7 @@ describe("current_view state provider", () => {
 		});
 		expect(r.text).toContain("Wallet");
 		expect(r.values?.switchingToViewId).toBe("wallet");
+		expect(h.getCurrentView).not.toHaveBeenCalled();
 	});
 
 	it("reports an unavailable current-view boundary without breaking composition", async () => {

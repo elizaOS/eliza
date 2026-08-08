@@ -539,7 +539,7 @@ async function completeAuthorization(
     return await bounceThroughLogin(c, config, validated);
   }
 
-  const subject = await loadOidcSubject(outcome.session.userId);
+  const subject = await loadOidcSubject(outcome.session.userId, config);
   if (!subject) {
     return redirectError(
       c,
@@ -554,6 +554,11 @@ async function completeAuthorization(
     logger.warn("[oidc] authorization refused", {
       client_id: validated.client.client_id,
       reason: ineligible,
+      // A refused OIDC_WALLET_EMAIL_DOMAIN leaves the provider up and the
+      // feature off, so this refusal is the only place the operator's mistake
+      // becomes observable. Absent unless that variable was rejected.
+      wallet_email_unavailable:
+        config.walletEmailUnavailableReason ?? undefined,
     });
     await emitOidcAudit(c, {
       action: "oidc.authorize.denied",
@@ -568,6 +573,12 @@ async function completeAuthorization(
   // Freeze the username here rather than at redemption, for its side effect:
   // an allocation failure then surfaces on the browser-facing leg, where a
   // human can be shown an error, instead of on the back-channel token call.
+  //
+  // The seed reads `subject.user.email` and must NEVER read
+  // `subject.walletEmail`: the naming policy would derive a `wallet-<hex>` local
+  // part from it and freeze that as `preferred_username`, changing the account
+  // name every wallet user already signs in with today. The username is a
+  // one-way door; the synthesized address is a separate identifier.
   await resolveOidcUsername({
     id: subject.user.id,
     nickname: subject.user.nickname,

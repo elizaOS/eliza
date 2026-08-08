@@ -65,6 +65,7 @@ const VALID_PROVIDERS: ReadonlySet<string> = new Set([
   "microsoft",
   "apple_calendar",
   "ics",
+  "eliza",
 ]);
 
 const SELECT_COLUMNS = [

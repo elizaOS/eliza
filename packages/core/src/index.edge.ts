@@ -106,6 +106,7 @@ export * from "./utils/prompt-compression";
 export * from "./utils/read-env";
 export * from "./utils/resolve-setting";
 export * from "./utils/streaming";
+export * from "./utils/well-formed";
 export * from "./validation";
 
 export const isBrowser = false;

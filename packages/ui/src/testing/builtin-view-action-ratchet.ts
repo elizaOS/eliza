@@ -295,9 +295,9 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "packages/ui/src/components/pages/BrowserTabSwitcher.tsx",
     ],
     semanticActions: ["BROWSER"],
-    maxMutationSites: 23,
+    maxMutationSites: 24,
     notes:
-      "Browser workspace navigation/tab controls pair with the BROWSER action (plugin-browser); wallet-consent prompts are owner-in-the-loop by design and stay counted here.",
+      "Browser workspace navigation/tab controls pair with the BROWSER action (plugin-browser); wallet-consent prompts and native-surface recovery are owner-in-the-loop by design and stay counted here.",
   },
   {
     viewId: "my-apps",

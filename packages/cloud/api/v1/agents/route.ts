@@ -225,7 +225,9 @@ app.post("/", async (c) => {
       });
     }
     const walletAccount = p.account?.primaryWalletAddress
-      ? await findOrCreateUserByWalletAddress(p.account.primaryWalletAddress, {
+      ? // No `walletProven`: the address is a provisioning parameter, not a
+        // signature, so the account it opens must not claim a verified wallet.
+        await findOrCreateUserByWalletAddress(p.account.primaryWalletAddress, {
           grantInitialCredits: false,
         })
       : null;

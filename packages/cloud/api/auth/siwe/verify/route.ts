@@ -56,6 +56,9 @@ app.post("/", async (c) => {
     return c.json({ error: "SIWE verification failed" }, 401);
   }
 
+  // The SIWE message and its nonce were verified and consumed above, so this
+  // caller — unlike topup or agent provisioning, which are handed an address —
+  // may record the wallet as proven.
   const {
     user,
     isNewAccount,
@@ -64,7 +67,7 @@ app.post("/", async (c) => {
     welcomeBonusWithheld,
     welcomeBonusWithheldReason,
     welcomeBonusWithheldMessage,
-  } = await findOrCreateUserByWalletAddress(address);
+  } = await findOrCreateUserByWalletAddress(address, { walletProven: true });
   if (!user.organization_id) {
     return c.json(
       { error: "Organization creation failed - please try again" },

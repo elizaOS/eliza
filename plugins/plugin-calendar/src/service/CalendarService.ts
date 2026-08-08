@@ -2664,9 +2664,12 @@ export class CalendarService extends Service {
         grantId: summary.grantId,
         connectorAccountId: summary.connectorAccountId,
         calendarId: summary.calendarId,
-        ...(summary.provider === "ics"
-          ? { initialIncluded: summary.includeInFeed }
-          : {}),
+        // The built-in calendar is the zero-config product surface. External
+        // accounts remain discoverable but enter the aggregate feed only after
+        // the owner explicitly enables them in Calendar Sources.
+        initialIncluded:
+          summary.provider === ELIZA_CALENDAR_PROVIDER ||
+          (summary.provider === "ics" && summary.includeInFeed),
       })),
     );
     return {

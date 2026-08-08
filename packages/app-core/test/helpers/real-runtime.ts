@@ -11,6 +11,10 @@ import {
   DEFAULT_CEREBRAS_TEXT_MODEL,
   logger,
 } from "@elizaos/core";
+import {
+  createTestPgliteDataDir,
+  isInMemoryPgliteDataDir,
+} from "@elizaos/core/testing";
 import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
 import type { LiveProviderConfig, LiveProviderName } from "./live-provider";
 
@@ -282,10 +286,10 @@ export async function createRealTestRuntime(
   options?: RealTestRuntimeOptions,
 ): Promise<RealTestRuntimeResult> {
   const pgliteDir =
-    options?.pgliteDir ??
-    fs.mkdtempSync(path.join(os.tmpdir(), "eliza-real-test-"));
+    options?.pgliteDir ?? createTestPgliteDataDir("eliza-real-test-");
   const removePgliteDirOnCleanup =
-    options?.removePgliteDirOnCleanup ?? options?.pgliteDir === undefined;
+    options?.removePgliteDirOnCleanup ??
+    (options?.pgliteDir === undefined && !isInMemoryPgliteDataDir(pgliteDir));
   const restoreWindow = suppressWindowDuringNodeRuntime();
   let selfControlTempDir: string | null = null;
 

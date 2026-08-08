@@ -13,8 +13,9 @@
  * than once per turn (vector + hybrid document search, experience recall,
  * relevant-conversations). Identical normalized query text within one turn
  * resolves to a single embed call; concurrent identical embeds share one
- * in-flight promise. The cache is scoped to the turn and evicted when a new
- * turn's key is observed, so it never grows unbounded.
+ * in-flight promise. Each runtime retains a bounded LRU of recent turn slots so
+ * concurrent rooms and detached post-turn work cannot evict one another, while
+ * memory use remains fixed.
  *
  * **Turn key = `runId`, plus a `messageId` that survives the run transition.**
  * The API chat path embeds the user query during document augmentation *before*
@@ -107,11 +108,55 @@ interface TurnEmbedCache {
 }
 
 /**
- * One cache per runtime instance, scoped to the current turn. A `WeakMap` keyed
- * by the runtime keeps this self-contained (no runtime field, no global leak)
- * and lets the cache be GC'd with the runtime.
+ * A runtime can process independent rooms concurrently and can still have
+ * post-turn recall work settling when the next room starts. Retaining only one
+ * slot lets either turn evict the other's pre-run warm before it is adopted.
+ * The small LRU keeps those legitimate overlaps isolated without retaining an
+ * unbounded conversation history; evicting a very old slot costs only a cache
+ * miss, never a vector attributed to the wrong turn.
  */
-const turnCaches = new WeakMap<IAgentRuntime, TurnEmbedCache>();
+interface RuntimeTurnEmbedCaches {
+	byRunId: Map<string, TurnEmbedCache>;
+	byMessageId: Map<string, TurnEmbedCache>;
+	lru: TurnEmbedCache[];
+}
+
+const MAX_RECENT_TURN_CACHES = 32;
+const turnCaches = new WeakMap<IAgentRuntime, RuntimeTurnEmbedCaches>();
+
+function getRuntimeCaches(runtime: IAgentRuntime): RuntimeTurnEmbedCaches {
+	const existing = turnCaches.get(runtime);
+	if (existing) return existing;
+	const created: RuntimeTurnEmbedCaches = {
+		byRunId: new Map(),
+		byMessageId: new Map(),
+		lru: [],
+	};
+	turnCaches.set(runtime, created);
+	return created;
+}
+
+function touchCache(
+	caches: RuntimeTurnEmbedCaches,
+	cache: TurnEmbedCache,
+): void {
+	const priorIndex = caches.lru.indexOf(cache);
+	if (priorIndex >= 0) caches.lru.splice(priorIndex, 1);
+	caches.lru.push(cache);
+	while (caches.lru.length > MAX_RECENT_TURN_CACHES) {
+		const evicted = caches.lru.shift();
+		if (!evicted) return;
+		if (evicted.runId && caches.byRunId.get(evicted.runId) === evicted) {
+			caches.byRunId.delete(evicted.runId);
+		}
+		if (
+			evicted.messageId &&
+			caches.byMessageId.get(evicted.messageId) === evicted
+		) {
+			caches.byMessageId.delete(evicted.messageId);
+		}
+	}
+}
 
 /**
  * Resolve the current turn's cache, creating a fresh one on a turn boundary.
@@ -131,25 +176,29 @@ const turnCaches = new WeakMap<IAgentRuntime, TurnEmbedCache>();
  *
  * A `runId`-only caller (no `messageId`) matches only on a real `runId`, so it
  * can never promote an unrelated concurrent turn's slot into its own — worst
- * case a cache miss, never a wrong vector. No match replaces the slot wholesale,
- * bounding memory to a single turn's distinct queries.
+ * case a cache miss, never a wrong vector. Unrelated turns occupy separate
+ * bounded LRU slots so one room cannot evict another room's in-flight warm.
  */
 function getTurnCache(
 	runtime: IAgentRuntime,
 	runId: string,
 	messageId?: string,
 ): TurnEmbedCache {
-	const existing = turnCaches.get(runtime);
+	const caches = getRuntimeCaches(runtime);
+	const messageCache =
+		messageId !== undefined ? caches.byMessageId.get(messageId) : undefined;
+	const runCache = runId !== "" ? caches.byRunId.get(runId) : undefined;
+	const existing = messageCache ?? runCache;
 	if (existing) {
-		const runIdMatch = runId !== "" && existing.runId === runId;
-		const messageIdMatch =
-			messageId !== undefined && existing.messageId === messageId;
-		if (runIdMatch || messageIdMatch) {
-			if (messageIdMatch && runId !== "" && existing.runId !== runId) {
-				existing.runId = runId;
+		if (messageCache && runId !== "" && existing.runId !== runId) {
+			if (existing.runId && caches.byRunId.get(existing.runId) === existing) {
+				caches.byRunId.delete(existing.runId);
 			}
-			return existing;
+			existing.runId = runId;
+			caches.byRunId.set(runId, existing);
 		}
+		touchCache(caches, existing);
+		return existing;
 	}
 	const fresh: TurnEmbedCache = {
 		runId,
@@ -157,7 +206,9 @@ function getTurnCache(
 		results: new Map(),
 		inFlight: new Map(),
 	};
-	turnCaches.set(runtime, fresh);
+	if (runId !== "") caches.byRunId.set(runId, fresh);
+	if (messageId !== undefined) caches.byMessageId.set(messageId, fresh);
+	touchCache(caches, fresh);
 	return fresh;
 }
 

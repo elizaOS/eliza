@@ -460,6 +460,144 @@ describe("view management actions", () => {
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
+	it("normalizes legacy Notes title/body payloads into the declared one-field content contract", async () => {
+		const { runtime } = createRuntime();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						capabilities: [
+							{
+								id: "create-note",
+								description:
+									"Create a note from one user-authored content field.",
+								params: {
+									content: {
+										type: "string",
+										description: "Complete note content.",
+										required: true,
+									},
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				requestId: "notes-create",
+				success: true,
+				result: { success: true, text: "Created note “how cool i am”." },
+			}),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("make a new note saying how cool i am") as never,
+			undefined,
+			{
+				action: "interact",
+				body: "how cool i am",
+				capability: "create-note",
+				title: "New Note",
+				view: "notes",
+			},
+			vi.fn(),
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.data).toMatchObject({
+			viewId: "notes",
+			capability: "create-note",
+			params: { content: "how cool i am" },
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "create-note",
+					params: { content: "how cool i am" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+	});
+
+	it("routes Browser view browse aliases through the canonical BROWSER action", async () => {
+		const { runtime } = createRuntime();
+		const browserHandler = vi.fn(async () => ({
+			success: true,
+			text: "Opened https://www.apple.com.",
+			userFacingText: "Opened https://www.apple.com.",
+			verifiedUserFacing: true,
+		}));
+		runtime.actions.push({
+			name: "BROWSER",
+			validate: vi.fn(async () => true),
+			handler: browserHandler,
+		} as never);
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "browser",
+						label: "Browser",
+						path: "/browser",
+						capabilities: [],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "browser",
+					viewLabel: "Browser",
+					viewPath: "/browser",
+					viewType: "gui" as const,
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message("Go to apple.com") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "browser",
+				capability: "browse",
+				params: { url: "https://www.apple.com" },
+			},
+			vi.fn(),
+		);
+
+		expect(browserHandler).toHaveBeenCalledWith(
+			runtime,
+			expect.objectContaining({ content: { text: "Go to apple.com" } }),
+			undefined,
+			expect.objectContaining({
+				parameters: {
+					action: "navigate",
+					url: "https://www.apple.com",
+				},
+			}),
+			expect.any(Function),
+		);
+		expect(result).toMatchObject({
+			success: true,
+			userFacingText: "Opened https://www.apple.com.",
+		});
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
 	it("repairs a date-shaped calendar title emitted by a small planner", async () => {
 		const { runtime } = createRuntime();
 		const action = createViewsAction({
@@ -2705,9 +2843,8 @@ describe("view management actions", () => {
 		});
 		expect(showNotesResult?.success).toBe(true);
 		expect(showNotesResult?.values).toMatchObject({
-			mode: "interact",
+			mode: "show",
 			viewId: "notes",
-			capability: "get-notes",
 		});
 		expect(listNotesAliasResult?.success).toBe(true);
 		expect(listNotesAliasResult?.values).toMatchObject({
@@ -3056,6 +3193,73 @@ describe("view management actions", () => {
 				body: JSON.stringify({
 					capability: "agent-fill",
 					params: { id: "notes-title", value: "Eat Lunch" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+	});
+
+	it("strips the Notes surface noun from a quoted delete target", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes", "sticky notes"],
+						capabilities: [
+							{
+								id: "delete-note",
+								description: "Delete one note by unique text.",
+								params: {
+									query: {
+										type: "string",
+										description: "Unique note text.",
+									},
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "Deleted note." },
+			}),
+		} as Response);
+
+		const noteText = "Demo proof note: Notes now use one clean content field.";
+		const result = await action.handler(
+			runtime as never,
+			message(`Delete the note "${noteText}"`) as never,
+			undefined,
+			{ action: "delete", view: "note-76237299" },
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "delete-note",
+					params: { query: noteText },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),

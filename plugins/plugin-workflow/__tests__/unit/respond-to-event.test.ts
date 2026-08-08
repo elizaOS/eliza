@@ -1,14 +1,12 @@
 /** Unit tests for EmbeddedWorkflowService event-triggered runs against a real PGlite-backed store, capturing emitted memories. */
 import { describe, expect, mock, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
 import defaultNodes from '../../src/data/defaultNodes.json';
 import * as dbSchema from '../../src/db/schema';
 import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
+import { makeWorkflowPgliteStore } from '../pglite-test-store';
 
 interface CapturedMemory {
   entityId: string;
@@ -101,8 +99,8 @@ interface PersistentHarness {
 }
 
 async function persistentRuntime(options: RuntimeMockOptions = {}): Promise<PersistentHarness> {
-  const dir = await mkdtemp(join(tmpdir(), 'respond-to-event-'));
-  const client = new PGlite({ dataDir: join(dir, 'pglite') });
+  const store = makeWorkflowPgliteStore('respond-to-event-');
+  const client = new PGlite({ dataDir: store.dataDir });
   const db = drizzle(client, { schema: dbSchema });
   const built = buildRuntime({ ...options, db });
   return {
@@ -111,7 +109,7 @@ async function persistentRuntime(options: RuntimeMockOptions = {}): Promise<Pers
     warnings: built.warnings,
     async close() {
       await client.close();
-      await rm(dir, { recursive: true, force: true });
+      await store.cleanup();
     },
   };
 }

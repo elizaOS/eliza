@@ -45,6 +45,7 @@ import { runSharedToDedicatedUpgradeHandoff } from "../../../ui/src/cloud/handof
 import { authedClient } from "../src/helpers/monetization";
 import { pollSandboxStatus } from "../src/helpers/provisioning";
 import { seedModelPricing } from "../src/helpers/seed-pricing";
+import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
 import { expect, test } from "../src/helpers/test-fixtures";
 
 // Context-echo mock LLM: the shared turns must produce a REAL transcript or
@@ -107,14 +108,29 @@ test.describe("shared→dedicated tier upgrade", () => {
       expect(sharedCreate.json.data?.executionTier).toBe("shared");
 
       // ── 2. A real conversation on the shared agent. ────────────────────
+      // Shared-tier routes resolve scope/billing `cacheOnly`, so a brand-new
+      // agent answers the retryable warming 503 until each cache is hydrated
+      // under waitUntil. Poll that documented signal (and only it).
       const convoUrl = `/api/v1/eliza/agents/${sharedAgentId}/api/conversations/${sharedAgentId}/messages`;
       const FIRST = "Remember: my project is codenamed Aurora.";
       const SECOND = "What is my project codenamed?";
-      expect((await c("POST", convoUrl, { text: FIRST })).status).toBe(200);
-      expect((await c("POST", convoUrl, { text: SECOND })).status).toBe(200);
-      const sharedHistory = await c<{
-        messages?: Array<{ role: string; text: string }>;
-      }>("GET", convoUrl);
+      const sendTurn = (text: string) =>
+        retrySharedRuntimeWarming(() => c("POST", convoUrl, { text }));
+      const firstTurn = await sendTurn(FIRST);
+      expect(
+        firstTurn.status,
+        `first shared turn: ${JSON.stringify(firstTurn.json)}`,
+      ).toBe(200);
+      const secondTurn = await sendTurn(SECOND);
+      expect(
+        secondTurn.status,
+        `second shared turn: ${JSON.stringify(secondTurn.json)}`,
+      ).toBe(200);
+      const sharedHistory = await retrySharedRuntimeWarming(() =>
+        c<{
+          messages?: Array<{ role: string; text: string }>;
+        }>("GET", convoUrl),
+      );
       expect(
         sharedHistory.json.messages?.length,
         "shared transcript has both turns (user+assistant ×2)",

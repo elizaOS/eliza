@@ -50,6 +50,106 @@ describe("defaults", () => {
     expect(client.constant_claims).toEqual({});
     expect(client.resource_audiences).toEqual([]);
   });
+
+  test("wallet_email_fallback defaults OFF, so no registered client changes behavior", () => {
+    // It is the only knob that changes what the `email` claim can hold. Every
+    // entry written before it existed must parse to the strict posture.
+    expect(parseOidcClientEntry(entry()).wallet_email_fallback).toBe(false);
+    expect(
+      parseOidcClientEntry(entry({ require_verified_email: false })).wallet_email_fallback,
+    ).toBe(false);
+    // A non-boolean is the default too, not a truthy read of a JSON string.
+    expect(
+      parseOidcClientEntry(entry({ wallet_email_fallback: "true" })).wallet_email_fallback,
+    ).toBe(false);
+  });
+});
+
+describe("wallet_email_fallback", () => {
+  test("is carried through when set", () => {
+    expect(parseOidcClientEntry(entry({ wallet_email_fallback: true })).wallet_email_fallback).toBe(
+      true,
+    );
+  });
+
+  test("without the email scope that carries the address, the registry refuses to load", () => {
+    // The client would be ADMITTED — the gate widens — and then handed a token
+    // with no address at all, which fails at the relying party's account
+    // creation for a reason nothing here would log.
+    expect(() =>
+      parseOidcClientEntry(
+        entry({
+          wallet_email_fallback: true,
+          allowed_scopes: ["openid", "profile", "groups"],
+        }),
+      ),
+    ).toThrow(/wallet_email_fallback.*email.*scope/is);
+  });
+
+  test("with require_verified_email off, the registry refuses to load", () => {
+    // The flag WIDENS the verified-email gate. With that gate off there is no
+    // gate to widen, and the collision the rule above blocks reopens from the
+    // other side: a user with neither an address nor a verified wallet is
+    // admitted anyway and handed a token carrying no `email`, while the
+    // registration reads as though the flag guaranteed one.
+    expect(() =>
+      parseOidcClientEntry(entry({ wallet_email_fallback: true, require_verified_email: false })),
+    ).toThrow(/wallet_email_fallback.*require_verified_email/is);
+  });
+
+  test("the pair set together is the only accepted shape", () => {
+    const client = parseOidcClientEntry(
+      entry({ wallet_email_fallback: true, require_verified_email: true }),
+    );
+    expect(client.wallet_email_fallback).toBe(true);
+    expect(client.require_verified_email).toBe(true);
+  });
+});
+
+/**
+ * `eliza_email_source` is emitted only beside a wallet-derived address, so it is
+ * reserved only for the clients that can produce one. Reserving it for everybody
+ * would have been a retroactive rule: `RESERVED_CLAIM_NAMES` is spread from
+ * `OIDC_SUPPORTED_CLAIMS`, and one already-deployed entry using the name would
+ * have thrown the WHOLE registry — a 503 for every relying party over a constant
+ * that had been emitted verbatim until the deploy.
+ */
+describe("a constant claim named after a conditionally-emitted provider claim", () => {
+  test("still loads for a client that cannot emit it", () => {
+    const client = parseOidcClientEntry(entry({ constant_claims: { eliza_email_source: "ldap" } }));
+    expect(client.constant_claims.eliza_email_source).toBe("ldap");
+  });
+
+  test("does not take the rest of the registry down with it", () => {
+    // The failure mode being pinned: one legacy entry must not stop the other
+    // relying parties from resolving.
+    loadRegistry([
+      entry({ constant_claims: { eliza_email_source: "ldap" } }),
+      entry({ client_id: "other-app", redirect_uris: ["https://other.example/cb"] }),
+    ]);
+    expect(getOidcClient("elizahub-forgejo")?.constant_claims.eliza_email_source).toBe("ldap");
+    expect(getOidcClient("other-app")).not.toBeNull();
+  });
+
+  test("is refused for a client that DOES emit it, where the constant would be dead", () => {
+    expect(() =>
+      parseOidcClientEntry(
+        entry({
+          wallet_email_fallback: true,
+          require_verified_email: true,
+          constant_claims: { eliza_email_source: "ldap" },
+        }),
+      ),
+    ).toThrow(/eliza_email_source/);
+  });
+
+  test("every unconditional provider claim stays reserved for everybody", () => {
+    for (const name of ["email", "email_verified", "sub", "groups", "eliza_account_kind"]) {
+      expect(() => parseOidcClientEntry(entry({ constant_claims: { [name]: "x" } }))).toThrow(
+        /may not override the provider claim/,
+      );
+    }
+  });
 });
 
 describe("scope and claims_policy must agree", () => {

@@ -65,7 +65,7 @@ const strictBrowserRoutes = [
     args: { url: "about:blank" },
     contextIds: ["browser", "web"],
     input: "Open another browser tab",
-    messageToUser: "open completed in web mode.\nNew Tab\nabout:blank",
+    messageToUser: "Opened about:blank.",
   },
   {
     actionName: "BROWSER_LIST_TABS",
@@ -451,7 +451,7 @@ export default scenario({
           url: "https://scenario.test/form",
         },
       },
-      responseIncludesAll: ["navigate completed", "https://scenario.test/form"],
+      responseIncludesAll: ["Opened scenario.test/form."],
       assertTurn: expectRestoreFormTurn,
     },
     {
@@ -559,12 +559,12 @@ export default scenario({
       kind: "message",
       name: "open an additional browser tab",
       text: "Open another browser tab",
-      responseIncludesAny: ["open completed in web mode"],
+      responseIncludesAny: ["Opened about:blank."],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "BROWSER_OPEN",
           parameters: { url: "about:blank" },
-          responseText: "open completed in web mode.\nNew Tab\nabout:blank",
+          responseText: "Opened about:blank.",
           resultFields: {
             "values.mode": "web",
             "values.subaction": "open",

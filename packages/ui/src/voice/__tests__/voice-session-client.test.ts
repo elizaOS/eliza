@@ -587,6 +587,45 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     await client.stop();
   });
 
+  it("publishes connecting before a delayed mic teardown completes", async () => {
+    const micClose = deferred<void>();
+    class DeferredMicCloseContext extends FakeMicAudioContext {
+      override async close(): Promise<void> {
+        await micClose.promise;
+        await super.close();
+      }
+    }
+    const mint = makeMintFetch([{}, {}]);
+    const ws = makeWsFactory();
+    const phases: string[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => `nonce-${mint.calls.length + 1}`,
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new DeferredMicCloseContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onState: (next) => phases.push(next.phase),
+    });
+
+    await client.start();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await vi.waitFor(() => expect(client.state.phase).toBe("listening"));
+
+    first.emitClose(1006, "transport lost");
+    expect(client.state.phase).toBe("connecting");
+    expect(phases.at(-1)).toBe("connecting");
+    expect(ws.sockets).toHaveLength(1);
+
+    micClose.resolve();
+    await vi.waitFor(() => expect(ws.sockets).toHaveLength(2));
+    await client.stop();
+  });
+
   it("uses a fresh one-use consent nonce for every reconnect mint", async () => {
     const ws = makeWsFactory();
     const calls: Array<Record<string, unknown>> = [];

@@ -5,8 +5,9 @@
  * view whose resolved {@link ResolvedSurfaceManifest} declares
  * `isolation: "native-webview"` must instead layer its arbitrary web content as
  * its OWN native child web surface with an explicit process/storage-sharing
- * policy, so heavy or untrusted content (the Browser view's third-party tabs)
- * never shares the host renderer process or the host storage partition.
+ * policy. iOS gives isolated surfaces a dedicated process pool; Android proves
+ * an out-of-app sandboxed renderer but may reuse it across sibling WebViews.
+ * Isolated storage never shares the host or a sibling partition.
  *
  * This module is the seam between the placement decision — the pure
  * {@link deriveSurfacePlacement}, which reads the manifest alone and says whether
@@ -30,13 +31,13 @@ import type { ResolvedSurfaceManifest } from "@elizaos/core";
 
 /**
  * Renderer-process sharing for an independent native surface.
- *  - `isolated` — its own renderer process (a fresh `WKProcessPool` on iOS, the
- *                 platform out-of-process renderer on Android). A crash or heavy
- *                 load cannot take down the host webview, and same-process script
- *                 reach is impossible.
- *  - `shared`   — reuses a plugin-owned shared process pool. Only for trusted
- *                 first-party native surfaces that must cooperate with each
- *                 other; never the implicit host default.
+ *  - `isolated` — the strongest native renderer boundary: a fresh
+ *                 `WKProcessPool` on iOS, and a verified out-of-app sandboxed
+ *                 renderer on Android. Android may reuse that renderer across
+ *                 sibling WebViews, but it never runs in the app/host process.
+ *  - `shared`   — requests platform-defined sharing. iOS reuses a plugin-owned
+ *                 pool; Android controls placement and may reuse its renderer
+ *                 regardless. Only trusted first-party surfaces may request it.
  */
 export type SurfaceProcessSharing = "isolated" | "shared";
 
@@ -82,10 +83,10 @@ export type SurfacePlacement =
  * `native-webview` is the only level that gets an independent native surface;
  * every other level (in-process, immersive, sandboxed-iframe) lives in the host
  * web surface — a sandboxed iframe is still a child of the host document, not a
- * native sibling. A native surface always isolates its renderer process (the
- * reason to embed a native child at all is to keep heavy/untrusted content out
- * of the host renderer). Storage is isolated by default and only shared when the
- * manifest grants `storage`, i.e. the view explicitly asked for host storage.
+ * native sibling. A native surface always requests the platform's strongest
+ * renderer separation so heavy/untrusted content stays outside the host
+ * renderer. Storage is isolated by default and only shared when the manifest
+ * grants `storage`, i.e. the view explicitly asked for host storage.
  */
 export function deriveSurfacePlacement(
   manifest: ResolvedSurfaceManifest,
@@ -103,16 +104,50 @@ export function deriveSurfacePlacement(
 }
 
 /**
- * Screen-space rectangle for a layered native surface, in CSS pixels relative to
- * the host webview's viewport. The native side converts to device pixels by the
- * display density; keeping the interface in CSS px means the JS layer measures
- * with `getBoundingClientRect` and never has to know the device scale factor.
+ * Screen-space rectangle in CSS pixels relative to the host webview's viewport.
+ * The native side converts to device pixels by the display density; keeping the
+ * shared geometry in CSS px means the JS layer measures with
+ * `getBoundingClientRect` and never knows the device scale factor.
  */
-export interface SurfaceBounds {
+export interface SurfaceRect {
   readonly x: number;
   readonly y: number;
   readonly width: number;
   readonly height: number;
+}
+
+/** Per-corner radii for a host-computed rounded rectangle, in CSS pixels. */
+export interface SurfaceCornerRadii {
+  readonly topLeft: number;
+  readonly topRight: number;
+  readonly bottomRight: number;
+  readonly bottomLeft: number;
+}
+
+/**
+ * The rounded host clip enclosing a native page. This is measured from the
+ * actual clipping ancestor rather than copied from a design token, so theme and
+ * responsive radius changes remain native/React pixel-identical.
+ */
+export interface SurfaceOuterClip extends SurfaceRect {
+  readonly cornerRadii: SurfaceCornerRadii;
+}
+
+/**
+ * Screen-space placement for a layered native surface. `outerClip` is atomic
+ * with the page rectangle so native paint and hit testing never observe a new
+ * host radius with stale bounds (or the reverse).
+ */
+export interface SurfaceBounds extends SurfaceRect {
+  readonly outerClip: SurfaceOuterClip;
+}
+
+/**
+ * Rounded host-space region where the native layer yields both paint and input
+ * to host-rendered chrome. Coordinates share {@link SurfaceBounds}' CSS pixels.
+ */
+export interface SurfaceOcclusionRect extends SurfaceRect {
+  readonly cornerRadius: number;
 }
 
 /** Request to create one independent native web surface. */
@@ -127,32 +162,44 @@ export interface NativeSurfaceCreateRequest {
 
 /**
  * The native shell that owns the layered surface stack. The renderer issues these
- * commands; the native side (or a test double) realises them as real
- * `WKWebView` / `WebView` layers. All methods are side-effecting and synchronous
- * from the caller's perspective — ordering is the caller's contract, not the
- * shell's.
+ * desired-state commands and observes an acknowledgement promise. The production
+ * shell serializes and reconciles each surface against native state, while a test
+ * double may acknowledge directly. A caller may therefore submit geometry and
+ * visibility immediately after create without racing the native layer into
+ * existence, and may resubmit unchanged intent after a terminal transport error.
  */
 export interface NativeSurfaceShell {
   /**
    * Create (but do not necessarily foreground) a native surface with the given
-   * explicit policy. Must be called before {@link foregroundSurface} for an id.
+   * explicit policy. Must be called before presenting that id.
    */
-  createSurface(req: NativeSurfaceCreateRequest): void;
+  createSurface(req: NativeSurfaceCreateRequest): Promise<void>;
   /**
-   * Position a surface over the host webview. Called on layout/resize/scroll so
-   * the native layer tracks the placeholder rect the React tree reserves for it.
+   * Position and outer-clip a surface over the host webview. Called on
+   * layout/resize/style changes so the native layer tracks both the placeholder
+   * and its actual rounded React host without recreating the web surface.
    */
-  setBounds(id: string, bounds: SurfaceBounds): void;
+  setBounds(id: string, bounds: SurfaceBounds): Promise<void>;
+  /**
+   * Keep the page full-size while exposing host overlays through rounded holes
+   * in the native layer. Replaces the surface's complete occlusion set.
+   */
+  setOcclusionRects(
+    id: string,
+    rects: readonly SurfaceOcclusionRect[],
+  ): Promise<void>;
   /** Load a URL in an existing surface (address-bar navigation on the tab). */
-  navigate(id: string, url: string): void;
-  /** Bring an existing surface to the front, on top of the host. */
-  foregroundSurface(id: string): void;
-  /** Keep a surface alive but move it behind the foreground (warm retention). */
-  backgroundSurface(id: string): void;
-  /** Tear a surface down and release its process + storage. */
-  destroySurface(id: string): void;
-  /** Foreground the host web surface (used when returning to an in-process view). */
-  foregroundHost(): void;
-  /** Whether a surface with this id currently exists in the shell. */
+  navigate(id: string, url: string): Promise<void>;
+  /** Reload the current page in an existing native surface. */
+  reload(id: string): Promise<void>;
+  /**
+   * Atomically choose the one native surface that owns presentation, or `null`
+   * to return paint/input ownership to the host. Selecting a surface hides all
+   * siblings before foregrounding it.
+   */
+  presentSurface(id: string | null): Promise<void>;
+  /** Tear a surface down and release its native renderer and storage resources. */
+  destroySurface(id: string): Promise<void>;
+  /** Whether native creation for this id has been acknowledged and remains live. */
   hasSurface(id: string): boolean;
 }

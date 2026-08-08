@@ -57,6 +57,7 @@ import {
   loadWakeWordEnabled,
   saveContinuousChatMode,
 } from "../../state/persistence";
+import { goHome } from "../../state/shell-surface-store";
 import { deriveAgentReady } from "../../state/types";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { TurnAggregator } from "../../voice/end-of-turn";
@@ -613,8 +614,10 @@ export function useShellController(): ShellController {
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
-  // Return to the combined home/apps route.
+  // Commit the home half of the shared rail before the route changes so the
+  // destination cannot paint one frame of the launcher with the wrong surface.
   const navigateHome = React.useCallback(() => {
+    goHome();
     setTab("chat");
   }, [setTab]);
 

@@ -280,6 +280,22 @@ export interface Bindings {
    * base64-wrapped). Client secrets are stored as sha256 hex only.
    */
   OIDC_CLIENTS?: string;
+  /**
+   * Domain that wallet-derived no-reply identities are minted on, for relying
+   * parties registered with `wallet_email_fallback`. Defaults to
+   * `users.noreply.<OIDC_ISSUER_URL hostname>` and is normally left unset.
+   *
+   * An override is accepted ONLY when it is a strict subdomain of the issuer
+   * hostname — that rule is what proves no user can register a name there, which
+   * is the entire security property of the address. Set but invalid turns the
+   * wallet-identity feature OFF with a named reason (`OidcConfig.
+   * walletEmailUnavailableReason`) and leaves the rest of the provider serving;
+   * it is one optional variable and must not 503 every relying party. A
+   * committed var, not a secret, for the same reason as OIDC_ISSUER_URL: losing
+   * it must not silently rewrite every wallet user's account identity at the
+   * relying party.
+   */
+  OIDC_WALLET_EMAIL_DOMAIN?: string;
 
   RPC_URL?: string;
   CHAIN_ID?: string;

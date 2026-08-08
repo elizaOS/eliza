@@ -91,10 +91,10 @@ const expectedProtectedPaths = [
 ] as const;
 
 const localTargetPattern =
-  /127\.0\.0\.1|localhost|loopbackBase|getApiBase|getLocalApiUrls|resolveServerOnlyPort|resolveDesktopApiPort|ELIZA_PORT/;
+  /127\.0\.0\.1|localhost|loopbackBase|getApiBase|getAppControlApiBase|getLocalApiUrls|resolveServerOnlyPort|resolveDesktopApiPort|ELIZA_PORT/;
 const apiPathPattern = /\/api\//;
 const knownSelfApiBasePattern =
-  /loopbackBase|getApiBase|getLocalApiUrls|resolveServerOnlyPort|resolveDesktopApiPort/;
+  /loopbackBase|getApiBase|getAppControlApiBase|getLocalApiUrls|resolveServerOnlyPort|resolveDesktopApiPort/;
 const authPrimitivePattern =
   /\b(?:createSelfApiRequestHeaders|createViewsRequestHeaders)\s*\(/;
 

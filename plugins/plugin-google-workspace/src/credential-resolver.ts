@@ -25,7 +25,12 @@ import { Auth } from "googleapis";
 type Credentials = Auth.Credentials;
 const { OAuth2Client } = Auth;
 
-import { credentialRefRecordsFromMetadata } from "./connector-credential-refs.js";
+import {
+  CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
+  CONNECTOR_VAULT_SERVICE_TYPES,
+  CORE_SECRETS_SERVICE_TYPE,
+  credentialRefRecordsFromMetadata,
+} from "./connector-credential-refs.js";
 import type {
   GoogleAuthClient,
   GoogleAuthResolutionRequest,
@@ -36,15 +41,14 @@ import { GOOGLE_SERVICE_NAME } from "./types.js";
 const GOOGLE_CLIENT_ID_SETTING = "GOOGLE_CLIENT_ID";
 const GOOGLE_CLIENT_SECRET_SETTING = "GOOGLE_CLIENT_SECRET";
 const GOOGLE_REDIRECT_URI_SETTING = "GOOGLE_REDIRECT_URI";
-const CORE_SECRETS_SERVICE_TYPE = "SECRETS";
 
-const CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES = [
-  "connector_credential_store",
-  "CONNECTOR_CREDENTIAL_STORE",
-  "connectorCredentialStore",
-  "credential_store",
-  "vault",
-  "secrets_manager",
+// Read-side store resolution mirrors the write side exactly
+// (connector-credential-refs.ts): same service names, same precedence. A
+// name probed by only one side is how a credential gets written to a store
+// the reader can never find again after a restart.
+const SECRET_READER_SERVICE_TYPES = [
+  ...CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
+  ...CONNECTOR_VAULT_SERVICE_TYPES,
 ] as const;
 
 const TOKEN_SET_CREDENTIAL_TYPES = ["oauth.tokens", "oauth.token_set", "oauth"] as const;
@@ -235,6 +239,39 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
   }
 
   private async getAccount(accountId: string): Promise<ConnectorAccount | null> {
+    const direct = await this.getAccountById(accountId);
+    if (direct) {
+      return direct;
+    }
+    // "default" is the adapter-level placeholder for "the user's Google
+    // account" (lifeops-message-adapter DEFAULT_GOOGLE_ACCOUNT_ID). Accounts
+    // connected through the OAuth flow are stored under manager-assigned ids,
+    // so a literal lookup always misses. Resolve it to the sole connected
+    // account; with zero or multiple connected accounts the miss stands and
+    // the caller's not-found error names the ambiguity honestly.
+    if (accountId === "default") {
+      const accounts = await this.listAccounts();
+      const connected = accounts.filter((account) => account.status === "connected");
+      if (connected.length === 1) {
+        return connected[0];
+      }
+    }
+    return null;
+  }
+
+  /** List Google accounts from the same source precedence `getAccountById` uses. */
+  private async listAccounts(): Promise<ConnectorAccount[]> {
+    if (this.storage) {
+      return (await this.storage.listAccounts(GOOGLE_SERVICE_NAME)) ?? [];
+    }
+    const manager = this.accountManager ?? this.getRuntimeAccountManager();
+    if (manager) {
+      return manager.listAccounts(GOOGLE_SERVICE_NAME);
+    }
+    return (await this.resolveStorage()?.listAccounts?.(GOOGLE_SERVICE_NAME)) ?? [];
+  }
+
+  private async getAccountById(accountId: string): Promise<ConnectorAccount | null> {
     if (this.storage) {
       return this.storage.getAccount(GOOGLE_SERVICE_NAME, accountId);
     }
@@ -438,7 +475,7 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
     if (this.vault) readers.push(this.vault);
 
     if (this.runtime?.getService) {
-      for (const serviceType of CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES) {
+      for (const serviceType of SECRET_READER_SERVICE_TYPES) {
         const service = safelyGetService(this.runtime, serviceType);
         if (service) readers.push(service);
       }

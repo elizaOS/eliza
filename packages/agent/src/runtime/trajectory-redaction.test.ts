@@ -37,6 +37,9 @@ describe("normalizeLlmCallPayload redaction", () => {
     const result = normalizeLlmCallPayload([
       {
         stepId: "s-1",
+        model: "test-model",
+        purpose: "test-redaction",
+        actionType: "reply",
         userPrompt: "send to user@example.com",
         response: "ok",
       },

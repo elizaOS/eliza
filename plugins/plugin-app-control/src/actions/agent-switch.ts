@@ -24,7 +24,8 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { getAppControlApiBase } from "../loopback-api.js";
 import { readStringOption, userRequestMessageText } from "../params.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
@@ -47,9 +48,8 @@ const REQUEST_TIMEOUT_MS = 15_000;
 async function defaultSwitchAgent(
 	profile: string,
 ): Promise<AgentSwitchOutcome> {
-	const port = resolveServerOnlyPort(process.env);
 	const response = await fetch(
-		`http://127.0.0.1:${port}/api/runtime/agent-switch`,
+		`${getAppControlApiBase()}/api/runtime/agent-switch`,
 		{
 			method: "POST",
 			headers: createViewsRequestHeaders(),

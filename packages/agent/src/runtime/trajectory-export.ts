@@ -5,7 +5,11 @@
  * shaping used by the agent runtime trajectory logger implementations.
  */
 
-import { type JsonValue, serializeTrajectoryExport } from "@elizaos/core";
+import {
+  ElizaError,
+  type JsonValue,
+  serializeTrajectoryExport,
+} from "@elizaos/core";
 import type {
   Trajectory,
   TrajectoryExportOptions,
@@ -18,24 +22,15 @@ import type {
 import {
   enrichTrajectoryLlmCall,
   normalizePersistedTrajectoryTiming,
-  normalizePersistedUpdatedAt,
-  normalizeStatus,
-  normalizeTrajectoryMetadata,
   type PersistedLlmCall,
   type PersistedProviderAccess,
   type PersistedStep,
   type PersistedTrajectory,
-  parseMetadata,
-  toNumber,
+  parsePersistedTrajectoryRow,
   toOptionalNumber,
-  toText,
 } from "./trajectory-internals.ts";
 
 export type RuntimeTrajectoryExportOptions = TrajectoryExportOptions;
-
-function toCreatedAt(timestamp: number | undefined): string {
-  return new Date(timestamp ?? Date.now()).toISOString();
-}
 
 function toPublicTrajectoryLlmCall(
   call: PersistedLlmCall,
@@ -44,22 +39,8 @@ function toPublicTrajectoryLlmCall(
 ): TrajectoryLlmCall {
   return enrichTrajectoryLlmCall({
     ...call,
-    callId: toText(call.callId, `${stepId}-call`),
     stepId,
     trajectoryId,
-    timestamp: toNumber(call.timestamp, Date.now()),
-    model: toText(call.model, "unknown"),
-    systemPrompt: toText(call.systemPrompt, ""),
-    userPrompt: toText(call.userPrompt, ""),
-    response: toText(call.response, ""),
-    temperature: toNumber(call.temperature, 0),
-    maxTokens: toNumber(call.maxTokens, 0),
-    purpose: toText(call.purpose, "action"),
-    actionType: toText(call.actionType, "runtime.useModel"),
-    latencyMs: toNumber(call.latencyMs, 0),
-    ...(call.createdAt
-      ? { createdAt: toText(call.createdAt, toCreatedAt(call.timestamp)) }
-      : { createdAt: toCreatedAt(call.timestamp) }),
   }) as TrajectoryLlmCall;
 }
 
@@ -70,21 +51,8 @@ function toPublicTrajectoryProviderAccess(
 ): TrajectoryProviderAccess {
   return {
     ...access,
-    providerId: toText(access.providerId, `${stepId}-provider`),
     stepId,
     trajectoryId,
-    providerName: toText(access.providerName, "unknown"),
-    purpose: toText(access.purpose, "provider"),
-    startedAt: typeof access.startedAt === "number" ? access.startedAt : null,
-    endedAt: typeof access.endedAt === "number" ? access.endedAt : null,
-    durationMs:
-      typeof access.durationMs === "number" ? access.durationMs : null,
-    overlapsWith: Array.isArray(access.overlapsWith) ? access.overlapsWith : [],
-    data: access.data && typeof access.data === "object" ? access.data : {},
-    timestamp: toNumber(access.timestamp, Date.now()),
-    ...(access.createdAt
-      ? { createdAt: toText(access.createdAt, toCreatedAt(access.timestamp)) }
-      : { createdAt: toCreatedAt(access.timestamp) }),
   };
 }
 
@@ -103,22 +71,12 @@ function toPublicTrajectoryStep(
 ): TrajectoryStep {
   return {
     ...step,
-    stepId: toText(step.stepId, trajectoryId),
-    timestamp: toNumber(step.timestamp, Date.now()),
     llmCalls: (step.llmCalls as PersistedLlmCall[]).map((call) =>
-      toPublicTrajectoryLlmCall(
-        call,
-        trajectoryId,
-        toText(step.stepId, trajectoryId),
-      ),
+      toPublicTrajectoryLlmCall(call, trajectoryId, step.stepId),
     ),
     providerAccesses: (step.providerAccesses as PersistedProviderAccess[]).map(
       (access) =>
-        toPublicTrajectoryProviderAccess(
-          access,
-          trajectoryId,
-          toText(step.stepId, trajectoryId),
-        ),
+        toPublicTrajectoryProviderAccess(access, trajectoryId, step.stepId),
     ),
   };
 }
@@ -126,64 +84,75 @@ function toPublicTrajectoryStep(
 export function trajectoryRowToListItem(
   row: unknown,
   agentId: string,
-): TrajectoryListItem | null {
-  if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+): TrajectoryListItem {
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    throw new ElizaError("Trajectory list row is invalid", {
+      code: "TRAJECTORY_ROW_INVALID",
+      context: { field: "row" },
+    });
+  }
   const record = row as Record<string, unknown>;
-  const normalizedMetadata = normalizeTrajectoryMetadata(
-    parseMetadata(record.metadata),
-    {
-      scenarioId: record.scenario_id,
-      batchId: record.batch_id,
-    },
+  const persisted = parsePersistedTrajectoryRow(
+    record,
+    typeof record.id === "string" ? record.id : "unknown",
   );
-  const status = normalizeStatus(record.status, "completed");
-  const startTime = toNumber(record.start_time, Date.now());
-  const timing = normalizePersistedTrajectoryTiming({
-    status,
-    startTime,
-    endTime: toOptionalNumber(record.end_time) ?? null,
-    durationMs: toOptionalNumber(record.duration_ms) ?? null,
-    createdAt: record.created_at,
-    updatedAt: record.updated_at,
-  });
+  if (persisted.agentId !== agentId) {
+    throw new ElizaError("Trajectory list row belongs to another agent", {
+      code: "TRAJECTORY_AGENT_OWNERSHIP_CONFLICT",
+      context: {
+        trajectoryId: persisted.id,
+        rowAgentId: persisted.agentId,
+        runtimeAgentId: agentId,
+      },
+    });
+  }
+  const requiredCount = (field: string): number => {
+    const value = toOptionalNumber(record[field]);
+    if (value === undefined || !Number.isInteger(value) || value < 0) {
+      throw new ElizaError("Trajectory list count is invalid", {
+        code: "TRAJECTORY_ROW_INVALID",
+        context: { trajectoryId: persisted.id, field },
+      });
+    }
+    return value;
+  };
+  const durationMs =
+    persisted.endTime === null ? null : persisted.endTime - persisted.startTime;
 
   return {
-    id: toText(record.id ?? record.trajectory_id, ""),
-    agentId: toText(record.agent_id, agentId),
-    source: toText(record.source, "runtime"),
-    status,
-    startTime,
-    endTime: timing.endTime,
-    durationMs: timing.durationMs,
-    stepCount: toNumber(record.step_count, 0),
-    llmCallCount: toNumber(record.llm_call_count, 0),
-    providerAccessCount: toNumber(record.provider_access_count, 0),
-    totalPromptTokens: toNumber(record.total_prompt_tokens, 0),
-    totalCompletionTokens: toNumber(record.total_completion_tokens, 0),
-    totalCacheReadInputTokens: toNumber(
-      record.total_cache_read_input_tokens,
-      0,
+    id: persisted.id,
+    agentId: persisted.agentId,
+    source: persisted.source,
+    status: persisted.status,
+    startTime: persisted.startTime,
+    endTime: persisted.endTime,
+    durationMs,
+    stepCount: requiredCount("step_count"),
+    llmCallCount: requiredCount("llm_call_count"),
+    providerAccessCount: requiredCount("provider_access_count"),
+    totalPromptTokens: requiredCount("total_prompt_tokens"),
+    totalCompletionTokens: requiredCount("total_completion_tokens"),
+    totalCacheReadInputTokens: requiredCount("total_cache_read_input_tokens"),
+    totalCacheCreationInputTokens: requiredCount(
+      "total_cache_creation_input_tokens",
     ),
-    totalCacheCreationInputTokens: toNumber(
-      record.total_cache_creation_input_tokens,
-      0,
-    ),
-    scenarioId: normalizedMetadata.scenarioId,
-    batchId: normalizedMetadata.batchId,
-    createdAt: toText(
-      record.created_at,
-      new Date(toNumber(record.start_time, Date.now())).toISOString(),
-    ),
-    updatedAt: normalizePersistedUpdatedAt({
-      startTime,
-      endTime: timing.endTime,
-      createdAt: record.created_at,
-      updatedAt: record.updated_at,
-    }),
-    metadata: normalizedMetadata.metadata as Record<
-      string,
-      JsonValue | undefined
-    >,
+    scenarioId: persisted.scenarioId,
+    batchId: persisted.batchId,
+    createdAt: persisted.createdAt,
+    updatedAt: persisted.updatedAt,
+    roomId:
+      typeof persisted.metadata.roomId === "string"
+        ? persisted.metadata.roomId
+        : null,
+    entityId:
+      typeof persisted.metadata.entityId === "string"
+        ? persisted.metadata.entityId
+        : null,
+    conversationId:
+      typeof persisted.metadata.conversationId === "string"
+        ? persisted.metadata.conversationId
+        : null,
+    metadata: persisted.metadata as Record<string, JsonValue | undefined>,
   };
 }
 
@@ -191,6 +160,16 @@ export function persistedTrajectoryToDetailRecord(
   persisted: PersistedTrajectory,
   agentId: string,
 ): Trajectory {
+  if (persisted.agentId !== agentId) {
+    throw new ElizaError("Trajectory detail belongs to another agent", {
+      code: "TRAJECTORY_AGENT_OWNERSHIP_CONFLICT",
+      context: {
+        trajectoryId: persisted.id,
+        trajectoryAgentId: persisted.agentId,
+        runtimeAgentId: agentId,
+      },
+    });
+  }
   const timing = normalizePersistedTrajectoryTiming({
     status: persisted.status,
     startTime: persisted.startTime,
@@ -201,7 +180,7 @@ export function persistedTrajectoryToDetailRecord(
   const endTime = timing.endTime ?? undefined;
   return {
     trajectoryId: persisted.id,
-    agentId,
+    agentId: persisted.agentId,
     source: persisted.source,
     status: persisted.status,
     startTime: persisted.startTime,
@@ -216,6 +195,7 @@ export function persistedTrajectoryToDetailRecord(
     // metrics. Actionless LLM steps stay action-optional; read routes map
     // those to toolEvents: [] without fabrication (#17730).
     metrics: {
+      ...persisted.metrics,
       episodeLength: persisted.steps.length,
       finalStatus: persisted.status,
     },

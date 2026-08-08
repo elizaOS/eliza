@@ -29,6 +29,7 @@ import {
 	ModelType,
 } from "../../types/model";
 import type { IAgentRuntime } from "../../types/runtime";
+import { truncateWellFormed } from "../../utils/well-formed";
 import { stripReasoningBlocks } from "./fallback-reply";
 import { getV5ModelText } from "./generate-text-result";
 import { isUnaddressedTextGroupTurn } from "./stage1-prompt-tier";
@@ -115,7 +116,7 @@ function senderNameOf(message: Memory): string {
 function clip(text: string, maxChars: number): string {
 	const collapsed = text.replace(/\s+/g, " ").trim();
 	return collapsed.length > maxChars
-		? `${collapsed.slice(0, maxChars)}…`
+		? `${truncateWellFormed(collapsed, maxChars)}…`
 		: collapsed;
 }
 

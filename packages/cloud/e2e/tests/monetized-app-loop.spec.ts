@@ -26,6 +26,10 @@
 import { computeContainerBillingPlan } from "@elizaos/cloud-shared/lib/services/container-billing-policy";
 import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
 import type { CreditBalanceResponse } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import {
+  approveAppForMonetizationTest,
+  authedClient,
+} from "../src/helpers/monetization";
 import { expect, test } from "../src/helpers/test-fixtures";
 
 const DAILY_CONTAINER_COST_USD = 0.67;
@@ -94,16 +98,31 @@ test.describe("monetized-app loop", () => {
     expect([200, 201]).toContain(created.status);
     const appId = created.json.app?.id;
     expect(appId, "apps.create must return an app id").toBeTruthy();
+    if (!appId) throw new Error("apps.create did not return an app id");
 
-    // 2. Enable monetization (inference markup + purchase share).
+    // 2. Enable monetization (inference markup + purchase share). The
+    //    compliance gate (#10732) refuses a draft app, so the loop must clear
+    //    review first — same order the other monetization specs assert.
+    const monetizationBody = {
+      monetizationEnabled: true,
+      inferenceMarkupPercentage: 100,
+      purchaseSharePercentage: 10,
+    };
+    const draftMonetization = await authedJson(
+      "PUT",
+      `/api/v1/apps/${appId}/monetization`,
+      monetizationBody,
+    );
+    expect(
+      draftMonetization.status,
+      "draft app cannot enable monetization before compliance approval",
+    ).toBe(403);
+    await approveAppForMonetizationTest(appId, authedClient(api, apiKey));
+
     const monetization = await authedJson(
       "PUT",
       `/api/v1/apps/${appId}/monetization`,
-      {
-        monetizationEnabled: true,
-        inferenceMarkupPercentage: 100,
-        purchaseSharePercentage: 10,
-      },
+      monetizationBody,
     );
     expect([200, 201]).toContain(monetization.status);
 
