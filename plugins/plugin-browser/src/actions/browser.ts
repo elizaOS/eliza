@@ -1005,7 +1005,7 @@ export const browserAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "open completed in desktop mode.\nelizaOS\nhttps://elizaos.ai",
+          text: "Opened elizaos.ai.",
         },
       },
     ],
