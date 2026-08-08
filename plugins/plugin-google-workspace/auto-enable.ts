@@ -33,6 +33,20 @@ function hasNonEmptyEnv(
  * Apple, Microsoft, and ICS feeds without Google.
  */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
+  const entries = (
+    ctx.config.plugins as { entries?: Record<string, unknown> } | undefined
+  )?.entries;
+  // Explicit disable is authoritative over every other signal.
+  const workspaceEntry = entries?.["google-workspace"];
+  if (
+    workspaceEntry &&
+    typeof workspaceEntry === "object" &&
+    !Array.isArray(workspaceEntry) &&
+    (workspaceEntry as { enabled?: unknown }).enabled === false
+  ) {
+    return false;
+  }
+
   const connectors = ctx.config.connectors as
     | Record<string, unknown>
     | undefined;
@@ -51,9 +65,6 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
     }
   }
 
-  const entries = (
-    ctx.config.plugins as { entries?: Record<string, unknown> } | undefined
-  )?.entries;
   if (entryEnabled(entries, "google-workspace")) {
     return true;
   }

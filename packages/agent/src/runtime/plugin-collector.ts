@@ -375,6 +375,7 @@ export type PluginLoadReasons = Map<string, string>;
  *
  * @internal Exported for testing.
  */
+
 /**
  * Explicit Google signals only — never inferred from the universal Calendar
  * home tile (Apple/Microsoft/ICS also use Calendar).

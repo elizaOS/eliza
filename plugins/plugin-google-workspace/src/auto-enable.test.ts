@@ -77,4 +77,23 @@ describe("plugin-google-workspace shouldEnable", () => {
   it("stays off with empty config and no OAuth env", () => {
     expect(shouldEnable(ctx({}))).toBe(false);
   });
+
+  it("honors entries google-workspace enabled=false over OAuth env and googlechat", () => {
+    expect(
+      shouldEnable(
+        ctx({
+          config: {
+            connectors: { googlechat: { projectId: "p" } },
+            plugins: {
+              entries: { "google-workspace": { enabled: false } },
+            },
+          },
+          env: {
+            GOOGLE_CLIENT_ID: "client",
+            GOOGLE_CLIENT_SECRET: "secret",
+          } as NodeJS.ProcessEnv,
+        }),
+      ),
+    ).toBe(false);
+  });
 });
