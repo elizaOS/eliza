@@ -249,9 +249,9 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   { slug: "login", path: "/login", route: "login", auth: PUBLIC },
   {
     slug: "auth-success",
-    // Backend-issued completion markers only — naked /auth/success is an
-    // unverified state and must not be treated as the happy-path capture.
-    path: "/auth/success?github_connected=true&platform=github&connection_id=audit-fixture",
+    // Public route without a backend-confirmed connection — captures the
+    // explicit unverified recovery state (#18054).
+    path: "/auth/success",
     route: "auth/success",
     auth: PUBLIC,
   },
