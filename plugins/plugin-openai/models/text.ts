@@ -765,7 +765,62 @@ function normalizeNativeMessages(messages: unknown): ModelMessage[] | undefined 
     return undefined;
   }
 
-  return messages.map((message) => normalizeNativeMessage(message));
+  return repairToolMessagePairing(
+    messages.map((message) => normalizeNativeMessage(message)),
+  );
+}
+
+/**
+ * OpenAI-strict providers (Cerebras, and the OpenAI API itself) reject any
+ * `role: "tool"` message that is not an immediate response to an assistant
+ * message carrying the matching `tool-call` id — HTTP 400 `Messages with role
+ * 'tool' must be a response to a preceding message with 'tool_calls'`. The
+ * trajectory assembler emits well-formed pairs, but history compaction and
+ * multi-step summarization upstream can drop or separate the assistant half,
+ * leaving an orphaned tool result that poisons the whole request. This is the
+ * request-time structural analog of the unicode guard: a valid message array
+ * passes through untouched; an orphaned tool message is demoted to a plain user
+ * message so its content is preserved on the wire without breaking the
+ * tool-call sequence contract.
+ */
+function repairToolMessagePairing(messages: ModelMessage[]): ModelMessage[] {
+  const availableToolCallIds = new Set<string>();
+  return messages.map((message) => {
+    if (message.role === "assistant" && Array.isArray(message.content)) {
+      for (const part of message.content) {
+        const id = (part as { type?: unknown; toolCallId?: unknown })
+          ?.toolCallId;
+        if (
+          (part as { type?: unknown })?.type === "tool-call" &&
+          typeof id === "string"
+        ) {
+          availableToolCallIds.add(id);
+        }
+      }
+      return message;
+    }
+    if (message.role === "tool" && Array.isArray(message.content)) {
+      const allPaired = message.content.every((part) => {
+        const id = (part as { toolCallId?: unknown })?.toolCallId;
+        return typeof id === "string" && availableToolCallIds.has(id);
+      });
+      if (allPaired) {
+        return message;
+      }
+      const salvaged = message.content
+        .map((part) => {
+          const value = (part as { output?: { value?: unknown } })?.output
+            ?.value;
+          return typeof value === "string" ? value : JSON.stringify(value);
+        })
+        .join("\n");
+      return {
+        role: "user",
+        content: `[tool result]\n${salvaged}`,
+      } as ModelMessage;
+    }
+    return message;
+  });
 }
 
 function normalizeNativeMessage(message: unknown): ModelMessage {
