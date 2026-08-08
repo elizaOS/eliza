@@ -56,6 +56,9 @@ vi.mock("../../api", async (importOriginal) => {
       openBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
+      navigateBrowserWorkspaceTab: vi
+        .fn()
+        .mockRejectedValue(new Error("no api in test")),
       snapshotBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
@@ -102,6 +105,9 @@ beforeEach(() => {
   vi.mocked(client.openBrowserWorkspaceTab).mockRejectedValue(
     new Error("no api in test"),
   );
+  vi.mocked(client.navigateBrowserWorkspaceTab).mockRejectedValue(
+    new Error("no api in test"),
+  );
 });
 
 afterEach(() => {
@@ -138,7 +144,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     ).toBe(true);
   });
 
-  it("returns delayed iframe autofocus to the control that opened Browser exactly once", async () => {
+  it("returns autofocus that arrives after iframe load to the control that opened Browser", async () => {
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
     const composer = document.createElement("textarea");
     document.body.append(composer);
@@ -147,14 +153,15 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     try {
       render(<BrowserWorkspaceView />);
       const iframe = await screen.findByTitle("Google");
-      iframe.focus();
       fireEvent.load(iframe);
-      expect(document.activeElement).toBe(composer);
+      iframe.focus();
+      await waitFor(() => expect(document.activeElement).toBe(composer));
 
-      // The return target is consumed by the initial app-requested load. A
-      // later page navigation may keep focus inside the browser normally.
+      // An intentional pointer interaction cancels the bounded handoff, so the
+      // user can take control of the embedded page before the load settles.
+      fireEvent.pointerEnter(iframe);
+      fireEvent.pointerDown(iframe);
       iframe.focus();
-      fireEvent.load(iframe);
       expect(document.activeElement).toBe(iframe);
     } finally {
       composer.remove();
@@ -167,12 +174,47 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
 
     render(<BrowserWorkspaceView />);
     const iframe = await screen.findByTitle("Google");
-    iframe.focus();
     fireEvent.load(iframe);
+    iframe.focus();
 
-    expect(document.activeElement).toBe(
-      screen.getByTestId("browser-workspace-view"),
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByTestId("browser-workspace-view"),
+      ),
     );
+  });
+
+  it("captures a focused address control before busy state disables it", async () => {
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
+    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
+      tab: {
+        ...APPLE_WORKSPACE.tabs[0],
+        url: "https://example.com/",
+      },
+    });
+
+    render(<BrowserWorkspaceView />);
+    const iframe = await screen.findByTitle("Apple");
+    fireEvent.pointerDown(iframe);
+    const address = screen.getByTestId("browser-workspace-address-input");
+    address.focus();
+    fireEvent.change(address, { target: { value: "https://example.com/" } });
+    await waitFor(() =>
+      expect((address as HTMLInputElement).value).toBe("https://example.com/"),
+    );
+    fireEvent.keyDown(address, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
+        "tab-apple",
+        "https://example.com/",
+      ),
+    );
+    await waitFor(() => expect(address.hasAttribute("disabled")).toBe(false));
+    fireEvent.load(iframe);
+    iframe.focus();
+
+    await waitFor(() => expect(document.activeElement).toBe(address));
   });
 
   it("opens a fresh Google home tab instead of cloning the active address", async () => {

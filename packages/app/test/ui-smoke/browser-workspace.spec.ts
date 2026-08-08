@@ -108,7 +108,7 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   await addressInput.fill("");
   await addressInput.pressSequentially("example.com");
   await expect(addressInput).toHaveValue("example.com");
-  await newTabButton.click();
+  await goButton.click();
 
   // The new tab is now the active one; the fold control names it and counts 1.
   await expect(
@@ -124,14 +124,13 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   await expect(exampleCard).toHaveCount(1);
   await closeSwitcher();
 
-  // Open a second (blank) tab and confirm the count grows.
-  await addressInput.fill("about:blank");
-  await expect(addressInput).toHaveValue("about:blank");
+  // New Tab always creates a fresh Google home context rather than cloning the
+  // active page or treating an address-bar draft as an implicit destination.
   await newTabButton.click();
   await expect(
     browserWorkspaceView.getByTestId("browser-workspace-tab-count"),
   ).toHaveText("2");
-  await expect(addressInput).toHaveValue("about:blank");
+  await expect(addressInput).toHaveValue("https://www.google.com/webhp?igu=1");
 
   // Switch back to the example tab via the switcher — selecting closes it and
   // the address bar follows the picked tab.
@@ -166,4 +165,123 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   // server-owned.
   await closeAllButton.click();
   await expect(closeAllButton).toBeDisabled({ timeout: 60_000 });
+});
+
+test("browser iframe focus handoff survives delayed autofocus without stealing deliberate clicks", async ({
+  page,
+  request,
+}) => {
+  await resetBrowserWorkspaceTabs(request);
+  await openAppPath(page, "/browser");
+  await expect(page).toHaveURL(/\/browser$/, { timeout: 20_000 });
+  const browserWorkspaceView = page.getByTestId("browser-workspace-view");
+  await expect(browserWorkspaceView).toBeVisible({ timeout: 60_000 });
+
+  const appUrl = new URL(page.url());
+  const fixtureOrigin = `http://localhost:${appUrl.port}`;
+  await page.route(
+    `${fixtureOrigin}/__browser-focus-slow.png`,
+    async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      await route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+          "base64",
+        ),
+      });
+    },
+  );
+  await page.route(
+    `${fixtureOrigin}/__browser-focus-fixture**`,
+    async (route) => {
+      const url = new URL(route.request().url());
+      const autoFocus = url.searchParams.get("auto") === "1";
+      const slowLoad = url.searchParams.get("slow") === "1";
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: `<!doctype html>
+        <html>
+          <body>
+            <label for="focus-target">Fixture input</label>
+            <input id="focus-target" data-testid="focus-target" />
+            ${slowLoad ? '<img alt="slow" src="/__browser-focus-slow.png" />' : ""}
+            <script>
+              if (${JSON.stringify(autoFocus)}) {
+                window.addEventListener("load", () => {
+                  setTimeout(() => document.querySelector("#focus-target").focus(), 120);
+                });
+              }
+            </script>
+          </body>
+        </html>`,
+      });
+    },
+  );
+
+  const addressInput = browserWorkspaceView.getByTestId(
+    "browser-workspace-address-input",
+  );
+  const delayedAddressUrl = `${fixtureOrigin}/__browser-focus-fixture?auto=1&case=address`;
+  await addressInput.fill(delayedAddressUrl);
+  await addressInput.press("Enter");
+  const iframe = browserWorkspaceView.locator("iframe").first();
+  await expect(iframe).toHaveAttribute("src", delayedAddressUrl, {
+    timeout: 20_000,
+  });
+  await page.waitForTimeout(350);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.activeElement?.getAttribute("data-testid") ?? null,
+      ),
+    )
+    .toBe("browser-workspace-address-input");
+
+  const snapshotResponse = await request.get("/api/browser-workspace");
+  expect(snapshotResponse.ok()).toBe(true);
+  const snapshot: unknown = await snapshotResponse.json();
+  expect(isBrowserWorkspaceSmokeSnapshot(snapshot)).toBe(true);
+  if (!isBrowserWorkspaceSmokeSnapshot(snapshot) || !snapshot.tabs[0]) return;
+  const tabId = snapshot.tabs[0].id;
+
+  const composer = page.getByRole("combobox", { name: "message" });
+  await composer.focus();
+  const polledAgentUrl = `${fixtureOrigin}/__browser-focus-fixture?auto=1&case=agent-poll`;
+  const navigateResponse = await request.post(
+    `/api/browser-workspace/tabs/${encodeURIComponent(tabId)}/navigate`,
+    { data: { url: polledAgentUrl } },
+  );
+  expect(navigateResponse.ok()).toBe(true);
+  await expect(iframe).toHaveAttribute("src", polledAgentUrl, {
+    timeout: 10_000,
+  });
+  await page.waitForTimeout(350);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.activeElement?.getAttribute("data-testid") ?? null,
+      ),
+    )
+    .toBe("chat-composer-textarea");
+
+  await composer.focus();
+  const intentionalClickUrl = `${fixtureOrigin}/__browser-focus-fixture?slow=1&case=user-click`;
+  const clickNavigateResponse = await request.post(
+    `/api/browser-workspace/tabs/${encodeURIComponent(tabId)}/navigate`,
+    { data: { url: intentionalClickUrl } },
+  );
+  expect(clickNavigateResponse.ok()).toBe(true);
+  await expect(iframe).toHaveAttribute("src", intentionalClickUrl, {
+    timeout: 10_000,
+  });
+  const fixtureInput = page.frameLocator("iframe").getByTestId("focus-target");
+  await fixtureInput.click();
+  await page.waitForTimeout(1_800);
+  await expect(fixtureInput).toBeFocused();
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.tagName ?? null))
+    .toBe("IFRAME");
 });
