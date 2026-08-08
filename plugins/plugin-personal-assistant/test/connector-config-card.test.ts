@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   extractActionParamsViaLlm: vi.fn(),
   hasLifeOpsAccess: vi.fn(async () => true),
   connected: { value: false },
+  startGoogleConnector: vi.fn(),
 }));
 
 vi.mock("@elizaos/agent", () => ({
@@ -47,6 +48,16 @@ vi.mock("../src/lifeops/connectors/index.js", () => ({
 // same shape, which is all the connect dispatchers read.
 vi.mock("../src/lifeops/service.js", () => {
   const status = () => ({ connected: mocks.connected.value });
+  class LifeOpsServiceError extends Error {
+    status: number;
+    code?: string;
+    constructor(status: number, message: string, code?: string) {
+      super(message);
+      this.name = "LifeOpsServiceError";
+      this.status = status;
+      this.code = code;
+    }
+  }
   return {
     LifeOpsService: class LifeOpsService {
       getDiscordConnectorStatus = vi.fn(async () => status());
@@ -54,10 +65,9 @@ vi.mock("../src/lifeops/service.js", () => {
       getSignalConnectorStatus = vi.fn(async () => status());
       getIMessageConnectorStatus = vi.fn(async () => status());
       getWhatsAppConnectorStatus = vi.fn(async () => status());
+      startGoogleConnector = mocks.startGoogleConnector;
     },
-    LifeOpsServiceError: class LifeOpsServiceError extends Error {
-      status = 500;
-    },
+    LifeOpsServiceError,
   };
 });
 
@@ -108,6 +118,54 @@ beforeEach(() => {
   mocks.extractActionParamsViaLlm.mockReset();
   mocks.hasLifeOpsAccess.mockReset().mockResolvedValue(true);
   mocks.connected.value = false;
+  mocks.startGoogleConnector.mockReset();
+});
+
+describe("CONNECTOR Google connect handoff cards", () => {
+  it("pins OAuth URLs as verified user-facing text", async () => {
+    mocks.startGoogleConnector.mockResolvedValue({
+      authUrl: "https://accounts.example.test/oauth",
+      mode: "local",
+      side: "owner",
+    });
+    const result = await connect("google");
+    expect(result.success).toBe(true);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.userFacingText).toContain(
+      "https://accounts.example.test/oauth",
+    );
+    expect(result.text).toContain("https://accounts.example.test/oauth");
+    expect(result.data).toMatchObject({
+      awaitingUserAction: true,
+      awaitingUserInput: true,
+    });
+  });
+
+  it("emits a verified [CONFIG:google] card when OAuth cannot start", async () => {
+    const { LifeOpsServiceError } = await import("../src/lifeops/service.js");
+    mocks.startGoogleConnector.mockRejectedValue(
+      new LifeOpsServiceError(
+        503,
+        "@elizaos/plugin-google-workspace is required before starting Google OAuth.",
+      ),
+    );
+    const result = await connect("google");
+    expect(result.success).toBe(false);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.text).toContain("[CONFIG:google]");
+    expect(result.userFacingText).toContain("[CONFIG:google]");
+    expect(result.data).toMatchObject({
+      awaitingUserAction: true,
+      status: 503,
+    });
+  });
+
+  it("routes calendar-feed connect away from CONNECTOR in metadata", () => {
+    expect(connectorAction.routingHint).toMatch(/CALENDAR_SOURCES/);
+    expect(connectorAction.routingHint).toMatch(/calendar/i);
+    expect(connectorAction.description).toMatch(/CALENDAR_SOURCES/);
+    expect(connectorAction.contexts).not.toContain("calendar");
+  });
 });
 
 describe("CONNECTOR connect emits the setup-card marker", () => {
