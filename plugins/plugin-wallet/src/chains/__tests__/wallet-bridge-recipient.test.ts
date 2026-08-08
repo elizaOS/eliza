@@ -5,10 +5,17 @@
  * maps to the Li.Fi destination `toAddress`) was never checked against the
  * user message, and the bridge confirmation preview omitted the destination
  * entirely: an injected recipient could be bridged to after a blind "yes".
- * These tests pin the fixed behavior: bridge recipients must be explicitly
- * stated by the user (same semantics as transfer), and the preview must show
- * where funds actually go. No live model, network, or chain; the
- * routing/gating code under test is the real production path.
+ *
+ * Content-driven bridges (recipient on `message.content`) require the address
+ * to appear in the user text, same as transfer. Planner-path bridges that put
+ * the recipient only in `HandlerOptions.parameters` are a known boundary of the
+ * existing authorization model (`collectExplicitRecipients` treats those as
+ * user-supplied); the confirmation preview that shows the destination is the
+ * effective defense on that path. Do not claim the guard blocks planner-
+ * injected recipients.
+ *
+ * No live model, network, or chain; the routing/gating code under test is the
+ * real production path.
  */
 import type {
   HandlerCallback,
@@ -26,6 +33,7 @@ import type {
 import { walletRouterAction } from "../wallet-action";
 
 const UNSTATED_RECIPIENT = "0x00000000000000000000000000000000deadbeef";
+const SOLANA_RECIPIENT = "9xQeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9SW";
 
 function createRuntime(): IAgentRuntime {
   const logger = {
@@ -211,7 +219,11 @@ describe("wallet bridge recipient guard", () => {
     expect(base.execute).not.toHaveBeenCalled();
   });
 
-  it("shows the bridge destination in the confirmation preview and executes after yes", async () => {
+  it("documents planner-path boundary: parameters.recipient authorizes itself; preview shows destination before execute", async () => {
+    // Known boundary (pre-existing for transfer, extended here to bridge):
+    // collectExplicitRecipients treats HandlerOptions.parameters.recipient as
+    // authorized even when the user message never names it. The confirmation
+    // preview disclosing the destination is the effective defense on this path.
     const { runtime, service } = walletRuntime();
     const base = evmHandler("base", "Base", "8453");
     service.registerChainHandler(base);
@@ -299,6 +311,61 @@ describe("wallet bridge recipient guard", () => {
     expect(String(rejected?.text)).toContain(
       "must appear explicitly in the current user message",
     );
+    expect(base.execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects a content-driven bridge with a Solana-format recipient absent from the user message", async () => {
+    const { runtime, service } = walletRuntime();
+    const base = evmHandler("base", "Base", "8453");
+    service.registerChainHandler(base);
+
+    const rejected = await walletRouterAction.handler(
+      runtime,
+      contentDrivenMessage("please bridge 0.5 ETH from base to arbitrum", {
+        action: "bridge",
+        chain: "base",
+        toChain: "arbitrum",
+        fromToken: "ETH",
+        amount: "0.5",
+        recipient: SOLANA_RECIPIENT,
+        mode: "execute",
+      }),
+      undefined,
+      undefined,
+    );
+
+    expect(rejected?.success).toBe(false);
+    expect(rejected?.data?.error).toBe("INVALID_PARAMS");
+    expect(String(rejected?.text)).toContain(
+      "must appear explicitly in the current user message",
+    );
+    expect(base.execute).not.toHaveBeenCalled();
+  });
+
+  it("accepts a content-driven bridge whose Solana-format recipient appears in the user message", async () => {
+    const { runtime, service } = walletRuntime();
+    const base = evmHandler("base", "Base", "8453");
+    service.registerChainHandler(base);
+
+    const first = await walletRouterAction.handler(
+      runtime,
+      contentDrivenMessage(
+        `please bridge 0.5 ETH from base to arbitrum to ${SOLANA_RECIPIENT}`,
+        {
+          action: "bridge",
+          chain: "base",
+          toChain: "arbitrum",
+          fromToken: "ETH",
+          amount: "0.5",
+          recipient: SOLANA_RECIPIENT,
+          mode: "execute",
+        },
+      ),
+      undefined,
+      undefined,
+    );
+
+    expect(first?.data?.requiresConfirmation).toBe(true);
     expect(base.execute).not.toHaveBeenCalled();
   });
 });
