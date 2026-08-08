@@ -379,7 +379,19 @@ function isGoogleChatConnectorConfigured(value: unknown): boolean {
   if (nonEmptyString(config.serviceAccountKey)) return true;
   if (nonEmptyString(config.serviceAccount)) return true;
   if (nonEmptyString(config.projectId)) return true;
-  if (Array.isArray(config.accounts) && config.accounts.length > 0) return true;
+  if (Array.isArray(config.accounts)) {
+    return config.accounts.some(
+      (account) =>
+        account &&
+        typeof account === "object" &&
+        !Array.isArray(account) &&
+        Boolean(
+          nonEmptyString((account as Record<string, unknown>).serviceAccountKey) ||
+            nonEmptyString((account as Record<string, unknown>).keyFile) ||
+            nonEmptyString((account as Record<string, unknown>).clientEmail),
+        ),
+    );
+  }
   return false;
 }
 

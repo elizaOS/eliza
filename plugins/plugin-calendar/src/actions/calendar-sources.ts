@@ -501,16 +501,18 @@ function isTrustedOAuthAuthorizationUrl(
     if (provider === "google") {
       return (
         url.hostname === "accounts.google.com" &&
-        (url.pathname.startsWith("/o/oauth2/") ||
-          url.pathname.includes("/oauth2/"))
+        (url.pathname === "/o/oauth2/v2/auth" ||
+          url.pathname === "/o/oauth2/auth")
       );
     }
-    // Microsoft identity platform authorize endpoints.
-    return (
-      (url.hostname === "login.microsoftonline.com" ||
-        url.hostname === "login.microsoft.com") &&
-      url.pathname.includes("/oauth2/")
-    );
+    // Microsoft identity platform authorize endpoints only.
+    if (
+      url.hostname !== "login.microsoftonline.com" &&
+      url.hostname !== "login.microsoft.com"
+    ) {
+      return false;
+    }
+    return /\/oauth2\/v2\.0\/authorize$/.test(url.pathname);
   } catch {
     // error-policy:J3 Untrusted URL text is explicitly invalid.
     return false;
@@ -692,15 +694,23 @@ async function connectionIntent(args: {
 function connectionText(intent: CalendarSourceConnectionIntent): string {
   switch (intent.state) {
     case "authorization_required":
+      // Template uses only enum provider + already-trusted authUrl.
       return `Authorization started for ${intent.provider}. The calendar is not connected until the owner completes this URL: ${intent.authUrl}`;
     case "permission_required":
       return applePermissionText(intent);
-    case "configuration_required":
-      // [CONFIG:<id>] renders a plugin-configuration card; ICS has no plugin
-      // config — its destination is the source-manager UI named in the reason.
-      return intent.provider === "ics"
-        ? intent.reason
-        : `${intent.reason}\n\n[CONFIG:${intent.connectorId}]`;
+    case "configuration_required": {
+      // Fixed owner-facing templates only — never interpolate untrusted reason.
+      if (intent.provider === "ics") {
+        return "ICS/webcal subscription URLs are capability secrets and never pass through me. Add the subscription in Settings → Calendar sources; once it exists I can list, select, and reconnect it.";
+      }
+      if (intent.provider === "google") {
+        return "Google Calendar OAuth is not registered in this runtime. Enable @elizaos/plugin-google-workspace, then connect again to open the owner authorization URL.\n\n[CONFIG:google]";
+      }
+      if (intent.provider === "microsoft") {
+        return "microsoft OAuth is not registered in this runtime.\n\n[CONFIG:microsoft]";
+      }
+      return `${intent.reason}\n\n[CONFIG:${intent.connectorId}]`;
+    }
     case "connected":
       return `ICS source ${intent.sourceId} connected and synchronized (${intent.sync.outcome}).`;
     case "configured_sync_failed":

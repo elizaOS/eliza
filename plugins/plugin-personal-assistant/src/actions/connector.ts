@@ -147,9 +147,7 @@ function isTrustedGoogleOAuthUrl(raw: string): boolean {
     if (url.username || url.password) return false;
     if (url.hostname !== "accounts.google.com") return false;
     return (
-      url.pathname.startsWith("/o/oauth2/") ||
-      url.pathname.startsWith("/o/oauth2") ||
-      url.pathname.includes("/oauth2/")
+      url.pathname === "/o/oauth2/v2/auth" || url.pathname === "/o/oauth2/auth"
     );
   } catch {
     // error-policy:J3 Untrusted URL text is explicitly invalid.
