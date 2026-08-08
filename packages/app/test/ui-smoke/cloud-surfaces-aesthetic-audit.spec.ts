@@ -610,9 +610,17 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // Routes with expectedFinalPath always redirect on localhost (the
         // harness hostname is 127.0.0.1). Assert the final URL matches the
         // designed end state so the audit proves reachability without claiming
-        // visual coverage of a surface it cannot render here. Screenshot and
-        // paint checks are still collected from the redirect destination for
-        // the report, but the finding notes which route exercised the redirect.
+        // visual coverage of a surface it cannot render here.
+        //
+        // Redirect-only reachability: once the redirect is proven, skip the
+        // full aesthetic probe suite (readable-text, screenshot, color-buckets,
+        // hover) and do NOT publish a CloudPageFinding under this route's slug.
+        // The coverage gate keys off case existence in CLOUD_AUDIT_CASES
+        // (verified in the registry-sync test above), not off a findings
+        // entry, so reachability is proven and the route is counted as audited
+        // without falsely attributing the redirect destination's homepage
+        // aesthetics to this route's slug. Surface-specific coverage for the
+        // bridge is provided by focused component tests (SsoBridgeRoute.test.tsx).
         if (auditCase.expectedFinalPath) {
           await expect
             .poll(async () => new URL(page.url()).pathname, {
@@ -620,6 +628,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
               timeout: 10_000,
             })
             .toMatch(auditCase.expectedFinalPath);
+          return;
         }
 
         // Wait for the page to actually paint text (lazy route chunk +
