@@ -281,6 +281,9 @@ test("browser iframe focus handoff survives delayed autofocus without stealing d
   const tabId = snapshot.tabs[0].id;
 
   const composer = page.getByRole("combobox", { name: "message" });
+  // The page may remain under a stationary pointer while the user types in
+  // chat. Hover alone must not authorize a later page autofocus.
+  await iframe.hover();
   await composer.focus();
   const polledAgentUrl = `${fixtureOrigin}/__browser-focus-fixture?auto=1&case=agent-poll`;
   const navigateResponse = await request.post(

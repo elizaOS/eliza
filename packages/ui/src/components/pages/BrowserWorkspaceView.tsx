@@ -591,7 +591,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     new Map<HTMLIFrameElement, BrowserIframeFocusHandoff>(),
   );
   const iframeFocusTimersRef = useRef(new Set<number>());
-  const iframePointerInsideRef = useRef(new WeakSet<HTMLIFrameElement>());
   const browserActionFocusReturnTargetRef = useRef<HTMLElement | null>(null);
   const pendingIframeFocusReturnTargetsRef = useRef(
     new Map<string, HTMLElement | null>(),
@@ -876,20 +875,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         activeElement === document.documentElement ||
         activeElement === workspaceRootRef.current;
       if (activeElement === iframe || parentFocusIsNeutral) {
-        // Cross-origin pointer events do not bubble into the parent document,
-        // but pointer enter/leave on the iframe element do. A focused iframe
-        // under the pointer is therefore deliberate user interaction;
-        // programmatic page autofocus arrives without it. WebKit may expose a
-        // neutral parent activeElement while focus lives in the child frame,
-        // so that state must receive the same bounded restoration treatment.
-        if (
-          iframePointerInsideRef.current.has(iframe) ||
-          iframe.matches(":hover")
-        ) {
-          releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff);
-          return;
-        }
-
+        // Pointer presence is not intent: a full-surface Browser commonly
+        // remains hovered while the user types in chat. Only pointer-down or
+        // keyboard entry cancels the handoff, through the listeners below.
+        // WebKit may expose a neutral parent activeElement while focus lives
+        // in the child frame, so that state receives the same restoration.
         const returnTarget = isAvailableBrowserFocusTarget(handoff.returnTarget)
           ? handoff.returnTarget
           : workspaceRootRef.current;
@@ -979,12 +969,24 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     (iframe: HTMLIFrameElement) => {
       const handoff = iframeFocusHandoffsRef.current.get(iframe);
       if (!handoff) return;
+      if (document.activeElement === iframe) {
+        // A cross-origin child does not bubble its pointer events into the
+        // embedding document. Focus that reached the frame before its load
+        // event is therefore the durable signal that the user entered the
+        // still-loading page; the delayed-autofocus guard must not undo it.
+        releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff);
+        return;
+      }
       clearBrowserWorkspaceIframeFocusTimer(handoff);
       handoff.loaded = true;
       handoff.deadline = Date.now() + BROWSER_IFRAME_FOCUS_SETTLE_MS;
       monitorBrowserWorkspaceIframeFocus(iframe, handoff);
     },
-    [clearBrowserWorkspaceIframeFocusTimer, monitorBrowserWorkspaceIframeFocus],
+    [
+      clearBrowserWorkspaceIframeFocusTimer,
+      monitorBrowserWorkspaceIframeFocus,
+      releaseBrowserWorkspaceIframeFocusReturn,
+    ],
   );
 
   useEffect(() => {
@@ -2980,12 +2982,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               // that cross-origin without an extension content script.
               className={`absolute inset-0 h-full w-full border-0 bg-bg transition-opacity ${visibilityClass}`}
               style={{ colorScheme: uiTheme }}
-              onPointerEnter={(event) => {
-                iframePointerInsideRef.current.add(event.currentTarget);
-              }}
-              onPointerLeave={(event) => {
-                iframePointerInsideRef.current.delete(event.currentTarget);
-              }}
               onPointerDownCapture={(event) => {
                 releaseBrowserWorkspaceIframeFocusReturn(event.currentTarget);
               }}

@@ -157,9 +157,13 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       iframe.focus();
       await waitFor(() => expect(document.activeElement).toBe(composer));
 
-      // An intentional pointer interaction cancels the bounded handoff, so the
-      // user can take control of the embedded page before the load settles.
+      // Hover is common while the user types in chat; it must not turn later
+      // page autofocus into an apparent intentional frame interaction.
       fireEvent.pointerEnter(iframe);
+      iframe.focus();
+      await waitFor(() => expect(document.activeElement).toBe(composer));
+
+      // A real pointer-down does transfer intent to the embedded page.
       fireEvent.pointerDown(iframe);
       iframe.focus();
       expect(document.activeElement).toBe(iframe);
