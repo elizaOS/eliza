@@ -38,6 +38,7 @@ import {
   startAgentProvisioning,
 } from "../src/helpers/provisioning";
 import { seedModelPricing } from "../src/helpers/seed-pricing";
+import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
 import { expect, test } from "../src/helpers/test-fixtures";
 
 // Context-echo mock LLM so the shared turns produce a deterministic, real
@@ -106,14 +107,30 @@ test.describe("app onboarding handoff — success switch", () => {
       const convoUrl = `/api/v1/eliza/agents/${sharedAgentId}/api/conversations/${sharedAgentId}/messages`;
       const FIRST = "Remember: my project is codenamed Aurora.";
       const SECOND = "What is my project codenamed?";
-      const t1 = await c<{ text?: string }>("POST", convoUrl, { text: FIRST });
-      expect(t1.status, "first shared turn accepted").toBe(200);
-      const t2 = await c<{ text?: string }>("POST", convoUrl, { text: SECOND });
+      // A freshly created shared agent is cold: scope and conversation caches
+      // hydrate under waitUntil, so the first calls answer the retryable
+      // warming 503 (see src/helpers/shared-runtime.ts). Honour that contract;
+      // any other status still fails the assertions below immediately.
+      const t1 = await retrySharedRuntimeWarming<{ text?: string }>(() =>
+        c<{ text?: string }>("POST", convoUrl, { text: FIRST }),
+      );
+      expect(
+        t1.status,
+        `first shared turn accepted: ${JSON.stringify(t1.json)}`,
+      ).toBe(200);
+      const t2 = await retrySharedRuntimeWarming<{ text?: string }>(() =>
+        c<{ text?: string }>("POST", convoUrl, { text: SECOND }),
+      );
       expect(t2.status, "second shared turn accepted").toBe(200);
 
-      const sharedHistory = await c<{
+      const sharedHistory = await retrySharedRuntimeWarming<{
         messages?: Array<{ role: string; text: string }>;
-      }>("GET", convoUrl);
+      }>(() =>
+        c<{ messages?: Array<{ role: string; text: string }> }>(
+          "GET",
+          convoUrl,
+        ),
+      );
       expect(
         sharedHistory.json.messages?.length,
         "shared transcript has both turns (user+assistant ×2)",

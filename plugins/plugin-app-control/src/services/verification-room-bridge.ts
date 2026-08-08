@@ -30,13 +30,9 @@
 
 import { randomUUID } from "node:crypto";
 import type { IAgentRuntime, Memory, SwarmEvent, UUID } from "@elizaos/core";
-import {
-	getSwarmCoordinatorService,
-	logger,
-	resolveServerOnlyPort,
-	Service,
-} from "@elizaos/core";
+import { getSwarmCoordinatorService, logger, Service } from "@elizaos/core";
 import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
+import { getAppControlApiBase } from "../loopback-api.js";
 import { loadAppFromWorkdir } from "./verification-helpers.js";
 
 export const VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE = "verification-room-bridge";
@@ -176,10 +172,9 @@ function decodeEvent(event: SwarmEvent): BridgeEventPayload | null {
 async function loadPluginFromWorkdir(
 	workdir: string,
 ): Promise<{ ok: boolean; pluginName?: string; error?: string }> {
-	const port = resolveServerOnlyPort(process.env);
 	try {
 		const resp = await fetch(
-			`http://127.0.0.1:${port}/api/plugins/load-from-directory`,
+			`${getAppControlApiBase()}/api/plugins/load-from-directory`,
 			{
 				method: "POST",
 				headers: createViewsRequestHeaders(),

@@ -31,12 +31,25 @@ const poolMock = {
   selectionState: vi.fn(),
 };
 
-vi.mock("@elizaos/auth/account-storage", () => ({
-  deleteAccount: vi.fn(),
-  listAccounts: vi.fn(() => []),
-  loadAccount: vi.fn(() => null),
-  saveAccount: vi.fn(),
-}));
+vi.mock("@elizaos/auth/account-storage", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@elizaos/auth/account-storage")>();
+  return {
+    ...actual,
+    // Storage I/O is mocked; everything else (notably the pure
+    // assertCanonicalAccountId guard from #17464) stays real so id
+    // enforcement remains covered. The policy factory is stubbed because
+    // the real one mkdirs the state root, and every consumer of the policy
+    // object here is one of the mocked storage functions.
+    createRuntimeAccountStoragePolicy: vi.fn(
+      () => ({}) as ReturnType<typeof actual.createRuntimeAccountStoragePolicy>,
+    ),
+    deleteAccount: vi.fn(),
+    listAccounts: vi.fn(() => []),
+    loadAccount: vi.fn(() => null),
+    saveAccount: vi.fn(),
+  };
+});
 
 vi.mock("@elizaos/auth/credentials", async (importOriginal) => {
   const actual =
@@ -226,8 +239,10 @@ describe("accounts routes provider-scoped account resolution", () => {
     expect(poolMock.deleteMetadata.mock.calls).toEqual([
       ["openai-api", "shared-id"],
     ]);
+    // Third argument is the runtime storage policy (#17464); its ownership
+    // semantics are covered by packages/auth, so only its presence matters.
     expect(vi.mocked(deleteAccount).mock.calls).toEqual([
-      ["openai-api", "shared-id"],
+      ["openai-api", "shared-id", expect.anything()],
     ]);
     expect(ctx.body).toEqual({ deleted: true });
   });

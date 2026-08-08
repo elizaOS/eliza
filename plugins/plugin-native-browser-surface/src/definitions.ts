@@ -1,12 +1,13 @@
 /**
  * Public API of the `ElizaSurfaceManager` Capacitor plugin (#15245): the native
  * bridge that layers one isolated web surface per Browser tab on the mobile
- * shell. The renderer never imports this package directly — `@elizaos/ui`'s
+ * shell and masks it around host-rendered overlays. The renderer never imports
+ * this package directly — `@elizaos/ui`'s
  * `capacitor-native-surface-shell.ts` models the same method set structurally
  * and calls it through the Capacitor `Plugins` registry — but the shapes here
  * are the source of truth for both native implementations (iOS `WKWebView` on a
- * dedicated `WKProcessPool` + `WKWebsiteDataStore`; Android out-of-process
- * `WebView` + androidx.webkit `Profile`).
+ * dedicated `WKProcessPool` + `WKWebsiteDataStore`; Android platform-managed
+ * out-of-app `WebView` renderer + androidx.webkit `Profile`).
  *
  * The load-bearing invariant every method upholds: an independent surface always
  * carries an EXPLICIT process + storage policy. `createSurface` rejects when
@@ -15,13 +16,27 @@
  * epic closes.
  */
 
-/** Renderer-process sharing for a surface — its own process, or a shared pool. */
+/**
+ * Native renderer policy. `isolated` means a dedicated pool on iOS and a
+ * verified out-of-app sandboxed renderer on Android, which the OS may reuse
+ * across sibling WebViews. `shared` selects the plugin pool on iOS and leaves
+ * Android renderer placement to the platform.
+ */
 export type SurfaceProcessSharing = "isolated" | "shared";
 
 /** Website-data-store sharing for a surface — its own store, or the host's. */
 export type SurfaceStorageSharing = "isolated" | "shared";
 
-export interface CreateSurfaceOptions {
+export interface SurfaceOwnerOptions {
+  /** Stable product owner across renderer reloads. */
+  owner: string;
+  /** Unique JS-realm token fencing stale commands after a renderer reload. */
+  session: string;
+  /** Monotonic renderer epoch; native rejects every command from older epochs. */
+  epoch: number;
+}
+
+export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
   /** Stable per-surface id (the Browser tab's surface id). */
   id: string;
   /** Initial URL to load, when known. */
@@ -32,22 +47,62 @@ export interface CreateSurfaceOptions {
   storage: SurfaceStorageSharing;
 }
 
-export interface SetBoundsOptions {
-  id: string;
-  /** Rect in host CSS pixels; the native side scales by the display density. */
+export interface SurfaceRect {
   x: number;
   y: number;
   width: number;
   height: number;
 }
 
-export interface NavigateOptions {
+export interface SurfaceCornerRadii {
+  topLeft: number;
+  topRight: number;
+  bottomRight: number;
+  bottomLeft: number;
+}
+
+/** Actual host-space rounded clip enclosing the native page. */
+export interface SurfaceOuterClip extends SurfaceRect {
+  cornerRadii: SurfaceCornerRadii;
+}
+
+export interface SetBoundsOptions extends SurfaceRect, SurfaceOwnerOptions {
+  id: string;
+  /**
+   * Computed host clip in CSS pixels. It travels atomically with the page rect
+   * so a responsive radius change never requires recreating the WebView.
+   */
+  outerClip: SurfaceOuterClip;
+}
+
+/**
+ * Rounded host-space region where the native page yields to React chrome.
+ * Coordinates use the same host CSS-pixel space as {@link SetBoundsOptions}.
+ */
+export interface SurfaceOcclusionRect extends SurfaceRect {
+  cornerRadius: number;
+}
+
+export interface SetOcclusionRectsOptions extends SurfaceOwnerOptions {
+  id: string;
+  rects: SurfaceOcclusionRect[];
+}
+
+export interface NavigateOptions extends SurfaceOwnerOptions {
   id: string;
   url: string;
 }
 
-export interface SurfaceIdOptions {
+export interface SurfaceIdOptions extends SurfaceOwnerOptions {
   id: string;
+}
+
+export interface PresentSurfaceOptions extends SurfaceOwnerOptions {
+  id: string | null;
+}
+
+export interface ReconcileOwnerOptions extends SurfaceOwnerOptions {
+  desiredIds: string[];
 }
 
 /** Debug/test introspection of a single surface's live state. */
@@ -57,6 +112,17 @@ export interface SurfaceState {
   currentUrl: string | null;
   process: SurfaceProcessSharing | null;
   storage: SurfaceStorageSharing | null;
+  owner: string | null;
+  session: string | null;
+  epoch: number | null;
+}
+
+export interface SurfaceStateWithId extends SurfaceState {
+  id: string;
+}
+
+export interface SurfaceStateList {
+  surfaces: SurfaceStateWithId[];
 }
 
 export interface ElizaSurfaceManagerPlugin {
@@ -68,16 +134,23 @@ export interface ElizaSurfaceManagerPlugin {
   createSurface(options: CreateSurfaceOptions): Promise<void>;
   /** Position a surface over the host webview, in host CSS pixels. */
   setBounds(options: SetBoundsOptions): Promise<void>;
+  /**
+   * Punch rounded regions out of the native layer so host-rendered overlays can
+   * paint and receive input without hiding or resizing the underlying page.
+   */
+  setOcclusionRects(options: SetOcclusionRectsOptions): Promise<void>;
   /** Load a URL in an existing surface. */
   navigate(options: NavigateOptions): Promise<void>;
-  /** Bring a surface to the front, above the host. */
-  foregroundSurface(options: SurfaceIdOptions): Promise<void>;
-  /** Keep a surface alive but move it behind the host (warm retention). */
-  backgroundSurface(options: SurfaceIdOptions): Promise<void>;
-  /** Tear a surface down and release its process + storage. */
+  /** Reload an existing surface's current page. */
+  reloadSurface(options: SurfaceIdOptions): Promise<void>;
+  /** Atomically hide all siblings, then present the requested surface or host. */
+  presentSurface(options: PresentSurfaceOptions): Promise<void>;
+  /** Tear a surface down and release its native renderer and storage resources. */
   destroySurface(options: SurfaceIdOptions): Promise<void>;
-  /** Foreground the host web surface (all native surfaces recede). */
-  foregroundHost(): Promise<void>;
   /** Introspect a surface's live state — for debugging and instrumented tests. */
   getSurfaceState(options: SurfaceIdOptions): Promise<SurfaceState>;
+  /** List surfaces owned by this exact JS-realm session. */
+  listSurfaceStates(options: SurfaceOwnerOptions): Promise<SurfaceStateList>;
+  /** Destroy prior-realm/orphan surfaces before this session starts issuing work. */
+  reconcileOwner(options: ReconcileOwnerOptions): Promise<void>;
 }

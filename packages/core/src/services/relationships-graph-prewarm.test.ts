@@ -3,7 +3,7 @@
  * stale-while-revalidate cache instead of awaiting a first-build that pins
  * the event loop past the 3s provider deadline.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import type { IAgentRuntime } from "../types/index";
 import { createNativeRelationshipsGraphService } from "./relationships-graph-builder";
 

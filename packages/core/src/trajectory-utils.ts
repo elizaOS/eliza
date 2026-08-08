@@ -32,11 +32,13 @@ import {
 import { stringifyForDiagnostics } from "./runtime/json-output";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker";
+import { sanitizeTrajectoryJsonObject } from "./services/trajectory-json";
 import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
 } from "./trajectory-context";
+import type { ActionResult } from "./types/components";
 import type { ContextEvent, ContextObject } from "./types/context-object";
 import { isTextGenerationModelType } from "./types/model";
 import type { IAgentRuntime } from "./types/runtime";
@@ -443,6 +445,9 @@ type TrajectoryStepState = {
 	agentPoints?: number;
 	agentPnL?: number;
 	openPositions?: number;
+	kind?: "llm" | "action" | "evaluator";
+	parentStepId?: string;
+	evaluatorName?: string;
 };
 
 type TrajectoryStepKindLike = "llm" | "action";
@@ -471,11 +476,24 @@ type TrajectoryLoggerLike = {
 		options?: TrajectoryStartOptions,
 	) => Promise<string> | string;
 	startStep?: (trajectoryId: string, state: TrajectoryStepState) => string;
+	completeStep?: (
+		trajectoryId: string,
+		stepId: string,
+		action: {
+			actionType: string;
+			actionName: string;
+			parameters: Record<string, JsonValue>;
+			success: boolean;
+			result?: Record<string, JsonValue>;
+			error?: string;
+		},
+	) => void;
 	endTrajectory?: (
 		stepIdOrTrajectoryId: string,
 		status?: TrajectoryFinalStatus,
 		finalMetrics?: Record<string, unknown>,
 	) => Promise<void> | void;
+	releaseTrajectoryOwnership?: (stepIdOrTrajectoryId: string) => void;
 	flushWriteQueue?: (trajectoryId: string) => Promise<void> | void;
 	logLlmCall?: (params: { stepId: string } & TrajectoryLlmCallDetails) => void;
 	/**
@@ -1131,24 +1149,45 @@ export async function withStandaloneTrajectory<T>(
 		return callback();
 	}
 
-	const trajectoryId = String(
-		await trajectoryLogger.startTrajectory(runtime.agentId, {
+	let trajectoryId: string;
+	try {
+		trajectoryId = String(
+			await trajectoryLogger.startTrajectory(runtime.agentId, {
+				source: options.source,
+				metadata: options.metadata,
+			}),
+		).trim();
+	} catch (error) {
+		// error-policy:J7 standalone capture setup is diagnostic; without a
+		// durable trajectory owner the business callback runs uncaptured.
+		runtime.reportError("StandaloneTrajectory.start", error, {
 			source: options.source,
-			metadata: options.metadata,
-		}),
-	).trim();
+			diagnosticOnly: true,
+		});
+		return callback();
+	}
 	if (!trajectoryId) {
 		return callback();
 	}
 
-	const stepId =
-		typeof trajectoryLogger.startStep === "function"
-			? String(
+	let stepId = trajectoryId;
+	if (typeof trajectoryLogger.startStep === "function") {
+		try {
+			stepId =
+				String(
 					trajectoryLogger.startStep(trajectoryId, {
 						timestamp: Date.now(),
 					}),
-				).trim() || trajectoryId
-			: trajectoryId;
+				).trim() || trajectoryId;
+		} catch (error) {
+			// error-policy:J7 the parent already exists, so retain its correlation
+			// as the fallback step and close it after the callback finishes.
+			runtime.reportError("StandaloneTrajectory.startStep", error, {
+				trajectoryId,
+				diagnosticOnly: true,
+			});
+		}
+	}
 
 	let completed = false;
 	try {
@@ -1160,14 +1199,33 @@ export async function withStandaloneTrajectory<T>(
 		return result;
 	} finally {
 		if (typeof trajectoryLogger.flushWriteQueue === "function") {
-			await trajectoryLogger.flushWriteQueue(trajectoryId);
+			try {
+				await trajectoryLogger.flushWriteQueue(trajectoryId);
+			} catch (error) {
+				// error-policy:J7 standalone trajectory persistence is diagnostic;
+				// a successful wrapped operation remains authoritative.
+				runtime.reportError("StandaloneTrajectory.flush", error, {
+					trajectoryId,
+					diagnosticOnly: true,
+				});
+			}
 		}
-		await trajectoryLogger.endTrajectory(
-			trajectoryId,
-			completed
-				? (options.successStatus ?? "completed")
-				: (options.errorStatus ?? "error"),
-		);
+		try {
+			await trajectoryLogger.endTrajectory(
+				trajectoryId,
+				completed
+					? (options.successStatus ?? "completed")
+					: (options.errorStatus ?? "error"),
+			);
+		} catch (error) {
+			// error-policy:J7 terminal telemetry failure cannot replace the
+			// callback's result or error at this wrapper boundary.
+			runtime.reportError("StandaloneTrajectory.end", error, {
+				trajectoryId,
+				diagnosticOnly: true,
+			});
+			trajectoryLogger.releaseTrajectoryOwnership?.(trajectoryId);
+		}
 	}
 }
 
@@ -1374,24 +1432,21 @@ function tryStringify(value: unknown): string {
 	return stringifyForDiagnostics({ response: value });
 }
 
-function generateChildStepId(prefix: string): string {
-	return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 async function withChildTrajectoryStep<T>(
 	runtime: IAgentRuntime | null | undefined,
-	options: { stepIdPrefix: string; purpose: string; actionName?: string },
-	fn: () => Promise<T> | T,
+	options: { purpose: string; actionName?: string; evaluatorName?: string },
+	fn: (hasChildStep: boolean) => Promise<T> | T,
 ): Promise<T> {
 	if (!runtime) {
-		return fn();
+		return fn(false);
 	}
 
 	const parentCtx = getTrajectoryContext();
 	const parentStepId = parentCtx?.trajectoryStepId;
 	if (!(typeof parentStepId === "string" && parentStepId.trim() !== "")) {
-		return fn();
+		return fn(false);
 	}
+	const normalizedParentStepId = parentStepId.trim();
 	const trajectoryId =
 		typeof parentCtx?.trajectoryId === "string" &&
 		parentCtx.trajectoryId.trim() !== ""
@@ -1404,61 +1459,152 @@ async function withChildTrajectoryStep<T>(
 		(typeof trajectoryLogger.isEnabled === "function" &&
 			!trajectoryLogger.isEnabled())
 	) {
-		return fn();
+		return fn(false);
 	}
 
-	let childStepId = generateChildStepId(options.stepIdPrefix);
+	let childStepId = normalizedParentStepId;
+	let hasChildStep = false;
 
 	if (trajectoryId && typeof trajectoryLogger.startStep === "function") {
 		try {
 			const startedStepId = trajectoryLogger.startStep(trajectoryId, {
 				timestamp: Date.now(),
+				parentStepId: normalizedParentStepId,
+				kind:
+					options.purpose === "action"
+						? "action"
+						: options.purpose === "evaluation"
+							? "evaluator"
+							: "llm",
+				evaluatorName: options.evaluatorName,
 			});
 			const normalizedStartedStepId =
 				typeof startedStepId === "string" ? startedStepId.trim() : "";
 			if (
 				normalizedStartedStepId !== "" &&
-				normalizedStartedStepId !== trajectoryId
+				normalizedStartedStepId !== trajectoryId &&
+				normalizedStartedStepId !== normalizedParentStepId
 			) {
 				childStepId = normalizedStartedStepId;
+				hasChildStep = true;
 			}
 		} catch (error) {
 			// error-policy:J7 Child-step recording is diagnostic and cannot block
 			// the operation whose parent trajectory remains active.
 			runtime.reportError("TrajectoryChildStep.start", error, {
 				purpose: options.purpose,
+				...(options.evaluatorName
+					? { evaluatorName: options.evaluatorName }
+					: {}),
 				actionName: options.actionName,
+				diagnosticOnly: true,
 			});
 		}
 	}
 
-	const childContext = {
-		...parentCtx,
-		trajectoryId,
-		trajectoryStepId: childStepId,
-		parentStepId,
-		purpose: options.purpose,
-	};
+	const childContext = hasChildStep
+		? {
+				...parentCtx,
+				trajectoryId,
+				trajectoryStepId: childStepId,
+				parentStepId: normalizedParentStepId,
+				purpose: options.purpose,
+			}
+		: { ...parentCtx, purpose: options.purpose };
 
 	try {
-		return await runWithTrajectoryContext(childContext, () => fn());
+		return await runWithTrajectoryContext(childContext, () => fn(hasChildStep));
 	} finally {
-		void trackPostDeliveryTask(
-			runtime,
-			`trajectory-child:${options.purpose}:${childStepId}`,
-			async () => {
-				if (
-					trajectoryId &&
-					typeof trajectoryLogger.flushWriteQueue === "function"
-				) {
-					await trajectoryLogger.flushWriteQueue(trajectoryId);
+		if (trajectoryId || hasChildStep) {
+			const finalizeChild = async (): Promise<void> => {
+				try {
+					if (
+						trajectoryId &&
+						typeof trajectoryLogger.flushWriteQueue === "function"
+					) {
+						await trajectoryLogger.flushWriteQueue(trajectoryId);
+					}
+				} catch (error) {
+					// error-policy:J7 child telemetry remains diagnostic, but evaluator
+					// finalization must complete before the parent run terminal is emitted.
+					runtime.reportError("TrajectoryChildStep.finalize", error, {
+						trajectoryId,
+						parentStepId: normalizedParentStepId,
+						...(hasChildStep ? { childStepId } : {}),
+						purpose: options.purpose,
+						diagnosticOnly: true,
+					});
 				}
-				await annotateActiveTrajectoryStep(runtime, {
-					stepId: parentStepId,
-					appendChildSteps: [childStepId],
-				});
-			},
-		);
+			};
+			if (options.purpose === "evaluation") {
+				// Evaluators already run after user delivery; awaiting their child flush
+				// preserves parent-before-terminal ordering without adding reply latency.
+				await finalizeChild();
+			} else {
+				void trackPostDeliveryTask(
+					runtime,
+					`trajectory-child:${options.purpose}:${childStepId}`,
+					finalizeChild,
+					{ kind: "diagnostic" },
+				);
+			}
+		}
+	}
+}
+
+function completeActionTrajectoryStep<T extends ActionResult>(
+	runtime: IAgentRuntime,
+	actionName: string,
+	parameters: Record<string, unknown> | undefined,
+	result: T,
+	projectResult?: (result: T) => ActionResult,
+): void {
+	const context = getTrajectoryContext();
+	const trajectoryId = context?.trajectoryId?.trim();
+	const stepId = context?.trajectoryStepId?.trim();
+	if (!trajectoryId || !stepId) return;
+
+	const trajectoryLogger = resolveTrajectoryLogger(runtime);
+	if (
+		!trajectoryLogger ||
+		typeof trajectoryLogger.completeStep !== "function"
+	) {
+		return;
+	}
+
+	let phase: "project" | "normalize" | "complete" = "project";
+	try {
+		const projectedResult = projectResult?.(result) ?? result;
+		phase = "normalize";
+		const normalizedParameters = sanitizeTrajectoryJsonObject(parameters ?? {});
+		const normalizedResult = sanitizeTrajectoryJsonObject(projectedResult);
+		if (!normalizedParameters || !normalizedResult) {
+			throw new ElizaError("Action settlement is not JSON serializable", {
+				code: "TRAJECTORY_ACTION_SETTLEMENT_INVALID",
+				context: { actionName, trajectoryId, stepId },
+			});
+		}
+
+		phase = "complete";
+		trajectoryLogger.completeStep(trajectoryId, stepId, {
+			actionType: actionName,
+			actionName,
+			parameters: normalizedParameters,
+			success: projectedResult.success,
+			result: normalizedResult,
+			...(typeof projectedResult.error === "string"
+				? { error: projectedResult.error }
+				: {}),
+		});
+	} catch (error) {
+		// error-policy:J7 Projection, normalization, and persistence are all
+		// diagnostic; the settled tool result remains authoritative.
+		runtime.reportError(`TrajectoryActionStep.${phase}`, error, {
+			actionName,
+			trajectoryId,
+			stepId,
+			diagnosticOnly: true,
+		});
 	}
 }
 
@@ -1470,15 +1616,31 @@ async function withChildTrajectoryStep<T>(
  * Transparent: when no trajectory is active, `fn` runs unchanged and no
  * step is created.
  */
-export async function withActionStep<T>(
+export async function withActionStep<T extends ActionResult>(
 	runtime: IAgentRuntime | null | undefined,
 	actionName: string,
 	fn: () => Promise<T> | T,
+	options: {
+		parameters?: Record<string, unknown>;
+		projectResult?: (result: T) => ActionResult;
+	} = {},
 ): Promise<T> {
 	return withChildTrajectoryStep(
 		runtime,
-		{ stepIdPrefix: "action", purpose: "action", actionName },
-		fn,
+		{ purpose: "action", actionName },
+		async (hasChildStep) => {
+			const result = await fn();
+			if (runtime && hasChildStep) {
+				completeActionTrajectoryStep(
+					runtime,
+					actionName,
+					options.parameters,
+					result,
+					options.projectResult,
+				);
+			}
+			return result;
+		},
 	);
 }
 
@@ -1492,17 +1654,15 @@ export async function withProviderStep<T>(
 ): Promise<T> {
 	return withChildTrajectoryStep(
 		runtime,
-		{ stepIdPrefix: "provider", purpose: "provider", actionName: providerName },
+		{ purpose: "provider", actionName: providerName },
 		fn,
 	);
 }
 
 /**
- * Same as {@link withActionStep} but for evaluator turns. Closes M14:
- * every evaluator invocation emits a child trajectory step whose model
- * call(s) attach to it. The child step's `kind` is set to `"evaluator"`
- * downstream by the agent persistence layer when the LLM call carries
- * `purpose === "evaluation"` (see `appendLlmCall`).
+ * Same as {@link withActionStep} but for evaluator turns. The child lifecycle
+ * carries evaluator identity before nested model calls are captured, so reloads
+ * do not need to infer ownership from prompt purpose.
  */
 export async function withEvaluatorStep<T>(
 	runtime: IAgentRuntime | null | undefined,
@@ -1512,9 +1672,9 @@ export async function withEvaluatorStep<T>(
 	return withChildTrajectoryStep(
 		runtime,
 		{
-			stepIdPrefix: "evaluator",
 			purpose: "evaluation",
 			actionName: evaluatorName,
+			evaluatorName,
 		},
 		fn,
 	);
@@ -1566,6 +1726,7 @@ export async function spawnWithTrajectoryLink<T>(
 				runtime.reportError("Trajectory.linkChild", error, {
 					parentStepId: handle.parentStepId,
 					childStepId,
+					diagnosticOnly: true,
 				});
 				return false;
 			}

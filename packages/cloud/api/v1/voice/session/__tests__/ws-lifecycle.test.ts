@@ -362,6 +362,36 @@ function makeCanonicalChunkFetch(
   }) as unknown as typeof fetch;
 }
 
+function makeLocalTokenFetch(
+  frames: Record<string, unknown>[],
+  donePayload: Record<string, unknown>,
+): typeof fetch {
+  return (async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const frame of frames) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "token", ...frame })}\n\n`,
+            ),
+          );
+        }
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: "done", ...donePayload })}\n\n`,
+          ),
+        );
+        controller.close();
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  }) as unknown as typeof fetch;
+}
+
 function makeControlledCanonicalChunkFetch(): {
   fetchImpl: typeof fetch;
   enqueueChunk: (chunk: string) => void;
@@ -533,6 +563,7 @@ describe("voice-session WS lifecycle", () => {
     expect(requests[0].body).toEqual({
       text: "hello agent",
       metadata: { clientTransport: "realtime_voice" },
+      streamProtocol: "delta-v2",
     });
     expect(requests[0].headers.authorization).toBe("Bearer eliza-server");
     expect(requests[0].headers["x-service-key"]).toBe("Bearer eliza-server");
@@ -1032,6 +1063,112 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("usage");
   });
 
+  test("provisional action chunks and snapshots reach Cartesia only as the authoritative replacement", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeLocalTokenFetch(
+        [
+          { text: "Changed ", provisional: true },
+          {
+            text: "to warm.",
+            fullText: "Changed to warm.",
+            provisional: true,
+          },
+          { fullText: "Okay, I changed my personality to warm." },
+        ],
+        { fullText: "Okay, I changed my personality to warm." },
+      ),
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "make your personality warmer");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe("Okay, I changed my personality to warm.");
+    expect(cartesia.sentText()).not.toContain("Changed to warm.");
+    expect(client.controlTypes()).toContain("llm_first_text");
+    expect(client.controlTypes()).not.toContain("error");
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
+  });
+
+  test("a provisional action suffix after model text reaches Cartesia once at terminal authority", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeLocalTokenFetch(
+        [
+          { text: "Here are your notes" },
+          { text: ": Call", provisional: true },
+          {
+            text: " Shaw",
+            fullText: "Here are your notes: Call Shaw.",
+            provisional: true,
+          },
+        ],
+        { fullText: "Here are your notes: Call Shaw." },
+      ),
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "show my notes");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe("Here are your notes: Call Shaw.");
+    expect(client.controlTypes()).not.toContain("error");
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
+  });
+
+  test("terminal confirmation sends a provisional turnComplete acknowledgement to Cartesia once", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeLocalTokenFetch(
+        [{ fullText: "Opened Notes.", provisional: true }],
+        {
+          fullText: "Opened Notes.",
+          actionResults: [
+            {
+              actionName: "VIEWS",
+              success: true,
+              values: { mode: "show", viewId: "notes", viewPath: "/notes" },
+            },
+          ],
+        },
+      ),
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "open notes");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const synthesisTexts = cartesia.sent
+      .map((frame) => JSON.parse(frame) as { transcript?: unknown })
+      .flatMap((frame) =>
+        typeof frame.transcript === "string" && frame.transcript.length > 0
+          ? [frame.transcript]
+          : [],
+      );
+    expect(synthesisTexts).toEqual(["Opened Notes."]);
+    expect(client.controlTypes()).not.toContain("error");
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
+  });
+
   test("canonical incremental SSE chunk reaches Cartesia before stream completion", async () => {
     const controlled = makeControlledCanonicalChunkFetch();
     const client = new FakeClientSocket();
@@ -1162,6 +1299,32 @@ describe("voice-session WS lifecycle", () => {
     expect(ink.sentChunks.every((c) => c.byteLength === 3200)).toBe(true);
   });
 
+  test("divergent Eliza text surfaces the typed protocol_error at the WS boundary", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeLocalTokenFetch(
+        [{ text: "Opened Notes." }, { fullText: "Created a note instead." }],
+        { fullText: "Created a note instead." },
+      ),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "open notes");
+    await flush();
+    await flush();
+
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "protocol_error",
+        retryable: true,
+      }),
+    );
+    expect(client.controlTypes()).toContain("usage");
+    expect(client.closedWith).toBeNull();
+  });
+
   test("LLM upstream failure becomes a retryable turn error and returns to listening", async () => {
     const client = new FakeClientSocket();
     await connectSession({
@@ -1176,7 +1339,7 @@ describe("voice-session WS lifecycle", () => {
     await flush();
 
     const error = client.controlFrames.find(
-      (f) => f.t === "error" && f.code === "ElizaSseBridgeError",
+      (f) => f.t === "error" && f.code === "upstream_error",
     );
     expect(error).toMatchObject({ retryable: true });
     expect(client.controlTypes()).toContain("usage");
@@ -1247,7 +1410,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({
         t: "error",
-        code: "ElizaSseBridgeError",
+        code: "upstream_error",
         retryable: false,
         upstreamStatus: 404,
         upstreamMessage: "Agent not found",

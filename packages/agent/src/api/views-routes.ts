@@ -903,8 +903,9 @@ export async function handleViewsRoutes(
   // ── POST /api/views/:id/navigate ─────────────────────────────────────────
   // Broadcasts a shell:navigate:view WebSocket event to connected clients unless
   // the caller owns a narrower delivery channel. Realtime voice returns the
-  // validated VIEWS result through its originating WebSocket session, so a
-  // global echo here would navigate unrelated browsers and devices.
+  // validated VIEWS result through its originating WebSocket session; normal app
+  // chat returns it in the completed stream action result. A global echo from
+  // either path would navigate unrelated browsers and devices.
   //
   // Optional body fields:
   //   action: "pin-tab"    — tells the shell to add to desktop tab bar
@@ -919,7 +920,8 @@ export async function handleViewsRoutes(
   //   path: string         — override the navigation path
   //   alwaysOnTop: boolean — for open-window, ask the shell to keep it above normal windows
   //   payload: unknown     — opaque deep-link state consumed by the target view
-  //   delivery: "originating-client" — caller will navigate its own client
+  //   delivery: "originating-client" — realtime caller navigates its own client
+  //   delivery: "completed-action" — app chat navigates from its stream result
   if (method === "POST" && subResource === "navigate") {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
@@ -965,7 +967,10 @@ export async function handleViewsRoutes(
         : undefined;
     const payload =
       body && Object.hasOwn(body, "payload") ? body.payload : undefined;
-    const originatingClientDelivery = body?.delivery === "originating-client";
+    const callerOwnedDelivery =
+      body?.delivery === "originating-client" ||
+      body?.delivery === "completed-action";
+    const originatingClientId = resolveViewInteractClientId(req, body);
     const layoutPayload = {
       ...(layoutViews && layoutViews.length > 0 ? { views: layoutViews } : {}),
       ...(layout ? { layout } : {}),
@@ -1053,8 +1058,8 @@ export async function handleViewsRoutes(
     }
 
     // Skip the echo when the client already navigated or when the caller owns a
-    // narrower delivery channel such as the realtime voice session.
-    if (reportedSource !== "user" && !originatingClientDelivery) {
+    // narrower delivery channel such as realtime voice or the app chat stream.
+    if (reportedSource !== "user" && !callerOwnedDelivery) {
       const navigatePayload: ShellNavigateViewPayload = {
         viewId: id,
         viewPath,
@@ -1067,7 +1072,23 @@ export async function handleViewsRoutes(
         ...layoutPayload,
         ...deepLinkPayload,
       };
-      ctx.broadcastWs?.(createShellNavigateViewWsFrame(navigatePayload));
+      const frame = createShellNavigateViewWsFrame(navigatePayload);
+      if (originatingClientId) {
+        const delivered = ctx.broadcastWsToClientId?.(
+          originatingClientId,
+          frame,
+        );
+        if (delivered === undefined || delivered <= 0) {
+          error(
+            res,
+            `No connected view client "${originatingClientId}" is available for "${id}".`,
+            409,
+          );
+          return true;
+        }
+      } else {
+        ctx.broadcastWs?.(frame);
+      }
     }
 
     json(res, {

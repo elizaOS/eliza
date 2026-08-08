@@ -3,7 +3,7 @@
  * unresolved service start, capping already-started stop waits, and surviving a
  * synchronously-throwing stop. Deterministic: real runtime, no database.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
@@ -28,6 +28,7 @@ describe("AgentRuntime.stop", () => {
 	const previousFastShutdown = process.env.ELIZA_FAST_SHUTDOWN;
 	const previousStopTimeout =
 		process.env.ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS;
+	const previousRoomDrainTimeout = process.env.ELIZA_FAST_ROOM_DRAIN_TIMEOUT_MS;
 
 	afterEach(() => {
 		if (previousFastShutdown === undefined) {
@@ -39,6 +40,11 @@ describe("AgentRuntime.stop", () => {
 			delete process.env.ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS;
 		} else {
 			process.env.ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS = previousStopTimeout;
+		}
+		if (previousRoomDrainTimeout === undefined) {
+			delete process.env.ELIZA_FAST_ROOM_DRAIN_TIMEOUT_MS;
+		} else {
+			process.env.ELIZA_FAST_ROOM_DRAIN_TIMEOUT_MS = previousRoomDrainTimeout;
 		}
 	});
 
@@ -124,6 +130,49 @@ describe("AgentRuntime.stop", () => {
 		expect(process.env.ELIZA_FAST_SHUTDOWN).toBe(previousFastShutdown);
 	});
 
+	it("fails fast without stopping resources beneath a noncooperative room owner", async () => {
+		process.env.ELIZA_FAST_ROOM_DRAIN_TIMEOUT_MS = "5";
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		let stopCalls = 0;
+
+		class ObservedService extends Service {
+			static override serviceType = "shutdown-room-owner-service";
+			capabilityDescription = "observes whether room drain precedes teardown";
+
+			static override async start(): Promise<ObservedService> {
+				return new ObservedService();
+			}
+
+			override async stop(): Promise<void> {
+				stopCalls += 1;
+			}
+		}
+
+		await runtime.registerService(ObservedService);
+		await runtime.getServiceLoadPromise(ObservedService.serviceType);
+		const reportError = vi.spyOn(runtime, "reportError");
+		const lease = await runtime.roomHandlerQueue.acquire(
+			"00000000-0000-4000-8000-000000000099",
+		);
+
+		await expect(runtime.stop({ fast: true })).rejects.toMatchObject({
+			code: "RUNTIME_FAST_STOP_ROOM_DRAIN_TIMEOUT",
+		});
+		expect(stopCalls).toBe(0);
+		expect(reportError).toHaveBeenCalledWith(
+			"AgentRuntime.stop.roomDrain",
+			expect.objectContaining({
+				code: "RUNTIME_FAST_STOP_ROOM_DRAIN_TIMEOUT",
+			}),
+			expect.objectContaining({ pendingRooms: 1 }),
+		);
+
+		await lease.release();
+		await runtime.stop({ fast: true });
+		expect(stopCalls).toBe(1);
+	});
+
 	it("preserves service startup failures instead of resolving them as absence", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
 		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
@@ -138,14 +187,25 @@ describe("AgentRuntime.stop", () => {
 		}
 
 		await runtime.registerService(FailingStartService);
-		await expect(
-			runtime.getServiceLoadPromise(FailingStartService.serviceType),
-		).rejects.toMatchObject({
+		let startupError: unknown;
+		try {
+			await runtime.getServiceLoadPromise(FailingStartService.serviceType);
+		} catch (error) {
+			startupError = error;
+		}
+		expect(startupError).toMatchObject({
 			code: "SERVICE_START_FAILED",
-			cause: expect.objectContaining({
-				message: "startup dependency unavailable",
-			}),
 		});
+		const aggregate = (startupError as { cause?: unknown }).cause;
+		expect(aggregate).toBeInstanceOf(AggregateError);
+		expect((aggregate as AggregateError).errors).toEqual([
+			expect.objectContaining({
+				code: "SERVICE_START_FAILED",
+				cause: expect.objectContaining({
+					message: "startup dependency unavailable",
+				}),
+			}),
+		]);
 		await runtime.stop();
 	});
 

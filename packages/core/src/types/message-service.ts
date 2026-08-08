@@ -3,6 +3,8 @@
  * a turn (retries, multi-step, streaming, continue-after-actions) and the result
  * shapes the message service returns. Consumed by the runtime message handler.
  */
+
+import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type {
 	ActionResult,
 	AgentContext,
@@ -35,10 +37,21 @@ export interface MessageProcessingOptions {
 	/** Signal to abort message processing */
 	abortSignal?: AbortSignal;
 	/**
+	 * Exact room ownership held by a host whose persistence boundary outlives
+	 * this service invocation. Required when async-local context is unavailable.
+	 */
+	roomHandlerLease?: RoomHandlerLease;
+	/**
 	 * Receives each action result as soon as its handler boundary settles. Hosts
 	 * use this to retain committed-effect knowledge if later turn work aborts.
 	 */
 	onSettledActionResult?: (result: ActionResult) => void;
+	/**
+	 * Receives the run-terminal capability as soon as the message service owns it.
+	 * Hosts retain this across a later thrown turn so recovery delivery cannot be
+	 * mistaken for a delivery-only trajectory terminal.
+	 */
+	onTrajectoryTerminalOwner?: (owner: "run") => void;
 	/**
 	 * When true, do not discard responses when a newer message is being processed (same as BASIC_CAPABILITIES_KEEP_RESP).
 	 * @default resolved from runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") if not set
@@ -53,6 +66,12 @@ export interface MessageProcessingResult {
 	didRespond: boolean;
 	responseContent?: Content | null;
 	responseMessages: Memory[];
+	/**
+	 * The returned delivery belongs to a live message-service run whose detached
+	 * task barrier will emit `RUN_ENDED`. Hosts must preserve this capability on
+	 * synthetic `MESSAGE_SENT` events instead of treating delivery as terminal.
+	 */
+	trajectoryTerminalOwner?: "run";
 	/**
 	 * IDs from `responseMessages` that this service durably committed before
 	 * returning. Transport layers use this instead of guessing persistence from

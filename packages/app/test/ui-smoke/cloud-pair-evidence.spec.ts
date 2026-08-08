@@ -3,13 +3,17 @@
  *
  * Runs the REAL production boot adopter (`applyCloudPairSessionToken` in
  * packages/app/src/main.tsx) and the REAL credential modules (cloud-pair-token,
- * CloudPairRelay, persistence) in headless Chromium against the REAL Vite dev
- * server, with the REAL localStorage/sessionStorage. No jsdom, no module mocks.
+ * CloudPairRelay, persistence) in headless Chromium against the smoke stack's
+ * origin, with the REAL localStorage/sessionStorage. No jsdom, no module mocks.
  *
- * The boot adopter source is extracted from the live main.tsx module graph —
- * the exact extraction the reviewed unit test (`cloud-pair-session-token.test.ts`)
- * performs — and executed in the page with the real module collaborators bound
- * in. This is a browser-real execution of production code, not a reimplementation.
+ * The smoke stack serves the BUILT renderer (there is no dev-server module
+ * graph to dynamic-import from), so the real modules are bundled from their
+ * repo sources with esbuild at spec runtime — the same technique the reviewed
+ * accounts-ui e2e uses — and injected into the page as one script. The boot
+ * adopter source is extracted from the repo's main.tsx — the exact extraction
+ * the reviewed unit test (`cloud-pair-session-token.test.ts`) performs — and
+ * executed in the page with the real module collaborators bound in. This is a
+ * browser-real execution of production code, not a reimplementation.
  *
  * Evidence captured (saved under test-results/cloud-pair-evidence/):
  *   - storage-dump-<phase>.json   full localStorage+sessionStorage key/value dump
@@ -19,15 +23,158 @@
  * Run with:
  *   ELIZA_UI_SMOKE_REUSE_SERVER=1 bun x playwright test cloud-pair-evidence --config playwright.ui-smoke.config.ts
  */
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
+import { build, type Plugin as EsbuildPlugin, transform } from "esbuild";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // HERE = packages/app/test/ui-smoke → up 2 = packages/app
 const APP_DIR = resolve(HERE, "..", "..");
+const REPO_ROOT = resolve(APP_DIR, "..", "..");
 const OUT_DIR = resolve(APP_DIR, "test-results", "cloud-pair-evidence");
+
+/**
+ * Bundle the REAL production modules (plus react/react-dom for the render
+ * test) from their repo sources into one browser IIFE exposing
+ * `window.__cloudPairEvidenceModules`. Built once per worker; esbuild only
+ * bundles — the module code under test is the checked-in production source.
+ */
+let evidenceBundlePromise: Promise<string> | null = null;
+function evidenceModulesBundle(): Promise<string> {
+  evidenceBundlePromise ??= (async () => {
+    const ui = join(REPO_ROOT, "packages", "ui", "src");
+    // Node-builtin imports reached through transitive dependency chains become
+    // inert proxies (mirrors the reviewed accounts-ui e2e bundler): the
+    // modules under test are browser storage/auth code and never call them.
+    const nodeBuiltins = new Set([
+      ...builtinModules,
+      ...builtinModules.map((name) => `node:${name}`),
+    ]);
+    // `@elizaos/core` is never imported by the modules under test (verified —
+    // it only enters transitively through i18n/api barrel collaterals), and
+    // its plugin-manager subtree is node-only, so the whole package becomes an
+    // inert proxy as well.
+    const stubElizaCore: EsbuildPlugin = {
+      name: "stub-eliza-core",
+      setup(b) {
+        b.onResolve({ filter: /^@elizaos\/core(\/.*)?$/ }, (args) => ({
+          path: args.path,
+          namespace: "eliza-core-stub",
+        }));
+        b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
+          contents:
+            "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+          loader: "js",
+        }));
+      },
+    };
+    const stubNodeBuiltins: EsbuildPlugin = {
+      name: "stub-node-builtins",
+      setup(b) {
+        b.onResolve({ filter: /.*/ }, (args) => {
+          const bare = args.path.replace(/^node:/, "").split("/")[0] ?? "";
+          if (
+            args.path.startsWith("node:") ||
+            nodeBuiltins.has(args.path) ||
+            builtinModules.includes(bare)
+          ) {
+            return { path: args.path, namespace: "node-stub" };
+          }
+          return null;
+        });
+        b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
+          contents:
+            "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+          loader: "js",
+        }));
+      },
+    };
+    const entry = [
+      `export * as relay from ${JSON.stringify(join(ui, "components/auth/CloudPairRelay.tsx"))};`,
+      `export * as tokenState from ${JSON.stringify(join(ui, "state/cloud-pair-token.ts"))};`,
+      `export * as persistence from ${JSON.stringify(join(ui, "state/persistence.ts"))};`,
+      `export * as agentRecovery from ${JSON.stringify(join(ui, "state/agent-session-recovery.ts"))};`,
+      `export * as agentProfiles from ${JSON.stringify(join(ui, "state/agent-profiles.ts"))};`,
+      `export * as cloudAgentBase from ${JSON.stringify(join(ui, "utils/cloud-agent-base.ts"))};`,
+      `export * as realm from ${JSON.stringify(join(ui, "surface-realm-channel.ts"))};`,
+      `export * as react from "react";`,
+      `export * as reactDomClient from "react-dom/client";`,
+    ].join("\n");
+    const result = await build({
+      stdin: {
+        contents: entry,
+        resolveDir: APP_DIR,
+        sourcefile: "cloud-pair-evidence-entry.ts",
+        loader: "ts",
+      },
+      bundle: true,
+      write: false,
+      format: "iife",
+      globalName: "__cloudPairEvidenceModules",
+      platform: "browser",
+      jsx: "automatic",
+      define: { "process.env.NODE_ENV": '"production"' },
+      loader: {
+        ".css": "empty",
+        ".svg": "dataurl",
+        ".png": "dataurl",
+        ".woff": "empty",
+        ".woff2": "empty",
+      },
+      plugins: [stubElizaCore, stubNodeBuiltins],
+      absWorkingDir: REPO_ROOT,
+      logLevel: "silent",
+    });
+    const [output] = result.outputFiles;
+    if (!output) throw new Error("evidence module bundle produced no output");
+    return output.text;
+  })();
+  return evidenceBundlePromise;
+}
+
+/**
+ * Serve a bare same-origin HTML shell instead of the mounted app: the app
+ * boots a view realm whose surface-realm guard (correctly) rejects raw
+ * localStorage writes to the reserved `eliza:` namespace from page context,
+ * so the harness must run BEFORE any view mounts. `stylesheetHrefs` links the
+ * smoke stack's real built app stylesheets so rendered surfaces are the
+ * styled production output, not an unstyled DOM skeleton.
+ */
+async function serveBareShell(
+  page: Page,
+  stylesheetHrefs: readonly string[] = [],
+): Promise<void> {
+  const links = stylesheetHrefs
+    .map((href) => `<link rel="stylesheet" href="${href}">`)
+    .join("");
+  await page.route("**/*", async (route) => {
+    const url = route.request().url();
+    if (url.endsWith("/") || url.endsWith("/index.html")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: `<!doctype html><html><head><meta charset="utf-8">${links}</head><body><div id='root'></div></body></html>`,
+      });
+      return;
+    }
+    await route.fallback();
+  });
+}
+
+/** The built app's stylesheet hrefs, read from the served index.html. */
+async function builtStylesheetHrefs(baseURL: string): Promise<string[]> {
+  const response = await fetch(baseURL);
+  if (!response.ok) {
+    throw new Error(`smoke stack index fetch failed: ${response.status}`);
+  }
+  const html = await response.text();
+  return [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g)]
+    .map((match) => match[1])
+    .filter((href): href is string => typeof href === "string");
+}
 
 const AGENT_A = "agent-aaaa";
 const AGENT_B = "agent-bbbb";
@@ -39,10 +186,11 @@ const ACTIVE_SERVER_KEY = "elizaos:active-server";
 const AGENT_A_KEY = `eliza:cloud-pair:api-token:${AGENT_A}`;
 const AGENT_B_KEY = `eliza:cloud-pair:api-token:${AGENT_B}`;
 
-// The in-page runner: dynamic-imports the REAL modules through the Vite module
-// graph, extracts + executes the REAL boot adopter from main.tsx, and runs the
-// full lifecycle. Returns structured phases for assertion + evidence save.
-const IN_PAGE_RUNNER = async () => {
+// The in-page runner: reads the REAL modules from the injected evidence
+// bundle, extracts + executes the REAL boot adopter from the main.tsx source
+// (passed in from the node side, read from the repo), and runs the full
+// lifecycle. Returns structured phases for assertion + evidence save.
+const IN_PAGE_RUNNER = async (mainSource: string) => {
   const agentA = "agent-aaaa";
   const agentB = "agent-bbbb";
   const tokenA = "pair-token-agent-a";
@@ -50,10 +198,6 @@ const IN_PAGE_RUNNER = async () => {
   const legacyToken = "pair-token-legacy";
   const legacyKey = "eliza:cloud-pair:api-token";
   const activeServerKey = "elizaos:active-server";
-
-  const moduleBase = (window as unknown as { __elizaModuleBasePath?: string })
-    .__elizaModuleBasePath;
-  if (!moduleBase) throw new Error("module base path missing");
 
   const snap = () => {
     const read = (store: Storage) => {
@@ -80,36 +224,34 @@ const IN_PAGE_RUNNER = async () => {
   const adopted: string[] = [];
 
   try {
-    // Import the REAL production modules through the Vite dev module graph.
-    const relay = await import(
-      `/@fs${moduleBase}/packages/ui/src/components/auth/CloudPairRelay.tsx`
-    );
-    const tokenState = await import(
-      `/@fs${moduleBase}/packages/ui/src/state/cloud-pair-token.ts`
-    );
-    const persistence = await import(
-      `/@fs${moduleBase}/packages/ui/src/state/persistence.ts`
-    );
-    const agentRecovery = await import(
-      `/@fs${moduleBase}/packages/ui/src/state/agent-session-recovery.ts`
-    );
-    const agentProfiles = await import(
-      `/@fs${moduleBase}/packages/ui/src/state/agent-profiles.ts`
-    );
-    const cloudAgentBase = await import(
-      `/@fs${moduleBase}/packages/ui/src/utils/cloud-agent-base.ts`
-    );
-    const _bootConfig = await import(
-      `/@fs${moduleBase}/packages/ui/src/config/boot-config-store.ts`
-    );
-    const realm = await import(
-      `/@fs${moduleBase}/packages/ui/src/surface-realm-channel.ts`
-    );
+    // The REAL production modules, bundled from repo source and injected by
+    // the node side before this runner executes.
+    const modules = (
+      window as unknown as {
+        __cloudPairEvidenceModules?: {
+          relay: typeof import("../../../ui/src/components/auth/CloudPairRelay");
+          tokenState: typeof import("../../../ui/src/state/cloud-pair-token");
+          persistence: typeof import("../../../ui/src/state/persistence");
+          agentRecovery: typeof import("../../../ui/src/state/agent-session-recovery");
+          agentProfiles: typeof import("../../../ui/src/state/agent-profiles");
+          cloudAgentBase: typeof import("../../../ui/src/utils/cloud-agent-base");
+          realm: typeof import("../../../ui/src/surface-realm-channel");
+        };
+      }
+    ).__cloudPairEvidenceModules;
+    if (!modules) throw new Error("evidence module bundle not injected");
+    const {
+      relay,
+      tokenState,
+      persistence,
+      agentRecovery,
+      agentProfiles,
+      cloudAgentBase,
+      realm,
+    } = modules;
 
-    // Fetch the REAL main.tsx and extract applyCloudPairSessionToken (same
+    // Extract applyCloudPairSessionToken from the REAL main.tsx source (same
     // extraction as the reviewed unit test).
-    const mainResp = await fetch(`/@fs${moduleBase}/packages/app/src/main.tsx`);
-    const mainSource = await mainResp.text();
     const fnStart = mainSource.indexOf("function applyCloudPairSessionToken()");
     const fnEnd = mainSource.indexOf(
       "function shouldEnableElectrobunMacWindowDrag()",
@@ -248,69 +390,45 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
     baseURL,
   }) => {
     expect(baseURL, "baseURL required").toBeTruthy();
-    await page.addInitScript(
-      (root) => {
-        (
-          window as unknown as { __elizaModuleBasePath?: string }
-        ).__elizaModuleBasePath = root;
-        // Bare shell has no app boot → no Vite process polyfill. Provide the
-        // minimal browser-safe shim some @elizaos/ui module chains read.
-        (window as unknown as Record<string, unknown>).process = {
-          env: {},
-          browser: true,
-          cwd: () => "/",
-          platform: "linux",
-        };
-      },
-      resolve(HERE, "..", "..", "..", ".."),
-    );
-
-    // Serve a bare HTML shell instead of the mounted app: the app boots a view
-    // realm whose surface-realm guard (correctly) rejects raw localStorage
-    // writes to the reserved `eliza:` namespace from page context. The harness
-    // must run BEFORE any view mounts so the REAL modules can write storage
-    // through the same channels production code uses. Same origin → Vite's
-    // /@fs/ module graph (and the REAL main.tsx source) stays reachable.
-    // The @vitejs/plugin-react preamble is required to transform .tsx modules.
-    await page.route("**/*", async (route) => {
-      const url = route.request().url();
-      if (url.endsWith("/") || url.endsWith("/index.html")) {
-        await route.fulfill({
-          status: 200,
-          contentType: "text/html",
-          body: [
-            "<!doctype html><html><body><div id='root'></div>",
-            "<script type='module'>",
-            "import { injectIntoGlobalHook } from '/@react-refresh';",
-            "injectIntoGlobalHook(window);",
-            "window.$RefreshReg$ = () => {};",
-            "window.$RefreshSig$ = () => (type) => type;",
-            "window.__vite_plugin_react_preamble_installed__ = true;",
-            "</script>",
-            "</body></html>",
-          ].join(""),
-        });
-        return;
-      }
-      await route.fallback();
+    await page.addInitScript(() => {
+      // Bare shell has no app boot → no bundler process polyfill. Provide the
+      // minimal browser-safe shim some @elizaos/ui module chains read.
+      (window as unknown as Record<string, unknown>).process = {
+        env: {},
+        browser: true,
+        cwd: () => "/",
+        platform: "linux",
+      };
     });
 
-    // Load the bare shell so the page origin is the Vite server.
+    await serveBareShell(page);
+
+    // Load the bare shell so the page origin is the smoke stack server.
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(500);
 
-    // Run the real-lifecycle harness in the page.
+    // Inject the REAL production modules, then run the lifecycle harness.
+    await page.addScriptTag({ content: await evidenceModulesBundle() });
+    // The in-page extraction executes the adopter with `new Function`, so hand
+    // it the type-stripped (but otherwise untouched) main.tsx source — the
+    // same shape the retired dev-server module graph used to serve.
+    const mainSource = (
+      await transform(
+        await readFile(join(APP_DIR, "src", "main.tsx"), "utf8"),
+        { loader: "tsx", jsx: "automatic" },
+      )
+    ).code;
     const result = (await page.evaluate(
-      async (runnerSource) => {
+      async ({ runnerSource, mainSource }) => {
         // runnerSource is the stringified function above; execute it in page.
         // eslint-disable-next-line @typescript-eslint/no-implied-eval
-        const runner = new Function(
-          `return (${runnerSource})`,
-        )() as () => Promise<unknown>;
-        return runner();
+        const runner = new Function(`return (${runnerSource})`)() as (
+          mainSource: string,
+        ) => Promise<unknown>;
+        return runner(mainSource);
       },
       // Serialize the runner function body (avoid TS const capture issues).
-      IN_PAGE_RUNNER.toString(),
+      { runnerSource: IN_PAGE_RUNNER.toString(), mainSource },
     )) as Awaited<ReturnType<typeof IN_PAGE_RUNNER>>;
 
     expect(
@@ -377,9 +495,9 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
         `Head: ${process.env.GITHUB_SHA ?? "local"} — baseURL ${baseURL}`,
         "",
         "Method: REAL production modules (CloudPairRelay persist, cloud-pair-token clear,",
-        "persistence, agent-profiles, agent-session-recovery) + REAL boot-adopter source",
-        "extracted from main.tsx, executed in headless Chromium with real",
-        "localStorage/sessionStorage against the real Vite dev server. No jsdom, no mocks.",
+        "persistence, agent-profiles, agent-session-recovery) bundled from repo source +",
+        "REAL boot-adopter source extracted from main.tsx, executed in headless Chromium",
+        "with real localStorage/sessionStorage on the smoke stack's origin. No jsdom, no mocks.",
         "",
         "| Phase | Storage dump | Screenshot |",
         "|---|---|---|",
@@ -411,66 +529,32 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
     // the live session only and render the visibly distinct session-only
     // state instead of silently redirecting as a success.
     expect(baseURL, "baseURL required").toBeTruthy();
-    await page.addInitScript(
-      (root) => {
-        (
-          window as unknown as { __elizaModuleBasePath?: string }
-        ).__elizaModuleBasePath = root;
-        (window as unknown as Record<string, unknown>).process = {
-          env: {},
-          browser: true,
-          cwd: () => "/",
-          platform: "linux",
-        };
-      },
-      resolve(HERE, "..", "..", "..", ".."),
-    );
-    await page.route("**/*", async (route) => {
-      const url = route.request().url();
-      if (url.endsWith("/") || url.endsWith("/index.html")) {
-        await route.fulfill({
-          status: 200,
-          contentType: "text/html",
-          body: [
-            "<!doctype html><html><body><div id='root'></div>",
-            "<script type='module'>",
-            "import { injectIntoGlobalHook } from '/@react-refresh';",
-            "injectIntoGlobalHook(window);",
-            "window.$RefreshReg$ = () => {};",
-            "window.$RefreshSig$ = () => (type) => type;",
-            "window.__vite_plugin_react_preamble_installed__ = true;",
-            "</script>",
-            "</body></html>",
-          ].join(""),
-        });
-        return;
-      }
-      await route.fallback();
+    await page.addInitScript(() => {
+      (window as unknown as Record<string, unknown>).process = {
+        env: {},
+        browser: true,
+        cwd: () => "/",
+        platform: "linux",
+      };
     });
+    // Link the real built app stylesheets so the captured surface is the
+    // styled production render, not an unstyled DOM skeleton.
+    await serveBareShell(page, await builtStylesheetHrefs(baseURL as string));
     await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.addScriptTag({ content: await evidenceModulesBundle() });
 
     await page.evaluate(async () => {
-      const moduleBase = (
-        window as unknown as { __elizaModuleBasePath?: string }
-      ).__elizaModuleBasePath;
-      if (!moduleBase) throw new Error("module base path missing");
-      const relay = await import(
-        `/@fs${moduleBase}/packages/ui/src/components/auth/CloudPairRelay.tsx`
-      );
-      // Pull in the real app stylesheet so the captured surface is the styled
-      // production render, not an unstyled DOM skeleton.
-      await import(`/@fs${moduleBase}/packages/ui/src/styles.ts`);
-      // Bare specifiers resolve through Vite's id-resolution endpoint; a raw
-      // /@fs directory path cannot serve a package entry.
-      const reactModule = await import("/@id/react");
-      const reactDomModule = await import("/@id/react-dom/client");
-      // CJS interop: the pre-bundled dep may hang its API off `default`.
-      const react = reactModule.createElement
-        ? reactModule
-        : reactModule.default;
-      const reactDom = reactDomModule.createRoot
-        ? reactDomModule
-        : reactDomModule.default;
+      const modules = (
+        window as unknown as {
+          __cloudPairEvidenceModules?: {
+            relay: typeof import("../../../ui/src/components/auth/CloudPairRelay");
+            react: typeof import("react");
+            reactDomClient: typeof import("react-dom/client");
+          };
+        }
+      ).__cloudPairEvidenceModules;
+      if (!modules) throw new Error("evidence module bundle not injected");
+      const { relay, react, reactDomClient: reactDom } = modules;
       const rootEl = document.getElementById("root");
       if (!rootEl) throw new Error("root missing");
       const globals = globalThis as Record<string, unknown>;

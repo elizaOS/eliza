@@ -48,12 +48,16 @@ describe("pre-ready boot-hook ownership", () => {
     expect(repairBody).not.toContain("registerLocalInferenceBoot");
   });
 
-  it("resolves hook contributors exclusively from registry data", () => {
+  it("resolves hook contributors from registry data plus the confined host fallback", () => {
     const source = readFileSync(AGENT_BOOT_HOOKS_TS, "utf8");
 
     expect(source).toContain("entry.launch?.bootHook");
     expect(source).toContain("getBootHookContributors");
-    expect(source).not.toContain("plugin-local-inference");
-    expect(source).not.toContain("registerLocalInferenceBoot");
+    // #17964 deliberately added a host-owned local-inference declaration for
+    // packaged bundles whose registry is empty by design. It must stay a data
+    // declaration inside the single fallback constant — registry declarations
+    // for the same id win — and must not become an executable startup call.
+    expect(source).toContain("FALLBACK_BOOT_HOOK_DECLARATIONS");
+    expect(source).not.toContain("registerLocalInferenceBoot(");
   });
 });

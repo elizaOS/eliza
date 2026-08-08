@@ -39,7 +39,6 @@ import {
 import type { Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
 import {
-  dispatchViewActionHandoff,
   dispatchViewActionHandoffDirect,
   findViewActionHandoff,
 } from "../view-action-handoff";
@@ -115,28 +114,13 @@ async function handoffCompletedAction(
     );
   }
   if (findViewActionHandoff(actionResults)) {
-    // Shared/limited cloud agents (Tier-0) serve NO `/api/views/current`
-    // endpoint, so the verify-then-dispatch handoff would throw on the missing
-    // route and the navigation would never fire (#F5-ACTIONS). The shared
-    // runtime already resolved the target deterministically and stamped it into
-    // the summary, so trust it and dispatch the navigate event directly — no
-    // server round-trip.
-    if (isLimitedCloudAgentApiBase(client.getBaseUrl())) {
-      try {
-        dispatchViewActionHandoffDirect(actionResults);
-      } catch (err) {
-        logger.warn(
-          { err },
-          "[useChatSend] shared-agent VIEWS handoff could not reach the renderer",
-        );
-        showFailure(
-          "The agent chose a view, but the app couldn't open it. Try opening the view again.",
-        );
-      }
-      return;
-    }
+    // The completed stream result is scoped to this exact caller and contains
+    // the validated target returned by the successful VIEWS action. Dispatch it
+    // directly instead of consulting process-global `/api/views/current`, which
+    // can belong to another device and is unavailable to REST-only native
+    // renderers. The shell resolves the canonical path from the view id.
     try {
-      await dispatchViewActionHandoff(actionResults);
+      dispatchViewActionHandoffDirect(actionResults);
     } catch (err) {
       // error-policy:J4 the chat turn succeeded, so preserve it while surfacing a
       // distinct navigation failure instead of fabricating an opened view.

@@ -1,13 +1,18 @@
 /**
  * Dispatches shared-agent JSON-RPC requests to the conversation Durable Object.
  *
- * Worker bindings and cache-authorized agent scope are mandatory; the route
- * never falls through to a repository-backed sandbox bridge.
+ * Serves BOTH tiers. Shared agents go to the conversation Durable Object; a
+ * dedicated agent — which the shared resolver refuses by design — is dispatched
+ * to its own container bridge. Losing that second branch is what 404'd every
+ * dedicated agent between 2026-07-23 and #18062.
  */
+import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse, ValidationError } from "@/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox-bridge";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { coordinateSharedBridge } from "@/lib/services/shared-runtime/conversation-coordinator";
@@ -99,6 +104,50 @@ async function __hono_POST(
   }
 }
 
+/**
+ * Forward a JSON-RPC request to a dedicated agent's own container bridge.
+ *
+ * Authorization is re-derived here rather than inherited: the shared resolver
+ * refused this agent, so it produced no authorized scope to reuse.
+ * `elizaSandboxService.bridge` is org-scoped, so the organization must come
+ * from the request's own credential.
+ */
+async function dispatchToDedicatedSandbox(
+  c: Context<AppEnv>,
+  executionCtx: BridgeExecutionContext,
+): Promise<Response> {
+  try {
+    const body = await c.req.raw.json().catch(() => {
+      // error-policy:J3 untrusted request body — malformed JSON becomes a typed 400
+      throw new ValidationError("Invalid JSON body");
+    });
+    const parsed = bridgeRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: "Invalid JSON-RPC request",
+            details: parsed.error.issues,
+          },
+          { status: 400 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    const { user } = await requireAuthOrApiKeyWithOrg(c.req.raw);
+    const response = await elizaSandboxService.bridge(
+      c.req.param("agentId")!,
+      user.organization_id,
+      parsed.data as BridgeRequest,
+      executionCtx,
+    );
+    return applyCorsHeaders(Response.json(response), CORS_METHODS);
+  } catch (error) {
+    return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
+  }
+}
+
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) => {
@@ -122,6 +171,13 @@ __hono_app.post("/", async (c) => {
     executionCtx: worker.executionCtx,
   });
   if ("error" in scope) {
+    // A dedicated agent is not a client error here — this route serves both
+    // tiers, and the shared resolver refusing it is the signal to take the
+    // sandbox path. #17076 collapsed this branch, so the internal discriminator
+    // escaped to callers as a terminal 404 (#18062).
+    if (scope.refusal === "dedicated-agent") {
+      return dispatchToDedicatedSandbox(c, worker.executionCtx);
+    }
     return applyCorsHeaders(
       Response.json(
         {

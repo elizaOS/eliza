@@ -53,6 +53,17 @@ const EVENT: LifeOpsCalendarEvent = {
   updatedAt: FEED_SYNCED_AT,
 };
 
+const ELIZA_EVENT: LifeOpsCalendarEvent = {
+  ...EVENT,
+  id: `${AGENT_ID}:eliza:owner:grant:eliza-calendar:calendar:primary:event-local-1`,
+  externalId: "event-local-1",
+  provider: "eliza",
+  grantId: "eliza-calendar",
+  connectorAccountId: "eliza-calendar",
+  title: "Eat a sandwich",
+  metadata: { etag: '"eliza-1"', version: 1 },
+};
+
 function feed(events: LifeOpsCalendarEvent[] = [EVENT]): LifeOpsCalendarFeed {
   return {
     calendarId: "primary",
@@ -280,6 +291,252 @@ describe("CALENDAR effect receipt settlement", () => {
         },
       }),
     ]);
+    expectBoundDelivery(delivered, result);
+  });
+
+  it("creates a built-in event directly without exposing the approval protocol", async () => {
+    const schedule = vi.fn();
+    const createCalendarEvent = vi.fn(async () => ELIZA_EVENT);
+    const service = {
+      getCalendarFeed: vi.fn(async () => feed([])),
+      prepareCalendarEventCreate: vi.fn(
+        async (_url: URL, request: Record<string, unknown>) => ({
+          ...request,
+          side: "owner" as const,
+          grantId: "eliza-calendar",
+          calendarId: "primary",
+          startAt: ELIZA_EVENT.startAt,
+          endAt: ELIZA_EVENT.endAt,
+          timeZone: "UTC",
+        }),
+      ),
+      createCalendarEvent,
+    };
+    const action = createCalendarActionRunner(
+      deps({
+        mutationGateway: {
+          schedule,
+          modify: vi.fn(),
+          cancel: vi.fn(),
+        },
+      }),
+    );
+    const delivered: Content[] = [];
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("Add Eat a sandwich tomorrow at 10pm."),
+      parameters: {
+        subaction: "create_event",
+        title: "Eat a sandwich",
+        details: {
+          startAt: ELIZA_EVENT.startAt,
+          endAt: ELIZA_EVENT.endAt,
+          timeZone: "UTC",
+        },
+      },
+      delivered,
+    });
+
+    expect(schedule).not.toHaveBeenCalled();
+    expect(createCalendarEvent).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        grantId: "eliza-calendar",
+        idempotencyKey: expect.stringMatching(/^calendar-local-operation-v1:/),
+      }),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: { approvalRequired: false, event: ELIZA_EVENT },
+      effectReceipts: [
+        {
+          operation: "calendar.event.create",
+          outcome: "applied",
+          resource: {
+            kind: "calendar.event",
+            id: ELIZA_EVENT.id,
+            version: '"eliza-1"',
+          },
+        },
+      ],
+    });
+    expect(result.userFacingText).not.toMatch(/approve|reject|request id/i);
+    expectBoundDelivery(delivered, result);
+  });
+
+  it("updates a built-in event directly with its optimistic version", async () => {
+    const modify = vi.fn();
+    const updatedEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      title: "Eat two sandwiches",
+      metadata: { etag: '"eliza-2"', version: 2 },
+      updatedAt: "2026-07-27T12:10:00.000Z",
+    };
+    const updateCalendarEvent = vi.fn(async () => updatedEvent);
+    const service = {
+      getConditionalCalendarMutationTarget: vi.fn(async () => ELIZA_EVENT),
+      updateCalendarEvent,
+    };
+    const action = createCalendarActionRunner(
+      deps({
+        mutationGateway: {
+          schedule: vi.fn(),
+          modify,
+          cancel: vi.fn(),
+        },
+      }),
+    );
+    const delivered: Content[] = [];
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("Rename that event to Eat two sandwiches."),
+      parameters: {
+        subaction: "update_event",
+        title: updatedEvent.title,
+        details: {
+          eventId: ELIZA_EVENT.externalId,
+          calendarId: ELIZA_EVENT.calendarId,
+        },
+      },
+      delivered,
+    });
+
+    expect(modify).not.toHaveBeenCalled();
+    expect(updateCalendarEvent).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        eventId: ELIZA_EVENT.externalId,
+        expectedProviderVersion: '"eliza-1"',
+        idempotencyKey: expect.stringMatching(/^calendar-local-operation-v1:/),
+      }),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: { approvalRequired: false, event: updatedEvent },
+      effectReceipts: [
+        {
+          operation: "calendar.event.update",
+          outcome: "applied",
+          resource: { id: ELIZA_EVENT.id, version: '"eliza-2"' },
+        },
+      ],
+    });
+    expect(result.userFacingText).not.toMatch(/approve|reject|request id/i);
+    expectBoundDelivery(delivered, result);
+  });
+
+  it("treats model placeholder identifiers as absent when resolving a built-in update by title", async () => {
+    const updatedEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      title: "Eat two sandwiches",
+      metadata: { etag: '"eliza-2"', version: 2 },
+    };
+    const getCalendarFeed = vi.fn(async () => feed([ELIZA_EVENT]));
+    const getConditionalCalendarMutationTarget = vi.fn();
+    const updateCalendarEvent = vi.fn(async () => updatedEvent);
+    const service = {
+      getCalendarFeed,
+      getConditionalCalendarMutationTarget,
+      updateCalendarEvent,
+    };
+    const action = createCalendarActionRunner(deps());
+    const delivered: Content[] = [];
+
+    const result = await execute({
+      action,
+      service,
+      actor: message(
+        'Rename the calendar event "Eat a sandwich" to "Eat two sandwiches".',
+      ),
+      parameters: {
+        subaction: "update_event",
+        query: "Eat a sandwich",
+        title: "Eat a sandwich",
+        details: {
+          eventId: "unknown",
+          grantId: "unknown",
+          oldTitle: "Eat a sandwich",
+          newTitle: "Eat two sandwiches",
+        },
+      },
+      delivered,
+    });
+
+    expect(getCalendarFeed).toHaveBeenCalledOnce();
+    expect(getConditionalCalendarMutationTarget).not.toHaveBeenCalled();
+    expect(updateCalendarEvent).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        eventId: ELIZA_EVENT.externalId,
+        grantId: ELIZA_EVENT.grantId,
+        expectedProviderVersion: '"eliza-1"',
+      }),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: { approvalRequired: false, event: updatedEvent },
+    });
+    expect(result.userFacingText).not.toMatch(/approve|reject|request id/i);
+    expectBoundDelivery(delivered, result);
+  });
+
+  it("deletes a built-in event directly with its optimistic version", async () => {
+    const cancel = vi.fn();
+    const deleteCalendarEvent = vi.fn(async () => undefined);
+    const service = {
+      getConditionalCalendarMutationTarget: vi.fn(async () => ELIZA_EVENT),
+      deleteCalendarEvent,
+    };
+    const action = createCalendarActionRunner(
+      deps({
+        mutationGateway: {
+          schedule: vi.fn(),
+          modify: vi.fn(),
+          cancel,
+        },
+      }),
+    );
+    const delivered: Content[] = [];
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("Delete Eat a sandwich."),
+      parameters: {
+        subaction: "delete_event",
+        details: {
+          eventId: ELIZA_EVENT.externalId,
+          calendarId: ELIZA_EVENT.calendarId,
+        },
+      },
+      delivered,
+    });
+
+    expect(cancel).not.toHaveBeenCalled();
+    expect(deleteCalendarEvent).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        eventId: ELIZA_EVENT.externalId,
+        expectedProviderVersion: '"eliza-1"',
+        idempotencyKey: expect.stringMatching(/^calendar-local-operation-v1:/),
+      }),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: { approvalRequired: false, deleted: true },
+      effectReceipts: [
+        {
+          operation: "calendar.event.delete",
+          outcome: "applied",
+          resource: { id: ELIZA_EVENT.id, version: 'deleted:"eliza-1"' },
+        },
+      ],
+    });
+    expect(result.userFacingText).not.toMatch(/approve|reject|request id/i);
     expectBoundDelivery(delivered, result);
   });
 

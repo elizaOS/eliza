@@ -27,12 +27,17 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
+  createUniqueUuid,
   ElizaError,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   type RolesWorldMetadata,
+  type RoomHandlerLease,
+  RoomHandlerQueueClosedError,
+  RoomHandlerQueueGlobalSaturatedError,
+  RoomHandlerQueueSaturatedError,
   recordOwnerGrant,
   recordRoleGrant,
   shouldSkipResponseMemoryPersistence,
@@ -70,9 +75,12 @@ import type {
   AccountConnectRequest,
   ChatGenerationResult,
   ChatMessageIdOutcome,
+  ChatMessageIdReservation,
   LogEntry,
 } from "./chat-routes.ts";
 import {
+  admitChatMessageId,
+  ChatIdempotencyWaitAbortedError,
   classifyChatFailure,
   createChatTokenStreamWriter,
   generateChatResponse,
@@ -80,9 +88,9 @@ import {
   getChatFailureReply,
   getChatMessageIdOutcome,
   initSse,
-  isDuplicateChatMessage,
   normalizeAccountConnectRequest,
   normalizeChatResponseText,
+  normalizeClientMessageId,
   persistAssistantConversationMemory,
   persistConversationMemory,
   persistExactConversationMemory,
@@ -327,6 +335,95 @@ function beginActiveChatTurn(state: ConversationRouteState): () => void {
     ended = true;
     state.activeChatTurnCount = Math.max(0, state.activeChatTurnCount - 1);
   };
+}
+
+type ConversationChatAdmission =
+  | { kind: "owner"; reservation: ChatMessageIdReservation | null }
+  | { kind: "settled"; outcome: ChatMessageIdOutcome }
+  | { kind: "conflict"; error: ElizaError }
+  | { kind: "aborted" };
+
+function canonicalChatFingerprintValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => canonicalChatFingerprintValue(entry));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalChatFingerprintValue(entry)]),
+    );
+  }
+  return value;
+}
+
+function buildConversationChatFingerprint(input: {
+  prompt: string;
+  images: unknown;
+  source: unknown;
+  channelType: unknown;
+  preferredLanguage: unknown;
+  metadata: unknown;
+}): string {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(canonicalChatFingerprintValue(input)))
+    .digest("hex");
+}
+
+function buildConversationChatIdempotencyScope(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  principalId: UUID,
+): string {
+  return `${runtime.agentId}:${roomId}:${principalId}`;
+}
+
+function isRoomQueueBackpressureError(error: unknown): boolean {
+  return (
+    error instanceof RoomHandlerQueueSaturatedError ||
+    error instanceof RoomHandlerQueueGlobalSaturatedError
+  );
+}
+
+function roomQueueAdmissionStatus(error: unknown): number {
+  if (isRoomQueueBackpressureError(error)) return 429;
+  if (error instanceof RoomHandlerQueueClosedError) return 503;
+  return 500;
+}
+
+async function awaitConversationChatAdmission(
+  scope: string,
+  clientMessageId: string | null,
+  fingerprint: string,
+  signal: AbortSignal,
+): Promise<ConversationChatAdmission> {
+  while (true) {
+    const admission = admitChatMessageId(scope, clientMessageId, {
+      fingerprint,
+    });
+    if (admission.kind === "unkeyed") {
+      return { kind: "owner", reservation: null };
+    }
+    if (admission.kind === "owner") {
+      return { kind: "owner", reservation: admission.reservation };
+    }
+    if (admission.kind === "settled") {
+      return { kind: "settled", outcome: admission.outcome };
+    }
+    if (admission.kind === "conflict") return admission;
+    try {
+      const result = await admission.wait(signal);
+      if (result.kind === "settled") {
+        return result;
+      }
+    } catch (error) {
+      if (error instanceof ChatIdempotencyWaitAbortedError) {
+        return { kind: "aborted" };
+      }
+      throw error;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -789,6 +886,8 @@ async function resolvePersistedAssistantTurn(
   result: ChatGenerationResult,
   text: string,
   channelType: ChannelType,
+  roomHandlerLease: RoomHandlerLease,
+  userMessageId?: UUID,
 ): Promise<
   | { kind: "durable"; id: UUID; text: string }
   | { kind: "ephemeral"; text: string }
@@ -803,12 +902,26 @@ async function resolvePersistedAssistantTurn(
       typeof generatedTurn.content.text === "string"
         ? generatedTurn.content.text
         : "";
-    if (generatedText !== text) {
+    const persistedContent = buildPersistedAssistantContent(
+      text,
+      result,
+      userMessageId,
+    );
+    if (
+      generatedText !== text ||
+      (userMessageId !== undefined &&
+        generatedTurn.content.inReplyTo !== userMessageId)
+    ) {
       try {
-        await runtime.updateMemory({
-          ...generatedTurn,
-          content: buildPersistedAssistantContent(text, result),
-        });
+        await runtime.roomHandlerQueue.runInLease(
+          roomId,
+          roomHandlerLease,
+          () =>
+            runtime.updateMemory({
+              ...generatedTurn,
+              content: persistedContent,
+            }),
+        );
       } catch (cause) {
         throw new AssistantReplyPersistenceError(
           "Failed to reconcile the persisted assistant reply",
@@ -819,7 +932,7 @@ async function resolvePersistedAssistantTurn(
     return { kind: "durable", id: generatedTurn.id as UUID, text };
   }
 
-  const content = buildPersistedAssistantContent(text, result);
+  const content = buildPersistedAssistantContent(text, result, userMessageId);
   if (
     shouldSkipResponseMemoryPersistence({
       content,
@@ -839,6 +952,7 @@ async function resolvePersistedAssistantTurn(
       channelType,
       turnStartedAt,
       crypto.randomUUID() as UUID,
+      roomHandlerLease,
     );
   } catch (cause) {
     // error-policy:J2 attach the durable-turn boundary before the route
@@ -1081,6 +1195,7 @@ export function buildPersistedAssistantContent(
       }
     | null
     | undefined,
+  userMessageId?: UUID,
 ): Content {
   const responseContent =
     result?.responseContent && typeof result.responseContent === "object"
@@ -1111,45 +1226,544 @@ export function buildPersistedAssistantContent(
     : {};
   delete persistedResponseMessageContent.transcriptVisibility;
   delete persistedResponseContent.transcriptVisibility;
+  const inReplyTo =
+    userMessageId ??
+    persistedResponseContent.inReplyTo ??
+    persistedResponseMessageContent.inReplyTo ??
+    undefined;
 
   return responseContent || responseMessageContent
     ? {
         ...persistedResponseMessageContent,
         ...persistedResponseContent,
         text,
+        ...(inReplyTo ? { inReplyTo } : {}),
         ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
       }
     : {
         text,
+        ...(inReplyTo ? { inReplyTo } : {}),
         ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
       };
 }
 
-function bindClientUserMemoryId(
+function conversationClientUserMemoryId(
+  scope: string,
+  clientMessageId: string,
+): UUID {
+  return stringToUuid(`conversation-user:${scope}:${clientMessageId}`) as UUID;
+}
+
+interface DurableConversationChatMarker {
+  version: 1;
+  scope: string;
+  clientMessageId: string;
+  fingerprint: string;
+  outcomeJson?: string;
+}
+
+type DurableConversationChatRecovery =
+  | { kind: "none" }
+  | { kind: "conflict"; error: ElizaError }
+  | { kind: "settled"; outcome: ChatMessageIdOutcome };
+
+const INCOMPLETE_CHAT_RECOVERY_TEXT =
+  "The previous attempt ended before its final response was saved. It was not run again; send a new message if you want to retry.";
+const MAX_DURABLE_CHAT_OUTCOME_BYTES = 256 * 1024;
+const DURABLE_CHAT_OUTCOME_KEYS = new Set([
+  "text",
+  "agentName",
+  "messageId",
+  "userMessageId",
+  "assistantEphemeral",
+  "historyRefreshRequired",
+  "transcriptVisibility",
+  "thought",
+  "usage",
+  "actionResults",
+  "failureKind",
+  "accountConnect",
+  "localInference",
+  "noResponseReason",
+]);
+
+function isChannelType(value: unknown): value is ChannelType {
+  return (
+    typeof value === "string" &&
+    Object.values(ChannelType).includes(value as ChannelType)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isDurableChatUsage(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const numericFields = [
+    "promptTokens",
+    "completionTokens",
+    "totalTokens",
+    "llmCalls",
+  ] as const;
+  if (
+    numericFields.some(
+      (field) =>
+        typeof value[field] !== "number" ||
+        !Number.isFinite(value[field] as number),
+    ) ||
+    typeof value.isEstimated !== "boolean"
+  ) {
+    return false;
+  }
+  for (const field of [
+    "cacheReadInputTokens",
+    "cacheCreationInputTokens",
+    "cachedInputTokens",
+  ] as const) {
+    if (
+      value[field] !== undefined &&
+      (typeof value[field] !== "number" ||
+        !Number.isFinite(value[field] as number))
+    ) {
+      return false;
+    }
+  }
+  return (
+    (value.model === undefined || typeof value.model === "string") &&
+    (value.provider === undefined || typeof value.provider === "string")
+  );
+}
+
+function isDurableChatActionResult(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.success !== "boolean") return false;
+  return (
+    (value.actionName === undefined || typeof value.actionName === "string") &&
+    (value.text === undefined || typeof value.text === "string") &&
+    (value.error === undefined || typeof value.error === "string") &&
+    (value.values === undefined || isRecord(value.values))
+  );
+}
+
+function parseDurableConversationChatOutcome(
+  serialized: string,
+): ChatMessageIdOutcome | null {
+  if (
+    serialized.length === 0 ||
+    Buffer.byteLength(serialized, "utf8") > MAX_DURABLE_CHAT_OUTCOME_BYTES
+  ) {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(serialized);
+  } catch {
+    // error-policy:J3 persisted markers are untrusted storage input.
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  const outcome = parsed as Record<string, unknown>;
+  if (Object.keys(outcome).some((key) => !DURABLE_CHAT_OUTCOME_KEYS.has(key))) {
+    return null;
+  }
+  if (
+    typeof outcome.text !== "string" ||
+    typeof outcome.agentName !== "string"
+  ) {
+    return null;
+  }
+  if (
+    (outcome.messageId !== undefined && !validateUuid(outcome.messageId)) ||
+    (outcome.userMessageId !== undefined &&
+      !validateUuid(outcome.userMessageId)) ||
+    (outcome.assistantEphemeral !== undefined &&
+      typeof outcome.assistantEphemeral !== "boolean") ||
+    (outcome.historyRefreshRequired !== undefined &&
+      typeof outcome.historyRefreshRequired !== "boolean") ||
+    (outcome.transcriptVisibility !== undefined &&
+      outcome.transcriptVisibility !== "internal") ||
+    (outcome.thought !== undefined && typeof outcome.thought !== "string") ||
+    (outcome.usage !== undefined && !isDurableChatUsage(outcome.usage)) ||
+    (outcome.actionResults !== undefined &&
+      (!Array.isArray(outcome.actionResults) ||
+        !outcome.actionResults.every(isDurableChatActionResult))) ||
+    (outcome.failureKind !== undefined &&
+      outcome.failureKind !== "insufficient_credits" &&
+      outcome.failureKind !== "no_provider" &&
+      outcome.failureKind !== "provider_issue" &&
+      outcome.failureKind !== "rate_limited" &&
+      outcome.failureKind !== "local_inference") ||
+    (outcome.accountConnect !== undefined &&
+      normalizeAccountConnectRequest(outcome.accountConnect) === null) ||
+    (outcome.localInference !== undefined &&
+      !isRecord(outcome.localInference)) ||
+    (outcome.noResponseReason !== undefined &&
+      outcome.noResponseReason !== "ignored")
+  ) {
+    return null;
+  }
+  const accountConnect =
+    outcome.accountConnect === undefined
+      ? undefined
+      : normalizeAccountConnectRequest(outcome.accountConnect);
+  return {
+    text: outcome.text,
+    agentName: outcome.agentName,
+    ...(typeof outcome.messageId === "string"
+      ? { messageId: outcome.messageId as UUID }
+      : {}),
+    ...(typeof outcome.userMessageId === "string"
+      ? { userMessageId: outcome.userMessageId as UUID }
+      : {}),
+    ...(typeof outcome.assistantEphemeral === "boolean"
+      ? { assistantEphemeral: outcome.assistantEphemeral }
+      : {}),
+    ...(typeof outcome.historyRefreshRequired === "boolean"
+      ? { historyRefreshRequired: outcome.historyRefreshRequired }
+      : {}),
+    ...(outcome.transcriptVisibility === "internal"
+      ? { transcriptVisibility: "internal" as const }
+      : {}),
+    ...(typeof outcome.thought === "string"
+      ? { thought: outcome.thought }
+      : {}),
+    ...(outcome.usage !== undefined
+      ? { usage: outcome.usage as NonNullable<ChatMessageIdOutcome["usage"]> }
+      : {}),
+    ...(outcome.actionResults !== undefined
+      ? {
+          actionResults: outcome.actionResults as NonNullable<
+            ChatMessageIdOutcome["actionResults"]
+          >,
+        }
+      : {}),
+    ...(typeof outcome.failureKind === "string"
+      ? { failureKind: outcome.failureKind as ChatFailureKind }
+      : {}),
+    ...(accountConnect ? { accountConnect } : {}),
+    ...(outcome.localInference !== undefined
+      ? {
+          localInference: outcome.localInference as NonNullable<
+            ChatMessageIdOutcome["localInference"]
+          >,
+        }
+      : {}),
+    ...(outcome.noResponseReason === "ignored"
+      ? { noResponseReason: "ignored" as const }
+      : {}),
+  };
+}
+
+function readDurableConversationChatMarker(
+  value: unknown,
+): DurableConversationChatMarker | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    record.version !== 1 ||
+    typeof record.scope !== "string" ||
+    record.scope.length === 0 ||
+    typeof record.clientMessageId !== "string" ||
+    normalizeClientMessageId(record.clientMessageId) !==
+      record.clientMessageId ||
+    typeof record.fingerprint !== "string" ||
+    !/^[a-f0-9]{64}$/.test(record.fingerprint) ||
+    (record.outcomeJson !== undefined && typeof record.outcomeJson !== "string")
+  ) {
+    return null;
+  }
+  return {
+    version: 1,
+    scope: record.scope,
+    clientMessageId: record.clientMessageId,
+    fingerprint: record.fingerprint,
+    ...(typeof record.outcomeJson === "string"
+      ? { outcomeJson: record.outcomeJson }
+      : {}),
+  };
+}
+
+function buildRecoveredConversationChatOutcome(
+  memory: Memory & { id: UUID },
+  userMessageId: UUID,
+  agentName: string,
+): ChatMessageIdOutcome {
+  const content = memory.content as Content;
+  const failureKind =
+    content.failureKind === "insufficient_credits" ||
+    content.failureKind === "no_provider" ||
+    content.failureKind === "provider_issue" ||
+    content.failureKind === "rate_limited" ||
+    content.failureKind === "local_inference"
+      ? content.failureKind
+      : undefined;
+  const accountConnect = normalizeAccountConnectRequest(content.accountConnect);
+  const localInference =
+    content.localInference && typeof content.localInference === "object"
+      ? (content.localInference as ChatMessageIdOutcome["localInference"])
+      : undefined;
+  return {
+    text: typeof content.text === "string" ? content.text : "",
+    agentName,
+    messageId: memory.id,
+    userMessageId,
+    ...(content.transcriptVisibility === "internal"
+      ? { transcriptVisibility: "internal" as const }
+      : {}),
+    ...(typeof content.thought === "string" && content.thought.trim()
+      ? { thought: content.thought }
+      : {}),
+    ...(failureKind ? { failureKind } : {}),
+    ...(accountConnect ? { accountConnect } : {}),
+    ...(localInference ? { localInference } : {}),
+    ...(normalizeActionCallbackHistory(content.actionCallbackHistory).length > 0
+      ? { historyRefreshRequired: true }
+      : {}),
+    ...(content.noResponseReason === "ignored"
+      ? { noResponseReason: "ignored" as const }
+      : {}),
+  };
+}
+
+async function persistDurableConversationChatOutcome(
+  runtime: AgentRuntime,
   roomId: UUID,
+  scope: string,
   clientMessageId: string | null | undefined,
+  fingerprint: string,
+  outcome: ChatMessageIdOutcome,
+  roomHandlerLease: RoomHandlerLease,
+): Promise<void> {
+  if (!clientMessageId) return;
+  const userMessageId = conversationClientUserMemoryId(scope, clientMessageId);
+  const [userMemory] = await runtime.getMemoriesByIds(
+    [userMessageId],
+    "messages",
+  );
+  if (!userMemory || userMemory.roomId !== roomId) {
+    throw new ElizaError("Durable chat outcome has no matching user message", {
+      code: "CHAT_IDEMPOTENCY_USER_MEMORY_MISSING",
+      context: { roomId, userMessageId, clientMessageId },
+    });
+  }
+  await runtime.roomHandlerQueue.runInLease(roomId, roomHandlerLease, () =>
+    runtime.updateMemory({
+      id: userMessageId,
+      content: {
+        ...userMemory.content,
+        chatIdempotency: {
+          version: 1,
+          scope,
+          clientMessageId,
+          fingerprint,
+          outcomeJson: JSON.stringify(outcome),
+        } satisfies DurableConversationChatMarker,
+      },
+    }),
+  );
+}
+
+async function recoverDurableConversationChatOutcome(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  scope: string,
+  clientMessageId: string | null | undefined,
+  fingerprint: string,
+  agentName: string,
+  roomHandlerLease: RoomHandlerLease,
+): Promise<DurableConversationChatRecovery> {
+  if (!clientMessageId) return { kind: "none" };
+  const userMessageId = conversationClientUserMemoryId(scope, clientMessageId);
+  const [userMemory] = await runtime.getMemoriesByIds(
+    [userMessageId],
+    "messages",
+  );
+  if (!userMemory) return { kind: "none" };
+  if (userMemory.roomId !== roomId) {
+    return {
+      kind: "conflict",
+      error: new ElizaError("Idempotency user memory belongs to another room", {
+        code: "CHAT_IDEMPOTENCY_CONFLICT",
+        context: { roomId, userMessageId, actualRoomId: userMemory.roomId },
+      }),
+    };
+  }
+  const marker = readDurableConversationChatMarker(
+    userMemory.content.chatIdempotency,
+  );
+  if (
+    !marker ||
+    marker.scope !== scope ||
+    marker.clientMessageId !== clientMessageId ||
+    marker.fingerprint !== fingerprint
+  ) {
+    return {
+      kind: "conflict",
+      error: new ElizaError(
+        "Idempotency key was reused for a different durable chat request",
+        {
+          code: "CHAT_IDEMPOTENCY_CONFLICT",
+          context: { roomId, userMessageId, clientMessageId },
+        },
+      ),
+    };
+  }
+  if (marker.outcomeJson !== undefined) {
+    const outcome = parseDurableConversationChatOutcome(marker.outcomeJson);
+    if (!outcome) {
+      return {
+        kind: "conflict",
+        error: new ElizaError("Durable chat outcome is invalid", {
+          code: "CHAT_IDEMPOTENCY_OUTCOME_INVALID",
+          context: { roomId, userMessageId, clientMessageId },
+        }),
+      };
+    }
+    return { kind: "settled", outcome };
+  }
+
+  const memories = await runtime.getMemories({
+    roomId,
+    tableName: "messages",
+    start: userMemory.createdAt,
+    limit: 1_000,
+    orderBy: "createdAt",
+    orderDirection: "asc",
+  });
+  const transformedUserMessageId = createUniqueUuid(runtime, userMessageId);
+  const assistant = memories
+    .filter(
+      (memory): memory is Memory & { id: UUID } =>
+        typeof memory.id === "string" &&
+        memory.entityId === runtime.agentId &&
+        memory.agentId === runtime.agentId &&
+        (memory.content.inReplyTo === userMessageId ||
+          memory.content.inReplyTo === transformedUserMessageId),
+    )
+    .at(-1);
+  if (!assistant) {
+    const channelType = userMemory.content.channelType;
+    if (!isChannelType(channelType)) {
+      return {
+        kind: "conflict",
+        error: new ElizaError(
+          "Incomplete durable chat request has no valid channel type",
+          {
+            code: "CHAT_IDEMPOTENCY_INCOMPLETE_INVALID",
+            context: { roomId, userMessageId, clientMessageId, channelType },
+          },
+        ),
+      };
+    }
+    const recoveryMessageId = stringToUuid(
+      `conversation-incomplete-recovery:${userMessageId}`,
+    ) as UUID;
+    const persisted = await persistAssistantConversationMemory(
+      runtime,
+      roomId,
+      {
+        text: INCOMPLETE_CHAT_RECOVERY_TEXT,
+        inReplyTo: userMessageId,
+        chatIdempotencyRecovery: "incomplete",
+      },
+      channelType,
+      undefined,
+      recoveryMessageId,
+      roomHandlerLease,
+    );
+    if (!persisted?.id) {
+      throw new ElizaError(
+        "Failed to persist the incomplete chat recovery terminal",
+        {
+          code: "CHAT_IDEMPOTENCY_INCOMPLETE_WRITE_FAILED",
+          context: { roomId, userMessageId, clientMessageId },
+        },
+      );
+    }
+    const outcome: ChatMessageIdOutcome = {
+      text: INCOMPLETE_CHAT_RECOVERY_TEXT,
+      agentName,
+      messageId: persisted.id,
+      userMessageId,
+    };
+    await persistDurableConversationChatOutcome(
+      runtime,
+      roomId,
+      scope,
+      clientMessageId,
+      fingerprint,
+      outcome,
+      roomHandlerLease,
+    );
+    return { kind: "settled", outcome };
+  }
+  if (assistant.content.inReplyTo !== userMessageId) {
+    await runtime.roomHandlerQueue.runInLease(roomId, roomHandlerLease, () =>
+      runtime.updateMemory({
+        ...assistant,
+        content: {
+          ...assistant.content,
+          inReplyTo: userMessageId,
+        },
+      }),
+    );
+    assistant.content = {
+      ...assistant.content,
+      inReplyTo: userMessageId,
+    };
+  }
+  const outcome = buildRecoveredConversationChatOutcome(
+    assistant,
+    userMessageId,
+    agentName,
+  );
+  await persistDurableConversationChatOutcome(
+    runtime,
+    roomId,
+    scope,
+    clientMessageId,
+    fingerprint,
+    outcome,
+    roomHandlerLease,
+  );
+  return { kind: "settled", outcome };
+}
+
+function bindClientUserMemoryId(
+  clientMessageId: string | null | undefined,
+  scope: string,
+  fingerprint: string,
   messages: Awaited<ReturnType<typeof buildUserMessages>>,
 ): void {
   if (!clientMessageId) return;
-  const id = stringToUuid(
-    `conversation-user:${roomId}:${clientMessageId}`,
-  ) as UUID;
+  const id = conversationClientUserMemoryId(scope, clientMessageId);
   messages.userMessage.id = id;
   messages.messageToStore.id = id;
+  const marker = {
+    version: 1,
+    scope,
+    clientMessageId,
+    fingerprint,
+  } as const;
+  messages.userMessage.content.chatIdempotency = marker;
+  messages.messageToStore.content.chatIdempotency = marker;
 }
 
 async function persistClientUserMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
   clientMessageId: string | null | undefined,
+  roomHandlerLease: RoomHandlerLease,
 ): Promise<void> {
   if (!clientMessageId) {
-    await persistConversationMemory(runtime, memory);
+    await persistConversationMemory(runtime, memory, roomHandlerLease);
     return;
   }
-  await persistExactConversationMemory(runtime, memory);
+  await persistExactConversationMemory(runtime, memory, roomHandlerLease);
 }
 
 interface CanonicalPendantProvenance {
@@ -1291,9 +1905,9 @@ function writeConversationDoneSse(
 ): void {
   const { text, ...terminalMetadata } = outcome;
   writeSseJson(res, {
+    ...terminalMetadata,
     type: "done",
     fullText: text,
-    ...terminalMetadata,
   });
 }
 
@@ -1372,6 +1986,7 @@ export async function persistRecentAssistantActionCallbackHistory(
   actionCallbackHistory: readonly string[],
   sinceMs: number,
   targetMemoryId?: UUID,
+  roomHandlerLease?: RoomHandlerLease,
 ): Promise<boolean> {
   const normalizedHistory = normalizeActionCallbackHistory(
     actionCallbackHistory,
@@ -1380,7 +1995,7 @@ export async function persistRecentAssistantActionCallbackHistory(
     return false;
   }
 
-  try {
+  const persist = async (): Promise<boolean> => {
     const recent = targetMemoryId
       ? await runtime.getMemoriesByIds([targetMemoryId], "messages")
       : await runtime.getMemories({
@@ -1452,6 +2067,19 @@ export async function persistRecentAssistantActionCallbackHistory(
     });
 
     return true;
+  };
+
+  try {
+    if (runtime.roomHandlerQueue.ownsLease(roomId, roomHandlerLease)) {
+      return await runtime.roomHandlerQueue.runInLease(
+        roomId,
+        roomHandlerLease,
+        persist,
+      );
+    }
+    return await runtime.roomHandlerQueue.withLease(roomId, async (lease) =>
+      runtime.roomHandlerQueue.runInLease(roomId, lease, persist),
+    );
   } catch (cause) {
     throw new ElizaError("Failed to persist action callback history", {
       code: "CONVERSATION_CALLBACK_HISTORY_WRITE_FAILED",
@@ -1665,53 +2293,47 @@ type ConversationRouteMessageRecord = {
   accountConnect?: AccountConnectRequest;
 };
 
-// Serializes concurrent greeting ensures per conversation. The body is a
-// read-check-then-write (getMemories scan → persistConversationMemory) with no
-// room-level uniqueness on (room, source): each persist mints a fresh UUID so
-// isDuplicateMemoryError never fires. Two overlapping callers — the
-// bootstrapGreeting create racing a superseding hydration's POST /greeting, the
-// new-chat fallback racing the empty-thread auto-greet, or two sessions
-// hydrating the same fresh conversation — both read an empty room and both
-// persist an identical deterministic greeting, minting the duplicate
-// "Hey, I'm <agent>" row (which also leaks into model context via getMemories).
-// Coalescing on one in-flight promise per conversation makes the second caller
-// observe the first's committed row instead of re-racing it. Sequential
-// create-then-fetch is unaffected: the entry is deleted before any later call.
-const greetingEnsureInFlight = new Map<
-  string,
-  Promise<{
-    text: string;
-    agentName: string;
-    generated: boolean;
-    persisted: boolean;
-  }>
->();
-
+// Greeting lookup and persistence share the room's history-writer boundary.
+// This keeps concurrent hydration/create callers behind the same committed row
+// without publishing a separate single-flight promise that can invert ownership.
 async function ensureConversationGreetingStored(
   state: ConversationRouteState,
   conv: ConversationMeta,
   lang: string,
+  roomHandlerLease?: RoomHandlerLease,
 ): Promise<{
   text: string;
   agentName: string;
   generated: boolean;
   persisted: boolean;
 }> {
-  const inFlight = greetingEnsureInFlight.get(conv.id);
-  if (inFlight) return inFlight;
-  const run = ensureConversationGreetingStoredUnlocked(state, conv, lang);
-  greetingEnsureInFlight.set(conv.id, run);
-  try {
-    return await run;
-  } finally {
-    greetingEnsureInFlight.delete(conv.id);
+  const runtime = state.runtime;
+  if (!runtime) {
+    return ensureConversationGreetingStoredUnlocked(state, conv, lang);
   }
+  if (roomHandlerLease) {
+    return runtime.roomHandlerQueue.runInLease(
+      conv.roomId,
+      roomHandlerLease,
+      () =>
+        ensureConversationGreetingStoredUnlocked(
+          state,
+          conv,
+          lang,
+          roomHandlerLease,
+        ),
+    );
+  }
+  return runtime.roomHandlerQueue.withLease(conv.roomId, (lease) =>
+    ensureConversationGreetingStoredUnlocked(state, conv, lang, lease),
+  );
 }
 
 async function ensureConversationGreetingStoredUnlocked(
   state: ConversationRouteState,
   conv: ConversationMeta,
   lang: string,
+  roomHandlerLease?: RoomHandlerLease,
 ): Promise<{
   text: string;
   agentName: string;
@@ -1804,6 +2426,7 @@ async function ensureConversationGreetingStoredUnlocked(
           channelType: ChannelType.DM,
         },
       }),
+      roomHandlerLease,
     );
   } catch (error) {
     // error-policy:J2 greeting persistence is required before the route reports
@@ -2648,91 +3271,127 @@ export async function handleConversationRoutes(
       createdConversation = true;
     }
 
-    if (createdConversation) {
-      prepareConversationConnectionRoom(runtime, conv.roomId);
-    }
     const caller = resolveConversationCaller(
       req,
       state,
       trustedApiPrincipal,
       runtime,
     );
+    const importAbortTracker = createRequestDisconnectAbortTracker({
+      req,
+      res,
+      operation: "Conversation import admission",
+    });
+    let historyLease: RoomHandlerLease;
     try {
-      await ensureConversationRoom(state, runtime, conv, caller);
+      historyLease = await runtime.roomHandlerQueue.acquire(
+        conv.roomId,
+        importAbortTracker.signal,
+      );
     } catch (err) {
+      importAbortTracker.dispose();
+      if (importAbortTracker.isAborted()) return true;
       error(
         res,
-        `Failed to initialize conversation room: ${getErrorMessage(err)}`,
-        500,
+        isRoomQueueBackpressureError(err)
+          ? "Conversation is busy; retry import after pending turns finish"
+          : `Failed to serialize conversation import: ${getErrorMessage(err)}`,
+        roomQueueAdmissionStatus(err),
       );
       return true;
     }
-
-    // Idempotency: a populated room means the handoff already ran (or the user
-    // chatted here). Never double-import.
-    const existing = await runtime.getMemories({
-      roomId: conv.roomId,
-      tableName: "messages",
-      limit: 1,
-    });
-    if (existing.length > 0) {
-      json(res, {
-        conversationId: convId,
-        inserted: 0,
-        skipped: importMessages.length,
-        alreadyPopulated: true,
-      });
-      return true;
-    }
-
-    // Preserve original ordering: assign strictly increasing timestamps,
-    // anchored to the provided ones when present.
-    let inserted = 0;
-    const anchor = Date.now() - importMessages.length;
-    for (let i = 0; i < importMessages.length; i += 1) {
-      const m = importMessages[i];
-      const entityId =
-        m.role === "assistant" ? runtime.agentId : caller.entityId;
-      const createdAt = m.timestamp ?? anchor + i;
+    importAbortTracker.markCompleted();
+    importAbortTracker.dispose();
+    try {
+      if (
+        state.conversations.get(conv.id) !== conv ||
+        state.deletedConversationIds.has(conv.id)
+      ) {
+        error(res, "Conversation was deleted", 404);
+        return true;
+      }
+      if (createdConversation) {
+        prepareConversationConnectionRoom(runtime, conv.roomId);
+      }
       try {
-        const memory = createMessageMemory({
-          id: crypto.randomUUID() as UUID,
-          entityId,
-          roomId: conv.roomId,
-          content: {
-            text: m.text,
-            channelType: ChannelType.DM,
-            source: "handoff_import",
-          },
-        }) as ReturnType<typeof createMessageMemory> & {
-          createdAt?: number;
-          metadata?: Record<string, unknown>;
-        };
-        memory.createdAt = createdAt;
-        if (memory.metadata && typeof memory.metadata === "object") {
-          memory.metadata.timestamp = createdAt;
-        }
-        await persistConversationMemory(runtime, memory);
-        inserted += 1;
+        await ensureConversationRoom(state, runtime, conv, caller);
       } catch (err) {
-        // error-policy:J1 the import boundary reports the exact partial-write
-        // position and never returns a healthy skipped-count response.
         error(
           res,
-          `Conversation import failed at message ${i}: ${getErrorMessage(err)}`,
+          `Failed to initialize conversation room: ${getErrorMessage(err)}`,
           500,
         );
         return true;
       }
+
+      // Idempotency: a populated room means the handoff already ran (or the user
+      // chatted here). Never double-import.
+      const existing = await runtime.getMemories({
+        roomId: conv.roomId,
+        tableName: "messages",
+        limit: 1,
+      });
+      if (existing.length > 0) {
+        json(res, {
+          conversationId: convId,
+          inserted: 0,
+          skipped: importMessages.length,
+          alreadyPopulated: true,
+        });
+        return true;
+      }
+
+      // Preserve original ordering: assign strictly increasing timestamps,
+      // anchored to the provided ones when present.
+      let inserted = 0;
+      const anchor = Date.now() - importMessages.length;
+      for (let i = 0; i < importMessages.length; i += 1) {
+        const m = importMessages[i];
+        const entityId =
+          m.role === "assistant" ? runtime.agentId : caller.entityId;
+        const createdAt = m.timestamp ?? anchor + i;
+        try {
+          const memory = createMessageMemory({
+            id: crypto.randomUUID() as UUID,
+            entityId,
+            roomId: conv.roomId,
+            content: {
+              text: m.text,
+              channelType: ChannelType.DM,
+              source: "handoff_import",
+            },
+          }) as ReturnType<typeof createMessageMemory> & {
+            createdAt?: number;
+            metadata?: Record<string, unknown>;
+          };
+          memory.createdAt = createdAt;
+          if (memory.metadata && typeof memory.metadata === "object") {
+            memory.metadata.timestamp = createdAt;
+          }
+          await persistConversationMemory(runtime, memory, historyLease);
+          inserted += 1;
+        } catch (err) {
+          // error-policy:J1 the import boundary reports the exact partial-write
+          // position and never returns a healthy skipped-count response.
+          error(
+            res,
+            `Conversation import failed at message ${i}: ${getErrorMessage(err)}`,
+            500,
+          );
+          return true;
+        }
+      }
+      conv.updatedAt = new Date().toISOString();
+      state.broadcastWs?.({ type: "conversation-updated", conversation: conv });
+      json(res, {
+        conversationId: convId,
+        inserted,
+        skipped: importMessages.length - inserted,
+      });
+      return true;
+    } finally {
+      await historyLease.release();
     }
-    conv.updatedAt = new Date().toISOString();
-    state.broadcastWs?.({ type: "conversation-updated", conversation: conv });
-    json(res, {
-      conversationId: convId,
-      inserted,
-      skipped: importMessages.length - inserted,
-    });
-    return true;
   }
 
   // ── POST /api/conversations/:id/messages/truncate ──────────────────
@@ -2768,14 +3427,46 @@ export async function handleConversationRoutes(
       return true;
     }
 
+    const truncateAbortTracker = createRequestDisconnectAbortTracker({
+      req,
+      res,
+      operation: "Conversation truncation admission",
+    });
+    let historyLease: RoomHandlerLease;
     try {
-      const result = await truncateConversationMessages(
-        runtime,
-        conv,
-        messageId,
-        {
-          inclusive: inclusive === true,
-        },
+      historyLease = await runtime.roomHandlerQueue.acquire(
+        conv.roomId,
+        truncateAbortTracker.signal,
+      );
+    } catch (err) {
+      truncateAbortTracker.dispose();
+      if (truncateAbortTracker.isAborted()) return true;
+      error(
+        res,
+        isRoomQueueBackpressureError(err)
+          ? "Conversation is busy; retry after the pending turns finish"
+          : `Failed to serialize conversation history: ${getErrorMessage(err)}`,
+        roomQueueAdmissionStatus(err),
+      );
+      return true;
+    }
+    truncateAbortTracker.markCompleted();
+    truncateAbortTracker.dispose();
+    try {
+      if (
+        state.conversations.get(conv.id) !== conv ||
+        state.deletedConversationIds.has(conv.id)
+      ) {
+        error(res, "Conversation was deleted", 404);
+        return true;
+      }
+      const result = await runtime.roomHandlerQueue.runInLease(
+        conv.roomId,
+        historyLease,
+        () =>
+          truncateConversationMessages(runtime, conv, messageId, {
+            inclusive: inclusive === true,
+          }),
       );
       conv.updatedAt = new Date().toISOString();
       state.broadcastWs?.({
@@ -2789,6 +3480,8 @@ export async function handleConversationRoutes(
           ? (err as { status: number }).status
           : 500;
       error(res, getErrorMessage(err), status);
+    } finally {
+      await historyLease.release();
     }
     return true;
   }
@@ -2822,8 +3515,44 @@ export async function handleConversationRoutes(
       return true;
     }
 
+    const deleteMessageAbortTracker = createRequestDisconnectAbortTracker({
+      req,
+      res,
+      operation: "Conversation message deletion admission",
+    });
+    let historyLease: RoomHandlerLease;
     try {
-      const result = await deleteConversationMessage(runtime, conv, messageId);
+      historyLease = await runtime.roomHandlerQueue.acquire(
+        conv.roomId,
+        deleteMessageAbortTracker.signal,
+      );
+    } catch (err) {
+      deleteMessageAbortTracker.dispose();
+      if (deleteMessageAbortTracker.isAborted()) return true;
+      error(
+        res,
+        isRoomQueueBackpressureError(err)
+          ? "Conversation is busy; retry after the pending turns finish"
+          : `Failed to serialize conversation history: ${getErrorMessage(err)}`,
+        roomQueueAdmissionStatus(err),
+      );
+      return true;
+    }
+    deleteMessageAbortTracker.markCompleted();
+    deleteMessageAbortTracker.dispose();
+    try {
+      if (
+        state.conversations.get(conv.id) !== conv ||
+        state.deletedConversationIds.has(conv.id)
+      ) {
+        error(res, "Conversation was deleted", 404);
+        return true;
+      }
+      const result = await runtime.roomHandlerQueue.runInLease(
+        conv.roomId,
+        historyLease,
+        () => deleteConversationMessage(runtime, conv, messageId),
+      );
       conv.updatedAt = new Date().toISOString();
       state.broadcastWs?.({
         type: "conversation-updated",
@@ -2836,6 +3565,8 @@ export async function handleConversationRoutes(
           ? (err as { status: number }).status
           : 500;
       error(res, getErrorMessage(err), status);
+    } finally {
+      await historyLease.release();
     }
     return true;
   }
@@ -2887,37 +3618,6 @@ export async function handleConversationRoutes(
       streamProtocol,
       clientMessageId,
     } = chatPayload;
-    // Idempotency contract (see `isDuplicateChatMessage`): the client stamps a
-    // stable `clientMessageId` per send and replays it verbatim on its single
-    // auto-retry after a network blip (`ui/src/api/client-base.ts`), expecting
-    // the server to de-dupe. A repeat within the TTL means the original request
-    // already started this turn — do NOT run a second one (duplicate persisted
-    // reply + double billing). When the FIRST attempt's reply already
-    // persisted, return IT in the terminal `done` frame — the retry then
-    // delivers the same outcome as the original instead of an empty turn the
-    // client must repair from history. Only while the original is still
-    // mid-turn (nothing persisted since its recorded arrival) does the retry
-    // fall back to the empty ignored shape: the client drops its optimistic
-    // placeholder on an empty completed turn and reconciles from history once
-    // the first attempt lands. Requests without a clientMessageId are never
-    // treated as duplicates.
-    if (isDuplicateChatMessage(conv.roomId, clientMessageId ?? null)) {
-      const settledOutcome = getChatMessageIdOutcome(
-        conv.roomId,
-        clientMessageId ?? null,
-      );
-      initSse(res);
-      writeConversationDoneSse(
-        res,
-        settledOutcome ?? {
-          text: "",
-          agentName: state.agentName,
-          noResponseReason: "ignored",
-        },
-      );
-      finishStreamResponse();
-      return true;
-    }
     // Deps are the module-imported write fns so route tests that vi.mock
     // `writeChatTokenSse`/`writeSse` keep capturing frames on the legacy path.
     const tokenWriter = createChatTokenStreamWriter(
@@ -2934,7 +3634,6 @@ export async function handleConversationRoutes(
     // `type:"error"` data lines to StreamGenerationError); only the validation
     // above may answer with plain HTTP status codes.
     initSse(res);
-    writeChatStatusSse(res, { kind: "thinking" });
     writeConversationStreamHeartbeat(res, disconnectTracker);
     const heartbeatInterval = setInterval(() => {
       if (disconnectTracker.checkConnectionClosed()) {
@@ -2942,8 +3641,19 @@ export async function handleConversationRoutes(
       }
       writeConversationStreamHeartbeat(res, disconnectTracker);
     }, 5000);
+    let chatReservation: ChatMessageIdReservation | null = null;
+    let chatIdempotencyScope = String(conv.roomId);
+    let reservationSettled = false;
+    let runtimeTurnLease: RoomHandlerLease | null = null;
+    const runtime = state.runtime;
+    const releaseTurnReservation = () =>
+      releaseChatMessageId(
+        chatIdempotencyScope,
+        clientMessageId ?? null,
+        chatReservation,
+      );
     const failStream = (message: string): true => {
-      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+      releaseTurnReservation();
       writeSse(res, { type: "error", message });
       clearInterval(heartbeatInterval);
       finishStreamResponse();
@@ -2953,7 +3663,6 @@ export async function handleConversationRoutes(
     // Runtime readiness is a lifecycle/API boundary. A chat request must fail
     // immediately when capability is absent instead of occupying an SSE socket
     // behind a hidden boot timer.
-    const runtime = state.runtime;
     if (!runtime) {
       return failStream("Agent is not running");
     }
@@ -2965,625 +3674,796 @@ export async function handleConversationRoutes(
       runtime,
     );
     const userId = caller.entityId;
-    const turnStartedAt = Date.now();
-
-    let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
-    try {
-      const pendantProvenance = await verifyCanonicalPendantProvenance(
-        runtime,
-        caller,
-        prompt,
-        chatMetadata,
-      );
-      userMessages = await buildUserMessages({
-        images,
-        prompt,
-        userId,
-        agentId: runtime.agentId,
-        roomId: conv.roomId,
-        channelType,
-        messageSource: pendantProvenance ? "pendant" : source,
-        metadata: chatMetadata,
-      });
-      if (pendantProvenance) {
-        stampCanonicalPendantMemory(userMessages, pendantProvenance);
-      }
-    } catch (err) {
-      return failStream(
-        `Failed to prepare user message: ${getErrorMessage(err)}`,
-      );
-    }
-    bindClientUserMemoryId(conv.roomId, clientMessageId ?? null, userMessages);
-    const { userMessage, messageToStore } = userMessages;
-
-    const connectionDescriptor = captureConversationConnection(
-      state,
+    chatIdempotencyScope = buildConversationChatIdempotencyScope(
       runtime,
-      conv,
-      caller,
+      conv.roomId,
+      caller.entityId,
     );
-    try {
-      await scheduleConversationConnectionEnsure(connectionDescriptor, () =>
-        establishConversationConnection(connectionDescriptor),
-      );
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-      await attestAuthenticatedApiDeliveryAudience(
-        runtime,
-        userMessage,
-        trustedApiPrincipal,
-      );
-    } catch (err) {
-      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-      return failStream(
-        `Failed to initialize conversation room: ${getErrorMessage(err)}`,
-      );
-    }
-    try {
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-      await persistClientUserMemory(
-        runtime,
-        messageToStore,
-        clientMessageId ?? null,
-      );
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-    } catch (err) {
-      if (isConversationConnectionError(err)) {
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        return failStream(
-          `Failed to refresh conversation room: ${getErrorMessage(err)}`,
-        );
-      }
-      return failStream(
-        `Failed to store user message: ${getErrorMessage(err)}`,
-      );
-    }
-
-    const routedUserMessage = withViewInteractionClient(userMessage, req);
-
-    const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
-    if (walletModeGuidance) {
-      const endActiveChatTurn = beginActiveChatTurn(state);
-      try {
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        if (!disconnectTracker.isAborted()) {
-          tokenWriter.writeSnapshot(res, walletModeGuidance);
-          try {
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            const routeOwnedId = crypto.randomUUID() as UUID;
-            const persisted = await persistAssistantConversationMemory(
-              runtime,
-              conv.roomId,
-              walletModeGuidance,
-              channelType,
-              turnStartedAt,
-              routeOwnedId,
-            );
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            conv.updatedAt = new Date().toISOString();
-            const outcome: ChatMessageIdOutcome = {
-              text: walletModeGuidance,
-              agentName: state.agentName,
-              ...(persisted?.id ? { messageId: persisted.id } : {}),
-              userMessageId: messageToStore.id,
-            };
-            setChatMessageIdOutcome(
-              conv.roomId,
-              clientMessageId ?? null,
-              outcome,
-            );
-            writeConversationDoneSse(res, outcome);
-          } catch (persistErr) {
-            releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-            writeSse(res, {
-              type: "error",
-              message: getErrorMessage(persistErr),
-            });
-            return true;
-          }
-        }
-      } catch (err) {
-        if (isConversationConnectionError(err)) {
-          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        }
-        if (!disconnectTracker.isAborted()) {
-          writeSse(res, {
-            type: "error",
-            message: isConversationConnectionError(err)
-              ? `Failed to refresh conversation room: ${getErrorMessage(err)}`
-              : getErrorMessage(err),
+    const chatFingerprint = buildConversationChatFingerprint({
+      prompt,
+      images,
+      source,
+      channelType,
+      preferredLanguage,
+      metadata: chatMetadata,
+    });
+    const settleTurnReservation = async (
+      outcome: ChatMessageIdOutcome,
+    ): Promise<void> => {
+      if (clientMessageId) {
+        if (!runtimeTurnLease) {
+          throw new ElizaError("Chat outcome has no live room ownership", {
+            code: "CHAT_IDEMPOTENCY_LEASE_MISSING",
+            context: { roomId: conv.roomId, clientMessageId },
           });
         }
-      } finally {
-        if (
-          clientMessageId &&
-          !getChatMessageIdOutcome(conv.roomId, clientMessageId)
-        ) {
-          releaseChatMessageId(conv.roomId, clientMessageId);
-        }
-        clearInterval(heartbeatInterval);
-        finishStreamResponse();
-        endActiveChatTurn();
-      }
-      return true;
-    }
-
-    // ── Local runtime path (streaming) ───────────────────────
-
-    const endActiveChatTurn = beginActiveChatTurn(state);
-
-    let streamedText = "";
-    // The route already wrote a `thinking` status when the SSE channel opened;
-    // collapse the identical opening status generateChatResponse re-emits so
-    // the wire carries each phase transition once. Distinct consecutive phases
-    // (thinking → running_action → thinking) still pass through.
-    let lastStatusSignature = "thinking::";
-    let generationResult: ChatGenerationResult | null = null;
-    try {
-      const result = await generateChatResponse(
-        runtime,
-        routedUserMessage,
-        state.agentName,
-        {
-          abortSignal: disconnectTracker.signal,
-          onStatus: (status) => {
-            if (
-              disconnectTracker.isAborted() ||
-              disconnectTracker.checkConnectionClosed()
-            ) {
-              return;
-            }
-            // Array.join renders absent optional fields as empty segments, so
-            // the dedup key is stable without nullish-coalescing each field.
-            const signature = [
-              status.kind,
-              status.actionName,
-              status.toolName,
-            ].join(":");
-            if (signature === lastStatusSignature) {
-              return;
-            }
-            lastStatusSignature = signature;
-            writeChatStatusSse(res, status);
-          },
-          onToolEvent: (event) => {
-            if (
-              disconnectTracker.isAborted() ||
-              disconnectTracker.checkConnectionClosed()
-            ) {
-              return;
-            }
-            writeChatToolSse(res, event);
-          },
-          onChunk: (chunk, origin) => {
-            if (!chunk) return;
-            if (
-              disconnectTracker.isAborted() ||
-              disconnectTracker.checkConnectionClosed()
-            ) {
-              return;
-            }
-            streamedText += chunk;
-            // Action-callback text is provisional on the wire: the final reply
-            // may replace it wholesale, and a voice client must not speak text
-            // it cannot retract (the double-speak defect). Text rendering is
-            // unaffected.
-            tokenWriter.writeChunk(res, chunk, streamedText, {
-              provisional: origin === "action_callback",
-            });
-          },
-          onSnapshot: (text, origin) => {
-            if (!text) return;
-            if (
-              disconnectTracker.isAborted() ||
-              disconnectTracker.checkConnectionClosed()
-            ) {
-              return;
-            }
-            // Action callbacks may be the first visible source for a turn. An
-            // authoritative snapshot therefore has to be able to establish the
-            // stream, not merely revise text emitted by a model-token source.
-            // Structured field extractors can briefly normalize whitespace or
-            // closing punctuation while the same visible field is still
-            // streaming. Do not shrink the user-visible token stream for
-            // prefix-equivalent snapshots; later longer snapshots/deltas still
-            // advance normally.
-            if (
-              text.length < streamedText.length &&
-              streamedText.startsWith(text)
-            ) {
-              return;
-            }
-            streamedText = text;
-            tokenWriter.writeSnapshot(res, streamedText, {
-              provisional: origin === "action_callback",
-            });
-          },
-          resolveNoResponseText: () =>
-            resolveNoResponseFallback(state.logBuffer, runtime),
-          preferredLanguage,
-        },
-      );
-      generationResult = result;
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-
-      conv.updatedAt = new Date().toISOString();
-      if (result.noResponseReason !== "ignored") {
-        const resolvedText = normalizeChatResponseText(
-          result.text,
-          state.logBuffer,
-          runtime,
-        );
-        if (
-          !disconnectTracker.isAborted() &&
-          !streamedText &&
-          resolvedText &&
-          result.transcriptVisibility !== "internal"
-        ) {
-          for (const chunk of chunkVisibleTextForSse(resolvedText)) {
-            if (disconnectTracker.isAborted()) break;
-            streamedText += chunk;
-            tokenWriter.writeChunk(res, chunk, streamedText);
-          }
-        }
-        const visibleResolvedText =
-          result.transcriptVisibility === "internal" ? "" : resolvedText;
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        // Durable completion belongs to the turn, not to the transport. A
-        // disconnected client can retry the same key and receive this exact
-        // committed outcome without executing or billing another model turn.
-        const persistedAssistant = await resolvePersistedAssistantTurn(
+        await persistDurableConversationChatOutcome(
           runtime,
           conv.roomId,
-          turnStartedAt,
-          result,
-          resolvedText,
-          channelType,
+          chatIdempotencyScope,
+          clientMessageId,
+          chatFingerprint,
+          outcome,
+          runtimeTurnLease,
         );
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        const persistedAssistantId =
-          persistedAssistant.kind === "durable"
-            ? persistedAssistant.id
-            : undefined;
-        if (result.actionCallbackHistory?.length && persistedAssistantId) {
-          await persistRecentAssistantActionCallbackHistory(
-            runtime,
-            conv.roomId,
-            result.actionCallbackHistory,
-            turnStartedAt,
-            persistedAssistantId,
-          );
-        }
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        const outcome = buildGenerationMessageIdOutcome(
-          result,
-          visibleResolvedText,
-          persistedAssistantId,
-          {
-            userMessageId: messageToStore.id,
-            ...(persistedAssistant.kind === "ephemeral"
-              ? { assistantEphemeral: true }
-              : {}),
-            ...(result.usedActionCallbacks
-              ? { historyRefreshRequired: true }
-              : {}),
-          },
-        );
-        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        if (!disconnectTracker.isAborted()) {
-          writeConversationDoneSse(res, outcome);
-        }
-      } else {
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        const outcome = buildGenerationMessageIdOutcome(result, "", undefined, {
-          userMessageId: messageToStore.id,
-          assistantEphemeral: true,
-        });
-        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
-        if (!disconnectTracker.isAborted()) {
-          writeConversationDoneSse(res, outcome);
-        }
       }
-    } catch (err) {
-      let terminalError = err;
+      setChatMessageIdOutcome(
+        chatIdempotencyScope,
+        clientMessageId ?? null,
+        outcome,
+        chatReservation,
+      );
+      reservationSettled = true;
+    };
+    const idempotencyAdmission = await awaitConversationChatAdmission(
+      chatIdempotencyScope,
+      clientMessageId ?? null,
+      chatFingerprint,
+      disconnectTracker.signal,
+    );
+    if (idempotencyAdmission.kind === "aborted") {
+      clearInterval(heartbeatInterval);
+      finishStreamResponse();
+      return true;
+    }
+    if (idempotencyAdmission.kind === "settled") {
+      writeConversationDoneSse(res, idempotencyAdmission.outcome);
+      clearInterval(heartbeatInterval);
+      finishStreamResponse();
+      return true;
+    }
+    if (idempotencyAdmission.kind === "conflict") {
+      writeSse(res, {
+        type: "error",
+        message: idempotencyAdmission.error.message,
+        code: idempotencyAdmission.error.code,
+      });
+      clearInterval(heartbeatInterval);
+      finishStreamResponse();
+      return true;
+    }
+    chatReservation = idempotencyAdmission.reservation;
+    try {
+      writeChatStatusSse(res, { kind: "thinking" });
       try {
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
+        runtimeTurnLease = await runtime.roomHandlerQueue.acquire(
+          conv.roomId,
+          disconnectTracker.signal,
         );
-      } catch (runtimeError) {
-        terminalError = runtimeError;
+      } catch (err) {
+        releaseTurnReservation();
+        if (disconnectTracker.isAborted()) {
+          clearInterval(heartbeatInterval);
+          finishStreamResponse();
+          return true;
+        }
+        return failStream(
+          isRoomQueueBackpressureError(err)
+            ? "Conversation is busy; retry after the pending turns finish"
+            : `Failed to serialize conversation turn: ${getErrorMessage(err)}`,
+        );
       }
 
-      if (isConversationConnectionError(terminalError)) {
-        logger.warn(
-          {
-            err: getErrorMessage(terminalError),
-            conversationId: conv.id,
-            roomId: conv.roomId,
-          },
-          "[ConversationStream] connection prerequisite failed",
+      try {
+        if (
+          state.conversations.get(conv.id) !== conv ||
+          state.deletedConversationIds.has(conv.id)
+        ) {
+          return failStream("Conversation was deleted");
+        }
+        const durableRecovery = await recoverDurableConversationChatOutcome(
+          runtime,
+          conv.roomId,
+          chatIdempotencyScope,
+          clientMessageId,
+          chatFingerprint,
+          state.agentName,
+          runtimeTurnLease,
         );
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        if (!disconnectTracker.isAborted()) {
+        if (durableRecovery.kind === "conflict") {
+          releaseTurnReservation();
           writeSse(res, {
             type: "error",
-            message: `Failed to refresh conversation room: ${getErrorMessage(terminalError)}`,
+            message: durableRecovery.error.message,
+            code: durableRecovery.error.code,
           });
+          clearInterval(heartbeatInterval);
+          finishStreamResponse();
+          return true;
         }
-      } else if (isTurnAbortError(terminalError)) {
-        logger.info(
-          { conversationId: conv.id, roomId: conv.roomId },
-          "[ConversationStream] generation aborted",
-        );
-        if (!getChatMessageIdOutcome(conv.roomId, clientMessageId ?? null)) {
-          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        if (durableRecovery.kind === "settled") {
+          await settleTurnReservation(durableRecovery.outcome);
+          writeConversationDoneSse(res, durableRecovery.outcome);
+          clearInterval(heartbeatInterval);
+          finishStreamResponse();
+          return true;
         }
-      } else if (
-        isCallbackHistoryPersistenceError(terminalError) ||
-        terminalError instanceof AssistantReplyPersistenceError
-      ) {
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        if (!disconnectTracker.isAborted()) {
-          writeSse(res, {
-            type: "error",
-            message: getErrorMessage(
-              terminalError instanceof AssistantReplyPersistenceError
-                ? (terminalError.cause ?? terminalError)
-                : terminalError,
-            ),
-          });
-        }
-      } else if (!disconnectTracker.isAborted()) {
-        // If text was already streamed to the client (e.g. the initial
-        // response succeeded but planner follow-up failed), use the
-        // streamed text as the final reply instead of replacing it with a
-        // generic fallback.
-        if (streamedText) {
-          logger.warn(
-            {
-              err: getErrorMessage(terminalError),
-              streamedTextLength: streamedText.length,
-            },
-            "Post-generation error after text was already streamed — using streamed text",
+        let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
+        try {
+          const pendantProvenance = await verifyCanonicalPendantProvenance(
+            runtime,
+            caller,
+            prompt,
+            chatMetadata,
           );
+          userMessages = await buildUserMessages({
+            images,
+            prompt,
+            userId,
+            agentId: runtime.agentId,
+            roomId: conv.roomId,
+            channelType,
+            messageSource: pendantProvenance ? "pendant" : source,
+            metadata: chatMetadata,
+          });
+          if (pendantProvenance) {
+            stampCanonicalPendantMemory(userMessages, pendantProvenance);
+          }
+        } catch (err) {
+          const handled = failStream(
+            `Failed to prepare user message: ${getErrorMessage(err)}`,
+          );
+          return handled;
+        }
+        bindClientUserMemoryId(
+          clientMessageId ?? null,
+          chatIdempotencyScope,
+          chatFingerprint,
+          userMessages,
+        );
+        const { userMessage, messageToStore } = userMessages;
+
+        const connectionDescriptor = captureConversationConnection(
+          state,
+          runtime,
+          conv,
+          caller,
+        );
+        try {
+          await scheduleConversationConnectionEnsure(connectionDescriptor, () =>
+            establishConversationConnection(connectionDescriptor),
+          );
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          await attestAuthenticatedApiDeliveryAudience(
+            runtime,
+            userMessage,
+            trustedApiPrincipal,
+          );
+        } catch (err) {
+          releaseTurnReservation();
+          const handled = failStream(
+            `Failed to initialize conversation room: ${getErrorMessage(err)}`,
+          );
+          return handled;
+        }
+
+        const routedUserMessage = withViewInteractionClient(userMessage, req);
+        const walletModeGuidance = resolveWalletModeGuidanceReply(
+          state,
+          prompt,
+        );
+        const turnStartedAt = Date.now();
+        try {
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          await persistClientUserMemory(
+            runtime,
+            messageToStore,
+            clientMessageId ?? null,
+            runtimeTurnLease,
+          );
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+        } catch (err) {
+          const connectionFailed = isConversationConnectionError(err);
+          if (connectionFailed) {
+            releaseTurnReservation();
+          }
+          const handled = failStream(
+            `${connectionFailed ? "Failed to refresh conversation room" : "Failed to store user message"}: ${getErrorMessage(err)}`,
+          );
+          return handled;
+        }
+
+        if (walletModeGuidance) {
+          const endActiveChatTurn = beginActiveChatTurn(state);
           try {
             assertConversationConnectionRuntime(
               state.runtime,
               connectionDescriptor,
             );
-            const routeOwnedId = crypto.randomUUID() as UUID;
-            const persisted = await persistAssistantConversationMemory(
+            if (!disconnectTracker.isAborted()) {
+              tokenWriter.writeSnapshot(res, walletModeGuidance);
+              try {
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const routeOwnedId = crypto.randomUUID() as UUID;
+                const persisted = await persistAssistantConversationMemory(
+                  runtime,
+                  conv.roomId,
+                  { text: walletModeGuidance, inReplyTo: messageToStore.id },
+                  channelType,
+                  turnStartedAt,
+                  routeOwnedId,
+                  runtimeTurnLease,
+                );
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                conv.updatedAt = new Date().toISOString();
+                const outcome: ChatMessageIdOutcome = {
+                  text: walletModeGuidance,
+                  agentName: state.agentName,
+                  ...(persisted?.id ? { messageId: persisted.id } : {}),
+                  userMessageId: messageToStore.id,
+                };
+                await settleTurnReservation(outcome);
+                writeConversationDoneSse(res, outcome);
+              } catch (persistErr) {
+                releaseTurnReservation();
+                writeSse(res, {
+                  type: "error",
+                  message: getErrorMessage(persistErr),
+                });
+                return true;
+              }
+            }
+          } catch (err) {
+            if (isConversationConnectionError(err)) {
+              releaseTurnReservation();
+            }
+            if (!disconnectTracker.isAborted()) {
+              writeSse(res, {
+                type: "error",
+                message: isConversationConnectionError(err)
+                  ? `Failed to refresh conversation room: ${getErrorMessage(err)}`
+                  : getErrorMessage(err),
+              });
+            }
+          } finally {
+            if (
+              clientMessageId &&
+              !getChatMessageIdOutcome(chatIdempotencyScope, clientMessageId)
+            ) {
+              releaseTurnReservation();
+            }
+            clearInterval(heartbeatInterval);
+            try {
+              finishStreamResponse();
+            } finally {
+              endActiveChatTurn();
+            }
+          }
+          return true;
+        }
+
+        // ── Local runtime path (streaming) ───────────────────────
+
+        const endActiveChatTurn = beginActiveChatTurn(state);
+
+        let streamedText = "";
+        // The route already wrote a `thinking` status when the SSE channel opened;
+        // collapse the identical opening status generateChatResponse re-emits so
+        // the wire carries each phase transition once. Distinct consecutive phases
+        // (thinking → running_action → thinking) still pass through.
+        let lastStatusSignature = "thinking::";
+        let generationResult: ChatGenerationResult | null = null;
+        try {
+          const result = await generateChatResponse(
+            runtime,
+            routedUserMessage,
+            state.agentName,
+            {
+              abortSignal: disconnectTracker.signal,
+              roomHandlerLease: runtimeTurnLease,
+              onStatus: (status) => {
+                if (
+                  disconnectTracker.isAborted() ||
+                  disconnectTracker.checkConnectionClosed()
+                ) {
+                  return;
+                }
+                // Array.join renders absent optional fields as empty segments, so
+                // the dedup key is stable without nullish-coalescing each field.
+                const signature = [
+                  status.kind,
+                  status.actionName,
+                  status.toolName,
+                ].join(":");
+                if (signature === lastStatusSignature) {
+                  return;
+                }
+                lastStatusSignature = signature;
+                writeChatStatusSse(res, status);
+              },
+              onToolEvent: (event) => {
+                if (
+                  disconnectTracker.isAborted() ||
+                  disconnectTracker.checkConnectionClosed()
+                ) {
+                  return;
+                }
+                writeChatToolSse(res, event);
+              },
+              onChunk: (chunk, origin) => {
+                if (!chunk) return;
+                if (
+                  disconnectTracker.isAborted() ||
+                  disconnectTracker.checkConnectionClosed()
+                ) {
+                  return;
+                }
+                streamedText += chunk;
+                // Action-callback text is provisional on the wire: the final reply
+                // may replace it wholesale, and a voice client must not speak text
+                // it cannot retract. Text rendering remains unchanged.
+                tokenWriter.writeChunk(res, chunk, streamedText, {
+                  provisional: origin === "action_callback",
+                });
+              },
+              onSnapshot: (text, origin) => {
+                if (!text) return;
+                if (
+                  disconnectTracker.isAborted() ||
+                  disconnectTracker.checkConnectionClosed()
+                ) {
+                  return;
+                }
+                // Action callbacks may be the first visible source for a turn. An
+                // authoritative snapshot therefore has to be able to establish the
+                // stream, not merely revise text emitted by a model-token source.
+                // Structured field extractors can briefly normalize whitespace or
+                // closing punctuation while the same visible field is still
+                // streaming. Do not shrink the user-visible token stream for
+                // prefix-equivalent snapshots; later longer snapshots/deltas still
+                // advance normally.
+                if (
+                  text.length < streamedText.length &&
+                  streamedText.startsWith(text)
+                ) {
+                  return;
+                }
+                streamedText = text;
+                tokenWriter.writeSnapshot(res, streamedText, {
+                  provisional: origin === "action_callback",
+                });
+              },
+              resolveNoResponseText: () =>
+                resolveNoResponseFallback(state.logBuffer, runtime),
+              preferredLanguage,
+            },
+          );
+          generationResult = result;
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+
+          conv.updatedAt = new Date().toISOString();
+          if (result.noResponseReason !== "ignored") {
+            const resolvedText = normalizeChatResponseText(
+              result.text,
+              state.logBuffer,
+              runtime,
+            );
+            if (
+              !disconnectTracker.isAborted() &&
+              !streamedText &&
+              resolvedText &&
+              result.transcriptVisibility !== "internal"
+            ) {
+              for (const chunk of chunkVisibleTextForSse(resolvedText)) {
+                if (disconnectTracker.isAborted()) break;
+                streamedText += chunk;
+                tokenWriter.writeChunk(res, chunk, streamedText);
+              }
+            }
+            const visibleResolvedText =
+              result.transcriptVisibility === "internal" ? "" : resolvedText;
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
+            // Durable completion belongs to the turn, not to the transport. A
+            // disconnected client can retry the same key and receive this exact
+            // committed outcome without executing or billing another model turn.
+            const persistedAssistant = await resolvePersistedAssistantTurn(
               runtime,
               conv.roomId,
-              streamedText,
-              channelType,
               turnStartedAt,
-              routeOwnedId,
+              result,
+              resolvedText,
+              channelType,
+              runtimeTurnLease,
+              messageToStore.id,
             );
             assertConversationConnectionRuntime(
               state.runtime,
               connectionDescriptor,
             );
-            conv.updatedAt = new Date().toISOString();
-            const outcome: ChatMessageIdOutcome = {
-              text: streamedText,
-              agentName: state.agentName,
-              ...(persisted?.id ? { messageId: persisted.id } : {}),
-              userMessageId: messageToStore.id,
-            };
-            setChatMessageIdOutcome(
-              conv.roomId,
-              clientMessageId ?? null,
-              outcome,
+            const persistedAssistantId =
+              persistedAssistant.kind === "durable"
+                ? persistedAssistant.id
+                : undefined;
+            if (result.actionCallbackHistory?.length && persistedAssistantId) {
+              await persistRecentAssistantActionCallbackHistory(
+                runtime,
+                conv.roomId,
+                result.actionCallbackHistory,
+                turnStartedAt,
+                persistedAssistantId,
+                runtimeTurnLease,
+              );
+            }
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
             );
-            writeConversationDoneSse(res, outcome);
-          } catch (persistErr) {
-            releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-            writeSse(res, {
-              type: "error",
-              message: getErrorMessage(persistErr),
-            });
+            const outcome = buildGenerationMessageIdOutcome(
+              result,
+              visibleResolvedText,
+              persistedAssistantId,
+              {
+                userMessageId: messageToStore.id,
+                ...(persistedAssistant.kind === "ephemeral"
+                  ? { assistantEphemeral: true }
+                  : {}),
+                ...(result.usedActionCallbacks
+                  ? { historyRefreshRequired: true }
+                  : {}),
+              },
+            );
+            await settleTurnReservation(outcome);
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
+            if (!disconnectTracker.isAborted()) {
+              writeConversationDoneSse(res, outcome);
+            }
+          } else {
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
+            const outcome = buildGenerationMessageIdOutcome(
+              result,
+              "",
+              undefined,
+              {
+                userMessageId: messageToStore.id,
+                assistantEphemeral: true,
+              },
+            );
+            await settleTurnReservation(outcome);
+            if (!disconnectTracker.isAborted()) {
+              writeConversationDoneSse(res, outcome);
+            }
           }
-        } else {
-          logger.warn(
-            {
-              err: getErrorMessage(terminalError),
-              stack:
-                terminalError instanceof Error
-                  ? terminalError.stack
-                  : undefined,
-            },
-            "Chat generation failed with no streamed text",
-          );
+        } catch (err) {
+          let terminalError = err;
           try {
             assertConversationConnectionRuntime(
               state.runtime,
               connectionDescriptor,
             );
-            const generationResolvedText = generationResult
-              ? normalizeChatResponseText(
-                  generationResult.text,
-                  state.logBuffer,
-                  runtime,
-                )
-              : "";
-            const exactPersistedResponse =
-              generationResult &&
-              generationResult.transcriptVisibility !== "internal" &&
-              generationResolvedText
-                ? findPersistedGeneratedAssistantTurn(
-                    runtime,
-                    conv.roomId,
-                    generationResult,
-                  )
-                : null;
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
+          } catch (runtimeError) {
+            terminalError = runtimeError;
+          }
+
+          if (isConversationConnectionError(terminalError)) {
+            logger.warn(
+              {
+                err: getErrorMessage(terminalError),
+                conversationId: conv.id,
+                roomId: conv.roomId,
+              },
+              "[ConversationStream] connection prerequisite failed",
             );
-            const exactPersistedId = exactPersistedResponse?.id;
+            releaseTurnReservation();
+            if (!disconnectTracker.isAborted()) {
+              writeSse(res, {
+                type: "error",
+                message: `Failed to refresh conversation room: ${getErrorMessage(terminalError)}`,
+              });
+            }
+          } else if (isTurnAbortError(terminalError)) {
+            logger.info(
+              { conversationId: conv.id, roomId: conv.roomId },
+              "[ConversationStream] generation aborted",
+            );
             if (
-              generationResult &&
-              exactPersistedResponse &&
-              exactPersistedId
+              !getChatMessageIdOutcome(
+                chatIdempotencyScope,
+                clientMessageId ?? null,
+              )
             ) {
-              if (
-                exactPersistedResponse.content.text !== generationResolvedText
-              ) {
-                await runtime.updateMemory({
-                  ...exactPersistedResponse,
-                  content: buildPersistedAssistantContent(
-                    generationResolvedText,
-                    generationResult,
-                  ),
-                });
-              }
+              releaseTurnReservation();
+            }
+          } else if (
+            isCallbackHistoryPersistenceError(terminalError) ||
+            terminalError instanceof AssistantReplyPersistenceError
+          ) {
+            releaseTurnReservation();
+            if (!disconnectTracker.isAborted()) {
+              writeSse(res, {
+                type: "error",
+                message: getErrorMessage(
+                  terminalError instanceof AssistantReplyPersistenceError
+                    ? (terminalError.cause ?? terminalError)
+                    : terminalError,
+                ),
+              });
+            }
+          } else if (!disconnectTracker.isAborted()) {
+            // If text was already streamed to the client (e.g. the initial
+            // response succeeded but planner follow-up failed), use the
+            // streamed text as the final reply instead of replacing it with a
+            // generic fallback.
+            if (streamedText) {
               logger.warn(
                 {
                   err: getErrorMessage(terminalError),
-                  conversationId: conv.id,
-                  roomId: conv.roomId,
-                  messageId: exactPersistedId,
+                  streamedTextLength: streamedText.length,
                 },
-                "Chat generation failed after its exact assistant reply was already durable",
+                "Post-generation error after text was already streamed — using streamed text",
               );
-              if (generationResult.actionCallbackHistory?.length) {
-                await persistRecentAssistantActionCallbackHistory(
+              try {
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const routeOwnedId = crypto.randomUUID() as UUID;
+                const persisted = await persistAssistantConversationMemory(
                   runtime,
                   conv.roomId,
-                  generationResult.actionCallbackHistory,
+                  { text: streamedText, inReplyTo: messageToStore.id },
+                  channelType,
                   turnStartedAt,
-                  exactPersistedId,
+                  routeOwnedId,
+                  runtimeTurnLease,
                 );
-              }
-              assertConversationConnectionRuntime(
-                state.runtime,
-                connectionDescriptor,
-              );
-              const outcome = buildGenerationMessageIdOutcome(
-                generationResult,
-                generationResolvedText,
-                exactPersistedId,
-                {
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                conv.updatedAt = new Date().toISOString();
+                const outcome: ChatMessageIdOutcome = {
+                  text: streamedText,
+                  agentName: state.agentName,
+                  ...(persisted?.id ? { messageId: persisted.id } : {}),
                   userMessageId: messageToStore.id,
-                  ...(generationResult.usedActionCallbacks
-                    ? { historyRefreshRequired: true }
-                    : {}),
+                };
+                await settleTurnReservation(outcome);
+                writeConversationDoneSse(res, outcome);
+              } catch (persistErr) {
+                releaseTurnReservation();
+                writeSse(res, {
+                  type: "error",
+                  message: getErrorMessage(persistErr),
+                });
+              }
+            } else {
+              logger.warn(
+                {
+                  err: getErrorMessage(terminalError),
+                  stack:
+                    terminalError instanceof Error
+                      ? terminalError.stack
+                      : undefined,
                 },
+                "Chat generation failed with no streamed text",
               );
-              setChatMessageIdOutcome(
-                conv.roomId,
-                clientMessageId ?? null,
-                outcome,
+              try {
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const generationResolvedText = generationResult
+                  ? normalizeChatResponseText(
+                      generationResult.text,
+                      state.logBuffer,
+                      runtime,
+                    )
+                  : "";
+                const exactPersistedResponse =
+                  generationResult &&
+                  generationResult.transcriptVisibility !== "internal" &&
+                  generationResolvedText
+                    ? findPersistedGeneratedAssistantTurn(
+                        runtime,
+                        conv.roomId,
+                        generationResult,
+                      )
+                    : null;
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const exactPersistedId = exactPersistedResponse?.id;
+                if (
+                  generationResult &&
+                  exactPersistedResponse &&
+                  exactPersistedId
+                ) {
+                  if (
+                    exactPersistedResponse.content.text !==
+                    generationResolvedText
+                  ) {
+                    await runtime.roomHandlerQueue.runInLease(
+                      conv.roomId,
+                      runtimeTurnLease,
+                      () =>
+                        runtime.updateMemory({
+                          ...exactPersistedResponse,
+                          content: buildPersistedAssistantContent(
+                            generationResolvedText,
+                            generationResult,
+                            messageToStore.id,
+                          ),
+                        }),
+                    );
+                  }
+                  logger.warn(
+                    {
+                      err: getErrorMessage(terminalError),
+                      conversationId: conv.id,
+                      roomId: conv.roomId,
+                      messageId: exactPersistedId,
+                    },
+                    "Chat generation failed after its exact assistant reply was already durable",
+                  );
+                  if (generationResult.actionCallbackHistory?.length) {
+                    await persistRecentAssistantActionCallbackHistory(
+                      runtime,
+                      conv.roomId,
+                      generationResult.actionCallbackHistory,
+                      turnStartedAt,
+                      exactPersistedId,
+                      runtimeTurnLease,
+                    );
+                  }
+                  assertConversationConnectionRuntime(
+                    state.runtime,
+                    connectionDescriptor,
+                  );
+                  const outcome = buildGenerationMessageIdOutcome(
+                    generationResult,
+                    generationResolvedText,
+                    exactPersistedId,
+                    {
+                      userMessageId: messageToStore.id,
+                      ...(generationResult.usedActionCallbacks
+                        ? { historyRefreshRequired: true }
+                        : {}),
+                    },
+                  );
+                  await settleTurnReservation(outcome);
+                  assertConversationConnectionRuntime(
+                    state.runtime,
+                    connectionDescriptor,
+                  );
+                  writeConversationDoneSse(res, outcome);
+                  return true;
+                }
+              } catch (salvageErr) {
+                // error-policy:J1 route boundary — this code already runs inside
+                // the generation catch, so exact-row salvage failures require
+                // their own observable SSE terminal instead of escaping silently.
+                releaseTurnReservation();
+                writeSse(res, {
+                  type: "error",
+                  message: getErrorMessage(salvageErr),
+                });
+                return true;
+              }
+              const providerIssueReply = getChatFailureReply(
+                terminalError,
+                state.logBuffer,
               );
-              assertConversationConnectionRuntime(
-                state.runtime,
-                connectionDescriptor,
+              const failureKind = classifyChatFailure(
+                terminalError,
+                state.logBuffer,
               );
-              writeConversationDoneSse(res, outcome);
-              return true;
+              try {
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const routeOwnedId = crypto.randomUUID() as UUID;
+                const persisted = await persistAssistantConversationMemory(
+                  runtime,
+                  conv.roomId,
+                  { text: providerIssueReply, inReplyTo: messageToStore.id },
+                  channelType,
+                  undefined,
+                  routeOwnedId,
+                  runtimeTurnLease,
+                );
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                conv.updatedAt = new Date().toISOString();
+                const outcome: ChatMessageIdOutcome = {
+                  text: providerIssueReply,
+                  agentName: state.agentName,
+                  ...(persisted?.id ? { messageId: persisted.id } : {}),
+                  userMessageId: messageToStore.id,
+                  failureKind,
+                };
+                await settleTurnReservation(outcome);
+                writeConversationDoneSse(res, outcome);
+              } catch (persistErr) {
+                releaseTurnReservation();
+                writeSse(res, {
+                  type: "error",
+                  message: getErrorMessage(persistErr),
+                });
+              }
             }
-          } catch (salvageErr) {
-            // error-policy:J1 route boundary — this code already runs inside
-            // the generation catch, so exact-row salvage failures require
-            // their own observable SSE terminal instead of escaping silently.
-            releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-            writeSse(res, {
-              type: "error",
-              message: getErrorMessage(salvageErr),
-            });
-            return true;
+          } else {
+            if (
+              !getChatMessageIdOutcome(
+                chatIdempotencyScope,
+                clientMessageId ?? null,
+              )
+            ) {
+              releaseTurnReservation();
+            }
           }
-          const providerIssueReply = getChatFailureReply(
-            terminalError,
-            state.logBuffer,
-          );
-          const failureKind = classifyChatFailure(
-            terminalError,
-            state.logBuffer,
-          );
+        } finally {
+          if (
+            clientMessageId &&
+            !getChatMessageIdOutcome(chatIdempotencyScope, clientMessageId)
+          ) {
+            releaseTurnReservation();
+          }
+          clearInterval(heartbeatInterval);
           try {
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            const routeOwnedId = crypto.randomUUID() as UUID;
-            const persisted = await persistAssistantConversationMemory(
-              runtime,
-              conv.roomId,
-              providerIssueReply,
-              channelType,
-              undefined,
-              routeOwnedId,
-            );
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            conv.updatedAt = new Date().toISOString();
-            const outcome: ChatMessageIdOutcome = {
-              text: providerIssueReply,
-              agentName: state.agentName,
-              ...(persisted?.id ? { messageId: persisted.id } : {}),
-              userMessageId: messageToStore.id,
-              failureKind,
-            };
-            setChatMessageIdOutcome(
-              conv.roomId,
-              clientMessageId ?? null,
-              outcome,
-            );
-            writeConversationDoneSse(res, outcome);
-          } catch (persistErr) {
-            releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-            writeSse(res, {
-              type: "error",
-              message: getErrorMessage(persistErr),
-            });
+            finishStreamResponse();
+          } finally {
+            endActiveChatTurn();
           }
         }
-      } else {
-        if (!getChatMessageIdOutcome(conv.roomId, clientMessageId ?? null)) {
-          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        }
+        return true;
+      } finally {
+        await runtimeTurnLease.release();
+        runtimeTurnLease = null;
       }
     } finally {
-      if (
-        clientMessageId &&
-        !getChatMessageIdOutcome(conv.roomId, clientMessageId)
-      ) {
-        releaseChatMessageId(conv.roomId, clientMessageId);
-      }
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      endActiveChatTurn();
+      if (!reservationSettled) releaseTurnReservation();
     }
-    return true;
   }
 
   // ── POST /api/conversations/:id/messages ────────────────────────────
@@ -3614,34 +4494,8 @@ export async function handleConversationRoutes(
       metadata: restMetadata,
       clientMessageId,
     } = chatPayload;
-    // Idempotency contract (see the streaming twin above / `isDuplicateChatMessage`):
-    // a retried send carrying the same clientMessageId within the TTL already
-    // ran this turn. When the first attempt's reply already persisted, answer
-    // 200 with THAT text (the normal success shape) so the retry delivers the
-    // original outcome; only while the original is still mid-turn does the
-    // retry answer with the ignored-turn shape — the client maps
-    // `noResponseReason: "ignored"` to an empty reply — so it still reads as
-    // success without starting a second LLM turn or persisting a duplicate
-    // assistant memory.
-    if (isDuplicateChatMessage(conv.roomId, clientMessageId ?? null)) {
-      const settledOutcome = getChatMessageIdOutcome(
-        conv.roomId,
-        clientMessageId ?? null,
-      );
-      if (settledOutcome) {
-        json(res, buildConversationJsonOutcome(settledOutcome));
-      } else {
-        json(res, {
-          text: "",
-          agentName: state.agentName,
-          noResponseReason: "ignored",
-        });
-      }
-      return true;
-    }
     const runtime = state.runtime;
     if (!runtime) {
-      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       error(res, "Agent is not running", 503);
       return true;
     }
@@ -3652,288 +4506,456 @@ export async function handleConversationRoutes(
       runtime,
     );
     const userId = caller.entityId;
-    const turnStartedAt = Date.now();
-
-    let connectionDescriptor: ConversationConnectionDescriptor;
-    try {
-      connectionDescriptor = await ensureConversationRoom(
-        state,
-        runtime,
-        conv,
-        caller,
-      );
-    } catch (err) {
-      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-      error(
-        res,
-        `Failed to initialize conversation room: ${getErrorMessage(err)}`,
-        500,
-      );
+    const chatIdempotencyScope = buildConversationChatIdempotencyScope(
+      runtime,
+      conv.roomId,
+      caller.entityId,
+    );
+    const chatFingerprint = buildConversationChatFingerprint({
+      prompt,
+      images,
+      source,
+      channelType,
+      preferredLanguage,
+      metadata: restMetadata,
+    });
+    const admissionDisconnectTracker = createRequestDisconnectAbortTracker({
+      req,
+      res,
+      operation: "Conversation turn admission",
+    });
+    const idempotencyAdmission = await awaitConversationChatAdmission(
+      chatIdempotencyScope,
+      clientMessageId ?? null,
+      chatFingerprint,
+      admissionDisconnectTracker.signal,
+    );
+    if (idempotencyAdmission.kind === "aborted") {
+      admissionDisconnectTracker.dispose();
       return true;
     }
-
-    let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
-    try {
-      const pendantProvenance = await verifyCanonicalPendantProvenance(
-        runtime,
-        caller,
-        prompt,
-        restMetadata,
-      );
-      userMessages = await buildUserMessages({
-        images,
-        prompt,
-        userId,
-        agentId: runtime.agentId,
-        roomId: conv.roomId,
-        channelType,
-        messageSource: pendantProvenance ? "pendant" : source,
-        metadata: restMetadata,
-      });
-      if (pendantProvenance) {
-        stampCanonicalPendantMemory(userMessages, pendantProvenance);
-      }
-    } catch (err) {
-      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-      error(
-        res,
-        `Failed to prepare user message: ${getErrorMessage(err)}`,
-        500,
-      );
+    if (idempotencyAdmission.kind === "settled") {
+      admissionDisconnectTracker.markCompleted();
+      admissionDisconnectTracker.dispose();
+      json(res, buildConversationJsonOutcome(idempotencyAdmission.outcome));
       return true;
     }
-    bindClientUserMemoryId(conv.roomId, clientMessageId ?? null, userMessages);
-    const { userMessage, messageToStore } = userMessages;
-    try {
-      await attestAuthenticatedApiDeliveryAudience(
-        runtime,
-        userMessage,
-        trustedApiPrincipal,
-      );
-    } catch (err) {
-      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-      error(
-        res,
-        `Failed to attest conversation audience: ${getErrorMessage(err)}`,
-        500,
-      );
+    if (idempotencyAdmission.kind === "conflict") {
+      admissionDisconnectTracker.markCompleted();
+      admissionDisconnectTracker.dispose();
+      error(res, idempotencyAdmission.error.message, 409);
       return true;
     }
-
-    try {
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-      await persistClientUserMemory(
-        runtime,
-        messageToStore,
+    const chatReservation = idempotencyAdmission.reservation;
+    let reservationSettled = false;
+    let runtimeTurnLease: RoomHandlerLease | null = null;
+    const releaseTurnReservation = () =>
+      releaseChatMessageId(
+        chatIdempotencyScope,
         clientMessageId ?? null,
+        chatReservation,
       );
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-    } catch (err) {
-      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-      error(res, `Failed to store user message: ${getErrorMessage(err)}`, 500);
-      return true;
-    }
-
-    const routedUserMessage = withViewInteractionClient(userMessage, req);
-
-    const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
-    if (walletModeGuidance) {
-      const endActiveChatTurn = beginActiveChatTurn(state);
-      try {
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        const routeOwnedId = crypto.randomUUID() as UUID;
-        const persisted = await persistAssistantConversationMemory(
+    const settleTurnReservation = async (
+      outcome: ChatMessageIdOutcome,
+    ): Promise<void> => {
+      if (clientMessageId) {
+        if (!runtimeTurnLease) {
+          throw new ElizaError("Chat outcome has no live room ownership", {
+            code: "CHAT_IDEMPOTENCY_LEASE_MISSING",
+            context: { roomId: conv.roomId, clientMessageId },
+          });
+        }
+        await persistDurableConversationChatOutcome(
           runtime,
           conv.roomId,
-          walletModeGuidance,
-          channelType,
-          turnStartedAt,
-          routeOwnedId,
+          chatIdempotencyScope,
+          clientMessageId,
+          chatFingerprint,
+          outcome,
+          runtimeTurnLease,
         );
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        conv.updatedAt = new Date().toISOString();
-        const outcome: ChatMessageIdOutcome = {
-          text: walletModeGuidance,
-          agentName: state.agentName,
-          ...(persisted?.id ? { messageId: persisted.id } : {}),
-          userMessageId: messageToStore.id,
-        };
-        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
-        json(res, buildConversationJsonOutcome(outcome));
-      } catch (persistErr) {
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        error(res, getErrorMessage(persistErr), 500);
-      } finally {
-        if (
-          clientMessageId &&
-          !getChatMessageIdOutcome(conv.roomId, clientMessageId)
-        ) {
-          releaseChatMessageId(conv.roomId, clientMessageId);
-        }
-        endActiveChatTurn();
       }
-      return true;
-    }
-
-    const endActiveChatTurn = beginActiveChatTurn(state);
+      setChatMessageIdOutcome(
+        chatIdempotencyScope,
+        clientMessageId ?? null,
+        outcome,
+        chatReservation,
+      );
+      reservationSettled = true;
+    };
     try {
-      const result = await generateChatResponse(
-        runtime,
-        routedUserMessage,
-        state.agentName,
-        {
-          resolveNoResponseText: () =>
-            resolveNoResponseFallback(state.logBuffer, runtime),
-          preferredLanguage,
-        },
-      );
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-
-      conv.updatedAt = new Date().toISOString();
-      if (result.noResponseReason !== "ignored") {
-        const resolvedText = normalizeChatResponseText(
-          result.text,
-          state.logBuffer,
-          runtime,
-        );
-        const persistedAssistant = await resolvePersistedAssistantTurn(
-          runtime,
-          conv.roomId,
-          turnStartedAt,
-          result,
-          resolvedText,
-          channelType,
-        );
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        const persistedAssistantId =
-          persistedAssistant.kind === "durable"
-            ? persistedAssistant.id
-            : undefined;
-        if (result.actionCallbackHistory?.length && persistedAssistantId) {
-          await persistRecentAssistantActionCallbackHistory(
-            runtime,
-            conv.roomId,
-            result.actionCallbackHistory,
-            turnStartedAt,
-            persistedAssistantId,
-          );
-        }
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        const visibleResolvedText =
-          result.transcriptVisibility === "internal" ? "" : resolvedText;
-        const outcome = buildGenerationMessageIdOutcome(
-          result,
-          visibleResolvedText,
-          persistedAssistantId,
-          {
-            userMessageId: messageToStore.id,
-            ...(persistedAssistant.kind === "ephemeral"
-              ? { assistantEphemeral: true }
-              : {}),
-            ...(result.usedActionCallbacks
-              ? { historyRefreshRequired: true }
-              : {}),
-          },
-        );
-        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
-        json(res, buildConversationJsonOutcome(outcome));
-      } else {
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        const outcome = buildGenerationMessageIdOutcome(result, "", undefined, {
-          userMessageId: messageToStore.id,
-          assistantEphemeral: true,
-        });
-        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
-        json(res, buildConversationJsonOutcome(outcome));
-      }
-    } catch (err) {
-      if (
-        isCallbackHistoryPersistenceError(err) ||
-        err instanceof AssistantReplyPersistenceError
-      ) {
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        error(
-          res,
-          getErrorMessage(
-            err instanceof AssistantReplyPersistenceError
-              ? (err.cause ?? err)
-              : err,
-          ),
-          500,
-        );
-        return true;
-      }
-      logger.warn(
-        `[conversations] POST /messages failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      if (isConversationConnectionError(err)) {
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        error(
-          res,
-          `Failed to refresh conversation room: ${getErrorMessage(err)}`,
-          500,
-        );
-        return true;
-      }
-      const providerIssueReply = getChatFailureReply(err, state.logBuffer);
-      const failureKind = classifyChatFailure(err, state.logBuffer);
       try {
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
+        runtimeTurnLease = await runtime.roomHandlerQueue.acquire(
+          conv.roomId,
+          admissionDisconnectTracker.signal,
         );
-        const routeOwnedId = crypto.randomUUID() as UUID;
-        const persisted = await persistAssistantConversationMemory(
+      } catch (err) {
+        admissionDisconnectTracker.dispose();
+        releaseTurnReservation();
+        if (admissionDisconnectTracker.isAborted()) {
+          return true;
+        }
+        error(
+          res,
+          isRoomQueueBackpressureError(err)
+            ? "Conversation is busy; retry after the pending turns finish"
+            : `Failed to serialize conversation turn: ${getErrorMessage(err)}`,
+          roomQueueAdmissionStatus(err),
+        );
+        return true;
+      }
+      admissionDisconnectTracker.markCompleted();
+      admissionDisconnectTracker.dispose();
+
+      try {
+        if (
+          state.conversations.get(conv.id) !== conv ||
+          state.deletedConversationIds.has(conv.id)
+        ) {
+          releaseTurnReservation();
+          error(res, "Conversation was deleted", 404);
+          return true;
+        }
+        const durableRecovery = await recoverDurableConversationChatOutcome(
           runtime,
           conv.roomId,
-          providerIssueReply,
-          channelType,
-          undefined,
-          routeOwnedId,
+          chatIdempotencyScope,
+          clientMessageId,
+          chatFingerprint,
+          state.agentName,
+          runtimeTurnLease,
         );
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
+        if (durableRecovery.kind === "conflict") {
+          releaseTurnReservation();
+          error(res, durableRecovery.error.message, 409);
+          return true;
+        }
+        if (durableRecovery.kind === "settled") {
+          await settleTurnReservation(durableRecovery.outcome);
+          json(res, buildConversationJsonOutcome(durableRecovery.outcome));
+          return true;
+        }
+        let connectionDescriptor: ConversationConnectionDescriptor;
+        try {
+          connectionDescriptor = await ensureConversationRoom(
+            state,
+            runtime,
+            conv,
+            caller,
+          );
+        } catch (err) {
+          releaseTurnReservation();
+          error(
+            res,
+            `Failed to initialize conversation room: ${getErrorMessage(err)}`,
+            500,
+          );
+          return true;
+        }
+
+        let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
+        try {
+          const pendantProvenance = await verifyCanonicalPendantProvenance(
+            runtime,
+            caller,
+            prompt,
+            restMetadata,
+          );
+          userMessages = await buildUserMessages({
+            images,
+            prompt,
+            userId,
+            agentId: runtime.agentId,
+            roomId: conv.roomId,
+            channelType,
+            messageSource: pendantProvenance ? "pendant" : source,
+            metadata: restMetadata,
+          });
+          if (pendantProvenance) {
+            stampCanonicalPendantMemory(userMessages, pendantProvenance);
+          }
+        } catch (err) {
+          releaseTurnReservation();
+          error(
+            res,
+            `Failed to prepare user message: ${getErrorMessage(err)}`,
+            500,
+          );
+          return true;
+        }
+        bindClientUserMemoryId(
+          clientMessageId ?? null,
+          chatIdempotencyScope,
+          chatFingerprint,
+          userMessages,
         );
-        conv.updatedAt = new Date().toISOString();
-        const outcome: ChatMessageIdOutcome = {
-          text: providerIssueReply,
-          agentName: state.agentName,
-          ...(persisted?.id ? { messageId: persisted.id } : {}),
-          userMessageId: messageToStore.id,
-          failureKind,
-        };
-        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
-        json(res, buildConversationJsonOutcome(outcome));
-      } catch (persistErr) {
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        error(res, getErrorMessage(persistErr), 500);
+        const { userMessage, messageToStore } = userMessages;
+        try {
+          await attestAuthenticatedApiDeliveryAudience(
+            runtime,
+            userMessage,
+            trustedApiPrincipal,
+          );
+        } catch (err) {
+          releaseTurnReservation();
+          error(
+            res,
+            `Failed to attest conversation audience: ${getErrorMessage(err)}`,
+            500,
+          );
+          return true;
+        }
+
+        const routedUserMessage = withViewInteractionClient(userMessage, req);
+        const walletModeGuidance = resolveWalletModeGuidanceReply(
+          state,
+          prompt,
+        );
+        const turnStartedAt = Date.now();
+
+        try {
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          await persistClientUserMemory(
+            runtime,
+            messageToStore,
+            clientMessageId ?? null,
+            runtimeTurnLease,
+          );
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+        } catch (err) {
+          releaseTurnReservation();
+          error(
+            res,
+            `Failed to store user message: ${getErrorMessage(err)}`,
+            500,
+          );
+          return true;
+        }
+
+        if (walletModeGuidance) {
+          const endActiveChatTurn = beginActiveChatTurn(state);
+          try {
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
+            const routeOwnedId = crypto.randomUUID() as UUID;
+            const persisted = await persistAssistantConversationMemory(
+              runtime,
+              conv.roomId,
+              { text: walletModeGuidance, inReplyTo: messageToStore.id },
+              channelType,
+              turnStartedAt,
+              routeOwnedId,
+              runtimeTurnLease,
+            );
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
+            conv.updatedAt = new Date().toISOString();
+            const outcome: ChatMessageIdOutcome = {
+              text: walletModeGuidance,
+              agentName: state.agentName,
+              ...(persisted?.id ? { messageId: persisted.id } : {}),
+              userMessageId: messageToStore.id,
+            };
+            await settleTurnReservation(outcome);
+            json(res, buildConversationJsonOutcome(outcome));
+          } catch (persistErr) {
+            releaseTurnReservation();
+            error(res, getErrorMessage(persistErr), 500);
+          } finally {
+            if (
+              clientMessageId &&
+              !getChatMessageIdOutcome(chatIdempotencyScope, clientMessageId)
+            ) {
+              releaseTurnReservation();
+            }
+            endActiveChatTurn();
+          }
+          return true;
+        }
+
+        const endActiveChatTurn = beginActiveChatTurn(state);
+        try {
+          const result = await generateChatResponse(
+            runtime,
+            routedUserMessage,
+            state.agentName,
+            {
+              roomHandlerLease: runtimeTurnLease,
+              resolveNoResponseText: () =>
+                resolveNoResponseFallback(state.logBuffer, runtime),
+              preferredLanguage,
+            },
+          );
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+
+          conv.updatedAt = new Date().toISOString();
+          if (result.noResponseReason !== "ignored") {
+            const resolvedText = normalizeChatResponseText(
+              result.text,
+              state.logBuffer,
+              runtime,
+            );
+            const persistedAssistant = await resolvePersistedAssistantTurn(
+              runtime,
+              conv.roomId,
+              turnStartedAt,
+              result,
+              resolvedText,
+              channelType,
+              runtimeTurnLease,
+              messageToStore.id,
+            );
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
+            const persistedAssistantId =
+              persistedAssistant.kind === "durable"
+                ? persistedAssistant.id
+                : undefined;
+            if (result.actionCallbackHistory?.length && persistedAssistantId) {
+              await persistRecentAssistantActionCallbackHistory(
+                runtime,
+                conv.roomId,
+                result.actionCallbackHistory,
+                turnStartedAt,
+                persistedAssistantId,
+                runtimeTurnLease,
+              );
+            }
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
+            const visibleResolvedText =
+              result.transcriptVisibility === "internal" ? "" : resolvedText;
+            const outcome = buildGenerationMessageIdOutcome(
+              result,
+              visibleResolvedText,
+              persistedAssistantId,
+              {
+                userMessageId: messageToStore.id,
+                ...(persistedAssistant.kind === "ephemeral"
+                  ? { assistantEphemeral: true }
+                  : {}),
+                ...(result.usedActionCallbacks
+                  ? { historyRefreshRequired: true }
+                  : {}),
+              },
+            );
+            await settleTurnReservation(outcome);
+            json(res, buildConversationJsonOutcome(outcome));
+          } else {
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
+            const outcome = buildGenerationMessageIdOutcome(
+              result,
+              "",
+              undefined,
+              {
+                userMessageId: messageToStore.id,
+                assistantEphemeral: true,
+              },
+            );
+            await settleTurnReservation(outcome);
+            json(res, buildConversationJsonOutcome(outcome));
+          }
+        } catch (err) {
+          if (
+            isCallbackHistoryPersistenceError(err) ||
+            err instanceof AssistantReplyPersistenceError
+          ) {
+            releaseTurnReservation();
+            error(
+              res,
+              getErrorMessage(
+                err instanceof AssistantReplyPersistenceError
+                  ? (err.cause ?? err)
+                  : err,
+              ),
+              500,
+            );
+            return true;
+          }
+          logger.warn(
+            `[conversations] POST /messages failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          if (isConversationConnectionError(err)) {
+            releaseTurnReservation();
+            error(
+              res,
+              `Failed to refresh conversation room: ${getErrorMessage(err)}`,
+              500,
+            );
+            return true;
+          }
+          const providerIssueReply = getChatFailureReply(err, state.logBuffer);
+          const failureKind = classifyChatFailure(err, state.logBuffer);
+          try {
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
+            const routeOwnedId = crypto.randomUUID() as UUID;
+            const persisted = await persistAssistantConversationMemory(
+              runtime,
+              conv.roomId,
+              { text: providerIssueReply, inReplyTo: messageToStore.id },
+              channelType,
+              undefined,
+              routeOwnedId,
+              runtimeTurnLease,
+            );
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
+            conv.updatedAt = new Date().toISOString();
+            const outcome: ChatMessageIdOutcome = {
+              text: providerIssueReply,
+              agentName: state.agentName,
+              ...(persisted?.id ? { messageId: persisted.id } : {}),
+              userMessageId: messageToStore.id,
+              failureKind,
+            };
+            await settleTurnReservation(outcome);
+            json(res, buildConversationJsonOutcome(outcome));
+          } catch (persistErr) {
+            releaseTurnReservation();
+            error(res, getErrorMessage(persistErr), 500);
+          }
+        } finally {
+          if (
+            clientMessageId &&
+            !getChatMessageIdOutcome(chatIdempotencyScope, clientMessageId)
+          ) {
+            releaseTurnReservation();
+          }
+          endActiveChatTurn();
+        }
+        return true;
+      } finally {
+        await runtimeTurnLease.release();
+        runtimeTurnLease = null;
       }
     } finally {
-      if (
-        clientMessageId &&
-        !getChatMessageIdOutcome(conv.roomId, clientMessageId)
-      ) {
-        releaseChatMessageId(conv.roomId, clientMessageId);
-      }
-      endActiveChatTurn();
+      if (!reservationSettled) releaseTurnReservation();
     }
-    return true;
   }
 
   // ── POST /api/conversations/:id/greeting ───────────────────────────
@@ -3959,27 +4981,59 @@ export async function handleConversationRoutes(
     const url = new URL(req.url ?? "", `http://${req.headers.host}`);
     const lang = url.searchParams.get("lang") ?? "en";
 
+    const greetingAbortTracker = createRequestDisconnectAbortTracker({
+      req,
+      res,
+      operation: "Conversation greeting admission",
+    });
+    let historyLease: RoomHandlerLease;
     try {
-      await ensureConversationRoom(
-        state,
-        runtime,
-        conv,
-        resolveConversationCaller(req, state, trustedApiPrincipal, runtime),
+      historyLease = await runtime.roomHandlerQueue.acquire(
+        conv.roomId,
+        greetingAbortTracker.signal,
       );
     } catch (err) {
+      greetingAbortTracker.dispose();
+      if (greetingAbortTracker.isAborted()) return true;
       error(
         res,
-        `Failed to initialize conversation room: ${getErrorMessage(err)}`,
-        500,
+        isRoomQueueBackpressureError(err)
+          ? "Conversation is busy; retry after the pending turns finish"
+          : `Failed to serialize conversation history: ${getErrorMessage(err)}`,
+        roomQueueAdmissionStatus(err),
       );
       return true;
     }
-
+    greetingAbortTracker.markCompleted();
+    greetingAbortTracker.dispose();
     try {
+      if (
+        state.conversations.get(conv.id) !== conv ||
+        state.deletedConversationIds.has(conv.id)
+      ) {
+        error(res, "Conversation was deleted", 404);
+        return true;
+      }
+      try {
+        await ensureConversationRoom(
+          state,
+          runtime,
+          conv,
+          resolveConversationCaller(req, state, trustedApiPrincipal, runtime),
+        );
+      } catch (err) {
+        error(
+          res,
+          `Failed to initialize conversation room: ${getErrorMessage(err)}`,
+          500,
+        );
+        return true;
+      }
       const greeting = await ensureConversationGreetingStored(
         state,
         conv,
         lang,
+        historyLease,
       );
       json(res, {
         text: greeting.text,
@@ -3989,6 +5043,8 @@ export async function handleConversationRoutes(
       });
     } catch (err) {
       error(res, getErrorMessage(err), 500);
+    } finally {
+      await historyLease.release();
     }
     return true;
   }
@@ -4118,26 +5174,65 @@ export async function handleConversationRoutes(
     for (const conv of Array.from(state.conversations.values())) {
       if (keepId && conv.id === keepId) continue;
       if (state.deletedConversationIds.has(conv.id)) continue;
-      const memories = await runtime.getMemories({
-        roomId: conv.roomId,
-        tableName: "messages",
-        limit: 10,
+      const cleanupAbortTracker = createRequestDisconnectAbortTracker({
+        req,
+        res,
+        operation: "Empty conversation cleanup admission",
       });
-      const hasUserMessage = memories.some((m) => m.entityId !== agentId);
-      if (hasUserMessage) continue;
-      const memoryIds = memories
-        .map((memory) => memory.id)
-        .filter(
-          (memoryId): memoryId is UUID =>
-            typeof memoryId === "string" && memoryId.trim().length > 0,
+      let historyLease: RoomHandlerLease;
+      try {
+        historyLease = await runtime.roomHandlerQueue.acquire(
+          conv.roomId,
+          cleanupAbortTracker.signal,
         );
-      if (memoryIds.length > 0) {
-        await deleteConversationMemories(runtime, memoryIds);
+      } catch (err) {
+        cleanupAbortTracker.dispose();
+        if (cleanupAbortTracker.isAborted()) return true;
+        error(
+          res,
+          isRoomQueueBackpressureError(err)
+            ? "Conversation is busy; retry cleanup after pending turns finish"
+            : `Failed to serialize conversation cleanup: ${getErrorMessage(err)}`,
+          roomQueueAdmissionStatus(err),
+        );
+        return true;
       }
-      await deleteConversationRoomData(runtime, conv.roomId);
-      state.conversations.delete(conv.id);
-      markConversationDeleted(state, conv.id);
-      deleted.push(conv.id);
+      cleanupAbortTracker.markCompleted();
+      cleanupAbortTracker.dispose();
+      try {
+        if (
+          state.conversations.get(conv.id) !== conv ||
+          state.deletedConversationIds.has(conv.id)
+        ) {
+          continue;
+        }
+        const memories = await runtime.getMemories({
+          roomId: conv.roomId,
+          tableName: "messages",
+          limit: 10,
+        });
+        const hasUserMessage = memories.some((m) => m.entityId !== agentId);
+        if (hasUserMessage) continue;
+        const memoryIds = memories
+          .map((memory) => memory.id)
+          .filter(
+            (memoryId): memoryId is UUID =>
+              typeof memoryId === "string" && memoryId.trim().length > 0,
+          );
+        if (memoryIds.length > 0) {
+          await runtime.roomHandlerQueue.runInLease(
+            conv.roomId,
+            historyLease,
+            () => deleteConversationMemories(runtime, memoryIds),
+          );
+        }
+        await deleteConversationRoomData(runtime, conv.roomId);
+        state.conversations.delete(conv.id);
+        markConversationDeleted(state, conv.id);
+        deleted.push(conv.id);
+      } finally {
+        await historyLease.release();
+      }
     }
     json(res, { deleted });
     return true;
@@ -4152,51 +5247,97 @@ export async function handleConversationRoutes(
     if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
     const convId = decodeURIComponent(pathname.split("/")[3]);
     const conv = await getConversationWithRestore(state, convId);
-    if (conv?.roomId && state.runtime) {
-      try {
-        const memories = await state.runtime.getMemories({
-          roomId: conv.roomId,
-          tableName: "messages",
-          limit: 1000,
+    const runtime = state.runtime;
+    if (conv?.roomId && runtime) {
+      const deleteConversationAbortTracker =
+        createRequestDisconnectAbortTracker({
+          req,
+          res,
+          operation: "Conversation deletion admission",
         });
-        const memoryIds = memories
-          .map((memory) => memory.id)
-          .filter(
-            (memoryId): memoryId is UUID =>
-              typeof memoryId === "string" && memoryId.trim().length > 0,
-          );
-        if (memoryIds.length > 0) {
-          await deleteConversationMemories(state.runtime, memoryIds);
-        }
+      let historyLease: RoomHandlerLease;
+      try {
+        historyLease = await runtime.roomHandlerQueue.acquire(
+          conv.roomId,
+          deleteConversationAbortTracker.signal,
+        );
       } catch (err) {
-        // error-policy:J1 deletion must not create a tombstone while message
-        // rows remain; report the failed operation to the caller.
+        deleteConversationAbortTracker.dispose();
+        if (deleteConversationAbortTracker.isAborted()) return true;
         error(
           res,
-          `Failed to delete conversation messages: ${getErrorMessage(err)}`,
-          500,
+          isRoomQueueBackpressureError(err)
+            ? "Conversation is busy; retry deletion after pending turns finish"
+            : `Failed to serialize conversation deletion: ${getErrorMessage(err)}`,
+          roomQueueAdmissionStatus(err),
         );
         return true;
       }
+      deleteConversationAbortTracker.markCompleted();
+      deleteConversationAbortTracker.dispose();
       try {
-        await deleteConversationRoomData(state.runtime, conv.roomId);
-      } catch (err) {
-        if (isConversationConnectionError(err)) {
+        if (
+          state.conversations.get(conv.id) !== conv ||
+          state.deletedConversationIds.has(conv.id)
+        ) {
+          json(res, { ok: true });
+          return true;
+        }
+        try {
+          const memories = await runtime.getMemories({
+            roomId: conv.roomId,
+            tableName: "messages",
+            limit: 1000,
+          });
+          const memoryIds = memories
+            .map((memory) => memory.id)
+            .filter(
+              (memoryId): memoryId is UUID =>
+                typeof memoryId === "string" && memoryId.trim().length > 0,
+            );
+          if (memoryIds.length > 0) {
+            await runtime.roomHandlerQueue.runInLease(
+              conv.roomId,
+              historyLease,
+              () => deleteConversationMemories(runtime, memoryIds),
+            );
+          }
+        } catch (err) {
+          // error-policy:J1 deletion must not create a tombstone while message
+          // rows remain; report the failed operation to the caller.
           error(
             res,
-            `Failed to serialize conversation deletion: ${getErrorMessage(err)}`,
-            503,
+            `Failed to delete conversation messages: ${getErrorMessage(err)}`,
+            500,
           );
           return true;
         }
-        // error-policy:J1 an incomplete room deletion is a route failure, not a
-        // successful tombstone-only delete.
-        error(
-          res,
-          `Failed to delete conversation room: ${getErrorMessage(err)}`,
-          500,
-        );
+        try {
+          await deleteConversationRoomData(runtime, conv.roomId);
+        } catch (err) {
+          if (isConversationConnectionError(err)) {
+            error(
+              res,
+              `Failed to serialize conversation deletion: ${getErrorMessage(err)}`,
+              503,
+            );
+            return true;
+          }
+          // error-policy:J1 an incomplete room deletion is a route failure, not a
+          // successful tombstone-only delete.
+          error(
+            res,
+            `Failed to delete conversation room: ${getErrorMessage(err)}`,
+            500,
+          );
+          return true;
+        }
+        state.conversations.delete(convId);
+        markConversationDeleted(state, convId);
+        json(res, { ok: true });
         return true;
+      } finally {
+        await historyLease.release();
       }
     }
     state.conversations.delete(convId);

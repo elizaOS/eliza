@@ -242,12 +242,17 @@ describe("managed-native stale-session cold boot", () => {
     expect(statuses).toContain("recovering");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(clientMock.setToken).toHaveBeenCalledWith("fresh-agent-bearer");
-    expect(localStorage.getItem("eliza:cloud-pair:api-token")).toBe(
+    // The durable pair token is persisted under the per-agent key (#17579);
+    // the legacy global key must stay empty so another agent's boot can never
+    // adopt this credential.
+    expect(localStorage.getItem("eliza:cloud-pair:api-token:agent-123")).toBe(
       "fresh-agent-bearer",
     );
-    expect(sessionStorage.getItem("eliza:cloud-pair:api-token")).toBe(
+    expect(sessionStorage.getItem("eliza:cloud-pair:api-token:agent-123")).toBe(
       "fresh-agent-bearer",
     );
+    expect(localStorage.getItem("eliza:cloud-pair:api-token")).toBeNull();
+    expect(sessionStorage.getItem("eliza:cloud-pair:api-token")).toBeNull();
     expect(loadPersistedActiveServer()?.accessToken).toBe("fresh-agent-bearer");
     expect(getActiveProfile()?.accessToken).toBe("fresh-agent-bearer");
 

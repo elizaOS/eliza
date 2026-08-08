@@ -1,5 +1,12 @@
 /**
  * Waifu Bridge Auth — resolves waifu-core service JWTs to eliza-cloud user+org.
+ *
+ * The token is a SERVICE credential: it is signed with the shared
+ * `ELIZA_SERVICE_JWT_SECRET` and its `userId` is a naming convention, so every
+ * value read out of it is chosen by the calling service, not proven by an end
+ * user. That bounds what a row provisioned here may assert — in particular it
+ * may carry a wallet address as a lookup key, but never `wallet_verified`, which
+ * downstream turns into a portable identity (`lib/oidc/subject.ts`).
  */
 
 import crypto from "crypto";
@@ -201,7 +208,14 @@ async function resolveServiceUser(
       email,
       organization_id: orgId,
       wallet_address: walletAddr,
-      wallet_verified: !!walletAddr,
+      // NOT `!!walletAddr`. Nothing in this chain verifies a wallet signature:
+      // `walletAddr` is a substring of the service token's `userId`, so whoever
+      // holds the shared secret names the address — including a victim's public
+      // one. `wallet_verified` is read as control of the wallet and mints a
+      // permanent no-reply identity at any relying party with
+      // `wallet_email_fallback`, so this path must record what it actually
+      // knows, which is nothing.
+      wallet_verified: false,
       is_active: true,
     });
   } catch (err: unknown) {

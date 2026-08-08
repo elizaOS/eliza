@@ -71,7 +71,7 @@ For existing app work:
 2. capture the app's `appId` and API key
 3. configure `app_url`, allowed origins, and redirect URIs
 4. use Cloud APIs as the backend
-5. enable monetization if the app should earn
+5. enable monetization if the app should earn (needs compliance approval first — see Payment And Money Flow Rules)
 6. deploy a container only if server-side code is required
 
 For static-hosted apps, do not deploy a container unless the app truly needs its
@@ -104,7 +104,7 @@ Some older docs still describe generic per-request or per-token app pricing. In 
 
 Pick the narrowest money surface:
 
-- **App monetization** (`PUT /api/v1/apps/{id}/monetization`) sets ongoing inference markup and app-credit purchase share. The inference markup is added to the cost debited from the caller's ORG credit balance and earned via `recordCreatorEarnings`; the purchase-share applies to the (currently stranded) per-app pool. It is not a one-off invoice.
+- **App monetization** (`PUT /api/v1/apps/{id}/monetization`) sets ongoing inference markup and app-credit purchase share. The inference markup is added to the cost debited from the caller's ORG credit balance and earned via `recordCreatorEarnings`; the purchase-share applies to the (currently stranded) per-app pool. It is not a one-off invoice. **Turning monetization ON is compliance-gated:** a newly created app is a review draft, and `monetizationEnabled: true` is refused with `403` (`review_status` in the body) until the app reaches `approved`. Submit it for review first; markup/share values and `monetizationEnabled: false` are always accepted.
 - **App charge requests** (`POST /api/v1/apps/{id}/charges`) ask a user to pay an exact USD amount through Stripe or OxaPay. The payer receives app credits; creator earnings flow through the app-credit earnings ledger.
 - **x402 payment requests** (`POST /api/v1/x402/requests`) ask for direct crypto settlement. Use these when the payer already has crypto or the flow is wallet-native. Current settlement support includes Base, Ethereum, BSC, and Solana; defaults point at `https://x402.elizacloud.ai`.
 - **App-credit checkout** (`POST /api/v1/app-credits/checkout`) buys into the per-app pre-purchased credit pool (`app_credit_balances`). Note: inference billing was migrated to the org balance, so these purchases are currently stranded (issue #8253) — prefer org-credit checkout for spendable balance. Use app charge requests when the agent needs a durable request, metadata, callbacks, and a reusable payment URL.
@@ -151,7 +151,7 @@ This is the catch-all skill for any user request about apps they already own. En
 | `list my containers` | `/api/v1/containers` | GET |
 | `change container tier / size` | `/api/v1/apps/{id}` (container fields) | PATCH |
 | `what are my earnings` | `/api/v1/apps/{id}/earnings` | GET |
-| `set markup percentage` | `/api/v1/apps/{id}/monetization` | PUT |
+| `set markup percentage` | `/api/v1/apps/{id}/monetization` | PUT (enabling needs `review_status: approved`, else 403) |
 | `charge this user` / `send a payment request` | `/api/v1/apps/{id}/charges` or `/api/v1/x402/requests` | POST |
 | `check if they paid` | `/api/v1/apps/{id}/charges/{chargeId}` or `/api/v1/x402/requests/{id}` | GET |
 | `create checkout for that charge` | `/api/v1/apps/{id}/charges/{chargeId}/checkout` | POST |

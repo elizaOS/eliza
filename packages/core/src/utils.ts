@@ -38,6 +38,7 @@ import {
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
+import { truncateWellFormed } from "./utils/well-formed";
 
 // Token / embedding budget constants
 export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
@@ -982,8 +983,8 @@ export function truncateToCompleteSentence(
 		}
 	}
 
-	// Fallback: Hard truncate and add ellipsis
-	const hardTruncated = text.slice(0, maxLength - 3).trim();
+	// Fallback: Hard truncate (surrogate-safe) and add ellipsis
+	const hardTruncated = truncateWellFormed(text, maxLength - 3).trim();
 	return `${hardTruncated}...`;
 }
 

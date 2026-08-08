@@ -324,7 +324,11 @@ import {
 } from "./utils/context-routing";
 import { buildDeterministicSeed, shortStringHash } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
-import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
+import {
+	getErrorMessage,
+	isTransientModelError,
+	modelProviderErrorDetail,
+} from "./utils/model-errors";
 import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
 import { getOptimizationRootDir } from "./utils/state-dir";
@@ -351,6 +355,7 @@ const RUNTIME_TEMPLATE_CACHE = new Map<
 const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
 const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;
 const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
+const DEFAULT_FAST_ROOM_DRAIN_TIMEOUT_MS = 500;
 // stateCache holds up to 2 entries per message (base State + `${id}_action_results`).
 // Previously it was never unconditionally evicted at end-of-turn, so a long-lived
 // runtime accumulated one State per processed message for its lifetime (~4.7 KB/msg,
@@ -1190,6 +1195,24 @@ function timeoutAfter(ms: number): Promise<"timeout"> {
 	});
 }
 
+async function settleBeforeTimeout(
+	work: Promise<void>,
+	timeoutMs: number,
+): Promise<boolean> {
+	if (timeoutMs <= 0) return false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			work.then(() => true),
+			new Promise<false>((resolve) => {
+				timer = setTimeout(() => resolve(false), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+	}
+}
+
 interface ResolvedModelRegistration {
 	handler: ModelHandler["handler"];
 	metadata?: ModelRegistrationMetadata;
@@ -1214,7 +1237,13 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly chatPreHandlerRegistry = new ChatPreHandlerRegistry();
 	readonly responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
 	readonly turnControllers = new TurnControllerRegistry();
-	readonly roomHandlerQueue = new RoomHandlerQueue();
+	readonly roomHandlerQueue = new RoomHandlerQueue({
+		onListenerError: (error, event) =>
+			this.reportError("AgentRuntime.roomHandlerQueue.listener", error, {
+				event,
+				diagnosticOnly: true,
+			}),
+	});
 	readonly plugins: Plugin[] = [];
 	/**
 	 * Per-runtime context registry seeded with first-party context definitions
@@ -1232,6 +1261,14 @@ export class AgentRuntime implements IAgentRuntime {
 	public getAllPluginOwnership!: () => PluginOwnership[];
 	events: RuntimeEventStorage = {};
 	stateCache = new Map<string, State>();
+	// Owner-private providers are revalidated on every compose and therefore
+	// prevent the mixed State from entering stateCache. Public provider results
+	// are still safe to reuse within the same Memory object's turn; WeakMap
+	// lifetime keeps that reuse request-local without retaining messages.
+	private readonly publicProviderStateByMessage = new WeakMap<
+		Memory,
+		{ text: unknown; state: State }
+	>();
 	private providerExecutionsInFlight = new Map<
 		string,
 		InFlightProviderExecution
@@ -2569,7 +2606,37 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return;
 		}
+		this.roomHandlerQueue.closeAdmissions("runtime-stop");
+		this.turnControllers.abortAllTurns("runtime-stop");
 		const fast = options?.fast === true;
+		const roomDrain = this.roomHandlerQueue.quiesceAll();
+		if (fast && this.roomHandlerQueue.pendingTotal() > 0) {
+			const timeoutMs = resolveShutdownTimeoutMs(
+				"ELIZA_FAST_ROOM_DRAIN_TIMEOUT_MS",
+				DEFAULT_FAST_ROOM_DRAIN_TIMEOUT_MS,
+			);
+			if (!(await settleBeforeTimeout(roomDrain, timeoutMs))) {
+				const error = new ElizaError(
+					"Fast runtime shutdown timed out while a room owner was still active",
+					{
+						code: "RUNTIME_FAST_STOP_ROOM_DRAIN_TIMEOUT",
+						context: {
+							agentId: this.agentId,
+							pendingRooms: this.roomHandlerQueue.pendingTotal(),
+							timeoutMs,
+						},
+						severity: "ephemeral",
+					},
+				);
+				this.reportError("AgentRuntime.stop.roomDrain", error, {
+					pendingRooms: this.roomHandlerQueue.pendingTotal(),
+					timeoutMs,
+				});
+				throw error;
+			}
+		} else {
+			await roomDrain;
+		}
 		if (!fast) {
 			const pending = pendingPostDeliveryTaskCount(this);
 			if (pending > 0) {
@@ -4739,10 +4806,16 @@ export class AgentRuntime implements IAgentRuntime {
 			text: "",
 		} as State;
 		const audienceCacheKey = trustedDeliveryAudienceCacheKey(message);
+		const publicProviderCache = this.publicProviderStateByMessage.get(message);
+		const cachedPublicState =
+			publicProviderCache !== undefined &&
+			publicProviderCache.text === message.content.text
+				? publicProviderCache.state
+				: undefined;
 		const cachedCandidate =
 			skipCache || !message.id
 				? emptyObj
-				: this.stateCache.get(message.id) || emptyObj;
+				: (this.stateCache.get(message.id) ?? cachedPublicState ?? emptyObj);
 		const cachedState =
 			cachedCandidate === emptyObj ||
 			cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
@@ -5405,6 +5478,7 @@ export class AgentRuntime implements IAgentRuntime {
 			text: providersText,
 		} as State;
 		if (message.id && !containsSensitiveProvider) {
+			this.publicProviderStateByMessage.delete(message);
 			this.stateCache.set(message.id, newState);
 			// Evict oldest entries beyond the cap. The just-set entry and recent
 			// in-flight turns are kept; only stale messages drop out.
@@ -5415,6 +5489,43 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 				this.stateCache.delete(oldest);
 			}
+		} else if (message.id) {
+			const publicProviders = providersToGet.filter(
+				(provider) => provider.disclosureGate?.require !== "owner_exclusive",
+			);
+			const publicProviderResults = Object.fromEntries(
+				publicProviders.flatMap((provider) => {
+					const result = currentProviderResults[provider.name];
+					return result ? [[provider.name, result]] : [];
+				}),
+			) as Record<string, CachedProviderResult>;
+			const publicValues: Record<string, StateValue> = {
+				__conversationSeed: conversationSeed,
+			};
+			const publicTexts: string[] = [];
+			for (const provider of publicProviders) {
+				const result = publicProviderResults[provider.name];
+				if (result?.values && typeof result.values === "object") {
+					Object.assign(publicValues, result.values);
+				}
+				if (typeof result?.text === "string" && result.text.trim() !== "") {
+					publicTexts.push(result.text);
+				}
+			}
+			const publicText = this.redactSecrets(publicTexts.join("\n"));
+			this.publicProviderStateByMessage.set(message, {
+				text: message.content.text,
+				state: {
+					values: { ...publicValues, providers: publicText },
+					data: {
+						__conversationSeed: conversationSeed,
+						__trustedDeliveryAudienceCacheKey: audienceCacheKey,
+						providerOrder: publicProviders.map((provider) => provider.name),
+						providers: publicProviderResults,
+					},
+					text: publicText,
+				},
+			});
 		}
 		return newState;
 	}
@@ -6298,11 +6409,16 @@ export class AgentRuntime implements IAgentRuntime {
 				: typeof response === "string"
 					? response
 					: undefined;
+		const trajectoryContext = getTrajectoryContext();
+		const logRoomId =
+			(trajectoryContext?.roomId as UUID | undefined) ??
+			this.currentRoomId ??
+			this.agentId;
 		void this.adapter
 			.createLogs([
 				{
 					entityId: this.agentId,
-					roomId: this.currentRoomId ?? this.agentId,
+					roomId: logRoomId,
 					body: {
 						modelType,
 						modelKey,
@@ -6332,6 +6448,7 @@ export class AgentRuntime implements IAgentRuntime {
 				);
 				this.reportError("AgentRuntime.modelCallLog", error, {
 					model: modelKey,
+					diagnosticOnly: true,
 				});
 			});
 	}
@@ -7736,7 +7853,26 @@ export class AgentRuntime implements IAgentRuntime {
 			// Mark the response as a sanitized failure, not a success payload, so
 			// downstream readers/agents can distinguish billed-but-failed attempts
 			// from real outputs. Secrets are stripped to keep the trajectory safe.
-			const sanitizedMessage = this.redactSecrets(errorMessage);
+			// The provider's own diagnostic (status + body message) is appended:
+			// SDK error messages degrade to the bare statusText for providers with
+			// non-OpenAI error envelopes, and without the body detail a failed
+			// attempt reads as an uninvestigable "Bad Request".
+			const providerDetail = modelProviderErrorDetail(args.error);
+			const detailSuffix = providerDetail
+				? `${
+						providerDetail.providerMessage &&
+						!errorMessage.includes(providerDetail.providerMessage)
+							? ` | provider: ${providerDetail.providerMessage}`
+							: ""
+					}${
+						providerDetail.status !== undefined
+							? ` | status: ${providerDetail.status}`
+							: ""
+					}`
+				: "";
+			const sanitizedMessage = this.redactSecrets(
+				`${errorMessage}${detailSuffix}`,
+			);
 			const activeTrace = this.getActiveTrace(this.getCurrentRunId());
 			trajLogger.logLlmCall({
 				stepId,
@@ -7749,7 +7885,13 @@ export class AgentRuntime implements IAgentRuntime {
 					typeof paramsRecord.prompt === "string"
 						? paramsRecord.prompt
 						: userPrompt,
-				messages: undefined,
+				// The failed request's messages ARE the evidence: without them a
+				// provider rejection (schema, shape, encoding) cannot be replayed or
+				// diagnosed from the trajectory. Same privacy surface as the
+				// successful-call record, which already persists messages.
+				messages: Array.isArray(paramsRecord.messages)
+					? (paramsRecord.messages as unknown[])
+					: undefined,
 				tools: paramsRecord.tools,
 				toolChoice: paramsRecord.toolChoice,
 				responseSchema: paramsRecord.responseSchema,

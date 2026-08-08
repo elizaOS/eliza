@@ -109,6 +109,100 @@ export function modelProviderErrorStatus(error: unknown): number | undefined {
 }
 
 /**
+ * Structured diagnostic detail for a model/provider failure: the HTTP status,
+ * the provider's own error message parsed out of the response body, and a
+ * bounded excerpt of that body. The AI SDK keeps the raw body on
+ * `APICallError.responseBody` but derives `error.message` from the OpenAI
+ * `{"error": {...}}` envelope only — providers that return a FLAT error shape
+ * (Cerebras: `{"message", "type", "param", "code"}`) surface as a bare
+ * statusText ("Bad Request") with the real cause silently dropped. This
+ * extractor recovers that cause so reportError context, logs, and trajectory
+ * records can carry it.
+ */
+export interface ModelProviderErrorDetail {
+	status?: number;
+	providerMessage?: string;
+	responseBodyExcerpt?: string;
+	url?: string;
+}
+
+const RESPONSE_BODY_EXCERPT_MAX_CHARS = 400;
+
+function providerMessageFromBody(body: string): string | undefined {
+	try {
+		const parsed = JSON.parse(body) as {
+			message?: unknown;
+			error?: { message?: unknown } | string;
+			detail?: unknown;
+		};
+		if (typeof parsed !== "object" || parsed === null) return undefined;
+		const candidates = [
+			parsed.message,
+			typeof parsed.error === "object" && parsed.error !== null
+				? parsed.error.message
+				: parsed.error,
+			parsed.detail,
+		];
+		for (const candidate of candidates) {
+			if (typeof candidate === "string" && candidate.trim().length > 0) {
+				return candidate.trim();
+			}
+		}
+		return undefined;
+	} catch {
+		// error-policy:J3 untrusted-input sanitizing — a non-JSON body has no
+		// structured message; the caller falls back to the raw excerpt.
+		return undefined;
+	}
+}
+
+/**
+ * Best-effort extraction of {@link ModelProviderErrorDetail} from a thrown
+ * model-call error, walking the same bounded `.cause`/`RetryError` graph as
+ * {@link modelProviderErrorStatus}. Returns undefined when the chain carries
+ * neither a status nor a response body, so callers can spread it into context
+ * objects without manufacturing empty fields.
+ */
+export function modelProviderErrorDetail(
+	error: unknown,
+): ModelProviderErrorDetail | undefined {
+	let status: number | undefined;
+	let providerMessage: string | undefined;
+	let responseBodyExcerpt: string | undefined;
+	let url: string | undefined;
+	for (const node of modelErrorChain(error)) {
+		status ??= readHttpStatus(node);
+		if (responseBodyExcerpt === undefined) {
+			const body = (node as { responseBody?: unknown }).responseBody;
+			if (typeof body === "string" && body.trim().length > 0) {
+				responseBodyExcerpt = body
+					.replace(/\s+/g, " ")
+					.trim()
+					.slice(0, RESPONSE_BODY_EXCERPT_MAX_CHARS);
+				providerMessage = providerMessageFromBody(body);
+			}
+		}
+		if (url === undefined) {
+			const rawUrl = (node as { url?: unknown }).url;
+			if (typeof rawUrl === "string" && rawUrl.length > 0) url = rawUrl;
+		}
+	}
+	if (
+		status === undefined &&
+		providerMessage === undefined &&
+		responseBodyExcerpt === undefined
+	) {
+		return undefined;
+	}
+	return {
+		...(status !== undefined ? { status } : {}),
+		...(providerMessage !== undefined ? { providerMessage } : {}),
+		...(responseBodyExcerpt !== undefined ? { responseBodyExcerpt } : {}),
+		...(url !== undefined ? { url } : {}),
+	};
+}
+
+/**
  * True when a thrown model-call error is an EXPECTED provider/transport failure
  * — the provider returned an HTTP error status (>= 400) or the request failed
  * at the network layer — as opposed to a programmer or schema-validation error

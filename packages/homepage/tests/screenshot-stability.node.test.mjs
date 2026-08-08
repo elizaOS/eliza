@@ -54,6 +54,26 @@ async function perturbedPng(seed, pixels) {
     .toBuffer();
 }
 
+/**
+ * Variant of colorfulPng(seed) with every channel of every pixel nudged by
+ * `amount` — whole-frame dither below pixelmatch's perceptual threshold,
+ * the shape WebGL/video compositing noise takes in real captures.
+ */
+async function ditheredPng(seed, amount) {
+  const raw = Buffer.alloc(SIZE * SIZE * 3);
+  for (let y = 0; y < SIZE; y += 1) {
+    for (let x = 0; x < SIZE; x += 1) {
+      const i = (y * SIZE + x) * 3;
+      raw[i] = Math.min(255, ((x * 8 + seed * 37) % 256) + amount);
+      raw[i + 1] = Math.min(255, ((y * 8 + seed * 53) % 256) + amount);
+      raw[i + 2] = Math.min(255, ((x * y + seed) % 256) + amount);
+    }
+  }
+  return sharp(raw, { raw: { width: SIZE, height: SIZE, channels: 3 } })
+    .png()
+    .toBuffer();
+}
+
 /** Single-color PNG that must fail the blank/quality gate. */
 async function blankPng() {
   return sharp({
@@ -113,6 +133,25 @@ test("consecutive frames within the pixel tolerance count as stable", async () =
     retry,
   );
   assert.ok(result.equals(nearA));
+  assert.equal(callCount(), 2);
+});
+
+test("whole-frame dither below the perceptual threshold counts as stable", async () => {
+  // Every pixel's every channel differs by 6 — far past any per-channel
+  // noise cutoff on 100% of the frame, yet imperceptible under the
+  // pixelmatch YIQ metric the snapshot comparison judges captures by.
+  // This is the compositing noise real WebGL/video pages produce between
+  // consecutive captures while the golden diff itself stays green.
+  const a = await colorfulPng(7);
+  const jittered = await ditheredPng(7, 6);
+  const { page, callCount } = fakePage([a, jittered]);
+  const result = await captureScreenshotWithQualityRetry(
+    page,
+    "dither",
+    {},
+    retry,
+  );
+  assert.ok(result.equals(jittered));
   assert.equal(callCount(), 2);
 });
 

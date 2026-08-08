@@ -21,6 +21,7 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
+  drainRoomPostDeliveryTasks,
   ElizaError,
   EventType,
   emitInferenceTiming,
@@ -40,6 +41,7 @@ import {
   nextInferenceTurnId,
   persistInferenceTimingSummary,
   type RolesWorldMetadata,
+  type RoomHandlerLease,
   type RouteRequestContext,
   recordOwnerGrant,
   revertedEffectReceiptIds,
@@ -79,7 +81,12 @@ import {
 import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.ts";
 import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts";
 import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
-import { createChatIdempotencyStore } from "../services/chat-idempotency-service.ts";
+import {
+  type ChatIdempotencyAdmission,
+  type ChatIdempotencyReservation,
+  ChatIdempotencyWaitAbortedError,
+  createChatIdempotencyStore,
+} from "../services/chat-idempotency-service.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import {
   maybeAugmentChatMessageWithDocuments,
@@ -297,6 +304,20 @@ export interface ChatMessageIdOutcome {
 
 const chatIdempotency = createChatIdempotencyStore<ChatMessageIdOutcome>();
 
+export type ChatMessageIdAdmission =
+  ChatIdempotencyAdmission<ChatMessageIdOutcome>;
+export type ChatMessageIdReservation = ChatIdempotencyReservation;
+export { ChatIdempotencyWaitAbortedError };
+
+/** Join an active keyed turn, replay its durable result, or own a fresh turn. */
+export function admitChatMessageId(
+  scope: string,
+  clientMessageId: string | null,
+  options: { fingerprint?: string; now?: number } = {},
+): ChatMessageIdAdmission {
+  return chatIdempotency.admit(scope, clientMessageId, options);
+}
+
 /** Normalize a raw body value into a usable idempotency key, or `null` when
  *  absent/invalid. Exported for unit testing the dedupe decision in isolation. */
 export function normalizeClientMessageId(value: unknown): string | null {
@@ -337,8 +358,9 @@ export function isDuplicateChatMessage(
 export function releaseChatMessageId(
   scope: string,
   clientMessageId: string | null,
+  reservation?: ChatMessageIdReservation | null,
 ): void {
-  chatIdempotency.release(scope, clientMessageId);
+  chatIdempotency.release(scope, clientMessageId, reservation);
 }
 
 /**
@@ -366,8 +388,9 @@ export function setChatMessageIdOutcome(
   scope: string,
   clientMessageId: string | null,
   outcome: ChatMessageIdOutcome,
+  reservation?: ChatMessageIdReservation | null,
 ): void {
-  chatIdempotency.settle(scope, clientMessageId, outcome);
+  chatIdempotency.settle(scope, clientMessageId, outcome, reservation);
 }
 
 /** Return the durable outcome bound to an exact idempotency key, if settled. */
@@ -973,6 +996,8 @@ export interface ChatGenerateOptions {
    */
   onToolEvent?: (event: ChatToolCallEvent) => void;
   abortSignal?: AbortSignal;
+  /** Existing runtime-validated ownership for a host's wider durable turn. */
+  roomHandlerLease?: RoomHandlerLease;
   resolveNoResponseText?: () => string;
   preferredLanguage?: string;
 }
@@ -2600,11 +2625,19 @@ function isDuplicateMemoryError(err: unknown): boolean {
 export async function persistConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
+  roomHandlerLease?: RoomHandlerLease,
 ): Promise<ReturnType<typeof createMessageMemory>> {
   memory.id ??= crypto.randomUUID() as UUID;
   const stampedMemory = stampAppConversationProvenance(runtime, memory);
   try {
-    await runtime.createMemory(stampedMemory, "messages");
+    const write = () => runtime.createMemory(stampedMemory, "messages");
+    await (roomHandlerLease
+      ? runtime.roomHandlerQueue.runInLease(
+          stampedMemory.roomId,
+          roomHandlerLease,
+          write,
+        )
+      : write());
   } catch (err) {
     if (isDuplicateMemoryError(err)) return stampedMemory;
     throw err;
@@ -2615,13 +2648,21 @@ export async function persistConversationMemory(
 export async function persistExactConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
+  roomHandlerLease?: RoomHandlerLease,
 ): Promise<ReturnType<typeof createMessageMemory>> {
-  return (await persistExactConversationMemoryResult(runtime, memory)).memory;
+  return (
+    await persistExactConversationMemoryResult(
+      runtime,
+      memory,
+      roomHandlerLease,
+    )
+  ).memory;
 }
 
 export async function persistExactConversationMemoryResult(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
+  roomHandlerLease?: RoomHandlerLease,
 ): Promise<{
   created: boolean;
   memory: ReturnType<typeof createMessageMemory>;
@@ -2674,7 +2715,14 @@ export async function persistExactConversationMemoryResult(
   if (existing) return { created: false, memory: assertExact(existing) };
 
   try {
-    await runtime.createMemory(stampedMemory, "messages");
+    const write = () => runtime.createMemory(stampedMemory, "messages");
+    await (roomHandlerLease
+      ? runtime.roomHandlerQueue.runInLease(
+          stampedMemory.roomId,
+          roomHandlerLease,
+          write,
+        )
+      : write());
     return { created: true, memory: stampedMemory };
   } catch (cause) {
     const raced = await loadExisting();
@@ -2806,6 +2854,7 @@ export async function persistAssistantConversationMemory(
   // callers emit `done` only after this write resolves and use its durable id
   // to reconcile optimistic and proactive-message copies.
   memoryId?: UUID,
+  roomHandlerLease?: RoomHandlerLease,
 ): Promise<Memory | null> {
   const persistedContent = markSyntheticChatFailureContent(
     typeof content === "string"
@@ -2848,8 +2897,8 @@ export async function persistAssistantConversationMemory(
     content: persistedContent,
   });
   return memoryId
-    ? await persistExactConversationMemory(runtime, memory)
-    : await persistConversationMemory(runtime, memory);
+    ? await persistExactConversationMemory(runtime, memory, roomHandlerLease)
+    : await persistConversationMemory(runtime, memory, roomHandlerLease);
 }
 
 // ---------------------------------------------------------------------------
@@ -2969,6 +3018,14 @@ export async function readChatRequestPayload(
       ? body.metadata
       : undefined;
   const clientMessageId = normalizeClientMessageId(body.clientMessageId);
+  if (body.clientMessageId !== undefined && clientMessageId === null) {
+    helpers.error(
+      res,
+      "clientMessageId must be a non-empty string of at most 128 characters",
+      400,
+    );
+    return null;
+  }
   const streamProtocol =
     body.streamProtocol === DELTA_STREAM_PROTOCOL
       ? DELTA_STREAM_PROTOCOL
@@ -3022,21 +3079,26 @@ function scheduleMessageTrajectoryGroupingPersistence(
   const grouping = readMessageTrajectoryGrouping(message);
   if (!grouping.scenarioId && !grouping.batchId) return;
 
-  void trackPostDeliveryTask(runtime, "chat:trajectory-grouping", async () => {
-    await startTrajectoryStepInDatabase({
-      runtime,
-      stepId,
-      source:
-        typeof message.content.source === "string" &&
-        message.content.source.trim().length > 0
-          ? message.content.source
-          : undefined,
-      metadata: {
-        ...(grouping.scenarioId ? { scenarioId: grouping.scenarioId } : {}),
-        ...(grouping.batchId ? { batchId: grouping.batchId } : {}),
-      },
-    });
-  });
+  void trackPostDeliveryTask(
+    runtime,
+    "chat:trajectory-grouping",
+    async () => {
+      await startTrajectoryStepInDatabase({
+        runtime,
+        stepId,
+        source:
+          typeof message.content.source === "string" &&
+          message.content.source.trim().length > 0
+            ? message.content.source
+            : undefined,
+        metadata: {
+          ...(grouping.scenarioId ? { scenarioId: grouping.scenarioId } : {}),
+          ...(grouping.batchId ? { batchId: grouping.batchId } : {}),
+        },
+      });
+    },
+    { kind: "diagnostic" },
+  );
 }
 
 function buildChatUsage(
@@ -3342,6 +3404,7 @@ async function generateChatResponseWithTiming(
           >
         >
       | undefined;
+    let trajectoryTerminalOwner: "run" | undefined;
     const settledActionResults: ActionResult[] = [];
     let capturedUsage: CapturedModelUsage | null = null;
     const recordActionCallback = (
@@ -3631,9 +3694,13 @@ async function generateChatResponseWithTiming(
                   },
                   {
                     abortSignal: generationAbortController.signal,
+                    roomHandlerLease: opts?.roomHandlerLease,
                     keepExistingResponses: true,
                     onSettledActionResult: (actionResult) => {
                       settledActionResults.push(actionResult);
+                    },
+                    onTrajectoryTerminalOwner: (owner) => {
+                      trajectoryTerminalOwner = owner;
                     },
                     onStreamChunk: opts?.onChunk
                       ? async (
@@ -3682,6 +3749,7 @@ async function generateChatResponseWithTiming(
               responseMessages: [],
               actionResults: recovery.actionResults,
               mode: "actions",
+              ...(trajectoryTerminalOwner ? { trajectoryTerminalOwner } : {}),
             } as typeof result;
             runtime.logger.warn(
               {
@@ -3753,6 +3821,10 @@ async function generateChatResponseWithTiming(
                 await runtime.emitEvent(EventType.MESSAGE_SENT, {
                   message: memoryLike,
                   source: messageSource,
+                  ...((result?.trajectoryTerminalOwner ??
+                    trajectoryTerminalOwner) === "run"
+                    ? { trajectoryTerminalOwner: "run" as const }
+                    : {}),
                 });
               }
             }
@@ -4183,7 +4255,7 @@ async function generateChatResponseWithTiming(
   }
 }
 
-export async function generateChatResponse(
+async function generateOwnedChatResponse(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
   agentName: string,
@@ -4240,6 +4312,49 @@ export async function generateChatResponse(
         );
       }
     }
+  });
+}
+
+export async function generateChatResponse(
+  runtime: AgentRuntime,
+  message: ReturnType<typeof createMessageMemory>,
+  agentName: string,
+  opts?: ChatGenerateOptions,
+): Promise<ChatGenerationResult> {
+  const runOwned = async (
+    roomHandlerLease: RoomHandlerLease,
+  ): Promise<ChatGenerationResult> => {
+    try {
+      return await generateOwnedChatResponse(runtime, message, agentName, {
+        ...opts,
+        roomHandlerLease,
+      });
+    } finally {
+      await drainRoomPostDeliveryTasks(runtime, message.roomId);
+    }
+  };
+
+  const inheritedLease = runtime.roomHandlerQueue.currentLease(message.roomId);
+  const requestedLease = opts?.roomHandlerLease ?? inheritedLease;
+  if (requestedLease) {
+    if (!runtime.roomHandlerQueue.ownsLease(message.roomId, requestedLease)) {
+      throw new ElizaError("Chat generation has no live room ownership", {
+        code: "CHAT_ROOM_LEASE_MISMATCH",
+        context: { roomId: message.roomId, messageId: message.id },
+      });
+    }
+    if (inheritedLease === requestedLease) {
+      return runOwned(requestedLease);
+    }
+    return runtime.roomHandlerQueue.runInLease(
+      message.roomId,
+      requestedLease,
+      () => runOwned(requestedLease),
+    );
+  }
+
+  return runtime.roomHandlerQueue.withLease(message.roomId, runOwned, {
+    signal: opts?.abortSignal,
   });
 }
 

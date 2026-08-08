@@ -19,12 +19,14 @@
  */
 
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { createCharacter } from "../character";
 import { logger } from "../logger";
 import { AgentRuntime } from "../runtime";
 import type { Plugin } from "../types";
+import {
+	createTestPgliteDataDir,
+	isInMemoryPgliteDataDir,
+} from "./pglite-storage";
 
 export interface TestRuntimeOptions {
 	/** Name for the test agent character. Defaults to "TestAgent". */
@@ -33,7 +35,12 @@ export interface TestRuntimeOptions {
 	plugins?: Plugin[];
 	/** Embedding width shared by the database vector schema and model provider. */
 	embeddingDimensions?: number;
-	/** Reuse an existing PGLite data directory instead of creating a temp one. */
+	/**
+	 * Reuse an existing PGLite data directory instead of the default per-call
+	 * in-memory database. Pass a real directory when the test proves restart
+	 * persistence; otherwise omit it and the runtime gets a unique `memory://`
+	 * store (see ./pglite-storage).
+	 */
 	pgliteDir?: string;
 	/**
 	 * Remove the PGLite data directory during cleanup.
@@ -52,6 +59,7 @@ export interface TestRuntimeOptions {
 
 export interface TestRuntimeResult {
 	runtime: AgentRuntime;
+	/** Data dir backing the runtime: a `memory://` URL unless the caller passed a directory. */
 	pgliteDir: string;
 	/** Stops the runtime and removes the temp PGLite directory. */
 	cleanup: () => Promise<void>;
@@ -104,10 +112,10 @@ export async function createTestRuntime(
 	options?: TestRuntimeOptions,
 ): Promise<TestRuntimeResult> {
 	const pgliteDir =
-		options?.pgliteDir ??
-		fs.mkdtempSync(path.join(os.tmpdir(), "eliza-test-pglite-"));
+		options?.pgliteDir ?? createTestPgliteDataDir("eliza-test-pglite-");
 	const removePgliteDirOnCleanup =
-		options?.removePgliteDirOnCleanup ?? options?.pgliteDir === undefined;
+		options?.removePgliteDirOnCleanup ??
+		(options?.pgliteDir === undefined && !isInMemoryPgliteDataDir(pgliteDir));
 
 	const prevPgliteDir = process.env.PGLITE_DATA_DIR;
 	const prevEmbeddingDimension = process.env.EMBEDDING_DIMENSION;

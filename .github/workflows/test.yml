@@ -288,6 +288,39 @@ jobs:
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui
 
+  # Perf gate (#9954) runs in its own job pinned to GitHub-hosted ubuntu-24.04:
+  # FRAME_GATE_RELAYOUT budgets are calibrated to that runner class, and the
+  # contended hetzner-robot fleet breaches them on hardware grounds alone
+  # (#18021). Keep this job hosted until the budgets carry per-runner-class
+  # calibration.
+  client-perf-gate:
+    name: Client Perf Gate
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
+
       # Perf gate (#9954): drive REAL overlay thread-scroll + pull-to-maximize /
       # top-pull-restore in headless chromium, feed REAL rAF/longtask/layout-shift
       # entries through the shared frame-budget + layout-stability detectors,
@@ -1279,6 +1312,7 @@ jobs:
       - merge-quality-gate
       - server-tests
       - client-tests
+      - client-perf-gate
       - plugin-tests-status
       - integration-tests
       - desktop-contract
@@ -1303,6 +1337,7 @@ jobs:
           echo "merge-quality-gate:${{ needs.merge-quality-gate.result }}"
           echo "server-tests:     ${{ needs.server-tests.result }}"
           echo "client-tests:     ${{ needs.client-tests.result }}"
+          echo "client-perf-gate: ${{ needs.client-perf-gate.result }}"
           echo "plugin-tests:     ${{ needs.plugin-tests-status.result }}"
           echo "integration-tests:${{ needs.integration-tests.result }}"
           echo "desktop-contract: ${{ needs.desktop-contract.result }}"
@@ -1320,6 +1355,7 @@ jobs:
             "merge-quality-gate:${{ needs.merge-quality-gate.result }}" \
             "server-tests:${{ needs.server-tests.result }}" \
             "client-tests:${{ needs.client-tests.result }}" \
+            "client-perf-gate:${{ needs.client-perf-gate.result }}" \
             "plugin-tests:${{ needs.plugin-tests-status.result }}" \
             "integration-tests:${{ needs.integration-tests.result }}" \
             "desktop-contract:${{ needs.desktop-contract.result }}" \

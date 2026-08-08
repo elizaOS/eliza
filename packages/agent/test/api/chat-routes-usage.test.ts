@@ -5,6 +5,7 @@ import {
   createMessageMemory,
   EventType,
   ModelType,
+  RoomHandlerQueue,
   stringToUuid,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -41,6 +42,9 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     drainChatPreHandlers: vi.fn(async () => null),
+    // generateChatResponse acquires per-room ownership through the runtime's
+    // real RoomHandlerQueue; a mock without one fails every turn.
+    roomHandlerQueue: new RoomHandlerQueue(),
     ...overrides,
   } satisfies Partial<AgentRuntime>;
 
@@ -50,7 +54,12 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
 function createChatMessage(text: string) {
   return createMessageMemory({
     id: stringToUuid(`message-${text}`),
-    roomId: stringToUuid("room"),
+    // Per-message room: generateChatResponse serializes turns per room via
+    // the RoomHandlerQueue, so the concurrent-isolation test's two in-flight
+    // turns must live in distinct rooms or they deadlock on each other's
+    // start gate. Usage attribution is keyed per request, not per room, so
+    // the isolation contract is unchanged.
+    roomId: stringToUuid(`room-${text}`),
     entityId: stringToUuid("user"),
     content: {
       text,
@@ -270,7 +279,7 @@ describe("generateChatResponse usage reporting", () => {
 
     expect(result.text).toBe("callback reply");
     expect(onSnapshot).toHaveBeenCalledTimes(1);
-    expect(onSnapshot).toHaveBeenCalledWith("callback reply");
+    expect(onSnapshot).toHaveBeenCalledWith("callback reply", "model");
     expect(onChunk).not.toHaveBeenCalled();
   });
 
@@ -343,7 +352,7 @@ describe("generateChatResponse usage reporting", () => {
       code: "CHAT_APPEND_ONLY_STREAM_DIVERGENCE",
     });
     expect(onChunk).toHaveBeenCalledTimes(1);
-    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply");
+    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply", "model");
   });
 
   it("preserves divergent callback replacement for snapshot-capable consumers", async () => {
@@ -381,8 +390,11 @@ describe("generateChatResponse usage reporting", () => {
     );
 
     expect(result.text).toBe("authoritative final reply");
-    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply");
-    expect(onSnapshot).toHaveBeenLastCalledWith("authoritative final reply");
+    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply", "model");
+    expect(onSnapshot).toHaveBeenLastCalledWith(
+      "authoritative final reply",
+      "model",
+    );
   });
 
   it("records an attributed visible callback only when its action succeeded", async () => {
@@ -507,7 +519,7 @@ describe("generateChatResponse usage reporting", () => {
     );
 
     expect(result.text).toBe("streamed final");
-    expect(onChunk).toHaveBeenCalledWith("streamed final");
+    expect(onChunk).toHaveBeenCalledWith("streamed final", "model");
     expect(result.usedActionCallbacks).toBeUndefined();
     expect(result.actionCallbackHistory).toBeUndefined();
   });
@@ -543,7 +555,7 @@ describe("generateChatResponse usage reporting", () => {
     );
 
     expect(result.text).toBe("Search complete.");
-    expect(onSnapshot).toHaveBeenLastCalledWith("Search complete.");
+    expect(onSnapshot).toHaveBeenLastCalledWith("Search complete.", "model");
     expect(result.usedActionCallbacks).toBeUndefined();
     expect(result.actionCallbackHistory).toBeUndefined();
   });
@@ -660,7 +672,7 @@ describe("generateChatResponse usage reporting", () => {
 
     expect(result.text).toBe(summary);
     expect(result.transcriptVisibility).toBeUndefined();
-    expect(onChunk).toHaveBeenCalledWith(summary);
+    expect(onChunk).toHaveBeenCalledWith(summary, "model");
   });
 
   it("honors an internal response-content tag when action diagnostics are absent", async () => {
