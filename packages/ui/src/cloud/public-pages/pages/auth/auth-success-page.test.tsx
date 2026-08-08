@@ -2,23 +2,24 @@
 // @vitest-environment jsdom
 
 /**
- * AuthSuccessPage only claims success after a backend connection lookup.
- * Forged known-provider markers stay unverified. Harness mocks the cloud API
- * client and router/i18n doubles.
+ * AuthSuccessPage only claims success after a callback-bound HMAC proof or an
+ * authenticated ownership lookup. Forged markers stay unverified; outages are
+ * a distinct unavailable state. Harness mocks the cloud API client.
  */
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const searchParamsRef = vi.hoisted(() => ({
   current: new URLSearchParams(
-    "github_connected=true&platform=github&connection_id=conn-1",
+    "github_connected=true&platform=github&connection_id=conn-1&proof=p.sig",
   ),
 }));
 
 const navigateMock = vi.hoisted(() => vi.fn());
 const apiMock = vi.hoisted(() => vi.fn());
+const bearerTokenRef = vi.hoisted(() => ({ current: null as string | null }));
 
 vi.mock("react-router-dom", () => ({
   useSearchParams: () => [searchParamsRef.current, vi.fn()],
@@ -43,6 +44,7 @@ vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
 
 vi.mock("../../../lib/api-client", () => ({
   api: (...args: unknown[]) => apiMock(...args),
+  readCloudBearerToken: () => bearerTokenRef.current,
   ApiError: class ApiError extends Error {
     status: number;
     code: string;
@@ -80,8 +82,21 @@ vi.mock("../../../../components/primitives", () => ({
 import { ApiError } from "../../../lib/api-client";
 import AuthSuccessPage, {
   resolveAuthSuccessCandidate,
-  verifyAuthSuccessConnection,
+  verifyAuthSuccessCandidate,
 } from "./auth-success-page";
+
+function setPageOrigin(origin: string): void {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: new URL(`${origin}/auth/success`),
+  });
+}
+
+beforeEach(() => {
+  // Default to a Cloud web origin so relative `api()` transport is exercised.
+  // jsdom's default host is loopback, which intentionally uses absolute Cloud.
+  setPageOrigin("https://app.elizacloud.ai");
+});
 
 afterEach(() => {
   cleanup();
@@ -89,8 +104,9 @@ afterEach(() => {
   vi.restoreAllMocks();
   navigateMock.mockReset();
   apiMock.mockReset();
+  bearerTokenRef.current = null;
   searchParamsRef.current = new URLSearchParams(
-    "github_connected=true&platform=github&connection_id=conn-1",
+    "github_connected=true&platform=github&connection_id=conn-1&proof=p.sig",
   );
   delete (window as { opener?: unknown }).opener;
 });
@@ -103,7 +119,7 @@ describe("resolveAuthSuccessCandidate", () => {
     });
   });
 
-  it("rejects a forged known-provider marker without connection_id", () => {
+  it("rejects a forged known-provider marker without proof or connection_id", () => {
     expect(
       resolveAuthSuccessCandidate(
         new URLSearchParams("github_connected=true&platform=github"),
@@ -111,17 +127,11 @@ describe("resolveAuthSuccessCandidate", () => {
     ).toEqual({ kind: "unverified", reason: "untrusted" });
   });
 
-  it("rejects known platform without connection_id", () => {
-    expect(
-      resolveAuthSuccessCandidate(new URLSearchParams("platform=google")),
-    ).toEqual({ kind: "unverified", reason: "untrusted" });
-  });
-
-  it("accepts a verification candidate with connection_id + known platform", () => {
+  it("prefers explicit platform over a stale *_connected marker", () => {
     expect(
       resolveAuthSuccessCandidate(
         new URLSearchParams(
-          "github_connected=true&platform=github&connection_id=conn-1",
+          "google_connected=true&platform=github&connection_id=conn-1&proof=p.sig",
         ),
       ),
     ).toEqual({
@@ -129,31 +139,79 @@ describe("resolveAuthSuccessCandidate", () => {
       platform: "github",
       platformDisplay: "GitHub",
       connectionId: "conn-1",
+      proof: "p.sig",
     });
   });
 
-  it("rejects Object.prototype property names as forged platforms", () => {
+  it("accepts a proof-only twitter candidate", () => {
     expect(
       resolveAuthSuccessCandidate(
-        new URLSearchParams("platform=constructor&connection_id=x"),
+        new URLSearchParams(
+          "twitter_connected=true&platform=twitter&proof=abc.sig",
+        ),
       ),
-    ).toEqual({ kind: "unverified", reason: "untrusted" });
+    ).toEqual({
+      kind: "candidate",
+      platform: "twitter",
+      platformDisplay: "Twitter",
+      connectionId: null,
+      proof: "abc.sig",
+    });
+  });
+
+  it("accepts a Discord auth/success candidate with platform + proof", () => {
+    expect(
+      resolveAuthSuccessCandidate(
+        new URLSearchParams(
+          "discord=connected&platform=discord&discord_connected=true&proof=d.sig",
+        ),
+      ),
+    ).toEqual({
+      kind: "candidate",
+      platform: "discord",
+      platformDisplay: "Discord",
+      connectionId: null,
+      proof: "d.sig",
+    });
+  });
+
+  it("rejects legacy Discord marker-only auth/success URLs", () => {
+    expect(
+      resolveAuthSuccessCandidate(
+        new URLSearchParams("discord=connected&guildId=1"),
+      ),
+    ).toEqual({ kind: "unverified", reason: "missing" });
+  });
+
+  it("accepts connection_id + platform as a session-lookup candidate", () => {
+    expect(
+      resolveAuthSuccessCandidate(
+        new URLSearchParams("platform=github&connection_id=conn-1"),
+      ),
+    ).toEqual({
+      kind: "candidate",
+      platform: "github",
+      platformDisplay: "GitHub",
+      connectionId: "conn-1",
+      proof: null,
+    });
   });
 });
 
-describe("verifyAuthSuccessConnection", () => {
-  it("accepts only a backend-owned matching active connection", async () => {
-    apiMock.mockResolvedValueOnce({
-      connection: {
-        id: "conn-1",
-        platform: "github",
-        status: "active",
-      },
-    });
-    await expect(
-      verifyAuthSuccessConnection({
+describe("verifyAuthSuccessCandidate", () => {
+  it("prefers callback-bound proof verification for sessionless browsers", async () => {
+    apiMock
+      .mockResolvedValueOnce({
+        ok: true,
         platform: "github",
         connectionId: "conn-1",
+      })
+      .mockRejectedValueOnce(new ApiError(401, "unauthorized", "no session"));
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "github",
+        connectionId: "conn-1",
+        proof: "p.sig",
       }),
     ).resolves.toEqual({
       ok: true,
@@ -161,16 +219,234 @@ describe("verifyAuthSuccessConnection", () => {
       platformDisplay: "GitHub",
       connectionId: "conn-1",
     });
+    expect(apiMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/oauth/success-proof/verify?proof=p.sig",
+      expect.any(Object),
+    );
+    expect(apiMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/oauth/connections/conn-1",
+      expect.any(Object),
+    );
   });
 
-  it("rejects a forged connection_id the backend does not own", async () => {
+  it("rejects a transferred proof when the session cannot own the connection", async () => {
+    apiMock
+      .mockResolvedValueOnce({
+        ok: true,
+        platform: "github",
+        connectionId: "conn-other",
+      })
+      .mockRejectedValueOnce(new ApiError(404, "not_found", "not yours"));
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "github",
+        connectionId: "conn-other",
+        proof: "stolen.sig",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "rejected" });
+  });
+
+  it("rejects a valid proof when ownership returns 403 forbidden", async () => {
+    apiMock
+      .mockResolvedValueOnce({
+        ok: true,
+        platform: "github",
+        connectionId: "conn-1",
+      })
+      .mockRejectedValueOnce(new ApiError(403, "forbidden", "org inactive"));
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "github",
+        connectionId: "conn-1",
+        proof: "p.sig",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "rejected" });
+  });
+
+  it("retries ownership without bearer after a stale-token 401", async () => {
+    bearerTokenRef.current = "stale.jwt.token";
+    apiMock
+      .mockResolvedValueOnce({
+        ok: true,
+        platform: "github",
+        connectionId: "conn-other",
+      })
+      .mockRejectedValueOnce(new ApiError(401, "unauthorized", "bad bearer"))
+      .mockRejectedValueOnce(new ApiError(404, "not_found", "not yours"));
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "github",
+        connectionId: "conn-other",
+        proof: "stolen.sig",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "rejected" });
+    expect(apiMock).toHaveBeenCalledTimes(3);
+    expect(apiMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/oauth/connections/conn-other",
+      expect.objectContaining({ skipAuth: true }),
+    );
+  });
+
+  it("rejects forged connection ownership", async () => {
     apiMock.mockRejectedValueOnce(
       new ApiError(404, "not_found", "Connection not found"),
     );
     await expect(
-      verifyAuthSuccessConnection({
+      verifyAuthSuccessCandidate({
         platform: "github",
         connectionId: "forged",
+        proof: null,
+      }),
+    ).resolves.toEqual({ ok: false, reason: "rejected" });
+  });
+
+  it("surfaces verification outages separately from rejection", async () => {
+    apiMock.mockRejectedValueOnce(
+      new ApiError(503, "unavailable", "downstream down"),
+    );
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "github",
+        connectionId: "conn-1",
+        proof: null,
+      }),
+    ).resolves.toEqual({ ok: false, reason: "unavailable" });
+  });
+
+  it("treats HTTP 429 rate limits as unavailable (retryable)", async () => {
+    apiMock.mockRejectedValueOnce(
+      new ApiError(429, "rate_limited", "too many requests"),
+    );
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "github",
+        connectionId: null,
+        proof: "p.sig",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "unavailable" });
+  });
+
+  it("falls back to session ownership when proof fails but connection_id remains", async () => {
+    apiMock
+      .mockRejectedValueOnce(new ApiError(400, "bad_request", "expired proof"))
+      .mockResolvedValueOnce({
+        connection: { id: "conn-1", platform: "github", status: "active" },
+      });
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "github",
+        connectionId: "conn-1",
+        proof: "expired.sig",
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      platform: "github",
+      platformDisplay: "GitHub",
+      connectionId: "conn-1",
+    });
+    expect(apiMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/oauth/success-proof/verify?proof=expired.sig",
+      expect.any(Object),
+    );
+    expect(apiMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/oauth/connections/conn-1",
+      expect.any(Object),
+    );
+  });
+
+  it("does not fall back without a connection id when proof is rejected", async () => {
+    apiMock.mockRejectedValueOnce(
+      new ApiError(400, "bad_request", "bad proof"),
+    );
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "twitter",
+        connectionId: null,
+        proof: "bad.sig",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "rejected" });
+    expect(apiMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps verifier outages as unavailable when ownership fallback is sessionless", async () => {
+    apiMock
+      .mockRejectedValueOnce(
+        new ApiError(503, "unavailable", "proof verifier down"),
+      )
+      .mockRejectedValueOnce(new ApiError(401, "unauthorized", "no session"));
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "github",
+        connectionId: "conn-1",
+        proof: "p.sig",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "unavailable" });
+  });
+
+  it("verifies proofs and ownership against Cloud from loopback web origins", async () => {
+    setPageOrigin("http://localhost:5173");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            platform: "github",
+            connectionId: "conn-1",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "github",
+        connectionId: "conn-1",
+        proof: "loopback.sig",
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      platform: "github",
+      platformDisplay: "GitHub",
+      connectionId: "conn-1",
+    });
+
+    expect(apiMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringMatching(
+        /^https:\/\/api\.elizacloud\.ai\/api\/v1\/oauth\/success-proof\/verify\?proof=loopback\.sig$/,
+      ),
+      expect.objectContaining({ credentials: "include", method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://api.elizacloud.ai/api/v1/oauth/connections/conn-1",
+      expect.objectContaining({ credentials: "include", method: "GET" }),
+    );
+  });
+
+  it("rejects ownership DTOs that omit status", async () => {
+    apiMock.mockResolvedValueOnce({
+      connection: { id: "conn-1", platform: "github" },
+    });
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "github",
+        connectionId: "conn-1",
+        proof: null,
       }),
     ).resolves.toEqual({ ok: false, reason: "rejected" });
   });
@@ -183,7 +459,6 @@ describe("AuthSuccessPage", () => {
     expect(
       await screen.findByText("Connection Could Not Be Verified"),
     ).toBeTruthy();
-    expect(screen.getByText("Back to Sign In")).toBeTruthy();
     expect(apiMock).not.toHaveBeenCalled();
   });
 
@@ -199,39 +474,38 @@ describe("AuthSuccessPage", () => {
     expect(apiMock).not.toHaveBeenCalled();
   });
 
-  it("shows verified success only after backend confirmation", async () => {
-    apiMock.mockResolvedValueOnce({
-      connection: { id: "conn-1", platform: "github", status: "active" },
-    });
-    searchParamsRef.current = new URLSearchParams(
-      "github_connected=true&platform=github&connection_id=conn-1",
-    );
+  it("shows verified success after proof verification", async () => {
+    apiMock
+      .mockResolvedValueOnce({
+        ok: true,
+        platform: "github",
+        connectionId: "conn-1",
+      })
+      .mockRejectedValueOnce(new ApiError(401, "unauthorized", "no session"));
     render(<AuthSuccessPage />);
     expect(await screen.findByText("GitHub Connected")).toBeTruthy();
-    expect(apiMock).toHaveBeenCalledWith(
-      "/api/v1/oauth/connections/conn-1",
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
   });
 
-  it("stays unverified when backend rejects the connection_id", async () => {
+  it("shows unavailable UI on verification outage", async () => {
     apiMock.mockRejectedValueOnce(
-      new ApiError(404, "not_found", "Connection not found"),
+      new ApiError(503, "unavailable", "downstream down"),
     );
     searchParamsRef.current = new URLSearchParams(
-      "platform=google&connection_id=audit-fixture",
+      "platform=github&connection_id=conn-1",
     );
     render(<AuthSuccessPage />);
-    expect(
-      await screen.findByText("Connection Could Not Be Verified"),
-    ).toBeTruthy();
-    expect(screen.queryByText("Google Connected")).toBeNull();
+    expect(await screen.findByText("Could Not Reach Eliza Cloud")).toBeTruthy();
+    expect(screen.getByText("Try Again")).toBeTruthy();
   });
 
   it("auto-closes only when verified success has a live opener", async () => {
-    apiMock.mockResolvedValueOnce({
-      connection: { id: "conn-1", platform: "github", status: "active" },
-    });
+    apiMock
+      .mockResolvedValueOnce({
+        ok: true,
+        platform: "github",
+        connectionId: "conn-1",
+      })
+      .mockRejectedValueOnce(new ApiError(401, "unauthorized", "no session"));
     const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
     Object.defineProperty(window, "opener", {
       value: { closed: false },
@@ -239,7 +513,6 @@ describe("AuthSuccessPage", () => {
     });
     vi.useFakeTimers();
     render(<AuthSuccessPage />);
-    // Flush the verification promise → verified render, then the 2s auto-close.
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();

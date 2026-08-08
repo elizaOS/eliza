@@ -15,6 +15,11 @@ import {
 import { managedAgentDiscordService } from "@/lib/services/agent-managed-discord";
 import { discordAutomationService } from "@/lib/services/discord-automation";
 import type { OAuthState } from "@/lib/services/discord-automation/types";
+import {
+  clearOAuthSuccessParams,
+  isOAuthSuccessLandingPath,
+  mintOAuthSuccessProof,
+} from "@/lib/services/oauth/success-proof";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -101,10 +106,34 @@ app.get("/", async (c) => {
     params: Record<string, string>,
   ): Response {
     const target = new URL(returnTarget.toString());
+    // Drop reserved OAuth success markers so a prior success URL cannot keep a
+    // valid proof across a Discord error (or a different provider completion).
+    clearOAuthSuccessParams(target);
+    // Legacy marker retained for non-/auth/success consumers.
     target.searchParams.set("discord", status);
     Object.entries(params).forEach(([key, value]) => {
       target.searchParams.set(key, value);
     });
+    // `/auth/success` requires platform + proof (or connection ownership).
+    // Discord bot OAuth has no connection_id; mint a short-lived HMAC when the
+    // return target is that landing page.
+    if (status === "connected" && isOAuthSuccessLandingPath(target.pathname)) {
+      target.searchParams.set("platform", "discord");
+      target.searchParams.set("discord_connected", "true");
+      const proof = mintOAuthSuccessProof({ platform: "discord" });
+      if (proof) {
+        target.searchParams.set("proof", proof);
+      } else {
+        // Discord bot OAuth has no connection_id — without a proof the success
+        // page cannot verify. Fail closed instead of a false unverified state.
+        logger.error(
+          "[Discord Callback] success proof secret unavailable; cannot verify /auth/success without a proof",
+        );
+        clearOAuthSuccessParams(target);
+        target.searchParams.set("discord", "error");
+        target.searchParams.set("message", "success_proof_unavailable");
+      }
+    }
     return Response.redirect(target.toString());
   }
 
