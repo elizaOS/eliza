@@ -1,5 +1,10 @@
 /** Covers the steward session cloud E2E flow using Playwright against the real local stack with mock-backed external services. */
 import crypto from "node:crypto";
+import {
+  canMutateLegacyStewardCookies,
+  LEGACY_STEWARD_COOKIES,
+  stewardCookieNames,
+} from "@elizaos/cloud-shared/lib/auth/steward-cookies";
 import { PLAYWRIGHT_TEST_AUTH_SECRET } from "../src/fixtures/env";
 import { expect, test } from "../src/helpers/test-fixtures";
 
@@ -28,6 +33,15 @@ import { expect, test } from "../src/helpers/test-fixtures";
 
 const STEWARD_SESSION = "/api/auth/steward-session";
 const ME = "/api/users/me";
+
+/**
+ * The `ENVIRONMENT` binding the booted worker runs under. The harness starts
+ * cloud-api through its dev launcher, which pins `ENVIRONMENT = "local"`
+ * (`packages/cloud/scripts/admin/dev/cloud-api-dev.mjs`), so the worker uses the
+ * environment-suffixed steward cookie names rather than production's historical
+ * unsuffixed ones.
+ */
+const WORKER_ENVIRONMENT = "local";
 
 function buildTestSessionCookie(
   userId: string,
@@ -98,16 +112,36 @@ test.describe("steward session", () => {
     expect(body.code).toBe("server_secret_missing");
   });
 
-  test("DELETE clears the session cookies", async ({ stack }) => {
+  test("DELETE clears this environment's session cookies, not production's", async ({
+    stack,
+  }) => {
     const res = await fetch(`${stack.urls.api}${STEWARD_SESSION}`, {
       method: "DELETE",
       headers: { Origin: stack.urls.api },
     });
     expect(res.status).toBe(200);
     expect((await res.json()) as { ok?: boolean }).toMatchObject({ ok: true });
-    // steward-token is HttpOnly and cleared with an expiry in the past.
-    const setCookie = res.headers.get("set-cookie") ?? "";
-    expect(setCookie).toContain("steward-token=");
+
+    // A cleared cookie is re-sent empty with Max-Age=0, whether or not it is
+    // HttpOnly; collect exactly those names.
+    const cleared = new Set(
+      res.headers
+        .getSetCookie()
+        .filter((c) => /max-age=0/i.test(c))
+        .map((c) => c.split("=")[0]),
+    );
+    const scoped = stewardCookieNames(WORKER_ENVIRONMENT);
+    expect(cleared).toContain(scoped.token);
+    expect(cleared).toContain(scoped.refreshToken);
+    expect(cleared).toContain(scoped.authed);
+
+    // #13728: every elizacloud.ai environment shares the parent cookie domain,
+    // so a non-production worker clearing the historical UNSUFFIXED names would
+    // sign out a live production tab. Non-production must clear only its own.
+    expect(canMutateLegacyStewardCookies(WORKER_ENVIRONMENT)).toBe(false);
+    expect(cleared).not.toContain(LEGACY_STEWARD_COOKIES.token);
+    expect(cleared).not.toContain(LEGACY_STEWARD_COOKIES.refreshToken);
+    expect(cleared).not.toContain(LEGACY_STEWARD_COOKIES.authed);
   });
 
   test("a verified session resolves to the seeded identity, and logout 401s", async ({
