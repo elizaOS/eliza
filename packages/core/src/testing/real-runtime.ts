@@ -18,8 +18,6 @@
  */
 
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { createCharacter } from "../character";
 import { logger } from "../logger";
 import { AgentRuntime } from "../runtime";
@@ -33,6 +31,10 @@ import {
 	type LiveProviderName,
 	selectLiveProvider,
 } from "./live-provider";
+import {
+	createTestPgliteDataDir,
+	isInMemoryPgliteDataDir,
+} from "./pglite-storage";
 
 export interface RealTestRuntimeOptions {
 	/** Name for the test agent character. Defaults to "TestAgent". */
@@ -47,7 +49,11 @@ export interface RealTestRuntimeOptions {
 	withDiscord?: boolean;
 	/** Register Telegram plugin if TELEGRAM_BOT_TOKEN is available. Default: false. */
 	withTelegram?: boolean;
-	/** Reuse an existing PGLite data directory. */
+	/**
+	 * Reuse an existing PGLite data directory instead of the default per-call
+	 * in-memory database. Pass a real directory when the test proves restart
+	 * persistence (see ../testing/pglite-storage).
+	 */
 	pgliteDir?: string;
 	/** Remove PGLite dir on cleanup. Defaults to true when dir is auto-created. */
 	removePgliteDirOnCleanup?: boolean;
@@ -138,10 +144,10 @@ export async function createRealTestRuntime(
 	options?: RealTestRuntimeOptions,
 ): Promise<RealTestRuntimeResult> {
 	const pgliteDir =
-		options?.pgliteDir ??
-		fs.mkdtempSync(path.join(os.tmpdir(), "eliza-real-test-"));
+		options?.pgliteDir ?? createTestPgliteDataDir("eliza-real-test-");
 	const removePgliteDirOnCleanup =
-		options?.removePgliteDirOnCleanup ?? options?.pgliteDir === undefined;
+		options?.removePgliteDirOnCleanup ??
+		(options?.pgliteDir === undefined && !isInMemoryPgliteDataDir(pgliteDir));
 
 	const prevPgliteDir = process.env.PGLITE_DATA_DIR;
 	process.env.PGLITE_DATA_DIR = pgliteDir;

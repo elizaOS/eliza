@@ -3,10 +3,7 @@
  * Boots the production plugin with default seeding and the real service implementations.
  */
 import { expect, setDefaultTimeout, spyOn, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
 import http from 'node:http';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { AgentRuntime, createCharacter, stringToUuid } from '@elizaos/core';
 import { and, eq } from 'drizzle-orm';
@@ -20,6 +17,7 @@ import {
   EmbeddedWorkflowService,
 } from '../../src/services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE, WorkflowService } from '../../src/services/workflow-service';
+import { makeWorkflowPgliteStore } from '../pglite-test-store';
 
 setDefaultTimeout(120_000);
 
@@ -67,8 +65,8 @@ async function readWorkflowStatus(runtime: AgentRuntime): Promise<Record<string,
 }
 
 test('full plugin boot shares one embedded engine and exposes a runnable ready workflow service', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'workflow-service-startup-'));
-  const client = new PGlite({ dataDir: join(dir, 'pglite') });
+  const store = makeWorkflowPgliteStore('workflow-service-startup-');
+  const client = new PGlite({ dataDir: store.dataDir });
   const db = drizzle(client, { schema: dbSchema });
   const adapter = new InMemoryDatabaseAdapter();
   Reflect.set(adapter, 'db', db);
@@ -153,6 +151,6 @@ test('full plugin boot shares one embedded engine and exposes a runnable ready w
     await runtime.stop();
     await runtime.close();
     await client.close();
-    await rm(dir, { recursive: true, force: true });
+    await store.cleanup();
   }
 });
