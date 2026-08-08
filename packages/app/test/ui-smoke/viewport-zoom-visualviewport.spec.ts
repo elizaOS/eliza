@@ -25,7 +25,7 @@ import { expect, test } from "@playwright/test";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const appRoot = path.join(__dirname, "..");
+const appRoot = path.resolve(__dirname, "../..");
 
 const VIEWPORT_CONTENT_WEB =
   "width=device-width, initial-scale=1.0, viewport-fit=cover";
