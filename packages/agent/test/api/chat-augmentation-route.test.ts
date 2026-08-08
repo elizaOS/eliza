@@ -24,6 +24,7 @@ import http from "node:http";
 import {
   type AgentRuntime,
   ModelType,
+  RoomHandlerQueue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -189,6 +190,7 @@ function createRuntime(
     getServicesByType: vi.fn(() => []),
     emitEvent: vi.fn(async () => undefined),
     drainChatPreHandlers: vi.fn(async () => null),
+    roomHandlerQueue: new RoomHandlerQueue(),
     useModel: vi.fn(async () => ""),
     ...overrides,
   };

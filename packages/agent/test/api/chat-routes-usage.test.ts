@@ -5,6 +5,7 @@ import {
   createMessageMemory,
   EventType,
   ModelType,
+  RoomHandlerQueue,
   stringToUuid,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -41,16 +42,17 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     drainChatPreHandlers: vi.fn(async () => null),
+    roomHandlerQueue: new RoomHandlerQueue(),
     ...overrides,
   } satisfies Partial<AgentRuntime>;
 
   return runtime as AgentRuntime;
 }
 
-function createChatMessage(text: string) {
+function createChatMessage(text: string, room = "room") {
   return createMessageMemory({
     id: stringToUuid(`message-${text}`),
-    roomId: stringToUuid("room"),
+    roomId: stringToUuid(room),
     entityId: stringToUuid("user"),
     content: {
       text,
@@ -112,7 +114,7 @@ describe("generateChatResponse usage reporting", () => {
     });
   });
 
-  it("isolates provider usage across concurrent requests on one runtime", async () => {
+  it("isolates provider usage across concurrent rooms on one runtime", async () => {
     let runtime: AgentRuntime;
     let started = 0;
     let releaseBoth!: () => void;
@@ -147,8 +149,16 @@ describe("generateChatResponse usage reporting", () => {
     });
 
     const [first, second] = await Promise.all([
-      generateChatResponse(runtime, createChatMessage("first"), "Chat Agent"),
-      generateChatResponse(runtime, createChatMessage("second"), "Chat Agent"),
+      generateChatResponse(
+        runtime,
+        createChatMessage("first", "first-room"),
+        "Chat Agent",
+      ),
+      generateChatResponse(
+        runtime,
+        createChatMessage("second", "second-room"),
+        "Chat Agent",
+      ),
     ]);
 
     expect(first.usage).toMatchObject({

@@ -31,12 +31,17 @@ const poolMock = {
   selectionState: vi.fn(),
 };
 
-vi.mock("@elizaos/auth/account-storage", () => ({
-  deleteAccount: vi.fn(),
-  listAccounts: vi.fn(() => []),
-  loadAccount: vi.fn(() => null),
-  saveAccount: vi.fn(),
-}));
+vi.mock("@elizaos/auth/account-storage", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@elizaos/auth/account-storage")>();
+  return {
+    ...actual,
+    deleteAccount: vi.fn(),
+    listAccounts: vi.fn(() => []),
+    loadAccount: vi.fn(() => null),
+    saveAccount: vi.fn(),
+  };
+});
 
 vi.mock("@elizaos/auth/credentials", async (importOriginal) => {
   const actual =
@@ -226,9 +231,11 @@ describe("accounts routes provider-scoped account resolution", () => {
     expect(poolMock.deleteMetadata.mock.calls).toEqual([
       ["openai-api", "shared-id"],
     ]);
-    expect(vi.mocked(deleteAccount).mock.calls).toEqual([
-      ["openai-api", "shared-id"],
-    ]);
+    expect(deleteAccount).toHaveBeenCalledWith(
+      "openai-api",
+      "shared-id",
+      expect.objectContaining({ owner: "runtime" }),
+    );
     expect(ctx.body).toEqual({ deleted: true });
   });
 

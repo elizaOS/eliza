@@ -28,6 +28,7 @@ import {
   type AgentRuntime,
   ChannelType,
   ModelType,
+  RoomHandlerQueue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -231,6 +232,7 @@ function createRuntime(
     emitEvent: vi.fn(async () => undefined),
     reportError: vi.fn(),
     drainChatPreHandlers: vi.fn(async () => null),
+    roomHandlerQueue: new RoomHandlerQueue(),
     ...overrides,
   };
   return runtime as unknown as AgentRuntime;
