@@ -1000,7 +1000,22 @@ export function resolveAppShellLocalCspSources(
   };
 }
 
-function appShellMetadataPlugin(): Plugin {
+/**
+ * Exported WCAG 2.2 SC 1.4.4 viewport constants for the build-time token.
+ *
+ * Exposed so that build-output regression tests can assert the exact resolved
+ * values without reimplementing string parsing of the config source.
+ *
+ * Web builds: no zoom cap (WCAG-compliant).
+ * Native Capacitor builds: full lockdown (captive WebView has no browser
+ * chrome; pinch-zoom interferes with in-app interactions).
+ */
+export const VIEWPORT_META_NATIVE =
+  "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
+export const VIEWPORT_META_WEB =
+  "width=device-width, initial-scale=1.0, viewport-fit=cover";
+
+export function appShellMetadataPlugin(): Plugin {
   const isIosStoreBuild =
     CAPACITOR_BUILD_TARGET === "ios" &&
     (process.env.ELIZA_BUILD_VARIANT === "store" ||
@@ -1035,10 +1050,8 @@ function appShellMetadataPlugin(): Plugin {
   // Capacitor builds keep the touch-viewport lockdown because they run in a
   // captive WebView with no browser chrome — zoom there is a pinch gesture that
   // interferes with in-app interactions, not an accessibility mechanism.
-  const VIEWPORT_CONTENT_NATIVE =
-    "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
-  const VIEWPORT_CONTENT_WEB =
-    "width=device-width, initial-scale=1.0, viewport-fit=cover";
+  const VIEWPORT_CONTENT_NATIVE = VIEWPORT_META_NATIVE;
+  const VIEWPORT_CONTENT_WEB = VIEWPORT_META_WEB;
 
   const replacements = new Map<string, string>([
     ["__APP_NAME__", APP_SHELL_METADATA.appName],
