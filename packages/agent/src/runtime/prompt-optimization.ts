@@ -11,6 +11,7 @@ import path from "node:path";
 import {
   type AgentRuntime,
   assertActiveTrajectoryForLlmCall,
+  ElizaError,
   EventType,
   getTrajectoryContext,
   isLlmGenerationModelType,
@@ -846,47 +847,138 @@ function rewriteSourceContentText(
   if (!Array.isArray(content)) return nextText;
   if (nextText === originalText) return content;
 
-  const textIndexes = content.flatMap((part, index) =>
-    contentPartText(part) !== null &&
-    (!part ||
-      typeof part !== "object" ||
-      (part as Record<string, unknown>).type !== "tool-result")
-      ? [index]
-      : [],
-  );
-  if (textIndexes.length === 0) {
-    return nextText ? [{ type: "text", text: nextText }, ...content] : content;
-  }
-
-  if (nextText.startsWith(originalText)) {
-    const suffix = nextText.slice(originalText.length);
-    const lastTextIndex = textIndexes[textIndexes.length - 1];
-    return content.map((part, index) => {
-      if (index !== lastTextIndex) return part;
-      if (typeof part === "string") return `${part}${suffix}`;
-      const record = part as Record<string, unknown>;
-      if (typeof record.text === "string") {
-        return { ...record, text: `${record.text}${suffix}` };
-      }
-      return {
-        ...record,
-        content: `${String(record.content ?? "")}${suffix}`,
-      };
+  const projectedParts: Array<{
+    index: number;
+    start: number;
+    end: number;
+    text: string;
+    writable: boolean;
+  }> = [];
+  let projectedLength = 0;
+  for (const [index, part] of content.entries()) {
+    const text = contentPartText(part);
+    if (!text) continue;
+    if (projectedParts.length > 0) projectedLength += 1;
+    const start = projectedLength;
+    projectedLength += text.length;
+    projectedParts.push({
+      index,
+      start,
+      end: projectedLength,
+      text,
+      writable:
+        !part ||
+        typeof part !== "object" ||
+        (part as Record<string, unknown>).type !== "tool-result",
     });
   }
 
-  const firstTextIndex = textIndexes[0];
-  const removedTextIndexes = new Set(textIndexes.slice(1));
-  return content.flatMap((part, index) => {
-    if (removedTextIndexes.has(index)) return [];
-    if (index !== firstTextIndex) return [part];
-    if (typeof part === "string") return [nextText];
-    const record = part as Record<string, unknown>;
-    return [
-      typeof record.text === "string"
-        ? { ...record, text: nextText }
-        : { ...record, content: nextText },
-    ];
+  const projectedText = projectedParts.map((part) => part.text).join("\n");
+  if (projectedText !== originalText) {
+    throw new ElizaError(
+      "Structured model content no longer matches its prompt projection",
+      {
+        code: "PROMPT_CONTENT_PROJECTION_MISMATCH",
+        severity: "fatal",
+        context: {
+          contentPartCount: content.length,
+          projectedTextLength: projectedText.length,
+          originalTextLength: originalText.length,
+        },
+      },
+    );
+  }
+
+  if (projectedParts.length === 0) {
+    const emptyTextIndex = content.findIndex((part) => {
+      if (contentPartText(part) !== "") return false;
+      return (
+        !part ||
+        typeof part !== "object" ||
+        (part as Record<string, unknown>).type !== "tool-result"
+      );
+    });
+    if (emptyTextIndex >= 0) {
+      return content.map((part, index) =>
+        index === emptyTextIndex
+          ? rewriteContentPartText(part, nextText)
+          : part,
+      );
+    }
+    return nextText ? [{ type: "text", text: nextText }, ...content] : content;
+  }
+
+  let commonPrefixLength = 0;
+  while (
+    commonPrefixLength < originalText.length &&
+    commonPrefixLength < nextText.length &&
+    originalText[commonPrefixLength] === nextText[commonPrefixLength]
+  ) {
+    commonPrefixLength += 1;
+  }
+
+  let commonSuffixLength = 0;
+  while (
+    commonSuffixLength < originalText.length - commonPrefixLength &&
+    commonSuffixLength < nextText.length - commonPrefixLength &&
+    originalText[originalText.length - 1 - commonSuffixLength] ===
+      nextText[nextText.length - 1 - commonSuffixLength]
+  ) {
+    commonSuffixLength += 1;
+  }
+
+  const originalChangeEnd = originalText.length - commonSuffixLength;
+  const replacement = nextText.slice(
+    commonPrefixLength,
+    nextText.length - commonSuffixLength,
+  );
+  const target = projectedParts.find(
+    (part) =>
+      part.writable &&
+      commonPrefixLength >= part.start &&
+      originalChangeEnd <= part.end,
+  );
+  if (!target) {
+    throw new ElizaError(
+      "Prompt optimization crossed a structured content-part boundary",
+      {
+        code: "PROMPT_CONTENT_PART_BOUNDARY_CROSSED",
+        severity: "fatal",
+        context: {
+          contentPartCount: content.length,
+          projectedPartCount: projectedParts.length,
+          originalTextLength: originalText.length,
+          nextTextLength: nextText.length,
+          changeStart: commonPrefixLength,
+          changeEnd: originalChangeEnd,
+        },
+      },
+    );
+  }
+
+  const localStart = commonPrefixLength - target.start;
+  const localEnd = originalChangeEnd - target.start;
+  const rewrittenText = `${target.text.slice(0, localStart)}${replacement}${target.text.slice(localEnd)}`;
+  return content.map((part, index) =>
+    index === target.index ? rewriteContentPartText(part, rewrittenText) : part,
+  );
+}
+
+function rewriteContentPartText(part: unknown, text: string): unknown {
+  if (typeof part === "string") return text;
+  if (!part || typeof part !== "object" || Array.isArray(part)) {
+    throw new ElizaError("Prompt content part is not text-addressable", {
+      code: "PROMPT_CONTENT_PART_INVALID",
+      severity: "fatal",
+    });
+  }
+  const record = part as Record<string, unknown>;
+  if (typeof record.text === "string") return { ...record, text };
+  if (typeof record.content === "string") return { ...record, content: text };
+  throw new ElizaError("Prompt content part is not text-addressable", {
+    code: "PROMPT_CONTENT_PART_INVALID",
+    severity: "fatal",
+    context: { partType: record.type },
   });
 }
 
@@ -909,10 +1001,12 @@ function sourcePayloadMessage(
   };
 }
 
-function compactorMessagesToPayloadMessages(
-  messages: PromptCompactorMessage[],
+/** Rehydrates compactor messages into provider-neutral model wire envelopes. */
+export function serializeCompactorMessagesForModel(
+  messages: CompactorMessage[],
 ): Array<Record<string, unknown>> {
-  return messages.map((message) => {
+  return messages.map((rawMessage) => {
+    const message = rawMessage as PromptCompactorMessage;
     const source = sourcePayloadMessage(message);
     if (source) return source;
     const record: Record<string, unknown> = {
@@ -1758,7 +1852,7 @@ export function installPromptOptimizations(
         ...promptRecord,
         ...(promptKey ? { [promptKey]: nextPrompt } : {}),
         ...(nextMessages
-          ? { messages: compactorMessagesToPayloadMessages(nextMessages) }
+          ? { messages: serializeCompactorMessagesForModel(nextMessages) }
           : {}),
       });
       outputReserveTokens = budget.outputReserveTokens;
@@ -1931,7 +2025,7 @@ export function installPromptOptimizations(
       ...(payload as Record<string, unknown>),
       ...(promptKey ? { [promptKey]: nextPrompt } : {}),
       ...(!promptKey && nextMessages
-        ? { messages: compactorMessagesToPayloadMessages(nextMessages) }
+        ? { messages: serializeCompactorMessagesForModel(nextMessages) }
         : {}),
       providerOptions: mergedProviderOptions,
       ...(outputReserveTokens !== undefined

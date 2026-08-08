@@ -23,6 +23,7 @@ import {
   fitPromptToTokenBudget,
   installPromptOptimizations,
   maybeApplyConversationCompaction,
+  serializeCompactorMessagesForModel,
 } from "./prompt-optimization.ts";
 import {
   clearActiveViewContext,
@@ -1211,7 +1212,7 @@ describe("installPromptOptimizations telemetry", () => {
     );
   });
 
-  it("injects active-view awareness into ACTION_PLANNER message payloads", async () => {
+  it("injects active-view awareness without collapsing interleaved content parts", async () => {
     const payloads: Array<Record<string, unknown>> = [];
     const runtime = {
       actions: [],
@@ -1252,18 +1253,42 @@ describe("installPromptOptimizations telemetry", () => {
           content: [
             {
               type: "text",
-              text: [
-                "message:user:",
-                "Fill the focused ledger title with Close Issue 11355",
-                "",
-                "# Routing hints",
-                "- Use VIEWS for view interaction.",
-              ].join("\n"),
+              text: "message:user: Fill the focused ledger title",
+              providerOptions: { cacheControl: { type: "ephemeral" } },
+              partId: "caption-before-image",
             },
             {
               type: "image",
               image: "data:image/png;base64,bGVkZ2Vy",
               mediaType: "image/png",
+              partId: "ledger-image",
+            },
+            {
+              type: "text",
+              text: [
+                "Close Issue 11355",
+                "",
+                "# Available Actions",
+                "- VIEWS: interact with the current view.",
+                "",
+                "# Routing hints",
+                "- Use VIEWS for view interaction.",
+              ].join("\n"),
+              providerOptions: { trace: { span: "routing" } },
+              partId: "routing-after-image",
+            },
+            {
+              type: "file",
+              data: "data:text/plain;base64,Q2xvc2UgSXNzdWUgMTEzNTU=",
+              mediaType: "text/plain",
+              filename: "issue.txt",
+              partId: "issue-file",
+            },
+            {
+              type: "text",
+              text: "Keep this trailing instruction unchanged.",
+              providerOptions: { trace: { span: "trailing" } },
+              partId: "trailing-after-file",
             },
           ],
         },
@@ -1280,20 +1305,95 @@ describe("installPromptOptimizations telemetry", () => {
     expect(messages).toHaveLength(1);
     expect(messages[0]?.role).toBe("user");
     const parts = messages[0]?.content ?? [];
+    expect(parts).toHaveLength(5);
+    expect(parts[0]).toEqual({
+      type: "text",
+      text: "message:user: Fill the focused ledger title",
+      providerOptions: { cacheControl: { type: "ephemeral" } },
+      partId: "caption-before-image",
+    });
     expect(parts[1]).toEqual({
       type: "image",
       image: "data:image/png;base64,bGVkZ2Vy",
       mediaType: "image/png",
+      partId: "ledger-image",
     });
-    const content = String(parts[0]?.text ?? "");
+    expect(parts[3]).toEqual({
+      type: "file",
+      data: "data:text/plain;base64,Q2xvc2UgSXNzdWUgMTEzNTU=",
+      mediaType: "text/plain",
+      filename: "issue.txt",
+      partId: "issue-file",
+    });
+    expect(parts[4]).toEqual({
+      type: "text",
+      text: "Keep this trailing instruction unchanged.",
+      providerOptions: { trace: { span: "trailing" } },
+      partId: "trailing-after-file",
+    });
+    const content = String(parts[2]?.text ?? "");
+    expect(parts[2]?.providerOptions).toEqual({
+      trace: { span: "routing" },
+    });
+    expect(parts[2]?.partId).toBe("routing-after-image");
     expect(content).toContain("# Active View");
     expect(content).toContain("Scenario Active Ledger");
     expect(content).toContain("scenario-active-ledger");
     expect(content).toContain("ledger-title [textbox]");
     expect(content).toContain("save-ledger [button]");
     expect(content.indexOf("# Active View")).toBeLessThan(
-      content.indexOf("# Routing hints"),
+      content.indexOf("# Available Actions"),
     );
+  });
+
+  it("serializes source-less developer and tool messages without losing correlation", () => {
+    const messages = [
+      {
+        role: "developer" as const,
+        content: "Use only the named weather tool.",
+      },
+      {
+        role: "assistant" as const,
+        content: "",
+        toolCalls: [
+          {
+            id: "weather-call-source-less",
+            name: "WEB_SEARCH",
+            arguments: { query: "weather in Tokyo" },
+          },
+        ],
+      },
+      {
+        role: "tool" as const,
+        content: '{"temperatureF":91}',
+        toolCallId: "weather-call-source-less",
+        toolName: "WEB_SEARCH",
+      },
+    ];
+
+    expect(serializeCompactorMessagesForModel(messages)).toEqual([
+      {
+        role: "developer",
+        content: "Use only the named weather tool.",
+      },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "weather-call-source-less",
+            name: "WEB_SEARCH",
+            arguments: { query: "weather in Tokyo" },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: '{"temperatureF":91}',
+        toolCallId: "weather-call-source-less",
+        toolName: "WEB_SEARCH",
+      },
+    ]);
   });
 
   it("carries cache-token usage from MODEL_USED events into trajectory fallback calls", async () => {
@@ -1608,12 +1708,36 @@ describe("installPromptOptimizations telemetry", () => {
         ],
       },
     ];
+    const prunableStructuredMessage = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "PRUNABLE-STRUCTURED-START",
+          partId: "prunable-text-before",
+        },
+        {
+          type: "image",
+          image: "data:image/png;base64,cHJ1bmFibGU=",
+          mediaType: "image/png",
+          partId: "prunable-image",
+        },
+        {
+          type: "text",
+          text: "PRUNABLE-STRUCTURED-END",
+          partId: "prunable-text-after",
+        },
+      ],
+    };
+    const olderTurns = Array.from({ length: 60 }, (_, index) => ({
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: `older turn ${index} ${"x".repeat(120)}`,
+    }));
     const messages = [
       { role: "system", content: "system prompt" },
-      ...Array.from({ length: 60 }, (_, index) => ({
-        role: index % 2 === 0 ? "user" : "assistant",
-        content: `older turn ${index} ${"x".repeat(120)}`,
-      })),
+      ...olderTurns.slice(0, 10),
+      prunableStructuredMessage,
+      ...olderTurns.slice(10),
       ...structuredTail,
     ];
 
@@ -1627,6 +1751,8 @@ describe("installPromptOptimizations telemetry", () => {
     expect(seenPayloads).toHaveLength(1);
     const compacted = seenPayloads[0]?.messages as unknown[];
     expect(compacted.length).toBeLessThan(messages.length);
+    expect(JSON.stringify(compacted)).not.toContain("PRUNABLE-STRUCTURED");
+    expect(JSON.stringify(compacted)).not.toContain("prunable-image");
     expect(compacted.slice(-structuredTail.length)).toEqual(structuredTail);
   });
 
