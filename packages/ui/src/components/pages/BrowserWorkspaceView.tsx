@@ -653,9 +653,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const selectedTabIsInternal = selectedTab
     ? isInternalBrowserWorkspaceTab(selectedTab)
     : false;
-  const newBrowserWorkspaceTabSeedUrl = selectedTabIsInternal
-    ? "about:blank"
-    : locationInput || BROWSER_WORKSPACE_DEFAULT_HOME_URL;
+  // A user-created tab is a fresh browsing context. Reusing the address-field
+  // draft would clone the current page, while internal-tab state must never
+  // leak into a user tab. The address bar remains the explicit path for opening
+  // a chosen URL.
+  const newBrowserWorkspaceTabSeedUrl = BROWSER_WORKSPACE_DEFAULT_HOME_URL;
   const primaryBrowserBridgeCompanion = useMemo(
     () =>
       browserBridgeCompanions.find(

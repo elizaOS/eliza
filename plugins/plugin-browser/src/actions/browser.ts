@@ -377,6 +377,33 @@ function formatBrowserSessionResult(
   return `Browser ${command.subaction} completed in ${result.mode} mode.`;
 }
 
+/**
+ * Effect-only commands can own a concise terminal acknowledgement once their
+ * browser receipt exists. Read/inspection commands remain non-terminal so the
+ * planner can interpret their data instead of exposing a raw state dump.
+ * Multi-step plans remain safe because the planner gate also requires one
+ * completed tool and an empty queue before honoring `turnComplete`.
+ */
+function browserCommandOwnsTerminalReply(
+  command: BrowserWorkspaceCommand,
+): boolean {
+  switch (command.subaction) {
+    case "back":
+    case "close":
+    case "forward":
+    case "hide":
+    case "navigate":
+    case "open":
+    case "reload":
+    case "show":
+      return true;
+    case "tab":
+      return command.tabAction !== undefined && command.tabAction !== "list";
+    default:
+      return false;
+  }
+}
+
 function browserProgressRationale(
   command: BrowserWorkspaceCommand,
   params: BrowserActionParameters | undefined,
@@ -698,6 +725,10 @@ export const browserAction: Action = {
     "Browser open|navigate|click|type|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
   routingHint:
     "drive an INTERACTIVE web browser session — navigate/click/type across pages, log into a site, or autofill saved credentials on a real browser target -> BROWSER; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
+  // Browser effects acknowledge the verified browser receipt. A speculative
+  // Stage-1 phrase such as "navigating now" would race that outcome and become
+  // a redundant text/voice utterance.
+  suppressEarlyReply: true,
   validate: async () => true,
   handler: async (
     runtime,
@@ -755,19 +786,23 @@ export const browserAction: Action = {
       const result = browserService
         ? await browserService.execute(command, params?.target)
         : await executeBrowserWorkspaceCommand(command);
-      await emitBrowserStepProgress(
-        callback,
-        command,
-        params,
-        messageText,
-        true,
-      );
+      const ownsTerminalReply = browserCommandOwnsTerminalReply(command);
+      if (!ownsTerminalReply) {
+        await emitBrowserStepProgress(
+          callback,
+          command,
+          params,
+          messageText,
+          true,
+        );
+      }
 
       const text = formatBrowserSessionResult(command, result);
       return {
         text,
         userFacingText: text,
         verifiedUserFacing: true,
+        ...(ownsTerminalReply ? { turnComplete: true } : {}),
         success: true,
         values: {
           success: true,

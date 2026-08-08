@@ -107,21 +107,20 @@ describe("BROWSER action", () => {
       text: "Opened example.com/path.",
       userFacingText: "Opened example.com/path.",
       verifiedUserFacing: true,
+      turnComplete: true,
     });
+    expect(browserAction.suppressEarlyReply).toBe(true);
   });
 
-  it("emits compact progress when streamProgress is true", async () => {
-    const service = browserService({
-      tab: { title: "Example", url: "https://example.com" },
-    });
+  it("emits compact progress for non-terminal inspection work", async () => {
+    const service = browserService({ value: { ready: true } });
     const callback = vi.fn(async () => []);
 
     await runBrowserAction({
       service,
       callback,
       parameters: {
-        action: "open",
-        url: "https://example.com",
+        action: "state",
         streamProgress: true,
         rationale: "checking example",
       },
@@ -130,7 +129,7 @@ describe("BROWSER action", () => {
     expect(callback).toHaveBeenCalledTimes(1);
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: "Step 1: open — checking example",
+        text: "Step 1: state — checking example",
         source: "action_progress",
         merge: "replace",
         metadata: {
@@ -140,7 +139,7 @@ describe("BROWSER action", () => {
             source: "browser",
             actionName: "BROWSER",
             step: 1,
-            kind: "open",
+            kind: "state",
             rationale: "checking example",
             success: true,
             error: undefined,
@@ -149,6 +148,31 @@ describe("BROWSER action", () => {
       }),
       "BROWSER",
     );
+  });
+
+  it("does not emit transient progress for an effect with a terminal receipt", async () => {
+    const service = browserService({
+      tab: { title: "Example", url: "https://example.com" },
+    });
+    const callback = vi.fn(async () => []);
+
+    const { result } = await runBrowserAction({
+      service,
+      callback,
+      parameters: {
+        action: "open",
+        url: "https://example.com",
+        streamProgress: true,
+      },
+    });
+
+    expect(callback).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      text: "Opened example.com.",
+      userFacingText: "Opened example.com.",
+      verifiedUserFacing: true,
+      turnComplete: true,
+    });
   });
 
   it("does not fail the browser action when compact progress delivery fails", async () => {

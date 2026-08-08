@@ -6,7 +6,13 @@
  */
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../state", async (importOriginal) => {
@@ -47,6 +53,9 @@ vi.mock("../../api", async (importOriginal) => {
       fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
       getWalletConfig: vi.fn().mockRejectedValue(new Error("no api in test")),
       getBrowserWorkspace: vi.fn().mockResolvedValue({ mode: "web", tabs: [] }),
+      openBrowserWorkspaceTab: vi
+        .fn()
+        .mockRejectedValue(new Error("no api in test")),
       snapshotBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
@@ -73,11 +82,26 @@ const GOOGLE_WORKSPACE = {
   ],
 };
 
+const APPLE_WORKSPACE = {
+  mode: "web" as const,
+  tabs: [
+    {
+      ...GOOGLE_WORKSPACE.tabs[0],
+      id: "tab-apple",
+      title: "Apple",
+      url: "https://www.apple.com/",
+    },
+  ],
+};
+
 beforeEach(() => {
   vi.mocked(client.getBrowserWorkspace).mockResolvedValue({
     mode: "web",
     tabs: [],
   });
+  vi.mocked(client.openBrowserWorkspaceTab).mockRejectedValue(
+    new Error("no api in test"),
+  );
 });
 
 afterEach(() => {
@@ -148,6 +172,26 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
 
     expect(document.activeElement).toBe(
       screen.getByTestId("browser-workspace-view"),
+    );
+  });
+
+  it("opens a fresh Google home tab instead of cloning the active address", async () => {
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
+    vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({
+      tab: GOOGLE_WORKSPACE.tabs[0],
+    });
+
+    render(<BrowserWorkspaceView />);
+    expect(await screen.findByTitle("Apple")).not.toBeNull();
+    fireEvent.click(screen.getByTestId("browser-workspace-nav-new-tab"));
+
+    await waitFor(() =>
+      expect(client.openBrowserWorkspaceTab).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "https://www.google.com/webhp?igu=1",
+          show: true,
+        }),
+      ),
     );
   });
 });

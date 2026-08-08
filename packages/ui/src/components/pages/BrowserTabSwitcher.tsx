@@ -1,24 +1,19 @@
 /**
- * Safari/Arc-mobile-style folded tab switcher for the Browser view (#13596).
+ * Touch-first folded tab switcher for the Browser view (#13596).
  *
- * The browser used to render every tab in a permanent, unbounded sidebar strip
- * — which breaks the single-column touch-first doctrine and overflows at 375px
- * once more than a handful of tabs are open. This module folds that strip: the
- * toolbar shows one compact count control ({@link BrowserTabFoldControl}) that
- * names the active tab and its total; tapping it opens a switcher overlay
- * ({@link BrowserTabSwitcher}) of stacked tab cards the user taps to switch or
- * closes with a per-card button. The active tab is always represented in the
- * control (never folded away), so switching back is one tap regardless of how
- * many tabs are open.
+ * The toolbar keeps one compact count control ({@link BrowserTabFoldControl})
+ * that names the active tab; tapping it opens a centered overlay
+ * ({@link BrowserTabSwitcher}) of grouped tab cards. The active tab is always
+ * represented, so switching back remains one tap at every viewport width.
  *
  * The switcher is presentational: the owning `BrowserWorkspaceView` passes the
  * folded tab model ({@link foldBrowserTabs}) and the activate/close callbacks it
  * already drives through `runBrowserWorkspaceAction`. Agent-partition tabs run
  * in a separate session (`persist:eliza-browser-agent`) and stay visually
- * distinct here (their own section, an accent monogram) so a user never confuses
- * an agent-driven page for one of their own. Rendering inside a `role="dialog"`
- * keeps the overlay above the native `<electrobun-webview>` OOPIF, which masks
- * dialog rects (see `BROWSER_WORKSPACE_TAB_MASK_SELECTORS`).
+ * distinct through their own section and neutral outlined monogram so a user
+ * never confuses an agent-driven page for one of their own. The dialog's
+ * browser-chrome layer sits above ambient chat and is masked over the native
+ * `<electrobun-webview>` OOPIF (see `BROWSER_WORKSPACE_TAB_MASK_SELECTORS`).
  */
 import { Globe, Plus, X } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
@@ -150,9 +145,10 @@ export function BrowserTabFoldControl({
 
 /**
  * One tab card in the switcher grid: tap the body to switch, tap the corner ×
- * to close (internal tabs render no close affordance). Agent-session tabs carry
- * an accent-tinted monogram so they read as distinct from the user's own tabs.
- * Both the switch and close targets are ≥44px touch surfaces.
+ * to close (internal tabs render no close affordance). The section heading and
+ * a neutral outlined monogram distinguish agent sessions without turning the
+ * whole picker into an accent-colored status surface. Both the switch and close
+ * targets are ≥44px touch surfaces.
  */
 function BrowserTabCard({
   tab,
@@ -202,23 +198,25 @@ function BrowserTabCard({
         title={tab.description}
         onClick={onActivate}
         variant="ghost"
-        className={`flex h-auto min-h-11 w-full min-w-0 flex-col items-start justify-start gap-1 whitespace-normal rounded-sm border p-3 text-left font-normal transition-colors ${
+        className={`flex h-auto min-h-11 w-full min-w-0 flex-col items-start justify-start gap-1 whitespace-normal rounded-xl border p-3 text-left font-normal transition-colors ${
           tab.closable ? "pr-10" : "pr-3"
         } ${
           active
-            ? "border-accent/60 bg-bg-muted/50 text-txt"
-            : "border-border/40 text-txt hover:bg-bg-muted/50"
+            ? "border-txt/20 bg-bg-muted/80 text-txt shadow-[inset_0_1px_0_rgba(255,255,255,.06)]"
+            : "border-border/40 bg-card/35 text-txt hover:border-border/70 hover:bg-bg-muted/50"
         }`}
       >
         <span className="flex w-full min-w-0 items-center gap-2">
           <span
             className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
-              isAgent ? "bg-accent/15 text-accent" : "bg-bg-muted text-muted"
+              isAgent
+                ? "bg-bg-muted text-txt ring-1 ring-inset ring-border/70"
+                : "bg-card text-muted"
             }`}
           >
             {tab.hasSessionFocus ? (
               <>
-                <span aria-hidden className="h-2 w-2 rounded-full bg-accent" />
+                <span aria-hidden className="h-2 w-2 rounded-full bg-txt" />
                 <span className="sr-only">{agentActiveLabel}</span>
               </>
             ) : (
@@ -248,7 +246,7 @@ function BrowserTabCard({
             onClose();
           }}
           data-testid={`browser-tab-card-close-${tab.id}`}
-          className="absolute right-1 top-1 h-9 w-9 rounded-sm text-muted transition-colors hover:bg-bg-muted/60 hover:text-danger"
+          className="absolute right-1 top-1 h-9 w-9 rounded-full text-muted transition-colors hover:bg-bg-muted/60 hover:text-danger"
         >
           <X className="h-4 w-4" />
         </Button>
@@ -261,9 +259,10 @@ function BrowserTabCard({
  * The switcher overlay: a stacked, single-column grid of every tab card grouped
  * by section, plus a "new tab" affordance. Controlled by the view (`open` /
  * `onOpenChange`); switching a tab also closes the overlay so the picked page is
- * immediately usable. Rendered in a `Dialog` (masked over the native OOPIF) with
- * the shared bottom-sheet-on-mobile / centered-on-desktop geometry and safe-area
- * insets the primitive already applies.
+ * immediately usable. This is browser chrome, so it sits above the ambient chat
+ * sheet and stays centered on mobile instead of competing with two bottom
+ * sheets. Literal z-index classes are required by Tailwind's scanner; they
+ * mirror `Z_BROWSER_TAB_SWITCHER_*` in `floating-layers.ts`.
  */
 export function BrowserTabSwitcher({
   open,
@@ -299,15 +298,16 @@ export function BrowserTabSwitcher({
       <DialogContent
         showCloseButton
         data-testid="browser-workspace-tab-switcher"
-        className="gap-3"
+        overlayClassName="z-[9200] bg-black/65 backdrop-blur-[2px]"
+        className="z-[9210] gap-4 rounded-3xl border-border/60 bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] shadow-[0_24px_80px_rgba(0,0,0,.48)] backdrop-blur-[28px] max-sm:bottom-auto max-sm:top-1/2 max-sm:max-h-[min(74dvh,42rem)] max-sm:-translate-y-1/2 max-sm:rounded-3xl"
       >
         <DialogHeader className="flex-row items-center justify-between gap-2 pr-8 text-left">
           <DialogTitle>{title}</DialogTitle>
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="h-9 min-h-9 shrink-0 gap-1.5 rounded-full px-3"
+            className="h-9 min-h-9 shrink-0 gap-1.5 rounded-full border border-border/50 bg-card/55 px-3 hover:bg-bg-muted/70"
             disabled={actionsDisabled}
             onClick={() => {
               onNewTab();
