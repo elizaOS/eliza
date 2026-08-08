@@ -62,6 +62,9 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-notes")).toBe(true);
     expect(names.has("@elizaos/plugin-commands")).toBe(true);
     expect(names.has("@elizaos/plugin-agent-skills")).toBe(true);
+    // Calendar home tile is viewEveryPlatform; scheduling is calendar's hard dep.
+    expect(names.has("@elizaos/plugin-calendar")).toBe(true);
+    expect(names.has("@elizaos/plugin-scheduling")).toBe(true);
 
     // ...and drops every heavy surface, including browser (off until ready).
     for (const heavy of HEAVY) {

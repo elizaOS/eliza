@@ -306,6 +306,12 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
   "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
   "@elizaos/plugin-notes", // managed Cloud Notes data and capabilities
+  // Always-loaded ScheduledTask primitive (CORE keeps this on for every desktop
+  // agent). Lean chat still pulls @elizaos/plugin-calendar via MOBILE_VIEW_PLUGINS
+  // (viewEveryPlatform); calendar declares a hard dependency on scheduling, so
+  // omitting it left calendar without its runner host and produced dead Calendar
+  // tiles / "No view matches calendar" on dedicated cloud agents.
+  "@elizaos/plugin-scheduling",
   "@elizaos/plugin-native-filesystem", // mobile-safe FILE target
   "@elizaos/plugin-agent-skills", // skill execution + enabled-skills provider
   "@elizaos/plugin-commands", // slash commands
