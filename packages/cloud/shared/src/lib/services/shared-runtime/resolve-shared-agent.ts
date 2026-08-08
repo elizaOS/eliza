@@ -454,7 +454,11 @@ export async function resolveSharedAgent(
       throw new ApiError(404, "resource_not_found", "Agent not found");
     }
     if (agent.execution_tier !== "shared" && !isDedicatedBootstrapWindow(agent)) {
-      throw new ApiError(404, "resource_not_found", "Not a shared-runtime agent");
+      // Tagged, not merely worded: the bridge route dispatches on this rather
+      // than on the message text (see SharedAgentRefusal).
+      throw new ApiError(404, "resource_not_found", "Not a shared-runtime agent", {
+        refusal: "dedicated-agent" satisfies SharedAgentRefusal,
+      });
     }
     const admissionWarm = import("../inference-admission-snapshot").then(
       ({ warmInferenceAdmissionSnapshot }) => warmInferenceAdmissionSnapshot(user.organization_id),

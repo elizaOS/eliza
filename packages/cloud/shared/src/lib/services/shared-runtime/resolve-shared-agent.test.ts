@@ -322,8 +322,14 @@ describe("resolveSharedAgent", () => {
         executionCtx: { waitUntil: (promise) => waited.push(promise) },
       }),
     ).resolves.toEqual({
+      // The refusal is TAGGED, not merely worded. The bridge route dispatches a
+      // dedicated agent to its sandbox on this field; when the distinction lived
+      // only in the message, #17076 read it as a client verdict and every
+      // dedicated agent 404'd for two weeks (#18062). toEqual keeps this exact —
+      // a dropped tag fails here rather than silently reaching production.
       error: "Not a shared-runtime agent",
       status: 404,
+      refusal: "dedicated-agent",
     });
   });
 
@@ -439,6 +445,9 @@ describe("resolveSharedAgent", () => {
     await expect(resolveSharedAgent(apiKeyContext("agent-1") as never)).resolves.toEqual({
       error: "Not a shared-runtime agent",
       status: 404,
+      // A running dedicated agent is refused here and dispatched to its own
+      // container by the bridge route; the tag is what carries that decision.
+      refusal: "dedicated-agent",
     });
   });
 
