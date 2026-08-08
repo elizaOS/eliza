@@ -4,7 +4,7 @@
   "kind": "plugin",
   "description": "Personality-as-code: load any of 4,444 on-chain Undesirable souls as a deterministic agent personality, and price real trading-card markets from a live on-chain oracle.",
   "homepage": "https://the-undesirables.com",
-  "version": "2.6.1",
+  "version": "2.7.0",
   "tags": [
     "personality",
     "agent-personality",
