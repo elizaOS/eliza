@@ -324,7 +324,11 @@ import {
 } from "./utils/context-routing";
 import { buildDeterministicSeed, shortStringHash } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
-import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
+import {
+	getErrorMessage,
+	isTransientModelError,
+	modelProviderErrorDetail,
+} from "./utils/model-errors";
 import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
 import { getOptimizationRootDir } from "./utils/state-dir";
@@ -7736,7 +7740,26 @@ export class AgentRuntime implements IAgentRuntime {
 			// Mark the response as a sanitized failure, not a success payload, so
 			// downstream readers/agents can distinguish billed-but-failed attempts
 			// from real outputs. Secrets are stripped to keep the trajectory safe.
-			const sanitizedMessage = this.redactSecrets(errorMessage);
+			// The provider's own diagnostic (status + body message) is appended:
+			// SDK error messages degrade to the bare statusText for providers with
+			// non-OpenAI error envelopes, and without the body detail a failed
+			// attempt reads as an uninvestigable "Bad Request".
+			const providerDetail = modelProviderErrorDetail(args.error);
+			const detailSuffix = providerDetail
+				? `${
+						providerDetail.providerMessage &&
+						!errorMessage.includes(providerDetail.providerMessage)
+							? ` | provider: ${providerDetail.providerMessage}`
+							: ""
+					}${
+						providerDetail.status !== undefined
+							? ` | status: ${providerDetail.status}`
+							: ""
+					}`
+				: "";
+			const sanitizedMessage = this.redactSecrets(
+				`${errorMessage}${detailSuffix}`,
+			);
 			const activeTrace = this.getActiveTrace(this.getCurrentRunId());
 			trajLogger.logLlmCall({
 				stepId,
@@ -7749,7 +7772,13 @@ export class AgentRuntime implements IAgentRuntime {
 					typeof paramsRecord.prompt === "string"
 						? paramsRecord.prompt
 						: userPrompt,
-				messages: undefined,
+				// The failed request's messages ARE the evidence: without them a
+				// provider rejection (schema, shape, encoding) cannot be replayed or
+				// diagnosed from the trajectory. Same privacy surface as the
+				// successful-call record, which already persists messages.
+				messages: Array.isArray(paramsRecord.messages)
+					? (paramsRecord.messages as unknown[])
+					: undefined,
 				tools: paramsRecord.tools,
 				toolChoice: paramsRecord.toolChoice,
 				responseSchema: paramsRecord.responseSchema,

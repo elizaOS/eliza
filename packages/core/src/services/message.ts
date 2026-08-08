@@ -308,6 +308,7 @@ import {
 	getUserMessageText,
 	stripAugmentationForPersistence,
 } from "../utils/message-text";
+import { modelProviderErrorDetail } from "../utils/model-errors";
 import { readEnv } from "../utils/read-env";
 import {
 	extractFirstSentence,
@@ -11707,18 +11708,27 @@ export class DefaultMessageService implements IMessageService {
 				}
 				const errMsg = error instanceof Error ? error.message : String(error);
 				const errStack = error instanceof Error ? error.stack : undefined;
+				// Provider failures often surface with a masked statusText message
+				// ("Bad Request") while the actionable cause lives on the AI SDK
+				// error's responseBody — carry it so the failure is diagnosable
+				// from logs and RECENT_ERRORS without a wire capture.
+				const providerErrorDetail = modelProviderErrorDetail(error);
 				runtime.logger.warn(
 					{
 						src: "service:message",
 						agentId: runtime.agentId,
 						error: errMsg,
 						stack: errStack,
+						...(providerErrorDetail ? { providerErrorDetail } : {}),
 					},
 					"v5 message runtime failed",
 				);
 				runtime.reportError("MessageService.v5Runtime", error, {
 					entityId: message.entityId,
 					roomId: message.roomId,
+					...(providerErrorDetail
+						? { providerError: providerErrorDetail as JsonValue }
+						: {}),
 				});
 				// Mirror to process.stderr so bench / orchestrator runs can see
 				// the underlying cause when runtime.logger output is buffered or

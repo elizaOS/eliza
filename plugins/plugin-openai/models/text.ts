@@ -1607,6 +1607,75 @@ function applyUsageToDetails(
 // ============================================================================
 
 /**
+ * Recover the provider's own error message from a failed call's response body.
+ *
+ * The AI SDK's openai error handler only understands the OpenAI error
+ * envelope (`{"error": {"message": ...}}`). Cerebras's OpenAI-compatible
+ * endpoint returns a FLAT shape — `{"message", "type", "param", "code"}` — so
+ * `APICallError.message` degrades to the bare HTTP statusText ("Bad Request")
+ * while the actionable cause (e.g. `Invalid JSON: lone leading surrogate...`,
+ * `please try again`) survives only on `error.responseBody`. Walks the error
+ * and a bounded `.cause` chain for the first parseable body message; falls
+ * back to a bounded raw-body excerpt so even a non-JSON body is not lost.
+ */
+function providerErrorBodyMessage(error: unknown): string | undefined {
+  const seen = new Set<unknown>();
+  let node: unknown = error;
+  for (let depth = 0; depth < 5 && node && typeof node === "object" && !seen.has(node); depth++) {
+    seen.add(node);
+    const record = node as { responseBody?: unknown; cause?: unknown };
+    const body = typeof record.responseBody === "string" ? record.responseBody : undefined;
+    if (body && body.trim().length > 0) {
+      try {
+        const parsed = JSON.parse(body) as {
+          message?: unknown;
+          error?: { message?: unknown } | string;
+        };
+        const candidates = [
+          parsed?.message,
+          typeof parsed?.error === "object" && parsed.error !== null
+            ? parsed.error.message
+            : parsed?.error,
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate === "string" && candidate.trim().length > 0) {
+            return candidate.trim();
+          }
+        }
+      } catch {
+        // error-policy:J3 untrusted-input sanitizing — a non-JSON error body is
+        // still diagnostic; return a bounded excerpt instead of dropping it.
+      }
+      return body.replace(/\s+/g, " ").trim().slice(0, 300);
+    }
+    node = record.cause;
+  }
+  return undefined;
+}
+
+/**
+ * Append the provider's real error message (recovered from the response body)
+ * to a masked provider error IN PLACE, preserving the error's identity, stack,
+ * and AI SDK marker fields. Idempotent: a message that already carries the
+ * body text is left untouched. Every plugin-openai throw boundary funnels
+ * through this so "Bad Request" is never the only diagnostic that escapes.
+ */
+function enrichProviderCallError(error: unknown): unknown {
+  if (!error || typeof error !== "object") return error;
+  const record = error as { message?: unknown };
+  if (typeof record.message !== "string") return error;
+  const bodyMessage = providerErrorBodyMessage(error);
+  if (!bodyMessage || record.message.includes(bodyMessage)) return error;
+  try {
+    (error as { message: string }).message = `${record.message}: ${bodyMessage}`;
+  } catch {
+    // error-policy:J6 best-effort enrichment — a frozen error object keeps its
+    // original message; the body remains readable via responseBody.
+  }
+  return error;
+}
+
+/**
  * Whether a thrown model-call error is a transient provider hiccup that is
  * worth retrying. The AI SDK already retries clear-cut retryables (408/409/429/
  * 5xx) via its own `maxRetries`, but Cerebras under load returns its transient
@@ -1626,9 +1695,13 @@ function isTransientProviderError(error: unknown): boolean {
   const status = e.statusCode ?? e.status;
   if (status === 408 || status === 409 || status === 429) return true;
   if (typeof status === "number" && status >= 500 && status < 600) return true;
+  // Include the raw response body: the AI SDK derives `message` from the
+  // OpenAI `{"error":{...}}` envelope only, so a provider that reports its
+  // transient overload in a FLAT body (Cerebras) otherwise reads as a bare
+  // "Bad Request" here and the transient-400 lane below can never match.
   const msg = `${e.message ?? ""} ${JSON.stringify(e.data ?? "")} ${
     (e as { type?: string }).type ?? ""
-  }`.toLowerCase();
+  } ${providerErrorBodyMessage(error) ?? ""}`.toLowerCase();
   // No HTTP status: either a network-level failure OR a provider that returns
   // its transient error as a bare object (Cerebras passes
   // `{message:"Encountered a server error, please try again", type:"server_error"}`
@@ -1750,10 +1823,12 @@ async function generateTextWithTransientRetry(
         generateParams as Parameters<typeof generateText>[0]
         // biome-ignore lint/suspicious/noExplicitAny: see above.
       )) as any;
-    } catch (error) {
+    } catch (rawError) {
       // error-policy:J2 context-adding rethrow — terminal, retry-exhausted, or
-      // cancelled errors rethrow unchanged; only bounded transient provider
-      // errors on a still-live request retry.
+      // cancelled errors rethrow enriched with the provider's real body
+      // message; only bounded transient provider errors on a still-live
+      // request retry.
+      const error = enrichProviderCallError(rawError);
       if (attempt >= maxRetries || signal?.aborted || !isTransientProviderError(error)) {
         throw error;
       }
@@ -1828,10 +1903,12 @@ async function consumeStreamWithTransientRetry(
       const finishReason = (await result.finishReason) as string | undefined;
       if (capturedError) throw capturedError;
       return { text, toolCalls, usage, finishReason };
-    } catch (error) {
+    } catch (rawError) {
       // error-policy:J2 context-adding rethrow — terminal, retry-exhausted, or
-      // cancelled errors rethrow unchanged; only bounded transient provider
-      // errors on a still-live request retry.
+      // cancelled errors rethrow enriched with the provider's real body
+      // message; only bounded transient provider errors on a still-live
+      // request retry.
+      const error = enrichProviderCallError(rawError);
       if (attempt >= maxRetries || signal?.aborted || !isTransientProviderError(error)) {
         throw error;
       }
@@ -2107,6 +2184,10 @@ async function generateTextByModelType(
       // check here plus the abort-aware backoff below guarantee no attempt
       // starts after cancellation.
       const abortSignal = retryAbortSignal(generateParams);
+      // Enrich BEFORE classifying: a Cerebras transient 400 arrives with the
+      // masked "Bad Request" message, and only the response body carries the
+      // wording the transient classifier matches on.
+      capturedStreamError = enrichProviderCallError(capturedStreamError);
       if (
         !failedBeforeFirstToken ||
         attempt >= 5 ||
@@ -2264,11 +2345,11 @@ async function generateTextByModelType(
         } finally {
           await finalizeStreamingTelemetry();
         }
-        const streamError = streamIterationError ?? capturedStreamError ?? companionStreamError;
+        const streamError = enrichProviderCallError(
+          streamIterationError ?? capturedStreamError ?? companionStreamError
+        );
         settleStructuredText(streamError);
-        if (streamIterationError) throw streamIterationError;
-        if (capturedStreamError) throw capturedStreamError;
-        if (companionStreamError) throw companionStreamError;
+        if (streamError) throw streamError;
       })(),
       text: textPromise,
       ...(shouldReturnNativeResult ? { toolCalls: restoredToolCallsPromise } : {}),
@@ -2431,3 +2512,9 @@ export const __INTERNAL_normalizeNativeTools = normalizeNativeTools;
 export const __INTERNAL_normalizeNativeToolsForCall = normalizeNativeToolsForCall;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_restoreRecordArgToolCalls = restoreRecordArgToolCalls;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_providerErrorBodyMessage = providerErrorBodyMessage;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_enrichProviderCallError = enrichProviderCallError;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_isTransientProviderError = isTransientProviderError;
