@@ -157,15 +157,16 @@ export async function runJoinFlow(
     });
   } catch (error) {
     // error-policy:J4 only the structural agent-gone shape (404 +
-    // agent_not_found code / the router's known body) from a remembered
-    // binding is recovered here. A stale persisted binding keeps the live
-    // client pointed at a DELETED agent's origin, so the selection lookup
-    // misroutes through that dead origin and 404s forever — retrying can
-    // never succeed. Drop the binding, reset the client to the fresh-visit
-    // state (empty base → control-plane resolution), and re-run selection:
-    // existing agents are picked normally, zero agents fall through to the
-    // provisioning path. Transport failures of a valid binding (and every
-    // other shape) still rethrow into the terminal error state.
+    // `agent_not_found` code) from a remembered binding is recovered here.
+    // Code-less legacy 404 bodies are intentionally excluded: older routers
+    // used the same message for stopped/cold rows. A stale persisted binding
+    // keeps the live client pointed at a DELETED agent's origin, so the
+    // selection lookup misroutes through that dead origin and 404s forever —
+    // retrying can never succeed. Drop the binding, reset the client to the
+    // fresh-visit state (empty base → control-plane resolution), and re-run
+    // selection: existing agents are picked normally, zero agents fall
+    // through to the provisioning path. Transport failures of a valid binding
+    // (and every other shape) still rethrow into the terminal error state.
     if (!preferAgentId || !isCloudAgentGoneError(error)) throw error;
     effects.clearPersistedActiveServer();
     client.setBaseUrl(null);

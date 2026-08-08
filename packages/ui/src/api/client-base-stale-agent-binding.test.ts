@@ -17,7 +17,7 @@ import {
   savePersistedActiveServer,
 } from "../state/persistence";
 import { ElizaClient } from "./client-base";
-import { ApiError } from "./client-types";
+import { ApiError, isCloudAgentGoneError } from "./client-types";
 import type { AgentRequestTransport } from "./transport";
 
 const DEAD_AGENT_BASE =
@@ -72,11 +72,12 @@ describe("ElizaClient stale cloud-agent binding release", () => {
       ],
     });
 
-    const request = vi
-      .fn<AgentRequestTransport["request"]>()
-      .mockResolvedValue(
-        jsonResponse(404, { error: "agent not found or not running", code: "agent_not_found" }),
-      );
+    const request = vi.fn<AgentRequestTransport["request"]>().mockResolvedValue(
+      jsonResponse(404, {
+        error: "agent not found or not running",
+        code: "agent_not_found",
+      }),
+    );
 
     const client = new ElizaClient(DEAD_AGENT_BASE, "token");
     client.setRequestTransport({ request });
@@ -89,7 +90,7 @@ describe("ElizaClient stale cloud-agent binding release", () => {
     }
 
     expect(caught).toBeInstanceOf(ApiError);
-    expect(isCloudAgentGoneLike(caught)).toBe(true);
+    expect(isCloudAgentGoneError(caught)).toBe(true);
     expect(client.getBaseUrl()).toBe("");
     expect(loadPersistedActiveServer()).toBeNull();
     const registry = loadAgentProfileRegistry();
@@ -107,11 +108,12 @@ describe("ElizaClient stale cloud-agent binding release", () => {
       apiBase: DEAD_AGENT_BASE,
     });
 
-    const request = vi
-      .fn<AgentRequestTransport["request"]>()
-      .mockResolvedValue(
-        jsonResponse(404, { error: "agent not found or not running", code: "agent_not_found" }),
-      );
+    const request = vi.fn<AgentRequestTransport["request"]>().mockResolvedValue(
+      jsonResponse(404, {
+        error: "agent not found or not running",
+        code: "agent_not_found",
+      }),
+    );
 
     const client = new ElizaClient(DEAD_AGENT_BASE, "token");
     client.setRequestTransport({ request });
@@ -150,6 +152,53 @@ describe("ElizaClient stale cloud-agent binding release", () => {
     await expect(client.fetch("/api/status")).rejects.toBeInstanceOf(ApiError);
     expect(client.getBaseUrl()).toBe(DEAD_AGENT_BASE);
     expect(loadPersistedActiveServer()?.apiBase).toBe(DEAD_AGENT_BASE);
+  });
+
+  it("does not clear on code-less legacy 404 (ambiguous pre-change router)", async () => {
+    // Pre-change agent-router emitted the same 404 body for missing rows and
+    // for pending/stopped/disconnected rows. A UI-first mixed rollout must
+    // not treat that shape as definitive deletion.
+    savePersistedActiveServer({
+      id: "cloud:legacy",
+      kind: "cloud",
+      label: "Legacy",
+      apiBase: DEAD_AGENT_BASE,
+    });
+    saveAgentProfileRegistry({
+      version: 1,
+      activeProfileId: "profile-legacy",
+      profiles: [
+        {
+          id: "profile-legacy",
+          label: "Legacy",
+          kind: "cloud",
+          apiBase: DEAD_AGENT_BASE,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockResolvedValue(
+        jsonResponse(404, { error: "agent not found or not running" }),
+      );
+
+    const client = new ElizaClient(DEAD_AGENT_BASE, "token");
+    client.setRequestTransport({ request });
+
+    let caught: unknown;
+    try {
+      await client.fetch("/api/status");
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(isCloudAgentGoneError(caught)).toBe(false);
+    expect(client.getBaseUrl()).toBe(DEAD_AGENT_BASE);
+    expect(loadPersistedActiveServer()?.apiBase).toBe(DEAD_AGENT_BASE);
+    expect(loadAgentProfileRegistry().activeProfileId).toBe("profile-legacy");
   });
 
   it("does not clear a newly selected binding when a stale response arrives late", async () => {
@@ -199,7 +248,12 @@ describe("ElizaClient stale cloud-agent binding release", () => {
       apiBase: LIVE_AGENT_BASE,
     });
 
-    resolveDead(jsonResponse(404, { error: "agent not found or not running", code: "agent_not_found" }));
+    resolveDead(
+      jsonResponse(404, {
+        error: "agent not found or not running",
+        code: "agent_not_found",
+      }),
+    );
     await expect(pending).rejects.toBeInstanceOf(ApiError);
 
     expect(client.getBaseUrl()).toBe(LIVE_AGENT_BASE);
@@ -228,11 +282,12 @@ describe("ElizaClient stale cloud-agent binding release", () => {
   });
 
   it("releases only once per dead base (idempotent under concurrent posts)", async () => {
-    const request = vi
-      .fn<AgentRequestTransport["request"]>()
-      .mockResolvedValue(
-        jsonResponse(404, { error: "agent not found or not running", code: "agent_not_found" }),
-      );
+    const request = vi.fn<AgentRequestTransport["request"]>().mockResolvedValue(
+      jsonResponse(404, {
+        error: "agent not found or not running",
+        code: "agent_not_found",
+      }),
+    );
 
     const client = new ElizaClient(DEAD_AGENT_BASE, "token");
     client.setRequestTransport({ request });
@@ -252,11 +307,3 @@ describe("ElizaClient stale cloud-agent binding release", () => {
     expect(loadPersistedActiveServer()).toBeNull();
   });
 });
-
-function isCloudAgentGoneLike(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    error.status === 404 &&
-    error.message.includes("agent not found or not running")
-  );
-}
