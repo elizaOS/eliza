@@ -1250,12 +1250,22 @@ describe("installPromptOptimizations telemetry", () => {
         {
           role: "user",
           content: [
-            "message:user:",
-            "Fill the focused ledger title with Close Issue 11355",
-            "",
-            "# Routing hints",
-            "- Use VIEWS for view interaction.",
-          ].join("\n"),
+            {
+              type: "text",
+              text: [
+                "message:user:",
+                "Fill the focused ledger title with Close Issue 11355",
+                "",
+                "# Routing hints",
+                "- Use VIEWS for view interaction.",
+              ].join("\n"),
+            },
+            {
+              type: "image",
+              image: "data:image/png;base64,bGVkZ2Vy",
+              mediaType: "image/png",
+            },
+          ],
         },
       ],
       tools: [{ name: "VIEWS" }],
@@ -1264,12 +1274,18 @@ describe("installPromptOptimizations telemetry", () => {
     expect(result).toBe("planner response");
     expect(payloads).toHaveLength(1);
     const messages = payloads[0]?.messages as Array<{
-      content?: unknown;
+      content?: Array<Record<string, unknown>>;
       role?: unknown;
     }>;
     expect(messages).toHaveLength(1);
     expect(messages[0]?.role).toBe("user");
-    const content = String(messages[0]?.content ?? "");
+    const parts = messages[0]?.content ?? [];
+    expect(parts[1]).toEqual({
+      type: "image",
+      image: "data:image/png;base64,bGVkZ2Vy",
+      mediaType: "image/png",
+    });
+    const content = String(parts[0]?.text ?? "");
     expect(content).toContain("# Active View");
     expect(content).toContain("Scenario Active Ledger");
     expect(content).toContain("scenario-active-ledger");
@@ -1458,6 +1474,160 @@ describe("installPromptOptimizations telemetry", () => {
     >;
     expect(conversationCompaction.strategy).toBe("naive-summary");
     expect(conversationCompaction.didCompact).toBe(true);
+  });
+
+  it("preserves canonical content-part tool history through prompt optimization", async () => {
+    process.env.ELIZA_CONVERSATION_COMPACTOR = "off";
+    const seenPayloads: Array<Record<string, unknown>> = [];
+    const runtime = {
+      actions: [],
+      character: { system: "system fallback" },
+      logger: { info: () => {}, warn: () => {} },
+      getService: () => null,
+      useModel: async (_modelType: string, payload: unknown) => {
+        seenPayloads.push(payload as Record<string, unknown>);
+        return "final response";
+      },
+    };
+    installPromptOptimizations(runtime as never, {} as never);
+
+    const messages = [
+      { role: "system", content: "system prompt" },
+      { role: "user", content: "weather in tokyo" },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "checking now" },
+          {
+            type: "tool-call",
+            toolCallId: "weather-call-1",
+            toolName: "WEB_SEARCH",
+            input: { query: "current weather in Tokyo", numResults: 3 },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "weather-call-1",
+            toolName: "WEB_SEARCH",
+            output: {
+              type: "json",
+              value: { temperatureF: 91, conditions: "partly cloudy" },
+            },
+          },
+        ],
+      },
+    ];
+
+    await runtime.useModel("RESPONSE_HANDLER", { messages });
+
+    expect(seenPayloads).toHaveLength(1);
+    expect(seenPayloads[0]?.messages).toEqual(messages);
+  });
+
+  it("keeps mixed text, tool, and non-text parts lossless under message-budget pressure", async () => {
+    process.env.ELIZA_CONVERSATION_COMPACTOR = "naive-summary";
+    const seenPayloads: Array<Record<string, unknown>> = [];
+    let summarizerCalls = 0;
+    const runtime = {
+      actions: [],
+      character: { system: "system fallback" },
+      logger: { info: () => {}, warn: () => {} },
+      getService: () => null,
+      useModel: async (_modelType: string, payload: unknown) => {
+        const record = payload as Record<string, unknown>;
+        if (
+          typeof record.system === "string" &&
+          record.system.includes("prose summary")
+        ) {
+          summarizerCalls += 1;
+          return "older conversation summary";
+        }
+        seenPayloads.push(record);
+        return "final response";
+      },
+    };
+    installPromptOptimizations(
+      runtime as never,
+      {
+        agents: {
+          defaults: {
+            contextTokens: 900,
+            model: { primary: "tiny-test-model" },
+          },
+        },
+      } as never,
+    );
+
+    const structuredTail = [
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "checking now" },
+          {
+            type: "tool-call",
+            toolCallId: "weather-call-2",
+            toolName: "WEB_SEARCH",
+            input: { query: "current weather in Tokyo", numResults: 3 },
+          },
+          { type: "text", text: "one moment" },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "weather-call-2",
+            toolName: "WEB_SEARCH",
+            output: {
+              type: "text",
+              value: "Tokyo is 91 F and partly cloudy.",
+            },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "use this forecast card too" },
+          {
+            type: "image",
+            image: "data:image/png;base64,Zm9yZWNhc3Q=",
+            mediaType: "image/png",
+          },
+          {
+            type: "file",
+            data: "data:text/plain;base64,dG9reW8=",
+            mediaType: "text/plain",
+            filename: "tokyo.txt",
+          },
+        ],
+      },
+    ];
+    const messages = [
+      { role: "system", content: "system prompt" },
+      ...Array.from({ length: 60 }, (_, index) => ({
+        role: index % 2 === 0 ? "user" : "assistant",
+        content: `older turn ${index} ${"x".repeat(120)}`,
+      })),
+      ...structuredTail,
+    ];
+
+    await runtime.useModel("RESPONSE_HANDLER", {
+      model: "tiny-test-model",
+      messages,
+      maxTokens: 100,
+    });
+
+    expect(summarizerCalls).toBe(1);
+    expect(seenPayloads).toHaveLength(1);
+    const compacted = seenPayloads[0]?.messages as unknown[];
+    expect(compacted.length).toBeLessThan(messages.length);
+    expect(compacted.slice(-structuredTail.length)).toEqual(structuredTail);
   });
 
   it("records skip telemetry without calling the summarizer when noncompactable prompt sections exceed budget", async () => {
