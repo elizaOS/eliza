@@ -100,6 +100,39 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   // Empty start: the switcher shows its designed empty state, no closable tabs.
   let switcher = await openSwitcher();
   await expect(switcher.getByText("No tabs open yet")).toHaveCount(1);
+  const floatingLayerContract = await page.evaluate(() => {
+    const dialog = document.querySelector<HTMLElement>(
+      '[data-testid="browser-workspace-tab-switcher"]',
+    );
+    const chat = document.querySelector<HTMLElement>(
+      '[data-testid="chat-overlay"]',
+    );
+    const chatSheet = document.querySelector<HTMLElement>(
+      '[data-testid="chat-sheet-surface"]',
+    );
+    const backdrop = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-state='open']"),
+    ).find((element) => getComputedStyle(element).zIndex === "8800");
+    if (!dialog || !chat || !chatSheet || !backdrop) return null;
+    return {
+      dialogZ: Number(getComputedStyle(dialog).zIndex),
+      backdropZ: Number(getComputedStyle(backdrop).zIndex),
+      chatZ: Number(getComputedStyle(chat).zIndex),
+      clearanceGap:
+        chatSheet.getBoundingClientRect().top -
+        dialog.getBoundingClientRect().bottom,
+      clearanceAware: dialog.dataset.chatClearanceAware,
+    };
+  });
+  expect(floatingLayerContract).not.toBeNull();
+  expect(floatingLayerContract?.backdropZ).toBeLessThan(
+    floatingLayerContract?.dialogZ ?? 0,
+  );
+  expect(floatingLayerContract?.dialogZ).toBeLessThan(
+    floatingLayerContract?.chatZ ?? 0,
+  );
+  expect(floatingLayerContract?.clearanceGap).toBeGreaterThanOrEqual(0);
+  expect(floatingLayerContract?.clearanceAware).toBe("true");
   await closeSwitcher();
   await expect(addressInput).toHaveValue("");
   await expect(newTabButton).toBeEnabled();

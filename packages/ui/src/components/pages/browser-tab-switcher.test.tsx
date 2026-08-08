@@ -15,6 +15,11 @@ import {
 } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  Z_SHELL_OVERLAY,
+  Z_VIEW_MODAL,
+  Z_VIEW_MODAL_BACKDROP,
+} from "../../lib/floating-layers";
 
 vi.mock("../../agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
@@ -236,17 +241,20 @@ describe("BrowserTabSwitcher", () => {
     expect(card.innerHTML).not.toContain("bg-accent");
   });
 
-  it("renders centered neutral chrome above the ambient chat overlay", () => {
+  it("keeps neutral Browser chrome below chat and inside its reserved clearance", () => {
     renderSwitcher();
     const dialog = screen.getByTestId("browser-workspace-tab-switcher");
-    expect(dialog.className).toContain("z-[9210]");
-    expect(dialog.className).toContain("max-sm:top-1/2");
-    expect(dialog.className).toContain("max-sm:-translate-y-1/2");
+    expect(dialog.className).toContain("z-[8810]");
+    expect(dialog.getAttribute("data-chat-clearance-aware")).toBe("true");
+    expect(dialog.style.top).toContain("--eliza-chat-clearance");
+    expect(dialog.style.maxHeight).toContain("--eliza-chat-clearance");
     expect(dialog.className).toContain("rounded-3xl");
     expect(dialog.className).not.toContain("accent");
+    expect(Z_VIEW_MODAL).toBeLessThan(Z_SHELL_OVERLAY);
+    expect(Z_VIEW_MODAL_BACKDROP).toBeLessThan(Z_VIEW_MODAL);
 
     const overlay = Array.from(document.body.querySelectorAll("div")).find(
-      (element) => element.className.includes("z-[9200]"),
+      (element) => element.className.includes("z-[8800]"),
     );
     expect(overlay).toBeTruthy();
   });

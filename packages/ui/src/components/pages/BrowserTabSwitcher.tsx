@@ -11,9 +11,10 @@
  * already drives through `runBrowserWorkspaceAction`. Agent-partition tabs run
  * in a separate session (`persist:eliza-browser-agent`) and stay visually
  * distinct through their own section and neutral outlined monogram so a user
- * never confuses an agent-driven page for one of their own. The dialog's
- * browser-chrome layer sits above ambient chat and is masked over the native
- * `<electrobun-webview>` OOPIF (see `BROWSER_WORKSPACE_TAB_MASK_SELECTORS`).
+ * never confuses an agent-driven page for one of their own. The dialog masks
+ * the native `<electrobun-webview>` OOPIF while remaining below persistent chat
+ * chrome and reserving its measured resting footprint (see
+ * `BROWSER_WORKSPACE_TAB_MASK_SELECTORS`).
  */
 import { Globe, Plus, X } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
@@ -259,10 +260,10 @@ function BrowserTabCard({
  * The switcher overlay: a stacked, single-column grid of every tab card grouped
  * by section, plus a "new tab" affordance. Controlled by the view (`open` /
  * `onOpenChange`); switching a tab also closes the overlay so the picked page is
- * immediately usable. This is browser chrome, so it sits above the ambient chat
- * sheet and stays centered on mobile instead of competing with two bottom
- * sheets. Literal z-index classes are required by Tailwind's scanner; they
- * mirror `Z_BROWSER_TAB_SWITCHER_*` in `floating-layers.ts`.
+ * immediately usable. This is view-owned browser chrome: it covers the native
+ * page, but remains below the ambient chat sheet and fits in the viewport above
+ * `--eliza-chat-clearance`. Literal z-index classes are required by Tailwind's
+ * scanner; they mirror `Z_VIEW_MODAL_*` in `floating-layers.ts`.
  */
 export function BrowserTabSwitcher({
   open,
@@ -298,8 +299,16 @@ export function BrowserTabSwitcher({
       <DialogContent
         showCloseButton
         data-testid="browser-workspace-tab-switcher"
-        overlayClassName="z-[9200] bg-black/65 backdrop-blur-[2px]"
-        className="z-[9210] gap-4 rounded-3xl border-border/60 bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] shadow-[0_24px_80px_rgba(0,0,0,.48)] backdrop-blur-[28px] max-sm:bottom-auto max-sm:top-1/2 max-sm:max-h-[min(74dvh,42rem)] max-sm:-translate-y-1/2 max-sm:rounded-3xl"
+        data-view-overlay="browser-tabs"
+        data-chat-clearance-aware="true"
+        overlayClassName="z-[8800] bg-black/65 backdrop-blur-[2px]"
+        className="z-[8810] gap-4 rounded-3xl border-border/60 bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] shadow-[0_24px_80px_rgba(0,0,0,.48)] backdrop-blur-[28px] max-sm:-translate-y-1/2 max-sm:rounded-3xl"
+        style={{
+          top: "calc((100dvh - var(--eliza-chat-clearance, 5.25rem)) / 2)",
+          bottom: "auto",
+          maxHeight:
+            "min(calc(100dvh - var(--eliza-chat-clearance, 5.25rem) - var(--safe-area-top, 0px) - 1.5rem), 42rem)",
+        }}
       >
         <DialogHeader className="flex-row items-center justify-between gap-2 pr-8 text-left">
           <DialogTitle>{title}</DialogTitle>
