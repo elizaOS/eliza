@@ -167,6 +167,22 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       fireEvent.pointerDown(iframe);
       iframe.focus();
       expect(document.activeElement).toBe(iframe);
+
+      // A click inside an already-loaded cross-origin child does not bubble to
+      // React. The parent observes the synchronous :active state at blur.
+      composer.focus();
+      fireEvent.load(iframe);
+      const matches = iframe.matches.bind(iframe);
+      const matchesSpy = vi
+        .spyOn(iframe, "matches")
+        .mockImplementation((selector) =>
+          selector === ":active" ? true : matches(selector),
+        );
+      window.dispatchEvent(new FocusEvent("blur"));
+      matchesSpy.mockRestore();
+      iframe.focus();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(document.activeElement).toBe(iframe);
     } finally {
       composer.remove();
     }

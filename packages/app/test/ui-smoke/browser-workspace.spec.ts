@@ -242,11 +242,12 @@ test("browser iframe focus handoff survives delayed autofocus without stealing d
             <input id="focus-target" data-testid="focus-target" />
             ${slowLoad ? '<img alt="slow" src="/__browser-focus-slow.png" />' : ""}
             <script>
-              if (${JSON.stringify(autoFocus)}) {
-                window.addEventListener("load", () => {
+              window.addEventListener("load", () => {
+                document.body.dataset.loaded = "true";
+                if (${JSON.stringify(autoFocus)}) {
                   setTimeout(() => document.querySelector("#focus-target").focus(), 120);
-                });
-              }
+                }
+              });
             </script>
           </body>
         </html>`,
@@ -317,6 +318,33 @@ test("browser iframe focus handoff survives delayed autofocus without stealing d
   await fixtureInput.click();
   await page.waitForTimeout(1_800);
   await expect(fixtureInput).toBeFocused();
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.tagName ?? null))
+    .toBe("IFRAME");
+
+  // After load, cross-origin pointer events do not bubble to the parent. A
+  // genuine press must still cancel the autofocus guard without making hover
+  // alone an authorization signal.
+  await composer.focus();
+  const postLoadClickUrl = `${fixtureOrigin}/__browser-focus-fixture?case=user-click-after-load`;
+  const postLoadClickNavigateResponse = await request.post(
+    `/api/browser-workspace/tabs/${encodeURIComponent(tabId)}/navigate`,
+    { data: { url: postLoadClickUrl } },
+  );
+  expect(postLoadClickNavigateResponse.ok()).toBe(true);
+  await expect(iframe).toHaveAttribute("src", postLoadClickUrl, {
+    timeout: 10_000,
+  });
+  const loadedBody = page
+    .frameLocator("iframe")
+    .locator("body[data-loaded='true']");
+  await expect(loadedBody).toBeVisible();
+  const postLoadFixtureInput = page
+    .frameLocator("iframe")
+    .getByTestId("focus-target");
+  await postLoadFixtureInput.click();
+  await page.waitForTimeout(1_800);
+  await expect(postLoadFixtureInput).toBeFocused();
   await expect
     .poll(() => page.evaluate(() => document.activeElement?.tagName ?? null))
     .toBe("IFRAME");

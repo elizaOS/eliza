@@ -1016,11 +1016,24 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff);
       }
     };
+    const handleWindowBlur = () => {
+      for (const [iframe, handoff] of iframeFocusHandoffsRef.current) {
+        // Cross-origin child events cannot cross the iframe boundary, but the
+        // embedding element is :active synchronously while a real pointer
+        // press transfers focus. Page autofocus produces the same
+        // activeElement transition without that activation signal.
+        if (iframe.matches(":active")) {
+          releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff);
+        }
+      }
+    };
     document.addEventListener("pointerdown", handlePointerDown, true);
     document.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("blur", handleWindowBlur, true);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown, true);
       document.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("blur", handleWindowBlur, true);
       for (const timer of iframeFocusTimersRef.current) {
         window.clearTimeout(timer);
       }
