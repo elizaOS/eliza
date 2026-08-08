@@ -379,12 +379,30 @@ async function opCreate(
       "MISSING_INSTRUCTIONS",
     );
   }
+  // Recurrence resolves FIRST: a field-spraying planner answering "remind me
+  // every morning at 9am" emits the cron AND its derived one-shot echoes —
+  // delayMinutes/delaySeconds/scheduledAtIso computed as the time to the
+  // FIRST fire. Letting those one-shot fields outrank the recurrence payload
+  // silently downgraded "every morning" to a single reminder. Only an
+  // explicit one-shot/interval `triggerType` — a typed statement, not a
+  // sprayed number — outranks a provided cronExpression.
+  const explicitType = params.triggerType?.trim().toLowerCase();
+  const cronExpression = readString(params.cronExpression);
+  const wantsCron =
+    explicitType === "cron" ||
+    (cronExpression !== undefined &&
+      explicitType !== "once" &&
+      explicitType !== "interval");
   // Relative delay ("remind me in 90 seconds / 5 minutes"): the natural way a
-  // reminder is expressed. Convert to an absolute one-off `scheduledAtIso` so
-  // the rest of the create path is unchanged. Explicit scheduledAtIso wins.
+  // one-off reminder is expressed. Convert to an absolute one-off
+  // `scheduledAtIso` so the rest of the create path is unchanged. Explicit
+  // scheduledAtIso wins. Under a cron schedule the delay fields are ignored
+  // entirely — they are first-fire echoes, not a schedule — so a junk delay
+  // cannot block a valid recurring create.
   const delayGiven =
-    params.delaySeconds !== undefined || params.delayMinutes !== undefined;
-  const delayMs = readRelativeDelayMs(params);
+    !wantsCron &&
+    (params.delaySeconds !== undefined || params.delayMinutes !== undefined);
+  const delayMs = wantsCron ? undefined : readRelativeDelayMs(params);
   // A delay the model tried to express but we could not parse must fail
   // loudly — silently degrading to the 12-hour default interval turns
   // "remind me in 90 seconds" into a forever-repeating trigger.
@@ -409,9 +427,11 @@ async function opCreate(
   const scheduledAtIso =
     readString(params.scheduledAtIso) ?? scheduledFromDelay;
   // A relative delay is one-shot by definition; a contradictory explicit
-  // triggerType must not silently drop it.
-  const triggerType =
-    delayMs !== undefined
+  // triggerType (e.g. "interval") must not silently drop it. Cron resolved
+  // above, so a delay can no longer demote a recurring schedule to one-shot.
+  const triggerType: TriggerType = wantsCron
+    ? "cron"
+    : delayMs !== undefined
       ? "once"
       : deriveTriggerType({ ...params, scheduledAtIso });
   const displayName =
@@ -424,7 +444,6 @@ async function opCreate(
   const intervalMs = normalizeTriggerIntervalMs(
     parsePositiveInt(params.intervalMs) ?? DEFAULT_INTERVAL_MS,
   );
-  const cronExpression = readString(params.cronExpression);
   const maxRuns = parsePositiveInt(params.maxRuns);
 
   if (triggerType === "once") {
@@ -459,7 +478,17 @@ async function opCreate(
   // wording never collide.
   const usedDelay =
     delayMs !== undefined && scheduledAtIso === scheduledFromDelay;
-  const scheduleKey = usedDelay ? `+${delayMs}` : (scheduledAtIso ?? "");
+  // Only a once trigger's identity includes its fire time; interval and cron
+  // identities are the intervalMs / cronExpression fields already hashed
+  // below. Hashing a sprayed first-fire timestamp into a recurring trigger's
+  // key would make the same "every morning" ask a "new" trigger every day
+  // instead of a replayed no-op.
+  const scheduleKey =
+    triggerType === "once"
+      ? usedDelay
+        ? `+${delayMs}`
+        : (scheduledAtIso ?? "")
+      : "";
   const workflowId = readString(params.workflowId);
   const dedupeWorkflowId = workflowId === undefined ? "" : workflowId;
   // Workflow triggers run autonomously, so they land in the autonomy room. A
@@ -778,11 +807,11 @@ export const triggerAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["REMIND_ME", "SET_REMINDER", "REMINDER", "SCHEDULE_REMINDER"],
   routingHint:
-    "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; this IS the reminder/scheduler tool whenever it is exposed. For a relative delay pass delaySeconds or delayMinutes (never a cron expression — cron is for recurring schedules only). Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
+    "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; this IS the reminder/scheduler tool whenever it is exposed. For a one-off relative delay pass delaySeconds or delayMinutes only. For a RECURRING request ('every morning/day/week at …') pass cronExpression ALONE — no delaySeconds/delayMinutes/scheduledAtIso, those express a single fire. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
   description:
-    "Recurring/scheduled trigger lifecycle AND user reminders. Action-based dispatch (create / update / delete / run / toggle). Use create for 'remind me in N minutes/at TIME to …' and any scheduled prompt. Supports relative delay (delaySeconds), a one-off time (scheduledAtIso), interval, and cron.",
+    "Recurring/scheduled trigger lifecycle AND user reminders. Action-based dispatch (create / update / delete / run / toggle). Use create for 'remind me in N minutes/at TIME to …' and any scheduled prompt. Supports relative delay (delaySeconds — one-off), a one-off time (scheduledAtIso), interval, and cron (recurring 'every …' schedules).",
   descriptionCompressed:
-    "reminders + scheduled prompts: create (remind me in N / at TIME) update delete run toggle (delay|once|interval|cron)",
+    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update delete run toggle (delay|once|interval|cron)",
   suppressPostActionContinuation: true,
 
   validate: async (
@@ -853,7 +882,7 @@ export const triggerAction: Action = {
     {
       name: "delaySeconds",
       description:
-        "Fire once after this many seconds from now — THE param for 'remind me in N seconds/minutes' (converted to a one-off schedule; use this or delayMinutes, never cron, for relative delays).",
+        "Fire once after this many seconds from now — THE param for 'remind me in N seconds/minutes' (converted to a one-off schedule; use this or delayMinutes for relative delays). One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
       required: false,
       aliases: ["inSeconds", "seconds"],
       schema: { type: "number" as const, minimum: 1 },
@@ -861,14 +890,15 @@ export const triggerAction: Action = {
     {
       name: "delayMinutes",
       description:
-        "Fire once after this many minutes from now ('remind me in 5 minutes'). Converted to a one-off schedule.",
+        "Fire once after this many minutes from now ('remind me in 5 minutes'). Converted to a one-off schedule. One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
       required: false,
       aliases: ["inMinutes", "minutes"],
       schema: { type: "number" as const, minimum: 1 },
     },
     {
       name: "triggerType",
-      description: "Trigger schedule type for create.",
+      description:
+        "Trigger schedule type for create — usually inferred: cronExpression -> cron (recurring), delay/scheduledAtIso -> once. Set it explicitly only to resolve a conflict; an explicit 'once' outranks a provided cronExpression.",
       required: false,
       schema: {
         type: "string" as const,
@@ -915,7 +945,7 @@ export const triggerAction: Action = {
     {
       name: "cronExpression",
       description:
-        "Five-field cron expression — RECURRING schedules only ('every morning at 9'). Never for a one-off relative delay; use delaySeconds/delayMinutes for 'in N seconds/minutes'.",
+        "Five-field cron expression — THE param for RECURRING schedules ('every morning at 9' -> '0 9 * * *'). Pass it ALONE: do not also send delaySeconds/delayMinutes/scheduledAtIso (those describe a single fire and are ignored when a cron is present). Never for a one-off relative delay; use delaySeconds/delayMinutes for 'in N seconds/minutes'.",
       required: false,
       aliases: ["schedule", "cron", "recurrence"],
       schema: { type: "string" as const },
@@ -946,6 +976,21 @@ export const triggerAction: Action = {
         name: "{{agent}}",
         content: {
           text: 'Created trigger "Trigger: review open PRs" (every 43200000ms).',
+          action: TRIGGER_ACTION,
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user}}",
+        content: {
+          text: "Remind me to take vitamins every morning at 8am.",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: 'Created trigger "take vitamins" (cron 0 8 * * *).',
           action: TRIGGER_ACTION,
         },
       },
