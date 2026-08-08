@@ -75,7 +75,7 @@ export default function LoginPage() {
   );
   return (
     <LoginBackground>
-      <div className="space-y-8">
+      <main className="space-y-8">
         <div className="space-y-3 text-center">
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudWhite}`}
@@ -105,19 +105,19 @@ export default function LoginPage() {
           })}{" "}
           <Link
             to="/terms-of-service"
-            className="font-medium text-txt underline-offset-4 transition-opacity hover:underline hover:opacity-80"
+            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,color] hover:underline hover:opacity-80 focus-visible:bg-bg-hover focus-visible:text-txt-strong"
           >
             {t("cloud.login.termsLink", { defaultValue: "Terms" })}
           </Link>{" "}
           {t("cloud.login.and", { defaultValue: "and" })}{" "}
           <Link
             to="/privacy-policy"
-            className="font-medium text-txt underline-offset-4 transition-opacity hover:underline hover:opacity-80"
+            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,color] hover:underline hover:opacity-80 focus-visible:bg-bg-hover focus-visible:text-txt-strong"
           >
             {t("cloud.login.privacyPolicy", { defaultValue: "Privacy Policy" })}
           </Link>
         </p>
-      </div>
+      </main>
     </LoginBackground>
   );
 }
