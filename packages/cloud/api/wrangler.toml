@@ -205,7 +205,7 @@ REDIS_RATE_LIMITING = "false"
 # misses warm and retry instead of joining an authoritative database fallback.
 # SAFE_BALANCE_THRESHOLD remains a non-Worker compatibility control; exact
 # Durable Object admission does not impose a minimum account-balance floor.
-INFERENCE_OPTIMISTIC_BILLING = "false"
+INFERENCE_OPTIMISTIC_BILLING = "true"
 # Thin chat-only bootstrap. Keep production off until staging parity/latency soak passes.
 THIN_INFERENCE_ENTRY_ENABLED = "false"
 SAFE_BALANCE_THRESHOLD = ""
@@ -214,7 +214,7 @@ SAFE_BALANCE_THRESHOLD = ""
 INFERENCE_BILLING_LEDGER = "db"
 # Required for the Worker cache-only path. The only pre-provider write is the
 # per-organization Durable Object lease; Postgres accounting starts afterward.
-INFERENCE_DEFERRED_ADMISSION = "false"
+INFERENCE_DEFERRED_ADMISSION = "true"
 # Enables local decision memos in front of shared revisioned caches. Exact
 # organization rate and spend decisions remain in the Durable Object.
 INFERENCE_HOT_PATH_CACHES = "false"

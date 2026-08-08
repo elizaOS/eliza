@@ -9,7 +9,13 @@
  * (connector account storage rows and the vault store), exactly what survives
  * a real process restart.
  */
-import type { ConnectorAccount, ConnectorAccountStorage, IAgentRuntime } from "@elizaos/core";
+import {
+  type ConnectorAccount,
+  type ConnectorAccountStorage,
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  InMemoryDatabaseAdapter,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
@@ -315,5 +321,71 @@ describe("accountId 'default' resolution", () => {
     state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
     state.accounts.set("second-account", connectedAccount("second-account"));
     await expect(resolveDefault(state, {})).rejects.toThrow(/default was not found/);
+  });
+});
+
+describe("manager-path durability across restart (real core manager + adapter)", () => {
+  function createManagerRuntime(
+    services: Record<string, unknown>,
+    adapter?: InMemoryDatabaseAdapter
+  ): IAgentRuntime {
+    return {
+      agentId: AGENT_ID,
+      adapter,
+      getService: (name: string) => services[name] ?? null,
+      getSetting: (key: string) =>
+        key === "GOOGLE_CLIENT_ID"
+          ? "client-id"
+          : key === "GOOGLE_CLIENT_SECRET"
+            ? "client-secret"
+            : undefined,
+      getMessageConnectors: () => [],
+      getPostConnectors: () => [],
+      registerMessageConnector: () => undefined,
+      registerPostConnector: () => undefined,
+    } as unknown as IAgentRuntime;
+  }
+
+  it("resolves 'default' to the sole connected account after a restart when the account was written before the adapter registered on the boot runtime", async () => {
+    const vaultEntries = new Map<string, string>();
+    const vaultRef = `connector.${AGENT_ID}.google.${ACCOUNT_ID}.oauth_tokens`;
+    vaultEntries.set(vaultRef, TOKENS_JSON);
+
+    // Boot: the manager is constructed during plugin registration, before
+    // plugin-sql attaches the adapter (the exact race that dropped accounts).
+    const bootServices = {
+      connector_credential_store: createDurableStoreService(vaultEntries),
+    };
+    const bootRuntime = createManagerRuntime(bootServices);
+    const bootManager = getConnectorAccountManager(bootRuntime);
+
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    (bootRuntime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter = adapter;
+
+    // OAuth completion writes the connected account with its credential refs.
+    await bootManager.upsertAccount("google", {
+      ...connectedAccount(ACCOUNT_ID),
+      metadata: { credentialRefs: [{ credentialType: "oauth.tokens", vaultRef }] },
+    });
+
+    // Restart: fresh runtime + manager over the same durable adapter/vault.
+    const restartedRuntime = createManagerRuntime(
+      { connector_credential_store: createDurableStoreService(vaultEntries) },
+      adapter
+    );
+    const resolver = new DefaultGoogleCredentialResolver({ runtime: restartedRuntime });
+    const client = await resolver.getAuthClient({
+      provider: "google",
+      accountId: "default",
+      scopes: [],
+      capabilities: [],
+      reason: "post-restart default resolution",
+    });
+    const credentials = (
+      client as { credentials?: { access_token?: string; refresh_token?: string } }
+    ).credentials;
+    expect(credentials?.access_token).toBe("test-access-token");
+    expect(credentials?.refresh_token).toBe("test-refresh-token");
   });
 });
