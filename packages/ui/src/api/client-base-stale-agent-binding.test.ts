@@ -75,7 +75,7 @@ describe("ElizaClient stale cloud-agent binding release", () => {
     const request = vi
       .fn<AgentRequestTransport["request"]>()
       .mockResolvedValue(
-        jsonResponse(404, { error: "agent not found or not running" }),
+        jsonResponse(404, { error: "agent not found or not running", code: "agent_not_found" }),
       );
 
     const client = new ElizaClient(DEAD_AGENT_BASE, "token");
@@ -110,7 +110,7 @@ describe("ElizaClient stale cloud-agent binding release", () => {
     const request = vi
       .fn<AgentRequestTransport["request"]>()
       .mockResolvedValue(
-        jsonResponse(404, { error: "agent not found or not running" }),
+        jsonResponse(404, { error: "agent not found or not running", code: "agent_not_found" }),
       );
 
     const client = new ElizaClient(DEAD_AGENT_BASE, "token");
@@ -122,9 +122,34 @@ describe("ElizaClient stale cloud-agent binding release", () => {
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({
       error: "agent not found or not running",
+      code: "agent_not_found",
     });
     expect(client.getBaseUrl()).toBe("");
     expect(loadPersistedActiveServer()).toBeNull();
+  });
+
+  it("does not clear on recoverable agent_not_running (stopped/cold)", async () => {
+    savePersistedActiveServer({
+      id: "cloud:cold",
+      kind: "cloud",
+      label: "Cold",
+      apiBase: DEAD_AGENT_BASE,
+    });
+
+    const request = vi.fn<AgentRequestTransport["request"]>().mockResolvedValue(
+      jsonResponse(503, {
+        error: "agent not running",
+        code: "agent_not_running",
+        status: "stopped",
+      }),
+    );
+
+    const client = new ElizaClient(DEAD_AGENT_BASE, "token");
+    client.setRequestTransport({ request });
+
+    await expect(client.fetch("/api/status")).rejects.toBeInstanceOf(ApiError);
+    expect(client.getBaseUrl()).toBe(DEAD_AGENT_BASE);
+    expect(loadPersistedActiveServer()?.apiBase).toBe(DEAD_AGENT_BASE);
   });
 
   it("does not clear a newly selected binding when a stale response arrives late", async () => {
@@ -174,7 +199,7 @@ describe("ElizaClient stale cloud-agent binding release", () => {
       apiBase: LIVE_AGENT_BASE,
     });
 
-    resolveDead(jsonResponse(404, { error: "agent not found or not running" }));
+    resolveDead(jsonResponse(404, { error: "agent not found or not running", code: "agent_not_found" }));
     await expect(pending).rejects.toBeInstanceOf(ApiError);
 
     expect(client.getBaseUrl()).toBe(LIVE_AGENT_BASE);
@@ -206,7 +231,7 @@ describe("ElizaClient stale cloud-agent binding release", () => {
     const request = vi
       .fn<AgentRequestTransport["request"]>()
       .mockResolvedValue(
-        jsonResponse(404, { error: "agent not found or not running" }),
+        jsonResponse(404, { error: "agent not found or not running", code: "agent_not_found" }),
       );
 
     const client = new ElizaClient(DEAD_AGENT_BASE, "token");
