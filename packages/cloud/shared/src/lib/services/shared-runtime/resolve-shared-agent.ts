@@ -26,8 +26,28 @@ import { isDedicatedBootstrapWindow } from "./dedicated-bootstrap";
 
 export { type CachedAgentSandbox, rehydrateCachedAgentDates } from "./cached-agent-dates";
 
+/**
+ * Why the refusal, for callers that can act on it.
+ *
+ * `dedicated-agent` is not a client error: the agent exists and the caller is
+ * entitled to it, it simply is not served by the shared runtime. Only the
+ * bridge route acts on this — it owns both tiers and dispatches to the sandbox
+ * instead. Every other caller serves shared agents exclusively and correctly
+ * keeps treating the 404 as terminal.
+ *
+ * This exists because the distinction used to live in the message string
+ * "Not a shared-runtime agent". A routing decision encoded as English is one
+ * refactor away from being read as a client verdict, which is what happened in
+ * #17076 and left every dedicated agent 404ing for two weeks (#18062).
+ */
+export type SharedAgentRefusal = "dedicated-agent";
+
 export type ResolvedSharedAgent =
-  | { error: string; status: 400 | 401 | 403 | 404 | 503 }
+  | {
+      error: string;
+      status: 400 | 401 | 403 | 404 | 503;
+      refusal?: SharedAgentRefusal;
+    }
   | { agent: AgentSandbox; agentId: string; orgId: string; agentName: string };
 
 export interface SharedRuntimeExecutionContext {
@@ -142,6 +162,16 @@ function requiresAuthoritativeResolution(
   return (
     "requiresAuthoritativeResolution" in entry && entry.requiresAuthoritativeResolution === true
   );
+}
+
+/**
+ * Recover the typed refusal an ApiError was tagged with, if any. Kept beside
+ * the status guard so both catch sites convert a thrown authorization failure
+ * into a result the same way.
+ */
+function refusalOf(error: ApiError): { refusal?: SharedAgentRefusal } {
+  const tagged = error.details?.refusal;
+  return tagged === "dedicated-agent" ? { refusal: tagged } : {};
 }
 
 function isSharedAgentResolutionStatus(status: number): status is 400 | 401 | 403 | 404 {
@@ -520,7 +550,11 @@ export async function resolveSharedAgent(
       // by shared-runtime routes, so authoritative client failures retain their
       // exact status without becoming a reusable cache value.
       if (error instanceof ApiError && isSharedAgentResolutionStatus(error.status)) {
-        return { error: error.message, status: error.status };
+        return {
+          error: error.message,
+          status: error.status,
+          ...refusalOf(error),
+        };
       }
       logger.warn("[resolveSharedAgent] scope hydration cache failed; using authoritative path", {
         agentId,
@@ -536,7 +570,11 @@ export async function resolveSharedAgent(
     // error-policy:J1 authoritative auth/scope failures retain their exact
     // client status; the neutral marker is not itself an authorization result.
     if (error instanceof ApiError && isSharedAgentResolutionStatus(error.status)) {
-      return { error: error.message, status: error.status };
+      return {
+        error: error.message,
+        status: error.status,
+        ...refusalOf(error),
+      };
     }
     throw error;
   }
