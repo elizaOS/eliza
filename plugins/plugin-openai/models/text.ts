@@ -2067,13 +2067,23 @@ async function generateTextByModelType(
       : {}),
   });
 
+  // Wire-boundary guarantee: no upstream text bug may produce an invalid
+  // request body. A lone UTF-16 surrogate (e.g. from a mid-emoji slice)
+  // serializes as a \uD8xx escape that Cerebras's strict JSON parser 400s
+  // on ("lone leading surrogate in hex escape", wrong_api_format — #18025),
+  // so EVERY outgoing string — including tool descriptions/schemas, output
+  // schemas, and provider options — is forced to well-formed Unicode here.
+  const sanitizedTools = normalizedTools ? deepToWellFormedUnicode(normalizedTools) : undefined;
+  const sanitizedToolChoice = normalizedToolChoice
+    ? deepToWellFormedUnicode(normalizedToolChoice)
+    : undefined;
+  const sanitizedOutput = requestedOutput ? deepToWellFormedUnicode(requestedOutput) : undefined;
+  const sanitizedProviderOptions = providerOptions
+    ? (deepToWellFormedUnicode(providerOptions) as NativeProviderOptions)
+    : undefined;
+
   const generateParams: NativeTextParams = {
     model,
-    // Wire-boundary guarantee: no upstream text bug may produce an invalid
-    // request body. A lone UTF-16 surrogate (e.g. from a mid-emoji slice)
-    // serializes as a \uD8xx escape that Cerebras's strict JSON parser 400s
-    // on ("lone leading surrogate in hex escape", wrong_api_format — #18025),
-    // so every outgoing string is forced to well-formed Unicode here.
     ...deepToWellFormedUnicode(promptOrMessages),
     system: systemPrompt === undefined ? undefined : deepToWellFormedUnicode(systemPrompt),
     allowSystemInMessages: true,
@@ -2083,10 +2093,10 @@ async function generateTextByModelType(
     // model's limit. Other callers keep the 8192 default.
     ...(params.omitMaxTokens ? {} : { maxOutputTokens: params.maxTokens ?? 8192 }),
     experimental_telemetry: telemetryConfig,
-    ...(normalizedTools ? { tools: normalizedTools } : {}),
-    ...(normalizedToolChoice ? { toolChoice: normalizedToolChoice } : {}),
-    ...(requestedOutput ? { output: requestedOutput } : {}),
-    ...(providerOptions ? { providerOptions: providerOptions as NativeProviderOptions } : {}),
+    ...(sanitizedTools ? { tools: sanitizedTools } : {}),
+    ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
+    ...(sanitizedOutput ? { output: sanitizedOutput } : {}),
+    ...(sanitizedProviderOptions ? { providerOptions: sanitizedProviderOptions } : {}),
   };
 
   // Handle streaming mode

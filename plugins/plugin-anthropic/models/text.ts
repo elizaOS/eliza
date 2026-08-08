@@ -1320,35 +1320,47 @@ async function generateTextWithModel(
           messages: applyTrajectoryTailCacheBreakpoint(basePromptOrMessages.messages, cacheControl),
         }
       : basePromptOrMessages;
+  // Wire-boundary guarantee: lone UTF-16 surrogates (e.g. from a mid-emoji
+  // slice upstream) serialize as \uD8xx escapes that strict provider JSON
+  // parsers reject (#18025); force EVERY outgoing string — including tool
+  // descriptions/schemas, stop sequences, output schemas, and provider
+  // options — to well-formed Unicode at request build. Deterministic, so
+  // cache-prefix stability holds.
+  const sanitizedStopSequences = deepToWellFormedUnicode(
+    resolved.stopSequences as string[] | undefined
+  );
+  const sanitizedTools = paramsWithAttachments.tools
+    ? deepToWellFormedUnicode(
+        toolsCacheControl
+          ? applyToolsCacheBreakpoint(paramsWithAttachments.tools, toolsCacheControl)
+          : paramsWithAttachments.tools
+      )
+    : undefined;
+  const sanitizedToolChoice = paramsWithAttachments.toolChoice
+    ? deepToWellFormedUnicode(paramsWithAttachments.toolChoice)
+    : undefined;
+  const sanitizedOutput = paramsWithAttachments.responseSchema
+    ? deepToWellFormedUnicode(buildStructuredOutput(paramsWithAttachments.responseSchema))
+    : undefined;
+  const sanitizedProviderOptions = anthropicProviderOptions
+    ? (deepToWellFormedUnicode(anthropicProviderOptions) as NativeProviderOptions)
+    : undefined;
+
   const generateParams: NativeTextParams = {
     model: anthropic(modelName),
-    // Wire-boundary guarantee: lone UTF-16 surrogates (e.g. from a mid-emoji
-    // slice upstream) serialize as \uD8xx escapes that strict provider JSON
-    // parsers reject (#18025); force every outgoing string to well-formed
-    // Unicode at request build. Deterministic, so cache-prefix stability holds.
     ...deepToWellFormedUnicode(promptOrMessages),
     system: system === undefined ? undefined : deepToWellFormedUnicode(system),
     temperature: resolved.temperature,
-    stopSequences: resolved.stopSequences as string[],
+    ...(sanitizedStopSequences ? { stopSequences: sanitizedStopSequences } : {}),
     frequencyPenalty: resolved.frequencyPenalty,
     presencePenalty: resolved.presencePenalty,
     experimental_telemetry: telemetryConfig,
     maxOutputTokens: resolved.maxTokens,
     topP: resolved.topP,
-    ...(paramsWithAttachments.tools
-      ? {
-          tools: toolsCacheControl
-            ? applyToolsCacheBreakpoint(paramsWithAttachments.tools, toolsCacheControl)
-            : paramsWithAttachments.tools,
-        }
-      : {}),
-    ...(paramsWithAttachments.toolChoice ? { toolChoice: paramsWithAttachments.toolChoice } : {}),
-    ...(paramsWithAttachments.responseSchema
-      ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
-      : {}),
-    ...(anthropicProviderOptions
-      ? { providerOptions: anthropicProviderOptions as NativeProviderOptions }
-      : {}),
+    ...(sanitizedTools ? { tools: sanitizedTools } : {}),
+    ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
+    ...(sanitizedOutput ? { output: sanitizedOutput } : {}),
+    ...(sanitizedProviderOptions ? { providerOptions: sanitizedProviderOptions } : {}),
   };
 
   const operationName = `${modelType} request using ${modelName}`;

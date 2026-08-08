@@ -110,12 +110,54 @@ export function tailWellFormed(text: string, maxLength: number): string {
 }
 
 /**
+ * Sanitizes string-valued own properties of an object **in-place**, recursing
+ * into nested plain objects and arrays. Used for objects that carry behavior
+ * (function-valued properties such as AI SDK tool schemas or execute callbacks)
+ * and must not be cloned onto a null-prototype object. Returns the same
+ * reference.
+ */
+function sanitizeStringsInPlace<T>(value: T): T {
+	if (value === null || typeof value !== "object") {
+		return value;
+	}
+	if (Array.isArray(value)) {
+		for (let i = 0; i < value.length; i++) {
+			const item = value[i];
+			if (typeof item === "string") {
+				value[i] = toWellFormedUnicode(item) as typeof item;
+			} else {
+				sanitizeStringsInPlace(item);
+			}
+		}
+		return value;
+	}
+	const obj = value as Record<string, unknown>;
+	for (const key of Object.keys(obj)) {
+		const entry = obj[key];
+		if (typeof entry === "string") {
+			obj[key] = toWellFormedUnicode(entry);
+		} else {
+			sanitizeStringsInPlace(entry);
+		}
+	}
+	return value;
+}
+
+/**
  * Recursively applies {@link toWellFormedUnicode} to every string in a
- * JSON-shaped value (strings, arrays, plain objects). Non-plain objects
- * (typed arrays, URLs, class instances such as AI SDK model handles) pass
- * through untouched, and untouched subtrees keep their original references so
- * a clean input returns the same instance. Intended for provider request
- * bodies right before serialization.
+ * JSON-shaped value — including **object keys**, which `Object.entries`
+ * skips by default. A key containing a lone surrogate (e.g.
+ * `{"bad\uD83D": "ok"}`) serializes to the same `\\uD8xx` escape that strict
+ * provider JSON parsers reject.
+ *
+ * The clone is built on a null-prototype object with `Object.defineProperty`
+ * so an own `__proto__` key from a JSON-parsed input is preserved as a data
+ * member instead of mutating the clone's prototype chain. A collision policy
+ * (first-write-wins) prevents two distinct keys from collapsing onto the same
+ * sanitized form. Non-plain objects (typed arrays, URLs, class instances such
+ * as AI SDK model handles) pass through untouched, and untouched subtrees keep
+ * their original references so a clean input returns the same instance.
+ * Intended for provider request bodies right before serialization.
  */
 export function deepToWellFormedUnicode<T>(value: T): T {
 	if (typeof value === "string") {
@@ -137,14 +179,43 @@ export function deepToWellFormedUnicode<T>(value: T): T {
 		if (proto !== Object.prototype && proto !== null) {
 			return value;
 		}
+		// Objects that carry SDK-identifying symbols or function-valued
+		// properties (e.g. AI SDK jsonSchema wrappers, tool execute callbacks)
+		// must not be cloned onto a null-prototype object — cloning drops
+		// non-enumerable symbol properties and breaks SDK contract checks
+		// (asSchema throws "schema is not a function"). Sanitize their
+		// string-valued own properties in-place instead (#18081).
+		if (
+			Object.getOwnPropertySymbols(value).length > 0 ||
+			Object.values(value).some((v) => typeof v === "function")
+		) {
+			return sanitizeStringsInPlace(value);
+		}
 		let changed = false;
-		const next: Record<string, unknown> = {};
+		const next = Object.create(null) as Record<string, unknown>;
 		for (const [key, entry] of Object.entries(value)) {
+			const sanitizedKey = toWellFormedUnicode(key);
 			const sanitized = deepToWellFormedUnicode(entry);
-			if (sanitized !== entry) {
+			if (sanitizedKey !== key || sanitized !== entry) {
 				changed = true;
 			}
-			next[key] = sanitized;
+			if (!(sanitizedKey in next)) {
+				Object.defineProperty(next, sanitizedKey, {
+					value: sanitized,
+					writable: true,
+					enumerable: true,
+					configurable: true,
+				});
+			}
+		}
+		// Re-attach Object.prototype so downstream code that relies on
+		// hasOwnProperty/toString still works — but only if the original
+		// input didn't define an own `__proto__` key. Note: `"__proto__" in
+		// value` is always true for Object.prototype-backed objects (the
+		// property is inherited), so use Object.hasOwn to detect a genuine
+		// own data key.
+		if (!Object.hasOwn(value, "__proto__")) {
+			Object.setPrototypeOf(next, Object.prototype);
 		}
 		return (changed ? next : value) as T;
 	}

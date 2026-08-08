@@ -2278,7 +2278,13 @@ function compactText(value: string, maxLength: number): string {
 	}
 	const headLength = Math.max(20, Math.floor(maxLength * 0.65));
 	const tailLength = Math.max(20, maxLength - headLength - 24);
-	return `${truncateWellFormed(text, headLength)} ...[${text.length - headLength - tailLength} chars compacted]... ${tailWellFormed(text, tailLength)}`;
+	// Compute the compacted count from the ACTUAL retained code-unit lengths
+	// after surrogate-safe truncation — truncateWellFormed and tailWellFormed
+	// may back off at surrogate boundaries, so the retained length can differ
+	// from the request (#18081).
+	const head = truncateWellFormed(text, headLength);
+	const tail = tailWellFormed(text, tailLength);
+	return `${head} ...[${text.length - head.length - tail.length} chars compacted]... ${tail}`;
 }
 
 /**

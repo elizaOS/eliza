@@ -173,4 +173,27 @@ describe("#18025: request bodies are well-formed strict JSON", () => {
     const messages = body.messages as Array<{ role: string; content: string }>;
     expect(messages.find((message) => message.role === "user")?.content).toBe("tail �");
   });
+
+  // #18081: Tool descriptions, output schemas, and provider options must also
+  // be sanitized — the original #18079 only sanitized prompt/messages/system.
+  it("sanitizes a lone surrogate in a tool description (#18081)", async () => {
+    const result = await handleTextSmall(buildRuntime(), {
+      prompt: "use the tool",
+      tools: {
+        "lone-surrogate-tool": {
+          description: `bad tool \uD83D`,
+          parameters: { type: "object", properties: {} },
+        },
+      },
+    } as never);
+    expect(typeof result === "string" ? result : (result as { text: string }).text).toBe("ok");
+
+    expect(captured).toHaveLength(1);
+    const raw = captured[0].bytes.toString("utf8");
+    expect(LONE_SURROGATE_ESCAPE.test(raw)).toBe(false);
+    const body = assertStrictParseable(captured[0].bytes);
+    const serialized = JSON.stringify(body);
+    expect(serialized).toContain("bad tool �");
+    expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
+  });
 });

@@ -100,4 +100,48 @@ describe("#18025: Anthropic request bodies are well-formed strict JSON", () => {
     };
     expect(JSON.stringify(parsed.messages)).toContain("summarize this page �");
   });
+
+  // #18081: Tool descriptions, stop sequences, output schemas, and provider
+  // options must also be sanitized — the original #18079 only sanitized
+  // prompt/messages/system, leaving these fields raw.
+  it("sanitizes a lone surrogate in a stop sequence (#18081)", async () => {
+    const result = await handleTextSmall(buildRuntime(), {
+      prompt: "hello",
+      stopSequences: ["clean-stop", "bad\uD83D"],
+    } as never);
+    expect(result).toBe("ok");
+
+    expect(captured).toHaveLength(1);
+    const raw = captured[0].toString("utf8");
+    expect(LONE_SURROGATE_ESCAPE.test(raw)).toBe(false);
+    const body = new TextDecoder("utf-8", { fatal: true }).decode(captured[0]);
+    expect((body as unknown as { isWellFormed: () => boolean }).isWellFormed()).toBe(true);
+    const parsed = JSON.parse(body) as { stop_sequences?: string[] };
+    expect(parsed.stop_sequences).toContain("clean-stop");
+    // The lone surrogate in the stop sequence was replaced with U+FFFD.
+    expect(parsed.stop_sequences).toContain("bad�");
+  });
+
+  it("sanitizes a lone surrogate in a tool description (#18081)", async () => {
+    const result = await handleTextSmall(buildRuntime(), {
+      prompt: "use the tool",
+      tools: {
+        lone_surrogate_tool: {
+          name: "lone_surrogate_tool",
+          description: `bad tool \uD83D`,
+          parameters: { type: "object", properties: {} },
+        },
+      },
+    } as never);
+    expect(typeof result === "string" ? result : (result as { text: string }).text).toBe("ok");
+
+    expect(captured).toHaveLength(1);
+    const raw = captured[0].toString("utf8");
+    expect(LONE_SURROGATE_ESCAPE.test(raw)).toBe(false);
+    const body = new TextDecoder("utf-8", { fatal: true }).decode(captured[0]);
+    expect((body as unknown as { isWellFormed: () => boolean }).isWellFormed()).toBe(true);
+    const serialized = JSON.stringify(JSON.parse(body));
+    expect(serialized).toContain("bad tool �");
+    expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
+  });
 });

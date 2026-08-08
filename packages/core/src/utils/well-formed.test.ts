@@ -134,6 +134,105 @@ describe("deepToWellFormedUnicode", () => {
 		const input = { a: null, b: 42, c: true, d: undefined };
 		expect(deepToWellFormedUnicode(input)).toBe(input);
 	});
+
+	// #18081: JSON object keys containing lone surrogates must be sanitized.
+	it("sanitizes object keys containing lone surrogates (#18081)", () => {
+		const input = { "bad\uD83D": "ok" };
+		const output = deepToWellFormedUnicode(input);
+		const serialized = JSON.stringify(output);
+		expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
+		// The sanitized key should be "bad�"
+		expect(Object.keys(output)).toEqual(["bad�"]);
+	});
+
+	// #18081: An own __proto__ key from a JSON-parsed input must be preserved
+	// as a data member, not collapsed into the clone's prototype chain.
+	it("preserves own __proto__ key as a data member (#18081)", () => {
+		const input = JSON.parse('{"__proto__":{"marker":"kept"},"bad":"clean"}');
+		const output = deepToWellFormedUnicode(input);
+		// The own __proto__ key must survive as an enumerable own property.
+		const desc = Object.getOwnPropertyDescriptor(output, "__proto__");
+		expect(desc).toBeDefined();
+		expect(desc?.enumerable).toBe(true);
+		expect((desc?.value as { marker: string } | undefined)?.marker).toBe(
+			"kept",
+		);
+		// JSON round-trip must contain __proto__ as a data key.
+		const serialized = JSON.stringify(output);
+		expect(serialized).toContain('"__proto__"');
+		expect(serialized).toContain('"marker":"kept"');
+	});
+
+	it("preserves own __proto__ key with a lone surrogate in a sibling value (#18081)", () => {
+		const input = JSON.parse('{"__proto__":{"marker":"kept"},"bad":"\\uD83D"}');
+		const output = deepToWellFormedUnicode(input);
+		const serialized = JSON.stringify(output);
+		// No lone surrogate escapes in the serialized body.
+		expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
+		// The __proto__ key survived.
+		expect(serialized).toContain('"__proto__"');
+		expect(serialized).toContain('"marker":"kept"');
+		// The lone surrogate in the sibling value was sanitized.
+		expect((output as Record<string, unknown>).bad).toBe("�");
+	});
+
+	// #18081: Two distinct keys that sanitize to the same form should not
+	// overwrite each other silently — first-write-wins.
+	it("handles key collisions with first-write-wins policy", () => {
+		// Both keys contain a lone surrogate at different positions, but both
+		// surrogates replace to U+FFFD, so both keys sanitize to "a\ufffdb".
+		const input = { "a\uD83Db": 1, "a\uDC80b": 2 };
+		const output = deepToWellFormedUnicode(input);
+		const keys = Object.keys(output);
+		// Both keys sanitize to "a\ufffdb" — the first one wins.
+		expect(keys).toEqual(["a\ufffdb"]);
+		expect((output as Record<string, unknown>)["a\ufffdb"]).toBe(1);
+	});
+
+	// #18081: Dirty plain objects (with surrogates but no own __proto__) must
+	// retain Object.prototype so downstream code that calls hasOwnProperty /
+	// toString still works. The `"__proto__" in value` check is always true
+	// for Object.prototype-backed objects, so this guards against a regression
+	// where setPrototypeOf never fires.
+	it("re-attaches Object.prototype on dirty plain objects without own __proto__ (#18081)", () => {
+		const input = { message: "bad \uD83D" };
+		const output = deepToWellFormedUnicode(input);
+		expect(Object.getPrototypeOf(output)).toBe(Object.prototype);
+		// Verify prototype methods actually work.
+		expect(
+			(
+				Object.prototype.hasOwnProperty.call as (
+					o: unknown,
+					k: string,
+				) => boolean
+			)(output, "message"),
+		).toBe(true);
+	});
+
+	// #18081: Objects with symbol properties or function values are sanitized
+	// in-place (not cloned) to preserve SDK contract symbols and callbacks.
+	// This must not throw and must sanitize string-valued properties.
+	it("sanitizes string values in-place on objects with symbol properties (#18081)", () => {
+		const sym = Symbol("test");
+		const input = { description: "bad \uD83D", [sym]: 42 };
+		const output = deepToWellFormedUnicode(input);
+		// Same reference (in-place, not cloned).
+		expect(output).toBe(input);
+		expect((output as Record<string, unknown>).description).toBe("bad �");
+		// Symbol property survives.
+		expect((input as Record<symbol, unknown>)[sym]).toBe(42);
+	});
+
+	it("sanitizes string values in-place on objects with function properties (#18081)", () => {
+		const callback = () => "execute";
+		const input = { description: "bad \uD83D", execute: callback };
+		const output = deepToWellFormedUnicode(input);
+		// Same reference (in-place, not cloned).
+		expect(output).toBe(input);
+		expect((output as Record<string, unknown>).description).toBe("bad �");
+		// Function property survives.
+		expect((output as Record<string, unknown>).execute).toBe(callback);
+	});
 });
 
 describe("#18025 wire regression: the captured Cerebras failure shape", () => {
