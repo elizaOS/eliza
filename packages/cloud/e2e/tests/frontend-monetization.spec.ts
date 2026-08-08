@@ -9,10 +9,14 @@
  *     consuming component). Assertions are based on observed network traffic,
  *     not specific DOM selectors, to stay robust against UI churn.
  * (b) asserts the account-management deep links (billing / earnings /
- *     monetization) resolve through the CloudRouterShell compat redirects to
- *     their canonical in-app Settings sections instead of dead-ending on the
- *     dashboard/* 404 — those surfaces have no standalone route by design
- *     (see packages/ui/src/cloud/register-all.test.ts).
+ *     monetization) resolve to their canonical console page instead of
+ *     dead-ending on the dashboard/* 404. Since #13410 those surfaces ARE
+ *     standalone `dashboard/*` routes — that is what makes the apex console
+ *     (elizacloud.ai) usable, where the agent app and its in-app Settings view
+ *     never boot — so billing/monetization resolve in place and only the legacy
+ *     spellings (earnings, settings?tab=) ride a CloudRouterShell compat
+ *     redirect (see packages/ui/src/cloud/register-all.test.ts, which pins both
+ *     halves: the standalone mounts and the redirect-only legacy spellings).
  *
  * Uses the default `load` wait (this SPA polls, so `networkidle` never settles)
  * plus a short settle window to capture on-mount data fetches.
@@ -104,24 +108,37 @@ test.describe("cloud-frontend monetization pages", () => {
     await visit("/dashboard/apps", "/api/v1/apps");
     await visit("/dashboard/analytics", "/api/analytics");
 
-    // Account-management surfaces live in the in-app Settings sections; compat
-    // dashboard URLs land there via shell redirects (query preserved before the
-    // section hash), never on the cloud 404.
-    const redirects: Array<[from: string, to: RegExp]> = [
-      ["/dashboard/billing", /\/settings#cloud-billing$/],
-      ["/dashboard/billing?canceled=true", /\/settings\?canceled=true#cloud-billing$/],
-      ["/dashboard/earnings", /\/settings#cloud-monetization$/],
-      ["/dashboard/monetization", /\/settings#cloud-monetization$/],
-      ["/dashboard/settings?tab=billing", /\/settings\?tab=billing#cloud-billing$/],
+    // Account-management surfaces are standalone console pages (#13410).
+    // Billing / monetization resolve in place, keeping their query string;
+    // only the legacy spellings ride a CloudRouterShell compat redirect —
+    // `earnings` folded into the tabbed monetization page, and the
+    // backend-issued `dashboard/settings?tab=<x>` return URLs map onto the
+    // matching console page with the query preserved. None may land on the
+    // cloud 404.
+    const landings: Array<[from: string, to: RegExp]> = [
+      ["/dashboard/billing", /\/dashboard\/billing$/],
+      [
+        "/dashboard/billing?canceled=true",
+        /\/dashboard\/billing\?canceled=true$/,
+      ],
+      ["/dashboard/earnings", /\/dashboard\/monetization$/],
+      ["/dashboard/monetization", /\/dashboard\/monetization$/],
+      ["/dashboard/settings?tab=billing", /\/dashboard\/billing\?tab=billing$/],
     ];
-    for (const [from, to] of redirects) {
+    for (const [from, to] of landings) {
       await page.goto(`${fe}${from}`, { timeout: 45_000 });
-      await expect(page, `${from} redirects to its settings home`).toHaveURL(
-        to,
-      );
+      await expect(page, `${from} lands on its console page`).toHaveURL(to);
       await expect(page, `${from} stays authenticated`).not.toHaveURL(
         /\/login(\?|$)/,
       );
+      // A URL assertion alone cannot tell a mounted console page from the
+      // shell's own 404 (CloudRouterShell renders CloudNotFound in place, at
+      // the same URL), so an unregistered route would still "land" here.
+      // Pin the rendered surface too.
+      await expect(
+        page.getByRole("heading", { name: "Not found" }),
+        `${from} renders its console page, not the cloud 404`,
+      ).toBeHidden();
     }
   });
 });
