@@ -11,16 +11,13 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-	ModelType,
-	resolveServerOnlyPort,
-	resolveStateDir,
-} from "@elizaos/core";
+import { ModelType, resolveStateDir } from "@elizaos/core";
 import {
 	createSelfApiRequestHeaders,
 	resolveDesktopApiPort,
 } from "@elizaos/shared";
 import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
+import { getAppControlApiBase } from "../loopback-api.js";
 
 export type Diagnostic = {
 	file: string;
@@ -75,11 +72,10 @@ export async function loadAppFromWorkdir(
 ): Promise<
 	{ ok: true; items: RegisteredAppItem[] } | { ok: false; error: string }
 > {
-	const port = resolveServerOnlyPort(process.env);
 	const directory = path.dirname(workdir);
 	try {
 		const resp = await fetch(
-			`http://127.0.0.1:${port}/api/apps/load-from-directory`,
+			`${getAppControlApiBase()}/api/apps/load-from-directory`,
 			{
 				method: "POST",
 				headers: createViewsRequestHeaders(),

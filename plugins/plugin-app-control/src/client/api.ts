@@ -6,8 +6,9 @@
  * caller-supplied abort signal can cancel it with the surrounding turn.
  */
 
-import { ElizaError, resolveServerOnlyPort } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
+import { getAppControlApiBase } from "../loopback-api.js";
 import type {
 	AppControlErrorPayload,
 	AppLaunchResult,
@@ -33,8 +34,7 @@ export interface AppControlClient {
 }
 
 function getApiBase(): string {
-	const port = resolveServerOnlyPort(process.env);
-	return `http://127.0.0.1:${port}`;
+	return getAppControlApiBase();
 }
 
 function isArrayOfObjects(value: unknown): value is Record<string, unknown>[] {

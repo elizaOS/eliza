@@ -29,7 +29,8 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { getAppControlApiBase } from "../loopback-api.js";
 import { readStringOption } from "../params.js";
 import { isRestrictedPlatform } from "./views-platform.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
@@ -64,10 +65,9 @@ export interface ViewsRollbackInput {
 async function reregisterPluginFromWorkdir(
 	workdir: string,
 ): Promise<{ ok: boolean; pluginName?: string; error?: string }> {
-	const port = resolveServerOnlyPort(process.env);
 	try {
 		const resp = await fetch(
-			`http://127.0.0.1:${port}/api/plugins/load-from-directory`,
+			`${getAppControlApiBase()}/api/plugins/load-from-directory`,
 			{
 				method: "POST",
 				headers: createViewsRequestHeaders(),

@@ -10,10 +10,11 @@ import type {
 	Memory,
 	ViewType,
 } from "@elizaos/core";
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
+import { getAppControlApiBase } from "../loopback-api.js";
 import {
 	describeTargetReference,
 	targetReferenceLogView,
@@ -409,8 +410,7 @@ async function navigateToView(
 	// real transport failure (other non-2xx, network, timeout) is NOT success:
 	// reporting "Switched to X" when nothing happened misleads the user and the
 	// chain's verifiedUserFacing logic.
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 	const resolvedSubview = resolveSubviewForView(view, subview);
 
 	try {

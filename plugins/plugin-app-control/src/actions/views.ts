@@ -25,6 +25,7 @@ import {
 	AGENT_SURFACE_CAPABILITY_IDS,
 	STANDARD_CAPABILITIES,
 } from "@elizaos/shared";
+import { getAppControlApiBase } from "../loopback-api.js";
 import {
 	describeTargetReference,
 	normalizeActionOptions,
@@ -3621,9 +3622,7 @@ async function navigateToPath(
 	pathStr: string,
 	label: string,
 ): Promise<ShellNavResult> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 
 	try {
 		const resp = await fetch(`${base}/api/views/__view-manager__/navigate`, {
@@ -3658,9 +3657,7 @@ async function navigateViewWithShellAction(
 	viewType?: ViewType,
 	alwaysOnTop = false,
 ): Promise<ShellNavResult> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 
 	try {
 		const resp = await fetch(
@@ -3706,9 +3703,7 @@ async function navigateViewLayout({
 	successText: string;
 	fallbackText: string;
 }): Promise<ShellNavResult> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 
 	try {
 		const resp = await fetch(
@@ -3781,9 +3776,7 @@ async function interactWithView(
 	viewType?: ViewType,
 	clientId?: string,
 ): Promise<{ success: boolean; text: string; result?: unknown }> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 
 	let resp: Response;
 	try {
@@ -3925,9 +3918,7 @@ async function broadcastViewEvent(
 	eventType: string,
 	payload: Record<string, unknown>,
 ): Promise<ShellNavResult> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 
 	try {
 		const resp = await fetch(`${base}/api/views/events/broadcast`, {
