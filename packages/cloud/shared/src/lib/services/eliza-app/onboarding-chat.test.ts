@@ -589,7 +589,10 @@ describe("runOnboardingChat", () => {
         message: "My name is Eve",
         platform: "twilio",
         platformUserId: "+15550002222",
-        authenticatedUser: { userId: "attacker-user", organizationId: "attacker-org" },
+        authenticatedUser: {
+          userId: "attacker-user",
+          organizationId: "attacker-org",
+        },
       });
       expect(withSessionId.session.id).toMatch(UUID_PATTERN);
       expect(sessionCache.has(cacheKey("platform:twilio:+15550002222"))).toBe(false);
@@ -598,7 +601,10 @@ describe("runOnboardingChat", () => {
         message: "My name is Eve",
         platform: "twilio",
         platformUserId: "+15550003333",
-        authenticatedUser: { userId: "attacker-user", organizationId: "attacker-org" },
+        authenticatedUser: {
+          userId: "attacker-user",
+          organizationId: "attacker-org",
+        },
       });
       expect(withoutSessionId.session.id).toMatch(UUID_PATTERN);
       expect(sessionCache.has(cacheKey("platform:twilio:+15550003333"))).toBe(false);
@@ -614,7 +620,10 @@ describe("runOnboardingChat", () => {
 
       const attacker = await runOnboardingChat({
         sessionId: PLATFORM_SESSION,
-        authenticatedUser: { userId: "attacker-user", organizationId: "attacker-org" },
+        authenticatedUser: {
+          userId: "attacker-user",
+          organizationId: "attacker-org",
+        },
       });
 
       expect(attacker.session.id).not.toBe(PLATFORM_SESSION);
@@ -640,14 +649,20 @@ describe("runOnboardingChat", () => {
       const victimBound = await runOnboardingChat({
         sessionId: continuationToken(victim),
         platform: "blooio",
-        authenticatedUser: { userId: "victim-user", organizationId: "victim-org" },
+        authenticatedUser: {
+          userId: "victim-user",
+          organizationId: "victim-org",
+        },
       });
       expect(victimBound.session.id).toBe(PLATFORM_SESSION);
       expect(victimBound.session.userId).toBe("victim-user");
 
       const attacker = await runOnboardingChat({
         sessionId: PLATFORM_SESSION,
-        authenticatedUser: { userId: "attacker-user", organizationId: "attacker-org" },
+        authenticatedUser: {
+          userId: "attacker-user",
+          organizationId: "attacker-org",
+        },
       });
 
       expect(attacker.session.id).not.toBe(PLATFORM_SESSION);
@@ -872,7 +887,7 @@ describe("runOnboardingChat", () => {
   });
 
   describe("provisioning-state replies without an LLM", () => {
-    test("provisioning error reply points at the control panel and never claims the agent is live", async () => {
+    test("provisioning error reply promises the queued retry and never claims the agent is live", async () => {
       ensureElizaAppProvisioning.mockResolvedValue({
         status: "error",
         agentId: "agent-1",
@@ -889,7 +904,13 @@ describe("runOnboardingChat", () => {
       });
       expect(result.provisioning.status).toBe("error");
       expect(result.handoffComplete).toBe(false);
-      expect(result.reply).toContain("dashboard");
+      // The retry is queued automatically now (#17924), so the reply must say
+      // so rather than send the user to a dashboard that has no button to fix
+      // this — that instruction was a dead end for every stranded org.
+      expect(result.reply.toLowerCase()).toContain("queued");
+      expect(result.reply.toLowerCase()).not.toContain("dashboard");
+      // Still must not overclaim: the row is `error` at this instant and only
+      // becomes `provisioning` when the daemon claims the job.
       expect(result.reply).not.toContain("agent is live");
       expect(result.reply.toLowerCase()).not.toContain("running");
     });
@@ -958,11 +979,18 @@ describe("runOnboardingChat", () => {
           status: "running",
           agentId: "agent-1",
           bridgeUrl: "https://agent-1.example",
-          sandbox: { id: "agent-1", status: "running", bridge_url: "https://agent-1.example" },
+          sandbox: {
+            id: "agent-1",
+            status: "running",
+            bridge_url: "https://agent-1.example",
+          },
         });
         launchManagedElizaAgent.mockResolvedValue({
           appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-          connection: { apiBase: "https://agent-1.example", token: "agent-token" },
+          connection: {
+            apiBase: "https://agent-1.example",
+            token: "agent-token",
+          },
         });
 
         const first = await runOnboardingChat({
@@ -1019,11 +1047,18 @@ describe("runOnboardingChat", () => {
           status: "running",
           agentId: "agent-1",
           bridgeUrl: "https://agent-1.example",
-          sandbox: { id: "agent-1", status: "running", bridge_url: "https://agent-1.example" },
+          sandbox: {
+            id: "agent-1",
+            status: "running",
+            bridge_url: "https://agent-1.example",
+          },
         });
         launchManagedElizaAgent.mockResolvedValue({
           appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-          connection: { apiBase: "https://agent-1.example", token: "agent-token" },
+          connection: {
+            apiBase: "https://agent-1.example",
+            token: "agent-token",
+          },
         });
 
         const result = await runOnboardingChat({
