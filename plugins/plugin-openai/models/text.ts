@@ -765,9 +765,7 @@ function normalizeNativeMessages(messages: unknown): ModelMessage[] | undefined 
     return undefined;
   }
 
-  return repairToolMessagePairing(
-    messages.map((message) => normalizeNativeMessage(message)),
-  );
+  return repairToolMessagePairing(messages.map((message) => normalizeNativeMessage(message)));
 }
 
 /**
@@ -788,12 +786,8 @@ function repairToolMessagePairing(messages: ModelMessage[]): ModelMessage[] {
   return messages.map((message) => {
     if (message.role === "assistant" && Array.isArray(message.content)) {
       for (const part of message.content) {
-        const id = (part as { type?: unknown; toolCallId?: unknown })
-          ?.toolCallId;
-        if (
-          (part as { type?: unknown })?.type === "tool-call" &&
-          typeof id === "string"
-        ) {
+        const id = (part as { type?: unknown; toolCallId?: unknown })?.toolCallId;
+        if ((part as { type?: unknown })?.type === "tool-call" && typeof id === "string") {
           availableToolCallIds.add(id);
         }
       }
@@ -809,8 +803,7 @@ function repairToolMessagePairing(messages: ModelMessage[]): ModelMessage[] {
       }
       const salvaged = message.content
         .map((part) => {
-          const value = (part as { output?: { value?: unknown } })?.output
-            ?.value;
+          const value = (part as { output?: { value?: unknown } })?.output?.value;
           return typeof value === "string" ? value : JSON.stringify(value);
         })
         .join("\n");

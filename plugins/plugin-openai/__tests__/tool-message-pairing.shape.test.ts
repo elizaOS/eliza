@@ -17,9 +17,7 @@ describe("normalizeNativeMessages tool pairing", () => {
       { role: "user", content: "hi" },
       {
         role: "assistant",
-        content: [
-          { type: "tool-call", toolCallId: "tc-1", toolName: "CAL", input: {} },
-        ],
+        content: [{ type: "tool-call", toolCallId: "tc-1", toolName: "CAL", input: {} }],
       },
       {
         role: "tool",
@@ -33,12 +31,7 @@ describe("normalizeNativeMessages tool pairing", () => {
         ],
       },
     ]);
-    expect(out?.map((m) => m.role)).toEqual([
-      "system",
-      "user",
-      "assistant",
-      "tool",
-    ]);
+    expect(out?.map((m) => m.role)).toEqual(["system", "user", "assistant", "tool"]);
   });
 
   it("demotes an orphaned tool message to a user message, preserving content", () => {
@@ -67,9 +60,7 @@ describe("normalizeNativeMessages tool pairing", () => {
     const out = __INTERNAL_normalizeNativeMessages([
       {
         role: "assistant",
-        content: [
-          { type: "tool-call", toolCallId: "tc-2", toolName: "CAL", input: {} },
-        ],
+        content: [{ type: "tool-call", toolCallId: "tc-2", toolName: "CAL", input: {} }],
       },
       {
         role: "tool",
