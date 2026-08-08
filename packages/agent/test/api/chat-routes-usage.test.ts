@@ -270,7 +270,7 @@ describe("generateChatResponse usage reporting", () => {
 
     expect(result.text).toBe("callback reply");
     expect(onSnapshot).toHaveBeenCalledTimes(1);
-    expect(onSnapshot).toHaveBeenCalledWith("callback reply");
+    expect(onSnapshot).toHaveBeenCalledWith("callback reply", "model");
     expect(onChunk).not.toHaveBeenCalled();
   });
 
@@ -343,7 +343,7 @@ describe("generateChatResponse usage reporting", () => {
       code: "CHAT_APPEND_ONLY_STREAM_DIVERGENCE",
     });
     expect(onChunk).toHaveBeenCalledTimes(1);
-    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply");
+    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply", "model");
   });
 
   it("preserves divergent callback replacement for snapshot-capable consumers", async () => {
@@ -381,8 +381,11 @@ describe("generateChatResponse usage reporting", () => {
     );
 
     expect(result.text).toBe("authoritative final reply");
-    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply");
-    expect(onSnapshot).toHaveBeenLastCalledWith("authoritative final reply");
+    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply", "model");
+    expect(onSnapshot).toHaveBeenLastCalledWith(
+      "authoritative final reply",
+      "model",
+    );
   });
 
   it("records an attributed visible callback only when its action succeeded", async () => {
@@ -507,7 +510,7 @@ describe("generateChatResponse usage reporting", () => {
     );
 
     expect(result.text).toBe("streamed final");
-    expect(onChunk).toHaveBeenCalledWith("streamed final");
+    expect(onChunk).toHaveBeenCalledWith("streamed final", "model");
     expect(result.usedActionCallbacks).toBeUndefined();
     expect(result.actionCallbackHistory).toBeUndefined();
   });
@@ -543,7 +546,7 @@ describe("generateChatResponse usage reporting", () => {
     );
 
     expect(result.text).toBe("Search complete.");
-    expect(onSnapshot).toHaveBeenLastCalledWith("Search complete.");
+    expect(onSnapshot).toHaveBeenLastCalledWith("Search complete.", "model");
     expect(result.usedActionCallbacks).toBeUndefined();
     expect(result.actionCallbackHistory).toBeUndefined();
   });
@@ -660,7 +663,7 @@ describe("generateChatResponse usage reporting", () => {
 
     expect(result.text).toBe(summary);
     expect(result.transcriptVisibility).toBeUndefined();
-    expect(onChunk).toHaveBeenCalledWith(summary);
+    expect(onChunk).toHaveBeenCalledWith(summary, "model");
   });
 
   it("honors an internal response-content tag when action diagnostics are absent", async () => {

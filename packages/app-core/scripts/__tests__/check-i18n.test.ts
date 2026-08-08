@@ -8,11 +8,12 @@
  * ok:true with translation gaps surfaced as warnings. Deterministic, no
  * network.
  */
-import { describe, expect, test } from "bun:test";
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "vitest";
 
 const { runI18nCheck } = await import(
   new URL("../check-i18n.mjs", import.meta.url).href
