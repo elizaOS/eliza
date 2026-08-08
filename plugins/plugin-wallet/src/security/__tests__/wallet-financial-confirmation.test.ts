@@ -11,6 +11,7 @@ import { isConfirmed } from "../../chains/evm/actions/helpers.js";
 import {
   gateWalletFinancialExecution,
   walletFinancialPendingKey,
+  walletFinancialPreview,
 } from "../wallet-financial-confirmation.js";
 
 function runtimeWithCache(): IAgentRuntime {
@@ -91,5 +92,65 @@ describe("wallet-financial-confirmation", () => {
       dryRun: false,
     });
     expect(keyA).toBe(keyB);
+  });
+
+  it("binds different slippageBps values into different pending keys", () => {
+    const base = {
+      subaction: "swap" as const,
+      chain: "base",
+      fromToken: "ETH",
+      toToken: "USDC",
+      amount: "1",
+      mode: "execute" as const,
+      dryRun: false,
+    };
+    expect(walletFinancialPendingKey({ ...base, slippageBps: 10 })).not.toBe(
+      walletFinancialPendingKey({ ...base, slippageBps: 10_000 }),
+    );
+  });
+
+  it("shows the authorized slippage in swap and bridge previews", () => {
+    const shared = {
+      subaction: "swap" as const,
+      chain: "base",
+      fromToken: "ETH",
+      toToken: "USDC",
+      amount: "1",
+    };
+    const tight = walletFinancialPreview({ ...shared, slippageBps: 10 });
+    const loose = walletFinancialPreview({ ...shared, slippageBps: 10_000 });
+
+    // A 10 bps and a 10,000 bps confirmation must never read identically.
+    expect(tight).not.toBe(loose);
+    expect(tight).toContain("0.1% slippage (10 bps)");
+    expect(loose).toContain("100% slippage (10000 bps)");
+
+    const bridge = walletFinancialPreview({
+      subaction: "bridge",
+      chain: "base",
+      toChain: "arbitrum",
+      amount: "0.5",
+      slippageBps: 50,
+    });
+    expect(bridge).toContain("0.5% slippage (50 bps)");
+  });
+
+  it("labels the slippage as default in previews when none was stated", () => {
+    const swap = walletFinancialPreview({
+      subaction: "swap",
+      chain: "base",
+      fromToken: "ETH",
+      toToken: "USDC",
+      amount: "1",
+    });
+    expect(swap).toContain("default slippage");
+
+    const bridge = walletFinancialPreview({
+      subaction: "bridge",
+      chain: "base",
+      toChain: "arbitrum",
+      amount: "0.5",
+    });
+    expect(bridge).toContain("default slippage");
   });
 });

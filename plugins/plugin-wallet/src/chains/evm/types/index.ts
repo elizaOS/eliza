@@ -156,6 +156,7 @@ export const SwapParamsSchema = z.object({
   fromToken: z.union([AddressSchema, z.string().min(1)]),
   toToken: z.union([AddressSchema, z.string().min(1)]),
   amount: AmountSchema,
+  slippageBps: z.coerce.number().int().min(0).max(10_000).optional(),
 });
 
 export function parseSwapParams(input: unknown): SwapParams {
@@ -207,6 +208,7 @@ export const BridgeParamsSchema = z.object({
   toToken: z.union([AddressSchema, z.string().min(1)]),
   amount: AmountSchema,
   toAddress: AddressSchema.optional(),
+  slippageBps: z.coerce.number().int().min(0).max(10_000).optional(),
 });
 
 export function parseBridgeParams(input: unknown): BridgeParams {

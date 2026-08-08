@@ -8,17 +8,23 @@
  * reaching the Li.Fi quote layer and the defaults holding when no slippage
  * was stated. Network boundaries (Li.Fi `getRoutes`, bebop/kyberswap fetch)
  * are mocked; the routing and slippage math under test is the real
- * production code.
+ * production code. Also covers the registry swap path forwarding and the
+ * parse-layer contract: `SwapParamsSchema`/`BridgeParamsSchema` must accept
+ * and bounds-check `slippageBps` so the field cannot be silently stripped
+ * between the router boundary and execution.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { arbitrum, base } from "viem/chains";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WalletRouterContext } from "../../../../types/wallet-router.js";
+import type { WalletBackendService } from "../../../../services/wallet-backend-service.js";
+import type { WalletChainHandler, WalletRouterContext } from "../../../../types/wallet-router.js";
+import { registerDefaultWalletChainHandlers } from "../../../registry";
 import { SwapAction } from "../../actions/swap";
 import { routeEvmBridge } from "../../bridge-router";
 import { createEvmWalletChainHandler } from "../../chain-handler";
 import { NATIVE_TOKEN_ADDRESS } from "../../constants";
 import type { WalletProvider } from "../../providers/wallet";
+import { parseBridgeParams, parseSwapParams } from "../../types";
 
 const { getRoutesMock, initWalletProviderMock } = vi.hoisted(() => ({
   getRoutesMock: vi.fn(),
@@ -222,5 +228,80 @@ describe("EVM confirmed slippage threading", () => {
 
     expect(result.status).toBe("prepared");
     expect(quotedSlippages()).toEqual([0.005]);
+  });
+
+  it("forwards confirmed slippageBps through the registry EVM swap path", async () => {
+    const swapSpy = vi.spyOn(SwapAction.prototype, "swap").mockResolvedValue({
+      hash: HASH,
+      from: ACCOUNT,
+      to: USDC,
+      value: 0n,
+      data: "0x",
+      chainId: base.id,
+    });
+    const handlers = new Map<string, WalletChainHandler>();
+    const service = {
+      registerChainHandler: (handler: WalletChainHandler) => handlers.set(handler.chain, handler),
+    } as unknown as WalletBackendService;
+    const runtime = {
+      character: { settings: { chains: { evm: ["base"] } } },
+      getSetting: (key: string) => (key === "SOLANA_NO_ACTIONS" ? "true" : undefined),
+    } as unknown as IAgentRuntime;
+
+    registerDefaultWalletChainHandlers(service, runtime);
+    const handler = handlers.get("base");
+    if (!handler) throw new Error("base handler was not registered");
+
+    await handler.execute(
+      {
+        subaction: "swap",
+        chain: "base",
+        fromToken: "ETH",
+        toToken: USDC,
+        amount: "1",
+        slippageBps: 25,
+        mode: "execute",
+        dryRun: false,
+      },
+      context
+    );
+
+    expect(swapSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chain: "base",
+        fromToken: NATIVE_TOKEN_ADDRESS,
+        toToken: USDC,
+        amount: "1",
+        slippageBps: 25,
+      })
+    );
+  });
+});
+
+describe("slippageBps parse-layer acceptance", () => {
+  const swapInput = {
+    chain: "base",
+    fromToken: NATIVE_TOKEN_ADDRESS,
+    toToken: USDC,
+    amount: "1",
+  };
+  const bridgeInput = {
+    fromChain: "base",
+    toChain: "arbitrum",
+    fromToken: NATIVE_TOKEN_ADDRESS,
+    toToken: NATIVE_TOKEN_ADDRESS,
+    amount: "0.5",
+  };
+
+  it("preserves a valid slippageBps through parseSwapParams and parseBridgeParams", () => {
+    expect(parseSwapParams({ ...swapInput, slippageBps: 50 }).slippageBps).toBe(50);
+    expect(parseBridgeParams({ ...bridgeInput, slippageBps: 50 }).slippageBps).toBe(50);
+  });
+
+  it("rejects negative, fractional, and over-limit slippageBps", () => {
+    for (const bad of [-1, 10.5, 10_001]) {
+      expect(() => parseSwapParams({ ...swapInput, slippageBps: bad })).toThrow();
+      expect(() => parseBridgeParams({ ...bridgeInput, slippageBps: bad })).toThrow();
+    }
   });
 });
