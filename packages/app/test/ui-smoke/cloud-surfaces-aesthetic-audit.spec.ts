@@ -210,10 +210,17 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     slug: "payment-success",
     path: "/payment/success",
     route: "payment/success",
-    // The page redirects to /login when signed out (0 readable chars → false
-    // "broken"). Audit the authenticated path, which renders "Payment Received"
-    // before redirecting to the billing dashboard.
+    // PaymentSuccessPage renders a brief "Payment Received" confirmation then
+    // redirects to /dashboard/settings?tab=billing&payment=success. A
+    // LegacySettingsTabRedirect in CloudRouterShell then rewrites that to
+    // /dashboard/billing (the standalone billing page). Both redirects fire
+    // before the audit's settle delay + screenshot, so without expectedFinalPath
+    // the probe suite screenshots the billing page and mislabels its measurements
+    // as payment-success coverage. Treat this as a redirect-only reachability
+    // check (same pattern as auth-bridge): assert the terminal redirect path,
+    // then skip aesthetic collection.
     auth: AUTH,
+    expectedFinalPath: /^\/dashboard\/billing$/,
   },
   {
     slug: "payment-app-charge",
