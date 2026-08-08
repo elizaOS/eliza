@@ -181,7 +181,7 @@ describe("CONNECTOR Google connect handoff cards", () => {
     ).resolves.toBe(true);
   });
 
-  it("emits a verified [CONFIG:google] card with sanitized copy when OAuth cannot start", async () => {
+  it("emits a verified [CONFIG:google-workspace] card with sanitized copy when OAuth cannot start", async () => {
     const { LifeOpsServiceError } = await import("../src/lifeops/service.js");
     mocks.startGoogleConnector.mockRejectedValue(
       new LifeOpsServiceError(
@@ -192,8 +192,8 @@ describe("CONNECTOR Google connect handoff cards", () => {
     const result = await connect("google");
     expect(result.success).toBe(false);
     expect(result.verifiedUserFacing).toBe(true);
-    expect(result.text).toContain("[CONFIG:google]");
-    expect(result.userFacingText).toContain("[CONFIG:google]");
+    expect(result.text).toContain("[CONFIG:google-workspace]");
+    expect(result.userFacingText).toContain("[CONFIG:google-workspace]");
     // Must not leak raw upstream / internal error text into verified UI copy.
     expect(result.text).not.toContain("internal-debug");
     expect(result.userFacingText).toMatch(/Google Workspace enabled and OAuth configured/i);
@@ -201,6 +201,20 @@ describe("CONNECTOR Google connect handoff cards", () => {
       awaitingUserAction: true,
       status: 503,
     });
+  });
+
+
+  it("maps incomplete GOOGLE_CLIENT_* Error to google-workspace setup card", async () => {
+    mocks.startGoogleConnector.mockRejectedValue(
+      new Error(
+        "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured.",
+      ),
+    );
+    const result = await connect("google");
+    expect(result.success).toBe(false);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.text).toContain("[CONFIG:google-workspace]");
+    expect(result.data).toMatchObject({ error: "GOOGLE_OAUTH_CONFIG_INCOMPLETE" });
   });
 
   it("routes calendar-feed connect away from CONNECTOR in metadata", () => {

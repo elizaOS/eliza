@@ -317,12 +317,16 @@ function configIntent(args: {
   operation: "connect" | "reconnect";
   reason: string;
 }): CalendarSourceConnectionIntent {
+  // UI InlinePluginConfig looks up /api/plugins by exact id after stripping
+  // @scope/plugin-; google OAuth lives on plugin id "google-workspace".
+  const connectorId =
+    args.provider === "google" ? "google-workspace" : args.provider;
   return {
     state: "configuration_required",
     provider: args.provider,
     operation: args.operation,
     connected: false,
-    connectorId: args.provider,
+    connectorId,
     reason: args.reason,
     completion: "configuration_required",
   };
@@ -440,6 +444,23 @@ async function beginOAuthIntent(args: {
       },
     });
   } catch (cause) {
+    // error-policy:J1 Incomplete OAuth env (missing redirect URI, etc.) is an
+    // actionable configuration handoff — not a generic auth-start failure.
+    const causeMessage =
+      cause instanceof Error ? cause.message : String(cause ?? "");
+    if (
+      args.provider === "google" &&
+      /GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_REDIRECT_URI/i.test(
+        causeMessage,
+      )
+    ) {
+      return configIntent({
+        provider: "google",
+        operation: args.operation,
+        reason:
+          "Google OAuth is incomplete. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI, then connect again.",
+      });
+    }
     // error-policy:J2 Preserve the provider/configuration failure while giving
     // the action boundary one stable classification.
     throw new ElizaError(
@@ -707,7 +728,7 @@ function connectionText(intent: CalendarSourceConnectionIntent): string {
         return "ICS/webcal subscription URLs are capability secrets and never pass through me. Add the subscription in Settings → Calendar sources; once it exists I can list, select, and reconnect it.";
       }
       if (intent.provider === "google") {
-        return "Google Calendar OAuth is not registered in this runtime. Enable @elizaos/plugin-google-workspace, then connect again to open the owner authorization URL.\n\n[CONFIG:google]";
+        return "Google Calendar needs @elizaos/plugin-google-workspace enabled with GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI configured. Open the setup card, then connect again.\n\n[CONFIG:google-workspace]";
       }
       if (intent.provider === "microsoft") {
         return "microsoft OAuth is not registered in this runtime.\n\n[CONFIG:microsoft]";

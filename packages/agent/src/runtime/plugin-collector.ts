@@ -413,9 +413,11 @@ function shouldLoadGoogleWorkspace(
     return true;
   }
 
+  // Match readClientConfig(): OAuth cannot start without redirect URI either.
   const clientId = env.GOOGLE_CLIENT_ID?.trim();
   const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
-  return Boolean(clientId && clientSecret);
+  const redirectUri = env.GOOGLE_REDIRECT_URI?.trim();
+  return Boolean(clientId && clientSecret && redirectUri);
 }
 
 /**
@@ -867,35 +869,17 @@ export function collectPluginNames(
     }
   }
 
-  // Mobile: restrict the final set to plugins that the bundled mobile runtime
-  // can actually load — the mobile-core list plus model-provider plugins that
-  // are statically imported in `runtime/eliza.ts`. Anything else (connector
-  // plugins, feature plugins from `plugins.entries`, drop-in plugins from
-  // `plugins.installs`) would force a dynamic `import("@elizaos/plugin-...")`
-  // against a `node_modules` tree that does not ship in the APK.
-  if (onMobile) {
-    const mobileAllowed = new Set<string>([
-      ...MOBILE_CORE_PLUGINS,
-      ...MOBILE_VIEW_PLUGINS,
-      ...(onElizaOsAndroid ? ELIZAOS_ANDROID_CORE_PLUGINS : []),
-      ...(onElizaOsAndroid ? ELIZAOS_ANDROID_TERMINAL_PLUGINS : []),
-      ...MOBILE_MODEL_PROVIDER_PLUGINS,
-    ]);
-    for (const pluginName of Array.from(pluginsToLoad)) {
-      if (!mobileAllowed.has(pluginName)) {
-        pluginsToLoad.delete(pluginName);
-      }
-    }
-  }
-
   // Calendar home tiles load on every platform (MOBILE_VIEW_PLUGINS). Calendar
   // hard-depends on plugin-scheduling (watch/reminder spine); always companion
   // that primitive when calendar is present.
   //
   // Do NOT infer Google Workspace from Calendar alone — Calendar also covers
   // Apple/Microsoft/ICS. Load google-workspace only on an explicit Google
-  // signal (entries enable, googlechat connector, or GOOGLE_CLIENT_* pair),
+  // signal (entries enable, googlechat connector, or full GOOGLE_CLIENT_* trio),
   // and never when entries["google-workspace"].enabled === false.
+  //
+  // Run BEFORE the mobile allow-list so Node-only Workspace cannot be re-added
+  // after mobile filtering (APK has no google-workspace bundle).
   if (pluginsToLoad.has("@elizaos/plugin-calendar")) {
     if (!pluginsToLoad.has("@elizaos/plugin-scheduling")) {
       pluginsToLoad.add("@elizaos/plugin-scheduling");
@@ -916,6 +900,28 @@ export function collectPluginNames(
   // Final deny: explicit disable wins even if an earlier path added Workspace.
   if (isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace")) {
     pluginsToLoad.delete("@elizaos/plugin-google-workspace");
+  }
+
+  // Mobile: restrict the final set to plugins that the bundled mobile runtime
+  // can actually load — the mobile-core list plus model-provider plugins that
+  // are statically imported in `runtime/eliza.ts`. Anything else (connector
+  // plugins, feature plugins from `plugins.entries`, drop-in plugins from
+  // `plugins.installs`) would force a dynamic `import("@elizaos/plugin-...")`
+  // against a `node_modules` tree that does not ship in the APK.
+  // Must run AFTER companion adds so google-workspace cannot bypass the filter.
+  if (onMobile) {
+    const mobileAllowed = new Set<string>([
+      ...MOBILE_CORE_PLUGINS,
+      ...MOBILE_VIEW_PLUGINS,
+      ...(onElizaOsAndroid ? ELIZAOS_ANDROID_CORE_PLUGINS : []),
+      ...(onElizaOsAndroid ? ELIZAOS_ANDROID_TERMINAL_PLUGINS : []),
+      ...MOBILE_MODEL_PROVIDER_PLUGINS,
+    ]);
+    for (const pluginName of Array.from(pluginsToLoad)) {
+      if (!mobileAllowed.has(pluginName)) {
+        pluginsToLoad.delete(pluginName);
+      }
+    }
   }
 
   // Lean chat: force-drop heavy surfaces even if a later gate (orchestrator env,

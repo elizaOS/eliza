@@ -55,7 +55,7 @@ function isGoogleChatConnectorConfigured(value: unknown): boolean {
  * Enable Google Workspace only on an explicit Google signal:
  * - a configured `googlechat` connector block (not empty `{}`)
  * - plugins.entries["google-workspace"].enabled === true
- * - GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET configured (local OAuth)
+ * - GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET + GOOGLE_REDIRECT_URI configured
  *
  * Do not enable merely because Calendar is present — Calendar also covers
  * Apple, Microsoft, and ICS feeds without Google.
@@ -87,10 +87,12 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
     return true;
   }
 
-  // Local OAuth client pair — enough to start authorization without Chat.
+  // Full local OAuth trio — matches readClientConfig() so we never enable a
+  // provider that cannot start authorization.
   if (
     hasNonEmptyEnv(ctx.env, "GOOGLE_CLIENT_ID") &&
-    hasNonEmptyEnv(ctx.env, "GOOGLE_CLIENT_SECRET")
+    hasNonEmptyEnv(ctx.env, "GOOGLE_CLIENT_SECRET") &&
+    hasNonEmptyEnv(ctx.env, "GOOGLE_REDIRECT_URI")
   ) {
     return true;
   }

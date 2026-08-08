@@ -488,9 +488,10 @@ async function dispatchGoogle(
               error.message,
             );
           if (needsConfig) {
+            // Plugin id must match /api/plugins inventory (google-workspace).
             const text = withConfigCard(
               "Google account connection needs Google Workspace enabled and OAuth configured. Open the setup card, then try connect again.",
-              "google",
+              "google-workspace",
             );
             return {
               success: false,
@@ -517,6 +518,33 @@ async function dispatchGoogle(
               subaction,
               status: error.status,
               error: error.code ?? "GOOGLE_CONNECT_FAILED",
+            },
+          };
+        }
+        // Incomplete GOOGLE_CLIENT_* / redirect config throws a plain Error from
+        // readClientConfig — map to the same actionable setup card.
+        if (
+          error instanceof Error &&
+          /GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_REDIRECT_URI/i.test(
+            error.message,
+          )
+        ) {
+          const text = withConfigCard(
+            "Google OAuth is incomplete. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI, then try connect again.",
+            "google-workspace",
+          );
+          return {
+            success: false,
+            text,
+            userFacingText: text,
+            verifiedUserFacing: true,
+            data: {
+              actionName: ACTION_NAME,
+              connector: "google",
+              subaction,
+              error: "GOOGLE_OAUTH_CONFIG_INCOMPLETE",
+              awaitingUserAction: true,
+              awaitingUserInput: true,
             },
           };
         }

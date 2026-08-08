@@ -269,12 +269,12 @@ describe("CALENDAR_SOURCES action", () => {
 
     expect(result?.success).toBe(false);
     expect(result?.verifiedUserFacing).toBe(true);
-    expect(result?.userFacingText).toContain("[CONFIG:google]");
+    expect(result?.userFacingText).toContain("[CONFIG:google-workspace]");
     expect(result?.userFacingText).toMatch(/plugin-google-workspace/i);
     expect(connection(result)).toMatchObject({
       state: "configuration_required",
       provider: "google",
-      connectorId: "google",
+      connectorId: "google-workspace",
       completion: "configuration_required",
     });
   });
