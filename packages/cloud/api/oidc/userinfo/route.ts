@@ -168,7 +168,7 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
     if (!client)
       return unauthorized(c, "The access token is invalid or expired.");
 
-    const subject = await loadOidcSubject(verified.subject);
+    const subject = await loadOidcSubject(verified.subject, config);
     if (!subject) return unauthorized(c, "The account is unavailable.");
     if (assertOidcSubjectEligible(subject, client)) {
       return unauthorized(c, "The account is unavailable.");
@@ -186,6 +186,10 @@ async function handleUserInfo(c: AppContext): Promise<Response> {
       organization: subject.user.organization,
       profile: subject.profile,
       username,
+      // Must move with the token route: a `/userinfo` that disagreed with
+      // `/token` about `email` is how a relying party admits a login and then
+      // re-reads it as a different account.
+      walletEmail: subject.walletEmail,
       adminStatus: subject.adminStatus,
       deploymentTenantId:
         typeof c.env.STEWARD_TENANT_ID === "string"

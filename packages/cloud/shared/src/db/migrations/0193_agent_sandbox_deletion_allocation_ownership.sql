@@ -1,0 +1,41 @@
+-- Records whether a deletion generation still owns one counted slot in
+-- `docker_nodes.allocated_count`, so a managed agent's node slot is released
+-- exactly once however many times its teardown runs.
+--
+-- Remote teardown is retryable and treats "No such container" as success, but
+-- the local counter is not idempotent: the sandbox row keeps its node/container
+-- locator until the row itself is deleted, so a retry after any post-stop
+-- failure (credential revocation, the row-delete CAS, job-status persistence)
+-- decrements the same slot again. `GREATEST(count - 1, 0)` hides the underflow
+-- instead of preventing it, and the freed slot can belong to a LIVE sibling on
+-- that node. Suspend has the same shape: it stops and decrements while keeping
+-- the locator, so a later delete repeats the decrement with no retry involved.
+--
+-- Nullable with no default and no backfill. NULL is a real third state, not
+-- "unknown-so-assume-false": rows that already carried a deletion intent when
+-- this shipped have no recorded answer, and both guesses are wrong — `true`
+-- double-frees a live sibling's capacity, `false` leaks the slot until the node
+-- drains. A NULL is instead left for `syncAllocatedCounts` to resolve: it
+-- recomputes `allocated_count` from the surviving rows once the deletion
+-- finishes, so a deletion in flight at deploy time self-heals on the next
+-- sweep. Until it does, that node reads one slot fuller than it is — the safe
+-- direction, since schedulers gate on `allocated_count < capacity`, so the
+-- error can only under-pack a node, never over-pack one.
+--
+-- No CHECK constraint pairing this with `deletion_attempt_id`: ADD CONSTRAINT
+-- full-scans `agent_sandboxes` under ACCESS EXCLUSIVE. Same trade-off migration
+-- 0185 documents for `jobs.execution_interruptions`.
+--
+-- The pairing is structural, but only in one direction, and the exact shape
+-- matters to anyone later auditing whether it could be enforced: every writer
+-- that ESTABLISHES a deletion generation sets both columns together. A recovery
+-- re-enqueue deliberately updates `deletion_attempt_id` while leaving this
+-- column alone, because re-deriving ownership from a row already in
+-- `deletion_pending` would read as "still counted" and free a live sibling's
+-- slot on every sweep. So a constraint requiring both to be written together
+-- would reject a legitimate continuation.
+--
+-- ADD COLUMN of a nullable column with no default is metadata-only on PG11+,
+-- so this is safe on a hot table.
+ALTER TABLE "agent_sandboxes"
+  ADD COLUMN IF NOT EXISTS "deletion_allocation_counted" boolean;

@@ -29,7 +29,12 @@ export const ELIZA_NATIVE_MODEL_BOUNDARIES = [
 export type ElizaNativeModelBoundary =
 	(typeof ELIZA_NATIVE_MODEL_BOUNDARIES)[number];
 
-export type TrajectoryStatus = "active" | "completed" | "error" | "timeout";
+export type TrajectoryStatus =
+	| "active"
+	| "completed"
+	| "error"
+	| "timeout"
+	| "terminated";
 
 export interface TrajectoryListOptions {
 	limit?: number;
@@ -120,6 +125,7 @@ export interface TrajectoryLlmCallRecord {
 	completionTokens?: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
+	reasoningTokens?: number;
 	modelSlot?: string;
 	runId?: string;
 	roomId?: string;
@@ -159,6 +165,21 @@ export interface TrajectoryProviderAccessRecord {
 export type TrajectoryStepKind = "llm" | "action" | "evaluator";
 
 export type TrajectoryStepId = string;
+
+/** One normalized action settlement persisted on its owning trajectory step. */
+export interface TrajectoryActionAttemptRecord {
+	attemptId: string;
+	timestamp: number;
+	actionType: string;
+	actionName: string;
+	parameters: Record<string, JsonValue>;
+	success: boolean;
+	result?: Record<string, JsonValue>;
+	error?: string;
+	reasoning?: string;
+	llmCallId?: string;
+	immediateReward?: number;
+}
 
 /**
  * Structured truncation marker shape persisted alongside per-skill
@@ -214,9 +235,11 @@ export interface TrajectorySkillInvocationRecord {
 
 export interface TrajectoryStepRecord {
 	stepId?: TrajectoryStepId;
+	parentStepId?: TrajectoryStepId;
 	timestamp: number;
 	llmCalls?: TrajectoryLlmCallRecord[];
 	providerAccesses?: TrajectoryProviderAccessRecord[];
+	action?: TrajectoryActionAttemptRecord;
 	kind?: TrajectoryStepKind;
 	childSteps?: TrajectoryStepId[];
 	script?: string;
@@ -273,7 +296,7 @@ export interface TrajectoryDetailRecord {
 	scenarioId?: string;
 	batchId?: string;
 	steps?: TrajectoryStepRecord[];
-	metrics?: {
+	metrics?: Record<string, JsonValue | undefined> & {
 		finalStatus?: string;
 		/** Step count at last persist; required by Core validators (#17730). */
 		episodeLength?: number;
@@ -308,6 +331,11 @@ export interface TrajectoryFlattenedLlmCallRecord
 	cacheReadInputTokens: number;
 	cacheCreationInputTokens: number;
 	tokenUsageEstimated: boolean;
+	trajectoryMetrics?: Record<string, JsonValue | undefined>;
+	stepData?: Omit<
+		TrajectoryStepRecord,
+		"stepId" | "timestamp" | "llmCalls" | "providerAccesses"
+	>;
 }
 
 export interface ElizaNativeModelRequestRecord {
@@ -336,6 +364,7 @@ export interface ElizaNativeModelResponseRecord {
 		totalTokens?: number;
 		cacheReadInputTokens?: number;
 		cacheCreationInputTokens?: number;
+		reasoningTokens?: number;
 	};
 	providerMetadata?: unknown;
 }

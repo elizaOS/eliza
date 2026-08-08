@@ -26,6 +26,7 @@ import { walletSearchAddressHandler } from "../analytics/birdeye/actions/wallet-
 import { tokenInfoHandler } from "../analytics/token-info/action.js";
 import {
   assertEvmTransferRecipientAuthorized,
+  assertSolanaTransferRecipientAuthorized,
   assertWalletFinancialActionAllowed,
 } from "../security/wallet-context-safety.js";
 import {
@@ -379,14 +380,23 @@ async function runWalletRouter(
   if (
     params.subaction === "transfer" &&
     params.recipient &&
-    /^0x[a-fA-F0-9]{40}$/.test(params.recipient)
+    (/^0x[a-fA-F0-9]{40}$/.test(params.recipient) ||
+      /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(params.recipient))
   ) {
     try {
-      assertEvmTransferRecipientAuthorized(
-        message,
-        options as Record<string, unknown> | undefined,
-        params.recipient,
-      );
+      if (/^0x[a-fA-F0-9]{40}$/.test(params.recipient)) {
+        assertEvmTransferRecipientAuthorized(
+          message,
+          options as Record<string, unknown> | undefined,
+          params.recipient,
+        );
+      } else {
+        assertSolanaTransferRecipientAuthorized(
+          message,
+          options as Record<string, unknown> | undefined,
+          params.recipient,
+        );
+      }
     } catch (error) {
       const text = `Invalid wallet transfer recipient: ${
         error instanceof Error ? error.message : String(error)

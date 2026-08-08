@@ -5,9 +5,9 @@
 // wrapper that renders the same DOM on the desktop `chromium` and Pixel-7
 // `mobile-chromium` lanes, so every assertion below is a viewport-independent
 // semantic outcome: populated content from the mocked lifeops endpoints plus a
-// real state-changing interaction (channel/kind/status filters, the calendar
-// mode control). This is the interaction owner that closes INTERACTION_DEBT in
-// view-interaction-coverage.test.ts.
+// real state-changing interaction (channel/kind/status filters, calendar day
+// selection and month navigation). This is the interaction owner that closes
+// INTERACTION_DEBT in view-interaction-coverage.test.ts.
 
 import type { Locator } from "@playwright/test";
 import { expect, test } from "@playwright/test";
@@ -49,40 +49,116 @@ async function expectTopmostAtCenter(
   ).toBe(true);
 }
 
-test("calendar decomposed view: day/week/month view-mode control switches", async ({
+test("calendar decomposed view: day selection and month navigation", async ({
   page,
 }) => {
-  // /calendar mounts the unified CalendarView (period nav + Day/Week/Month mode
-  // control + agenda). The feed mock anchors "Design sync" at the window start,
-  // so the agenda renders populated.
+  // /calendar mounts the canonical SimpleCalendarView (#17859 swapped the view
+  // bundle from the unified CalendarView): a month grid with month/year
+  // navigation and a per-day agenda, always fetching a 42-day month-grid
+  // window. There is no Day/Week/Month mode control here anymore — that
+  // belongs to the retired unified CalendarView, whose control coverage lives
+  // in plugins/plugin-calendar/src/components/calendar/CalendarView.test.tsx.
+  // The feed mock anchors "Design sync" at the requested window start (the
+  // grid's first cell), so the populated feed renders as a day-cell event
+  // badge ("1 event on <date>").
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  const feedWindows: Array<{ timeMin: number; timeMax: number }> = [];
+  page.on("request", (request) => {
+    if (!request.url().includes("/api/lifeops/calendar/feed")) return;
+    const url = new URL(request.url());
+    const timeMin = Date.parse(url.searchParams.get("timeMin") ?? "");
+    const timeMax = Date.parse(url.searchParams.get("timeMax") ?? "");
+    if (Number.isFinite(timeMin) && Number.isFinite(timeMax)) {
+      feedWindows.push({ timeMin, timeMax });
+    }
+  });
+
   await openAppPath(page, "/calendar");
-  const day = page.getByRole("button", { name: "Day", exact: true }).first();
-  const week = page.getByRole("button", { name: "Week", exact: true }).first();
-  await expect(week).toBeVisible({ timeout: 60_000 });
-  await expect(day).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Design sync").first()).toBeVisible({
+  await expect(page.getByTestId("simple-calendar-view")).toBeVisible({
+    timeout: 60_000,
+  });
+  // Today's cell is marked and the mocked feed rendered into the grid as an
+  // event badge (the events sit on the grid's first two days, which usually
+  // belong to the previous month, so the badge — not the agenda — is the
+  // deterministic populated signal).
+  await expect(page.locator('[aria-current="date"]').first()).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(
+    page.getByRole("img", { name: /^1 event on / }).first(),
+  ).toBeVisible({ timeout: 15_000 });
+  // The initial fetch is a month-grid window (42 local days; ±1 for DST).
+  await expect
+    .poll(() => feedWindows.length, { timeout: 15_000 })
+    .toBeGreaterThan(0);
+  const initialWindow = feedWindows[0];
+  expect(initialWindow.timeMax - initialWindow.timeMin).toBeGreaterThanOrEqual(
+    41 * ONE_DAY_MS,
+  );
+  expect(initialWindow.timeMax - initialWindow.timeMin).toBeLessThanOrEqual(
+    43 * ONE_DAY_MS,
+  );
+
+  // Day selection is a real client-side state change: the agenda panel's
+  // accessible name carries the raw selected date key, so pick an in-month,
+  // event-free day (the 15th, or the 16th when today IS the 15th, so the
+  // click always changes the selection) and assert the agenda re-targets it
+  // with the designed empty state.
+  const today = new Date();
+  const targetDay = today.getDate() === 15 ? 16 : 15;
+  const targetKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
+  const targetCell = page.locator(
+    `[data-agent-id="calendar-day-${targetKey}"]`,
+  );
+  await expect(targetCell).toBeVisible({ timeout: 15_000 });
+  await targetCell.scrollIntoViewIfNeeded();
+  await expectTopmostAtCenter(targetCell, `Calendar day cell ${targetKey}`);
+  await targetCell.click();
+  await expect(targetCell).toHaveAttribute("aria-pressed", "true", {
+    timeout: 15_000,
+  });
+  await expect(
+    page.locator(`section[aria-label="Events for ${targetKey}"]`),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("No plans yet").first()).toBeVisible({
     timeout: 15_000,
   });
 
-  // Switching Week → Day is a real state change: useCalendarWeek refetches the
-  // feed with a single-day window (week fetches 7 days, month a whole grid).
-  // Assert the narrowed window request, then that the agenda re-renders
-  // populated (the mock re-anchors its events to the new window start).
-  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-  const dayWindowFeed = page.waitForRequest(
-    (request) => {
-      if (!request.url().includes("/api/lifeops/calendar/feed")) return false;
-      const url = new URL(request.url());
-      const timeMin = Date.parse(url.searchParams.get("timeMin") ?? "");
-      const timeMax = Date.parse(url.searchParams.get("timeMax") ?? "");
-      if (!Number.isFinite(timeMin) || !Number.isFinite(timeMax)) return false;
-      return timeMax - timeMin <= 2 * ONE_DAY_MS;
-    },
-    { timeout: 15_000 },
-  );
-  await day.click();
-  await dayWindowFeed;
-  await expect(page.getByText("Design sync").first()).toBeVisible({
+  // Month navigation is a real server-visible state change: "Next month"
+  // shifts the base date, useCalendarWeek refetches a later month-grid
+  // window, and the header label changes. The mock re-anchors its events to
+  // the new window start, so the event badge stays rendered.
+  const monthTrigger = page.getByRole("button", {
+    name: /^Choose month and year/,
+  });
+  await expect(monthTrigger).toBeVisible({ timeout: 15_000 });
+  const initialMonthLabel = (await monthTrigger.innerText()).trim();
+  const requestCountBeforeNav = feedWindows.length;
+  await page.getByRole("button", { name: /^Next month/ }).click();
+  await expect
+    .poll(
+      () =>
+        feedWindows
+          .slice(requestCountBeforeNav)
+          .some(
+            (window) =>
+              window.timeMin > initialWindow.timeMin &&
+              window.timeMax - window.timeMin >= 41 * ONE_DAY_MS &&
+              window.timeMax - window.timeMin <= 43 * ONE_DAY_MS,
+          ),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  await expect(monthTrigger).not.toHaveText(initialMonthLabel, {
+    timeout: 15_000,
+  });
+  await expect(
+    page.getByRole("img", { name: /^1 event on / }).first(),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // Reverse path: "Today" returns the grid to the current month.
+  await page.getByRole("button", { name: "Today", exact: true }).click();
+  await expect(monthTrigger).toHaveText(initialMonthLabel, {
     timeout: 15_000,
   });
 });

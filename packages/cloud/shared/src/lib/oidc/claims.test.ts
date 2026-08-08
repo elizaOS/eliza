@@ -68,6 +68,7 @@ function makeClient(overrides: Partial<OidcClient> = {}): OidcClient {
     resource_audiences: [],
     require_pkce: false,
     require_verified_email: true,
+    wallet_email_fallback: false,
     roles_allowlist: [],
     claims_policy: { groups: true, roles: true, tenant_id: true, eliza_agents: false },
     claims_mapping: { roles: {}, groups: {}, mode: "extend" },
@@ -86,6 +87,7 @@ function build(overrides: Partial<OidcClaimsInput> = {}): Record<string, unknown
     organization: makeOrg(),
     profile: null,
     username: "ada",
+    walletEmail: null,
     adminStatus: NO_ADMIN,
     scopes: ["openid", "email", "profile", "groups"],
     client: makeClient(),
@@ -136,6 +138,117 @@ describe("email and email_verified", () => {
     const claims = build({ scopes: ["openid", "profile"] });
     expect(claims).not.toHaveProperty("email");
     expect(claims).not.toHaveProperty("email_verified");
+  });
+});
+
+/**
+ * The wallet-derived no-reply address. `walletEmail` is non-null only for a
+ * VERIFIED wallet (`loadOidcSubject` enforces that), so these cases are about
+ * what the claim builder does with one once it exists.
+ */
+describe("the wallet-derived email identity", () => {
+  const WALLET_EMAIL = "wallet-d4f3c344e6eb25da702fd567072f6ce1@users.noreply.api.elizacloud.ai";
+  const WALLET_ONLY = makeUser({
+    email: null,
+    email_verified: false,
+    wallet_address: "0x1234567890abcdef1234567890abcdef12345678",
+    wallet_verified: true,
+  });
+  const OPTED_IN = makeClient({ wallet_email_fallback: true });
+
+  test("a client that did not opt in is byte-identical with or without one", () => {
+    // The flag defaults false, so this is what every already-registered client
+    // sees: the address is computed and then simply never reached.
+    const withAddress = build({ user: WALLET_ONLY, walletEmail: WALLET_EMAIL });
+    const without = build({ user: WALLET_ONLY, walletEmail: null });
+    expect(withAddress).toEqual(without);
+    expect(withAddress).not.toHaveProperty("email");
+    expect(withAddress).not.toHaveProperty("eliza_email_source");
+    expect(withAddress.email_verified).toBe(false);
+  });
+
+  test("an opted-in client receives the address for a user who has no email", () => {
+    const claims = build({ user: WALLET_ONLY, walletEmail: WALLET_EMAIL, client: OPTED_IN });
+    expect(claims.email).toBe(WALLET_EMAIL);
+    expect(claims.eliza_email_source).toBe("wallet");
+  });
+
+  test("email_verified is FALSE for the synthesized address — never true, no knob", () => {
+    // The domain accepts no mail by construction, so nobody has ever proven
+    // control of that mailbox. An RP reading `true` would merge federated logins
+    // into local accounts on the strength of it and mail password resets there.
+    const claims = build({ user: WALLET_ONLY, walletEmail: WALLET_EMAIL, client: OPTED_IN });
+    expect(claims.email_verified).toBe(false);
+  });
+
+  test("a real verified email always wins, opted in or not", () => {
+    const verified = build({ user: makeUser(), walletEmail: WALLET_EMAIL, client: OPTED_IN });
+    expect(verified.email).toBe("ada@example.com");
+    expect(verified.email_verified).toBe(true);
+    expect(verified).not.toHaveProperty("eliza_email_source");
+    expect(verified).toEqual(build({ walletEmail: WALLET_EMAIL }));
+  });
+
+  test("a stored address wins even UNVERIFIED — synthesis is for a user who has none", () => {
+    // Substituting the wallet address here would hand this user a different
+    // account at every relying party keyed on the address, for no act of theirs
+    // beyond leaving an address unconfirmed. The unproven-address hazard is
+    // handled by refusing ADMISSION (`hasUsableOidcEmailIdentity`), not by
+    // quietly sending a different identity than the one the row holds.
+    const claims = build({
+      user: makeUser({ email: "ceo@company.example", email_verified: false }),
+      walletEmail: WALLET_EMAIL,
+      client: OPTED_IN,
+    });
+    expect(claims.email).toBe("ceo@company.example");
+    expect(claims.email_verified).toBe(false);
+    expect(claims).not.toHaveProperty("eliza_email_source");
+  });
+
+  test("the scrubbed squatter shape asserts nothing at all", () => {
+    // `loadOidcSubject` clears `email` and `email_verified` together for a row
+    // sitting in the reserved namespace. The result must read as "no address",
+    // not as "a confirmed mailbox this token declines to name" — including for a
+    // client that never opted into any of this.
+    const scrubbed = makeUser({ email: null, email_verified: false });
+    for (const client of [makeClient(), OPTED_IN]) {
+      const claims = build({ user: scrubbed, walletEmail: null, client });
+      expect(claims).not.toHaveProperty("email");
+      expect(claims.email_verified).toBe(false);
+      expect(claims).not.toHaveProperty("eliza_email_source");
+    }
+  });
+
+  test("an opted-in client with no wallet identity falls back to today's behaviour", () => {
+    const claims = build({
+      user: makeUser({ email: "ceo@company.example", email_verified: false }),
+      walletEmail: null,
+      client: OPTED_IN,
+    });
+    expect(claims.email).toBe("ceo@company.example");
+    expect(claims.email_verified).toBe(false);
+    expect(claims).not.toHaveProperty("eliza_email_source");
+  });
+
+  test("nothing is emitted without the email scope, opt-in or not", () => {
+    const claims = build({
+      user: WALLET_ONLY,
+      walletEmail: WALLET_EMAIL,
+      client: OPTED_IN,
+      scopes: ["openid", "profile", "groups"],
+    });
+    expect(claims).not.toHaveProperty("email");
+    expect(claims).not.toHaveProperty("email_verified");
+    expect(claims).not.toHaveProperty("eliza_email_source");
+  });
+
+  test("the synthesized address never becomes the username", () => {
+    // `preferred_username` is frozen at first login and the RP turns it into a
+    // permanent account name, so seeding it from the address would rename every
+    // wallet user who already signs in today.
+    const claims = build({ user: WALLET_ONLY, walletEmail: WALLET_EMAIL, client: OPTED_IN });
+    expect(claims.preferred_username).toBe("ada");
+    expect(claims.nickname).toBe("ada");
   });
 });
 
@@ -355,6 +468,7 @@ describe("tenant_id", () => {
       organization: makeOrg({ steward_tenant_id: null }),
       profile: null,
       username: "ada",
+      walletEmail: null,
       adminStatus: NO_ADMIN,
       deploymentTenantId: "elizacloud",
       scopes: ["openid", "email", "profile", "groups"],

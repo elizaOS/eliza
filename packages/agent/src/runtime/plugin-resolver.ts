@@ -2051,6 +2051,7 @@ export async function resolvePlugins(
   const failedPlugins: Array<{ name: string; error: string }> = [];
   const repairedInstallRecords = new Set<string>();
   const phase = opts?.phase ?? "all";
+  const mobilePlatform = isMobilePlatform();
 
   if (phase === "blocking") {
     blockingPhaseLoadedPluginNames.clear();
@@ -2069,59 +2070,64 @@ export async function resolvePlugins(
   // Auto-enable is sourced exclusively from per-plugin manifests: walk plugin
   // and app package.json files on disk and run each plugin's
   // autoEnableModule.shouldEnable(ctx). Each plugin owns its own enable
-  // conditions in auto-enable.ts — no central map exists.
+  // conditions in auto-enable.ts — no central map exists. Mobile bundles have
+  // no package tree, so their build-time static registry and typed collector
+  // policy are the complete plugin plan.
   //
   // App-level manifest (host app's package.json `elizaos.app` block) can:
   //   - restrict the candidate list to a curated subset
   //   - prepopulate config.plugins.entries with default { enabled } flags
   //     (user config still wins; defaults only fill keys the user hasn't set)
   const changes: string[] = [];
-  try {
-    const appManifest = await readAppManifest(process.cwd()).catch(() => null);
-    const defaultedEntries = applyAppManifestDefaults(config, appManifest);
-    if (defaultedEntries.length > 0) {
-      logger.info(
-        `[eliza] App manifest defaults applied to entries: ${defaultedEntries.join(", ")}`,
+  if (!mobilePlatform) {
+    try {
+      const appManifest = await readAppManifest(process.cwd()).catch(
+        () => null,
       );
-    }
-    const allCandidates = await discoverPluginCandidates();
-    const candidates = filterCandidatesByAppManifest(
-      allCandidates,
-      appManifest,
-    );
-    if (appManifest?.candidates && candidates.length < allCandidates.length) {
-      logger.info(
-        `[eliza] App manifest restricted candidate set: ${candidates.length}/${allCandidates.length} plugins considered`,
+      const defaultedEntries = applyAppManifestDefaults(config, appManifest);
+      if (defaultedEntries.length > 0) {
+        logger.info(
+          `[eliza] App manifest defaults applied to entries: ${defaultedEntries.join(", ")}`,
+        );
+      }
+      const allCandidates = await discoverPluginCandidates();
+      const candidates = filterCandidatesByAppManifest(
+        allCandidates,
+        appManifest,
       );
-    }
-    const isNativePlatform = isMobilePlatform();
-    const candidateKey = candidates
-      .map((c) => c.packageName)
-      .sort()
-      .join(",");
-    const verdictKey = `${candidateKey}\n${computeVerdictFingerprint(
-      config,
-      isNativePlatform,
-    )}`;
-    let verdicts: PluginManifestVerdict[];
-    if (pluginVerdictCache?.key === verdictKey) {
-      verdicts = pluginVerdictCache.verdicts;
-    } else {
-      verdicts = await evaluatePluginManifests(candidates, {
-        env: process.env,
+      if (appManifest?.candidates && candidates.length < allCandidates.length) {
+        logger.info(
+          `[eliza] App manifest restricted candidate set: ${candidates.length}/${allCandidates.length} plugins considered`,
+        );
+      }
+      const candidateKey = candidates
+        .map((c) => c.packageName)
+        .sort()
+        .join(",");
+      const verdictKey = `${candidateKey}\n${computeVerdictFingerprint(
         config,
-        isNativePlatform,
+        false,
+      )}`;
+      let verdicts: PluginManifestVerdict[];
+      if (pluginVerdictCache?.key === verdictKey) {
+        verdicts = pluginVerdictCache.verdicts;
+      } else {
+        verdicts = await evaluatePluginManifests(candidates, {
+          env: process.env,
+          config,
+          isNativePlatform: false,
+        });
+        pluginVerdictCache = { key: verdictKey, verdicts };
+      }
+      applyPluginManifestVerdicts(config, verdicts, changes);
+    } catch (error) {
+      // error-policy:J2 plugin-plan configuration is a required boot input; do
+      // not continue with a silently incomplete auto-enable result.
+      throw new ElizaError("Plugin manifest evaluation failed", {
+        code: "PLUGIN_MANIFEST_EVALUATION_FAILED",
+        cause: error,
       });
-      pluginVerdictCache = { key: verdictKey, verdicts };
     }
-    applyPluginManifestVerdicts(config, verdicts, changes);
-  } catch (error) {
-    // error-policy:J2 plugin-plan configuration is a required boot input; do
-    // not continue with a silently incomplete auto-enable result.
-    throw new ElizaError("Plugin manifest evaluation failed", {
-      code: "PLUGIN_MANIFEST_EVALUATION_FAILED",
-      cause: error,
-    });
   }
   if (changes.length > 0) {
     logger.debug(`[eliza] Plugin auto-enable: ${changes.join("; ")}`);
@@ -2164,9 +2170,14 @@ export async function resolvePlugins(
   // ── Auto-discover ejected plugins ───────────────────────────────────────
   // Ejected plugins override npm/core versions, so they are tracked
   // separately and consulted first at import time.
-  const ejectedRecords = await scanDropInPlugins(
-    path.join(resolveStateDir(), EJECTED_PLUGINS_DIRNAME),
-  );
+  // Mobile artifacts have no node_modules/workspace plugin tree and load only
+  // modules anchored in STATIC_ELIZA_PLUGINS. Filesystem discovery is both
+  // inapplicable and unsupported by the sealed iOS Bun host.
+  const ejectedRecords: Record<string, PluginInstallRecord> = mobilePlatform
+    ? {}
+    : await scanDropInPlugins(
+        path.join(resolveStateDir(), EJECTED_PLUGINS_DIRNAME),
+      );
   const ejectedPluginNames: string[] = [];
   for (const [name, _record] of Object.entries(ejectedRecords)) {
     if (denyList.has(name)) continue;
@@ -2182,10 +2193,12 @@ export async function resolvePlugins(
 
   // ── Auto-discover drop-in custom plugins ────────────────────────────────
   // Scan well-known dir + any extra dirs from plugins.load.paths (first wins).
-  const scanDirs = [
-    path.join(resolveStateDir(), CUSTOM_PLUGINS_DIRNAME),
-    ...(config.plugins?.load?.paths ?? []).map(resolveUserPath),
-  ];
+  const scanDirs = mobilePlatform
+    ? []
+    : [
+        path.join(resolveStateDir(), CUSTOM_PLUGINS_DIRNAME),
+        ...(config.plugins?.load?.paths ?? []).map(resolveUserPath),
+      ];
   const dropInRecords: Record<string, PluginInstallRecord> = {};
   for (const dir of scanDirs) {
     for (const [name, record] of Object.entries(await scanDropInPlugins(dir))) {
@@ -2312,7 +2325,9 @@ export async function resolvePlugins(
     const isOfficialElizaPlugin = pluginName.startsWith("@elizaos/plugin-");
     const ejectedRecord = ejectedRecords[pluginName];
     const installRecord = installRecords[pluginName];
-    const workspaceOverridePath = getWorkspacePluginOverridePath(pluginName);
+    const workspaceOverridePath = mobilePlatform
+      ? null
+      : getWorkspacePluginOverridePath(pluginName);
     const staticElizaPlugin = await resolveStaticElizaPlugin(pluginName);
     const exportSubpath = runtimePluginExportSubpath(pluginName);
 
@@ -2365,6 +2380,12 @@ export async function resolvePlugins(
         mod = Object.fromEntries(
           Object.entries(loadedModule as Record<string, unknown>),
         ) as PluginModuleShape;
+      } else if (mobilePlatform) {
+        const reason =
+          "not registered in STATIC_ELIZA_PLUGINS (mobile bundle has no filesystem plugin loader)";
+        logger.warn(`[eliza] Cannot load ${pluginName} on mobile: ${reason}`);
+        failedPlugins.push({ name: pluginName, error: reason });
+        return null;
       } else if (workspaceOverridePath) {
         const shouldPreferRepoNodeModules =
           isOfficialElizaPlugin &&
@@ -2454,13 +2475,6 @@ export async function resolvePlugins(
         // (a host-declared mobile plugin with no static registration) — the
         // exact drift that shipped four dead mobile plugins with health
         // reporting failed:0. Surface it; never skip silently.
-        if (isMobilePlatform()) {
-          const reason =
-            "not registered in STATIC_ELIZA_PLUGINS (mobile bundle has no node_modules to import from)";
-          logger.warn(`[eliza] Cannot load ${pluginName} on mobile: ${reason}`);
-          failedPlugins.push({ name: pluginName, error: reason });
-          return null;
-        }
         // Eliza plugins can resolve either from bundled local wrappers
         // under eliza-dist/plugins/* or from packaged node_modules.
         mod = await importOfficialPluginFromNodeModules();

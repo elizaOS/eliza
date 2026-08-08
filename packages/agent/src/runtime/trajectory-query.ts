@@ -4,15 +4,16 @@
  * Handles listing, loading, searching, and filtering trajectories.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 
 import {
   asRecord,
   ensureTrajectoriesTable,
   executeRawSql,
-  extractRows,
+  extractRequiredRows,
   hasRuntimeDb,
+  parsePersistedTrajectoryRow,
+  sqlQuote,
 } from "./trajectory-internals.ts";
 
 // ---------------------------------------------------------------------------
@@ -22,27 +23,41 @@ import {
 export async function loadPersistedTrajectoryRows(
   runtime: IAgentRuntime,
   maxRows = 5000,
-): Promise<Record<string, unknown>[] | null> {
-  if (!hasRuntimeDb(runtime)) return null;
+): Promise<Record<string, unknown>[]> {
+  if (!hasRuntimeDb(runtime)) {
+    throw new ElizaError("Trajectory storage is unavailable", {
+      code: "TRAJECTORY_DATABASE_UNAVAILABLE",
+    });
+  }
   const tableReady = await ensureTrajectoriesTable(runtime);
-  if (!tableReady) return [];
+  if (!tableReady) {
+    throw new ElizaError("Trajectory schema is unavailable", {
+      code: "TRAJECTORY_SCHEMA_UNAVAILABLE",
+    });
+  }
 
   const safeLimit = Math.max(1, Math.min(10000, Math.trunc(maxRows)));
-  try {
-    const result = await executeRawSql(
-      runtime,
-      `SELECT * FROM trajectories ORDER BY created_at DESC LIMIT ${safeLimit}`,
+  const result = await executeRawSql(
+    runtime,
+    `SELECT * FROM trajectories
+     WHERE agent_id = ${sqlQuote(runtime.agentId)}
+     ORDER BY created_at DESC LIMIT ${safeLimit}`,
+  );
+  return extractRequiredRows(result, {
+    operation: "load trajectory rows",
+    agentId: runtime.agentId,
+  }).map((row, index) => {
+    const record = asRecord(row);
+    if (!record) {
+      throw new ElizaError("Trajectory query row is invalid", {
+        code: "TRAJECTORY_ROW_INVALID",
+        context: { index },
+      });
+    }
+    parsePersistedTrajectoryRow(
+      record,
+      typeof record.id === "string" ? record.id : "unknown",
     );
-    const rows = extractRows(result);
-    return rows
-      .map((row) => asRecord(row))
-      .filter((row): row is Record<string, unknown> => Boolean(row));
-  } catch (error) {
-    logger.warn(
-      `[trajectory-query] Failed to load trajectory rows (agent=${runtime.agentId}): ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
-  }
+    return record;
+  });
 }

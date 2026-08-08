@@ -57,6 +57,7 @@ import {
   loadWakeWordEnabled,
   saveContinuousChatMode,
 } from "../../state/persistence";
+import { goHome } from "../../state/shell-surface-store";
 import { deriveAgentReady } from "../../state/types";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { TurnAggregator } from "../../voice/end-of-turn";
@@ -516,6 +517,10 @@ export function useShellController(): ShellController {
   const realtimeVoiceRef = React.useRef(realtimeVoice);
   realtimeVoiceRef.current = realtimeVoice;
   const realtimeVoiceWantedRef = React.useRef(false);
+  // True once the CURRENT wanted session has reached live; distinguishes a
+  // mid-session death (parked by the effect below startRealtimeVoice) from an
+  // initial start failure (owned by startRealtimeVoice's outcome handling).
+  const realtimeVoiceWasActiveRef = React.useRef(false);
   const startRealtimeVoiceRef = React.useRef<() => void>(() => {});
   const stopRealtimeVoiceRef = React.useRef<() => void>(() => {});
   const [realtimeVoiceBoundaryError, setRealtimeVoiceBoundaryError] =
@@ -609,8 +614,10 @@ export function useShellController(): ShellController {
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
-  // Return to the combined home/apps route.
+  // Commit the home half of the shared rail before the route changes so the
+  // destination cannot paint one frame of the launcher with the wrong surface.
   const navigateHome = React.useCallback(() => {
+    goHome();
     setTab("chat");
   }, [setTab]);
 
@@ -1762,6 +1769,7 @@ export function useShellController(): ShellController {
 
   const stopRealtimeVoice = React.useCallback(() => {
     realtimeVoiceWantedRef.current = false;
+    realtimeVoiceWasActiveRef.current = false;
     saveContinuousChatMode(priorContinuousModeRef.current);
     setHandsFree(false);
     handsFreeRef.current = false;
@@ -1784,6 +1792,7 @@ export function useShellController(): ShellController {
     if (prior !== "always-on") priorContinuousModeRef.current = prior;
     saveContinuousChatMode("always-on");
     realtimeVoiceWantedRef.current = true;
+    realtimeVoiceWasActiveRef.current = false;
     setRealtimeVoiceBoundaryError(null);
     setHandsFree(true);
     handsFreeRef.current = true;
@@ -1838,6 +1847,37 @@ export function useShellController(): ShellController {
     void startRealtimeVoice();
   };
   stopRealtimeVoiceRef.current = stopRealtimeVoice;
+
+  // A LIVE Talk session that dies past the client's reconnect budget (network
+  // outage longer than the recovery window, terminal server error) must park
+  // Talk visibly OFF: restore the persisted mode, clear hands-free, and
+  // surface the actionable error. Leaving `wanted` latched would make the
+  // advertised "tap the mic to try again" first toggle the dead session off
+  // and appear to do nothing. Gated on a previously-ACTIVE session so initial
+  // start failures keep their existing outcome-driven handling in
+  // startRealtimeVoice (which also owns the pre-live notice copy).
+  React.useEffect(() => {
+    if (realtimeVoice.active) realtimeVoiceWasActiveRef.current = true;
+  }, [realtimeVoice.active]);
+  React.useEffect(() => {
+    if (!realtimeVoiceEnabled) return;
+    if (!realtimeVoice.error) return;
+    if (realtimeVoice.active || realtimeVoice.connecting) return;
+    if (!realtimeVoiceWasActiveRef.current) return;
+    if (!realtimeVoiceWantedRef.current) return;
+    realtimeVoiceWasActiveRef.current = false;
+    realtimeVoiceWantedRef.current = false;
+    saveContinuousChatMode(priorContinuousModeRef.current);
+    setHandsFree(false);
+    handsFreeRef.current = false;
+    setActionNotice(realtimeVoice.error.message, "error", 6000);
+  }, [
+    realtimeVoiceEnabled,
+    realtimeVoice.error,
+    realtimeVoice.active,
+    realtimeVoice.connecting,
+    setActionNotice,
+  ]);
 
   // Persisted always-on remains one setting across providers, but Cartesia owns
   // its own restoration path. In particular, no batch recorder is opened while

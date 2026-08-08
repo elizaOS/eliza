@@ -1,6 +1,12 @@
 /** Verifies routed reply CTAs become well-formed Discord link-button components. */
 import { describe, expect, test } from "bun:test";
-import { buildReplyComponents } from "../src/reply-components";
+import {
+  buildManagedFailureReplyOptions,
+  buildManagedReplyOptions,
+  buildReplyComponents,
+  classifyManagedReplyReceipt,
+  MANAGED_REPLY_UNAVAILABLE_TEXT,
+} from "../src/reply-components";
 
 describe("buildReplyComponents", () => {
   test("a valid CTA becomes one action row with one style-5 link button", () => {
@@ -78,5 +84,53 @@ describe("buildReplyComponents", () => {
     expect(
       buildReplyComponents({ label: "Connect", url: atBound }),
     ).not.toBeNull();
+  });
+});
+
+describe("managed reply options", () => {
+  test("the failure notice takes a nonce distinct from the primary reply", () => {
+    const primary = buildManagedReplyOptions("123456789012345678", "hello", {
+      label: "Connect",
+      url: "https://example.com/connect",
+    });
+    const fallback = buildManagedFailureReplyOptions("123456789012345678");
+
+    expect(primary.nonce).toBe("123456789012345678");
+    expect(primary.enforceNonce).toBe(true);
+    expect(primary.allowedMentions).toEqual({ repliedUser: false });
+    expect(primary.components).toHaveLength(1);
+    expect(fallback).toEqual({
+      content: MANAGED_REPLY_UNAVAILABLE_TEXT,
+      nonce: "123456789012345678-f",
+      enforceNonce: true,
+      allowedMentions: { repliedUser: false },
+    });
+
+    // Regression: sharing the primary nonce makes the two messages
+    // interchangeable to Discord's deduplicator, so a posted failure notice
+    // suppresses the real reply on a gateway resume replay and strands the
+    // user on the failure text permanently.
+    expect(fallback.nonce).not.toBe(primary.nonce);
+    // Discord caps the nonce at 25 characters; a snowflake is 19.
+    expect(String(fallback.nonce).length).toBeLessThanOrEqual(25);
+  });
+
+  test("classifies a returned nonce message by semantic payload", () => {
+    const expected = buildManagedReplyOptions("123456789012345678", "hello");
+    expect(
+      classifyManagedReplyReceipt(
+        { content: "hello", nonce: "123456789012345678" },
+        expected,
+      ),
+    ).toBe("delivered");
+    expect(
+      classifyManagedReplyReceipt(
+        {
+          content: MANAGED_REPLY_UNAVAILABLE_TEXT,
+          nonce: "123456789012345678",
+        },
+        expected,
+      ),
+    ).toBe("deduplicated");
   });
 });

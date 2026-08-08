@@ -1,7 +1,7 @@
 /**
  * Proves the native-webview enforcement invariant of the surface-embedding
- * resolver (#14181/#15245/#13452): a separate-renderer native child web surface
- * — the only render paths that put a browser tab in its own renderer process
+ * resolver (#14181/#15245/#13452): a native child web surface — the only render
+ * paths that put a browser tab outside the host renderer
  * (`native-child-webview` on desktop, `native-mobile-webview` on a native mobile
  * shell) — is selected IFF the resolved manifest declares
  * `isolation: "native-webview"` on a host that can host one, and can never be
@@ -21,7 +21,7 @@ import {
 
 const ALL_MODES: readonly BrowserWorkspaceMode[] = ["desktop", "web", "cloud"];
 
-/** The two paths that hand a tab its own renderer process. */
+/** The two paths that hand a tab to a native renderer boundary. */
 const NATIVE_PATHS: readonly BrowserTabRenderPath[] = [
   "native-child-webview",
   "native-mobile-webview",

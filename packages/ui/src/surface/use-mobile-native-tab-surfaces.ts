@@ -11,26 +11,32 @@
  * Why a hook driving native layers instead of iframes: on the web the Browser
  * view falls back to a sandboxed iframe, but a mobile in-realm iframe still
  * shares the host WebView's renderer process and storage partition — the exact
- * cross-surface leak the isolation epic closes. The native surface runs the
- * page in its own process + data store (the explicit {@link NativeSurfacePolicy}
- * derived from the manifest, passed through verbatim), so nothing a page writes
- * is reachable from the host or a sibling tab.
+ * cross-surface leak the isolation epic closes. The native surface uses the
+ * platform's strongest renderer boundary plus an isolated data store (the
+ * explicit {@link NativeSurfacePolicy} derived from the manifest, passed
+ * through verbatim), so nothing a page writes is reachable from the host or a
+ * sibling tab.
  *
  * Two constraints shape the effects. (1) Native layers z-order ABOVE the host
- * WebView, so while any React overlay is open (`overlayOpen` — the tab switcher,
- * a confirm dialog) every surface is backgrounded, or it would paint over the
- * overlay; this is the mobile equivalent of the desktop `<electrobun-webview
- * masks=…>` mechanism. (2) The layer is positioned in host CSS pixels from the
- * placeholder rect, re-measured on every layout shift (resize, orientation,
- * visual-viewport scroll from the keyboard) so it never drifts off its slot.
+ * WebView, so React chrome is mirrored into rounded native occlusion regions;
+ * the page stays full-size and live while the host paints and handles input in
+ * those holes, matching Electrobun's masks mechanism. Whole-surface overlays
+ * (the tab switcher and confirmation dialogs) still background every surface.
+ * (2) The layer and its occlusions use host CSS pixels and are re-measured on
+ * layout, viewport, and chat-motion changes so neither can drift from React.
  */
 
 import type { SurfaceLifecyclePolicy } from "@elizaos/core";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
 import { CapacitorNativeSurfaceShell } from "./capacitor-native-surface-shell";
 import type {
   NativeSurfacePolicy,
   NativeSurfaceShell,
+  SurfaceBounds,
+  SurfaceCornerRadii,
+  SurfaceOcclusionRect,
+  SurfaceOuterClip,
 } from "./native-surface-shell";
 
 /** The minimal per-tab shape the hook needs: identity plus the page to load. */
@@ -55,6 +61,11 @@ export interface UseMobileNativeTabSurfacesArgs {
    * every native surface is backgrounded so it cannot paint over the overlay.
    */
   readonly overlayOpen: boolean;
+  /**
+   * Host elements that must paint and receive input above the native page. Their
+   * live rounded bounds become native occlusion holes.
+   */
+  readonly occlusionSelector?: string;
   /**
    * The explicit process/storage policy every surface is created with — derived
    * from the Browser manifest via `deriveSurfacePlacement`, never defaulted here.
@@ -82,6 +93,17 @@ export interface MobileNativeTabSurfaces {
   registerSurfaceElement(tabId: string, element: HTMLElement | null): void;
   /** Load a URL in a tab's native surface (address-bar navigation). */
   navigateSurface(tabId: string, url: string): void;
+  /** Reload the current page through the native reconciler. */
+  reloadSurface(tabId: string): void;
+  /** Transport failure replacing a blank or stale native layer, if any. */
+  readonly error: MobileNativeSurfaceError | null;
+  /** Replay the failed desired-state commands after the user chooses Retry. */
+  retry(): void;
+}
+
+export interface MobileNativeSurfaceError {
+  readonly key: string;
+  readonly message: string;
 }
 
 /**
@@ -93,43 +115,481 @@ function surfaceIdOf(tabId: string): string {
   return `browser-tab:${tabId}`;
 }
 
+// Native surface identity outlives a React view instance. One process-scoped
+// reconciler therefore owns every production remount; injected test shells stay
+// lane-local and deterministic.
+const PROCESS_NATIVE_SURFACE_SHELL = new CapacitorNativeSurfaceShell();
+const HOST_VISIBILITY_COMMAND = "browser-native-host:visibility";
+
+interface SurfaceLeaseHolder {
+  readonly order: number;
+  onPromoted(): void;
+}
+
+interface SurfaceLeaseState {
+  readonly holders: Map<symbol, SurfaceLeaseHolder>;
+  authority: symbol;
+}
+
+const SURFACE_LEASES = new WeakMap<
+  NativeSurfaceShell,
+  Map<string, SurfaceLeaseState>
+>();
+let surfaceLeaseOrder = 0;
+let processPresentationPaused = false;
+let processPresentationLatchInstalled = false;
+
+function acquireSurfaceLease(
+  shell: NativeSurfaceShell,
+  id: string,
+  holder: symbol,
+  onPromoted: () => void,
+): boolean {
+  let byId = SURFACE_LEASES.get(shell);
+  if (!byId) {
+    byId = new Map();
+    SURFACE_LEASES.set(shell, byId);
+  }
+  let state = byId.get(id);
+  if (!state) {
+    state = { holders: new Map(), authority: holder };
+    byId.set(id, state);
+  }
+  const existing = state.holders.get(holder);
+  if (existing) {
+    existing.onPromoted = onPromoted;
+  } else {
+    surfaceLeaseOrder += 1;
+    state.holders.set(holder, { order: surfaceLeaseOrder, onPromoted });
+    state.authority = holder;
+  }
+  return state.authority === holder;
+}
+
+function ownsSurfaceLease(
+  shell: NativeSurfaceShell,
+  id: string,
+  holder: symbol,
+): boolean {
+  return SURFACE_LEASES.get(shell)?.get(id)?.authority === holder;
+}
+
+function releaseSurfaceLease(
+  shell: NativeSurfaceShell,
+  id: string,
+  holder: symbol,
+): boolean {
+  const byId = SURFACE_LEASES.get(shell);
+  const state = byId?.get(id);
+  if (!state) return true;
+  const wasAuthority = state.authority === holder;
+  state.holders.delete(holder);
+  if (state.holders.size > 0) {
+    if (wasAuthority) {
+      const promoted = [...state.holders.entries()].reduce((latest, entry) =>
+        entry[1].order > latest[1].order ? entry : latest,
+      );
+      state.authority = promoted[0];
+      promoted[1].onPromoted();
+    }
+    return false;
+  }
+  byId?.delete(id);
+  if (byId?.size === 0) SURFACE_LEASES.delete(shell);
+  return true;
+}
+
+function hasSurfaceLeases(shell: NativeSurfaceShell): boolean {
+  return (SURFACE_LEASES.get(shell)?.size ?? 0) > 0;
+}
+
+// A Browser view may unmount while the native app changes activity state. This
+// module-lifetime latch keeps later remounts hidden until the real resume edge;
+// hook-local listeners only reconcile native presentation for a mounted view.
+function ensureProcessPresentationLatch(): void {
+  if (processPresentationLatchInstalled || typeof document === "undefined") {
+    return;
+  }
+  processPresentationLatchInstalled = true;
+  processPresentationPaused = document.visibilityState === "hidden";
+  document.addEventListener(APP_PAUSE_EVENT, () => {
+    processPresentationPaused = true;
+  });
+  document.addEventListener(APP_RESUME_EVENT, () => {
+    processPresentationPaused = false;
+  });
+}
+
+ensureProcessPresentationLatch();
+
+function presentationIsPaused(): boolean {
+  return (
+    processPresentationPaused ||
+    (typeof document !== "undefined" && document.visibilityState === "hidden")
+  );
+}
+
+function roundedCssPixel(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function parseCornerRadius(value: string): number | null {
+  const radius = Number.parseFloat(value);
+  return Number.isFinite(radius) && radius >= 0
+    ? roundedCssPixel(radius)
+    : null;
+}
+
+const ZERO_CORNER_RADII: SurfaceCornerRadii = {
+  topLeft: 0,
+  topRight: 0,
+  bottomRight: 0,
+  bottomLeft: 0,
+};
+
+function rectHasArea(rect: DOMRect): boolean {
+  return (
+    Number.isFinite(rect.left) &&
+    Number.isFinite(rect.top) &&
+    Number.isFinite(rect.width) &&
+    Number.isFinite(rect.height) &&
+    rect.width > 0 &&
+    rect.height > 0
+  );
+}
+
+function roundedRect(rect: DOMRect): Omit<SurfaceBounds, "outerClip"> {
+  return {
+    x: roundedCssPixel(rect.left),
+    y: roundedCssPixel(rect.top),
+    width: roundedCssPixel(rect.width),
+    height: roundedCssPixel(rect.height),
+  };
+}
+
+function readCornerRadii(style: CSSStyleDeclaration): SurfaceCornerRadii {
+  const shorthand = parseCornerRadius(style.borderRadius) ?? 0;
+  return {
+    topLeft: parseCornerRadius(style.borderTopLeftRadius) ?? shorthand,
+    topRight: parseCornerRadius(style.borderTopRightRadius) ?? shorthand,
+    bottomRight: parseCornerRadius(style.borderBottomRightRadius) ?? shorthand,
+    bottomLeft: parseCornerRadius(style.borderBottomLeftRadius) ?? shorthand,
+  };
+}
+
+function hasRoundedCorner(radii: SurfaceCornerRadii): boolean {
+  return Object.values(radii).some((radius) => radius > 0);
+}
+
+function clipsDescendants(style: CSSStyleDeclaration): boolean {
+  return [style.overflow, style.overflowX, style.overflowY].some(
+    (value) => value === "hidden" || value === "clip",
+  );
+}
+
+function findRoundedClipHost(element: HTMLElement): HTMLElement | null {
+  const view = element.ownerDocument.defaultView;
+  if (!view) return null;
+  for (
+    let candidate: HTMLElement | null = element;
+    candidate;
+    candidate = candidate.parentElement
+  ) {
+    const style = view.getComputedStyle(candidate);
+    if (clipsDescendants(style) && hasRoundedCorner(readCornerRadii(style))) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolves the real rounded React clip enclosing a native page. The search is
+ * structural: it follows the DOM to the nearest rounded overflow clip and reads
+ * computed pixels, so the native contract never duplicates a Tailwind token or
+ * assumes the host and page placeholder share an element.
+ */
+export function collectSurfaceOuterClip(
+  element: HTMLElement,
+): SurfaceOuterClip {
+  const surfaceRect = element.getBoundingClientRect();
+  const host = findRoundedClipHost(element);
+  if (!host) {
+    return { ...roundedRect(surfaceRect), cornerRadii: ZERO_CORNER_RADII };
+  }
+  const hostRect = host.getBoundingClientRect();
+  if (!rectHasArea(hostRect)) {
+    return { ...roundedRect(surfaceRect), cornerRadii: ZERO_CORNER_RADII };
+  }
+  const style = element.ownerDocument.defaultView?.getComputedStyle(host);
+  return {
+    ...roundedRect(hostRect),
+    cornerRadii: style ? readCornerRadii(style) : ZERO_CORNER_RADII,
+  };
+}
+
+/**
+ * Reads the visible rounded geometry for native-layer occlusion. Kept pure over
+ * the supplied document so the exact DOM→native contract is regression-tested.
+ */
+export function collectSurfaceOcclusionRects(
+  selector: string | undefined,
+  ownerDocument: Document,
+): SurfaceOcclusionRect[] {
+  if (!selector) return [];
+  const rects: SurfaceOcclusionRect[] = [];
+  const seen = new Set<Element>();
+  for (const element of ownerDocument.querySelectorAll<HTMLElement>(selector)) {
+    if (seen.has(element)) continue;
+    seen.add(element);
+    const style = ownerDocument.defaultView?.getComputedStyle(element);
+    if (
+      style?.display === "none" ||
+      style?.visibility === "hidden" ||
+      style?.visibility === "collapse"
+    ) {
+      continue;
+    }
+    const rect = element.getBoundingClientRect();
+    if (!rectHasArea(rect)) {
+      continue;
+    }
+    rects.push({
+      x: roundedCssPixel(rect.left),
+      y: roundedCssPixel(rect.top),
+      width: roundedCssPixel(rect.width),
+      height: roundedCssPixel(rect.height),
+      cornerRadius:
+        parseCornerRadius(
+          element.style.borderTopLeftRadius ||
+            element.style.borderRadius ||
+            style?.borderTopLeftRadius ||
+            style?.borderRadius ||
+            "0",
+        ) ?? 0,
+    });
+  }
+  // A native mask represents the union of these regions. Nested portal/status
+  // chrome is already covered by its outer sheet; dropping contained geometry
+  // prevents even-odd native masks from toggling those pixels back on.
+  return rects
+    .sort((a, b) => b.width * b.height - a.width * a.height)
+    .reduce<SurfaceOcclusionRect[]>((outer, rect) => {
+      const contained = outer.some(
+        (candidate) =>
+          rect.x >= candidate.x &&
+          rect.y >= candidate.y &&
+          rect.x + rect.width <= candidate.x + candidate.width &&
+          rect.y + rect.height <= candidate.y + candidate.height,
+      );
+      if (!contained) outer.push(rect);
+      return outer;
+    }, []);
+}
+
 export function useMobileNativeTabSurfaces(
   args: UseMobileNativeTabSurfacesArgs,
 ): MobileNativeTabSurfaces {
-  const { active, tabs, selectedTabId, overlayOpen, policy, lifecycle, shell } =
-    args;
+  const {
+    active,
+    tabs,
+    selectedTabId,
+    overlayOpen,
+    occlusionSelector,
+    policy,
+    lifecycle,
+    shell,
+  } = args;
 
-  // One shell per hosting Browser view. A caller-supplied shell (tests) wins;
-  // otherwise the Capacitor driver, constructed once.
-  const defaultShell = useMemo(() => new CapacitorNativeSurfaceShell(), []);
-  const activeShell = shell ?? defaultShell;
+  const activeShell = shell ?? PROCESS_NATIVE_SURFACE_SHELL;
 
   const elements = useRef(new Map<string, HTMLElement>());
-  // The tab ids that currently own a live native surface. Tracked here, not read
-  // off `elements`, because a closed tab's placeholder `<div>` unregisters
-  // (child cleanup runs before this hook's own) before the surface is torn down.
-  const liveTabIds = useRef(new Set<string>());
-  // Last URL loaded into each surface, so a change to a tab's `url` (address-bar
-  // navigation upstream) drives a `navigate` instead of a spurious re-create.
-  const surfaceUrls = useRef(new Map<string, string>());
+  const leaseHolder = useRef(Symbol("browser-native-surface-hook"));
+  // The tab ids this hook has handed to the shell. Native acceptance is tracked
+  // by the shell itself; this desired-set may include a create still in flight so
+  // initial bounds/holes can queue behind that acknowledged create.
+  const managedTabIds = useRef(new Set<string>());
+  const observedCommands = useRef(new Map<string, ObservedSurfaceCommand>());
+  const previousActive = useRef(active);
+  const presentedLeaseRevision = useRef(0);
+  const reloadRevision = useRef(0);
+  const [, setCommandRevision] = useState(0);
+  const failedCommands = [...observedCommands.current.entries()].filter(
+    ([, command]) =>
+      command.status === "failed" || command.status === "recovering",
+  );
+  const firstFailedCommand = failedCommands[0];
+  const surfaceError: MobileNativeSurfaceError | null = firstFailedCommand
+    ? {
+        key: firstFailedCommand[0],
+        message:
+          firstFailedCommand[1].error ??
+          "The native Browser surface is unavailable.",
+      }
+    : null;
+  const hasFailedCommands = failedCommands.length > 0;
+  const [leaseRevision, setLeaseRevision] = useState(0);
   // Latest lifecycle for the unmount cleanup, which runs with an empty dep list
   // and would otherwise close over a stale value.
   const lifecycleRef = useRef(lifecycle);
   lifecycleRef.current = lifecycle;
 
+  useEffect(() => {
+    ensureProcessPresentationLatch();
+  }, []);
+
+  const notifyCommandStateChanged = useCallback((): void => {
+    setCommandRevision((current) => current + 1);
+  }, []);
+
+  const requestLeaseReconcile = useCallback((id: string): void => {
+    // A newer hook may have replaced every acknowledged property while this
+    // holder was demoted. Promotion therefore invalidates local success state;
+    // desired geometry, holes, and presentation must all cross the bridge again.
+    const prefix = `${id}:`;
+    for (const key of observedCommands.current.keys()) {
+      if (key === HOST_VISIBILITY_COMMAND || key.startsWith(prefix)) {
+        observedCommands.current.delete(key);
+      }
+    }
+    setLeaseRevision((current) => current + 1);
+  }, []);
+
+  const ownsAnyManagedSurface = useCallback(
+    (): boolean =>
+      [...managedTabIds.current].some((tabId) =>
+        ownsSurfaceLease(activeShell, surfaceIdOf(tabId), leaseHolder.current),
+      ),
+    [activeShell],
+  );
+
+  const issueCommand = useCallback(
+    (
+      key: string,
+      signature: string,
+      invoke: () => Promise<void>,
+      isAuthorized: () => boolean = () => true,
+    ): void => {
+      const existing = observedCommands.current.get(key);
+      if (existing?.signature === signature) return;
+      const replacesFailure =
+        existing?.status === "failed" || existing?.status === "recovering";
+      const command: ObservedSurfaceCommand = {
+        signature,
+        status: replacesFailure ? "recovering" : "pending",
+        invoke,
+        isAuthorized,
+        error: replacesFailure ? existing.error : null,
+        retry: () => run(true),
+      };
+      observedCommands.current.set(key, command);
+      const run = (recovery: boolean): void => {
+        if (observedCommands.current.get(key) !== command) return;
+        // Overlapping React owners share one native session, so the native
+        // epoch cannot distinguish a demoted hook's replay from current intent.
+        // Recheck the module lease at every attempt, including Retry/resume.
+        if (!command.isAuthorized()) {
+          observedCommands.current.delete(key);
+          if (command.status === "failed" || command.status === "recovering") {
+            notifyCommandStateChanged();
+          }
+          return;
+        }
+        command.status = recovery ? "recovering" : "pending";
+        if (recovery) notifyCommandStateChanged();
+        let acknowledgement: Promise<void>;
+        try {
+          acknowledgement = invoke();
+        } catch (error) {
+          // error-policy:J1 the React/native command boundary translates a
+          // synchronous bridge failure into the same visible state as rejection.
+          acknowledgement = Promise.reject(error);
+        }
+        acknowledgement.then(
+          () => {
+            if (observedCommands.current.get(key) === command) {
+              const recovered = command.status === "recovering";
+              command.status = "succeeded";
+              command.error = null;
+              if (recovered) notifyCommandStateChanged();
+            }
+          },
+          (error: unknown) => {
+            if (observedCommands.current.get(key) !== command) return;
+            command.status = "failed";
+            command.error =
+              error instanceof Error
+                ? error.message
+                : "The native Browser surface is unavailable.";
+            notifyCommandStateChanged();
+          },
+        );
+      };
+      run(replacesFailure);
+    },
+    [notifyCommandStateChanged],
+  );
+
+  const cancelSurfaceCommands = useCallback(
+    (id: string, clearRenderedError = true): void => {
+      const prefix = `${id}:`;
+      let removedFailure = false;
+      for (const key of observedCommands.current.keys()) {
+        if (!key.startsWith(prefix)) continue;
+        const command = observedCommands.current.get(key);
+        removedFailure ||=
+          command?.status === "failed" || command?.status === "recovering";
+        observedCommands.current.delete(key);
+      }
+      if (clearRenderedError && removedFailure) notifyCommandStateChanged();
+    },
+    [notifyCommandStateChanged],
+  );
+
+  const cancelCommand = useCallback(
+    (key: string): void => {
+      const command = observedCommands.current.get(key);
+      if (!command) return;
+      observedCommands.current.delete(key);
+      if (command.status === "failed" || command.status === "recovering") {
+        notifyCommandStateChanged();
+      }
+    },
+    [notifyCommandStateChanged],
+  );
+
+  const retry = useCallback((): void => {
+    const failed = [...observedCommands.current.values()].filter(
+      (command) => command.status === "failed",
+    );
+    for (const command of failed) command.retry();
+  }, []);
+
   const measure = useCallback(
     (tabId: string): void => {
       const element = elements.current.get(tabId);
-      if (!element) return;
+      const id = surfaceIdOf(tabId);
+      if (
+        !element ||
+        !managedTabIds.current.has(tabId) ||
+        !ownsSurfaceLease(activeShell, id, leaseHolder.current)
+      ) {
+        return;
+      }
       const rect = element.getBoundingClientRect();
-      activeShell.setBounds(surfaceIdOf(tabId), {
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
-      });
+      if (!rectHasArea(rect)) return;
+      const bounds: SurfaceBounds = {
+        ...roundedRect(rect),
+        outerClip: collectSurfaceOuterClip(element),
+      };
+      issueCommand(
+        `${id}:bounds`,
+        JSON.stringify(bounds),
+        () => activeShell.setBounds(id, bounds),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
+      );
     },
-    [activeShell],
+    [activeShell, issueCommand],
   );
 
   const registerSurfaceElement = useCallback(
@@ -147,92 +607,473 @@ export function useMobileNativeTabSurfaces(
   const navigateSurface = useCallback(
     (tabId: string, url: string): void => {
       if (!active) return;
-      activeShell.navigate(surfaceIdOf(tabId), url);
+      const id = surfaceIdOf(tabId);
+      if (!ownsSurfaceLease(activeShell, id, leaseHolder.current)) return;
+      issueCommand(
+        `${id}:navigate`,
+        url,
+        () => activeShell.navigate(id, url),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
+      );
     },
-    [active, activeShell],
+    [active, activeShell, issueCommand],
+  );
+
+  const reloadSurface = useCallback(
+    (tabId: string): void => {
+      if (!active) return;
+      const id = surfaceIdOf(tabId);
+      if (!ownsSurfaceLease(activeShell, id, leaseHolder.current)) return;
+      reloadRevision.current += 1;
+      issueCommand(
+        `${id}:reload`,
+        `${reloadRevision.current}`,
+        () => activeShell.reload(id),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
+      );
+    },
+    [active, activeShell, issueCommand],
+  );
+
+  const readOcclusions = useCallback(
+    (): SurfaceOcclusionRect[] =>
+      typeof document === "undefined"
+        ? []
+        : collectSurfaceOcclusionRects(occlusionSelector, document),
+    [occlusionSelector],
+  );
+
+  const syncOcclusions = useCallback((): void => {
+    const rects = readOcclusions();
+    for (const tabId of managedTabIds.current) {
+      const id = surfaceIdOf(tabId);
+      if (!ownsSurfaceLease(activeShell, id, leaseHolder.current)) continue;
+      issueCommand(
+        `${id}:occlusions`,
+        JSON.stringify(rects),
+        () => activeShell.setOcclusionRects(id, rects),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
+      );
+    }
+  }, [activeShell, issueCommand, readOcclusions]);
+
+  const syncVisibility = useCallback(
+    (force: boolean): void => {
+      if (!active) return;
+      const selected = tabs.find((tab) => tab.id === selectedTabId);
+      const selectedSurfaceId = selected ? surfaceIdOf(selected.id) : null;
+      const ownsSelected =
+        selectedSurfaceId !== null &&
+        ownsSurfaceLease(activeShell, selectedSurfaceId, leaseHolder.current);
+      const ownsAny = ownsAnyManagedSurface();
+      if ((selected && !ownsSelected) || (!selected && !ownsAny)) return;
+      const presentedId =
+        !hasFailedCommands &&
+        !presentationIsPaused() &&
+        !overlayOpen &&
+        ownsSelected
+          ? selectedSurfaceId
+          : null;
+      if (force) cancelCommand(HOST_VISIBILITY_COMMAND);
+      issueCommand(
+        HOST_VISIBILITY_COMMAND,
+        presentedId ?? "host",
+        () => activeShell.presentSurface(presentedId),
+        () =>
+          presentedId !== null
+            ? ownsSurfaceLease(activeShell, presentedId, leaseHolder.current)
+            : ownsAnyManagedSurface(),
+      );
+      if (presentedId && selected) measure(selected.id);
+    },
+    [
+      active,
+      tabs,
+      overlayOpen,
+      selectedTabId,
+      hasFailedCommands,
+      activeShell,
+      cancelCommand,
+      issueCommand,
+      measure,
+      ownsAnyManagedSurface,
+    ],
   );
 
   // Reconcile the live surface set with `tabs`: create surfaces for new tabs
-  // (explicit policy, never a default), navigate on an existing tab's URL change,
-  // destroy surfaces for closed tabs.
+  // (explicit policy, never a default) and destroy surfaces for closed tabs.
+  // Create is the declarative URL owner too: the shell reconciles a changed URL
+  // with `navigate`, while a close/reopen generation crosses native absence.
   useEffect(() => {
     if (!active) return;
     const wanted = new Set(tabs.map((tab) => tab.id));
     for (const tab of tabs) {
       const id = surfaceIdOf(tab.id);
-      if (!liveTabIds.current.has(tab.id)) {
-        activeShell.createSurface({ id, url: tab.url, policy });
-        liveTabIds.current.add(tab.id);
-        surfaceUrls.current.set(tab.id, tab.url);
-        measure(tab.id);
-      } else if (surfaceUrls.current.get(tab.id) !== tab.url) {
-        activeShell.navigate(id, tab.url);
-        surfaceUrls.current.set(tab.id, tab.url);
+      if (!managedTabIds.current.has(tab.id)) {
+        managedTabIds.current.add(tab.id);
       }
+      const ownsIntent = acquireSurfaceLease(
+        activeShell,
+        id,
+        leaseHolder.current,
+        () => requestLeaseReconcile(id),
+      );
+      if (!ownsIntent) continue;
+      const request = { id, url: tab.url, policy } as const;
+      // Regaining authority after an overlapping renderer unmounts must replay
+      // this hook's intent even when its last local acknowledgement succeeded.
+      issueCommand(
+        `${id}:lifecycle`,
+        `create:${leaseRevision}:${JSON.stringify(request)}`,
+        () => activeShell.createSurface(request),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
+      );
+      measure(tab.id);
+      const rects = readOcclusions();
+      issueCommand(
+        `${id}:occlusions`,
+        JSON.stringify(rects),
+        () => activeShell.setOcclusionRects(id, rects),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
+      );
     }
-    for (const tabId of [...liveTabIds.current]) {
+    for (const tabId of [...managedTabIds.current]) {
       if (!wanted.has(tabId)) {
-        activeShell.destroySurface(surfaceIdOf(tabId));
-        liveTabIds.current.delete(tabId);
-        surfaceUrls.current.delete(tabId);
+        const id = surfaceIdOf(tabId);
+        cancelSurfaceCommands(id);
+        if (releaseSurfaceLease(activeShell, id, leaseHolder.current)) {
+          issueCommand(
+            `${id}:lifecycle`,
+            "destroy",
+            () => activeShell.destroySurface(id),
+            () => !SURFACE_LEASES.get(activeShell)?.has(id),
+          );
+        }
+        managedTabIds.current.delete(tabId);
         elements.current.delete(tabId);
       }
     }
-  }, [active, tabs, policy, activeShell, measure]);
+  }, [
+    active,
+    tabs,
+    policy,
+    activeShell,
+    cancelSurfaceCommands,
+    issueCommand,
+    leaseRevision,
+    measure,
+    readOcclusions,
+    requestLeaseReconcile,
+  ]);
 
-  // Foreground the selected surface and background the rest — unless an overlay
-  // is open, in which case every surface is backgrounded (see header).
+  // Keep React-chrome holes aligned. ResizeObserver catches layout changes;
+  // MutationObserver catches portals and Motion style writes. During a chat
+  // spring/drag, its canonical transient-layout marker keeps one rAF loop alive
+  // so transform-only frames cannot slip between discrete DOM mutations.
   useEffect(() => {
-    if (!active) return;
-    for (const tab of tabs) {
-      const id = surfaceIdOf(tab.id);
-      if (!overlayOpen && tab.id === selectedTabId) {
-        activeShell.foregroundSurface(id);
-        measure(tab.id);
-      } else {
-        activeShell.backgroundSurface(id);
-      }
+    if (
+      !active ||
+      !occlusionSelector ||
+      typeof document === "undefined" ||
+      typeof window === "undefined"
+    ) {
+      return;
     }
-  }, [active, tabs, selectedTabId, overlayOpen, activeShell, measure]);
+    let frame: number | null = null;
+    let observed = new Set<Element>();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => schedule());
 
-  // Track the placeholder rects across every layout shift so the native layer
-  // never drifts off its slot: window resize, device rotation, and the
-  // visual-viewport changes the on-screen keyboard drives.
-  useEffect(() => {
-    if (!active || typeof window === "undefined") return;
-    const measureAll = () => {
-      for (const [tabId] of elements.current) measure(tabId);
+    const refreshObservedElements = (): void => {
+      if (!resizeObserver) return;
+      const next = new Set(document.querySelectorAll(occlusionSelector));
+      for (const element of observed) {
+        if (!next.has(element)) resizeObserver.unobserve(element);
+      }
+      for (const element of next) {
+        if (!observed.has(element)) resizeObserver.observe(element);
+      }
+      observed = next;
     };
-    window.addEventListener("resize", measureAll);
-    window.addEventListener("orientationchange", measureAll);
+    const run = (): void => {
+      frame = null;
+      syncOcclusions();
+      if (
+        document.querySelector('[data-eliza-layout-shift-intent="transient"]')
+      ) {
+        schedule();
+      }
+    };
+    const schedule = (): void => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(run);
+    };
+
+    refreshObservedElements();
+    syncOcclusions();
+    const mutationObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(() => {
+            refreshObservedElements();
+            schedule();
+          });
+    mutationObserver?.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: [
+        "class",
+        "style",
+        "hidden",
+        "data-chat-state",
+        "data-eliza-layout-shift-intent",
+      ],
+    });
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
+    window.addEventListener("scroll", schedule, true);
     const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", measureAll);
-    viewport?.addEventListener("scroll", measureAll);
+    viewport?.addEventListener("resize", schedule);
+    viewport?.addEventListener("scroll", schedule);
     return () => {
-      window.removeEventListener("resize", measureAll);
-      window.removeEventListener("orientationchange", measureAll);
-      viewport?.removeEventListener("resize", measureAll);
-      viewport?.removeEventListener("scroll", measureAll);
+      mutationObserver?.disconnect();
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      window.removeEventListener("scroll", schedule, true);
+      viewport?.removeEventListener("resize", schedule);
+      viewport?.removeEventListener("scroll", schedule);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [active, occlusionSelector, syncOcclusions]);
+
+  // Page placement and the rounded host clip have a separate observer from the
+  // chat-hole animation loop. The shell sequences these writes behind creation
+  // and deduplicates only after native acceptance; keeping measurement free of
+  // pre-ack caches means a rejected write remains retryable.
+  useEffect(() => {
+    if (
+      !active ||
+      typeof document === "undefined" ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+    let frame: number | null = null;
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => schedule());
+    const attributeObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(() => {
+            refreshObservedGeometry();
+            schedule();
+          });
+
+    const measureAll = (): void => {
+      frame = null;
+      for (const tabId of elements.current.keys()) measure(tabId);
+    };
+    const schedule = (): void => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(measureAll);
+    };
+    const refreshObservedGeometry = (): void => {
+      resizeObserver?.disconnect();
+      attributeObserver?.disconnect();
+      const resizeTargets = new Set<HTMLElement>();
+      const attributeTargets = new Set<HTMLElement>();
+      for (const element of elements.current.values()) {
+        resizeTargets.add(element);
+        const clipHost = findRoundedClipHost(element);
+        if (clipHost) resizeTargets.add(clipHost);
+        for (
+          let ancestor: HTMLElement | null = element;
+          ancestor;
+          ancestor = ancestor.parentElement
+        ) {
+          attributeTargets.add(ancestor);
+        }
+      }
+      for (const target of resizeTargets) resizeObserver?.observe(target);
+      for (const target of attributeTargets) {
+        attributeObserver?.observe(target, {
+          attributes: true,
+          attributeFilter: ["class", "style", "hidden"],
+        });
+      }
+    };
+    const treeObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(() => {
+            refreshObservedGeometry();
+            schedule();
+          });
+
+    refreshObservedGeometry();
+    schedule();
+    treeObserver?.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+    });
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
+    window.addEventListener("scroll", schedule, true);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", schedule);
+    viewport?.addEventListener("scroll", schedule);
+    return () => {
+      treeObserver?.disconnect();
+      attributeObserver?.disconnect();
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      window.removeEventListener("scroll", schedule, true);
+      viewport?.removeEventListener("resize", schedule);
+      viewport?.removeEventListener("scroll", schedule);
+      if (frame !== null) window.cancelAnimationFrame(frame);
     };
   }, [active, measure]);
+
+  // One global transaction selects the active native page, while an overlay,
+  // pause, or terminal surface error returns paint/input ownership to the host.
+  useEffect(() => {
+    const authorityChanged = presentedLeaseRevision.current !== leaseRevision;
+    presentedLeaseRevision.current = leaseRevision;
+    syncVisibility(authorityChanged);
+  }, [leaseRevision, syncVisibility]);
+
+  // App pause gives paint/input ownership back to the host immediately. Resume
+  // invalidates the hook's successful acknowledgements and replays failed
+  // desired state plus the selected/background set through the same
+  // process-scoped reconciler. Resume is a bounded external recovery edge, not
+  // a timer: an unavailable surface remains visibly failed until this edge or
+  // an explicit Retry.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const pause = (): void => {
+      processPresentationPaused = true;
+      const ownsAny = ownsAnyManagedSurface();
+      if (!ownsAny) return;
+      cancelCommand(HOST_VISIBILITY_COMMAND);
+      issueCommand(
+        HOST_VISIBILITY_COMMAND,
+        "paused",
+        () => activeShell.presentSurface(null),
+        ownsAnyManagedSurface,
+      );
+    };
+    const resume = (): void => {
+      processPresentationPaused = false;
+      if (managedTabIds.current.size === 0) return;
+      retry();
+      cancelCommand(HOST_VISIBILITY_COMMAND);
+      syncVisibility(true);
+    };
+    document.addEventListener(APP_PAUSE_EVENT, pause);
+    document.addEventListener(APP_RESUME_EVENT, resume);
+    return () => {
+      document.removeEventListener(APP_PAUSE_EVENT, pause);
+      document.removeEventListener(APP_RESUME_EVENT, resume);
+    };
+  }, [
+    activeShell,
+    cancelCommand,
+    issueCommand,
+    ownsAnyManagedSurface,
+    retry,
+    syncVisibility,
+  ]);
+
+  // A render-path handoff can leave this hook mounted while host content takes
+  // over. Hide every child surface in that state; reactivation replays the
+  // declarative selected/background set without recreating WebViews.
+  useEffect(() => {
+    const wasActive = previousActive.current;
+    previousActive.current = active;
+    if (wasActive === active) return;
+    cancelCommand(HOST_VISIBILITY_COMMAND);
+    if (active) {
+      syncVisibility(true);
+      return;
+    }
+    const ownsAny = ownsAnyManagedSurface();
+    if (ownsAny) {
+      issueCommand(
+        HOST_VISIBILITY_COMMAND,
+        "host-render-path",
+        () => activeShell.presentSurface(null),
+        ownsAnyManagedSurface,
+      );
+    }
+  }, [
+    active,
+    activeShell,
+    cancelCommand,
+    issueCommand,
+    ownsAnyManagedSurface,
+    syncVisibility,
+  ]);
 
   // On unmount, apply the manifest lifecycle: `retained` keeps surfaces warm in
   // the background; `ephemeral` (the Browser default) tears them down.
   useEffect(() => {
-    const live = liveTabIds.current;
+    const managed = managedTabIds.current;
     return () => {
-      for (const tabId of live) {
+      const hadManagedSurfaces = managed.size > 0;
+      cancelCommand(HOST_VISIBILITY_COMMAND);
+      for (const tabId of managed) {
         const id = surfaceIdOf(tabId);
-        if (lifecycleRef.current === "retained") {
-          activeShell.backgroundSurface(id);
-        } else {
-          activeShell.destroySurface(id);
-        }
+        cancelSurfaceCommands(id, false);
+        const finalHolder = releaseSurfaceLease(
+          activeShell,
+          id,
+          leaseHolder.current,
+        );
+        const acknowledgement =
+          lifecycleRef.current === "retained" || !finalHolder
+            ? Promise.resolve()
+            : activeShell.destroySurface(id);
+        // error-policy:J5 the process-scoped shell observes and reports terminal
+        // teardown failure; this retired hook cannot render or retry it safely.
+        acknowledgement.then(
+          () => undefined,
+          () => undefined,
+        );
       }
-      live.clear();
+      managed.clear();
+      if (hadManagedSurfaces && !hasSurfaceLeases(activeShell)) {
+        // error-policy:J5 the process-scoped shell reports teardown failure;
+        // this retired hook must not retry over a newer mount's generation.
+        activeShell.presentSurface(null).then(
+          () => undefined,
+          () => undefined,
+        );
+      }
     };
     // Cleanup must run only on unmount; it reads the shell + lifecycle via refs.
-  }, [activeShell]);
+  }, [activeShell, cancelCommand, cancelSurfaceCommands]);
 
-  return { registerSurfaceElement, navigateSurface };
+  return {
+    registerSurfaceElement,
+    navigateSurface,
+    reloadSurface,
+    error: surfaceError,
+    retry,
+  };
+}
+
+interface ObservedSurfaceCommand {
+  readonly signature: string;
+  readonly invoke: () => Promise<void>;
+  readonly isAuthorized: () => boolean;
+  status: "pending" | "recovering" | "succeeded" | "failed";
+  error: string | null;
+  retry(): void;
 }

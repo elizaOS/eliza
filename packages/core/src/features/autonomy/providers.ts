@@ -12,6 +12,7 @@ import type {
 	State,
 } from "../../types";
 import { stringToUuid } from "../../utils";
+import { truncateWellFormed } from "../../utils/well-formed";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
 
 const MAX_ADMIN_HISTORY_MESSAGES = 10;
@@ -109,7 +110,7 @@ export const adminChatProvider: Provider = {
 					const rawText = msg.content.text || "[No text content]";
 					const text =
 						rawText.length > MAX_ADMIN_MESSAGE_LENGTH
-							? `${rawText.slice(0, MAX_ADMIN_MESSAGE_LENGTH)}...`
+							? `${truncateWellFormed(rawText, MAX_ADMIN_MESSAGE_LENGTH)}...`
 							: rawText;
 					const timestamp = new Date(msg.createdAt || 0).toLocaleTimeString();
 
@@ -130,7 +131,7 @@ export const adminChatProvider: Provider = {
 			const lastAdminMessageText = lastAdminMessage?.content.text || "";
 			const adminMoodContext =
 				recentAdminMessages.length > 0
-					? `Last admin message: "${lastAdminMessageText.slice(0, MAX_ADMIN_MESSAGE_LENGTH) || "N/A"}"`
+					? `Last admin message: "${truncateWellFormed(lastAdminMessageText, MAX_ADMIN_MESSAGE_LENGTH) || "N/A"}"`
 					: "No recent admin messages";
 			const now = Date.now();
 

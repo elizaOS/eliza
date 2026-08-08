@@ -11,13 +11,13 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { ModelType, resolveStateDir } from "@elizaos/core";
 import {
-	ModelType,
-	resolveServerOnlyPort,
-	resolveStateDir,
-} from "@elizaos/core";
-import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
+	createSelfApiRequestHeaders,
+	resolveDesktopApiPort,
+} from "@elizaos/shared";
 import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
+import { getAppControlApiBase } from "../loopback-api.js";
 
 export type Diagnostic = {
 	file: string;
@@ -72,11 +72,10 @@ export async function loadAppFromWorkdir(
 ): Promise<
 	{ ok: true; items: RegisteredAppItem[] } | { ok: false; error: string }
 > {
-	const port = resolveServerOnlyPort(process.env);
 	const directory = path.dirname(workdir);
 	try {
 		const resp = await fetch(
-			`http://127.0.0.1:${port}/api/apps/load-from-directory`,
+			`${getAppControlApiBase()}/api/apps/load-from-directory`,
 			{
 				method: "POST",
 				headers: createViewsRequestHeaders(),
@@ -284,12 +283,6 @@ function resolveLoopbackApiBase(): string {
 	return `http://127.0.0.1:${resolveDesktopApiPort()}`;
 }
 
-function resolveDevApiToken(): string | undefined {
-	return (
-		resolveApiToken() ?? (process.env.ELIZA_API_AUTH_TOKEN?.trim() || undefined)
-	);
-}
-
 /**
  * Capture a desktop screenshot via the dev `/api/dev/cursor-screenshot`
  * endpoint. Returns `null` when the endpoint is missing or unreachable —
@@ -299,12 +292,13 @@ function resolveDevApiToken(): string | undefined {
 export async function captureScreenshotViaDevApi(
 	token?: string,
 ): Promise<Buffer | null> {
-	const bearer = token ?? resolveDevApiToken();
 	const url = `${resolveLoopbackApiBase()}/api/dev/cursor-screenshot`;
 	let response: Response;
 	try {
 		response = await fetch(url, {
-			headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
+			headers: createSelfApiRequestHeaders(
+				token ? { ELIZA_API_TOKEN: token } : process.env,
+			),
 			signal: AbortSignal.timeout(10_000),
 		});
 	} catch {

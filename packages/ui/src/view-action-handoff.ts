@@ -31,6 +31,7 @@ interface CurrentViewResponse {
 
 export interface ViewActionHandoff {
   viewId: string;
+  viewPath?: string;
   subview?: string;
 }
 
@@ -53,8 +54,13 @@ export function findViewActionHandoff(
     const mode = readString(result.values?.mode)?.toLowerCase();
     const viewId = readString(result.values?.viewId);
     if ((mode === "show" || mode === "open") && viewId) {
+      const viewPath = readString(result.values?.viewPath);
       const subview = readString(result.values?.subview);
-      return { viewId, ...(subview ? { subview } : {}) };
+      return {
+        viewId,
+        ...(viewPath ? { viewPath } : {}),
+        ...(subview ? { subview } : {}),
+      };
     }
   }
   return null;
@@ -216,10 +222,10 @@ export async function dispatchViewActionHandoff(
  * `dispatchViewActionHandoff` would throw `VIEW_HANDOFF_CURRENT_VIEW_HTTP_FAILED`
  * on the missing endpoint and the navigation would never fire. The shared
  * runtime already resolved the target deterministically and stamped it into the
- * summary (`values.viewId` [+ `values.subview`]), so the client trusts it and
- * dispatches the navigate event straight through. The App shell's
- * NAVIGATE_VIEW_EVENT handler resolves the builtin viewId → path (and a Settings
- * `subview` → section) with no server call.
+ * summary (`values.viewId` plus optional path/subview), so the client trusts it
+ * and dispatches the navigate event straight through. Registry-owned views are
+ * resolved by id; host-owned views carry their canonical path so web and native
+ * shells land on the same destination without a server call.
  *
  * Returns true when a navigation was dispatched, false when the summary carried
  * no show/open VIEWS handoff.
@@ -233,6 +239,7 @@ export function dispatchViewActionHandoffDirect(
   dispatch({
     viewId: handoff.viewId,
     source: "agent",
+    ...(handoff.viewPath ? { viewPath: handoff.viewPath } : {}),
     ...(handoff.subview ? { subview: handoff.subview } : {}),
   });
   return true;

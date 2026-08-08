@@ -405,6 +405,37 @@ describe("view switching — VIEWS action resolver", () => {
 			});
 		});
 
+		it("targets app-chat navigation to the client that sent the turn", async () => {
+			installNavigateCapture();
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			await action.handler(
+				{ agentId: "agent-1" } as never,
+				{
+					...message("open calendar"),
+					content: {
+						text: "open calendar",
+						metadata: { viewClientId: "seeker-client" },
+					},
+				} as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			const lastCall = vi.mocked(globalThis.fetch).mock.calls.at(-1);
+			expect(lastCall).toBeDefined();
+			if (!lastCall) throw new Error("expected the view navigation request");
+			const [, init] = lastCall;
+			expect(JSON.parse(String(init?.body))).toMatchObject({
+				clientId: "seeker-client",
+				delivery: "completed-action",
+			});
+		});
+
 		it("resolves an explicit view option without verb parsing", async () => {
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(REGISTRY, "do it", {

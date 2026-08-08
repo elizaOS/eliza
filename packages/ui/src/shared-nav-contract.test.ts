@@ -48,6 +48,11 @@ interface PluginViewPin {
   sources: string[];
 }
 
+interface HostViewPin {
+  path: string;
+  source: string;
+}
+
 // Views declared by dedicated-runtime plugins (unavailable to a pure Tier-0
 // client, but resolvable wherever the owning plugin is loaded). The literal
 // map is the expectation; the fs read below is the pin — each declaring source
@@ -80,6 +85,16 @@ const PLUGIN_VIEW_TARGETS: Record<string, PluginViewPin> = {
   },
 };
 
+// Host-owned pages are bundled by packages/app rather than declared by a
+// plugin. The native shell registers this path in-process; the web shell turns
+// the same path into a compatibility redirect to its authenticated cloud route.
+const HOST_VIEW_TARGETS: Record<string, HostViewPin> = {
+  "cloud-apps": {
+    path: "/cloud-apps",
+    source: "packages/app/src/cloud-apps-view.ts",
+  },
+};
+
 // This test only runs in-repo, so the monorepo root is a fixed hop above this
 // file (packages/ui/src → repo root) and a missing source file is a hard fail,
 // never a skip.
@@ -94,10 +109,13 @@ describe("shared-tier nav vocabulary contract", () => {
     for (const [matcherId, target] of Object.entries(SHARED_NAV_TARGETS)) {
       const builtin = builtinById.get(target.viewId);
       const pluginPin = PLUGIN_VIEW_TARGETS[target.viewId];
+      const hostPin = HOST_VIEW_TARGETS[target.viewId];
       expect(
-        builtin !== undefined || pluginPin !== undefined,
+        builtin !== undefined ||
+          pluginPin !== undefined ||
+          hostPin !== undefined,
         `SHARED_NAV_TARGETS["${matcherId}"] emits viewId "${target.viewId}", ` +
-          "which is neither a builtin shell view nor a known plugin view — " +
+          "which is neither a builtin shell view nor a known plugin/host view — " +
           "the client would blind-navigate to /apps/<id> (not-found render: #17033)",
       ).toBe(true);
       if (builtin) {
@@ -106,6 +124,12 @@ describe("shared-tier nav vocabulary contract", () => {
           `builtin viewId "${target.viewId}" is registered at "${builtin.path}", ` +
             `expected "${BUILTIN_NAV_PATHS[target.viewId]}"`,
         ).toBe(BUILTIN_NAV_PATHS[target.viewId]);
+      }
+      if (hostPin) {
+        expect(
+          target.viewPath,
+          `host-owned target "${target.viewId}" must carry its canonical path`,
+        ).toBe(hostPin.path);
       }
     }
   });
@@ -172,6 +196,19 @@ describe("shared-tier nav vocabulary contract", () => {
           `plugin view "${viewId}": ${source} no longer declares path: "${pin.path}"`,
         ).toBe(true);
       }
+    }
+  });
+
+  it("every host view pin is still registered at its client path", () => {
+    for (const [viewId, pin] of Object.entries(HOST_VIEW_TARGETS)) {
+      const filePath = resolve(REPO_ROOT, pin.source);
+      expect(
+        existsSync(filePath),
+        `host view "${viewId}": declaring source ${pin.source} is missing`,
+      ).toBe(true);
+      const contents = readFileSync(filePath, "utf8");
+      expect(contents).toContain(`id: "${viewId}"`);
+      expect(contents).toContain(`path: "${pin.path}"`);
     }
   });
 

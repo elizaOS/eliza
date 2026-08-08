@@ -33,6 +33,11 @@ export {
   writeReport,
   writeScenarioRunViewer,
 } from "./reporter.ts";
+export {
+  resolveRequiredServiceTypes,
+  ScenarioRequiredServicePreflightError,
+  waitForScenarioRequiredServices,
+} from "./required-services.ts";
 export type {
   AggregateReport,
   FinalCheckReport,

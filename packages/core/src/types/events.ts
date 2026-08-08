@@ -197,6 +197,12 @@ export interface EntityPayload extends EventPayload {
 export interface MessagePayload extends EventPayload {
 	message: Memory;
 	callback?: HandlerCallback;
+	/**
+	 * A message emitted from a live message-service run is delivered now but its
+	 * trajectory remains owned by the later RUN_ENDED boundary. Absent for
+	 * delivery-only producers, where MESSAGE_SENT remains the terminal fallback.
+	 */
+	trajectoryTerminalOwner?: "run";
 }
 
 /**
@@ -292,6 +298,7 @@ export interface ModelEventPayload extends EventPayload {
 		total: number;
 		cacheReadInputTokens?: number;
 		cacheCreationInputTokens?: number;
+		reasoningTokens?: number;
 		cachedInputTokens?: number;
 		/** @deprecated Use `cachedInputTokens` or `cacheReadInputTokens`. */
 		cached?: number;

@@ -21,6 +21,13 @@ import { ProvisioningJobService } from "./provisioning-jobs";
 const JOB_ID = "00000000-0000-4000-8000-000000000001";
 const GENERATION_ID = "00000000-0000-4000-8000-000000000002";
 const ORG_ID = "00000000-0000-4000-8000-000000000003";
+const EMPTY_RECOVERY = {
+  scanned: 0,
+  retried: 0,
+  permanentlyFailed: 0,
+  unchanged: 0,
+  failures: [],
+};
 
 function claimedJob(type: ProvisioningJobType = JOB_TYPES.AGENT_LOGS): Job {
   const now = new Date("2026-07-29T00:00:00.000Z");
@@ -60,12 +67,58 @@ function claimedJob(type: ProvisioningJobType = JOB_TYPES.AGENT_LOGS): Job {
 
 function stubLaneClaim(job: Job | undefined) {
   const claim = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue(job ? [job] : []);
-  spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+  spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
   return claim;
 }
 
 async function wait(milliseconds: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function within<T>(promise: Promise<T>, milliseconds = 500): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`Timed out after ${milliseconds}ms`)),
+          milliseconds,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function captureHeartbeatTimer() {
+  const callback = Promise.withResolvers<() => void>();
+  const cleared = Promise.withResolvers<void>();
+  const timer = {
+    unref: mock(() => undefined),
+  } as unknown as ReturnType<typeof setInterval>;
+
+  const setIntervalMock = spyOn(globalThis, "setInterval").mockImplementation(((
+    handler: Parameters<typeof setInterval>[0],
+  ) => {
+    if (typeof handler !== "function") {
+      throw new TypeError("Expected an interval callback");
+    }
+    callback.resolve(() => handler());
+    return timer;
+  }) as typeof setInterval);
+  const clearIntervalMock = spyOn(globalThis, "clearInterval").mockImplementation((handle) => {
+    if (handle === timer) cleared.resolve();
+  });
+
+  return {
+    callback: callback.promise,
+    cleared: cleared.promise,
+    clearIntervalMock,
+    setIntervalMock,
+    timer,
+  };
 }
 
 afterEach(() => {
@@ -101,37 +154,85 @@ describe("execution-lease heartbeat", () => {
   test("renews while execution is active and stops after success", async () => {
     const job = claimedJob();
     stubLaneClaim(job);
-    const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("renewed");
+    const firstRenewalStarted = Promise.withResolvers<void>();
+    const releaseFirstRenewal = Promise.withResolvers<void>();
+    const secondRenewalStarted = Promise.withResolvers<void>();
+    const renew = spyOn(jobsRepository, "renewExecutionLease").mockImplementation(async () => {
+      if (renew.mock.calls.length === 1) {
+        firstRenewalStarted.resolve();
+        await releaseFirstRenewal.promise;
+      } else if (renew.mock.calls.length === 2) {
+        secondRenewalStarted.resolve();
+      }
+      return "renewed";
+    });
+    const heartbeatTimer = captureHeartbeatTimer();
+    const executionStarted = Promise.withResolvers<void>();
+    const releaseExecution = Promise.withResolvers<void>();
     const service = new ProvisioningJobService({
-      executeJob: async () => wait(90),
+      executeJob: async () => {
+        executionStarted.resolve();
+        await releaseExecution.promise;
+      },
       executionLeaseMs: 60_000,
       executionLeaseHeartbeatMs: 20,
     });
 
-    const result = await service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
-    const renewalsBeforeReturn = renew.mock.calls.length;
+    const processing = service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    let result: Awaited<typeof processing>;
+    try {
+      await within(executionStarted.promise);
+      const heartbeat = await within(heartbeatTimer.callback);
+      heartbeat();
+      await within(firstRenewalStarted.promise);
+
+      heartbeat();
+      await wait(0);
+      expect(renew.mock.calls).toHaveLength(1);
+
+      releaseFirstRenewal.resolve();
+      await wait(0);
+      heartbeat();
+      await within(secondRenewalStarted.promise);
+    } finally {
+      releaseFirstRenewal.resolve();
+      releaseExecution.resolve();
+      result = await within(processing);
+    }
 
     expect(result).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
-    expect(renewalsBeforeReturn).toBeGreaterThanOrEqual(2);
-    await wait(60);
-    expect(renew.mock.calls).toHaveLength(renewalsBeforeReturn);
+    expect(renew.mock.calls).toHaveLength(2);
+    expect(heartbeatTimer.clearIntervalMock).toHaveBeenCalledWith(heartbeatTimer.timer);
+    expect(heartbeatTimer.setIntervalMock).toHaveBeenCalledTimes(1);
+    expect(heartbeatTimer.setIntervalMock).toHaveBeenCalledWith(expect.any(Function), 20);
   });
 
   test("stops quietly when the transaction observes normal settlement", async () => {
     const job = claimedJob();
     stubLaneClaim(job);
     const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("settled");
+    const heartbeatTimer = captureHeartbeatTimer();
     const { logger } = await import("../utils/logger");
     const warn = spyOn(logger, "warn");
+    const releaseExecution = Promise.withResolvers<void>();
     const service = new ProvisioningJobService({
-      executeJob: async () => wait(90),
+      executeJob: async () => releaseExecution.promise,
       executionLeaseMs: 60_000,
       executionLeaseHeartbeatMs: 20,
     });
 
-    await service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    const processing = service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    try {
+      const heartbeat = await within(heartbeatTimer.callback);
+      heartbeat();
+      await within(heartbeatTimer.cleared);
+    } finally {
+      releaseExecution.resolve();
+      await within(processing);
+    }
 
     expect(renew.mock.calls).toHaveLength(1);
+    expect(heartbeatTimer.clearIntervalMock).toHaveBeenCalledWith(heartbeatTimer.timer);
     expect(
       warn.mock.calls.filter(([message]) => String(message).includes("ownership was lost")),
     ).toHaveLength(0);
@@ -141,17 +242,28 @@ describe("execution-lease heartbeat", () => {
     const job = claimedJob();
     stubLaneClaim(job);
     const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("lost");
+    const heartbeatTimer = captureHeartbeatTimer();
     const { logger } = await import("../utils/logger");
     const warn = spyOn(logger, "warn");
+    const releaseExecution = Promise.withResolvers<void>();
     const service = new ProvisioningJobService({
-      executeJob: async () => wait(90),
+      executeJob: async () => releaseExecution.promise,
       executionLeaseMs: 60_000,
       executionLeaseHeartbeatMs: 20,
     });
 
-    await service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    const processing = service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    try {
+      const heartbeat = await within(heartbeatTimer.callback);
+      heartbeat();
+      await within(heartbeatTimer.cleared);
+    } finally {
+      releaseExecution.resolve();
+      await within(processing);
+    }
 
     expect(renew.mock.calls).toHaveLength(1);
+    expect(heartbeatTimer.clearIntervalMock).toHaveBeenCalledWith(heartbeatTimer.timer);
     expect(
       warn.mock.calls.filter(([message]) => String(message).includes("ownership was lost")),
     ).toHaveLength(1);

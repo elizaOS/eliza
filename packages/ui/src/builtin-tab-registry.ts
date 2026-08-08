@@ -99,15 +99,23 @@ export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] = [
   // the isolation catalogue (`surface-isolation.ts`): it hosts arbitrary
   // third-party pages in a native child web-content surface (desktop
   // `WebContentsView` / electrobun OOPIF, iOS `WKWebView`, Android `WebView`)
-  // with its own renderer process, so page content never shares the host realm.
+  // with the strongest platform renderer boundary, so page content never shares
+  // the host realm.
   // Declaring the manifest here makes that isolation level authoritative on the
   // view instead of only documented. `background: "opaque"` is the default made
   // explicit — the browser never paints the shared wallpaper (it owns its whole
-  // surface). This declares policy only; the native embedding itself lives in
+  // surface). `header: "fullscreen"` gives the Browser the same shell framing
+  // as the other full-surface content views (Notes, Calendar): the shell mounts
+  // it edge-to-edge with no host top bar, and the view owns its own floating
+  // chrome. This declares policy only; the native embedding itself lives in
   // the tab renderers, not here (#13596).
   {
     id: "browser",
-    surface: { isolation: "native-webview", background: "opaque" },
+    surface: {
+      isolation: "native-webview",
+      background: "opaque",
+      header: "fullscreen",
+    },
   },
   // ── Wallpaper only at the tab's launcher root; opaque on sub-routes ──
   {
@@ -189,6 +197,30 @@ export function resolveBuiltinBackgroundPolicy(
     return decl.shared(trimmedNavigationPath) ? "shared" : null;
   }
   return resolveSurfaceBackgroundPolicy({ surface: decl });
+}
+
+/**
+ * The resolved surface manifest a builtin ROUTED CONTENT view declares, or
+ * `null` to fall through to downstream resolution. This is the builtin
+ * counterpart of an app-shell page registration's `surface` field: the active
+ * view resolver in `App.tsx` consults it so a builtin tab's declared framing
+ * (e.g. the Browser's `header: "fullscreen"`) drives the same full-bleed shell
+ * path a registered fullscreen page (Notes, Calendar) takes.
+ *
+ * The immersive wallpaper surfaces (chat, /background) are deliberately
+ * excluded: they are STRUCTURAL shell surfaces — their manifests exist for the
+ * wallpaper grant/background policy, and the shell composes them through its
+ * own dedicated branches (the ambient chat home, the transparent background
+ * editor), never through the routed full-bleed view path.
+ */
+export function resolveBuiltinRoutedViewManifest(
+  tab: string,
+): ResolvedSurfaceManifest | null {
+  const decl = BUILTIN_TAB_BY_ID.get(tab)?.surface;
+  if (decl === undefined || "shared" in decl) return null;
+  const manifest = resolveSurfaceManifest({ surface: decl });
+  if (manifest.header === "immersive") return null;
+  return manifest;
 }
 
 /**

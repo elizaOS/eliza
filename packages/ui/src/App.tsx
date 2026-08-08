@@ -109,6 +109,7 @@ import {
   NotificationsDataBoot,
   NotificationsShellBoot,
 } from "./components/shell/notifications-boot";
+import { PairingView } from "./components/shell/PairingView";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
@@ -175,6 +176,7 @@ import {
 import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
+  shouldShowRemoteAgentPairingGate,
   topLevelAuthGateOwnsSurface,
 } from "./state/top-level-auth-gate";
 import {
@@ -221,6 +223,7 @@ import {
 import {
   isImmersiveWallpaperRoute,
   resolveBuiltinBackgroundPolicy,
+  resolveBuiltinRoutedViewManifest,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
 // DesktopTabBar stays static: it is already pulled
@@ -878,6 +881,17 @@ function resolveActiveViewSurface({
       manifest: resolveSurfaceManifest(registeredView),
       viewId: registeredView.id,
     };
+  }
+
+  // Builtin routed content views resolve through the same declarative registry
+  // the background resolver reads, so a builtin's declared framing (e.g. the
+  // Browser's `header: "fullscreen"`) drives the identical full-bleed shell
+  // path a registered fullscreen page (Notes, Calendar) takes. Immersive
+  // wallpaper surfaces return null here — they keep their dedicated shell
+  // branches.
+  const builtinManifest = resolveBuiltinRoutedViewManifest(tab);
+  if (builtinManifest) {
+    return { manifest: builtinManifest, viewId: resolveBuiltinTabId(tab) };
   }
 
   return { manifest: resolveSurfaceManifest(null), viewId: tab };
@@ -1641,13 +1655,11 @@ function routedShellMainClass(tab: string): string {
   // double-counted the clearance the wrapper already reserves, leaving an
   // oversized empty band under every view (the recurring "too much space at the
   // bottom" report). Bottom clearance is reserved exactly once, downstream.
-  // Views that own their full surface (browser/apps/views/background) still get
-  // zero padding.
+  // Views that own their full surface (apps/views/background) still get zero
+  // padding. (The browser no longer routes here at all — its fullscreen header
+  // takes the full-bleed shell path, like Notes/Calendar.)
   const pagePadding =
-    tab === "browser" ||
-    tab === "apps" ||
-    tab === "views" ||
-    tab === "background"
+    tab === "apps" || tab === "views" || tab === "background"
       ? ""
       : "px-2 sm:px-3 pt-[var(--view-pad-top)]";
   return `flex flex-1 min-h-0 min-w-0 overflow-hidden ${pagePadding}`;
@@ -2091,7 +2103,9 @@ function AppContent() {
   const cloudPairToken = getCloudPairTokenFromLocation();
   const isElizaCloudHosted = isElizaCloudHostedLocation();
   const activeAgentProfile = useAppSelector((s) => s.activeAgentProfile);
-  const handleCloudLogin = useAppSelector((s) => s.handleCloudLogin);
+  const handleCloudLoginRecovery = useAppSelector(
+    (s) => s.handleCloudLoginRecovery,
+  );
   const showCloudAgentReauthNotice = shouldShowCloudAgentReauthNotice({
     isHostedLocation: isElizaCloudHosted,
     isNative,
@@ -2118,7 +2132,12 @@ function AppContent() {
       return;
     }
     const rejectedCloudToken = getCloudAuthToken();
-    await handleCloudLogin(null, {
+    // Deliberate non-interactive same-tab recovery: native hosted re-auth has
+    // no popup, so it must go through the separately named recovery entry
+    // point — never the interactive one (which would open a second window)
+    // and never the raw null-window path (which is unrepresentable from the
+    // app surface, #17129).
+    await handleCloudLoginRecovery({
       requireClientAuth: true,
       forceReauth: true,
     });
@@ -2129,7 +2148,7 @@ function AppContent() {
       );
     }
     window.location.reload();
-  }, [handleCloudLogin, nativeCloudRecoveryMode]);
+  }, [handleCloudLoginRecovery, nativeCloudRecoveryMode]);
   const retryManagedNativeAgent = useCallback(async () => {
     window.location.reload();
   }, []);
@@ -2696,6 +2715,19 @@ function AppContent() {
         return (
           <BugReportProvider value={bugReport}>
             <StartupScreen />
+            <BugReportModal />
+          </BugReportProvider>
+        );
+      }
+      if (
+        shouldShowRemoteAgentPairingGate({
+          reason: authState.reason,
+          access: authState.access,
+        })
+      ) {
+        return (
+          <BugReportProvider value={bugReport}>
+            <PairingView />
             <BugReportModal />
           </BugReportProvider>
         );

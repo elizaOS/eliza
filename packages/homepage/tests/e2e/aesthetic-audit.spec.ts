@@ -24,6 +24,7 @@ const ROUTES = [
   { path: "/get-started", name: "get-started", authed: false },
   { path: "/login", name: "login", authed: true },
   { path: "/connected", name: "connected", authed: true },
+  { path: "/profile/edit", name: "profile-edit", authed: true },
 ] as const;
 
 const VIEWPORTS = [
@@ -189,6 +190,9 @@ for (const viewport of VIEWPORTS) {
             mask: dynamicMask(page),
             animations: "disabled",
           },
+          // Human-reviewed audit artifact, never pixel-diffed; the quality
+          // gate alone is the contract here.
+          { requireStable: false },
         );
 
         // ── Logo presence on the chrome'd pages (not the marketing landing). ──

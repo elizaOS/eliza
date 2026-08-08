@@ -64,6 +64,14 @@ describe("advertised capabilities", () => {
     expect(document.claims_supported).not.toContain("auth_time");
   });
 
+  test("eliza_email_source is advertised, and is therefore reserved from constant_claims", () => {
+    // `clients.ts` builds RESERVED_CLAIM_NAMES from this list, so advertising the
+    // claim is also what stops an operator registering a constant that the
+    // provider would then silently override.
+    const document = buildOidcDiscoveryDocument(config, ["RS256"]);
+    expect(document.claims_supported).toContain("eliza_email_source");
+  });
+
   test("operator-registered constant claims are added once", () => {
     const document = buildOidcDiscoveryDocument(config, ["RS256"], ["tenant", "tenant", "sub"]);
     expect(document.claims_supported.filter((c) => c === "tenant")).toHaveLength(1);

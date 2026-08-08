@@ -12,11 +12,11 @@ import {
 	ElizaError,
 	normalizeEffectReceipts,
 	normalizeUserFacingEffectReceiptIds,
-	resolveServerOnlyPort,
 	type ViewCapability,
 	type ViewCapabilityParameter,
 	type ViewType,
 } from "@elizaos/core";
+import { getAppControlApiBase } from "../loopback-api.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -61,8 +61,7 @@ export interface CurrentViewSummary {
 }
 
 function getApiBase(): string {
-	const port = resolveServerOnlyPort(process.env);
-	return `http://127.0.0.1:${port}`;
+	return getAppControlApiBase();
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {

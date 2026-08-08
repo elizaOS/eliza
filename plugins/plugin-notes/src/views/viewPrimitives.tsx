@@ -62,7 +62,7 @@ export const VIEW_SCROLL_STYLE: CSSProperties = {
 export const GLASS_PANEL_STYLE: CSSProperties = {
   boxSizing: "border-box",
   border: "none",
-  borderRadius: 22,
+  borderRadius: 24,
   background:
     "color-mix(in srgb, var(--card, rgba(16,16,16,.88)) 76%, transparent)",
   boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), 0 18px 48px rgba(0,0,0,.20)",
@@ -75,7 +75,7 @@ export const FIELD_STYLE: CSSProperties = {
   width: "100%",
   minHeight: 44,
   border: "none",
-  borderRadius: 13,
+  borderRadius: 12,
   padding: "10px 12px",
   background: "color-mix(in srgb, var(--bg, #080808) 78%, transparent)",
   color: "var(--txt, #f5f5f5)",
@@ -309,7 +309,7 @@ export function ColorPicker({
             width: 44,
             minHeight: 44,
             height: 44,
-            borderRadius: 999,
+            borderRadius: 9999,
             background: COLOR_MATERIALS[color].fill,
             boxShadow:
               value === color
@@ -322,7 +322,7 @@ export function ColorPicker({
             style={{
               width: 10,
               height: 10,
-              borderRadius: 999,
+              borderRadius: 9999,
               background: COLOR_MATERIALS[color].dot,
             }}
           />
@@ -353,7 +353,7 @@ export function ViewHeader({
         gap: 14,
         marginBottom: 14,
         padding: "12px 14px",
-        borderRadius: 18,
+        borderRadius: 16,
       }}
     >
       <div

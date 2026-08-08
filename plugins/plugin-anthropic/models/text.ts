@@ -25,6 +25,7 @@ import type {
 } from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
+  deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   logger,
   ModelType,
@@ -1321,8 +1322,12 @@ async function generateTextWithModel(
       : basePromptOrMessages;
   const generateParams: NativeTextParams = {
     model: anthropic(modelName),
-    ...promptOrMessages,
-    system,
+    // Wire-boundary guarantee: lone UTF-16 surrogates (e.g. from a mid-emoji
+    // slice upstream) serialize as \uD8xx escapes that strict provider JSON
+    // parsers reject (#18025); force every outgoing string to well-formed
+    // Unicode at request build. Deterministic, so cache-prefix stability holds.
+    ...deepToWellFormedUnicode(promptOrMessages),
+    system: system === undefined ? undefined : deepToWellFormedUnicode(system),
     temperature: resolved.temperature,
     stopSequences: resolved.stopSequences as string[],
     frequencyPenalty: resolved.frequencyPenalty,

@@ -17,9 +17,11 @@ function read(path: string): string {
 }
 
 interface WorkflowStep {
+  env?: Record<string, string>;
   name?: string;
   uses?: string;
   run?: string;
+  with?: Record<string, string>;
 }
 
 interface WorkflowJob {
@@ -28,6 +30,7 @@ interface WorkflowJob {
 }
 
 interface Workflow {
+  env?: Record<string, string>;
   on?: Record<string, unknown>;
   jobs?: Record<string, WorkflowJob>;
 }
@@ -36,6 +39,7 @@ const workflow = Bun.YAML.parse(
   read(".github/workflows/app-live-e2e.yml"),
 ) as Workflow;
 const cloudJob = workflow.jobs?.["cloud-live"];
+const notificationJob = workflow.jobs?.["notify-on-failure"];
 
 function namedStep(name: string): WorkflowStep {
   const step = cloudJob?.steps?.find((candidate) => candidate.name === name);
@@ -46,6 +50,13 @@ function namedStep(name: string): WorkflowStep {
 }
 
 describe("App Live E2E real Cloud job (#14357, #16194)", () => {
+  test("keeps every live runtime independent of a headless runner keychain", () => {
+    expect(workflow.env?.ELIZA_VAULT_DISABLE_KEYCHAIN).toBe("1");
+    expect(workflow.env?.ELIZA_VAULT_PASSPHRASE).toBe(
+      "app-live-e2e-headless-vault-only",
+    );
+  });
+
   test("maps the runtime key to the established repository-secret fallback", () => {
     expect(cloudJob?.env?.ELIZAOS_CLOUD_API_KEY).toBe(
       "$" + "{{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}",
@@ -106,5 +117,24 @@ describe("App Live E2E real Cloud job (#14357, #16194)", () => {
 
     expect(spec).toContain("await seedCloudLiveBrowserAuth(page)");
     expect(spec).toContain('test.use({ trace: "off" });');
+  });
+});
+
+describe("App Live E2E red-nightly notification (#13681)", () => {
+  test("uses the GitHub API without depending on a runner-installed gh CLI", () => {
+    const step = notificationJob?.steps?.find(
+      (candidate) =>
+        candidate.name ===
+        "Comment red-nightly diagnostic on tracking issue #13681",
+    );
+
+    expect(step?.uses).toBe(
+      "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3",
+    );
+    expect(step?.run).toBeUndefined();
+    expect(step?.with?.["github-token"]).toBe("$" + "{{ github.token }}");
+    expect(step?.with?.script).toContain("github.rest.issues.createComment");
+    expect(step?.with?.script).toContain("issue_number: 13681");
+    expect(step?.with?.script).not.toContain("gh issue comment");
   });
 });

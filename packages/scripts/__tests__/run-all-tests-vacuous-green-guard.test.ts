@@ -108,6 +108,26 @@ describe("root test lane min-task wiring (#13620)", () => {
       expect(rootScript(scriptName)).toContain(`--min-tasks=${floor}`);
     });
   }
+
+  test("the standalone guard installs the Bun contract dependency first", () => {
+    const workflow = readFileSync(
+      join(repoRoot, ".github", "workflows", "test.yml"),
+      "utf8",
+    );
+    const jobStart = workflow.indexOf("  test-runner-vacuous-green-guard:");
+    const nextJob = workflow.indexOf("\n  server-tests:", jobStart);
+    expect(jobStart).toBeGreaterThan(-1);
+    expect(nextJob).toBeGreaterThan(jobStart);
+    const job = workflow.slice(jobStart, nextJob);
+    const install = job.indexOf(
+      "bun install --frozen-lockfile --ignore-scripts",
+    );
+    const contract = job.indexOf(
+      "node packages/scripts/ci-bun-version-contract.mjs",
+    );
+    expect(install).toBeGreaterThan(-1);
+    expect(contract).toBeGreaterThan(install);
+  });
 });
 
 describe("run-all-tests --min-tasks vacuous-green guard", () => {

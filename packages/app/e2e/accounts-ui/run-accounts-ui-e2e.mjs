@@ -88,6 +88,21 @@ const stubNodeBuiltins = {
     }));
   },
 };
+// The core stub keeps the heavy runtime out of the browser bundle, but esbuild
+// compiles named ESM imports from a CJS module to plain property reads that a
+// bare Proxy target cannot answer — they arrive as `undefined`, not as the
+// callable noop. The accounts-response validator (#17617) consumes the
+// LINKED_ACCOUNT_* / SERVICE_ROUTE_* contract tuples and ElizaError at runtime,
+// so those must be the REAL exports: the contracts module is dependency-free
+// data, and the ElizaError shim carries the same code/context/cause surface.
+const coreContractsPath = join(
+  repoRoot,
+  "packages",
+  "core",
+  "src",
+  "contracts",
+  "service-routing-types.ts",
+);
 const stubElizaCore = {
   name: "stub-eliza-core",
   setup(b) {
@@ -97,10 +112,26 @@ const stubElizaCore = {
     }));
     b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
       contents: `
+        const contracts = require(${JSON.stringify(coreContractsPath)});
+        class ElizaError extends Error {
+          constructor(message, options = {}) {
+            super(
+              message,
+              options.cause !== undefined ? { cause: options.cause } : undefined,
+            );
+            this.name = "ElizaError";
+            this.code = options.code;
+            this.context = options.context;
+          }
+        }
         const noop = new Proxy(() => noop, { get: () => noop });
-        module.exports = new Proxy({}, { get: () => noop });
+        module.exports = new Proxy(
+          { ...contracts, ElizaError },
+          { get: (target, key) => (key in target ? target[key] : noop) },
+        );
       `,
       loader: "js",
+      resolveDir: here,
     }));
   },
 };

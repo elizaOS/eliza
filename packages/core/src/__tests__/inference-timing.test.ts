@@ -96,6 +96,33 @@ describe("InferenceTurnTimer", () => {
 		timer.setModelProvider("other");
 		expect(timer.summary().modelProvider).toBe("elizaOSCloud");
 	});
+
+	it("preserves arbitrary meta (e.g. reasoningTokens) on a recorded span", () => {
+		// A reasoning burst must be attributable per model call (#16394): the
+		// span meta is where the runtime threads reasoningTokens, and it must
+		// round-trip through the summary unchanged.
+		const timer = new InferenceTurnTimer({ turnId: "t8", label: "test" });
+		timer.recordSpan("model:RESPONSE_HANDLER", 3200, {
+			modelKey: "zai-glm-4.7",
+			provider: "cerebras",
+			outcome: "success",
+			reasoningTokens: 400,
+		});
+		// A span with no reasoning meta omits the field entirely (missing stays
+		// missing, never zero).
+		timer.recordSpan("model:TEXT_SMALL", 120, {
+			modelKey: "zai-glm-4.7",
+			provider: "cerebras",
+			outcome: "success",
+		});
+		const s = timer.summary();
+		const reasoningSpan = s.spans.find(
+			(sp) => sp.name === "model:RESPONSE_HANDLER",
+		);
+		const plainSpan = s.spans.find((sp) => sp.name === "model:TEXT_SMALL");
+		expect(reasoningSpan?.meta?.reasoningTokens).toBe(400);
+		expect(plainSpan?.meta?.reasoningTokens).toBeUndefined();
+	});
 });
 
 describe("exclusive inference flow breakdown", () => {

@@ -24,17 +24,25 @@ prompts containing secrets, tokens, private session IDs, or hidden reasoning.
 Use exact `provider/model-id` values; `GPT`, `Claude`, or `AI` are not specific
 enough. Human-only work must say so explicitly.
 
+The row labels below must **not** reuse the terminal eliza.army footer labels
+(`Client / agent tooling`, `Skill revision` / `Contribution skill revision`,
+`Attribution status`). Duplicating those strings makes the scoring validator
+reject the machine marker (#17855). Keep the `<!-- attribution-row:* -->`
+markers; only the human-readable prefixes changed. After filling these rows,
+append the standard footer once at the end of the PR body (do not repeat the
+visible footer lines here).
+
 <!-- contribution-attribution:v1 -->
 <!-- attribution-row:ai-assistance -->
 - AI assistance: `yes` / `no - human-only contribution`
 <!-- attribution-row:models -->
 - Model(s) used: `provider/model-id` / `None - human-only contribution`
 <!-- attribution-row:client -->
-- Client / agent tooling: `client-name` / `None - human-only contribution`
+- Agent tooling: `client-name` / `None - human-only contribution`
 <!-- attribution-row:skill-revision -->
-- Skill revision: `owner/repo@full-commit-sha:path` / `N/A - no contribution skill used`
+- Skill path: `owner/repo@full-commit-sha:path` / `N/A - no contribution skill used`
 <!-- attribution-row:status -->
-- Attribution status: `self-reported`
+- Provenance status: `self-reported`
 
 # Sync with develop
 

@@ -23,6 +23,9 @@ import {
   type AuthSessionInfo,
   authMe,
 } from "../api/auth-client";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
+import { scrubRejectedActiveServerCredential } from "../state/active-server-credential";
+import { loadPersistedActiveServer } from "../state/persistence";
 
 export type AuthStatusState =
   | { phase: "loading" }
@@ -83,6 +86,25 @@ function publishAuthStatus(state: AuthStatusState): void {
   }
 }
 
+async function authMeWithRejectedBearerRecovery() {
+  const result = await authMe();
+  if (result.ok || result.status !== 401 || result.access?.mode !== "remote") {
+    return result;
+  }
+
+  const apiToken = getBootConfig().apiToken?.trim();
+  const activeServer = loadPersistedActiveServer();
+  if (!apiToken || activeServer?.kind === "cloud") return result;
+
+  // A 401 makes this bearer definitively unusable for the selected non-cloud
+  // target. Remove it before the one retry so a valid cookie can win, or the
+  // server can return the unauthenticated pairing/password contract instead of
+  // seeing the same rejected Authorization header twice.
+  setBootConfig({ ...getBootConfig(), apiToken: undefined });
+  scrubRejectedActiveServerCredential(apiToken);
+  return authMe();
+}
+
 async function fetchAuthStatus(): Promise<void> {
   if (authStatusFetch) return authStatusFetch;
 
@@ -93,7 +115,7 @@ async function fetchAuthStatus(): Promise<void> {
 
   authStatusFetch = (async () => {
     for (let attempt = 0; ; attempt += 1) {
-      const result = await authMe();
+      const result = await authMeWithRejectedBearerRecovery();
       if (result.ok === true) {
         publishAuthStatus({
           phase: "authenticated",
@@ -152,7 +174,7 @@ export function primeAuthStatusProbe(): void {
   if (authStatusPrime || authStatusFetch) return;
   if (authStatusSnapshot.phase !== "loading") return;
   authStatusPrime = (async () => {
-    const result = await authMe();
+    const result = await authMeWithRejectedBearerRecovery();
     // A real fetch started (or a state was published) while the prime was in
     // flight — that path owns the snapshot; drop the primed result.
     if (authStatusFetch || authStatusSnapshot.phase !== "loading") return;

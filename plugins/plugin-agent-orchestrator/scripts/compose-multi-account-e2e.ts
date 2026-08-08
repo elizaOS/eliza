@@ -24,7 +24,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+// Runtime (not isolated-test) policy: the default AccountPool reads with a
+// runtime policy, and envelope encryption is keyed per policy owner — an
+// isolated-test write uses an in-memory random key the pool's runtime read
+// can never decrypt, so every account would silently vanish from selection.
+import {
+  createRuntimeAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 // Import the pool from app-core SRC, not the package barrel: app-core has no
 // `eliza-source` export condition, so the barrel resolves to (possibly stale)
 // dist — which may predate the coding-agent selector bridge. The src path
@@ -37,6 +44,14 @@ const home = mkdtempSync(path.join(tmpdir(), "ma-compose-e2e-"));
 process.env.ELIZA_HOME = home;
 process.env.ELIZA_STATE_DIR = home;
 process.env.ELIZA_ACP_STATE_DIR = path.join(home, "acp");
+// The production-shaped pool intentionally reads through a runtime storage
+// policy. Mark this disposable harness as a test so that policy shares the
+// isolated store's in-memory encryption key instead of consulting the host vault.
+process.env.BUN_ENV = "test";
+// Keep synthetic credentials independent of both developer keychains and CI
+// host services. This value protects only the disposable state directory.
+process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
+process.env.ELIZA_VAULT_PASSPHRASE = "not-a-secret-multi-account-e2e-key";
 // Parent creds that MUST be dropped so the selected account authenticates.
 process.env.ANTHROPIC_API_KEY = "sk-ant-api-PARENT-must-drop";
 process.env.OPENAI_API_KEY = "sk-openai-PARENT-must-drop";
@@ -71,16 +86,19 @@ function mkAccount(
   access: string,
   organizationId?: string,
 ) {
-  saveAccount({
-    id,
-    providerId,
-    label: id,
-    source: "oauth",
-    credentials: { access, refresh: `${access}-r`, expires: FAR_FUTURE },
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    ...(organizationId ? { organizationId } : {}),
-  });
+  saveAccount(
+    {
+      id,
+      providerId,
+      label: id,
+      source: "oauth",
+      credentials: { access, refresh: `${access}-r`, expires: FAR_FUTURE },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      ...(organizationId ? { organizationId } : {}),
+    },
+    createRuntimeAccountStoragePolicy(home),
+  );
 }
 
 const checks: Array<{ name: string; ok: boolean; detail?: string }> = [];

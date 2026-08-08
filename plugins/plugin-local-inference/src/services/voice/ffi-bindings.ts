@@ -55,9 +55,10 @@ function ensureWin32DllSearchDir(dir: string): void {
 }
 
 /**
- * ABI version the JS binding was authored against. Must match the value
- * `eliza_inference_abi_version()` returns at runtime — a mismatch is a
- * hard error (AGENTS.md §3, §9: no silent compatibility shims).
+ * ABI version the JS binding was authored against. The loader accepts this
+ * version plus explicitly enumerated older additive surfaces whose missing
+ * capabilities remain detectable through their probes; every other mismatch
+ * is a hard error.
  *
  * Bump in lockstep with `ELIZA_INFERENCE_ABI_VERSION` in
  * `scripts/omnivoice-fuse/ffi.h` whenever the C surface changes shape.
@@ -863,8 +864,8 @@ function isBunRuntime(): boolean {
  * Throws synchronously (no Promise) when:
  *   - the JS runtime is not Bun (no FFI primitive available),
  *   - `dlopen` cannot find or open the library,
- *   - the library's reported ABI version does not match
- *     `ELIZA_INFERENCE_ABI_VERSION`.
+ *   - the library's reported ABI version is not in the explicitly supported
+ *     compatibility set.
  */
 export function loadElizaInferenceFfi(dylibPath: string): ElizaInferenceFfi {
 	if (!isBunRuntime()) {
@@ -1972,9 +1973,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	}
 	const loadedLib = lib;
 
-	// ABI version check. v4 is the current full surface; v3 is accepted only
-	// when the optional reference-encode symbols are absent so default TTS/ASR
-	// can still run while sample-to-profile freezing stays explicitly disabled.
+	// ABI compatibility is explicit and capability-aware. Older additive
+	// surfaces are accepted only when the symbols introduced later are absent,
+	// leaving each corresponding probe false instead of inventing support.
 	const reported = readCString(
 		loadedLib.symbols.eliza_inference_abi_version(),
 		ffi,

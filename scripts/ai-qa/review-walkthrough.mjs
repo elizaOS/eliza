@@ -12,8 +12,8 @@
  * shrinking debt allowlist (the same ratchet as the story gate + aesthetic
  * audit), and writes the committed verdict markdown next to JOURNEY.md.
  *
- * OPT-IN + CI-SAFE: requires ANTHROPIC_API_KEY. With no key it logs and exits 0
- * (the keyless PR lane is unaffected). Model: AI_QA_VISION_MODEL (default Haiku).
+ * OPT-IN + CI-SAFE: requires the key for AI_QA_VISION_BACKEND. With no key it
+ * logs and exits 0 (the keyless PR lane is unaffected).
  *
  * Usage:
  *   node scripts/ai-qa/review-walkthrough.mjs [--run-dir reports/walkthrough/<id>]
@@ -32,9 +32,13 @@ import {
   imageBlock,
   parseVisionVerdict,
 } from "./review-lib.mjs";
+import { resolveReviewerBackend } from "./reviewer-preflight.mjs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const MODEL = process.env.AI_QA_VISION_MODEL || "claude-haiku-4-5-20251001";
+const BACKEND = resolveReviewerBackend();
+const MODEL =
+  process.env.AI_QA_VISION_MODEL ||
+  (BACKEND === "openai" ? "gpt-5-mini" : "claude-haiku-4-5-20251001");
 const ANTHROPIC_VERSION = "2023-06-01";
 const DEFAULT_VERDICT_MD = join(
   REPO_ROOT,
@@ -130,33 +134,69 @@ async function reviewOne(capture) {
       theme: "light",
       issues: capture.issues,
     });
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": ANTHROPIC_VERSION,
+    const isOpenAi = BACKEND === "openai";
+    const res = await fetch(
+      isOpenAi
+        ? "https://api.openai.com/v1/chat/completions"
+        : "https://api.anthropic.com/v1/messages",
+      {
+        method: "POST",
+        headers: isOpenAi
+          ? {
+              "content-type": "application/json",
+              authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+            }
+          : {
+              "content-type": "application/json",
+              "x-api-key": process.env.ANTHROPIC_API_KEY,
+              "anthropic-version": ANTHROPIC_VERSION,
+            },
+        body: JSON.stringify(
+          isOpenAi
+            ? {
+                model: MODEL,
+                max_completion_tokens: 1024,
+                response_format: { type: "json_object" },
+                messages: [
+                  {
+                    role: "user",
+                    content: [
+                      { type: "text", text: prompt },
+                      {
+                        type: "image_url",
+                        image_url: { url: `data:image/png;base64,${base64}` },
+                      },
+                    ],
+                  },
+                ],
+              }
+            : {
+                model: MODEL,
+                max_tokens: 1024,
+                messages: [
+                  {
+                    role: "user",
+                    content: [
+                      imageBlock(base64),
+                      { type: "text", text: prompt },
+                    ],
+                  },
+                ],
+              },
+        ),
       },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1024,
-        messages: [
-          {
-            role: "user",
-            content: [imageBlock(base64), { type: "text", text: prompt }],
-          },
-        ],
-      }),
-    });
+    );
     if (!res.ok)
       throw new Error(
         `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`,
       );
     const body = await res.json();
-    const text = (body.content ?? [])
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("");
+    const text = isOpenAi
+      ? body.choices?.[0]?.message?.content || ""
+      : (body.content ?? [])
+          .filter((b) => b.type === "text")
+          .map((b) => b.text)
+          .join("");
     const verdict = parseVisionVerdict(text);
     return {
       key: capture.key,
@@ -241,9 +281,15 @@ function buildVerdictMarkdown({ runId, model, lane, totals, results }) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  if (!process.env.ANTHROPIC_API_KEY) {
+  const providerKey =
+    BACKEND === "openai"
+      ? process.env.OPENAI_API_KEY
+      : BACKEND === "anthropic"
+        ? process.env.ANTHROPIC_API_KEY
+        : null;
+  if (!providerKey) {
     console.log(
-      "[walkthrough-vision] ANTHROPIC_API_KEY not set — skipping (CI-safe no-op). Set it to run the content review.",
+      "[walkthrough-vision] reviewer provider key not set — skipping (CI-safe no-op). Set AI_QA_VISION_BACKEND and its key to run the content review.",
     );
     return;
   }
@@ -266,7 +312,7 @@ async function main() {
     process.exit(2);
   }
   console.log(
-    `[walkthrough-vision] reviewing ${captures.length} step screenshots with ${MODEL} (concurrency ${args.concurrency})`,
+    `[walkthrough-vision] reviewing ${captures.length} step screenshots with ${BACKEND}/${MODEL} (concurrency ${args.concurrency})`,
   );
 
   const results = await mapPool(captures, args.concurrency, reviewOne);

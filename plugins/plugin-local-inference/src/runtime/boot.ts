@@ -1,14 +1,14 @@
 /**
  * Pre-ready boot entrypoint for plugin-local-inference.
  *
- * The app-core host used to hard-wire this plugin's boot internals at fixed
+ * The app-core host once hard-wired this plugin's boot internals at fixed
  * init points in `repairRuntimeAfterBoot` — importing
  * `@elizaos/plugin-local-inference/runtime` by name and calling
  * `warnIfMobileGateActiveWithoutPlatform` + `shouldEnableMobileLocalInference` +
  * `ensureLocalInferenceHandler` inline (arch-audit #12089 item 18). This single
  * exported hook lets the plugin OWN that boot coupling: it is declared as the
- * app's `bootHook` in `registry-entry.json`, and the host drains it through the
- * generic pre-ready boot-hook channel (naming no plugin).
+ * plugin's `bootHook` in `registry-entry.json`, and the shared agent host drains
+ * it through the generic pre-ready boot-hook channel (naming no plugin).
  *
  * It encapsulates exactly what the host inlined, in the same order and with the
  * same platform gating:
@@ -39,8 +39,8 @@ import {
  * Owns the platform gating the host previously inlined. A no-op when local
  * inference does not apply on this platform/config (mobile without a wired
  * mobile-safe backend, or a runtime mode / missing backend that
- * `ensureLocalInferenceHandler` self-skips). Invoked once via the app-core
- * boot-hook channel.
+ * `ensureLocalInferenceHandler` self-skips). Invoked once by the shared agent
+ * boot-hook channel for headless and app-core hosts alike.
  */
 export async function registerLocalInferenceBoot(
 	runtime: AgentRuntime,

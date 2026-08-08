@@ -13,7 +13,7 @@
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "check:release-data": "node ../app-core/scripts/check-homepage-release-data.mjs",
     "check:snapshot-inventory": "bun scripts/check-snapshot-inventory.ts",
-    "test": "bun test tests/smoke.node.test.mjs tests/e2e-port.node.test.mjs tests/channel-build-config.node.test.mjs tests/contact.test.ts tests/snapshot-inventory.test.ts edge/apple-app-site-association.test.ts",
+    "test": "bun test tests/smoke.node.test.mjs tests/screenshot-stability.node.test.mjs tests/e2e-port.node.test.mjs tests/channel-build-config.node.test.mjs tests/contact.test.ts tests/snapshot-inventory.test.ts tests/auth-return.test.ts tests/wallet-linking.test.ts edge/apple-app-site-association.test.ts",
     "test:aasa-edge": "bun run typecheck:aasa-edge && bun test edge/apple-app-site-association.test.ts",
     "typecheck:aasa-edge": "bunx --package typescript@6.0.3 tsc --noEmit -p edge/tsconfig.json",
     "deploy:aasa-edge": "bunx wrangler@4.100.0 deploy --config wrangler-aasa.toml --strict",
@@ -35,6 +35,7 @@
     "@react-three/fiber": "^9.5.0",
     "@tanstack/react-query": "^5.90.20",
     "@use-gesture/react": "^10.3.1",
+    "bs58": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "libphonenumber-js": "^1.12.35",
@@ -44,6 +45,7 @@
     "react-router-dom": "^7.10.0",
     "tailwind-merge": "^3.4.0",
     "three": "^0.184.0",
+    "viem": "2.49.3",
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {

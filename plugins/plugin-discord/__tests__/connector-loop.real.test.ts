@@ -41,6 +41,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveElizaOwnerEntityId } from "../identity.ts";
 import { MessageManager } from "../messages.ts";
 import { DiscordService } from "../service.ts";
+import { createTurnDrainRegistry } from "../shutdown-drain.ts";
 import type { DiscordSettings, IDiscordService } from "../types.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -273,6 +274,7 @@ async function driveDiscordTurn(options: {
 			discordSettings,
 			ownerDiscordUserIds,
 			accountPool: { get: () => null, getDefault: () => null },
+			turnDrainRegistry: createTurnDrainRegistry(),
 		},
 	);
 

@@ -206,4 +206,15 @@ describe("scheduled live contract lane (voice-live-e2e.yml)", () => {
       workflow.on?.workflow_dispatch?.inputs?.run_railway_contract,
     ).toBeDefined();
   });
+
+  test("builds the cross-runner fused CPU artifact in portable mode", () => {
+    const buildJob = workflow.jobs?.["voice-fused-build"];
+    const buildCommand = (buildJob?.steps ?? [])
+      .map((step) => step.run ?? "")
+      .join("\n");
+
+    expect(buildJob?.["runs-on"]).toBe("ubuntu-24.04");
+    expect(buildCommand).toContain("--variant cpu --portable-cpu");
+    expect(read(WORKFLOW_PATH)).toContain("voice-fused-cpu-v2-");
+  });
 });

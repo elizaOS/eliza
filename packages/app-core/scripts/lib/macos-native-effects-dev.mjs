@@ -6,12 +6,18 @@
  */
 import path from "node:path";
 
+// Every non-skip plan is darwin-only (the platform gate below runs before any
+// join), so the planner composes POSIX paths unconditionally. This keeps the
+// pure plan deterministic when the module itself loads on Windows dev/CI
+// hosts, where `path.join` would otherwise emit backslash separators.
+const { join } = path.posix;
+
 function sourceCheckoutRoot(cwd, exists) {
-  const roots = [cwd, path.join(cwd, "eliza")];
+  const roots = [cwd, join(cwd, "eliza")];
   return (
     roots.find((root) =>
       exists(
-        path.join(
+        join(
           root,
           "packages",
           "app-core",
@@ -45,20 +51,15 @@ export function resolveMacNativeEffectsDevPlan({
   const root = sourceCheckoutRoot(cwd, exists);
   if (!root) return { kind: "skip" };
 
-  const packageDir = path.join(
+  const packageDir = join(
     root,
     "packages",
     "app-core",
     "platforms",
     "electrobun",
   );
-  const sourcePath = path.join(
-    packageDir,
-    "native",
-    "macos",
-    "window-effects.mm",
-  );
-  const dylibPath = path.join(packageDir, "src", "libMacWindowEffects.dylib");
+  const sourcePath = join(packageDir, "native", "macos", "window-effects.mm");
+  const dylibPath = join(packageDir, "src", "libMacWindowEffects.dylib");
 
   if (exists(dylibPath) && modifiedAt(dylibPath) >= modifiedAt(sourcePath)) {
     return { kind: "use", dylibPath };

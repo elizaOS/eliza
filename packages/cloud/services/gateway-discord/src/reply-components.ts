@@ -1,4 +1,5 @@
-/** Builds validated Discord link-button components for routed reply CTAs. */
+/** Builds validated, nonce-enforced Discord reply payloads and link CTAs. */
+import type { MessageReplyOptions } from "discord.js";
 
 /**
  * Link handoff returned by the cloud routing API. The URL is the same login
@@ -31,6 +32,9 @@ interface ActionRowComponent {
   type: 1;
   components: LinkButtonComponent[];
 }
+
+export const MANAGED_REPLY_UNAVAILABLE_TEXT =
+  "I couldn't finish that turn right now. Please try again in a moment.";
 
 /**
  * Converts a routed reply CTA into a Discord action row with one Link button.
@@ -69,4 +73,63 @@ export function buildReplyComponents(
       ],
     },
   ];
+}
+
+/**
+ * Binds an outbound reply to the inbound Discord snowflake. Within Discord's
+ * nonce window a repeat send under the same nonce is deduplicated — the API
+ * returns the message that already exists rather than creating a second one —
+ * so discord.js REST retries and a gateway resume replay cannot double-post
+ * after an ambiguous timeout or 5xx.
+ */
+export function buildManagedReplyOptions(
+  inboundMessageId: string,
+  content: string,
+  cta?: RoutedReplyCta | null,
+): MessageReplyOptions {
+  const components = buildReplyComponents(cta);
+  return {
+    content,
+    nonce: inboundMessageId,
+    enforceNonce: true,
+    ...(components ? { components } : {}),
+    allowedMentions: { repliedUser: false },
+  };
+}
+
+/**
+ * Derives a nonce distinct from the primary reply's.
+ *
+ * Sharing the primary nonce would make the two messages interchangeable to
+ * Discord's deduplicator: once a failure notice has been posted, a later
+ * replay of the same inbound message — a gateway resume, with the cloud route
+ * idempotent on the inbound id and returning the same answer — would have its
+ * real reply deduplicated against the notice, and the user would permanently
+ * see the failure text instead of the answer that was computed. Discord caps
+ * the nonce at 25 characters and a snowflake is 19, so the suffix always fits.
+ */
+export function buildManagedFailureReplyOptions(
+  inboundMessageId: string,
+): MessageReplyOptions {
+  return buildManagedReplyOptions(
+    `${inboundMessageId}-f`,
+    MANAGED_REPLY_UNAVAILABLE_TEXT,
+  );
+}
+
+export type ManagedReplyReceiptStatus = "delivered" | "deduplicated";
+
+/**
+ * Distinguishes a fulfilled send from Discord returning a different message
+ * that already owns the nonce. Same-payload nonce replays are semantically
+ * delivered regardless of whether this request created the message.
+ */
+export function classifyManagedReplyReceipt(
+  receipt: { content: string; nonce: string | number | null },
+  expected: MessageReplyOptions,
+): ManagedReplyReceiptStatus {
+  return receipt.content === expected.content &&
+    String(receipt.nonce) === String(expected.nonce)
+    ? "delivered"
+    : "deduplicated";
 }

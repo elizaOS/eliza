@@ -13,6 +13,7 @@ const LoginPage = lazy(() => import("@/pages/login"));
 const ConnectedPage = lazy(() => import("@/pages/connected"));
 const GetStartedPage = lazy(() => import("@/pages/get-started"));
 const NotFoundPage = lazy(() => import("@/pages/not-found"));
+const ProfileEditPage = lazy(() => import("@/pages/profile-edit"));
 const AuthedShell = lazy(() => import("@/components/authed-shell"));
 
 function RouteFallback() {
@@ -42,6 +43,7 @@ export function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/connected" element={<ConnectedPage />} />
             <Route path="/get-started" element={<GetStartedPage />} />
+            <Route path="/profile/edit" element={<ProfileEditPage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

@@ -4,7 +4,12 @@ import { createServer, type Server } from "node:http";
 import type { Socket } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 
-import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
+import type {
+  SandboxCreateConfig,
+  SandboxDeletionStopOutcome,
+  SandboxHandle,
+  SandboxProvider,
+} from "./sandbox-provider-types";
 
 interface MemoryAgentState {
   memories: Array<{ role: string; text: string; timestamp: number }>;
@@ -164,9 +169,9 @@ export class MemorySandboxProvider implements SandboxProvider {
     return handle;
   }
 
-  async stop(sandboxId: string): Promise<void> {
+  async stopForDeletion(sandboxId: string): Promise<SandboxDeletionStopOutcome> {
     const sandbox = this.sandboxes.get(sandboxId);
-    if (!sandbox) return;
+    if (!sandbox) return { kind: "not-running-proven" };
     this.sandboxes.delete(sandboxId);
     const close = new Promise<void>((resolve, reject) => {
       sandbox.server.close((error) => {
@@ -179,10 +184,11 @@ export class MemorySandboxProvider implements SandboxProvider {
       socket.destroy();
     }
     await Promise.race([close, delay(2_000)]);
+    return { kind: "not-running-proven" };
   }
 
   async stopForReplacement(sandboxId: string): Promise<void> {
-    await this.stop(sandboxId);
+    await this.stopForDeletion(sandboxId);
   }
 
   async checkHealth(handle: SandboxHandle): Promise<boolean> {

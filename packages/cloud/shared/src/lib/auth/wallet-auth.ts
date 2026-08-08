@@ -76,7 +76,11 @@ export async function verifyWalletSignature(
     return cached;
   }
 
-  const { user } = await findOrCreateUserByWalletAddress(walletAddress);
+  // Reached only after the signature over method+path+timestamp verified and the
+  // nonce was claimed, so this request proved control of the address.
+  const { user } = await findOrCreateUserByWalletAddress(walletAddress, {
+    walletProven: true,
+  });
 
   if (!user.is_active) {
     throw new Error("User account is inactive");

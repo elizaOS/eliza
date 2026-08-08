@@ -44,9 +44,6 @@ jobs:
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
 
-      - name: Build cloud shared
-        run: bun run --cwd packages/cloud/shared build
-
       - name: Run monetization lifecycle
         run: >-
           bun run cloud:e2e --

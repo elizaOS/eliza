@@ -28,6 +28,7 @@ import {
   type AgentRuntime,
   ChannelType,
   ModelType,
+  RoomHandlerQueue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -231,6 +232,10 @@ function createRuntime(
     emitEvent: vi.fn(async () => undefined),
     reportError: vi.fn(),
     drainChatPreHandlers: vi.fn(async () => null),
+    // generateChatResponse acquires per-room ownership through the runtime's
+    // real RoomHandlerQueue; a mock without one 500s every turn (and stream
+    // tests then hang waiting for frames that never arrive).
+    roomHandlerQueue: new RoomHandlerQueue(),
     ...overrides,
   };
   return runtime as unknown as AgentRuntime;

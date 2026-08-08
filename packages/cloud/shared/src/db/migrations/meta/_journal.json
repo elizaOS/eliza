@@ -1345,6 +1345,20 @@
       "when": 1786305600000,
       "tag": "0192_oidc_request_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1786392000000,
+      "tag": "0193_agent_sandbox_deletion_allocation_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1786478400000,
+      "tag": "0194_job_execution_interruptions_catalog_guard",
+      "breakpoints": true
     }
   ]
 }

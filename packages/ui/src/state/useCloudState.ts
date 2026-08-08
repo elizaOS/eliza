@@ -38,6 +38,7 @@ import { clearStaleStewardSession } from "../cloud/shell/StewardProviderShared";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
+import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import {
   closeExternalBrowser,
   confirmDesktopAction,
@@ -51,7 +52,9 @@ import {
   CLOUD_LOGIN_POPUP_NAME,
   navigateToSameTabCloudLogin,
   shouldUseSameTabCloudLogin,
+  takeClaimedCloudLoginWindow,
 } from "./cloud-login-launch";
+import { clearCloudPairApiToken } from "./cloud-pair-token";
 import {
   getInjectedEthereumProvider,
   siweLoginWithInjectedWallet,
@@ -119,8 +122,7 @@ function isSameOriginLocalHttpBackend(): boolean {
 }
 
 function isDevUiPortWithoutEmbeddedBackend(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.location.port === "2138";
+  return isViteDevUiShell();
 }
 
 function isTrustedCloudAuthMessageOrigin(
@@ -1189,6 +1191,51 @@ export function useCloudState({
     };
   }, []);
 
+  /**
+   * Interactive Cloud login entry point for user-facing buttons (Settings,
+   * dashboard, onboarding, connectors upsell). It is reached from a click
+   * handler whose user activation the handler already used to pre-open the
+   * popup synchronously (claimCloudLoginWindow); it consumes that handle here.
+   * A window.open inside THIS function would run only after the awaits that
+   * precede it (first-run provisioning, status probes), when transient user
+   * activation has lapsed and the browser would block it — falling back to
+   * same-tab and re-opening the #17064 defect. The type-level contract is
+   * preserved: interactive call sites cannot omit the popup, and the raw
+   * null-window path stays off AppActions (handleCloudLoginRecovery is the
+   * only sanctioned route to it). Callers that deliberately need the same-tab
+   * recovery path (non-interactive boot recovery, use-boot-recovery-conductor)
+   * use `handleCloudLoginRecovery` with no window — separately named there.
+   */
+  const handleInteractiveCloudLogin = useCallback(
+    (options?: CloudLoginOptions): Promise<void> => {
+      // The handle MUST be claimed synchronously in the click handler via
+      // claimCloudLoginWindow() while user activation is live. Interactive
+      // callers (ConfigPageView, ElizaCloudDashboard, CloudOverviewSection,
+      // CloudConnectorsUpsell, use-first-run-conductor) all do this.
+      // No fallback to preOpenCloudLoginWindow() here — that would run after
+      // the awaits in listOrAutoProvisionCloudAgent / runFirstRunFinish,
+      // when transient user activation has lapsed, causing the popup to be
+      // blocked and falling back to same-tab (#17064 regression).
+      const prePoppedWindow = takeClaimedCloudLoginWindow();
+      return handleCloudLogin(prePoppedWindow, options);
+    },
+    [handleCloudLogin],
+  );
+
+  // Deliberate same-tab recovery path (boot-recovery conductor, native
+  // re-auth). This wrapper is the ONLY sanctioned way to reach the raw
+  // null-window path from the app surface: it takes no window argument, so a
+  // missed interactive caller cannot compile against it (the #17064 defect —
+  // an interactive caller silently choosing document-destroying same-tab
+  // navigation — is unrepresentable through the interactive entry point, and
+  // the recovery entry point is separately named so only deliberate
+  // non-interactive recovery sites can reach it, #17129).
+  const handleCloudLoginRecovery = useCallback(
+    (options?: CloudLoginOptions): Promise<void> =>
+      handleCloudLogin(null, options),
+    [handleCloudLogin],
+  );
+
   const handleCloudDisconnect = useCallback(
     async (opts?: { skipConfirmation?: boolean }): Promise<void> => {
       const MAIN_CONFIRM_DISCONNECT_MS = 300_000;
@@ -1352,6 +1399,15 @@ export function useCloudState({
         // survives at rest / in memory (XSS / same-origin plugin views).
         clearStoredStewardToken();
         scrubPersistedAgentProfileTokens();
+        // The durable cloud-pair API token (localStorage + sessionStorage,
+        // written by CloudPairRelay and re-adopted at every boot) is a third
+        // at-rest credential: without this, a rotated/revoked pair key
+        // survives disconnect and gets re-adopted on the next launch.
+        // Explicit disconnect is GLOBAL sign-out intent — clear EVERY
+        // per-agent durable key + the legacy global key from both storages,
+        // so a token for any other paired agent can never be silently
+        // re-adopted on a later boot (#17579).
+        clearCloudPairApiToken();
         if (wasConnected) {
           setActionNotice("Disconnected from Eliza Cloud.", "success");
         }
@@ -1544,6 +1600,8 @@ export function useCloudState({
     // Callbacks
     pollCloudCredits,
     handleCloudLogin,
+    handleCloudLoginRecovery,
+    handleInteractiveCloudLogin,
     handleCloudDisconnect,
     handleCloudSignOut,
   };

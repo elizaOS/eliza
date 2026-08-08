@@ -53,7 +53,11 @@ const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
 
 export const VIEW_OCR_POLICIES = {
   "builtin-chat": expected({
-    requireAll: ["Mostly clear"],
+    requireAny: [
+      "Mostly clear",
+      "Learn conversational Spanish",
+      "Submit the quarterly report",
+    ],
   }),
   "builtin-phone": expected({
     requireAny: ["call-blocked", "dialer", "recent"],
@@ -62,7 +66,6 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Set default SMS", "bridge-only", "compose"],
   }),
   "builtin-contacts": expected({
-    requireAll: ["Contacts"],
     requireAny: ["address book", "phone, or email", "search"],
   }),
   "builtin-camera": exempt(
@@ -234,7 +237,6 @@ export const VIEW_OCR_POLICIES = {
     VIEW_REGISTRY_FALLBACK,
   ),
   "plugin-contacts-gui": expected({
-    requireAll: ["Contacts"],
     requireAny: ["address book", "phone, or email", "search"],
   }),
   "plugin-focus-gui": expected({

@@ -3,9 +3,6 @@
  * Two AgentRuntime-shaped services share storage without sharing domain rows.
  */
 import { afterEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { type IAgentRuntime, stringToUuid, type Task, type UUID } from '@elizaos/core';
 import { and, eq } from 'drizzle-orm';
@@ -16,6 +13,7 @@ import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-se
 import { WorkflowCredentialStore } from '../../src/services/workflow-credential-store';
 import type { WorkflowDefinition } from '../../src/types/index';
 import { getUserTagName } from '../../src/utils/context';
+import { makeWorkflowPgliteStore } from '../pglite-test-store';
 
 setDefaultTimeout(120_000);
 
@@ -39,8 +37,8 @@ afterEach(async () => {
 });
 
 async function makeSharedHarness(): Promise<SharedHarness> {
-  const dir = await mkdtemp(join(tmpdir(), 'workflow-tenant-isolation-'));
-  const client = new PGlite({ dataDir: join(dir, 'pglite') });
+  const store = makeWorkflowPgliteStore('workflow-tenant-isolation-');
+  const client = new PGlite({ dataDir: store.dataDir });
   const db = drizzle(client, { schema: dbSchema });
   const tasks: StoredTask[] = [];
   let taskSequence = 0;
@@ -86,7 +84,7 @@ async function makeSharedHarness(): Promise<SharedHarness> {
       if (closed) return;
       closed = true;
       await client.close();
-      await rm(dir, { recursive: true, force: true });
+      await store.cleanup();
     },
   };
   openHarnesses.push(harness);

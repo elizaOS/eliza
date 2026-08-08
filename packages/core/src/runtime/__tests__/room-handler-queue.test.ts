@@ -1,11 +1,19 @@
 /**
  * Unit coverage for `RoomHandlerQueue`: per-room serialization, cross-room
- * concurrency, queue-depth accounting (`pendingFor`), drain (`quiesce` /
- * `quiesceAll`), empty-queue garbage collection, and lifecycle events. Exercises
- * the real queue with real timers; no model or runtime.
+ * concurrency, cancellable leases, queue-depth accounting (`pendingFor`),
+ * drain (`quiesce` / `quiesceAll`), empty-queue garbage collection, and
+ * lifecycle events. Exercises the real queue with real timers; no model or
+ * runtime.
  */
 import { describe, expect, it } from "vitest";
-import { RoomHandlerQueue, type RoomQueueEvent } from "../room-handler-queue";
+import {
+	RoomHandlerQueue,
+	RoomHandlerQueueAbortedError,
+	RoomHandlerQueueClosedError,
+	RoomHandlerQueueGlobalSaturatedError,
+	RoomHandlerQueueSaturatedError,
+	type RoomQueueEvent,
+} from "../room-handler-queue";
 
 const ROOM_A = "00000000-0000-0000-0000-00000000000a";
 const ROOM_B = "00000000-0000-0000-0000-00000000000b";
@@ -78,6 +86,209 @@ describe("RoomHandlerQueue", () => {
 			await expect(first).rejects.toThrow("first-fail");
 			await expect(second).resolves.toBe("second-ok");
 			expect(trace).toEqual(["first-running", "second-running"]);
+		});
+	});
+
+	describe("explicit room leases", () => {
+		it("accepts only the exact live lease for its owning room", async () => {
+			const queue = new RoomHandlerQueue();
+			const lease = await queue.acquire(ROOM_A);
+
+			expect(queue.ownsLease(ROOM_A, lease)).toBe(true);
+			expect(queue.ownsLease(ROOM_B, lease)).toBe(false);
+			expect(queue.ownsLease(ROOM_A, { release: async () => undefined })).toBe(
+				false,
+			);
+
+			await lease.release();
+			expect(queue.ownsLease(ROOM_A, lease)).toBe(false);
+		});
+
+		it("holds one room until release while unrelated rooms remain available", async () => {
+			const queue = new RoomHandlerQueue();
+			const first = await queue.acquire(ROOM_A);
+			let secondGranted = false;
+			const second = queue.acquire(ROOM_A).then((lease) => {
+				secondGranted = true;
+				return lease;
+			});
+
+			const otherRoom = await queue.acquire(ROOM_B);
+			await otherRoom.release();
+			await Promise.resolve();
+			expect(secondGranted).toBe(false);
+
+			await first.release();
+			const secondLease = await second;
+			expect(secondGranted).toBe(true);
+			await secondLease.release();
+		});
+
+		it("removes a cancelled waiter without releasing an already granted lease", async () => {
+			const queue = new RoomHandlerQueue();
+			const activeController = new AbortController();
+			const first = await queue.acquire(ROOM_A, activeController.signal);
+			const waitingController = new AbortController();
+			const cancelled = queue.acquire(ROOM_A, waitingController.signal);
+			let thirdGranted = false;
+			const third = queue.acquire(ROOM_A).then((lease) => {
+				thirdGranted = true;
+				return lease;
+			});
+
+			activeController.abort(new Error("transport ended after acquisition"));
+			waitingController.abort(new Error("transport ended while queued"));
+			await expect(cancelled).rejects.toBeInstanceOf(
+				RoomHandlerQueueAbortedError,
+			);
+			await Promise.resolve();
+			expect(thirdGranted).toBe(false);
+			expect(queue.pendingFor(ROOM_A)).toBe(2);
+
+			await first.release();
+			const thirdLease = await third;
+			expect(thirdGranted).toBe(true);
+			await thirdLease.release();
+			expect(queue.pendingFor(ROOM_A)).toBe(0);
+		});
+
+		it("rejects a saturated room promptly, preserves other rooms, and recovers after drain", async () => {
+			const queue = new RoomHandlerQueue({ maxPendingPerRoom: 2 });
+			const first = await queue.acquire(ROOM_A);
+			const second = queue.acquire(ROOM_A);
+			await Promise.resolve();
+			expect(queue.pendingFor(ROOM_A)).toBe(2);
+
+			await expect(queue.acquire(ROOM_A)).rejects.toMatchObject({
+				name: "RoomHandlerQueueSaturatedError",
+				code: "ROOM_HANDLER_QUEUE_SATURATED",
+				roomId: ROOM_A,
+				maxPendingPerRoom: 2,
+				pendingCount: 2,
+			});
+			await expect(queue.acquire(ROOM_A)).rejects.toBeInstanceOf(
+				RoomHandlerQueueSaturatedError,
+			);
+
+			const otherRoom = await queue.acquire(ROOM_B);
+			await otherRoom.release();
+			await first.release();
+			const secondLease = await second;
+			await secondLease.release();
+			expect(queue.pendingFor(ROOM_A)).toBe(0);
+
+			const recovered = await queue.acquire(ROOM_A);
+			await recovered.release();
+			expect(queue.pendingFor(ROOM_A)).toBe(0);
+		});
+
+		it("bounds total admissions and active room cardinality without losing recovery", async () => {
+			const pendingBound = new RoomHandlerQueue({
+				maxPendingPerRoom: 4,
+				maxPendingTotal: 2,
+				maxActiveRooms: 4,
+			});
+			const a = await pendingBound.acquire(ROOM_A);
+			const b = await pendingBound.acquire(ROOM_B);
+			await expect(
+				pendingBound.acquire("00000000-0000-0000-0000-00000000000c"),
+			).rejects.toMatchObject({
+				code: "ROOM_HANDLER_QUEUE_GLOBAL_SATURATED",
+				limitKind: "pending",
+			});
+			await a.release();
+			const recovered = await pendingBound.acquire(
+				"00000000-0000-0000-0000-00000000000c",
+			);
+			await recovered.release();
+			await b.release();
+
+			const roomBound = new RoomHandlerQueue({
+				maxPendingPerRoom: 4,
+				maxPendingTotal: 4,
+				maxActiveRooms: 1,
+			});
+			const onlyRoom = await roomBound.acquire(ROOM_A);
+			await expect(roomBound.acquire(ROOM_B)).rejects.toBeInstanceOf(
+				RoomHandlerQueueGlobalSaturatedError,
+			);
+			await onlyRoom.release();
+			const nextRoom = await roomBound.acquire(ROOM_B);
+			await nextRoom.release();
+		});
+
+		it("freezes new admission while already-admitted work drains", async () => {
+			const queue = new RoomHandlerQueue();
+			const active = await queue.acquire(ROOM_A);
+			let queuedGranted = false;
+			const queued = queue.acquire(ROOM_A).then((lease) => {
+				queuedGranted = true;
+				return lease;
+			});
+			queue.closeAdmissions("runtime-swap");
+			expect(queue.isAcceptingAdmissions()).toBe(false);
+			await expect(queue.acquire(ROOM_B)).rejects.toBeInstanceOf(
+				RoomHandlerQueueClosedError,
+			);
+			expect(queuedGranted).toBe(false);
+			await active.release();
+			const queuedLease = await queued;
+			expect(queuedGranted).toBe(true);
+			await queuedLease.release();
+			await queue.quiesceAll();
+			expect(queue.pendingTotal()).toBe(0);
+		});
+
+		it("uses explicit capabilities without deadlocking when async context is unavailable", async () => {
+			const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+			await expect(
+				queue.runWith(ROOM_A, async () => "top-level-ok"),
+			).resolves.toBe("top-level-ok");
+			expect(queue.pendingFor(ROOM_A)).toBe(0);
+
+			const lease = await queue.withLease(ROOM_A, async (ownedLease) => {
+				expect(queue.ownsLease(ROOM_A, ownedLease)).toBe(true);
+				const nested = await queue.runInLease(ROOM_A, ownedLease, () =>
+					queue.runInLease(ROOM_A, ownedLease, async () => "nested-ok"),
+				);
+				expect(nested).toBe("nested-ok");
+				await expect(
+					queue.withLease(ROOM_A, async () => "reused", {
+						lease: ownedLease,
+					}),
+				).resolves.toBe("reused");
+				return ownedLease;
+			});
+			expect(queue.ownsLease(ROOM_A, lease)).toBe(false);
+			await expect(
+				queue.withLeases([ROOM_B, ROOM_A], async (leases) => {
+					expect(leases.size).toBe(2);
+					expect(queue.ownsLease(ROOM_A, leases.get(ROOM_A))).toBe(true);
+					expect(queue.ownsLease(ROOM_B, leases.get(ROOM_B))).toBe(true);
+					return "multi-room-ok";
+				}),
+			).resolves.toBe("multi-room-ok");
+
+			const explicitLease = await queue.acquire(ROOM_A);
+			const nested = await queue.runInLease(ROOM_A, explicitLease, () =>
+				queue.runInLease(ROOM_A, explicitLease, async () => "nested-ok"),
+			);
+			expect(nested).toBe("nested-ok");
+			expect(() =>
+				queue.runInLease(ROOM_B, explicitLease, () => "wrong-room"),
+			).toThrowError(
+				expect.objectContaining({
+					code: "ROOM_HANDLER_CROSS_ROOM_REENTRY",
+				}),
+			);
+			await expect(
+				queue.withLease(ROOM_B, async () => "widened", {
+					lease: explicitLease,
+				}),
+			).rejects.toMatchObject({ code: "ROOM_HANDLER_CROSS_ROOM_REENTRY" });
+
+			await explicitLease.release();
+			expect(queue.pendingTotal()).toBe(0);
 		});
 	});
 
@@ -232,12 +443,27 @@ describe("RoomHandlerQueue", () => {
 			expect(events).toHaveLength(0);
 		});
 
-		it("swallows listener errors", async () => {
-			const queue = new RoomHandlerQueue();
+		it("reports listener errors without blocking queue progress", async () => {
+			const reported: Array<{ error: unknown; event: RoomQueueEvent }> = [];
+			const observed: RoomQueueEvent[] = [];
+			const queue = new RoomHandlerQueue({
+				onListenerError: (error, event) => reported.push({ error, event }),
+			});
 			queue.onEvent(() => {
 				throw new Error("listener-boom");
 			});
+			queue.onEvent((event) => observed.push(event));
 			await expect(queue.runWith(ROOM_A, async () => "ok")).resolves.toBe("ok");
+			expect(observed.map((event) => event.type)).toEqual([
+				"enqueued",
+				"completed",
+			]);
+			expect(reported).toHaveLength(2);
+			expect(reported[0]?.error).toMatchObject({ message: "listener-boom" });
+			expect(reported.map(({ event }) => event.type)).toEqual([
+				"enqueued",
+				"completed",
+			]);
 		});
 	});
 });

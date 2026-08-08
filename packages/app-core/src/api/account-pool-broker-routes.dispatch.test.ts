@@ -22,7 +22,10 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetDefaultAccountPoolForTests } from "../services/account-pool.js";
 import { __resetAccountPoolBrokerRoutesForTests } from "./account-pool-broker-routes.js";
@@ -131,19 +134,22 @@ describe("account-pool broker routes through the real compat dispatcher", () => 
   });
 
   it("leases an account via POST /api/internal/account-pool/v1/lease through the dispatcher", async () => {
-    saveAccount({
-      id: "dispatch-primary",
-      providerId: "anthropic-subscription",
-      label: "dispatch-primary",
-      source: "oauth",
-      credentials: {
-        access: "sk-ant-oat-dispatch-primary",
-        refresh: REFRESH_SECRET,
-        expires: FAR_FUTURE,
+    saveAccount(
+      {
+        id: "dispatch-primary",
+        providerId: "anthropic-subscription",
+        label: "dispatch-primary",
+        source: "oauth",
+        credentials: {
+          access: "sk-ant-oat-dispatch-primary",
+          refresh: REFRESH_SECRET,
+          expires: FAR_FUTURE,
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       },
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+      createIsolatedAccountStoragePolicy(home),
+    );
 
     const cap = captureRes();
     const handled = await handleElizaCompatRoute(

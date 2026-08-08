@@ -1,23 +1,45 @@
 /**
- * Cloud sandbox character loader (Path A).
+ * Character override loader for provisioned sandboxes and local deployments.
  *
- * A Hetzner-provisioned container is meant to boot AS its assigned character
- * (e.g. "Nyx"), not as the generic bundled "Eliza" preset. The full character
- * config lives in the `agent_sandboxes.agent_config` column and is injected by
- * the provisioner as the `ELIZA_AGENT_CHARACTER_JSON` env var. Without this,
- * `buildCharacterFromConfig` falls back to the default style preset because
- * `config.agents.list[0]` is empty in a fresh container.
- *
- * This module parses that env var and merges it onto `config.agents.list[0]`
- * so the existing `buildCharacterFromConfig` path picks up the right name,
- * system prompt, bio, examples, topics, adjectives and style. It returns the
- * config unchanged when the env var is absent or unparseable,
- * so it is inert for every non-provisioned runtime.
+ * Cloud sandboxes inject `ELIZA_AGENT_CHARACTER_JSON` so the container boots AS
+ * its assigned character instead of the bundled Eliza preset. Local deployments
+ * can drop a `character.json` at the repo root (or set `ELIZA_CHARACTER_PATH`)
+ * to the same effect. Both paths merge onto `config.agents.list[0]` so
+ * `buildCharacterFromConfig` picks up name, system prompt, bio, examples, and
+ * style. Returns the config unchanged when no override is present.
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import { type CharacterSettings, logger } from "@elizaos/core";
 import type { AgentConfig } from "@elizaos/shared";
+import {
+  normalizeFirstRunProviderId,
+  resolveElizaPackageRootSync,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+
+/** Injectable local-file seam used by deterministic character-loader tests. */
+export interface CharacterOverrideFileAccess {
+  cwd: string;
+  argv1?: string;
+  existsSync: (filePath: string) => boolean;
+  readTextFileSync: (filePath: string) => string;
+  resolvePackageRoot: (options: {
+    cwd: string;
+    argv1?: string;
+  }) => string | null;
+}
+
+function defaultCharacterOverrideFileAccess(): CharacterOverrideFileAccess {
+  return {
+    cwd: process.cwd(),
+    argv1: process.argv[1],
+    existsSync: fs.existsSync,
+    readTextFileSync: (filePath) => fs.readFileSync(filePath, "utf-8"),
+    resolvePackageRoot: resolveElizaPackageRootSync,
+  };
+}
 
 /** Raw character shape as stored in `agent_sandboxes.agent_config`. */
 interface SandboxCharacterJson {
@@ -36,6 +58,8 @@ interface SandboxCharacterJson {
   messageExamples?: unknown;
   settings?: CharacterSettings;
   knowledge?: AgentConfig["knowledge"];
+  lore?: string[];
+  modelProvider?: string;
   /**
    * Per-character connector config (e.g. `{ discord: { ... }, telegram: {...} }`).
    * Only applied when the container is the connector owner
@@ -82,23 +106,115 @@ export function resolveSandboxRouteAgentId(
   return env.SANDBOX_ROUTE_AGENT_ID?.trim() || null;
 }
 
+function resolveLocalCharacterJsonPath(
+  env: NodeJS.ProcessEnv = process.env,
+  fileAccess: CharacterOverrideFileAccess = defaultCharacterOverrideFileAccess(),
+): string | null {
+  if (env.ELIZA_DISABLE_LOCAL_CHARACTER?.trim() === "1") {
+    return null;
+  }
+
+  const explicit = env.ELIZA_CHARACTER_PATH?.trim();
+  if (explicit) {
+    return path.isAbsolute(explicit)
+      ? explicit
+      : path.resolve(fileAccess.cwd, explicit);
+  }
+
+  const repoRoot = fileAccess.resolvePackageRoot({
+    cwd: fileAccess.cwd,
+    argv1: fileAccess.argv1,
+  });
+  if (!repoRoot) {
+    return null;
+  }
+
+  const candidate = path.join(repoRoot, "character.json");
+  return fileAccess.existsSync(candidate) ? candidate : null;
+}
+
+function readCharacterOverrideJson(
+  env: NodeJS.ProcessEnv = process.env,
+  fileAccess: CharacterOverrideFileAccess = defaultCharacterOverrideFileAccess(),
+): { raw: string; source: string } | null {
+  const envRaw = env.ELIZA_AGENT_CHARACTER_JSON?.trim();
+  if (envRaw) {
+    return { raw: envRaw, source: "ELIZA_AGENT_CHARACTER_JSON" };
+  }
+
+  const filePath = resolveLocalCharacterJsonPath(env, fileAccess);
+  if (!filePath) {
+    return null;
+  }
+
+  try {
+    const raw = fileAccess.readTextFileSync(filePath).trim();
+    return raw ? { raw, source: filePath } : null;
+  } catch (err) {
+    logger.warn(
+      `[sandbox-character] Failed to read local character file ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
+function mergeKnowledgeSources(
+  parsed: SandboxCharacterJson,
+): AgentConfig["knowledge"] | undefined {
+  const knowledge = Array.isArray(parsed.knowledge)
+    ? [...parsed.knowledge]
+    : [];
+  const lore = asStringArray(parsed.lore) ?? [];
+  const merged = [...knowledge, ...lore];
+  return merged.length > 0 ? merged : undefined;
+}
+
+function applyModelProviderRouting(
+  config: ElizaConfig,
+  modelProvider: string | undefined,
+): void {
+  const rawProvider = modelProvider?.trim();
+  if (!rawProvider) {
+    return;
+  }
+  const provider = normalizeFirstRunProviderId(rawProvider);
+  if (!provider) {
+    logger.warn(
+      `[sandbox-character] Ignoring unsupported modelProvider "${rawProvider}"; retaining configured LLM routing`,
+    );
+    return;
+  }
+
+  const serviceRouting = {
+    ...(config.serviceRouting ?? {}),
+  } as NonNullable<ElizaConfig["serviceRouting"]>;
+  const primaryModel = serviceRouting.llmText?.primaryModel;
+  serviceRouting.llmText = {
+    backend: provider,
+    transport: "direct",
+    ...(primaryModel ? { primaryModel } : {}),
+  };
+  config.serviceRouting = serviceRouting;
+}
+
 /**
- * Apply the injected sandbox character (if any) onto the runtime config.
+ * Apply an injected or local character override onto the runtime config.
  * Returns the same config object (mutated) for chaining convenience.
  */
 export function applySandboxCharacterFromEnv(
   config: ElizaConfig,
   env: NodeJS.ProcessEnv = process.env,
+  fileAccess: CharacterOverrideFileAccess = defaultCharacterOverrideFileAccess(),
 ): ElizaConfig {
-  const raw = env.ELIZA_AGENT_CHARACTER_JSON?.trim();
-  if (!raw) return config;
+  const override = readCharacterOverrideJson(env, fileAccess);
+  if (!override) return config;
 
   let parsed: SandboxCharacterJson;
   try {
-    parsed = JSON.parse(raw) as SandboxCharacterJson;
+    parsed = JSON.parse(override.raw) as SandboxCharacterJson;
   } catch (err) {
     logger.warn(
-      `[sandbox-character] ELIZA_AGENT_CHARACTER_JSON is not valid JSON; booting with default character: ${err instanceof Error ? err.message : String(err)}`,
+      `[sandbox-character] Character override from ${override.source} is not valid JSON; booting with default character: ${err instanceof Error ? err.message : String(err)}`,
     );
     return config;
   }
@@ -111,7 +227,7 @@ export function applySandboxCharacterFromEnv(
     env.AGENT_NAME?.trim();
   if (!name) {
     logger.warn(
-      "[sandbox-character] Injected character has no name; booting with default character",
+      "[sandbox-character] Character override has no name; booting with default character",
     );
     return config;
   }
@@ -125,6 +241,8 @@ export function applySandboxCharacterFromEnv(
     (typeof parsed.id === "string" && parsed.id.trim()) ||
     env.SANDBOX_AGENT_ID?.trim() ||
     name.toLowerCase().replace(/\s+/g, "-");
+
+  const knowledge = mergeKnowledgeSources(parsed);
 
   const entry: AgentConfig = {
     id,
@@ -150,7 +268,7 @@ export function applySandboxCharacterFromEnv(
         }
       : {}),
     ...(parsed.settings ? { settings: parsed.settings } : {}),
-    ...(parsed.knowledge ? { knowledge: parsed.knowledge } : {}),
+    ...(knowledge ? { knowledge } : {}),
   };
 
   const agents = config.agents as ElizaConfig["agents"] | undefined;
@@ -166,6 +284,8 @@ export function applySandboxCharacterFromEnv(
   }
 
   config.agents = { ...agents, list };
+
+  applyModelProviderRouting(config, parsed.modelProvider);
 
   // Also surface the assistant name at the UI level so logging/prompts that
   // read config.ui.assistant.name agree with the loaded character.
@@ -196,7 +316,7 @@ export function applySandboxCharacterFromEnv(
   }
 
   logger.info(
-    `[sandbox-character] Loaded injected character "${name}" (id=${id}) from ELIZA_AGENT_CHARACTER_JSON`,
+    `[sandbox-character] Loaded character "${name}" (id=${id}) from ${override.source}`,
   );
   return config;
 }

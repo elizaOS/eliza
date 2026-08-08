@@ -26,11 +26,12 @@
  *    this level; the `sandbox-probe` developer view is the shipped consumer.
  *
  *  native-webview — heavy or untrusted views that embed a NATIVE child
- *    web-content surface with its own renderer process and an explicit
- *    process/storage-sharing policy. Desktop uses an Electron/Electrobun
+ *    web-content surface with the strongest platform renderer boundary and an
+ *    explicit process/storage-sharing policy. Desktop uses an Electron/Electrobun
  *    `WebContentsView` (the successor to the deprecated `BrowserView`); iOS uses
- *    a `WKWebView` with a chosen `WKProcessPool`; Android uses a `WebView` with
- *    renderer isolation. The Browser view is the canonical consumer — it hosts
+ *    a `WKWebView` with a chosen `WKProcessPool`; Android uses an out-of-app
+ *    `WebView` renderer that the OS may reuse, plus profile-backed storage.
+ *    The Browser view is the canonical consumer — it hosts
  *    arbitrary third-party web content and must never share the host realm.
  *
  *  immersive — a fullscreen surface that owns its whole window and is chrome-free

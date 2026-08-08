@@ -44,10 +44,12 @@ import {
   startApiServer as upstreamStartApiServer,
 } from "@elizaos/agent";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
-import { type AgentRuntime, logger } from "@elizaos/core";
+import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
+import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
 import {
   ensureCompatSensitiveRouteAuthorized,
@@ -794,7 +796,11 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         );
         await clearCompatPgliteDataDir(state.current, config);
         state.current = null;
-        clearPersistedFirstRunConfig(config);
+        clearPersistedFirstRunConfig(
+          config,
+          createRuntimeAccountStoragePolicy(resolveStateDir()),
+        );
+        resetDefaultAccountPoolAfterCredentialReset();
         saveElizaConfig(config);
         clearCloudSecrets();
         await deleteWalletSecretsFromOsStore();

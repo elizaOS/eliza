@@ -455,7 +455,7 @@ export const pageDelegateAction: PageActionGroup = {
       description:
         "Parameters forwarded to the selected child action. Use the child action's parameter names.",
       required: false,
-      schema: { type: "object" as const },
+      schema: { type: "object" as const, additionalProperties: true },
     },
   ],
   examples: [

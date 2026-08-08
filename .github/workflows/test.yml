@@ -82,8 +82,11 @@ jobs:
       - name: Validate GitHub-native turbo cache contract
         run: node packages/scripts/ci-turbo-cache-contract.mjs
 
-      - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.mjs
+      # Source-catalog completeness is the enforceable i18n invariant (no new
+      # key ships uncataloged); translation gaps print as warnings (#17605 —
+      # this checker previously ran in no lane and en.json drifted 705 keys).
+      - name: Validate i18n source catalog contract
+        run: node packages/app-core/scripts/check-i18n.mjs
 
       - name: Install workflow-invariants parser dependency
         run: npm install --prefix "$RUNNER_TEMP/workflow-invariants-deps" --no-save --no-package-lock --ignore-scripts yaml@2.9.0
@@ -161,8 +164,21 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
+      - name: Install contract dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
       - name: Test-runner vacuous-green guard
         run: bun test packages/scripts/__tests__/run-all-tests-vacuous-green-guard.test.ts
+
+      - name: Validate CI Bun version pin contract
+        run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+
+      - name: Upload Bun runtime resolution inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: bun-runtime-inventory
+          path: ${{ runner.temp }}/bun-runtime-inventory.json
+          retention-days: 30
 
   server-tests:
     name: Server Tests
@@ -195,7 +211,9 @@ jobs:
         run: bun run build:views
 
       - name: Views system tests
-        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts
+        # views-registry.integration.test.ts is discovered by the agent
+        # integration lane (pattern), not hand-enumerated here (#17778 / #17838).
+        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts
 
       - name: Remote capability router tests
         run: bun run test:remote-capabilities
@@ -269,6 +287,39 @@ jobs:
 
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui
+
+  # Perf gate (#9954) runs in its own job pinned to GitHub-hosted ubuntu-24.04:
+  # FRAME_GATE_RELAYOUT budgets are calibrated to that runner class, and the
+  # contended hetzner-robot fleet breaches them on hardware grounds alone
+  # (#18021). Keep this job hosted until the budgets carry per-runner-class
+  # calibration.
+  client-perf-gate:
+    name: Client Perf Gate
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       # Perf gate (#9954): drive REAL overlay thread-scroll + pull-to-maximize /
       # top-pull-restore in headless chromium, feed REAL rAF/longtask/layout-shift
@@ -398,9 +449,11 @@ jobs:
   # the src-integration lane (scheduler/recurrence/global-pause real-DB
   # suites) plus the repo config over the package's named test/ files —
   # keyless. Burn down the remaining plugins/*/test integration suites from
-  # here.
+  # here. packages/agent joined the lane in #17778: its own lanes exclude the
+  # `.integration.test.` suffix, so without a step here a suite under
+  # packages/agent ran in no lane at all.
   integration-tests:
-    name: Integration Lane (personal-assistant)
+    name: Integration Lane (personal-assistant + agent)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.server == 'true'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -436,6 +489,15 @@ jobs:
       - name: Run personal-assistant integration lanes
         timeout-minutes: 35
         run: bun run --cwd plugins/plugin-personal-assistant test:integration
+
+      # Discovery is by pattern (no file list), so a new
+      # packages/agent/**/*.integration.test.ts is picked up without editing
+      # this workflow. The renamed views-registry.integration.test.ts is discovered by pattern;
+      # packages/scripts/__tests__/vitest-integration-config-agent-subpath-alias.test.ts
+      # guards the include globs and alias.
+      - name: Run agent integration lane
+        timeout-minutes: 20
+        run: bun run --cwd packages/agent test:integration
 
   desktop-contract:
     name: Electrobun Desktop Contract
@@ -1250,6 +1312,7 @@ jobs:
       - merge-quality-gate
       - server-tests
       - client-tests
+      - client-perf-gate
       - plugin-tests-status
       - integration-tests
       - desktop-contract
@@ -1274,6 +1337,7 @@ jobs:
           echo "merge-quality-gate:${{ needs.merge-quality-gate.result }}"
           echo "server-tests:     ${{ needs.server-tests.result }}"
           echo "client-tests:     ${{ needs.client-tests.result }}"
+          echo "client-perf-gate: ${{ needs.client-perf-gate.result }}"
           echo "plugin-tests:     ${{ needs.plugin-tests-status.result }}"
           echo "integration-tests:${{ needs.integration-tests.result }}"
           echo "desktop-contract: ${{ needs.desktop-contract.result }}"
@@ -1291,6 +1355,7 @@ jobs:
             "merge-quality-gate:${{ needs.merge-quality-gate.result }}" \
             "server-tests:${{ needs.server-tests.result }}" \
             "client-tests:${{ needs.client-tests.result }}" \
+            "client-perf-gate:${{ needs.client-perf-gate.result }}" \
             "plugin-tests:${{ needs.plugin-tests-status.result }}" \
             "integration-tests:${{ needs.integration-tests.result }}" \
             "desktop-contract:${{ needs.desktop-contract.result }}" \

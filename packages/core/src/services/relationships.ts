@@ -746,6 +746,10 @@ export class RelationshipsService extends Service {
 		// Load existing contact info from components
 		await this.loadContactInfoFromComponents();
 
+		// Best-effort cold-start prewarm with default resolvers. Agent code that
+		// later calls setGraphResolvers will re-prewarm with owner wiring (#17932).
+		this.prewarmGraphModel();
+
 		logger.info("[RelationshipsService] Initialized successfully");
 	}
 
@@ -2324,6 +2328,28 @@ export class RelationshipsService extends Service {
 	setGraphResolvers(resolvers: GraphResolvers): void {
 		this.graphResolvers = resolvers;
 		this.graphServiceInstance = null;
+		// Resolvers are agent-wired after service start; prewarm only once they
+		// are set so the first-build owner/name path matches live turns (#17932).
+		this.prewarmGraphModel();
+	}
+
+	/**
+	 * Kick a background relationships-graph build so cold rolodex turns after
+	 * restart hit the stale-while-revalidate cache instead of blocking the
+	 * event loop past the 3s provider deadline (#17932).
+	 */
+	prewarmGraphModel(): void {
+		if (!this.runtime) return;
+		try {
+			this.getGraphServiceInstance().prewarmGraphModel();
+		} catch (err) {
+			// error-policy:J5 Prewarm is best-effort; live turns still cold-build.
+			logger.warn(
+				`[RelationshipsService] Graph prewarm failed to start: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+		}
 	}
 
 	private getGraphServiceInstance(): RelationshipsGraphService {

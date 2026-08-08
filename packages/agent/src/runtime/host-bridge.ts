@@ -151,6 +151,16 @@ export function getAgentHostBridge(): AgentHostBridge {
   return installedBridge ?? defaultAgentHostBridge;
 }
 
+/**
+ * True when the active bridge supplies a real, durable host vault. The no-op
+ * default vault swallows writes and misses every read, so callers that would
+ * persist secrets through it (for example the connector credential store
+ * service) must treat it as absent rather than silently losing data.
+ */
+export function hasDurableHostVault(): boolean {
+  return getAgentHostBridge().sharedVault() !== noopVault;
+}
+
 /** Test-only: drop any installed bridge so the default is used again. */
 export function _resetAgentHostBridge(): void {
   installedBridge = null;

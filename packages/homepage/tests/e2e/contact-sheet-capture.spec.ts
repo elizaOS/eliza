@@ -29,6 +29,7 @@ const ROUTES = [
   { path: "/get-started", name: "get-started", authed: false },
   { path: "/login", name: "login", authed: true },
   { path: "/connected", name: "connected", authed: true },
+  { path: "/profile/edit", name: "profile-edit", authed: true },
 ] as const;
 
 const VIEWPORTS = [
@@ -127,6 +128,9 @@ for (const viewport of VIEWPORTS) {
             ],
             animations: "disabled",
           },
+          // Human-reviewed contact-sheet artifact, never pixel-diffed; the
+          // quality gate alone is the contract here.
+          { requireStable: false },
         );
 
         await expect(page.locator("body")).toBeVisible();

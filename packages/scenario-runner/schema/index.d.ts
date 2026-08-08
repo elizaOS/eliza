@@ -532,6 +532,25 @@ export type ScenarioPersonalityExpect = {
   judgeKwargs?: Record<string, unknown>;
 };
 
+/** Runtime capabilities that must be ready before scenario turns execute. */
+export type ScenarioRequirements = {
+  /** Plugin packages that the runner may load when they are not registered. */
+  plugins?: readonly string[];
+  /**
+   * Service types whose startup must complete successfully before execution.
+   * Services omitted here are optional even when a required plugin declares them.
+   */
+  services?: readonly string[];
+  /**
+   * Named credential slots (e.g. `1password:eliza-e2e-autofill`) the live lane
+   * must provision before this scenario is eligible; corpora-specific runners
+   * interpret the slot names.
+   */
+  credentials?: readonly string[];
+  /** Host platform the scenario needs (e.g. `macos`); other platforms defer it. */
+  os?: string;
+};
+
 export type ScenarioDefinition = {
   id: string;
   title: string;
@@ -577,8 +596,8 @@ export type ScenarioDefinition = {
    * isolates every scenario per process regardless.
    */
   isolation?: "per-scenario" | "shared-runtime" | "worker";
-  /** Plugins that must be registered before the scenario runs (skip otherwise). */
-  requires?: { plugins?: string[] };
+  /** Plugins and service capabilities required before the scenario runs. */
+  requires?: ScenarioRequirements;
   rooms?: ScenarioRoomSpec[];
   /** Personality corpus metadata (live-only judge bridge). */
   scope?: "user" | "mixed";

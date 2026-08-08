@@ -282,6 +282,56 @@ function validateScenarioStatus(value) {
   return status;
 }
 
+function validateScenarioRequirements(value) {
+  const requires = value?.requires;
+  if (requires === undefined) {
+    return;
+  }
+  if (
+    requires === null ||
+    typeof requires !== "object" ||
+    Array.isArray(requires)
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid requires; expected { plugins?: string[], services?: string[], credentials?: string[], os?: string }`,
+    );
+  }
+  const knownKeys = ["plugins", "services", "credentials", "os"];
+  const unknownKeys = Object.keys(requires).filter(
+    (key) => !knownKeys.includes(key),
+  );
+  if (unknownKeys.length > 0) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has unknown requires field(s): ${unknownKeys.join(", ")}`,
+    );
+  }
+  if (
+    requires.os !== undefined &&
+    (typeof requires.os !== "string" || requires.os.trim().length === 0)
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid requires.os; expected a non-empty string`,
+    );
+  }
+  for (const key of ["plugins", "services", "credentials"]) {
+    const requirements = requires[key];
+    if (requirements === undefined) {
+      continue;
+    }
+    if (
+      !Array.isArray(requirements) ||
+      requirements.some(
+        (requirement) =>
+          typeof requirement !== "string" || requirement.trim().length === 0,
+      )
+    ) {
+      throw new Error(
+        `scenario "${value?.id ?? "<unknown>"}" has invalid requires.${key}; expected non-empty strings`,
+      );
+    }
+  }
+}
+
 /**
  * Resolve a scenario's platform-gated deferral, if any. A deferred scenario is
  * a live-only scenario that additionally cannot run in any current lane because
@@ -331,6 +381,9 @@ export function scenario(value) {
     scenarioTier(value);
     // Validate pending/active inventory status before loader filtering relies on it.
     validateScenarioStatus(value);
+    // Required services are a runtime preflight contract, not an implicit
+    // consequence of whichever plugin happened to register them first.
+    validateScenarioRequirements(value);
     // Validate the deferral shape (and lane compatibility) eagerly too.
     scenarioDeferral(value);
   }

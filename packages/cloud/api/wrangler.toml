@@ -327,6 +327,12 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #                                      empty registry. OIDC_ENABLED / OIDC_ISSUER_URL are
 #                                      committed [vars] below for the same reason inverted:
 #                                      losing them must not silently change the issuer.
+#                                      OIDC_WALLET_EMAIL_DOMAIN is a var for that same
+#                                      reason and is normally UNSET: it defaults to
+#                                      users.noreply.<issuer hostname>, and an override is
+#                                      accepted only as a strict subdomain of that hostname
+#                                      (the rule that makes the domain unregisterable by a
+#                                      user). Set but invalid fails the provider closed.
 #   COINGECKO_API_KEY / BRAVE_SEARCH_API_KEY
 #   TWITTER_BEARER_TOKEN / X_API_KEY / X_API_KEY_SECRET
 #   X402_RECIPIENT_ADDRESS / PINATA_JWT
@@ -399,7 +405,7 @@ ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
 # VITE_OIDC_ISSUER_URL or signed-out relying-party logins cannot resume; the
 # `build:web` env blocks in .github/workflows/cloud-cf-deploy.yml carry it, and
 # `packages/cloud/shared/src/lib/oidc/config.test.ts` fails if the two drift.
-OIDC_ENABLED = "false"
+OIDC_ENABLED = "true"
 OIDC_ISSUER_URL = "https://api-staging.elizacloud.ai"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
 # redirects email magic-link callbacks to staging.elizacloud.ai instead of the
@@ -612,7 +618,7 @@ ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
 # secrets. Flip OIDC_ENABLED to "true" only after OIDC_SIGNING_JWKS and
 # OIDC_CLIENTS are pushed; changing OIDC_ISSUER_URL afterwards invalidates every
 # relying-party account link.
-OIDC_ENABLED = "false"
+OIDC_ENABLED = "true"
 OIDC_ISSUER_URL = "https://api.elizacloud.ai"
 # Pin the prod Steward tenant explicitly instead of leaning on the implicit
 # DEFAULT_STEWARD_TENANT_ID ("elizacloud") in steward-tenant-config.ts. That

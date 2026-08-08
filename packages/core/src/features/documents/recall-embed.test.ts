@@ -714,4 +714,42 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		expect(b).toEqual([1, 1, 1]);
 		expect(calls.count).toBe(1);
 	});
+
+	test("an overlapping turn cannot evict another message's in-flight pre-run warm before adoption", async () => {
+		const resolvers = new Map<string, (value: number[]) => void>();
+		const { runtime, calls, startRun } = makeControllableRuntime(
+			({ text }) =>
+				new Promise<number[]>((resolve) => {
+					resolvers.set(text, resolve);
+				}),
+		);
+
+		const firstWarm = embedRecallQuery(runtime, "first room", {
+			messageId: MSG_A,
+		});
+		await yieldMacrotask();
+		expect(calls.count).toBe(1);
+
+		// A background/independent room starts while the first warm is pending.
+		// It needs its own slot but must not replace MSG_A's adoption handle.
+		startRun();
+		const otherTurn = embedRecallQuery(runtime, "other room", {
+			messageId: MSG_B,
+		});
+		await yieldMacrotask();
+		expect(calls.count).toBe(2);
+
+		startRun();
+		const adoptedFirst = embedRecallQuery(runtime, "first room", {
+			messageId: MSG_A,
+		});
+		expect(calls.count).toBe(2);
+
+		resolvers.get("first room")?.([0.1]);
+		resolvers.get("other room")?.([0.2]);
+		await expect(firstWarm).resolves.toEqual([0.1]);
+		await expect(adoptedFirst).resolves.toEqual([0.1]);
+		await expect(otherTurn).resolves.toEqual([0.2]);
+		expect(calls.count).toBe(2);
+	});
 });

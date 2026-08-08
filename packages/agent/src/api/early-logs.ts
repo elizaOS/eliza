@@ -59,7 +59,10 @@ export function listenForUiLogs(
   onEntry: (entry: LogEntry) => void,
 ): () => void {
   return addLogListener((entry) => {
-    if (ADZE_PRETTY_PREFIX.test(entry.msg)) return;
+    // Wrapper calls use Pino-compatible priorities (10..60); Adze mirrors use
+    // its own 0..8 scale. Prefer that stable provenance signal because pretty
+    // text can vary with terminal/color configuration.
+    if ((entry.level ?? 30) < 10 || ADZE_PRETTY_PREFIX.test(entry.msg)) return;
     onEntry(formatStructuredLogEntry(entry));
   });
 }

@@ -63,6 +63,19 @@ export const OIDC_SUPPORTED_SCOPES = [
  * cannot observe when the platform session was established (`./session.ts`).
  * Advertising it would invite a relying party to gate freshness on a number
  * nothing here can source honestly.
+ *
+ * `eliza_email_source` is emitted only when `email` is a wallet-derived no-reply
+ * address, and it is what an RP reads for "this identity is cryptographically
+ * proven" — `email_verified` answers the different question of whether a mailbox
+ * was confirmed, and stays false there.
+ *
+ * Adding a name to this list is not a local edit. `./clients.ts` spreads it into
+ * the set of names `constant_claims` may not take, so a name added here forbids
+ * an operator-chosen constant that had been legal — and one such entry throws
+ * the whole registry, not just its own client. A claim the provider emits only
+ * under a per-client flag therefore belongs in that module's
+ * `CONDITIONAL_CLAIM_NAMES`, which reserves it for the clients that can actually
+ * collide with it.
  */
 export const OIDC_SUPPORTED_CLAIMS = [
   "iss",
@@ -74,6 +87,7 @@ export const OIDC_SUPPORTED_CLAIMS = [
   "azp",
   "email",
   "email_verified",
+  "eliza_email_source",
   "preferred_username",
   "nickname",
   "name",

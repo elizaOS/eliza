@@ -41,6 +41,19 @@ export interface FindOrCreateWalletOptions {
   grantInitialCredits?: boolean;
   /** When true, fail signup if the initial free-credit grant cannot be confirmed. */
   requireInitialCredits?: boolean;
+  /**
+   * Whether the caller VERIFIED control of this address — a SIWE/SIWS signature
+   * or the signed wallet-auth header — rather than merely being handed it in a
+   * request body. It lands in `users.wallet_verified`, which the OIDC layer reads
+   * as proof of control and turns into a permanent no-reply identity at a
+   * relying party (`lib/oidc/subject.ts`).
+   *
+   * Defaults to FALSE so a caller that proved nothing cannot assert it by
+   * omission: this helper is shared by the two sign-ins that DO verify a
+   * signature and by x402 topup / agent provisioning, which accept an address
+   * from the request and could otherwise mark a stranger's wallet verified.
+   */
+  walletProven?: boolean;
 }
 
 export interface InitialCreditGrantMetadata {
@@ -211,9 +224,36 @@ async function findSolanaUserForWrite(
 }
 
 /**
+ * Raises `wallet_verified` on a row this caller has just proved control of.
+ *
+ * Proof is monotonic and one-directional: an address can first reach this table
+ * from a path that only NAMED it (x402 topup, agent provisioning), and without
+ * this the account would stay unverified forever even after its owner signs a
+ * SIWE/SIWS challenge — no wallet identity at any relying party. Nothing here
+ * ever lowers the flag, because a later unproven mention is not evidence against
+ * a signature that was already checked.
+ *
+ * Called only outside the signup transaction. A concurrent signup that loses the
+ * insert race returns its winner's row without the upgrade, which the next
+ * sign-in performs; writing to another transaction's just-inserted row from
+ * inside this one is not worth that.
+ */
+async function raiseWalletProof(
+  user: UserWithOrganization,
+  walletProven: boolean,
+): Promise<UserWithOrganization> {
+  if (!walletProven || user.wallet_verified === true) return user;
+  await usersService.update(user.id, { wallet_verified: true });
+  return { ...user, wallet_verified: true };
+}
+
+/**
  * Find user by wallet, or create org + user and return.
  * Address can be any case; stored and slug use lowercase.
  * Used by SIWE, wallet header auth, and x402 topup (with grantInitialCredits: false).
+ *
+ * `walletProven` decides `users.wallet_verified` and defaults to false — see the
+ * option's own note for why the caller must say so explicitly.
  */
 export async function findOrCreateUserByWalletAddress(
   walletAddress: string,
@@ -231,10 +271,11 @@ export async function findOrCreateUserByWalletAddress(
   const normalized = address.toLowerCase();
   const grantInitialCredits = options?.grantInitialCredits !== false;
   const requireInitialCredits = options?.requireInitialCredits === true;
+  const walletProven = options?.walletProven === true;
 
   const existing = await usersService.getByWalletAddressWithOrganization(address);
   if (existing) {
-    return { user: existing, isNewAccount: false };
+    return { user: await raiseWalletProof(existing, walletProven), isNewAccount: false };
   }
 
   /* WHY slug wallet-${normalized}: consistent with topup and SIWE; lowercase for unique indexing. */
@@ -269,7 +310,7 @@ export async function findOrCreateUserByWalletAddress(
           steward_user_id: `wallet:evm:${normalized}`,
           wallet_address: normalized,
           wallet_chain_type: "evm",
-          wallet_verified: true,
+          wallet_verified: walletProven,
           organization_id: org.id,
           // The signup creates this org for the wallet — its creator manages it
           // (matches the anonymous-migration path in session.ts). Without this the
@@ -301,7 +342,7 @@ export async function findOrCreateUserByWalletAddress(
     if (!isUniqueViolation(e)) throw e;
     const raced = await usersService.getByWalletAddressWithOrganization(address);
     if (!raced) throw e;
-    return { user: raced, isNewAccount: false };
+    return { user: await raiseWalletProof(raced, walletProven), isNewAccount: false };
   }
 }
 
@@ -328,10 +369,11 @@ export async function findOrCreateSolanaUserByWalletAddress(
   }
   const grantInitialCredits = options?.grantInitialCredits !== false;
   const requireInitialCredits = options?.requireInitialCredits === true;
+  const walletProven = options?.walletProven === true;
 
   const existing = await usersRepository.findBySolanaWalletAddressWithOrganization(address);
   if (existing) {
-    return { user: existing, isNewAccount: false };
+    return { user: await raiseWalletProof(existing, walletProven), isNewAccount: false };
   }
 
   const slug = `wallet-solana-${address}`;
@@ -365,7 +407,7 @@ export async function findOrCreateSolanaUserByWalletAddress(
           steward_user_id: `wallet:solana:${address}`,
           wallet_address: address,
           wallet_chain_type: "solana",
-          wallet_verified: true,
+          wallet_verified: walletProven,
           organization_id: org.id,
           // Creator of the fresh wallet org manages it — see the EVM path above.
           role: "owner",
@@ -394,6 +436,6 @@ export async function findOrCreateSolanaUserByWalletAddress(
     if (!isUniqueViolation(e)) throw e;
     const raced = await usersRepository.findBySolanaWalletAddressWithOrganization(address);
     if (!raced) throw e;
-    return { user: raced, isNewAccount: false };
+    return { user: await raiseWalletProof(raced, walletProven), isNewAccount: false };
   }
 }

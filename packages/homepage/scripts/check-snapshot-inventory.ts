@@ -3,7 +3,7 @@
  * Gate that keeps the committed visual-regression baselines exactly equal to
  * the route x viewport matrix in `tests/e2e/visual-routes.ts`.
  *
- * A missing baseline means `toHaveScreenshot` would silently write and pass on
+ * A missing baseline means `toMatchSnapshot` would silently write and pass on
  * its first CI run instead of diffing; a stray one means a route was renamed or
  * dropped and left dead pixels behind. The homepage smoke job runs this before
  * Playwright so either drift is reported as a file-anchored annotation rather

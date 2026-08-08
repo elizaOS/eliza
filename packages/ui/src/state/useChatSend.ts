@@ -39,7 +39,6 @@ import {
 import type { Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
 import {
-  dispatchViewActionHandoff,
   dispatchViewActionHandoffDirect,
   findViewActionHandoff,
 } from "../view-action-handoff";
@@ -115,28 +114,13 @@ async function handoffCompletedAction(
     );
   }
   if (findViewActionHandoff(actionResults)) {
-    // Shared/limited cloud agents (Tier-0) serve NO `/api/views/current`
-    // endpoint, so the verify-then-dispatch handoff would throw on the missing
-    // route and the navigation would never fire (#F5-ACTIONS). The shared
-    // runtime already resolved the target deterministically and stamped it into
-    // the summary, so trust it and dispatch the navigate event directly — no
-    // server round-trip.
-    if (isLimitedCloudAgentApiBase(client.getBaseUrl())) {
-      try {
-        dispatchViewActionHandoffDirect(actionResults);
-      } catch (err) {
-        logger.warn(
-          { err },
-          "[useChatSend] shared-agent VIEWS handoff could not reach the renderer",
-        );
-        showFailure(
-          "The agent chose a view, but the app couldn't open it. Try opening the view again.",
-        );
-      }
-      return;
-    }
+    // The completed stream result is scoped to this exact caller and contains
+    // the validated target returned by the successful VIEWS action. Dispatch it
+    // directly instead of consulting process-global `/api/views/current`, which
+    // can belong to another device and is unavailable to REST-only native
+    // renderers. The shell resolves the canonical path from the view id.
     try {
-      await dispatchViewActionHandoff(actionResults);
+      dispatchViewActionHandoffDirect(actionResults);
     } catch (err) {
       // error-policy:J4 the chat turn succeeded, so preserve it while surfacing a
       // distinct navigation failure instead of fabricating an opened view.
@@ -565,6 +549,9 @@ export function useChatSend(deps: UseChatSendDeps) {
     conversationId: string | null;
     messageId: string;
     pendingText: string | null;
+    /** Whether the parked text is action-callback (provisional) text — the
+     *  latest frame wins, mirroring `pendingText` (double-speak fix). */
+    pendingTextProvisional: boolean;
     pendingStatus: ChatTurnStatus | null | typeof NO_PENDING_STATUS;
     pendingToolEvents: ChatToolCallEvent[];
     flushScheduled: boolean;
@@ -575,6 +562,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     conversationId: null,
     messageId: "",
     pendingText: null,
+    pendingTextProvisional: false,
     pendingStatus: NO_PENDING_STATUS,
     pendingToolEvents: [],
     flushScheduled: false,
@@ -751,11 +739,14 @@ export function useChatSend(deps: UseChatSendDeps) {
     let committed = false;
     if (buffer.pendingText !== null) {
       const fullText = buffer.pendingText;
+      const provisional = buffer.pendingTextProvisional;
       buffer.pendingText = null;
+      buffer.pendingTextProvisional = false;
       applyStreamingTextModification(setConversationMessages, {
         messageId: buffer.messageId,
         mode: "replace",
         fullText,
+        provisional,
       });
       committed = true;
     }
@@ -819,6 +810,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.conversationId = conversationId;
       buffer.messageId = messageId;
       buffer.pendingText = null;
+      buffer.pendingTextProvisional = false;
       buffer.pendingStatus = NO_PENDING_STATUS;
       buffer.pendingToolEvents = [];
       buffer.flushScheduled = false;
@@ -854,9 +846,15 @@ export function useChatSend(deps: UseChatSendDeps) {
   // Park the latest cumulative text for `messageId`. Synchronous callbacks from
   // one decoded SSE batch overwrite the parked value and commit together.
   const scheduleStreamingText = useCallback(
-    (conversationId: string, messageId: string, fullText: string) => {
+    (
+      conversationId: string,
+      messageId: string,
+      fullText: string,
+      provisional = false,
+    ) => {
       startStreamingTurn(conversationId, messageId);
       streamingFlushRef.current.pendingText = fullText;
+      streamingFlushRef.current.pendingTextProvisional = provisional;
       ensureStreamingFlush();
     },
     [startStreamingTurn, ensureStreamingFlush],
@@ -902,6 +900,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         buffer.flushTimer = null;
       }
       buffer.pendingText = null;
+      buffer.pendingTextProvisional = false;
       buffer.conversationId = null;
       buffer.pendingStatus = NO_PENDING_STATUS;
       buffer.pendingToolEvents = [];
@@ -1573,7 +1572,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         const data = await client.sendConversationMessageStream(
           convId,
           text,
-          (token, accumulatedText) => {
+          (token, accumulatedText, provisional) => {
             const nextText =
               typeof accumulatedText === "string"
                 ? accumulatedText
@@ -1585,7 +1584,15 @@ export function useChatSend(deps: UseChatSendDeps) {
             }
             // Coalesce tokens delivered in one transport burst into a microtask;
             // the parked text is flushed synchronously before terminal changes.
-            scheduleStreamingText(convId, assistantMsgId, nextText);
+            // Provisional (action-callback) text is stamped on the message so
+            // voice output holds it until the final reply confirms or replaces
+            // it (double-speak fix).
+            scheduleStreamingText(
+              convId,
+              assistantMsgId,
+              nextText,
+              provisional === true,
+            );
           },
           channelType,
           controller.signal,
@@ -1846,7 +1853,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             const retryData = await client.sendConversationMessageStream(
               conversation.id,
               text,
-              (token, accumulatedText) => {
+              (token, accumulatedText, provisional) => {
                 const nextText =
                   typeof accumulatedText === "string"
                     ? accumulatedText
@@ -1860,6 +1867,7 @@ export function useChatSend(deps: UseChatSendDeps) {
                   conversation.id,
                   replayAssistantId,
                   nextText,
+                  provisional === true,
                 );
               },
               channelType,
@@ -2400,7 +2408,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           const data = await client.sendConversationMessageStream(
             convId,
             trimmed,
-            (token, accumulatedText) => {
+            (token, accumulatedText, provisional) => {
               const nextText =
                 typeof accumulatedText === "string"
                   ? accumulatedText
@@ -2412,7 +2420,12 @@ export function useChatSend(deps: UseChatSendDeps) {
               }
               // Coalesce tokens delivered in one transport burst into a microtask;
               // flush synchronously before terminal changes.
-              scheduleStreamingText(convId, assistantMsgId, nextText);
+              scheduleStreamingText(
+                convId,
+                assistantMsgId,
+                nextText,
+                provisional === true,
+              );
             },
             "DM",
             controller.signal,

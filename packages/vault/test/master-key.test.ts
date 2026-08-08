@@ -148,13 +148,24 @@ describe("passphraseMasterKeyFromEnv", () => {
 describe("defaultMasterKey — fallback chain", () => {
   let prev: string | undefined;
   let prevDisable: string | undefined;
+  let prevDbus: string | undefined;
   beforeEach(() => {
     prev = process.env.ELIZA_VAULT_PASSPHRASE;
     prevDisable = process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
+    prevDbus = process.env.DBUS_SESSION_BUS_ADDRESS;
     // Force the keychain "safe" path so the existing tests below
-    // exercise the keychain attempt regardless of host environment
-    // (e.g. headless Linux CI without D-Bus).
+    // exercise the keychain attempt regardless of host environment.
+    // Deleting the disable flag is not enough: on headless Linux CI
+    // without a reachable D-Bus session, isKeychainUnsafe() still takes
+    // the "keychain bypassed: host unsafe" branch. DBUS_SESSION_BUS_ADDRESS
+    // is the production safe-host signal and is checked before any
+    // filesystem probe, so pinning it makes the branch deterministic on
+    // every host. No Linux test in this block calls load() without
+    // ELIZA_VAULT_DISABLE_KEYCHAIN=1 (which wins over the bus address),
+    // so the fake bus address is never dialed.
     delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
+    process.env.DBUS_SESSION_BUS_ADDRESS =
+      "unix:path=/nonexistent/eliza-vault-test-bus";
   });
   afterEach(() => {
     if (prev === undefined) delete process.env.ELIZA_VAULT_PASSPHRASE;
@@ -162,6 +173,8 @@ describe("defaultMasterKey — fallback chain", () => {
     if (prevDisable === undefined)
       delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
     else process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = prevDisable;
+    if (prevDbus === undefined) delete process.env.DBUS_SESSION_BUS_ADDRESS;
+    else process.env.DBUS_SESSION_BUS_ADDRESS = prevDbus;
   });
 
   test.skipIf(process.platform === "linux")(

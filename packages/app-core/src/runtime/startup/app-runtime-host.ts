@@ -1,7 +1,8 @@
 /**
  * App-runtime repair and resource lifecycle after the upstream agent boots. It
- * applies pre-ready hooks and autonomy, schedules the observable post-ready
- * tail, and guarantees that runtime-scoped bridges are released on shutdown.
+ * applies app-host autonomy, schedules the observable post-ready tail, and
+ * guarantees that runtime-scoped bridges are released on shutdown. Pre-ready
+ * plugin hooks are owned by the shared agent host before this repair runs.
  */
 import process from "node:process";
 import {
@@ -25,13 +26,11 @@ import {
 import { registerSubAgentCredentialBridgeAdapter } from "../../services/credential-tunnel-service";
 import { registerCoreSensitiveRequestAdapters } from "../../services/sensitive-requests/index.js";
 import { isRuntimeAutonomyEnabled } from "../autonomy-policy.js";
-import { ensureBundledFusedLibDir } from "../bundled-fused-lib.js";
 import { registerSubAgentCredentialBridge } from "../sub-agent-credential-bridge-wiring.js";
 import {
   getDeferAppRoutesEnabled,
   registerAppRoutePlugins,
   registerRuntimeHooks,
-  runBootHooks,
 } from "./app-contributors.js";
 import { configureAutonomy } from "./autonomy.js";
 import { startDeferredVoiceWarmup } from "./local-model-warmup.js";
@@ -51,24 +50,6 @@ export async function repairRuntimeAfterBoot(
 ): Promise<AgentRuntime> {
   runtimeBootResources.set(runtime, resources);
   await ensureRuntimeSqlCompatibility(runtime);
-
-  // Make the app-bundled fused libelizainference (staged into the desktop
-  // package) discoverable before any local-inference handler probes
-  // `supported()`. No-op in dev / on mobile and when an explicit override is
-  // set. Must run before the boot hooks (which install the local-inference
-  // handler) below.
-  ensureBundledFusedLibDir();
-
-  // Pre-ready boot hooks: registry-declared init steps that must run before the
-  // runtime is marked ready (e.g. installing the local model handler so it's
-  // present for the first turn). This is where plugin-local-inference's boot
-  // now lives — the mobile-voice-invariant warning + the platform-appropriate
-  // model-handler registration are owned by its `registerLocalInferenceBoot`
-  // hook (declared in registry-entry.json), NOT hard-wired here by name
-  // (arch-audit #12089 item 18). The hook owns its platform gating, so it runs
-  // identically on mobile (gated handler-ensure) and desktop (unconditional
-  // handler-ensure), and emits the mobile-gate warning on either platform.
-  await runBootHooks(runtime);
 
   // Mobile (Android / iOS) shortcut: the runtime is already serving from
   // PGlite + the AI provider plugin. The remaining boot steps either spawn
