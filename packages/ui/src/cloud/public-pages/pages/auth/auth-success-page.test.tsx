@@ -2,9 +2,10 @@
 // @vitest-environment jsdom
 
 /**
- * AuthSuccessPage only claims success after a callback-bound HMAC proof or an
- * authenticated ownership lookup. Forged markers stay unverified; outages are
- * a distinct unavailable state. Harness mocks the cloud API client.
+ * AuthSuccessPage only claims success after a one-time session-bound proof
+ * consume or an authenticated ownership lookup. Forged markers, forwarded
+ * proofs, and replays stay unverified; outages are a distinct unavailable
+ * state. Harness mocks the cloud API client.
  */
 
 import { act, cleanup, render, screen } from "@testing-library/react";
@@ -199,14 +200,12 @@ describe("resolveAuthSuccessCandidate", () => {
 });
 
 describe("verifyAuthSuccessCandidate", () => {
-  it("prefers callback-bound proof verification for sessionless browsers", async () => {
-    apiMock
-      .mockResolvedValueOnce({
-        ok: true,
-        platform: "github",
-        connectionId: "conn-1",
-      })
-      .mockRejectedValueOnce(new ApiError(401, "unauthorized", "no session"));
+  it("accepts a session-bound proof without a second ownership lookup", async () => {
+    apiMock.mockResolvedValueOnce({
+      ok: true,
+      platform: "github",
+      connectionId: "conn-1",
+    });
     await expect(
       verifyAuthSuccessCandidate({
         platform: "github",
@@ -219,43 +218,60 @@ describe("verifyAuthSuccessCandidate", () => {
       platformDisplay: "GitHub",
       connectionId: "conn-1",
     });
-    expect(apiMock).toHaveBeenNthCalledWith(
-      1,
+    expect(apiMock).toHaveBeenCalledTimes(1);
+    expect(apiMock).toHaveBeenCalledWith(
       "/api/v1/oauth/success-proof/verify?proof=p.sig",
-      expect.any(Object),
-    );
-    expect(apiMock).toHaveBeenNthCalledWith(
-      2,
-      "/api/v1/oauth/connections/conn-1",
       expect.any(Object),
     );
   });
 
-  it("rejects a transferred proof when the session cannot own the connection", async () => {
-    apiMock
-      .mockResolvedValueOnce({
-        ok: true,
-        platform: "github",
-        connectionId: "conn-other",
-      })
-      .mockRejectedValueOnce(new ApiError(404, "not_found", "not yours"));
+  it("fails closed on a forwarded proof when the verify endpoint is unauthorized", async () => {
+    // Adversarial: anonymous visitor pastes victim's /auth/success?...&proof=…
+    apiMock.mockRejectedValueOnce(
+      new ApiError(401, "unauthorized", "no session"),
+    );
     await expect(
       verifyAuthSuccessCandidate({
-        platform: "github",
-        connectionId: "conn-other",
-        proof: "stolen.sig",
+        platform: "twitter",
+        connectionId: null,
+        proof: "forwarded.twitter.sig",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "rejected" });
+    expect(apiMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed on a binding mismatch (different session than mint-time org/user)", async () => {
+    apiMock.mockRejectedValueOnce(
+      new ApiError(403, "forbidden", "binding_mismatch"),
+    );
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "twitter",
+        connectionId: null,
+        proof: "other-user.sig",
       }),
     ).resolves.toEqual({ ok: false, reason: "rejected" });
   });
 
-  it("rejects a valid proof when ownership returns 403 forbidden", async () => {
+  it("fails closed on a replayed already-consumed proof", async () => {
+    apiMock.mockRejectedValueOnce(
+      new ApiError(400, "bad_request", "already_used"),
+    );
+    await expect(
+      verifyAuthSuccessCandidate({
+        platform: "discord",
+        connectionId: null,
+        proof: "replayed.sig",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "rejected" });
+  });
+
+  it("does not accept a proof alone after anonymous ownership 401", async () => {
+    // Generic OAuth with connection_id: proof rejected (no session), ownership
+    // also unauthorized — must not fall back to a personal Connected claim.
     apiMock
-      .mockResolvedValueOnce({
-        ok: true,
-        platform: "github",
-        connectionId: "conn-1",
-      })
-      .mockRejectedValueOnce(new ApiError(403, "forbidden", "org inactive"));
+      .mockRejectedValueOnce(new ApiError(401, "unauthorized", "no session"))
+      .mockRejectedValueOnce(new ApiError(401, "unauthorized", "no session"));
     await expect(
       verifyAuthSuccessCandidate({
         platform: "github",
@@ -265,26 +281,21 @@ describe("verifyAuthSuccessCandidate", () => {
     ).resolves.toEqual({ ok: false, reason: "rejected" });
   });
 
-  it("retries ownership without bearer after a stale-token 401", async () => {
+  it("retries ownership without bearer after a stale-token 401 (ownership-only path)", async () => {
     bearerTokenRef.current = "stale.jwt.token";
     apiMock
-      .mockResolvedValueOnce({
-        ok: true,
-        platform: "github",
-        connectionId: "conn-other",
-      })
       .mockRejectedValueOnce(new ApiError(401, "unauthorized", "bad bearer"))
       .mockRejectedValueOnce(new ApiError(404, "not_found", "not yours"));
     await expect(
       verifyAuthSuccessCandidate({
         platform: "github",
         connectionId: "conn-other",
-        proof: "stolen.sig",
+        proof: null,
       }),
     ).resolves.toEqual({ ok: false, reason: "rejected" });
-    expect(apiMock).toHaveBeenCalledTimes(3);
+    expect(apiMock).toHaveBeenCalledTimes(2);
     expect(apiMock).toHaveBeenNthCalledWith(
-      3,
+      2,
       "/api/v1/oauth/connections/conn-other",
       expect.objectContaining({ skipAuth: true }),
     );
@@ -388,26 +399,18 @@ describe("verifyAuthSuccessCandidate", () => {
     ).resolves.toEqual({ ok: false, reason: "unavailable" });
   });
 
-  it("verifies proofs and ownership against Cloud from loopback web origins", async () => {
+  it("verifies session-bound proofs against Cloud from loopback web origins", async () => {
     setPageOrigin("http://localhost:5173");
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            ok: true,
-            platform: "github",
-            connectionId: "conn-1",
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          platform: "github",
+          connectionId: "conn-1",
         }),
-      );
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
@@ -424,16 +427,11 @@ describe("verifyAuthSuccessCandidate", () => {
     });
 
     expect(apiMock).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(
         /^https:\/\/api\.elizacloud\.ai\/api\/v1\/oauth\/success-proof\/verify\?proof=loopback\.sig$/,
       ),
-      expect.objectContaining({ credentials: "include", method: "GET" }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "https://api.elizacloud.ai/api/v1/oauth/connections/conn-1",
       expect.objectContaining({ credentials: "include", method: "GET" }),
     );
   });
@@ -474,16 +472,28 @@ describe("AuthSuccessPage", () => {
     expect(apiMock).not.toHaveBeenCalled();
   });
 
-  it("shows verified success after proof verification", async () => {
-    apiMock
-      .mockResolvedValueOnce({
-        ok: true,
-        platform: "github",
-        connectionId: "conn-1",
-      })
-      .mockRejectedValueOnce(new ApiError(401, "unauthorized", "no session"));
+  it("shows verified success after session-bound proof verification", async () => {
+    apiMock.mockResolvedValueOnce({
+      ok: true,
+      platform: "github",
+      connectionId: "conn-1",
+    });
     render(<AuthSuccessPage />);
     expect(await screen.findByText("GitHub Connected")).toBeTruthy();
+  });
+
+  it("does not claim Connected for a forwarded proof without a session", async () => {
+    apiMock.mockRejectedValueOnce(
+      new ApiError(401, "unauthorized", "no session"),
+    );
+    searchParamsRef.current = new URLSearchParams(
+      "twitter_connected=true&platform=twitter&proof=forwarded.sig",
+    );
+    render(<AuthSuccessPage />);
+    expect(
+      await screen.findByText("Connection Could Not Be Verified"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Twitter Connected")).toBeNull();
   });
 
   it("shows unavailable UI on verification outage", async () => {
@@ -499,13 +509,11 @@ describe("AuthSuccessPage", () => {
   });
 
   it("auto-closes only when verified success has a live opener", async () => {
-    apiMock
-      .mockResolvedValueOnce({
-        ok: true,
-        platform: "github",
-        connectionId: "conn-1",
-      })
-      .mockRejectedValueOnce(new ApiError(401, "unauthorized", "no session"));
+    apiMock.mockResolvedValueOnce({
+      ok: true,
+      platform: "github",
+      connectionId: "conn-1",
+    });
     const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
     Object.defineProperty(window, "opener", {
       value: { closed: false },

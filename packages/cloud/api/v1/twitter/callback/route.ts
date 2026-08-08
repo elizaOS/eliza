@@ -218,14 +218,18 @@ app.get("/", async (c) => {
     }
     const successTarget = buildRedirectUrl(state.redirectUrl, successParams);
     if (isOAuthSuccessLandingPath(successTarget.pathname)) {
-      const proof = mintOAuthSuccessProof({ platform: "twitter" });
+      const proof = await mintOAuthSuccessProof({
+        platform: "twitter",
+        organizationId: state.organizationId,
+        userId: state.userId,
+      });
       if (proof) {
         successTarget.searchParams.set("proof", proof);
       } else {
-        // Twitter has no connection_id — without a proof the success page cannot
-        // verify. Fail closed to the error marker instead of a false unverified.
+        // Twitter has no connection_id — without a one-time bound proof the
+        // success page cannot verify. Fail closed instead of a false Connected.
         logger.error(
-          "[Twitter Callback] success proof secret unavailable; cannot verify /auth/success without a proof",
+          "[Twitter Callback] success proof secret/ticket unavailable; cannot verify /auth/success without a proof",
         );
         return redirectTo(
           buildRedirectUrl(state.redirectUrl, {
@@ -356,12 +360,16 @@ app.get("/", async (c) => {
   };
   const oauth1Target = buildRedirectUrl(redirectUrl, oauth1Success);
   if (isOAuthSuccessLandingPath(oauth1Target.pathname)) {
-    const oauth1Proof = mintOAuthSuccessProof({ platform: "twitter" });
+    const oauth1Proof = await mintOAuthSuccessProof({
+      platform: "twitter",
+      organizationId: state.organizationId,
+      userId: state.userId,
+    });
     if (oauth1Proof) {
       oauth1Target.searchParams.set("proof", oauth1Proof);
     } else {
       logger.error(
-        "[Twitter Callback] success proof secret unavailable; cannot verify /auth/success without a proof",
+        "[Twitter Callback] success proof secret/ticket unavailable; cannot verify /auth/success without a proof",
       );
       return redirectTo(
         buildRedirectUrl(redirectUrl, {

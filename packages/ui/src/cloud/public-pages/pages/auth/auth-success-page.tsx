@@ -1,10 +1,12 @@
 /**
  * OAuth/connector auth-success callback page (public). Renders success only
- * after an authenticated backend lookup confirms the referenced connection
- * exists and belongs to the current org/user. Query markers alone never claim
- * a successful connection.
+ * after a one-time, session-bound proof is consumed or an authenticated
+ * ownership lookup confirms the connection. Query markers alone never claim a
+ * successful connection; forwarded proofs cannot claim another visitor's
+ * account.
  */
 
+import { Capacitor } from "@capacitor/core";
 import {
   AlertCircle,
   CheckCircle,
@@ -14,7 +16,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Capacitor } from "@capacitor/core";
 import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   resolveDirectCloudAuthApiBase,
@@ -22,11 +23,7 @@ import {
 import { isElectrobunRuntime } from "../../../../bridge/electrobun-runtime";
 import { Button } from "../../../../components/primitives";
 import { getBootConfig } from "../../../../config/boot-config";
-import {
-  ApiError,
-  api,
-  readCloudBearerToken,
-} from "../../../lib/api-client";
+import { ApiError, api, readCloudBearerToken } from "../../../lib/api-client";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
 
@@ -98,7 +95,8 @@ async function fetchCloudJson<T>(
     });
   } catch (error) {
     // error-policy:J4 network failure reaching Cloud from loopback is unavailable.
-    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
     throw new ApiError(0, "NETWORK_ERROR", "Could not reach Cloud API");
   }
 
@@ -129,15 +127,18 @@ async function fetchCloudJson<T>(
 async function fetchSuccessProofVerify(
   proof: string,
   signal?: AbortSignal,
+  options: { skipAuth?: boolean } = {},
 ): Promise<{
   ok?: boolean;
   platform?: string;
   connectionId?: string | null;
   reason?: string;
 }> {
+  // Proof verify requires the visitor's session cookies/bearer so the server
+  // can bind the one-time ticket to the mint-time org/user.
   return fetchCloudJson(
     `/api/v1/oauth/success-proof/verify?proof=${encodeURIComponent(proof)}`,
-    { signal, skipAuth: true },
+    { signal, skipAuth: options.skipAuth ?? false },
   );
 }
 
@@ -284,8 +285,18 @@ async function verifyProof(args: {
     }
   | { ok: false; reason: "rejected" | "unavailable" }
 > {
-  try {
-    const data = await fetchSuccessProofVerify(args.proof, args.signal);
+  const interpret = (data: {
+    ok?: boolean;
+    platform?: string;
+    connectionId?: string | null;
+  }):
+    | {
+        ok: true;
+        platform: string;
+        platformDisplay: string;
+        connectionId: string | null;
+      }
+    | { ok: false; reason: "rejected" } => {
     if (!data?.ok || typeof data.platform !== "string") {
       return { ok: false, reason: "rejected" };
     }
@@ -310,14 +321,43 @@ async function verifyProof(args: {
       platformDisplay: PLATFORM_NAMES[platform],
       connectionId: proofConnectionId ?? args.connectionId,
     };
+  };
+
+  try {
+    const data = await fetchSuccessProofVerify(args.proof, args.signal);
+    return interpret(data);
   } catch (error) {
     // error-policy:J4 proof-verify transport failures become unavailable;
-    // 4xx from the verifier is an explicit rejected proof.
+    // 4xx from the verifier is an explicit rejected proof. Retry cookie-only
+    // after a bearer 401 so a stale Steward JWT does not mask a valid cookie.
     if (error instanceof DOMException && error.name === "AbortError")
       throw error;
     if (error instanceof ApiError) {
       if (isRetryableApiFailure(error)) {
         return { ok: false, reason: "unavailable" };
+      }
+      if (error.status === 401 && readCloudBearerToken()?.trim()) {
+        try {
+          const data = await fetchSuccessProofVerify(args.proof, args.signal, {
+            skipAuth: true,
+          });
+          return interpret(data);
+        } catch (retryError) {
+          // error-policy:J4 cookie-only proof retry: same unavailable/rejected mapping.
+          if (
+            retryError instanceof DOMException &&
+            retryError.name === "AbortError"
+          ) {
+            throw retryError;
+          }
+          if (retryError instanceof ApiError) {
+            if (isRetryableApiFailure(retryError)) {
+              return { ok: false, reason: "unavailable" };
+            }
+            return { ok: false, reason: "rejected" };
+          }
+          return { ok: false, reason: "unavailable" };
+        }
       }
       return { ok: false, reason: "rejected" };
     }
@@ -401,9 +441,10 @@ async function verifyConnectionOwnership(args: {
   }
 }
 
-function asVerifyFailure(
-  reason: "rejected" | "unauthorized" | "unavailable",
-): { ok: false; reason: "rejected" | "unavailable" } {
+function asVerifyFailure(reason: "rejected" | "unauthorized" | "unavailable"): {
+  ok: false;
+  reason: "rejected" | "unavailable";
+} {
   // unauthorized is an internal ownership probe signal; callers map it.
   return { ok: false, reason: reason === "unauthorized" ? "rejected" : reason };
 }
@@ -437,11 +478,11 @@ async function resolveConnectionOwnership(args: {
 }
 
 /**
- * Confirm a candidate via callback-bound proof and/or authenticated connection
- * ownership. A proof with a connection id is not enough for a sessioned browser:
- * ownership must match so a transferred proof cannot claim "your account".
- * Truly sessionless API-key OAuth (401 with no usable cookie session) may still
- * accept a valid proof.
+ * Confirm a candidate via a one-time session-bound proof and/or authenticated
+ * connection ownership. The verify endpoint requires a matching browser
+ * session and consumes the nonce, so a forwarded URL cannot claim Connected
+ * for an anonymous or different visitor. Sessionless API-key OAuth fails
+ * closed here — ownership of `connection_id` is the only non-proof path.
  */
 export async function verifyAuthSuccessCandidate(args: {
   platform: string;
@@ -465,48 +506,21 @@ export async function verifyAuthSuccessCandidate(args: {
       signal: args.signal,
     });
 
-    if (!proofResult.ok) {
-      if (!args.connectionId) return proofResult;
-      // Soft-fail into ownership when proof fails but connection_id remains
-      // (expired proof / secret cutover) for sessioned browsers.
-      const ownership = await resolveConnectionOwnership({
-        platform: args.platform,
-        connectionId: args.connectionId,
-        signal: args.signal,
-      });
-      if (ownership.ok) return ownership;
-      if (proofResult.reason === "unavailable") return proofResult;
-      if (ownership.reason === "unavailable") {
-        return { ok: false, reason: "unavailable" };
-      }
-      return { ok: false, reason: "rejected" };
-    }
-
-    // Proof verified. Twitter-style proofs have no connection id — accept.
-    if (!args.connectionId && !proofResult.connectionId) {
+    if (proofResult.ok) {
+      // Server already bound the ticket to this session and consumed the nonce.
       return proofResult;
     }
 
-    const connectionId = args.connectionId ?? proofResult.connectionId;
-    if (!connectionId) return proofResult;
-
-    // Bind "your account" claims to the visitor when a connection id is known:
-    // sessioned browsers must own the connection; only a true sessionless
-    // visitor (401 after optional cookie-only retry) may rely on the proof.
+    if (!args.connectionId) return proofResult;
+    // Soft-fail into ownership when proof fails but connection_id remains
+    // (expired/replayed proof / secret cutover) for sessioned browsers.
     const ownership = await resolveConnectionOwnership({
-      platform: proofResult.platform,
-      connectionId,
+      platform: args.platform,
+      connectionId: args.connectionId,
       signal: args.signal,
     });
     if (ownership.ok) return ownership;
-    if (ownership.reason === "unauthorized") {
-      return {
-        ok: true,
-        platform: proofResult.platform,
-        platformDisplay: proofResult.platformDisplay,
-        connectionId,
-      };
-    }
+    if (proofResult.reason === "unavailable") return proofResult;
     if (ownership.reason === "unavailable") {
       return { ok: false, reason: "unavailable" };
     }

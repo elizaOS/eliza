@@ -133,17 +133,19 @@ export async function handleGenericOAuthCallback(
     // tokens to dashboard/settings or other callback consumers that strip
     // markers but historically leave unknown query keys in history/Referer.
     if (isOAuthSuccessLandingPath(redirectTarget.pathname)) {
-      const proof = mintOAuthSuccessProof({
+      const proof = await mintOAuthSuccessProof({
         platform: platformLower,
         connectionId: result.connectionId,
+        organizationId: result.organizationId,
+        userId: result.userId,
       });
       if (proof) {
         redirectTarget.searchParams.set("proof", proof);
       } else {
-        // connection_id remains for sessioned ownership; sessionless API-key
-        // OAuth cannot verify without a configured signing secret.
+        // connection_id remains for sessioned ownership; without a mintable
+        // ticket the success page cannot claim Connected from a proof alone.
         logger.error(
-          `[OAuth ${platform}] success proof secret unavailable; /auth/success will require a browser session to verify connection_id`,
+          `[OAuth ${platform}] success proof secret/ticket unavailable; /auth/success will require a browser session to verify connection_id`,
         );
       }
     }

@@ -1,8 +1,11 @@
-/** Unit tests for OAuth success-proof mint/verify (HMAC gate). */
+/** Unit tests for OAuth success-proof mint/consume (HMAC + one-time ticket). */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  __setOAuthSuccessProofTicketStoreForTests,
   clearOAuthSuccessParams,
+  consumeOAuthSuccessProof,
+  createMemoryOAuthSuccessProofTicketStore,
   isOAuthSuccessConnectedParam,
   isOAuthSuccessLandingPath,
   mintOAuthSuccessProof,
@@ -11,73 +14,119 @@ import {
 
 const PREV = { ...process.env };
 
+const BINDING = {
+  organizationId: "org-1",
+  userId: "user-1",
+};
+
 describe("oauth success proof", () => {
   beforeEach(() => {
     process.env.OAUTH_SUCCESS_PROOF_SECRET = "test-oauth-success-proof-secret-32b";
+    __setOAuthSuccessProofTicketStoreForTests(createMemoryOAuthSuccessProofTicketStore());
   });
 
   afterEach(() => {
+    __setOAuthSuccessProofTicketStoreForTests(null);
     process.env = { ...PREV };
   });
 
-  it("mints and verifies a platform + connection proof", () => {
-    const proof = mintOAuthSuccessProof({
+  it("mints and consumes a platform + connection proof once", async () => {
+    const proof = await mintOAuthSuccessProof({
       platform: "github",
       connectionId: "conn-1",
+      ...BINDING,
     });
     expect(proof).toBeTruthy();
-    const result = verifyOAuthSuccessProof(proof);
-    expect(result).toEqual({
+    const first = await consumeOAuthSuccessProof(proof, BINDING);
+    expect(first).toEqual({
       ok: true,
       payload: expect.objectContaining({
         platform: "github",
         connectionId: "conn-1",
+        organizationId: "org-1",
+        userId: "user-1",
       }),
     });
+    const second = await consumeOAuthSuccessProof(proof, BINDING);
+    expect(second).toEqual({ ok: false, reason: "already_used" });
   });
 
-  it("mints twitter proofs without a connection id", () => {
-    const proof = mintOAuthSuccessProof({ platform: "twitter" });
+  it("mints twitter proofs without a connection id and consumes once", async () => {
+    const proof = await mintOAuthSuccessProof({
+      platform: "twitter",
+      ...BINDING,
+    });
     expect(proof).toBeTruthy();
-    const result = verifyOAuthSuccessProof(proof);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.payload.platform).toBe("twitter");
-      expect(result.payload.connectionId).toBeNull();
+    const first = await consumeOAuthSuccessProof(proof, BINDING);
+    expect(first.ok).toBe(true);
+    if (first.ok) {
+      expect(first.payload.platform).toBe("twitter");
+      expect(first.payload.connectionId).toBeNull();
     }
+    const second = await consumeOAuthSuccessProof(proof, BINDING);
+    expect(second).toEqual({ ok: false, reason: "already_used" });
   });
 
-  it("rejects tampered signatures", () => {
-    const proof = mintOAuthSuccessProof({
+  it("rejects a forwarded proof bound to a different session", async () => {
+    const proof = await mintOAuthSuccessProof({
+      platform: "twitter",
+      ...BINDING,
+    });
+    expect(proof).toBeTruthy();
+    const result = await consumeOAuthSuccessProof(proof, {
+      organizationId: "org-attacker",
+      userId: "user-attacker",
+    });
+    expect(result).toEqual({ ok: false, reason: "binding_mismatch" });
+    // Ticket must remain for the legitimate browser.
+    const legitimate = await consumeOAuthSuccessProof(proof, BINDING);
+    expect(legitimate.ok).toBe(true);
+  });
+
+  it("rejects tampered signatures", async () => {
+    const proof = await mintOAuthSuccessProof({
       platform: "google",
       connectionId: "c1",
+      ...BINDING,
     });
     expect(proof).toBeTruthy();
     const tampered = `${proof!.slice(0, -4)}aaaa`;
-    expect(verifyOAuthSuccessProof(tampered)).toEqual({
+    expect(await consumeOAuthSuccessProof(tampered, BINDING)).toEqual({
       ok: false,
       reason: "bad_signature",
     });
   });
 
-  it("rejects expired proofs", () => {
-    const proof = mintOAuthSuccessProof({
+  it("rejects expired proofs", async () => {
+    const proof = await mintOAuthSuccessProof({
       platform: "slack",
       connectionId: "c1",
       ttlMs: -1,
+      ...BINDING,
     });
-    expect(verifyOAuthSuccessProof(proof)).toEqual({
+    expect(await consumeOAuthSuccessProof(proof, BINDING)).toEqual({
       ok: false,
       reason: "expired",
     });
   });
 
-  it("rejects oversized proofs before HMAC work", () => {
+  it("rejects oversized proofs before HMAC work", async () => {
     const huge = `${"a".repeat(3_000)}.${"b".repeat(64)}`;
-    expect(verifyOAuthSuccessProof(huge)).toEqual({
+    expect(await consumeOAuthSuccessProof(huge, BINDING)).toEqual({
       ok: false,
       reason: "malformed",
     });
+  });
+
+  it("HMAC-only verify does not consume the ticket (codec check)", async () => {
+    const proof = await mintOAuthSuccessProof({
+      platform: "github",
+      connectionId: "conn-1",
+      ...BINDING,
+    });
+    expect(verifyOAuthSuccessProof(proof).ok).toBe(true);
+    expect(verifyOAuthSuccessProof(proof).ok).toBe(true);
+    expect((await consumeOAuthSuccessProof(proof, BINDING)).ok).toBe(true);
   });
 
   it("scopes connected-marker cleanup to known OAuth providers", () => {
