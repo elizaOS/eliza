@@ -138,12 +138,22 @@ describe("AgentRuntime.stop", () => {
 		}
 
 		await runtime.registerService(FailingStartService);
+		// Since #17427 sibling implementations start in parallel and the load
+		// promise rejects with the aggregate: an AggregateError of per-class
+		// SERVICE_START_FAILED errors, each preserving the original cause.
 		await expect(
 			runtime.getServiceLoadPromise(FailingStartService.serviceType),
 		).rejects.toMatchObject({
 			code: "SERVICE_START_FAILED",
 			cause: expect.objectContaining({
-				message: "startup dependency unavailable",
+				errors: [
+					expect.objectContaining({
+						code: "SERVICE_START_FAILED",
+						cause: expect.objectContaining({
+							message: "startup dependency unavailable",
+						}),
+					}),
+				],
 			}),
 		});
 		await runtime.stop();

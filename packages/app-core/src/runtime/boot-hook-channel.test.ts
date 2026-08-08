@@ -87,8 +87,13 @@ describe("resolveBootHookContributors — data-declared hooks", () => {
     ).toContain("@elizaos/plugin-local-inference");
   });
 
-  it("returns no contributors when the registry declares no hooks", () => {
-    expect(resolveBootHookContributors([])).toEqual([]);
+  it("keeps the host-owned local-inference fallback when the registry declares no hooks", () => {
+    // #17964: a packaged bundle ships an intentionally empty registry, so the
+    // host appends its own local-inference declaration rather than losing the
+    // voice-critical hook.
+    expect(
+      resolveBootHookContributors([]).map((contributor) => contributor.id),
+    ).toEqual(["@elizaos/plugin-local-inference"]);
   });
 
   it("resolves a registry-declared hook", () => {
@@ -104,7 +109,7 @@ describe("resolveBootHookContributors — data-declared hooks", () => {
     ]);
   });
 
-  it("deduplicates declarations by id with the last declaration winning", () => {
+  it("deduplicates declarations by id and appends the host fallback", () => {
     const contributors = resolveBootHookContributors([
       {
         id: "same-plugin",
@@ -119,6 +124,7 @@ describe("resolveBootHookContributors — data-declared hooks", () => {
     ]);
     expect(contributors.map((contributor) => contributor.id)).toEqual([
       "same-plugin",
+      "@elizaos/plugin-local-inference",
     ]);
   });
 });
