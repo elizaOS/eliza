@@ -215,13 +215,14 @@ describe("CONNECTOR Google connect handoff cards", () => {
     expect(result.userFacingText).toContain("[CONFIG:google-workspace]");
     // Must not leak raw upstream / internal error text into verified UI copy.
     expect(result.text).not.toContain("internal-debug");
-    expect(result.userFacingText).toMatch(/Google Workspace enabled and OAuth configured/i);
+    expect(result.userFacingText).toMatch(
+      /Google Workspace enabled and OAuth configured/i,
+    );
     expect(result.data).toMatchObject({
       awaitingUserAction: true,
       status: 503,
     });
   });
-
 
   it("maps incomplete GOOGLE_CLIENT_* Error to google-workspace setup card", async () => {
     mocks.startGoogleConnector.mockRejectedValue(
@@ -233,7 +234,9 @@ describe("CONNECTOR Google connect handoff cards", () => {
     expect(result.success).toBe(false);
     expect(result.verifiedUserFacing).toBe(true);
     expect(result.text).toContain("[CONFIG:google-workspace]");
-    expect(result.data).toMatchObject({ error: "GOOGLE_OAUTH_CONFIG_INCOMPLETE" });
+    expect(result.data).toMatchObject({
+      error: "GOOGLE_OAUTH_CONFIG_INCOMPLETE",
+    });
   });
 
   it("routes calendar-feed connect away from CONNECTOR in metadata", () => {

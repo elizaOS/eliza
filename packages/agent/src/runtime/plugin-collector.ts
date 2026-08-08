@@ -400,9 +400,7 @@ function isGoogleChatConnectorConfigured(value: unknown): boolean {
 function shouldLoadGoogleWorkspace(
   config: ElizaConfig,
   env: NodeJS.ProcessEnv,
-  pluginEntries:
-    | Record<string, { enabled?: boolean } | undefined>
-    | undefined,
+  pluginEntries: Record<string, { enabled?: boolean } | undefined> | undefined,
 ): boolean {
   if (pluginEntries?.["google-workspace"]?.enabled === true) {
     return true;

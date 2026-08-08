@@ -450,8 +450,7 @@ async function beginOAuthIntent(args: {
     // actionable configuration handoff — not a generic auth-start failure.
     const causeMessage =
       cause instanceof Error ? cause.message : String(cause ?? "");
-    const causeCode =
-      cause instanceof ElizaError ? cause.code : undefined;
+    const causeCode = cause instanceof ElizaError ? cause.code : undefined;
     if (
       args.provider === "google" &&
       /GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_REDIRECT_URI/i.test(

@@ -5,10 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { shouldEnable } from "../auto-enable.ts";
 
-function ctx(partial: {
-  config?: Record<string, unknown>;
-  env?: NodeJS.ProcessEnv;
-}) {
+function ctx(partial: { config?: Record<string, unknown>; env?: NodeJS.ProcessEnv }) {
   return {
     config: partial.config ?? {},
     env: partial.env ?? {},
@@ -22,8 +19,8 @@ describe("plugin-google-workspace shouldEnable", () => {
       shouldEnable(
         ctx({
           config: { connectors: { googlechat: { serviceAccountKey: "{}" } } },
-        }),
-      ),
+        })
+      )
     ).toBe(true);
   });
 
@@ -32,8 +29,8 @@ describe("plugin-google-workspace shouldEnable", () => {
       shouldEnable(
         ctx({
           config: { connectors: { googlechat: { enabled: false } } },
-        }),
-      ),
+        })
+      )
     ).toBe(false);
   });
 
@@ -42,8 +39,8 @@ describe("plugin-google-workspace shouldEnable", () => {
       shouldEnable(
         ctx({
           config: { connectors: { googlechat: {} } },
-        }),
-      ),
+        })
+      )
     ).toBe(false);
   });
 
@@ -54,8 +51,8 @@ describe("plugin-google-workspace shouldEnable", () => {
           config: {
             plugins: { entries: { calendar: { enabled: true } } },
           },
-        }),
-      ),
+        })
+      )
     ).toBe(false);
   });
 
@@ -66,8 +63,8 @@ describe("plugin-google-workspace shouldEnable", () => {
           config: {
             plugins: { entries: { "google-workspace": { enabled: true } } },
           },
-        }),
-      ),
+        })
+      )
     ).toBe(true);
   });
 
@@ -80,8 +77,8 @@ describe("plugin-google-workspace shouldEnable", () => {
             GOOGLE_CLIENT_SECRET: "secret",
             GOOGLE_REDIRECT_URI: "https://example.com/oauth/callback",
           } as NodeJS.ProcessEnv,
-        }),
-      ),
+        })
+      )
     ).toBe(true);
   });
 
@@ -93,8 +90,8 @@ describe("plugin-google-workspace shouldEnable", () => {
             GOOGLE_CLIENT_ID: "client",
             GOOGLE_CLIENT_SECRET: "secret",
           } as NodeJS.ProcessEnv,
-        }),
-      ),
+        })
+      )
     ).toBe(false);
   });
 
@@ -117,8 +114,8 @@ describe("plugin-google-workspace shouldEnable", () => {
             GOOGLE_CLIENT_SECRET: "secret",
             GOOGLE_REDIRECT_URI: "https://example.com/oauth/callback",
           } as NodeJS.ProcessEnv,
-        }),
-      ),
+        })
+      )
     ).toBe(false);
   });
 });

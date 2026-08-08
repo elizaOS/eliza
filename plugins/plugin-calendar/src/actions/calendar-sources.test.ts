@@ -7,10 +7,10 @@
  */
 
 import {
-  ElizaError,
   CONNECTOR_ACCOUNT_SERVICE_TYPE,
   ConnectorAccountManager,
   type Content,
+  ElizaError,
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,

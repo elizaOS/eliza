@@ -131,7 +131,6 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-google-workspace")).toBe(false);
   });
 
-
   it("does not load google-workspace on mobile even with full OAuth env", () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
