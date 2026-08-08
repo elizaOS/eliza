@@ -18,6 +18,7 @@
  * process-local map and referenced by an opaque `codeVerifierRef` written to
  * flow metadata, so stored rows never carry the raw secret.
  */
+import { logger } from "../logger";
 import type { Action, ActionParameters } from "../types/components";
 import type {
 	ConnectorAccountAccessGate,
@@ -1135,31 +1136,21 @@ function ownerBindingKey(
 	return `${normalizeProvider(connector)}:${externalId}:${instanceId ?? ""}`;
 }
 
-function resolveStorage(runtime?: IAgentRuntime): ConnectorAccountStorage {
-	if (runtime && typeof runtime.getService === "function") {
-		const service = runtime.getService(CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE);
-		if (isConnectorAccountStorage(service)) {
-			return service;
-		}
-		const adapter = (runtime as { adapter?: unknown }).adapter;
-		if (isConnectorAccountDatabaseAdapter(adapter)) {
-			return new DatabaseConnectorAccountStorage(adapter);
-		}
-	}
-	return new InMemoryConnectorAccountStorage();
-}
-
 export class ConnectorAccountManager extends Service {
 	static override serviceType = CONNECTOR_ACCOUNT_SERVICE_TYPE;
 	capabilityDescription =
 		"Manages connector account providers, OAuth flows, and account access policy";
 
 	private providers = new Map<string, ConnectorAccountProvider>();
-	private storage: ConnectorAccountStorage;
+	private explicitStorage?: ConnectorAccountStorage;
+	private databaseStorage?: DatabaseConnectorAccountStorage;
+	private databaseStorageAdapter?: ConnectorAccountDatabaseAdapter;
+	private fallbackStorage?: InMemoryConnectorAccountStorage;
+	private warnedFallback = false;
 
 	constructor(runtime?: IAgentRuntime, storage?: ConnectorAccountStorage) {
 		super(runtime);
-		this.storage = storage ?? resolveStorage(runtime);
+		this.explicitStorage = storage;
 	}
 
 	static override async start(
@@ -1170,12 +1161,57 @@ export class ConnectorAccountManager extends Service {
 
 	async stop(): Promise<void> {}
 
+	/**
+	 * Storage is resolved lazily on every access rather than pinned at
+	 * construction. The manager is typically constructed during concurrent
+	 * plugin registration — often before the SQL adapter is attached to the
+	 * runtime — and it is cached per-runtime for the process lifetime. A
+	 * construction-time binding therefore captured the in-memory fallback
+	 * forever, so connector accounts written after OAuth completion never
+	 * reached the durable connector_accounts table and vanished on restart.
+	 * Precedence: explicitly injected storage (constructor/setStorage) → a
+	 * registered connector_account_storage service → the runtime database
+	 * adapter (memoized per adapter) → one persistent in-memory fallback.
+	 */
+	private get storage(): ConnectorAccountStorage {
+		if (this.explicitStorage) {
+			return this.explicitStorage;
+		}
+		const runtime = this.runtime as IAgentRuntime | undefined;
+		if (runtime && typeof runtime.getService === "function") {
+			const service = runtime.getService(
+				CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
+			);
+			if (isConnectorAccountStorage(service)) {
+				return service;
+			}
+			const adapter = (runtime as { adapter?: unknown }).adapter;
+			if (isConnectorAccountDatabaseAdapter(adapter)) {
+				if (this.databaseStorageAdapter !== adapter) {
+					this.databaseStorage = new DatabaseConnectorAccountStorage(adapter);
+					this.databaseStorageAdapter = adapter;
+				}
+				return this.databaseStorage as DatabaseConnectorAccountStorage;
+			}
+			if (!this.warnedFallback) {
+				this.warnedFallback = true;
+				logger.warn(
+					"[ConnectorAccountManager] no durable connector-account storage available yet; using in-memory fallback until a database adapter registers",
+				);
+			}
+		}
+		if (!this.fallbackStorage) {
+			this.fallbackStorage = new InMemoryConnectorAccountStorage();
+		}
+		return this.fallbackStorage;
+	}
+
 	getStorage(): ConnectorAccountStorage {
 		return this.storage;
 	}
 
 	setStorage(storage: ConnectorAccountStorage): void {
-		this.storage = storage;
+		this.explicitStorage = storage;
 	}
 
 	registerProvider(
