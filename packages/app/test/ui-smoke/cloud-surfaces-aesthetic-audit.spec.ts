@@ -96,6 +96,15 @@ interface CloudAuditCase {
   route: string;
   /** Seed the persisted Steward token before boot (authed dashboard pages). */
   auth: boolean;
+  /**
+   * Routes that always redirect on localhost (role-gated, environment-bound)
+   * cannot be visually inspected in this harness. Instead of recording a
+   * misleading screenshot of the redirect destination as if it were the
+   * source surface, assert the final URL matches this pattern — proving the
+   * redirect fired to the designed end state, not that a different surface
+   * rendered its content.
+   */
+  expectedFinalPath?: RegExp;
 }
 
 const AUTH = true;
@@ -268,16 +277,25 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     route: "auth/cli-login",
     auth: PUBLIC,
   },
-  // Cross-host SSO handshake; role-switched by hostname. Without a code/state
-  // the page renders an inert "waiting" state (no redirect).
+  // auth/bridge — the SSO handshake route is hostname-role-gated. On localhost
+  // (the Playwright harness) ssoBridgeRoleForHostname returns "none", so
+  // SsoBridgeRoute renders <Navigate to="/" replace> immediately. This case
+  // does NOT visually inspect the bridge surface — that requires a deployed
+  // bridge hostname or test-only hostname injection. Instead it asserts the
+  // designed localhost redirect fired, proving the route is reachable and
+  // wired (not 404/blank). The mint/exchange failure states are covered by
+  // focused component tests (SsoBridgeRoute.test.tsx), not this visual walk.
   {
     slug: "auth-bridge",
     path: "/auth/bridge",
     route: "auth/bridge",
     auth: PUBLIC,
+    expectedFinalPath: /^\/?$/,
   },
-  // OIDC sign-in bounce target. Without a `rid` param the page shows an
-  // "issuer_unconfigured" or "expired" message (readable content, no redirect).
+  // oidc/continue — the OIDC sign-in bounce target. Without a `rid` param
+  // buildOidcResumeTarget returns "invalid_request_id" on any host; the page
+  // renders a readable "sign-in request is no longer valid" message without
+  // redirecting.
   {
     slug: "oidc-continue",
     path: "/oidc/continue",
@@ -588,6 +606,21 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         }
         await installCloudApiStubs(page);
         await page.goto(auditCase.path, { waitUntil: "domcontentloaded" });
+
+        // Routes with expectedFinalPath always redirect on localhost (the
+        // harness hostname is 127.0.0.1). Assert the final URL matches the
+        // designed end state so the audit proves reachability without claiming
+        // visual coverage of a surface it cannot render here. Screenshot and
+        // paint checks are still collected from the redirect destination for
+        // the report, but the finding notes which route exercised the redirect.
+        if (auditCase.expectedFinalPath) {
+          await expect
+            .poll(async () => new URL(page.url()).pathname, {
+              message: `${auditCase.slug} redirected to its designed end state`,
+              timeout: 10_000,
+            })
+            .toMatch(auditCase.expectedFinalPath);
+        }
 
         // Wait for the page to actually paint text (lazy route chunk +
         // react-query settle). Non-fatal: a page that never paints is recorded
