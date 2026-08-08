@@ -404,10 +404,17 @@ async function beginOAuthIntent(args: {
   const manager = getConnectorAccountManager(args.runtime);
   const provider = manager.getProvider(args.provider);
   if (!provider?.startOAuth) {
+    // Distinct copy for Google: the OAuth provider + Calendar API live in
+    // plugin-google-workspace. A missing registration is a plugin-enable problem,
+    // not a vague "auth error".
+    const reason =
+      args.provider === "google"
+        ? "Google Calendar OAuth is not registered in this runtime. Enable @elizaos/plugin-google-workspace, then connect again to open the owner authorization URL."
+        : `${args.provider} OAuth is not registered in this runtime.`;
     return configIntent({
       provider: args.provider,
       operation: args.operation,
-      reason: `${args.provider} OAuth is not registered in this runtime.`,
+      reason,
     });
   }
   const account =

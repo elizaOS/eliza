@@ -828,6 +828,30 @@ export function collectPluginNames(
     }
   }
 
+  // Calendar home tiles load on every platform (MOBILE_VIEW_PLUGINS). Their
+  // runtime needs: (1) plugin-scheduling — declared hard dependency and the
+  // Google watch / reminder spine; (2) plugin-google-workspace — registers the
+  // ConnectorAccountManager "google" OAuth provider and the Calendar API
+  // surface CalendarService delegates to. Without these companions, lean-chat
+  // shows a Calendar tile but connect/sync fails with missing provider/service.
+  // Respect an explicit plugins.entries["google-workspace"].enabled=false opt-out.
+  if (pluginsToLoad.has("@elizaos/plugin-calendar")) {
+    if (!pluginsToLoad.has("@elizaos/plugin-scheduling")) {
+      pluginsToLoad.add("@elizaos/plugin-scheduling");
+      track("@elizaos/plugin-scheduling", "calendar companion");
+    }
+    if (
+      !pluginsToLoad.has("@elizaos/plugin-google-workspace") &&
+      !isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace")
+    ) {
+      pluginsToLoad.add("@elizaos/plugin-google-workspace");
+      track(
+        "@elizaos/plugin-google-workspace",
+        "calendar companion (Google OAuth + Calendar API)",
+      );
+    }
+  }
+
   // Lean chat: force-drop heavy surfaces even if a later gate (orchestrator env,
   // gitpathologist .git auto-detect, config allow-list) added them, so a
   // lean-chat agent is guaranteed minimal. (#8434)

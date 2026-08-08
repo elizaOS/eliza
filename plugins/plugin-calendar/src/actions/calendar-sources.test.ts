@@ -259,6 +259,26 @@ describe("CALENDAR_SOURCES action", () => {
     });
   });
 
+  it("returns a verified Google Workspace enablement handoff when google OAuth is absent", async () => {
+    const { runtime } = runtimeFixture();
+
+    const result = await invoke(runtime, {
+      operation: "connect",
+      provider: "google",
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain("[CONFIG:google]");
+    expect(result?.userFacingText).toMatch(/plugin-google-workspace/i);
+    expect(connection(result)).toMatchObject({
+      state: "configuration_required",
+      provider: "google",
+      connectorId: "google",
+      completion: "configuration_required",
+    });
+  });
+
   it("claims natural-language Google calendar connect intents over CONNECTOR", () => {
     // Planner selection uses similes/routingHint/examples; without these
     // CONNECT_GOOGLE on CONNECTOR steals "connect google calendar" and drops

@@ -62,11 +62,30 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-notes")).toBe(true);
     expect(names.has("@elizaos/plugin-commands")).toBe(true);
     expect(names.has("@elizaos/plugin-agent-skills")).toBe(true);
+    // Calendar tile (viewEveryPlatform) + companions for connect/sync.
+    expect(names.has("@elizaos/plugin-calendar")).toBe(true);
+    expect(names.has("@elizaos/plugin-scheduling")).toBe(true);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
 
     // ...and drops every heavy surface, including browser (off until ready).
     for (const heavy of HEAVY) {
       expect(names.has(heavy)).toBe(false);
     }
+  });
+
+  it("honors an explicit google-workspace disable while keeping calendar+scheduling", () => {
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    const config: ElizaConfig = {
+      plugins: {
+        entries: {
+          "google-workspace": { enabled: false },
+        },
+      },
+    } as ElizaConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-calendar")).toBe(true);
+    expect(names.has("@elizaos/plugin-scheduling")).toBe(true);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(false);
   });
 
   it("force-excludes the orchestrator even when ELIZA_AGENT_ORCHESTRATOR=1", () => {
