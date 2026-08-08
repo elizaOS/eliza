@@ -688,6 +688,42 @@ export class InMemoryConnectorAccountStorage
 		return binding ? { ...binding } : null;
 	}
 
+	/** True when this fallback holds boot-window state that must be handed off. */
+	hasStateForMigration(): boolean {
+		return this.accounts.size > 0 || this.flows.size > 0;
+	}
+
+	/**
+	 * Read-only snapshot of migratable state: every account plus each unique
+	 * pending, unconsumed, unexpired OAuth flow (the flows map stores every
+	 * flow under both its id and state keys).
+	 */
+	snapshotForMigration(): {
+		accounts: ConnectorAccount[];
+		flows: ConnectorOAuthFlow[];
+	} {
+		const accounts = Array.from(this.accounts.values()).map(cloneAccount);
+		const flows: ConnectorOAuthFlow[] = [];
+		const seen = new Set<string>();
+		for (const flow of this.flows.values()) {
+			const key = flowKey(flow.provider, flow.id);
+			if (seen.has(key)) continue;
+			seen.add(key);
+			if (flow.status !== "pending") continue;
+			if (this.consumedFlows.has(key)) continue;
+			if (flow.expiresAt && flow.expiresAt <= nowMs()) continue;
+			flows.push(cloneFlow(flow));
+		}
+		return { accounts, flows };
+	}
+
+	/** Drop all migratable state after a successful durable handoff. */
+	clearAfterMigration(): void {
+		this.accounts.clear();
+		this.flows.clear();
+		this.consumedFlows.clear();
+	}
+
 	upsertOwnerBindingForTest(binding: ConnectorOwnerBindingRecord): void {
 		this.ownerBindings.set(
 			ownerBindingKey(
@@ -1146,6 +1182,8 @@ export class ConnectorAccountManager extends Service {
 	private databaseStorage?: DatabaseConnectorAccountStorage;
 	private databaseStorageAdapter?: ConnectorAccountDatabaseAdapter;
 	private fallbackStorage?: InMemoryConnectorAccountStorage;
+	private storageFacade?: ConnectorAccountStorage;
+	private migration: Promise<void> = Promise.resolve();
 	private warnedFallback = false;
 
 	constructor(runtime?: IAgentRuntime, storage?: ConnectorAccountStorage) {
@@ -1172,8 +1210,22 @@ export class ConnectorAccountManager extends Service {
 	 * Precedence: explicitly injected storage (constructor/setStorage) → a
 	 * registered connector_account_storage service → the runtime database
 	 * adapter (memoized per adapter) → one persistent in-memory fallback.
+	 *
+	 * The getter returns one stable facade whose every operation re-resolves
+	 * the backend and, when a durable backend has appeared, first drains the
+	 * boot-window in-memory fallback into it. Without that handoff an
+	 * operation could straddle the transition — e.g. `createOAuthFlow` landing
+	 * in the fallback and the matching `updateOAuthFlow` targeting the fresh
+	 * database wrapper — silently losing the state it depends on.
 	 */
 	private get storage(): ConnectorAccountStorage {
+		if (!this.storageFacade) {
+			this.storageFacade = this.createStorageFacade();
+		}
+		return this.storageFacade;
+	}
+
+	private resolveBackend(): ConnectorAccountStorage {
 		if (this.explicitStorage) {
 			return this.explicitStorage;
 		}
@@ -1204,6 +1256,81 @@ export class ConnectorAccountManager extends Service {
 			this.fallbackStorage = new InMemoryConnectorAccountStorage();
 		}
 		return this.fallbackStorage;
+	}
+
+	/**
+	 * Resolve the backend for one storage operation, completing the
+	 * fallback→durable handoff first when one is pending. Handoffs are
+	 * serialized on a single promise chain so concurrent operations cannot
+	 * interleave with a half-drained migration; a failed handoff rejects the
+	 * awaiting operation (fail loud) and leaves the fallback state intact for
+	 * the next attempt.
+	 */
+	private async backendForOperation(): Promise<ConnectorAccountStorage> {
+		const backend = this.resolveBackend();
+		if (
+			this.fallbackStorage &&
+			backend !== this.fallbackStorage &&
+			this.fallbackStorage.hasStateForMigration()
+		) {
+			const attempt = this.migration.then(() =>
+				this.migrateFallbackState(backend),
+			);
+			// error-policy:J5 the rejection is observed by `await attempt` below;
+			// the chain itself must not stay poisoned for later operations.
+			this.migration = attempt.catch(() => {});
+			await attempt;
+		}
+		return backend;
+	}
+
+	private async migrateFallbackState(
+		target: ConnectorAccountStorage,
+	): Promise<void> {
+		const fallback = this.fallbackStorage;
+		if (!fallback || !fallback.hasStateForMigration()) {
+			return;
+		}
+		const { accounts, flows } = fallback.snapshotForMigration();
+		for (const account of accounts) {
+			await target.upsertAccount(account);
+		}
+		for (const flow of flows) {
+			await target.createOAuthFlow(flow);
+		}
+		fallback.clearAfterMigration();
+		logger.info(
+			`[ConnectorAccountManager] migrated ${accounts.length} connector account(s) and ${flows.length} pending OAuth flow(s) from the boot-time in-memory fallback to durable storage`,
+		);
+	}
+
+	private createStorageFacade(): ConnectorAccountStorage {
+		const resolve = () => this.backendForOperation();
+		return {
+			listAccounts: async (provider) =>
+				(await resolve()).listAccounts(provider),
+			getAccount: async (provider, accountId) =>
+				(await resolve()).getAccount(provider, accountId),
+			upsertAccount: async (account) =>
+				(await resolve()).upsertAccount(account),
+			deleteAccount: async (provider, accountId) =>
+				(await resolve()).deleteAccount(provider, accountId),
+			createOAuthFlow: async (flow) => (await resolve()).createOAuthFlow(flow),
+			getOAuthFlow: async (provider, flowIdOrState) =>
+				(await resolve()).getOAuthFlow(provider, flowIdOrState),
+			updateOAuthFlow: async (provider, flowIdOrState, patch) =>
+				(await resolve()).updateOAuthFlow(provider, flowIdOrState, patch),
+			consumeOAuthFlow: async (provider, state, consumedBy) =>
+				(await resolve()).consumeOAuthFlow(provider, state, consumedBy),
+			deleteOAuthFlow: async (provider, flowIdOrState) =>
+				(await resolve()).deleteOAuthFlow(provider, flowIdOrState),
+			findOwnerBinding: async (lookup) => {
+				const backend = await resolve();
+				return typeof backend.findOwnerBinding === "function"
+					? backend.findOwnerBinding(lookup)
+					: null;
+			},
+		};
 	}
 
 	getStorage(): ConnectorAccountStorage {
