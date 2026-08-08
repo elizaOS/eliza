@@ -700,6 +700,81 @@ describe("useMobileNativeTabSurfaces", () => {
     ]);
   });
 
+  it.each(["explicit Retry", "app resume"] as const)(
+    "refuses %s from an older overlapping hook",
+    async (recovery) => {
+      const shell = new DropFirstBoundsShell();
+      const older = renderHook(() =>
+        useMobileNativeTabSurfaces({
+          ...base,
+          tabs: [tab("a", "https://older.example")],
+          shell,
+        }),
+      );
+      act(() => {
+        older.result.current.registerSurfaceElement(
+          "a",
+          elementAt({ left: 8, top: 16, width: 280, height: 460 }),
+        );
+      });
+      await act(async () => Promise.resolve());
+      expect(older.result.current.error?.message).toContain("bounds rejected");
+      expect(shell.attempts).toBe(1);
+
+      const newer = renderHook(() =>
+        useMobileNativeTabSurfaces({
+          ...base,
+          tabs: [tab("a", "https://newer.example")],
+          shell,
+        }),
+      );
+      await act(async () => Promise.resolve());
+      expect(shell.created.get("browser-tab:a")?.url).toBe(
+        "https://newer.example",
+      );
+      expect(shell.presentedId).toBe("browser-tab:a");
+
+      act(() => {
+        if (recovery === "explicit Retry") older.result.current.retry();
+        else document.dispatchEvent(new Event(APP_RESUME_EVENT));
+      });
+      await act(async () => Promise.resolve());
+
+      expect(shell.attempts).toBe(1);
+      expect(older.result.current.error).toBeNull();
+      expect(shell.created.get("browser-tab:a")?.url).toBe(
+        "https://newer.example",
+      );
+      expect(shell.presentedId).toBe("browser-tab:a");
+
+      older.unmount();
+      newer.unmount();
+    },
+  );
+
+  it("does not background a newer same-tab owner when an older hook becomes inactive", async () => {
+    const shell = new RecordingShell();
+    const older = renderHook(
+      (props: typeof base) => useMobileNativeTabSurfaces({ ...props, shell }),
+      { initialProps: base },
+    );
+    const newer = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell }),
+    );
+    await act(async () => Promise.resolve());
+    expect(shell.presentedId).toBe("browser-tab:a");
+    shell.commands.length = 0;
+
+    older.rerender({ ...base, active: false });
+    await act(async () => Promise.resolve());
+
+    expect(shell.commands).not.toContain("present:host");
+    expect(shell.presentedId).toBe("browser-tab:a");
+
+    older.unmount();
+    newer.unmount();
+  });
+
   it("replays the surviving hook's intent when a newer overlapping authority unmounts", async () => {
     const shell = new RecordingShell();
     const older = renderHook(() =>

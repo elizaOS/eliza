@@ -445,8 +445,21 @@ export function useMobileNativeTabSurfaces(
     setLeaseRevision((current) => current + 1);
   }, []);
 
+  const ownsAnyManagedSurface = useCallback(
+    (): boolean =>
+      [...managedTabIds.current].some((tabId) =>
+        ownsSurfaceLease(activeShell, surfaceIdOf(tabId), leaseHolder.current),
+      ),
+    [activeShell],
+  );
+
   const issueCommand = useCallback(
-    (key: string, signature: string, invoke: () => Promise<void>): void => {
+    (
+      key: string,
+      signature: string,
+      invoke: () => Promise<void>,
+      isAuthorized: () => boolean = () => true,
+    ): void => {
       const existing = observedCommands.current.get(key);
       if (existing?.signature === signature) return;
       const replacesFailure =
@@ -455,12 +468,23 @@ export function useMobileNativeTabSurfaces(
         signature,
         status: replacesFailure ? "recovering" : "pending",
         invoke,
+        isAuthorized,
         error: replacesFailure ? existing.error : null,
         retry: () => run(true),
       };
       observedCommands.current.set(key, command);
       const run = (recovery: boolean): void => {
         if (observedCommands.current.get(key) !== command) return;
+        // Overlapping React owners share one native session, so the native
+        // epoch cannot distinguish a demoted hook's replay from current intent.
+        // Recheck the module lease at every attempt, including Retry/resume.
+        if (!command.isAuthorized()) {
+          observedCommands.current.delete(key);
+          if (command.status === "failed" || command.status === "recovering") {
+            notifyCommandStateChanged();
+          }
+          return;
+        }
         command.status = recovery ? "recovering" : "pending";
         if (recovery) notifyCommandStateChanged();
         let acknowledgement: Promise<void>;
@@ -548,8 +572,11 @@ export function useMobileNativeTabSurfaces(
         ...roundedRect(rect),
         outerClip: collectSurfaceOuterClip(element),
       };
-      issueCommand(`${id}:bounds`, JSON.stringify(bounds), () =>
-        activeShell.setBounds(id, bounds),
+      issueCommand(
+        `${id}:bounds`,
+        JSON.stringify(bounds),
+        () => activeShell.setBounds(id, bounds),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
       );
     },
     [activeShell, issueCommand],
@@ -572,7 +599,12 @@ export function useMobileNativeTabSurfaces(
       if (!active) return;
       const id = surfaceIdOf(tabId);
       if (!ownsSurfaceLease(activeShell, id, leaseHolder.current)) return;
-      issueCommand(`${id}:navigate`, url, () => activeShell.navigate(id, url));
+      issueCommand(
+        `${id}:navigate`,
+        url,
+        () => activeShell.navigate(id, url),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
+      );
     },
     [active, activeShell, issueCommand],
   );
@@ -583,8 +615,11 @@ export function useMobileNativeTabSurfaces(
       const id = surfaceIdOf(tabId);
       if (!ownsSurfaceLease(activeShell, id, leaseHolder.current)) return;
       reloadRevision.current += 1;
-      issueCommand(`${id}:reload`, `${reloadRevision.current}`, () =>
-        activeShell.reload(id),
+      issueCommand(
+        `${id}:reload`,
+        `${reloadRevision.current}`,
+        () => activeShell.reload(id),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
       );
     },
     [active, activeShell, issueCommand],
@@ -603,8 +638,11 @@ export function useMobileNativeTabSurfaces(
     for (const tabId of managedTabIds.current) {
       const id = surfaceIdOf(tabId);
       if (!ownsSurfaceLease(activeShell, id, leaseHolder.current)) continue;
-      issueCommand(`${id}:occlusions`, JSON.stringify(rects), () =>
-        activeShell.setOcclusionRects(id, rects),
+      issueCommand(
+        `${id}:occlusions`,
+        JSON.stringify(rects),
+        () => activeShell.setOcclusionRects(id, rects),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
       );
     }
   }, [activeShell, issueCommand, readOcclusions]);
@@ -617,9 +655,7 @@ export function useMobileNativeTabSurfaces(
       const ownsSelected =
         selectedSurfaceId !== null &&
         ownsSurfaceLease(activeShell, selectedSurfaceId, leaseHolder.current);
-      const ownsAny = [...managedTabIds.current].some((tabId) =>
-        ownsSurfaceLease(activeShell, surfaceIdOf(tabId), leaseHolder.current),
-      );
+      const ownsAny = ownsAnyManagedSurface();
       if ((selected && !ownsSelected) || (!selected && !ownsAny)) return;
       const presentedId =
         !hasFailedCommands &&
@@ -629,8 +665,14 @@ export function useMobileNativeTabSurfaces(
           ? selectedSurfaceId
           : null;
       if (force) cancelCommand(HOST_VISIBILITY_COMMAND);
-      issueCommand(HOST_VISIBILITY_COMMAND, presentedId ?? "host", () =>
-        activeShell.presentSurface(presentedId),
+      issueCommand(
+        HOST_VISIBILITY_COMMAND,
+        presentedId ?? "host",
+        () => activeShell.presentSurface(presentedId),
+        () =>
+          presentedId !== null
+            ? ownsSurfaceLease(activeShell, presentedId, leaseHolder.current)
+            : ownsAnyManagedSurface(),
       );
       if (presentedId && selected) measure(selected.id);
     },
@@ -644,6 +686,7 @@ export function useMobileNativeTabSurfaces(
       cancelCommand,
       issueCommand,
       measure,
+      ownsAnyManagedSurface,
     ],
   );
 
@@ -673,11 +716,15 @@ export function useMobileNativeTabSurfaces(
         `${id}:lifecycle`,
         `create:${leaseRevision}:${JSON.stringify(request)}`,
         () => activeShell.createSurface(request),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
       );
       measure(tab.id);
       const rects = readOcclusions();
-      issueCommand(`${id}:occlusions`, JSON.stringify(rects), () =>
-        activeShell.setOcclusionRects(id, rects),
+      issueCommand(
+        `${id}:occlusions`,
+        JSON.stringify(rects),
+        () => activeShell.setOcclusionRects(id, rects),
+        () => ownsSurfaceLease(activeShell, id, leaseHolder.current),
       );
     }
     for (const tabId of [...managedTabIds.current]) {
@@ -685,8 +732,11 @@ export function useMobileNativeTabSurfaces(
         const id = surfaceIdOf(tabId);
         cancelSurfaceCommands(id);
         if (releaseSurfaceLease(activeShell, id, leaseHolder.current)) {
-          issueCommand(`${id}:lifecycle`, "destroy", () =>
-            activeShell.destroySurface(id),
+          issueCommand(
+            `${id}:lifecycle`,
+            "destroy",
+            () => activeShell.destroySurface(id),
+            () => !SURFACE_LEASES.get(activeShell)?.has(id),
           );
         }
         managedTabIds.current.delete(tabId);
@@ -897,10 +947,14 @@ export function useMobileNativeTabSurfaces(
     if (typeof document === "undefined") return;
     const pause = (): void => {
       processPresentationPaused = true;
-      if (managedTabIds.current.size === 0) return;
+      const ownsAny = ownsAnyManagedSurface();
+      if (!ownsAny) return;
       cancelCommand(HOST_VISIBILITY_COMMAND);
-      issueCommand(HOST_VISIBILITY_COMMAND, "paused", () =>
-        activeShell.presentSurface(null),
+      issueCommand(
+        HOST_VISIBILITY_COMMAND,
+        "paused",
+        () => activeShell.presentSurface(null),
+        ownsAnyManagedSurface,
       );
     };
     const resume = (): void => {
@@ -916,7 +970,14 @@ export function useMobileNativeTabSurfaces(
       document.removeEventListener(APP_PAUSE_EVENT, pause);
       document.removeEventListener(APP_RESUME_EVENT, resume);
     };
-  }, [activeShell, cancelCommand, issueCommand, retry, syncVisibility]);
+  }, [
+    activeShell,
+    cancelCommand,
+    issueCommand,
+    ownsAnyManagedSurface,
+    retry,
+    syncVisibility,
+  ]);
 
   // A render-path handoff can leave this hook mounted while host content takes
   // over. Hide every child surface in that state; reactivation replays the
@@ -930,12 +991,23 @@ export function useMobileNativeTabSurfaces(
       syncVisibility(true);
       return;
     }
-    if (managedTabIds.current.size > 0) {
-      issueCommand(HOST_VISIBILITY_COMMAND, "host-render-path", () =>
-        activeShell.presentSurface(null),
+    const ownsAny = ownsAnyManagedSurface();
+    if (ownsAny) {
+      issueCommand(
+        HOST_VISIBILITY_COMMAND,
+        "host-render-path",
+        () => activeShell.presentSurface(null),
+        ownsAnyManagedSurface,
       );
     }
-  }, [active, activeShell, cancelCommand, issueCommand, syncVisibility]);
+  }, [
+    active,
+    activeShell,
+    cancelCommand,
+    issueCommand,
+    ownsAnyManagedSurface,
+    syncVisibility,
+  ]);
 
   // On unmount, apply the manifest lifecycle: `retained` keeps surfaces warm in
   // the background; `ephemeral` (the Browser default) tears them down.
@@ -988,6 +1060,7 @@ export function useMobileNativeTabSurfaces(
 interface ObservedSurfaceCommand {
   readonly signature: string;
   readonly invoke: () => Promise<void>;
+  readonly isAuthorized: () => boolean;
   status: "pending" | "recovering" | "succeeded" | "failed";
   error: string | null;
   retry(): void;
