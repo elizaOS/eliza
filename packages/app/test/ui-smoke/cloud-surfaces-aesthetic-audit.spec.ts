@@ -96,6 +96,15 @@ interface CloudAuditCase {
   route: string;
   /** Seed the persisted Steward token before boot (authed dashboard pages). */
   auth: boolean;
+  /**
+   * Routes that always redirect on localhost (role-gated, environment-bound)
+   * cannot be visually inspected in this harness. Instead of recording a
+   * misleading screenshot of the redirect destination as if it were the
+   * source surface, assert the final URL matches this pattern — proving the
+   * redirect fired to the designed end state, not that a different surface
+   * rendered its content.
+   */
+  expectedFinalPath?: RegExp;
 }
 
 const AUTH = true;
@@ -201,7 +210,17 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     slug: "payment-success",
     path: "/payment/success",
     route: "payment/success",
-    auth: PUBLIC,
+    // PaymentSuccessPage renders a brief "Payment Received" confirmation then
+    // redirects to /dashboard/settings?tab=billing&payment=success. A
+    // LegacySettingsTabRedirect in CloudRouterShell then rewrites that to
+    // /dashboard/billing (the standalone billing page). Both redirects fire
+    // before the audit's settle delay + screenshot, so without expectedFinalPath
+    // the probe suite screenshots the billing page and mislabels its measurements
+    // as payment-success coverage. Treat this as a redirect-only reachability
+    // check (same pattern as auth-bridge): assert the terminal redirect path,
+    // then skip aesthetic collection.
+    auth: AUTH,
+    expectedFinalPath: /^\/dashboard\/billing$/,
   },
   {
     slug: "payment-app-charge",
@@ -263,6 +282,31 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     slug: "auth-cli-login",
     path: "/auth/cli-login",
     route: "auth/cli-login",
+    auth: PUBLIC,
+  },
+  // auth/bridge — the SSO handshake route is hostname-role-gated. On localhost
+  // (the Playwright harness) ssoBridgeRoleForHostname returns "none", so
+  // SsoBridgeRoute renders <Navigate to="/" replace> immediately. This case
+  // does NOT visually inspect the bridge surface — that requires a deployed
+  // bridge hostname or test-only hostname injection. Instead it asserts the
+  // designed localhost redirect fired, proving the route is reachable and
+  // wired (not 404/blank). The mint/exchange failure states are covered by
+  // focused component tests (SsoBridgeRoute.test.tsx), not this visual walk.
+  {
+    slug: "auth-bridge",
+    path: "/auth/bridge",
+    route: "auth/bridge",
+    auth: PUBLIC,
+    expectedFinalPath: /^\/?$/,
+  },
+  // oidc/continue — the OIDC sign-in bounce target. Without a `rid` param
+  // buildOidcResumeTarget returns "invalid_request_id" on any host; the page
+  // renders a readable "sign-in request is no longer valid" message without
+  // redirecting.
+  {
+    slug: "oidc-continue",
+    path: "/oidc/continue",
+    route: "oidc/continue",
     auth: PUBLIC,
   },
   {
@@ -569,6 +613,30 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         }
         await installCloudApiStubs(page);
         await page.goto(auditCase.path, { waitUntil: "domcontentloaded" });
+
+        // Routes with expectedFinalPath always redirect on localhost (the
+        // harness hostname is 127.0.0.1). Assert the final URL matches the
+        // designed end state so the audit proves reachability without claiming
+        // visual coverage of a surface it cannot render here.
+        //
+        // Redirect-only reachability: once the redirect is proven, skip the
+        // full aesthetic probe suite (readable-text, screenshot, color-buckets,
+        // hover) and do NOT publish a CloudPageFinding under this route's slug.
+        // The coverage gate keys off case existence in CLOUD_AUDIT_CASES
+        // (verified in the registry-sync test above), not off a findings
+        // entry, so reachability is proven and the route is counted as audited
+        // without falsely attributing the redirect destination's homepage
+        // aesthetics to this route's slug. Surface-specific coverage for the
+        // bridge is provided by focused component tests (SsoBridgeRoute.test.tsx).
+        if (auditCase.expectedFinalPath) {
+          await expect
+            .poll(async () => new URL(page.url()).pathname, {
+              message: `${auditCase.slug} redirected to its designed end state`,
+              timeout: 10_000,
+            })
+            .toMatch(auditCase.expectedFinalPath);
+          return;
+        }
 
         // Wait for the page to actually paint text (lazy route chunk +
         // react-query settle). Non-fatal: a page that never paints is recorded
