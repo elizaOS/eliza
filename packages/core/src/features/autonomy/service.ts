@@ -29,6 +29,7 @@ import {
 } from "../../types";
 import { Service } from "../../types/service";
 import { stringToUuid } from "../../utils";
+import { truncateWellFormed } from "../../utils/well-formed";
 import { runAutonomyPostResponse } from "./execution-facade";
 import type { AutonomyStatus } from "./types";
 
@@ -359,7 +360,7 @@ export class AutonomyService extends Service {
 			}
 			seen.add(normalized);
 			const marker = new Date(memory.createdAt ?? Date.now()).toISOString();
-			importantLines.push(`- ${marker}: ${text.slice(0, 500)}`);
+			importantLines.push(`- ${marker}: ${truncateWellFormed(text, 500)}`);
 		}
 
 		const header = `Compacted ${memories.length} prior autonomous thoughts. Preserve standing goals, unresolved blockers, commitments, and recently discovered facts:`;

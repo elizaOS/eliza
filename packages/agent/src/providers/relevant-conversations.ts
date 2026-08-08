@@ -31,6 +31,7 @@ import {
   revalidateOwnerExclusiveDisclosure,
   searchCanonicalConversationMemories,
   stringToUuid,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
@@ -289,7 +290,7 @@ export const relevantConversationsProvider: Provider = {
           source === HASH_MEMORY_SOURCE
             ? HASH_MEMORY_SNIPPET_LENGTH
             : RELEVANT_SNIPPET_LENGTH;
-        const msgText = memoryText(mem).slice(0, snippetLength);
+        const msgText = truncateWellFormed(memoryText(mem), snippetLength);
         lines.push(`${tag} (${ts}) ${speaker}: ${msgText}`);
       }
 

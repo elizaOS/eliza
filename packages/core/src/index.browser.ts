@@ -239,6 +239,7 @@ export * from "./utils/read-env";
 export * from "./utils/resolve-setting";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
+export * from "./utils/well-formed";
 // Validation helpers (validateActionKeywords / validateActionRegex /
 // secret-format validators) are pure functions with no Node-only deps,
 // so they're safe in the browser bundle. Several plugin browser dists
