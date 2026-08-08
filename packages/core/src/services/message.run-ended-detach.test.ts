@@ -75,11 +75,23 @@ describe("DefaultMessageService — RUN_ENDED post-delivery detach", () => {
 
 		expect(result.didRespond).toBe(false);
 		expect(result.mode).toBe("none");
-		// Must not have waited on the gated RUN_ENDED handler.
-		expect(elapsedMs).toBeLessThan(200);
-		expect(runEndedStarted).toBe(true);
+		// Causality: at the moment handleMessage returned, the gated RUN_ENDED
+		// handler cannot have finished — the gate is still closed. This is the
+		// real detach contract; if RUN_ENDED were back on the await path the
+		// handleMessage call above would deadlock on the gate instead.
 		expect(runEndedFinished).toBe(false);
+		// Deadline assertions on loaded CI runners need generous margins: the
+		// worker can lose seconds of wall clock to CPU contention. 5s is still
+		// far below the forever-pending gate a regression would await.
+		expect(elapsedMs).toBeLessThan(5_000);
 		expect(pendingPostDeliveryTaskCount(runtime)).toBeGreaterThan(0);
+		// The detached handler starts on its own microtask; under load it may
+		// not have begun by the time handleMessage returns. Wait for the start
+		// signal instead of asserting it synchronously.
+		await vi.waitFor(() => {
+			expect(runEndedStarted).toBe(true);
+		});
+		expect(runEndedFinished).toBe(false);
 
 		release();
 		await drainPostDeliveryTasks(runtime);

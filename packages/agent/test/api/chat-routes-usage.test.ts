@@ -5,6 +5,7 @@ import {
   createMessageMemory,
   EventType,
   ModelType,
+  RoomHandlerQueue,
   stringToUuid,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -41,6 +42,9 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     drainChatPreHandlers: vi.fn(async () => null),
+    // generateChatResponse acquires per-room ownership through the runtime's
+    // real RoomHandlerQueue; a mock without one fails every turn.
+    roomHandlerQueue: new RoomHandlerQueue(),
     ...overrides,
   } satisfies Partial<AgentRuntime>;
 
@@ -50,7 +54,12 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
 function createChatMessage(text: string) {
   return createMessageMemory({
     id: stringToUuid(`message-${text}`),
-    roomId: stringToUuid("room"),
+    // Per-message room: generateChatResponse serializes turns per room via
+    // the RoomHandlerQueue, so the concurrent-isolation test's two in-flight
+    // turns must live in distinct rooms or they deadlock on each other's
+    // start gate. Usage attribution is keyed per request, not per room, so
+    // the isolation contract is unchanged.
+    roomId: stringToUuid(`room-${text}`),
     entityId: stringToUuid("user"),
     content: {
       text,
