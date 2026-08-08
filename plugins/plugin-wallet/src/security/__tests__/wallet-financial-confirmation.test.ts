@@ -125,14 +125,21 @@ describe("wallet-financial-confirmation", () => {
     expect(tight).toContain("0.1% slippage (10 bps)");
     expect(loose).toContain("100% slippage (10000 bps)");
 
+    const destination = "0x00000000000000000000000000000000deadbeef";
     const bridge = walletFinancialPreview({
       subaction: "bridge",
       chain: "base",
       toChain: "arbitrum",
+      fromToken: "ETH",
       amount: "0.5",
+      recipient: destination,
       slippageBps: 50,
     });
     expect(bridge).toContain("0.5% slippage (50 bps)");
+    // Destination disclosure from the bridge-recipient guard must survive
+    // alongside the slippage clause.
+    expect(bridge).toContain(destination);
+    expect(bridge).toContain("ETH");
   });
 
   it("labels the slippage as default in previews when none was stated", () => {
@@ -152,5 +159,6 @@ describe("wallet-financial-confirmation", () => {
       amount: "0.5",
     });
     expect(bridge).toContain("default slippage");
+    expect(bridge).not.toContain("undefined");
   });
 });
