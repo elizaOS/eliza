@@ -794,6 +794,14 @@ export function useFirstRunConductor(): void {
   // ── Flow launchers (shared by the action handler + the auto-resume) ──────
   const startCloudProvisionFlow = React.useCallback(() => {
     busyRef.current = true;
+    // Explicit waiting state on the opener while Cloud auth runs in the
+    // popup/tab — the sign-in CTA must not look idle (#18001).
+    seedTurn(
+      makeTurn(
+        "first-run:cloud-login-waiting",
+        "Waiting for sign-in in the window we opened… Finish there, then this tab will continue. If nothing opened, use the link in Settings → Cloud or tap Sign in again.",
+      ),
+    );
     // Pre-open the cloud-login popup synchronously NOW — the action handler is
     // still inside the user gesture, but the provision flow below awaits
     // several network round-trips before reaching the (async) interactive login
@@ -826,7 +834,7 @@ export function useFirstRunConductor(): void {
         // leave the gesture-claimed about:blank window open.
         releaseClaimedCloudLoginWindow();
       });
-  }, [handleOutcome, seedError]);
+  }, [handleOutcome, seedError, seedTurn]);
 
   const startProviderFinish = React.useCallback(() => {
     busyRef.current = true;

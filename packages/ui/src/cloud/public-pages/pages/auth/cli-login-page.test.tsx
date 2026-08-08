@@ -170,8 +170,9 @@ describe("CliLoginPage", () => {
       json: async () => ({ keyPrefix: "ek_live_abc" }),
     });
     const postMessage = vi.fn();
+    // No live opener — terminal success UI (manual close), not auto-close.
     Object.defineProperty(window, "opener", {
-      value: { postMessage },
+      value: null,
       configurable: true,
     });
     const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
@@ -185,10 +186,7 @@ describe("CliLoginPage", () => {
       "/api/auth/cli-session/sess-1/complete",
       expect.objectContaining({ method: "POST" }),
     );
-    expect(postMessage).toHaveBeenCalledWith(
-      { type: "eliza-cloud-auth-complete", sessionId: "sess-1" },
-      window.location.origin,
-    );
+    expect(postMessage).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Close window" })).toBeTruthy();
     expect(
       screen.queryByRole("link", { name: "Continue to dashboard" }),
@@ -199,7 +197,7 @@ describe("CliLoginPage", () => {
     expect(closeSpy).not.toHaveBeenCalled();
   });
 
-  it("redirects authenticated app-launched sessions back to the sanitized returnTo", async () => {
+  it("with a live opener, notifies and closes without navigating returnTo (no second app shell)", async () => {
     searchParamsRef.current = new URLSearchParams({
       session: "sess-1",
       returnTo: "http://localhost:2138/chat?firstRun=1",
@@ -214,9 +212,79 @@ describe("CliLoginPage", () => {
     });
     const postMessage = vi.fn();
     Object.defineProperty(window, "opener", {
-      value: { postMessage },
+      value: { postMessage, closed: false },
       configurable: true,
     });
+    const replace = stubLocationReplace();
+    const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
+
+    render(<CliLoginPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Authentication Complete!")).toBeTruthy(),
+    );
+    expect(postMessage).toHaveBeenCalledWith(
+      { type: "eliza-cloud-auth-complete", sessionId: "sess-1" },
+      "http://localhost:2138",
+    );
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    // Opener owns continuation — returnTo must not load a second localhost.
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.queryByText("Returning to app")).toBeNull();
+  });
+
+  it("named cloud-auth popup without opener stays terminal (no returnTo second shell)", async () => {
+    // COOP / opener closed mid-flight: window.name still identifies the handoff
+    // surface, but hasLiveOpener would be false. Must not location.replace.
+    searchParamsRef.current = new URLSearchParams({
+      session: "sess-1",
+      returnTo: "http://localhost:2138/chat?firstRun=1",
+    });
+    sessionAuthRef.current = {
+      ready: true,
+      authenticated: true,
+      user: { id: "u1", email: "a@b.co" },
+    };
+    apiFetchMock.mockResolvedValue({
+      json: async () => ({ keyPrefix: "ek_live_abc" }),
+    });
+    Object.defineProperty(window, "opener", {
+      value: null,
+      configurable: true,
+    });
+    const originalName = window.name;
+    window.name = "eliza-cloud-auth";
+    const replace = stubLocationReplace();
+    const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
+
+    try {
+      render(<CliLoginPage />);
+
+      await waitFor(() =>
+        expect(screen.getByText("Authentication Complete!")).toBeTruthy(),
+      );
+      expect(replace).not.toHaveBeenCalled();
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("Returning to app")).toBeNull();
+    } finally {
+      window.name = originalName;
+    }
+  });
+
+  it("without an opener, redirects authenticated app-launched sessions to sanitized returnTo", async () => {
+    searchParamsRef.current = new URLSearchParams({
+      session: "sess-1",
+      returnTo: "http://localhost:2138/chat?firstRun=1",
+    });
+    sessionAuthRef.current = {
+      ready: true,
+      authenticated: true,
+      user: { id: "u1", email: "a@b.co" },
+    };
+    apiFetchMock.mockResolvedValue({
+      json: async () => ({ keyPrefix: "ek_live_abc" }),
+    });
+    delete (window as { opener?: unknown }).opener;
     const replace = stubLocationReplace();
     const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
 
@@ -226,10 +294,6 @@ describe("CliLoginPage", () => {
       expect(replace).toHaveBeenCalledWith(
         "http://localhost:2138/chat?firstRun=1",
       ),
-    );
-    expect(postMessage).toHaveBeenCalledWith(
-      { type: "eliza-cloud-auth-complete", sessionId: "sess-1" },
-      "http://localhost:2138",
     );
     expect(closeSpy).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Returning to app")).toBeTruthy();
