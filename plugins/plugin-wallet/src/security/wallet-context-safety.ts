@@ -35,9 +35,11 @@ export const ON_CHAIN_WRITE_SUBACTIONS: ReadonlySet<string> = new Set([
   // governance votes/delegations are on-chain writes; an injected message must not
   // drive them any more than it may drive a transfer
   "gov",
-  // LIQUIDITY open/close/reposition (lp/actions/liquidity.ts) move the same
-  // vault funds through DEX adapters rather than the wallet router; they are
-  // the same class of on-chain write and route through both gates
+  // LP-owned verbs from lp/actions/liquidity.ts (not wallet-router Zod
+  // enums). They move the same vault funds through DEX adapters and route
+  // through both gates. Do not reuse these names on the wallet router without
+  // namespacing — a future router `close` would inherit injection-block +
+  // mandatory confirmation.
   "open",
   "close",
   "reposition",

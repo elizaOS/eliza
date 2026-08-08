@@ -344,12 +344,26 @@ function amountLabel(amount: LpActionParams["amount"]): string | undefined {
 // the prompt: `requiresWalletFinancialConfirmation` fires only for the
 // single-sourced write subactions (open/close/reposition here).
 function lpGateParams(params: LpActionParams): WalletFinancialWriteParams {
+  const range = getRangeParam(params);
+  const hasRange =
+    range &&
+    (range.tickLowerIndex !== undefined ||
+      range.tickUpperIndex !== undefined ||
+      range.tickLower !== undefined ||
+      range.tickUpper !== undefined ||
+      range.priceLower !== undefined ||
+      range.priceUpper !== undefined);
   return {
     subaction: params.subaction as string,
     chain: resolveChain(params).chain,
     amount: amountLabel(getAmountParam(params)),
     pool: getPoolParam(params),
     position: getPositionParam(params),
+    dex: params.dex || params.dexName,
+    tokenA: params.tokenA,
+    tokenB: params.tokenB,
+    feeTier: params.feeTier,
+    range: hasRange ? range : undefined,
     slippageBps: params.slippageBps ?? params.maxSlippageBps,
     mode: "execute",
     dryRun: false,
