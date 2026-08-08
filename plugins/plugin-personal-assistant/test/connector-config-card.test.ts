@@ -176,7 +176,26 @@ describe("CONNECTOR Google connect handoff cards", () => {
     await expect(
       connectorAction.validate?.(
         {} as never,
+        { content: { text: "link my microsoft cal" } } as never,
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      connectorAction.validate?.(
+        {} as never,
         { content: { text: "connect my gmail" } } as never,
+      ),
+    ).resolves.toBe(true);
+    // Whole-word boundaries: calculation/call must not trip the calendar gate.
+    await expect(
+      connectorAction.validate?.(
+        {} as never,
+        { content: { text: "add a note about the calculation" } } as never,
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      connectorAction.validate?.(
+        {} as never,
+        { content: { text: "connect the support call" } } as never,
       ),
     ).resolves.toBe(true);
   });

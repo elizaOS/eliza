@@ -163,16 +163,19 @@ function isTrustedGoogleOAuthUrl(raw: string): boolean {
 function isCalendarFeedConnectPhrase(text: string): boolean {
   const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
   if (!normalized) return false;
-  const hasConnectVerb =
-    /\b(connect|link|add|setup|set up|authorize|enable)\b/.test(normalized);
-  if (!hasConnectVerb) return false;
-  return (
-    /\b(google|microsoft|apple)\s+cal(endar)?\b/.test(normalized) ||
-    /\bcal(endar)?\s+(connect|link|add|setup|authorize)\b/.test(normalized) ||
-    /\b(connect|link|add|setup|authorize)\b.{0,40}\bcal(endar)?\b/.test(
-      normalized,
-    )
-  );
+  const connectVerb = "connect|link|add|setup|set up|authorize|enable";
+  if (!new RegExp(`\\b(?:${connectVerb})\\b`).test(normalized)) {
+    return false;
+  }
+  // Vendor calendar shorthand: "google cal", "microsoft calendar", "apple cal".
+  if (/\b(google|microsoft|apple)\s+cal(?:endar)?\b/.test(normalized)) {
+    return true;
+  }
+  // Whole-word "calendar" or "cal" near a connect verb. Word boundaries keep
+  // "calculation" / "call" from matching bare "cal".
+  return new RegExp(
+    `\\b(?:${connectVerb})\\b.{0,40}\\b(?:calendar|cal)\\b|\\b(?:calendar|cal)\\b.{0,40}\\b(?:${connectVerb})\\b`,
+  ).test(normalized);
 }
 
 function messageText(message: Memory): string {

@@ -319,8 +319,10 @@ function configIntent(args: {
 }): CalendarSourceConnectionIntent {
   // UI InlinePluginConfig looks up /api/plugins by exact id after stripping
   // @scope/plugin-; google OAuth lives on plugin id "google-workspace".
+  // Microsoft Graph OAuth is registered by plugin-calendar itself — there is
+  // no standalone "microsoft" plugin id in /api/plugins.
   const connectorId =
-    args.provider === "google" ? "google-workspace" : args.provider;
+    args.provider === "google" ? "google-workspace" : "calendar";
   return {
     state: "configuration_required",
     provider: args.provider,
@@ -448,6 +450,8 @@ async function beginOAuthIntent(args: {
     // actionable configuration handoff — not a generic auth-start failure.
     const causeMessage =
       cause instanceof Error ? cause.message : String(cause ?? "");
+    const causeCode =
+      cause instanceof ElizaError ? cause.code : undefined;
     if (
       args.provider === "google" &&
       /GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_REDIRECT_URI/i.test(
@@ -459,6 +463,20 @@ async function beginOAuthIntent(args: {
         operation: args.operation,
         reason:
           "Google OAuth is incomplete. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI, then connect again.",
+      });
+    }
+    if (
+      args.provider === "microsoft" &&
+      (causeCode === "MICROSOFT_OAUTH_CONFIG_MISSING" ||
+        /MICROSOFT_CLIENT_ID|MICROSOFT_REDIRECT_URI|MICROSOFT_CLIENT_SECRET/i.test(
+          causeMessage,
+        ))
+    ) {
+      return configIntent({
+        provider: "microsoft",
+        operation: args.operation,
+        reason:
+          "Microsoft OAuth is incomplete. Set MICROSOFT_CLIENT_ID and MICROSOFT_REDIRECT_URI on the calendar plugin, then connect again.",
       });
     }
     // error-policy:J2 Preserve the provider/configuration failure while giving
@@ -731,7 +749,7 @@ function connectionText(intent: CalendarSourceConnectionIntent): string {
         return "Google Calendar needs @elizaos/plugin-google-workspace enabled with GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI configured. Open the setup card, then connect again.\n\n[CONFIG:google-workspace]";
       }
       if (intent.provider === "microsoft") {
-        return "microsoft OAuth is not registered in this runtime.\n\n[CONFIG:microsoft]";
+        return "Microsoft Calendar needs MICROSOFT_CLIENT_ID and MICROSOFT_REDIRECT_URI configured on @elizaos/plugin-calendar. Open the setup card, then connect again.\n\n[CONFIG:calendar]";
       }
       // No dynamic fallback — unknown providers must not become verified UI text.
       return "Calendar source configuration is required. Open Settings → Calendar sources to continue.";

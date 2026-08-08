@@ -7,6 +7,7 @@
  */
 
 import {
+  ElizaError,
   CONNECTOR_ACCOUNT_SERVICE_TYPE,
   ConnectorAccountManager,
   type Content,
@@ -244,15 +245,15 @@ describe("CALENDAR_SOURCES action", () => {
       provider: "microsoft",
       operation: "connect",
       connected: false,
-      connectorId: "microsoft",
+      connectorId: "calendar",
       reason: "microsoft OAuth is not registered in this runtime.",
       completion: "configuration_required",
     });
     // Card marker + verified handoff so the planner cannot paraphrase away
-    // [CONFIG:microsoft] into a vague authentication error.
+    // [CONFIG:calendar] into a vague authentication error.
     expect(result?.verifiedUserFacing).toBe(true);
-    expect(result?.userFacingText).toContain("[CONFIG:microsoft]");
-    expect(result?.text).toContain("[CONFIG:microsoft]");
+    expect(result?.userFacingText).toContain("[CONFIG:calendar]");
+    expect(result?.text).toContain("[CONFIG:calendar]");
     expect(result?.data).toMatchObject({
       awaitingUserAction: true,
       awaitingUserInput: true,
@@ -275,6 +276,62 @@ describe("CALENDAR_SOURCES action", () => {
       state: "configuration_required",
       provider: "google",
       connectorId: "google-workspace",
+      completion: "configuration_required",
+    });
+  });
+
+  it("maps incomplete Google OAuth env to a verified google-workspace config card", async () => {
+    const { runtime, manager } = runtimeFixture();
+    manager.registerProvider({
+      provider: "google",
+      startOAuth: vi.fn(async () => {
+        throw new Error(
+          "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured.",
+        );
+      }),
+    });
+
+    const result = await invoke(runtime, {
+      operation: "connect",
+      provider: "google",
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain("[CONFIG:google-workspace]");
+    expect(connection(result)).toMatchObject({
+      state: "configuration_required",
+      provider: "google",
+      connectorId: "google-workspace",
+      completion: "configuration_required",
+    });
+  });
+
+  it("maps incomplete Microsoft OAuth env to a verified calendar config card", async () => {
+    const { runtime, manager } = runtimeFixture();
+    manager.registerProvider({
+      provider: "microsoft",
+      startOAuth: vi.fn(async () => {
+        throw new ElizaError(
+          "Microsoft OAuth requires MICROSOFT_CLIENT_ID and MICROSOFT_REDIRECT_URI.",
+          { code: "MICROSOFT_OAUTH_CONFIG_MISSING", severity: "fatal" },
+        );
+      }),
+    });
+
+    const result = await invoke(runtime, {
+      operation: "connect",
+      provider: "microsoft",
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain("[CONFIG:calendar]");
+    expect(result?.userFacingText).toMatch(/MICROSOFT_CLIENT_ID/);
+    expect(connection(result)).toMatchObject({
+      state: "configuration_required",
+      provider: "microsoft",
+      connectorId: "calendar",
       completion: "configuration_required",
     });
   });
