@@ -27,11 +27,10 @@ export const TIER0_PROTOCOL_ACTIONS = [
 
 export type Tier0ProtocolAction = (typeof TIER0_PROTOCOL_ACTIONS)[number];
 
-// A rank-zero retrieval score at/above this is treated as a near-certain match
-// that must stay on the planner surface even when Stage-1's candidate narrow
-// omits it. Score alone is insufficient: keyword stages commonly saturate
-// several parents at 1.0, while rank zero is the retriever's single aggregate
-// judgement after regex, keyword, BM25, and context signals are fused.
+// A top retrieval score at/above this is treated as a near-certain match that
+// must stay on the planner surface even when Stage-1's candidate narrow omits
+// it. Score alone is insufficient: keyword stages commonly saturate several
+// parents at 1.0, so only one ranked override may survive the narrow.
 const RETRIEVAL_OVERRIDE_SCORE = 0.97;
 
 // Per-parent cap on children exposed as first-class planner tools. Symmetric
@@ -235,13 +234,15 @@ export function tierActionResults(
 		tierAParents.sort(compareTieredParents);
 
 		const candidateKept: TieredParentAction[] = [];
-		const overrideKept: TieredParentAction[] = [];
+		const overrideCandidates: TieredParentAction[] = [];
 		const demotedFromTierA: TieredParentAction[] = [];
 		for (const parent of tierAParents) {
 			// Keep a parent the candidates named, OR one the retrieval matched so
-			// strongly it is the near-certain rank-zero fit. Only the aggregate winner
-			// may contradict Stage-1; accepting every saturated keyword score turns an
-			// unambiguous route into a broad, expensive planner surface.
+			// strongly it is either the aggregate winner or independently dominant in
+			// both lexical stages. The latter covers a candidate-exact action occupying
+			// rank one while the message itself overwhelmingly names another action.
+			// Only one override may contradict Stage-1; accepting every saturated score
+			// turns an unambiguous route into a broad, expensive planner surface.
 			// Stage-1's candidate list is a model judgement and sometimes OMITS the
 			// obviously-relevant action — observed live: "current bitcoin price" /
 			// "weather in tokyo" retrieved WEB_FETCH at score 1.0, but Stage-1
@@ -261,15 +262,23 @@ export function tierActionResults(
 				candidateKept.push(parent);
 			} else if (
 				parent.score >= RETRIEVAL_OVERRIDE_SCORE &&
-				parent.result.rank === 0
+				(parent.result.rank === 1 ||
+					(parent.result.stageScores.keyword === 1 &&
+						parent.result.stageScores.bm25 === 1))
 			) {
-				overrideKept.push(parent);
+				overrideCandidates.push(parent);
 			} else {
 				demotedFromTierA.push(parent);
 			}
 		}
 		candidateKept.sort(compareTieredParents);
-		overrideKept.sort(compareTieredParents);
+		overrideCandidates.sort(
+			(left, right) =>
+				left.result.rank - right.result.rank ||
+				compareTieredParents(left, right),
+		);
+		const overrideKept = overrideCandidates.slice(0, 1);
+		demotedFromTierA.push(...overrideCandidates.slice(1));
 		const kept = [...candidateKept, ...overrideKept];
 		// No-op safety: when nothing in the catalog matches any candidate and
 		// no override survives (Stage-1 named an action that does not exist),
