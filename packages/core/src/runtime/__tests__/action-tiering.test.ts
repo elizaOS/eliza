@@ -178,7 +178,10 @@ describe("action tiering", () => {
 		// narrowed to VIEWS).
 		const surface = tierActionResults({
 			catalog,
-			results: [resultFor(music, 1, 0), resultFor(email, 0.5, 1)],
+			results: [
+				resultFor(music, 1, 2, { keyword: 1, bm25: 1 }),
+				resultFor(email, 0.5, 1, { exact: 1 }),
+			],
 			narrowToCandidateActions: ["SEND_EMAIL"],
 		});
 
@@ -213,9 +216,9 @@ describe("action tiering", () => {
 		const surface = tierActionResults({
 			catalog,
 			results: [
-				resultFor(views, 1, 0),
-				resultFor(household, 1, 1),
-				resultFor(school, 1, 2),
+				resultFor(views, 1, 1, { exact: 1 }),
+				resultFor(household, 1, 2, { keyword: 1, bm25: 1 }),
+				resultFor(school, 1, 3, { keyword: 1, bm25: 1 }),
 			],
 			narrowToCandidateActions: ["VIEWS"],
 		});
@@ -581,6 +584,7 @@ function resultFor(
 	},
 	score: number,
 	rank = 1,
+	stageScores: ActionRetrievalResult["stageScores"] = {},
 ): ActionRetrievalResult {
 	return {
 		parent: parent as ActionRetrievalResult["parent"],
@@ -589,7 +593,7 @@ function resultFor(
 		score,
 		rank,
 		rrfScore: score,
-		stageScores: {},
+		stageScores,
 		matchedBy: [],
 	};
 }
