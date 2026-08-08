@@ -45,6 +45,7 @@
 import { authedClient } from "../src/helpers/monetization";
 import { sendAgentBridgeRequest } from "../src/helpers/provisioning";
 import { seedModelPricing } from "../src/helpers/seed-pricing";
+import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
 import { expect, test } from "../src/helpers/test-fixtures";
 
 // API-only stack + the mock LLM in context-echo mode (reply derived from the
@@ -195,9 +196,13 @@ test.describe("multi-turn agent conversation (mock LLM, keyless)", () => {
 
     // ── 4. first message. ─────────────────────────────────────────────────────
     const FIRST = "My favorite color is teal. Remember that.";
-    const turn1 = await c<MessageSendEnvelope>("POST", convoUrl, {
-      text: FIRST,
-    });
+    // Cold shared agent: scope and conversation caches are hydrated under
+    // waitUntil, so the first calls answer the retryable warming 503 (see
+    // src/helpers/shared-runtime.ts). Honour that contract; every other status
+    // still fails immediately on the assertion below.
+    const turn1 = await retrySharedRuntimeWarming<MessageSendEnvelope>(() =>
+      c<MessageSendEnvelope>("POST", convoUrl, { text: FIRST }),
+    );
     expect(turn1.status, "first message accepted").toBe(200);
     expect(
       turn1.json.text,
@@ -215,9 +220,18 @@ test.describe("multi-turn agent conversation (mock LLM, keyless)", () => {
       "the mock LLM served the first turn",
     ).toBe(1);
 
-    // A usage record with non-zero tokens was recorded for the turn.
+    // A usage record with non-zero tokens was recorded for the turn. The
+    // shared-tier billing tail (billUsage → settleReservation → analytics →
+    // audit) runs OFF the response path under executionCtx.waitUntil (#16925),
+    // so the reply is final before the ledger is. Poll for the settle instead
+    // of racing it; a tail that never lands still fails here.
+    await expect
+      .poll(
+        async () => (await chatUsageRows(seededUser.organizationId)).length,
+        { message: "one chat usage record after turn 1", timeout: 15_000 },
+      )
+      .toBe(1);
     const usageAfter1 = await chatUsageRows(seededUser.organizationId);
-    expect(usageAfter1.length, "one chat usage record after turn 1").toBe(1);
     expect(
       usageAfter1[0].outputTokens,
       "turn 1 recorded non-zero output tokens",
@@ -228,6 +242,20 @@ test.describe("multi-turn agent conversation (mock LLM, keyless)", () => {
     ).toBeGreaterThan(0);
 
     // The org was debited for the turn (real reservation→settlement billing).
+    // settleReservation runs after billUsage in the same deferred tail, so the
+    // ledger settles slightly after the usage row above.
+    await expect
+      .poll(
+        async () =>
+          balanceStart -
+          ((await c<BalanceResponse>("GET", "/api/v1/credits/balance")).json
+            .balance ?? 0),
+        {
+          message: "turn 1 debited the org for inference",
+          timeout: 15_000,
+        },
+      )
+      .toBeGreaterThan(0);
     const balanceAfter1 =
       (await c<BalanceResponse>("GET", "/api/v1/credits/balance")).json
         .balance ?? 0;
@@ -235,13 +263,12 @@ test.describe("multi-turn agent conversation (mock LLM, keyless)", () => {
     console.log(
       `[multi-turn] turn 1 debit ${debit1} (before=${balanceStart} after=${balanceAfter1})`,
     );
-    expect(debit1, "turn 1 debited the org for inference").toBeGreaterThan(0);
 
     // ── 5. second message — depends on turn 1's context. ──────────────────────
     const SECOND = "What did I say my favorite color was?";
-    const turn2 = await c<MessageSendEnvelope>("POST", convoUrl, {
-      text: SECOND,
-    });
+    const turn2 = await retrySharedRuntimeWarming<MessageSendEnvelope>(() =>
+      c<MessageSendEnvelope>("POST", convoUrl, { text: SECOND }),
+    );
     expect(turn2.status, "second message accepted").toBe(200);
     // The reply reflects the RETAINED first turn: the runtime replayed the prior
     // turn into the model, so the echo's prior-user-turn count rose to 1. A fixed
@@ -258,8 +285,13 @@ test.describe("multi-turn agent conversation (mock LLM, keyless)", () => {
 
     // Token-level proof of context retention: turn 2's recorded input tokens
     // EXCEED turn 1's, because the prompt now carries the prior turn's transcript.
+    await expect
+      .poll(
+        async () => (await chatUsageRows(seededUser.organizationId)).length,
+        { message: "two chat usage records after turn 2", timeout: 15_000 },
+      )
+      .toBe(2);
     const usageAfter2 = await chatUsageRows(seededUser.organizationId);
-    expect(usageAfter2.length, "two chat usage records after turn 2").toBe(2);
     // listByOrganization is newest-first → [turn2, turn1].
     const [t2Usage, t1Usage] = usageAfter2;
     expect(
@@ -268,7 +300,9 @@ test.describe("multi-turn agent conversation (mock LLM, keyless)", () => {
     ).toBeGreaterThan(t1Usage.inputTokens);
 
     // ── conversation/message history persisted: the full ordered transcript. ──
-    const history = await c<MessagesGetEnvelope>("GET", convoUrl);
+    const history = await retrySharedRuntimeWarming<MessagesGetEnvelope>(() =>
+      c<MessagesGetEnvelope>("GET", convoUrl),
+    );
     expect(history.status, "transcript readable").toBe(200);
     const msgs = history.json.messages ?? [];
     expect(

@@ -447,9 +447,19 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
         }
       : {}),
     ...(result
-      ? { result: result.value, result_storage: result.storage, result_key: result.key }
+      ? {
+          result: result.value,
+          result_storage: result.storage,
+          result_key: result.key,
+        }
       : {}),
-    ...(error ? { error: error.value, error_storage: error.storage, error_key: error.key } : {}),
+    ...(error
+      ? {
+          error: error.value,
+          error_storage: error.storage,
+          error_key: error.key,
+        }
+      : {}),
   };
 }
 
@@ -587,6 +597,38 @@ export class JobsRepository {
       .limit(filters.limit || 1000)
       .orderBy(filters.orderBy === "desc" ? desc(jobs.created_at) : jobs.created_at);
     return await Promise.all(rows.map(hydrateJob));
+  }
+
+  /**
+   * Most recent lifecycle job for one agent, whatever its status.
+   *
+   * `findByFilters` cannot express this: it has no `agent_id` predicate, and
+   * widening it would change a reader many callers share. Callers use this to
+   * decide whether enough time has passed since the last attempt — so the row
+   * must be the latest attempt, not the latest *failed* one, or a retry that
+   * is still running would look like an opportunity to start another.
+   *
+   * Served by `jobs_org_type_agent_created_idx` on
+   * (organization_id, type, agent_id, created_at) WHERE agent_id IS NOT NULL.
+   */
+  async findLatestAgentLifecycleJob(filters: {
+    type: ProvisioningJobType;
+    organizationId: string;
+    agentId: string;
+  }): Promise<Job | null> {
+    const [row] = await dbRead
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.organization_id, filters.organizationId),
+          eq(jobs.type, filters.type),
+          eq(jobs.agent_id, filters.agentId),
+        ),
+      )
+      .orderBy(desc(jobs.created_at))
+      .limit(1);
+    return row ? await hydrateJob(row) : null;
   }
 
   /**

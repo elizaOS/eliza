@@ -552,7 +552,10 @@ function fallbackReply(args: {
     return `almost there, ${name}. finishing setup now.`;
   }
   if (args.provisioning.status === "error") {
-    return `hit a snag on my end, ${name}. your dashboard has the details and the team is on it.`;
+    // The row is still `error` at this instant — the retry only flips it once
+    // the daemon claims the job — so this promises a retry, not progress, and
+    // sends nobody to a dashboard that has no button to fix it.
+    return `last attempt failed, ${name}. I've queued another one, nothing for you to do. keep chatting here.`;
   }
   if (args.provisioning.status === "insufficient_credits") {
     return `you're out of credits, ${name}. top up at ${onboardingAppPath("/dashboard/billing")} and I'll get your agent going.`;

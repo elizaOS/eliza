@@ -51,28 +51,48 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
       const client = new ElizaClient(cloudApiBase, authToken);
 
       // 1) New user with no agents → provision a fresh cloud agent.
+      // SHARED tier: this spec covers the container-free onboarding the app
+      // uses to put a user in chat immediately. A shared agent is born
+      // `running`, is reached through the shared REST adapter under
+      // /api/v1/eliza/agents/<id>, and never gets a dedicated container — which
+      // is exactly the world step 3 asserts against. Without `preferSharedTier`
+      // the client provisions a DEDICATED agent instead and blocks in
+      // `waitForCloudAgentRunning` for a container this harness only advances
+      // when a test pumps the control-plane job queue, so the call never
+      // returns.
+      // No `forceCreate`: the router rejects it for the shared tier ("a shared
+      // agent never needs to bypass the reuse guard"), and this user genuinely
+      // has no agents — the reuse lookup finds none and falls through to the
+      // create, which is the real first-run path.
       const progress: string[] = [];
       const created = await client.selectOrProvisionCloudAgent({
         cloudApiBase,
         authToken,
         name: "E2E Cloud Agent",
         bio: ["An end-to-end cloud onboarding agent."],
-        forceCreate: true,
+        preferSharedTier: true,
         onProgress: (status) => progress.push(status),
       });
 
       expect(created.created).toBe(true);
       expect(created.agentId).toBeTruthy();
+      expect(created.executionTier, "onboarded onto the shared tier").toBe(
+        "shared",
+      );
       // Always a per-agent base (never the agent-id-less collection URL).
       expect(created.apiBase).toContain(created.agentId);
       expect(progress).toContain("ready");
 
       // 2) Returning user (no forceCreate) → reuse the same agent, do not create
-      //    another. Driven off the router's real list endpoint.
+      //    another. Driven off the router's real list endpoint. The reuse
+      //    lookup FILTERS OUT shared agents unless the caller asks for that
+      //    tier, so a shared-tier sign-in must carry the same preference or the
+      //    client would mint a second agent instead of reusing this one.
       const reused = await client.selectOrProvisionCloudAgent({
         cloudApiBase,
         authToken,
         name: "E2E Cloud Agent",
+        preferSharedTier: true,
       });
 
       expect(reused.created).toBe(false);

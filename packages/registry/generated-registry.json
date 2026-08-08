@@ -1642,6 +1642,59 @@
         "catalogSection": "other"
       }
     },
+    "plugin-undesirables": {
+      "git": {
+        "repo": "sailorpepe/plugin-undesirables",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-undesirables",
+        "v0": null,
+        "v1": null,
+        "v2": "2.7.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Personality-as-code: load any of 4,444 on-chain Undesirable souls as a deterministic agent personality, and price real trading-card markets from a live on-chain oracle.",
+      "homepage": "https://the-undesirables.com",
+      "topics": [
+        "personality",
+        "agent-personality",
+        "nft",
+        "ethereum",
+        "market-data",
+        "live-pricing",
+        "trading-cards",
+        "tcg",
+        "oracle-api",
+        "x402",
+        "mcp",
+        "base",
+        "usdc"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "plugin-wallettriage": {
       "git": {
         "repo": "wallettriage/plugin-wallettriage",
