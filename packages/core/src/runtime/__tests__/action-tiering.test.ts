@@ -178,13 +178,39 @@ describe("action tiering", () => {
 		// narrowed to VIEWS).
 		const surface = tierActionResults({
 			catalog,
-			results: [resultFor(music, 1, 0), resultFor(email, 0.5, 1)],
+			results: [resultFor(music, 1, 1), resultFor(email, 0.5, 2)],
 			narrowToCandidateActions: ["SEND_EMAIL"],
 		});
 
 		expect(surface.exposedActionNames).toEqual(
 			expect.arrayContaining(["MUSIC", "EMAIL", "SEND_EMAIL"]),
 		);
+	});
+
+	it("keeps one independently dominant lexical match behind a routed candidate", () => {
+		const catalog = buildActionCatalog(actions);
+		const email = catalog.parentByName.get("EMAIL");
+		const music = catalog.parentByName.get("MUSIC");
+		const calendar = catalog.parentByName.get("CALENDAR");
+		if (!email || !music || !calendar) {
+			throw new Error("missing parents");
+		}
+
+		const surface = tierActionResults({
+			catalog,
+			results: [
+				resultFor(email, 1, 1),
+				resultFor(music, 1, 2, { keyword: 1, bm25: 1 }),
+				resultFor(calendar, 1, 3, { keyword: 1, bm25: 1 }),
+			],
+			narrowToCandidateActions: ["SEND_EMAIL"],
+		});
+
+		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
+			"EMAIL",
+			"MUSIC",
+		]);
+		expect(surface.exposedActionNames).not.toContain("CALENDAR");
 	});
 
 	it("does not let tied perfect keyword matches flood a routed candidate", () => {
@@ -213,9 +239,9 @@ describe("action tiering", () => {
 		const surface = tierActionResults({
 			catalog,
 			results: [
-				resultFor(views, 1, 0),
-				resultFor(household, 1, 1),
-				resultFor(school, 1, 2),
+				resultFor(views, 1, 1),
+				resultFor(household, 1, 2),
+				resultFor(school, 1, 3),
 			],
 			narrowToCandidateActions: ["VIEWS"],
 		});
@@ -581,6 +607,7 @@ function resultFor(
 	},
 	score: number,
 	rank = 1,
+	stageScores: ActionRetrievalResult["stageScores"] = {},
 ): ActionRetrievalResult {
 	return {
 		parent: parent as ActionRetrievalResult["parent"],
@@ -589,7 +616,7 @@ function resultFor(
 		score,
 		rank,
 		rrfScore: score,
-		stageScores: {},
-		matchedBy: [],
+		stageScores,
+		matchedBy: Object.keys(stageScores) as ActionRetrievalResult["matchedBy"],
 	};
 }
