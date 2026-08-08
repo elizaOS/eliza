@@ -3164,6 +3164,67 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(evalEvents).toHaveLength(1);
 	});
 
+	it("pins: ack-shaped planner messageToUser + successful tool is gated as the terminal reply (not a pre-tool progress channel)", async () => {
+		// Runtime contract for PR #18011 review: JSON-mode messageToUser is NOT
+		// delivered before tools run. It is stored as lastPlannerExplicitMessageToUser;
+		// after a successful tool drains the queue, tryGateEvaluator treats it as
+		// an explicit terminal reply, skips the evaluator, and ships it as
+		// finalMessage. A compliant model that puts a pre-tool ack in
+		// messageToUser ("I'm connecting your calendar.") with a CONNECT tool
+		// therefore posts that ack *after* the tool and can drop the outcome.
+		// The planner prompt must forbid that pattern; this test pins the
+		// inversion so a future prompt regression cannot claim messageToUser is
+		// a progress channel.
+		expect(plannerTemplate).toContain(
+			"Do not put a pre-tool progress or acknowledgement bubble in messageToUser",
+		);
+		expect(plannerTemplate).not.toContain("Brief acks before tools run");
+
+		const preToolAck = "I'm connecting your calendar.";
+		const toolOutcome =
+			"Open this link to finish connecting Google Calendar: https://oauth.example/connect";
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: preToolAck,
+				toolCalls: [{ name: "CONNECT_CALENDAR", args: { provider: "google" } }],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: toolOutcome,
+			userFacingText: toolOutcome,
+			// verified without turnComplete: the gate still prefers the planner's
+			// explicit messageToUser over the tool outcome when turnComplete is
+			// unset — the exact dead-end class the prompt change must not teach.
+			verifiedUserFacing: true,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "should not be called",
+			messageToUser: toolOutcome,
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.status).toBe("finished");
+		// Gate ships the pre-tool ack as the synthesized evaluator message.
+		expect(result.evaluator?.messageToUser).toBe(preToolAck);
+		expect(result.evaluator?.thought).toContain("Gated FINISH");
+		// Preferred-final may still recover verified tool text when the model
+		// text is only process-status; either way the gated path skipped the
+		// evaluator that would have owned a grounded post-tool reply. Pin the
+		// gate inversion itself so prompt authors cannot treat messageToUser as
+		// a pre-tool progress channel.
+		expect(result.evaluator?.messageToUser).not.toBe(toolOutcome);
+	});
+
 	it("FIRES: emits a recorder evaluation stage marked gated for trajectory-replay parity", async () => {
 		// Gated iterations must still surface on the recorder timeline so replay
 		// tools see a stage at the same slot a model-produced evaluation would
