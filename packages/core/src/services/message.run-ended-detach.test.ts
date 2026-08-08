@@ -25,9 +25,14 @@ describe("DefaultMessageService — RUN_ENDED post-delivery detach", () => {
 		});
 		let runEndedStarted = false;
 		let runEndedFinished = false;
+		let markRunEndedStarted!: () => void;
+		const runEndedStartedSignal = new Promise<void>((resolve) => {
+			markRunEndedStarted = resolve;
+		});
 		const emitEvent = vi.fn(async (event: string) => {
 			if (event === EventType.RUN_ENDED) {
 				runEndedStarted = true;
+				markRunEndedStarted();
 				await gate;
 				runEndedFinished = true;
 			}
@@ -77,9 +82,13 @@ describe("DefaultMessageService — RUN_ENDED post-delivery detach", () => {
 		expect(result.mode).toBe("none");
 		// Must not have waited on the gated RUN_ENDED handler.
 		expect(elapsedMs).toBeLessThan(200);
-		expect(runEndedStarted).toBe(true);
 		expect(runEndedFinished).toBe(false);
 		expect(pendingPostDeliveryTaskCount(runtime)).toBeGreaterThan(0);
+		// Registration is synchronous, while execution intentionally begins on the
+		// post-delivery microtask so connector completion wins the scheduling race.
+		await runEndedStartedSignal;
+		expect(runEndedStarted).toBe(true);
+		expect(runEndedFinished).toBe(false);
 
 		release();
 		await drainPostDeliveryTasks(runtime);
