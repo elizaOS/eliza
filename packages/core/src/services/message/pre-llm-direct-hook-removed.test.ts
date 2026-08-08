@@ -224,9 +224,10 @@ describe("message service pre-LLM direct hook removed (#14715)", () => {
 				"RESPONSE_HANDLER_AFTER",
 			]),
 		);
-		// RUN_ENDED rides the detached post-delivery tracker (#17753/#17999), so
-		// it may not have emitted by the time handleMessage resolves. Drain the
-		// tracker before asserting the run terminal fired.
+		// RUN_ENDED rides the detached post-delivery terminal (#17072), so it
+		// may not have fired yet when handleMessage returns — especially on a
+		// loaded runner. Drain the tracker for a deterministic completion
+		// signal before asserting the event was emitted.
 		await drainPostDeliveryTasks(runtime);
 		expect(
 			emitEvent.mock.calls.some(([event]) => event === EventType.RUN_ENDED),

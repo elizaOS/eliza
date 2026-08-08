@@ -10,6 +10,7 @@ import { drizzle } from 'drizzle-orm/pglite';
 import * as dbSchema from '../../src/db/schema';
 import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
 import { WorkflowService } from '../../src/services/workflow-service';
+import { makeWorkflowPgliteStore } from '../pglite-test-store';
 
 function runtime(
   settings: Record<string, unknown> = {},
@@ -35,14 +36,14 @@ async function persistentRuntime(
   settings: Record<string, unknown> = {},
   services: Record<string, unknown> = {}
 ) {
-  const dir = await mkdtemp(join(tmpdir(), 'embedded-workflow-service-'));
-  const client = new PGlite({ dataDir: join(dir, 'pglite') });
+  const store = makeWorkflowPgliteStore('embedded-workflow-service-');
+  const client = new PGlite({ dataDir: store.dataDir });
   const db = drizzle(client, { schema: dbSchema });
   return {
     runtime: runtime({ WORKFLOW_SEED_DEFAULTS: false, ...settings }, services, db),
     async close() {
       await client.close();
-      await rm(dir, { recursive: true, force: true });
+      await store.cleanup();
     },
   };
 }
@@ -56,8 +57,8 @@ async function persistentRuntime(
  * against the SAME db + cache, simulating a process reboot.
  */
 async function seedingHarness(settings: Record<string, unknown> = {}) {
-  const dir = await mkdtemp(join(tmpdir(), 'embedded-workflow-seed-'));
-  const client = new PGlite({ dataDir: join(dir, 'pglite') });
+  const store = makeWorkflowPgliteStore('embedded-workflow-seed-');
+  const client = new PGlite({ dataDir: store.dataDir });
   const db = drizzle(client, { schema: dbSchema });
   const tasks: Array<Record<string, unknown>> = [];
   const cache = new Map<string, unknown>();
@@ -154,7 +155,7 @@ async function seedingHarness(settings: Record<string, unknown> = {}) {
     },
     async close() {
       await client.close();
-      await rm(dir, { recursive: true, force: true });
+      await store.cleanup();
     },
   };
 }
@@ -580,15 +581,11 @@ describe('EmbeddedWorkflowService', () => {
   test('runs a schedule -> HTTP Request -> Set workflow in a child process', async () => {
     const pluginRoot = join(import.meta.dir, '../..');
     const script = `
-      import { mkdtemp, rm } from 'node:fs/promises';
-      import { tmpdir } from 'node:os';
-      import { join } from 'node:path';
       import { PGlite } from '@electric-sql/pglite';
       import { drizzle } from 'drizzle-orm/pglite';
       import { EmbeddedWorkflowService } from './src/services/embedded-workflow-service.ts';
       import * as dbSchema from './src/db/schema.ts';
-      const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-child-'));
-      const client = new PGlite({ dataDir: join(dir, 'pglite') });
+      const client = new PGlite();
       const db = drizzle(client, { schema: dbSchema });
       const runtime = {
         agentId: 'agent-test',
@@ -628,7 +625,6 @@ describe('EmbeddedWorkflowService', () => {
       } finally {
         await service.stop();
         await client.close();
-        await rm(dir, { recursive: true, force: true });
       }
     `;
 
@@ -745,15 +741,12 @@ describe('EmbeddedWorkflowService', () => {
     const resultDir = await mkdtemp(join(tmpdir(), 'embedded-workflows-code-result-'));
     const resultPath = join(resultDir, 'result.json');
     const script = `
-      import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-      import { tmpdir } from 'node:os';
-      import { join } from 'node:path';
+      import { writeFile } from 'node:fs/promises';
       import { PGlite } from '@electric-sql/pglite';
       import { drizzle } from 'drizzle-orm/pglite';
       import { EmbeddedWorkflowService } from './src/services/embedded-workflow-service.ts';
       import * as dbSchema from './src/db/schema.ts';
-      const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-code-'));
-      const client = new PGlite({ dataDir: join(dir, 'pglite') });
+      const client = new PGlite();
       const db = drizzle(client, { schema: dbSchema });
       const runtime = {
         agentId: 'agent-test',
@@ -787,7 +780,6 @@ describe('EmbeddedWorkflowService', () => {
       } finally {
         await service.stop();
         await client.close();
-        await rm(dir, { recursive: true, force: true });
       }
     `;
 
@@ -872,16 +864,13 @@ describe('EmbeddedWorkflowService', () => {
     const resultPath = join(resultDir, 'result.json');
     const script = `
       import { Database } from 'bun:sqlite';
-      import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-      import { tmpdir } from 'node:os';
-      import { join } from 'node:path';
+      import { rm, writeFile } from 'node:fs/promises';
       import { PGlite } from '@electric-sql/pglite';
       import { drizzle } from 'drizzle-orm/pglite';
       import { EmbeddedWorkflowService } from './src/services/embedded-workflow-service.ts';
       import { resolveSmithersDbPath } from './src/services/smithers-runtime.ts';
       import * as dbSchema from './src/db/schema.ts';
-      const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-smithers-'));
-      const client = new PGlite({ dataDir: join(dir, 'pglite') });
+      const client = new PGlite();
       const db = drizzle(client, { schema: dbSchema });
       const runtime = {
         agentId: 'agent-test',
@@ -937,7 +926,6 @@ describe('EmbeddedWorkflowService', () => {
       } finally {
         await service.stop();
         await client.close();
-        await rm(dir, { recursive: true, force: true });
         if (smithersDbPath) {
           await Promise.all([
             rm(smithersDbPath, { force: true }),
@@ -991,15 +979,12 @@ describe('EmbeddedWorkflowService', () => {
     const resultDir = await mkdtemp(join(tmpdir(), 'embedded-workflows-webhook-result-'));
     const resultPath = join(resultDir, 'result.json');
     const script = `
-      import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-      import { tmpdir } from 'node:os';
-      import { join } from 'node:path';
+      import { writeFile } from 'node:fs/promises';
       import { PGlite } from '@electric-sql/pglite';
       import { drizzle } from 'drizzle-orm/pglite';
       import { EmbeddedWorkflowService } from './src/services/embedded-workflow-service.ts';
       import * as dbSchema from './src/db/schema.ts';
-      const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-webhook-'));
-      const client = new PGlite({ dataDir: join(dir, 'pglite') });
+      const client = new PGlite();
       const db = drizzle(client, { schema: dbSchema });
       const runtime = {
         agentId: 'agent-test',
@@ -1031,7 +1016,6 @@ describe('EmbeddedWorkflowService', () => {
       } finally {
         await service.stop();
         await client.close();
-        await rm(dir, { recursive: true, force: true });
       }
     `;
     try {

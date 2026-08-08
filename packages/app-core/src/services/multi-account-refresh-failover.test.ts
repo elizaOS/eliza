@@ -427,7 +427,11 @@ describe("adoptRotatedCodexTokens (CLI self-refresh sync-back)", () => {
             expect.stringContaining("[AccountPool] keep-alive sweep failed:"),
           );
         },
-        { timeout: 3_000, interval: 10 },
+        // Generous deadline: the sweep runs real filesystem adoption work on
+        // its immediate timer tick, and loaded CI runners can stall the event
+        // loop for seconds. The waitFor returns as soon as the log lands, so
+        // the margin only bounds the genuine-failure case.
+        { timeout: 30_000, interval: 25 },
       );
       expect(
         getDefaultAccountPool().get("codex-work", "openai-codex")?.health,

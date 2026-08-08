@@ -114,6 +114,13 @@ export {
 	type TestRuntimeOptions,
 	type TestRuntimeResult,
 } from "./pglite-runtime";
+// PGLite storage-mode policy (in-memory by default; disk via env or explicit dir)
+export {
+	createTestPgliteDataDir,
+	isInMemoryPgliteDataDir,
+	type TestPgliteStorageMode,
+	testPgliteStorageMode,
+} from "./pglite-storage";
 // React test-renderer helpers
 export { findButtonByText, flush, text, textOf } from "./react-test";
 // Real connector helpers (Discord, Telegram)
