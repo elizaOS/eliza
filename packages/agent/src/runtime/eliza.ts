@@ -4853,6 +4853,26 @@ export async function startEliza(
     }
   };
 
+  // registerService is lazy — the instance is only created by the ASYNC
+  // service-load path, while connector plugins resolve the credential store
+  // with the SYNCHRONOUS runtime.getService(), which returns null for a
+  // registered-but-never-started service. That null silently demotes every
+  // connector OAuth credential write to the in-memory SECRETS fallback (lost
+  // on restart). Force the start once runtime.initialize() has resolved (the
+  // load path awaits initPromise, so forcing earlier would deadlock boot) and
+  // surface a failure loudly — a missing store is exactly the silent-token-
+  // loss condition this service exists to prevent.
+  const ensureConnectorCredentialStoreStarted = async (): Promise<void> => {
+    if (!hasDurableHostVault()) return;
+    try {
+      await runtime.getServiceLoadPromise("connector_credential_store");
+    } catch (err) {
+      logger.warn(
+        `[eliza] ConnectorCredentialStoreService failed to start; connector OAuth credential writes will fall back to non-durable storage: ${formatError(err)}`,
+      );
+    }
+  };
+
   // Register the hosted-app run reader as a runtime service so the session gate
   // can query it via getService instead of statically importing the plugin
   // (which inverted the host→plugin dependency direction). Dynamic import keeps
@@ -5440,6 +5460,8 @@ export async function startEliza(
 
     await initializeCoreRuntime();
     bootTimer.lap("svc:runtime.initialize");
+    await ensureConnectorCredentialStoreStarted();
+    bootTimer.lap("svc:connector-credential-store-start");
     await registerDesktopScreenCaptureBridgeService(runtime);
     bootTimer.lap("svc:desktop-screen-capture");
   };

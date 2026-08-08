@@ -1471,6 +1471,26 @@ export class ConnectorAccountManager extends Service {
 			return { flow: failed ?? flow };
 		}
 
+		// PKCE verifiers live only in a process-local map (never persisted, so
+		// stored flow rows carry no raw secret) while flow state itself is
+		// durable. A flow minted before a restart therefore arrives here with a
+		// codeVerifierRef whose verifier no longer exists; exchanging the code
+		// without it can only produce an opaque provider 400 ("invalid code
+		// verifier"). Fail the flow with an explicit re-mint message instead of
+		// forwarding a doomed exchange.
+		const codeVerifierRef = stringMetadataValue(
+			flow.metadata,
+			"codeVerifierRef",
+		);
+		if (codeVerifierRef && !flow.codeVerifier) {
+			const failed = await this.storage.updateOAuthFlow(providerId, flow.id, {
+				status: "failed",
+				error:
+					"This authorization link was created before the agent restarted, so its one-time PKCE secret no longer exists. Start the OAuth flow again and use the fresh link.",
+			});
+			return { flow: failed ?? flow };
+		}
+
 		const registered = this.providers.get(providerId);
 		if (!registered?.completeOAuth) {
 			throw new Error(

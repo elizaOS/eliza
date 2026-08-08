@@ -301,4 +301,36 @@ describe("ConnectorAccountManager", () => {
 			reason: "owner binding has not been verified",
 		});
 	});
+
+	it("fails a flow whose PKCE verifier died with a restart instead of forwarding a doomed exchange", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const runtime = makeRuntime(adapter);
+		const manager = getConnectorAccountManager(runtime);
+		const exchange = vi.fn();
+		manager.registerProvider({
+			provider: "oauth-restart",
+			startOAuth: () => ({ authUrl: "https://auth.example/start" }),
+			completeOAuth: exchange,
+		});
+
+		// Exactly what a restart leaves behind: a durable flow row whose
+		// codeVerifierRef points at a process-local PKCE secret that no longer
+		// exists in this process.
+		await adapter.createOAuthFlowState?.({
+			state: "state-restart-1",
+			provider: "oauth-restart",
+			codeVerifierRef: "connector-oauth-pkce:gone-after-restart",
+			metadata: { status: "pending", flowId: "oauth_restart_1" },
+		});
+
+		const result = await manager.completeOAuth("oauth-restart", {
+			state: "state-restart-1",
+			code: "auth-code-1",
+		});
+		expect(result.flow.status).toBe("failed");
+		expect(result.flow.error).toMatch(/before the agent restarted/i);
+		expect(result.flow.error).toMatch(/start the oauth flow again/i);
+		expect(exchange).not.toHaveBeenCalled();
+	});
 });
