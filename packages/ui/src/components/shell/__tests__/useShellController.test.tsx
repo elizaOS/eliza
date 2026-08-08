@@ -24,6 +24,11 @@ import {
 } from "vitest";
 import type { RealtimeVoiceStartOutcome } from "../../../hooks/useRealtimeVoiceSession";
 import { RESYNC_EVENT } from "../../../state/AppContext.hooks";
+import {
+  getShellSurface,
+  goLauncher,
+  resetShellSurfaceForTests,
+} from "../../../state/shell-surface-store";
 import { emitViewEvent } from "../../../views/view-event-bus";
 import {
   createVoiceCapture,
@@ -339,12 +344,23 @@ afterEach(() => {
   realtimeVoiceMock.state.paused = false;
   realtimeVoiceMock.state.microphoneMuted = false;
   realtimeVoiceMock.state.error = null;
+  resetShellSurfaceForTests();
   try {
     window.localStorage.clear();
   } catch {}
 });
 
 describe("useShellController", () => {
+  it("returns the shared launcher rail to Home before navigating to chat", () => {
+    goLauncher();
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.navigateHome?.());
+
+    expect(getShellSurface().page).toBe("home");
+    expect(appMock.value.setTab).toHaveBeenCalledWith("chat");
+  });
+
   it("passes only authenticated selected Cloud voice capability to output", () => {
     const { rerender } = renderHook(() => useShellController());
 

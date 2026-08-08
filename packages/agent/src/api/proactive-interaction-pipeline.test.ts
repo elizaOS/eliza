@@ -144,6 +144,7 @@ function navigateCtx(
   const req = Readable.from([
     Buffer.from(JSON.stringify(body)),
   ]) as unknown as http.IncomingMessage;
+  req.headers = { "content-type": "application/json" };
   const pathname = `/api/views/${encodeURIComponent(id)}/navigate`;
   return {
     req,

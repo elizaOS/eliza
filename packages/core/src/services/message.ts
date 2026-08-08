@@ -170,6 +170,7 @@ import type {
 	ResponseHandlerSenderRole,
 } from "../runtime/response-handler-field-evaluator";
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
+import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
@@ -213,6 +214,7 @@ import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
 } from "../trajectory-context";
+import { withEvaluatorStep } from "../trajectory-utils";
 import type { CharacterSettings } from "../types/agent";
 import type {
 	Action,
@@ -1429,7 +1431,10 @@ type ResolvedMessageOptions = {
 	 * in-flight inference. Sourced from `MessageProcessingOptions.abortSignal`.
 	 */
 	abortSignal?: AbortSignal;
+	roomHandlerLease?: RoomHandlerLease;
 	onSettledActionResult?: (result: ActionResult) => void;
+	onTrajectoryTerminalOwner?: (owner: "run") => void;
+	runTerminalOwner?: MessageRunTerminalOwner;
 };
 
 function normalizeShouldRespondModelType(
@@ -3400,6 +3405,26 @@ function appliedEffectReceiptIdsForReply(
 	return [];
 }
 
+function uniqueAppliedCanonicalActionReply(
+	results: readonly ActionResult[],
+): string | null {
+	const allTurnReceipts = mergeEffectReceipts(
+		...results.map((result) => result.effectReceipts),
+	);
+	const candidates = new Set<string>();
+	for (const result of results) {
+		const text = result.userFacingText?.trim();
+		if (result.verifiedUserFacing !== true || !text) continue;
+		if (!resolveAppliedUserFacingEffectReceipts(result, allTurnReceipts)) {
+			continue;
+		}
+		candidates.add(text);
+	}
+	return candidates.size === 1
+		? (candidates.values().next().value ?? null)
+		: null;
+}
+
 /**
  * An action result grounds only the capability it actually proves.
  * Empty tracked-work claims require a `resource:tracked-work` read action.
@@ -3488,7 +3513,13 @@ export function evaluatePlannedReplyEgress(args: {
 		return {
 			verdict: "reject",
 			kind: "completed_side_effect",
-			fallbackReply: UNVERIFIED_EFFECT_REPLY,
+			// The planner may paraphrase a receipt-backed action by only punctuation
+			// or casing. Preserve the action's exact canonical text instead of
+			// replacing a real success with a false verification failure. Multiple
+			// distinct effects remain ambiguous and continue to fail closed.
+			fallbackReply:
+				uniqueAppliedCanonicalActionReply(args.actionResults) ??
+				UNVERIFIED_EFFECT_REPLY,
 		};
 	}
 	if (replyClaimsEmptyTrackedWorkState(reply)) {
@@ -6684,6 +6715,7 @@ export async function runShortcutGate(args: {
 	responseId: UUID;
 	senderRole: RoleGateRole;
 	onSettledActionResult?: (result: ActionResult) => void;
+	runTerminalOwner?: MessageRunTerminalOwner;
 }): Promise<V5MessageRuntimeStage1Result | null> {
 	if (process.env.ELIZA_SHORTCUTS_DISABLED === "1") return null;
 	const text = getUserMessageText(args.message) ?? "";
@@ -6790,7 +6822,16 @@ export async function runShortcutGate(args: {
 	);
 
 	// #8792: report the interaction so the proactive-comment decider can react.
-	void emitInteractionEvent(args.runtime, match, args.message);
+	const interactionEvent = emitInteractionEvent(
+		args.runtime,
+		match,
+		args.message,
+	);
+	if (args.runTerminalOwner) {
+		args.runTerminalOwner.adopt("shortcut-interaction-event", interactionEvent);
+	} else {
+		void interactionEvent;
+	}
 
 	const thought = `Shortcut: ${match.shortcut.id}`;
 	return {
@@ -6910,6 +6951,8 @@ export async function runV5MessageRuntimeStage1(args: {
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
 	onSettledActionResult?: (result: ActionResult) => void;
+	roomHandlerLease?: RoomHandlerLease;
+	runTerminalOwner?: MessageRunTerminalOwner;
 	/**
 	 * Optional pre-planner early-reply delivery seam. A consumer that decides
 	 * NOT to deliver the event (e.g. the voice fast path's async-handoff gate)
@@ -7121,13 +7164,21 @@ export async function runV5MessageRuntimeStage1(args: {
 		// call. We don't await — the user contract is "during".
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection escaping
 		// runActionsByMode must not abort the turn, but it must surface.
-		void args.runtime
+		const responseHandlerDuring = args.runtime
 			.runActionsByMode("RESPONSE_HANDLER_DURING", args.message, args.state)
 			.catch((err) =>
 				args.runtime.reportError("MessageService.runActionsByMode", err, {
 					mode: "RESPONSE_HANDLER_DURING",
 				}),
 			);
+		if (args.runTerminalOwner) {
+			args.runTerminalOwner.adopt(
+				"RESPONSE_HANDLER_DURING",
+				responseHandlerDuring,
+			);
+		} else {
+			void responseHandlerDuring;
+		}
 
 		// Per-turn structure forcing. `buildResponseGrammar` composes the
 		// HANDLE_RESPONSE envelope skeleton (fixed key order + the `contexts`
@@ -7475,6 +7526,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					settledFactsOutcome = outcome;
 					return outcome;
 				});
+			args.runTerminalOwner?.adopt("facts-and-relationships", factsTask);
 		}
 
 		// Persist `addressedTo` as relationship edges from the speaker to each
@@ -7483,7 +7535,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// failures land in the logger but never block the reply.
 		const addressedTo = messageHandler.extract?.addressedTo ?? [];
 		if (addressedTo.length > 0) {
-			void applyAddressedTo({
+			const addressedToTask = applyAddressedTo({
 				runtime: args.runtime,
 				message: args.message,
 				addressedTo,
@@ -7502,6 +7554,11 @@ export async function runV5MessageRuntimeStage1(args: {
 					"[message] applyAddressedTo failed",
 				);
 			});
+			if (args.runTerminalOwner) {
+				args.runTerminalOwner.adopt("apply-addressed-to", addressedToTask);
+			} else {
+				void addressedToTask;
+			}
 		}
 
 		// Record Stage-1-extracted topics into the per-channel LRU. Pure
@@ -7514,7 +7571,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				ChannelTopicsService.serviceType,
 			);
 			if (channelTopics) {
-				void channelTopics
+				const recordTopicsTask = channelTopics
 					.recordTopics(args.message.roomId, topics)
 					.catch((error) => {
 						// error-policy:J7 Channel-topic state is detached enrichment; report
@@ -7532,6 +7589,14 @@ export async function runV5MessageRuntimeStage1(args: {
 							"[message] recordTopics failed",
 						);
 					});
+				if (args.runTerminalOwner) {
+					args.runTerminalOwner.adopt(
+						"record-channel-topics",
+						recordTopicsTask,
+					);
+				} else {
+					void recordTopicsTask;
+				}
 			}
 		}
 
@@ -7544,7 +7609,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			// valid, discriminated MessageMetadata regardless of the inbound shape
 			// (never a sibling union member with an unexpected `topics` field).
 			const existingMetadata = args.message.metadata;
-			void args.runtime
+			const stampTopicsTask = args.runtime
 				.updateMemory({
 					id: args.message.id,
 					metadata: {
@@ -7564,6 +7629,11 @@ export async function runV5MessageRuntimeStage1(args: {
 						"[message] stamp message topics failed",
 					);
 				});
+			if (args.runTerminalOwner) {
+				args.runTerminalOwner.adopt("stamp-message-topics", stampTopicsTask);
+			} else {
+				void stampTopicsTask;
+			}
 		}
 
 		// Response-handler evaluators may promote a simple turn to planning and
@@ -8095,7 +8165,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// CONTEXT_DURING (non-blocking): runs in parallel with the planner.
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection escaping
 		// runActionsByMode must not abort the planner, but it must surface.
-		void args.runtime
+		const contextDuring = args.runtime
 			.runActionsByMode("CONTEXT_DURING", args.message, plannerState, {
 				selectedContexts,
 			})
@@ -8104,6 +8174,11 @@ export async function runV5MessageRuntimeStage1(args: {
 					mode: "CONTEXT_DURING",
 				}),
 			);
+		if (args.runTerminalOwner) {
+			args.runTerminalOwner.adopt("CONTEXT_DURING", contextDuring);
+		} else {
+			void contextDuring;
+		}
 
 		// Track visible text an action already delivered to the user through the
 		// callback during this planner run. The set is populated by the outer
@@ -8632,14 +8707,21 @@ export async function runV5MessageRuntimeStage1(args: {
 				args.runtime,
 				"trajectory-finalization",
 				() => finalizeTrajectory(false),
+				"diagnostic",
 			);
-			if (settledFactsOutcome === undefined) {
+			if (
+				settledFactsOutcome === undefined &&
+				args.runTerminalOwner === undefined
+			) {
 				detachPostDeliverySideEffect(
 					args.runtime,
 					"facts-and-relationships",
 					async () => {
 						await factsTask;
 					},
+					"room-state",
+					args.message.roomId,
+					args.roomHandlerLease,
 				);
 			}
 		}
@@ -9012,7 +9094,7 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
 /**
  * Tracks the latest response ID per agent+room to handle message superseding
  */
-const latestResponseIds = new Map<string, Map<string, string>>();
+const latestResponseIds = new Map<string, Map<string, string[]>>();
 const INFERENCE_TIMING_LOG_TYPE = "inference_timing";
 const INFERENCE_TIMING_LOG_RETENTION = 4_096;
 const INFERENCE_TIMING_LOG_SWEEP_INTERVAL = 64;
@@ -9093,22 +9175,168 @@ function clearLatestResponseId(
 		return;
 	}
 
-	if (agentMap.get(roomId) !== responseId) {
+	const roomResponses = agentMap.get(roomId);
+	if (!roomResponses) {
 		return;
 	}
-
-	agentMap.delete(roomId);
+	const responseIndex = roomResponses.lastIndexOf(responseId);
+	if (responseIndex < 0) return;
+	roomResponses.splice(responseIndex, 1);
+	if (roomResponses.length === 0) agentMap.delete(roomId);
 	if (agentMap.size === 0) {
 		latestResponseIds.delete(agentId);
 	}
+}
+
+function getLatestResponseId(agentId: UUID, roomId: UUID): string | undefined {
+	const roomResponses = latestResponseIds.get(agentId)?.get(roomId);
+	return roomResponses?.[roomResponses.length - 1];
 }
 
 function detachPostDeliverySideEffect(
 	runtime: Pick<IAgentRuntime, "agentId" | "reportError">,
 	label: string,
 	task: () => Promise<unknown>,
-): void {
-	void trackPostDeliveryTask(runtime, label, task);
+	kind: "room-state" | "diagnostic" = "room-state",
+	roomId?: string,
+	roomHandlerLease?: RoomHandlerLease,
+): Promise<void> {
+	return trackPostDeliveryTask(
+		runtime,
+		label,
+		task,
+		kind === "diagnostic"
+			? { kind }
+			: roomId && roomHandlerLease
+				? { kind, roomId, roomHandlerLease }
+				: { kind },
+	);
+}
+
+/**
+ * Owns asynchronous continuations whose provider, model, or database-trajectory
+ * captures belong to one message-service run. Delivery returns as soon as the
+ * visible result is ready; the detached terminal waits for this set to quiesce,
+ * then emits exactly one `RUN_ENDED` event. File-recorder finalization and
+ * bounded inference-timing persistence are diagnostic-only and intentionally
+ * drain independently. A run-owned task may not join after terminalization is
+ * requested.
+ */
+class MessageRunTerminalOwner {
+	private readonly pending = new Set<Promise<void>>();
+	private terminalRequest:
+		| {
+				status: RunEventPayload["status"];
+				error?: unknown;
+		  }
+		| undefined;
+	private terminalTask: Promise<void> | undefined;
+
+	constructor(
+		private readonly runtime: IAgentRuntime,
+		private readonly runId: UUID,
+		private readonly message: Memory,
+		private readonly startTime: number,
+		private readonly roomHandlerLease?: RoomHandlerLease,
+	) {}
+
+	track(label: string, task: () => Promise<unknown>): Promise<void> {
+		if (this.terminalRequest) {
+			const error = new ElizaError(
+				"Run-owned work cannot start after terminalization was requested",
+				{
+					code: "RUN_TASK_AFTER_TERMINAL",
+					context: {
+						label,
+						runId: this.runId,
+						messageId: this.message.id,
+					},
+				},
+			);
+			this.runtime.reportError("MessageRunTerminalOwner.track", error, {
+				label,
+				runId: this.runId,
+				messageId: this.message.id,
+			});
+			return Promise.resolve();
+		}
+
+		let tracked!: Promise<void>;
+		tracked = Promise.resolve()
+			.then(task)
+			.then(() => undefined)
+			.catch((error) => {
+				// error-policy:J1 User delivery is already committed. Preserve the exact
+				// child failure while allowing the terminal barrier to release the run.
+				this.runtime.reportError("PostDeliveryTask", error, {
+					agentId: this.runtime.agentId,
+					label,
+					runId: this.runId,
+				});
+			})
+			.finally(() => {
+				this.pending.delete(tracked);
+			});
+		this.pending.add(tracked);
+		return tracked;
+	}
+
+	adopt(label: string, task: Promise<unknown>): Promise<void> {
+		return this.track(label, () => task);
+	}
+
+	request(status: RunEventPayload["status"], error?: unknown): Promise<void> {
+		if (this.terminalRequest) return this.terminalTask ?? Promise.resolve();
+		this.terminalRequest = {
+			status,
+			...(error === undefined ? {} : { error }),
+		};
+		try {
+			this.terminalTask = detachPostDeliverySideEffect(
+				this.runtime,
+				"RUN_ENDED",
+				async () => {
+					while (this.pending.size > 0) {
+						await Promise.allSettled([...this.pending]);
+					}
+					const terminal = this.terminalRequest;
+					if (!terminal) {
+						throw new ElizaError("Run terminal request disappeared", {
+							code: "RUN_TERMINAL_REQUEST_MISSING",
+							context: { runId: this.runId, messageId: this.message.id },
+						});
+					}
+					await this.runtime.emitEvent(EventType.RUN_ENDED, {
+						runtime: this.runtime,
+						source: "messageHandler",
+						runId: this.runId,
+						messageId: this.message.id,
+						roomId: this.message.roomId,
+						entityId: this.message.entityId,
+						startTime: this.startTime,
+						status: terminal.status,
+						endTime: Date.now(),
+						duration: Date.now() - this.startTime,
+						...(terminal.error === undefined
+							? {}
+							: {
+									error:
+										terminal.error instanceof Error
+											? terminal.error
+											: String(terminal.error),
+								}),
+					} as RunEventPayload);
+				},
+				"room-state",
+				this.message.roomId,
+				this.roomHandlerLease,
+			);
+		} catch (terminalScheduleError) {
+			this.terminalRequest = undefined;
+			throw terminalScheduleError;
+		}
+		return this.terminalTask;
+	}
 }
 
 export function isSimpleReplyResponse(
@@ -10564,6 +10792,7 @@ export class DefaultMessageService implements IMessageService {
 				? (message.metadata as { trajectoryId?: string }).trajectoryId
 				: undefined;
 
+		let alwaysDuringTask: Promise<void> | undefined;
 		if (
 			!(typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== "")
 		) {
@@ -10597,14 +10826,16 @@ export class DefaultMessageService implements IMessageService {
 			// (identity extraction, dispute detection) whose results may
 			// influence Stage 1 routing.
 			await runtime.runActionsByMode("ALWAYS_BEFORE", message);
-			// ALWAYS_DURING (non-blocking): fire-and-forget alongside the
-			// rest of the pipeline. Telemetry, logging, side effects.
-			// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection
-			// escaping runActionsByMode must not abort the turn, but it must surface.
-			void runtime.runActionsByMode("ALWAYS_DURING", message).catch((err) =>
-				runtime.reportError("MessageService.runActionsByMode", err, {
-					mode: "ALWAYS_DURING",
-				}),
+			// ALWAYS_DURING begins alongside the response pipeline, but actions may
+			// mutate room state. The room owner therefore remains live until this
+			// tracked work settles even if the visible response finishes first.
+			alwaysDuringTask = detachPostDeliverySideEffect(
+				runtime,
+				"ALWAYS_DURING",
+				() => runtime.runActionsByMode("ALWAYS_DURING", message),
+				"room-state",
+				message.roomId,
+				options?.roomHandlerLease,
 			);
 
 			trajectoryStepId =
@@ -10682,6 +10913,7 @@ export class DefaultMessageService implements IMessageService {
 				let firstSentenceSent = false;
 				let firstSentenceText = "";
 				let streamTextFallback = "";
+				let runTerminalOwner: MessageRunTerminalOwner | undefined;
 				// Envelope-echo latch for this turn's stream: once the accumulated
 				// text reads as envelope material, every downstream chunk consumer
 				// (model_stream_chunk hook re-emission, first-sentence TTS, the
@@ -10749,13 +10981,30 @@ export class DefaultMessageService implements IMessageService {
 									if (first.length > 5) {
 										firstSentenceSent = true;
 										firstSentenceText = first;
-										// Fire-and-forget on purpose: audio must not stall the
-										// text stream; failures log inside.
-										void deliverFirstSentenceVoice(
-											runtime,
-											first,
-											callback,
-											opts.abortSignal,
+										// Audio does not stall the text stream, but its model capture
+										// remains owned by the run-terminal barrier.
+										const deliverVoice = () =>
+											deliverFirstSentenceVoice(
+												runtime,
+												first,
+												callback,
+												opts.abortSignal,
+											);
+										if (!runTerminalOwner) {
+											throw new ElizaError(
+												"Voice streaming requires a live run terminal owner",
+												{
+													code: "RUN_TERMINAL_OWNER_REQUIRED",
+													context: {
+														messageId: message.id,
+														roomId: message.roomId,
+													},
+												},
+											);
+										}
+										runTerminalOwner.track(
+											"first-sentence-voice",
+											deliverVoice,
 										);
 									}
 								}
@@ -10779,9 +11028,17 @@ export class DefaultMessageService implements IMessageService {
 						),
 					shouldRespondModel: resolvedShouldRespondModel,
 					...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
+					...(options?.roomHandlerLease
+						? { roomHandlerLease: options.roomHandlerLease }
+						: {}),
 					...(options?.onSettledActionResult
 						? {
 								onSettledActionResult: options.onSettledActionResult,
+							}
+						: {}),
+					...(options?.onTrajectoryTerminalOwner
+						? {
+								onTrajectoryTerminalOwner: options.onTrajectoryTerminalOwner,
 							}
 						: {}),
 				};
@@ -10820,11 +11077,12 @@ export class DefaultMessageService implements IMessageService {
 					// Track this response ID - ensure map exists for this agent
 					let agentResponses = latestResponseIds.get(runtime.agentId);
 					if (!agentResponses) {
-						agentResponses = new Map<string, string>();
+						agentResponses = new Map<string, string[]>();
 						latestResponseIds.set(runtime.agentId, agentResponses);
 					}
 
-					const previousResponseId = agentResponses.get(message.roomId);
+					const roomResponses = agentResponses.get(message.roomId) ?? [];
+					const previousResponseId = roomResponses[roomResponses.length - 1];
 					if (previousResponseId) {
 						logger.debug(
 							{
@@ -10836,7 +11094,8 @@ export class DefaultMessageService implements IMessageService {
 							"Updating response ID",
 						);
 					}
-					agentResponses.set(message.roomId, responseId);
+					roomResponses.push(responseId);
+					agentResponses.set(message.roomId, roomResponses);
 
 					// Start run tracking with roomId for proper log association
 					const runId = runtime.startRun(message.roomId);
@@ -10866,7 +11125,21 @@ export class DefaultMessageService implements IMessageService {
 							t0EpochMs: startTime,
 						});
 
-					// Emit run started event
+					runTerminalOwner = new MessageRunTerminalOwner(
+						runtime,
+						runId,
+						message,
+						startTime,
+						opts.roomHandlerLease,
+					);
+					opts.runTerminalOwner = runTerminalOwner;
+					if (alwaysDuringTask) {
+						runTerminalOwner.adopt("ALWAYS_DURING", alwaysDuringTask);
+					}
+					opts.onTrajectoryTerminalOwner?.("run");
+
+					// The terminal owner exists before listener dispatch because event
+					// listeners may partially observe RUN_STARTED before another rejects.
 					await runWithInferenceTiming(inferenceTimer, () =>
 						timeInferenceSpan("message:lifecycle:run-started", () =>
 							runtime.emitEvent(EventType.RUN_STARTED, {
@@ -10881,7 +11154,6 @@ export class DefaultMessageService implements IMessageService {
 							} as RunEventPayload),
 						),
 					);
-
 					// Structured streaming is handled by dynamicPromptExecFromState for
 					// text fields. Native v5 planner/tool/evaluator events use the same
 					// callback with JSON event chunks so UIs can render tool progress.
@@ -10967,7 +11239,6 @@ export class DefaultMessageService implements IMessageService {
 										deliveredVisibleTexts,
 										responseId,
 										runId,
-										startTime,
 										opts,
 									),
 								),
@@ -10982,9 +11253,9 @@ export class DefaultMessageService implements IMessageService {
 						const fullText = result.responseContent.text;
 						const rest = fullText.replace(firstSentenceText, "").trim();
 						if (rest.length > 0) {
-							// Generate voice for rest
-							// (Async immediately)
-							(async () => {
+							// Synthesis remains detached from visible delivery, but its model
+							// capture belongs to this run and must settle before RUN_ENDED.
+							runTerminalOwner.track("remaining-voice", async () => {
 								try {
 									let audioBuffer: Buffer | null = null;
 									const params = buildTextToSpeechParams(
@@ -11036,11 +11307,18 @@ export class DefaultMessageService implements IMessageService {
 										roomId: message.roomId,
 									});
 								}
-							})();
+							});
 						}
 					}
 
-					return result;
+					runTerminalOwner.request("completed");
+					return {
+						...result,
+						trajectoryTerminalOwner: "run",
+					};
+				} catch (error) {
+					runTerminalOwner?.request("error", error);
+					throw error;
 				} finally {
 					// Close + emit the per-turn latency breakdown. Detached side
 					// effects (post-turn evaluators) intentionally run after this and
@@ -11059,6 +11337,7 @@ export class DefaultMessageService implements IMessageService {
 									message,
 									inferenceSummary,
 								),
+							"diagnostic",
 						);
 					}
 
@@ -11091,9 +11370,18 @@ export class DefaultMessageService implements IMessageService {
 		deliveredVisibleTexts: Set<string>,
 		responseId: UUID,
 		runId: UUID,
-		startTime: number,
 		opts: ResolvedMessageOptions,
 	): Promise<MessageProcessingResult> {
+		const runTerminalOwner = opts.runTerminalOwner;
+		if (!runTerminalOwner) {
+			throw new ElizaError(
+				"Message processing requires a live run terminal owner",
+				{
+					code: "RUN_TERMINAL_OWNER_REQUIRED",
+					context: { runId, messageId: message.id, roomId: message.roomId },
+				},
+			);
+		}
 		// A reply already handed to a delivery callback for this room may still
 		// be persisting (deliver-then-persist fast path). Composing now would
 		// read RECENT_MESSAGES without the reply this message may be answering,
@@ -11101,8 +11389,9 @@ export class DefaultMessageService implements IMessageService {
 		// hundred ms worst case, and a no-op when nothing is pending.
 		await this.awaitDeliveredReplyPersistence(runtime, message.roomId);
 
-		const agentResponses = latestResponseIds.get(runtime.agentId);
-		if (!agentResponses) throw new Error("Agent responses map not found");
+		if (!latestResponseIds.has(runtime.agentId)) {
+			throw new Error("Agent responses map not found");
+		}
 
 		// Skip messages from self (unless it's an autonomous message)
 		const isAutonomousMessage =
@@ -11116,7 +11405,7 @@ export class DefaultMessageService implements IMessageService {
 				{ src: "service:message", agentId: runtime.agentId },
 				"Skipping message from self",
 			);
-			this.emitRunEnded(runtime, runId, message, startTime, "self");
+			runTerminalOwner.request("self");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11191,7 +11480,7 @@ export class DefaultMessageService implements IMessageService {
 
 		if (defLllmOff && agentUserState === null) {
 			runtime.logger.debug({ src: "service:message" }, "LLM is off by default");
-			this.emitRunEnded(runtime, runId, message, startTime, "off");
+			runTerminalOwner.request("off");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11234,7 +11523,7 @@ export class DefaultMessageService implements IMessageService {
 				},
 				"Ignoring muted room",
 			);
-			this.emitRunEnded(runtime, runId, message, startTime, "muted");
+			runTerminalOwner.request("muted");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11269,13 +11558,7 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"Reply suppressed by personality reply_gate",
 				);
-				this.emitRunEnded(
-					runtime,
-					runId,
-					message,
-					startTime,
-					"personality_gate",
-				);
+				runTerminalOwner.request("personality_gate");
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -11310,7 +11593,7 @@ export class DefaultMessageService implements IMessageService {
 				},
 				"Unaddressed bot/webhook message ignored by small-model triage (skipped Stage 1)",
 			);
-			this.emitRunEnded(runtime, runId, message, startTime, "bot_noise_triage");
+			runTerminalOwner.request("bot_noise_triage");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11330,8 +11613,8 @@ export class DefaultMessageService implements IMessageService {
 		// relevant-conversations provider, document recall, experience recall,
 		// and the FACTS path all route the same text through `embedRecallQuery`
 		// (keyed by this run), so they await this in-flight result rather than
-		// starting a fresh round-trip. Fire-and-forget; the value is re-read from
-		// the per-run cache by its normalized-text key.
+		// starting a fresh round-trip. Delivery does not await it, but RUN_ENDED
+		// does; the value is re-read from the per-run cache by normalized-text key.
 		// Present the turn's `messageId` so this prefetch ADOPTS the pre-run cache
 		// the API chat path's document augmentation already warmed under the same
 		// id (#15253): on a no-match turn the query text is byte-identical, so the
@@ -11343,7 +11626,7 @@ export class DefaultMessageService implements IMessageService {
 		if (typeof recallWarmText === "string" && recallWarmText.trim() !== "") {
 			const recallWarmMessageId =
 				typeof message.id === "string" ? message.id : undefined;
-			void embedRecallQuery(runtime, recallWarmText, {
+			const recallWarmTask = embedRecallQuery(runtime, recallWarmText, {
 				messageId: recallWarmMessageId,
 				...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
 			}).catch((error) => {
@@ -11357,6 +11640,7 @@ export class DefaultMessageService implements IMessageService {
 					runId,
 				});
 			});
+			runTerminalOwner.adopt("recall-embed-prefetch", recallWarmTask);
 		}
 
 		// Process attachments before state composition / incoming hooks
@@ -11517,9 +11801,10 @@ export class DefaultMessageService implements IMessageService {
 					}
 					const text = proposedText;
 					if (!text || !message.id) return false;
-					const currentResponseId = latestResponseIds
-						.get(runtime.agentId)
-						?.get(message.roomId);
+					const currentResponseId = getLatestResponseId(
+						runtime.agentId,
+						message.roomId,
+					);
 					if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 						runtime.logger.info(
 							{
@@ -11651,6 +11936,10 @@ export class DefaultMessageService implements IMessageService {
 							responseId,
 							...(callback ? { callback } : {}),
 							deliveredVisibleTexts,
+							...(opts.roomHandlerLease
+								? { roomHandlerLease: opts.roomHandlerLease }
+								: {}),
+							runTerminalOwner,
 							...(opts.onSettledActionResult
 								? {
 										onSettledActionResult: opts.onSettledActionResult,
@@ -11944,7 +12233,10 @@ export class DefaultMessageService implements IMessageService {
 			// Keep only a deliverable response carrying the explicit REPLY/RESPOND
 			// marker. Action results opt into the user channel through userFacingText,
 			// and that path constructs the same explicit reply marker.
-			const currentResponseId = agentResponses.get(message.roomId);
+			const currentResponseId = getLatestResponseId(
+				runtime.agentId,
+				message.roomId,
+			);
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 				const keepReason = resolveSupersededResponseKeepReason(responseContent);
 				if (keepReason) {
@@ -11968,7 +12260,7 @@ export class DefaultMessageService implements IMessageService {
 					// Mirror the ignore-path sibling below: a superseded turn ends
 					// its run as "replaced" so the discard is an observable terminal
 					// outcome instead of an unrecorded nothing.
-					this.emitRunEnded(runtime, runId, message, startTime, "replaced");
+					runTerminalOwner.request("replaced");
 					return {
 						didRespond: false,
 						responseContent: null,
@@ -12166,7 +12458,7 @@ export class DefaultMessageService implements IMessageService {
 						// trajectory closure.
 						if (deliveryOutcome.status === "fulfilled") {
 							for (const responseMemory of deliveredClaimMemories) {
-								detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
+								runTerminalOwner.track("MESSAGE_SENT", () =>
 									this.emitMessageSent(
 										runtime,
 										responseMemory,
@@ -12207,7 +12499,10 @@ export class DefaultMessageService implements IMessageService {
 			);
 
 			// Check if we still have the latest response ID
-			const currentResponseId = agentResponses.get(message.roomId);
+			const currentResponseId = getLatestResponseId(
+				runtime.agentId,
+				message.roomId,
+			);
 
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 				runtime.logger.info(
@@ -12218,7 +12513,7 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"Ignore response discarded - newer message being processed",
 				);
-				this.emitRunEnded(runtime, runId, message, startTime, "replaced");
+				runTerminalOwner.request("replaced");
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -12233,7 +12528,7 @@ export class DefaultMessageService implements IMessageService {
 					{ src: "service:message", agentId: runtime.agentId },
 					"Message ID is missing, cannot create ignore response",
 				);
-				this.emitRunEnded(runtime, runId, message, startTime, "noMessageId");
+				runTerminalOwner.request("noMessageId");
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -12323,22 +12618,24 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			responseContent,
 		);
-		// Post-turn work is never part of connector completion. Connectors await
-		// handleMessage for generation/delivery bookkeeping, so awaiting an
-		// evaluator here makes every connector wait even though the reply has
-		// already been sent. Preserve evaluator-before-ALWAYS_AFTER ordering inside
-		// one detached task while keeping both failures observable at the boundary.
-		detachPostDeliverySideEffect(runtime, "post_turn", async () => {
-			if (semanticSignal) {
-				await runPostTurnEvaluators(runtime, message, state, {
+		// Post-turn work is never part of connector completion. It owns one real
+		// evaluator child step, and the run terminal follows in the same detached
+		// barrier so the parent cannot close while that child's telemetry is still
+		// being written. Child failure is reported at that barrier, which still
+		// releases the trajectory exactly once after the child settles.
+		runTerminalOwner.track("post_turn", async () => {
+			await withEvaluatorStep(runtime, "post_turn", async () => {
+				if (semanticSignal) {
+					await runPostTurnEvaluators(runtime, message, state, {
+						didRespond: didRespondGate,
+						responses: responseMessages,
+						semanticSignal,
+					});
+				}
+				await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
 					didRespond: didRespondGate,
 					responses: responseMessages,
-					semanticSignal,
 				});
-			}
-			await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
-				didRespond: didRespondGate,
-				responses: responseMessages,
 			});
 		});
 
@@ -12412,22 +12709,6 @@ export class DefaultMessageService implements IMessageService {
 			roomName,
 		};
 
-		// Delivery is already committed; lifecycle observers run after the
-		// caller receives the result and remain drainable during shutdown.
-		detachPostDeliverySideEffect(runtime, "RUN_ENDED", () =>
-			runtime.emitEvent(EventType.RUN_ENDED, {
-				runtime,
-				source: "messageHandler",
-				runId,
-				messageId: message.id,
-				roomId: message.roomId,
-				entityId: message.entityId,
-				startTime,
-				status: "completed",
-				endTime: Date.now(),
-				duration: Date.now() - startTime,
-			} as RunEventPayload),
-		);
 		return {
 			didRespond,
 			responseContent,
@@ -13244,35 +13525,6 @@ export class DefaultMessageService implements IMessageService {
 		};
 	}
 
-	/**
-	 * Emit RUN_ENDED after the handler return path is free. Lifecycle observers
-	 * and persistence attached to RUN_ENDED must not delay early-exit replies
-	 * (self/mute/off/replaced/…); failures stay observable through the
-	 * post-delivery tracker (residual #17072).
-	 */
-	private emitRunEnded(
-		runtime: IAgentRuntime,
-		runId: UUID,
-		message: Memory,
-		startTime: number,
-		status: RunEventPayload["status"],
-	): void {
-		detachPostDeliverySideEffect(runtime, "RUN_ENDED", () =>
-			runtime.emitEvent(EventType.RUN_ENDED, {
-				runtime,
-				source: "messageHandler",
-				runId,
-				messageId: message.id,
-				roomId: message.roomId,
-				entityId: message.entityId,
-				startTime,
-				status,
-				endTime: Date.now(),
-				duration: Date.now() - startTime,
-			} as RunEventPayload),
-		);
-	}
-
 	private async emitMessageSent(
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -13282,6 +13534,7 @@ export class DefaultMessageService implements IMessageService {
 			runtime,
 			message,
 			source,
+			trajectoryTerminalOwner: "run",
 		});
 	}
 

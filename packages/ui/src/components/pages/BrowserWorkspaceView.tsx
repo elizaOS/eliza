@@ -90,8 +90,8 @@ const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://www.google.com/webhp?igu=1";
 // The Browser view's isolation level, read from its builtin surface manifest
 // rather than hardcoded, so the declared `native-webview` level is what
 // actually drives which embedding each tab renders into (#14181/#13452). This
-// is the enforcement seam: the native child web-content surface (its own
-// renderer process) is selected via `resolveBrowserTabRenderPath` only because
+// is the enforcement seam: the native child web-content surface (outside the
+// host renderer) is selected via `resolveBrowserTabRenderPath` only because
 // this resolves to `native-webview`. If the registry ever dropped the browser
 // manifest, `resolveBuiltinSurfaceManifest` throws at import — a loud failure,
 // not a silent fall-back to the host-realm DOM.
@@ -114,15 +114,17 @@ const BROWSER_NATIVE_SURFACE_POLICY =
           "Browser surface manifest must declare native-webview isolation to host native mobile tab surfaces",
         );
       })();
-// Selectors handed to `<electrobun-webview masks=…>` so the native OOPIF
-// surface doesn't paint over (or capture clicks within) React overlays
-// stacked on the same rect. Covers Radix Dialog/AlertDialog content
+// Selectors handed to every native Browser surface so the page doesn't paint
+// over (or capture clicks within) React chrome stacked on the same rect. The
+// chat selectors keep its pull sheet composited continuously over a full-size
+// page; the remainder covers Radix Dialog/AlertDialog content
 // (`role=dialog`/`alertdialog`), every Radix popper-based surface (Popover,
 // Tooltip, Dropdown, Select, HoverCard, ContextMenu — all wrapped in
 // `data-radix-popper-content-wrapper`), and the ActionNotice toast which
 // uses `role=status`. Polled by OverlaySyncController so overlays mounted
 // after the tab still get masked.
 const BROWSER_WORKSPACE_TAB_MASK_SELECTORS = [
+  '[data-testid="chat-sheet-surface"]',
   '[role="dialog"]',
   '[role="alertdialog"]',
   "[data-radix-popper-content-wrapper]",
@@ -1389,9 +1391,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const browserWorkspaceConfirmOpen =
     walletActionModalProps.open || vaultAutofillModalProps.open;
 
-  // Mobile native tab surfaces: on the native-mobile-webview path each Browser
-  // tab is layered as its own isolated WKWebView/Android WebView (own renderer
-  // process + storage partition). Surfaces are backgrounded while the tab
+  // Mobile native tab surfaces: iOS gives each Browser tab a fresh WKProcessPool
+  // and data store; Android uses an out-of-app sandboxed renderer (which the OS
+  // may reuse across WebViews) plus a per-tab storage profile. Surfaces are
+  // backgrounded while the tab
   // switcher or any confirm dialog is open so the native layer never paints over
   // those React overlays — the mobile analogue of the desktop `masks=`.
   const nativeSurfaceTabs = useMemo(
@@ -1404,6 +1407,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     tabs: nativeSurfaceTabs,
     selectedTabId,
     overlayOpen: switcherOpen || browserWorkspaceConfirmOpen,
+    occlusionSelector: BROWSER_WORKSPACE_TAB_MASK_SELECTORS,
     policy: BROWSER_NATIVE_SURFACE_POLICY,
     lifecycle: BROWSER_SURFACE_MANIFEST.lifecycle,
   });
@@ -1963,6 +1967,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
 
   const reloadSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTab) return;
+    if (browserTabRenderPath === "native-mobile-webview") {
+      nativeTabSurfaces.reloadSurface(selectedTab.id);
+      return;
+    }
     if (workspace.mode === "web") {
       const iframe = iframeRefs.current.get(selectedTab.id);
       if (iframe) {
@@ -1976,7 +1984,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       return;
     }
     await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
-  }, [selectedTab, workspace.mode]);
+  }, [browserTabRenderPath, nativeTabSurfaces, selectedTab, workspace.mode]);
 
   const installBrowserBridgeExtension = useCallback(async () => {
     await runBrowserWorkspaceAction(
@@ -2139,7 +2147,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const goLabel = t("browserworkspace.Go", {
     defaultValue: "Go",
   });
-
   const agentActiveLabel = t("browserworkspace.AgentActive", {
     defaultValue: "Agent is on this tab",
   });
@@ -2561,26 +2568,56 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           );
         })
       ) : browserTabRenderPath === "native-mobile-webview" ? (
-        workspace.tabs.map((tab) => {
-          const active = tab.id === selectedTabId;
-          const visibilityClass = active
-            ? "pointer-events-auto opacity-100"
-            : "pointer-events-none opacity-0";
-          return (
-            // The native WKWebView / Android WebView is layered over this
-            // placeholder by `useMobileNativeTabSurfaces`; the div only reserves
-            // and reports the on-screen rect (via the ref) the native surface
-            // tracks — it renders no page content itself. `bg-bg` keeps the slot
-            // themed during the gap before the native layer paints.
-            <div
-              key={tab.id}
-              ref={(el) => nativeTabSurfaces.registerSurfaceElement(tab.id, el)}
-              aria-hidden={!active}
-              className={`absolute inset-0 h-full w-full bg-bg transition-opacity ${visibilityClass}`}
-              style={{ colorScheme: uiTheme }}
-            />
-          );
-        })
+        nativeTabSurfaces.error ? (
+          <div
+            role="alert"
+            className="absolute inset-0 flex h-full w-full items-center justify-center bg-bg px-6 text-center"
+          >
+            <div className="flex max-w-sm flex-col items-center gap-3 rounded-3xl border border-border bg-bg-elevated p-6 shadow-lg">
+              <div className="text-sm font-semibold text-txt">
+                {t("browserworkspace.NativeSurfaceUnavailable", {
+                  defaultValue: "Browser view unavailable",
+                })}
+              </div>
+              <div className="text-xs leading-5 text-muted">
+                {t("browserworkspace.NativeSurfaceUnavailableDescription", {
+                  defaultValue:
+                    "The secure browser surface could not connect. Retry without losing your tabs.",
+                })}
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={nativeTabSurfaces.retry}
+              >
+                {t("common.retry", { defaultValue: "Retry" })}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          workspace.tabs.map((tab) => {
+            const active = tab.id === selectedTabId;
+            const visibilityClass = active
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0";
+            return (
+              // The native WKWebView / Android WebView is layered over this
+              // placeholder by `useMobileNativeTabSurfaces`; the div only reports
+              // the full content rect. React chrome is composed through native
+              // occlusion holes, so the page is never resized around the chat.
+              <div
+                key={tab.id}
+                ref={(el) =>
+                  nativeTabSurfaces.registerSurfaceElement(tab.id, el)
+                }
+                aria-hidden={!active}
+                className={`absolute inset-0 h-full w-full bg-bg transition-opacity ${visibilityClass}`}
+                style={{ colorScheme: uiTheme }}
+              />
+            );
+          })
+        )
       ) : browserTabRenderPath === "sandboxed-iframe" ? (
         workspace.tabs.map((tab) => {
           const active = tab.id === selectedTabId;

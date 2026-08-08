@@ -12,13 +12,15 @@ cross-surface leak the isolation epic closes. This plugin gives each tab its own
 native child web surface instead:
 
 - **iOS** — a `WKWebView` per surface. `isolated` process ⇒ a fresh
-  `WKProcessPool` (distinct content process); `isolated` storage ⇒
+  `WKProcessPool` boundary; `isolated` storage ⇒
   `WKWebsiteDataStore.nonPersistent()` (its own cookies/localStorage/IndexedDB).
   `shared` reuses a plugin-owned pool / the default store.
-- **Android** — a `WebView` per surface with the platform out-of-process
-  renderer; `isolated` storage ⇒ its own androidx.webkit multi-profile
-  `Profile`. If the system WebView is too old for multi-profile, `createSurface`
-  **rejects** (fail-fast) rather than silently sharing the default store.
+- **Android** — a `WebView` per surface with a verified out-of-app sandboxed
+  renderer; Android may reuse that renderer process across sibling WebViews.
+  `isolated` storage ⇒ its own androidx.webkit multi-profile `Profile`. If the
+  system WebView is too old for multi-profile or cannot expose an out-of-app
+  renderer, `createSurface` **rejects** rather than silently weakening the
+  boundary.
 
 ## Explicit-policy invariant
 
@@ -37,6 +39,12 @@ it through the Capacitor `Plugins` registry under the jsName `ElizaSurfaceManage
 (create → setBounds/navigate → foreground/background → destroy) on the
 `native-mobile-webview` render path.
 
+`setBounds` carries both the page rectangle and its outer rounded clip in one
+update. The renderer reads that clip from the actual computed overflow-clipping
+host instead of copying a CSS radius token. Android and iOS update their paint
+mask and hit-test shape in place, so responsive radius changes neither reload
+the page nor interfere with the independent React-overlay occlusion holes.
+
 ## Non-goals
 
 - Desktop `WebContentsView` embedding (shipped in #14181).
@@ -45,8 +53,9 @@ it through the Capacitor `Plugins` registry under the jsName `ElizaSurfaceManage
 
 ## Testing
 
-- `bun run test` — the web-fallback rejection tests (`src/web.test.ts`).
+- `bun run test` — web-fallback and native source-contract tests.
 - Android `connectedAndroidTest` — cross-profile storage-isolation on a real
-  emulator (`BrowserSurfaceIsolationInstrumentedTest`).
+  emulator plus outer-corner/occlusion paint and touch composition
+  (`BrowserSurfaceIsolationInstrumentedTest`).
 - The JS driver + placement + per-tab hook are unit-tested in `@elizaos/ui`
   (`src/surface/*.test.ts`, `src/surface-embedding.test.ts`).

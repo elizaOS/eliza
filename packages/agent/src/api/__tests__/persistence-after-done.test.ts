@@ -11,6 +11,7 @@ import {
   ChannelType,
   logger,
   type Memory,
+  RoomHandlerQueue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -213,6 +214,7 @@ vi.mock("../server-helpers.ts", async () => {
         agentId,
         roomId,
         content: { text: prompt, source: "api", channelType: ChannelType.DM },
+        metadata: {},
       },
       messageToStore: {
         id: stringToUuid("user-msg-store"),
@@ -220,6 +222,7 @@ vi.mock("../server-helpers.ts", async () => {
         agentId,
         roomId,
         content: { text: prompt, source: "api", channelType: ChannelType.DM },
+        metadata: {},
       },
     })),
     resolveWalletModeGuidanceReply: () => null,
@@ -379,6 +382,7 @@ function createState(): ConversationRouteState {
       return [];
     }),
     updateMemory: vi.fn(async () => undefined),
+    roomHandlerQueue: new RoomHandlerQueue(),
     adapter: {},
   };
   return {

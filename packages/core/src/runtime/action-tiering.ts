@@ -27,11 +27,13 @@ export const TIER0_PROTOCOL_ACTIONS = [
 
 export type Tier0ProtocolAction = (typeof TIER0_PROTOCOL_ACTIONS)[number];
 
-// A retrieval score at/above this is treated as a near-certain match that must
-// stay on the planner surface even when Stage-1's candidate narrow omits it.
-// Set just below a perfect 1.0 so only an overwhelmingly dominant match (not a
-// merely good tier-A hit) overrides Stage-1's routing judgement.
+// A near-certain non-candidate match may remain on the planner surface when
+// Stage-1 omits it. The fused score alone is insufficient because a broad
+// context boost can saturate several parents at 1.0; independent keyword and
+// BM25 agreement identifies a user-text-dominant match without reopening the
+// whole saturated surface.
 const RETRIEVAL_OVERRIDE_SCORE = 0.97;
+const DOMINANT_LEXICAL_STAGE_SCORE = 0.99;
 
 // Per-parent cap on children exposed as first-class planner tools. Symmetric
 // with the maxTierAParents default: without it a single hot parent floods the
@@ -236,9 +238,26 @@ export function tierActionResults(
 		const candidateKept: TieredParentAction[] = [];
 		const overrideKept: TieredParentAction[] = [];
 		const demotedFromTierA: TieredParentAction[] = [];
+		const dominantLexicalOverrides = tierAParents.filter((parent) => {
+			if (matchesCandidate(parent) || parent.score < RETRIEVAL_OVERRIDE_SCORE) {
+				return false;
+			}
+			const keywordScore = parent.result.stageScores.keyword ?? 0;
+			const bm25Score = parent.result.stageScores.bm25 ?? 0;
+			return (
+				keywordScore >= DOMINANT_LEXICAL_STAGE_SCORE &&
+				bm25Score >= DOMINANT_LEXICAL_STAGE_SCORE
+			);
+		});
+		const unambiguousLexicalOverride =
+			dominantLexicalOverrides.length === 1
+				? dominantLexicalOverrides[0]
+				: undefined;
 		for (const parent of tierAParents) {
 			// Keep a parent the candidates named, OR one the retrieval matched so
-			// strongly it is a near-certain fit (score >= RETRIEVAL_OVERRIDE_SCORE).
+			// strongly that both lexical stages uniquely agree. At most one retrieved
+			// parent may contradict Stage-1; accepting every saturated score turns an
+			// unambiguous route into a broad, expensive planner surface.
 			// Stage-1's candidate list is a model judgement and sometimes OMITS the
 			// obviously-relevant action — observed live: "current bitcoin price" /
 			// "weather in tokyo" retrieved WEB_FETCH at score 1.0, but Stage-1
@@ -256,7 +275,7 @@ export function tierActionResults(
 			// — exactly what the narrow exists to prevent.
 			if (matchesCandidate(parent)) {
 				candidateKept.push(parent);
-			} else if (parent.score >= RETRIEVAL_OVERRIDE_SCORE) {
+			} else if (parent === unambiguousLexicalOverride) {
 				overrideKept.push(parent);
 			} else {
 				demotedFromTierA.push(parent);

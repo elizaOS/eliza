@@ -13,6 +13,7 @@
  * pointing at another room is a 404, never a foreign delete).
  */
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import { RoomHandlerQueue } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConversationRouteContext,
@@ -63,7 +64,7 @@ function deleteMessage(
   state: ConversationRouteState,
 ): Promise<Captured> {
   const url = `/api/conversations/${convId}/messages/${messageId}`;
-  return new Promise((resolve) => {
+  return (async () => {
     const captured: Partial<Captured> = {};
     const ctx = {
       req: {
@@ -78,17 +79,19 @@ function deleteMessage(
       json: (_res: unknown, data: unknown, status = 200) => {
         captured.status = status;
         captured.body = data;
-        resolve(captured as Captured);
       },
       error: (_res: unknown, message: string, status = 500) => {
         captured.status = status;
         captured.body = { error: message };
-        resolve(captured as Captured);
       },
       state,
     } as unknown as ConversationRouteContext;
-    void handleConversationRoutes(ctx);
-  });
+    await handleConversationRoutes(ctx);
+    if (captured.status === undefined) {
+      throw new Error("DELETE route completed without a response");
+    }
+    return captured as Captured;
+  })();
 }
 
 function makeState(
@@ -109,6 +112,7 @@ function makeState(
   });
   const runtime = {
     agentId,
+    roomHandlerQueue: new RoomHandlerQueue(),
     getMemoriesByIds,
     deleteManyMemories,
   } as unknown as AgentRuntime;
@@ -151,6 +155,43 @@ describe("DELETE /api/conversations/:id/messages/:messageId", () => {
     expect(state.broadcastWs).toHaveBeenCalledWith(
       expect.objectContaining({ type: "conversation-updated" }),
     );
+  });
+
+  it("keeps the runtime delete fallback inside the acquired room owner", async () => {
+    const store = [mem(1), mem(2)];
+    const roomHandlerQueue = new RoomHandlerQueue();
+    const deleteMemory = vi.fn(async (id: UUID) => {
+      expect(roomHandlerQueue.currentLease(roomA)).toBeDefined();
+      await roomHandlerQueue.withLeases([roomA], async () => {
+        const index = store.findIndex((memory) => memory.id === id);
+        if (index >= 0) store.splice(index, 1);
+      });
+    });
+    const runtime = {
+      agentId,
+      roomHandlerQueue,
+      getMemoriesByIds: vi.fn(async (ids: UUID[]) =>
+        store.filter(
+          (memory) => memory.id !== undefined && ids.includes(memory.id),
+        ),
+      ),
+      deleteMemory,
+      adapter: { db: {} },
+    } as unknown as AgentRuntime;
+    const state = {
+      runtime,
+      conversations: new Map([["c-a", conv("c-a", roomA)]]),
+      deletedConversationIds: new Set<string>(),
+      broadcastWs: vi.fn(),
+      logBuffer: [],
+    } as unknown as ConversationRouteState;
+
+    const result = await deleteMessage("c-a", memId(2), state);
+
+    expect(result).toMatchObject({ status: 200 });
+    expect(deleteMemory).toHaveBeenCalledWith(memId(2));
+    expect(store.map((memory) => memory.id)).toEqual([memId(1)]);
+    expect(roomHandlerQueue.pendingFor(roomA)).toBe(0);
   });
 
   it("returns 404 for a message id that does not exist", async () => {

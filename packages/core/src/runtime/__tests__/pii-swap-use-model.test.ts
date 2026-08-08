@@ -82,6 +82,7 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 
 	it("logs sanitized prompts to the DB model-call log", async () => {
 		const runtime = makeRuntime(true);
+		const trajectoryRoomId = "11111111-1111-4111-8111-111111111111";
 		injectNerService(runtime, [{ kind: "person", value: "Dana Whitfield" }]);
 		const createLogs = vi.spyOn(runtime.adapter, "createLogs");
 		runtime.registerModel(
@@ -91,7 +92,11 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 		);
 
 		await runWithTrajectoryContext(
-			{ runId: "run-1", trajectoryStepId: "step-1" },
+			{
+				runId: "run-1",
+				trajectoryStepId: "step-1",
+				roomId: trajectoryRoomId,
+			},
 			() =>
 				runtime.useModel(ModelType.TEXT_SMALL, {
 					prompt: "Email Dana Whitfield about the renewal.",
@@ -101,7 +106,9 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 		expect(createLogs).toHaveBeenCalledTimes(1);
 		const call = createLogs.mock.calls[0]?.[0]?.[0] as {
 			body?: { prompt?: string };
+			roomId?: string;
 		};
+		expect(call.roomId).toBe(trajectoryRoomId);
 		expect(call.body?.prompt).not.toContain("Dana Whitfield");
 		expect(call.body?.prompt).toMatch(/^Email .+ about the renewal\.$/);
 	});

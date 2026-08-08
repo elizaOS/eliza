@@ -22,7 +22,7 @@ interface ServiceTrajectoryListItem {
 	roomId?: string | null;
 	entityId?: string | null;
 	metadata?: Record<string, unknown>;
-	status: "active" | "completed" | "error" | "timeout";
+	status: "active" | "completed" | "error" | "timeout" | "terminated";
 	startTime: number;
 	endTime?: number | null;
 	durationMs?: number | null;
