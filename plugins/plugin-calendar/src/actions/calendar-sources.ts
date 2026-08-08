@@ -498,6 +498,8 @@ function isTrustedOAuthAuthorizationUrl(
     const url = new URL(raw);
     if (url.protocol !== "https:") return false;
     if (url.username || url.password) return false;
+    // Default HTTPS ports only — reject nonstandard ports.
+    if (url.port && url.port !== "443") return false;
     if (provider === "google") {
       return (
         url.hostname === "accounts.google.com" &&
@@ -505,14 +507,15 @@ function isTrustedOAuthAuthorizationUrl(
           url.pathname === "/o/oauth2/auth")
       );
     }
-    // Microsoft identity platform authorize endpoints only.
+    // Microsoft identity platform authorize endpoints only:
+    // /{tenant}/oauth2/v2.0/authorize
     if (
       url.hostname !== "login.microsoftonline.com" &&
       url.hostname !== "login.microsoft.com"
     ) {
       return false;
     }
-    return /\/oauth2\/v2\.0\/authorize$/.test(url.pathname);
+    return /^\/[^/]+\/oauth2\/v2\.0\/authorize$/.test(url.pathname);
   } catch {
     // error-policy:J3 Untrusted URL text is explicitly invalid.
     return false;
@@ -709,7 +712,8 @@ function connectionText(intent: CalendarSourceConnectionIntent): string {
       if (intent.provider === "microsoft") {
         return "microsoft OAuth is not registered in this runtime.\n\n[CONFIG:microsoft]";
       }
-      return `${intent.reason}\n\n[CONFIG:${intent.connectorId}]`;
+      // No dynamic fallback — unknown providers must not become verified UI text.
+      return "Calendar source configuration is required. Open Settings → Calendar sources to continue.";
     }
     case "connected":
       return `ICS source ${intent.sourceId} connected and synchronized (${intent.sync.outcome}).`;

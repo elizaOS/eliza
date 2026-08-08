@@ -34,23 +34,19 @@ function isGoogleChatConnectorConfigured(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const config = value as Record<string, unknown>;
   if (config.enabled === false) return false;
+  // Usable Chat credential material only — projectId alone is not enough.
   if (nonEmptyString(config.serviceAccountKey)) return true;
   if (nonEmptyString(config.serviceAccount)) return true;
-  if (nonEmptyString(config.projectId)) return true;
   if (Array.isArray(config.accounts)) {
-    return config.accounts.some(
-      (account) =>
-        account &&
-        typeof account === "object" &&
-        !Array.isArray(account) &&
-        Boolean(
-          nonEmptyString(
-            (account as Record<string, unknown>).serviceAccountKey,
-          ) ||
-            nonEmptyString((account as Record<string, unknown>).keyFile) ||
-            nonEmptyString((account as Record<string, unknown>).clientEmail),
-        ),
-    );
+    return config.accounts.some((account) => {
+      if (!account || typeof account !== "object" || Array.isArray(account)) {
+        return false;
+      }
+      const row = account as Record<string, unknown>;
+      return Boolean(
+        nonEmptyString(row.serviceAccountKey) || nonEmptyString(row.keyFile),
+      );
+    });
   }
   return false;
 }

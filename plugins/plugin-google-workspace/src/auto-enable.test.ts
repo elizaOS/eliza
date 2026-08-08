@@ -21,7 +21,7 @@ describe("plugin-google-workspace shouldEnable", () => {
     expect(
       shouldEnable(
         ctx({
-          config: { connectors: { googlechat: { projectId: "p" } } },
+          config: { connectors: { googlechat: { serviceAccountKey: "{}" } } },
         }),
       ),
     ).toBe(true);
@@ -93,7 +93,7 @@ describe("plugin-google-workspace shouldEnable", () => {
       shouldEnable(
         ctx({
           config: {
-            connectors: { googlechat: { projectId: "p" } },
+            connectors: { googlechat: { serviceAccountKey: "{}" } },
             plugins: {
               entries: { "google-workspace": { enabled: false } },
             },

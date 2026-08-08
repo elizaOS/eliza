@@ -146,6 +146,7 @@ function isTrustedGoogleOAuthUrl(raw: string): boolean {
     if (url.protocol !== "https:") return false;
     if (url.username || url.password) return false;
     if (url.hostname !== "accounts.google.com") return false;
+    if (url.port && url.port !== "443") return false;
     return (
       url.pathname === "/o/oauth2/v2/auth" || url.pathname === "/o/oauth2/auth"
     );
