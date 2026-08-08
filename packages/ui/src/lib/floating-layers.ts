@@ -13,6 +13,11 @@ export const Z_DIALOG_OVERLAY = 160;
 export const Z_DIALOG = 170;
 export const Z_OVERLAY = 200;
 export const Z_TOOLTIP = 300;
+// View-owned modals that must cover native/plugin content still stay below the
+// shell overlay. Chat is persistent application chrome: views reserve its
+// measured clearance and may never dim, blur, or intercept it.
+export const Z_VIEW_MODAL_BACKDROP = 8800;
+export const Z_VIEW_MODAL = 8810;
 export const Z_SHELL_OVERLAY = 9000;
 export const Z_FIRST_RUN_CHOOSER = 9400;
 export const Z_SYSTEM_BANNER = 9998;

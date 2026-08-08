@@ -87,6 +87,29 @@ const BROWSER_WORKSPACE_DEFAULT_PARTITION = "persist:eliza-browser";
 // a page that explicitly permits iframe embedding; native shells render the
 // same URL in their isolated WebView instead.
 const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://www.google.com/webhp?igu=1";
+// Cross-origin pages can apply autofocus after their `load` event. Keep one
+// bounded handoff alive long enough to catch that deferred focus without
+// turning later, deliberate page interaction into a permanent focus trap.
+const BROWSER_IFRAME_FOCUS_SETTLE_MS = 1_500;
+const BROWSER_IFRAME_FOCUS_ARM_TIMEOUT_MS = 30_000;
+const BROWSER_IFRAME_FOCUS_POLL_MS = 16;
+
+type BrowserIframeFocusHandoff = {
+  returnTarget: HTMLElement | null;
+  navigationUrl: string | null;
+  loaded: boolean;
+  deadline: number;
+  timer: number | null;
+  pendingTargetRestore: boolean;
+};
+
+function isAvailableBrowserFocusTarget(
+  target: HTMLElement | null,
+): target is HTMLElement {
+  if (!target?.isConnected) return false;
+  if (target.getAttribute("aria-disabled") === "true") return false;
+  return !("disabled" in target && target.disabled === true);
+}
 // The Browser view's isolation level, read from its builtin surface manifest
 // rather than hardcoded, so the declared `native-webview` level is what
 // actually drives which embedding each tab renders into (#14181/#13452). This
@@ -560,7 +583,18 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   );
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
+  const workspaceRootRef = useRef<HTMLElement | null>(null);
+  const workspaceSnapshotRef = useRef<BrowserWorkspaceSnapshot>(workspace);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
+  const registeredIframeElementsRef = useRef(new WeakSet<HTMLIFrameElement>());
+  const iframeFocusHandoffsRef = useRef(
+    new Map<HTMLIFrameElement, BrowserIframeFocusHandoff>(),
+  );
+  const iframeFocusTimersRef = useRef(new Set<number>());
+  const browserActionFocusReturnTargetRef = useRef<HTMLElement | null>(null);
+  const pendingIframeFocusReturnTargetsRef = useRef(
+    new Map<string, HTMLElement | null>(),
+  );
   const electrobunWebviewRefs = useRef(
     new Map<string, WebviewTagElement | null>(),
   );
@@ -648,9 +682,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const selectedTabIsInternal = selectedTab
     ? isInternalBrowserWorkspaceTab(selectedTab)
     : false;
-  const newBrowserWorkspaceTabSeedUrl = selectedTabIsInternal
-    ? "about:blank"
-    : locationInput || BROWSER_WORKSPACE_DEFAULT_HOME_URL;
+  // A user-created tab is a fresh browsing context. Reusing the address-field
+  // draft would clone the current page, while internal-tab state must never
+  // leak into a user tab. The address bar remains the explicit path for opening
+  // a chosen URL.
+  const newBrowserWorkspaceTabSeedUrl = BROWSER_WORKSPACE_DEFAULT_HOME_URL;
   const primaryBrowserBridgeCompanion = useMemo(
     () =>
       browserBridgeCompanions.find(
@@ -669,6 +705,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   );
   const browserBridgeUnsupportedInNativeLocalMode =
     Capacitor.isNativePlatform() && mobileRuntimeMode === "local";
+
+  workspaceSnapshotRef.current = workspace;
 
   useEffect(() => {
     getStewardPendingRef.current = getStewardPending;
@@ -788,6 +826,222 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     [browserBridgeUnsupportedInNativeLocalMode],
   );
 
+  const readBrowserWorkspaceFocusReturnTarget = useCallback(() => {
+    if (typeof document === "undefined") return null;
+    const activeElement = document.activeElement;
+    return activeElement instanceof HTMLElement &&
+      activeElement !== document.body &&
+      !(activeElement instanceof HTMLIFrameElement) &&
+      activeElement.isConnected
+      ? activeElement
+      : null;
+  }, []);
+
+  const clearBrowserWorkspaceIframeFocusTimer = useCallback(
+    (handoff: BrowserIframeFocusHandoff) => {
+      if (handoff.timer === null || typeof window === "undefined") return;
+      window.clearTimeout(handoff.timer);
+      iframeFocusTimersRef.current.delete(handoff.timer);
+      handoff.timer = null;
+    },
+    [],
+  );
+
+  const releaseBrowserWorkspaceIframeFocusReturn = useCallback(
+    (iframe: HTMLIFrameElement, expected?: BrowserIframeFocusHandoff) => {
+      const current = iframeFocusHandoffsRef.current.get(iframe);
+      if (!current || (expected && current !== expected)) return;
+      clearBrowserWorkspaceIframeFocusTimer(current);
+      iframeFocusHandoffsRef.current.delete(iframe);
+    },
+    [clearBrowserWorkspaceIframeFocusTimer],
+  );
+
+  const monitorBrowserWorkspaceIframeFocus = useCallback(
+    (iframe: HTMLIFrameElement, handoff: BrowserIframeFocusHandoff) => {
+      if (
+        typeof document === "undefined" ||
+        typeof window === "undefined" ||
+        iframeFocusHandoffsRef.current.get(iframe) !== handoff
+      ) {
+        return;
+      }
+
+      clearBrowserWorkspaceIframeFocusTimer(handoff);
+      const activeElement = document.activeElement;
+      const parentFocusIsNeutral =
+        activeElement === null ||
+        activeElement === document.body ||
+        activeElement === document.documentElement ||
+        activeElement === workspaceRootRef.current;
+      if (activeElement === iframe || parentFocusIsNeutral) {
+        // Pointer presence is not intent: a full-surface Browser commonly
+        // remains hovered while the user types in chat. Only pointer-down or
+        // keyboard entry cancels the handoff, through the listeners below.
+        // WebKit may expose a neutral parent activeElement while focus lives
+        // in the child frame, so that state receives the same restoration.
+        const returnTarget = isAvailableBrowserFocusTarget(handoff.returnTarget)
+          ? handoff.returnTarget
+          : workspaceRootRef.current;
+        returnTarget?.focus({ preventScroll: true });
+        handoff.pendingTargetRestore =
+          returnTarget === workspaceRootRef.current &&
+          handoff.returnTarget !== null;
+      }
+
+      if (
+        handoff.pendingTargetRestore &&
+        document.activeElement === workspaceRootRef.current &&
+        isAvailableBrowserFocusTarget(handoff.returnTarget)
+      ) {
+        handoff.returnTarget.focus({ preventScroll: true });
+        handoff.pendingTargetRestore = false;
+      }
+
+      if (!handoff.loaded || Date.now() >= handoff.deadline) {
+        if (handoff.loaded) {
+          releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff);
+        }
+        return;
+      }
+
+      const timer = window.setTimeout(
+        () => monitorBrowserWorkspaceIframeFocus(iframe, handoff),
+        BROWSER_IFRAME_FOCUS_POLL_MS,
+      );
+      handoff.timer = timer;
+      iframeFocusTimersRef.current.add(timer);
+    },
+    [
+      clearBrowserWorkspaceIframeFocusTimer,
+      releaseBrowserWorkspaceIframeFocusReturn,
+    ],
+  );
+
+  const armBrowserWorkspaceIframeFocusReturn = useCallback(
+    (
+      iframe: HTMLIFrameElement,
+      options?: {
+        preserveExistingForUrl?: boolean;
+        returnTarget?: HTMLElement | null;
+        navigationUrl?: string;
+      },
+    ) => {
+      if (typeof window === "undefined") return;
+      const existing = iframeFocusHandoffsRef.current.get(iframe);
+      if (
+        existing &&
+        options?.preserveExistingForUrl &&
+        existing.navigationUrl === options.navigationUrl
+      ) {
+        return;
+      }
+      if (existing) {
+        releaseBrowserWorkspaceIframeFocusReturn(iframe, existing);
+      }
+
+      const handoff: BrowserIframeFocusHandoff = {
+        returnTarget: options?.returnTarget
+          ? options.returnTarget
+          : (browserActionFocusReturnTargetRef.current ??
+            readBrowserWorkspaceFocusReturnTarget()),
+        navigationUrl: options?.navigationUrl ?? null,
+        loaded: false,
+        deadline: 0,
+        timer: null,
+        pendingTargetRestore: false,
+      };
+      iframeFocusHandoffsRef.current.set(iframe, handoff);
+      const timer = window.setTimeout(
+        () => releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff),
+        BROWSER_IFRAME_FOCUS_ARM_TIMEOUT_MS,
+      );
+      handoff.timer = timer;
+      iframeFocusTimersRef.current.add(timer);
+    },
+    [
+      readBrowserWorkspaceFocusReturnTarget,
+      releaseBrowserWorkspaceIframeFocusReturn,
+    ],
+  );
+
+  const beginBrowserWorkspaceIframeFocusSettle = useCallback(
+    (iframe: HTMLIFrameElement) => {
+      const handoff = iframeFocusHandoffsRef.current.get(iframe);
+      if (!handoff) return;
+      if (document.activeElement === iframe) {
+        // A cross-origin child does not bubble its pointer events into the
+        // embedding document. Focus that reached the frame before its load
+        // event is therefore the durable signal that the user entered the
+        // still-loading page; the delayed-autofocus guard must not undo it.
+        releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff);
+        return;
+      }
+      clearBrowserWorkspaceIframeFocusTimer(handoff);
+      handoff.loaded = true;
+      handoff.deadline = Date.now() + BROWSER_IFRAME_FOCUS_SETTLE_MS;
+      monitorBrowserWorkspaceIframeFocus(iframe, handoff);
+    },
+    [
+      clearBrowserWorkspaceIframeFocusTimer,
+      monitorBrowserWorkspaceIframeFocus,
+      releaseBrowserWorkspaceIframeFocusReturn,
+    ],
+  );
+
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined") {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLIFrameElement) {
+        releaseBrowserWorkspaceIframeFocusReturn(target);
+        return;
+      }
+      if (!(target instanceof Element)) return;
+      const focusTarget = target.closest<HTMLElement>(
+        "button, input, textarea, select, a[href], [tabindex]",
+      );
+      if (!focusTarget || focusTarget === workspaceRootRef.current) return;
+      for (const handoff of iframeFocusHandoffsRef.current.values()) {
+        handoff.returnTarget = focusTarget;
+        handoff.pendingTargetRestore = false;
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      for (const [iframe, handoff] of iframeFocusHandoffsRef.current) {
+        releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff);
+      }
+    };
+    const handleWindowBlur = () => {
+      for (const [iframe, handoff] of iframeFocusHandoffsRef.current) {
+        // Cross-origin child events cannot cross the iframe boundary, but the
+        // embedding element is :active synchronously while a real pointer
+        // press transfers focus. Page autofocus produces the same
+        // activeElement transition without that activation signal.
+        if (iframe.matches(":active")) {
+          releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff);
+        }
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("blur", handleWindowBlur, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("blur", handleWindowBlur, true);
+      for (const timer of iframeFocusTimersRef.current) {
+        window.clearTimeout(timer);
+      }
+      iframeFocusTimersRef.current.clear();
+      iframeFocusHandoffsRef.current.clear();
+    };
+  }, [releaseBrowserWorkspaceIframeFocusReturn]);
+
   const loadWorkspace = useCallback(
     async (options?: { preferTabId?: string | null; silent?: boolean }) => {
       if (!options?.silent) {
@@ -795,6 +1049,29 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       }
       try {
         const snapshot = await client.getBrowserWorkspace();
+        const previousSnapshot = workspaceSnapshotRef.current;
+        for (const nextTab of snapshot.tabs) {
+          const previousTab = previousSnapshot.tabs.find(
+            (tab) => tab.id === nextTab.id,
+          );
+          if (!previousTab) {
+            pendingIframeFocusReturnTargetsRef.current.set(
+              nextTab.id,
+              browserActionFocusReturnTargetRef.current ??
+                readBrowserWorkspaceFocusReturnTarget(),
+            );
+            continue;
+          }
+          if (previousTab.url === nextTab.url) continue;
+          const iframe = iframeRefs.current.get(nextTab.id);
+          if (iframe) {
+            armBrowserWorkspaceIframeFocusReturn(iframe, {
+              preserveExistingForUrl: true,
+              navigationUrl: nextTab.url,
+            });
+          }
+        }
+        workspaceSnapshotRef.current = snapshot;
         setWorkspace(snapshot);
         setLoadError(null);
         setSelectedTabId((current) =>
@@ -817,7 +1094,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
       }
     },
-    [],
+    [
+      armBrowserWorkspaceIframeFocusReturn,
+      readBrowserWorkspaceFocusReturnTarget,
+    ],
   );
 
   const runBrowserWorkspaceAction = useCallback(
@@ -826,6 +1106,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       action: () => Promise<void>,
       onErrorMessage?: string,
     ) => {
+      const actionFocusReturnTarget = readBrowserWorkspaceFocusReturnTarget();
+      browserActionFocusReturnTargetRef.current = actionFocusReturnTarget;
       setBusyAction(actionKey);
       try {
         await action();
@@ -840,9 +1122,14 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         setActionNoticeRef.current(message, "error", 4_000);
       } finally {
         setBusyAction(null);
+        if (
+          browserActionFocusReturnTargetRef.current === actionFocusReturnTarget
+        ) {
+          browserActionFocusReturnTargetRef.current = null;
+        }
       }
     },
-    [],
+    [readBrowserWorkspaceFocusReturnTarget],
   );
 
   const loadSelectedBrowserWorkspaceSnapshot = useCallback(
@@ -974,6 +1261,9 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         // directly via the ref in embedded web mode only.
         const iframe = iframeRefs.current.get(selectedTabId);
         if (iframe && iframe.src !== tab.url) {
+          armBrowserWorkspaceIframeFocusReturn(iframe, {
+            navigationUrl: tab.url,
+          });
           iframe.src = tab.url;
         }
       } else if (workspace.mode === "desktop") {
@@ -985,6 +1275,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       setLocationDirty(false);
     },
     [
+      armBrowserWorkspaceIframeFocusReturn,
       browserTabRenderPath,
       loadWorkspace,
       openNewBrowserWorkspaceTab,
@@ -1001,9 +1292,21 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         iframeRefs.current.delete(tabId);
         return;
       }
+      if (!registeredIframeElementsRef.current.has(iframe)) {
+        registeredIframeElementsRef.current.add(iframe);
+        const pendingReturnTarget =
+          pendingIframeFocusReturnTargetsRef.current.get(tabId);
+        pendingIframeFocusReturnTargetsRef.current.delete(tabId);
+        armBrowserWorkspaceIframeFocusReturn(iframe, {
+          returnTarget: pendingReturnTarget,
+          navigationUrl:
+            workspaceSnapshotRef.current.tabs.find((tab) => tab.id === tabId)
+              ?.url ?? undefined,
+        });
+      }
       iframeRefs.current.set(tabId, iframe);
     },
-    [],
+    [armBrowserWorkspaceIframeFocusReturn],
   );
 
   // Keep a ref so the host-message handler always sees the latest wallet
@@ -1974,6 +2277,9 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     if (workspace.mode === "web") {
       const iframe = iframeRefs.current.get(selectedTab.id);
       if (iframe) {
+        armBrowserWorkspaceIframeFocusReturn(iframe, {
+          navigationUrl: selectedTab.url,
+        });
         iframe.src = selectedTab.url;
       }
       return;
@@ -1984,7 +2290,13 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       return;
     }
     await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
-  }, [browserTabRenderPath, nativeTabSurfaces, selectedTab, workspace.mode]);
+  }, [
+    armBrowserWorkspaceIframeFocusReturn,
+    browserTabRenderPath,
+    nativeTabSurfaces,
+    selectedTab,
+    workspace.mode,
+  ]);
 
   const installBrowserBridgeExtension = useCallback(async () => {
     await runBrowserWorkspaceAction(
@@ -2683,11 +2995,20 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               // that cross-origin without an extension content script.
               className={`absolute inset-0 h-full w-full border-0 bg-bg transition-opacity ${visibilityClass}`}
               style={{ colorScheme: uiTheme }}
-              onLoad={() =>
-                highlighted
-                  ? postBrowserWalletReady(tab, browserWalletState)
-                  : undefined
-              }
+              onPointerDownCapture={(event) => {
+                releaseBrowserWorkspaceIframeFocusReturn(event.currentTarget);
+              }}
+              onKeyDownCapture={(event) => {
+                if (event.key === "Tab") {
+                  releaseBrowserWorkspaceIframeFocusReturn(event.currentTarget);
+                }
+              }}
+              onLoad={(event) => {
+                beginBrowserWorkspaceIframeFocusSettle(event.currentTarget);
+                if (highlighted) {
+                  postBrowserWalletReady(tab, browserWalletState);
+                }
+              }}
             />
           );
         })
@@ -2809,8 +3130,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   // folded into the switcher (no permanent tab strip), matching #13596.
   const mainNode = (
     <main
+      ref={workspaceRootRef}
       aria-label={t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
       data-testid="browser-workspace-view"
+      tabIndex={-1}
       className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-[clamp(8px,1.6vw,14px)] overflow-hidden bg-bg px-[clamp(8px,2.4vw,24px)] pt-[calc(clamp(8px,2.4vw,24px)+var(--safe-area-top,0px))] pb-[clamp(8px,2.4vw,24px)]"
     >
       <div
