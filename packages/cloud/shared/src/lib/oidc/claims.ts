@@ -9,6 +9,35 @@
  *   - `email_verified` is read from the row and never fabricated. It is the
  *     gate the relying party uses before auto-creating an account, and
  *     `/authorize` refuses outright when a client requires it.
+ *   - A synthesized wallet address is the one `email` value not read from the
+ *     row, and it is emitted with `email_verified: FALSE`, always, with no
+ *     per-client knob. OpenID Connect Core 1.0 section 5.1 defines the flag as
+ *     "True if the End-User's e-mail address has been verified" — an assertion
+ *     that the End-User controls that MAILBOX, not that the provider controls
+ *     the domain. The mailbox does not exist: the domain accepts no mail by
+ *     construction, which is the whole point of it. `true` would be a claim with
+ *     no referent, and it would poison the one signal an RP uses before merging
+ *     a federated login into an existing local account bearing the same address
+ *     or before sending password-reset mail — linking accounts on an address
+ *     nobody proved, and black-holing every security message into a null route.
+ *     The assurance this deployment actually holds is about the WALLET — bound
+ *     to the account by a signature-verifying sign-in or by the provider that
+ *     issues the session, and admitted by `./subject.ts` — so it is emitted
+ *     truthfully under its own name, `eliza_email_source: "wallet"`, instead of
+ *     being laundered through `email_verified`. Two different questions were being conflated:
+ *     `require_verified_email` is OUR admission policy and is the half that
+ *     widens; `email_verified` is the RP's question about a mailbox and does not
+ *     move.
+ *
+ *     Emitting `false` here rests on a RELYING-PARTY property, so it is named:
+ *     the RP must create and link the account on `sub` and must not refuse or
+ *     defer a login over an unverified address. Forgejo, the RP this was built
+ *     for, does both — `LoginSource`/`ExternalLoginUser` is keyed on the OAuth2
+ *     subject, and its OIDC path has no "email must be verified" gate — and a
+ *     wallet sign-in was driven end to end against it before this shipped. An RP
+ *     that does gate on `email_verified` cannot use `wallet_email_fallback` at
+ *     all; it must not be given `true` instead, because that is the flag such an
+ *     RP would then trust to merge this login into a local account.
  *   - `groups` and `roles` are SYNTHESIZED. There is no `organization_members`
  *     or teams table anywhere in the schema: membership is the single
  *     `users.organization_id` FK plus the scalar `users.role`, so a user
@@ -118,6 +147,13 @@ export interface OidcClaimsInput {
   profile: Pick<OidcUserProfile, "username" | "account_kind" | "actor_id" | "agent_id"> | null;
   /** The frozen username; passed separately so allocation can happen at authorize. */
   username: string;
+  /**
+   * Deterministic no-reply address derived from a VERIFIED wallet, or `null`.
+   * Computed by `loadOidcSubject` because the digest is async and this builder
+   * is sync and pure. Only reached by a client with `wallet_email_fallback`, and
+   * only when the user has no verified email of their own.
+   */
+  walletEmail: string | null;
   adminStatus: OidcAdminStatus;
   /** Deployment-level tenant, used only when the organization carries none. */
   deploymentTenantId?: string | null;
@@ -256,6 +292,58 @@ export function resolveOidcTenantId(input: OidcClaimsInput): string | null {
   return input.organization?.steward_tenant_id ?? input.deploymentTenantId ?? null;
 }
 
+/** Which of the two possible origins the emitted `email` came from. */
+export type OidcEmailSource = "user" | "wallet";
+
+export interface OidcEmailIdentity {
+  /** The address to emit, or `null` when this subject presents none. */
+  email: string | null;
+  /** The value `email_verified` must carry beside it. */
+  emailVerified: boolean;
+  /** `null` exactly when `email` is null. `"wallet"` drives `eliza_email_source`. */
+  source: OidcEmailSource | null;
+}
+
+/**
+ * The single decision about which address a subject presents to one client.
+ *
+ * Both the claim builder here and the admission gate in `./subject.ts` read it,
+ * which is the point: admission and emission answered that question separately
+ * before, and the two answers could disagree — an opted-in client could admit a
+ * subject and then be handed a token with no `email` at all, or with an address
+ * the gate had not considered.
+ *
+ * Precedence is "a stored address wins, whatever its verification state". The
+ * earlier rule keyed the first arm on `email_verified` too, which meant a user
+ * who HAS an address but never confirmed it silently received the wallet-derived
+ * one instead of their own — a different account at every relying party that
+ * keys on the address, for a user who did nothing but leave an address
+ * unconfirmed. Synthesis now happens only where the documented contract says it
+ * does: for a user with genuinely no address. The unverified-address hazard that
+ * motivated the old ordering is handled where it belongs, by refusing ADMISSION
+ * (see `hasUsableOidcEmailIdentity`) rather than by substituting a different
+ * identity behind the relying party's back.
+ *
+ * The final arm keeps a row with no address at all reporting the column's own
+ * `email_verified`. That is pre-existing behaviour for the nullable-plaintext
+ * rows of the field-encryption rollout and is deliberately untouched; the one
+ * place a "verified but unnamed mailbox" must NOT be asserted is the reserved
+ * domain scrub, and `loadOidcSubject` clears both fields together there.
+ */
+export function resolveOidcEmailIdentity(
+  user: Pick<User, "email" | "email_verified">,
+  walletEmail: string | null,
+  client: Pick<OidcClient, "wallet_email_fallback">,
+): OidcEmailIdentity {
+  if (user.email) {
+    return { email: user.email, emailVerified: user.email_verified === true, source: "user" };
+  }
+  if (client.wallet_email_fallback && walletEmail) {
+    return { email: walletEmail, emailVerified: false, source: "wallet" };
+  }
+  return { email: null, emailVerified: user.email_verified === true, source: null };
+}
+
 /**
  * Build the scope-gated, policy-filtered claim set. `sub` is always present;
  * every other claim is omitted rather than emitted as null, so a consumer can
@@ -273,8 +361,12 @@ export function buildOidcClaims(input: OidcClaimsInput): OidcProfileClaims {
   const accountKind = readOidcAccountKind(profile?.account_kind);
 
   if (scopes.has("email")) {
-    if (user.email) claims.email = user.email;
-    claims.email_verified = user.email_verified === true;
+    const identity = resolveOidcEmailIdentity(user, input.walletEmail, client);
+    if (identity.email) claims.email = identity.email;
+    claims.email_verified = identity.emailVerified;
+    // Named only for the synthesized address, so a client reading it can tell
+    // "this is a wallet proof" from "this is a mailbox somebody confirmed".
+    if (identity.source === "wallet") claims.eliza_email_source = "wallet";
   }
 
   if (scopes.has("profile")) {

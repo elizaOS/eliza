@@ -417,7 +417,7 @@ app.post("/", async (c) => {
 
     // Claims are rebuilt from LIVE rows rather than a snapshot taken at
     // authorize, so a mid-window deactivation fails the exchange.
-    const subject = await loadOidcSubject(grant.userId);
+    const subject = await loadOidcSubject(grant.userId, config);
     if (!subject) return await refuseGrant(c, "subject_missing", bound);
     const ineligible = assertOidcSubjectEligible(subject, client);
     if (ineligible) {
@@ -439,6 +439,7 @@ app.post("/", async (c) => {
       organization: subject.user.organization,
       profile: subject.profile,
       username,
+      walletEmail: subject.walletEmail,
       adminStatus: subject.adminStatus,
       deploymentTenantId:
         typeof c.env.STEWARD_TENANT_ID === "string"

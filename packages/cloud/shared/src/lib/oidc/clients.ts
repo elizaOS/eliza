@@ -31,6 +31,15 @@
  * registry. An ID token's `aud` IS the client id, so that registration hands the
  * resource server behind the audience a token its client already holds. It is
  * refused across the whole registry, not per entry.
+ *
+ * `wallet_email_fallback` defaults FALSE and is the only knob that changes what
+ * the `email` claim can hold. It widens the `require_verified_email` gate rather
+ * than replacing it, so the two must be set together: with the requirement OFF
+ * there is no gate to widen, and a user with neither an address nor a verified
+ * wallet is admitted and handed a token carrying no `email` at all — the same
+ * failure the flag exists to prevent, reached from the other side. That
+ * combination is refused here rather than left to surface at the relying party's
+ * account creation.
  */
 
 import { timingSafeEqualSecret } from "../auth/cron";
@@ -78,6 +87,19 @@ export interface OidcClient {
   require_pkce: boolean;
   require_verified_email: boolean;
   /**
+   * Accept a cryptographically verified WALLET in place of a verified email, and
+   * emit the deterministic no-reply address derived from it. Default false, so
+   * every already-registered client keeps byte-identical behaviour.
+   *
+   * Set it only for a relying party that needs an address as an account key —
+   * Forgejo cannot create an account without one, and git cannot author a commit
+   * without one — and that is willing to read `eliza_email_source` rather than
+   * `email_verified` for its identity assurance. A stored `users.email` always
+   * wins; this only ever fills in for a user who has none. Requires
+   * `require_verified_email`, which it widens rather than replaces.
+   */
+  wallet_email_fallback: boolean;
+  /**
    * NATIVE roles this client may see, applied before `claims_mapping`. Empty
    * means "every role this provider knows". Set it for any RP whose
    * authorization decisions branch on `roles`.
@@ -106,10 +128,27 @@ const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 const CLAIM_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/;
 
 /**
- * Names `constant_claims` may not take. Everything the provider itself emits is
- * listed, plus the JWT envelope members `stripReservedClaims` removes and the
- * two access-token members `mintOidcAccessToken` writes. A constant claim is
- * spread before the derived ones, so shadowing is already impossible at
+ * Claims the provider emits only for a client that turned a feature on, and
+ * therefore reserves only for that client.
+ *
+ * `RESERVED_CLAIM_NAMES` is derived from `OIDC_SUPPORTED_CLAIMS`, so appending a
+ * name there is NOT the additive change it looks like: it retroactively forbids
+ * that name in `constant_claims`, and one entry using it makes the whole
+ * registry throw — a 503 that takes every relying party down, not just the
+ * misconfigured one, for a value that had been emitted verbatim until the
+ * deploy. `eliza_email_source` is only ever produced beside a wallet-derived
+ * address, so a client without `wallet_email_fallback` cannot collide with it
+ * and keeps whatever it had. `assertClientIsCoherent` refuses the name for the
+ * clients that CAN collide, where the constant would be silently overwritten by
+ * the provider's own value.
+ */
+const CONDITIONAL_CLAIM_NAMES = new Set<string>(["eliza_email_source"]);
+
+/**
+ * Names `constant_claims` may not take. Everything the provider unconditionally
+ * emits is listed, plus the JWT envelope members `stripReservedClaims` removes
+ * and the two access-token members `mintOidcAccessToken` writes. A constant
+ * claim is spread before the derived ones, so shadowing is already impossible at
  * build time; refusing the name here means the operator learns at deploy time
  * that the value would never have been used.
  *
@@ -118,7 +157,7 @@ const CLAIM_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/;
  * which is the misrepresentation dropping the claim exists to avoid.
  */
 const RESERVED_CLAIM_NAMES = new Set<string>([
-  ...OIDC_SUPPORTED_CLAIMS,
+  ...OIDC_SUPPORTED_CLAIMS.filter((claim) => !CONDITIONAL_CLAIM_NAMES.has(claim)),
   "auth_time",
   "nbf",
   "jti",
@@ -327,6 +366,29 @@ function assertClientIsCoherent(client: OidcClient): void {
       `OIDC_CLIENTS[${id}] must allow the "eliza_agents" scope and set claims_policy.eliza_agents together`,
     );
   }
+  if (client.wallet_email_fallback && !client.allowed_scopes.includes("email")) {
+    throw new Error(
+      `OIDC_CLIENTS[${id}] sets wallet_email_fallback but omits the "email" scope that carries the address, so a wallet-only user would be admitted and then handed no email at all`,
+    );
+  }
+  if (client.wallet_email_fallback && !client.require_verified_email) {
+    // The fallback WIDENS the verified-email gate; with that gate off there is
+    // no gate to widen, and the same collision reopens from the other side. A
+    // user with neither an address nor a verified wallet is admitted and handed
+    // a token with no `email`, which is precisely what the rule above exists to
+    // prevent, and the registration reads as though the flag were guaranteeing
+    // an address it cannot guarantee.
+    throw new Error(
+      `OIDC_CLIENTS[${id}] sets wallet_email_fallback with require_verified_email false; the fallback only widens the verified-email gate, so with the gate off a user with neither an email nor a verified wallet is still admitted and handed a token carrying no address`,
+    );
+  }
+  for (const name of Object.keys(client.constant_claims)) {
+    if (client.wallet_email_fallback && CONDITIONAL_CLAIM_NAMES.has(name)) {
+      throw new Error(
+        `OIDC_CLIENTS[${id}].constant_claims may not set "${name}": this client sets wallet_email_fallback, so the provider emits that claim itself and the constant would never be used`,
+      );
+    }
+  }
   if (client.roles_allowlist.length > 0 && !client.claims_policy.roles) {
     throw new Error(`OIDC_CLIENTS[${id}] sets roles_allowlist but claims_policy denies roles`);
   }
@@ -410,6 +472,7 @@ function parseClient(raw: unknown, index: number): OidcClient {
     resource_audiences: stringList(entry.resource_audiences, "resource_audiences", clientId),
     require_pkce: boolField(entry.require_pkce, false),
     require_verified_email: boolField(entry.require_verified_email, true),
+    wallet_email_fallback: boolField(entry.wallet_email_fallback, false),
     roles_allowlist: stringList(entry.roles_allowlist, "roles_allowlist", clientId),
     claims_policy: parseClaimsPolicy(entry.claims_policy),
     claims_mapping: parseClaimsMapping(entry.claims_mapping, clientId),

@@ -327,6 +327,12 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #                                      empty registry. OIDC_ENABLED / OIDC_ISSUER_URL are
 #                                      committed [vars] below for the same reason inverted:
 #                                      losing them must not silently change the issuer.
+#                                      OIDC_WALLET_EMAIL_DOMAIN is a var for that same
+#                                      reason and is normally UNSET: it defaults to
+#                                      users.noreply.<issuer hostname>, and an override is
+#                                      accepted only as a strict subdomain of that hostname
+#                                      (the rule that makes the domain unregisterable by a
+#                                      user). Set but invalid fails the provider closed.
 #   COINGECKO_API_KEY / BRAVE_SEARCH_API_KEY
 #   TWITTER_BEARER_TOKEN / X_API_KEY / X_API_KEY_SECRET
 #   X402_RECIPIENT_ADDRESS / PINATA_JWT
