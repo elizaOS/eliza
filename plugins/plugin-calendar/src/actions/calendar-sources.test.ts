@@ -89,7 +89,7 @@ describe("CALENDAR_SOURCES action", () => {
   it("denies non-owner callers before connector access", async () => {
     const { runtime, manager } = runtimeFixture();
     const startOAuth = vi.fn(async () => ({
-      authUrl: "https://accounts.example.test/auth",
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     }));
     manager.registerProvider({ provider: "google", startOAuth });
 
@@ -167,7 +167,7 @@ describe("CALENDAR_SOURCES action", () => {
   it("persists a least-privilege Google authorization flow without claiming connection", async () => {
     const { runtime, manager } = runtimeFixture();
     const startOAuth = vi.fn(async () => ({
-      authUrl: "https://accounts.example.test/auth?state=opaque",
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=opaque",
       expiresAt: Date.parse("2026-07-27T13:00:00.000Z"),
     }));
     manager.registerProvider({ provider: "google", startOAuth });
@@ -226,7 +226,7 @@ describe("CALENDAR_SOURCES action", () => {
     );
     expect(persisted).toMatchObject({
       status: "pending",
-      authUrl: "https://accounts.example.test/auth?state=opaque",
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=opaque",
     });
   });
 
@@ -303,7 +303,7 @@ describe("CALENDAR_SOURCES action", () => {
   it("rejects reconnect when the grant and account identities disagree", async () => {
     const { runtime, manager } = runtimeFixture();
     const startOAuth = vi.fn(async () => ({
-      authUrl: "https://accounts.example.test/auth",
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     }));
     manager.registerProvider({ provider: "google", startOAuth });
 
@@ -537,7 +537,7 @@ describe("CALENDAR_SOURCES action", () => {
     manager.registerProvider({
       provider: "google",
       startOAuth: vi.fn(async () => ({
-        authUrl: "https://accounts.example.test/auth?state=opaque",
+        authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=opaque",
         expiresAt: Date.parse("2026-07-27T13:00:00.000Z"),
       })),
     });
@@ -600,7 +600,7 @@ describe("CALENDAR_SOURCES action", () => {
     async ({ provider, grantId, connectorAccountId }) => {
       const { runtime, manager } = runtimeFixture();
       const startOAuth = vi.fn(async () => ({
-        authUrl: "https://accounts.example.test/auth",
+        authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       }));
       manager.registerProvider({ provider, startOAuth });
 

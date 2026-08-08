@@ -365,6 +365,24 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
  */
 export type PluginLoadReasons = Map<string, string>;
 
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/** True when a googlechat connector block has real config, not just `{}`. */
+function isGoogleChatConnectorConfigured(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const config = value as Record<string, unknown>;
+  if (config.enabled === false) return false;
+  if (nonEmptyString(config.serviceAccountKey)) return true;
+  if (nonEmptyString(config.serviceAccount)) return true;
+  if (nonEmptyString(config.projectId)) return true;
+  if (Array.isArray(config.accounts) && config.accounts.length > 0) return true;
+  return false;
+}
+
 /**
  * Explicit Google signals only — never inferred from the universal Calendar
  * home tile (Apple/Microsoft/ICS also use Calendar).
@@ -381,13 +399,7 @@ function shouldLoadGoogleWorkspace(
   }
 
   const connectors = config.connectors as Record<string, unknown> | undefined;
-  const googleChat = connectors?.googlechat;
-  if (
-    googleChat &&
-    typeof googleChat === "object" &&
-    !Array.isArray(googleChat) &&
-    (googleChat as { enabled?: unknown }).enabled !== false
-  ) {
+  if (isGoogleChatConnectorConfigured(connectors?.googlechat)) {
     return true;
   }
 
@@ -648,6 +660,13 @@ export function collectPluginNames(
     if ((channelConfig as Record<string, unknown>).enabled === false) {
       continue;
     }
+    // googlechat → google-workspace: require real Chat config, not empty `{}`.
+    if (
+      channelName === "googlechat" &&
+      !isGoogleChatConnectorConfigured(channelConfig)
+    ) {
+      continue;
+    }
     const pluginName = CHANNEL_PLUGIN_MAP[channelName];
     if (pluginName) {
       pluginsToLoad.add(pluginName);
@@ -883,6 +902,10 @@ export function collectPluginNames(
       "@elizaos/plugin-google-workspace",
       "explicit Google signal (entries / googlechat / GOOGLE_CLIENT_*)",
     );
+  }
+  // Final deny: explicit disable wins even if an earlier path added Workspace.
+  if (isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace")) {
+    pluginsToLoad.delete("@elizaos/plugin-google-workspace");
   }
 
   // Lean chat: force-drop heavy surfaces even if a later gate (orchestrator env,

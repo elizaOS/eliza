@@ -37,6 +37,16 @@ describe("plugin-google-workspace shouldEnable", () => {
     ).toBe(false);
   });
 
+  it("does not enable for an empty googlechat object", () => {
+    expect(
+      shouldEnable(
+        ctx({
+          config: { connectors: { googlechat: {} } },
+        }),
+      ),
+    ).toBe(false);
+  });
+
   it("does not enable merely because calendar is enabled (Apple/Microsoft/ICS)", () => {
     expect(
       shouldEnable(

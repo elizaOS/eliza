@@ -456,12 +456,23 @@ async function beginOAuthIntent(args: {
       },
     );
   }
-  if (!flow.authUrl?.trim()) {
+  const authUrl = flow.authUrl?.trim() ?? "";
+  if (!authUrl) {
     throw new ElizaError(`${args.provider} authorization returned no URL.`, {
       code: "CALENDAR_SOURCE_AUTH_URL_MISSING",
       context: { provider: args.provider, flowId: flow.id },
       severity: "fatal",
     });
+  }
+  if (!isTrustedOAuthAuthorizationUrl(args.provider, authUrl)) {
+    throw new ElizaError(
+      `${args.provider} authorization returned an untrusted URL host/path.`,
+      {
+        code: "CALENDAR_SOURCE_AUTH_URL_UNTRUSTED",
+        context: { provider: args.provider, flowId: flow.id },
+        severity: "fatal",
+      },
+    );
   }
   return {
     state: "authorization_required",
@@ -470,12 +481,40 @@ async function beginOAuthIntent(args: {
     connected: false,
     flowId: flow.id,
     accountId: account?.id ?? null,
-    authUrl: flow.authUrl,
+    authUrl,
     expiresAt: flow.expiresAt ? new Date(flow.expiresAt).toISOString() : null,
     flowPersistedAt: new Date(flow.updatedAt).toISOString(),
     requestedCapabilities,
     completion: "awaiting_user_action",
   };
+}
+
+/** Only elevate provider OAuth URLs we construct/expect to verified UI text. */
+function isTrustedOAuthAuthorizationUrl(
+  provider: "google" | "microsoft",
+  raw: string,
+): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return false;
+    if (url.username || url.password) return false;
+    if (provider === "google") {
+      return (
+        url.hostname === "accounts.google.com" &&
+        (url.pathname.startsWith("/o/oauth2/") ||
+          url.pathname.includes("/oauth2/"))
+      );
+    }
+    // Microsoft identity platform authorize endpoints.
+    return (
+      (url.hostname === "login.microsoftonline.com" ||
+        url.hostname === "login.microsoft.com") &&
+      url.pathname.includes("/oauth2/")
+    );
+  } catch {
+    // error-policy:J3 Untrusted URL text is explicitly invalid.
+    return false;
+  }
 }
 
 function applePermissionIntent(
@@ -879,6 +918,25 @@ function connectionAwaitsUser(intent: CalendarSourceConnectionIntent): boolean {
   );
 }
 
+/**
+ * Only mark connect outcomes verified when the text is fully constructed from
+ * allowlisted templates / trusted OAuth hosts (not arbitrary provider strings).
+ */
+function connectionIsVerifiedHandoff(
+  intent: CalendarSourceConnectionIntent,
+): boolean {
+  switch (intent.state) {
+    case "authorization_required":
+      return isTrustedOAuthAuthorizationUrl(intent.provider, intent.authUrl);
+    case "permission_required":
+    case "configuration_required":
+      return true;
+    case "connected":
+    case "configured_sync_failed":
+      return false;
+  }
+}
+
 async function resultWithCallback(
   result: ActionResult,
   callback: Parameters<NonNullable<Action["handler"]>>[4],
@@ -1049,17 +1107,19 @@ export function createCalendarSourcesAction(
           appliedReceiptIds.length > 0
             ? appliedReceiptIds
             : effectReceipts.map((receipt) => receipt.receiptId);
-        // Always pin connect handoffs as verified user-facing text so the
-        // planner echoes [CONFIG:…], permission_request JSON, and OAuth URLs
-        // instead of paraphrasing them into vague "auth error" prose.
+        // Pin allowlisted handoffs as verified user-facing text so the planner
+        // echoes [CONFIG:…], permission_request JSON, and trusted OAuth URLs
+        // instead of paraphrasing them. Do not elevate arbitrary provider text.
         // Only attach effectReceipts when present — an empty array would make
         // the verified-path proof check fail.
+        const verified = connectionIsVerifiedHandoff(intent);
         return resultWithCallback(
           {
             success: connectionSucceeded(intent),
             text,
-            userFacingText: text,
-            verifiedUserFacing: true,
+            ...(verified
+              ? { userFacingText: text, verifiedUserFacing: true as const }
+              : {}),
             ...(effectReceipts.length > 0
               ? {
                   effectReceipts,

@@ -103,6 +103,31 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-google-workspace")).toBe(false);
   });
 
+  it("final-denies google-workspace when disabled even with a configured googlechat block", () => {
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    const config: ElizaConfig = {
+      connectors: {
+        googlechat: { projectId: "p", serviceAccountKey: "{}" },
+      },
+      plugins: {
+        entries: {
+          "google-workspace": { enabled: false },
+        },
+      },
+    } as ElizaConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(false);
+  });
+
+  it("does not load google-workspace for an empty googlechat block", () => {
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    const config: ElizaConfig = {
+      connectors: { googlechat: {} },
+    } as ElizaConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(false);
+  });
+
   it("force-excludes the orchestrator even when ELIZA_AGENT_ORCHESTRATOR=1", () => {
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
     process.env.ELIZA_AGENT_ORCHESTRATOR = "1";

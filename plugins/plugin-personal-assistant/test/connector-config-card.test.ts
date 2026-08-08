@@ -122,9 +122,9 @@ beforeEach(() => {
 });
 
 describe("CONNECTOR Google connect handoff cards", () => {
-  it("pins OAuth URLs as verified user-facing text", async () => {
+  it("pins trusted Google OAuth URLs as verified user-facing text", async () => {
     mocks.startGoogleConnector.mockResolvedValue({
-      authUrl: "https://accounts.example.test/oauth",
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth?client_id=test",
       mode: "local",
       side: "owner",
     });
@@ -132,13 +132,53 @@ describe("CONNECTOR Google connect handoff cards", () => {
     expect(result.success).toBe(true);
     expect(result.verifiedUserFacing).toBe(true);
     expect(result.userFacingText).toContain(
-      "https://accounts.example.test/oauth",
+      "https://accounts.google.com/o/oauth2/v2/auth?client_id=test",
     );
-    expect(result.text).toContain("https://accounts.example.test/oauth");
+    expect(result.text).toContain(
+      "https://accounts.google.com/o/oauth2/v2/auth?client_id=test",
+    );
     expect(result.data).toMatchObject({
       awaitingUserAction: true,
       awaitingUserInput: true,
     });
+  });
+
+  it("refuses untrusted OAuth URL hosts", async () => {
+    mocks.startGoogleConnector.mockResolvedValue({
+      authUrl: "https://evil.example/phish",
+      mode: "local",
+      side: "owner",
+    });
+    const result = await connect("google");
+    expect(result.success).toBe(false);
+    expect(result.verifiedUserFacing).not.toBe(true);
+    expect(result.data).toMatchObject({ error: "GOOGLE_AUTH_URL_UNTRUSTED" });
+  });
+
+  it("fails closed when authUrl is missing", async () => {
+    mocks.startGoogleConnector.mockResolvedValue({
+      authUrl: "",
+      mode: "local",
+      side: "owner",
+    });
+    const result = await connect("google");
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "GOOGLE_AUTH_URL_MISSING" });
+  });
+
+  it("validate rejects calendar-feed connect phrasing", async () => {
+    await expect(
+      connectorAction.validate?.(
+        {} as never,
+        { content: { text: "connect google calendar" } } as never,
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      connectorAction.validate?.(
+        {} as never,
+        { content: { text: "connect my gmail" } } as never,
+      ),
+    ).resolves.toBe(true);
   });
 
   it("emits a verified [CONFIG:google] card with sanitized copy when OAuth cannot start", async () => {

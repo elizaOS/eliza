@@ -23,14 +23,33 @@ function hasNonEmptyEnv(
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/** True when a googlechat block has real config fields, not just `{}`. */
+function isGoogleChatConnectorConfigured(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const config = value as Record<string, unknown>;
+  if (config.enabled === false) return false;
+  if (nonEmptyString(config.serviceAccountKey)) return true;
+  if (nonEmptyString(config.serviceAccount)) return true;
+  if (nonEmptyString(config.projectId)) return true;
+  if (Array.isArray(config.accounts) && config.accounts.length > 0) return true;
+  return false;
+}
+
 /**
  * Enable Google Workspace only on an explicit Google signal:
- * - a `googlechat` connector block present and not explicitly disabled
+ * - a configured `googlechat` connector block (not empty `{}`)
  * - plugins.entries["google-workspace"].enabled === true
  * - GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET configured (local OAuth)
  *
  * Do not enable merely because Calendar is present — Calendar also covers
  * Apple, Microsoft, and ICS feeds without Google.
+ * `plugins.entries["google-workspace"].enabled === false` is an unconditional veto.
  */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   const entries = (
@@ -50,19 +69,8 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   const connectors = ctx.config.connectors as
     | Record<string, unknown>
     | undefined;
-  const googleChat = connectors?.googlechat;
-  if (
-    googleChat &&
-    typeof googleChat === "object" &&
-    !Array.isArray(googleChat)
-  ) {
-    const config = googleChat as Record<string, unknown>;
-    if (config.enabled !== false) {
-      // The full per-connector field check (service account credentials / project)
-      // lives in the central engine's isConnectorConfigured; this module gates only
-      // on "block present + not explicitly disabled".
-      return true;
-    }
+  if (isGoogleChatConnectorConfigured(connectors?.googlechat)) {
+    return true;
   }
 
   if (entryEnabled(entries, "google-workspace")) {
