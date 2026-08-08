@@ -40,7 +40,10 @@ import {
 	type ToolChoice,
 	type ToolDefinition,
 } from "../types/model";
-import { isModelProviderError } from "../utils/model-errors";
+import {
+	isModelProviderError,
+	modelProviderErrorDetail,
+} from "../utils/model-errors";
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
 import { computePrefixHashes, stableJsonStringify } from "./context-hash";
@@ -1201,7 +1204,13 @@ async function runPlannerLoopIterations(
 			const relay = deterministicSuccessfulToolRelay(trajectory);
 			if (!relay) throw err;
 			params.runtime.logger?.warn?.(
-				{ iteration, err: err instanceof Error ? err.message : String(err) },
+				{
+					iteration,
+					err: err instanceof Error ? err.message : String(err),
+					...(modelProviderErrorDetail(err)
+						? { providerErrorDetail: modelProviderErrorDetail(err) }
+						: {}),
+				},
 				"[planner-loop] post-tool evaluator model call failed; relaying the completed tool result instead of discarding the turn",
 			);
 			return {
