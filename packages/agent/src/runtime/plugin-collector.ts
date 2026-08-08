@@ -366,17 +366,6 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
 export type PluginLoadReasons = Map<string, string>;
 
 /**
- * Collect plugin package names to load from config, env, feature flags, and
- * connector-derived allow-list mutations.
- *
- * @param reasons - When set, records the **first** reason each name was added
- *   (subsequent adds for the same name are ignored). Used by `resolvePlugins`
- *   to annotate benign optional load failures.
- *
- * @internal Exported for testing.
- */
-
-/**
  * Explicit Google signals only — never inferred from the universal Calendar
  * home tile (Apple/Microsoft/ICS also use Calendar).
  */
@@ -407,6 +396,16 @@ function shouldLoadGoogleWorkspace(
   return Boolean(clientId && clientSecret);
 }
 
+/**
+ * Collect plugin package names to load from config, env, feature flags, and
+ * connector-derived allow-list mutations.
+ *
+ * @param reasons - When set, records the **first** reason each name was added
+ *   (subsequent adds for the same name are ignored). Used by `resolvePlugins`
+ *   to annotate benign optional load failures.
+ *
+ * @internal Exported for testing.
+ */
 export function collectPluginNames(
   config: ElizaConfig,
   reasons?: PluginLoadReasons,

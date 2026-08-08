@@ -306,9 +306,12 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
   "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
   "@elizaos/plugin-notes", // managed Cloud Notes data and capabilities
-  // Always-on ScheduledTask primitive. Calendar is still pulled in via
-  // MOBILE_VIEW_PLUGINS (viewEveryPlatform) and hard-depends on scheduling;
-  // lean-chat must seed it or Calendar tiles resolve without a runner host.
+  // ScheduledTask primitive. Calendar is already always selected on lean-chat
+  // via MOBILE_VIEW_PLUGINS (viewEveryPlatform) and declares a hard dependency
+  // on scheduling in plugin-calendar. Seeding it here is not a new surface:
+  // without it Calendar boots broken. Full CORE_PLUGINS already always-loads
+  // scheduling; lean-chat was the inconsistent hole. Cold-start delta is the
+  // cost of making an already-present Calendar view functional.
   "@elizaos/plugin-scheduling",
   "@elizaos/plugin-native-filesystem", // mobile-safe FILE target
   "@elizaos/plugin-agent-skills", // skill execution + enabled-skills provider
