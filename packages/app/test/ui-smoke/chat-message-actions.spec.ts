@@ -178,6 +178,29 @@ function messageRowFor(page: Page, text: string): Locator {
     .locator("xpath=ancestor::*[@data-testid='thread-line'][1]");
 }
 
+/**
+ * Reveal a message row's action lane through the affordance each pointer class
+ * actually ships (#17859 chat-interaction slice): fine pointers reveal on
+ * pointer movement (hover discovery) while a bubble click TOGGLES the row (the
+ * aria-expanded contract locked in by chat-message.hover-reveal.test.tsx
+ * "does not pin a fine-pointer action rail after bubble click"). Playwright
+ * replays a pointer-move before every click, so on desktop a click always
+ * lands as reveal-then-toggle-hidden — hover is the deterministic desktop
+ * path. Coarse-pointer viewports keep tap-to-reveal.
+ */
+async function revealActionRow(
+  row: Locator,
+  text: string,
+  viewportName: "desktop" | "mobile",
+): Promise<void> {
+  const target = row.getByText(text, { exact: true });
+  if (viewportName === "desktop") {
+    await target.hover();
+    return;
+  }
+  await target.click();
+}
+
 async function expectFullyPaintableActionSurface(row: Locator): Promise<void> {
   const actions = row.getByTestId("thread-line-actions");
   const surface = row.getByTestId("thread-line-action-surface");
@@ -257,7 +280,7 @@ for (const viewport of [
     await screenshot(page, `${viewport.name}-chat-open`);
 
     const assistantRow = messageRowFor(page, ASSISTANT_TEXT);
-    await assistantRow.getByText(ASSISTANT_TEXT, { exact: true }).click();
+    await revealActionRow(assistantRow, ASSISTANT_TEXT, viewport.name);
     await expectFullyPaintableActionSurface(assistantRow);
     await expect(assistantRow.getByTestId("thread-line-reply")).toBeVisible();
     await expect(assistantRow.getByTestId("thread-line-copy")).toBeVisible();
@@ -296,15 +319,7 @@ for (const viewport of [
     await expect(page.getByTestId("chat-reply-pill")).toHaveCount(0);
 
     const userRow = messageRowFor(page, USER_TEXT);
-    const userBubble = userRow.getByText(USER_TEXT, { exact: true });
-    await userBubble.click();
-    if (
-      (await userRow
-        .getByTestId("thread-line-actions")
-        .getAttribute("aria-hidden")) !== "false"
-    ) {
-      await userBubble.click();
-    }
+    await revealActionRow(userRow, USER_TEXT, viewport.name);
     await expectFullyPaintableActionSurface(userRow);
     await expect(userRow.getByTestId("thread-line-reply")).toBeVisible();
     await expect(userRow.getByTestId("thread-line-copy")).toBeVisible();
