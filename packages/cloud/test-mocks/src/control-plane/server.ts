@@ -201,7 +201,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       { containersRepository },
       { jobsRepository },
       { runWithCloudBindingsAsync },
-      { JOB_TYPES },
+      { JOB_TYPES, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES },
     ] = await Promise.all([
       import("@elizaos/cloud-shared/db/repositories/agent-sandboxes.ts"),
       import("@elizaos/cloud-shared/db/repositories/apps.ts"),
@@ -229,6 +229,46 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
             // requests without inventing a new worker identity each time.
             executionOwnerId: MOCK_EXECUTION_OWNER_ID,
           });
+        type ClaimedJob = Awaited<ReturnType<typeof claim>>[number];
+
+        // The real worker owns a claimed execution end to end: it takes the
+        // per-agent lifecycle fence on `agent_sandboxes` before touching the
+        // resource and releases it through `settleExecution`, which is what
+        // stamps `execution_quiesced_at` and drops the execution lease. Delete
+        // enqueue refuses an agent whose last execution never acknowledged
+        // quiescence — regardless of the job's queue status — so a mock that
+        // finished jobs with a bare status write left every agent permanently
+        // undeletable. Reproduce the ownership protocol, not just the status.
+        const ownsLifecycleFence = (
+          job: ClaimedJob,
+        ): job is ClaimedJob & {
+          agent_id: string;
+          execution_generation: string;
+        } =>
+          job.agent_id !== null &&
+          job.execution_generation !== null &&
+          EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(
+            job.type as (typeof EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES)[number],
+          );
+        const acquireLifecycleFence = async (
+          job: ClaimedJob,
+        ): Promise<void> => {
+          if (!ownsLifecycleFence(job)) return;
+          await agentSandboxesRepository.update(job.agent_id, {
+            lifecycle_job_id: job.id,
+            lifecycle_execution_generation: job.execution_generation,
+          });
+        };
+        const settle = (
+          job: ClaimedJob,
+          jobResult: Record<string, unknown>,
+        ): Promise<void> =>
+          jobsRepository.settleExecution(
+            job,
+            "completed",
+            { result: jobResult },
+            MOCK_EXECUTION_OWNER_ID,
+          );
         // Provision/delete are reimplemented against the Hetzner mock; the
         // remaining lifecycle jobs are reproduced as direct agent_sandboxes
         // row transitions (mirroring the real handlers' DB effects), which is
@@ -254,6 +294,8 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         ]) {
           result.claimed += 1;
           try {
+            await acquireLifecycleFence(job);
+
             if (job.type === JOB_TYPES.APP_DEPLOY) {
               const appId = readJobString(job, "appId");
               const appRow = await appsRepository.findById(appId);
@@ -294,9 +336,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
                   load_balancer_url: productionUrl,
                 },
               );
-              await jobsRepository.updateStatus(job.id, "completed", {
-                result: { appId, containerId: container.id, productionUrl },
-                completed_at: now(),
+              await settle(job, {
+                appId,
+                containerId: container.id,
+                productionUrl,
               });
               result.succeeded += 1;
               continue;
@@ -316,13 +359,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
                 store.updateSandbox(existing.sandbox_id, { status: "deleted" });
               }
               await agentSandboxesRepository.delete(agentId, organizationId);
-              await jobsRepository.updateStatus(job.id, "completed", {
-                result: {
-                  cloudAgentId: agentId,
-                  containerStopped: true,
-                  rowDeleted: true,
-                },
-                completed_at: now(),
+              await settle(job, {
+                cloudAgentId: agentId,
+                containerStopped: true,
+                rowDeleted: true,
               });
               result.succeeded += 1;
               continue;
@@ -335,9 +375,9 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
                 bridge_url: null,
                 health_url: null,
               });
-              await jobsRepository.updateStatus(job.id, "completed", {
-                result: { cloudAgentId: agentId, containerStopped: true },
-                completed_at: now(),
+              await settle(job, {
+                cloudAgentId: agentId,
+                containerStopped: true,
               });
               result.succeeded += 1;
               continue;
@@ -360,13 +400,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
                 last_heartbeat_at: now(),
                 error_message: null,
               });
-              await jobsRepository.updateStatus(job.id, "completed", {
-                result: {
-                  cloudAgentId: agentId,
-                  containerStarted: true,
-                  reprovisioned: true,
-                },
-                completed_at: now(),
+              await settle(job, {
+                cloudAgentId: agentId,
+                containerStarted: true,
+                reprovisioned: true,
               });
               result.succeeded += 1;
               continue;
@@ -406,13 +443,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
                 web_ui_port: null,
                 last_backup_at: now(),
               });
-              await jobsRepository.updateStatus(job.id, "completed", {
-                result: {
-                  cloudAgentId: agentId,
-                  containerRemoved: true,
-                  backupId: backup.id,
-                },
-                completed_at: now(),
+              await settle(job, {
+                cloudAgentId: agentId,
+                containerRemoved: true,
+                backupId: backup.id,
               });
               result.succeeded += 1;
               continue;
@@ -438,10 +472,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
                 last_heartbeat_at: now(),
                 error_message: null,
               });
-              await jobsRepository.updateStatus(job.id, "completed", {
-                result: { cloudAgentId: agentId, reprovisioned: true },
-                completed_at: now(),
-              });
+              await settle(job, { cloudAgentId: agentId, reprovisioned: true });
               result.succeeded += 1;
               continue;
             }
@@ -478,14 +509,11 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
               await agentSandboxesRepository.update(agentId, {
                 last_backup_at: now(),
               });
-              await jobsRepository.updateStatus(job.id, "completed", {
-                result: {
-                  cloudAgentId: agentId,
-                  backupId: backup.id,
-                  snapshotType,
-                  sizeBytes: backup.size_bytes ?? 0,
-                },
-                completed_at: now(),
+              await settle(job, {
+                cloudAgentId: agentId,
+                backupId: backup.id,
+                snapshotType,
+                sizeBytes: backup.size_bytes ?? 0,
               });
               result.succeeded += 1;
               continue;
@@ -529,14 +557,11 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
               last_heartbeat_at: now(),
               error_message: null,
             });
-            await jobsRepository.updateStatus(job.id, "completed", {
-              result: {
-                cloudAgentId: agentId,
-                status: "running",
-                bridgeUrl,
-                healthUrl,
-              },
-              completed_at: now(),
+            await settle(job, {
+              cloudAgentId: agentId,
+              status: "running",
+              bridgeUrl,
+              healthUrl,
             });
             result.succeeded += 1;
           } catch (error) {
@@ -544,10 +569,17 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
             const message =
               error instanceof Error ? error.message : String(error);
             result.errors.push({ jobId: job.id, error: message });
+            // Same ownership handoff as the success path: passing the claimed
+            // generation + owner is what releases the lease, stamps
+            // quiescence, and clears the agent's lifecycle fence, so a failed
+            // attempt leaves the agent operable instead of fenced forever.
             await jobsRepository.incrementAttempt(
               job.id,
               message,
               job.max_attempts ?? 3,
+              undefined,
+              job.execution_generation ?? undefined,
+              MOCK_EXECUTION_OWNER_ID,
             );
           }
         }
@@ -1242,6 +1274,24 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         system: "You are a mock agent.",
         plugins: [],
       },
+    });
+  });
+
+  // The handoff readiness probe (`ElizaClient.startCloudAgentHandoff`) treats a
+  // 404 on `<base>/api/health` as "control plane says running, but the runtime
+  // proxy does not route there yet" (#15901) and keeps polling until its budget
+  // expires. A real dedicated container answers this route
+  // (`packages/agent/src/api/health-routes.ts`), so the mock must too — without
+  // it no handoff can ever reach `switched`, only `timed-out`. Only the status
+  // code gates readiness; the body mirrors the real subsystem summary.
+  app.get("/api/compat/agents/:id/api/health", async (c) => {
+    await latency();
+    return c.json({
+      ready: true,
+      canRespond: true,
+      runtime: "ok",
+      database: "ok",
+      agentId: c.req.param("id"),
     });
   });
 

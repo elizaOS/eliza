@@ -40,6 +40,7 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
+import { truncateWellFormed } from "../../../utils/well-formed.ts";
 import {
 	addHeader,
 	conversationMessagesHeader,
@@ -515,7 +516,7 @@ export const recentMessagesProvider: Provider = {
 				? addHeader(
 						"# Conversation Compact Ledger",
 						compactLedger.length > MAX_COMPACT_LEDGER_CHARS
-							? `${compactLedger.slice(0, MAX_COMPACT_LEDGER_CHARS)}...`
+							? `${truncateWellFormed(compactLedger, MAX_COMPACT_LEDGER_CHARS)}...`
 							: compactLedger,
 					)
 				: "";

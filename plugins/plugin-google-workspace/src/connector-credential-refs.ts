@@ -25,6 +25,25 @@ type JsonValue =
   | { readonly [key: string]: JsonValue };
 type JsonRecord = Record<string, JsonValue>;
 
+/**
+ * Runtime service names probed, in precedence order, for the durable
+ * connector credential store and the vault. The credential resolver's read
+ * path (`credential-resolver.ts`) resolves EXACTLY this set in this order:
+ * any store a credential can be written to must be findable under the same
+ * name after a restart, or the persisted vaultRef dangles and every
+ * credential read comes back empty.
+ */
+export const CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES = [
+  "connector_credential_store",
+  "CONNECTOR_CREDENTIAL_STORE",
+  "connectorCredentialStore",
+  "credential_store",
+] as const;
+
+export const CONNECTOR_VAULT_SERVICE_TYPES = ["vault", "VAULT"] as const;
+
+export const CORE_SECRETS_SERVICE_TYPE = "SECRETS";
+
 export interface ConnectorCredentialRefMetadata extends JsonRecord {
   credentialType: string;
   vaultRef: string;
@@ -192,12 +211,7 @@ function resolveVaultWriters(
   context: { provider: string; accountId: string; caller: string }
 ): VaultWriter[] {
   const writers: VaultWriter[] = [];
-  const credentialStore = getFirstService(runtime, [
-    "connector_credential_store",
-    "CONNECTOR_CREDENTIAL_STORE",
-    "connectorCredentialStore",
-    "credential_store",
-  ]) as {
+  const credentialStore = getFirstService(runtime, CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES) as {
     putSecret?: (params: {
       vaultRef?: string;
       agentId: string;
@@ -224,7 +238,7 @@ function resolveVaultWriters(
     });
   }
 
-  const vault = getFirstService(runtime, ["vault", "VAULT"]) as {
+  const vault = getFirstService(runtime, CONNECTOR_VAULT_SERVICE_TYPES) as {
     set?: (
       key: string,
       value: string,
@@ -244,7 +258,7 @@ function resolveVaultWriters(
     });
   }
 
-  const secrets = getService(runtime, "SECRETS") as {
+  const secrets = getService(runtime, CORE_SECRETS_SERVICE_TYPE) as {
     setGlobal?: (
       key: string,
       value: string,

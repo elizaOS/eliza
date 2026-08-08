@@ -5,6 +5,7 @@ import { errorToResponse, ValidationError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
@@ -108,6 +109,19 @@ async function __hono_POST(
       CORS_METHODS,
     );
   } catch (error) {
+    // `errorToResponse` deliberately redacts the message (a restore push can
+    // carry bridge hosts / DB details), so an unhandled throw here reaches the
+    // caller as a bare 500 "An unexpected error occurred" and, without this,
+    // left NO trace server-side. Restore pushes state over the network to a
+    // live agent —
+    // an unreachable bridge, a rejected push, or a misconfigured agent-router
+    // binding all land here — so the operator-visible record is the only way to
+    // tell an infrastructure failure from a bug. Log before redacting.
+    logger.error("Agent restore failed", {
+      error: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : undefined,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 }

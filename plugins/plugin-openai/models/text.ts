@@ -15,6 +15,7 @@ import {
   assertActiveTrajectoryForLlmCall,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
+  deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
   logActiveTrajectoryLlmCall,
@@ -2020,8 +2021,13 @@ async function generateTextByModelType(
 
   const generateParams: NativeTextParams = {
     model,
-    ...promptOrMessages,
-    system: systemPrompt,
+    // Wire-boundary guarantee: no upstream text bug may produce an invalid
+    // request body. A lone UTF-16 surrogate (e.g. from a mid-emoji slice)
+    // serializes as a \uD8xx escape that Cerebras's strict JSON parser 400s
+    // on ("lone leading surrogate in hex escape", wrong_api_format — #18025),
+    // so every outgoing string is forced to well-formed Unicode here.
+    ...deepToWellFormedUnicode(promptOrMessages),
+    system: systemPrompt === undefined ? undefined : deepToWellFormedUnicode(systemPrompt),
     allowSystemInMessages: true,
     ...(params.signal ? { abortSignal: params.signal } : {}),
     // Omit the cap when the caller opted out (direct-channel Stage-1) so the

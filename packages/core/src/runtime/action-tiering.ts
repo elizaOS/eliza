@@ -28,10 +28,10 @@ export const TIER0_PROTOCOL_ACTIONS = [
 export type Tier0ProtocolAction = (typeof TIER0_PROTOCOL_ACTIONS)[number];
 
 // A near-certain non-candidate match may remain on the planner surface when
-// Stage-1 omits it. The fused score alone is insufficient because a broad
-// context boost can saturate several parents at 1.0; independent keyword and
-// BM25 agreement identifies a user-text-dominant match without reopening the
-// whole saturated surface.
+// Stage-1 omits it. The absolute retrieval winner is authoritative even when
+// its lexical stages are asymmetric; otherwise independent keyword and BM25
+// agreement identifies one unambiguous user-text-dominant fallback without
+// reopening a broadly saturated surface.
 const RETRIEVAL_OVERRIDE_SCORE = 0.97;
 const DOMINANT_LEXICAL_STAGE_SCORE = 0.99;
 
@@ -253,11 +253,21 @@ export function tierActionResults(
 			dominantLexicalOverrides.length === 1
 				? dominantLexicalOverrides[0]
 				: undefined;
+		const absoluteRankOneOverride = tierAParents.find(
+			(parent) =>
+				!matchesCandidate(parent) &&
+				parent.score >= RETRIEVAL_OVERRIDE_SCORE &&
+				parent.result.rank === 1,
+		);
+		const retrievalOverride =
+			absoluteRankOneOverride ?? unambiguousLexicalOverride;
 		for (const parent of tierAParents) {
-			// Keep a parent the candidates named, OR one the retrieval matched so
-			// strongly that both lexical stages uniquely agree. At most one retrieved
-			// parent may contradict Stage-1; accepting every saturated score turns an
-			// unambiguous route into a broad, expensive planner surface.
+			// Keep a parent the candidates named, OR the absolute near-certain
+			// retrieval winner. When the winner is already a candidate, only one
+			// non-candidate whose lexical stages uniquely agree may survive instead.
+			// At most one retrieved parent may contradict Stage-1; accepting every
+			// saturated score turns an unambiguous route into a broad, expensive
+			// planner surface.
 			// Stage-1's candidate list is a model judgement and sometimes OMITS the
 			// obviously-relevant action — observed live: "current bitcoin price" /
 			// "weather in tokyo" retrieved WEB_FETCH at score 1.0, but Stage-1
@@ -275,7 +285,7 @@ export function tierActionResults(
 			// — exactly what the narrow exists to prevent.
 			if (matchesCandidate(parent)) {
 				candidateKept.push(parent);
-			} else if (parent === unambiguousLexicalOverride) {
+			} else if (parent === retrievalOverride) {
 				overrideKept.push(parent);
 			} else {
 				demotedFromTierA.push(parent);

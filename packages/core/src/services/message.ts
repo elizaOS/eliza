@@ -317,6 +317,7 @@ import {
 	hasFirstSentence,
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
+import { truncateWellFormed } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
@@ -6308,7 +6309,7 @@ const SUB_STEP_SUMMARY_MAX_CHARS = 400;
 function truncateSubStepText(text: string): string {
 	const trimmed = text.trim();
 	if (trimmed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return trimmed;
-	return `${trimmed.slice(0, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
+	return `${truncateWellFormed(trimmed, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
 }
 
 function collectSubPlannerSubSteps(

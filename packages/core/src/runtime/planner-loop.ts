@@ -46,6 +46,7 @@ import {
 } from "../utils/model-errors";
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
+import { tailWellFormed, truncateWellFormed } from "../utils/well-formed";
 import { computePrefixHashes, stableJsonStringify } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
@@ -2277,7 +2278,7 @@ function compactText(value: string, maxLength: number): string {
 	}
 	const headLength = Math.max(20, Math.floor(maxLength * 0.65));
 	const tailLength = Math.max(20, maxLength - headLength - 24);
-	return `${text.slice(0, headLength)} ...[${text.length - headLength - tailLength} chars compacted]... ${text.slice(-tailLength)}`;
+	return `${truncateWellFormed(text, headLength)} ...[${text.length - headLength - tailLength} chars compacted]... ${tailWellFormed(text, tailLength)}`;
 }
 
 /**
@@ -4569,7 +4570,7 @@ function scrubFailureCauseForPrompt(text: string): string | undefined {
 		.trim();
 	if (!cleaned) return undefined;
 	return cleaned.length > PROMPT_FAILURE_CAUSE_MAX_CHARS
-		? `${cleaned.slice(0, PROMPT_FAILURE_CAUSE_MAX_CHARS)}…`
+		? `${truncateWellFormed(cleaned, PROMPT_FAILURE_CAUSE_MAX_CHARS)}…`
 		: cleaned;
 }
 
