@@ -898,16 +898,30 @@ test.describe("production launcher — curated pages, reorder disabled by design
     await expect(
       grid.locator('[data-testid^="launcher-tile-"]').first(),
     ).toBeVisible({ timeout: 15_000 });
-    // Plugin-backed launcher entries arrive after the shell-owned tiles. Wait
-    // for the current catalog tail before snapshotting order so an asynchronous
-    // Phone Companion registration cannot be mistaken for drag reordering.
-    await expect(grid.getByTestId("launcher-tile-phone-companion")).toBeVisible(
-      {
-        timeout: 15_000,
-      },
-    );
-
-    const initialIds = await launcherTileIds(page);
+    // Plugin-backed launcher entries arrive after the shell-owned tiles. The
+    // curated page contents are owned by launcher-curation.ts and shift as the
+    // product evolves (#17560 dropped the Phone Companion tile from this
+    // harness's grid), so instead of anchoring on one late tile, wait for the
+    // tile catalog to hold stable across a settle window before snapshotting
+    // order — an asynchronous late registration must not be mistaken for drag
+    // reordering.
+    let initialIds = await launcherTileIds(page);
+    await expect
+      .poll(
+        async () => {
+          const previous = initialIds;
+          initialIds = await launcherTileIds(page);
+          return (
+            previous.length > 1 && previous.join("\n") === initialIds.join("\n")
+          );
+        },
+        {
+          message: "launcher tile catalog settles",
+          intervals: [1_000],
+          timeout: 20_000,
+        },
+      )
+      .toBe(true);
     expect(initialIds.length).toBeGreaterThan(1);
 
     // REAL long-press: press and hold well past the 450ms threshold without
