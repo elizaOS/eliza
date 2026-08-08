@@ -201,7 +201,10 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     slug: "payment-success",
     path: "/payment/success",
     route: "payment/success",
-    auth: PUBLIC,
+    // The page redirects to /login when signed out (0 readable chars → false
+    // "broken"). Audit the authenticated path, which renders "Payment Received"
+    // before redirecting to the billing dashboard.
+    auth: AUTH,
   },
   {
     slug: "payment-app-charge",
@@ -263,6 +266,22 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     slug: "auth-cli-login",
     path: "/auth/cli-login",
     route: "auth/cli-login",
+    auth: PUBLIC,
+  },
+  // Cross-host SSO handshake; role-switched by hostname. Without a code/state
+  // the page renders an inert "waiting" state (no redirect).
+  {
+    slug: "auth-bridge",
+    path: "/auth/bridge",
+    route: "auth/bridge",
+    auth: PUBLIC,
+  },
+  // OIDC sign-in bounce target. Without a `rid` param the page shows an
+  // "issuer_unconfigured" or "expired" message (readable content, no redirect).
+  {
+    slug: "oidc-continue",
+    path: "/oidc/continue",
+    route: "oidc/continue",
     auth: PUBLIC,
   },
   {
