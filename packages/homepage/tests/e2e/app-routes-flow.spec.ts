@@ -285,3 +285,84 @@ test("landing page renders its animated shell and primary entrypoint", async ({
   });
   await waitForLandingIntro(page);
 });
+
+test("landing composer is inert while hidden and stays in-viewport when active", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await waitForLandingIntro(page);
+
+  const composer = page.locator('[data-landing-chrome="composer"]');
+  await expect(composer).toHaveAttribute(
+    "data-landing-chrome-visible",
+    "false",
+  );
+  await expect(composer).toHaveAttribute("inert", "");
+  await expect(composer).toHaveAttribute("aria-hidden", "true");
+
+  // Opacity-only hide must not leave the message field in the tab order.
+  const tabTargetsWhileHidden = await page.evaluate(() => {
+    const root = document.querySelector('[data-landing-chrome="composer"]');
+    if (!(root instanceof HTMLElement)) {
+      return { error: "missing-composer" };
+    }
+    const focusables = [
+      ...root.querySelectorAll("textarea, button, a, select, input"),
+    ] as HTMLElement[];
+    return {
+      count: focusables.length,
+      anyIsFocusable: focusables.some((el) => {
+        el.focus();
+        return document.activeElement === el;
+      }),
+    };
+  });
+  expect(tabTargetsWhileHidden).toMatchObject({ anyIsFocusable: false });
+
+  // Swipe imessage → telegram → discord → try to reveal the composer.
+  for (let i = 0; i < 3; i++) {
+    await page.mouse.move(320, 420);
+    await page.mouse.down();
+    await page.mouse.move(40, 420, { steps: 12 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+  }
+
+  await expect(composer).toHaveAttribute(
+    "data-landing-chrome-visible",
+    "true",
+    {
+      timeout: 10_000,
+    },
+  );
+  await expect(composer).not.toHaveAttribute("inert", "");
+  await expect(composer).not.toHaveAttribute("aria-hidden", "true");
+
+  const message = page.getByRole("textbox", { name: "Message Eliza" }).first();
+  await expect(message).toBeVisible();
+  await message.focus();
+  await expect(message).toBeFocused();
+
+  const bounds = await message.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      height: rect.height,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(bounds.height).toBeGreaterThanOrEqual(44);
+  expect(bounds.top).toBeGreaterThanOrEqual(0);
+  expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight + 0.5);
+
+  const voice = page.getByRole("button", { name: /voice input|Send message/i });
+  const voiceBox = await voice.boundingBox();
+  expect(voiceBox).not.toBeNull();
+  if (voiceBox) {
+    expect(voiceBox.height).toBeGreaterThanOrEqual(44);
+    expect(voiceBox.width).toBeGreaterThanOrEqual(44);
+    expect(voiceBox.y + voiceBox.height).toBeLessThanOrEqual(844 + 0.5);
+  }
+});

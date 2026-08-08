@@ -52,6 +52,11 @@ const ShaderBackground = lazy(
 const VideoCall = lazy(() => import("@/components/VideoCall"));
 
 import { buildElizaSmsHref } from "@/lib/contact";
+import {
+  COMPOSER_VIEWPORT_LIFT_PX,
+  hiddenChromeDomProps,
+  landingChromeBottomCss,
+} from "@/lib/landing-chrome-a11y";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
 
 type AnimatedHtmlProps<T extends HTMLElement> = Omit<
@@ -963,8 +968,12 @@ export default function Leaderboard() {
           </div>
         </div>
         <AnimatedDiv
-          className={`fixed bottom-0 left-1/2 -translate-x-1/2 z-20 w-full  ${tryPlatform === "telegram" ? "px-2 pt-3 pb-3 bg-white" : tryPlatform === "discord" ? "px-2 pt-3 pb-3 bg-[#36393f] border-t border-[#202225]" : "px-5 pt-20 pb-6"}`}
+          data-landing-chrome="composer"
+          data-landing-chrome-visible={inputBarVisible ? "true" : "false"}
+          className={`fixed left-1/2 -translate-x-1/2 z-20 w-full  ${tryPlatform === "telegram" ? "px-2 pt-3 pb-3 bg-white" : tryPlatform === "discord" ? "px-2 pt-3 pb-3 bg-[#36393f] border-t border-[#202225]" : "px-5 pt-20 pb-6"}`}
+          {...hiddenChromeDomProps(inputBarVisible)}
           style={{
+            bottom: landingChromeBottomCss(COMPOSER_VIEWPORT_LIFT_PX),
             maxWidth: loginMaxW + 12,
             opacity: inputBarSpring.opacity,
             pointerEvents: inputBarVisible ? "auto" : "none",
@@ -1228,9 +1237,12 @@ export default function Leaderboard() {
           )}
         </AnimatedDiv>
         <AnimatedDiv
+          data-landing-chrome="login"
+          data-landing-chrome-visible={loginBarVisible ? "true" : "false"}
           className="fixed left-1/2 -translate-x-1/2 z-20 w-full gap-4 px-8 flex flex-col "
+          {...hiddenChromeDomProps(loginBarVisible)}
           style={{
-            bottom: loginBottom,
+            bottom: landingChromeBottomCss(loginBottom),
             maxWidth: loginMaxW,
             opacity: loginBarSpring.opacity,
             pointerEvents: loginBarVisible ? "auto" : "none",
@@ -1323,9 +1335,12 @@ export default function Leaderboard() {
           </button>
         </AnimatedDiv>
         <AnimatedDiv
+          data-landing-chrome="verify"
+          data-landing-chrome-visible={verifyBarVisible ? "true" : "false"}
           className="fixed left-1/2 -translate-x-1/2 z-20 w-full gap-4 px-8 flex flex-col"
+          {...hiddenChromeDomProps(verifyBarVisible)}
           style={{
-            bottom: loginBottom - 36,
+            bottom: landingChromeBottomCss(Math.max(loginBottom - 36, 0)),
             maxWidth: loginMaxW,
             opacity: verifyBarSpring.opacity,
             pointerEvents: verifyBarVisible ? "auto" : "none",
