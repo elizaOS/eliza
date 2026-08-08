@@ -411,6 +411,7 @@ export function useMobileNativeTabSurfaces(
   const managedTabIds = useRef(new Set<string>());
   const observedCommands = useRef(new Map<string, ObservedSurfaceCommand>());
   const previousActive = useRef(active);
+  const presentedLeaseRevision = useRef(0);
   const reloadRevision = useRef(0);
   const [, setCommandRevision] = useState(0);
   const failedCommands = [...observedCommands.current.entries()].filter(
@@ -441,7 +442,16 @@ export function useMobileNativeTabSurfaces(
     setCommandRevision((current) => current + 1);
   }, []);
 
-  const requestLeaseReconcile = useCallback((): void => {
+  const requestLeaseReconcile = useCallback((id: string): void => {
+    // A newer hook may have replaced every acknowledged property while this
+    // holder was demoted. Promotion therefore invalidates local success state;
+    // desired geometry, holes, and presentation must all cross the bridge again.
+    const prefix = `${id}:`;
+    for (const key of observedCommands.current.keys()) {
+      if (key === HOST_VISIBILITY_COMMAND || key.startsWith(prefix)) {
+        observedCommands.current.delete(key);
+      }
+    }
     setLeaseRevision((current) => current + 1);
   }, []);
 
@@ -706,7 +716,7 @@ export function useMobileNativeTabSurfaces(
         activeShell,
         id,
         leaseHolder.current,
-        requestLeaseReconcile,
+        () => requestLeaseReconcile(id),
       );
       if (!ownsIntent) continue;
       const request = { id, url: tab.url, policy } as const;
@@ -934,8 +944,10 @@ export function useMobileNativeTabSurfaces(
   // One global transaction selects the active native page, while an overlay,
   // pause, or terminal surface error returns paint/input ownership to the host.
   useEffect(() => {
-    syncVisibility(false);
-  }, [syncVisibility]);
+    const authorityChanged = presentedLeaseRevision.current !== leaseRevision;
+    presentedLeaseRevision.current = leaseRevision;
+    syncVisibility(authorityChanged);
+  }, [leaseRevision, syncVisibility]);
 
   // App pause gives paint/input ownership back to the host immediately. Resume
   // invalidates the hook's successful acknowledgements and replays failed

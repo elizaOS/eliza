@@ -812,6 +812,81 @@ describe("useMobileNativeTabSurfaces", () => {
     older.unmount();
   });
 
+  it("restores a promoted hook's selection, geometry, and occlusions", async () => {
+    const olderHole = elementAt({ left: 16, top: 24, width: 96, height: 48 });
+    olderHole.className = "older-hole";
+    olderHole.style.borderRadius = "18px";
+    const newerHole = elementAt({ left: 220, top: 40, width: 72, height: 32 });
+    newerHole.className = "newer-hole";
+    newerHole.style.borderRadius = "12px";
+    document.body.append(olderHole, newerHole);
+
+    const shell = new RecordingShell();
+    const twoTabs = [tab("a"), tab("b")];
+    const older = renderHook(() =>
+      useMobileNativeTabSurfaces({
+        ...base,
+        tabs: twoTabs,
+        selectedTabId: "a",
+        occlusionSelector: ".older-hole",
+        shell,
+      }),
+    );
+    act(() => {
+      older.result.current.registerSurfaceElement(
+        "a",
+        elementAt({ left: 10, top: 20, width: 300, height: 500 }),
+      );
+      older.result.current.registerSurfaceElement(
+        "b",
+        elementAt({ left: 12, top: 22, width: 302, height: 502 }),
+      );
+    });
+
+    const newer = renderHook(() =>
+      useMobileNativeTabSurfaces({
+        ...base,
+        tabs: twoTabs,
+        selectedTabId: "b",
+        occlusionSelector: ".newer-hole",
+        shell,
+      }),
+    );
+    act(() => {
+      newer.result.current.registerSurfaceElement(
+        "a",
+        elementAt({ left: 110, top: 120, width: 280, height: 480 }),
+      );
+      newer.result.current.registerSurfaceElement(
+        "b",
+        elementAt({ left: 112, top: 122, width: 282, height: 482 }),
+      );
+    });
+    await act(async () => Promise.resolve());
+
+    expect(shell.presentedId).toBe("browser-tab:b");
+    expect(shell.bounds.get("browser-tab:a")?.x).toBe(110);
+    expect(shell.bounds.get("browser-tab:b")?.x).toBe(112);
+    expect(shell.occlusions.get("browser-tab:a")).toEqual([
+      { x: 220, y: 40, width: 72, height: 32, cornerRadius: 12 },
+    ]);
+
+    newer.unmount();
+    await act(async () => Promise.resolve());
+
+    expect(shell.presentedId).toBe("browser-tab:a");
+    expect(shell.bounds.get("browser-tab:a")?.x).toBe(10);
+    expect(shell.bounds.get("browser-tab:b")?.x).toBe(12);
+    expect(shell.occlusions.get("browser-tab:a")).toEqual([
+      { x: 16, y: 24, width: 96, height: 48, cornerRadius: 18 },
+    ]);
+    expect(shell.occlusions.get("browser-tab:b")).toEqual([
+      { x: 16, y: 24, width: 96, height: 48, cornerRadius: 18 },
+    ]);
+
+    older.unmount();
+  });
+
   it("atomically presents the selected surface on tab switch", () => {
     const shell = new RecordingShell();
     const { rerender } = renderHook(
