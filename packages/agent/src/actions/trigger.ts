@@ -478,17 +478,22 @@ async function opCreate(
   // wording never collide.
   const usedDelay =
     delayMs !== undefined && scheduledAtIso === scheduledFromDelay;
-  // Only a once trigger's identity includes its fire time; interval and cron
-  // identities are the intervalMs / cronExpression fields already hashed
-  // below. Hashing a sprayed first-fire timestamp into a recurring trigger's
-  // key would make the same "every morning" ask a "new" trigger every day
-  // instead of a replayed no-op.
+  // The schedule identity is built from the RESOLVED type's own field only:
+  // once -> fire time, interval -> normalized interval, cron -> normalized
+  // expression. Fields the resolution IGNORED (a sprayed first-fire timestamp
+  // on a cron, a sprayed intervalMs alongside a cron, a sprayed cron alongside
+  // an explicit once/interval) must not leak into the key — a field-spraying
+  // planner emits them inconsistently across retries, so hashing them turns
+  // the same "every morning" ask into a "new" trigger instead of a replayed
+  // no-op.
   const scheduleKey =
     triggerType === "once"
       ? usedDelay
         ? `+${delayMs}`
         : (scheduledAtIso ?? "")
-      : "";
+      : triggerType === "interval"
+        ? `every:${intervalMs}`
+        : `cron:${(cronExpression ?? "").toLowerCase().replace(/\s+/g, " ").trim()}`;
   const workflowId = readString(params.workflowId);
   const dedupeWorkflowId = workflowId === undefined ? "" : workflowId;
   // Workflow triggers run autonomously, so they land in the autonomy room. A
@@ -510,7 +515,7 @@ async function opCreate(
   // else's room. Only the same recipient re-asking for the same delivery is
   // a replay.
   const dedupeKey = dedupeHash(
-    `${triggerType}|${instructions.toLowerCase()}|${intervalMs}|${scheduleKey}|${cronExpression ?? ""}|${dedupeWorkflowId}|${creatorId}|${deliveryRoomId}`,
+    `${triggerType}|${instructions.toLowerCase()}|${scheduleKey}|${dedupeWorkflowId}|${creatorId}|${deliveryRoomId}`,
   );
 
   const existingTasks = await runtime.getTasks({
@@ -898,7 +903,7 @@ export const triggerAction: Action = {
     {
       name: "triggerType",
       description:
-        "Trigger schedule type for create — usually inferred: cronExpression -> cron (recurring), delay/scheduledAtIso -> once. Set it explicitly only to resolve a conflict; an explicit 'once' outranks a provided cronExpression.",
+        "Trigger schedule type for create — usually inferred: cronExpression -> cron (recurring), delay/scheduledAtIso -> once. Set it explicitly only to resolve a conflict; an explicit 'once' or 'interval' outranks a provided cronExpression.",
       required: false,
       schema: {
         type: "string" as const,

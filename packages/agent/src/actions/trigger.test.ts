@@ -324,7 +324,24 @@ describe("TRIGGER create — recurrence wins over sprayed one-shot fields", () =
     expect(createdTasks).toHaveLength(0);
   });
 
-  it("ignores a junk delay when a valid cron carries the schedule", async () => {
+  it("ignores an out-of-range delay echo when a valid cron carries the schedule", async () => {
+    // Production-valid arguments: the schema accepts any positive number, and
+    // this one would fail INVALID_DELAY if it were honored as a schedule. Under
+    // a cron it is an ignored first-fire echo and must not block the create.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "take vitamins",
+      cronExpression: "0 8 * * *",
+      delayMinutes: 999_999_999,
+    });
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0].metadata.trigger?.triggerType).toBe("cron");
+  });
+
+  it("ignores an unparseable delay under a cron (defense-in-depth behind validateToolArgs)", async () => {
+    // The production boundary rejects a non-number delay before the handler
+    // runs; this direct-handler call pins the inner guard so a bypassed or
+    // relaxed boundary still cannot let a junk echo block a valid recurrence.
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const result = await create(runtime, {
       instructions: "take vitamins",
@@ -333,6 +350,17 @@ describe("TRIGGER create — recurrence wins over sprayed one-shot fields", () =
     });
     expect(result?.success).toBe(true);
     expect(createdTasks[0].metadata.trigger?.triggerType).toBe("cron");
+  });
+
+  it("fails structurally when triggerType cron arrives without a cronExpression", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "take vitamins",
+      triggerType: "cron",
+    });
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("INVALID_CRON");
+    expect(createdTasks).toHaveLength(0);
   });
 
   it("dedupes a re-asked recurring reminder even when the sprayed first-fire fields differ", async () => {
@@ -361,6 +389,106 @@ describe("TRIGGER create — recurrence wins over sprayed one-shot fields", () =
       cronExpression: "0 8 * * *",
       delayMinutes: 990,
       scheduledAtIso: new Date(Date.now() + 990 * 60_000).toISOString(),
+    });
+    expect(second?.success).toBe(true);
+    expect(second?.data?.duplicateTaskId).toBeDefined();
+    expect(createdTasks).toHaveLength(1);
+  });
+
+  it("replays as a no-op when a clean cron retry follows the full spray shape", async () => {
+    // Schedule identity is type-specific: the sprayed intervalMs (and every
+    // other ignored echo) must not enter a cron trigger's dedupe key, or the
+    // clean retry hashes the default interval and mints a duplicate task.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const first = await create(runtime, {
+      instructions: "brush your teeth",
+      displayName: "brush teeth",
+      triggerType: "cron",
+      cronExpression: "0 9 * * *",
+      delayMinutes: 420,
+      delaySeconds: 25_200,
+      scheduledAtIso: new Date(Date.now() + 7 * 3_600_000).toISOString(),
+      intervalMs: 86_400_000,
+      maxRuns: 100,
+    });
+    expect(first?.success).toBe(true);
+    const firstTrigger = createdTasks[0].metadata.trigger;
+    (
+      runtime.getTasks as unknown as { mockResolvedValue: (v: Task[]) => void }
+    ).mockResolvedValue([
+      {
+        id: stringToUuid("existing-sprayed-cron-task"),
+        name: "TRIGGER_DISPATCH",
+        tags: ["queue", "repeat", "trigger"],
+        metadata: { updatedAt: Date.now(), trigger: firstTrigger },
+      } as unknown as Task,
+    ]);
+    const second = await create(runtime, {
+      instructions: "brush your teeth",
+      cronExpression: "0 9 * * *",
+    });
+    expect(second?.success).toBe(true);
+    expect(second?.data?.duplicateTaskId).toBeDefined();
+    expect(createdTasks).toHaveLength(1);
+  });
+
+  it("keeps an explicit interval identity stable when a cron echo is sprayed alongside", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const first = await create(runtime, {
+      instructions: "poll the queue",
+      triggerType: "interval",
+      intervalMs: 3_600_000,
+      cronExpression: "0 9 * * *",
+    });
+    expect(first?.success).toBe(true);
+    const firstTrigger = createdTasks[0].metadata.trigger;
+    expect(firstTrigger?.triggerType).toBe("interval");
+    (
+      runtime.getTasks as unknown as { mockResolvedValue: (v: Task[]) => void }
+    ).mockResolvedValue([
+      {
+        id: stringToUuid("existing-interval-task"),
+        name: "TRIGGER_DISPATCH",
+        tags: ["queue", "repeat", "trigger"],
+        metadata: { updatedAt: Date.now(), trigger: firstTrigger },
+      } as unknown as Task,
+    ]);
+    const second = await create(runtime, {
+      instructions: "poll the queue",
+      triggerType: "interval",
+      intervalMs: 3_600_000,
+    });
+    expect(second?.success).toBe(true);
+    expect(second?.data?.duplicateTaskId).toBeDefined();
+    expect(createdTasks).toHaveLength(1);
+  });
+
+  it("keeps an explicit once identity stable when a cron echo is sprayed alongside", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const explicit = new Date(Date.now() + 3_600_000).toISOString();
+    const first = await create(runtime, {
+      instructions: "join the standup",
+      triggerType: "once",
+      scheduledAtIso: explicit,
+      cronExpression: "0 9 * * *",
+    });
+    expect(first?.success).toBe(true);
+    const firstTrigger = createdTasks[0].metadata.trigger;
+    expect(firstTrigger?.triggerType).toBe("once");
+    (
+      runtime.getTasks as unknown as { mockResolvedValue: (v: Task[]) => void }
+    ).mockResolvedValue([
+      {
+        id: stringToUuid("existing-once-task"),
+        name: "TRIGGER_DISPATCH",
+        tags: ["queue", "repeat", "trigger"],
+        metadata: { updatedAt: Date.now(), trigger: firstTrigger },
+      } as unknown as Task,
+    ]);
+    const second = await create(runtime, {
+      instructions: "join the standup",
+      triggerType: "once",
+      scheduledAtIso: explicit,
     });
     expect(second?.success).toBe(true);
     expect(second?.data?.duplicateTaskId).toBeDefined();
