@@ -18,6 +18,11 @@ import {
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
 import { isAndroidLocalSideloadBuild } from "../platform/android-runtime";
+import {
+  loadAgentProfileRegistry,
+  removeAgentProfile,
+} from "../state/agent-profiles";
+import { clearPersistedActiveServer } from "../state/persistence";
 import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
@@ -45,7 +50,7 @@ import type {
   WebSocketConnectionState,
   WsEventHandler,
 } from "./client-types";
-import { ApiError } from "./client-types";
+import { ApiError, isCloudAgentGoneError } from "./client-types";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
 import {
@@ -704,6 +709,8 @@ export class ElizaClient {
   private _baseUrl: string;
   private _userSetBase: boolean;
   private _token: string | null;
+  /** Last cloud agent base released after an agent-gone 404 (idempotency). */
+  private _releasedGoneAgentBase: string | null = null;
   private readonly clientId: string;
   private requestTransport: AgentRequestTransport = fetchAgentTransport;
   private ws: WebSocket | null = null;
@@ -1098,7 +1105,7 @@ export class ElizaClient {
           ? rawBodyRetryAfter
           : undefined;
       const retryAfter = bodyRetryAfter ?? headerRetryAfter;
-      throw new ApiError({
+      const error = new ApiError({
         kind: "http",
         path,
         status: res.status,
@@ -1106,8 +1113,55 @@ export class ElizaClient {
         code,
         retryAfter,
       });
+      // Structural agent-gone from a bound cloud agent host: drop the dead
+      // binding at the request choke point so background callers (lifeops
+      // activity-signals, status probes, …) stop hammering a deleted agent
+      // forever. Join-flow recovery alone only covered the selection path
+      // (#17837); login-page background posts were still bound (#18048).
+      this.releaseStaleCloudAgentBindingIfGone(error);
+      throw error;
     }
     return res;
+  }
+
+  /**
+   * When a cloud agent host answers the unambiguous "agent not found or not
+   * running" 404, clear the live base + persisted active-server / matching
+   * agent profile so subsequent requests stop targeting the corpse. No-ops for
+   * local agents, control-plane hosts, and non-agent-gone errors. Idempotent
+   * per base URL for the life of this client instance.
+   */
+  private releaseStaleCloudAgentBindingIfGone(error: ApiError): void {
+    if (!isCloudAgentGoneError(error)) return;
+    const base = this.baseUrl;
+    if (!base) return;
+    if (
+      !isDedicatedCloudAgentBase(base) &&
+      !isSharedRuntimeRestAdapterBase(base)
+    ) {
+      return;
+    }
+    if (this._releasedGoneAgentBase === base) return;
+    this._releasedGoneAgentBase = base;
+
+    try {
+      clearPersistedActiveServer();
+      const normalizedBase = normalizeBaseUrl(base).replace(/\/+$/, "");
+      const registry = loadAgentProfileRegistry();
+      for (const profile of [...registry.profiles]) {
+        const profileBase = normalizeBaseUrl(profile.apiBase ?? "").replace(
+          /\/+$/,
+          "",
+        );
+        if (profileBase && profileBase === normalizedBase) {
+          removeAgentProfile(profile.id);
+        }
+      }
+      this.setBaseUrl(null);
+    } catch {
+      // error-policy:J6 best-effort binding teardown must not mask the original
+      // agent-gone error the caller still needs to handle.
+    }
   }
 
   private rawRequestUrl(path: string): string {
