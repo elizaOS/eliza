@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
 import {
+  isCloudAuthHandoffSurface,
   publishCloudAuthComplete,
   subscribeCloudAuthComplete,
 } from "../../../auth/cloud-auth-complete-signal";
@@ -88,17 +89,6 @@ function resolveCliLoginMessageTargetOrigin(returnTo: string | null): string {
   if (typeof window === "undefined") return "https://elizacloud.ai";
   if (!returnTo) return window.location.origin;
   return new URL(returnTo).origin;
-}
-
-function hasLiveOpener(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const opener = window.opener as Window | null;
-    return Boolean(opener && !opener.closed);
-  } catch (error) {
-    void error;
-    return false;
-  }
 }
 
 function notifyCliLoginComplete(
@@ -261,10 +251,11 @@ export default function CliLoginPage() {
         const data = (await response.json()) as { keyPrefix: string };
         notifyCliLoginComplete(activeSessionId, launchReturnTo);
 
-        // Live opener: the app tab owns continuation (poll / postMessage).
-        // Close this surface and never navigate returnTo — that would open a
-        // second app shell when window.close() is ignored (#18001).
-        if (hasLiveOpener()) {
+        // Handoff surface (live opener OR named cloud-auth popup): the opener
+        // poll / BroadcastChannel owns continuation. Never navigate returnTo —
+        // that loads a second app shell when opener is severed by COOP or the
+        // opener tab closed while auth was in flight (#18001).
+        if (isCloudAuthHandoffSurface()) {
           tryCloseAuthWindow();
           setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
           return;

@@ -233,6 +233,44 @@ describe("CliLoginPage", () => {
     expect(screen.queryByText("Returning to app")).toBeNull();
   });
 
+  it("named cloud-auth popup without opener stays terminal (no returnTo second shell)", async () => {
+    // COOP / opener closed mid-flight: window.name still identifies the handoff
+    // surface, but hasLiveOpener would be false. Must not location.replace.
+    searchParamsRef.current = new URLSearchParams({
+      session: "sess-1",
+      returnTo: "http://localhost:2138/chat?firstRun=1",
+    });
+    sessionAuthRef.current = {
+      ready: true,
+      authenticated: true,
+      user: { id: "u1", email: "a@b.co" },
+    };
+    apiFetchMock.mockResolvedValue({
+      json: async () => ({ keyPrefix: "ek_live_abc" }),
+    });
+    Object.defineProperty(window, "opener", {
+      value: null,
+      configurable: true,
+    });
+    const originalName = window.name;
+    window.name = "eliza-cloud-auth";
+    const replace = stubLocationReplace();
+    const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
+
+    try {
+      render(<CliLoginPage />);
+
+      await waitFor(() =>
+        expect(screen.getByText("Authentication Complete!")).toBeTruthy(),
+      );
+      expect(replace).not.toHaveBeenCalled();
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("Returning to app")).toBeNull();
+    } finally {
+      window.name = originalName;
+    }
+  });
+
   it("without an opener, redirects authenticated app-launched sessions to sanitized returnTo", async () => {
     searchParamsRef.current = new URLSearchParams({
       session: "sess-1",
