@@ -77,6 +77,14 @@ describe("DefaultMessageService — RUN_ENDED post-delivery detach", () => {
 		expect(result.mode).toBe("none");
 		// Must not have waited on the gated RUN_ENDED handler.
 		expect(elapsedMs).toBeLessThan(200);
+		// The terminal rides the detached tracker, so its first turn may land a
+		// few microtask ticks after handleMessage resolves (Node's scheduling
+		// differs across platforms — observed on Windows CI). Yield bounded
+		// ticks until the handler starts; the gate still blocks completion, so
+		// a blocking regression fails the elapsed assertion above instead.
+		for (let tick = 0; tick < 1_000 && !runEndedStarted; tick += 1) {
+			await Promise.resolve();
+		}
 		expect(runEndedStarted).toBe(true);
 		expect(runEndedFinished).toBe(false);
 		expect(pendingPostDeliveryTaskCount(runtime)).toBeGreaterThan(0);

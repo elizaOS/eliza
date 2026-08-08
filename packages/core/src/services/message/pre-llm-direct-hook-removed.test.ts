@@ -18,6 +18,7 @@ import { ChannelType, type Content, type UUID } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
 import { DefaultMessageService } from "../message";
+import { drainPostDeliveryTasks } from "../post-delivery-task-tracker.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const USER_ID = "00000000-0000-0000-0000-0000000000b1" as UUID;
@@ -223,6 +224,10 @@ describe("message service pre-LLM direct hook removed (#14715)", () => {
 				"RESPONSE_HANDLER_AFTER",
 			]),
 		);
+		// RUN_ENDED rides the detached post-delivery tracker (#17753/#17999), so
+		// it may not have emitted by the time handleMessage resolves. Drain the
+		// tracker before asserting the run terminal fired.
+		await drainPostDeliveryTasks(runtime);
 		expect(
 			emitEvent.mock.calls.some(([event]) => event === EventType.RUN_ENDED),
 		).toBe(true);
