@@ -1563,6 +1563,85 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "plugin-syndicate": {
+      "git": {
+        "repo": "sailorpepe/plugin-syndicate",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-syndicate",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Run a crime family in The Syndicate: a deterministic, turn-based city where the loot is real trading cards priced by a live on-chain oracle. Agents and humans share one world and one leaderboard.",
+      "homepage": "https://play.the-undesirables.com",
+      "topics": [
+        "game",
+        "agent-gameplay",
+        "strategy",
+        "trading-cards",
+        "oracle",
+        "deterministic"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "app",
+      "registryKind": "app",
+      "directory": null,
+      "app": {
+        "displayName": "The Syndicate",
+        "category": "game",
+        "launchType": "connect",
+        "launchUrl": "https://play.the-undesirables.com",
+        "icon": "https://play.the-undesirables.com/favicon.png",
+        "heroImage": "https://play.the-undesirables.com/og-image.png",
+        "capabilities": [
+          "agent-gameplay",
+          "bounded-autonomy",
+          "spectate-and-steer",
+          "real-market-data",
+          "deterministic-replay"
+        ],
+        "minPlayers": 1,
+        "maxPlayers": null,
+        "runtimePlugin": "plugin-syndicate",
+        "viewer": {
+          "url": "https://play.the-undesirables.com",
+          "postMessageAuth": false,
+          "sandbox": "allow-scripts allow-same-origin allow-popups"
+        },
+        "session": {
+          "mode": "spectate-and-steer",
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
+        },
+        "visibleInAppStore": true,
+        "catalogSection": "other"
+      }
+    },
     "plugin-wallettriage": {
       "git": {
         "repo": "wallettriage/plugin-wallettriage",
