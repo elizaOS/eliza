@@ -3,6 +3,9 @@
  * reconciliation, child ambiguity, prompt-injection safety, and C/P/E/M edges.
  */
 import { randomUUID } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   type EntityStore,
   type RelationshipStore,
@@ -1082,11 +1085,14 @@ describe("school source facts — real PGlite", () => {
 
   it("recovers source facts, correction state, and action bundles after a real PGlite runtime restart", async () => {
     const characterName = `SchoolRestart-${randomUUID()}`;
+    // Restart persistence needs an on-disk store: the helper's default
+    // in-memory database cannot be reopened by the second runtime.
+    const pgliteDir = mkdtempSync(join(tmpdir(), "lifeops-school-restart-"));
     const firstRuntimeResult = await createLifeOpsTestRuntime({
       characterName,
+      pgliteDir,
       removePgliteDirOnCleanup: false,
     });
-    const pgliteDir = firstRuntimeResult.pgliteDir;
     let secondRuntimeResult: RealTestRuntimeResult | null = null;
     try {
       const firstRuntime = firstRuntimeResult.runtime;

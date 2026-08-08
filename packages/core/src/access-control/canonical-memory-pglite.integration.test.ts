@@ -5,6 +5,8 @@
  * permission from the trusted delivery-audience gate against live room state.
  */
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMessageMemory } from "../memory";
 import {
@@ -78,8 +80,14 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 	let testRuntime: TestRuntimeResult | undefined;
 
 	beforeEach(async () => {
+		// The restart case below reopens the same data dir with a second
+		// runtime, so this suite needs a real on-disk store rather than the
+		// helper's default in-memory database.
 		testRuntime = await createTestRuntime({
 			characterName: "CanonicalMemoryAgent",
+			pgliteDir: fs.mkdtempSync(
+				path.join(os.tmpdir(), "eliza-canonical-memory-"),
+			),
 			removePgliteDirOnCleanup: false,
 		});
 		testRuntime.runtime.character.settings = {

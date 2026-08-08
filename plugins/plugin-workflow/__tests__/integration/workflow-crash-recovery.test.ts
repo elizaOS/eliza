@@ -5,10 +5,8 @@
  * issuing that HTTP request again.
  */
 import { expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { stringToUuid } from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
@@ -20,6 +18,7 @@ import {
   type SmithersExecutionPlan,
 } from '../../src/services/smithers-runtime';
 import type { WorkflowDefinition, WorkflowExecution } from '../../src/types/index';
+import { makeWorkflowPgliteStore } from '../pglite-test-store';
 
 async function waitForFinishedExecution(
   service: EmbeddedWorkflowService,
@@ -35,10 +34,10 @@ async function waitForFinishedExecution(
 }
 
 test('startup resumes a killed execution without duplicating its persisted side effect', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'workflow-crash-recovery-'));
-  const client = new PGlite({ dataDir: join(root, 'pglite') });
+  const store = makeWorkflowPgliteStore('workflow-crash-recovery-');
+  const client = new PGlite({ dataDir: store.dataDir });
   const db = drizzle(client, { schema: dbSchema });
-  const agentId = stringToUuid(`workflow-crash-recovery-${root}`);
+  const agentId = stringToUuid(`workflow-crash-recovery-${store.dataDir}`);
   const runtime = {
     agentId,
     character: { settings: { WORKFLOW_SEED_DEFAULTS: 'false' } },
@@ -206,7 +205,7 @@ test('startup resumes a killed execution without duplicating its persisted side 
     server.closeAllConnections?.();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await client.close();
-    await rm(root, { recursive: true, force: true });
+    await store.cleanup();
     await Promise.all([
       rm(smithersDbPath, { force: true }),
       rm(`${smithersDbPath}-wal`, { force: true }),

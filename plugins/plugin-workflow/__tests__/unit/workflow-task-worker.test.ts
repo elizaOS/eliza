@@ -1,8 +1,5 @@
 /** Unit tests for the workflow trigger task worker firing scheduled runs against a real PGlite-backed EmbeddedWorkflowService. */
 import { describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import type { IAgentRuntime, Task, TaskWorker } from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
@@ -12,6 +9,7 @@ import {
   TRIGGER_TASK_NAME,
   WORKFLOW_TASK_KIND,
 } from '../../src/services/embedded-workflow-service';
+import { makeWorkflowPgliteStore } from '../pglite-test-store';
 
 setDefaultTimeout(30_000);
 
@@ -23,8 +21,8 @@ interface TestRuntimeContext {
 }
 
 async function makeRuntime(): Promise<TestRuntimeContext> {
-  const dir = await mkdtemp(join(tmpdir(), 'workflow-task-worker-'));
-  const client = new PGlite({ dataDir: join(dir, 'pglite') });
+  const store = makeWorkflowPgliteStore('workflow-task-worker-');
+  const client = new PGlite({ dataDir: store.dataDir });
   const db = drizzle(client, { schema: dbSchema });
 
   const workers = new Map<string, TaskWorker>();
@@ -64,7 +62,7 @@ async function makeRuntime(): Promise<TestRuntimeContext> {
     tasks,
     async close() {
       await client.close();
-      await rm(dir, { recursive: true, force: true });
+      await store.cleanup();
     },
   };
 }
