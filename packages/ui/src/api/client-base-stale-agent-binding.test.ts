@@ -22,6 +22,8 @@ import type { AgentRequestTransport } from "./transport";
 
 const DEAD_AGENT_BASE =
   "https://85a07f11-a3dc-4394-b1f2-318e22338afd.staging.elizacloud.ai";
+const LIVE_AGENT_BASE =
+  "https://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.staging.elizacloud.ai";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -60,6 +62,13 @@ describe("ElizaClient stale cloud-agent binding release", () => {
           apiBase: DEAD_AGENT_BASE,
           createdAt: new Date().toISOString(),
         },
+        {
+          id: "profile-other",
+          label: "Other",
+          kind: "cloud",
+          apiBase: LIVE_AGENT_BASE,
+          createdAt: new Date().toISOString(),
+        },
       ],
     });
 
@@ -83,8 +92,94 @@ describe("ElizaClient stale cloud-agent binding release", () => {
     expect(isCloudAgentGoneLike(caught)).toBe(true);
     expect(client.getBaseUrl()).toBe("");
     expect(loadPersistedActiveServer()).toBeNull();
-    expect(loadAgentProfileRegistry().profiles).toEqual([]);
+    const registry = loadAgentProfileRegistry();
+    // Survivor stays catalogued but is NOT auto-activated (no live connection).
+    expect(registry.profiles.map((p) => p.id)).toEqual(["profile-other"]);
+    expect(registry.activeProfileId).toBeNull();
     expect(localStorage.getItem("elizaos_api_base")).toBeNull();
+  });
+
+  it("releases on allowNonOk probes (health poll path)", async () => {
+    savePersistedActiveServer({
+      id: "cloud:dead",
+      kind: "cloud",
+      label: "Dead",
+      apiBase: DEAD_AGENT_BASE,
+    });
+
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockResolvedValue(
+        jsonResponse(404, { error: "agent not found or not running" }),
+      );
+
+    const client = new ElizaClient(DEAD_AGENT_BASE, "token");
+    client.setRequestTransport({ request });
+
+    const res = await client.rawRequest("/api/status", undefined, {
+      allowNonOk: true,
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      error: "agent not found or not running",
+    });
+    expect(client.getBaseUrl()).toBe("");
+    expect(loadPersistedActiveServer()).toBeNull();
+  });
+
+  it("does not clear a newly selected binding when a stale response arrives late", async () => {
+    savePersistedActiveServer({
+      id: "cloud:live",
+      kind: "cloud",
+      label: "Live",
+      apiBase: LIVE_AGENT_BASE,
+    });
+    saveAgentProfileRegistry({
+      version: 1,
+      activeProfileId: "profile-live",
+      profiles: [
+        {
+          id: "profile-live",
+          label: "Live",
+          kind: "cloud",
+          apiBase: LIVE_AGENT_BASE,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    let resolveDead!: (value: Response) => void;
+    const deadResponse = new Promise<Response>((resolve) => {
+      resolveDead = resolve;
+    });
+    const request = vi.fn<AgentRequestTransport["request"]>(async (url) => {
+      if (String(url).startsWith(DEAD_AGENT_BASE)) {
+        return deadResponse;
+      }
+      return jsonResponse(200, { ok: true });
+    });
+
+    const client = new ElizaClient(DEAD_AGENT_BASE, "token");
+    client.setRequestTransport({ request });
+
+    const pending = client.fetch("/api/lifeops/activity-signals", {
+      method: "POST",
+    });
+    // User switches to a healthy agent while the dead request is in flight.
+    client.setBaseUrl(LIVE_AGENT_BASE);
+    savePersistedActiveServer({
+      id: "cloud:live",
+      kind: "cloud",
+      label: "Live",
+      apiBase: LIVE_AGENT_BASE,
+    });
+
+    resolveDead(jsonResponse(404, { error: "agent not found or not running" }));
+    await expect(pending).rejects.toBeInstanceOf(ApiError);
+
+    expect(client.getBaseUrl()).toBe(LIVE_AGENT_BASE);
+    expect(loadPersistedActiveServer()?.apiBase).toBe(LIVE_AGENT_BASE);
+    expect(loadAgentProfileRegistry().activeProfileId).toBe("profile-live");
   });
 
   it("does not clear a local agent binding on an unrelated 404", async () => {
