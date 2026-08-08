@@ -380,27 +380,71 @@ async function dispatchGoogle(
   const side = normalizeSide(params.side) ?? "owner";
   switch (subaction) {
     case "connect": {
-      const response = await service.startGoogleConnector(
-        {
-          side,
-          mode: params.mode,
-          capabilities: params.capabilities,
-          redirectUrl: params.redirectUrl,
-        },
-        INTERNAL_URL,
-      );
-      return {
-        success: true,
-        text: response.authUrl
+      // Pin OAuth URLs and missing-plugin config cards as verified user-facing
+      // text so the planner cannot paraphrase them into vague "401" prose and
+      // drop the handoff (same contract as CALENDAR_SOURCES connect).
+      try {
+        const response = await service.startGoogleConnector(
+          {
+            side,
+            mode: params.mode,
+            capabilities: params.capabilities,
+            redirectUrl: params.redirectUrl,
+          },
+          INTERNAL_URL,
+        );
+        const text = response.authUrl
           ? `Open this URL to finish Google connect: ${response.authUrl}`
-          : `Google connector started for side=${side}, mode=${response.mode}.`,
-        data: {
-          actionName: ACTION_NAME,
-          connector: "google",
-          subaction,
-          response,
-        },
-      };
+          : `Google connector started for side=${side}, mode=${response.mode}.`;
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          // OAuth URL must stay byte-exact; mode-only ack is still final.
+          verifiedUserFacing: true,
+          data: {
+            actionName: ACTION_NAME,
+            connector: "google",
+            subaction,
+            response,
+            ...(response.authUrl
+              ? { awaitingUserAction: true, awaitingUserInput: true }
+              : {}),
+          },
+        };
+      } catch (error) {
+        // error-policy:J1 Boundary: expected LifeOps failures become owner
+        // handoffs; unexpected errors rethrow into the planner.
+        if (error instanceof LifeOpsServiceError) {
+          const needsConfig =
+            error.status === 503 ||
+            /plugin-google-workspace|OAuth is not registered|required before starting/i.test(
+              error.message,
+            );
+          // Same short id as CALENDAR_SOURCES configuration_required ([CONFIG:google])
+          // so the chat widget resolves one consistent Google setup surface.
+          const text = needsConfig
+            ? withConfigCard(error.message, "google")
+            : error.message;
+          return {
+            success: false,
+            text,
+            userFacingText: text,
+            verifiedUserFacing: true,
+            data: {
+              actionName: ACTION_NAME,
+              connector: "google",
+              subaction,
+              status: error.status,
+              error: error.code ?? "GOOGLE_CONNECT_FAILED",
+              ...(needsConfig
+                ? { awaitingUserAction: true, awaitingUserInput: true }
+                : {}),
+            },
+          };
+        }
+        throw error;
+      }
     }
     case "disconnect": {
       const status = await service.disconnectGoogleConnector(
@@ -1368,6 +1412,10 @@ export const connectorAction: Action & {
 } = {
   name: ACTION_NAME,
   similes: [
+    // Prefer CONNECT_GOOGLE_ACCOUNT for account-level Google OAuth. Calendar
+    // feed connect phrases ("connect google calendar") must route to
+    // CALENDAR_SOURCES — CONNECT_GOOGLE remains as a legacy alias only.
+    "CONNECT_GOOGLE_ACCOUNT",
     "CONNECT_GOOGLE",
     "CONNECT_TELEGRAM",
     "CONNECT_DISCORD",
@@ -1391,15 +1439,15 @@ export const connectorAction: Action & {
   description:
     "Installed connector account state: connect, disconnect, verify, status, list. " +
     `Actions: ${VALID_SUBACTIONS.join(", ")}. ` +
-    "External accounts: Google, Telegram, Discord, Slack, etc. " +
+    "External accounts: Google (Gmail/Drive package OAuth), Telegram, Discord, Slack, etc. " +
+    "Do NOT use this for 'connect Google Calendar' / calendar feed authorization — use CALENDAR_SOURCES. " +
     "Connector kinds from runtime ConnectorRegistry; verify active upstream API probe. " +
     "Plugin install/uninstall/configure -> use PLUGIN.",
   descriptionCompressed:
-    "CONNECTOR accounts: connect|disconnect|verify|status|list; plugin install/config -> PLUGIN",
+    "CONNECTOR accounts: connect|disconnect|verify|status|list; calendar feed connect -> CALENDAR_SOURCES; plugin install -> PLUGIN",
   contexts: [
     "connectors",
     "settings",
-    "calendar",
     "email",
     "messaging",
     "contacts",
@@ -1407,6 +1455,8 @@ export const connectorAction: Action & {
     "browser",
   ],
   roleGate: { minRole: "OWNER" },
+  routingHint:
+    "connect/link Google Calendar or any calendar source/feed authorization -> CALENDAR_SOURCES; Gmail/Drive/account Google OAuth without calendar-feed wording -> CONNECTOR; package install/config -> PLUGIN",
   suppressPostActionContinuation: true,
 
   validate: async () => true,

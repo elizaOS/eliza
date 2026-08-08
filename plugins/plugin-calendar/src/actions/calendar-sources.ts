@@ -917,11 +917,22 @@ export function createCalendarSourcesAction(
       "CONNECT_CALENDAR_SOURCE",
       "RECONNECT_CALENDAR_SOURCE",
       "MANAGE_CALENDAR_SOURCES",
+      // Natural-language connect intents must win over CONNECTOR.CONNECT_GOOGLE
+      // so Google/Microsoft/Apple calendar handoffs emit [CONFIG:…] / OAuth /
+      // permission_request cards instead of generic account-connect prose.
+      "CONNECT_CALENDAR",
+      "CONNECT_GOOGLE_CALENDAR",
+      "CONNECT_MICROSOFT_CALENDAR",
+      "CONNECT_APPLE_CALENDAR",
+      "LINK_CALENDAR",
+      "LINK_GOOGLE_CALENDAR",
+      "ADD_GOOGLE_CALENDAR",
+      "SETUP_GOOGLE_CALENDAR",
     ],
     description:
-      "Read and change which calendar sources feed the owner's calendar, across Google, Microsoft, Apple, and ICS. select and deselect are writes: they durably include or exclude a source from the combined feed, and are the way to act on a source. Call list before select/deselect; echo provider, grantId, connectorAccountId, calendarId, and version exactly. Connect/reconnect returns OAuth, device-permission, configuration, or verified ICS states and never implies authorization is complete. New ICS/webcal subscriptions are added by the owner in the source-manager UI; subscription URLs never pass through this action.",
+      "Read and change which calendar sources feed the owner's calendar, across Google, Microsoft, Apple, and ICS. Prefer this action for any 'connect/link/add my calendar' request (including 'connect Google Calendar') — do not use CONNECTOR or PLUGIN for calendar feed authorization. select and deselect are writes: they durably include or exclude a source from the combined feed, and are the way to act on a source. Call list before select/deselect; echo provider, grantId, connectorAccountId, calendarId, and version exactly. Connect/reconnect returns OAuth, device-permission, configuration ([CONFIG:…]), or verified ICS states and never implies authorization is complete. New ICS/webcal subscriptions are added by the owner in the source-manager UI; subscription URLs never pass through this action.",
     descriptionCompressed:
-      "calendar sources: list reads; select|deselect WRITE feed inclusion; connect|reconnect start owner auth; exact identity + version; ics create=owner UI only",
+      "calendar sources: list; select|deselect WRITE feed; connect|reconnect owner auth + [CONFIG] cards; prefer over CONNECTOR for calendar; ics create=owner UI",
     tags: [
       "domain:calendar",
       "capability:read",
@@ -932,7 +943,7 @@ export function createCalendarSourcesAction(
     contexts: ["general", "calendar", "connectors"],
     roleGate: { minRole: "OWNER" },
     routingHint:
-      "calendar source connection, reconnection, health, or including/excluding a calendar from the feed (a durable write, not just a report) -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR",
+      "connect/link/add/setup Google|Microsoft|Apple calendar, reconnect calendar source, calendar source health, or include/exclude a calendar from the feed -> CALENDAR_SOURCES (not CONNECTOR, not PLUGIN); calendar event CRUD -> CALENDAR; Gmail/Drive account without calendar wording -> CONNECTOR",
     suppressPostActionContinuation: true,
     validate: authorize,
     handler: async (runtime, message, _state, options, callback) => {
@@ -1168,6 +1179,32 @@ export function createCalendarSourcesAction(
           name: "{{agentName}}",
           content: {
             text: "I’ll start least-privilege Google Calendar authorization. I won’t claim it is connected until authorization completes.",
+            actions: [ACTION_NAME],
+          },
+        },
+      ],
+      [
+        {
+          name: "{{name1}}",
+          content: { text: "connect google calendar" },
+        },
+        {
+          name: "{{agentName}}",
+          content: {
+            text: "I’ll start Google Calendar source connection and surface the owner handoff card or OAuth URL.",
+            actions: [ACTION_NAME],
+          },
+        },
+      ],
+      [
+        {
+          name: "{{name1}}",
+          content: { text: "can u do it now; connect google cal" },
+        },
+        {
+          name: "{{agentName}}",
+          content: {
+            text: "Starting Google Calendar source connect via CALENDAR_SOURCES.",
             actions: [ACTION_NAME],
           },
         },

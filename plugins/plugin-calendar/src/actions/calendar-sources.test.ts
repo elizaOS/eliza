@@ -259,6 +259,27 @@ describe("CALENDAR_SOURCES action", () => {
     });
   });
 
+  it("claims natural-language Google calendar connect intents over CONNECTOR", () => {
+    // Planner selection uses similes/routingHint/examples; without these
+    // CONNECT_GOOGLE on CONNECTOR steals "connect google calendar" and drops
+    // the verified [CONFIG:…] handoff path.
+    expect(calendarSourcesAction.similes).toEqual(
+      expect.arrayContaining([
+        "CONNECT_GOOGLE_CALENDAR",
+        "CONNECT_CALENDAR",
+        "LINK_GOOGLE_CALENDAR",
+      ]),
+    );
+    expect(calendarSourcesAction.routingHint).toMatch(/not CONNECTOR/i);
+    expect(calendarSourcesAction.routingHint).toMatch(/CALENDAR_SOURCES/i);
+    const exampleTexts = (calendarSourcesAction.examples ?? [])
+      .flat()
+      .map((turn) => turn.content?.text ?? "")
+      .join("\n")
+      .toLowerCase();
+    expect(exampleTexts).toContain("connect google calendar");
+  });
+
   it("rejects reconnect when the grant and account identities disagree", async () => {
     const { runtime, manager } = runtimeFixture();
     const startOAuth = vi.fn(async () => ({
