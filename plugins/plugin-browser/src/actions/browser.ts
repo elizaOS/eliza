@@ -763,6 +763,10 @@ export const browserAction: Action = {
       pixels: params?.pixels,
       script: params?.script,
       selector: params?.selector?.trim(),
+      // “Open” is a user-facing navigation request, so its receipt must name
+      // the page the user can actually see. Background creation remains
+      // available through the lower-level workspace API for preloading.
+      show: subaction === "open" ? true : undefined,
       subaction,
       tabAction: params?.tabAction ?? normalizeLegacyTabAction(params?.action),
       text: params?.text,

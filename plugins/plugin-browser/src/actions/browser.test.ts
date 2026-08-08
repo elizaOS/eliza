@@ -92,6 +92,7 @@ describe("BROWSER action", () => {
 
     expect(service.execute).toHaveBeenCalledWith(
       expect.objectContaining({
+        show: true,
         subaction: "open",
         url: "https://example.com/path",
       }),
@@ -99,6 +100,7 @@ describe("BROWSER action", () => {
     );
     expect(result?.data.command).toEqual(
       expect.objectContaining({
+        show: true,
         subaction: "open",
         url: "https://example.com/path",
       }),
