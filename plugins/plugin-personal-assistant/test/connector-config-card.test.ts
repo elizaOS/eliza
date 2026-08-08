@@ -141,12 +141,12 @@ describe("CONNECTOR Google connect handoff cards", () => {
     });
   });
 
-  it("emits a verified [CONFIG:google] card when OAuth cannot start", async () => {
+  it("emits a verified [CONFIG:google] card with sanitized copy when OAuth cannot start", async () => {
     const { LifeOpsServiceError } = await import("../src/lifeops/service.js");
     mocks.startGoogleConnector.mockRejectedValue(
       new LifeOpsServiceError(
         503,
-        "@elizaos/plugin-google-workspace is required before starting Google OAuth.",
+        "@elizaos/plugin-google-workspace is required before starting Google OAuth. internal-debug=xyz",
       ),
     );
     const result = await connect("google");
@@ -154,6 +154,9 @@ describe("CONNECTOR Google connect handoff cards", () => {
     expect(result.verifiedUserFacing).toBe(true);
     expect(result.text).toContain("[CONFIG:google]");
     expect(result.userFacingText).toContain("[CONFIG:google]");
+    // Must not leak raw upstream / internal error text into verified UI copy.
+    expect(result.text).not.toContain("internal-debug");
+    expect(result.userFacingText).toMatch(/Google Workspace enabled and OAuth configured/i);
     expect(result.data).toMatchObject({
       awaitingUserAction: true,
       status: 503,

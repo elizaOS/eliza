@@ -421,25 +421,38 @@ async function dispatchGoogle(
             /plugin-google-workspace|OAuth is not registered|required before starting/i.test(
               error.message,
             );
-          // Same short id as CALENDAR_SOURCES configuration_required ([CONFIG:google])
-          // so the chat widget resolves one consistent Google setup surface.
-          const text = needsConfig
-            ? withConfigCard(error.message, "google")
-            : error.message;
+          // Never forward raw upstream messages as verified user-facing text
+          // (can leak internal detail). Use allowlisted owner copy only.
+          if (needsConfig) {
+            const text = withConfigCard(
+              "Google account connection needs Google Workspace enabled and OAuth configured. Open the setup card, then try connect again.",
+              "google",
+            );
+            return {
+              success: false,
+              text,
+              userFacingText: text,
+              verifiedUserFacing: true,
+              data: {
+                actionName: ACTION_NAME,
+                connector: "google",
+                subaction,
+                status: error.status,
+                error: error.code ?? "GOOGLE_CONNECT_FAILED",
+                awaitingUserAction: true,
+                awaitingUserInput: true,
+              },
+            };
+          }
           return {
             success: false,
-            text,
-            userFacingText: text,
-            verifiedUserFacing: true,
+            text: "Google connector connect failed. Check connector status and try again.",
             data: {
               actionName: ACTION_NAME,
               connector: "google",
               subaction,
               status: error.status,
               error: error.code ?? "GOOGLE_CONNECT_FAILED",
-              ...(needsConfig
-                ? { awaitingUserAction: true, awaitingUserInput: true }
-                : {}),
             },
           };
         }

@@ -24,6 +24,8 @@ const ENV_KEYS = [
   "ELIZA_CLOUD_PROVISIONED",
   "ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS",
   "ELIZAOS_CLOUD_USE_EMBEDDINGS",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -62,10 +64,11 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-notes")).toBe(true);
     expect(names.has("@elizaos/plugin-commands")).toBe(true);
     expect(names.has("@elizaos/plugin-agent-skills")).toBe(true);
-    // Calendar tile (viewEveryPlatform) + companions for connect/sync.
+    // Calendar tile (viewEveryPlatform) needs scheduling; Google Workspace is
+    // NOT inferred from Calendar alone (Apple/Microsoft/ICS also use Calendar).
     expect(names.has("@elizaos/plugin-calendar")).toBe(true);
     expect(names.has("@elizaos/plugin-scheduling")).toBe(true);
-    expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(false);
 
     // ...and drops every heavy surface, including browser (off until ready).
     for (const heavy of HEAVY) {
@@ -73,8 +76,20 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     }
   });
 
-  it("honors an explicit google-workspace disable while keeping calendar+scheduling", () => {
+  it("loads google-workspace on lean-chat only with an explicit Google signal", () => {
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    process.env.GOOGLE_CLIENT_ID = "client";
+    process.env.GOOGLE_CLIENT_SECRET = "secret";
+    const names = collectPluginNames(emptyConfig);
+    expect(names.has("@elizaos/plugin-calendar")).toBe(true);
+    expect(names.has("@elizaos/plugin-scheduling")).toBe(true);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
+  });
+
+  it("honors an explicit google-workspace disable even when OAuth env is set", () => {
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    process.env.GOOGLE_CLIENT_ID = "client";
+    process.env.GOOGLE_CLIENT_SECRET = "secret";
     const config: ElizaConfig = {
       plugins: {
         entries: {

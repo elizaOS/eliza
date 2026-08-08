@@ -24,14 +24,13 @@ function hasNonEmptyEnv(
 }
 
 /**
- * Enable Google Workspace when any of:
- * - a `googlechat` connector block is present and not explicitly disabled
- * - plugins.entries explicitly enables google-workspace or calendar
- * - GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET are configured (local OAuth)
+ * Enable Google Workspace only on an explicit Google signal:
+ * - a `googlechat` connector block present and not explicitly disabled
+ * - plugins.entries["google-workspace"].enabled === true
+ * - GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET configured (local OAuth)
  *
- * Calendar feed connect needs this plugin's ConnectorAccountManager provider
- * and Calendar API methods; Chat-only auto-enable left lean-chat agents with a
- * Calendar tile but no Google OAuth surface.
+ * Do not enable merely because Calendar is present — Calendar also covers
+ * Apple, Microsoft, and ICS feeds without Google.
  */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   const connectors = ctx.config.connectors as
@@ -55,10 +54,7 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   const entries = (
     ctx.config.plugins as { entries?: Record<string, unknown> } | undefined
   )?.entries;
-  if (
-    entryEnabled(entries, "google-workspace") ||
-    entryEnabled(entries, "calendar")
-  ) {
+  if (entryEnabled(entries, "google-workspace")) {
     return true;
   }
 

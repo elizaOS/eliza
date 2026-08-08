@@ -37,7 +37,7 @@ describe("plugin-google-workspace shouldEnable", () => {
     ).toBe(false);
   });
 
-  it("enables when plugins.entries.calendar is explicitly enabled", () => {
+  it("does not enable merely because calendar is enabled (Apple/Microsoft/ICS)", () => {
     expect(
       shouldEnable(
         ctx({
@@ -46,7 +46,7 @@ describe("plugin-google-workspace shouldEnable", () => {
           },
         }),
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("enables when plugins.entries.google-workspace is explicitly enabled", () => {

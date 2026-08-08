@@ -375,6 +375,37 @@ export type PluginLoadReasons = Map<string, string>;
  *
  * @internal Exported for testing.
  */
+/**
+ * Explicit Google signals only — never inferred from the universal Calendar
+ * home tile (Apple/Microsoft/ICS also use Calendar).
+ */
+function shouldLoadGoogleWorkspace(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv,
+  pluginEntries:
+    | Record<string, { enabled?: boolean } | undefined>
+    | undefined,
+): boolean {
+  if (pluginEntries?.["google-workspace"]?.enabled === true) {
+    return true;
+  }
+
+  const connectors = config.connectors as Record<string, unknown> | undefined;
+  const googleChat = connectors?.googlechat;
+  if (
+    googleChat &&
+    typeof googleChat === "object" &&
+    !Array.isArray(googleChat) &&
+    (googleChat as { enabled?: unknown }).enabled !== false
+  ) {
+    return true;
+  }
+
+  const clientId = env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
+  return Boolean(clientId && clientSecret);
+}
+
 export function collectPluginNames(
   config: ElizaConfig,
   reasons?: PluginLoadReasons,
@@ -828,28 +859,30 @@ export function collectPluginNames(
     }
   }
 
-  // Calendar home tiles load on every platform (MOBILE_VIEW_PLUGINS). Their
-  // runtime needs: (1) plugin-scheduling — declared hard dependency and the
-  // Google watch / reminder spine; (2) plugin-google-workspace — registers the
-  // ConnectorAccountManager "google" OAuth provider and the Calendar API
-  // surface CalendarService delegates to. Without these companions, lean-chat
-  // shows a Calendar tile but connect/sync fails with missing provider/service.
-  // Respect an explicit plugins.entries["google-workspace"].enabled=false opt-out.
+  // Calendar home tiles load on every platform (MOBILE_VIEW_PLUGINS). Calendar
+  // hard-depends on plugin-scheduling (watch/reminder spine); always companion
+  // that primitive when calendar is present.
+  //
+  // Do NOT infer Google Workspace from Calendar alone — Calendar also covers
+  // Apple/Microsoft/ICS. Load google-workspace only on an explicit Google
+  // signal (entries enable, googlechat connector, or GOOGLE_CLIENT_* pair),
+  // and never when entries["google-workspace"].enabled === false.
   if (pluginsToLoad.has("@elizaos/plugin-calendar")) {
     if (!pluginsToLoad.has("@elizaos/plugin-scheduling")) {
       pluginsToLoad.add("@elizaos/plugin-scheduling");
       track("@elizaos/plugin-scheduling", "calendar companion");
     }
-    if (
-      !pluginsToLoad.has("@elizaos/plugin-google-workspace") &&
-      !isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace")
-    ) {
-      pluginsToLoad.add("@elizaos/plugin-google-workspace");
-      track(
-        "@elizaos/plugin-google-workspace",
-        "calendar companion (Google OAuth + Calendar API)",
-      );
-    }
+  }
+  if (
+    !pluginsToLoad.has("@elizaos/plugin-google-workspace") &&
+    !isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace") &&
+    shouldLoadGoogleWorkspace(config, process.env, pluginEntries)
+  ) {
+    pluginsToLoad.add("@elizaos/plugin-google-workspace");
+    track(
+      "@elizaos/plugin-google-workspace",
+      "explicit Google signal (entries / googlechat / GOOGLE_CLIENT_*)",
+    );
   }
 
   // Lean chat: force-drop heavy surfaces even if a later gate (orchestrator env,
