@@ -6,8 +6,15 @@
  * 1. Steward JWTs contain email/userId/walletAddress directly (no third-party API call)
  * 2. No anonymous user upgrade path (Steward doesn't have anonymous users)
  * 3. Uses steward_user_id as the canonical external auth identity
+ *
+ * A claimed wallet address is canonicalized with `normalizeWallet` — the same
+ * rule as the wallet blind index — so an address matches the row that already
+ * holds it whichever surface wrote that row first. It is chain-shaped on
+ * purpose: EVM hex folds case, base58 does not, because two Solana keys can
+ * differ only in case.
  */
 
+import { normalizeWallet } from "../db/crypto/field-crypto";
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";
 import { usersRepository } from "../db/repositories/users";
 import { getClientIp } from "./runtime/request-context";
@@ -217,6 +224,26 @@ export interface StewardSyncParams {
 }
 
 /**
+ * Finds the row that already holds this wallet, matching the way the address was
+ * STORED.
+ *
+ * `usersRepository.findByWalletAddress*` lowercases its predicate, which is
+ * right for EVM hex and wrong for base58: a Solana row written by
+ * `/api/auth/siws/verify` keeps the case-sensitive key verbatim, so the folded
+ * lookup cannot see it, step 4 falls through to step 5, and the same human ends
+ * up with a second Cloud account — a second wallet identity at every relying
+ * party keyed on it. The discriminator is `normalizeWallet`'s: a `0x` address is
+ * EVM hex, anything else is base58.
+ */
+async function findUserByStoredWalletAddress(
+  walletAddress: string,
+): Promise<UserWithOrganization | undefined> {
+  return walletAddress.startsWith("0x")
+    ? await usersService.getByWalletAddressWithOrganization(walletAddress)
+    : await usersRepository.findBySolanaWalletAddressWithOrganization(walletAddress);
+}
+
+/**
  * Sync a Steward user to the local database.
  * Creates user and organization if they don't exist.
  * Updates user data if it has changed.
@@ -231,7 +258,12 @@ export interface StewardSyncParams {
 export async function syncUserFromSteward(params: StewardSyncParams): Promise<StewardSyncedUser> {
   const { stewardUserId, walletChainType } = params;
   const email = params.email?.toLowerCase().trim();
-  const walletAddress = params.walletAddress?.toLowerCase();
+  // Chain-aware, NOT a blanket lowercase: folding a base58 key produces a string
+  // that is not the user's wallet, matches no existing row, and is then stored
+  // as if it were a second wallet.
+  const walletAddress = params.walletAddress
+    ? normalizeWallet(params.walletAddress, walletChainType)
+    : undefined;
   const resolvedWalletChainType = walletAddress ? (walletChainType ?? "ethereum") : walletChainType;
 
   // Resolve display name with fallbacks
@@ -434,7 +466,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
 
   // ── 4. Wallet-only Steward session (SIWE or SIWS) ────────────────────
   if (walletAddress && !email) {
-    const existingByWallet = await usersService.getByWalletAddress(walletAddress);
+    const existingByWallet = await findUserByStoredWalletAddress(walletAddress);
 
     if (existingByWallet && existingByWallet.steward_user_id !== stewardUserId) {
       logger.info(
@@ -599,7 +631,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         }
 
         if (!existingUser && walletAddress) {
-          existingUser = await usersService.getByWalletAddressWithOrganization(walletAddress);
+          existingUser = await findUserByStoredWalletAddress(walletAddress);
         }
 
         if (existingUser) {

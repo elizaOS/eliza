@@ -21,6 +21,7 @@ import { join } from "node:path";
 
 import {
   describeOidcConfigFailure,
+  describeOidcWalletEmailFailure,
   isIssuerHost,
   isLoopbackIssuerHostname,
   isOidcEnabled,
@@ -71,6 +72,75 @@ describe("endpoint derivation", () => {
       "https://elizacloud.ai",
     );
     expect(resolveOidcConfig(env())?.appOrigin).toBe("https://api.elizacloud.ai");
+  });
+});
+
+describe("the wallet-email domain derived from the issuer", () => {
+  test("defaults to users.noreply.<issuer hostname>, which only this deployment can serve", () => {
+    const config = resolveOidcConfig(env());
+    expect(config?.issuerHostname).toBe("api.elizacloud.ai");
+    expect(config?.walletEmailDomain).toBe("users.noreply.api.elizacloud.ai");
+  });
+
+  test("strips the port, because issuerHost is not a legal email domain", () => {
+    // `issuerHost` carries `localhost:8787` for cookie-scope reasons; an email
+    // domain cannot. `localhost` is a reserved TLD that routes nowhere.
+    const config = resolveOidcConfig(env({ OIDC_ISSUER_URL: "http://localhost:8787" }));
+    expect(config?.issuerHost).toBe("localhost:8787");
+    expect(config?.issuerHostname).toBe("localhost");
+    expect(config?.walletEmailDomain).toBe("users.noreply.localhost");
+  });
+
+  test("resolves to null on an IP-literal issuer, leaving the provider otherwise usable", () => {
+    // No DNS subtree exists to own, so there is no honest address to mint. The
+    // rest of the provider still resolves; wallet-only sign-in is what refuses.
+    for (const issuer of ["http://127.0.0.1:8787", "http://[::1]:8787"]) {
+      const config = resolveOidcConfig(env({ OIDC_ISSUER_URL: issuer }));
+      expect(config).not.toBeNull();
+      expect(config?.walletEmailDomain).toBeNull();
+      expect(describeOidcConfigFailure(env({ OIDC_ISSUER_URL: issuer }))).toBe("");
+    }
+  });
+
+  test("an override below the issuer hostname is honored", () => {
+    const config = resolveOidcConfig(
+      env({ OIDC_WALLET_EMAIL_DOMAIN: "noreply.api.elizacloud.ai" }),
+    );
+    expect(config?.walletEmailDomain).toBe("noreply.api.elizacloud.ai");
+  });
+
+  test("an override the deployment cannot own turns the FEATURE off, not the provider", () => {
+    // Collapsing the config over this would 404 discovery and 503 authorize,
+    // token, and userinfo — sign-in gone for every relying party, including all
+    // the ones that never asked for a wallet identity — over one optional
+    // variable governing one opt-in feature. It degrades to the same state an
+    // IP-literal issuer produces, and carries the violated rule as a sentence.
+    for (const override of ["gmail.com", "users.noreply.elizacloud.ai", "api.elizacloud.ai"]) {
+      const config = resolveOidcConfig(env({ OIDC_WALLET_EMAIL_DOMAIN: override }));
+      expect(config).not.toBeNull();
+      expect(config?.issuer).toBe("https://api.elizacloud.ai");
+      expect(config?.tokenUrl).toBe("https://api.elizacloud.ai/api/oidc/token");
+      expect(config?.walletEmailDomain).toBeNull();
+      expect(config?.walletEmailUnavailableReason).toMatch(/OIDC_WALLET_EMAIL_DOMAIN/);
+      // Not a config failure: this string is what a caller logs beside the 404
+      // or 503 it is about to answer, and there is no 404 or 503 here.
+      expect(describeOidcConfigFailure(env({ OIDC_WALLET_EMAIL_DOMAIN: override }))).toBe("");
+      expect(describeOidcWalletEmailFailure(env({ OIDC_WALLET_EMAIL_DOMAIN: override }))).toMatch(
+        /OIDC_WALLET_EMAIL_DOMAIN/,
+      );
+    }
+  });
+
+  test("a working deployment reports no wallet-email reason at all", () => {
+    // The field distinguishes "configured wrong" from "nothing to configure", so
+    // an IP-literal issuer — feature unavailable, but not an operator mistake —
+    // must stay silent rather than manufacture a fixable-looking sentence.
+    expect(resolveOidcConfig(env())?.walletEmailUnavailableReason).toBeNull();
+    expect(describeOidcWalletEmailFailure(env())).toBe("");
+    const literal = env({ OIDC_ISSUER_URL: "http://127.0.0.1:8787" });
+    expect(resolveOidcConfig(literal)?.walletEmailDomain).toBeNull();
+    expect(resolveOidcConfig(literal)?.walletEmailUnavailableReason).toBeNull();
+    expect(describeOidcWalletEmailFailure(literal)).toBe("");
   });
 });
 

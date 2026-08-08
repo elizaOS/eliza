@@ -63,6 +63,12 @@ const STEWARD_AUDIENCE = "eliza-cloud-steward";
 const CONSOLE_CLIENT_ID = "eliza-steward-console";
 const CONSOLE_SECRET = "steward-console-secret-value-0123456789";
 const CONSOLE_REDIRECT = "https://console.elizacloud.test/oidc/callback";
+/** The one registration that opts in to wallet-derived identities. */
+const WALLET_CLIENT_ID = "wallet-forge";
+const WALLET_SECRET = "wallet-forge-client-secret-value-0123456789";
+const WALLET_REDIRECT = "https://forge.elizacloud.test/oauth2/callback";
+/** `users.noreply.` + the issuer HOSTNAME; derived, never hardcoded in the Worker. */
+const WALLET_EMAIL_DOMAIN = `users.noreply.${new URL(ISSUER).hostname}`;
 
 /**
  * The gates the two consumers are SHIPPED with. Forgejo's pair comes from
@@ -173,6 +179,19 @@ interface SeedOptions {
   stewardTenantId?: string | null;
   withOrg?: boolean;
   walletAddress?: string;
+  /**
+   * `users.wallet_verified` is notNull with a false default, so `walletAddress`
+   * alone cannot express a wallet that actually proved a signature — and an
+   * unproven address must never produce an identity.
+   */
+  walletVerified?: boolean;
+  /**
+   * Written only by a path that binds a wallet to the account (the SIWE/SIWS
+   * sign-ins, `/api/users/me/wallet/attach`, a Steward wallet claim). Defaults
+   * to `evm` alongside a verified wallet; pass `null` for the row shape a
+   * service bridge produced, which asserts an address with no provenance.
+   */
+  walletChainType?: string | null;
 }
 
 /** Insert a real users/organizations pair and return the ids. */
@@ -218,6 +237,13 @@ async function seedUser(
       is_active: options.isActive ?? true,
       is_anonymous: options.isAnonymous ?? false,
       wallet_address: options.walletAddress ?? null,
+      wallet_verified: options.walletVerified ?? false,
+      wallet_chain_type:
+        options.walletChainType === undefined
+          ? options.walletVerified
+            ? "evm"
+            : null
+          : options.walletChainType,
     })
     .returning();
 
@@ -505,6 +531,26 @@ beforeAll(async () => {
       claims_policy: {
         groups: false,
         roles: true,
+        tenant_id: false,
+        eliza_agents: false,
+      },
+    },
+    {
+      client_id: WALLET_CLIENT_ID,
+      name: "Wallet Forge",
+      client_secret_sha256: sha256Hex(WALLET_SECRET),
+      redirect_uris: [WALLET_REDIRECT],
+      allowed_scopes: ["openid", "email", "profile"],
+      resource_audiences: [],
+      require_pkce: false,
+      // Still requires an identity — the flag widens WHAT counts as one, it does
+      // not turn the gate off.
+      require_verified_email: true,
+      wallet_email_fallback: true,
+      roles_allowlist: [],
+      claims_policy: {
+        groups: false,
+        roles: false,
         tenant_id: false,
         eliza_agents: false,
       },
@@ -1021,6 +1067,44 @@ describe("authorize — subject eligibility", () => {
     );
   });
 
+  test("a wallet-only account is refused by a client that did not opt in", async () => {
+    // The reason string is the byte-identical one this client got before the
+    // feature existed; it reaches the relying party and the audit log.
+    await seedUser({
+      stewardUserId: "u-wallet-refused",
+      email: null,
+      emailVerified: false,
+      walletAddress: "0xaaaa567890abcdef1234567890abcdef1234aaaa",
+      walletVerified: true,
+    });
+    const res = await call(authorizeUrl(), {
+      cookie: await sessionCookie("u-wallet-refused"),
+    });
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.searchParams.get("error_description")).toBe(
+      "email_unverified",
+    );
+  });
+
+  test("an account holding the reserved wallet-email domain cannot buy admission with it", async () => {
+    // The squat: `users.email` is unique and user-settable, and the synthesized
+    // address is computable from a public wallet address. A row carrying one is
+    // read as having NO address, whatever `email_verified` says — that domain
+    // routes no mail, so nothing on it can ever have been verified by delivery.
+    await seedUser({
+      stewardUserId: "u-squatter",
+      email: `wallet-0123456789abcdef0123456789abcdef@${WALLET_EMAIL_DOMAIN}`,
+      emailVerified: true,
+    });
+    const res = await call(authorizeUrl(), {
+      cookie: await sessionCookie("u-squatter"),
+    });
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.searchParams.get("error_description")).toBe(
+      "email_unverified",
+    );
+  });
+
   test("an explicit sign-out blocks a still-unexpired cookie from starting a new login", async () => {
     await seedUser({ stewardUserId: "u-loggedout" });
     const cookie = await sessionCookie("u-loggedout");
@@ -1035,6 +1119,364 @@ describe("authorize — subject eligibility", () => {
     expect(new URL(res.headers.get("location") as string).pathname).toBe(
       "/login",
     );
+  });
+});
+
+/**
+ * The wallet-derived no-reply identity, driven through the real
+ * authorize → token → userinfo legs. `wallet-forge` is the only registration
+ * with `wallet_email_fallback`; every other client in this suite is the
+ * unchanged control.
+ */
+describe("wallet_email_fallback", () => {
+  /** The exact address the digest produces, so a format change fails loudly here. */
+  const ADDRESS_FOR = (local: string): string =>
+    `wallet-${local}@${WALLET_EMAIL_DOMAIN}`;
+
+  function walletAuthorizeUrl(
+    overrides: Record<string, string | undefined> = {},
+  ): string {
+    return authorizeUrl({
+      client_id: WALLET_CLIENT_ID,
+      redirect_uri: WALLET_REDIRECT,
+      scope: "openid email profile",
+      ...overrides,
+    });
+  }
+
+  async function walletLogin(
+    stewardUserId: string,
+  ): Promise<{ idClaims: Record<string, unknown>; accessToken: string }> {
+    const cookie = await sessionCookie(stewardUserId);
+    const res = await call(walletAuthorizeUrl(), { cookie });
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.searchParams.get("error_description")).toBeNull();
+    const code = location.searchParams.get("code") as string;
+
+    const tokenRes = await redeem(
+      code,
+      { redirect_uri: WALLET_REDIRECT },
+      WALLET_CLIENT_ID,
+      WALLET_SECRET,
+    );
+    expect(tokenRes.status).toBe(200);
+    const body = (await tokenRes.json()) as TokenResponse;
+    return {
+      idClaims: await verifyLikeConsumer(body.id_token, WALLET_CLIENT_ID),
+      accessToken: body.access_token,
+    };
+  }
+
+  /**
+   * Sign in at `percent-secret-app`, which does NOT require a verified email —
+   * the client any squat would be laundered through, and the one that proves the
+   * guard is unconditional rather than a property of the opted-in registration.
+   */
+  async function percentClaims(
+    stewardUserId: string,
+  ): Promise<Record<string, unknown>> {
+    const res = await call(
+      authorizeUrl({
+        client_id: PERCENT_CLIENT_ID,
+        redirect_uri: PERCENT_REDIRECT,
+        scope: "openid email",
+      }),
+      { cookie: await sessionCookie(stewardUserId) },
+    );
+    expect(res.status).toBe(302);
+    const code = new URL(
+      res.headers.get("location") as string,
+    ).searchParams.get("code") as string;
+    const tokenRes = await redeem(
+      code,
+      { redirect_uri: PERCENT_REDIRECT },
+      PERCENT_CLIENT_ID,
+      PERCENT_SECRET,
+    );
+    expect(tokenRes.status).toBe(200);
+    const body = (await tokenRes.json()) as TokenResponse;
+    return verifyLikeConsumer(body.id_token, PERCENT_CLIENT_ID);
+  }
+
+  test("a wallet-only account signs in and receives a stable synthesized address", async () => {
+    await seedUser({
+      stewardUserId: "u-wallet-ok",
+      email: null,
+      emailVerified: false,
+      nickname: "satoshi",
+      walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
+      walletVerified: true,
+    });
+    const { idClaims, accessToken } = await walletLogin("u-wallet-ok");
+
+    expect(idClaims.email).toBe(
+      ADDRESS_FOR("d4f3c344e6eb25da702fd567072f6ce1"),
+    );
+    // The mailbox does not exist — the domain accepts no mail by construction —
+    // so nobody has ever proven control of it. The wallet assurance travels
+    // under its own name instead of being laundered through this flag.
+    expect(idClaims.email_verified).toBe(false);
+    expect(idClaims.eliza_email_source).toBe("wallet");
+    // The address is not the account name: `preferred_username` is frozen from
+    // the naming policy and is a one-way door.
+    expect(idClaims.preferred_username).toBe("satoshi");
+
+    // Forgejo re-reads /userinfo on every later login. A disagreement here is
+    // how a relying party admits a login and then re-reads it as another account.
+    const infoRes = await call("/api/oidc/userinfo", {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(infoRes.status).toBe(200);
+    const info = (await infoRes.json()) as Record<string, unknown>;
+    expect(info.email).toBe(idClaims.email);
+    expect(info.email_verified).toBe(false);
+    expect(info.eliza_email_source).toBe("wallet");
+  });
+
+  test("the address is deterministic across sign-ins", async () => {
+    // Forgejo keys the account on it, so a value that moved between logins
+    // would orphan the account it created on the first one.
+    await seedUser({
+      stewardUserId: "u-wallet-stable",
+      email: null,
+      emailVerified: false,
+      walletAddress: "0xdddd567890abcdef1234567890abcdef1234dddd",
+      walletVerified: true,
+    });
+    const first = await walletLogin("u-wallet-stable");
+    const second = await walletLogin("u-wallet-stable");
+    expect(second.idClaims.email).toBe(first.idClaims.email);
+  });
+
+  test("two different wallets never receive the same address", async () => {
+    // One hex digit apart, which is the closest two distinct rows can be.
+    await seedUser({
+      stewardUserId: "u-wallet-a",
+      email: null,
+      emailVerified: false,
+      walletAddress: "0xeeee567890abcdef1234567890abcdef1234eee0",
+      walletVerified: true,
+    });
+    await seedUser({
+      stewardUserId: "u-wallet-b",
+      email: null,
+      emailVerified: false,
+      walletAddress: "0xeeee567890abcdef1234567890abcdef1234eee1",
+      walletVerified: true,
+    });
+    const a = await walletLogin("u-wallet-a");
+    const b = await walletLogin("u-wallet-b");
+    expect(a.idClaims.email).not.toBe(b.idClaims.email);
+    for (const claims of [a.idClaims, b.idClaims]) {
+      expect(claims.email).toMatch(
+        new RegExp(`^wallet-[0-9a-f]{32}@${WALLET_EMAIL_DOMAIN}$`),
+      );
+    }
+  });
+
+  test("an UNVERIFIED wallet is still refused — an address alone proves nothing", async () => {
+    await seedUser({
+      stewardUserId: "u-wallet-unverified",
+      email: null,
+      emailVerified: false,
+      walletAddress: "0xbbbb567890abcdef1234567890abcdef1234bbbb",
+      walletVerified: false,
+    });
+    const res = await call(walletAuthorizeUrl(), {
+      cookie: await sessionCookie("u-wallet-unverified"),
+    });
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.searchParams.get("error")).toBe("access_denied");
+    expect(location.searchParams.get("error_description")).toBe(
+      "no_verified_identity",
+    );
+  });
+
+  test("a verified flag with no recorded chain type is refused — the service-bridge shape", async () => {
+    // `lib/auth/waifu-bridge.ts` provisioned rows from an address SUBSTRING of a
+    // service token's subject: the holder of the shared service secret picks the
+    // address, including a victim's public one, and nothing in that chain
+    // verifies a signature. It now records `wallet_verified: false`; this asserts
+    // the second, independent lock, because a row whose wallet has no recorded
+    // provenance must not become somebody's permanent git identity even if a
+    // writer sets the flag.
+    await seedUser({
+      stewardUserId: "u-wallet-no-provenance",
+      email: null,
+      emailVerified: false,
+      walletAddress: "0xffff567890abcdef1234567890abcdef1234ffff",
+      walletVerified: true,
+      walletChainType: null,
+    });
+    const res = await call(walletAuthorizeUrl(), {
+      cookie: await sessionCookie("u-wallet-no-provenance"),
+    });
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.searchParams.get("error")).toBe("access_denied");
+    expect(location.searchParams.get("error_description")).toBe(
+      "no_verified_identity",
+    );
+  });
+
+  test("the identity is the wallet's, not the spelling the row happens to hold", async () => {
+    // EVM hex is case-insensitive and the writers disagree about form, so a
+    // digest over the stored bytes would give one wallet two permanent
+    // identities depending on which surface wrote the row last. This row holds
+    // the EIP-55 form of `u-wallet-ok`'s address and must land on the same
+    // address that account already signs in with.
+    await seedUser({
+      stewardUserId: "u-wallet-checksummed",
+      email: null,
+      emailVerified: false,
+      walletAddress: "0x1234567890AbcdEF1234567890aBcdef12345678",
+      walletVerified: true,
+      walletChainType: "evm",
+    });
+    const { idClaims } = await walletLogin("u-wallet-checksummed");
+    expect(idClaims.email).toBe(
+      ADDRESS_FOR("d4f3c344e6eb25da702fd567072f6ce1"),
+    );
+  });
+
+  test("two Solana keys that differ only in case stay two identities", async () => {
+    // base58 is case-SENSITIVE: folding it would merge two distinct wallets onto
+    // one address, which at a relying party keyed on the address is a takeover.
+    const solana = "7Np41oeYqPefeNQEHSv1UDhYrehxin3NStELsSKCT4K2";
+    await seedUser({
+      stewardUserId: "u-wallet-solana",
+      email: null,
+      emailVerified: false,
+      walletAddress: solana,
+      walletVerified: true,
+      walletChainType: "solana",
+    });
+    await seedUser({
+      stewardUserId: "u-wallet-solana-folded",
+      email: null,
+      emailVerified: false,
+      walletAddress: solana.toLowerCase(),
+      walletVerified: true,
+      walletChainType: "solana",
+    });
+    const verbatim = await walletLogin("u-wallet-solana");
+    const folded = await walletLogin("u-wallet-solana-folded");
+    expect(verbatim.idClaims.email).not.toBe(folded.idClaims.email);
+  });
+
+  test("a user with a real verified email keeps it, wallet or not", async () => {
+    await seedUser({
+      stewardUserId: "u-wallet-and-email",
+      email: "ada@example.com",
+      emailVerified: true,
+      walletAddress: "0xcccc567890abcdef1234567890abcdef1234cccc",
+      walletVerified: true,
+    });
+    const { idClaims } = await walletLogin("u-wallet-and-email");
+    expect(idClaims.email).toBe("ada@example.com");
+    expect(idClaims.email_verified).toBe(true);
+    expect(idClaims).not.toHaveProperty("eliza_email_source");
+  });
+
+  test("an UNCONFIRMED stored address is refused rather than swapped for the wallet", async () => {
+    // Synthesis is for a user who has NO address. Substituting one here would
+    // give this account a different identity at the forge than the row names,
+    // and would do it for a user whose only act was leaving an address
+    // unconfirmed. The client asked for a verified email and this is not one, so
+    // the honest answer is a refusal that says which address to confirm.
+    await seedUser({
+      stewardUserId: "u-wallet-unconfirmed-email",
+      email: "typed@company.example",
+      emailVerified: false,
+      walletAddress: "0xabab567890abcdef1234567890abcdef1234abab",
+      walletVerified: true,
+    });
+    const res = await call(walletAuthorizeUrl(), {
+      cookie: await sessionCookie("u-wallet-unconfirmed-email"),
+    });
+    const location = new URL(res.headers.get("location") as string);
+    expect(location.searchParams.get("error")).toBe("access_denied");
+    expect(location.searchParams.get("error_description")).toBe(
+      "email_unverified",
+    );
+  });
+
+  test("a squatted address on the reserved domain is never emitted as an email", async () => {
+    // `users.email` is unique and user-settable and the synthesized address is
+    // computable from a public wallet address, so without the guard an attacker
+    // could have a relying party create an account holding the victim's
+    // identity — locking them out and authoring public commits as them.
+    // `percent-secret-app` does not require a verified email, which is the
+    // client the attack would have gone through.
+    await seedUser({
+      stewardUserId: "u-squat-emit",
+      email: ADDRESS_FOR("00000000000000000000000000000001"),
+      emailVerified: true,
+    });
+    const cookie = await sessionCookie("u-squat-emit");
+    const res = await call(
+      authorizeUrl({
+        client_id: PERCENT_CLIENT_ID,
+        redirect_uri: PERCENT_REDIRECT,
+        scope: "openid email",
+      }),
+      { cookie },
+    );
+    expect(res.status).toBe(302);
+    const code = new URL(
+      res.headers.get("location") as string,
+    ).searchParams.get("code") as string;
+    const tokenRes = await redeem(
+      code,
+      { redirect_uri: PERCENT_REDIRECT },
+      PERCENT_CLIENT_ID,
+      PERCENT_SECRET,
+    );
+    expect(tokenRes.status).toBe(200);
+    const body = (await tokenRes.json()) as TokenResponse;
+    const claims = await verifyLikeConsumer(body.id_token, PERCENT_CLIENT_ID);
+    expect(claims).not.toHaveProperty("email");
+    expect(claims.eliza_email_source).toBeUndefined();
+    // The scrub clears `email_verified` with the address. Leaving it behind gave
+    // this token a confirmed mailbox it then declined to name — an assertion
+    // with no referent, delivered to a client that opted into nothing.
+    expect(claims.email_verified).toBe(false);
+  });
+
+  test("the squat guard survives the FQDN trailing-dot spelling", async () => {
+    // `…elizacloud.test.` and `…elizacloud.test` are one host to every mail
+    // transport, so a raw string comparison would have read the root-dot form as
+    // an unrelated domain and handed the squatted address straight through.
+    await seedUser({
+      stewardUserId: "u-squat-fqdn",
+      email: `${ADDRESS_FOR("00000000000000000000000000000002")}.`,
+      emailVerified: true,
+    });
+    const claims = await percentClaims("u-squat-fqdn");
+    expect(claims).not.toHaveProperty("email");
+    expect(claims.email_verified).toBe(false);
+  });
+
+  test("an address minted under a PREVIOUS issuer is still reserved", async () => {
+    // The reservation cannot track only the configured domain. Every address
+    // this provider issued stays computable forever and the forge accounts keyed
+    // on them keep existing, so an issuer rotation must not un-reserve them —
+    // and rotating the issuer is what an operator does AFTER an incident.
+    await seedUser({
+      stewardUserId: "u-squat-old-issuer",
+      email:
+        "wallet-00000000000000000000000000000003@users.noreply.old.example",
+      emailVerified: true,
+    });
+    const claims = await percentClaims("u-squat-old-issuer");
+    expect(claims).not.toHaveProperty("email");
+    expect(claims.email_verified).toBe(false);
+  });
+
+  test("the discovery document advertises the claim an RP has to read", async () => {
+    const res = await call("/.well-known/openid-configuration");
+    const metadata = (await res.json()) as { claims_supported: string[] };
+    expect(metadata.claims_supported).toContain("eliza_email_source");
   });
 });
 
@@ -2102,6 +2544,76 @@ describe("issuer configuration", () => {
       pathIssuer,
     );
     expect(authorizeRes.status).toBe(503);
+  });
+
+  test("a refused OIDC_WALLET_EMAIL_DOMAIN turns off one feature, not the provider", async () => {
+    // The variable is optional and governs a single opt-in feature. Collapsing
+    // the config over it 404s discovery and 503s authorize, token, and userinfo
+    // — every relying party loses sign-in, including all the ones that never
+    // asked for a wallet identity. `gmail.com` is the shape of the mistake: an
+    // override the deployment cannot prove it owns.
+    const badDomain = { ...ENV, OIDC_WALLET_EMAIL_DOMAIN: "gmail.com" };
+
+    const discoveryRes = await harness.request(
+      `${ISSUER}/.well-known/openid-configuration`,
+      { headers: { "x-forwarded-for": "10.9.6.5" } },
+      badDomain,
+    );
+    expect(discoveryRes.status).toBe(200);
+    expect(((await discoveryRes.json()) as { issuer: string }).issuer).toBe(
+      ISSUER,
+    );
+
+    // A user with a verified email is entirely unaffected.
+    await seedUser({ stewardUserId: "u-baddomain-email" });
+    const emailRes = await harness.request(
+      `${ISSUER}${authorizeUrl()}`,
+      {
+        headers: {
+          "x-forwarded-for": "10.9.6.4",
+          cookie: await sessionCookie("u-baddomain-email"),
+        },
+        redirect: "manual",
+      },
+      badDomain,
+    );
+    expect(emailRes.status).toBe(302);
+    expect(
+      new URL(emailRes.headers.get("location") as string).searchParams.get(
+        "code",
+      ),
+    ).not.toBeNull();
+
+    // The wallet-only user is the one who loses: refused with a reason, not a
+    // 503, and the operator's mistake is logged beside that refusal.
+    await seedUser({
+      stewardUserId: "u-baddomain-wallet",
+      email: null,
+      emailVerified: false,
+      walletAddress: "0x9999567890abcdef1234567890abcdef12349999",
+      walletVerified: true,
+    });
+    const walletRes = await harness.request(
+      `${ISSUER}${authorizeUrl({
+        client_id: WALLET_CLIENT_ID,
+        redirect_uri: WALLET_REDIRECT,
+        scope: "openid email profile",
+      })}`,
+      {
+        headers: {
+          "x-forwarded-for": "10.9.6.3",
+          cookie: await sessionCookie("u-baddomain-wallet"),
+        },
+        redirect: "manual",
+      },
+      badDomain,
+    );
+    expect(walletRes.status).toBe(302);
+    expect(
+      new URL(walletRes.headers.get("location") as string).searchParams.get(
+        "error_description",
+      ),
+    ).toBe("no_verified_identity");
   });
 
   test("a loopback issuer serves the whole flow over http", async () => {
