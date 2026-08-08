@@ -14,6 +14,10 @@
  * receipt for fresh mutations, a replayed no-op for the idempotent
  * already-exists path — so the planned-reply egress verifier can ground a
  * truthful completion claim, while failures stay receipt-less.
+ * Also pins the reply contract: user text carries humanized schedules (no ISO
+ * timestamps, no cron strings — those stay in `data`) and committed mutations
+ * are turnComplete, making the action's ack the turn's single user-facing
+ * message instead of double-speaking alongside the evaluator's prose.
  */
 
 import type {
@@ -257,7 +261,7 @@ describe("TRIGGER create — recurrence wins over sprayed one-shot fields", () =
     expect(trigger?.kind).toBe("prompt");
     expect(trigger?.triggerType).toBe("cron");
     expect(trigger?.cronExpression).toBe("0 8 * * *");
-    expect(result?.text).toContain("cron 0 8 * * *");
+    expect(result?.text).toContain("every morning at 8am");
   });
 
   it("keeps 'every morning at 9am' recurring when the planner sprays every schedule field", async () => {
@@ -281,7 +285,7 @@ describe("TRIGGER create — recurrence wins over sprayed one-shot fields", () =
     expect(trigger?.triggerType).toBe("cron");
     expect(trigger?.cronExpression).toBe("0 9 * * *");
     expect(trigger?.scheduledAtIso).toBeUndefined();
-    expect(result?.text).toContain("cron 0 9 * * *");
+    expect(result?.text).toContain("every morning at 9am");
     expect(result?.text).not.toContain("once at");
   });
 
@@ -556,6 +560,138 @@ describe("TRIGGER handler — silent, planner-voiced acks (#16863)", () => {
   });
 });
 
+describe("TRIGGER replies — humanized schedule, single final message", () => {
+  const ISO_TIMESTAMP = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
+  beforeEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("renders a daily cron as human recurrence — no cron string in user text", async () => {
+    const { runtime } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "take vitamins",
+      displayName: "take vitamins",
+      cronExpression: "0 8 * * *",
+    });
+    if (!result) throw new Error("expected a result");
+    expect(result.success).toBe(true);
+    expect(result.text).toBe(
+      'Reminder set: "take vitamins" — every morning at 8am.',
+    );
+    expect(result.text).not.toContain("0 8 * * *");
+    expect(result.text).not.toMatch(/cron/i);
+    expect(result.text).not.toMatch(ISO_TIMESTAMP);
+    // Machine detail stays in structured data for the planner/telemetry.
+    expect(result.data?.cronExpression).toBe("0 8 * * *");
+  });
+
+  it("renders a weekly cron as its weekday recurrence", async () => {
+    const { runtime } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "review the sprint board",
+      displayName: "sprint review",
+      cronExpression: "0 9 * * 1",
+    });
+    if (!result) throw new Error("expected a result");
+    expect(result.text).toBe(
+      'Reminder set: "sprint review" — every Monday at 9am.',
+    );
+  });
+
+  it("renders a one-shot ISO timestamp as a friendly local time — never the raw ISO", async () => {
+    vi.useFakeTimers();
+    // Local noon: "tomorrow at 8am" is deterministic in any test timezone
+    // because both the action and the expectation use local time.
+    vi.setSystemTime(new Date(2026, 7, 8, 12, 0, 0));
+    try {
+      const { runtime } = makeRuntime({ enableAutonomy: false });
+      const scheduledAtIso = new Date(2026, 7, 9, 8, 0, 0).toISOString();
+      const result = await create(runtime, {
+        instructions: "take vitamins",
+        displayName: "take vitamins",
+        scheduledAtIso,
+      });
+      if (!result) throw new Error("expected a result");
+      expect(result.success).toBe(true);
+      expect(result.text).toBe(
+        'Reminder set: "take vitamins" — tomorrow at 8am.',
+      );
+      expect(result.text).not.toMatch(ISO_TIMESTAMP);
+      expect(result.data?.scheduledAtIso).toBe(scheduledAtIso);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("renders a delay-derived one-shot as a countdown", async () => {
+    const { runtime } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "drink water",
+      displayName: "drink water",
+      delayMinutes: 5,
+    });
+    if (!result) throw new Error("expected a result");
+    expect(result.text).toBe('Reminder set: "drink water" — in 5 minutes.');
+    expect(result.text).not.toMatch(ISO_TIMESTAMP);
+  });
+
+  it("strips the internal 'Trigger:' displayName prefix from the reply", async () => {
+    const { runtime } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "stretch",
+      delaySeconds: 120,
+    });
+    if (!result) throw new Error("expected a result");
+    expect(result.text).not.toContain("Trigger:");
+    expect(result.text).toContain('"stretch"');
+  });
+
+  it("owns the turn: create is turnComplete so the ack is the single user-facing message", async () => {
+    // Without turnComplete the planner-loop combines the verified action text
+    // with the evaluator's prose — the observed 'Created trigger "…" (once at
+    // 2026-08-09T08:00:00Z). on it. set for 8am every morning.' double-speak.
+    const { runtime } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "take vitamins",
+      cronExpression: "0 8 * * *",
+    });
+    if (!result) throw new Error("expected a result");
+    expect(result.turnComplete).toBe(true);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.userFacingText).toBe(result.text);
+  });
+
+  it("owns the turn on the idempotent replay too", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const first = await create(runtime, {
+      instructions: "drink water",
+      delaySeconds: 90,
+    });
+    expect(first?.success).toBe(true);
+    (
+      runtime.getTasks as unknown as { mockResolvedValue: (v: Task[]) => void }
+    ).mockResolvedValue([
+      {
+        id: stringToUuid("existing-task"),
+        name: "TRIGGER_DISPATCH",
+        tags: ["queue", "repeat", "trigger"],
+        metadata: {
+          updatedAt: Date.now(),
+          trigger: createdTasks[0].metadata.trigger,
+        },
+      } as unknown as Task,
+    ]);
+    const replay = await create(runtime, {
+      instructions: "drink water",
+      delaySeconds: 90,
+    });
+    if (!replay) throw new Error("expected a result");
+    expect(replay.turnComplete).toBe(true);
+    expect(replay.userFacingText).toBe("Already set — you're covered.");
+  });
+});
+
 describe("TRIGGER create — workflow triggers", () => {
   it("still requires the autonomy loop for workflow triggers", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
@@ -736,7 +872,8 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
       intervalMs: 120_000,
     });
     expect(result?.success).toBe(true);
-    expect(result?.text).toBe('Updated trigger "Trigger: hydrate".');
+    expect(result?.text).toBe('Updated "hydrate" — every 2 minutes.');
+    expect(result?.turnComplete).toBe(true);
     expect(updates).toHaveLength(1);
     expect(updates[0].taskId).toBe(LIFECYCLE_TASK_ID);
     expect(updates[0].patch.description).toBe("Trigger: hydrate");
@@ -775,7 +912,8 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
       displayName: "water the plants",
     });
     expect(result?.success).toBe(true);
-    expect(result?.text).toBe('Deleted trigger "Trigger: water the plants".');
+    expect(result?.text).toBe('Deleted "water the plants".');
+    expect(result?.turnComplete).toBe(true);
     expect(deletions).toEqual([LIFECYCLE_TASK_ID]);
   });
 
@@ -800,7 +938,8 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
       taskId: LIFECYCLE_TASK_ID,
     });
     expect(result?.success).toBe(true);
-    expect(result?.text).toBe('Enabled trigger "Trigger: water the plants".');
+    expect(result?.text).toBe('Enabled "water the plants".');
+    expect(result?.turnComplete).toBe(true);
     expect(result?.data?.enabled).toBe(true);
     expect(updates).toHaveLength(1);
     expect(updates[0].patch.metadata?.trigger?.enabled).toBe(true);
