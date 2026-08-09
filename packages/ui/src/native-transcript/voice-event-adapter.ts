@@ -50,10 +50,7 @@ export function nativeTranscriptInputFromVoiceServerEvent(
         retryable: event.retryable,
         ...(event.message === undefined ? {} : { message: event.message }),
       };
-    case "ready":
-    case "stt_eager_eot":
-    case "llm_first_text":
-    case "usage":
+    default:
       return null;
   }
 }
