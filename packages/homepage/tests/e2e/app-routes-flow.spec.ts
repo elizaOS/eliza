@@ -206,10 +206,10 @@ test("get-started covers method selection, phone input, country dropdown, and di
   await page.getByRole("button", { name: "Back" }).dispatchEvent("click");
   await page.getByRole("button", { name: /^Telegram$/ }).dispatchEvent("click");
   await expect(
-    page.getByRole("heading", { name: "Connect with Telegram" }),
+    page.getByRole("heading", { name: "Message Eliza on Telegram" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /Connect Telegram/i }),
+    page.getByRole("link", { name: /Open Telegram/i }),
   ).toBeVisible();
 });
 
