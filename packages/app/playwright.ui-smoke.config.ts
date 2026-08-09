@@ -11,6 +11,11 @@ import { defineConfig, devices } from "@playwright/test";
 // derive the on-disk WAV from it for Chromium's --use-file-for-fake-audio-capture.
 import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
 import {
+  resolveRequestedAuditProjects,
+  UI_SMOKE_AUDIT_PROJECTS_ENV,
+  writeAuditProjectPropagation,
+} from "./scripts/lib/playwright-audit-projects.mjs";
+import {
   ASSERTION_GRADE_DASHBOARD_SPECS,
   DASHBOARD_E2E_DEVICE_MATRIX,
 } from "./test/ui-smoke/device-matrix";
@@ -67,14 +72,20 @@ const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
 const WEBKIT_POINTER_FOCUS_SPEC =
   /(chat-overlay-controls-interactions|conversation-management|slash-commands|plugin-views-visual)\.spec\.ts/;
 const webkitLaneEnabled = process.env.PLAYWRIGHT_WEBKIT === "1";
+const requestedAuditProjects = resolveRequestedAuditProjects({
+  argv: process.argv,
+  serialized: process.env[UI_SMOKE_AUDIT_PROJECTS_ENV],
+});
+// Playwright reloads this module inside workers without the launcher's CLI
+// arguments, so publish the allowlisted selection before that process boundary.
+writeAuditProjectPropagation(process.env, requestedAuditProjects);
 const projectRequested = (projectName: string): boolean =>
-  process.argv.some((value, index) => {
-    if (value === `--project=${projectName}`) return true;
-    return value === "--project" && process.argv[index + 1] === projectName;
-  });
+  requestedAuditProjects.includes(projectName);
 // The all-views aesthetic audit (#8796) walks ~50 views × 2 viewports; it is a
 // dedicated tool run via `audit:app`, not part of the default e2e smoke.
 const AUDIT_APP_SPEC = /all-views-aesthetic-audit\.spec\.ts/;
+const AUDIT_PROJECT_WORKER_CONTRACT_SPEC =
+  /audit-project-worker-contract\.spec\.ts/;
 const auditAppEnabled = projectRequested("audit-app");
 // Screenshot inventory for the offline vision-review tool. It records readiness
 // failures in JSON instead of asserting them, so it is an audit artifact
@@ -174,6 +185,7 @@ export default defineConfig({
         VOICE_MIC_SPEC,
         AI_QA_CAPTURE_SPEC,
         AUDIT_APP_SPEC,
+        AUDIT_PROJECT_WORKER_CONTRACT_SPEC,
         AUDIT_CLOUD_SPEC,
         AUDIT_APP_DROPDOWN_SPEC,
         /viewport-zoom-visualviewport\.spec\.ts/,
@@ -288,7 +300,7 @@ export default defineConfig({
             // All-views aesthetic audit (#8796) — run with `audit:app`
             // (`--project=audit-app`). Walks every view at desktop + mobile internally.
             name: "audit-app",
-            testMatch: AUDIT_APP_SPEC,
+            testMatch: [AUDIT_APP_SPEC, AUDIT_PROJECT_WORKER_CONTRACT_SPEC],
             use: {
               ...devices["Desktop Chrome"],
               ...withChromiumLaunchOptions(),
@@ -305,7 +317,7 @@ export default defineConfig({
             // VITE_PLAYWRIGHT_TEST_AUTH=true; the runner invalidates dist for this
             // project so a cached non-auth build cannot skip the local auth shell.
             name: "audit-cloud",
-            testMatch: AUDIT_CLOUD_SPEC,
+            testMatch: [AUDIT_CLOUD_SPEC, AUDIT_PROJECT_WORKER_CONTRACT_SPEC],
             use: {
               ...devices["Desktop Chrome"],
               ...withChromiumLaunchOptions(),
@@ -321,7 +333,10 @@ export default defineConfig({
             // renderer built with VITE_PLAYWRIGHT_TEST_AUTH=true so the Steward auth
             // shell serves the app-detail route.
             name: "audit-app-dropdown",
-            testMatch: AUDIT_APP_DROPDOWN_SPEC,
+            testMatch: [
+              AUDIT_APP_DROPDOWN_SPEC,
+              AUDIT_PROJECT_WORKER_CONTRACT_SPEC,
+            ],
             use: {
               ...devices["Desktop Chrome"],
               ...withChromiumLaunchOptions(),
