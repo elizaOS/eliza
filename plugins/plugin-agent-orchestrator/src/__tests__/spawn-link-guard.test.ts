@@ -7,6 +7,12 @@
  * body/instruction/input all empty; the doomed session dead-ended and the
  * user saw "runtime step failed". Deterministic — drives the REAL tasksAction
  * handler against a fake ACP service; no live model.
+ *
+ * Also pins the refusal's leak contract: the redirect instruction is
+ * planner-facing `data.plannerGuidance`, never `text`/`userFacingText`, and a
+ * refusal is never promoted to verified canonical copy — the promotion path
+ * shipped the raw "Refused to spawn…" envelope to chat verbatim (live
+ * tj-f1e0716132eb14, a shared docs.warp.dev link).
  */
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
@@ -90,6 +96,24 @@ async function runOp(
   return result;
 }
 
+/** The refusal's redirect instruction is planner-facing. If any fragment of it
+ * shows up in `text`/`userFacingText`, the delivery boundary can ship it to
+ * chat verbatim (live leak tj-f1e0716132eb14). */
+const INTERNAL_ENVELOPE =
+  /refused to spawn|do not spawn|candidate task text|WEB_FETCH|auth-walled|embed preview/i;
+
+function expectNoInternalTextInUserFacingFields(result: {
+  text?: string;
+  userFacingText?: string;
+  verifiedUserFacing?: boolean;
+}): void {
+  expect(String(result.text ?? "")).not.toMatch(INTERNAL_ENVELOPE);
+  expect(String(result.userFacingText ?? "")).not.toMatch(INTERNAL_ENVELOPE);
+  // A refusal must never carry do-not-paraphrase authority: verified canonical
+  // text outranks the evaluator's human reply and ships word-for-word.
+  expect(result.verifiedUserFacing).not.toBe(true);
+}
+
 describe("TASKS spawn gate: bare link shares never spawn", () => {
   it("spawn_agent with a link-share message and a derived-only task refuses pre-spawn", async () => {
     const { service, spawnSession } = makeFakeAcp();
@@ -103,9 +127,19 @@ describe("TASKS spawn gate: bare link shares never spawn", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("LINK_SHARE_NOT_A_TASK");
-    // The refusal must point the planner at the web-read light path.
-    expect(String(result.text)).toMatch(/WEB_FETCH/);
-    expect(String(result.text)).toMatch(/embed/i);
+    // The redirect signal rides in data for the planner — never in the
+    // user-facing text channel.
+    const data = result.data as Record<string, unknown>;
+    expect(data.code).toBe("LINK_SHARE_NOT_A_TASK");
+    expect(String(data.plannerGuidance)).toMatch(/WEB_FETCH/);
+    expect(String(data.plannerGuidance)).toMatch(/embed/i);
+    // Deliberate pause for direction, not an unresolved failure: the planner
+    // may follow the guidance (web read) and let that work own the reply.
+    expect(data.awaitingUserInput).toBe(true);
+    // The user-visible fields carry only a short human line.
+    expectNoInternalTextInUserFacingFields(result);
+    expect(String(result.userFacingText ?? "")).not.toHaveLength(0);
+    expect(String(result.userFacingText ?? "").length).toBeLessThan(160);
     // FAIL FAST: no ACP session may exist for a refused spawn.
     expect(spawnSession).not.toHaveBeenCalled();
   });
@@ -119,7 +153,33 @@ describe("TASKS spawn gate: bare link shares never spawn", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("LINK_SHARE_NOT_A_TASK");
+    expectNoInternalTextInUserFacingFields(result);
     expect(spawnSession).not.toHaveBeenCalled();
+  });
+
+  it("a refused spawn settles as cleanly rejected — no reconciliation noise, no promoted text", async () => {
+    const { service } = makeFakeAcp();
+    const runtime = makeRuntime(service);
+    const result = await runOp(runtime, messageWithText(LINK_SHARE_TEXT), {
+      action: "create",
+    });
+
+    // The settle wrapper must not promote the failed op's diagnostic text to
+    // canonical verified user-facing copy (the exact promotion that shipped
+    // the redirect envelope to chat).
+    expect(result.verifiedUserFacing).not.toBe(true);
+    expect(result.userFacingEffectReceiptIds).toBeUndefined();
+    const receipts = result.effectReceipts ?? [];
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]?.outcome).toBe("failed");
+    expect(
+      (receipts[0] as { failure?: { acceptance?: string } }).failure
+        ?.acceptance,
+    ).toBe("rejected");
+    // A pre-flight refusal created nothing: no outcome-unknown bookkeeping.
+    const data = result.data as Record<string, unknown>;
+    expect(data.outcomeUnknown).toBeUndefined();
+    expect(data.reconciliationRequired).toBeUndefined();
   });
 
   it("an explicit build instruction that includes a URL still spawns", async () => {
@@ -152,8 +212,12 @@ describe("TASKS spawn gate: empty task prompts refuse pre-spawn", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("EMPTY_TASK_PROMPT");
-    // Clear, planner-usable refusal — not a spawned-then-failed doomed agent.
-    expect(String(result.text)).toMatch(/empty/i);
+    // Clear, planner-usable refusal in data — not a spawned-then-failed
+    // doomed agent, and not an internal envelope in the user channel.
+    const data = result.data as Record<string, unknown>;
+    expect(data.code).toBe("EMPTY_TASK_PROMPT");
+    expect(String(data.plannerGuidance)).toMatch(/empty/i);
+    expectNoInternalTextInUserFacingFields(result);
     expect(spawnSession).not.toHaveBeenCalled();
   });
 });

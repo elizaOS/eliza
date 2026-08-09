@@ -225,6 +225,33 @@ function requestText(message: Memory): string {
 }
 
 /**
+ * Structured pre-spawn refusal. Machine detail rides in `data` (the planner
+ * reads it from the tool turn) while `text`/`userFacingText` carry ONLY a
+ * short human line that is safe to reach chat verbatim — a redirect
+ * instruction in the diagnostic text gets promoted to canonical user-facing
+ * copy by the settle wrapper and shipped word-for-word (live leak
+ * tj-f1e0716132eb14: the whole "Refused to spawn…" envelope replaced the
+ * evaluator's human reply). `awaitingUserInput` marks the refusal as a
+ * deliberate pause for direction, not an unresolved failure, so when the
+ * planner follows `plannerGuidance` (e.g. WEB_FETCH on a bare link) the
+ * successful read owns the turn's reply instead of being overridden by the
+ * failure authority.
+ */
+function spawnRefusalResult(
+  code: "EMPTY_TASK_PROMPT" | "LINK_SHARE_NOT_A_TASK",
+  humanText: string,
+  plannerGuidance: string,
+): ActionResult {
+  return {
+    success: false,
+    error: code,
+    text: humanText,
+    userFacingText: humanText,
+    data: { code, awaitingUserInput: true, plannerGuidance },
+  };
+}
+
+/**
  * Pre-spawn intent gate — fails fast BEFORE any ACP session exists. A coding
  * sub-agent must only be spawned on an explicit instruction. Refuses:
  *
@@ -234,12 +261,11 @@ function requestText(message: Memory): string {
  * 2. A task derived ONLY from a shared link (bare URL, optionally with the
  *    connector's embed preview text, and no explicit work imperative in the
  *    user's own words): a shared link is content to read and react to, not a
- *    work order. The refusal text points the planner at the web-read light
- *    path instead.
+ *    work order. The refusal's `data.plannerGuidance` points the planner at
+ *    the web-read light path instead.
  *
  * Sub-agent re-spawn turns (router-synthesized inbounds) skip the link check —
  * their root turn was already gated and their task comes from stored metadata.
- * Refusal text is planner-facing; the model phrases the user-visible reply.
  */
 function guardSpawnTaskIntent(args: {
   task: string;
@@ -247,16 +273,18 @@ function guardSpawnTaskIntent(args: {
   isSubAgentRespawn: boolean;
 }): ActionResult | undefined {
   if (!args.task.trim()) {
-    return errorResult(
+    return spawnRefusalResult(
       "EMPTY_TASK_PROMPT",
-      "Refused to spawn a coding sub-agent: the task prompt is empty, so there is nothing to delegate. No session was created. Ask the user what they actually want built, fixed, or investigated before delegating.",
+      "there's nothing concrete to delegate yet — what do you want built, fixed, or investigated?",
+      "Do not spawn a coding sub-agent: the task prompt is empty, so there is nothing to delegate. No session was created. Ask the user what they actually want built, fixed, or investigated before delegating.",
     );
   }
   if (args.isSubAgentRespawn) return undefined;
   if (looksLikeBareLinkShare(args.originatingText)) {
-    return errorResult(
+    return spawnRefusalResult(
       "LINK_SHARE_NOT_A_TASK",
-      "Refused to spawn a coding sub-agent: the user's message is a shared link with no explicit build/fix/code instruction — the candidate task text was derived from the link's embed preview, not from the user. No session was created. Instead, read the page (WEB_FETCH) and respond about its actual content; if it is not fetchable (private or auth-walled), react using the embed title/description already present in the message and ask whether the user wants anything specific done with it.",
+      "that's a link, not a task — want me to read it, or do something specific with it?",
+      "Do not spawn a coding sub-agent: the user's message is a shared link with no explicit build/fix/code instruction — the candidate task text was derived from the link's embed preview, not from the user. No session was created. Instead, read the page (WEB_FETCH) and respond about its actual content; if it is not fetchable (private or auth-walled), react using the embed title/description already present in the message and ask whether the user wants anything specific done with it.",
     );
   }
   return undefined;
@@ -4030,9 +4058,11 @@ const TASKS_READ_ONLY_OPERATIONS: ReadonlySet<TaskOp> = new Set([
 ]);
 
 const TASKS_REJECTED_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "EMPTY_TASK_PROMPT",
   "FORBIDDEN",
   "INVALID_CREDENTIALS",
   "INVALID_REPO_DOMAIN",
+  "LINK_SHARE_NOT_A_TASK",
   "MISSING_INPUT",
   "MISSING_ISSUE_NUMBER",
   "MISSING_PARAMS",
@@ -4412,11 +4442,20 @@ async function settleTasksOperation(args: {
   let result = args.result;
   const helperEmittedCallback = args.capturedCallbacks.length > 0;
   let canonical = args.capturedCallbacks.at(-1);
-  if (!canonical && effectString(result.text)) {
+  // A FAILED op's `text` is planner-facing diagnostic by core contract
+  // (PlannerToolResult.text) — refusal codes carry redirect instructions for
+  // the model, not copy for the user. Promoting it to canonical
+  // `verifiedUserFacing` text hands it do-not-paraphrase authority over even
+  // the evaluator's own human reply, which shipped the LINK_SHARE_NOT_A_TASK
+  // redirect envelope verbatim to chat (live tj-f1e0716132eb14). Only a
+  // successful op's text — or text a failure path actually delivered through
+  // its own callback — may become canonical.
+  if (!canonical && result.success !== false && effectString(result.text)) {
     canonical = { response: { text: effectString(result.text) } };
   }
   if (
     args.capturedCallbacks.length > 1 &&
+    result.success !== false &&
     effectString(result.text) !== undefined
   ) {
     canonical = {
