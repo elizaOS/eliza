@@ -119,6 +119,45 @@ async function waitForHeaderShown(p, timeout = 1500) {
     { timeout },
   );
 }
+// --- Bounded settle-waits -------------------------------------------------
+// The sheet's detent/variant/chat-state attributes and the composer's control
+// morphs land asynchronously (state machine commit + React render + spring
+// tail). Sampling them immediately — or after a fixed sleep — races the render
+// on loaded CI runners (observed: grabber-visibility timeout, thread at 477px
+// after "closed", mic still mounted right after fill()). Each helper polls the
+// LIVE predicate with a bounded interval wait and ALWAYS resolves: the caller's
+// assert stays the single failure surface and the contract is unchanged — only
+// the sampling now waits for the state to settle.
+const SETTLE_WAIT_MS = 4000;
+const settleWait = (p, fn, arg, timeout = SETTLE_WAIT_MS) =>
+  p.waitForFunction(fn, arg, { timeout, polling: 100 }).catch(() => {});
+const settleAttr = (p, attr, want) =>
+  settleWait(
+    p,
+    ({ attr, want }) =>
+      document
+        .querySelector('[data-testid="chat-sheet"]')
+        ?.getAttribute(attr) === want,
+    { attr, want },
+  );
+const settleVariant = (p, want) => settleAttr(p, "data-variant", want);
+const settleDetent = (p, want) => settleAttr(p, "data-detent", want);
+const settleChatState = (p, want) => settleAttr(p, "data-chat-state", want);
+const settleCount = (p, selector, want) =>
+  settleWait(
+    p,
+    ({ selector, want }) => document.querySelectorAll(selector).length === want,
+    { selector, want },
+  );
+const settleVisible = (p, selector) =>
+  settleWait(
+    p,
+    (selector) => {
+      const b = document.querySelector(selector)?.getBoundingClientRect();
+      return !!b && b.width > 0 && b.height > 0;
+    },
+    selector,
+  );
 // The history (thread) is the element whose height animates 0 → half → full;
 // the panel (chat-sheet) also holds the always-present input, so measure the
 // thread for detent heights.
@@ -601,14 +640,18 @@ async function runDragSuite(p, pointer, tag) {
   await p.waitForTimeout(150);
 
   // fully collapsed at rest — the thread is gone (height 0), just the input
+  await settleVariant(p, "closed");
   assert((await variant(p)) === "closed", `[${pointer}] starts COLLAPSED (closed)`);
+  await settleDetent(p, "collapsed");
   assert((await detent(p)) === "collapsed", `[${pointer}] detent is collapsed at rest`);
+  await waitForSheetHeightNear(p, 0, 6);
   assert(near(await sheetHeight(p), 0, 6), `[${pointer}] COLLAPSED thread height ≈ 0px`);
   await snap(p, `${tag}-collapsed`);
 
   // FLICK up → HALF (fast deliberate pull crosses the velocity threshold → snap to a detent)
   await gesture(p, 160, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
+  await settleDetent(p, "half");
   assert((await detent(p)) === "half", `[${pointer}] flick-up snaps COLLAPSED→HALF`);
   await waitForSheetHeightNear(p, halfH, TOL);
   assert(near(await sheetHeight(p), halfH, TOL), `[${pointer}] HALF height ≈ ${halfH}px (got ${Math.round(await sheetHeight(p))})`);
@@ -642,6 +685,7 @@ async function runDragSuite(p, pointer, tag) {
   // FLICK up again → FULL — the sheet rises to the top of the screen
   await gesture(p, 140, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
+  await settleDetent(p, "full");
   assert((await detent(p)) === "full", `[${pointer}] flick-up snaps HALF→FULL`);
   fullH = Math.round(await sheetHeight(p));
   assert(fullH > halfH + 40, `[${pointer}] FULL is taller than HALF (full ${fullH} > half ${halfH})`);
@@ -766,6 +810,7 @@ async function runDragSuite(p, pointer, tag) {
       `[${pointer}] slow drag rests open (rested ${restedH}, start ${startFree})`,
     );
   }
+  await settleVariant(p, "open");
   assert((await variant(p)) === "open", `[${pointer}] free-rested sheet stays open`);
   await snap(p, `${tag}-free-rest`);
 
@@ -776,6 +821,7 @@ async function runDragSuite(p, pointer, tag) {
     await gesture(p, -130, { pointer, slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
   }
+  await settleVariant(p, "closed");
   assert((await variant(p)) === "closed", `[${pointer}] flick-down returns to COLLAPSED`);
   // Wait for the collapse spring to actually finish rather than a fixed sleep:
   // `variant` flips to closed at release while the thread height is still
@@ -783,18 +829,7 @@ async function runDragSuite(p, pointer, tag) {
   // SETTLE (observed: closed with thread at 477px). Poll the real height into
   // the tolerance band; the assert below still owns the contract.
   const collapseTol = pointer === "mouse" ? 30 : 48;
-  await p
-    .waitForFunction(
-      (tol) => {
-        const b = document
-          .querySelector('[data-testid="chat-thread"]')
-          ?.getBoundingClientRect();
-        return (b?.height ?? 0) <= tol;
-      },
-      collapseTol,
-      { timeout: 5000, polling: 100 },
-    )
-    .catch(() => {}); // the assert below reports the real height on failure
+  await waitForSheetHeightNear(p, 0, collapseTol);
   // thread ≈ 0; allow a small band for the spring tail (touch dispatch wider).
   assert(
     near(await sheetHeight(p), 0, collapseTol),
@@ -805,6 +840,7 @@ async function runDragSuite(p, pointer, tag) {
   // click-out collapses: open, then click the dimmed scrim → collapses.
   await gesture(p, 120, { pointer, slow: true });
   await p.waitForTimeout(SETTLE);
+  await settleVariant(p, "open");
   assert((await variant(p)) === "open", `[${pointer}] re-opened for the click-out check`);
   // The backdrop is deliberately pointer-transparent in production. Dispatch
   // the synthetic pointer sequence directly so its target remains the backdrop
@@ -826,6 +862,7 @@ async function runDragSuite(p, pointer, tag) {
     clientY: 16,
   });
   await p.waitForTimeout(SETTLE);
+  await settleVariant(p, "closed");
   assert((await variant(p)) === "closed", `[${pointer}] clicking outside COLLAPSES the chat`);
   await snap(p, `${tag}-clicked-out-collapsed`);
 
@@ -839,6 +876,7 @@ async function runDragSuite(p, pointer, tag) {
     stepDelayMs: pointer === "touch" ? 0 : undefined,
   });
   await p.waitForTimeout(SETTLE);
+  await settleVariant(p, "open");
   assert((await variant(p)) === "open", `[${pointer}] FLICK up opens despite <56px travel (velocity)`);
   await snap(p, `${tag}-flick-open`);
 
@@ -846,6 +884,7 @@ async function runDragSuite(p, pointer, tag) {
   const beforeNudge = await variant(p);
   await gesture(p, -34, { pointer, slow: true });
   await p.waitForTimeout(SETTLE);
+  await settleVariant(p, beforeNudge);
   assert((await variant(p)) === beforeNudge, `[${pointer}] sub-threshold nudge snaps back (no detent change)`);
   await snap(p, `${tag}-nudge-snapback`);
 }
@@ -1343,6 +1382,7 @@ async function openSheetToFull(p, pointer) {
     await gesture(p, 220, { pointer, slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
   }
+  await settleDetent(p, "full");
   assert((await detent(p)) === "full", `[${pointer}] AUTOSCROLL opens the sheet to FULL`);
   await waitForThreadBottom(p);
   const state = await threadScrollState(p);
@@ -2142,6 +2182,7 @@ try {
     await gotoFixture(desktop);
     await desktop.waitForSelector('[data-testid="chat-sheet"]');
     await desktop.waitForTimeout(700);
+    await settleVariant(desktop, "closed");
     assert((await variant(desktop)) === "closed", "[webkit mouse] starts closed");
     await snap(desktop, "safari-desktop-collapsed");
     await gesture(desktop, Math.round((await viewportH(desktop)) * 0.46), {
@@ -2150,6 +2191,7 @@ try {
       steps: 3,
     });
     await desktop.waitForTimeout(SETTLE);
+    await settleVariant(desktop, "open");
     assert((await variant(desktop)) === "open", "[webkit mouse] flick opens the sheet");
     assert(await headerShown(desktop), "[webkit mouse] open sheet exposes the header strip");
     assert(
@@ -2183,9 +2225,11 @@ try {
     await gotoFixture(mobile);
     await mobile.waitForSelector('[data-testid="chat-sheet"]');
     await mobile.waitForTimeout(700);
+    await settleVariant(mobile, "closed");
     assert((await variant(mobile)) === "closed", "[webkit mobile] starts closed");
     await gesture(mobile, 140, { pointer: "mouse", slow: false, steps: 3 });
     await mobile.waitForTimeout(SETTLE);
+    await settleVariant(mobile, "open");
     assert((await variant(mobile)) === "open", "[webkit mobile] flick opens the sheet");
     assert(
       await mobile.getByTestId("chat-composer-textarea").isVisible(),
@@ -2458,9 +2502,15 @@ try {
     await gotoFixture(p, `${url}?empty`);
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(650);
+    await settleCount(p, '[data-testid="chat-thread"]', 0);
     assert((await p.locator('[data-testid="chat-thread"]').count()) === 0, "EMPTY: no thread/history mounted (just the input panel)");
+    await settleVisible(p, '[data-testid="chat-composer-plus"]');
     assert(await p.getByTestId("chat-composer-plus").isVisible(), "EMPTY: chat actions (+) button shown");
     await p.getByTestId("chat-composer-plus").click();
+    await p
+      .getByText("Upload file", { exact: true })
+      .waitFor({ state: "visible", timeout: SETTLE_WAIT_MS })
+      .catch(() => {});
     assert(await p.getByText("Upload file", { exact: true }).isVisible(), "EMPTY: upload lives in the chat-actions menu");
     // The + menu is the first migrated liquid-glass menu surface: assert the
     // glass class is live (GlassStyles mounted by the fixture shell) and
@@ -2471,6 +2521,7 @@ try {
     );
     await snap(p, "state-plus-menu-glass");
     await p.keyboard.press("Escape");
+    await settleCount(p, '[data-testid="chat-composer-mic"]', 1);
     assert((await p.getByTestId("chat-composer-mic").count()) === 1, "EMPTY: mic button shown (no draft)");
     await snap(p, "state-empty");
     await p.close();
@@ -2578,6 +2629,7 @@ try {
     await p.getByTestId("chat-sheet-grabber").focus();
     await p.keyboard.press("ArrowUp"); // open to half behind the chip
     await p.waitForTimeout(450);
+    await settleVariant(p, "open");
     assert((await variant(p)) === "open", "UNLOCK: sheet opens behind the audio-unlock chip");
     await snap(p, "state-audio-unlock-open");
     await p.getByTestId("overlay-voice-audio-unlock").click();
@@ -2662,6 +2714,7 @@ try {
     await p.getByTestId("chat-sheet-grabber").focus();
     await p.keyboard.press("ArrowUp"); // open to half so the dots are visible
     await p.waitForTimeout(450);
+    await settleVisible(p, '[data-testid="turn-status-indicator"]');
     assert(await p.getByTestId("turn-status-indicator").isVisible(), "RESPONDING: turn status shown in the open sheet");
     await snap(p, "state-responding");
     await p.close();
@@ -2677,8 +2730,11 @@ try {
     const input = p.getByTestId("chat-composer-textarea");
     await input.fill("draft message");
     await p.waitForTimeout(200);
+    await settleVisible(p, '[data-testid="chat-composer-action"]');
     assert(await p.getByTestId("chat-composer-action").isVisible(), "TYPING: trailing control morphs mic→send");
+    await settleCount(p, '[data-testid="chat-composer-mic"]', 0);
     assert((await p.getByTestId("chat-composer-mic").count()) === 0, "TYPING: mic hidden while a draft exists");
+    await settleVariant(p, "open");
     assert((await variant(p)) === "open", "TYPING: composing pulls the sheet open");
     await snap(p, "state-typing-send");
     // SEND-TAP: tapping the send button must keep the composer focused so the
@@ -2731,13 +2787,21 @@ try {
       },
     ]);
     await p.waitForTimeout(350);
+    await settleCount(p, 'img[alt="shot.png"]', 1);
     assert((await p.locator('img[alt="shot.png"]').count()) === 1, "ATTACH: pending image thumbnail rendered");
+    await settleCount(p, 'img[alt="shot-two.png"]', 1);
     assert((await p.locator('img[alt="shot-two.png"]').count()) === 1, "ATTACH: second thumbnail renders a real inter-tile gap");
+    await settleVisible(p, '[data-testid="chat-composer-action"]');
     assert(await p.getByTestId("chat-composer-action").isVisible(), "ATTACH: send button shown for image-only turn");
+    await p
+      .getByLabel("remove shot.png")
+      .waitFor({ state: "visible", timeout: SETTLE_WAIT_MS })
+      .catch(() => {});
     assert(await p.getByLabel("remove shot.png").isVisible(), "ATTACH: per-image remove button shown");
     await snap(p, "state-image-attached");
     await p.getByLabel("remove shot.png").click();
     await p.waitForTimeout(250);
+    await settleCount(p, 'img[alt="shot.png"]', 0);
     assert((await p.locator('img[alt="shot.png"]').count()) === 0, "REMOVE: thumbnail cleared after remove");
 
     // Re-add the first tile, then start a real touch pull on its image pixels.
@@ -2754,16 +2818,19 @@ try {
       stepDelayMs: 4,
     });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "half");
     assert((await detent(p)) === "half", "ATTACH DRAG: pull through tile pixels opens the sheet");
 
     await p.keyboard.press("Escape");
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "collapsed");
     assert((await detent(p)) === "collapsed", "ATTACH DRAG: Escape restores input before gap proof");
     await touchSwipe(p, testIdSelector("chat-pending-attachment-list"), 0, -160, {
       steps: 8,
       stepDelayMs: 4,
     });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "half");
     assert((await detent(p)) === "half", "ATTACH DRAG: pull through attachment-list gap opens the sheet");
     await p.close();
   }
@@ -3000,6 +3067,7 @@ try {
     await p.getByTestId("chat-composer-textarea").focus();
     await p.waitForTimeout(150);
     assert(await focused(), "FOCUS: composer holds focus");
+    await settleVariant(p, "open");
     assert((await variant(p)) === "open", "FOCUS: focusing opens the chat");
     await p
       .getByTestId("chat-sheet-backdrop")
@@ -3009,6 +3077,7 @@ try {
       (await focused()) === false,
       "CLICK-OUT: blurs the composer (mobile keyboard drops)",
     );
+    await settleVariant(p, "closed");
     assert((await variant(p)) === "closed", "CLICK-OUT: collapses the chat");
     await p.close();
   }
@@ -3141,11 +3210,16 @@ try {
     await p.getByTestId("chat-sheet-grabber").focus();
     await p.keyboard.press("ArrowUp"); // open the sheet to reveal the gate
     await p.waitForTimeout(450);
+    await p
+      .getByText("Connect a provider to chat")
+      .waitFor({ state: "visible", timeout: SETTLE_WAIT_MS })
+      .catch(() => {});
     assert(
       await p.getByText("Connect a provider to chat").isVisible(),
       "NO_PROVIDER: structured recovery gate is rendered (not raw error text)",
     );
     const cta = p.getByTestId("chat-no-provider-settings");
+    await cta.waitFor({ state: "visible", timeout: SETTLE_WAIT_MS }).catch(() => {});
     assert(await cta.isVisible(), "NO_PROVIDER: 'Open Settings' CTA shown");
     await snap(p, "state-no-provider-gate");
     await cta.click();
@@ -3166,19 +3240,23 @@ try {
     await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
+    await settleDetent(p, "collapsed");
     assert((await detent(p)) === "collapsed", "PILL: starts at input (collapsed)");
     // A SLOW drag down from the collapsed input also collapses to the pill —
     // there's nothing to "size" below the input, so down always means pill.
     await gesture(p, -90, { pointer: "touch", slow: true, steps: 12 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "pill");
     assert((await detent(p)) === "pill", "PILL: slow drag-down collapses the input → pill");
     // Reset to the input peek and verify a quick FLICK down pills it too.
     await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
+    await settleDetent(p, "collapsed");
     assert((await detent(p)) === "collapsed", "PILL: reset to the input peek before flick check");
     await gesture(p, -90, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "pill");
     assert((await detent(p)) === "pill", "PILL: flick-down collapses the input → pill");
     assert(
       (await p.getByTestId("chat-pill").count()) === 1,
@@ -3221,6 +3299,7 @@ try {
     await p.waitForTimeout(500);
     await gesture(p, -90, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "pill");
     assert((await detent(p)) === "pill", "PILL-TAP: collapsed to pill first");
     // Real tap: touchStart then touchEnd at the SAME spot (no move).
     await touchTap(p, '[data-testid="chat-pill"]');
@@ -3256,6 +3335,7 @@ try {
     await p.waitForTimeout(600);
     await gesture(p, 120, { pointer: "mouse", slow: true });
     await p.waitForTimeout(200);
+    await settleVariant(p, "open");
     assert((await variant(p)) === "open", "REDUCED-MOTION: pull-up still opens");
     await snap(p, "state-reduced-motion-open");
     await p.close();
@@ -3272,6 +3352,7 @@ try {
     await p.waitForTimeout(600);
     await gesture(p, 120, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "half");
     assert((await detent(p)) === "half", "NAV: opened to half");
     await waitForHeaderShown(p);
     assert(
@@ -3334,6 +3415,7 @@ try {
     await p.waitForTimeout(600);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "half");
     assert((await detent(p)) === "half", "MAX-HALF: at half before maximize");
     await maximizeByPull(p);
     if (
@@ -3470,6 +3552,7 @@ try {
     const vh = await viewportH(p);
     const halfH = Math.round(vh * 0.46);
 
+    await settleChatState(p, "INPUT");
     assert((await chatState(p)) === "INPUT", "STATES: rest is INPUT");
     assert(
       !(await headerShown(p)),
@@ -3600,6 +3683,7 @@ try {
     await p.waitForTimeout(600);
     await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleChatState(p, "CLOSED");
     assert((await chatState(p)) === "CLOSED", "PILL-MORPH: collapsed to pill");
 
     // MID-DRAG hold: slow-pull the PILL up ~half the open distance and HOLD —
@@ -3713,6 +3797,7 @@ try {
     await p.waitForTimeout(500);
     await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "pill");
     assert((await detent(p)) === "pill", "PILL-INPUT: collapsed to pill first");
     // SLOW pull up ~80px: past the 60px halfway-open mark (commits to leaving the
     // pill) but under PILL_OPEN_DISTANCE (120px), so only the input bar forms.
@@ -3772,6 +3857,7 @@ try {
     await p.waitForTimeout(500);
     await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "pill");
     assert((await detent(p)) === "pill", "ROTATION: collapsed to pill first");
     await gesture(p, 60, {
       pointer: "mouse",
