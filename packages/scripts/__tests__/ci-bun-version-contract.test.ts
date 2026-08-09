@@ -56,15 +56,10 @@ const CANONICAL = "1.3.14";
 const SHA = "0c5077e51419868618aeaa5fe8019c62421857d6";
 
 const GATE_WORKFLOWS = [
-  "ci.yaml",
+  "ci.yml",
   "test.yml",
   "develop-pr.yml",
   "cloud-cf-deploy.yml",
-  "app-aesthetic-audit.yml",
-  "develop-exhaustive.yml",
-  "ci-full-matrix-proof.yml",
-  "windows-ci.yml",
-  "windows-desktop-preload-smoke.yml",
 ];
 
 // A gate stub that pins via a BUN_VERSION env literal and references it from
@@ -212,13 +207,13 @@ describe("ci-bun-version-contract", () => {
 
   test("fails when a gate workflow drops the canonical pin entirely", () => {
     expectViolation(
-      buildRepo({ overrides: { "ci.yaml": GATE_NO_PIN } }),
+      buildRepo({ overrides: { "ci.yml": GATE_NO_PIN } }),
       /does not wire the canonical Bun pin/,
     );
   });
 
   test("fails loudly when a gate workflow is missing, instead of skipping", () => {
-    expectViolation(buildRepo({ overrides: { "ci.yaml": null } }), /ci\.yaml/);
+    expectViolation(buildRepo({ overrides: { "ci.yml": null } }), /ci\.yml/);
   });
 
   test("fails when the source of truth itself floats", () => {

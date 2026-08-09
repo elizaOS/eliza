@@ -138,18 +138,13 @@ const EXCLUDED_SURFACES = [
 
 // Required, scheduled, and deploy-critical install lanes that must wire the
 // concrete pin directly (not merely resolve through indirection). The required
-// `ci-ok` aggregate (test.yml), main gate (ci.yaml), and canonical cloud
-// deploy are the load-bearing paths.
+// `ci-ok` aggregate (test.yml), consolidated gate (ci.yml), and canonical
+// cloud deploy are the load-bearing paths.
 const GATE_WORKFLOWS = [
-  "ci.yaml",
+  "ci.yml",
   "test.yml",
   "develop-pr.yml",
   "cloud-cf-deploy.yml",
-  "app-aesthetic-audit.yml",
-  "develop-exhaustive.yml",
-  "ci-full-matrix-proof.yml",
-  "windows-ci.yml",
-  "windows-desktop-preload-smoke.yml",
 ];
 
 // Both the post-merge suite and the required develop PR gate must execute the
