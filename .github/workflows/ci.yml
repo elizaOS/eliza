@@ -114,7 +114,9 @@ jobs:
     name: Tests
     needs: changes
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # The four sequential lanes (scripts, server, client, plugins) legitimately
+    # total ~95-110 minutes on a cache-cold PR runner; 90 killed healthy runs.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

@@ -6,11 +6,15 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createSmithersScript } from '../../src/services/smithers-runtime';
 
 const CASE_TIMEOUT_MS = 45_000;
 const fixturePath = fileURLToPath(new URL('../fixtures/smithers-runtime-case.ts', import.meta.url));
 const earlyCloseFixturePath = fileURLToPath(
   new URL('../fixtures/smithers-early-close-case.ts', import.meta.url)
+);
+const exitWithoutCloseFixturePath = fileURLToPath(
+  new URL('../fixtures/smithers-exit-without-close-case.ts', import.meta.url)
 );
 const pluginRoot = fileURLToPath(new URL('../..', import.meta.url));
 const repoRoot = fileURLToPath(new URL('../../../..', import.meta.url));
@@ -230,6 +234,19 @@ describe('runWorkflowWithSmithers (in-process Smithers engine)', () => {
     expect(result.workerAlive).toBe(false);
   }, 60_000);
 
+  it('settles within the stdio drain bound when a worker exits but its pipes stay held open', async () => {
+    const { result } = await runCase('exit-without-close', exitWithoutCloseFixturePath, 'node');
+
+    expect(result.threw).toBe(true);
+    expect(result.code).toBe('SMITHERS_WORKFLOW_RESULT_MISSING');
+    expect(result.workerExited).toBe(true);
+    // The grandchild still holds the worker's stdout/stderr, so 'close' never
+    // fired; the bounded drain fallback must settle the run regardless — an
+    // unbounded 'close' wait here is exactly the CI plugin-lane wedge.
+    expect(result.workerClosed).toBe(false);
+    expect(Number(result.elapsedMs)).toBeLessThan(30_000);
+  }, 60_000);
+
   it('resumes after a crash without repeating an already-persisted side effect', async () => {
     const { result } = await runCase('crash-resume');
 
@@ -246,4 +263,83 @@ describe('runWorkflowWithSmithers (in-process Smithers engine)', () => {
       finished: 2,
     });
   }, 60_000);
+
+  it(
+    'worker exits when stdin closes mid-run instead of idling forever as an orphan',
+    async () => {
+      // Drives the worker process directly: deliver a one-node plan, wait for its
+      // executeNode request, then close stdin without answering — the shape a
+      // dead parent leaves behind. An unsettled node promise used to keep the
+      // Effect fiber (and the process) alive forever; leaked workers accumulated
+      // on suite hosts and poisoned later spawns' stdio wiring.
+      const tempDir = await mkdtemp(join(tmpdir(), 'smithers-orphan-'));
+      const node = {
+        name: 'lonely-node',
+        type: 'test.node',
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {},
+      };
+      const payload = JSON.stringify({
+        dbPath: join(tempDir, 'orphan.sqlite'),
+        dbConfig: { provider: 'sqlite' },
+        executionId: 'run-orphan-contract',
+        workflowName: 'orphan-contract',
+        input: { mode: 'manual', triggerData: {}, workflowId: 'wf-orphan' },
+        pending: {
+          id: 'exec-orphan',
+          finished: false,
+          mode: 'manual',
+          startedAt: new Date().toISOString(),
+          workflowId: 'wf-orphan',
+          status: 'running',
+        },
+        plan: { enabledNodes: [node], startNodes: [node.name], incoming: {} },
+        triggerData: {},
+        rootDir: tempDir,
+      });
+      const worker = spawn(process.execPath, ['-e', createSmithersScript()], {
+        cwd: pluginRoot,
+        env: buildChildEnv(),
+        stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
+      });
+      try {
+        const payloadPipe = worker.stdio[3] as NodeJS.WritableStream;
+        payloadPipe.end(payload);
+        let stdout = '';
+        worker.stdout?.setEncoding('utf8');
+        const sawNodeRequest = new Promise<void>((resolve, reject) => {
+          const requestDeadline = setTimeout(
+            () => reject(new Error(`worker never requested the node; stdout:\n${stdout}`)),
+            30_000
+          );
+          worker.stdout?.on('data', (chunk: string) => {
+            stdout += chunk;
+            if (stdout.includes('"executeNode"')) {
+              clearTimeout(requestDeadline);
+              resolve();
+            }
+          });
+        });
+        await sawNodeRequest;
+        // The parent vanishes: close stdin without ever answering the request.
+        worker.stdin?.end();
+        const exitCode = await new Promise<number | null>((resolve, reject) => {
+          const exitDeadline = setTimeout(
+            () => reject(new Error('worker kept running after stdin closed (orphan leak)')),
+            15_000
+          );
+          worker.once('close', (code) => {
+            clearTimeout(exitDeadline);
+            resolve(code);
+          });
+        });
+        expect(exitCode).not.toBe(0);
+      } finally {
+        if (worker.exitCode === null) worker.kill('SIGKILL');
+        await rm(tempDir, { force: true, recursive: true });
+      }
+    },
+    CASE_TIMEOUT_MS
+  );
 });
