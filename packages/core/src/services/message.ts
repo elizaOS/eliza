@@ -139,6 +139,7 @@ import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
 	FAILED_TOOL_FALLBACK_MESSAGE,
+	isTerminalPlannerToolName,
 	type PlannerLoopParams,
 	type PlannerRuntime,
 	type PlannerToolCall,
@@ -1760,6 +1761,53 @@ function deliveredTextsCoverReply(
 		}
 	}
 	return false;
+}
+
+/**
+ * Records a settled planner tool result on the turn-scoped list the
+ * planner-loop failure catch reads, returning the result unchanged so the
+ * capture composes inline with the executor call.
+ */
+function trackSettledPlannerToolResult(
+	settled: Array<{ name: string; result: PlannerToolResult }>,
+	name: string,
+	result: PlannerToolResult,
+): PlannerToolResult {
+	settled.push({ name, result });
+	return result;
+}
+
+/**
+ * The most recent completed tool result whose `userFacingText` can still
+ * rescue a turn after the planner loop dies: successful, non-terminal, and not
+ * already delivered to the user through an action callback. Diagnostic
+ * `text` is never a candidate — the wire contract says it must not render as
+ * assistant prose — so a turn whose tools produced only diagnostics still
+ * falls through to the caller's failure handling.
+ */
+export function preservedSettledToolResult(
+	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
+	deliveredVisibleTexts: ReadonlySet<string>,
+): (PlannerToolResult & { userFacingText: string }) | undefined {
+	for (let index = settled.length - 1; index >= 0; index--) {
+		const entry = settled[index];
+		if (!entry || entry.result.success !== true) continue;
+		if (isTerminalPlannerToolName(entry.name)) continue;
+		const candidate = entry.result.userFacingText?.trim();
+		if (!candidate) continue;
+		// A text the user already saw via an action callback must not be
+		// re-sent; keep scanning for an undelivered result.
+		if (
+			deliveredTextsCoverReply(
+				deliveredVisibleTexts,
+				normalizeVisibleTextForDuplicateCheck(candidate),
+			)
+		) {
+			continue;
+		}
+		return { ...entry.result, userFacingText: candidate };
+	}
+	return undefined;
 }
 
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
@@ -8200,6 +8248,17 @@ export async function runV5MessageRuntimeStage1(args: {
 				}
 			: undefined;
 
+		// Settled planner tool results, in execution order, captured OUTSIDE the
+		// loop so they survive a planner/evaluator crash. When the loop dies
+		// after a tool already completed, the catch below can still deliver that
+		// tool's user-facing text instead of the canned transient-failure reply
+		// (observed live 2026-08-07/08: intermittent provider 400s on the
+		// post-tool evaluator canned 26 turns whose tool had already succeeded).
+		const settledPlannerToolResults: Array<{
+			name: string;
+			result: PlannerToolResult;
+		}> = [];
+
 		const invokePlannerLoop = (
 			loopContext: typeof plannerContextAfterEarlyReply,
 		) =>
@@ -8260,45 +8319,49 @@ export async function runV5MessageRuntimeStage1(args: {
 					executeToolCall: (toolCall, ctx) =>
 						timeInferenceSpan(
 							"actions:planner-tool",
-							() =>
-								executeV5PlannedToolCall({
-									runtime: args.runtime,
-									toolCall,
-									plannerContext: loopContext,
-									executorCtx: buildV5ExecutorContext({
-										message: args.message,
-										state: plannerState,
-										selectedContexts,
-										senderRole,
-										previousResults: collectPreviousActionResults(
-											ctx.trajectory,
-											exposedPlannerActions,
-										),
-										// A pending batch has not earned transcript prose, but its
-										// media and interactive payloads still belong to the user.
-										...(recordingCallback
-											? {
-													callback:
-														ctx.plannerCompleted === false
-															? intermediateCallback
-															: recordingCallback,
-												}
-											: {}),
+							async () =>
+								trackSettledPlannerToolResult(
+									settledPlannerToolResults,
+									toolCall.name,
+									await executeV5PlannedToolCall({
+										runtime: args.runtime,
+										toolCall,
+										plannerContext: loopContext,
+										executorCtx: buildV5ExecutorContext({
+											message: args.message,
+											state: plannerState,
+											selectedContexts,
+											senderRole,
+											previousResults: collectPreviousActionResults(
+												ctx.trajectory,
+												exposedPlannerActions,
+											),
+											// A pending batch has not earned transcript prose, but its
+											// media and interactive payloads still belong to the user.
+											...(recordingCallback
+												? {
+														callback:
+															ctx.plannerCompleted === false
+																? intermediateCallback
+																: recordingCallback,
+													}
+												: {}),
+										}),
+										plannerRuntime,
+										executorOptions: {
+											actions: exposedPlannerActions,
+											...(args.onSettledActionResult
+												? {
+														onSettledResult: args.onSettledActionResult,
+													}
+												: {}),
+										},
+										evaluatorEffects,
+										recorder,
+										trajectoryId,
+										plannerLoopConfig: args.plannerLoopConfig,
 									}),
-									plannerRuntime,
-									executorOptions: {
-										actions: exposedPlannerActions,
-										...(args.onSettledActionResult
-											? {
-													onSettledResult: args.onSettledActionResult,
-												}
-											: {}),
-									},
-									evaluatorEffects,
-									recorder,
-									trajectoryId,
-									plannerLoopConfig: args.plannerLoopConfig,
-								}),
+								),
 							{ tool: toolCall.name },
 						),
 					evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
@@ -8326,7 +8389,48 @@ export async function runV5MessageRuntimeStage1(args: {
 				!preservedAnswer ||
 				PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
 			) {
-				throw error;
+				// No answer-shaped Stage-1 text to rescue with — but a tool that
+				// already completed this turn may still own the user-facing result
+				// (observed live: the post-tool evaluator died on an intermittent
+				// provider 400 and the canned transient-failure reply replaced a
+				// result the turn had already produced). Deliver the preserved tool
+				// result; the canned line remains only when there is genuinely
+				// nothing user-facing to deliver.
+				const preservedToolResult = preservedSettledToolResult(
+					settledPlannerToolResults,
+					deliveredVisibleTexts,
+				);
+				if (!preservedToolResult) {
+					throw error;
+				}
+				// error-policy:J4 a completed tool's user-facing result is a designed
+				// degrade when later planning/evaluation fails; report the loop
+				// failure and deliver the tool's known-good text.
+				endStatus = "errored";
+				args.runtime.reportError("MessageService.plannerLoop", error, {
+					roomId: args.message.roomId,
+				});
+				return {
+					kind: "direct_reply",
+					messageHandler,
+					result: createV5ReplyStrategyResult({
+						...args,
+						state: plannerState,
+						text: preservedToolResult.userFacingText,
+						thought: messageHandler.thought,
+						// Only byte-exact canonical action text may skip the voice
+						// gate; ordinary tool output stays eligible for re-voicing.
+						...(preservedToolResult.verifiedUserFacing === true
+							? { agentVoiced: true }
+							: {}),
+						...(preservedToolResult.userFacingEffectReceiptIds?.length
+							? {
+									effectReceiptIds:
+										preservedToolResult.userFacingEffectReceiptIds,
+								}
+							: {}),
+					}),
+				};
 			}
 			// error-policy:J4 A completed Stage-1 answer is a designed degrade when
 			// later planning fails; report the planner failure and deliver known-good text.
