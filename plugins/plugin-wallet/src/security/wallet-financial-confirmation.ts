@@ -151,6 +151,18 @@ export function walletFinancialPendingKey(
   return entries.map(([key, value]) => `${key}=${value}`).join("|");
 }
 
+// The authorized slippage is part of what the user confirms, so the prompt
+// must disclose it: without it a 10 bps and a 10,000 bps swap read
+// identically. The unstated default is not a single chain-agnostic number
+// (EVM swaps escalate 1% -> 1.5% -> 2%, bridges hold 1%, Solana uses dynamic
+// slippage), so it is labeled rather than numbered.
+function slippagePreviewClause(slippageBps: number | undefined): string {
+  if (slippageBps === undefined) {
+    return " with default slippage";
+  }
+  return ` with up to ${slippageBps / 100}% slippage (${slippageBps} bps)`;
+}
+
 export function walletFinancialPreview(
   params: Pick<
     WalletFinancialWriteParams,
@@ -161,6 +173,7 @@ export function walletFinancialPreview(
     | "recipient"
     | "fromToken"
     | "toToken"
+    | "slippageBps"
     | "op"
     | "pool"
     | "position"
@@ -183,17 +196,18 @@ export function walletFinancialPreview(
     const key = walletFinancialRangeKey(params.range);
     return key ? ` range ${key}` : "";
   })();
+  const slippage = slippagePreviewClause(params.slippageBps);
   switch (params.subaction) {
     case "transfer":
       return `Transfer ${params.amount ?? "?"} ${params.fromToken ?? "tokens"} to ${params.recipient ?? "?"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
     case "swap":
-      return `Swap ${params.amount ?? "?"} ${params.fromToken ?? "?"} to ${params.toToken ?? "?"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
+      return `Swap ${params.amount ?? "?"} ${params.fromToken ?? "?"} to ${params.toToken ?? "?"} on ${chainLabel}${slippage}? Reply yes to submit or no to cancel.`;
     case "bridge": {
       // params.recipient becomes the Li.Fi destination toAddress, so the user
       // must see it before confirming; with no recipient the bridge returns
       // funds to the sender on the destination chain.
       const destination = params.recipient ? ` to ${params.recipient}` : "";
-      return `Bridge ${params.amount ?? "?"} ${params.fromToken ?? "?"} from ${params.chain ?? "?"} to ${params.toChain ?? "?"}${destination}? Reply yes to submit or no to cancel.`;
+      return `Bridge ${params.amount ?? "?"} ${params.fromToken ?? "?"} from ${params.chain ?? "?"} to ${params.toChain ?? "?"}${destination}${slippage}? Reply yes to submit or no to cancel.`;
     }
     case "gov":
       return `Governance ${params.op ?? "operation"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
