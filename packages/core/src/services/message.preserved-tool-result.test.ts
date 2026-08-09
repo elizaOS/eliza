@@ -18,7 +18,11 @@ import type { PlannerToolResult } from "../runtime/planner-loop";
 import type { Action, Content, HandlerCallback, Memory, UUID } from "../types";
 import { ModelType } from "../types";
 import { ChannelType } from "../types/primitives";
-import { DefaultMessageService, preservedSettledToolResult } from "./message";
+import {
+	DefaultMessageService,
+	preservedSettledToolResult,
+	subAgentCompletionRelayBody,
+} from "./message";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000081" as UUID;
 const USER_ID = "00000000-0000-0000-0000-000000000082" as UUID;
@@ -270,6 +274,65 @@ describe("planner-loop death after a completed tool", () => {
 		expect(delivered.join("\n").toLowerCase()).toContain("rate-limit");
 		expect(delivered.join("\n")).not.toContain(DIAGNOSTIC);
 		expect(result.responseContent?.text ?? "").not.toContain(DIAGNOSTIC);
+	});
+});
+
+describe("subAgentCompletionRelayBody parsing (#18208)", () => {
+	const RELAY_HEADER =
+		"[sub-agent: review pr 18175 (elizaos) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer and do NOT start another sub-agent for it.]";
+	const RESULT_BODY =
+		"The PR fixes the pairing dead-end: hosts now redeem the in-progress pairing instead of dropping it. Two files changed, tests included.";
+
+	it("extracts the result body from a task_complete relay", () => {
+		expect(subAgentCompletionRelayBody(`${RELAY_HEADER}\n${RESULT_BODY}`)).toBe(
+			RESULT_BODY,
+		);
+	});
+
+	it("returns undefined for non-relay text, non-complete events, and empty bodies", () => {
+		expect(subAgentCompletionRelayBody("what's the weather")).toBeUndefined();
+		expect(
+			subAgentCompletionRelayBody(
+				"[sub-agent: devops (elizaos) — error]\nsub-agent reported an error",
+			),
+		).toBeUndefined();
+		expect(subAgentCompletionRelayBody(`${RELAY_HEADER}\n   `)).toBeUndefined();
+		expect(subAgentCompletionRelayBody(undefined)).toBeUndefined();
+	});
+
+	it("caps a runaway body", () => {
+		const huge = "x".repeat(5000);
+		const capped = subAgentCompletionRelayBody(`${RELAY_HEADER}\n${huge}`);
+		expect(capped).toBeDefined();
+		expect((capped as string).length).toBeLessThanOrEqual(1501);
+		expect(capped).toMatch(/…$/);
+	});
+
+	it("a failed relay turn delivers the completed result instead of the canned line", async () => {
+		// Same failing-turn harness as above (tool result carries nothing
+		// user-facing, every later model call dies) — but the TRIGGERING message
+		// is a task_complete relay, so the finished result it carries must win
+		// over any canned failure text.
+		const harness = await createHarness({
+			actionResult: { success: false, text: DIAGNOSTIC },
+		});
+
+		const result = await new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, `${RELAY_HEADER}\n${RESULT_BODY}`),
+			harness.callback,
+		);
+
+		const delivered = visibleTexts(harness.callbacks);
+		const everything = [
+			...delivered,
+			String(result.responseContent?.text ?? ""),
+		].join("\n");
+		// The completed result reaches the user…
+		expect(everything).toContain("pairing dead-end");
+		// …and no canned failure/apology text replaces it.
+		expect(everything.toLowerCase()).not.toContain("runtime step failed");
+		expect(everything).not.toContain(DIAGNOSTIC);
 	});
 });
 
