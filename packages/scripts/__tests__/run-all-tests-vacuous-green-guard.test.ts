@@ -93,6 +93,11 @@ const ISOLATED_WRAPPER_PACKAGE_DIR = join(
   "packages",
   "__run_all_tests_isolated_bun_wrapper__",
 );
+const WRAPPED_BUN_PACKAGE_DIR = join(
+  repoRoot,
+  "packages",
+  "__run_all_tests_wrapped_bun_evidence__",
+);
 
 function rootScript(name) {
   const rootPackage = JSON.parse(
@@ -444,6 +449,60 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
         );
       } finally {
         rmSync(TEMP_PACKAGE_DIR, { recursive: true, force: true });
+      }
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  test(
+    "repo-owned retry/deadline wrappers still produce required Bun JUnit evidence",
+    () => {
+      rmSync(WRAPPED_BUN_PACKAGE_DIR, { recursive: true, force: true });
+      mkdirSync(WRAPPED_BUN_PACKAGE_DIR, { recursive: true });
+      try {
+        writeFileSync(
+          join(WRAPPED_BUN_PACKAGE_DIR, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@elizaos/run-all-tests-wrapped-bun-evidence-fixture",
+              private: true,
+              type: "module",
+              scripts: {
+                test: "node ../../packages/scripts/run-with-flake-retry.mjs 'EEXIST[^\\n]*epoll_ctl|error: Failed to connect' -- node ../../packages/scripts/run-with-deadline.mjs 60000 -- bun test --isolate",
+              },
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        writeFileSync(
+          join(WRAPPED_BUN_PACKAGE_DIR, "wrapped.test.ts"),
+          [
+            'import { test, expect } from "bun:test";',
+            'test("wrapped bun still reports semantic work", () => {',
+            "  expect(1 + 1).toBe(2);",
+            "});",
+            "",
+          ].join("\n"),
+        );
+
+        const result = run([
+          "--only=test",
+          "--no-cloud",
+          "--filter=@elizaos/run-all-tests-wrapped-bun-evidence-fixture",
+          "--require-work",
+        ]);
+        const output = `${result.stdout}${result.stderr}`;
+
+        expect(result.status).toBe(0);
+        expect(output).toContain(
+          "PASS @elizaos/run-all-tests-wrapped-bun-evidence-fixture",
+        );
+        expect(output).toContain(
+          "EVIDENCE reports=1 tests=1 executed=1 skipped=0 unobserved-tasks=0",
+        );
+      } finally {
+        rmSync(WRAPPED_BUN_PACKAGE_DIR, { recursive: true, force: true });
       }
     },
     SPAWN_TIMEOUT_MS,

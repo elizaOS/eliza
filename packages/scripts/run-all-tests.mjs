@@ -803,54 +803,62 @@ function isSingleBunTestCommand(command) {
   return /^bun\s+test\b/.test(commandWithoutEnv);
 }
 
-function unwrapKnownBunTestSupervisors(command) {
-  let current = stripLeadingEnvAssignments(command);
-  for (let depth = 0; depth < 3; depth += 1) {
-    const flakeRetry = current.match(
-      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-flake-retry\.mjs\s+(?:'[^']*'|"[^"]*"|\S+)\s+--\s+(.+)$/,
+function unwrapTransparentTestWrapperCommand(command) {
+  let commandWithoutWrapper = stripLeadingEnvAssignments(command);
+  for (let i = 0; i < 4; i += 1) {
+    const flakeRetryMatch = commandWithoutWrapper.match(
+      /^node\s+(?:\.\/|\.\.\/)*packages\/scripts\/run-with-flake-retry\.mjs\s+(?:"[^"]*"|'[^']*'|\S+)\s+--\s+(.+)$/,
     );
-    if (flakeRetry) {
-      current = flakeRetry[1];
+    if (flakeRetryMatch?.[1]) {
+      commandWithoutWrapper = stripLeadingEnvAssignments(flakeRetryMatch[1]);
       continue;
     }
-    const deadline = current.match(
-      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-deadline\.mjs\s+[1-9]\d*\s+--\s+(.+)$/,
+
+    const deadlineMatch = commandWithoutWrapper.match(
+      /^node\s+(?:\.\/|\.\.\/)*packages\/scripts\/run-with-deadline\.mjs\s+\d+\s+--\s+(.+)$/,
     );
-    if (deadline) {
-      current = deadline[1];
+    if (deadlineMatch?.[1]) {
+      commandWithoutWrapper = stripLeadingEnvAssignments(deadlineMatch[1]);
       continue;
     }
+
     break;
   }
-  return current;
+  return commandWithoutWrapper;
+}
+
+function evidenceCommandForScript(command) {
+  const commandWithoutEnv = stripLeadingEnvAssignments(command);
+  // These repo-owned wrappers are intentionally transparent: retry/deadline
+  // policy must not hide the inner test runner from the vacuous-green guard.
+  return unwrapTransparentTestWrapperCommand(commandWithoutEnv);
 }
 
 function isSingleIsolatedBunTestWrapperCommand(command) {
-  return /^node\s+scripts\/run-isolated-tests\.mjs$/.test(
-    unwrapKnownBunTestSupervisors(command),
-  );
+  return /^node\s+scripts\/run-isolated-tests\.mjs$/.test(command);
 }
 
 function structuredEvidenceKind(scriptName, scripts) {
   const command =
     resolveScriptCommand(scriptName, scripts) ||
     normalizeWhitespace(scripts?.[scriptName] ?? "");
+  const evidenceCommand = evidenceCommandForScript(command);
   if (
     /(?:^|\s)--reporter(?:=|\s)|(?:^|\s)--reporter-outfile(?:=|\s)|(?:^|\s)--outputFile(?:\.junit)?(?:=|\s)/.test(
-      command,
+      evidenceCommand,
     )
   ) {
     return null;
   }
   if (
-    isSingleBunTestCommand(command) ||
-    isSingleIsolatedBunTestWrapperCommand(command)
+    isSingleBunTestCommand(evidenceCommand) ||
+    isSingleIsolatedBunTestWrapperCommand(evidenceCommand)
   ) {
     return "bun";
   }
   if (
-    isSingleVitestRunCommand(command) ||
-    isSingleVitestWrapperCommand(command)
+    isSingleVitestRunCommand(evidenceCommand) ||
+    isSingleVitestWrapperCommand(evidenceCommand)
   ) {
     return "vitest";
   }
