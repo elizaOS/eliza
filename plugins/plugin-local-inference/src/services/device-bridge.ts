@@ -34,8 +34,7 @@ import fs from "node:fs/promises";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import path from "node:path";
 import type { Duplex } from "node:stream";
-import type { AgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
 	computeGenerationThroughput,
 	type GenerationThroughput,
@@ -44,7 +43,9 @@ import type {
 	LocalInferenceLoadArgs,
 	LocalInferenceLoader,
 } from "./active-model";
+import { tryGetMemoryArbiter } from "./memory-arbiter";
 import { localInferenceRoot } from "./paths";
+import { registerLocalInferenceLoaderService } from "./runtime-services";
 
 const DEFAULT_CALL_TIMEOUT_MS = 60_000;
 const DEFAULT_LOAD_TIMEOUT_MS = 120_000;
@@ -1207,12 +1208,9 @@ export function buildDeviceResourceMetricsDevPayload(
 	};
 }
 
-export function registerDeviceBridgeLoader(
-	runtime: AgentRuntime & {
-		registerService?: (name: string, impl: unknown) => unknown;
-	},
-): void {
-	if (typeof runtime.registerService !== "function") return;
+export async function registerDeviceBridgeLoader(
+	runtime: Pick<IAgentRuntime, "registerService">,
+): Promise<void> {
 	const loader: LocalInferenceLoader = {
 		async loadModel(args: LocalInferenceLoadArgs) {
 			await deviceBridge.loadModel(args);
@@ -1230,7 +1228,14 @@ export function registerDeviceBridgeLoader(
 			return deviceBridge.embed(args);
 		},
 	};
-	runtime.registerService("localInferenceLoader", loader);
+	const loaderWithArbiter = Object.assign(loader, {
+		getMemoryArbiter: () => tryGetMemoryArbiter(),
+	});
+	await registerLocalInferenceLoaderService(runtime, loaderWithArbiter, {
+		// The bridge does not own a connection. Sending unload during shutdown
+		// would park a new request when no paired device is connected.
+		stop: () => Promise.resolve(),
+	});
 	logger.info(
 		"[device-bridge] Registered device-bridge loader for remote on-device inference",
 	);

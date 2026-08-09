@@ -49,6 +49,7 @@ import { pipeline } from "node:stream/promises";
 import {
   type AgentRuntime,
   applyBackgroundInferenceBudget,
+  createService,
   type GenerateTextParams,
   getInferencePriorityGate,
   type IAgentRuntime,
@@ -57,6 +58,7 @@ import {
   ModelType,
   resolveBackgroundInferenceBudget,
   resolveStateDir,
+  Service,
   type TextEmbeddingParams,
   type TextToSpeechParams,
   type TranscriptionParams,
@@ -952,8 +954,60 @@ function findCloudCandidate(
   return null;
 }
 
-interface RuntimeWithRegisterService {
-  registerService?: (name: string, impl: unknown) => unknown;
+/** Runtime service that owns one fused AOSP loader and releases it on stop. */
+export class AospLoaderRuntimeService extends Service implements AospLoader {
+  override capabilityDescription =
+    "Owns the fused AOSP local-inference loader for this agent runtime.";
+
+  constructor(
+    runtime: IAgentRuntime,
+    private readonly loader: AospLoader,
+  ) {
+    super(runtime);
+  }
+
+  async loadModel(args: AospLoadModelArgs): Promise<void> {
+    await this.loader.loadModel(args);
+  }
+
+  async unloadModel(): Promise<void> {
+    await this.loader.unloadModel();
+  }
+
+  currentModelPath(): string | null {
+    return this.loader.currentModelPath();
+  }
+
+  async generate(args: Parameters<AospLoader["generate"]>[0]): Promise<string> {
+    return this.loader.generate(args);
+  }
+
+  async embed(
+    args: Parameters<AospLoader["embed"]>[0],
+  ): ReturnType<AospLoader["embed"]> {
+    return this.loader.embed(args);
+  }
+
+  override async stop(): Promise<void> {
+    await this.loader.unloadModel();
+  }
+}
+
+/** Register the class without waiting on the runtime initialization barrier. */
+export async function registerAospLoaderService(
+  runtime: Pick<IAgentRuntime, "registerService">,
+  loader: AospLoader,
+): Promise<void> {
+  const serviceClass = createService<AospLoaderRuntimeService>(SERVICE_NAME)
+    .withDescription(
+      "Owns the fused AOSP local-inference loader for this agent runtime.",
+    )
+    .withStart(
+      async (serviceRuntime) =>
+        new AospLoaderRuntimeService(serviceRuntime, loader),
+    )
+    .build();
+  await runtime.registerService(serviceClass);
 }
 
 /**
@@ -973,10 +1027,9 @@ interface RuntimeWithRegisterService {
  * dynamically import it to wire the `localInferenceLoader` service.
  */
 export async function registerAospLlamaLoader(
-  runtime: RuntimeWithRegisterService,
+  runtime: Pick<IAgentRuntime, "registerService">,
 ): Promise<boolean> {
   if (!isAospEnabled()) return false;
-  if (typeof runtime.registerService !== "function") return false;
   const loader = await tryBuildAospFusedTextLoader();
   if (!loader) {
     logger.error(
@@ -984,7 +1037,7 @@ export async function registerAospLlamaLoader(
     );
     return false;
   }
-  runtime.registerService(SERVICE_NAME, loader);
+  await registerAospLoaderService(runtime, loader);
   logger.info(
     "[aosp-local-inference] Registered fused libelizainference localInferenceLoader (ELIZA_LOCAL_LLAMA=1)",
   );

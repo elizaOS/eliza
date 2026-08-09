@@ -1243,65 +1243,89 @@ function looksLikeEmbeddingModelPath(modelPath: string): boolean {
   );
 }
 
-export function registerCapacitorLlamaLoader(runtime: {
-  registerService?: (name: string, impl: unknown) => unknown;
-}): void {
-  if (typeof runtime.registerService !== "function") return;
+/**
+ * Runtime service with separate chat and embedding contexts. It is structural
+ * by design so this low-level Capacitor package does not acquire a runtime
+ * dependency on the full framework package.
+ */
+export class CapacitorLlamaLoaderRuntimeService {
+  static readonly serviceType = "localInferenceLoader";
+  readonly capabilityDescription =
+    "Owns isolated Capacitor llama.cpp chat and embedding contexts.";
 
-  // Two distinct adapter instances so the chat LLM and embedding model
-  // each allocate their own native context id. This is the fix for
-  // elizaOS/eliza#7681 — the previous single-adapter design routed every
-  // operation through CONTEXT_ID=1, and a `completion(contextId=1)` call
-  // would resolve to whichever model registered against id 1 last
-  // (typically the bge-small embedding model on Android), emitting
-  // `[unused{N}]` / `[PAD]` reserved tokens.
-  const chatAdapter = new CapacitorLlamaAdapter();
-  const embeddingAdapter = new CapacitorLlamaAdapter();
+  private readonly chatAdapter = new CapacitorLlamaAdapter();
+  private readonly embeddingAdapter = new CapacitorLlamaAdapter();
 
-  function adapterFor(modelPath: string): CapacitorLlamaAdapter {
-    return looksLikeEmbeddingModelPath(modelPath)
-      ? embeddingAdapter
-      : chatAdapter;
+  static async start(
+    _runtime: unknown,
+  ): Promise<CapacitorLlamaLoaderRuntimeService> {
+    return new CapacitorLlamaLoaderRuntimeService();
   }
 
-  runtime.registerService("localInferenceLoader", {
-    async loadModel(args: LoadOptions): Promise<void> {
-      await adapterFor(args.modelPath).load(args);
-    },
-    async unloadModel(): Promise<void> {
-      // Each adapter manages its own context lifecycle inside
-      // `load()` (releasing the prior context before reinitializing on the
-      // same id). Tearing down both adapters here would defeat the
-      // per-instance routing — `ensureAssignedModelLoaded` calls
-      // `unloadModel()` before every `loadModel()` on the assumption of
-      // single-model behaviour, and we must not let that unconditionally
-      // kill the embedding adapter when only the chat model is swapping.
-    },
-    currentModelPath(): string | null {
-      // The chat path is the primary "active" model from the runtime's
-      // perspective; embedding is treated as a sidecar.
-      return (
-        chatAdapter.currentModelPath() ?? embeddingAdapter.currentModelPath()
-      );
-    },
-    async generate(args: {
-      prompt: string;
-      stopSequences?: string[];
-      maxTokens?: number;
-      temperature?: number;
-    }): Promise<string> {
-      const result = await chatAdapter.generate({
-        prompt: args.prompt,
-        stopSequences: args.stopSequences,
-        maxTokens: args.maxTokens,
-        temperature: args.temperature,
-      });
-      return result.text;
-    },
-    async embed(args: {
-      input: string;
-    }): Promise<{ embedding: number[]; tokens: number }> {
-      return embeddingAdapter.embed({ input: args.input });
-    },
-  });
+  private adapterFor(modelPath: string): CapacitorLlamaAdapter {
+    return looksLikeEmbeddingModelPath(modelPath)
+      ? this.embeddingAdapter
+      : this.chatAdapter;
+  }
+
+  async loadModel(args: LoadOptions): Promise<void> {
+    await this.adapterFor(args.modelPath).load(args);
+  }
+
+  unloadModel(): Promise<void> {
+    // Each adapter manages its own context lifecycle inside `load()`. The
+    // runtime calls this before a role swap, so unloading both here would kill
+    // the unaffected sibling context.
+    return Promise.resolve();
+  }
+
+  currentModelPath(): string | null {
+    return (
+      this.chatAdapter.currentModelPath() ??
+      this.embeddingAdapter.currentModelPath()
+    );
+  }
+
+  async generate(args: {
+    prompt: string;
+    stopSequences?: string[];
+    maxTokens?: number;
+    temperature?: number;
+  }): Promise<string> {
+    const result = await this.chatAdapter.generate({
+      prompt: args.prompt,
+      stopSequences: args.stopSequences,
+      maxTokens: args.maxTokens,
+      temperature: args.temperature,
+    });
+    return result.text;
+  }
+
+  async embed(args: {
+    input: string;
+  }): Promise<{ embedding: number[]; tokens: number }> {
+    return this.embeddingAdapter.embed({ input: args.input });
+  }
+
+  async stop(): Promise<void> {
+    await Promise.all([
+      this.chatAdapter.dispose(),
+      this.embeddingAdapter.dispose(),
+    ]);
+  }
+}
+
+/**
+ * Register the service class without starting it. The runtime may call this
+ * before initialization; post-initialize consumers that need it immediately
+ * await `getServiceLoadPromise("localInferenceLoader")` themselves.
+ */
+export async function registerCapacitorLlamaLoader(runtime: {
+  registerService?: unknown;
+}): Promise<boolean> {
+  if (typeof runtime.registerService !== "function") return false;
+  await Reflect.apply(runtime.registerService, runtime, [
+    CapacitorLlamaLoaderRuntimeService,
+  ]);
+  return true;
 }
