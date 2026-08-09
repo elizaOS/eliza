@@ -1000,28 +1000,26 @@ export function resolveAppShellLocalCspSources(
   };
 }
 
-/**
- * Exported WCAG 2.2 SC 1.4.4 viewport constants for the build-time token.
- *
- * Exposed so that build-output regression tests can assert the exact resolved
- * values without reimplementing string parsing of the config source.
- *
- * Web builds: no zoom cap (WCAG-compliant).
- * Native Capacitor builds: full lockdown (captive WebView has no browser
- * chrome; pinch-zoom interferes with in-app interactions).
- */
+/** Viewport policies selected by the app-shell metadata transform. */
 export const VIEWPORT_META_NATIVE =
   "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
 export const VIEWPORT_META_WEB =
   "width=device-width, initial-scale=1.0, viewport-fit=cover";
 
-export function appShellMetadataPlugin(): Plugin {
+/** Creates the metadata transform; the target override keeps build-mode tests exact. */
+export function appShellMetadataPlugin(
+  options: { capacitorBuildTarget?: string } = {},
+): Plugin {
+  const capacitorBuildTarget =
+    options.capacitorBuildTarget ?? CAPACITOR_BUILD_TARGET;
+  const isCapacitorMobileBuild =
+    capacitorBuildTarget === "ios" || capacitorBuildTarget === "android";
   const isIosStoreBuild =
-    CAPACITOR_BUILD_TARGET === "ios" &&
+    capacitorBuildTarget === "ios" &&
     (process.env.ELIZA_BUILD_VARIANT === "store" ||
       process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store");
   const { localHttpSources, localConnectSources } =
-    resolveAppShellLocalCspSources(CAPACITOR_BUILD_TARGET, isIosStoreBuild);
+    resolveAppShellLocalCspSources(capacitorBuildTarget, isIosStoreBuild);
   const manifest = `${JSON.stringify(
     {
       name: APP_SHELL_METADATA.appName,
@@ -1046,13 +1044,6 @@ export function appShellMetadataPlugin(): Plugin {
     2,
   )}\n`;
 
-  // WCAG 2.2 SC 1.4.4: web/desktop builds must not disable user zoom. Native
-  // Capacitor builds keep the touch-viewport lockdown because they run in a
-  // captive WebView with no browser chrome — zoom there is a pinch gesture that
-  // interferes with in-app interactions, not an accessibility mechanism.
-  const VIEWPORT_CONTENT_NATIVE = VIEWPORT_META_NATIVE;
-  const VIEWPORT_CONTENT_WEB = VIEWPORT_META_WEB;
-
   const replacements = new Map<string, string>([
     ["__APP_NAME__", APP_SHELL_METADATA.appName],
     ["__APP_DESCRIPTION__", APP_SHELL_METADATA.description],
@@ -1063,9 +1054,7 @@ export function appShellMetadataPlugin(): Plugin {
     ["__APP_CSP_LOCAL_CONNECT__", localConnectSources],
     [
       "__APP_VIEWPORT_CONTENT__",
-      IS_CAPACITOR_MOBILE_BUILD
-        ? VIEWPORT_CONTENT_NATIVE
-        : VIEWPORT_CONTENT_WEB,
+      isCapacitorMobileBuild ? VIEWPORT_META_NATIVE : VIEWPORT_META_WEB,
     ],
   ]);
 
