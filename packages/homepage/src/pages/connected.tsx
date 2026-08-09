@@ -17,7 +17,7 @@ import {
 } from "@elizaos/ui/dropdown-menu";
 import { Check, Copy, Info, LogOut } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
   buildFullPhoneNumber,
@@ -86,6 +86,7 @@ function CrossPlatformNote({
 
 export default function ConnectedPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const t = useT();
   const { user, organization, isAuthenticated, isLoading, logout, linkPhone } =
     useAuth();
@@ -231,6 +232,9 @@ export default function ConnectedPage() {
     user.discord_global_name ||
     user.discord_username ||
     t("homepage_eliza.connected.userFallback", { defaultValue: "User" });
+  const isTelegramReturn =
+    searchParams.get("from") === "telegram" && !!user.telegram_id;
+  const telegramBotUrl = `https://t.me/${getTelegramBotUsername()}`;
 
   const rawCreditBalance = organization?.credit_balance || "0.00";
   const creditBalance = Number(rawCreditBalance).toLocaleString("en-US", {
@@ -240,7 +244,7 @@ export default function ConnectedPage() {
 
   return (
     <main
-      className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4 relative"
+      className="theme-app brand-section brand-section--orange relative flex min-h-screen flex-col items-center px-4 pb-6 pt-24"
       style={{ fontFamily: "Geist, system-ui, sans-serif" }}
     >
       <header className="absolute top-0 inset-x-0 z-10 p-4 flex items-center justify-between pointer-events-none">
@@ -317,7 +321,10 @@ export default function ConnectedPage() {
         </DropdownMenu>
       </div>
 
-      <div className="w-full max-w-[440px] flex flex-col gap-8">
+      <div
+        data-testid="connected-content"
+        className="my-auto flex w-full max-w-[440px] flex-col gap-8"
+      >
         <div className="flex flex-col items-center">
           <img
             src="/eliza-app-profile-image.webp"
@@ -347,6 +354,28 @@ export default function ConnectedPage() {
             </span>
           </div>
         </div>
+
+        {isTelegramReturn && (
+          <div className="flex flex-col gap-3 bg-white p-5 text-center">
+            <p className="text-sm text-black/70">
+              {t("homepage_eliza.connected.telegramReturnBody", {
+                defaultValue:
+                  "Your account is connected. Return to Telegram to keep chatting with Eliza.",
+              })}
+            </p>
+            <Button
+              asChild
+              className="h-12 w-full bg-black text-white hover:bg-black/80"
+            >
+              <a href={telegramBotUrl}>
+                <TelegramIcon className="size-5" />
+                {t("homepage_eliza.connected.telegramReturnCta", {
+                  defaultValue: "Return to Telegram",
+                })}
+              </a>
+            </Button>
+          </div>
+        )}
 
         <div className="flex flex-col gap-4">
           {user.telegram_id ? (
@@ -654,7 +683,7 @@ export default function ConnectedPage() {
         </div>
       </div>
 
-      <footer className="absolute bottom-6 left-0 right-0 text-center">
+      <footer className="relative mt-8 text-center">
         <p className="text-[10px] text-black/50">
           {t("homepage_eliza.common.year", {
             defaultValue: "ElizaCloud Inc. {{year}}",

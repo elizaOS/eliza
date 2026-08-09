@@ -433,7 +433,6 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/registry": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/vault": "workspace:*",
       },

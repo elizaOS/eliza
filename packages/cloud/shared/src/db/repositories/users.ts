@@ -1,5 +1,5 @@
 // Persists users records for cloud services through the shared DB boundary.
-import { and, desc, eq, ne, type SQL, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type Organization } from "../schemas/organizations";
@@ -36,6 +36,11 @@ export function providerForPlatform(platform: string | undefined): IdentityProvi
   }
 }
 
+export type LinkTelegramAndPhoneResult =
+  | { status: "linked"; user: User }
+  | { status: "user_not_found" }
+  | { status: "phone_mismatch"; existingPhone: string };
+
 export interface ResolvedIdentity {
   user: User;
   identity?: UserIdentity;
@@ -50,6 +55,14 @@ const EVM_ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
 export type UserWithOrganization = User & {
   organization: Organization | null;
 };
+
+export interface TelegramPhoneIdentityLink {
+  telegram_id: string;
+  telegram_username?: string;
+  telegram_first_name?: string;
+  telegram_photo_url?: string;
+  phone_number: string;
+}
 
 /**
  * Repository for user database operations.
@@ -114,6 +127,14 @@ export class UsersRepository {
    */
   async findWithOrganization(userId: string): Promise<UserWithOrganization | undefined> {
     return await this.findUserWithOrganizationById(dbRead, userId);
+  }
+
+  /**
+   * Finds a user by ID with organization data from primary. Use after identity
+   * writes when the just-written canonical row must be visible immediately.
+   */
+  async findWithOrganizationForWrite(userId: string): Promise<UserWithOrganization | undefined> {
+    return await this.findUserWithOrganizationById(dbWrite, userId);
   }
 
   /**
@@ -405,6 +426,92 @@ export class UsersRepository {
         throw new Error(`User ${id} has no identity projection for phone linking`);
       }
       return updated;
+    });
+  }
+
+  /**
+   * Links Telegram and phone on the canonical row and its lookup projection in
+   * one transaction. A uniqueness failure in either table rolls back both.
+   *
+   * The phone guard lives in the UPDATE predicate (not check-then-write): a
+   * user whose row already carries a different verified phone number is
+   * refused with `phone_mismatch` rather than silently overwritten.
+   * Re-linking the same phone is idempotent, and an unverified placeholder
+   * phone may be replaced.
+   */
+  async linkTelegramAndPhoneIdentity(
+    userId: string,
+    identity: TelegramPhoneIdentityLink,
+  ): Promise<LinkTelegramAndPhoneResult> {
+    return dbWrite.transaction(async (tx) => {
+      const updatedAt = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({
+          ...identity,
+          phone_verified: true,
+          updated_at: updatedAt,
+        })
+        .where(
+          and(
+            eq(users.id, userId),
+            or(
+              isNull(users.phone_number),
+              eq(users.phone_number, identity.phone_number),
+              sql`${users.phone_verified} IS NOT TRUE`,
+            ),
+          ),
+        )
+        .returning();
+
+      if (!updated) {
+        const [existing] = await tx
+          .select({ phone_number: users.phone_number })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+        if (!existing || !existing.phone_number) {
+          // A present row with a NULL phone would have matched the UPDATE
+          // predicate, so a phoneless miss means the user row is gone.
+          return { status: "user_not_found" };
+        }
+        return { status: "phone_mismatch", existingPhone: existing.phone_number };
+      }
+
+      await tx
+        .insert(userIdentities)
+        .values({
+          user_id: updated.id,
+          steward_user_id: updated.steward_user_id,
+          is_anonymous: updated.is_anonymous,
+          anonymous_session_id: updated.anonymous_session_id,
+          expires_at: updated.expires_at,
+          telegram_id: updated.telegram_id,
+          telegram_username: updated.telegram_username,
+          telegram_first_name: updated.telegram_first_name,
+          telegram_photo_url: updated.telegram_photo_url,
+          phone_number: updated.phone_number,
+          phone_verified: updated.phone_verified,
+          updated_at: updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: userIdentities.user_id,
+          set: {
+            steward_user_id: updated.steward_user_id,
+            is_anonymous: updated.is_anonymous,
+            anonymous_session_id: updated.anonymous_session_id,
+            expires_at: updated.expires_at,
+            telegram_id: updated.telegram_id,
+            telegram_username: updated.telegram_username,
+            telegram_first_name: updated.telegram_first_name,
+            telegram_photo_url: updated.telegram_photo_url,
+            phone_number: updated.phone_number,
+            phone_verified: updated.phone_verified,
+            updated_at: updatedAt,
+          },
+        });
+
+      return { status: "linked", user: updated };
     });
   }
 

@@ -14,6 +14,7 @@ import { organizationsRepository } from "../../../db/repositories/organizations"
 import { type UserWithOrganization, usersRepository } from "../../../db/repositories/users";
 import type { Organization } from "../../../db/schemas/organizations";
 import type { NewUser, User } from "../../../db/schemas/users";
+import { isUniqueConstraintError } from "../../utils/db-errors";
 import { isValidEmail, maskEmailForLogging } from "../../utils/email-validation";
 import { logger } from "../../utils/logger";
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
@@ -23,18 +24,6 @@ import { redeemSignupCode } from "../signup-code";
 import type { TelegramAuthData } from "./telegram-auth";
 
 const ELIZA_APP_INITIAL_CREDITS = 5.0;
-
-function isUniqueConstraintError(error: unknown): boolean {
-  if (error instanceof Error) {
-    // PostgreSQL unique violation error code
-    return (
-      error.message.includes("unique constraint") ||
-      error.message.includes("duplicate key") ||
-      (error as { code?: string }).code === "23505"
-    );
-  }
-  return false;
-}
 
 export interface FindOrCreateResult {
   user: User;
@@ -473,6 +462,10 @@ class ElizaAppUserService {
     return usersRepository.findWithOrganization(userId);
   }
 
+  async getByIdForWrite(userId: string): Promise<UserWithOrganization | undefined> {
+    return usersRepository.findWithOrganizationForWrite(userId);
+  }
+
   async getByTelegramId(telegramId: string): Promise<UserWithOrganization | undefined> {
     return usersRepository.findByTelegramIdWithOrganization(telegramId);
   }
@@ -823,6 +816,66 @@ class ElizaAppUserService {
 
     logger.info("[ElizaAppUserService] Linked phone to user", {
       userId,
+      phone: `***${normalizedPhone.slice(-2)}`,
+    });
+
+    return { success: true };
+  }
+
+  /**
+   * Links the Telegram and phone identities through one repository transaction
+   * so a uniqueness race cannot split the canonical row from its projection.
+   * Refuses to overwrite a different already-verified phone number.
+   */
+  async linkTelegramAndPhoneToUser(
+    userId: string,
+    telegramData: TelegramAuthData,
+    phoneNumber: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    const telegramId = String(telegramData.id);
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
+
+    try {
+      const result = await usersRepository.linkTelegramAndPhoneIdentity(userId, {
+        telegram_id: telegramId,
+        telegram_username: telegramData.username,
+        telegram_first_name: telegramData.first_name,
+        telegram_photo_url: telegramData.photo_url,
+        phone_number: normalizedPhone,
+      });
+      if (result.status === "user_not_found") {
+        return { success: false, error: "The account no longer exists" };
+      }
+      if (result.status === "phone_mismatch") {
+        logger.warn("[ElizaAppUserService] Refused to overwrite a different verified phone", {
+          userId,
+          telegramId,
+          existingPhone: `***${result.existingPhone.slice(-2)}`,
+          requestedPhone: `***${normalizedPhone.slice(-2)}`,
+        });
+        return {
+          success: false,
+          error: "This account already has a different verified phone number linked",
+        };
+      }
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        logger.warn("[ElizaAppUserService] Telegram or phone linking race condition", {
+          userId,
+          telegramId,
+          phone: `***${normalizedPhone.slice(-2)}`,
+        });
+        return {
+          success: false,
+          error: "This Telegram account or phone number is already linked to another account",
+        };
+      }
+      throw error;
+    }
+
+    logger.info("[ElizaAppUserService] Linked Telegram and phone to user", {
+      userId,
+      telegramId,
       phone: `***${normalizedPhone.slice(-2)}`,
     });
 

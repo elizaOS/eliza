@@ -177,11 +177,12 @@ app.post("/", async (c) => {
   } catch (error) {
     if (
       isElizaError(error) &&
-      error.code === "ONBOARDING_PLATFORM_IDENTITY_MISMATCH"
+      (error.code === "ONBOARDING_PLATFORM_IDENTITY_MISMATCH" ||
+        error.code === "ONBOARDING_TRUSTED_CONTINUATION_INVALID")
     ) {
-      // error-policy:J1 translate the service's fail-closed identity mismatch
-      // into a stable user-facing authorization response.
-      logger.warn("[eliza-app onboarding/chat] Platform identity mismatch", {
+      // error-policy:J1 translate fail-closed continuation rejection into one
+      // stable authorization response without disclosing session existence.
+      logger.warn("[eliza-app onboarding/chat] Continuation rejected", {
         context: error.context,
       });
       return failureResponse(

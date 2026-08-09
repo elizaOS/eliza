@@ -26,6 +26,12 @@ import {
   telegramAuthService,
   type ValidatedSession,
 } from "@/lib/services/eliza-app";
+import {
+  claimTelegramOnboardingContinuation,
+  completeTelegramOnboardingContinuationClaim,
+  runOnboardingChat,
+  type TelegramOnboardingContinuationClaim,
+} from "@/lib/services/eliza-app/onboarding-chat";
 import { logger } from "@/lib/utils/logger";
 import {
   isValidE164,
@@ -71,9 +77,121 @@ const telegramAuthSchema = z.object({
     .string()
     .optional()
     .transform((s) => s?.trim() || undefined),
+  // Opaque token issued by the trusted Telegram gateway onboarding session.
+  onboarding_session: z.string().min(8).max(180).optional(),
 });
 
-async function handleTelegramAuth(request: Request): Promise<Response> {
+export interface TelegramAuthDependencies {
+  verifyAuth: typeof telegramAuthService.verifyAuth;
+  validateAuthHeader: typeof elizaAppSessionService.validateAuthHeader;
+  createSession: typeof elizaAppSessionService.createSession;
+  getById: typeof elizaAppUserService.getById;
+  getByIdForWrite: typeof elizaAppUserService.getByIdForWrite;
+  getByTelegramId: typeof elizaAppUserService.getByTelegramId;
+  getByPhoneNumber: typeof elizaAppUserService.getByPhoneNumber;
+  linkTelegramAndPhoneToUser: typeof elizaAppUserService.linkTelegramAndPhoneToUser;
+  findOrCreateByTelegramWithPhone: typeof elizaAppUserService.findOrCreateByTelegramWithPhone;
+  claimContinuation: typeof claimTelegramOnboardingContinuation;
+  completeContinuationClaim: typeof completeTelegramOnboardingContinuationClaim;
+  redeemContinuation: typeof runOnboardingChat;
+}
+
+const defaultDependencies: TelegramAuthDependencies = {
+  verifyAuth: (data) => telegramAuthService.verifyAuth(data),
+  validateAuthHeader: (header) =>
+    elizaAppSessionService.validateAuthHeader(header),
+  createSession: (...args) => elizaAppSessionService.createSession(...args),
+  getById: (id) => elizaAppUserService.getById(id),
+  getByIdForWrite: (id) => elizaAppUserService.getByIdForWrite(id),
+  getByTelegramId: (id) => elizaAppUserService.getByTelegramId(id),
+  getByPhoneNumber: (phone) => elizaAppUserService.getByPhoneNumber(phone),
+  linkTelegramAndPhoneToUser: (...args) =>
+    elizaAppUserService.linkTelegramAndPhoneToUser(...args),
+  findOrCreateByTelegramWithPhone: (...args) =>
+    elizaAppUserService.findOrCreateByTelegramWithPhone(...args),
+  claimContinuation: (input) => claimTelegramOnboardingContinuation(input),
+  completeContinuationClaim: (input) =>
+    completeTelegramOnboardingContinuationClaim(input),
+  redeemContinuation: (input) => runOnboardingChat(input),
+};
+
+/**
+ * Deterministic id for one continuation attempt lineage. Account ids are
+ * deliberately excluded: the first anonymous attempt may create the account,
+ * and the identical signed retry must hash to the same lineage to resume the
+ * claim it already holds. Account binding lives in the claim record itself.
+ */
+async function createContinuationClaimId(input: {
+  continuationToken: string;
+  telegramId: string;
+  phoneNumber: string;
+}): Promise<string> {
+  const material = JSON.stringify([
+    input.continuationToken,
+    input.telegramId,
+    input.phoneNumber,
+  ]);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(material),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+/**
+ * Rejects the request when the target account's phone bindings conflict with
+ * the phone in this signed attempt. Runs BEFORE any durable identity link so
+ * a rejected request cannot leave a half-linked identity behind.
+ */
+async function phoneBindingConflict(
+  dependencies: TelegramAuthDependencies,
+  account: { userId: string; organizationId: string },
+  phoneNumber: string,
+): Promise<Response | null> {
+  const [user, phoneOwner] = await Promise.all([
+    dependencies.getById(account.userId),
+    dependencies.getByPhoneNumber(phoneNumber),
+  ]);
+  if (
+    !user?.organization ||
+    user.organization.id !== account.organizationId ||
+    (user.phone_number && user.phone_number !== phoneNumber) ||
+    (phoneOwner && phoneOwner.id !== account.userId)
+  ) {
+    return Response.json(
+      {
+        success: false,
+        error: "This phone number is already linked to a different account",
+        code: "PHONE_ALREADY_LINKED",
+      },
+      { status: 409 },
+    );
+  }
+  return null;
+}
+
+function isTelegramContinuationClaim(
+  value: unknown,
+): value is TelegramOnboardingContinuationClaim {
+  if (!value || typeof value !== "object") return false;
+  const claim = value as Record<string, unknown>;
+  if (typeof claim.sessionId !== "string" || !claim.sessionId) return false;
+  if (claim.status === "acquired") return true;
+  return (
+    claim.status === "completed" &&
+    typeof claim.userId === "string" &&
+    Boolean(claim.userId) &&
+    typeof claim.organizationId === "string" &&
+    Boolean(claim.organizationId)
+  );
+}
+
+export async function handleTelegramAuth(
+  request: Request,
+  dependencies: TelegramAuthDependencies = defaultDependencies,
+): Promise<Response> {
   // Parse and validate request body
   let body: unknown;
   try {
@@ -100,12 +218,13 @@ async function handleTelegramAuth(request: Request): Promise<Response> {
   const {
     phone_number: phoneNumber,
     signup_code: signupCode,
+    onboarding_session: onboardingSession,
     ...telegramData
   } = parseResult.data;
   const authData: TelegramAuthData = telegramData;
 
   // Verify Telegram authentication data
-  const isValid = telegramAuthService.verifyAuth(authData);
+  const isValid = dependencies.verifyAuth(authData);
 
   if (!isValid) {
     logger.warn("[ElizaApp TelegramAuth] Authentication verification failed", {
@@ -126,8 +245,7 @@ async function handleTelegramAuth(request: Request): Promise<Response> {
   const authHeader = request.headers.get("authorization");
   let existingSession: ValidatedSession | null = null;
   if (authHeader) {
-    existingSession =
-      await elizaAppSessionService.validateAuthHeader(authHeader);
+    existingSession = await dependencies.validateAuthHeader(authHeader);
     if (existingSession) {
       logger.info("[ElizaApp TelegramAuth] Session-based linking detected", {
         existingUserId: existingSession.userId,
@@ -135,63 +253,165 @@ async function handleTelegramAuth(request: Request): Promise<Response> {
     }
   }
 
+  // A bot continuation is a credential, not a convenience query parameter.
+  // Claim it in the token Durable Object before any durable identity mutation.
+  // The claim serializes concurrent requests and binds the signed Telegram ID,
+  // phone, user, and organization for the lifetime of the attempt.
+  let continuationClaimId: string | undefined;
+  let continuationClaim: TelegramOnboardingContinuationClaim | undefined;
+  if (onboardingSession) {
+    let prospectiveAccount:
+      | { userId: string; organizationId: string }
+      | undefined;
+    if (existingSession) {
+      const existingUser = await dependencies.getById(existingSession.userId);
+      if (
+        !existingUser?.organization ||
+        existingUser.organization.id !== existingSession.organizationId
+      ) {
+        return Response.json(
+          {
+            success: false,
+            error: "Invalid or stale authenticated session",
+            code: "INVALID_SESSION_SCOPE",
+          },
+          { status: 403 },
+        );
+      }
+      prospectiveAccount = {
+        userId: existingUser.id,
+        organizationId: existingUser.organization.id,
+      };
+    } else {
+      const existingUser =
+        (await dependencies.getByTelegramId(String(authData.id))) ??
+        (await dependencies.getByPhoneNumber(phoneNumber));
+      if (existingUser?.organization) {
+        prospectiveAccount = {
+          userId: existingUser.id,
+          organizationId: existingUser.organization.id,
+        };
+      }
+    }
+
+    if (prospectiveAccount) {
+      const conflict = await phoneBindingConflict(
+        dependencies,
+        prospectiveAccount,
+        phoneNumber,
+      );
+      if (conflict) return conflict;
+    }
+
+    continuationClaimId = await createContinuationClaimId({
+      continuationToken: onboardingSession,
+      telegramId: String(authData.id),
+      phoneNumber,
+    });
+
+    try {
+      const claimed = await dependencies.claimContinuation({
+        continuationToken: onboardingSession,
+        claimId: continuationClaimId,
+        telegramId: String(authData.id),
+        phoneNumber,
+        authenticatedAccount: prospectiveAccount,
+      });
+      if (!isTelegramContinuationClaim(claimed)) {
+        throw new Error("Malformed Telegram continuation claim response");
+      }
+      continuationClaim = claimed;
+    } catch (error) {
+      logger.warn("[ElizaApp TelegramAuth] Bot continuation rejected", {
+        telegramId: authData.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid, expired, or already active Telegram onboarding link",
+          code: "INVALID_ONBOARDING_CONTINUATION",
+        },
+        { status: 403 },
+      );
+    }
+  }
+
   let user: User;
   let organization: Organization;
   let isNew: boolean;
 
-  if (existingSession) {
+  if (continuationClaim?.status === "completed") {
+    const completedUser = continuationClaim.userId
+      ? await dependencies.getById(continuationClaim.userId)
+      : undefined;
+    if (
+      !completedUser?.organization ||
+      completedUser.organization.id !== continuationClaim.organizationId ||
+      completedUser.telegram_id !== String(authData.id) ||
+      completedUser.phone_number !== phoneNumber
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error: "Completed continuation account no longer matches",
+          code: "ONBOARDING_ACCOUNT_MISMATCH",
+        },
+        { status: 409 },
+      );
+    }
+    user = completedUser;
+    organization = completedUser.organization;
+    isNew = false;
+  } else if (existingSession) {
     // ---- SESSION-BASED LINKING: Link Telegram + phone to existing user ----
-    const linkTelegramResult = await elizaAppUserService.linkTelegramToUser(
+    // The continuation path validated phone bindings before claiming; the
+    // plain linking path must do the same before the durable Telegram link,
+    // or the strict identity check below would reject a request whose
+    // mutation already happened.
+    if (!onboardingSession) {
+      const conflict = await phoneBindingConflict(
+        dependencies,
+        existingSession,
+        phoneNumber,
+      );
+      if (conflict) return conflict;
+    }
+    const linkIdentityResult = await dependencies.linkTelegramAndPhoneToUser(
       existingSession.userId,
       authData,
+      phoneNumber,
     );
 
-    if (!linkTelegramResult.success) {
+    if (!linkIdentityResult.success) {
       return Response.json(
         {
           success: false,
           error:
-            linkTelegramResult.error ||
-            "This Telegram account is already linked to another account",
-          code: "TELEGRAM_ALREADY_LINKED",
+            linkIdentityResult.error ||
+            "This Telegram account or phone number could not be linked",
+          code: "IDENTITY_LINK_FAILED",
         },
         { status: 409 },
       );
     }
 
-    // Also link phone number if the existing user doesn't have one
-    const existingUser = await elizaAppUserService.getById(
-      existingSession.userId,
-    );
-    if (existingUser && !existingUser.phone_number) {
-      const linkPhoneResult = await elizaAppUserService.linkPhoneToUser(
-        existingSession.userId,
-        phoneNumber,
-      );
-      if (!linkPhoneResult.success) {
-        // Phone conflict is non-fatal for session linking — Telegram is linked, phone just couldn't be added
-        logger.warn(
-          "[ElizaApp TelegramAuth] Phone link failed during session-based linking",
-          {
-            userId: existingSession.userId,
-            error: linkPhoneResult.error,
-          },
-        );
-      }
-    }
-
     // Fetch the updated user
-    const updatedUser = await elizaAppUserService.getById(
+    const updatedUser = await dependencies.getByIdForWrite(
       existingSession.userId,
     );
-    if (!updatedUser?.organization) {
+    if (
+      !updatedUser?.organization ||
+      updatedUser.telegram_id !== String(authData.id) ||
+      updatedUser.phone_number !== phoneNumber
+    ) {
       return Response.json(
         {
           success: false,
-          error: "User not found after linking",
-          code: "INTERNAL_ERROR",
+          error: "User identity bindings do not match after linking",
+          code: "IDENTITY_LINK_MISMATCH",
         },
-        { status: 500 },
+        { status: 409 },
       );
     }
 
@@ -214,7 +434,7 @@ async function handleTelegramAuth(request: Request): Promise<Response> {
       ReturnType<typeof elizaAppUserService.findOrCreateByTelegramWithPhone>
     >;
     try {
-      result = await elizaAppUserService.findOrCreateByTelegramWithPhone(
+      result = await dependencies.findOrCreateByTelegramWithPhone(
         authData,
         phoneNumber,
         signupCode,
@@ -287,6 +507,20 @@ async function handleTelegramAuth(request: Request): Promise<Response> {
     isNew = result.isNew;
   }
 
+  if (
+    user.telegram_id !== String(authData.id) ||
+    user.phone_number !== phoneNumber
+  ) {
+    return Response.json(
+      {
+        success: false,
+        error: "Authenticated identity bindings do not match",
+        code: "IDENTITY_LINK_MISMATCH",
+      },
+      { status: 409 },
+    );
+  }
+
   logger.info("[ElizaApp TelegramAuth] Authentication successful", {
     userId: user.id,
     telegramId: authData.id,
@@ -297,17 +531,62 @@ async function handleTelegramAuth(request: Request): Promise<Response> {
     hasSignupCode: !!signupCode,
   });
 
+  if (
+    onboardingSession &&
+    continuationClaimId &&
+    continuationClaim?.status === "acquired"
+  ) {
+    try {
+      await dependencies.redeemContinuation({
+        sessionId: onboardingSession,
+        platform: "telegram",
+        continuationMode: "trusted-telegram",
+        authenticatedUser: {
+          userId: user.id,
+          organizationId: organization.id,
+          telegramId: String(authData.id),
+        },
+        trustedPlatformIdentity: false,
+        // The token scopes the key: a later, different continuation for the
+        // same Telegram user must not replay this redemption's result.
+        idempotencyKey: `telegram-auth-continuation:${authData.id}:${onboardingSession}`,
+      });
+      await dependencies.completeContinuationClaim({
+        continuationToken: onboardingSession,
+        claimId: continuationClaimId,
+        telegramId: String(authData.id),
+        phoneNumber,
+        userId: user.id,
+        organizationId: organization.id,
+      });
+    } catch (error) {
+      logger.error(
+        "[ElizaApp TelegramAuth] Bot continuation redemption failed",
+        {
+          userId: user.id,
+          telegramId: authData.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      return Response.json(
+        {
+          success: false,
+          error:
+            "Telegram was verified, but onboarding could not be completed. Please retry.",
+          code: "ONBOARDING_CONTINUATION_FAILED",
+        },
+        { status: 503 },
+      );
+    }
+  }
+
   // Create session (new session includes all known identities)
-  const session = await elizaAppSessionService.createSession(
-    user.id,
-    organization.id,
-    {
-      telegramId: String(authData.id),
-      phoneNumber: user.phone_number || phoneNumber,
-      ...(user.discord_id && { discordId: user.discord_id }),
-      ...(user.whatsapp_id && { whatsappId: user.whatsapp_id }),
-    },
-  );
+  const session = await dependencies.createSession(user.id, organization.id, {
+    telegramId: String(authData.id),
+    phoneNumber: user.phone_number,
+    ...(user.discord_id && { discordId: user.discord_id }),
+    ...(user.whatsapp_id && { whatsappId: user.whatsapp_id }),
+  });
 
   return Response.json({
     success: true,
@@ -324,6 +603,7 @@ async function handleTelegramAuth(request: Request): Promise<Response> {
       expires_at: session.expiresAt.toISOString(),
     },
     is_new_user: isNew,
+    ...(onboardingSession && { continuation_redeemed: true }),
   });
 }
 

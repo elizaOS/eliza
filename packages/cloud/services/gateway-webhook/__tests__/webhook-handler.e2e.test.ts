@@ -616,10 +616,9 @@ describe("gateway webhook handler e2e routing", () => {
     });
   });
 
-  test("caches an unresolved identity only briefly so linking takes effect quickly", async () => {
-    // The negative result must be cached (so webhook retries don't stampede the
-    // resolver) but on a short TTL: the message right after the user links their
-    // account has to reach their real agent, not another onboarding turn.
+  test("re-resolves an unresolved identity on the next message", async () => {
+    // A sender can finish browser onboarding between two provider messages, so
+    // an unresolved result must not hide the completed link from the next turn.
     configureEnv();
     const redis = new MemoryRedis();
     const event = createTwilioEvent({ messageId: "SM_negcache_1" });
@@ -661,8 +660,9 @@ describe("gateway webhook handler e2e routing", () => {
     );
     await waitFor(() => adapter.replies.length === 1, "first onboarding reply");
 
-    // Second inbound message from the same still-unlinked sender reuses the
-    // cached negative result instead of re-querying the resolver.
+    // A second inbound message re-queries even while the sender is still
+    // unlinked; if browser onboarding completed between these messages, this
+    // request would observe the new account and route it immediately.
     const second = createTwilioEvent({ messageId: "SM_negcache_2" });
     const secondAdapter = createAdapter(second);
     await handleWebhook(
@@ -680,10 +680,8 @@ describe("gateway webhook handler e2e routing", () => {
       "second onboarding reply",
     );
 
-    expect(resolveCalls).toBe(1);
-    expect(redis.store.get("identity:twilio:+15551234567")).toBe(
-      JSON.stringify({ notFound: true }),
-    );
+    expect(resolveCalls).toBe(2);
+    expect(redis.store.has("identity:twilio:+15551234567")).toBe(false);
   });
 
   test("routes to onboarding when the owned agent has no registered server", async () => {

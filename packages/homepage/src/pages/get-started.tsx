@@ -53,6 +53,7 @@ import {
   type TelegramAuthData,
   useAuth,
 } from "@/lib/context/auth-context";
+import { getTelegramLinkDestination } from "@/lib/telegram-onboarding";
 
 const SOLANA_GRADIENT = "linear-gradient(135deg, #9945FF 0%, #14F195 100%)";
 
@@ -740,11 +741,28 @@ export default function GetStartedPage() {
       pendingTelegramData,
       fullPhone,
       existingToken,
+      onboardingSessionId,
     );
 
     if (result.success) {
       if (isLinkMode) {
-        navigate("/connected", { replace: true });
+        if (onboardingSessionId && !result.continuationRedeemed) {
+          setPhoneError(
+            t("homepage_eliza.getStarted.errTelegramContinuation", {
+              defaultValue:
+                "We couldn't finish linking this Telegram chat. Return to the bot and request a new link.",
+            }),
+          );
+          setIsSubmittingPhone(false);
+          return;
+        }
+        clearRememberedReturnTo();
+        navigate(
+          getTelegramLinkDestination(result.continuationRedeemed === true),
+          {
+            replace: true,
+          },
+        );
       } else {
         setStep("PROVISIONING_CHAT");
       }
@@ -795,6 +813,7 @@ export default function GetStartedPage() {
     getFullPhoneNumber,
     loginWithTelegram,
     isLinkMode,
+    onboardingSessionId,
     navigate,
     t,
   ]);
