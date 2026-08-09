@@ -1356,3 +1356,106 @@ describe("view-surface overlap miss-budget cap (vim-window shape)", () => {
 		expect(routed.plan.requiredToolMissBudget).toBeUndefined();
 	});
 });
+
+describe("bare link shares never commit the turn to coding delegation (link-spawn guard)", () => {
+	const replyAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "REPLY",
+		similes: [],
+		tags: [],
+	};
+	const spawnAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "TASKS_SPAWN_AGENT",
+		similes: ["SPAWN_AGENT"],
+		tags: ["domain:coding", "coding-delegation"],
+	};
+	const webAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "WEB_FETCH",
+		similes: [],
+		tags: [],
+	};
+
+	/** The exact processed-content shape Discord produces for a shared link
+	 * with a rendered preview (raw URL + connector-appended embed block). The
+	 * embed title's workflow-ish words are DERIVED content, not instruction. */
+	const linkShareText = [
+		"https://claude.ai/public/artifacts/abc123",
+		"Embed #1:",
+		"  Title:how the agent decides to message people",
+		"  Description:(none)",
+	].join("\n");
+
+	const fieldResult = (replyText: string) => ({
+		shouldRespond: "RESPOND" as const,
+		contexts: ["general"],
+		intents: [],
+		replyText,
+		candidateActionNames: ["TASKS_SPAWN_AGENT"],
+		facts: [],
+		relationships: [],
+		addressedTo: [],
+	});
+
+	it("a complete reaction to a shared link stays direct even when the model named a spawn candidate", () => {
+		// Live incident shape: bare URL + embed, and the model (mis)committed to
+		// TASKS_SPAWN_AGENT off the embed title. The delegation-commitment
+		// override must NOT stand on a link share — the finished reaction wins.
+		const routed = messageHandlerFromFieldResult(
+			fieldResult(
+				"Neat write-up — it lays out how the agent weighs room context before messaging anyone.",
+			),
+			undefined,
+			{
+				actions: [replyAction, spawnAction, webAction],
+				messageText: linkShareText,
+			},
+		);
+
+		expect(routed.plan.simple).toBe(true);
+		expect(routed.plan.requiresTool).toBe(false);
+		expect(routed.plan.candidateActions ?? []).toEqual([]);
+	});
+
+	it("an explicit build instruction with a URL still commits to delegation", () => {
+		const routed = messageHandlerFromFieldResult(
+			fieldResult("On it — I'll get that page built for you now, one moment."),
+			undefined,
+			{
+				actions: [replyAction, spawnAction, webAction],
+				messageText:
+					"build me a landing page based on this https://example.com/design",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("TASKS_SPAWN_AGENT");
+	});
+
+	it("an unanswered link share escalates to the web-read light path, not a spawn", () => {
+		// Stage 1 acked without reading the page: the deterministic backstop
+		// surfaces the web tools so the planner fetches and reacts to the actual
+		// content (degrading to the embed metadata when unfetchable) instead of
+		// inventing work.
+		const routed = applyDirectCurrentCandidateBackstopToMessageHandler(
+			{
+				processMessage: "RESPOND",
+				thought: "",
+				plan: {
+					contexts: ["simple"],
+					reply: "Taking a look.",
+					simple: true,
+					requiresTool: false,
+				},
+			},
+			{
+				actions: [replyAction, spawnAction, webAction],
+				messageText: linkShareText,
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("WEB_FETCH");
+		expect(routed.plan.candidateActions ?? []).not.toContain(
+			"TASKS_SPAWN_AGENT",
+		);
+	});
+});

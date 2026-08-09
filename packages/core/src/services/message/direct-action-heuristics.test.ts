@@ -17,9 +17,111 @@ import {
 	inferDirectCurrentRequestCandidateActions,
 	inferDirectCurrentRequestCandidateInference,
 	isShellDirectActionName,
+	looksLikeBareLinkShare,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
 } from "./direct-action-heuristics.ts";
+
+/** The exact processed-content shape Discord produces for a shared link with a
+ * rendered preview: raw URL, then the connector-appended embed block. */
+const DISCORD_LINK_WITH_EMBED = [
+	"https://claude.ai/public/artifacts/abc123",
+	"Embed #1:",
+	"  Title:how the agent decides to message people",
+	"  Description:(none)",
+].join("\n");
+
+describe("looksLikeBareLinkShare", () => {
+	it("fires on a bare URL with no commentary", () => {
+		expect(looksLikeBareLinkShare("https://example.com/some/page")).toBe(true);
+	});
+
+	it("fires on a URL with a connector embed preview — preview text is derived, not instruction", () => {
+		// The embed title contains workflow-ish words ("decides to message
+		// people"); they must not read as user intent.
+		expect(looksLikeBareLinkShare(DISCORD_LINK_WITH_EMBED)).toBe(true);
+	});
+
+	it("fires on a URL with short non-imperative commentary", () => {
+		expect(looksLikeBareLinkShare("check this out https://example.com")).toBe(
+			true,
+		);
+		expect(looksLikeBareLinkShare("https://example.com lol")).toBe(true);
+		expect(looksLikeBareLinkShare("thoughts? https://example.com")).toBe(true);
+	});
+
+	it("does NOT fire when the user's own words carry a work imperative", () => {
+		expect(
+			looksLikeBareLinkShare(
+				"build me a landing page based on this https://example.com/design",
+			),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare("fix the bug described here https://example.com"),
+		).toBe(false);
+		// The imperative may live in the residue even with an embed present.
+		expect(
+			looksLikeBareLinkShare(
+				`implement what this describes\n${DISCORD_LINK_WITH_EMBED}`,
+			),
+		).toBe(false);
+	});
+
+	it("does NOT fire without a URL or on substantial commentary", () => {
+		expect(looksLikeBareLinkShare("tell vega to take a break")).toBe(false);
+		expect(looksLikeBareLinkShare("")).toBe(false);
+		const longCommentary = `${"here is a very long analysis of the situation with many words that go on ".repeat(3)}https://example.com`;
+		expect(looksLikeBareLinkShare(longCommentary)).toBe(false);
+	});
+});
+
+describe("bare link share routes to the web-read light path, never coding", () => {
+	const actions = [
+		{ name: "REPLY", similes: [] },
+		{ name: "WEB_FETCH", similes: [] },
+		{ name: "WEB_SEARCH", similes: [] },
+		{ name: "TASKS", similes: [], tags: ["domain:coding"] },
+	] as unknown as ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+
+	it("a shared link surfaces WEB_FETCH-first web candidates (kind web)", () => {
+		const inference = inferDirectCurrentRequestCandidateInference(
+			actions,
+			DISCORD_LINK_WITH_EMBED,
+			{
+				// A coding hook that would fire on the embed's derived text must
+				// not be consulted before the link-share light path.
+				looksLikeCodingWorkRequest: () => false,
+				findCodingDelegationActionName: () => "TASKS",
+			},
+		);
+		expect(inference.kind).toBe("web");
+		expect(inference.names).toEqual(["WEB_FETCH", "WEB_SEARCH"]);
+	});
+
+	it("an explicit build instruction with a URL still routes to coding", () => {
+		const inference = inferDirectCurrentRequestCandidateInference(
+			actions,
+			"build me a page like this https://example.com/design",
+			{
+				looksLikeCodingWorkRequest: (text) => /\bbuild\b/i.test(text),
+				findCodingDelegationActionName: () => "TASKS",
+			},
+		);
+		expect(inference.kind).toBe("coding");
+		expect(inference.names).toEqual(["TASKS"]);
+	});
+
+	it("with no web backend the link share yields no forced candidate", () => {
+		const inference = inferDirectCurrentRequestCandidateInference(
+			[{ name: "REPLY", similes: [] }] as unknown as ReadonlyArray<
+				Pick<Action, "name" | "similes" | "tags">
+			>,
+			DISCORD_LINK_WITH_EMBED,
+			{},
+		);
+		expect(inference.names).toEqual([]);
+	});
+});
 
 describe("looksLikeLocalShellRequest", () => {
 	it("fires on local inspect-the-repo intent, not on unrelated text", () => {
