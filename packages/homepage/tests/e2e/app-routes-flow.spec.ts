@@ -277,6 +277,9 @@ test("connected page exercises account menu, copy controls, link-phone form, and
 test("landing page renders its animated shell and primary entrypoint", async ({
   page,
 }) => {
+  // Full landing readiness (shader + phone model + message replay) can take
+  // minutes on a starved fleet runner.
+  test.setTimeout(240_000);
   await page.goto("/");
 
   await expect(page.getByLabel("Eliza", { exact: true })).toBeVisible({
@@ -294,7 +297,7 @@ test("landing composer is inert while hidden and stays in-viewport when active",
   // Three platform swipes each trigger the phone-model spin animation, and on
   // CI's software GL those animation frames run seconds-per-frame; the default
   // 60s budget is not enough for the full imessage → try traversal.
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await waitForLandingIntro(page);

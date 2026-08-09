@@ -23,7 +23,7 @@ async function waitForTerminalChat(
   // loaded CI runners with software GL; readiness waits must absorb host
   // load rather than encode local timings.
   await expect(state).toHaveAttribute("data-phone-model", "settled", {
-    timeout: 60_000,
+    timeout: 120_000,
   });
   await expect(state).toHaveAttribute("data-chat-phase", "terminal");
   await expect(state).toHaveAttribute(
@@ -41,7 +41,7 @@ async function capturePhoneCanvas(page: Page, path: string) {
   await expect(page.locator("[data-shader-background]")).toHaveAttribute(
     "data-shader-background",
     "settled",
-    { timeout: 20_000 },
+    { timeout: 90_000 },
   );
   await waitForTerminalChat(page, 5);
 
@@ -121,7 +121,7 @@ for (const viewport of [
     test.use({ viewport });
 
     test("renders identical terminal phone canvases", async ({ page }) => {
-      test.setTimeout(120_000);
+      test.setTimeout(300_000);
       const landing = await capturePhoneCanvas(page, "/");
       const leaderboard = await capturePhoneCanvas(page, "/leaderboard");
 
@@ -145,14 +145,14 @@ for (const viewport of [
 test("entering try mode commits the interrupted intro before readiness", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(300_000);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const state = page.locator("[data-phone-model]");
   await expect(state).toHaveAttribute("data-chat-phase", "animating", {
-    timeout: 20_000,
+    timeout: 90_000,
   });
   await expect(state).toHaveAttribute("data-chat-rendered-messages", "1", {
-    timeout: 20_000,
+    timeout: 90_000,
   });
   await expect(state).toHaveAttribute("data-chat-total-messages", "5");
 
@@ -169,7 +169,7 @@ test("entering try mode commits the interrupted intro before readiness", async (
 test("Telegram replay moves from loading to its six-message terminal state", async ({
   page,
 }) => {
-  test.setTimeout(150_000);
+  test.setTimeout(300_000);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForTerminalChat(page, 5);
 
@@ -216,7 +216,7 @@ test("Telegram replay moves from loading to its six-message terminal state", asy
 });
 
 test("rapid platform reversal honors the newest command", async ({ page }) => {
-  test.setTimeout(150_000);
+  test.setTimeout(300_000);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForTerminalChat(page, 5);
 
