@@ -41,6 +41,7 @@ import type {
   ChatRenderState,
   ModelBHandle,
 } from "@/components/ModelViewers/ModelB";
+import { buildDiscordDmUrl } from "@/lib/discord-dm-url";
 import { useT } from "@/providers/I18nProvider";
 
 // Heavy WebGL bundles stay behind Suspense so the interactive route chrome can
@@ -973,7 +974,14 @@ export default function Leaderboard() {
                   />
                   <AnimatedButton
                     type="button"
-                    onClick={() => navigate("/get-started")}
+                    onClick={() => {
+                      const discordDmUrl = buildDiscordDmUrl();
+                      if (discordDmUrl) {
+                        window.location.assign(discordDmUrl);
+                        return;
+                      }
+                      navigate("/get-started?guide=discord");
+                    }}
                     className="relative z-2 flex h-full w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-full text-base font-semibold text-neutral-900"
                     style={{ opacity: tryAppearSpring.tryOpacity }}
                   >
