@@ -6523,7 +6523,7 @@ export function ChatOverlay({
                   // even when the glass pill sits over dark wallpaper. During
                   // onboarding `disabled:opacity-100` prevents the browser from
                   // dimming the locked cue.
-                  className="scrollbar-hide max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
+                  className="scrollbar-hide max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong pointer-coarse:text-base disabled:pointer-events-none disabled:opacity-100"
                 />
               )}
               {!transcriptionComposerActive &&

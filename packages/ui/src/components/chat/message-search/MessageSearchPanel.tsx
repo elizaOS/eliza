@@ -135,8 +135,8 @@ export function MessageSearchPanel({
       // away when the results list above it is long.
       className={
         keyboardAnchored
-          ? "shrink-0 rounded-xl border-white/20 bg-[rgba(12,16,18,0.86)] text-white shadow-[0_12px_32px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.08)] placeholder:text-white/45"
-          : undefined
+          ? "shrink-0 rounded-xl border-white/20 bg-[rgba(12,16,18,0.86)] text-white shadow-[0_12px_32px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.08)] placeholder:text-white/45 pointer-coarse:text-base"
+          : "pointer-coarse:text-base"
       }
     />
   );

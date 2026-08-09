@@ -520,6 +520,17 @@ describe("ChatOverlay", () => {
     expect(overlay.getAttribute("data-open")).toBe("true");
   });
 
+  it("keeps the touch composer at 16px so iOS Safari does not auto-zoom the viewport on focus", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const composer = screen.getByTestId("chat-composer-textarea");
+
+    // Mobile Safari automatically zooms focused form controls below 16px. The
+    // web viewport intentionally permits user zoom for WCAG 2.2 SC 1.4.4, so
+    // the composer itself must meet Safari's 16px focus threshold on coarse
+    // pointers instead of restoring a global maximum-scale lockdown.
+    expect(composer.className).toContain("pointer-coarse:text-base");
+  });
+
   it("opens the sheet when the thread lands AFTER the composer was focused (focus wins the boot race, #11112)", () => {
     // Boot: the overlay renders (and can be focused) before the restored
     // conversation's messages arrive. The focus→expand used to be a one-shot

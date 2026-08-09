@@ -36,6 +36,19 @@ function result(
 }
 
 describe("MessageSearchPanel", () => {
+  it("keeps its text field above Mobile Safari's focus-zoom threshold", () => {
+    render(
+      <MessageSearchPanel
+        search={vi.fn()}
+        onJump={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("message-search-input").className).toContain(
+      "pointer-coarse:text-base",
+    );
+  });
+
   it("does not search until the query reaches the minimum length", async () => {
     const search = vi.fn(async () => [result()]);
     render(

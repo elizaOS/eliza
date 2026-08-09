@@ -51,6 +51,13 @@ function openEditor(onEdit = vi.fn().mockResolvedValue(true)) {
 }
 
 describe("ChatMessage glass inline edit controls", () => {
+  it("keeps the editor above Mobile Safari's focus-zoom threshold", () => {
+    openEditor();
+    expect(screen.getByLabelText("Edit message").className).toContain(
+      "pointer-coarse:text-base",
+    );
+  });
+
   it("uses two bare labelled icons instead of the old Cancel and Send plate", () => {
     openEditor();
 

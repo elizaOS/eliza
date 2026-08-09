@@ -34,6 +34,11 @@ function composerInput(): HTMLInputElement {
 }
 
 describe("ChatSurface composer (shared core)", () => {
+  it("keeps the touch composer above Mobile Safari's focus-zoom threshold", () => {
+    render(surface());
+    expect(composerInput().className).toContain("pointer-coarse:text-base");
+  });
+
   it("sends the trimmed draft on Enter and clears the input", () => {
     const onSend = vi.fn();
     render(surface({ onSend }));

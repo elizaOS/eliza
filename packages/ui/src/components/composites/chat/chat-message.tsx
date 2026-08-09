@@ -899,8 +899,8 @@ export const ChatMessage = memo(function ChatMessage({
         className={cn(
           "field-sizing-content min-h-0 max-h-40 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent p-0 shadow-none outline-none transition-opacity duration-200 disabled:cursor-default",
           glass
-            ? "text-[14px] leading-relaxed text-white caret-white"
-            : "text-[15px] leading-[1.7] text-txt-strong caret-txt-strong",
+            ? "text-[14px] leading-relaxed text-white caret-white pointer-coarse:text-base"
+            : "text-[15px] leading-[1.7] text-txt-strong caret-txt-strong pointer-coarse:text-base",
         )}
         style={{ fontFamily: "var(--font-chat)" }}
         disabled={savingEdit}
