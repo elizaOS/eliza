@@ -287,7 +287,11 @@
       "outputs": []
     },
     "@elizaos/scenario-runner#typecheck": {
-      "dependsOn": ["@elizaos/plugin-browser#build", "^build"],
+      "dependsOn": [
+        "@elizaos/capacitor-bun-runtime#build",
+        "@elizaos/plugin-browser#build",
+        "^build"
+      ],
       "outputs": []
     },
     "format": {
