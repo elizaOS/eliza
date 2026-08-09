@@ -249,23 +249,31 @@ describe("buildUnresolvedAgentResponse — CORS-bearing failure (#15347)", () =>
     expect(body.code).toBe("agent_unroutable");
   });
 
-  it("no such agent (undefined) → 404 not-found, still CORS-bearing", async () => {
+  it("no such agent (undefined) → 404 agent_not_found, still CORS-bearing", async () => {
     const res = buildUnresolvedAgentResponse(undefined, ORIGIN);
     expect(res.status).toBe(404);
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(res.headers.get("retry-after")).toBeNull();
     const body = (await res.json()) as { error?: string; code?: string };
     expect(body.error).toBe("agent not found or not running");
-    expect(body.code).toBeUndefined();
+    expect(body.code).toBe("agent_not_found");
   });
 
-  it("non-running row (pending/stopped) with empty ip → 404, NOT 503 (only running is 'unroutable')", () => {
+  it("non-running row (pending/stopped) → 503 agent_not_running (recoverable, not deleted)", async () => {
     for (const status of ["pending", "stopped", "disconnected"]) {
       const res = buildUnresolvedAgentResponse(
         { status, headscale_ip: "", web_ui_port: 20001 },
         ORIGIN,
       );
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as {
+        error?: string;
+        code?: string;
+        status?: string;
+      };
+      expect(body.code).toBe("agent_not_running");
+      expect(body.status).toBe(status);
+      expect(res.headers.get("retry-after")).toBe("5");
     }
   });
 
