@@ -44,13 +44,21 @@ describe("config-catalog path helpers", () => {
 describe("config-catalog field visibility gates", () => {
   it("treats persisted setKeys as satisfied even without a draft value", () => {
     expect(
-      isConfigKeySatisfied("DISCORD_API_TOKEN", {}, new Set(["DISCORD_API_TOKEN"])),
+      isConfigKeySatisfied(
+        "DISCORD_API_TOKEN",
+        {},
+        new Set(["DISCORD_API_TOKEN"]),
+      ),
     ).toBe(true);
     expect(isConfigKeySatisfied("DISCORD_API_TOKEN", {}, new Set())).toBe(
       false,
     );
     expect(
-      isConfigKeySatisfied("DISCORD_API_TOKEN", { DISCORD_API_TOKEN: " abc " }, new Set()),
+      isConfigKeySatisfied(
+        "DISCORD_API_TOKEN",
+        { DISCORD_API_TOKEN: " abc " },
+        new Set(),
+      ),
     ).toBe(true);
   });
 
