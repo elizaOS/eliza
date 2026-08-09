@@ -284,7 +284,9 @@ describe("wallet bridge recipient guard", () => {
 
     expect(first?.data?.requiresConfirmation).toBe(true);
     const prompt = prompts.join("\n");
-    expect(prompt).toContain("Bridge 0.5 ETH from base to arbitrum?");
+    expect(prompt).toContain(
+      "Bridge 0.5 ETH from base to arbitrum with default slippage?",
+    );
     expect(prompt).not.toContain("undefined");
     expect(base.execute).not.toHaveBeenCalled();
   });
