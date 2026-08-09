@@ -853,11 +853,16 @@ async function main() {
       pickRelease(osReleases),
       canaryRelease ?? primaryRelease,
     );
-    // If no usable release exists (no installers), use null to render the
-    // explicit unavailable state rather than selecting an internal/evidence tag.
+    // A release is displayable only if buildRelease() resolves at least one
+    // installer download for it. Otherwise render the explicit unavailable
+    // state rather than selecting an internal/evidence or incomplete release.
+    const candidateRelease = primaryRelease;
+    const candidatePayload = candidateRelease
+      ? buildRelease(candidateRelease)
+      : null;
     const displayRelease =
-      primaryRelease && hasInstallerAsset(primaryRelease)
-        ? primaryRelease
+      candidatePayload && candidatePayload.downloads.length > 0
+        ? candidateRelease
         : null;
     await writePayload(
       buildPayload(displayRelease, canaryRelease, stableRelease, osArtifacts),

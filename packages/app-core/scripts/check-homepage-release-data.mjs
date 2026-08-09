@@ -56,6 +56,13 @@ const payload = parseGeneratedModule(source);
 const release = payload.release;
 
 if (!release || release.tagName === "unavailable") {
+  // A missing `release` property is a malformed payload, not a valid
+  // unavailable state. The generator always writes a release object (even
+  // the null fallback). Only an explicitly structured unavailable release
+  // is acceptable here.
+  if (!release) {
+    fail("payload is malformed: release property is missing");
+  }
   // An explicit "unavailable" state is valid when no public product release
   // with installer assets exists. This prevents internal/evidence tags from
   // being displayed as the Latest release.
@@ -94,22 +101,6 @@ if (!release || release.tagName === "unavailable") {
     );
   }
 
-  const storeTargets = Array.isArray(payload.storeTargets)
-    ? payload.storeTargets
-    : [];
-  const placeholderStores = storeTargets.filter(
-    (store) =>
-      store.url &&
-      (store.status !== "available" || !/^https:\/\/.+/i.test(store.url)),
-  );
-
-  if (placeholderStores.length > 0) {
-    fail(
-      "store targets must not contain placeholder or unavailable URLs",
-      placeholderStores.map((store) => `${store.platform}: ${store.url}`),
-    );
-  }
-
   console.log(
     `homepage release data check passed: ${release.tagName} (${downloads.length} downloads)`,
   );
@@ -118,4 +109,21 @@ if (!release || release.tagName === "unavailable") {
       `homepage release data optional package formats not present yet: ${optionalMissing.join(", ")}`,
     );
   }
+}
+
+// Store-target validation is independent of release availability.
+const storeTargets = Array.isArray(payload.storeTargets)
+  ? payload.storeTargets
+  : [];
+const placeholderStores = storeTargets.filter(
+  (store) =>
+    store.url &&
+    (store.status !== "available" || !/^https:\/\/.+/i.test(store.url)),
+);
+
+if (placeholderStores.length > 0) {
+  fail(
+    "store targets must not contain placeholder or unavailable URLs",
+    placeholderStores.map((store) => `${store.platform}: ${store.url}`),
+  );
 }
