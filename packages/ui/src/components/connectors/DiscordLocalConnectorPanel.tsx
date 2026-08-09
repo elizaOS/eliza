@@ -248,50 +248,12 @@ export function DiscordLocalConnectorPanel() {
   return (
     <PagePanel.Notice
       tone={error ? "danger" : status?.authenticated ? "accent" : "default"}
-      className="mt-4"
-    >
-      <div className="space-y-3 text-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="font-semibold text-txt">
-            {status?.authenticated
-              ? t("pluginsview.DiscordLocalAuthorized", {
-                  defaultValue: "Discord desktop is authorized.",
-                })
-              : t("pluginsview.DiscordLocalAuthorizePrompt", {
-                  defaultValue:
-                    "Authorize the app against the local Discord desktop app to read notifications, subscribe to channels, and send replies through macOS UI automation.",
-                })}
-          </div>
-          {connectedUser ? (
-            <code className="rounded-sm border border-border/40 bg-bg/60 px-2 py-1 text-xs-tight text-muted-strong">
-              {connectedUser}
-            </code>
-          ) : null}
-        </div>
-
-        {status?.ipcPath ? (
-          <div className="text-muted">
-            {t("pluginsview.DiscordLocalIpcPath", {
-              defaultValue: "Discord IPC socket",
-            })}
-            :{" "}
-            <code className="text-xs-tight text-muted-strong">
-              {status.ipcPath}
-            </code>
-          </div>
-        ) : null}
-
-        {status?.lastError ? (
-          <div className="text-danger">{status.lastError}</div>
-        ) : null}
-        {error ? <div className="text-danger">{error}</div> : null}
-        {saveMessage ? <div className="text-ok">{saveMessage}</div> : null}
-
-        <div className="flex flex-wrap items-center gap-2">
+      actions={
+        <>
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+            className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() => {
               void refreshStatus();
             }}
@@ -301,28 +263,11 @@ export function DiscordLocalConnectorPanel() {
               ? t("common.loading", { defaultValue: "Loading…" })
               : t("common.refresh", { defaultValue: "Refresh" })}
           </Button>
-          <Button
-            variant="default"
-            size="sm"
-            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
-            onClick={() => {
-              void handleAuthorize();
-            }}
-            disabled={authorizing || !status?.available}
-          >
-            {authorizing
-              ? t("pluginsview.DiscordLocalAuthorizing", {
-                  defaultValue: "Authorizing…",
-                })
-              : t("pluginsview.DiscordLocalAuthorize", {
-                  defaultValue: "Authorize Discord desktop",
-                })}
-          </Button>
           {status?.authenticated ? (
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+              className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
               onClick={() => {
                 void handleDisconnect();
               }}
@@ -334,14 +279,67 @@ export function DiscordLocalConnectorPanel() {
                   })
                 : t("common.disconnect")}
             </Button>
-          ) : null}
+          ) : (
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
+              onClick={() => {
+                void handleAuthorize();
+              }}
+              disabled={authorizing || !status?.available}
+            >
+              {authorizing
+                ? t("pluginsview.DiscordLocalAuthorizing", {
+                    defaultValue: "Authorizing…",
+                  })
+                : t("pluginsview.DiscordLocalAuthorize", {
+                    defaultValue: "Authorize Discord desktop",
+                  })}
+            </Button>
+          )}
+        </>
+      }
+    >
+      {/* Single dense copy block on the left; actions sit on the right via
+          PagePanel.Notice. No extra title that duplicates the primary button. */}
+      <div className="space-y-1 text-xs">
+        <div className="font-medium leading-snug text-txt">
+          {status?.authenticated
+            ? t("pluginsview.DiscordLocalAuthorized", {
+                defaultValue: "Discord desktop is authorized.",
+              })
+            : t("pluginsview.DiscordLocalAuthorizePrompt", {
+                defaultValue:
+                  "Authorize Eliza against the local Discord desktop app to read notifications, subscribe to channels, and send replies through macOS UI automation.",
+              })}
         </div>
-
+        {connectedUser ? (
+          <code className="inline-flex rounded-sm border border-border/40 bg-bg/60 px-2 py-0.5 text-xs-tight text-muted-strong">
+            {connectedUser}
+          </code>
+        ) : null}
+        {status?.ipcPath ? (
+          <div className="text-muted">
+            {t("pluginsview.DiscordLocalIpcPath", {
+              defaultValue: "Discord IPC socket",
+            })}
+            :{" "}
+            <code className="text-xs-tight text-muted-strong">
+              {status.ipcPath}
+            </code>
+          </div>
+        ) : null}
+        {status?.lastError ? (
+          <div className="text-danger">{status.lastError}</div>
+        ) : null}
+        {error ? <div className="text-danger">{error}</div> : null}
+        {saveMessage ? <div className="text-ok">{saveMessage}</div> : null}
         {!status?.available ? (
           <div className="text-muted">
             {t("pluginsview.DiscordLocalUnavailable", {
               defaultValue:
-                "Save the local Discord client ID and client secret above, enable the connector, and keep the Discord desktop app running on this Mac.",
+                "Save the local Discord client ID and client secret, enable the connector, and keep the Discord desktop app running on this device.",
             })}
           </div>
         ) : null}
@@ -439,11 +437,17 @@ export function DiscordLocalConnectorPanel() {
                     })}
                   </div>
                 )}
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-muted">
+                    {t("pluginsview.DiscordLocalSelectedCount", {
+                      count: selectedChannelIds.length,
+                      defaultValue: "{{count}} selected",
+                    })}
+                  </span>
                   <Button
                     variant="default"
                     size="sm"
-                    className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+                    className="h-8 shrink-0 rounded-sm px-4 text-xs-tight font-semibold sm:self-end"
                     onClick={() => {
                       void handleSaveSubscriptions();
                     }}
@@ -455,12 +459,6 @@ export function DiscordLocalConnectorPanel() {
                           defaultValue: "Save channel subscriptions",
                         })}
                   </Button>
-                  <span className="text-muted">
-                    {t("pluginsview.DiscordLocalSelectedCount", {
-                      count: selectedChannelIds.length,
-                      defaultValue: "{{count}} selected",
-                    })}
-                  </span>
                 </div>
               </div>
             ) : null}

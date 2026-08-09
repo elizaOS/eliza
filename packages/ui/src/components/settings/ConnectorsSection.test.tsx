@@ -2,11 +2,18 @@
 // @vitest-environment jsdom
 /**
  * Renders ConnectorsSection with a mocked App context and connector-mode
- * registry to assert icon fallbacks (no raw emoji glyphs) and the setup-panel
- * routing. jsdom, no backend.
+ * registry to assert index/detail routing, icon fallbacks, and setup-panel
+ * co-render on the detail page. jsdom, no backend.
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginInfo } from "../../api";
 
@@ -49,8 +56,6 @@ vi.mock("../connectors/WhatsAppQrOverlay", () => ({
   WhatsAppQrOverlay: () => <div />,
 }));
 
-// Controllable connector-mode per plugin id. Defaults to a benign mode so the
-// pre-existing icon test is unaffected; tests opt into telegram/discord modes.
 const connectorModeMock = vi.hoisted(() => ({
   byId: {} as Record<
     string,
@@ -58,6 +63,7 @@ const connectorModeMock = vi.hoisted(() => ({
       setupPluginId: string | null;
       selectedMode: string;
       modes: Array<{ id: string; managementMode: string | undefined }>;
+      setSelectedMode?: (id: string) => void;
     }
   >,
 }));
@@ -67,6 +73,7 @@ vi.mock("../connectors/ConnectorModeSelector.hooks", () => ({
       setupPluginId: pluginId,
       selectedMode: "default",
       modes: [{ id: "default", managementMode: undefined }],
+      setSelectedMode: () => {},
     },
 }));
 vi.mock("../connectors/ConnectorModeSelector", () => ({
@@ -77,10 +84,42 @@ vi.mock("../connectors/ConnectorSetupPanel", () => ({
     <div data-testid="connector-setup-panel">setup:{pluginId}</div>
   ),
 }));
+vi.mock("../connectors/ConnectorSetupPanel.helpers", () => ({
+  hasConnectorSetupPanel: (id: string) =>
+    id === "telegram" || id === "whatsapp",
+}));
 vi.mock("../pages/PluginConfigForm", () => ({
-  PluginConfigForm: () => <div data-testid="plugin-config-form" />,
+  PluginConfigForm: ({
+    plugin,
+    onParamChange,
+  }: {
+    plugin: PluginInfo;
+    onParamChange: (pluginId: string, key: string, value: string) => void;
+  }) => (
+    <div data-testid="plugin-config-form">
+      <button
+        type="button"
+        onClick={() => onParamChange(plugin.id, "TOKEN", "token-value")}
+      >
+        Stage token
+      </button>
+      <button
+        type="button"
+        onClick={() => onParamChange(plugin.id, "TOKEN", "newer-token")}
+      >
+        Stage newer token
+      </button>
+      <button
+        type="button"
+        onClick={() => onParamChange(plugin.id, "APP_ID", "app-value")}
+      >
+        Stage app ID
+      </button>
+    </div>
+  ),
 }));
 
+import { setConnectorChannelMode } from "../connectors/connector-channel-mode";
 import { ConnectorsSection } from "./ConnectorsSection";
 
 function plugin(overrides: Partial<PluginInfo> = {}): PluginInfo {
@@ -101,6 +140,10 @@ function plugin(overrides: Partial<PluginInfo> = {}): PluginInfo {
   } as PluginInfo;
 }
 
+function openDetail(name: string) {
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(name, "i") }));
+}
+
 describe("ConnectorsSection", () => {
   beforeEach(() => {
     appMock.value = {
@@ -113,6 +156,8 @@ describe("ConnectorsSection", () => {
       t: (_key, options) => options?.defaultValue ?? _key,
     };
     connectorModeMock.byId = {};
+    setConnectorChannelMode("delegate");
+    window.history.replaceState(null, "", "/");
   });
 
   afterEach(() => {
@@ -146,14 +191,12 @@ describe("ConnectorsSection", () => {
     };
   }
 
-  // Regression #10281: Settings → Connectors must co-render the live setup
-  // panel alongside the env-config form (the canonical /connectors page does).
-  // Before the fix, the showPluginConfig branch dropped the panel.
-  it("co-renders the live setup panel alongside the config form for telegram bot mode", () => {
+  it("opens a detail page from the index and co-renders setup + config for telegram bot mode", () => {
     connectorModeMock.byId.telegram = {
       setupPluginId: "telegram",
       selectedMode: "bot",
       modes: [{ id: "bot", managementMode: "local-config" }],
+      setSelectedMode: () => {},
     };
     appMock.value.plugins = [
       plugin({
@@ -164,20 +207,21 @@ describe("ConnectorsSection", () => {
     ];
 
     render(<ConnectorsSection />);
+    expect(screen.getByTestId("connectors-index")).toBeTruthy();
+    openDetail("Telegram");
 
+    expect(screen.getByTestId("connector-detail")).toBeTruthy();
     expect(screen.getByTestId("plugin-config-form")).toBeTruthy();
     const panel = screen.getByTestId("connector-setup-panel");
-    expect(panel).toBeTruthy();
     expect(panel.textContent ?? "").toContain("telegram");
   });
 
-  // whatsapp business mode is the third local-config + has-panel case; it must
-  // co-render like /connectors does (the panel is the whatsapp pairing surface).
-  it("co-renders the setup panel for whatsapp business mode", () => {
+  it("co-renders the setup panel for whatsapp business mode on detail", () => {
     connectorModeMock.byId.whatsapp = {
       setupPluginId: "whatsapp",
       selectedMode: "business",
       modes: [{ id: "business", managementMode: "local-config" }],
+      setSelectedMode: () => {},
     };
     appMock.value.plugins = [
       plugin({
@@ -188,6 +232,7 @@ describe("ConnectorsSection", () => {
     ];
 
     render(<ConnectorsSection />);
+    openDetail("WhatsApp");
 
     expect(screen.getByTestId("plugin-config-form")).toBeTruthy();
     expect(
@@ -197,11 +242,12 @@ describe("ConnectorsSection", () => {
     ).toBe(true);
   });
 
-  it("renders no setup panel for a local-config connector that has none (discord)", () => {
+  it("renders config form without setup panel for discord bot local-config", () => {
     connectorModeMock.byId.discord = {
       setupPluginId: "discord",
       selectedMode: "bot",
       modes: [{ id: "bot", managementMode: "local-config" }],
+      setSelectedMode: () => {},
     };
     appMock.value.plugins = [
       plugin({
@@ -212,8 +258,184 @@ describe("ConnectorsSection", () => {
     ];
 
     render(<ConnectorsSection />);
+    openDetail("Discord");
 
     expect(screen.getByTestId("plugin-config-form")).toBeTruthy();
     expect(screen.queryByTestId("connector-setup-panel")).toBeNull();
+  });
+
+  it("commits multi-field drafts once and blocks duplicate saves", async () => {
+    let resolveSave: ((saved: boolean) => void) | undefined;
+    appMock.value.handlePluginConfigSave = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    appMock.value.plugins = [
+      plugin({
+        id: "discord",
+        name: "Discord",
+        parameters: [tokenParam("DISCORD_API_TOKEN")],
+      }),
+    ];
+
+    render(<ConnectorsSection />);
+    openDetail("Discord");
+    fireEvent.click(screen.getByRole("button", { name: "Stage token" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stage app ID" }));
+
+    const save = screen.getByRole("button", { name: "Save changes" });
+    fireEvent.click(save);
+    fireEvent.click(save);
+
+    expect(appMock.value.handlePluginConfigSave).toHaveBeenCalledOnce();
+    expect(appMock.value.handlePluginConfigSave).toHaveBeenCalledWith(
+      "discord",
+      { TOKEN: "token-value", APP_ID: "app-value" },
+    );
+    resolveSave?.(true);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull(),
+    );
+  });
+
+  it("preserves a newer same-field edit when an older save completes", async () => {
+    let resolveFirst: ((saved: boolean) => void) | undefined;
+    appMock.value.handlePluginConfigSave = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(true);
+    appMock.value.plugins = [
+      plugin({
+        id: "discord",
+        name: "Discord",
+        parameters: [tokenParam("DISCORD_API_TOKEN")],
+      }),
+    ];
+
+    render(<ConnectorsSection />);
+    openDetail("Discord");
+    fireEvent.click(screen.getByRole("button", { name: "Stage token" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stage newer token" }));
+    resolveFirst?.(true);
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Save changes" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(appMock.value.handlePluginConfigSave).toHaveBeenCalledTimes(2),
+    );
+    expect(appMock.value.handlePluginConfigSave).toHaveBeenLastCalledWith(
+      "discord",
+      { TOKEN: "newer-token" },
+    );
+  });
+
+  it("retains staged drafts after a failed save and lets Cancel discard them", async () => {
+    appMock.value.handlePluginConfigSave = vi.fn(async () => false);
+    appMock.value.plugins = [
+      plugin({
+        id: "discord",
+        name: "Discord",
+        parameters: [tokenParam("DISCORD_API_TOKEN")],
+      }),
+    ];
+
+    render(<ConnectorsSection />);
+    openDetail("Discord");
+    fireEvent.click(screen.getByRole("button", { name: "Stage token" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save changes" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+  });
+
+  it("hides bot-only connectors under the delegate lens and restores them via the footnote switch", () => {
+    appMock.value.plugins = [
+      plugin({ id: "slack", name: "Slack" }),
+      plugin({ id: "bluebubbles", name: "BlueBubbles" }),
+      plugin({ id: "matrix", name: "Matrix" }),
+    ];
+
+    render(<ConnectorsSection />);
+
+    expect(screen.getByText("BlueBubbles")).toBeTruthy();
+    // Slack remains available through its OWNER-role plugin-managed inventory;
+    // its app-token modes themselves are still Bot-only.
+    expect(screen.getByText("Slack")).toBeTruthy();
+    expect(screen.queryByText("Matrix")).toBeNull();
+    const footnoteSwitch = screen.getByRole("button", {
+      name: /Switch to/,
+    });
+
+    fireEvent.click(footnoteSwitch);
+
+    expect(screen.getByText("Slack")).toBeTruthy();
+    expect(screen.getByText("Matrix")).toBeTruthy();
+    expect(screen.queryByText("BlueBubbles")).toBeNull();
+    expect(screen.getByRole("button", { name: /Switch to/ })).toBeTruthy();
+  });
+
+  it("keeps unclassified connectors visible under both lenses", () => {
+    appMock.value.plugins = [
+      plugin({ id: "acmechat-unknown", name: "Acme Chat" }),
+    ];
+
+    render(<ConnectorsSection />);
+    expect(screen.getByText("Acme Chat")).toBeTruthy();
+
+    act(() => setConnectorChannelMode("bot"));
+    expect(screen.getByText("Acme Chat")).toBeTruthy();
+  });
+
+  it("returns to the index from detail back control", async () => {
+    appMock.value.plugins = [plugin({ id: "signal", name: "Signal" })];
+    render(<ConnectorsSection />);
+    openDetail("Signal");
+    expect(screen.getByTestId("connector-detail")).toBeTruthy();
+    const back = screen.getByTestId("connector-detail-back");
+    // Mobile uses ViewHeader; this control is desktop-only with a 44px target.
+    expect(back.className).toMatch(/\bhidden\b/);
+    expect(back.className).toMatch(/\bmd:inline-flex\b/);
+    expect(back.className).toMatch(/\bmin-h-11\b/);
+    fireEvent.click(back);
+    await waitFor(() =>
+      expect(screen.getByTestId("connectors-index")).toBeTruthy(),
+    );
+  });
+
+  it("rejects a fallback-classified connector deep link under the wrong lens", async () => {
+    // Google is Delegate-only; a Bot-lens deep link must not open its detail.
+    appMock.value.plugins = [plugin({ id: "google", name: "Google" })];
+    act(() => setConnectorChannelMode("bot"));
+    window.history.replaceState(null, "", "/#connectors/google");
+    window.dispatchEvent(new Event("popstate"));
+
+    render(<ConnectorsSection />);
+    await waitFor(() =>
+      expect(screen.getByTestId("connector-not-found")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("connector-detail")).toBeNull();
+
+    act(() => setConnectorChannelMode("delegate"));
+    await waitFor(() =>
+      expect(screen.getByTestId("connector-detail")).toBeTruthy(),
+    );
   });
 });

@@ -264,13 +264,20 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
 		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(15);
 	});
 
-	it("keeps the TypeScript ABI version aligned with the pinned native header", () => {
-		const header = readFileSync(NATIVE_FFI_HEADER, "utf8");
-		const declared = header.match(
-			/^#define ELIZA_INFERENCE_ABI_VERSION (\d+)$/m,
-		)?.[1];
-		expect(declared).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
-	});
+	// The native header lives inside the llama.cpp submodule, which most CI
+	// lanes and dev checkouts leave uninitialized. Skip (rather than fail) when
+	// the submodule is absent; the voice lanes with submodules:recursive still
+	// enforce the pin.
+	it.skipIf(!existsSync(NATIVE_FFI_HEADER))(
+		"keeps the TypeScript ABI version aligned with the pinned native header",
+		() => {
+			const header = readFileSync(NATIVE_FFI_HEADER, "utf8");
+			const declared = header.match(
+				/^#define ELIZA_INFERENCE_ABI_VERSION (\d+)$/m,
+			)?.[1];
+			expect(declared).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
+		},
+	);
 
 	it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {
 		// Depending on the test runner this is either a non-Bun runtime or Bun

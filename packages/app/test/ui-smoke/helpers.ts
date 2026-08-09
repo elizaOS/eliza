@@ -3005,6 +3005,45 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // The todos list above is a GET mock, but the chat today-todos card and
+  // TodosView write completions/skips through the canonical occurrence routes.
+  // The smoke server has no lifeops service (real requests 501), so fulfill the
+  // writes against the same fixture: callers only check `response.ok`.
+  await page.route("**/api/lifeops/occurrences/*/complete", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const id = decodeURIComponent(
+      new URL(route.request().url()).pathname.split("/").at(-2) ?? "",
+    );
+    const occurrence = populatedTodos().todos.find((todo) => todo.id === id);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        occurrence: { ...(occurrence ?? { id }), status: "completed" },
+      }),
+    });
+  });
+  await page.route("**/api/lifeops/occurrences/*/skip", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const id = decodeURIComponent(
+      new URL(route.request().url()).pathname.split("/").at(-2) ?? "",
+    );
+    const occurrence = populatedTodos().todos.find((todo) => todo.id === id);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        occurrence: { ...(occurrence ?? { id }), status: "skipped" },
+      }),
+    });
+  });
+
   await page.route("**/api/documents/stats**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

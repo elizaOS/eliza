@@ -61,6 +61,13 @@ export interface SmithersWorkflowRunOptions {
 
 const DEFAULT_SMITHERS_TIMEOUT_MS = 300_000;
 const MAX_SMITHERS_WORKER_STDERR_CHARS = 4_096;
+// How long after worker 'exit' to keep waiting for 'close' (stdio drain).
+// 'close' requires every stdio pipe to shut down, and a worker whose pipe
+// wiring failed — or that leaked a pipe fd to a grandchild — can exit without
+// ever closing them; an unbounded wait wedges the caller forever. The grace is
+// deliberately generous: on a loaded host stdio can drain well after 'exit',
+// and settling early would misread a successful run as result-missing.
+const SMITHERS_STDIO_DRAIN_GRACE_MS = 10_000;
 const SMITHERS_WORKER_ENV_KEYS = [
   'PATH',
   'HOME',
@@ -228,14 +235,17 @@ function writeSmithersPayload(input: NodeJS.WritableStream, payload: string): Pr
       settle(error);
     }
     function onClose(): void {
-      input.off('error', onError);
       settle(
         Object.assign(new Error('Smithers worker payload pipe closed before write completed'), {
           code: 'ERR_STREAM_PREMATURE_CLOSE',
         })
       );
     }
-    input.once('error', onError);
+    // The error listener stays attached for the stream's lifetime: a payload
+    // pipe torn down mid-connect can emit 'error' after 'close', and removing
+    // the listener there would turn that into a process-level unhandled event.
+    // settle() is idempotent, so a post-settle error is observed and dropped.
+    input.on('error', onError);
     input.once('close', onClose);
     try {
       input.end(payload, settle);
@@ -274,7 +284,12 @@ export function buildSmithersWorkerEnv(): NodeJS.ProcessEnv {
  * racing. Per-node n8n retry / continue-on-fail is honoured, and per-run metrics
  * are reported back.
  */
-function createSmithersScript(): string {
+/**
+ * Source of the Bun worker each run spawns. Exported only so tests can drive
+ * the worker process directly and pin its lifecycle contract (a worker whose
+ * stdin closes mid-run must exit rather than idle forever as an orphan).
+ */
+export function createSmithersScript(): string {
   return String.raw`
     import { Smithers } from '@smithers-orchestrator/engine';
     import { Effect, Schema } from 'effect';
@@ -313,6 +328,22 @@ function createSmithersScript(): string {
           entry.resolve(response.outputData ?? [[]]);
         }
       }
+      // stdin EOF: the parent finished with this worker or died. A node request
+      // still pending can never be answered, and leaving its promise unsettled
+      // keeps the Effect fiber — and this process — alive forever; leaked
+      // workers accumulate and poison later spawns' stdio wiring on the host.
+      const orphaned = new Error('Smithers worker stdin closed before node execution completed');
+      for (const entry of pending.values()) entry.reject(orphaned);
+      pending.clear();
+      // Nothing legitimate outlives stdin: by protocol the parent only closes
+      // it once the workflow result has been read (or the parent is gone). A
+      // stdout write whose callback never fires after the parent died would
+      // still park this process forever, so force an exit once a drain window
+      // passes. A healthy worker calls process.exit(0) well before this fires.
+      setTimeout(() => {
+        console.error('Smithers worker exiting: stdin closed and shutdown did not complete');
+        process.exit(1);
+      }, 10_000);
     })();
 
     function sendNodeRequest(nodeName, inputData) {
@@ -616,6 +647,17 @@ export async function runWorkflowWithSmithers({
     });
   }
   const payloadStream = payloadInput as NodeJS.WritableStream;
+  // A worker that dies abruptly surfaces late stream errors on the parent side
+  // (EPIPE on stdin writes, teardown errors on the stdout/stderr pipes). None
+  // of these streams otherwise carries an 'error' listener, so without this
+  // they become process-level unhandled errors that can wedge the host event
+  // loop between tests. The exit outcome below remains the authoritative
+  // failure signal for the run.
+  // error-policy:J5 the same worker failure is observed via exitOutcomePromise.
+  const swallowStreamError = (): void => {};
+  proc.stdin.on('error', swallowStreamError);
+  proc.stdout.on('error', swallowStreamError);
+  proc.stderr.on('error', swallowStreamError);
   const byName = new Map(plan.enabledNodes.map((node) => [node.name, node]));
   let executionResult: WorkflowExecution | null = null;
   let runMetrics: SmithersRunMetrics | null = null;
@@ -732,25 +774,47 @@ export async function runWorkflowWithSmithers({
   });
 
   let timedOut = false;
+  let closeObserved = false;
   const exitOutcomePromise = new Promise<{ exitCode: number; processError: Error | null }>(
     (resolve) => {
       let settled = false;
       let processError: Error | null = null;
+      let drainTimer: NodeJS.Timeout | null = null;
       const timeout = setTimeout(() => {
         timedOut = true;
         killWorker(new Error(`Smithers workflow deadline exceeded after ${timeoutMs}ms`));
       }, timeoutMs);
-      const settle = (exitCode: number, processError: Error | null): void => {
+      const settle = (exitCode: number, error: Error | null): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
-        resolve({ exitCode, processError });
+        if (drainTimer) clearTimeout(drainTimer);
+        resolve({ exitCode, processError: error });
+      };
+      // 'close' (all stdio drained) is the preferred settle point, but it is
+      // not guaranteed: a worker whose stdio wiring failed, or whose pipe fds
+      // leaked to a grandchild, exits without ever emitting 'close'. Waiting
+      // only for 'close' therefore wedges the caller — and with it any test
+      // suite driving this path — so 'exit' and 'error' arm a bounded drain
+      // fallback instead.
+      const armDrainFallback = (exitCode: number): void => {
+        if (settled || drainTimer) return;
+        drainTimer = setTimeout(
+          () => settle(exitCode, processError),
+          SMITHERS_STDIO_DRAIN_GRACE_MS
+        );
       };
       proc.once('error', (error) => {
         processError ??= error;
         if (!executionAbort.signal.aborted) executionAbort.abort(error);
+        // A worker that failed to spawn may emit neither 'exit' nor 'close'.
+        armDrainFallback(1);
+      });
+      proc.once('exit', (code) => {
+        armDrainFallback(code ?? 1);
       });
       proc.once('close', (code) => {
+        closeObserved = true;
         settle(code ?? 1, processError);
       });
     }
@@ -772,6 +836,22 @@ export async function runWorkflowWithSmithers({
   ]);
   externalSignal?.removeEventListener('abort', onExternalAbort);
   if (stdoutBuffer.trim()) handleLine(stdoutBuffer);
+  // When the run settled through the drain fallback, 'close' never fired: the
+  // parent-side pipe handles are genuinely still open (held by a broken wire-up
+  // or a grandchild) and would otherwise linger as event-loop registrations, so
+  // release them explicitly. When 'close' fired, the runtime already released
+  // every stdio handle — destroying again would double-close file descriptors
+  // whose numbers a concurrently running worker's pipes may have reused.
+  if (!closeObserved) {
+    for (const stream of [proc.stdin, proc.stdout, proc.stderr, payloadStream]) {
+      try {
+        (stream as { destroy?: () => void }).destroy?.();
+      } catch {
+        // error-policy:J6 best-effort post-exit fd release; the run outcome is
+        // already settled and stream state can no longer affect it.
+      }
+    }
+  }
   if (exitCode === 0) {
     await Promise.all(inflight);
   } else {

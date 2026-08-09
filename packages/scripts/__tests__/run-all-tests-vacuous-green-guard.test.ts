@@ -6,7 +6,13 @@
  * a test-file mismatch cannot exit green without exercising the runner path.
  */
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
@@ -108,6 +114,31 @@ describe("root test lane require-work wiring (#13620)", () => {
       expect(rootScript(scriptName)).toContain("--require-work");
     });
   }
+
+  test("workflow invocations only pass flags the runner still accepts (#18185)", () => {
+    // The runner fails closed (exit 2) on unknown arguments, so a workflow
+    // still passing a retired flag kills its job before a single test runs —
+    // exactly what --min-tasks did to the plugin-tests gate after the flag
+    // became --require-work.
+    const workflowDir = join(repoRoot, ".github", "workflows");
+    for (const file of readdirSync(workflowDir)) {
+      if (!file.endsWith(".yml") && !file.endsWith(".yaml")) continue;
+      const source = readFileSync(join(workflowDir, file), "utf8");
+      if (!source.includes("run-all-tests.mjs")) continue;
+      expect(
+        source,
+        `${file} passes the retired --min-tasks flag`,
+      ).not.toContain("--min-tasks");
+      expect(
+        source,
+        `${file} sets the retired MIN_TEST_TASKS env`,
+      ).not.toContain("MIN_TEST_TASKS");
+    }
+    const developPr = readFileSync(join(workflowDir, "develop-pr.yml"), "utf8");
+    expect(developPr).toContain(
+      "node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --require-work",
+    );
+  });
 
   test("the standalone guard installs the Bun contract dependency first", () => {
     const workflow = readFileSync(

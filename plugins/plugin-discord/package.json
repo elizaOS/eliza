@@ -169,6 +169,67 @@
 				"required": false,
 				"sensitive": false
 			}
+		},
+		"configUiHints": {
+			"DISCORD_API_TOKEN": {
+				"label": "Bot token",
+				"order": 1,
+				"group": "connection"
+			},
+			"DISCORD_APPLICATION_ID": {
+				"label": "Application ID",
+				"order": 2,
+				"group": "connection"
+			},
+			"CHANNEL_IDS": {
+				"label": "Respond in channels",
+				"order": 10,
+				"group": "behavior",
+				"requires": "DISCORD_API_TOKEN"
+			},
+			"DISCORD_LISTEN_CHANNEL_IDS": {
+				"label": "Listen-only channels",
+				"order": 11,
+				"group": "behavior",
+				"requires": "DISCORD_API_TOKEN"
+			},
+			"DISCORD_VOICE_CHANNEL_ID": {
+				"label": "Voice channel",
+				"order": 12,
+				"group": "behavior",
+				"requires": "DISCORD_API_TOKEN"
+			},
+			"DISCORD_VOICE_TRANSCRIPTS": {
+				"label": "Voice transcripts",
+				"order": 13,
+				"group": "behavior",
+				"requires": "DISCORD_API_TOKEN"
+			},
+			"DISCORD_SHOULD_IGNORE_BOT_MESSAGES": {
+				"label": "Ignore other bots",
+				"order": 14,
+				"group": "behavior",
+				"requires": "DISCORD_API_TOKEN"
+			},
+			"DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES": {
+				"label": "Ignore DMs",
+				"order": 15,
+				"group": "behavior",
+				"requires": "DISCORD_API_TOKEN"
+			},
+			"DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS": {
+				"label": "Only respond to mentions",
+				"order": 16,
+				"group": "behavior",
+				"requires": "DISCORD_API_TOKEN"
+			},
+			"DISCORD_TEST_CHANNEL_ID": {
+				"label": "Test channel",
+				"order": 20,
+				"group": "advanced",
+				"advanced": true,
+				"requires": "DISCORD_API_TOKEN"
+			}
 		}
 	},
 	"eliza": {

@@ -156,7 +156,8 @@ for (const viewport of VIEWPORTS) {
 
     for (const route of ROUTES) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
-        test.setTimeout(90_000);
+        // Landing readiness alone can take minutes on a starved fleet runner.
+        test.setTimeout(240_000);
 
         const consoleErrors: string[] = [];
         page.on("console", (msg) => {
