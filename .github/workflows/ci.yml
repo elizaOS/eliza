@@ -178,6 +178,10 @@ jobs:
         if: needs.changes.outputs.desktop == 'true'
         run: bun run test:dev-startup
 
+      - name: Install Playwright Chromium + WebKit
+        if: needs.changes.outputs.zero_key == 'true'
+        run: .github/scripts/install-playwright-browsers.sh chromium webkit
+
       - name: Deterministic end-to-end smoke
         if: needs.changes.outputs.zero_key == 'true'
         run: bun run test:e2e
