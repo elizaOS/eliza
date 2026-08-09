@@ -313,7 +313,18 @@ const testIdSelector = (testId) => `[data-testid="${testId}"]`;
 
 async function visibleBoxForTestId(p, target, timeout = 3000) {
   const selector = testIdSelector(target);
+  const isVisibleNow = () =>
+    p.evaluate((selector) => {
+      const el = document.querySelector(selector);
+      if (!el) return false;
+      const b = el.getBoundingClientRect();
+      return b.width > 0 && b.height > 0;
+    }, selector);
   try {
+    // Interval polling, not the default rAF polling: the sheet's spring
+    // transitions can starve rAF on a loaded CI runner, timing this wait out
+    // while the element is in fact visible (observed on run 31291669417, where
+    // the failure context reported a fully visible grabber rect).
     await p.waitForFunction(
       (selector) => {
         const el = document.querySelector(selector);
@@ -322,9 +333,18 @@ async function visibleBoxForTestId(p, target, timeout = 3000) {
         return b.width > 0 && b.height > 0;
       },
       selector,
-      { timeout },
+      { timeout, polling: 100 },
     );
   } catch (error) {
+    // Last direct look before failing: if the element is visible NOW, the wait
+    // raced a mid-transition remount/starved poller — proceed instead of
+    // failing the lane on a satisfied predicate.
+    if (await isVisibleNow().catch(() => false)) {
+      return await p.evaluate((selector) => {
+        const b = document.querySelector(selector).getBoundingClientRect();
+        return { x: b.x, y: b.y, width: b.width, height: b.height };
+      }, selector);
+    }
     const state = await p.evaluate(() => {
       const sheet = document.querySelector('[data-testid="chat-sheet"]');
       const restore = document.querySelector(
