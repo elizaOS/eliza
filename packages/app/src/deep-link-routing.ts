@@ -64,9 +64,7 @@ export function resolveDeepLinkNavigationIntent(
   if (path === "connectors" || path === "settings/connectors") {
     return { viewId: "settings", viewPath: "/settings", subview: "connectors" };
   }
-  const connectorDetail = path.match(
-    /^settings\/connectors\/([a-z0-9-]+)$/i,
-  );
+  const connectorDetail = path.match(/^settings\/connectors\/([a-z0-9-]+)$/i);
   if (connectorDetail?.[1]) {
     const connectorId = connectorDetail[1].toLowerCase();
     return {
