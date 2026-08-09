@@ -1,0 +1,222 @@
+/**
+ * Regression tests for the homepage release-data generator's selection logic.
+ *
+ * The generator's `pickStableRelease()` / `pickRelease()` previously selected
+ * internal CI evidence releases (the `pr-evidence` tag family) as the public
+ * "Latest release" when they were mis-flagged as non-prerelease with
+ * non-empty asset arrays. These cases pin the fix from #18073: internal
+ * releases are excluded and a usable product release requires installer assets.
+ */
+import { describe, expect, it } from "vitest";
+import {
+  hasInstallerAsset,
+  isInternalRelease,
+  pickRelease,
+  pickStableRelease,
+} from "../write-homepage-release-data.mjs";
+
+function makeAsset(name: string, size = 1024) {
+  return { name, size, browser_download_url: `https://example.com/${name}` };
+}
+
+function makeRelease(opts: {
+  tag_name: string;
+  name?: string;
+  draft?: boolean;
+  prerelease?: boolean;
+  published_at?: string;
+  assets?: ReturnType<typeof makeAsset>[];
+}) {
+  return {
+    tag_name: opts.tag_name,
+    name: opts.name ?? opts.tag_name,
+    draft: opts.draft ?? false,
+    prerelease: opts.prerelease ?? false,
+    published_at: opts.published_at ?? "2026-07-01T00:00:00Z",
+    html_url: `https://github.com/elizaOS/eliza/releases/tag/${opts.tag_name}`,
+    assets: opts.assets ?? [],
+  };
+}
+
+const evidenceAssets = [
+  makeAsset("evidence-1.json"),
+  makeAsset("evidence-2.txt"),
+  makeAsset("screenshot-1.png"),
+];
+
+const installerAssets = [
+  makeAsset("ElizaOSApp-Setup-1.0.0-arm64.dmg"),
+  makeAsset("ElizaOSApp-Setup-1.0.0.exe"),
+  makeAsset("elizaos-1.0.0-linux.AppImage"),
+  makeAsset("elizaos-1.0.0.apk"),
+];
+
+describe("isInternalRelease", () => {
+  it("detects pr-evidence tag family", () => {
+    expect(
+      isInternalRelease(
+        makeRelease({
+          tag_name: "pr-evidence-4",
+          name: "[internal] CI evidence asset store (part 4)",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects [internal] name prefix", () => {
+    expect(
+      isInternalRelease(
+        makeRelease({
+          tag_name: "some-other-tag",
+          name: "[internal] infrastructure release",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not flag a normal product release", () => {
+    expect(
+      isInternalRelease(
+        makeRelease({ tag_name: "v1.0.0", name: "Eliza v1.0.0" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("handles null/undefined", () => {
+    expect(isInternalRelease(null)).toBe(false);
+    expect(isInternalRelease(undefined)).toBe(false);
+  });
+});
+
+describe("hasInstallerAsset", () => {
+  it("detects real installer assets", () => {
+    const release = makeRelease({
+      tag_name: "v1.0.0",
+      assets: installerAssets,
+    });
+    expect(hasInstallerAsset(release)).toBe(true);
+  });
+
+  it("rejects releases with only CI evidence files", () => {
+    const release = makeRelease({
+      tag_name: "pr-evidence-4",
+      assets: evidenceAssets,
+    });
+    expect(hasInstallerAsset(release)).toBe(false);
+  });
+
+  it("rejects releases with arbitrary non-installer assets", () => {
+    const release = makeRelease({
+      tag_name: "v1.0.0",
+      assets: [makeAsset("changelog.txt"), makeAsset("README.md")],
+    });
+    expect(hasInstallerAsset(release)).toBe(false);
+  });
+
+  it("handles null/undefined", () => {
+    expect(hasInstallerAsset(null)).toBe(false);
+    expect(hasInstallerAsset(undefined)).toBe(false);
+  });
+});
+
+describe("pickStableRelease — internal release exclusion", () => {
+  it("excludes a newer non-prerelease internal evidence release, selects older valid release", () => {
+    const releases = [
+      makeRelease({
+        tag_name: "pr-evidence-4",
+        name: "[internal] CI evidence asset store (part 4)",
+        prerelease: false,
+        published_at: "2026-07-31T19:34:10Z",
+        assets: evidenceAssets,
+      }),
+      makeRelease({
+        tag_name: "v1.0.0",
+        prerelease: false,
+        published_at: "2026-06-15T10:00:00Z",
+        assets: installerAssets,
+      }),
+    ];
+    const picked = pickStableRelease(releases);
+    expect(picked).not.toBeNull();
+    expect(picked?.tag_name).toBe("v1.0.0");
+  });
+
+  it("prefers a release with installer assets over one with arbitrary assets", () => {
+    const releases = [
+      makeRelease({
+        tag_name: "v0.9.0",
+        prerelease: false,
+        published_at: "2026-07-20T00:00:00Z",
+        assets: [makeAsset("notes.txt"), makeAsset("logo.png")],
+      }),
+      makeRelease({
+        tag_name: "v1.0.0",
+        prerelease: false,
+        published_at: "2026-06-01T00:00:00Z",
+        assets: installerAssets,
+      }),
+    ];
+    const picked = pickStableRelease(releases);
+    expect(picked).not.toBeNull();
+    expect(picked?.tag_name).toBe("v1.0.0");
+  });
+
+  it("returns null when only internal releases exist (renders unavailable state)", () => {
+    const releases = [
+      makeRelease({
+        tag_name: "pr-evidence-1",
+        name: "[internal] CI evidence (part 1)",
+        prerelease: true,
+        published_at: "2026-07-28T00:00:00Z",
+        assets: evidenceAssets,
+      }),
+      makeRelease({
+        tag_name: "pr-evidence-4",
+        name: "[internal] CI evidence asset store (part 4)",
+        prerelease: false,
+        published_at: "2026-07-31T19:34:10Z",
+        assets: evidenceAssets,
+      }),
+    ];
+    const picked = pickStableRelease(releases);
+    expect(picked).toBeNull();
+  });
+
+  it("selects a valid product release with installer assets", () => {
+    const releases = [
+      makeRelease({
+        tag_name: "v2.0.0",
+        prerelease: false,
+        published_at: "2026-08-01T00:00:00Z",
+        assets: installerAssets,
+      }),
+    ];
+    const picked = pickStableRelease(releases);
+    expect(picked).not.toBeNull();
+    expect(picked?.tag_name).toBe("v2.0.0");
+  });
+});
+
+describe("pickRelease — general exclusion", () => {
+  it("excludes internal releases from the general pick path", () => {
+    const releases = [
+      makeRelease({
+        tag_name: "pr-evidence-4",
+        name: "[internal] CI evidence asset store (part 4)",
+        prerelease: false,
+        published_at: "2026-07-31T00:00:00Z",
+        assets: evidenceAssets,
+      }),
+      makeRelease({
+        tag_name: "v1.2.0-beta",
+        prerelease: true,
+        published_at: "2026-07-15T00:00:00Z",
+        assets: installerAssets,
+      }),
+    ];
+    // pickRelease does not filter by prerelease; it should still skip internal.
+    const picked = pickRelease(releases);
+    expect(picked).not.toBeNull();
+    expect(picked?.tag_name).toBe("v1.2.0-beta");
+  });
+});

@@ -146,9 +146,45 @@ function noteForAsset(name) {
   return "Release asset";
 }
 
+/** Internal/reserved release tag families that must never be selected as a
+ * public product release. The `pr-evidence` partitions store CI evidence
+ * assets and some are mis-flagged as non-prerelease; `[internal]` names mark
+ * infrastructure-only releases. */
+const INTERNAL_TAG_PATTERN = /^pr-evidence/i;
+const INTERNAL_NAME_PATTERN = /^\[internal\]/i;
+
+function isInternalRelease(release) {
+  if (!release) return false;
+  if (INTERNAL_TAG_PATTERN.test(release.tag_name ?? "")) return true;
+  if (INTERNAL_NAME_PATTERN.test(release.name ?? "")) return true;
+  return false;
+}
+
+/** Asset-name patterns that identify a real installer or downloadable product
+ * artifact (not a CI evidence file). Mirrors the matchers in buildRelease(). */
+const INSTALLER_ASSET_PATTERNS = [
+  /\.dmg$/i,
+  /\.app\.tar\.gz$/i,
+  /\.exe$/i,
+  /\.exe\.zip$/i,
+  /\.msix$/i,
+  /\.appimage$/i,
+  /\.deb$/i,
+  /\.rpm$/i,
+  /\.apk$/i,
+  /linux.*\.tar\.(gz|zst)$/i,
+];
+
+function hasInstallerAsset(release) {
+  const assets = Array.isArray(release?.assets) ? release.assets : [];
+  return assets.some((asset) =>
+    INSTALLER_ASSET_PATTERNS.some((pattern) => pattern.test(asset.name ?? "")),
+  );
+}
+
 function sortReleasesByRecency(releases) {
   return [...releases]
-    .filter((release) => !release.draft)
+    .filter((release) => !release.draft && !isInternalRelease(release))
     .sort((a, b) => {
       const aTime = Date.parse(a.published_at ?? a.created_at ?? 0);
       const bTime = Date.parse(b.published_at ?? b.created_at ?? 0);
@@ -158,8 +194,10 @@ function sortReleasesByRecency(releases) {
 
 function pickRelease(releases) {
   const published = sortReleasesByRecency(releases);
-  // Pick the most recent release that has downloadable assets
+  // Prefer a release with installer assets; fall back to any with assets, then
+  // any non-internal release.
   return (
+    published.find((r) => hasInstallerAsset(r)) ??
     published.find((r) => Array.isArray(r.assets) && r.assets.length > 0) ??
     published[0] ??
     null
@@ -169,6 +207,7 @@ function pickRelease(releases) {
 function pickStableRelease(releases) {
   const stable = sortReleasesByRecency(releases).filter((r) => !r.prerelease);
   return (
+    stable.find((r) => hasInstallerAsset(r)) ??
     stable.find((r) => Array.isArray(r.assets) && r.assets.length > 0) ??
     stable[0] ??
     null
@@ -814,10 +853,16 @@ async function main() {
       pickRelease(osReleases),
       canaryRelease ?? primaryRelease,
     );
+    // If no usable release exists (no installers), use null to render the
+    // explicit unavailable state rather than selecting an internal/evidence tag.
+    const displayRelease =
+      primaryRelease && hasInstallerAsset(primaryRelease)
+        ? primaryRelease
+        : null;
     await writePayload(
-      buildPayload(primaryRelease, canaryRelease, stableRelease, osArtifacts),
+      buildPayload(displayRelease, canaryRelease, stableRelease, osArtifacts),
     );
-    const tag = primaryRelease?.tag_name ?? "no published release";
+    const tag = displayRelease?.tag_name ?? "no published release";
     const canaryTag = canaryRelease?.tag_name;
     console.log(
       `homepage release data: stable=${tag}${canaryTag ? `, canary=${canaryTag}` : ""}, osArtifacts=${osArtifacts.length}`,
@@ -838,4 +883,21 @@ async function main() {
   }
 }
 
-await main();
+// Export pure functions for unit testing.
+export {
+  buildRelease,
+  hasInstallerAsset,
+  isInternalRelease,
+  pickCanaryRelease,
+  pickRelease,
+  pickStableRelease,
+};
+
+// Run main only when executed directly (not imported by tests).
+const isDirectRun =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectRun) {
+  await main();
+}
