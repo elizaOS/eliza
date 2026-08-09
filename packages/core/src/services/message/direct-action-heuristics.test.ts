@@ -84,6 +84,75 @@ describe("looksLikeBareLinkShare", () => {
 		const longCommentary = `${"here is a very long analysis of the situation with many words that go on ".repeat(3)}https://example.com`;
 		expect(looksLikeBareLinkShare(longCommentary)).toBe(false);
 	});
+
+	it("does NOT fire on explicit work orders whose verb is absent from the old allowlist", () => {
+		// These are the exact counterexamples from issue #18108. Before the fix,
+		// each short residue lacked a recognized English imperative and was
+		// misclassified as a bare link share — blocking TASKS delegation and
+		// steering toward the passive web-read path.
+		expect(
+			looksLikeBareLinkShare(
+				"review this PR https://github.com/elizaOS/eliza/pull/18106",
+			),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare(
+				"audit this repository https://github.com/elizaOS/eliza",
+			),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare(
+				"investigate the failure here https://example.com/run",
+			),
+		).toBe(false);
+		// Additional verbs absent from the old allowlist that are genuine
+		// coding-intent work orders, not passive shares.
+		expect(
+			looksLikeBareLinkShare("analyze this error https://example.com/log"),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare(
+				"test the changes in https://github.com/elizaOS/eliza/pull/12345",
+			),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare(
+				"read through these docs https://example.com/docs",
+			),
+		).toBe(false);
+	});
+
+	it("does NOT fire on non-English explicit work orders", () => {
+		// The old closed English verb allowlist structurally excluded every
+		// non-English work order. Conservative residue detection does not
+		// depend on language.
+		expect(
+			looksLikeBareLinkShare(
+				"revisa este PR https://github.com/elizaOS/eliza/pull/12345",
+			),
+		).toBe(false); // Spanish: "review this PR"
+		expect(
+			looksLikeBareLinkShare("审计这个代码库 https://github.com/elizaOS/eliza"),
+		).toBe(false); // Chinese: "audit this codebase"
+		expect(
+			looksLikeBareLinkShare("このバグを修正して https://example.com/issue"),
+		).toBe(false); // Japanese: "fix this bug"
+	});
+
+	it("does NOT fire on multi-word work orders with a URL", () => {
+		// The residue is neither empty nor a recognized conversational phrase,
+		// so it must reach ordinary routing.
+		expect(
+			looksLikeBareLinkShare(
+				"help me understand this stack trace https://example.com/trace",
+			),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare(
+				"can you check why this build failed https://example.com/ci",
+			),
+		).toBe(false);
+	});
 });
 
 describe("linkShareOwnText", () => {
