@@ -171,8 +171,8 @@ let onlyFlag;
 let laneFilterFlag;
 let excludeFlags;
 let concurrencyFlag;
-let planFlag;
 let minTasksFlag;
+let planFlag;
 try {
   filterFlag = parseFlagValue("--filter");
   patternFlag = parseFlagValue("--pattern");
@@ -180,8 +180,8 @@ try {
   laneFilterFlag = parseFlagValue("--lane"); // "server" | "client" | …
   excludeFlags = parseRepeatedFlagValue("--exclude");
   concurrencyFlag = parseFlagValue("--concurrency");
-  planFlag = parseFlagValue("--plan");
   minTasksFlag = parseFlagValue("--min-tasks");
+  planFlag = parseFlagValue("--plan");
 } catch (error) {
   failUsage(error.message);
 }

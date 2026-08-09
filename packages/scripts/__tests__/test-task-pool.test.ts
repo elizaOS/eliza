@@ -306,6 +306,7 @@ describe("run-all-tests plan mode", () => {
         "--plan=json",
         "--only=test",
         "--no-cloud",
+        "--min-tasks=1",
         "--filter=^@elizaos/core \\(packages/core\\)#test$",
       ],
       // If plan mode regresses and prepares PostgreSQL or spawns package
@@ -361,5 +362,20 @@ describe("run-all-tests plan mode", () => {
       "[eliza-test] PLAN parallel @elizaos/core (packages/core)#test",
     );
     expect(result.stdout).not.toContain("[eliza-test] START");
+  });
+
+  test("--min-tasks fails before plan output when the selected lane is too small", () => {
+    const result = runPlan([
+      "--plan",
+      "--only=test",
+      "--min-tasks=2",
+      "--filter=^@elizaos/core \\(packages/core\\)#test$",
+    ]);
+
+    expect(result.status).toBe(3);
+    expect(result.stderr).toContain(
+      "lane matched 1 runnable task(s), below --min-tasks=2",
+    );
+    expect(result.stdout).not.toContain("[eliza-test] PLAN");
   });
 });
