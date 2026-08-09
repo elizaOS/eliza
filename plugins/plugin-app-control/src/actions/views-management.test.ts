@@ -598,6 +598,128 @@ describe("view management actions", () => {
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
+	it("repairs a Browser address-bar fill into one verified navigation", async () => {
+		const { runtime } = createRuntime();
+		const browserHandler = vi.fn(async () => ({
+			success: true,
+			text: "Opened https://www.apple.com.",
+			userFacingText: "Opened https://www.apple.com.",
+			verifiedUserFacing: true,
+			turnComplete: true,
+		}));
+		runtime.actions.push({
+			name: "BROWSER",
+			validate: vi.fn(async () => true),
+			handler: browserHandler,
+		} as never);
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({ id: "browser", label: "Browser", path: "/browser" }),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "browser",
+					viewLabel: "Browser",
+					viewPath: "/browser",
+					viewType: "gui" as const,
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message("Go to apple.com") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "browser",
+				capability: "agent-fill",
+				params: {
+					id: "address-input",
+					value: "https://www.apple.com",
+				},
+			},
+			vi.fn(),
+		);
+
+		expect(browserHandler).toHaveBeenCalledWith(
+			runtime,
+			expect.objectContaining({ content: { text: "Go to apple.com" } }),
+			undefined,
+			expect.objectContaining({
+				parameters: {
+					action: "navigate",
+					url: "https://www.apple.com",
+				},
+			}),
+			expect.any(Function),
+		);
+		expect(result).toMatchObject({
+			success: true,
+			continueChain: false,
+			userFacingText: "Opened https://www.apple.com.",
+		});
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
+	it("keeps an explicitly non-navigating Browser address fill as a form interaction", async () => {
+		const { runtime } = createRuntime();
+		const browserHandler = vi.fn();
+		runtime.actions.push({
+			name: "BROWSER",
+			validate: vi.fn(async () => true),
+			handler: browserHandler,
+		} as never);
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({ id: "browser", label: "Browser", path: "/browser" }),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "browser",
+					viewLabel: "Browser",
+					viewPath: "/browser",
+					viewType: "gui" as const,
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { ok: true, id: "address-input" },
+			}),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message(
+				"Type apple.com into the address bar without navigating",
+			) as never,
+			undefined,
+			{
+				action: "interact",
+				view: "browser",
+				capability: "agent-fill",
+				params: {
+					id: "address-input",
+					value: "https://www.apple.com",
+				},
+			},
+			vi.fn(),
+		);
+
+		expect(browserHandler).not.toHaveBeenCalled();
+		expect(result).toMatchObject({
+			success: true,
+			values: { capability: "agent-fill" },
+		});
+		expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+	});
+
 	it("repairs a date-shaped calendar title emitted by a small planner", async () => {
 		const { runtime } = createRuntime();
 		const action = createViewsAction({
@@ -1823,7 +1945,7 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			text: async () => "",
+			json: async () => ({ ok: true }),
 		} as Response);
 
 		// No explicit action option — this exercises inferMode on the raw text.
@@ -2394,7 +2516,7 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValue({
 			ok: true,
 			status: 200,
-			text: async () => "",
+			json: async () => ({ ok: true }),
 		} as Response);
 
 		const notesResult = await action.handler(
@@ -2474,7 +2596,7 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValue({
 			ok: true,
 			status: 200,
-			text: async () => "",
+			json: async () => ({ ok: true }),
 		} as Response);
 
 		const result = await action.handler(

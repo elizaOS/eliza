@@ -54,6 +54,7 @@ export function findViewActionHandoff(
     const mode = readString(result.values?.mode)?.toLowerCase();
     const viewId = readString(result.values?.viewId);
     if ((mode === "show" || mode === "open") && viewId) {
+      if (result.values?.navigationDelivered === true) return null;
       const viewPath = readString(result.values?.viewPath);
       const subview = readString(result.values?.subview);
       return {

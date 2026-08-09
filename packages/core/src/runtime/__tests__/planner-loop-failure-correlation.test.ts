@@ -5,7 +5,12 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../planner-loop";
+import {
+	runPlannerLoop,
+	TURN_SCOPE_ARG,
+	TURN_SCOPE_FINAL,
+	TURN_SCOPE_MORE_WORK_PENDING,
+} from "../planner-loop";
 
 const failureA = "Note A could not be updated.";
 const successB = "Note B was updated.";
@@ -86,6 +91,105 @@ async function withCodingFullSurface<T>(run: () => Promise<T>): Promise<T> {
 }
 
 describe("planner-loop failed-operation correlation", () => {
+	it("replans instead of dropping queued work after a successful tool and malformed evaluator", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "fill-address",
+							name: "VIEWS",
+							arguments: {
+								action: "interact",
+								view: "browser",
+								capability: "agent-fill",
+								params: {
+									id: "address-input",
+									value: "https://www.apple.com",
+								},
+								[TURN_SCOPE_ARG]: TURN_SCOPE_MORE_WORK_PENDING,
+							},
+						},
+						{
+							id: "click-go",
+							name: "VIEWS",
+							arguments: {
+								action: "interact",
+								view: "browser",
+								capability: "agent-click",
+								params: { id: "go" },
+								[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "click-go-replanned",
+							name: "VIEWS",
+							arguments: {
+								action: "interact",
+								view: "browser",
+								capability: "agent-click",
+								params: { id: "go" },
+								[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+							},
+						},
+					],
+				}),
+		};
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				text: "Filled the Browser address bar.",
+				userFacingText: "Filled the Browser address bar.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				text: "Opened https://www.apple.com.",
+				userFacingText: "Opened https://www.apple.com.",
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE",
+				thought: "Invalid evaluator envelope.",
+				protocolFailure: true,
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH",
+				thought: "The requested navigation completed.",
+				messageToUser: "Opened https://www.apple.com.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(executeToolCall.mock.calls[1]?.[0]).toMatchObject({
+			name: "VIEWS",
+			params: {
+				capability: "agent-click",
+				params: { id: "go" },
+			},
+		});
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Opened https://www.apple.com.");
+	});
+
 	it("finishes with the just-failed action when its evaluator violates protocol", async () => {
 		const runtime = {
 			useModel: vi.fn().mockResolvedValueOnce(

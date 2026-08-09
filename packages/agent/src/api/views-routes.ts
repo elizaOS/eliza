@@ -1057,9 +1057,8 @@ export async function handleViewsRoutes(
       }
     }
 
-    // Skip the echo when the client already navigated or when the caller owns a
-    // narrower delivery channel such as realtime voice or the app chat stream.
-    if (reportedSource !== "user" && !callerOwnedDelivery) {
+    let navigationDelivered = false;
+    if (reportedSource !== "user") {
       const navigatePayload: ShellNavigateViewPayload = {
         viewId: id,
         viewPath,
@@ -1073,7 +1072,15 @@ export async function handleViewsRoutes(
         ...deepLinkPayload,
       };
       const frame = createShellNavigateViewWsFrame(navigatePayload);
-      if (originatingClientId) {
+      if (body?.delivery === "completed-action") {
+        // App chat keeps the completed action result as its REST/offline
+        // fallback, but a connected originating shell should move immediately
+        // instead of waiting for the whole tool turn to settle.
+        navigationDelivered = Boolean(
+          originatingClientId &&
+            (ctx.broadcastWsToClientId?.(originatingClientId, frame) ?? 0) > 0,
+        );
+      } else if (!callerOwnedDelivery && originatingClientId) {
         const delivered = ctx.broadcastWsToClientId?.(
           originatingClientId,
           frame,
@@ -1086,7 +1093,7 @@ export async function handleViewsRoutes(
           );
           return true;
         }
-      } else {
+      } else if (!callerOwnedDelivery) {
         ctx.broadcastWs?.(frame);
       }
     }
@@ -1101,6 +1108,7 @@ export async function handleViewsRoutes(
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       ...layoutPayload,
       ...deepLinkPayload,
+      ...(body?.delivery === "completed-action" ? { navigationDelivered } : {}),
     });
     return true;
   }
@@ -1577,8 +1585,12 @@ function resultSuccess(result: unknown): boolean {
   if (!result || typeof result !== "object" || Array.isArray(result)) {
     return true;
   }
-  const success = (result as Record<string, unknown>).success;
-  return typeof success === "boolean" ? success : true;
+  const record = result as Record<string, unknown>;
+  for (const key of ["success", "ok"] as const) {
+    if (!Object.hasOwn(record, key)) continue;
+    if (record[key] !== true) return false;
+  }
+  return true;
 }
 
 function streamHeroImage(

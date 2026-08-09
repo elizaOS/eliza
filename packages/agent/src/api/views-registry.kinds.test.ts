@@ -82,6 +82,10 @@ describe("BUILTIN_VIEWS categorization", () => {
       path: "/browser",
       relatedActions: ["BROWSER"],
       visibleInManager: false,
+      surface: {
+        isolation: "native-webview",
+        capabilities: ["agent-surface"],
+      },
     });
   });
 

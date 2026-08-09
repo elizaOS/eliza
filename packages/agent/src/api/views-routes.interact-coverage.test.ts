@@ -198,10 +198,14 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
             label: "Surface Granted Server",
             path: "/surface-granted-server",
             surface: { capabilities: ["agent-surface"] },
-            serverInteract: async (capability) => ({
-              success: true,
-              capability,
-            }),
+            serverInteract: async (capability) =>
+              capability === "agent-fill"
+                ? {
+                    ok: false,
+                    id: "address-input",
+                    reason: "element not mounted",
+                  }
+                : { success: true, capability },
           },
         ],
       },
@@ -395,6 +399,31 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
     };
     expect(payload.success).toBe(true);
     expect(payload.result.capability).toBe("click-element");
+  });
+
+  it("does not turn an agent-surface ok:false result into route success", async () => {
+    const { ctx, json, error } = makeCtx(
+      "POST",
+      "/api/views/surface-granted-server/interact",
+      {
+        capability: "agent-fill",
+        params: { id: "address-input", value: "https://www.apple.com" },
+      },
+    );
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+    expect(error).not.toHaveBeenCalled();
+
+    const payload = json.mock.calls[0][1] as {
+      success: boolean;
+      result: { ok: boolean; id: string; reason: string };
+    };
+    expect(payload.success).toBe(false);
+    expect(payload.result).toEqual({
+      ok: false,
+      id: "address-input",
+      reason: "element not mounted",
+    });
   });
 
   it("404s an interact against an unregistered view id", async () => {

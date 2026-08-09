@@ -793,6 +793,42 @@ describe("ChatOverlay", () => {
     expect(document.activeElement).toBe(composer);
   });
 
+  it("preserves focused typing across a slow Browser route commit", () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const composer = screen.getByLabelText("message");
+    act(() => {
+      composer.focus();
+      window.dispatchEvent(
+        new CustomEvent(NAVIGATE_VIEW_EVENT, {
+          detail: {
+            viewId: "browser",
+            viewPath: "/browser",
+            source: "agent",
+          },
+        }),
+      );
+    });
+
+    // Route ownership, not elapsed wall time, expires this lease. A loaded or
+    // cold Browser must preserve the same composer target.
+    const now = vi.spyOn(performance, "now").mockReturnValue(60_000);
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "browser",
+        } as Partial<ShellController>)}
+      />,
+    );
+    now.mockRestore();
+    expect(document.activeElement).toBe(composer);
+  });
+
   it("does not arm a focus lease for an agent open-window action", () => {
     const { rerender } = render(
       <ChatOverlay

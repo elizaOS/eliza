@@ -436,6 +436,40 @@ describe("view switching — VIEWS action resolver", () => {
 			});
 		});
 
+		it("marks a client-scoped navigation that the server delivered immediately", async () => {
+			vi.mocked(globalThis.fetch).mockResolvedValue({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true, navigationDelivered: true }),
+			} as Response);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			const result = await action.handler(
+				{ agentId: "agent-1" } as never,
+				{
+					...message("open calendar"),
+					content: {
+						text: "open calendar",
+						metadata: { viewClientId: "seeker-client" },
+					},
+				} as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			expect(result).toMatchObject({
+				success: true,
+				values: {
+					viewId: "calendar",
+					navigationDelivered: true,
+				},
+			});
+		});
+
 		it("resolves an explicit view option without verb parsing", async () => {
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(REGISTRY, "do it", {

@@ -168,7 +168,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     );
   });
 
-  it("records completed-action navigation without requiring a WebSocket client", async () => {
+  it("keeps completed-action navigation as a fallback when its client is offline", async () => {
     const { ctx, json, broadcastWs, broadcastWsToClientId } = makeNavigateCtx(
       "calendar",
       {
@@ -181,14 +181,54 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
     expect(broadcastWs).not.toHaveBeenCalled();
-    expect(broadcastWsToClientId).not.toHaveBeenCalled();
+    expect(broadcastWsToClientId).toHaveBeenCalledWith(
+      "seeker-rest-client",
+      expect.objectContaining({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "calendar",
+      }),
+    );
     expect(getCurrentViewState()).toMatchObject({
       viewId: "calendar",
       source: "agent",
     });
     expect(json).toHaveBeenCalledWith(
       ctx.res,
-      expect.objectContaining({ ok: true, viewId: "calendar" }),
+      expect.objectContaining({
+        ok: true,
+        viewId: "calendar",
+        navigationDelivered: false,
+      }),
+    );
+  });
+
+  it("delivers completed-action navigation immediately to its connected client", async () => {
+    const { ctx, json, broadcastWs, broadcastWsToClientId } = makeNavigateCtx(
+      "browser",
+      {
+        clientId: "seeker-browser-client",
+        delivery: "completed-action",
+      },
+    );
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).not.toHaveBeenCalled();
+    expect(broadcastWsToClientId).toHaveBeenCalledWith(
+      "seeker-browser-client",
+      expect.objectContaining({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "browser",
+        viewPath: "/browser",
+      }),
+    );
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        ok: true,
+        viewId: "browser",
+        navigationDelivered: true,
+      }),
     );
   });
 

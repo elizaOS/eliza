@@ -1230,6 +1230,23 @@ async function runPlannerLoopIterations(
 			trajectory,
 		);
 		if (protocolFailureRelay) {
+			const latestToolSucceeded =
+				trajectory.steps[trajectory.steps.length - 1]?.result?.success === true;
+			if (latestToolSucceeded && trajectory.plannedQueue.length > 0) {
+				params.runtime.logger?.warn?.(
+					{
+						iteration,
+						protocolFailure: true,
+						queuedToolCallIds: trajectory.plannedQueue.map((call) => call.id),
+					},
+					"[planner-loop] evaluator violated its protocol with queued work remaining; replanning from the successful result",
+				);
+				// The evaluator did not authorize a specific queued mutation. Replan
+				// from the completed result instead of either executing the old batch
+				// blindly or falsely ending the turn before the remaining work.
+				trajectory.plannedQueue.length = 0;
+				continue;
+			}
 			params.runtime.logger?.warn?.(
 				{ iteration, protocolFailure: true },
 				"[planner-loop] evaluator violated its protocol after a tool result; relaying the authoritative result without replaying work",

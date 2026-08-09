@@ -372,6 +372,7 @@ function resolveRegisteredNotesView(
 interface NavigateResult {
 	ok: boolean;
 	text: string;
+	navigationDelivered?: boolean;
 	/** Resolved sub-section the renderer was asked to focus (settings only). */
 	subview?: string;
 }
@@ -431,12 +432,20 @@ async function navigateToView(
 		);
 		const sectionSuffix = resolvedSubview ? ` — ${resolvedSubview}` : "";
 		const openedText = `Opened ${navigationLabel}${sectionSuffix}.`;
-		if (resp.ok)
+		if (resp.ok) {
+			const responseBody: unknown = await resp.json();
+			const navigationDelivered =
+				responseBody !== null &&
+				typeof responseBody === "object" &&
+				(responseBody as { navigationDelivered?: unknown })
+					.navigationDelivered === true;
 			return {
 				ok: true,
 				text: openedText,
 				subview: resolvedSubview,
+				...(navigationDelivered ? { navigationDelivered: true } : {}),
 			};
+		}
 		// 501/404 = navigation route unsupported by this shell; opening succeeds.
 		if (resp.status === 501 || resp.status === 404)
 			return {
@@ -604,6 +613,7 @@ export async function runViewsShow({
 			...(view.path ? { viewPath: view.path } : {}),
 			viewType: view.viewType ?? viewType ?? "gui",
 			label: navigationLabel,
+			...(result.navigationDelivered ? { navigationDelivered: true } : {}),
 			...(result.subview ? { subview: result.subview } : {}),
 		},
 		data: { view, ...(result.subview ? { subview: result.subview } : {}) },

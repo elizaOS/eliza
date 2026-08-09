@@ -84,7 +84,11 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     visibleInManager: false,
     desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],
-    surface: { isolation: "native-webview", background: "opaque" },
+    surface: {
+      isolation: "native-webview",
+      background: "opaque",
+      capabilities: ["agent-surface"],
+    },
   },
   {
     id: "character",

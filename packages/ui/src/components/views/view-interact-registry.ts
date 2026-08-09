@@ -30,6 +30,18 @@ const handlers = new Map<string, InteractHandler>();
 const handledRequestIds = new Map<string, ReturnType<typeof setTimeout>>();
 const HANDLED_REQUEST_TTL_MS = 60_000;
 
+function interactionSucceeded(result: unknown): boolean {
+  if (result === null || typeof result !== "object" || Array.isArray(result)) {
+    return true;
+  }
+  const record = result as Record<string, unknown>;
+  for (const key of ["success", "ok"] as const) {
+    if (!Object.hasOwn(record, key)) continue;
+    if (record[key] !== true) return false;
+  }
+  return true;
+}
+
 export function registerViewInteractHandler(
   viewId: string,
   viewType: ViewType,
@@ -78,7 +90,7 @@ export async function dispatchViewInteract(
     client.sendWsMessage({
       type: "view:interact:result",
       requestId,
-      success: true,
+      success: interactionSucceeded(result),
       result,
     });
   } catch (err) {

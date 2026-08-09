@@ -214,14 +214,23 @@ export async function parseViewInteractionResponse(
 	}
 
 	let nestedSuccess: boolean | undefined;
-	if (isObject(body.result) && Object.hasOwn(body.result, "success")) {
-		if (typeof body.result.success !== "boolean") {
-			return {
-				ok: false,
-				error: "View interaction result contained a non-boolean success field",
-			};
+	if (isObject(body.result)) {
+		const declaredResults: boolean[] = [];
+		for (const key of ["success", "ok"] as const) {
+			if (!Object.hasOwn(body.result, key)) continue;
+			const value = body.result[key];
+			if (typeof value !== "boolean") {
+				return {
+					ok: false,
+					error:
+						"View interaction result contained a non-boolean success field",
+				};
+			}
+			declaredResults.push(value);
 		}
-		nestedSuccess = body.result.success;
+		if (declaredResults.length > 0) {
+			nestedSuccess = declaredResults.every(Boolean);
+		}
 	}
 
 	return { ok: true, success: body.success && nestedSuccess !== false, body };

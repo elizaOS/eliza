@@ -74,6 +74,7 @@ import {
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { type Tab, tabFromPath } from "../../navigation";
 import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,
@@ -1781,7 +1782,9 @@ export function ChatOverlay({
   }, []);
   const [imageError, setImageError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
-  const preserveComposerFocusUntilRef = React.useRef(0);
+  const preserveComposerFocusForTabRef = React.useRef<Tab | null | undefined>(
+    undefined,
+  );
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
@@ -3806,9 +3809,9 @@ export function ChatOverlay({
         staysInShell &&
         typeof document !== "undefined" &&
         document.activeElement === inputRef.current;
-      preserveComposerFocusUntilRef.current = shouldPreserve
-        ? performance.now() + 1000
-        : 0;
+      preserveComposerFocusForTabRef.current = shouldPreserve
+        ? tabFromPath(detail?.viewPath ?? `/${detail?.viewId ?? ""}`)
+        : undefined;
       if (shouldPreserve) {
         window.requestAnimationFrame(() => {
           inputRef.current?.focus({ preventScroll: true });
@@ -3832,12 +3835,13 @@ export function ChatOverlay({
   // accessory bar, not just the soft keyboard.
   React.useEffect(() => {
     if (currentTab === "chat") {
-      preserveComposerFocusUntilRef.current = 0;
+      preserveComposerFocusForTabRef.current = undefined;
       return;
     }
+    const focusTargetTab = preserveComposerFocusForTabRef.current;
+    preserveComposerFocusForTabRef.current = undefined;
     const preserveFocus =
-      preserveComposerFocusUntilRef.current >= performance.now();
-    preserveComposerFocusUntilRef.current = 0;
+      focusTargetTab === null || focusTargetTab === currentTab;
     const input = inputRef.current;
     if (
       typeof document === "undefined" ||

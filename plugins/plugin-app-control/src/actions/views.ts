@@ -804,6 +804,45 @@ function normalizeCapabilityKey(value: string | null | undefined): string {
 		.trim();
 }
 
+const BROWSER_NAVIGATION_REQUEST =
+	/\b(?:browse|go(?:\s+to)?|head(?:\s+to)?|load|navigate(?:\s+to)?|open|take\s+me\s+to|visit)\b/i;
+const BROWSER_NON_NAVIGATION_REQUEST =
+	/\b(?:do\s+not|don't|without)\b.{0,32}\b(?:go|load|navigate|open|submit|visit)\b/i;
+
+/**
+ * Recover the canonical Browser navigation when a planner decomposes a URL
+ * request into address-bar primitives. The Browser action owns navigation as
+ * one verified operation; treating the fill as terminal can otherwise leave a
+ * URL typed but never loaded when a later click is not executed.
+ */
+function browserAddressNavigationUrl(
+	viewId: string,
+	capability: string,
+	options: Record<string, unknown> | undefined,
+	messageText: string,
+): string | undefined {
+	if (
+		viewId !== "browser" ||
+		normalizeCapabilityKey(capability) !== "agent fill"
+	) {
+		return undefined;
+	}
+	const params = options?.params;
+	if (!isCapabilityParamsRecord(params)) return undefined;
+	const id = typeof params.id === "string" ? params.id.trim() : "";
+	const value = typeof params.value === "string" ? params.value.trim() : "";
+	const request = viewRequestText(messageText);
+	if (
+		id !== "address-input" ||
+		!value ||
+		!BROWSER_NAVIGATION_REQUEST.test(request) ||
+		BROWSER_NON_NAVIGATION_REQUEST.test(request)
+	) {
+		return undefined;
+	}
+	return value;
+}
+
 function tokensFor(value: string | null | undefined): Set<string> {
 	const normalized = normalizeCapabilityKey(value);
 	if (!normalized) return new Set();
@@ -3022,6 +3061,12 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const standardCapability = STANDARD_VIEW_CAPABILITY_BY_KEY.get(
 							normalizeCapabilityKey(capability),
 						);
+						const addressNavigationUrl = browserAddressNavigationUrl(
+							resolvedView?.id ?? viewId,
+							capability,
+							actionOptions,
+							text,
+						);
 						if (!resolvedCapability && resolvedView) {
 							const matches = (resolvedView.capabilities ?? []).filter(
 								(candidate) =>
@@ -3055,56 +3100,66 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								}
 							}
 						}
-						if (!resolvedCapability && !standardCapability) {
-							if (
+						if (
+							addressNavigationUrl ||
+							(!resolvedCapability &&
+								!standardCapability &&
 								resolvedView?.id === "browser" &&
 								["browse", "navigate", "open"].includes(
 									normalizeCapabilityKey(capability),
-								)
-							) {
-								if (!(await ownerCheck(runtime, message))) {
-									const reply =
-										"Browser control is only available to the workspace owner.";
-									await callback?.({ text: reply });
-									return { success: false, text: reply };
-								}
-								const browserAction = runtime.actions.find(
-									(action) => action.name === "BROWSER",
-								);
-								if (!browserAction?.handler) {
-									const reply =
-										"Browser control is unavailable in this runtime.";
-									await callback?.({ text: reply });
-									return { success: false, text: reply };
-								}
-								const nestedParams =
-									actionOptions?.params &&
-									typeof actionOptions.params === "object" &&
-									!Array.isArray(actionOptions.params)
-										? actionOptions.params
-										: {};
-								const browserParameters = {
-									...nestedParams,
-									action: "navigate",
-								};
-								if (!(await browserAction.validate(runtime, message, _state))) {
-									const reply = "Browser control rejected this request.";
-									await callback?.({ text: reply });
-									return { success: false, text: reply };
-								}
-								return (
-									(await browserAction.handler(
-										runtime,
-										message,
-										_state,
-										{ ...options, parameters: browserParameters },
-										callback,
-									)) ?? {
-										success: true,
-										text: "Browser navigation completed.",
-									}
-								);
+								))
+						) {
+							if (!(await ownerCheck(runtime, message))) {
+								const reply =
+									"Browser control is only available to the workspace owner.";
+								await callback?.({ text: reply });
+								return { success: false, text: reply };
 							}
+							const browserAction = runtime.actions.find(
+								(action) => action.name === "BROWSER",
+							);
+							if (!browserAction?.handler) {
+								const reply = "Browser control is unavailable in this runtime.";
+								await callback?.({ text: reply });
+								return { success: false, text: reply };
+							}
+							const nestedParams =
+								actionOptions?.params &&
+								typeof actionOptions.params === "object" &&
+								!Array.isArray(actionOptions.params)
+									? actionOptions.params
+									: {};
+							if (!(await browserAction.validate(runtime, message, _state))) {
+								const reply = "Browser control rejected this request.";
+								await callback?.({ text: reply });
+								return { success: false, text: reply };
+							}
+							const browserResult = (await browserAction.handler(
+								runtime,
+								message,
+								_state,
+								addressNavigationUrl
+									? {
+											...options,
+											parameters: {
+												action: "navigate",
+												url: addressNavigationUrl,
+											},
+										}
+									: {
+											...options,
+											parameters: { ...nestedParams, action: "navigate" },
+										},
+								callback,
+							)) ?? {
+								success: true,
+								text: "Browser navigation completed.",
+							};
+							return addressNavigationUrl
+								? { ...browserResult, continueChain: false }
+								: browserResult;
+						}
+						if (!resolvedCapability && !standardCapability) {
 							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`;
 							await callback?.({ text: reply });
 							return { success: false, text: reply };

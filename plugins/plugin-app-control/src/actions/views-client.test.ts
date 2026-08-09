@@ -45,6 +45,9 @@ describe("views client", () => {
 	it.each([
 		[{ success: false, result: { success: true } }, false],
 		[{ success: true, result: { success: false } }, false],
+		[{ success: true, result: { ok: false } }, false],
+		[{ success: true, result: { ok: true } }, true],
+		[{ success: true, result: { success: true, ok: false } }, false],
 		[{ success: true, result: { success: true } }, true],
 	])(
 		"keeps wrapper and nested interaction success authoritative",

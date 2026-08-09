@@ -159,6 +159,37 @@ describe("view-interact-registry", () => {
     });
   });
 
+  it("preserves an agent-surface ok:false result as a failed interaction", async () => {
+    const { dispatchViewInteract, registerViewInteractHandler } = await import(
+      "./view-interact-registry"
+    );
+
+    registerViewInteractHandler("browser", "gui", async () => ({
+      ok: false,
+      id: "address-input",
+      reason: "element not mounted",
+    }));
+
+    await dispatchViewInteract(
+      "browser",
+      "gui",
+      "agent-fill",
+      { id: "address-input", value: "https://www.apple.com" },
+      "req-agent-surface-failure",
+    );
+
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-agent-surface-failure",
+      success: false,
+      result: {
+        ok: false,
+        id: "address-input",
+        reason: "element not mounted",
+      },
+    });
+  });
+
   it("unregisters handlers and does not remove a newer replacement handler", async () => {
     const { dispatchViewInteract, registerViewInteractHandler } = await import(
       "./view-interact-registry"

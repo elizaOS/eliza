@@ -56,6 +56,23 @@ describe("view action handoff", () => {
     ).toEqual({ viewId: "calendar" });
   });
 
+  it("does not replay a navigation already delivered to the originating shell", () => {
+    expect(
+      findViewActionHandoff([
+        showCalendar,
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: {
+            mode: "show",
+            viewId: "browser",
+            navigationDelivered: true,
+          },
+        },
+      ]),
+    ).toBeNull();
+  });
+
   it("dispatches the canonical current view when WebSockets are unavailable", async () => {
     const dispatch = vi.fn();
 
