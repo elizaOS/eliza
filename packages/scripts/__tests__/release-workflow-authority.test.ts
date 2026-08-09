@@ -39,9 +39,7 @@ describe("release workflow authority", () => {
       "publish-packages.yml",
       "android-release.yml",
       "apple-store-release.yml",
-      "release-electrobun.yml",
       "update-homebrew.yml",
-      "snap-publish.yml",
       "windows-store-release.yml",
     ]) {
       expect(existsSync(join(workflowDirectory, name))).toBe(false);

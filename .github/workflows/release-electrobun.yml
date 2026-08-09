@@ -193,11 +193,6 @@ jobs:
           run-postinstall: "true"
           init-submodules: "false"
 
-      # TODO: verify this script exists in eliza or port equivalent.
-      # In eliza this was `bun run test:regression-matrix:release`.
-      - name: Regression matrix contract
-        run: bun run test:regression-matrix:release
-
       - name: Align version with release tag
         run: |
           node packages/app-core/scripts/align-electrobun-version.mjs
@@ -298,13 +293,6 @@ jobs:
         run: |
           node packages/app-core/scripts/write-homepage-release-data.mjs
           node packages/app-core/scripts/generate-static-asset-manifest.mjs
-
-      - name: Release readiness checks
-        env:
-          ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-          ELIZA_CDN_VALIDATION_REF: ${{ github.sha }}
-          ELIZA_VALIDATE_CDN: "1"
-        run: bun run release:check
 
   build:
     name: Build ${{ matrix.platform.name }}

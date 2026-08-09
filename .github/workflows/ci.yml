@@ -159,6 +159,14 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      # The dev server resolves @elizaos/core's workspace deps (e.g.
+      # @elizaos/cloud-routing) from their built dist/, and the frozen
+      # --ignore-scripts install never builds them. Turbo builds core plus its
+      # dependency graph, matching the prelude in dev-smoke.yml.
+      - name: Build @elizaos/core and workspace deps
+        if: needs.changes.outputs.desktop == 'true'
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+
       - name: Desktop startup smoke
         if: needs.changes.outputs.desktop == 'true'
         run: bun run test:dev-startup

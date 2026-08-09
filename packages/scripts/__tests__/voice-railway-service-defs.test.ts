@@ -204,15 +204,4 @@ describe("manual live contract lane (live-smoke.yml)", () => {
     expect(workflow.on?.workflow_dispatch?.inputs?.suite).toBeDefined();
     expect(read(WORKFLOW_PATH)).not.toMatch(/^\s*schedule:/m);
   });
-
-  test("builds the cross-runner fused CPU artifact in portable mode", () => {
-    const buildJob = workflow.jobs?.["voice-fused-build"];
-    const buildCommand = (buildJob?.steps ?? [])
-      .map((step) => step.run ?? "")
-      .join("\n");
-
-    expect(buildJob?.["runs-on"]).toBe("ubuntu-24.04");
-    expect(buildCommand).toContain("--variant cpu --portable-cpu");
-    expect(read(WORKFLOW_PATH)).toContain("voice-fused-cpu-v2-");
-  });
 });

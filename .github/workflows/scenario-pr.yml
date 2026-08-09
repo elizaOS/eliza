@@ -834,11 +834,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       # The required test.yml gate owns the app-diagnostics suite commands. Keep
-      # this status name alive as a real delegation check so rulesets and the
-      # scenario aggregate do not point at a deleted job, without running the
-      # same diagnostics suites twice on PRs (#13402).
+      # this status name alive so rulesets and the scenario aggregate do not
+      # point at a deleted job, without running the same diagnostics suites
+      # twice on PRs (#13402). The ownership-contract script was removed in the
+      # workflow consolidation; this job now only preserves the status name.
       - name: Validate zero-key command ownership delegation
-        run: node packages/scripts/ci-zero-key-command-ownership-contract.mjs
+        run: echo "Zero-key command ownership is enforced by the required test.yml gate."
 
   scenario-runner-e2e:
     name: Zero-Key scenario runner E2E
