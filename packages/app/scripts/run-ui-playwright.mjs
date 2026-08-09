@@ -9,6 +9,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getFreePort } from "../test/utils/get-free-port.mjs";
 import { resolveAuditAppOutput } from "./lib/audit-output.mjs";
+import {
+  auditProjectsRequestedByArgs,
+  writeAuditProjectPropagation,
+} from "./lib/playwright-audit-projects.mjs";
 import { withElizaSourceNodeOptions } from "./lib/playwright-node-options.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -159,6 +163,9 @@ function resolveNodeCommand() {
 }
 
 const env = { ...process.env };
+// Derive the handoff from this invocation alone so a stale parent environment
+// can never opt the default E2E command into a dedicated audit project.
+writeAuditProjectPropagation(env, auditProjectsRequestedByArgs(playwrightArgs));
 delete env.NO_COLOR;
 delete env.FORCE_COLOR;
 delete env.CLICOLOR_FORCE;
