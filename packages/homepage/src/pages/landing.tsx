@@ -738,7 +738,9 @@ export default function Leaderboard() {
     [platform, changePlatform],
   );
 
-  const bind = useDrag(
+  const swipeTargetRef = useRef<HTMLDivElement>(null);
+
+  useDrag(
     ({ swipe: [sx], movement: [mx], last }) => {
       if (switcherOpen) return;
       if (!last) return;
@@ -749,19 +751,29 @@ export default function Leaderboard() {
       }
     },
     {
+      target: swipeTargetRef,
       axis: "x",
       swipe: { velocity: 0.3, distance: 30 },
       filterTaps: true,
     },
   );
 
+  useEffect(() => {
+    const swipeTarget = swipeTargetRef.current;
+    if (!swipeTarget) return;
+
+    // The page-wide swipe is a pointer shortcut for the semantic platform
+    // buttons, so it stays outside the accessibility tree while preventing
+    // descendants from handing a drag to the browser's native DnD session.
+    const preventNativeDrag = (event: DragEvent) => event.preventDefault();
+    swipeTarget.addEventListener("dragstart", preventNativeDrag);
+    return () =>
+      swipeTarget.removeEventListener("dragstart", preventNativeDrag);
+  }, []);
+
   return (
     <div
-      {...bind()}
-      // Horizontal swipes cross the QR image and Get Started link; without
-      // this, a mouse drag starts native HTML drag-and-drop instead of the
-      // platform-switch gesture (and wedges pointer input mid-drag).
-      onDragStart={(event) => event.preventDefault()}
+      ref={swipeTargetRef}
       className="theme-app min-h-screen"
       style={{
         touchAction: "pan-y",
