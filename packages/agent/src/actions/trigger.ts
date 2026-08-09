@@ -27,6 +27,7 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
+  resolveMessageTimeZone,
   type State,
   stringToUuid,
   type Task,
@@ -268,19 +269,53 @@ function dedupeHash(input: string): string {
   return `trigger-${Math.abs(h >>> 0).toString(16)}`;
 }
 
+function normalizeCronDedupeExpression(expression: string): string {
+  return expression.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function buildTriggerDedupeKey(input: {
+  triggerType: TriggerType;
+  instructions: string;
+  scheduleKey: string;
+  workflowId?: string;
+  creatorId: string;
+  deliveryRoomId: UUID;
+}): string {
+  return dedupeHash(
+    `${input.triggerType}|${input.instructions.toLowerCase()}|${input.scheduleKey}|${input.workflowId ?? ""}|${input.creatorId}|${input.deliveryRoomId}`,
+  );
+}
+
+function persistedScheduleDedupeKey(trigger: TriggerConfig): string {
+  if (trigger.triggerType === "once") {
+    return trigger.scheduledAtIso ?? "";
+  }
+  if (trigger.triggerType === "interval") {
+    return `every:${trigger.intervalMs ?? ""}`;
+  }
+  return `cron:${normalizeCronDedupeExpression(trigger.cronExpression ?? "")}@${trigger.timezone ?? ""}`;
+}
+
 // Chat-facing schedule phrasing. The raw forms (ISO timestamp, cron
 // expression, interval milliseconds) are machine detail: they stay in the
 // ActionResult's `data`, never in user text. Unrecognized shapes degrade to a
 // neutral phrase rather than echoing the raw value.
-function describeSchedule(t: TriggerConfig, nowMs = Date.now()): string {
+function describeSchedule(
+  t: TriggerConfig,
+  messageTimeZone: string,
+  nowMs = Date.now(),
+): string {
   if (t.triggerType === "interval") {
     return describeIntervalMs(t.intervalMs ?? DEFAULT_INTERVAL_MS);
   }
   if (t.triggerType === "once") {
     const friendly = t.scheduledAtIso
-      ? describeOnceAt(t.scheduledAtIso, nowMs)
+      ? describeOnceAt(t.scheduledAtIso, nowMs, messageTimeZone)
       : null;
     return friendly ?? "soon";
+  }
+  if (!t.timezone || t.timezone !== messageTimeZone) {
+    return "on its saved recurring schedule";
   }
   const friendly = t.cronExpression
     ? describeCronSchedule(t.cronExpression)
@@ -419,6 +454,7 @@ async function opCreate(
   // sprayed number — outranks a provided cronExpression.
   const explicitType = params.triggerType?.trim().toLowerCase();
   const cronExpression = readString(params.cronExpression);
+  const explicitScheduledAtIso = readString(params.scheduledAtIso);
   const wantsCron =
     explicitType === "cron" ||
     (cronExpression !== undefined &&
@@ -430,10 +466,18 @@ async function opCreate(
   // scheduledAtIso wins. Under a cron schedule the delay fields are ignored
   // entirely — they are first-fire echoes, not a schedule — so a junk delay
   // cannot block a valid recurring create.
+  const hasDelayInput =
+    params.delaySeconds !== undefined || params.delayMinutes !== undefined;
+  const parsedDelayMs =
+    wantsCron || explicitScheduledAtIso !== undefined
+      ? undefined
+      : readRelativeDelayMs(params);
   const delayGiven =
     !wantsCron &&
-    (params.delaySeconds !== undefined || params.delayMinutes !== undefined);
-  const delayMs = wantsCron ? undefined : readRelativeDelayMs(params);
+    explicitScheduledAtIso === undefined &&
+    hasDelayInput &&
+    !(explicitType === "interval" && parsedDelayMs === undefined);
+  const delayMs = parsedDelayMs;
   // A delay the model tried to express but we could not parse must fail
   // loudly — silently degrading to the 12-hour default interval turns
   // "remind me in 90 seconds" into a forever-repeating trigger.
@@ -455,8 +499,7 @@ async function opCreate(
     delayMs !== undefined
       ? new Date(Date.now() + delayMs).toISOString()
       : undefined;
-  const scheduledAtIso =
-    readString(params.scheduledAtIso) ?? scheduledFromDelay;
+  const scheduledAtIso = explicitScheduledAtIso ?? scheduledFromDelay;
   // A relative delay is one-shot by definition; a contradictory explicit
   // triggerType (e.g. "interval") must not silently drop it. Cron resolved
   // above, so a delay can no longer demote a recurring schedule to one-shot.
@@ -472,8 +515,21 @@ async function opCreate(
       ? "next_autonomy_cycle"
       : "inject_now";
   const creatorId = String(message.entityId);
+  const messageTimeZone = resolveMessageTimeZone(runtime, message);
+  const parsedIntervalMs = parsePositiveInt(params.intervalMs);
+  if (
+    triggerType === "interval" &&
+    params.intervalMs !== undefined &&
+    parsedIntervalMs === undefined
+  ) {
+    return failed(
+      "create",
+      "intervalMs must be a positive whole number.",
+      "INVALID_INTERVAL",
+    );
+  }
   const intervalMs = normalizeTriggerIntervalMs(
-    parsePositiveInt(params.intervalMs) ?? DEFAULT_INTERVAL_MS,
+    parsedIntervalMs ?? DEFAULT_INTERVAL_MS,
   );
   const maxRuns = parsePositiveInt(params.maxRuns);
 
@@ -524,7 +580,7 @@ async function opCreate(
         : (scheduledAtIso ?? "")
       : triggerType === "interval"
         ? `every:${intervalMs}`
-        : `cron:${(cronExpression ?? "").toLowerCase().replace(/\s+/g, " ").trim()}`;
+        : `cron:${normalizeCronDedupeExpression(cronExpression ?? "")}@${messageTimeZone}`;
   const workflowId = readString(params.workflowId);
   const dedupeWorkflowId = workflowId === undefined ? "" : workflowId;
   // Workflow triggers run autonomously, so they land in the autonomy room. A
@@ -545,9 +601,14 @@ async function opCreate(
   // "you're covered" while the only existing trigger delivered to someone
   // else's room. Only the same recipient re-asking for the same delivery is
   // a replay.
-  const dedupeKey = dedupeHash(
-    `${triggerType}|${instructions.toLowerCase()}|${scheduleKey}|${dedupeWorkflowId}|${creatorId}|${deliveryRoomId}`,
-  );
+  const dedupeKey = buildTriggerDedupeKey({
+    triggerType,
+    instructions,
+    scheduleKey,
+    workflowId: dedupeWorkflowId,
+    creatorId,
+    deliveryRoomId,
+  });
 
   const existingTasks = await runtime.getTasks({
     tags: [...TRIGGER_TASK_TAGS],
@@ -639,6 +700,7 @@ async function opCreate(
     enabled: true,
     wakeMode,
     createdBy: creatorId,
+    timezone: messageTimeZone,
     runCount: 0,
     intervalMs: triggerType === "interval" ? intervalMs : undefined,
     scheduledAtIso: triggerType === "once" ? scheduledAtIso : undefined,
@@ -675,7 +737,7 @@ async function opCreate(
   // A prompt trigger IS a reminder to the person who asked for it; a workflow
   // trigger is a scheduled job. Either way the schedule reads as a human
   // phrase — the machine forms live in `data` below.
-  const schedule = describeSchedule(triggerConfig);
+  const schedule = describeSchedule(triggerConfig, messageTimeZone);
   const label = displayLabel(displayName);
   return okCommitted(
     "create",
@@ -695,6 +757,7 @@ async function opCreate(
       scheduledAtIso: triggerConfig.scheduledAtIso,
       cronExpression: triggerConfig.cronExpression,
       intervalMs: triggerConfig.intervalMs,
+      timezone: triggerConfig.timezone,
     },
     { triggerId, taskId, workflowId },
   );
@@ -702,6 +765,7 @@ async function opCreate(
 
 async function opUpdate(
   runtime: IAgentRuntime,
+  message: Memory,
   params: TriggerParameters,
 ): Promise<ActionResult> {
   const taskId = readUuid(params.taskId);
@@ -716,6 +780,7 @@ async function opUpdate(
     );
   const { task, trigger } = loaded;
   if (!task.id) return failed("update", "Task missing id.", "TASK_NOT_FOUND");
+  const messageTimeZone = resolveMessageTimeZone(runtime, message);
 
   const next: TriggerConfig = { ...trigger };
   const displayName = readString(params.displayName);
@@ -725,27 +790,62 @@ async function opUpdate(
   const cronExpression = readString(params.cronExpression);
   const maxRuns = parsePositiveInt(params.maxRuns);
   const wakeModeRaw = params.wakeMode?.trim().toLowerCase();
+  let dedupeIdentityChanged = false;
 
   if (displayName) next.displayName = displayName;
-  if (instructions) next.instructions = instructions;
+  if (instructions) {
+    dedupeIdentityChanged =
+      dedupeIdentityChanged ||
+      instructions.toLowerCase() !== trigger.instructions.toLowerCase();
+    next.instructions = instructions;
+  }
   if (intervalMs !== undefined && next.triggerType === "interval") {
-    next.intervalMs = normalizeTriggerIntervalMs(intervalMs);
+    const normalizedIntervalMs = normalizeTriggerIntervalMs(intervalMs);
+    dedupeIdentityChanged =
+      dedupeIdentityChanged || normalizedIntervalMs !== trigger.intervalMs;
+    next.intervalMs = normalizedIntervalMs;
   }
   if (scheduledAtIso !== undefined && next.triggerType === "once") {
     if (parseScheduledAtIso(scheduledAtIso) === null) {
       return failed("update", "Invalid scheduledAtIso.", "INVALID_SCHEDULE");
     }
+    dedupeIdentityChanged =
+      dedupeIdentityChanged || scheduledAtIso !== trigger.scheduledAtIso;
     next.scheduledAtIso = scheduledAtIso;
   }
   if (cronExpression !== undefined && next.triggerType === "cron") {
     if (!parseCronExpression(cronExpression)) {
       return failed("update", "Invalid cron expression.", "INVALID_CRON");
     }
+    dedupeIdentityChanged =
+      dedupeIdentityChanged ||
+      normalizeCronDedupeExpression(cronExpression) !==
+        normalizeCronDedupeExpression(trigger.cronExpression ?? "") ||
+      messageTimeZone !== trigger.timezone;
     next.cronExpression = cronExpression;
+    next.timezone = messageTimeZone;
   }
   if (maxRuns !== undefined) next.maxRuns = maxRuns;
   if (wakeModeRaw === "inject_now" || wakeModeRaw === "next_autonomy_cycle") {
     next.wakeMode = wakeModeRaw;
+  }
+
+  if (dedupeIdentityChanged) {
+    if (!task.roomId) {
+      return failed(
+        "update",
+        "Trigger task is missing its delivery room.",
+        "TRIGGER_ROOM_MISSING",
+      );
+    }
+    next.dedupeKey = buildTriggerDedupeKey({
+      triggerType: next.triggerType,
+      instructions: next.instructions,
+      scheduleKey: persistedScheduleDedupeKey(next),
+      workflowId: next.kind === "workflow" ? next.workflowId : undefined,
+      creatorId: next.createdBy,
+      deliveryRoomId: task.roomId,
+    });
   }
 
   const metadata = buildTriggerMetadata({
@@ -766,7 +866,10 @@ async function opUpdate(
   });
   return okCommitted(
     "update",
-    `Updated "${displayLabel(next.displayName)}" — ${describeSchedule(next)}.`,
+    `Updated "${displayLabel(next.displayName)}" — ${describeSchedule(
+      next,
+      messageTimeZone,
+    )}.`,
     triggerReceipt("update", String(task.id), { key: null }),
     {
       taskId: String(task.id),
@@ -775,6 +878,8 @@ async function opUpdate(
       scheduledAtIso: next.scheduledAtIso,
       cronExpression: next.cronExpression,
       intervalMs: next.intervalMs,
+      timezone: next.timezone,
+      dedupeKey: next.dedupeKey,
     },
   );
 }
@@ -909,7 +1014,7 @@ export const triggerAction: Action = {
       case "create":
         return opCreate(runtime, message, params);
       case "update":
-        return opUpdate(runtime, params);
+        return opUpdate(runtime, message, params);
       case "delete":
         return opDelete(runtime, params);
       case "run":
@@ -940,7 +1045,7 @@ export const triggerAction: Action = {
         "Fire once after this many seconds from now — THE param for 'remind me in N seconds/minutes' (converted to a one-off schedule; use this or delayMinutes for relative delays). One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
       required: false,
       aliases: ["inSeconds", "seconds"],
-      schema: { type: "number" as const, minimum: 1 },
+      schema: { type: "number" as const, minimum: 0 },
     },
     {
       name: "delayMinutes",
@@ -948,7 +1053,7 @@ export const triggerAction: Action = {
         "Fire once after this many minutes from now ('remind me in 5 minutes'). Converted to a one-off schedule. One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
       required: false,
       aliases: ["inMinutes", "minutes"],
-      schema: { type: "number" as const, minimum: 1 },
+      schema: { type: "number" as const, minimum: 0 },
     },
     {
       name: "triggerType",
@@ -988,7 +1093,7 @@ export const triggerAction: Action = {
       name: "intervalMs",
       description: "Interval frequency in ms.",
       required: false,
-      schema: { type: "number" as const, minimum: 1 },
+      schema: { type: "number" as const, minimum: 0 },
     },
     {
       name: "scheduledAtIso",
