@@ -589,9 +589,18 @@ describe("OnboardingSessionCoordinator", () => {
     });
     const concurrent = await claim("claim-b");
     expect(concurrent.status).toBe(409);
+
+    // The exact holder resumes its own claim after a transient failure; a
+    // competing claim id never does.
+    const resumed = await claim("claim-a");
+    expect(resumed.status).toBe(200);
+    expect((await resumed.json()) as unknown).toMatchObject({
+      status: "acquired",
+      sessionId: telegramSessionId,
+    });
   });
 
-  test("an expired Telegram claim cannot be taken over by a stale competing request", async () => {
+  test("elapsed time never lets a competing claimant take over; the exact holder resumes", async () => {
     const harness = createCoordinatorHarness();
     const telegramSessionId = `platform:telegram:lease-${harnessNumber}`;
     const first = await readResult(
@@ -623,6 +632,9 @@ describe("OnboardingSessionCoordinator", () => {
     const stored =
       await storage.get<Record<string, unknown>>("continuation-claim");
     if (!stored) throw new Error("continuation claim missing");
+    // Legacy claim records carried an expiresAt lease. Age one far into the
+    // past to prove elapsed time grants a competitor nothing and costs the
+    // holder nothing.
     await storage.put("continuation-claim", {
       ...stored,
       expiresAt: Date.now() - 1,
@@ -654,7 +666,13 @@ describe("OnboardingSessionCoordinator", () => {
       ).status,
     ).toBe(409);
     expect((await claim({ claimId: "claim-b" })).status).toBe(409);
-    expect((await claim({ claimId: "claim-a" })).status).toBe(409);
+
+    // The exact holder — same claim id, same bindings — resumes.
+    const resumed = await claim({ claimId: "claim-a" });
+    expect(resumed.status).toBe(200);
+    expect((await resumed.json()) as unknown).toMatchObject({
+      status: "acquired",
+    });
   });
 
   test("completes a claimed continuation only after the canonical session is bound", async () => {

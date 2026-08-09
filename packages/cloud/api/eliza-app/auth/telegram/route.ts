@@ -115,18 +115,21 @@ const defaultDependencies: TelegramAuthDependencies = {
   redeemContinuation: (input) => runOnboardingChat(input),
 };
 
+/**
+ * Deterministic id for one continuation attempt lineage. Account ids are
+ * deliberately excluded: the first anonymous attempt may create the account,
+ * and the identical signed retry must hash to the same lineage to resume the
+ * claim it already holds. Account binding lives in the claim record itself.
+ */
 async function createContinuationClaimId(input: {
   continuationToken: string;
   telegramId: string;
   phoneNumber: string;
-  authenticatedAccount?: { userId: string; organizationId: string };
 }): Promise<string> {
   const material = JSON.stringify([
     input.continuationToken,
     input.telegramId,
     input.phoneNumber,
-    input.authenticatedAccount?.userId ?? "anonymous",
-    input.authenticatedAccount?.organizationId ?? "anonymous",
   ]);
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -135,6 +138,38 @@ async function createContinuationClaimId(input: {
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
+}
+
+/**
+ * Rejects the request when the target account's phone bindings conflict with
+ * the phone in this signed attempt. Runs BEFORE any durable identity link so
+ * a rejected request cannot leave a half-linked identity behind.
+ */
+async function phoneBindingConflict(
+  dependencies: TelegramAuthDependencies,
+  account: { userId: string; organizationId: string },
+  phoneNumber: string,
+): Promise<Response | null> {
+  const [user, phoneOwner] = await Promise.all([
+    dependencies.getById(account.userId),
+    dependencies.getByPhoneNumber(phoneNumber),
+  ]);
+  if (
+    !user?.organization ||
+    user.organization.id !== account.organizationId ||
+    (user.phone_number && user.phone_number !== phoneNumber) ||
+    (phoneOwner && phoneOwner.id !== account.userId)
+  ) {
+    return Response.json(
+      {
+        success: false,
+        error: "This phone number is already linked to a different account",
+        code: "PHONE_ALREADY_LINKED",
+      },
+      { status: 409 },
+    );
+  }
+  return null;
 }
 
 function isTelegramContinuationClaim(
@@ -260,33 +295,18 @@ export async function handleTelegramAuth(
     }
 
     if (prospectiveAccount) {
-      const [prospectiveUser, phoneOwner] = await Promise.all([
-        dependencies.getById(prospectiveAccount.userId),
-        dependencies.getByPhoneNumber(phoneNumber),
-      ]);
-      if (
-        !prospectiveUser?.organization ||
-        prospectiveUser.organization.id !== prospectiveAccount.organizationId ||
-        (prospectiveUser.phone_number &&
-          prospectiveUser.phone_number !== phoneNumber) ||
-        (phoneOwner && phoneOwner.id !== prospectiveAccount.userId)
-      ) {
-        return Response.json(
-          {
-            success: false,
-            error: "This phone number is already linked to a different account",
-            code: "PHONE_ALREADY_LINKED",
-          },
-          { status: 409 },
-        );
-      }
+      const conflict = await phoneBindingConflict(
+        dependencies,
+        prospectiveAccount,
+        phoneNumber,
+      );
+      if (conflict) return conflict;
     }
 
     continuationClaimId = await createContinuationClaimId({
       continuationToken: onboardingSession,
       telegramId: String(authData.id),
       phoneNumber,
-      authenticatedAccount: prospectiveAccount,
     });
 
     try {
@@ -345,6 +365,18 @@ export async function handleTelegramAuth(
     isNew = false;
   } else if (existingSession) {
     // ---- SESSION-BASED LINKING: Link Telegram + phone to existing user ----
+    // The continuation path validated phone bindings before claiming; the
+    // plain linking path must do the same before the durable Telegram link,
+    // or the strict identity check below would reject a request whose
+    // mutation already happened.
+    if (!onboardingSession) {
+      const conflict = await phoneBindingConflict(
+        dependencies,
+        existingSession,
+        phoneNumber,
+      );
+      if (conflict) return conflict;
+    }
     const linkTelegramResult = await dependencies.linkTelegramToUser(
       existingSession.userId,
       authData,
@@ -533,7 +565,9 @@ export async function handleTelegramAuth(
           telegramId: String(authData.id),
         },
         trustedPlatformIdentity: false,
-        idempotencyKey: `telegram-auth-continuation:${authData.id}`,
+        // The token scopes the key: a later, different continuation for the
+        // same Telegram user must not replay this redemption's result.
+        idempotencyKey: `telegram-auth-continuation:${authData.id}:${onboardingSession}`,
       });
       await dependencies.completeContinuationClaim({
         continuationToken: onboardingSession,

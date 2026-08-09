@@ -642,9 +642,12 @@ function assertAuthenticatedTelegramIdentity(
   session: OnboardingSession,
   input: OnboardingChatInput,
 ): void {
+  // A trusted transport attests its own platform identity — except in strict
+  // continuation mode, where the caller is the auth route acting on a signed
+  // browser payload and the identity match must always run.
   if (
     !input.authenticatedUser ||
-    input.trustedPlatformIdentity === true ||
+    (input.trustedPlatformIdentity === true && input.continuationMode !== "trusted-telegram") ||
     session.platformIdentityTrusted !== true
   ) {
     return;

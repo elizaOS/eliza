@@ -34,7 +34,6 @@ interface ContinuationClaim {
   phoneNumber: string;
   userId?: string;
   organizationId?: string;
-  expiresAt: number;
 }
 
 interface ReplayCleanupState {
@@ -57,7 +56,6 @@ const REPLAY_CLEANUP_STATE_KEY = "replay-cleanup-state";
 const LEGACY_LEDGER_KEY = "ledger";
 const REDIRECT_KEY = "continuation-session-id";
 const CONTINUATION_CLAIM_KEY = "continuation-claim";
-const CONTINUATION_CLAIM_TTL_MS = 60_000;
 const ONBOARDING_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const HISTORY_CHUNK_SIZE = 10;
 const REPLAY_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
@@ -338,12 +336,31 @@ export class OnboardingSessionCoordinator {
     const existing = await this.state.storage.get<ContinuationClaim>(
       CONTINUATION_CLAIM_KEY,
     );
+    // A retry of the exact request lineage — the same deterministic claim id
+    // with compatible Telegram, phone, and account bindings — must be able to
+    // resume after a transient failure, or the route's "please retry" response
+    // is unsatisfiable. Everything else stays 409: elapsed time alone never
+    // transfers mutation authority to a competing claimant.
+    const sameLineage =
+      existing !== undefined &&
+      existing.claimId === claimId &&
+      existing.telegramId === telegramId &&
+      existing.phoneNumber === phoneNumber &&
+      (!existing.userId || existing.userId === userId) &&
+      (!existing.organizationId || existing.organizationId === organizationId);
+
     if (hasUserBinding && userId && organizationId) {
-      if (existing) {
+      if (existing && !sameLineage) {
         return Response.json(
           { error: "Continuation claim in progress" },
           { status: 409 },
         );
+      }
+      // The session is canonically bound. A leftover claim from this lineage
+      // means completion crashed after redemption; clear it so the token
+      // settles into idempotent completed replays.
+      if (existing) {
+        await this.state.storage.delete(CONTINUATION_CLAIM_KEY);
       }
       return Response.json({
         status: "completed",
@@ -353,8 +370,20 @@ export class OnboardingSessionCoordinator {
       });
     }
 
-    const now = Date.now();
     if (existing) {
+      if (sameLineage) {
+        // The first attempt may have been anonymous and created the account
+        // afterward; bind the account to the claim the moment it is known so
+        // later competing accounts cannot ride the anonymous wildcard.
+        if (userId && organizationId && !existing.userId) {
+          await this.state.storage.put(CONTINUATION_CLAIM_KEY, {
+            ...existing,
+            userId,
+            organizationId,
+          });
+        }
+        return Response.json({ status: "acquired", sessionId: session.id });
+      }
       const sameIdentity =
         existing.telegramId === telegramId &&
         existing.phoneNumber === phoneNumber &&
@@ -377,7 +406,6 @@ export class OnboardingSessionCoordinator {
       phoneNumber,
       userId,
       organizationId,
-      expiresAt: now + CONTINUATION_CLAIM_TTL_MS,
     };
     await this.state.storage.put(CONTINUATION_CLAIM_KEY, claim);
     return Response.json({ status: "acquired", sessionId: session.id });

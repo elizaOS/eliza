@@ -238,7 +238,8 @@ describe("Telegram auth bot continuation", () => {
         telegramId: "123456789",
       },
       trustedPlatformIdentity: false,
-      idempotencyKey: "telegram-auth-continuation:123456789",
+      idempotencyKey:
+        "telegram-auth-continuation:123456789:valid-opaque-continuation",
     });
   });
 
@@ -348,6 +349,33 @@ describe("Telegram auth bot continuation", () => {
     expect(runOnboardingChat).not.toHaveBeenCalled();
     expect(completeTelegramOnboardingContinuationClaim).not.toHaveBeenCalled();
     expect(createSession).not.toHaveBeenCalled();
+  });
+
+  test("session-based linking rejects a mismatched phone before any durable link", async () => {
+    getById.mockImplementation(async () => ({
+      ...USER,
+      phone_number: "+14155550999",
+    }));
+
+    const response = await post({ ...AUTH_BODY });
+
+    expect(response.status).toBe(409);
+    expect(((await response.json()) as { code?: string }).code).toBe(
+      "PHONE_ALREADY_LINKED",
+    );
+    expect(linkTelegramToUser).not.toHaveBeenCalled();
+    expect(linkPhoneToUser).not.toHaveBeenCalled();
+  });
+
+  test("session-based linking rejects a phone owned by another account before any durable link", async () => {
+    getById.mockImplementation(async () => ({ ...USER, phone_number: null }));
+    getByPhoneNumber.mockResolvedValueOnce({ ...USER, id: "user-2" });
+
+    const response = await post({ ...AUTH_BODY });
+
+    expect(response.status).toBe(409);
+    expect(linkTelegramToUser).not.toHaveBeenCalled();
+    expect(linkPhoneToUser).not.toHaveBeenCalled();
   });
 
   test("uses a stable claim id for an identical signed retry", async () => {
