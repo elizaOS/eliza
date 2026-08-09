@@ -118,7 +118,16 @@ async function resolveCaller(
   if (looksLikeStewardBearer(authHeader)) {
     const stewardUser = await getCurrentUser(c);
     if (stewardUser) {
+      if (stewardUser.is_active === false) {
+        throw ForbiddenError("User account is inactive");
+      }
       if (stewardUser.organization_id) {
+        if (!stewardUser.organization) {
+          throw ForbiddenError("Organization membership is unavailable");
+        }
+        if (stewardUser.organization.is_active === false) {
+          throw ForbiddenError("Organization is inactive");
+        }
         return {
           authenticatedUser: {
             userId: stewardUser.id,

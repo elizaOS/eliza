@@ -24,6 +24,7 @@ import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   completePendingOnboardingContinuation,
   peekPendingOnboardingSession,
+  sanitizeOnboardingSessionToken,
   storePendingOnboardingSession,
 } from "./lib/onboarding-continuation";
 import { useJoinSessionAuth } from "./lib/use-join-session";
@@ -44,10 +45,25 @@ export default function GetStartedPage(): React.JSX.Element {
   // StrictMode double-mount guard: the redemption POST must run once.
   const startedRef = useRef(false);
 
-  // Persist the URL token synchronously on first render (before any login
-  // bounce can drop the query string). Idempotent; invalid tokens are ignored.
-  const urlToken = searchParams.get("onboardingSession");
-  if (urlToken) storePendingOnboardingSession(urlToken);
+  // Ingest the URL credential exactly once. The state initializer persists it
+  // before a login redirect can drop the query string, then removes it from the
+  // address bar so a remount cannot resurrect a successfully consumed token.
+  const [urlToken] = useState(() => {
+    const token = sanitizeOnboardingSessionToken(
+      searchParams.get("onboardingSession"),
+    );
+    if (!token) return null;
+
+    storePendingOnboardingSession(token);
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("onboardingSession");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
+    );
+    return token;
+  });
 
   const pendingToken = urlToken ?? peekPendingOnboardingSession();
 
