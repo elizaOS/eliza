@@ -8,6 +8,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { constants as fsConstants } from "node:fs";
 import {
   access,
   chmod,
@@ -18,7 +19,6 @@ import {
   stat,
   unlink,
 } from "node:fs/promises";
-import { constants as fsConstants } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
