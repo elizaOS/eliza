@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { elizacloudAuthFetch } from "@/lib/api/client";
+import { buildProvisioningPollBody } from "@/lib/provisioning-poll-body";
 
 export interface ProvisioningChatMessage {
   id: string;
@@ -201,10 +202,7 @@ export function useElizaAppProvisioningChat(
           "/api/eliza-app/onboarding/chat",
           {
             method: "POST",
-            body: JSON.stringify({
-              sessionId: onboardingSessionId ?? undefined,
-              platform: onboardingSessionId ? "blooio" : "web",
-            }),
+            body: JSON.stringify(buildProvisioningPollBody(onboardingSessionId)),
           },
         );
         if (stoppedRef.current) return;
