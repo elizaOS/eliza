@@ -253,6 +253,65 @@ describe("TaskSupervisorService.runOnce resilience", () => {
     expect(result.posted).toEqual([ROOM_A]);
     await svc.stop();
   });
+
+  it("honors ELIZA_ORCHESTRATOR_SUPERVISOR=0 from process.env when no runtime setting exists", async () => {
+    // Live regression: the operator disabled the supervisor via the service
+    // manager's EnvironmentFile, but `getSetting` never reads the environment,
+    // so digests and stall escalations kept firing. The gate must fall back to
+    // process.env exactly like the orchestrator task service's levers.
+    vi.stubEnv("ELIZA_ORCHESTRATOR_SUPERVISOR", "0");
+    try {
+      const posted: string[] = [];
+      const svc = await TaskSupervisorService.start({
+        getService: (type: string) =>
+          type === "ORCHESTRATOR_TASK_SERVICE"
+            ? {
+                listTasks: async () => [
+                  {
+                    id: "t1",
+                    title: "Alpha",
+                    status: "active",
+                    activeSessionCount: 1,
+                    latestSessionLabel: "codex",
+                    createdAt: new Date(Date.now() - 120_000).toISOString(),
+                  },
+                ],
+                getTaskOriginTarget: async () => ({
+                  roomId: ROOM_A,
+                  source: "telegram",
+                }),
+              }
+            : undefined,
+        sendMessageToTarget: async (target: { roomId: string }) => {
+          posted.push(target.roomId);
+          return {
+            kind: "delivered" as const,
+            receipt: {
+              providerMessageIds: ["supervisor-digest-1"] as [string],
+              acceptedAt: 1_780_000_000_000,
+              persistence: { status: "persisted" as const, memoryIds: [] },
+            },
+            memories: [],
+          };
+        },
+        getSetting: () => undefined,
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+      } as never);
+      // Disabled via env: start() must not arm the timer, and noteTaskCompletion
+      // must no-op (nothing would prune the notes on a supervisor that never
+      // ticks).
+      svc.noteTaskCompletion("t1");
+      expect(
+        (svc as unknown as { completionNotes: Map<string, number> })
+          .completionNotes.size,
+      ).toBe(0);
+      expect((svc as unknown as { timer?: unknown }).timer).toBeUndefined();
+      expect(posted).toEqual([]);
+      await svc.stop();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("digest damping (uncoordinated-messages burst)", () => {
