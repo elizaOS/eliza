@@ -15,6 +15,7 @@ import {
   failureResponse,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
+import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import {
   type OnboardingPlatform,
@@ -35,6 +36,20 @@ const platformSchema = z.enum([
   "twilio",
   "blooio",
 ]);
+
+/**
+ * A steward session JWT on the Authorization header: three non-empty dot-parts.
+ * The internal gateway secret is a flat string and eliza-app JWTs are already
+ * consumed above, so this gates exactly the steward branch — and, critically,
+ * keeps `getCurrentUser`'s cookie fallback out of this route (see the CSRF
+ * rationale at the call site).
+ */
+function looksLikeStewardBearer(authHeader: string): boolean {
+  if (!authHeader.startsWith("Bearer ")) return false;
+  const token = authHeader.slice(7).trim();
+  const parts = token.split(".");
+  return parts.length === 3 && parts.every((part) => part.length > 0);
+}
 
 const chatSchema = z.object({
   sessionId: z.string().trim().min(8).max(180).optional(),
@@ -82,6 +97,41 @@ async function resolveCaller(
       },
       trustedPlatformIdentity: false,
     };
+  }
+
+  // Steward session — the branded email/OAuth login on *.elizacloud.ai —
+  // accepted by BEARER ONLY, never the steward-token cookie: this POST binds
+  // sessions, links identities and starts provisioning, and Hono's
+  // `req.json()` parses a cross-site text/plain simple request, so a
+  // cookie-authenticated call would be a CSRF surface (an attacker holding
+  // their own Discord continuation token could drive a victim's browser into
+  // binding the attacker's messaging identity to the victim's account). The
+  // SPA transport always attaches the localStorage bearer, which no other
+  // origin can send.
+  //
+  // A steward caller is a browser continuation, NEVER a trusted platform
+  // transport: trustedPlatformIdentity stays false, so it cannot mint
+  // platform-scoped sessions or claim platform identities from the request
+  // body. Identity linking still happens because the SESSION carries
+  // platformIdentityTrusted from the gateway turn that created it, and the
+  // opaque continuation token proves ownership.
+  if (looksLikeStewardBearer(authHeader)) {
+    const stewardUser = await getCurrentUser(c);
+    if (stewardUser) {
+      if (stewardUser.organization_id) {
+        return {
+          authenticatedUser: {
+            userId: stewardUser.id,
+            organizationId: stewardUser.organization_id,
+          },
+          trustedPlatformIdentity: false,
+        };
+      }
+      // A steward user without an organization has nothing to provision into;
+      // treat as unauthenticated rather than falling through to internal auth
+      // (which would reject their valid-but-orgless session as a bad header).
+      return { authenticatedUser: null, trustedPlatformIdentity: false };
+    }
   }
 
   const internal = await requireInternalAuth(c);

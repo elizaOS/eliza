@@ -602,15 +602,52 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   session: OnboardingSession,
   input: OnboardingChatInput,
 ): Promise<OnboardingSession> {
-  // Phone linking requires a platform identity attested by a trusted
+  // Identity linking requires a platform identity attested by a trusted
   // transport — either this turn or a previous gateway turn on the session.
-  // An authenticated web caller claiming an arbitrary phone number in the
-  // request body must never bind that phone to their account.
+  // An authenticated web caller claiming an arbitrary phone number or Discord
+  // id in the request body must never bind that identity to their account.
   const platformIdentityTrusted =
     input.trustedPlatformIdentity === true || session.platformIdentityTrusted === true;
+  if (!input.authenticatedUser || !platformIdentityTrusted) {
+    return session;
+  }
+
+  // Discord: a PRIOR gateway turn attested "this session belongs to discord
+  // user X"; the user then authenticated (e.g. Steward email login) via the
+  // opaque continuation credential. Bind the Discord identity so
+  // routeDiscordMessage resolves their DMs to the provisioned agent instead of
+  // onboarding forever. Skipped on gateway turns themselves
+  // (input.trustedPlatformIdentity): there the authenticated account was
+  // RESOLVED FROM user_identities.discord_id, so the link already exists and
+  // re-linking would just add a DB round trip to every DM turn.
   if (
-    !input.authenticatedUser ||
-    !platformIdentityTrusted ||
+    session.platform === "discord" &&
+    session.platformUserId &&
+    input.trustedPlatformIdentity !== true
+  ) {
+    // Same error policy as the phone link below: success:false is the designed
+    // tenant-safety decline (identity owned by another account) and onboarding
+    // continues; a genuine infra failure throws and propagates — it reruns on
+    // every eligible turn, so a transient throw self-heals on the next attempt.
+    const discordLink = await elizaAppUserService.linkDiscordToUser(
+      input.authenticatedUser.userId,
+      {
+        discordId: session.platformUserId,
+        username: session.platformDisplayName?.trim() || session.platformUserId,
+      },
+    );
+    if (!discordLink.success) {
+      // error-policy:J4 expected tenant-safety decline (discord identity owned
+      // by another account); onboarding continues without binding it.
+      logger.warn("[eliza-app onboarding] discord link declined", {
+        userId: input.authenticatedUser.userId,
+        error: discordLink.error,
+      });
+    }
+    return session;
+  }
+
+  if (
     !isPhoneLikePlatformIdentity({
       trustedPlatformIdentity: true,
       platform: session.platform,

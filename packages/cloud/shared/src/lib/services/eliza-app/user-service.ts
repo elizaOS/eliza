@@ -609,6 +609,22 @@ class ElizaAppUserService {
       };
     }
 
+    // A canonical-only Discord link (users.discord_id written before the
+    // projection refresh existed) is invisible to the projection-based lookup
+    // above AND to inbound Discord routing. Converge it before treating the
+    // Discord id as new: without this, a legacy Discord user gets a second
+    // account instead of their existing one.
+    const canonicalOnlyUser =
+      await usersRepository.findByCanonicalDiscordIdWithOrganization(discordId);
+    if (canonicalOnlyUser && canonicalOnlyUser.organization) {
+      await usersRepository.refreshDiscordProjectionForWrite(canonicalOnlyUser.id);
+      return {
+        user: canonicalOnlyUser,
+        organization: canonicalOnlyUser.organization,
+        isNew: false,
+      };
+    }
+
     // Scenario 2: Check if user exists by phone_number (Telegram/iMessage-first user linking Discord)
     if (normalizedPhone) {
       const existingPhoneUser =
@@ -648,6 +664,9 @@ class ElizaAppUserService {
           throw error;
         }
 
+        // Project the canonical link into user_identities for Discord routing.
+        await usersRepository.refreshDiscordProjectionForWrite(existingPhoneUser.id);
+
         logger.info(
           "[ElizaAppUserService] Linked Discord to existing phone user (cross-platform)",
           {
@@ -674,7 +693,7 @@ class ElizaAppUserService {
     const organizationName = `${displayName}'s Workspace`;
 
     try {
-      return await createUserWithOrganization({
+      const created = await createUserWithOrganization({
         userData: {
           steward_user_id: `discord:${discordId}`,
           discord_id: discordId,
@@ -692,6 +711,11 @@ class ElizaAppUserService {
         slugGenerator: () => generateSlugFromDiscord(discordData.username, discordId),
         signupCode,
       });
+      // Project the new canonical Discord identity into user_identities — the
+      // row inbound Discord routing resolves DM senders by. Without it a fresh
+      // Discord-OAuth signup can never receive DM replies from their agent.
+      await usersRepository.refreshDiscordProjectionForWrite(created.user.id);
+      return created;
     } catch (error) {
       // Handle race condition: another request created the user first
       if (isUniqueConstraintError(error)) {
@@ -1025,8 +1049,12 @@ class ElizaAppUserService {
       };
     }
 
-    // If already linked to the same user, treat as idempotent success
+    // If already linked to the same user, treat as idempotent success. The
+    // projection refresh still runs so a canonical-only link (users row written
+    // before this refresh existed) converges into user_identities — that
+    // projection row is what routeDiscordMessage resolves DMs by.
     if (existingDiscordUser && existingDiscordUser.id === userId) {
+      await usersRepository.refreshDiscordProjectionForWrite(userId);
       return { success: true };
     }
 
@@ -1052,6 +1080,11 @@ class ElizaAppUserService {
       }
       throw error;
     }
+
+    // Project the canonical write into user_identities — the row the Discord
+    // gateway router resolves DM senders by. Without this refresh an
+    // email-login user stays invisible to routeDiscordMessage forever.
+    await usersRepository.refreshDiscordProjectionForWrite(userId);
 
     logger.info("[ElizaAppUserService] Linked Discord to user", {
       userId,
