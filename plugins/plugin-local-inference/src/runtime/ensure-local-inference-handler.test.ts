@@ -4,7 +4,12 @@
  * assignments, and the registry are mocked; no model loads.
  */
 
-import { type AgentRuntime, ModelType } from "@elizaos/core";
+import {
+	AgentRuntime,
+	ModelType,
+	type Service,
+	type ServiceClass,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
@@ -41,6 +46,11 @@ const engineState = vi.hoisted(() => ({
 	prewarmConversation: vi.fn(async () => true),
 	synthesizeSpeech: vi.fn(async () => new Uint8Array([1, 2, 3])),
 	transcribePcm: vi.fn(async () => "transcribed"),
+	transcribePcmTimed: vi.fn(async () => ({
+		text: "timed transcription",
+		words: [{ word: "timed", start: 0, end: 0.25 }],
+	})),
+	voice: vi.fn(() => ({})),
 	warnIfParallelTooLow: vi.fn(),
 }));
 const arbiterState = vi.hoisted(() => ({
@@ -113,7 +123,9 @@ vi.mock("../services/voice", () => ({
 import { resolveLocalInferenceLoadArgs } from "../services/active-model";
 import { probeHardware } from "../services/hardware";
 import { installRouterHandler } from "../services/router-handler";
+import { TimedAsrService } from "../services/runtime-services";
 import { VoiceStartupError } from "../services/voice/errors";
+import { registerLocalInferenceBoot } from "./boot";
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
 
 interface Registration {
@@ -128,13 +140,28 @@ function makeRuntime(): {
 	runtime: AgentRuntime;
 } {
 	const registrations: Registration[] = [];
-	const runtime = {
+	const serviceClasses = new Map<string, ServiceClass>();
+	const services = new Map<string, Service>();
+	let runtime!: AgentRuntime;
+	runtime = {
 		agentId: "agent-test",
 		getModel: vi.fn(() => undefined),
 		getSetting: vi.fn((key: string) =>
 			key === "ELIZA_RUNTIME_MODE" ? modeState.mode : undefined,
 		),
-		getService: vi.fn(() => null),
+		getService: vi.fn(
+			(serviceType: string) => services.get(serviceType) ?? null,
+		),
+		getServiceLoadPromise: vi.fn(async (serviceType: string) => {
+			const running = services.get(serviceType);
+			if (running) return running;
+			const serviceClass = serviceClasses.get(serviceType);
+			if (!serviceClass)
+				throw new Error(`Service ${serviceType} not registered`);
+			const service = await serviceClass.start(runtime);
+			services.set(serviceType, service);
+			return service;
+		}),
 		setSetting: vi.fn(),
 		registerModel: vi.fn(
 			(
@@ -151,7 +178,9 @@ function makeRuntime(): {
 				});
 			},
 		),
-		registerService: vi.fn(),
+		registerService: vi.fn(async (serviceClass: ServiceClass) => {
+			serviceClasses.set(serviceClass.serviceType, serviceClass);
+		}),
 	} as unknown as AgentRuntime;
 	return { registrations, runtime };
 }
@@ -178,10 +207,13 @@ beforeEach(() => {
 	hardwareState.probe = { memory: { totalGb: 8 } };
 	delete process.env.ELIZA_LOCAL_LLAMA;
 	delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
+	delete process.env.ELIZA_BIONIC_HOST_DELEGATED;
+	delete process.env.ELIZA_BIONIC_INFERENCE_SOCK;
 	delete process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
 	engineState.available.mockResolvedValue(true);
 	engineState.currentModelPath.mockReturnValue(null);
 	engineState.hasLoadedModel.mockReturnValue(false);
+	engineState.voice.mockReturnValue({});
 	arbiterState.hasCapability.mockImplementation(
 		(capability: string) => capability === "vision-describe",
 	);
@@ -195,6 +227,33 @@ beforeEach(() => {
 });
 
 describe("ensureLocalInferenceHandler", () => {
+	it("boots timed ASR through a real AgentRuntime and stops it cleanly", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		const stop = vi.spyOn(TimedAsrService.prototype, "stop");
+
+		try {
+			await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+			await registerLocalInferenceBoot(runtime);
+
+			const timedAsr = runtime.getService<TimedAsrService>("timedAsr");
+			expect(timedAsr).toBeInstanceOf(TimedAsrService);
+			if (!timedAsr) throw new Error("timed ASR service did not start");
+			expect(timedAsr.isAvailable()).toBe(true);
+			await expect(
+				timedAsr.transcribeWav(new Uint8Array([1, 2, 3])),
+			).resolves.toEqual({
+				text: "timed transcription",
+				words: [{ word: "timed", start: 0, end: 0.25 }],
+			});
+
+			await runtime.stop();
+			expect(stop).toHaveBeenCalledTimes(1);
+		} finally {
+			await runtime.stop({ fast: true });
+			stop.mockRestore();
+		}
+	});
+
 	it("registers Eliza-1 text, embedding, voice, and transcription handlers in local mode", async () => {
 		const { registrations, runtime } = makeRuntime();
 
