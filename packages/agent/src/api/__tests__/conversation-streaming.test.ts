@@ -485,6 +485,24 @@ describe("chat route helper coverage", () => {
       getChatFailureReply(new Error("No provider registered for TEXT"), []),
     ).toContain("Connect an LLM provider");
     expect(
+      getChatFailureReply(
+        new Error("No handler found for delegate type: TEXT_LARGE"),
+        [],
+      ),
+    ).toContain("Connect an LLM provider");
+    expect(
+      classifyChatFailure(
+        new Error("No handler found for delegate type: REASONING_SMALL"),
+        [],
+      ),
+    ).toBe("no_provider");
+    expect(
+      classifyChatFailure(
+        new Error("No handler found for delegate type: TEXT_TO_SPEECH"),
+        [],
+      ),
+    ).toBe("provider_issue");
+    expect(
       classifyChatFailure(new Error("local inference unavailable"), []),
     ).toBe("local_inference");
   });
