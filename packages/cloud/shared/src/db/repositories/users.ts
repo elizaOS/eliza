@@ -64,6 +64,13 @@ export interface TelegramPhoneIdentityLink {
   phone_number: string;
 }
 
+export interface DiscordIdentityLink {
+  discord_id: string;
+  discord_username: string;
+  discord_global_name?: string | null;
+  discord_avatar_url?: string | null;
+}
+
 /**
  * Repository for user database operations.
  *
@@ -404,6 +411,39 @@ export class UsersRepository {
       .where(eq(users.id, id))
       .returning();
     return updated;
+  }
+
+  /** Links Discord on the canonical user and routing projection atomically. */
+  async linkDiscordIdentity(
+    userId: string,
+    identity: DiscordIdentityLink,
+  ): Promise<User | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      const updatedAt = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({ ...identity, updated_at: updatedAt })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!updated) return undefined;
+
+      await tx
+        .insert(userIdentities)
+        .values({
+          user_id: userId,
+          steward_user_id: updated.steward_user_id,
+          is_anonymous: updated.is_anonymous,
+          anonymous_session_id: updated.anonymous_session_id,
+          expires_at: updated.expires_at,
+          ...identity,
+          updated_at: updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: userIdentities.user_id,
+          set: { ...identity, updated_at: updatedAt },
+        });
+      return updated;
+    });
   }
 
   /**

@@ -169,6 +169,56 @@ describe("UsersRepository.linkTelegramAndPhoneIdentity", () => {
   });
 });
 
+describe("UsersRepository.linkDiscordIdentity", () => {
+  test("rolls back the canonical write when another projection owns the Discord id", async () => {
+    await seedUser(USER_A, "steward-user-a");
+    await seedUser(USER_B, "steward-user-b");
+    await dbWrite
+      .update(userIdentities)
+      .set({ discord_id: "atomic-conflict" })
+      .where(eq(userIdentities.user_id, USER_B));
+
+    await expect(
+      usersRepository.linkDiscordIdentity(USER_A, {
+        discord_id: "atomic-conflict",
+        discord_username: "attacker",
+      }),
+    ).rejects.toBeDefined();
+
+    const [canonical] = await dbWrite
+      .select({ discord_id: users.discord_id })
+      .from(users)
+      .where(eq(users.id, USER_A));
+    expect(canonical?.discord_id).toBeNull();
+  });
+
+  test("concurrent claims cannot split canonical and projection ownership", async () => {
+    await seedUser(USER_A, "steward-user-a");
+    await seedUser(USER_B, "steward-user-b");
+    const identity = {
+      discord_id: "atomic-race",
+      discord_username: "racer",
+    };
+    const results = await Promise.allSettled([
+      usersRepository.linkDiscordIdentity(USER_A, identity),
+      usersRepository.linkDiscordIdentity(USER_B, identity),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+
+    const canonicalOwners = await dbWrite
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.discord_id, identity.discord_id));
+    const projectionOwners = await dbWrite
+      .select({ user_id: userIdentities.user_id })
+      .from(userIdentities)
+      .where(eq(userIdentities.discord_id, identity.discord_id));
+    expect(canonicalOwners).toHaveLength(1);
+    expect(projectionOwners).toHaveLength(1);
+    expect(projectionOwners[0]?.user_id).toBe(canonicalOwners[0]?.id);
+  });
+});
+
 describe("UsersRepository.refreshDiscordProjectionForWrite", () => {
   test("projects a canonical Discord link into the identity row Discord routing reads", async () => {
     await seedUser(USER_A, "steward-user-a");

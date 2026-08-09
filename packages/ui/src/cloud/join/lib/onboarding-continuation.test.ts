@@ -7,6 +7,7 @@ import {
   completePendingOnboardingContinuation,
   type OnboardingContinuationTransport,
   peekPendingOnboardingSession,
+  previewPendingOnboardingContinuation,
   sanitizeOnboardingSessionToken,
   storePendingOnboardingSession,
 } from "./onboarding-continuation";
@@ -75,6 +76,26 @@ describe("pending-token persistence", () => {
   });
 });
 
+describe("previewPendingOnboardingContinuation", () => {
+  it("loads the trusted Discord identity without redeeming it", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        platform: "discord",
+        platformUserId: "1234567890",
+        platformDisplayName: "attested-user",
+      },
+    });
+    const preview = await previewPendingOnboardingContinuation(TOKEN, {
+      get,
+      post: vi.fn(),
+    });
+    expect(get).toHaveBeenCalledWith(
+      `/api/eliza-app/onboarding/chat?sessionId=${encodeURIComponent(TOKEN)}`,
+    );
+    expect(preview.platformDisplayName).toBe("attested-user");
+  });
+});
+
 describe("completePendingOnboardingContinuation", () => {
   it("redeems via the onboarding chat endpoint and clears the token on success", async () => {
     storePendingOnboardingSession(TOKEN);
@@ -86,6 +107,7 @@ describe("completePendingOnboardingContinuation", () => {
     expect(post).toHaveBeenCalledWith("/api/eliza-app/onboarding/chat", {
       sessionId: TOKEN,
       platform: "web",
+      confirmPlatformLink: true,
     });
     expect(peekPendingOnboardingSession()).toBeNull();
   });

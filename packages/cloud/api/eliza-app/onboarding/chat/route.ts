@@ -11,6 +11,7 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { providerForPlatform, usersRepository } from "@/db/repositories/users";
 import {
+  ApiError,
   ForbiddenError,
   failureResponse,
   ValidationError,
@@ -18,6 +19,7 @@ import {
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import {
+  inspectDiscordOnboardingContinuation,
   type OnboardingPlatform,
   runOnboardingChat,
 } from "@/lib/services/eliza-app/onboarding-chat";
@@ -58,6 +60,34 @@ const chatSchema = z.object({
   platformUserId: z.string().trim().max(256).optional(),
   platformDisplayName: z.string().trim().max(120).optional(),
   statusOnly: z.boolean().optional(),
+  confirmPlatformLink: z.boolean().optional(),
+});
+
+app.get("/", async (c) => {
+  try {
+    const token = c.req.query("sessionId")?.trim();
+    if (!token) throw ValidationError("Missing onboarding session");
+    const caller = await resolveCaller(c, {});
+    if (!caller.authenticatedUser || caller.trustedPlatformIdentity) {
+      throw ForbiddenError("Browser authentication required");
+    }
+    const preview = await inspectDiscordOnboardingContinuation(
+      token,
+      caller.authenticatedUser,
+    );
+    return c.json({ success: true, data: preview });
+  } catch (error) {
+    if (
+      isElizaError(error) &&
+      error.code === "ONBOARDING_TRUSTED_CONTINUATION_INVALID"
+    ) {
+      return failureResponse(
+        c,
+        ForbiddenError("This Discord connection link is invalid or expired"),
+      );
+    }
+    return failureResponse(c, error);
+  }
 });
 
 /**
@@ -206,6 +236,7 @@ app.post("/", async (c) => {
       trustedPlatformIdentity: caller.trustedPlatformIdentity,
       idempotencyKey: idempotencyKey || undefined,
       statusOnly: parsed.data.statusOnly ?? false,
+      confirmPlatformLink: parsed.data.confirmPlatformLink,
     });
 
     // A platform gateway relays a reply back over the connector; it reads
@@ -250,6 +281,32 @@ app.post("/", async (c) => {
         c,
         ForbiddenError(
           "Authenticate with the same messaging account that started this onboarding session",
+        ),
+      );
+    }
+    if (
+      isElizaError(error) &&
+      error.code === "ONBOARDING_PLATFORM_LINK_CONFIRMATION_REQUIRED"
+    ) {
+      return failureResponse(
+        c,
+        new ApiError(
+          409,
+          "session_not_ready",
+          "Confirm the Discord account before connecting it",
+        ),
+      );
+    }
+    if (
+      isElizaError(error) &&
+      error.code === "ONBOARDING_PLATFORM_IDENTITY_CONFLICT"
+    ) {
+      return failureResponse(
+        c,
+        new ApiError(
+          409,
+          "identity_conflict",
+          "This Discord account is already linked to another account",
         ),
       );
     }
