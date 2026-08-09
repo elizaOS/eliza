@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { getFreePort } from "../test/utils/get-free-port.mjs";
 import { resolveAuditAppOutput } from "./lib/audit-output.mjs";
 import { withElizaSourceNodeOptions } from "./lib/playwright-node-options.mjs";
+import { withPrUiSmokeSpecs } from "./ui-smoke-pr-specs.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(appDir, "..", "..");
@@ -20,7 +21,10 @@ const cleanupHelperScript = path.join(
   "scripts",
   "rm-path-recursive.mjs",
 );
-const playwrightArgs = process.argv.slice(2);
+const playwrightArgs = withPrUiSmokeSpecs(
+  process.argv.slice(2),
+  process.env.TEST_LANE,
+);
 const uiSmokeViewLockNamespace =
   process.env.ELIZA_UI_SMOKE_VIEW_LOCK_NAMESPACE?.trim().replace(
     /[^A-Za-z0-9_-]/g,

@@ -1,32 +1,17 @@
 #!/usr/bin/env node
-// Directory-driven ui-smoke spec discovery for the keyless PR lane (issue #9943).
-//
-// The PR lane used to hand-name most ui-smoke specs across several jobs, which
-// left the rest silently off the PR path. This script makes the run
-// directory-driven instead: it walks every test/ui-smoke/**/*.spec.ts, subtracts
-// the explicit, checked-in deny-list (.pr-deny-list.json), and emits the set of
-// specs that should run keyless. Any NEW spec is on the PR path by default; the
-// only way to exclude one is to record it in the deny-list with a category and a
-// reason. The companion gate test/ui-smoke-coverage.test.ts enforces that.
-//
-// Modes:
-//   --list        (default) print every runnable spec (all specs - deny-list),
-//                 one relative path per line.
-//   --list-auto   print the runnable specs that are NOT already hand-named in
-//                 scenario-pr.yml — i.e. the catch-all set the auto-discovered
-//                 workflow job runs — space-separated on one line. New specs land
-//                 here automatically, so they always run on PR.
-//   --json        print a machine-readable breakdown.
-//   --check       validate the deny-list (entries reference real specs, have a
-//                 valid category + non-empty reason, no duplicates) and exit
-//                 non-zero on any problem.
-//
-// Paths are printed relative to packages/app (e.g. test/ui-smoke/foo.spec.ts),
-// which is the cwd Playwright runs in via `bun run --cwd packages/app test:e2e`.
+/**
+ * Discovers the keyless ui-smoke inventory from the checked-in spec directory
+ * and deny-list (#9943). New specs join the PR lane by default; exclusions must
+ * name a category and reason that the companion coverage gate validates.
+ *
+ * `--list` emits every runnable path, `--list-auto` removes specs hand-named in
+ * scenario-pr.yml, `--json` describes the inventory, and `--check` validates
+ * the manifest. Paths are relative to packages/app, where Playwright runs.
+ */
 
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(SCRIPT_DIR, "..");
@@ -107,6 +92,28 @@ function toRelative(name) {
   return `test/ui-smoke/${name}`;
 }
 
+/** Keyless PR specs, relative to the app package where Playwright runs. */
+export function runnablePrSpecPaths() {
+  return runnableSpecs().map(toRelative);
+}
+
+/**
+ * Add the checked-in keyless PR inventory only to an unscoped ui-smoke run.
+ * Explicit specs remain runnable on demand even when they are deny-listed.
+ */
+export function withPrUiSmokeSpecs(args, lane) {
+  const isUiSmoke = args.some((value) =>
+    value.includes("playwright.ui-smoke.config.ts"),
+  );
+  const hasExplicitSpec = args.some((value) =>
+    /\.spec\.[cm]?[jt]sx?(?::\d+)?$/.test(value),
+  );
+  if (lane !== "pr" || !isUiSmoke || hasExplicitSpec) {
+    return [...args];
+  }
+  return [...args, ...runnablePrSpecPaths()];
+}
+
 function runCheck() {
   const specs = new Set(allSpecs());
   const entries = loadDenyList();
@@ -148,38 +155,43 @@ function runCheck() {
   );
 }
 
-const mode = process.argv[2] ?? "--list";
+const invokedPath = process.argv[1]
+  ? pathToFileURL(path.resolve(process.argv[1])).href
+  : null;
+if (invokedPath === import.meta.url) {
+  const mode = process.argv[2] ?? "--list";
 
-switch (mode) {
-  case "--check":
-    runCheck();
-    break;
-  case "--list-auto":
-    process.stdout.write(autoDiscoveredSpecs().map(toRelative).join(" "));
-    process.stdout.write("\n");
-    break;
-  case "--json":
-    console.log(
-      JSON.stringify(
-        {
-          total: allSpecs().length,
-          denied: [...deniedSpecNames()].sort(),
-          runnable: runnableSpecs(),
-          namedInWorkflow: [...namedInWorkflow()].sort(),
-          autoDiscovered: autoDiscoveredSpecs(),
-        },
-        null,
-        2,
-      ),
-    );
-    break;
-  case "--list":
-    for (const name of runnableSpecs()) console.log(toRelative(name));
-    break;
-  default:
-    console.error(`Unknown mode: ${mode}`);
-    console.error(
-      "Usage: ui-smoke-pr-specs.mjs [--list|--list-auto|--json|--check]",
-    );
-    process.exit(2);
+  switch (mode) {
+    case "--check":
+      runCheck();
+      break;
+    case "--list-auto":
+      process.stdout.write(autoDiscoveredSpecs().map(toRelative).join(" "));
+      process.stdout.write("\n");
+      break;
+    case "--json":
+      console.log(
+        JSON.stringify(
+          {
+            total: allSpecs().length,
+            denied: [...deniedSpecNames()].sort(),
+            runnable: runnableSpecs(),
+            namedInWorkflow: [...namedInWorkflow()].sort(),
+            autoDiscovered: autoDiscoveredSpecs(),
+          },
+          null,
+          2,
+        ),
+      );
+      break;
+    case "--list":
+      for (const name of runnableSpecs()) console.log(toRelative(name));
+      break;
+    default:
+      console.error(`Unknown mode: ${mode}`);
+      console.error(
+        "Usage: ui-smoke-pr-specs.mjs [--list|--list-auto|--json|--check]",
+      );
+      process.exit(2);
+  }
 }

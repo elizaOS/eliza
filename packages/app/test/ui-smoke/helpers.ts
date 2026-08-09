@@ -4,6 +4,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { LifeOpsOccurrenceView } from "@elizaos/shared";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";
 
 const ONE_PX_PNG = Buffer.from(
@@ -1530,6 +1531,8 @@ function smokeDatabaseQuery(sql: string) {
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
   let notesRevision = 4;
+  let smokeTodos = populatedTodos().todos;
+  const completedSmokeOccurrences = new Map<string, LifeOpsOccurrenceView>();
   let smokeNotes: SmokeNote[] = [
     {
       id: "note-launch",
@@ -2991,6 +2994,88 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/lifeops/occurrences/*/complete", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const match = new URL(route.request().url()).pathname.match(
+      /^\/api\/lifeops\/occurrences\/([^/]+)\/complete$/,
+    );
+    const occurrenceId = match ? decodeURIComponent(match[1]) : null;
+    const completedOccurrence = occurrenceId
+      ? completedSmokeOccurrences.get(occurrenceId)
+      : null;
+    if (completedOccurrence) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ occurrence: completedOccurrence }),
+      });
+      return;
+    }
+    const todo = smokeTodos.find((candidate) => candidate.id === occurrenceId);
+    if (!todo) {
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "LifeOps occurrence not found" }),
+      });
+      return;
+    }
+
+    const completedAt = SMOKE_GENERATED_AT;
+    const previousState = todo.status === "in_progress" ? "snoozed" : "pending";
+    smokeTodos = smokeTodos.filter(
+      (candidate) => candidate.id !== occurrenceId,
+    );
+    const occurrence: LifeOpsOccurrenceView = {
+      id: todo.id,
+      agentId: "ui-smoke-agent",
+      domain: "user_lifeops",
+      subjectType: "owner",
+      subjectId: "ui-smoke-owner",
+      visibilityScope: "owner_agent_admin",
+      contextPolicy: "allowed_in_private_chat",
+      definitionId: `definition-${todo.id}`,
+      occurrenceKey: `ui-smoke:${todo.id}`,
+      scheduledAt: null,
+      dueAt: todo.dueDate,
+      relevanceStartAt: todo.dueDate ?? SMOKE_GENERATED_AT,
+      relevanceEndAt: todo.dueDate ?? SMOKE_GENERATED_AT,
+      windowName: null,
+      state: "completed",
+      snoozedUntil: null,
+      completionPayload: {
+        completedAt,
+        note: null,
+        metadata: {},
+        previousState,
+      },
+      derivedTarget: null,
+      metadata: {},
+      createdAt: SMOKE_GENERATED_AT,
+      updatedAt: completedAt,
+      definitionKind: "task",
+      definitionStatus: "active",
+      cadence: todo.dueDate
+        ? { kind: "once", dueAt: todo.dueDate }
+        : { kind: "daily", windows: ["morning"] },
+      title: todo.title,
+      description: "",
+      priority: 0,
+      timezone: "UTC",
+      source: "ui-smoke",
+      goalId: null,
+    };
+    completedSmokeOccurrences.set(todo.id, occurrence);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ occurrence }),
+    });
+  });
+
   // TodosView fetches GET /api/lifeops/todos; the **-suffixed pattern tolerates
   // any future query string while leaving non-GET methods on the real API.
   await page.route("**/api/lifeops/todos**", async (route) => {
@@ -3001,7 +3086,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(populatedTodos()),
+      body: JSON.stringify({ todos: smokeTodos }),
     });
   });
 
