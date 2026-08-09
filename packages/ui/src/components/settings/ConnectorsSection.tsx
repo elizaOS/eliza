@@ -515,10 +515,12 @@ function ConnectorDetailPage({
   return (
     <div className="flex flex-col gap-6" data-testid="connector-detail">
       <div className="flex flex-col gap-3">
+        {/* Mobile already has ViewHeader "Back to Connectors"; keep this control
+            desktop-only so we do not double-render an undersized touch target. */}
         <button
           type="button"
           onClick={onBack}
-          className="self-start text-xs font-medium text-muted hover:text-txt"
+          className="hidden self-start text-xs font-medium text-muted hover:text-txt md:inline-flex min-h-11 items-center"
           data-testid="connector-detail-back"
         >
           {t("connectors.detail.back", { defaultValue: "← Connectors" })}
@@ -754,14 +756,20 @@ export function ConnectorsSection() {
     [allConnectorPlugins, channelMode],
   );
 
+  // Detail uses the same lens policy as the index: a connector classified out
+  // of the active Delegate/Bot lens is not a valid detail target there (deep
+  // links under the wrong lens surface the not-found path until the lens
+  // matches).
   const detailPlugin = useMemo(() => {
     if (!detailId) return null;
-    return (
+    const plugin =
       allConnectorPlugins.find(
         (p) => normalizeConnectorRouteId(p.id) === detailId,
-      ) ?? null
-    );
-  }, [allConnectorPlugins, detailId]);
+      ) ?? null;
+    if (!plugin) return null;
+    if (!connectorSupportsChannelMode(plugin.id, channelMode)) return null;
+    return plugin;
+  }, [allConnectorPlugins, channelMode, detailId]);
 
   const openDetail = useCallback((connectorId: string) => {
     openConnectorDetailHash(connectorId);

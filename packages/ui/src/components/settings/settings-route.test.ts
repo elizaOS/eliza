@@ -7,9 +7,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   backFromConnectorDetail,
+  isPushedConnectorDetailRoute,
   normalizeConnectorRouteId,
   openConnectorDetailHash,
   parseSettingsHash,
+  replaceConnectorDetailHash,
   settingsRouteToHash,
 } from "./settings-route";
 
@@ -100,6 +102,40 @@ describe("connector detail history", () => {
     window.history.back();
     await popped;
     expect(window.location.hash).toBe("#appearance");
+  });
+
+  it("preserves the pushed marker when programmatic focus replaces detail A with detail B", async () => {
+    // [appearance, connectors, detail A] → focus detail B → visible Back →
+    // hardware Back must leave connectors (not stall on a replaced index).
+    window.history.replaceState(null, "", "/#appearance");
+    window.history.pushState(null, "", "#connectors");
+    openConnectorDetailHash("signal");
+    expect(window.location.hash).toBe("#connectors/signal");
+    expect(isPushedConnectorDetailRoute()).toBe(true);
+
+    replaceConnectorDetailHash("discord");
+    expect(window.location.hash).toBe("#connectors/discord");
+    expect(isPushedConnectorDetailRoute()).toBe(true);
+
+    let popped = nextPopState();
+    backFromConnectorDetail();
+    await popped;
+    expect(window.location.hash).toBe("#connectors");
+
+    popped = nextPopState();
+    window.history.back();
+    await popped;
+    expect(window.location.hash).toBe("#appearance");
+  });
+
+  it("keeps direct/programmatic detail entry marker-free", () => {
+    window.history.replaceState(null, "", "/#connectors");
+    replaceConnectorDetailHash("signal");
+    expect(window.location.hash).toBe("#connectors/signal");
+    expect(isPushedConnectorDetailRoute()).toBe(false);
+
+    backFromConnectorDetail();
+    expect(window.location.hash).toBe("#connectors");
   });
 });
 

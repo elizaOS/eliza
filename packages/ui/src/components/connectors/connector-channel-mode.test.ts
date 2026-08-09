@@ -101,6 +101,25 @@ describe("getConnectorModes channel-mode filtering", () => {
     }
   });
 
+  it("applies the same fallback lens policy to catalog-backed detail modes", () => {
+    // Google is Delegate-only via fallback + catalog plugin-managed inventory.
+    // Index classification and getConnectorModes must agree so a Bot deep link
+    // cannot expose plugin-managed / AGENT inventory under the wrong lens.
+    expect(connectorSupportsChannelMode("google", "delegate")).toBe(true);
+    expect(connectorSupportsChannelMode("google", "bot")).toBe(false);
+
+    const delegateIds = getConnectorModes("google", {
+      channelMode: "delegate",
+    }).map((mode) => mode.id);
+    const botIds = getConnectorModes("google", { channelMode: "bot" }).map(
+      (mode) => mode.id,
+    );
+
+    expect(delegateIds).toContain("plugin-managed");
+    expect(botIds).not.toContain("plugin-managed");
+    expect(botIds).toEqual([]);
+  });
+
   it("hides delegate-only QR settings from WhatsApp Business mode", () => {
     expect(getConnectorModeHiddenConfigKeys("whatsapp", "business")).toEqual([
       "WHATSAPP_AUTH_METHOD",

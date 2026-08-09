@@ -148,13 +148,41 @@ export function openConnectorDetailHash(connectorId: string): void {
   );
 }
 
-/** Programmatic focus/deep links canonicalize without polluting history. */
+/**
+ * Programmatic focus/deep links canonicalize without polluting history.
+ * When the current entry is already a user-pushed connector detail, preserve
+ * the detail marker so detail→detail focus swaps keep a single consumable
+ * history entry (visible Back still returns to the index; the next hardware
+ * Back leaves connectors entirely).
+ */
 export function replaceConnectorDetailHash(connectorId: string): void {
+  if (typeof window === "undefined") return;
   const route = connectorDetailRoute(connectorId);
   if (!route) {
     openConnectorsIndexHash();
     return;
   }
+  const nextHash = settingsRouteToHash(route);
+  const currentHash = window.location.hash || "#";
+  if (currentHash === nextHash) return;
+
+  const currentRoute = parseSettingsHash(currentHash);
+  if (
+    currentRoute.kind === "connector-detail" &&
+    isPushedConnectorDetailRoute()
+  ) {
+    const currentState =
+      window.history.state && typeof window.history.state === "object"
+        ? window.history.state
+        : {};
+    window.history.replaceState(
+      { ...currentState, [CONNECTOR_DETAIL_HISTORY_KEY]: true },
+      "",
+      nextHash,
+    );
+    return;
+  }
+
   replaceSettingsHashRoute(route);
 }
 

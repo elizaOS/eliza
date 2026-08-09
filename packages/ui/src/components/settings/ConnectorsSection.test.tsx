@@ -409,9 +409,33 @@ describe("ConnectorsSection", () => {
     render(<ConnectorsSection />);
     openDetail("Signal");
     expect(screen.getByTestId("connector-detail")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("connector-detail-back"));
+    const back = screen.getByTestId("connector-detail-back");
+    // Mobile uses ViewHeader; this control is desktop-only with a 44px target.
+    expect(back.className).toMatch(/\bhidden\b/);
+    expect(back.className).toMatch(/\bmd:inline-flex\b/);
+    expect(back.className).toMatch(/\bmin-h-11\b/);
+    fireEvent.click(back);
     await waitFor(() =>
       expect(screen.getByTestId("connectors-index")).toBeTruthy(),
+    );
+  });
+
+  it("rejects a fallback-classified connector deep link under the wrong lens", async () => {
+    // Google is Delegate-only; a Bot-lens deep link must not open its detail.
+    appMock.value.plugins = [plugin({ id: "google", name: "Google" })];
+    act(() => setConnectorChannelMode("bot"));
+    window.history.replaceState(null, "", "/#connectors/google");
+    window.dispatchEvent(new Event("popstate"));
+
+    render(<ConnectorsSection />);
+    await waitFor(() =>
+      expect(screen.getByTestId("connector-not-found")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("connector-detail")).toBeNull();
+
+    act(() => setConnectorChannelMode("delegate"));
+    await waitFor(() =>
+      expect(screen.getByTestId("connector-detail")).toBeTruthy(),
     );
   });
 });
