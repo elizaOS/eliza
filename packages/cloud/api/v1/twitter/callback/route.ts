@@ -7,6 +7,11 @@ import {
   resolveOAuthSuccessRedirectUrl,
 } from "@/lib/security/redirect-validation";
 import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
+import {
+  clearOAuthSuccessParams,
+  isOAuthSuccessLandingPath,
+  mintOAuthSuccessProof,
+} from "@/lib/services/oauth/success-proof";
 import { twitterAutomationService } from "@/lib/services/twitter-automation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -54,6 +59,12 @@ app.get("/", async (c) => {
         },
       );
     }
+
+    // Always drop reserved OAuth success markers before writing callback params.
+    // Error redirects must not retain a still-valid `proof` from a prior success
+    // URL (AuthSuccessPage would verify it and show Connected). Unrelated caller
+    // query state (e.g. `socket_connected`) is preserved.
+    clearOAuthSuccessParams(target);
 
     Object.entries(params).forEach(([key, value]) => {
       target.searchParams.set(key, value);
@@ -193,6 +204,7 @@ app.get("/", async (c) => {
     await invalidateOAuthState(state.organizationId, "twitter", state.userId);
     const successParams: Record<string, string> = {
       twitter_connected: "true",
+      platform: "twitter",
       twitter_role: state.connectionRole ?? "owner",
     };
     if (tokens.screenName) {
@@ -204,7 +216,29 @@ app.get("/", async (c) => {
         tokens.identityLookupError,
       );
     }
-    return redirectTo(buildRedirectUrl(state.redirectUrl, successParams));
+    const successTarget = buildRedirectUrl(state.redirectUrl, successParams);
+    if (isOAuthSuccessLandingPath(successTarget.pathname)) {
+      const proof = await mintOAuthSuccessProof({
+        platform: "twitter",
+        organizationId: state.organizationId,
+        userId: state.userId,
+      });
+      if (proof) {
+        successTarget.searchParams.set("proof", proof);
+      } else {
+        // Twitter has no connection_id — without a one-time bound proof the
+        // success page cannot verify. Fail closed instead of a false Connected.
+        logger.error(
+          "[Twitter Callback] success proof secret/ticket unavailable; cannot verify /auth/success without a proof",
+        );
+        return redirectTo(
+          buildRedirectUrl(state.redirectUrl, {
+            twitter_error: "success_proof_unavailable",
+          }),
+        );
+      }
+    }
+    return redirectTo(successTarget);
   }
 
   if (!oauthToken || !oauthVerifier) {
@@ -318,13 +352,34 @@ app.get("/", async (c) => {
 
   await invalidateOAuthState(state.organizationId, "twitter", state.userId);
 
-  return redirectTo(
-    buildRedirectUrl(redirectUrl, {
-      twitter_connected: "true",
-      twitter_username: tokens.screenName,
-      twitter_role: state.connectionRole ?? "owner",
-    }),
-  );
+  const oauth1Success: Record<string, string> = {
+    twitter_connected: "true",
+    platform: "twitter",
+    twitter_username: tokens.screenName,
+    twitter_role: state.connectionRole ?? "owner",
+  };
+  const oauth1Target = buildRedirectUrl(redirectUrl, oauth1Success);
+  if (isOAuthSuccessLandingPath(oauth1Target.pathname)) {
+    const oauth1Proof = await mintOAuthSuccessProof({
+      platform: "twitter",
+      organizationId: state.organizationId,
+      userId: state.userId,
+    });
+    if (oauth1Proof) {
+      oauth1Target.searchParams.set("proof", oauth1Proof);
+    } else {
+      logger.error(
+        "[Twitter Callback] success proof secret/ticket unavailable; cannot verify /auth/success without a proof",
+      );
+      return redirectTo(
+        buildRedirectUrl(redirectUrl, {
+          twitter_error: "success_proof_unavailable",
+        }),
+      );
+    }
+  }
+
+  return redirectTo(oauth1Target);
 });
 
 export default app;

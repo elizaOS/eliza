@@ -144,6 +144,9 @@ const publicPathPrefixes = [
   "/api/v1/voice/session/ws",
   "/api/v1/oauth/providers",
   "/api/v1/oauth/callback",
+  // Short-lived HMAC proof check for the browser OAuth success landing page
+  // (API-key OAuth cannot inherit Authorization into the redirect target).
+  "/api/v1/oauth/success-proof/verify",
   "/api/v1/user/wallets/rpc",
   "/api/v1/app-auth",
   "/api/.well-known",
@@ -196,6 +199,12 @@ export function isPublicPath(pathname: string): boolean {
     return true;
   }
   if (pathname === "/api/v1/oauth/callback") return true;
+  if (
+    pathname === "/api/v1/oauth/success-proof/verify" ||
+    pathname === "/api/v1/oauth/success-proof/verify/"
+  ) {
+    return true;
+  }
   if (/^\/api\/v1\/oauth\/[^/]+\/callback\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/generate-image\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/public\/?$/.test(pathname)) return true;
