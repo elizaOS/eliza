@@ -10439,15 +10439,27 @@ async function rewriteActionCallbackInCharacter(args: {
 	actionName?: string;
 	text: string;
 }): Promise<string | null> {
-	const fallback = () => {
-		const action = args.actionName ?? "the action";
-		const error =
-			typeof args.response.error === "string" && args.response.error.trim()
-				? ` It reported: ${args.response.error.trim()}`
-				: "";
-		return `I ran ${action} and got a result, but I couldn't format the details cleanly here.${error}`;
+	// Failure contract: a failed rewrite must never fabricate wire text — no
+	// meta-narration about formatting ever ships (observed live: a settings
+	// action succeeded and the user received an internal formatting apology).
+	// Returning null keeps the raw callback text as the delivery: it was
+	// already user-destined before the re-voicing attempt. An action-owned
+	// error string is diagnostics for runtime.reportError, not chat content.
+	const fail = (reason: string): null => {
+		const actionError =
+			typeof args.response.error === "string" ? args.response.error.trim() : "";
+		if (actionError) {
+			args.runtime.reportError(
+				"MessageService.rewriteActionCallback",
+				new Error(actionError),
+				{ actionName: args.actionName, roomId: args.message.roomId, reason },
+			);
+		}
+		return null;
 	};
-	if (typeof args.runtime.useModel !== "function") return fallback();
+	if (typeof args.runtime.useModel !== "function") {
+		return fail("model_unavailable");
+	}
 	const character = args.runtime.character;
 	const characterVoice = {
 		name: character?.name,
@@ -10494,12 +10506,17 @@ async function rewriteActionCallbackInCharacter(args: {
 		} | null;
 		const response =
 			typeof parsed?.response === "string" ? parsed.response.trim() : "";
-		if (!response || response === args.text) return fallback();
-		if (parseJSONObjectFromText(response)) return fallback();
-		return response.replace(/^["'`]+|["'`]+$/g, "").trim() || fallback();
+		if (!response || response === args.text) {
+			return fail("unusable_model_response");
+		}
+		if (parseJSONObjectFromText(response)) return fail("json_shaped_response");
+		return (
+			response.replace(/^["'`]+|["'`]+$/g, "").trim() ||
+			fail("unusable_model_response")
+		);
 	} catch (error) {
 		// error-policy:J4 Voice rewriting is an optional presentation layer; the
-		// original action result remains the explicit degraded response.
+		// raw action callback text remains the delivered degraded response.
 		args.runtime.logger.debug(
 			{
 				src: "service:message",
@@ -10512,7 +10529,7 @@ async function rewriteActionCallbackInCharacter(args: {
 			actionName: args.actionName,
 			roomId: args.message.roomId,
 		});
-		return fallback();
+		return fail("rewrite_error");
 	}
 }
 

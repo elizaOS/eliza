@@ -612,9 +612,16 @@ async function runSetTrait(
 		thought: `Personality trait updated: ${trait}=${value} (${args.scope})`,
 		actions: ["PERSONALITY"],
 	});
+	// Every personality confirmation below is the complete answer to its turn:
+	// verified + turnComplete make the action's own callback the sole delivery
+	// instead of double-messaging with a second planner/evaluator reply
+	// (observed live on set_reply_gate: the user got the confirmation twice).
 	return {
 		text,
 		success: true,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { scope: args.scope, trait, value },
 		data: { action: "PERSONALITY", op: "set_trait", after },
 	};
@@ -656,6 +663,9 @@ async function runClearTrait(
 	return {
 		text,
 		success: true,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { scope: args.scope, trait },
 		data: { action: "PERSONALITY", op: "clear_trait", after },
 	};
@@ -719,6 +729,9 @@ async function runSetReplyGate(
 	return {
 		text,
 		success: true,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { scope: args.scope, mode },
 		data: { action: "PERSONALITY", op: "set_reply_gate", after },
 	};
@@ -750,6 +763,9 @@ async function runLiftReplyGate(
 	return {
 		text,
 		success: true,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { scope: args.scope, mode: "always" },
 		data: { action: "PERSONALITY", op: "lift_reply_gate", after },
 	};
@@ -804,6 +820,9 @@ async function runAddDirective(
 	return {
 		text,
 		success: true,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			scope: "user",
 			directiveCount: after.custom_directives.length,
@@ -837,6 +856,9 @@ async function runClearDirectives(
 	return {
 		text,
 		success: true,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { scope: args.scope },
 		data: { action: "PERSONALITY", op: "clear_directives", after },
 	};
@@ -886,6 +908,9 @@ async function runLoadProfile(args: {
 	return {
 		text,
 		success: true,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { profile: profile.name },
 		data: { action: "PERSONALITY", op: "load_profile", profile },
 	};
@@ -914,6 +939,9 @@ async function runSaveProfile(args: {
 	return {
 		text,
 		success: true,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { profile: profile.name },
 		data: { action: "PERSONALITY", op: "save_profile", profile },
 	};
@@ -934,6 +962,9 @@ async function runListProfiles(args: {
 	return {
 		text,
 		success: true,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { profileCount: profiles.length },
 		data: { action: "PERSONALITY", op: "list_profiles", profiles },
 	};
@@ -958,6 +989,9 @@ async function runShowState(args: {
 	return {
 		text,
 		success: true,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { scope: args.scope },
 		data: {
 			action: "PERSONALITY",
