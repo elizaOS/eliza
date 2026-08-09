@@ -1,477 +1,246 @@
 #!/usr/bin/env bun
-// Live provisioning smoke against a deployed cloud stack: disposable identity,
-// agent create/provision, bridge + stream chat turns (classifyBridgeReply
-// rejects canned/fabricated failure replies and requires a per-run proof
-// token, #15616), pairing token, and delete.
+/**
+ * Runs the canonical staging-only shared-agent onboarding smoke.
+ *
+ * The smoke uses an existing isolated staging credential, creates exactly one
+ * fresh shared agent, proves the JSON-RPC bridge and SSE paths with per-run
+ * nonces, asserts that shared agents deliberately have no pairing Web UI, and
+ * conditionally deletes only the identity it created. Production origins,
+ * idempotent reuse, dedicated tiers, retained resources, and green-by-skip
+ * results are all rejected.
+ */
 
 import { randomBytes } from "node:crypto";
-import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
-import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
-import { users } from "@elizaos/cloud-shared/db/schemas/users";
-import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
-import { eq } from "drizzle-orm";
-import { privateKeyToAccount } from "viem/accounts";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { classifyBridgeReply } from "./bridge-reply-verdict";
 import { SMOKE_AGENT_PLUGINS } from "./smoke-agent-plugins";
 
 type JsonObject = Record<string, unknown>;
+type Fetch = typeof globalThis.fetch;
+type AgentExecutionTier =
+  | "shared"
+  | "dedicated-lazy"
+  | "dedicated-always"
+  | "custom";
+type ObservedTier = AgentExecutionTier | "other";
+type TimingPhase =
+  | "preflight"
+  | "create"
+  | "provision"
+  | "bridge"
+  | "sse"
+  | "pairing"
+  | "cleanup"
+  | "total";
 
-const DEFAULT_BASE_URL = "https://api-staging.elizacloud.ai";
-const baseUrl = (process.env.CLOUD_SMOKE_BASE_URL ?? DEFAULT_BASE_URL).replace(
-  /\/+$/,
-  "",
-);
-const timeoutMs = Number.parseInt(
-  process.env.CLOUD_SMOKE_TIMEOUT_MS ?? "240000",
-  10,
-);
-const pollIntervalMs = Number.parseInt(
-  process.env.CLOUD_SMOKE_POLL_INTERVAL_MS ?? "5000",
-  10,
-);
-const skipStreamSmoke = process.env.CLOUD_SMOKE_SKIP_STREAM === "1";
-const keepResources = process.env.CLOUD_SMOKE_KEEP_RESOURCES === "1";
-const runId = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
+const STAGING_BASE_URL = "https://api-staging.elizacloud.ai";
+const SMOKE_NAME_PREFIX = "shared-staging-smoke-";
+const EXPECTED_TIER = "shared";
+const REQUEST_TIMEOUT_MS = 130_000;
+const CLEANUP_TIMEOUT_MS = 120_000;
+const CREATE_RECOVERY_TIMEOUT_MS = 15_000;
+const POLL_INTERVAL_MS = 2_000;
+const MAX_CREATE_RECOVERY_ATTEMPTS = 4;
+const MAX_CHAT_ATTEMPTS_PER_PATH = 2;
+const TERMINAL_JOB_STATUSES = new Set(["failed", "cancelled", "canceled"]);
 
-let apiKey: string | undefined;
-let orgId: string | undefined;
-let agentId: string | undefined;
-let cleanupDbOrg = false;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+interface AgentIdentity {
+  id: string;
+  name: string;
+  createdAt: string;
+  executionTier: AgentExecutionTier;
 }
 
-function describeBody(body: unknown): string {
-  if (!body || typeof body !== "object") return String(body);
-
-  const record = body as JsonObject;
-  const parts: JsonObject = {};
-  for (const key of [
-    "success",
-    "code",
-    "error",
-    "message",
-    "status",
-  ] as const) {
-    if (key in record) parts[key] = record[key];
-  }
-  if ("data" in record && record.data && typeof record.data === "object") {
-    parts.dataKeys = Object.keys(record.data as JsonObject);
-  }
-  return JSON.stringify(parts);
+/** Privacy-safe result uploaded by the manual staging workflow. */
+export interface SharedStagingSmokeEvidence {
+  schemaVersion: 1;
+  verdict: "pass" | "fail";
+  deployedCommit: string | null;
+  path: {
+    requestedTier: "shared";
+    observedTier: ObservedTier | null;
+    credentialPreflight: boolean;
+    freshCreate: boolean;
+    immediateProvision: boolean;
+    bridgeTransport: "shared-runtime" | null;
+    bridgeReply: boolean;
+    sseCompleted: boolean;
+    pairingUnavailable: boolean;
+    successfulPaths: number;
+  };
+  capacity: {
+    maxCreatedAgents: 1;
+    createdAgents: number;
+    maxChatRequests: number;
+    chatRequests: number;
+    isolatedCredential: boolean;
+  };
+  cleanup: {
+    status: "not-required" | "passed" | "failed";
+    possibleOrphan: boolean;
+  };
+  timingsMs: Partial<Record<TimingPhase, number>>;
+  failure: { phase: string; code: string } | null;
 }
 
-async function requestJson(
-  path: string,
-  init: RequestInit = {},
-  expectedStatuses: number[] = [200],
-): Promise<{ status: number; body: JsonObject }> {
-  if (!apiKey) throw new Error("API key not initialized");
-
-  const headers = new Headers(init.headers);
-  headers.set("authorization", `Bearer ${apiKey}`);
-  headers.set("accept", "application/json");
-  headers.set("user-agent", "eliza-cloud-live-smoke/1.0");
-  if (init.body && !headers.has("content-type")) {
-    headers.set("content-type", "application/json");
-  }
-
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers,
-    signal: AbortSignal.timeout(130_000),
-  });
-  const text = await response.text();
-  const body = text ? (JSON.parse(text) as JsonObject) : {};
-
-  if (!expectedStatuses.includes(response.status)) {
-    throw new Error(
-      `${init.method ?? "GET"} ${path} returned ${response.status}: ${describeBody(body)}`,
-    );
-  }
-
-  return { status: response.status, body };
+/** Dependency injection is limited to deterministic contract testing. */
+export interface SharedStagingSmokeOptions {
+  apiKey: string;
+  baseUrl?: string;
+  fetch?: Fetch;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+  suffix?: string;
+  requestTimeoutMs?: number;
+  cleanupTimeoutMs?: number;
+  createRecoveryTimeoutMs?: number;
+  pollIntervalMs?: number;
 }
 
-async function jsonRpc(
-  method: string,
-  params: JsonObject = {},
-): Promise<JsonObject> {
-  if (!agentId) throw new Error("Agent not initialized");
-  const { body } = await requestJson(`/api/v1/eliza/agents/${agentId}/bridge`, {
-    method: "POST",
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: `${method}-${Date.now()}`,
-      method,
-      params,
-    }),
-  });
-  if (body.error) {
-    throw new Error(`Bridge ${method} failed: ${describeBody(body.error)}`);
+class SharedSmokeFailure extends Error {
+  constructor(
+    readonly phase: string,
+    readonly code: string,
+  ) {
+    super(`${phase}:${code}`);
+    this.name = "SharedSmokeFailure";
   }
-  const result = body.result;
-  if (!result || typeof result !== "object") {
-    throw new Error(`Bridge ${method} returned no result`);
-  }
-  return result as JsonObject;
 }
 
-async function requestStream(
-  path: string,
-  init: RequestInit = {},
-): Promise<Response> {
-  if (!apiKey) throw new Error("API key not initialized");
-
-  const headers = new Headers(init.headers);
-  headers.set("authorization", `Bearer ${apiKey}`);
-  headers.set("accept", "text/event-stream");
-  headers.set("user-agent", "eliza-cloud-live-smoke/1.0");
-  if (init.body && !headers.has("content-type")) {
-    headers.set("content-type", "application/json");
-  }
-
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers,
-    signal: AbortSignal.timeout(130_000),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `${init.method ?? "GET"} ${path} returned ${response.status}: ${
-        text.trim() ? text.slice(0, 300) : response.statusText
-      }`,
-    );
-  }
-
-  return response;
+function isRecord(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function createSmokeIdentity(): Promise<void> {
-  if (process.env.CLOUD_SMOKE_AUTH === "siwe") {
-    await createSmokeIdentityViaSiwe();
-    return;
+/** This CLI is workflow-owned and never runs as a cached Turbo task. */
+function workflowEnv(name: string): string | undefined {
+  return process.env[name];
+}
+
+function stringField(value: JsonObject | null, key: string): string | null {
+  const field = value?.[key];
+  return typeof field === "string" && field.length > 0 ? field : null;
+}
+
+function dataRecord(body: JsonObject): JsonObject | null {
+  return isRecord(body.data) ? body.data : null;
+}
+
+function asExecutionTier(value: string | null): AgentExecutionTier | null {
+  switch (value) {
+    case "shared":
+    case "dedicated-lazy":
+    case "dedicated-always":
+    case "custom":
+      return value;
+    default:
+      return null;
   }
-
-  const slug = `cloud-smoke-${runId}`;
-  const [org] = await dbWrite
-    .insert(organizations)
-    .values({
-      name: `Cloud Smoke ${runId}`,
-      slug,
-      credit_balance: "50.000000",
-      settings: { smoke: true, runId },
-    })
-    .returning({ id: organizations.id });
-
-  if (!org?.id) throw new Error("Failed to create smoke organization");
-  orgId = org.id;
-
-  const [user] = await dbWrite
-    .insert(users)
-    .values({
-      email: `${slug}@example.invalid`,
-      email_verified: true,
-      organization_id: orgId,
-      role: "owner",
-      name: "Cloud Smoke",
-      is_active: true,
-    })
-    .returning({ id: users.id });
-
-  if (!user?.id) throw new Error("Failed to create smoke user");
-
-  const generated = await apiKeysService.create({
-    user_id: user.id,
-    organization_id: orgId,
-    name: `cloud-smoke-${runId}`,
-    description: "Temporary cloud provisioning live smoke key",
-    permissions: ["*"],
-    rate_limit: 1000,
-    is_active: true,
-  });
-
-  apiKey = generated.plainKey;
-  cleanupDbOrg = true;
 }
 
-function buildSiweMessage(params: {
-  domain: string;
-  address: string;
-  statement: string;
-  uri: string;
-  version: string;
-  chainId: number;
-  nonce: string;
-}): string {
-  return [
-    `${params.domain} wants you to sign in with your Ethereum account:`,
-    params.address,
-    "",
-    params.statement,
-    "",
-    `URI: ${params.uri}`,
-    `Version: ${params.version}`,
-    `Chain ID: ${params.chainId}`,
-    `Nonce: ${params.nonce}`,
-    `Issued At: ${new Date().toISOString()}`,
-  ].join("\n");
+function privacySafeTier(value: string | null): ObservedTier | null {
+  return asExecutionTier(value) ?? (value === null ? null : "other");
 }
 
-async function createSmokeIdentityViaSiwe(): Promise<void> {
-  const privateKey = `0x${randomBytes(32).toString("hex")}` as `0x${string}`;
-  const account = privateKeyToAccount(privateKey);
+function validCreatedAt(value: string | null): value is string {
+  return value !== null && Number.isFinite(Date.parse(value));
+}
 
-  const nonceResponse = await fetch(
-    `${baseUrl}/api/auth/siwe/nonce?chainId=1`,
-    {
-      headers: {
-        accept: "application/json",
-        "user-agent": "eliza-cloud-live-smoke/1.0",
-      },
-      signal: AbortSignal.timeout(30_000),
+function parseIdentity(value: JsonObject | null): AgentIdentity | null {
+  const id = stringField(value, "id") ?? stringField(value, "agentId");
+  const name = stringField(value, "agentName");
+  const createdAt = stringField(value, "createdAt");
+  const executionTier = asExecutionTier(stringField(value, "executionTier"));
+  if (!id || !name || !validCreatedAt(createdAt) || !executionTier) return null;
+  return { id, name, createdAt, executionTier };
+}
+
+function identityMatches(value: JsonObject | null, expected: AgentIdentity) {
+  const identity = parseIdentity(value);
+  return (
+    identity !== null &&
+    identity.id === expected.id &&
+    identity.name === expected.name &&
+    identity.createdAt === expected.createdAt &&
+    identity.executionTier === expected.executionTier
+  );
+}
+
+/** Only this exact origin is authorized; even path/query variants fail closed. */
+export function isExactSharedSmokeStagingOrigin(value: string): boolean {
+  return value === STAGING_BASE_URL;
+}
+
+function sanitizeSuffix(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 24);
+  if (normalized.length < 8) {
+    throw new SharedSmokeFailure("config", "invalid_run_suffix");
+  }
+  return normalized;
+}
+
+function freshEvidence(): SharedStagingSmokeEvidence {
+  return {
+    schemaVersion: 1,
+    verdict: "fail",
+    deployedCommit: null,
+    path: {
+      requestedTier: EXPECTED_TIER,
+      observedTier: null,
+      credentialPreflight: false,
+      freshCreate: false,
+      immediateProvision: false,
+      bridgeTransport: null,
+      bridgeReply: false,
+      sseCompleted: false,
+      pairingUnavailable: false,
+      successfulPaths: 0,
     },
-  );
-  const nonceBody = (await nonceResponse
-    .json()
-    .catch(() => ({}))) as JsonObject;
-  if (!nonceResponse.ok) {
-    throw new Error(
-      `SIWE nonce returned ${nonceResponse.status}: ${describeBody(nonceBody)}`,
-    );
-  }
-
-  const nonce = typeof nonceBody.nonce === "string" ? nonceBody.nonce : null;
-  const domain = typeof nonceBody.domain === "string" ? nonceBody.domain : null;
-  const uri = typeof nonceBody.uri === "string" ? nonceBody.uri : null;
-  const statement =
-    typeof nonceBody.statement === "string"
-      ? nonceBody.statement
-      : "Sign in to Eliza Cloud";
-  const version =
-    typeof nonceBody.version === "string" ? nonceBody.version : "1";
-  const chainId = typeof nonceBody.chainId === "number" ? nonceBody.chainId : 1;
-  if (!nonce || !domain || !uri) {
-    throw new Error(
-      `SIWE nonce response missing required fields: ${describeBody(nonceBody)}`,
-    );
-  }
-
-  const message = buildSiweMessage({
-    domain,
-    address: account.address,
-    statement,
-    uri,
-    version,
-    chainId,
-    nonce,
-  });
-  const signature = await account.signMessage({ message });
-
-  const verifyResponse = await fetch(`${baseUrl}/api/auth/siwe/verify`, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "user-agent": "eliza-cloud-live-smoke/1.0",
+    capacity: {
+      maxCreatedAgents: 1,
+      createdAgents: 0,
+      maxChatRequests: MAX_CHAT_ATTEMPTS_PER_PATH * 2,
+      chatRequests: 0,
+      isolatedCredential: false,
     },
-    body: JSON.stringify({ message, signature }),
-    signal: AbortSignal.timeout(60_000),
-  });
-  const verifyBody = (await verifyResponse
-    .json()
-    .catch(() => ({}))) as JsonObject;
-  if (!verifyResponse.ok) {
-    throw new Error(
-      `SIWE verify returned ${verifyResponse.status}: ${describeBody(verifyBody)}`,
-    );
-  }
-
-  const plainKey =
-    typeof verifyBody.apiKey === "string" ? verifyBody.apiKey : null;
-  const user = verifyBody.user as JsonObject | undefined;
-  const organization = verifyBody.organization as JsonObject | undefined;
-  if (!plainKey) {
-    throw new Error(
-      `SIWE verify response missing apiKey: ${describeBody(verifyBody)}`,
-    );
-  }
-
-  apiKey = plainKey;
-  orgId =
-    (typeof organization?.id === "string" ? organization.id : undefined) ??
-    (typeof user?.organization_id === "string"
-      ? user.organization_id
-      : undefined);
+    cleanup: { status: "not-required", possibleOrphan: false },
+    timingsMs: {},
+    failure: null,
+  };
 }
 
-async function createAgent(): Promise<void> {
-  const { status, body } = await requestJson(
-    "/api/v1/eliza/agents",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        agentName: `cloud-smoke-${runId}`,
-        agentConfig: {
-          name: `Cloud Smoke ${runId}`,
-          username: `cloud-smoke-${runId}`,
-          system: "Concise test assistant for cloud provisioning smoke checks.",
-          bio: ["Cloud provisioning smoke test agent."],
-          topics: ["cloud provisioning smoke"],
-          adjectives: ["concise"],
-          plugins: [...SMOKE_AGENT_PLUGINS],
-          settings: { secrets: {} },
-        },
-        environmentVars: {
-          ELIZA_SMOKE_RUN_ID: runId,
-        },
-      }),
-    },
-    [201],
-  );
-  const data = body.data as JsonObject | undefined;
-  if (!data || typeof data.id !== "string") {
-    throw new Error(`Create agent returned ${status} without an agent id`);
-  }
-  agentId = data.id;
+function asFailure(error: unknown): SharedSmokeFailure {
+  return error instanceof SharedSmokeFailure
+    ? error
+    : new SharedSmokeFailure("internal", "unexpected_error");
 }
 
-async function provisionAgent(): Promise<string> {
-  if (!agentId) throw new Error("Agent not initialized");
-  const { status, body } = await requestJson(
-    `/api/v1/eliza/agents/${agentId}/provision`,
-    { method: "POST" },
-    [202],
-  );
-  const data = body.data as JsonObject | undefined;
-  if (status !== 202 || !data || typeof data.jobId !== "string") {
-    throw new Error(
-      `Provision did not return an async job: ${describeBody(body)}`,
-    );
-  }
-  return data.jobId;
+function timedPhase(
+  evidence: SharedStagingSmokeEvidence,
+  phase: TimingPhase,
+  now: () => number,
+): () => void {
+  const started = now();
+  return () => {
+    evidence.timingsMs[phase] = Math.max(0, Math.round(now() - started));
+  };
 }
 
-async function waitForJob(jobId: string): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  let lastStatus = "";
-
-  while (Date.now() < deadline) {
-    const { body } = await requestJson(`/api/v1/jobs/${jobId}`);
-    const data = body.data as JsonObject | undefined;
-    const status = typeof data?.status === "string" ? data.status : "unknown";
-    if (status !== lastStatus) {
-      console.log(`[smoke] job ${jobId} -> ${status}`);
-      lastStatus = status;
-    }
-
-    if (status === "completed") {
-      const result = data?.result as JsonObject | undefined;
-      if (result?.status !== "running") {
-        throw new Error(
-          `Completed job did not produce a running agent: ${describeBody(data)}`,
-        );
-      }
-      return;
-    }
-
-    if (
-      status === "failed" ||
-      status === "cancelled" ||
-      status === "canceled"
-    ) {
-      throw new Error(
-        `Provisioning job ended in ${status}: ${describeBody(data)}`,
-      );
-    }
-
-    await sleep(pollIntervalMs);
-  }
-
-  throw new Error(
-    `Timed out waiting ${timeoutMs}ms for provisioning job ${jobId}`,
-  );
-}
-
-async function assertAgentRunning(): Promise<void> {
-  if (!agentId) throw new Error("Agent not initialized");
-  const { body } = await requestJson(`/api/v1/eliza/agents/${agentId}`);
-  const data = body.data as JsonObject | undefined;
-  if (data?.status !== "running" || data.databaseStatus !== "ready") {
-    throw new Error(
-      `Agent is not running with a ready database: ${describeBody(body)}`,
-    );
-  }
-}
-
-/**
- * Retry `attempt` until it resolves or the deadline passes; a fresh
- * provision's model path can be cold, and a live model occasionally
- * paraphrases the proof token out of its first reply.
- */
-async function retryChatTurn<T>(
-  label: string,
-  attempt: () => Promise<T>,
+async function inTimedPhase<T>(
+  evidence: SharedStagingSmokeEvidence,
+  phase: TimingPhase,
+  now: () => number,
+  operation: () => Promise<T>,
 ): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  let attempts = 0;
-  let lastFailure = "no attempt completed";
-  while (Date.now() < deadline) {
-    attempts += 1;
-    try {
-      return await attempt();
-    } catch (error) {
-      // error-policy:J1 retry boundary — each failed attempt is logged and the
-      // loop fails loudly at the deadline with the last observed failure.
-      lastFailure = error instanceof Error ? error.message : String(error);
-      console.log(
-        `[smoke] ${label} attempt ${attempts} failed: ${lastFailure}`,
-      );
-    }
-    if (Date.now() + pollIntervalMs >= deadline) break;
-    await sleep(pollIntervalMs);
+  const finish = timedPhase(evidence, phase, now);
+  try {
+    return await operation();
+  } finally {
+    finish();
   }
-  throw new Error(
-    `${label} never produced a real reply within ${timeoutMs}ms ` +
-      `(${attempts} attempt${attempts === 1 ? "" : "s"}). Last failure: ${lastFailure}`,
-  );
-}
-
-async function assertBridge(): Promise<void> {
-  const status = await jsonRpc("status.get");
-  if (status.ready !== true) {
-    throw new Error(`Bridge status is not ready: ${describeBody(status)}`);
-  }
-
-  const heartbeat = await jsonRpc("heartbeat");
-  if (heartbeat.ready !== true && heartbeat.ok !== true) {
-    throw new Error(`Bridge heartbeat failed: ${describeBody(heartbeat)}`);
-  }
-
-  // Token phrased without quotes or "exact words:" so it can never match the
-  // bridge's fallback-text extraction patterns and be fabricated back at us.
-  const token = `cloud-smoke-pong-${runId}`;
-  await retryChatTurn("bridge chat turn", async () => {
-    const message = await jsonRpc("message.send", {
-      text: `Reply with one short sentence that contains the token ${token}.`,
-      roomId: `cloud-smoke-room-${runId}`,
-      userId: `cloud-smoke-user-${runId}`,
-      mode: "simple",
-    });
-    const verdict = classifyBridgeReply(message, token);
-    if (!verdict.ok) {
-      throw new Error(
-        `${verdict.reason} (transport: ${verdict.transport})` +
-          (verdict.reply ? ` — reply: ${verdict.reply.slice(0, 200)}` : ""),
-      );
-    }
-    console.log(
-      `[smoke] bridge reply ${verdict.reply.length} chars (transport: ${verdict.transport}, token echoed)`,
-    );
-  });
 }
 
 function parseSseBlock(
@@ -487,222 +256,664 @@ function parseSseBlock(
       dataLines.push(line.slice("data:".length).trimStart());
     }
   }
-  if (dataLines.length === 0) {
-    return { event, data: null };
-  }
-  const dataText = dataLines.join("\n");
+  if (dataLines.length === 0) return { event, data: null };
+  const value = dataLines.join("\n");
+  if (value === "[DONE]") return { event: "done", data: null };
   try {
-    return { event, data: JSON.parse(dataText) as JsonObject };
+    const parsed = JSON.parse(value) as unknown;
+    return { event, data: isRecord(parsed) ? parsed : { value: parsed } };
   } catch {
-    return { event, data: { text: dataText } };
+    // error-policy:J3 Plain SSE data is valid text, never fabricated JSON.
+    return { event, data: { text: value } };
   }
 }
 
-function extractSseText(event: string, data: JsonObject | null): string {
-  if (!data) return "";
-  const direct =
-    typeof data.text === "string"
-      ? data.text
-      : typeof data.chunk === "string"
-        ? data.chunk
-        : typeof data.content === "string"
-          ? data.content
-          : "";
-  if (direct) return direct;
-
-  const content = data.content;
-  if (content && typeof content === "object" && !Array.isArray(content)) {
-    const text = (content as JsonObject).text;
-    if (typeof text === "string") return text;
-  }
+function sseText(event: string, data: JsonObject | null): string {
+  if (!data || event === "done") return "";
   if (event === "error") {
-    const message =
-      typeof data.message === "string"
-        ? data.message
-        : typeof data.error === "string"
-          ? data.error
-          : JSON.stringify(data);
-    throw new Error(`Stream returned error event: ${message}`);
+    throw new SharedSmokeFailure("sse", "error_event");
+  }
+  for (const key of ["text", "chunk", "content"] as const) {
+    const value = data[key];
+    if (typeof value === "string") return value;
+    if (isRecord(value) && typeof value.text === "string") return value.text;
   }
   return "";
 }
 
-async function assertStreamReply(): Promise<void> {
-  if (!agentId) throw new Error("Agent not initialized");
-  // Token phrased without quotes or "exact words:" — the stream path has its
-  // own no-reply fabrication (an SSE frame indistinguishable from a real
-  // reply), so the proof token missing from the fabricated text is the only
-  // reliable tell (#15616).
-  const token = `cloud-stream-pong-${runId}`;
-  await retryChatTurn("stream chat turn", () => streamChatTurn(token));
+function createFailureMayHaveCommitted(error: unknown): boolean {
+  const failure = asFailure(error);
+  return (
+    failure.phase === "create" &&
+    (failure.code === "request_failed" ||
+      failure.code === "invalid_create_contract" ||
+      failure.code === "missing_created_identity" ||
+      /^invalid_json_response_http_[25]\d\d$/.test(failure.code) ||
+      /^invalid_response_shape_http_[25]\d\d$/.test(failure.code) ||
+      /^unexpected_http_2\d\d$/.test(failure.code) ||
+      /^unexpected_http_5\d\d$/.test(failure.code) ||
+      failure.code === "redirect_refused")
+  );
 }
 
-async function streamChatTurn(token: string): Promise<void> {
-  if (!agentId) throw new Error("Agent not initialized");
-  const response = await requestStream(
-    `/api/v1/eliza/agents/${agentId}/stream`,
-    {
-      method: "POST",
-      body: JSON.stringify({
+/**
+ * Exercises the complete shared onboarding contract without ever selecting a
+ * dedicated tier. All failures are reduced to privacy-safe phase/code pairs;
+ * exact identifiers remain process-local solely for conditional cleanup.
+ */
+export async function runSharedStagingOnboardingSmoke(
+  options: SharedStagingSmokeOptions,
+): Promise<SharedStagingSmokeEvidence> {
+  const evidence = freshEvidence();
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((ms: number) => Bun.sleep(ms));
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const baseUrl = options.baseUrl ?? STAGING_BASE_URL;
+  const apiKey = options.apiKey.trim();
+  const requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
+  const cleanupTimeoutMs = options.cleanupTimeoutMs ?? CLEANUP_TIMEOUT_MS;
+  const createRecoveryTimeoutMs =
+    options.createRecoveryTimeoutMs ?? CREATE_RECOVERY_TIMEOUT_MS;
+  const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
+  const rawSuffix =
+    options.suffix ??
+    `${Date.now().toString(36)}${randomBytes(6).toString("hex")}`;
+  const totalDone = timedPhase(evidence, "total", now);
+
+  let suffix = "";
+  let expectedName = "";
+  let identity: AgentIdentity | null = null;
+  let possibleOrphan = false;
+
+  async function request(
+    phase: string,
+    path: string,
+    init: RequestInit = {},
+    expectedStatuses: readonly number[] = [200],
+    timeoutMs = requestTimeoutMs,
+  ): Promise<{ status: number; body: JsonObject }> {
+    const headers = new Headers(init.headers);
+    headers.set("authorization", `Bearer ${apiKey}`);
+    headers.set("accept", "application/json");
+    headers.set("user-agent", "eliza-shared-staging-smoke/1.0");
+    if (init.body && !headers.has("content-type")) {
+      headers.set("content-type", "application/json");
+    }
+
+    let response: Response;
+    try {
+      response = await fetchImpl(`${baseUrl}${path}`, {
+        ...init,
+        headers,
+        redirect: "error",
+        signal: init.signal ?? AbortSignal.timeout(timeoutMs),
+      });
+    } catch {
+      throw new SharedSmokeFailure(phase, "request_failed");
+    }
+    if (response.redirected) {
+      throw new SharedSmokeFailure(phase, "redirect_refused");
+    }
+    if (response.url && new URL(response.url).origin !== STAGING_BASE_URL) {
+      throw new SharedSmokeFailure(phase, "redirect_refused");
+    }
+
+    let parsed: unknown;
+    try {
+      const text = await response.text();
+      parsed = text ? JSON.parse(text) : {};
+    } catch {
+      throw new SharedSmokeFailure(
+        phase,
+        `invalid_json_response_http_${response.status}`,
+      );
+    }
+    if (!expectedStatuses.includes(response.status)) {
+      throw new SharedSmokeFailure(phase, `unexpected_http_${response.status}`);
+    }
+    if (!isRecord(parsed)) {
+      throw new SharedSmokeFailure(
+        phase,
+        `invalid_response_shape_http_${response.status}`,
+      );
+    }
+    return { status: response.status, body: parsed };
+  }
+
+  async function requestStream(path: string, body: string): Promise<Response> {
+    let response: Response;
+    try {
+      response = await fetchImpl(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          accept: "text/event-stream",
+          "content-type": "application/json",
+          "user-agent": "eliza-shared-staging-smoke/1.0",
+        },
+        body,
+        redirect: "error",
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+    } catch {
+      throw new SharedSmokeFailure("sse", "request_failed");
+    }
+    if (response.redirected) {
+      throw new SharedSmokeFailure("sse", "redirect_refused");
+    }
+    if (response.url && new URL(response.url).origin !== STAGING_BASE_URL) {
+      throw new SharedSmokeFailure("sse", "redirect_refused");
+    }
+    if (response.status !== 200) {
+      throw new SharedSmokeFailure("sse", `unexpected_http_${response.status}`);
+    }
+    if (!response.body) throw new SharedSmokeFailure("sse", "missing_body");
+    return response;
+  }
+
+  async function listAgents(phase: string): Promise<JsonObject[]> {
+    const { body } = await request(phase, "/api/v1/eliza/agents");
+    if (!Array.isArray(body.data) || !body.data.every(isRecord)) {
+      throw new SharedSmokeFailure(phase, "invalid_agent_list");
+    }
+    return body.data;
+  }
+
+  async function recoverAmbiguousCreate(): Promise<boolean> {
+    const deadline = now() + createRecoveryTimeoutMs;
+    let attempts = 0;
+    do {
+      attempts += 1;
+      try {
+        const matches = (await listAgents("create_recovery")).filter(
+          (agent) => stringField(agent, "agentName") === expectedName,
+        );
+        if (matches.length === 1) {
+          const recovered = parseIdentity(matches[0]);
+          if (recovered && recovered.name === expectedName) {
+            identity = recovered;
+            evidence.capacity.createdAgents = 1;
+            evidence.path.observedTier = privacySafeTier(
+              recovered.executionTier,
+            );
+            possibleOrphan = false;
+            return true;
+          }
+        }
+      } catch {
+        // error-policy:J6 Recovery is bounded and cleanup reports exhaustion.
+      }
+      if (attempts >= MAX_CREATE_RECOVERY_ATTEMPTS || now() >= deadline) {
+        break;
+      }
+      await sleep(Math.min(pollIntervalMs, Math.max(0, deadline - now())));
+    } while (now() <= deadline);
+    possibleOrphan = true;
+    return false;
+  }
+
+  async function jsonRpc(
+    phase: string,
+    method: string,
+    params: JsonObject = {},
+  ): Promise<JsonObject> {
+    if (!identity) {
+      throw new SharedSmokeFailure(phase, "agent_not_initialized");
+    }
+    const { body } = await request(
+      phase,
+      `/api/v1/eliza/agents/${encodeURIComponent(identity.id)}/bridge`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: `${method}-${suffix}`,
+          method,
+          params,
+        }),
+      },
+    );
+    if (body.error !== undefined) {
+      throw new SharedSmokeFailure(phase, "rpc_error");
+    }
+    if (!isRecord(body.result)) {
+      throw new SharedSmokeFailure(phase, "missing_rpc_result");
+    }
+    return body.result;
+  }
+
+  async function proveBridge(): Promise<void> {
+    const token = `shared-bridge-${suffix}`;
+    let lastFailure = new SharedSmokeFailure("bridge", "invalid_shared_reply");
+    for (let attempt = 0; attempt < MAX_CHAT_ATTEMPTS_PER_PATH; attempt += 1) {
+      evidence.capacity.chatRequests += 1;
+      try {
+        const result = await jsonRpc("bridge", "message.send", {
+          text: `Include the token ${token} in one short sentence.`,
+          roomId: `shared-smoke-bridge-${suffix}`,
+          userId: `shared-smoke-user-${suffix}`,
+          mode: "simple",
+        });
+        const verdict = classifyBridgeReply(result, token);
+        if (verdict.ok && verdict.transport === "shared-runtime") {
+          evidence.path.bridgeTransport = "shared-runtime";
+          evidence.path.bridgeReply = true;
+          evidence.path.successfulPaths += 1;
+          return;
+        }
+        lastFailure = new SharedSmokeFailure("bridge", "invalid_shared_reply");
+      } catch (error) {
+        lastFailure = asFailure(error);
+      }
+      if (attempt + 1 < MAX_CHAT_ATTEMPTS_PER_PATH) {
+        await sleep(pollIntervalMs);
+      }
+    }
+    throw lastFailure;
+  }
+
+  async function streamTurn(token: string): Promise<void> {
+    if (!identity) {
+      throw new SharedSmokeFailure("sse", "agent_not_initialized");
+    }
+    const response = await requestStream(
+      `/api/v1/eliza/agents/${encodeURIComponent(identity.id)}/stream`,
+      JSON.stringify({
         jsonrpc: "2.0",
-        id: `stream-${Date.now()}`,
+        id: `stream-${suffix}`,
         method: "message.send",
         params: {
-          text: `Reply with one short sentence that contains the token ${token}.`,
-          roomId: `cloud-smoke-stream-room-${runId}`,
+          text: `Include the token ${token} in one short sentence.`,
+          roomId: `shared-smoke-sse-${suffix}`,
           mode: "simple",
         },
       }),
-    },
-  );
-
-  if (!response.body) {
-    throw new Error("Stream response did not include a body");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let reply = "";
-  let sawDone = false;
-  const deadline = Date.now() + 120_000;
-
-  while (Date.now() < deadline) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const blocks = buffer.split(/\r?\n\r?\n/);
-    buffer = blocks.pop() ?? "";
-
-    for (const rawBlock of blocks) {
-      const parsed = parseSseBlock(rawBlock);
-      if (!parsed) continue;
-      if (parsed.event === "done") {
-        sawDone = true;
+    );
+    const stream = response.body;
+    if (!stream) throw new SharedSmokeFailure("sse", "missing_body");
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let reply = "";
+    let completed = false;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split(/\r?\n\r?\n/);
+        buffer = blocks.pop() ?? "";
+        for (const block of blocks) {
+          const parsed = parseSseBlock(block);
+          if (!parsed) continue;
+          if (parsed.event === "done") completed = true;
+          reply += sseText(parsed.event, parsed.data);
+        }
+        if (completed) break;
       }
-      reply += extractSseText(parsed.event, parsed.data);
+    } catch (error) {
+      if (error instanceof SharedSmokeFailure) throw error;
+      throw new SharedSmokeFailure("sse", "stream_read_failed");
     }
-
-    if (sawDone) break;
-  }
-
-  if (!sawDone && buffer.trim()) {
-    const parsed = parseSseBlock(buffer.trim());
-    if (parsed) {
-      if (parsed.event === "done") sawDone = true;
-      reply += extractSseText(parsed.event, parsed.data);
+    if (!completed && buffer.trim()) {
+      const parsed = parseSseBlock(buffer);
+      if (parsed) {
+        if (parsed.event === "done") completed = true;
+        reply += sseText(parsed.event, parsed.data);
+      }
+    }
+    if (!completed) throw new SharedSmokeFailure("sse", "missing_done_event");
+    const verdict = classifyBridgeReply({ text: reply }, token);
+    if (!verdict.ok) {
+      throw new SharedSmokeFailure("sse", "invalid_shared_reply");
     }
   }
 
-  const trimmed = reply.trim();
-  if (!trimmed) {
-    throw new Error(
-      `Stream did not return assistant text${sawDone ? "" : " before timeout"}`,
-    );
-  }
-  // SSE frames carry no fallback/failureKind flags, so judge the accumulated
-  // text: canned failure strings, echo-mode replies, and a missing proof
-  // token all reject.
-  const verdict = classifyBridgeReply({ text: trimmed }, token);
-  if (!verdict.ok) {
-    throw new Error(`${verdict.reason} — reply: ${trimmed.slice(0, 200)}`);
-  }
-  console.log(`[smoke] stream reply ${trimmed.length} chars (token echoed)`);
-}
-
-async function assertPairingToken(): Promise<void> {
-  if (!agentId) throw new Error("Agent not initialized");
-  const { body } = await requestJson(
-    `/api/v1/eliza/agents/${agentId}/pairing-token`,
-    {
-      method: "POST",
-    },
-  );
-  const data = body.data as JsonObject | undefined;
-  const redirectUrl =
-    typeof data?.redirectUrl === "string" ? data.redirectUrl : null;
-  if (!data || typeof data.token !== "string" || !redirectUrl) {
-    throw new Error(
-      `Pairing token response missing token or redirect URL: ${describeBody(body)}`,
-    );
+  async function proveSse(): Promise<void> {
+    const token = `shared-sse-${suffix}`;
+    for (let attempt = 0; attempt < MAX_CHAT_ATTEMPTS_PER_PATH; attempt += 1) {
+      evidence.capacity.chatRequests += 1;
+      try {
+        await streamTurn(token);
+        evidence.path.sseCompleted = true;
+        evidence.path.successfulPaths += 1;
+        return;
+      } catch (error) {
+        if (attempt + 1 >= MAX_CHAT_ATTEMPTS_PER_PATH) throw error;
+        await sleep(pollIntervalMs);
+      }
+    }
   }
 
-  const response = await fetch(redirectUrl, {
-    redirect: "manual",
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (response.status >= 500) {
-    throw new Error(`Pairing redirect URL returned HTTP ${response.status}`);
+  async function pollDeleteJob(jobId: string, deadline: number): Promise<void> {
+    while (now() < deadline) {
+      const { body } = await request(
+        "cleanup_job",
+        `/api/v1/jobs/${encodeURIComponent(jobId)}`,
+      );
+      const status = stringField(dataRecord(body), "status") ?? "unknown";
+      if (status === "completed") return;
+      if (TERMINAL_JOB_STATUSES.has(status)) {
+        throw new SharedSmokeFailure("cleanup_job", "delete_job_failed");
+      }
+      await sleep(pollIntervalMs);
+    }
+    throw new SharedSmokeFailure("cleanup_job", "delete_job_timeout");
   }
-}
 
-async function deleteAgent(): Promise<void> {
-  if (!agentId) return;
-  const deletedAgentId = agentId;
-  await requestJson(
-    `/api/v1/eliza/agents/${deletedAgentId}`,
-    { method: "DELETE" },
-    [200, 404],
-  );
-  await requestJson(`/api/v1/eliza/agents/${deletedAgentId}`, {}, [404]);
-  agentId = undefined;
-}
+  async function cleanup(): Promise<void> {
+    const finish = timedPhase(evidence, "cleanup", now);
+    try {
+      if (!identity) {
+        if (possibleOrphan) {
+          evidence.cleanup.status = "failed";
+          evidence.cleanup.possibleOrphan = true;
+          throw new SharedSmokeFailure(
+            "cleanup",
+            "possible_orphan_after_ambiguous_create",
+          );
+        }
+        evidence.cleanup.status = "not-required";
+        evidence.cleanup.possibleOrphan = false;
+        return;
+      }
 
-async function cleanup(): Promise<void> {
-  if (keepResources) {
-    console.warn(
-      `[smoke] keeping resources for debug: agent=${agentId ?? ""} org=${orgId ?? ""}`,
-    );
-    return;
+      const deadline = now() + cleanupTimeoutMs;
+      const current = await request(
+        "cleanup_verify",
+        `/api/v1/eliza/agents/${encodeURIComponent(identity.id)}`,
+        {},
+        [200, 404],
+      );
+      if (current.status === 404) {
+        throw new SharedSmokeFailure(
+          "cleanup_verify",
+          "created_agent_missing_before_delete",
+        );
+      }
+      if (!identityMatches(dataRecord(current.body), identity)) {
+        throw new SharedSmokeFailure("cleanup_verify", "identity_mismatch");
+      }
+
+      const deletion = await request(
+        "cleanup_delete",
+        `/api/v1/eliza/agents/${encodeURIComponent(identity.id)}`,
+        {
+          method: "DELETE",
+          body: JSON.stringify({
+            expectedAgentName: identity.name,
+            expectedCreatedAt: identity.createdAt,
+            expectedExecutionTier: identity.executionTier,
+          }),
+        },
+        [200, 202],
+      );
+      if (deletion.status === 200) {
+        const data = dataRecord(deletion.body);
+        if (
+          deletion.body.success !== true ||
+          deletion.body.deleted !== true ||
+          deletion.body.source !== "shared_runtime" ||
+          stringField(data, "agentId") !== identity.id ||
+          stringField(data, "status") !== "deleted" ||
+          stringField(data, "executionTier") !== identity.executionTier
+        ) {
+          throw new SharedSmokeFailure(
+            "cleanup_delete",
+            "invalid_sync_delete_contract",
+          );
+        }
+      } else {
+        const jobId = stringField(dataRecord(deletion.body), "jobId");
+        if (!jobId) {
+          throw new SharedSmokeFailure("cleanup_delete", "missing_delete_job");
+        }
+        await pollDeleteJob(jobId, deadline);
+      }
+
+      while (now() < deadline) {
+        const confirmation = await request(
+          "cleanup_confirm",
+          `/api/v1/eliza/agents/${encodeURIComponent(identity.id)}`,
+          {},
+          [200, 404],
+        );
+        if (confirmation.status === 404) {
+          identity = null;
+          evidence.cleanup.status = "passed";
+          evidence.cleanup.possibleOrphan = false;
+          return;
+        }
+        if (!identityMatches(dataRecord(confirmation.body), identity)) {
+          throw new SharedSmokeFailure("cleanup_confirm", "identity_mismatch");
+        }
+        await sleep(pollIntervalMs);
+      }
+      throw new SharedSmokeFailure("cleanup_confirm", "final_404_not_observed");
+    } finally {
+      finish();
+    }
   }
 
   try {
-    await deleteAgent();
+    suffix = sanitizeSuffix(rawSuffix);
+    expectedName = `${SMOKE_NAME_PREFIX}${suffix}`;
+    if (!apiKey) {
+      throw new SharedSmokeFailure("config", "missing_cloud_credential");
+    }
+    if (!isExactSharedSmokeStagingOrigin(baseUrl)) {
+      throw new SharedSmokeFailure("config", "non_staging_target_refused");
+    }
+
+    await inTimedPhase(evidence, "preflight", now, async () => {
+      const health = await request("preflight", "/api/health");
+      const commit = stringField(health.body, "commit");
+      if (!commit || !/^[a-f0-9]{40}$/.test(commit)) {
+        throw new SharedSmokeFailure("preflight", "missing_deploy_commit");
+      }
+      evidence.deployedCommit = commit;
+
+      const existingAgents = await listAgents("preflight");
+      if (existingAgents.length !== 0) {
+        throw new SharedSmokeFailure("preflight", "credential_not_isolated");
+      }
+      evidence.path.credentialPreflight = true;
+      evidence.capacity.isolatedCredential = true;
+    });
+
+    await inTimedPhase(evidence, "create", now, async () => {
+      try {
+        const created = await request(
+          "create",
+          "/api/v1/eliza/agents",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              agentName: expectedName,
+              autoProvision: false,
+              agentConfig: {
+                name: "Shared Staging Smoke",
+                username: expectedName,
+                system: "A concise staging smoke assistant.",
+                bio: ["Shared staging onboarding smoke."],
+                topics: ["shared staging onboarding"],
+                adjectives: ["concise"],
+                plugins: [...SMOKE_AGENT_PLUGINS],
+                settings: { secrets: {} },
+              },
+              environmentVars: {
+                ELIZA_SHARED_STAGING_SMOKE: "1",
+              },
+            }),
+          },
+          [200, 201],
+        );
+        const createdData = dataRecord(created.body);
+        const parsedIdentity = parseIdentity(createdData);
+        if (created.body.created === false) {
+          throw new SharedSmokeFailure("create", "fresh_create_required");
+        }
+        if (created.body.created !== true) {
+          throw new SharedSmokeFailure("create", "invalid_create_contract");
+        }
+        // A response that explicitly says it created a row is cleanup-owned
+        // even if the HTTP status/source later drift from the required
+        // contract. Idempotent `created:false` responses remain untouchable.
+        if (!parsedIdentity || parsedIdentity.name !== expectedName) {
+          throw new SharedSmokeFailure("create", "missing_created_identity");
+        }
+        identity = parsedIdentity;
+        evidence.capacity.createdAgents = 1;
+        evidence.path.observedTier = privacySafeTier(
+          parsedIdentity.executionTier,
+        );
+
+        if (
+          created.status !== 201 ||
+          created.body.success !== true ||
+          created.body.created !== true ||
+          created.body.source !== "shared_runtime" ||
+          !identity
+        ) {
+          throw new SharedSmokeFailure("create", "fresh_create_required");
+        }
+        if (identity.executionTier !== EXPECTED_TIER) {
+          throw new SharedSmokeFailure("create", "wrong_execution_tier");
+        }
+        evidence.path.freshCreate = true;
+      } catch (error) {
+        if (!identity && createFailureMayHaveCommitted(error)) {
+          await recoverAmbiguousCreate();
+        }
+        throw error;
+      }
+    });
+
+    await inTimedPhase(evidence, "provision", now, async () => {
+      if (!identity) {
+        throw new SharedSmokeFailure("provision", "agent_not_initialized");
+      }
+      const provisioned = await request(
+        "provision",
+        `/api/v1/eliza/agents/${encodeURIComponent(identity.id)}/provision`,
+        { method: "POST" },
+      );
+      const data = dataRecord(provisioned.body);
+      if (
+        provisioned.body.success !== true ||
+        provisioned.body.source !== "shared_runtime" ||
+        stringField(data, "id") !== identity.id ||
+        stringField(data, "agentName") !== identity.name ||
+        stringField(data, "status") !== "running" ||
+        stringField(data, "executionTier") !== EXPECTED_TIER
+      ) {
+        throw new SharedSmokeFailure(
+          "provision",
+          "invalid_immediate_shared_contract",
+        );
+      }
+
+      const detail = await request(
+        "provision",
+        `/api/v1/eliza/agents/${encodeURIComponent(identity.id)}`,
+      );
+      const detailData = dataRecord(detail.body);
+      if (
+        !identityMatches(detailData, identity) ||
+        stringField(detailData, "status") !== "running"
+      ) {
+        throw new SharedSmokeFailure("provision", "identity_mismatch");
+      }
+      evidence.path.immediateProvision = true;
+    });
+
+    await inTimedPhase(evidence, "bridge", now, proveBridge);
+    await inTimedPhase(evidence, "sse", now, proveSse);
+
+    await inTimedPhase(evidence, "pairing", now, async () => {
+      if (!identity) {
+        throw new SharedSmokeFailure("pairing", "agent_not_initialized");
+      }
+      const pairing = await request(
+        "pairing",
+        `/api/v1/eliza/agents/${encodeURIComponent(identity.id)}/pairing-token`,
+        { method: "POST" },
+        [503],
+      );
+      if (
+        pairing.body.success !== false ||
+        pairing.body.code !== "AGENT_WEB_UI_NOT_READY"
+      ) {
+        throw new SharedSmokeFailure(
+          "pairing",
+          "invalid_shared_pairing_contract",
+        );
+      }
+      evidence.path.pairingUnavailable = true;
+    });
   } catch (error) {
-    console.warn(
-      `[smoke] agent cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const failure = asFailure(error);
+    evidence.failure = { phase: failure.phase, code: failure.code };
+  } finally {
+    try {
+      await cleanup();
+    } catch (error) {
+      // Cleanup is authoritative: an unconfirmed retained resource is more
+      // important than the operation failure that led to teardown.
+      const failure = asFailure(error);
+      evidence.cleanup.status = "failed";
+      evidence.cleanup.possibleOrphan = possibleOrphan || identity !== null;
+      evidence.failure = { phase: failure.phase, code: failure.code };
+    }
+    totalDone();
   }
 
-  if (cleanupDbOrg && orgId) {
-    await dbWrite.delete(organizations).where(eq(organizations.id, orgId));
-    orgId = undefined;
+  if (
+    evidence.failure === null &&
+    evidence.path.credentialPreflight &&
+    evidence.path.freshCreate &&
+    evidence.path.immediateProvision &&
+    evidence.path.bridgeReply &&
+    evidence.path.sseCompleted &&
+    evidence.path.pairingUnavailable &&
+    evidence.path.successfulPaths === 2 &&
+    evidence.capacity.createdAgents === 1 &&
+    evidence.capacity.isolatedCredential &&
+    evidence.capacity.chatRequests >= 2 &&
+    evidence.capacity.chatRequests <= evidence.capacity.maxChatRequests &&
+    evidence.cleanup.status === "passed" &&
+    !evidence.cleanup.possibleOrphan
+  ) {
+    evidence.verdict = "pass";
   }
+  return evidence;
 }
 
 async function main(): Promise<void> {
-  console.log(`[smoke] base ${baseUrl}`);
-  await createSmokeIdentity();
-  console.log("[smoke] disposable auth ready");
+  const githubRunId = workflowEnv("GITHUB_RUN_ID")?.trim();
+  const githubRunAttempt = workflowEnv("GITHUB_RUN_ATTEMPT")?.trim();
+  const evidencePath =
+    workflowEnv("CLOUD_SHARED_STAGING_SMOKE_EVIDENCE_PATH")?.trim() ||
+    "/tmp/shared-staging-smoke-evidence.json";
+  const evidence = await runSharedStagingOnboardingSmoke({
+    apiKey: workflowEnv("ELIZAOS_CLOUD_API_KEY") ?? "",
+    baseUrl: workflowEnv("CLOUD_SMOKE_BASE_URL"),
+    suffix:
+      githubRunId && githubRunAttempt
+        ? `r${githubRunId}a${githubRunAttempt}`
+        : undefined,
+  });
+  await mkdir(dirname(evidencePath), { recursive: true, mode: 0o700 });
+  await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, {
+    mode: 0o600,
+  });
 
-  await createAgent();
-  console.log(`[smoke] agent created ${agentId}`);
-
-  const jobId = await provisionAgent();
-  console.log(`[smoke] provision enqueued ${jobId}`);
-
-  await waitForJob(jobId);
-  await assertAgentRunning();
-  console.log("[smoke] agent running");
-
-  await assertBridge();
-  console.log("[smoke] bridge ok");
-
-  if (!skipStreamSmoke) {
-    await assertStreamReply();
-    console.log("[smoke] stream ok");
-  }
-
-  await assertPairingToken();
-  console.log("[smoke] pairing ok");
-
-  await deleteAgent();
-  console.log("[smoke] delete ok");
+  console.log(
+    `[shared-staging-smoke] verdict=${evidence.verdict} paths=${evidence.path.successfulPaths}/2 pairing-negative=${evidence.path.pairingUnavailable} cleanup=${evidence.cleanup.status} possible-orphan=${evidence.cleanup.possibleOrphan}`,
+  );
+  if (evidence.verdict !== "pass") process.exitCode = 1;
 }
 
-try {
+if (import.meta.main) {
   await main();
-  console.log("[smoke] complete");
-} finally {
-  await cleanup();
 }
