@@ -13,6 +13,11 @@
  * the planner-emitted enum, deliberately doing no natural-language keyword
  * inference so routing stays language-agnostic (#10471).
  */
+
+import {
+	linkShareOwnText,
+	looksLikeBareLinkShare,
+} from "../../services/message/direct-action-heuristics.ts";
 import {
 	type Action,
 	type ActionResult,
@@ -42,6 +47,8 @@ const ATTACHMENT_ACTIONS = ["read", "save_as_document"] as const;
 const MAX_ATTACHMENT_ANSWER_CHARS = 32_000;
 const MIN_ATTACHMENT_ANSWER_TOKENS = 1024;
 const MAX_ATTACHMENT_ANSWER_TOKENS = 4096;
+/** A bare link share wants a one-to-two sentence reaction, not a page digest. */
+const BARE_LINK_ANSWER_TOKENS = 256;
 type AttachmentAction = (typeof ATTACHMENT_ACTIONS)[number];
 type AttachmentRecord = Awaited<
 	ReturnType<typeof readAttachmentRecords>
@@ -50,6 +57,25 @@ type AttachmentRecord = Awaited<
 function shouldShowAttachmentRecord(messageText: string): boolean {
 	return /\b(?:attachment|file)\s+(?:id|ids|metadata|details|info|record)\b/i.test(
 		messageText,
+	);
+}
+
+/** Question or explicit-ask phrasing in the user's own words (URLs and
+ * connector embed previews excluded, so a page title like "What is X?" never
+ * counts as the user asking). */
+const LINK_SHARE_ASK_PATTERN =
+	/(?:\?|\b(?:what|who|when|where|why|how|which|explain|summarize|summarise|summary|tldr|tl;dr|thoughts|opinion|review|eli5|tell\s+me|can\s+you|could\s+you|would\s+you)\b)/iu;
+
+/**
+ * True for "here's a link" with no actual ask. looksLikeBareLinkShare alone is
+ * a ROUTING predicate — it also accepts a short question next to the link
+ * (both fetch the page) — but a question wants the question answered, not a
+ * one-take page summary.
+ */
+function isLinkShareWithoutAsk(text: string): boolean {
+	return (
+		looksLikeBareLinkShare(text) &&
+		!LINK_SHARE_ASK_PATTERN.test(linkShareOwnText(text))
 	);
 }
 
@@ -164,17 +190,27 @@ async function answerAttachmentRequest(params: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	content: string;
+	fallbackText: string;
 }): Promise<string> {
 	const userRequest =
 		typeof params.message.content.text === "string"
 			? params.message.content.text.trim()
 			: "";
+	// A message that is essentially just a URL asks for a short reaction to the
+	// page, not a rendition of it (observed live: a shared link answered with
+	// the whole stored page arrived as a ~13-message wall on Discord).
+	const bareLinkShare = isLinkShareWithoutAsk(userRequest);
 	const prompt = [
 		"You are answering a user request about an attachment.",
 		"Use only the attachment content, extracted text, transcript, or media description below.",
 		'Follow explicit formatting instructions from the user, including requests such as "only" or "keep it short".',
 		"If the requested answer is not in the attachment content, say that briefly.",
 		"Do not include attachment metadata, IDs, source labels, or implementation details.",
+		...(bareLinkShare
+			? [
+					"The user shared a link without asking a question. Reply with ONE short take of at most two sentences on what the page is. Never reproduce the page content.",
+				]
+			: []),
 		"",
 		`User request:\n${userRequest || "Read the attachment."}`,
 		"",
@@ -183,10 +219,14 @@ async function answerAttachmentRequest(params: {
 	const response = await params.runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
 		temperature: 0,
-		maxTokens: attachmentAnswerTokenBudget(params.content),
+		maxTokens: bareLinkShare
+			? BARE_LINK_ANSWER_TOKENS
+			: attachmentAnswerTokenBudget(params.content),
 	});
 	const text = String(response).trim();
-	return text || params.content;
+	// Never fall back to the raw stored content: an empty model response must
+	// degrade to a short acknowledgement, not a verbatim page dump.
+	return text || params.fallbackText;
 }
 
 function getActionParams(
@@ -486,20 +526,26 @@ export const readAttachmentAction: Action = {
 				typeof messageWithParams.content.text === "string"
 					? messageWithParams.content.text.trim()
 					: "";
-			const visibleText =
-				hasContent &&
-				!clipboardResult.requested &&
-				!shouldShowAttachmentRecord(messageText)
+			// The record dump (metadata envelope + full stored content) is
+			// planner-facing and reaches chat only when the user explicitly asked
+			// for the attachment record. Every other read answers in prose —
+			// observed live: a clipboard-requested read of a shared link switched
+			// delivery to the record dump and shipped the whole scraped page
+			// verbatim to Discord. The planner still gets the full content and
+			// clipboard state through `data`.
+			const visibleText = shouldShowAttachmentRecord(messageText)
+				? responseText
+				: hasContent
 					? await answerAttachmentRequest({
 							runtime,
 							message: messageWithParams,
 							content: storedContent,
+							fallbackText:
+								records.length === 1
+									? `Read "${titleForRecord(records[0])}" but couldn't put an answer together — ask me something specific about it.`
+									: "Read the attachments but couldn't put an answer together — ask me something specific about them.",
 						})
-					: !hasContent &&
-							!clipboardResult.requested &&
-							!shouldShowAttachmentRecord(messageText)
-						? missingReadableContentMessage(records)
-						: responseText;
+					: missingReadableContentMessage(records);
 
 			if (callback) {
 				await callback({
