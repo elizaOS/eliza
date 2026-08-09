@@ -1556,9 +1556,18 @@ describe("runOnboardingChat", () => {
         const transcript = String(
           (rememberRequests[0]?.body as { text: string }).text,
         );
+
+        // Count both user lines AND assistant lines to catch any
+        // poll-generated duplicate "Eliza onboarding:" entries that a
+        // user-only assertion would miss.
         const userLines = transcript.match(/^User: /gm) ?? [];
         expect(userLines).toHaveLength(1);
         expect(transcript).toContain("User: My name is Sam");
+
+        // The assistant reply fires exactly once. Poll-generated duplicates
+        // serialize as "Eliza onboarding: ..." — assert there is at most one.
+        const onboardingLines = transcript.match(/^Eliza onboarding:/gm) ?? [];
+        expect(onboardingLines.length).toBeLessThanOrEqual(1);
       } finally {
         globalThis.fetch = originalFetch;
       }
