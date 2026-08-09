@@ -137,18 +137,37 @@ async function request(
   path: string,
   opts: FetchOptions = {},
 ): Promise<Response> {
-  const init: RequestInit = {
-    method,
-    signal: timeoutSignal(),
-    headers: opts.headers ?? {},
+  const makeInit = (): RequestInit => {
+    const init: RequestInit = {
+      method,
+      signal: timeoutSignal(),
+      headers: { ...(opts.headers ?? {}) },
+    };
+    if (opts.body !== undefined) {
+      (init.headers as Record<string, string>)["Content-Type"] ??=
+        "application/json";
+      init.body =
+        typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
+    }
+    return init;
   };
-  if (opts.body !== undefined) {
-    (init.headers as Record<string, string>)["Content-Type"] ??=
-      "application/json";
-    init.body =
-      typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
+  let res = await fetch(url(path), makeInit());
+  // Local wrangler dev can answer with its OWN plain-text 503 while workerd
+  // recycles the isolate (typically right after a long/heavy request); the
+  // Hono app never sees such a request. The app's real 503s always carry a
+  // JSON envelope from failureResponse, so a non-JSON 503 from a local target
+  // is infrastructure noise, not the contract under test — retry it.
+  for (
+    let attempt = 0;
+    attempt < 2 &&
+    res.status === 503 &&
+    isLocalTarget() &&
+    !(res.headers.get("content-type") ?? "").includes("application/json");
+    attempt++
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    res = await fetch(url(path), makeInit());
   }
-  const res = await fetch(url(path), init);
   recordStatus(method, path, res.status);
   return res;
 }

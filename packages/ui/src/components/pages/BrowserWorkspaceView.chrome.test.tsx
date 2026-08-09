@@ -264,11 +264,18 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         "https://example.com/",
       ),
     );
-    await waitFor(() => expect(address.hasAttribute("disabled")).toBe(false));
+    // Loaded CI runners stretch the busy→enabled transition and the
+    // focus-restore effect past waitFor's 1s default; the contract is the
+    // transition itself, so give it a bounded but generous budget.
+    await waitFor(() => expect(address.hasAttribute("disabled")).toBe(false), {
+      timeout: 10_000,
+    });
     fireEvent.load(iframe);
     iframe.focus();
 
-    await waitFor(() => expect(document.activeElement).toBe(address));
+    await waitFor(() => expect(document.activeElement).toBe(address), {
+      timeout: 10_000,
+    });
   });
 
   it("opens a fresh Google home tab instead of cloning the active address", async () => {

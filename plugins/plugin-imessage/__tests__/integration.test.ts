@@ -572,7 +572,8 @@ describe("chatDbMessageToPublicShape", () => {
   });
 });
 
-describe("openChatDb + ChatDbReader (bun:sqlite backed)", () => {
+// Real-SQLite tests hit disk on shared CI runners; give them generous timeouts.
+describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, () => {
   // These tests create a real SQLite file on disk and open it via the
   // same openChatDb() the service uses, so the entire query path —
   // prepared statements, joins, text filtering, ROWID cursor, and null
@@ -689,6 +690,13 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", () => {
     }
     const db = openDatabase(path);
 
+    // CI runners have slow, contended disks; without these pragmas every
+    // statement below is its own fsync-ed transaction and fixture creation
+    // alone can eat the entire test timeout.
+    db.run("PRAGMA journal_mode = MEMORY");
+    db.run("PRAGMA synchronous = OFF");
+    db.run("BEGIN");
+
     db.run(`
       CREATE TABLE handle (
         ROWID INTEGER PRIMARY KEY,
@@ -794,6 +802,7 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", () => {
     db.run("INSERT INTO chat_message_join (chat_id, message_id) VALUES (2, 12)");
     db.run("INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 13)");
 
+    db.run("COMMIT");
     db.close();
 
     return {
