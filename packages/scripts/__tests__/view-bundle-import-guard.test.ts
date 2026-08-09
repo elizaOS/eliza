@@ -64,6 +64,8 @@ function fixture() {
 }
 
 describe("view bundle import guard", () => {
+  // The first validateViewBundles call pays one-time host-registry parsing
+  // cost, which exceeds the 5s default on loaded CI runners.
   test("reports a configured bundle that was not built", async () => {
     const { options } = fixture();
     const result = await validateViewBundles({
@@ -76,7 +78,7 @@ describe("view bundle import guard", () => {
     expect(result.violations).toEqual([]);
     expect(result.unexpectedChunks).toEqual([]);
     expect(result.unexpectedArtifacts).toEqual([]);
-  });
+  }, 30000);
 
   test("reports unsupported imports from a real emitted bundle", async () => {
     const { absoluteDir, options } = fixture();

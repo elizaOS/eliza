@@ -253,6 +253,8 @@ describe("job interruption catalog preflight", () => {
     expect(ended).toBe(true);
   });
 
+  // 30s budget: reads two repo files under the CI sweep's heavy parallel load,
+  // where host starvation alone has pushed this past bun's default 5s timeout.
   test("guards both deploy restart and every systemd worker activation", async () => {
     const workflow = await readFile(
       path.join(ROOT, ".github/workflows/deploy-eliza-provisioning-worker.yml"),
@@ -318,5 +320,5 @@ describe("job interruption catalog preflight", () => {
       MAX_PREFLIGHT_OPERATION_MS,
     );
     expect(MAX_PREFLIGHT_OPERATION_MS).toBeLessThan(8 * 60_000);
-  });
+  }, 30_000);
 });

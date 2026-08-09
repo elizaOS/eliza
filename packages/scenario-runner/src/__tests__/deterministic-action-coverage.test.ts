@@ -99,6 +99,10 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
   ],
   "@elizaos/plugin-agent-skills": [
     "SKILL",
+    "SKILL_DETAILS",
+    "SKILL_INSTALL",
+    "SKILL_SEARCH",
+    "SKILL_SYNC",
     "SKILL_TOGGLE",
     "SKILL_UNINSTALL",
     "USE_SKILL",
@@ -107,6 +111,7 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "GENERATE_MEDIA",
     "IDENTIFY_SPEAKER",
     "LOCAL_INFERENCE",
+    "MANAGE_TRANSCRIPT_PRIVACY",
     "REDACT_TRANSCRIPT",
     "SHARE_TRANSCRIPT",
     "START_TRANSCRIPTION",
@@ -199,8 +204,14 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "STOP_TRANSCRIPTION",
   // Transcript permissioning actions (#15606); no deterministic keyless
   // scenario yet.
+  "MANAGE_TRANSCRIPT_PRIVACY",
   "REDACT_TRANSCRIPT",
   "SHARE_TRANSCRIPT",
+  // Skill registry management actions; no deterministic keyless scenario yet.
+  "SKILL_DETAILS",
+  "SKILL_INSTALL",
+  "SKILL_SEARCH",
+  "SKILL_SYNC",
   // New workflow code-eval action (#8914); no deterministic keyless scenario yet.
   "EVAL_CODE",
   // App-control agent/model switchers; dispatched through dashboard

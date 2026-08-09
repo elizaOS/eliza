@@ -26,7 +26,11 @@ const CHAT_SEND_SELECTOR =
 const VIEW_SWITCH_URL_TIMEOUT_MS = LIVE_STACK ? 90_000 : 30_000;
 
 function calendarView(page: Page): Locator {
-  return page.getByText("Design sync").first();
+  // /calendar mounts SimpleCalendarView (#17859): a month grid whose populated
+  // proof is the mocked feed rendering as a day-cell event badge — the mock
+  // anchors events at the grid's window start, so the event titles only appear
+  // in the agenda when that day is selected.
+  return page.getByRole("img", { name: /^1 event on / }).first();
 }
 
 function inboxView(page: Page): Locator {
@@ -712,7 +716,12 @@ test("agent split-view navigate renders documents and calendar layout", async ({
   await expect(documentsPane.getByTestId("documents-view")).toBeVisible({
     timeout: 30_000,
   });
-  await expect(calendarPane.getByText("Design sync").first()).toBeVisible({
+  // SimpleCalendarView (#17859) renders the mocked feed as a day-cell event
+  // badge in the month grid; event titles only appear in the selected-day
+  // agenda, so the badge is the deterministic populated signal.
+  await expect(
+    calendarPane.getByRole("img", { name: /^1 event on / }).first(),
+  ).toBeVisible({
     timeout: 30_000,
   });
 });
