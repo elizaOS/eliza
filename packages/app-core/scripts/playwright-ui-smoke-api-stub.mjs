@@ -679,7 +679,7 @@ const stubCharacter = {
   postExamples: [],
 };
 
-const stubExperiences = [
+let stubExperiences = [
   {
     id: "stub-exp-vite-env",
     type: "correction",
@@ -3384,6 +3384,48 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  const experienceMatch = url.pathname.match(
+    /^\/api\/character\/experiences\/([^/]+)$/,
+  );
+  if (experienceMatch && (req.method === "PATCH" || req.method === "DELETE")) {
+    const experienceId = decodeURIComponent(experienceMatch[1]);
+    const experienceIndex = stubExperiences.findIndex(
+      (experience) => experience.id === experienceId,
+    );
+    if (experienceIndex < 0) {
+      sendJson(req, res, 404, { error: "Experience not found" });
+      return;
+    }
+    if (req.method === "DELETE") {
+      stubExperiences = stubExperiences.filter(
+        (experience) => experience.id !== experienceId,
+      );
+      sendJson(req, res, 200, { ok: true });
+      return;
+    }
+
+    const body = (await readJsonBody(req)) || {};
+    const current = stubExperiences[experienceIndex];
+    const updated = {
+      ...current,
+      ...(typeof body.learning === "string" ? { learning: body.learning } : {}),
+      ...(typeof body.importance === "number"
+        ? { importance: body.importance }
+        : {}),
+      ...(typeof body.confidence === "number"
+        ? { confidence: body.confidence }
+        : {}),
+      ...(Array.isArray(body.tags) &&
+      body.tags.every((tag) => typeof tag === "string")
+        ? { tags: body.tags }
+        : {}),
+      updatedAt: nowIso(),
+    };
+    stubExperiences[experienceIndex] = updated;
+    sendJson(req, res, 200, { data: updated });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/relationships/activity") {
     sendJson(req, res, 200, { activity: [] });
     return;
@@ -3857,6 +3899,38 @@ const server = http.createServer(async (req, res) => {
     url.pathname === "/api/local-inference/hardware"
   ) {
     sendJson(req, res, 200, emptyLocalInferenceHardware);
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/device-tier"
+  ) {
+    sendJson(req, res, 200, {
+      tier: {
+        tier: "GOOD",
+        reasons: ["Deterministic UI-smoke hardware assessment"],
+        topRecommendation: "Run local text and voice models",
+        canRunLocalLm: true,
+        canRunLocalVoice: true,
+        recommendedMode: "local",
+        recommendedFit: null,
+        numericContext: {
+          totalRamGb: emptyLocalInferenceHardware.totalRamGb,
+          freeRamGb: emptyLocalInferenceHardware.freeRamGb,
+          effectiveModelMemoryGb: 16,
+          vramGb: null,
+          cpuCores: emptyLocalInferenceHardware.cpuCores,
+          appleSilicon: emptyLocalInferenceHardware.appleSilicon,
+          mobile: false,
+        },
+      },
+      memory: {
+        availableBytes: emptyLocalInferenceHardware.freeRamGb * 1024 ** 3,
+        totalBytes: emptyLocalInferenceHardware.totalRamGb * 1024 ** 3,
+      },
+      resident: null,
+    });
     return;
   }
 

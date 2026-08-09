@@ -181,6 +181,10 @@ describe("registered BlueBubbles local bridge E2E", () => {
           BLUEBUBBLES_BRIDGE_ID: bridgeId,
           BLUEBUBBLES_GATEWAY_PHONE_NUMBER: "+14155550123",
           BLUEBUBBLES_MESSAGES_DB_PATH: messagesDbPath,
+          BLUEBUBBLES_OUTBOUND_VALIDATION_PATH: join(
+            temporaryDirectory,
+            "outbound-validation.json",
+          ),
           BLUEBUBBLES_LOOPBACK_NORMALIZATION_ENABLED: "true",
           ELIZA_CLOUD_BLUEBUBBLES_URL: `http://127.0.0.1:${cloud.port}/api/webhooks/bluebubbles/${bridgeId}`,
           BLUEBUBBLES_AUTO_START: "false",

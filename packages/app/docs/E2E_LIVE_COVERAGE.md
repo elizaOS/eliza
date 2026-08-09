@@ -5,10 +5,12 @@ feature.
 
 ## Pull requests
 
-`.github/workflows/ci.yml` is the only pull-request workflow. Its `Tests` and
-`Smoke` jobs call the repository-level package sweeps and deterministic E2E
-suite. Path classification can skip unaffected groups, while the stable
-`Required` job remains the only status intended for branch protection.
+`.github/workflows/ci.yml` is the canonical required pull-request workflow. Its
+`Tests` and `Smoke` jobs call the repository-level package sweeps and
+deterministic E2E suite. Path classification can skip unaffected groups, while
+the stable `Required` job remains the only status intended for branch
+protection. Specialized and path-scoped workflows may add checks for the
+surfaces they own.
 
 The pull-request lane is credential-free. It uses deterministic model fixtures,
 local services, and checked-in browser fixtures. A test that requires a hosted
@@ -23,16 +25,19 @@ infrastructure.
 
 ## Live services
 
-`.github/workflows/live-smoke.yml` is manual-only. The dispatch input selects
-`app`, `scenarios`, `cloud`, `voice`, or `all`. Credential-backed failures are
-therefore visible without making ordinary repository health depend on secret
-availability or third-party uptime.
+`.github/workflows/live-smoke.yml` is the general manual dispatcher. Its input
+selects `app`, `scenarios`, `cloud`, `voice`, or `all`. Specialized
+`app-live-e2e.yml` and `voice-live-e2e.yml` jobs retain their own scheduled and
+manual evidence. Credential-backed failures are therefore visible without
+making the canonical required status depend on secret availability or
+third-party uptime.
 
 ## Platform and release evidence
 
 iOS, Android, desktop packaging, store signing, and physical-device evidence
-are operator-run release checks. Their commands remain in `packages/app` and
-`packages/app-core`; they are not automatic pull-request fan-out.
+remain package-owned. Path-scoped pull-request checks cover deterministic
+software contracts; operators still run the hardware and signed-artifact
+commands in `packages/app` and `packages/app-core` for release evidence.
 
 Run the narrow package command while developing, then use the repository gates
 before review:
