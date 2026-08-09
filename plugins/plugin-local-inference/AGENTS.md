@@ -4,7 +4,7 @@ Eliza-1 local inference provider: text generation, embeddings, TTS, ASR, image g
 
 ## Purpose / role
 
-This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION`. It also exposes the `GENERATE_MEDIA` agent action and HTTP routes for the model catalog, download orchestration, hardware detection, and voice tooling. The plugin is opt-in: it must be added to the elizaOS agent's plugin list. It requires at minimum one active local backend (an Eliza-1 GGUF bundle loaded via `LocalInferenceService` or an AOSP/device-bridge loader); without one, every model call throws `LocalInferenceUnavailableError` with code `LOCAL_INFERENCE_UNAVAILABLE`.
+This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION`. It also exposes the `GENERATE_MEDIA` agent action and HTTP routes for the model catalog, download orchestration, hardware detection, and voice tooling. The plugin is opt-in: it must be added to the elizaOS agent's plugin list. It requires at minimum one active local backend (an Eliza-1 GGUF bundle loaded via `LocalInferenceService`, an AOSP/Capacitor/bionic loader, or the canonical mobile bridge service); without one, every model call throws `LocalInferenceUnavailableError` with code `LOCAL_INFERENCE_UNAVAILABLE`.
 
 ## Plugin surface
 
@@ -25,7 +25,7 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 `TEXT_EMBEDDING` is **not** registered on the static plugin object — it is wired at boot by `ensureLocalInferenceHandler()` in the runtime subpath to avoid claiming the embedding slot before a backend is active.
 
 ### Registered elizaOS services
-- `LocalInferenceLoaderRuntimeService` (`src/services/runtime-services.ts`) — runtime-owned adapter for the one selected AOSP, Capacitor, bionic-host, or device-bridge loader. Registration is safe before `AgentRuntime.initialize()`; the boot hook waits for startup only after initialization, and runtime stop releases the selected backend.
+- `LocalInferenceLoaderRuntimeService` (`src/services/runtime-services.ts`) — runtime-owned adapter for the selected AOSP, Capacitor, or bionic-host loader. Registration is safe before `AgentRuntime.initialize()`; the boot hook waits for startup only after initialization, and runtime stop releases the selected backend. Stock device-bridge inference remains owned by `@elizaos/plugin-capacitor-bridge` through core's `MobileDeviceBridgeService` seam and registers handlers only after a device attaches.
 - `TimedAsrService` (`src/services/runtime-services.ts`) — additive `timedAsr` seam for fused per-word timings. Meeting transcription discovers it without importing this plugin or widening the string-only `TRANSCRIPTION` model contract.
 - `LocalPiiRecognizerService` (`src/pii/service.ts`) — registers under core's `PII_ENTITY_RECOGNIZER_SERVICE`; supplies the `LlmEntityRecognizer` (`src/pii/llm-recognizer.ts`) that the runtime's PII pseudonymization layer composes with its regex recognizer when `ELIZA_PII_SWAP_ENABLED` is on. Detection runs as a JSON-extraction prompt on the resident local backend through the inference priority gate; only values found verbatim in the source text are emitted, and `getRecognizer()` returns `null` (regex-only degrade) while no generation-capable local backend is active.
 

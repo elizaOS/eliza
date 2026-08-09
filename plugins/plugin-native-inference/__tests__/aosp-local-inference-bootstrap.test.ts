@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AgentRuntime } from "@elizaos/core";
+import { AgentRuntime, ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   firstSentenceEndIndex,
@@ -20,11 +20,13 @@ import {
   buildAospLoadModelArgs,
   buildGenerateArgsFromParams,
   disabledAospEmbeddingVector,
+  ensureAospLocalInferenceHandlers,
   flattenGenerateTextParamsForAospPrompt,
   isAospLocalEmbeddingEnabled,
   makeAospTextToSpeechHandler,
   parseMemAvailableMb,
   readAssignedBundledModels,
+  registerAospLlamaLoader,
   registerAospLoaderService,
   removeAospGeneratedStagingDir,
   shouldEvictChatForAvailMb,
@@ -103,6 +105,138 @@ function withEnv<T>(
     }
   }
 }
+
+async function withEnvAsync<T>(
+  overrides: Record<string, string | undefined>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = new Map<string, string | undefined>();
+  for (const key of Object.keys(overrides)) {
+    previous.set(key, process.env[key]);
+    const value = overrides[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    return await run();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+describe("AOSP headless boot ownership", () => {
+  it("builds one serving loader before initialize and tears that owner down once", async () => {
+    const stateDir = mkdtempSync(path.join(os.tmpdir(), "aosp-owner-boot-"));
+    const modelsDir = path.join(stateDir, "local-inference", "models");
+    const chatPath = path.join(modelsDir, "chat.gguf");
+    mkdirSync(modelsDir, { recursive: true });
+    writeFileSync(chatPath, "deterministic test model");
+    writeFileSync(
+      path.join(modelsDir, "manifest.json"),
+      JSON.stringify({
+        models: [{ role: "chat", ggufFile: path.basename(chatPath) }],
+      }),
+    );
+
+    await withEnvAsync(
+      {
+        ELIZA_LOCAL_LLAMA: "1",
+        ELIZA_DISABLE_FFI_LLAMA: undefined,
+        ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD: "1",
+        ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD: "1",
+        ELIZA_AOSP_TTS_PREWARM: "0",
+        ELIZA_STATE_DIR: stateDir,
+      },
+      async () => {
+        const runtime = new AgentRuntime({ logLevel: "fatal" });
+        let builderCalls = 0;
+        let currentPath: string | null = null;
+        let unloads = 0;
+        let closes = 0;
+        const rawLoader: AospLoader = {
+          async loadModel(args) {
+            currentPath = args.modelPath;
+          },
+          async unloadModel() {
+            unloads += 1;
+            currentPath = null;
+          },
+          currentModelPath: () => currentPath,
+          generate: async ({ prompt }) => `owned:${prompt}`,
+          embed: async () => ({ embedding: [0.5], tokens: 1 }),
+          async close() {
+            closes += 1;
+          },
+        };
+        const options = {
+          buildLoader: async () => {
+            builderCalls += 1;
+            return rawLoader;
+          },
+          prewarm: false,
+        };
+
+        try {
+          await expect(
+            ensureAospLocalInferenceHandlers(runtime, options),
+          ).resolves.toBe(true);
+          expect(builderCalls).toBe(1);
+          expect(
+            runtime
+              .getRegisteredServiceTypes()
+              .filter((type) => type === "localInferenceLoader"),
+          ).toHaveLength(1);
+
+          await runtime.initialize({
+            allowNoDatabase: true,
+            skipMigrations: true,
+          });
+          await expect(registerAospLlamaLoader(runtime, options)).resolves.toBe(
+            true,
+          );
+          await runtime.getServiceLoadPromise("localInferenceLoader");
+          await expect(
+            ensureAospLocalInferenceHandlers(runtime, options),
+          ).resolves.toBe(true);
+          expect(builderCalls).toBe(1);
+
+          for (const modelType of [
+            ModelType.TEXT_SMALL,
+            ModelType.TEXT_LARGE,
+            ModelType.TEXT_EMBEDDING,
+            ModelType.TEXT_TO_SPEECH,
+          ]) {
+            expect(
+              runtime
+                .getModelRegistrations()
+                .filter(
+                  (entry) =>
+                    entry.modelType === modelType &&
+                    entry.provider === "eliza-aosp-llama",
+                ),
+            ).toHaveLength(1);
+          }
+
+          const handler = runtime.getModel(ModelType.TEXT_SMALL);
+          if (!handler) throw new Error("AOSP TEXT_SMALL handler missing");
+          await expect(
+            handler(runtime, { prompt: "boot-order" }),
+          ).resolves.toBe("owned:boot-order");
+          expect(currentPath).toBe(chatPath);
+
+          await runtime.stop();
+          expect(unloads).toBe(1);
+          expect(closes).toBe(1);
+        } finally {
+          await runtime.stop({ fast: true });
+        }
+      },
+    );
+  });
+});
 
 describe("flattenGenerateTextParamsForAospPrompt", () => {
   it("passes through a legacy prompt unchanged", () => {
