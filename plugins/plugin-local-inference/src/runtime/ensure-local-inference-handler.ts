@@ -31,9 +31,11 @@ import {
 	type ImageDescriptionResult,
 	inferenceRamClassFromEnv,
 	logger,
+	type MobileDeviceBridgeService,
 	ModelType,
 	renderMessageHandlerStablePrefix,
 	resolveBackgroundInferenceBudget,
+	ServiceType,
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
@@ -56,7 +58,6 @@ import {
 	extractPromptCacheKey,
 	resolveLocalCacheKey,
 } from "../services/cache-bridge";
-import { registerDeviceBridgeLoader } from "../services/device-bridge";
 import { localInferenceEngine } from "../services/engine";
 import { handlerRegistry } from "../services/handler-registry";
 import { probeHardware } from "../services/hardware";
@@ -1372,6 +1373,26 @@ async function tryRegisterCapacitorLoader(
 	return false;
 }
 
+async function resolveMobileDeviceBridgeService(
+	runtime: AgentRuntime,
+): Promise<MobileDeviceBridgeService | null> {
+	if (!runtime.hasService(ServiceType.MOBILE_DEVICE_BRIDGE)) return null;
+	await runtime.getServiceLoadPromise(ServiceType.MOBILE_DEVICE_BRIDGE);
+	return runtime.getService<MobileDeviceBridgeService>(
+		ServiceType.MOBILE_DEVICE_BRIDGE,
+	);
+}
+
+function installLocalRouterAndMark(
+	runtime: AgentRuntime,
+	runtimeWithRegistration: RuntimeWithLocalInferenceFlag,
+): void {
+	installRouterHandler(runtime, {
+		skipSlots: isLocalEmbeddingDisabledByEnv() ? ["TEXT_EMBEDDING"] : [],
+	});
+	runtimeWithRegistration[LOCAL_INFERENCE_HANDLER_INSTALLED] = true;
+}
+
 /**
  * Synthetic conversation id used to keep the Stage-1 stable prefix
  * (system prompt + tool/action schema block + stable provider blocks)
@@ -1484,13 +1505,14 @@ export async function ensureLocalInferenceHandler(
 	//      libllama.so is dlopen'd directly, no IPC.
 	//   2. Capacitor native adapter when running on a mobile device with the
 	//      Capacitor APK shell.
-	//   3. Device-bridge (WebSocket to a paired phone) when explicitly
-	//      opted in via ELIZA_DEVICE_BRIDGE_ENABLED=1.
-	//   4. Standalone node-llama-cpp engine for desktop / server.
+	//   3. Standalone node-llama-cpp engine for desktop / server.
 	//
-	// All four satisfy the same `localInferenceLoader` service contract. Select
+	// These backends satisfy the `localInferenceLoader` service contract. Select
 	// exactly one: duplicate service classes make `getService()` ambiguous and
-	// transfer teardown ownership away from the backend that actually won.
+	// transfer teardown ownership away from the backend that actually won. The
+	// stock WebSocket device bridge is deliberately separate: capacitor-bridge
+	// owns it through `MobileDeviceBridgeService` and registers model handlers
+	// only after a paired device can serve them.
 	// Bionic-host delegation wins over every other loader: when set, the GPU is
 	// only reachable from the in-process app host, so the musl agent must NOT try
 	// the in-process FFI / device-bridge paths (the app shell already suppressed
@@ -1505,12 +1527,38 @@ export async function ensureLocalInferenceHandler(
 	const deviceBridgeEnabled =
 		!bionicHostRegistered &&
 		process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
-	if (!aospRegistered && !capacitorRegistered && deviceBridgeEnabled) {
-		await registerDeviceBridgeLoader(runtime);
-		await runtime.getServiceLoadPromise(LOCAL_INFERENCE_LOADER_SERVICE_TYPE);
+
+	// The AOSP bootstrap already registered its complete handler set before
+	// runtime.initialize() so embedding probes can use it. The post-init hook
+	// only starts/reuses that same service owner and installs routing metadata;
+	// adding generic handlers here would duplicate the same provider and revive
+	// the earlier-loader tie that leaked native ownership.
+	if (aospRegistered) {
+		installLocalRouterAndMark(runtime, runtimeWithRegistration);
 		logger.info(
-			"[local-inference] Registered device-bridge loader; inference routes to paired mobile device when connected",
+			"[local-inference] Reused the pre-initialize AOSP loader and handler set",
 		);
+		return;
+	}
+
+	// Stock device-bridge handlers belong to plugin-capacitor-bridge and are
+	// registered only after its canonical singleton has a real attached device.
+	// Resolve that singleton through the core service seam for lifecycle
+	// ownership, but never manufacture a second loader/provider from the env flag.
+	if (!capacitorRegistered && deviceBridgeEnabled) {
+		const bridgeService = await resolveMobileDeviceBridgeService(runtime);
+		if (bridgeService) {
+			const status = bridgeService.getMobileDeviceBridgeStatus();
+			logger.info(
+				`[local-inference] Canonical mobile device bridge service ready (${status.connected ? "device attached" : "waiting for attach"}); handler registration stays with the bridge owner`,
+			);
+		} else {
+			logger.warn(
+				"[local-inference] ELIZA_DEVICE_BRIDGE_ENABLED=1 but the canonical mobile device bridge service is not registered; leaving device handlers unregistered",
+			);
+		}
+		installLocalRouterAndMark(runtime, runtimeWithRegistration);
+		return;
 	}
 
 	// Text/voice availability and embedding availability are independent on
@@ -1524,9 +1572,7 @@ export async function ensureLocalInferenceHandler(
 	// is actually available.
 	const generalBackendAvailable =
 		bionicHostRegistered ||
-		aospRegistered ||
 		capacitorRegistered ||
-		deviceBridgeEnabled ||
 		(await localInferenceEngine.available());
 	if (!generalBackendAvailable) {
 		logger.debug(
@@ -1695,13 +1741,10 @@ export async function ensureLocalInferenceHandler(
 	// The router sits at Number.MAX_SAFE_INTEGER so the runtime dispatches
 	// to it first; at dispatch time it picks a real provider via
 	// `routing-policy` and calls that handler directly.
-	installRouterHandler(runtime, {
-		skipSlots: isLocalEmbeddingDisabledByEnv() ? ["TEXT_EMBEDDING"] : [],
-	});
+	installLocalRouterAndMark(runtime, runtimeWithRegistration);
 	logger.info(
 		"[local-inference] Installed top-priority router for cross-provider routing",
 	);
-	runtimeWithRegistration[LOCAL_INFERENCE_HANDLER_INSTALLED] = true;
 
 	// Warm-on-load (item I3): if a local model is already resident, KV-prefill
 	// the Stage-1 stable prefix onto the deterministic system-prefix slot so
