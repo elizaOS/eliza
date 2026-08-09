@@ -437,9 +437,7 @@ describe("managed producer → container env → status detector boundary", () =
     "ELIZAOS_CLOUD_ENABLED",
     "STEWARD_AGENT_TOKEN",
   ] as const;
-  const savedBoundary = Object.fromEntries(
-    boundaryKeys.map((key) => [key, process.env[key]]),
-  );
+  const savedBoundary = Object.fromEntries(boundaryKeys.map((key) => [key, process.env[key]]));
 
   beforeEach(() => {
     for (const key of boundaryKeys) {
