@@ -143,6 +143,24 @@ describe("personalityAction — subactions write structured state", () => {
 		expect(slot.reply_gate).toBe("never_until_lift");
 	});
 
+	test("set_reply_gate=addressed_or_ambient writes the gate with its own ack", async () => {
+		const { result, calls } = await run(
+			fake,
+			"only join in when it's for you or open chat",
+			"set_reply_gate",
+			{
+				scope: "user",
+				mode: "addressed_or_ambient",
+			},
+		);
+		expect(result.success).toBe(true);
+		expect(calls[0].text).toMatch(/address me|undirected/);
+		const slot = fake.store.getSlot(
+			"00000000-0000-4000-8000-0000000000ff" as never,
+		);
+		expect(slot.reply_gate).toBe("addressed_or_ambient");
+	});
+
 	test("lift_reply_gate resets to 'always'", async () => {
 		await run(fake, "shut up", "set_reply_gate", {
 			scope: "user",

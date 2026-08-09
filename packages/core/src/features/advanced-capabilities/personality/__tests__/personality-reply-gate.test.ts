@@ -1,8 +1,9 @@
 /**
  * Unit-tests the pure reply-gate helpers (resolveEffectiveReplyGate,
  * decideReplyGate, messageContainsLiftSignal): user-over-global precedence, the
- * never_until_lift / on_mention / always modes, and lift-signal detection. Pure
- * functions over plain slot objects — no runtime, model, or store.
+ * never_until_lift / on_mention / addressed_or_ambient / always modes, and
+ * lift-signal detection. Pure functions over plain slot objects — no runtime,
+ * model, or store.
  */
 import { describe, expect, test } from "vitest";
 import {
@@ -135,6 +136,24 @@ describe("decideReplyGate", () => {
 			explicitlyAddressesAgent: false,
 		});
 		expect(decision.allow).toBe(true);
+	});
+
+	test("addressed_or_ambient allows at ingress regardless of addressing", () => {
+		// The "never when addressed to another participant" half of this mode is
+		// decided post-Stage-1 by the engagement addressing gate; ingress always
+		// allows so the model call can produce the addressedTo signal.
+		for (const explicitlyAddressesAgent of [true, false]) {
+			const decision = decideReplyGate({
+				userSlot: userSlot({ reply_gate: "addressed_or_ambient" }),
+				globalSlot: globalSlot({ reply_gate: "never_until_lift" }),
+				messageText: "just chatting in the room",
+				explicitlyAddressesAgent,
+			});
+			expect(decision.allow).toBe(true);
+			if (decision.allow) {
+				expect(decision.reason).toBe("addressed_or_ambient");
+			}
+		}
 	});
 
 	test("global never_until_lift applies when user has no gate", () => {
