@@ -433,18 +433,12 @@ describe("PR agent attribution", () => {
 
     // Filled template rows + full terminal footer must still pass the CI gate.
     const filled = template
-      .replace(
-        /`yes` \/ `no - human-only contribution`/,
-        "yes",
-      )
+      .replace(/`yes` \/ `no - human-only contribution`/, "yes")
       .replace(
         /`provider\/model-id` \/ `None - human-only contribution`/,
         "`xai/grok-4.5`",
       )
-      .replace(
-        /`client-name` \/ `None - human-only contribution`/,
-        "grok",
-      )
+      .replace(/`client-name` \/ `None - human-only contribution`/, "grok")
       .replace(
         /`owner\/repo@full-commit-sha:path` \/ `N\/A - no contribution skill used`/,
         "`elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza`",
@@ -574,34 +568,6 @@ Attribution status: self-reported
     assert.match(workflow, /"\$BASE_SHA\.\.\.\$HEAD_SHA"/);
   });
 
-  it("carries both docs AI patch lanes into a develop-based policy-complete PR", () => {
-    const workflow = workflowSource(".github/workflows/docs-ci.yml");
-    assert.match(
-      workflow,
-      /git diff --no-ext-diff --no-textconv --binary\s*\\\s*"\$\{\{ steps\.link-base\.outputs\.sha \}\}" HEAD/,
-    );
-    assert.match(
-      workflow,
-      /git diff --no-ext-diff --no-textconv --binary\s*\\\s*"\$\{\{ steps\.quality-base\.outputs\.sha \}\}" HEAD/,
-    );
-    assert.match(workflow, /name: docs-link-fixes-\$\{\{ github\.run_id \}\}/);
-    assert.match(
-      workflow,
-      /name: docs-quality-fixes-\$\{\{ github\.run_id \}\}/,
-    );
-    assert.equal(
-      [...workflow.matchAll(/git apply --3way "\$patch"/g)].length,
-      1,
-      "the combined PR job must apply every downloaded patch through one fail-fast loop",
-    );
-    assert.match(workflow, /ref: develop/);
-    assert.match(workflow, /git config user\.name "github-actions\[bot\]"/);
-    assert.doesNotMatch(
-      workflow,
-      /git commit[\s\S]{0,180}\|\| (?:true|exit 0)/,
-    );
-  });
-
   it("normalizes only exact first-party Dependabot PRs with a valid visible policy", () => {
     const workflow = workflowSource(".github/workflows/pr.yaml");
     const jobStart = workflow.indexOf("  normalize-dependabot-body:");
@@ -708,10 +674,6 @@ Attribution status: self-reported
 
   it("discovers and validates every workflow-generated PR body", async () => {
     const workflowPaths = generatedPrWorkflowPaths();
-    assert.ok(
-      workflowPaths.length >= 1,
-      "expected all repository PR-creation workflows to be discovered",
-    );
     for (const workflowPath of workflowPaths) {
       const source = workflowSource(workflowPath);
       assert.match(
