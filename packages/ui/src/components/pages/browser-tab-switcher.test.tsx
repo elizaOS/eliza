@@ -159,6 +159,7 @@ describe("BrowserTabSwitcher", () => {
   it("renders a card per tab with its title, across all sections", () => {
     renderSwitcher();
     const dialog = screen.getByTestId("browser-workspace-tab-switcher");
+    expect(document.body.innerHTML).not.toContain("backdrop-blur");
     // 12 tab cards present (8 user + 3 agent + 1 app).
     for (const id of ["user-0", "user-7", "agent-0", "agent-2", "app-0"]) {
       expect(within(dialog).getByTestId(`browser-tab-card-${id}`)).toBeTruthy();
@@ -209,9 +210,13 @@ describe("BrowserTabSwitcher", () => {
     renderSwitcher();
     const agentCard = screen.getByTestId("browser-tab-card-agent-0");
     const userCard = screen.getByTestId("browser-tab-card-user-0");
-    expect(agentCard.innerHTML).toContain("border-border/70");
-    expect(agentCard.innerHTML).not.toContain("accent");
-    expect(userCard.innerHTML).not.toContain("bg-bg-muted text-txt");
+    const agentMonogram = within(agentCard).getByText("A");
+    const userMonogram = within(userCard).getByText("U");
+    expect(agentMonogram.className).toContain("border-border/70");
+    expect(agentMonogram.className).not.toContain("ring-");
+    expect(agentMonogram.className).not.toContain("accent");
+    expect(userMonogram.className).not.toContain("border-border/70");
+    expect(userMonogram.className).not.toContain("bg-bg-muted");
   });
 
   it("shows a neutral session dot (not the monogram) for the focused tab", () => {
@@ -245,6 +250,7 @@ describe("BrowserTabSwitcher", () => {
     renderSwitcher();
     const dialog = screen.getByTestId("browser-workspace-tab-switcher");
     expect(dialog.className).toContain("z-[8810]");
+    expect(dialog.className).toContain("grid-rows-[auto_minmax(0,1fr)]");
     expect(dialog.getAttribute("data-chat-clearance-aware")).toBe("true");
     expect(dialog.style.top).toContain("--eliza-chat-clearance");
     expect(dialog.style.maxHeight).toContain("--eliza-chat-clearance");
@@ -257,6 +263,29 @@ describe("BrowserTabSwitcher", () => {
       (element) => element.className.includes("z-[8800]"),
     );
     expect(overlay).toBeTruthy();
+  });
+
+  it("keeps fixed chrome outside the shrinkable tab scroller with touch-safe dismissal", () => {
+    const { onOpenChange } = renderSwitcher();
+    const dialog = screen.getByTestId("browser-workspace-tab-switcher");
+    const header = within(dialog).getByTestId(
+      "browser-workspace-tab-switcher-header",
+    );
+    const scroller = within(dialog).getByTestId(
+      "browser-workspace-tab-switcher-scroll",
+    );
+    const close = within(dialog).getByRole("button", { name: "Close" });
+
+    expect(header.className).toContain("pr-12");
+    expect(scroller.className).toContain("min-h-0");
+    expect(scroller.className).toContain("overflow-y-auto");
+    expect(scroller.className).toContain("overscroll-contain");
+    expect(scroller.hasAttribute("data-scroll-cert-scroller")).toBe(true);
+    expect(close.className).toContain("h-11");
+    expect(close.className).toContain("w-11");
+
+    fireEvent.click(close);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('"new tab" opens a tab and closes the switcher', () => {
