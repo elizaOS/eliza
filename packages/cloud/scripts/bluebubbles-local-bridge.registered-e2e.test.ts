@@ -183,7 +183,15 @@ describe("registered BlueBubbles local bridge E2E", () => {
           BLUEBUBBLES_MESSAGES_DB_PATH: messagesDbPath,
           BLUEBUBBLES_OUTBOUND_VALIDATION_PATH: join(
             temporaryDirectory,
-            "outbound-validation.json",
+            "bluebubbles-outbound-validation.json",
+          ),
+          BLUEBUBBLES_SHORTCUT_INPUT_DIR: join(
+            temporaryDirectory,
+            "bluebubbles-shortcut-inputs",
+          ),
+          BLUEBUBBLES_PENDING_REPLIES_PATH: join(
+            temporaryDirectory,
+            "bluebubbles-pending-replies.json",
           ),
           BLUEBUBBLES_LOOPBACK_NORMALIZATION_ENABLED: "true",
           ELIZA_CLOUD_BLUEBUBBLES_URL: `http://127.0.0.1:${cloud.port}/api/webhooks/bluebubbles/${bridgeId}`,

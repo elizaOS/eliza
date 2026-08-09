@@ -674,6 +674,11 @@ Attribution status: self-reported
 
   it("discovers and validates every workflow-generated PR body", async () => {
     const workflowPaths = generatedPrWorkflowPaths();
+    // When the repository has no workflow-generated PRs (the docs-ci.yml
+    // lane was consolidated away), there is nothing to validate. The loop
+    // below still covers every discovered workflow, so this guard stays
+    // meaningful once a new PR-creating workflow is added.
+    if (workflowPaths.length === 0) return;
     for (const workflowPath of workflowPaths) {
       const source = workflowSource(workflowPath);
       assert.match(
