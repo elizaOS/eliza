@@ -3768,6 +3768,14 @@ const calendarAction: CalendarHandlerAction = {
         text,
         userFacingText: text,
         verifiedUserFacing: true,
+        // The callback above already delivered this exact text, and the action
+        // description promises the final grounded reply. A successful calendar
+        // operation is a single-operation turn whose delivered text IS the
+        // answer, so declare it complete — the gated-evaluator skip keeps the
+        // model from re-rendering the delivery as a second message ("clear
+        // tomorrow." followed by "you're clear tomorrow."). Failures stay
+        // un-gated so the evaluator may still add recovery guidance.
+        ...(payload.success ? { turnComplete: true } : {}),
         effectReceipts: [effectReceipt],
         userFacingEffectReceiptIds: [effectReceipt.receiptId],
         ...(payload.data !== undefined ? { data: payload.data } : {}),

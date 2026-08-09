@@ -567,6 +567,9 @@ describe("CALENDAR_SOURCES action", () => {
     expect(result).toMatchObject({
       success: true,
       verifiedUserFacing: true,
+      // The delivered source list IS the turn's answer: declaring the turn
+      // complete keeps the evaluator from paraphrasing it as a second message.
+      turnComplete: true,
       data: {
         operation: "list",
         snapshot: {
