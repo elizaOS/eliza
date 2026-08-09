@@ -332,6 +332,20 @@ const ADMISSION_DRAIN_EVENTS: ReadonlySet<string> = new Set([
   "error",
 ]);
 
+/** Stuck-task reaper: an `active` task whose every sub-agent session is
+ * stopped/dead cannot make progress — no event will ever advance it, so it
+ * would sit in the supervisor's in-flight scan (and the digest) forever. The
+ * reaper reconciles such a task to `interrupted` (the lost-session state; an
+ * operator restart re-engages it) once it has been idle past this threshold.
+ * The threshold comfortably exceeds spawn/handoff latency so an in-flight
+ * successor session is never mistaken for a corpse. Overridable via
+ * `ELIZA_ORCHESTRATOR_STUCK_TASK_REAP_MS`; the reaper is on by default and
+ * disabled with `ELIZA_ORCHESTRATOR_STUCK_TASK_REAPER=0`. */
+const STUCK_TASK_REAP_THRESHOLD_MS = 5 * 60_000;
+
+/** Cadence of the stuck-task reaper scan. */
+const STUCK_TASK_REAP_INTERVAL_MS = 60_000;
+
 function independentVerifyTimeoutMs(runtime: {
   getSetting?: (key: string) => unknown;
 }): number {
@@ -1027,6 +1041,9 @@ export class OrchestratorTaskService extends Service {
   // tick can't both dispatch the same parked task. A promise-chain mutex.
   private admissionDrainLock = Promise.resolve();
   private admissionReconcileTimer: NodeJS.Timeout | undefined;
+  private stuckTaskReaperTimer: NodeJS.Timeout | undefined;
+  /** Serializes reaper passes — a slow scan must not overlap the next tick. */
+  private stuckTaskReapInFlight = false;
   private smithersRecoveryInFlight:
     | Promise<{ recovered: number; skipped: number }>
     | undefined;
@@ -1101,6 +1118,15 @@ export class OrchestratorTaskService extends Service {
       }, ADMISSION_RECONCILE_INTERVAL_MS);
       this.admissionReconcileTimer.unref?.();
     }
+    // Stuck-task reaper: reconciles `active` tasks whose sessions are all
+    // stopped/dead to `interrupted` so they drop out of every in-flight scan
+    // (supervisor digest, status rollups) instead of "stalling" forever.
+    if (this.stuckTaskReaperEnabled()) {
+      this.stuckTaskReaperTimer = setInterval(() => {
+        void this.reapStuckTasks();
+      }, STUCK_TASK_REAP_INTERVAL_MS);
+      this.stuckTaskReaperTimer.unref?.();
+    }
     const acp = this.acp();
     if (acp) {
       this.subscribeToAcp(acp);
@@ -1156,6 +1182,10 @@ export class OrchestratorTaskService extends Service {
     if (this.admissionReconcileTimer) {
       clearInterval(this.admissionReconcileTimer);
       this.admissionReconcileTimer = undefined;
+    }
+    if (this.stuckTaskReaperTimer) {
+      clearInterval(this.stuckTaskReaperTimer);
+      this.stuckTaskReaperTimer = undefined;
     }
     this.started = false;
   }
@@ -1737,12 +1767,20 @@ export class OrchestratorTaskService extends Service {
         });
         break;
       }
-      case "stopped":
+      case "stopped": {
+        // A teardown `stopped` for a session that already delivered its result
+        // must not stomp the `completed` record (mirror of the late-`error`
+        // guard above): the completion pipeline — validating status, verify
+        // gate, completion summary — keys off that status, and the keepAlive
+        // subprocess closing AFTER task_complete is normal teardown, not news.
+        const stoppedPrior = (await this.store.findSession(sessionId))?.session;
+        if (stoppedPrior?.status === "completed") break;
         await this.store.updateSession(sessionId, {
           status: "stopped",
           stoppedAt: Date.now(),
         });
         break;
+      }
       case "usage_update": {
         const usage = parseUsage(data);
         if (usage) await this.recordUsage(taskId, sessionId, usage);
@@ -2552,6 +2590,25 @@ export class OrchestratorTaskService extends Service {
     const next = resolveTaskTransition(doc.task.status, trigger);
     if (next === null || next === doc.task.status) return;
     await this.store.updateTask(taskId, { status: next });
+  }
+
+  /**
+   * Promote a task for a genuinely NEW live worker (a real spawn or attach).
+   * A plain `session_active` deliberately has no edge out of `interrupted` —
+   * late zombie events from a dying session must not resurrect a stopped or
+   * reaped task — so recording a fresh worker on an interrupted task routes
+   * through `restarted` (the explicit "run it again" move, legal from every
+   * state), and through the weak `session_active` otherwise. This is also what
+   * lets a resume/rerun spawn self-heal a task the stuck-task reaper
+   * interrupted while the spawn was still in flight.
+   */
+  private async advanceTaskLiveness(taskId: string): Promise<void> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc || doc.task.paused) return;
+    await this.advanceTaskStatus(
+      taskId,
+      doc.task.status === "interrupted" ? "restarted" : "session_active",
+    );
   }
 
   /**
@@ -5095,7 +5152,7 @@ export class OrchestratorTaskService extends Service {
           Boolean(doc.task.boundWorkdir) &&
           doc.task.boundWorkdir !== result.workdir,
       });
-      await this.advanceTaskStatus(taskId, "session_active");
+      await this.advanceTaskLiveness(taskId);
       waveSupervisor?.release(taskId);
       return this.getTask(taskId);
     } catch (err) {
@@ -5279,7 +5336,7 @@ export class OrchestratorTaskService extends Service {
     // indexed for history + future token attribution without falsely promoting
     // task status.
     if (!TERMINAL_TASK_SESSION_STATUSES.has(input.status)) {
-      await this.advanceTaskStatus(taskId, "session_active");
+      await this.advanceTaskLiveness(taskId);
     }
     return true;
   }
@@ -5373,6 +5430,22 @@ export class OrchestratorTaskService extends Service {
       status: "stopped",
       stoppedAt: Date.now(),
     });
+    // An explicit stop of the task's LAST live worker ends its in-flight work:
+    // leave the task `interrupted` (the operator-stop state) rather than
+    // `active`, or it lingers in every in-flight scan — the supervisor digest
+    // would surface it as "active/stalled" forever with nothing running.
+    // Scoped to `active` only: a `validating` task legitimately has no live
+    // worker while the verifier holds it, and stopping its keepAlive session
+    // must not yank the status out from under an in-flight validateTask.
+    const after = await this.store.getTask(taskId);
+    if (
+      after &&
+      after.task.status === "active" &&
+      !after.sessions.some((s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status))
+    ) {
+      await this.advanceTaskStatus(taskId, "interrupted");
+      this.emitChange(taskId);
+    }
     return true;
   }
 
@@ -5631,6 +5704,130 @@ export class OrchestratorTaskService extends Service {
         }`,
       );
     }
+  }
+
+  // ---- stuck-task reaper -------------------------------------------------
+
+  /** On by default; `ELIZA_ORCHESTRATOR_STUCK_TASK_REAPER=0` disables the
+   * periodic reconcile (the scan is still callable directly). */
+  private stuckTaskReaperEnabled(): boolean {
+    return this.readSetting("ELIZA_ORCHESTRATOR_STUCK_TASK_REAPER") !== "0";
+  }
+
+  private stuckTaskReapThresholdMs(): number {
+    return parsePositiveIntSetting(
+      this.readSetting("ELIZA_ORCHESTRATOR_STUCK_TASK_REAP_MS"),
+      STUCK_TASK_REAP_THRESHOLD_MS,
+    );
+  }
+
+  /**
+   * Reconcile stuck tasks: an `active`, unpaused task whose EVERY sub-agent
+   * session is terminal (or dead at the ACP layer — swept, vanished across a
+   * restart, or terminal there without the bridge ever seeing the event) and
+   * that has been idle past the reap threshold is moved to `interrupted` via
+   * the transition table, with an audit event on its timeline. Nothing can
+   * advance such a task — no session exists to emit an event — so without this
+   * it surfaces in the supervisor's in-flight scan as "active/stalled" forever
+   * (the 45m+ color-pop stall). `interrupted` drops it from every live scan
+   * while staying operator-recoverable (restart/reopen re-engage it).
+   *
+   * Deliberately conservative:
+   *  - only `active` — `open` belongs to the admission queue, `validating` to
+   *    the verification gate, `blocked`/`waiting_on_user` legitimately idle;
+   *  - a live-LOOKING session row is trusted unless the ACP layer positively
+   *    contradicts it (absent or terminal there); no ACP service ⇒ skip;
+   *  - the idle threshold comfortably exceeds spawn latency, and a mid-spawn
+   *    reap is self-healed by advanceTaskLiveness once the session records.
+   *
+   * Returns the reaped taskIds (for tests/observability).
+   */
+  async reapStuckTasks(nowMs = Date.now()): Promise<string[]> {
+    if (this.stuckTaskReapInFlight) return [];
+    this.stuckTaskReapInFlight = true;
+    const reaped: string[] = [];
+    try {
+      const thresholdMs = this.stuckTaskReapThresholdMs();
+      const acp = this.acp();
+      const records = await this.store.listTasks({ includeArchived: false });
+      for (const record of records) {
+        if (record.status !== "active" || record.paused) continue;
+        const doc = await this.store.getTask(record.id);
+        if (doc?.task.status !== "active" || doc.task.paused) continue;
+
+        const liveRows = doc.sessions.filter(
+          (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
+        );
+        // A row that still looks live only counts as dead when the ACP layer
+        // positively contradicts it. Missing ACP service ⇒ cannot judge ⇒ skip.
+        const deadRows: OrchestratorTaskSession[] = [];
+        let hasLiveSession = false;
+        for (const row of liveRows) {
+          if (!acp) {
+            hasLiveSession = true;
+            break;
+          }
+          const acpSession = await acp.getSession(row.sessionId);
+          if (acpSession && !TERMINAL_SESSION_STATUSES.has(acpSession.status)) {
+            hasLiveSession = true;
+            break;
+          }
+          deadRows.push(row);
+        }
+        if (hasLiveSession) continue;
+
+        const latestActivityMs = Math.max(
+          doc.task.lastActivityAt ?? 0,
+          ...doc.sessions.map((s) =>
+            Math.max(s.lastActivityAt ?? 0, s.stoppedAt ?? 0),
+          ),
+        );
+        // No known activity time ⇒ cannot judge idleness ⇒ leave it alone.
+        if (!(latestActivityMs > 0)) continue;
+        const idleMs = nowMs - latestActivityMs;
+        if (idleMs < thresholdMs) continue;
+
+        // Repair rows the bridge never saw go terminal, so DTOs stop counting
+        // phantom "active" sessions for the interrupted task.
+        for (const row of deadRows) {
+          await this.store.updateSession(row.sessionId, {
+            status: "stopped",
+            stoppedAt: nowMs,
+          });
+        }
+        await this.store.addEvent({
+          id: randomUUID(),
+          taskId: record.id,
+          eventType: "task_stalled_reaped",
+          summary: `No live sub-agent session and no activity for ${Math.round(
+            idleMs / 60_000,
+          )}m; task marked interrupted.`,
+          data: {
+            idleMs,
+            thresholdMs,
+            repairedSessionIds: deadRows.map((row) => row.sessionId),
+          },
+          timestamp: nowMs,
+          createdAt: nowIso(),
+        });
+        await this.advanceTaskStatus(record.id, "interrupted");
+        this.emitChange(record.id);
+        this.log("info", "stuck task reaped to interrupted", {
+          taskId: record.id,
+          idleMs,
+        });
+        reaped.push(record.id);
+      }
+    } catch (err) {
+      // error-policy:J7 background reconcile tick — a store/ACP hiccup is
+      // warned and retried on the next interval; it must not kill the timer.
+      this.log("warn", "stuck-task reap pass failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      this.stuckTaskReapInFlight = false;
+    }
+    return reaped;
   }
 
   // ---- admission queue (#13772) -----------------------------------------
