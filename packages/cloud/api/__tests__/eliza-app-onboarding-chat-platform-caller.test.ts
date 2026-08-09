@@ -379,12 +379,19 @@ describe("onboarding chat — trusted platform gateway caller", () => {
   });
 
   const STEWARD_JWT = "Bearer aGVhZGVy.cGF5bG9hZA.c2ln";
+  const activeStewardUser = () => ({
+    id: "steward-user-1",
+    organization_id: "steward-org-1",
+    is_active: true,
+    organization: {
+      id: "steward-org-1",
+      name: "Steward Org",
+      is_active: true,
+    },
+  });
 
   test("accepts a Steward bearer session as an authenticated (untrusted-platform) caller", async () => {
-    getCurrentUser.mockResolvedValue({
-      id: "steward-user-1",
-      organization_id: "steward-org-1",
-    });
+    getCurrentUser.mockResolvedValue(activeStewardUser());
 
     const data = await dataOf(
       await post({ message: "My name is Ada", platform: "web" }, STEWARD_JWT),
@@ -401,10 +408,7 @@ describe("onboarding chat — trusted platform gateway caller", () => {
   });
 
   test("a Steward caller can never mint a platform-scoped session or act as a trusted transport", async () => {
-    getCurrentUser.mockResolvedValue({
-      id: "steward-user-1",
-      organization_id: "steward-org-1",
-    });
+    getCurrentUser.mockResolvedValue(activeStewardUser());
 
     const data = await dataOf(
       await post(
@@ -424,10 +428,45 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     expect(resolveIdentity).not.toHaveBeenCalled();
   });
 
+  test("rejects an inactive Steward user before linking or provisioning", async () => {
+    getCurrentUser.mockResolvedValue({
+      ...activeStewardUser(),
+      is_active: false,
+    });
+
+    const response = await post(
+      { message: "My name is Ada", platform: "web" },
+      STEWARD_JWT,
+    );
+
+    expect(response.status).toBe(403);
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("rejects an inactive Steward organization before linking or provisioning", async () => {
+    getCurrentUser.mockResolvedValue({
+      ...activeStewardUser(),
+      organization: {
+        ...activeStewardUser().organization,
+        is_active: false,
+      },
+    });
+
+    const response = await post(
+      { message: "My name is Ada", platform: "web" },
+      STEWARD_JWT,
+    );
+
+    expect(response.status).toBe(403);
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
   test("treats an orgless Steward session as unauthenticated instead of erroring", async () => {
     getCurrentUser.mockResolvedValue({
       id: "steward-user-2",
       organization_id: null,
+      is_active: true,
+      organization: null,
     });
 
     const data = await dataOf(
