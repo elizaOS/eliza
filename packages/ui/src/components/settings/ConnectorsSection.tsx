@@ -15,6 +15,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -68,6 +69,7 @@ import {
   openConnectorDetailHash,
   openConnectorsIndexHash,
   readSettingsHashRoute,
+  replaceConnectorDetailHash,
   type SettingsRoute,
 } from "./settings-route";
 
@@ -269,9 +271,12 @@ function ConnectorConfigurationSurface({ plugin }: { plugin: PluginInfo }) {
   const handlePluginConfigSave = useAppSelector(
     (s) => s.handlePluginConfigSave,
   );
+  const pluginSaving = useAppSelector((s) => s.pluginSaving);
   const [pluginConfigs, setPluginConfigs] = useState<
     Record<string, Record<string, string>>
   >({});
+  const [localSaving, setLocalSaving] = useState(false);
+  const saveInFlightRef = useRef(false);
   // Only offer setup modes that belong to the active Delegate/Bot lens.
   const channelMode = useConnectorChannelMode();
   const connectorMode = useConnectorMode(plugin.id, {
@@ -308,37 +313,60 @@ function ConnectorConfigurationSurface({ plugin }: { plugin: PluginInfo }) {
     ],
     [connectorMode.selectedMode, plugin],
   );
-  // Row/dialog UX persists per field on dialog Save (or toggle) — no bulk
-  // "Save settings" footer. Keep a local draft map only so chips reflect the
-  // value immediately while the server write is in flight.
+  const pendingConfig = pluginConfigs[plugin.id] ?? {};
+  const hasPendingConfig = Object.keys(pendingConfig).length > 0;
+  const isSaving = localSaving || pluginSaving.has(plugin.id);
+
+  // Dialog Save stages a field. The trailing action row commits the complete
+  // credential bundle once so the runtime applies/restarts at most once.
   const handleParamChange = useCallback(
     (pluginId: string, paramKey: string, value: string) => {
       setPluginConfigs((prev) => ({
         ...prev,
         [pluginId]: { ...prev[pluginId], [paramKey]: value },
       }));
-      void (async () => {
-        const saved = await handlePluginConfigSave(pluginId, {
-          [paramKey]: value,
-        });
-        if (!saved) return;
-        setPluginConfigs((prev) => {
-          const current = prev[pluginId];
-          if (!current || !(paramKey in current)) return prev;
-          const nextForPlugin = { ...current };
-          delete nextForPlugin[paramKey];
-          const next = { ...prev };
-          if (Object.keys(nextForPlugin).length === 0) {
-            delete next[pluginId];
-          } else {
-            next[pluginId] = nextForPlugin;
-          }
-          return next;
-        });
-      })();
     },
-    [handlePluginConfigSave],
+    [],
   );
+
+  const handleSave = useCallback(async () => {
+    if (saveInFlightRef.current || Object.keys(pendingConfig).length === 0) {
+      return;
+    }
+    saveInFlightRef.current = true;
+    const submitted = { ...pendingConfig };
+    setLocalSaving(true);
+    try {
+      const saved = await handlePluginConfigSave(plugin.id, submitted);
+      if (!saved) return;
+      // Do not clear a value edited again while this request was in flight.
+      setPluginConfigs((prev) => {
+        const current = prev[plugin.id];
+        if (!current) return prev;
+        const remaining = Object.fromEntries(
+          Object.entries(current).filter(
+            ([key, value]) => submitted[key] !== value,
+          ),
+        );
+        const next = { ...prev };
+        if (Object.keys(remaining).length === 0) delete next[plugin.id];
+        else next[plugin.id] = remaining;
+        return next;
+      });
+    } finally {
+      saveInFlightRef.current = false;
+      setLocalSaving(false);
+    }
+  }, [handlePluginConfigSave, pendingConfig, plugin.id]);
+
+  const handleCancel = useCallback(() => {
+    setPluginConfigs((prev) => {
+      if (!prev[plugin.id]) return prev;
+      const next = { ...prev };
+      delete next[plugin.id];
+      return next;
+    });
+  }, [plugin.id]);
 
   return (
     <div className="flex flex-col gap-3 [&>*]:mt-0">
@@ -372,6 +400,30 @@ function ConnectorConfigurationSurface({ plugin }: { plugin: PluginInfo }) {
                   })
                 : configFormHint.fallback}
             </p>
+          ) : null}
+          {hasPendingConfig || isSaving ? (
+            <div className="flex items-center justify-end gap-2 border-t border-border/50 pt-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleCancel}
+                disabled={isSaving}
+              >
+                {t("common.cancel", { defaultValue: "Cancel" })}
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => void handleSave()}
+                disabled={!hasPendingConfig || isSaving}
+              >
+                {isSaving
+                  ? t("common.saving", { defaultValue: "Saving…" })
+                  : t("pluginsview.SaveSettings", {
+                      defaultValue: "Save changes",
+                    })}
+              </Button>
+            </div>
           ) : null}
         </>
       ) : setupPanel ? (
@@ -466,7 +518,7 @@ function ConnectorDetailPage({
         <button
           type="button"
           onClick={onBack}
-          className="self-start text-xs font-medium text-muted hover:text-txt"
+          className="hidden self-start text-xs font-medium text-muted hover:text-txt md:inline-flex"
           data-testid="connector-detail-back"
         >
           {t("connectors.detail.back", { defaultValue: "← Connectors" })}
@@ -713,7 +765,12 @@ export function ConnectorsSection() {
 
   const openDetail = useCallback((connectorId: string) => {
     openConnectorDetailHash(connectorId);
-    // replaceState does not emit hashchange — nudge subscribers.
+    // pushState does not emit popstate/hashchange — nudge subscribers.
+    window.dispatchEvent(new Event("popstate"));
+  }, []);
+
+  const focusDetail = useCallback((connectorId: string) => {
+    replaceConnectorDetailHash(connectorId);
     window.dispatchEvent(new Event("popstate"));
   }, []);
 
@@ -728,18 +785,18 @@ export function ConnectorsSection() {
     const handleFocusConnector = (event: Event) => {
       const detail = (event as CustomEvent<FocusConnectorEventDetail>).detail;
       if (!detail?.connectorId) return;
-      openDetail(detail.connectorId);
+      focusDetail(detail.connectorId);
       clearPendingFocusConnector(detail.connectorId);
     };
     document.addEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
     const pending = readPendingFocusConnector();
     if (pending) {
-      openDetail(pending);
+      focusDetail(pending);
       clearPendingFocusConnector(pending);
     }
     return () =>
       document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
-  }, [openDetail]);
+  }, [focusDetail]);
 
   if (allConnectorPlugins.length === 0) {
     return (

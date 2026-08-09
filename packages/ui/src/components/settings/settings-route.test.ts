@@ -1,14 +1,20 @@
 /**
  * Unit tests for structured Settings hash routes (flat sections + nested
- * connectors detail). Deterministic pure parsing — no registry dependency.
+ * connectors detail), including real browser-history traversal in jsdom.
  */
+// @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   normalizeConnectorRouteId,
+  openConnectorDetailHash,
   parseSettingsHash,
   settingsRouteToHash,
 } from "./settings-route";
+
+beforeEach(() => {
+  window.history.replaceState(null, "", "/#connectors");
+});
 
 describe("parseSettingsHash", () => {
   it("parses hub, flat section, and connectors detail", () => {
@@ -58,6 +64,20 @@ describe("settingsRouteToHash", () => {
         connectorId: "telegram",
       }),
     ).toBe("#connectors/telegram");
+  });
+});
+
+describe("connector detail history", () => {
+  it("returns index → detail navigation to the index on browser Back", async () => {
+    openConnectorDetailHash("signal");
+    expect(window.location.hash).toBe("#connectors/signal");
+
+    await new Promise<void>((resolve) => {
+      window.addEventListener("popstate", () => resolve(), { once: true });
+      window.history.back();
+    });
+
+    expect(window.location.hash).toBe("#connectors");
   });
 });
 

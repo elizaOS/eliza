@@ -141,6 +141,9 @@ export function ConfigField({
     () => displayValue(renderProps, t),
     [renderProps, t],
   );
+  const isSensitiveEdit =
+    renderProps.hint.sensitive || renderProps.fieldType === "password";
+  const canSaveDraft = !isSensitiveEdit || draft.trim().length > 0;
 
   const statusBadges = (
     <>
@@ -246,6 +249,10 @@ export function ConfigField({
                       !renderProps.isSet &&
                       "font-medium text-muted-strong",
                   )}
+                  aria-label={t("config-field.editLabel", {
+                    defaultValue: "Edit {{label}}",
+                    label,
+                  })}
                   data-testid={`config-field-edit-${renderProps.key}`}
                 >
                   <span className="min-w-0 truncate">{chipLabel}</span>
@@ -320,11 +327,11 @@ export function ConfigField({
                           }
                           onChange={(event) => setDraft(event.target.value)}
                           onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              renderProps.onChange(draft);
-                              setEditOpen(false);
-                            }
+                            if (event.key !== "Enter") return;
+                            event.preventDefault();
+                            if (!canSaveDraft) return;
+                            renderProps.onChange(draft);
+                            setEditOpen(false);
                           }}
                           className="h-10 border-border/60 bg-bg-muted"
                         />
@@ -345,7 +352,9 @@ export function ConfigField({
                         type="button"
                         variant="default"
                         size="sm"
+                        disabled={!canSaveDraft}
                         onClick={() => {
+                          if (!canSaveDraft) return;
                           renderProps.onChange(draft);
                           setEditOpen(false);
                         }}

@@ -138,26 +138,22 @@
         "label": "Polling interval",
         "unit": "ms",
         "order": 10,
-        "group": "behavior",
-        "requiresAny": ["IMESSAGE_CLI_PATH", "IMESSAGE_DB_PATH"]
+        "group": "behavior"
       },
       "IMESSAGE_DM_POLICY": {
         "label": "DM policy",
         "order": 11,
-        "group": "behavior",
-        "requiresAny": ["IMESSAGE_CLI_PATH", "IMESSAGE_DB_PATH"]
+        "group": "behavior"
       },
       "IMESSAGE_GROUP_POLICY": {
         "label": "Group policy",
         "order": 12,
-        "group": "behavior",
-        "requiresAny": ["IMESSAGE_CLI_PATH", "IMESSAGE_DB_PATH"]
+        "group": "behavior"
       },
       "IMESSAGE_ALLOW_FROM": {
         "label": "Allow from",
         "order": 13,
-        "group": "behavior",
-        "requiresAny": ["IMESSAGE_CLI_PATH", "IMESSAGE_DB_PATH"]
+        "group": "behavior"
       }
     }
   }

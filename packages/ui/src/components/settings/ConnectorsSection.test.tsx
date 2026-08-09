@@ -12,6 +12,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginInfo } from "../../api";
@@ -88,7 +89,34 @@ vi.mock("../connectors/ConnectorSetupPanel.helpers", () => ({
     id === "telegram" || id === "whatsapp",
 }));
 vi.mock("../pages/PluginConfigForm", () => ({
-  PluginConfigForm: () => <div data-testid="plugin-config-form" />,
+  PluginConfigForm: ({
+    plugin,
+    onParamChange,
+  }: {
+    plugin: PluginInfo;
+    onParamChange: (pluginId: string, key: string, value: string) => void;
+  }) => (
+    <div data-testid="plugin-config-form">
+      <button
+        type="button"
+        onClick={() => onParamChange(plugin.id, "TOKEN", "token-value")}
+      >
+        Stage token
+      </button>
+      <button
+        type="button"
+        onClick={() => onParamChange(plugin.id, "TOKEN", "newer-token")}
+      >
+        Stage newer token
+      </button>
+      <button
+        type="button"
+        onClick={() => onParamChange(plugin.id, "APP_ID", "app-value")}
+      >
+        Stage app ID
+      </button>
+    </div>
+  ),
 }));
 
 import { setConnectorChannelMode } from "../connectors/connector-channel-mode";
@@ -234,6 +262,108 @@ describe("ConnectorsSection", () => {
 
     expect(screen.getByTestId("plugin-config-form")).toBeTruthy();
     expect(screen.queryByTestId("connector-setup-panel")).toBeNull();
+  });
+
+  it("commits multi-field drafts once and blocks duplicate saves", async () => {
+    let resolveSave: ((saved: boolean) => void) | undefined;
+    appMock.value.handlePluginConfigSave = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    appMock.value.plugins = [
+      plugin({
+        id: "discord",
+        name: "Discord",
+        parameters: [tokenParam("DISCORD_API_TOKEN")],
+      }),
+    ];
+
+    render(<ConnectorsSection />);
+    openDetail("Discord");
+    fireEvent.click(screen.getByRole("button", { name: "Stage token" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stage app ID" }));
+
+    const save = screen.getByRole("button", { name: "Save changes" });
+    fireEvent.click(save);
+    fireEvent.click(save);
+
+    expect(appMock.value.handlePluginConfigSave).toHaveBeenCalledOnce();
+    expect(appMock.value.handlePluginConfigSave).toHaveBeenCalledWith(
+      "discord",
+      { TOKEN: "token-value", APP_ID: "app-value" },
+    );
+    resolveSave?.(true);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull(),
+    );
+  });
+
+  it("preserves a newer same-field edit when an older save completes", async () => {
+    let resolveFirst: ((saved: boolean) => void) | undefined;
+    appMock.value.handlePluginConfigSave = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(true);
+    appMock.value.plugins = [
+      plugin({
+        id: "discord",
+        name: "Discord",
+        parameters: [tokenParam("DISCORD_API_TOKEN")],
+      }),
+    ];
+
+    render(<ConnectorsSection />);
+    openDetail("Discord");
+    fireEvent.click(screen.getByRole("button", { name: "Stage token" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stage newer token" }));
+    resolveFirst?.(true);
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Save changes" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(appMock.value.handlePluginConfigSave).toHaveBeenCalledTimes(2),
+    );
+    expect(appMock.value.handlePluginConfigSave).toHaveBeenLastCalledWith(
+      "discord",
+      { TOKEN: "newer-token" },
+    );
+  });
+
+  it("retains staged drafts after a failed save and lets Cancel discard them", async () => {
+    appMock.value.handlePluginConfigSave = vi.fn(async () => false);
+    appMock.value.plugins = [
+      plugin({
+        id: "discord",
+        name: "Discord",
+        parameters: [tokenParam("DISCORD_API_TOKEN")],
+      }),
+    ];
+
+    render(<ConnectorsSection />);
+    openDetail("Discord");
+    fireEvent.click(screen.getByRole("button", { name: "Stage token" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save changes" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
   });
 
   it("hides bot-only connectors under the delegate lens and restores them via the footnote switch", () => {

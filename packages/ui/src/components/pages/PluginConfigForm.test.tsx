@@ -18,8 +18,15 @@ vi.mock("../../state", () => ({
     sel(stateMock.value),
 }));
 
-function t(key: string, options?: { defaultValue?: string }) {
-  return options?.defaultValue ?? key;
+function t(
+  key: string,
+  options?: { defaultValue?: string; [key: string]: unknown },
+) {
+  let result = options?.defaultValue ?? key;
+  for (const [name, value] of Object.entries(options ?? {})) {
+    result = result.replace(`{{${name}}}`, String(value));
+  }
+  return result;
 }
 
 function makeParam(
@@ -112,6 +119,57 @@ describe("PluginConfigForm connector row layout", () => {
     expect(configField("imessage", "IMESSAGE_ENABLED")).toBeNull();
   });
 
+  it("does not clear a configured secret when its empty edit dialog is saved", () => {
+    const onParamChange = vi.fn();
+    const plugin = makePlugin({
+      id: "discord",
+      key: "DISCORD_API_TOKEN",
+      parameters: [
+        makeParam("DISCORD_API_TOKEN", {
+          sensitive: true,
+          isSet: true,
+          currentValue: null,
+        }),
+        makeParam("DISCORD_SIGNING_SECRET", {
+          sensitive: true,
+          isSet: true,
+          currentValue: null,
+        }),
+      ],
+      configUiHints: {
+        DISCORD_API_TOKEN: {
+          label: "API token",
+          type: "password",
+          sensitive: true,
+        },
+        DISCORD_SIGNING_SECRET: {
+          label: "Signing secret",
+          type: "password",
+          sensitive: true,
+        },
+      },
+    });
+
+    render(
+      <PluginConfigForm
+        plugin={plugin}
+        pluginConfigs={{}}
+        onParamChange={onParamChange}
+        layout="rows"
+      />,
+    );
+
+    const edit = screen.getByRole("button", { name: "Edit API token" });
+    expect(
+      screen.getByRole("button", { name: "Edit Signing secret" }),
+    ).toBeTruthy();
+    fireEvent.click(edit);
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(save);
+    expect(onParamChange).not.toHaveBeenCalled();
+  });
+
   it("edits structured text through the same Save/Cancel dialog pattern", () => {
     const onParamChange = vi.fn();
     const plugin = makePlugin({
@@ -137,7 +195,7 @@ describe("PluginConfigForm connector row layout", () => {
     expect(
       document.querySelector('textarea[data-field-type="json"]'),
     ).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Set value/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Allowed chats" }));
     const editor = screen.getByRole("textbox", { name: "Allowed chats" });
     fireEvent.change(editor, { target: { value: '["chat-1"]' } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

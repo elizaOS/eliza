@@ -15,6 +15,8 @@ export type SettingsRoute =
   | { kind: "section"; sectionId: string }
   | { kind: "connector-detail"; sectionId: "connectors"; connectorId: string };
 
+const CONNECTOR_DETAIL_HISTORY_KEY = "elizaSettingsConnectorDetail";
+
 const SETTINGS_HASH_ALIASES: Readonly<Record<string, string>> = {
   cloud: "ai-model",
   providers: "ai-model",
@@ -41,17 +43,18 @@ export function parseSettingsHash(rawHash: string): SettingsRoute {
   if (!withoutHash) return { kind: "hub" };
 
   const segments = withoutHash.split("/").filter(Boolean);
-  if (segments.length === 0) return { kind: "hub" };
+  const [rawHead, rawConnectorId] = segments;
+  if (!rawHead) return { kind: "hub" };
 
-  const head = SETTINGS_HASH_ALIASES[segments[0]!] ?? segments[0]!;
+  const head = SETTINGS_HASH_ALIASES[rawHead] ?? rawHead;
 
   if (segments.length === 1) {
     return { kind: "section", sectionId: head };
   }
 
   // Only connectors may nest: #connectors/<connectorId>
-  if (head === "connectors" && segments.length >= 2) {
-    const connectorId = normalizeConnectorRouteId(segments[1]!);
+  if (head === "connectors" && rawConnectorId) {
+    const connectorId = normalizeConnectorRouteId(rawConnectorId);
     if (!connectorId) {
       return { kind: "section", sectionId: "connectors" };
     }
@@ -93,7 +96,10 @@ export function replaceSettingsHashRoute(route: SettingsRoute): void {
   if (typeof window === "undefined") return;
   const nextHash = settingsRouteToHash(route);
   const current = window.location.hash || "#";
-  if (current === nextHash || (nextHash === "#" && (current === "" || current === "#"))) {
+  if (
+    current === nextHash ||
+    (nextHash === "#" && (current === "" || current === "#"))
+  ) {
     return;
   }
   if (nextHash === "#") {
@@ -111,15 +117,47 @@ export function openConnectorsIndexHash(): void {
   replaceSettingsHashRoute({ kind: "section", sectionId: "connectors" });
 }
 
-export function openConnectorDetailHash(connectorId: string): void {
+function connectorDetailRoute(connectorId: string): SettingsRoute | null {
   const id = normalizeConnectorRouteId(connectorId);
-  if (!id) {
-    openConnectorsIndexHash();
-    return;
-  }
-  replaceSettingsHashRoute({
+  if (!id) return null;
+  return {
     kind: "connector-detail",
     sectionId: "connectors",
     connectorId: id,
-  });
+  };
+}
+
+/** User navigation creates a real history entry so browser/hardware Back works. */
+export function openConnectorDetailHash(connectorId: string): void {
+  if (typeof window === "undefined") return;
+  const route = connectorDetailRoute(connectorId);
+  if (!route) {
+    openConnectorsIndexHash();
+    return;
+  }
+  const nextHash = settingsRouteToHash(route);
+  if (window.location.hash === nextHash) return;
+  const currentState =
+    window.history.state && typeof window.history.state === "object"
+      ? window.history.state
+      : {};
+  window.history.pushState(
+    { ...currentState, [CONNECTOR_DETAIL_HISTORY_KEY]: true },
+    "",
+    nextHash,
+  );
+}
+
+/** Programmatic focus/deep links canonicalize without polluting history. */
+export function replaceConnectorDetailHash(connectorId: string): void {
+  const route = connectorDetailRoute(connectorId);
+  if (!route) {
+    openConnectorsIndexHash();
+    return;
+  }
+  replaceSettingsHashRoute(route);
+}
+
+export function isPushedConnectorDetailRoute(): boolean {
+  return Boolean(window.history.state?.[CONNECTOR_DETAIL_HISTORY_KEY]);
 }
