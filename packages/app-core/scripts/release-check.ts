@@ -98,7 +98,7 @@ const requiredWorkflowSnippets = [
   "name: Run heavy E2E regression suite",
   "run: bun run test:e2e:heavy",
   "name: Run optional cloud live regression suite",
-  'if bun run test:live:cloud 2>&1 | tee "$log_file"; then',
+  'if bun run --cwd packages/cloud/sdk test:e2e 2>&1 | tee "$log_file"; then',
   "name: Restore build metadata after test rebuilds",
   "name: Release readiness checks",
   // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub Actions expression
@@ -161,7 +161,6 @@ const requiredWorkflowSnippets = [
   '-name "*-Setup-*.exe.zip" -o \\',
   '-name "*Setup*.tar.gz" -o \\',
   "name: Collect update channel files",
-  "pattern: browser-bridge-*",
   '-name "*.tar.zst" -o \\',
   '-name "*-update.json" \\',
   "DMG attach attempt $attempt/5 failed",
@@ -196,7 +195,7 @@ const requiredWorkflowSnippets = [
   "ELIZAOS_CLOUD_BASE_URL: $" + "{{ secrets.ELIZAOS_CLOUD_BASE_URL }}",
   "bun run test:desktop:packaged:windows",
   'Write-Error "Packaged Windows smoke test exited with code $LASTEXITCODE."',
-  "bun run test:desktop:playwright",
+  "bun run test:desktop:packaged",
 ];
 const _requiredPatchedElectrobunCliSnippets = [
   "https://github.com/elizaOS/electrobun.git",

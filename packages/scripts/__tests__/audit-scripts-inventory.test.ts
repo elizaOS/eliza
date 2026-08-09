@@ -16,9 +16,11 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildInventory,
+  missingWorkflowRootScriptReferences,
   parseInventoryArgs,
   readRepositoryCandidateText,
   workflowExecutionSteps,
+  workflowRootScriptReferences,
 } from "../audit-scripts-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -228,9 +230,78 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     `);
     expect(steps).toEqual([
       {
+        job: "proof",
         run: "bun run visible:command",
         workingDirectory: "packages/app",
       },
+    ]);
+  });
+
+  test("workflow root-script checks cover conditionals and built-in-named scripts", () => {
+    const source = `
+      jobs:
+        proof:
+          steps:
+            - run: |
+                if bun run test; then
+                  bun run browser-bridge:package:release
+                fi
+    `;
+    expect(workflowRootScriptReferences(source, "proof.yml")).toEqual([
+      { file: "proof.yml", job: "proof", script: "test" },
+      {
+        file: "proof.yml",
+        job: "proof",
+        script: "browser-bridge:package:release",
+      },
+    ]);
+    expect(
+      missingWorkflowRootScriptReferences([{ file: "proof.yml", source }], {
+        test: "vitest",
+      }),
+    ).toEqual([
+      {
+        file: "proof.yml",
+        job: "proof",
+        script: "browser-bridge:package:release",
+      },
+    ]);
+  });
+
+  test("workflow root-script checks honor working-directory precedence", () => {
+    const source = `
+      defaults:
+        run:
+          working-directory: packages/one
+      jobs:
+        inherited:
+          steps:
+            - run: bun run package-only
+        overridden:
+          defaults:
+            run:
+              working-directory: packages/two
+          steps:
+            - run: bun run other-package-only
+            - working-directory: .
+              run: bun run root-only
+    `;
+    expect(workflowRootScriptReferences(source, "defaults.yml")).toEqual([
+      { file: "defaults.yml", job: "overridden", script: "root-only" },
+    ]);
+  });
+
+  test("workflow root-script checks follow inline cd commands", () => {
+    const source = `
+      jobs:
+        proof:
+          steps:
+            - run: |
+                bun run root-before
+                cd packages/prompts && bun run check:secrets
+    `;
+    expect(workflowRootScriptReferences(source, "cd.yml")).toEqual([
+      { file: "cd.yml", job: "proof", script: "root-before" },
     ]);
   });
 });
