@@ -192,9 +192,22 @@ function sortReleasesByRecency(releases) {
     });
 }
 
+/** Required download IDs that mirror check-homepage-release-data.mjs's
+ * REQUIRED_IDS set. A release is only "downloadable" for public homepage
+ * selection when ALL of these resolve — a newer partial release must not
+ * shadow an older complete one. */
+const REQUIRED_DOWNLOAD_IDS = new Set([
+  "macos-arm64",
+  "macos-x64",
+  "windows-x64",
+  "linux-x64",
+  "android-apk",
+]);
+
 function hasDownloadableRelease(release) {
   if (!release) return false;
-  return buildRelease(release).downloads.length > 0;
+  const downloadIds = new Set(buildRelease(release).downloads.map((d) => d.id));
+  return [...REQUIRED_DOWNLOAD_IDS].every((id) => downloadIds.has(id));
 }
 
 function pickRelease(releases) {

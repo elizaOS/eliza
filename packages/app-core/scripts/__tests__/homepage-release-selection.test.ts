@@ -45,11 +45,15 @@ const evidenceAssets = [
   makeAsset("screenshot-1.png"),
 ];
 
+/** A complete set of platform installer assets that resolves all five
+ * required download IDs from buildRelease(): macos-arm64, macos-x64,
+ * windows-x64, linux-x64, android-apk. */
 const installerAssets = [
-  makeAsset("ElizaOSApp-Setup-1.0.0-arm64.dmg"),
+  makeAsset("ElizaOSApp-1.0.0-macos-arm64.dmg"),
+  makeAsset("ElizaOSApp-1.0.0-macos-x64.dmg"),
   makeAsset("ElizaOSApp-Setup-1.0.0.exe"),
   makeAsset("elizaos-1.0.0-linux.AppImage"),
-  makeAsset("elizaos-1.0.0.apk"),
+  makeAsset("Eliza-1.0.0.apk"),
 ];
 
 describe("isInternalRelease", () => {
@@ -228,7 +232,10 @@ describe("hasDownloadableRelease — buildRelease integration", () => {
       tag_name: "v1.0.0",
       assets: [
         makeAsset("ElizaOSApp-1.0.0-macos-arm64.dmg"),
+        makeAsset("ElizaOSApp-1.0.0-macos-x64.dmg"),
         makeAsset("ElizaOSApp-Setup-1.0.0.exe"),
+        makeAsset("elizaos-1.0.0-linux.AppImage"),
+        makeAsset("Eliza-1.0.0.apk"),
       ],
     });
     expect(hasDownloadableRelease(release)).toBe(true);
@@ -268,14 +275,72 @@ describe("pickStableRelease — shadowing edge case (RP round 2)", () => {
         published_at: "2026-06-01T00:00:00Z",
         assets: [
           makeAsset("ElizaOSApp-1.0.0-macos-arm64.dmg"),
+          makeAsset("ElizaOSApp-1.0.0-macos-x64.dmg"),
           makeAsset("ElizaOSApp-Setup-1.0.0.exe"),
           makeAsset("elizaos-1.0.0-linux.AppImage"),
-          makeAsset("elizaos-1.0.0.apk"),
+          makeAsset("Eliza-1.0.0.apk"),
         ],
       }),
     ];
     const picked = pickStableRelease(releases);
     expect(picked).not.toBeNull();
     expect(picked?.tag_name).toBe("v1.0.0");
+  });
+});
+
+describe("pickStableRelease — newer incomplete release shadows older complete (standujar review #18100)", () => {
+  // The standujar review on #18100 proved that hasDownloadableRelease() was
+  // too permissive: returning true for any release where buildRelease()
+  // resolved even ONE download. This let a newer release with only a subset
+  // of the required installer set shadow an older release with all five.
+  // The fix aligns the predicate with check-homepage-release-data.mjs's
+  // REQUIRED_IDS: macos-arm64, macos-x64, windows-x64, linux-x64, android-apk.
+
+  /** All five required platform assets for a complete release. */
+  const completeAssets = [
+    makeAsset("ElizaOSApp-1.5.0-macos-arm64.dmg"),
+    makeAsset("ElizaOSApp-1.5.0-macos-x64.dmg"),
+    makeAsset("ElizaOSApp-Setup-1.5.0.exe"),
+    makeAsset("elizaos-1.5.0-linux.AppImage"),
+    makeAsset("Eliza-1.5.0.apk"),
+  ];
+
+  it("does NOT select a newer partial release (1 of 5 assets) over an older complete one (5 of 5)", () => {
+    const releases = [
+      // Newer release: only the Windows installer. Recognized as real, but
+      // incomplete — 1 of 5 required IDs.
+      makeRelease({
+        tag_name: "v2.0.0",
+        prerelease: false,
+        published_at: "2026-08-05T00:00:00Z",
+        assets: [makeAsset("ElizaOSApp-Setup-2.0.0.exe")],
+      }),
+      // Older release: all five required assets — the complete product.
+      makeRelease({
+        tag_name: "v1.5.0",
+        prerelease: false,
+        published_at: "2026-07-01T00:00:00Z",
+        assets: completeAssets,
+      }),
+    ];
+    const picked = pickStableRelease(releases);
+    expect(picked).not.toBeNull();
+    expect(picked?.tag_name).toBe("v1.5.0");
+  });
+
+  it("hasDownloadableRelease returns false for a release missing required IDs", () => {
+    const partial = makeRelease({
+      tag_name: "v2.0.0",
+      assets: [makeAsset("ElizaOSApp-Setup-2.0.0.exe")],
+    });
+    expect(hasDownloadableRelease(partial)).toBe(false);
+  });
+
+  it("hasDownloadableRelease returns true for a release with all five required IDs", () => {
+    const complete = makeRelease({
+      tag_name: "v1.5.0",
+      assets: completeAssets,
+    });
+    expect(hasDownloadableRelease(complete)).toBe(true);
   });
 });
