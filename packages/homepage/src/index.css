@@ -803,6 +803,37 @@ body {
   gap: 0.85rem;
 }
 
+.app-download-unavailable {
+  display: grid;
+  grid-column: 1 / -1;
+  justify-items: start;
+  gap: 0.75rem;
+  min-height: 11rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border-radius: var(--radius-xs);
+  background: #ffffff;
+  color: var(--brand-black);
+  box-shadow: 0 20px 60px rgba(8, 9, 12, 0.06);
+}
+
+.app-download-unavailable > .app-icon {
+  width: 2.6rem;
+  height: 2.6rem;
+  padding: 0.65rem;
+  border-radius: var(--radius-xs);
+  background: rgba(8, 9, 12, 0.05);
+}
+
+.app-download-unavailable strong {
+  font-size: 1.2rem;
+}
+
+.app-download-unavailable > span {
+  max-width: 44rem;
+  color: rgba(8, 9, 12, 0.66);
+  line-height: 1.45;
+}
+
 .app-download-card {
   position: relative;
   display: grid;
