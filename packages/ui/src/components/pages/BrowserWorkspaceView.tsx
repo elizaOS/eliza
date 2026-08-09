@@ -585,6 +585,15 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const initialBrowseHandledRef = useRef(false);
   const workspaceRootRef = useRef<HTMLElement | null>(null);
   const workspaceSnapshotRef = useRef<BrowserWorkspaceSnapshot>(workspace);
+  // Polls are slower than their cadence when the API is unhealthy. Keep them
+  // single-flight, and order every response so a late poll cannot roll back a
+  // newer user action or turn stale-state refresh noise into a page failure.
+  const workspaceLoadVersionRef = useRef(0);
+  const foregroundWorkspaceLoadsRef = useRef(0);
+  const visibleWorkspaceLoadsRef = useRef(0);
+  const workspaceActionsInFlightRef = useRef(0);
+  const backgroundWorkspaceRefreshInFlightRef = useRef(false);
+  const initialWorkspaceLoadStartedRef = useRef(false);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
   const registeredIframeElementsRef = useRef(new WeakSet<HTMLIFrameElement>());
   const iframeFocusHandoffsRef = useRef(
@@ -1043,12 +1052,24 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   }, [releaseBrowserWorkspaceIframeFocusReturn]);
 
   const loadWorkspace = useCallback(
-    async (options?: { preferTabId?: string | null; silent?: boolean }) => {
-      if (!options?.silent) {
+    async (options?: {
+      preferTabId?: string | null;
+      silent?: boolean;
+      background?: boolean;
+    }) => {
+      const background = options?.background === true;
+      const showLoading = options?.silent !== true;
+      if (!background) {
+        foregroundWorkspaceLoadsRef.current += 1;
+      }
+      const loadVersion = ++workspaceLoadVersionRef.current;
+      if (showLoading) {
+        visibleWorkspaceLoadsRef.current += 1;
         setLoading(true);
       }
       try {
         const snapshot = await client.getBrowserWorkspace();
+        if (loadVersion !== workspaceLoadVersionRef.current) return;
         const previousSnapshot = workspaceSnapshotRef.current;
         for (const nextTab of snapshot.tabs) {
           const previousTab = previousSnapshot.tabs.find(
@@ -1081,6 +1102,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           ),
         );
       } catch (error) {
+        if (background || loadVersion !== workspaceLoadVersionRef.current) {
+          // error-policy:J4 poll — retain the last successful workspace on a
+          // transient background failure; the next visible tick retries.
+          return;
+        }
         const message =
           error instanceof Error
             ? error.message
@@ -1089,8 +1115,14 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               });
         setLoadError(message);
       } finally {
-        if (!options?.silent) {
-          setLoading(false);
+        if (!background) {
+          foregroundWorkspaceLoadsRef.current -= 1;
+        }
+        if (showLoading) {
+          visibleWorkspaceLoadsRef.current -= 1;
+          if (visibleWorkspaceLoadsRef.current === 0) {
+            setLoading(false);
+          }
         }
       }
     },
@@ -1108,6 +1140,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     ) => {
       const actionFocusReturnTarget = readBrowserWorkspaceFocusReturnTarget();
       browserActionFocusReturnTargetRef.current = actionFocusReturnTarget;
+      workspaceActionsInFlightRef.current += 1;
+      workspaceLoadVersionRef.current += 1;
       setBusyAction(actionKey);
       try {
         await action();
@@ -1121,6 +1155,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               }));
         setActionNoticeRef.current(message, "error", 4_000);
       } finally {
+        workspaceActionsInFlightRef.current -= 1;
         setBusyAction(null);
         if (
           browserActionFocusReturnTargetRef.current === actionFocusReturnTarget
@@ -1131,6 +1166,26 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     },
     [readBrowserWorkspaceFocusReturnTarget],
   );
+
+  const refreshWorkspaceInBackground = useCallback(async () => {
+    if (
+      backgroundWorkspaceRefreshInFlightRef.current ||
+      foregroundWorkspaceLoadsRef.current > 0 ||
+      workspaceActionsInFlightRef.current > 0
+    ) {
+      return;
+    }
+    backgroundWorkspaceRefreshInFlightRef.current = true;
+    try {
+      await loadWorkspace({
+        preferTabId: selectedTabId,
+        silent: true,
+        background: true,
+      });
+    } finally {
+      backgroundWorkspaceRefreshInFlightRef.current = false;
+    }
+  }, [loadWorkspace, selectedTabId]);
 
   const loadSelectedBrowserWorkspaceSnapshot = useCallback(
     async (tabId: string, mode: BrowserWorkspaceSnapshot["mode"]) => {
@@ -2158,6 +2213,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   }, [loadWorkspace, workspace.tabs]);
 
   useEffect(() => {
+    if (initialWorkspaceLoadStartedRef.current) return;
+    initialWorkspaceLoadStartedRef.current = true;
     void loadWorkspace();
   }, [loadWorkspace]);
 
@@ -2177,7 +2234,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   }, [browserBridgeSupported, loadBrowserBridgeState, workspace.mode]);
 
   useIntervalWhenDocumentVisible(() => {
-    void loadWorkspace({ preferTabId: selectedTabId, silent: true });
+    void refreshWorkspaceInBackground();
   }, POLL_INTERVAL_MS);
 
   useEffect(() => {
