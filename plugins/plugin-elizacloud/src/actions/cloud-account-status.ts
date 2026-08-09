@@ -84,6 +84,11 @@ export const cloudAccountStatusAction: Action = {
         text: `Eliza Cloud balance: $${balance.toFixed(2)}.`,
         userFacingText: reply,
         verifiedUserFacing: true,
+        // A single-operation read whose delivered reply IS the complete
+        // answer: the gated-evaluator skip stops the model from paraphrasing
+        // the already-delivered balance as a second message (same opt-in as
+        // LIST_CLOUD_APPS). Error exits stay un-gated.
+        turnComplete: true,
         data: { balance, low, critical, topUpUrl: TOP_UP_URL },
       };
     } catch (err) {

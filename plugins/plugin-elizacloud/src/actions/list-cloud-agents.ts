@@ -83,6 +83,11 @@ export const listCloudAgentsAction: Action = {
         text: `Listed ${agents.length} hosted Eliza Cloud agent(s).`,
         userFacingText: reply,
         verifiedUserFacing: true,
+        // A single-operation read whose delivered reply IS the complete
+        // answer: the gated-evaluator skip stops the model from re-rendering
+        // the already-delivered list as a second message (same opt-in as
+        // LIST_CLOUD_APPS). Empty/error exits stay un-gated.
+        turnComplete: true,
         data: {
           count: agents.length,
           agents: agents.map((agent) => ({

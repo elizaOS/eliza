@@ -203,6 +203,10 @@ describe("CALENDAR effect receipt settlement", () => {
     expect(result, JSON.stringify(result)).toMatchObject({
       success: true,
       verifiedUserFacing: true,
+      // The delivered feed text IS the turn's answer: the read declares the
+      // turn complete so the evaluator cannot paraphrase it into a second
+      // user-facing message (the "clear tomorrow." double-speak).
+      turnComplete: true,
       effectReceipts: [
         {
           operation: "calendar.feed.read",
@@ -724,6 +728,9 @@ describe("CALENDAR effect receipt settlement", () => {
         },
       ],
     });
+    // Failures never declare the turn complete: the evaluator may still add
+    // recovery guidance after the action's own failure text.
+    expect(result.turnComplete).toBeUndefined();
     expectBoundDelivery(delivered, result);
   });
 });
