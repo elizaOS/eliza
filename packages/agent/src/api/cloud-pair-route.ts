@@ -62,11 +62,14 @@ function resolveCloudAuthRoot(): string {
 /** API host -> the console host that actually serves `/dashboard/*` for the
  * SAME environment. A staging agent linking a user at the production console
  * (or at its own API origin, which serves no UI) is a dead link, so the
- * mapping is explicit rather than string-munged. */
-const CLOUD_CONSOLE_ORIGIN_BY_API_HOST: Record<string, string> = {
-  "api.elizacloud.ai": "https://www.elizacloud.ai",
-  "api-staging.elizacloud.ai": "https://staging.elizacloud.ai",
-};
+ * mapping is explicit rather than string-munged. A `Map` rather than an object
+ * literal because the lookup key is a parsed hostname: `constructor` and
+ * `__proto__` resolve to inherited members on an object literal and would
+ * return a non-origin value that bypasses the canonicalization below. */
+const CLOUD_CONSOLE_ORIGIN_BY_API_HOST = new Map<string, string>([
+  ["api.elizacloud.ai", "https://www.elizacloud.ai"],
+  ["api-staging.elizacloud.ai", "https://staging.elizacloud.ai"],
+]);
 
 const PRODUCTION_CONSOLE_ORIGIN = "https://www.elizacloud.ai";
 
@@ -96,7 +99,9 @@ function resolveCloudConsoleOrigin(): string {
     return PRODUCTION_CONSOLE_ORIGIN;
   }
 
-  const mapped = CLOUD_CONSOLE_ORIGIN_BY_API_HOST[url.hostname.toLowerCase()];
+  const mapped = CLOUD_CONSOLE_ORIGIN_BY_API_HOST.get(
+    url.hostname.toLowerCase(),
+  );
   if (mapped) return mapped;
 
   if (

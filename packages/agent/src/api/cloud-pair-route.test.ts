@@ -318,6 +318,31 @@ describe("handleStandaloneCloudPairRoute", () => {
     expect(body).not.toContain("y=1");
   });
 
+  // The allowlist is keyed by a parsed hostname, so an inherited member name
+  // must not be mistaken for a configured mapping and skip canonicalization.
+  it.each([["constructor"], ["__proto__"]])(
+    "does not treat the inherited key %s as an allowlisted console host",
+    async (hostname) => {
+      process.env.ELIZAOS_CLOUD_BASE_URL = `https://${hostname}/api/v1`;
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValue(new Response(JSON.stringify({}), { status: 410 })),
+      );
+
+      const harness = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({ pathname: "/pair", search: "?token=expired" }),
+        harness.res,
+      );
+
+      expect(/<a href="([^"]*)"/.exec(harness.body())?.[1]).toBe(
+        `https://${hostname}/dashboard/agents`,
+      );
+    },
+  );
+
   it("serves a loopback console link for a self-hosted http deployment", async () => {
     process.env.ELIZAOS_CLOUD_BASE_URL = "http://localhost:3000/api/v1";
     vi.stubGlobal(
