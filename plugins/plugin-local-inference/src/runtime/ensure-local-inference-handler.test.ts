@@ -200,6 +200,13 @@ describe("ensureLocalInferenceHandler", () => {
 
 		await ensureLocalInferenceHandler(runtime);
 
+		expect(runtime.registerService).toHaveBeenCalledWith(
+			expect.objectContaining({ serviceType: "timedAsr" }),
+		);
+		expect(runtime.registerService).not.toHaveBeenCalledWith(
+			"timedAsr",
+			expect.anything(),
+		);
 		expect(registrations).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
