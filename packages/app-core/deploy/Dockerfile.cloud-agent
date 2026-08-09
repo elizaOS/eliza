@@ -82,6 +82,11 @@ ENV NODE_PATH=/app/node_modules
 ENV NODE_ENV=production
 ENV PORT=${APP_PORT}
 ENV BRIDGE_PORT=${APP_BRIDGE_PORT}
+# Hosting-mode marker: this image is the managed Eliza Cloud agent container.
+# The agent server exposes it as cloudProvisioned so the UI can distinguish
+# managed Cloud from user-owned/self-hosted installs. Provisioning still also
+# injects this via prepareManagedElizaBaseEnvironment for non-image paths.
+ENV ELIZA_CLOUD_PROVISIONED=1
 
 # Health check endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

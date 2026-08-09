@@ -262,6 +262,12 @@ export async function prepareManagedElizaBaseEnvironment(
     agentApiKey,
     environmentVars: {
       ...existingEnv,
+      // Hosting-mode marker: this process is a managed Eliza Cloud agent, not a
+      // user-owned/self-hosted install. Always forced on for the managed path —
+      // callers cannot clear or override it (also in RESERVED_PLATFORM_ENV_KEYS).
+      // The agent server exposes it as `cloudProvisioned` on /api/status and
+      // /api/first-run/status so the UI can render managed vs user-owned UX.
+      ELIZA_CLOUD_PROVISIONED: "1",
       ELIZA_API_TOKEN: apiToken,
       ELIZA_ALLOW_WS_QUERY_TOKEN: "1",
       ELIZA_ALLOWED_ORIGINS: mergeManagedAllowedOrigins(existingEnv.ELIZA_ALLOWED_ORIGINS),
