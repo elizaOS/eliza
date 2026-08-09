@@ -10,6 +10,7 @@ import {
   CONNECTOR_ACCOUNT_SERVICE_TYPE,
   ConnectorAccountManager,
   type Content,
+  ElizaError,
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
@@ -89,7 +90,7 @@ describe("CALENDAR_SOURCES action", () => {
   it("denies non-owner callers before connector access", async () => {
     const { runtime, manager } = runtimeFixture();
     const startOAuth = vi.fn(async () => ({
-      authUrl: "https://accounts.example.test/auth",
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     }));
     manager.registerProvider({ provider: "google", startOAuth });
 
@@ -167,7 +168,7 @@ describe("CALENDAR_SOURCES action", () => {
   it("persists a least-privilege Google authorization flow without claiming connection", async () => {
     const { runtime, manager } = runtimeFixture();
     const startOAuth = vi.fn(async () => ({
-      authUrl: "https://accounts.example.test/auth?state=opaque",
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=opaque",
       expiresAt: Date.parse("2026-07-27T13:00:00.000Z"),
     }));
     manager.registerProvider({ provider: "google", startOAuth });
@@ -193,6 +194,8 @@ describe("CALENDAR_SOURCES action", () => {
       awaitingUserAction: true,
       awaitingUserInput: true,
     });
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain("not connected until");
     expect(result?.text).toContain("not connected until");
     expect(result?.effectReceipts).toEqual([
       expect.objectContaining({
@@ -224,7 +227,7 @@ describe("CALENDAR_SOURCES action", () => {
     );
     expect(persisted).toMatchObject({
       status: "pending",
-      authUrl: "https://accounts.example.test/auth?state=opaque",
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=opaque",
     });
   });
 
@@ -242,16 +245,122 @@ describe("CALENDAR_SOURCES action", () => {
       provider: "microsoft",
       operation: "connect",
       connected: false,
-      connectorId: "microsoft",
+      connectorId: "calendar",
       reason: "microsoft OAuth is not registered in this runtime.",
       completion: "configuration_required",
     });
+    // Card marker + verified handoff so the planner cannot paraphrase away
+    // [CONFIG:calendar] into a vague authentication error.
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain("[CONFIG:calendar]");
+    expect(result?.text).toContain("[CONFIG:calendar]");
+    expect(result?.data).toMatchObject({
+      awaitingUserAction: true,
+      awaitingUserInput: true,
+    });
+  });
+
+  it("returns a verified Google Workspace enablement handoff when google OAuth is absent", async () => {
+    const { runtime } = runtimeFixture();
+
+    const result = await invoke(runtime, {
+      operation: "connect",
+      provider: "google",
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain("[CONFIG:google-workspace]");
+    expect(result?.userFacingText).toMatch(/plugin-google-workspace/i);
+    expect(connection(result)).toMatchObject({
+      state: "configuration_required",
+      provider: "google",
+      connectorId: "google-workspace",
+      completion: "configuration_required",
+    });
+  });
+
+  it("maps incomplete Google OAuth env to a verified google-workspace config card", async () => {
+    const { runtime, manager } = runtimeFixture();
+    manager.registerProvider({
+      provider: "google",
+      startOAuth: vi.fn(async () => {
+        throw new Error(
+          "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured.",
+        );
+      }),
+    });
+
+    const result = await invoke(runtime, {
+      operation: "connect",
+      provider: "google",
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain("[CONFIG:google-workspace]");
+    expect(connection(result)).toMatchObject({
+      state: "configuration_required",
+      provider: "google",
+      connectorId: "google-workspace",
+      completion: "configuration_required",
+    });
+  });
+
+  it("maps incomplete Microsoft OAuth env to a verified calendar config card", async () => {
+    const { runtime, manager } = runtimeFixture();
+    manager.registerProvider({
+      provider: "microsoft",
+      startOAuth: vi.fn(async () => {
+        throw new ElizaError(
+          "Microsoft OAuth requires MICROSOFT_CLIENT_ID and MICROSOFT_REDIRECT_URI.",
+          { code: "MICROSOFT_OAUTH_CONFIG_MISSING", severity: "fatal" },
+        );
+      }),
+    });
+
+    const result = await invoke(runtime, {
+      operation: "connect",
+      provider: "microsoft",
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain("[CONFIG:calendar]");
+    expect(result?.userFacingText).toMatch(/MICROSOFT_CLIENT_ID/);
+    expect(connection(result)).toMatchObject({
+      state: "configuration_required",
+      provider: "microsoft",
+      connectorId: "calendar",
+      completion: "configuration_required",
+    });
+  });
+
+  it("claims natural-language Google calendar connect intents over CONNECTOR", () => {
+    // Planner selection uses similes/routingHint/examples; without these
+    // CONNECT_GOOGLE on CONNECTOR steals "connect google calendar" and drops
+    // the verified [CONFIG:…] handoff path.
+    expect(calendarSourcesAction.similes).toEqual(
+      expect.arrayContaining([
+        "CONNECT_GOOGLE_CALENDAR",
+        "CONNECT_CALENDAR",
+        "LINK_GOOGLE_CALENDAR",
+      ]),
+    );
+    expect(calendarSourcesAction.routingHint).toMatch(/not CONNECTOR/i);
+    expect(calendarSourcesAction.routingHint).toMatch(/CALENDAR_SOURCES/i);
+    const exampleTexts = (calendarSourcesAction.examples ?? [])
+      .flat()
+      .map((turn) => turn.content?.text ?? "")
+      .join("\n")
+      .toLowerCase();
+    expect(exampleTexts).toContain("connect google calendar");
   });
 
   it("rejects reconnect when the grant and account identities disagree", async () => {
     const { runtime, manager } = runtimeFixture();
     const startOAuth = vi.fn(async () => ({
-      authUrl: "https://accounts.example.test/auth",
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     }));
     manager.registerProvider({ provider: "google", startOAuth });
 
@@ -296,6 +405,10 @@ describe("CALENDAR_SOURCES action", () => {
     });
     expect(result?.success).toBe(false);
     expect(result?.text).toContain('"action":"permission_request"');
+    // Permission JSON must be verified user-facing so voice rewrite cannot
+    // strip the card marker into plain prose.
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.userFacingText).toContain('"action":"permission_request"');
   });
 
   it("offers no URL parameter on the agent surface", () => {
@@ -481,7 +594,7 @@ describe("CALENDAR_SOURCES action", () => {
     manager.registerProvider({
       provider: "google",
       startOAuth: vi.fn(async () => ({
-        authUrl: "https://accounts.example.test/auth?state=opaque",
+        authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=opaque",
         expiresAt: Date.parse("2026-07-27T13:00:00.000Z"),
       })),
     });
@@ -544,7 +657,7 @@ describe("CALENDAR_SOURCES action", () => {
     async ({ provider, grantId, connectorAccountId }) => {
       const { runtime, manager } = runtimeFixture();
       const startOAuth = vi.fn(async () => ({
-        authUrl: "https://accounts.example.test/auth",
+        authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       }));
       manager.registerProvider({ provider, startOAuth });
 

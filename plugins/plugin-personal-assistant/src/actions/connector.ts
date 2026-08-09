@@ -139,6 +139,52 @@ function withConfigCard(text: string, pluginId: string): string {
   return `${text}\n\n[CONFIG:${pluginId}]`;
 }
 
+/** Google OAuth authorization endpoints only — never elevate arbitrary URLs. */
+function isTrustedGoogleOAuthUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return false;
+    if (url.username || url.password) return false;
+    if (url.hostname !== "accounts.google.com") return false;
+    if (url.port && url.port !== "443") return false;
+    return (
+      url.pathname === "/o/oauth2/v2/auth" || url.pathname === "/o/oauth2/auth"
+    );
+  } catch {
+    // error-policy:J3 Untrusted URL text is explicitly invalid.
+    return false;
+  }
+}
+
+/**
+ * Calendar feed connect phrases must use CALENDAR_SOURCES, not CONNECTOR.
+ * Deterministic gate so planner metadata alone cannot strand the user.
+ */
+function isCalendarFeedConnectPhrase(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  const connectVerb = "connect|link|add|setup|set up|authorize|enable";
+  if (!new RegExp(`\\b(?:${connectVerb})\\b`).test(normalized)) {
+    return false;
+  }
+  // Vendor calendar shorthand: "google cal", "microsoft calendar", "apple cal".
+  if (/\b(google|microsoft|apple)\s+cal(?:endar)?\b/.test(normalized)) {
+    return true;
+  }
+  // Whole-word "calendar" or "cal" near a connect verb. Word boundaries keep
+  // "calculation" / "call" from matching bare "cal".
+  return new RegExp(
+    `\\b(?:${connectVerb})\\b.{0,40}\\b(?:calendar|cal)\\b|\\b(?:calendar|cal)\\b.{0,40}\\b(?:${connectVerb})\\b`,
+  ).test(normalized);
+}
+
+function messageText(message: Memory): string {
+  const content = message.content;
+  if (!content || typeof content !== "object") return "";
+  const text = (content as { text?: unknown }).text;
+  return typeof text === "string" ? text : "";
+}
+
 /**
  * Short plugin id for the setup card. Message connectors resolve through the
  * existing source mapping; registry-backed connectors use their kind directly
@@ -380,27 +426,133 @@ async function dispatchGoogle(
   const side = normalizeSide(params.side) ?? "owner";
   switch (subaction) {
     case "connect": {
-      const response = await service.startGoogleConnector(
-        {
-          side,
-          mode: params.mode,
-          capabilities: params.capabilities,
-          redirectUrl: params.redirectUrl,
-        },
-        INTERNAL_URL,
-      );
-      return {
-        success: true,
-        text: response.authUrl
-          ? `Open this URL to finish Google connect: ${response.authUrl}`
-          : `Google connector started for side=${side}, mode=${response.mode}.`,
-        data: {
-          actionName: ACTION_NAME,
-          connector: "google",
-          subaction,
-          response,
-        },
-      };
+      // Pin trusted OAuth URLs and allowlisted config cards as verified
+      // user-facing text so the planner cannot paraphrase them away.
+      try {
+        const response = await service.startGoogleConnector(
+          {
+            side,
+            mode: params.mode,
+            capabilities: params.capabilities,
+            redirectUrl: params.redirectUrl,
+          },
+          INTERNAL_URL,
+        );
+        const authUrl =
+          typeof response.authUrl === "string" ? response.authUrl.trim() : "";
+        if (!authUrl) {
+          return {
+            success: false,
+            text: "Google connector started but returned no authorization URL. Check OAuth configuration and try again.",
+            data: {
+              actionName: ACTION_NAME,
+              connector: "google",
+              subaction,
+              error: "GOOGLE_AUTH_URL_MISSING",
+              response,
+            },
+          };
+        }
+        if (!isTrustedGoogleOAuthUrl(authUrl)) {
+          return {
+            success: false,
+            text: "Google connector returned an untrusted authorization URL. Refusing to surface it.",
+            data: {
+              actionName: ACTION_NAME,
+              connector: "google",
+              subaction,
+              error: "GOOGLE_AUTH_URL_UNTRUSTED",
+            },
+          };
+        }
+        const text = `Open this URL to finish Google connect: ${authUrl}`;
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          data: {
+            actionName: ACTION_NAME,
+            connector: "google",
+            subaction,
+            response,
+            awaitingUserAction: true,
+            awaitingUserInput: true,
+          },
+        };
+      } catch (error) {
+        // error-policy:J1 Boundary: expected LifeOps failures become owner
+        // handoffs; unexpected errors rethrow into the planner.
+        if (error instanceof LifeOpsServiceError) {
+          // Prefer stable codes/messages over bare HTTP 503 (outages ≠ config).
+          const needsConfig =
+            error.code === "google_plugin_unavailable" ||
+            /plugin-google-workspace is required|OAuth is not registered|required before starting Google OAuth/i.test(
+              error.message,
+            );
+          if (needsConfig) {
+            // Plugin id must match /api/plugins inventory (google-workspace).
+            const text = withConfigCard(
+              "Google account connection needs Google Workspace enabled and OAuth configured. Open the setup card, then try connect again.",
+              "google-workspace",
+            );
+            return {
+              success: false,
+              text,
+              userFacingText: text,
+              verifiedUserFacing: true,
+              data: {
+                actionName: ACTION_NAME,
+                connector: "google",
+                subaction,
+                status: error.status,
+                error: error.code ?? "GOOGLE_CONNECT_FAILED",
+                awaitingUserAction: true,
+                awaitingUserInput: true,
+              },
+            };
+          }
+          return {
+            success: false,
+            text: "Google connector connect failed. Check connector status and try again.",
+            data: {
+              actionName: ACTION_NAME,
+              connector: "google",
+              subaction,
+              status: error.status,
+              error: error.code ?? "GOOGLE_CONNECT_FAILED",
+            },
+          };
+        }
+        // Incomplete GOOGLE_CLIENT_* / redirect config throws a plain Error from
+        // readClientConfig — map to the same actionable setup card.
+        if (
+          error instanceof Error &&
+          /GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_REDIRECT_URI/i.test(
+            error.message,
+          )
+        ) {
+          const text = withConfigCard(
+            "Google OAuth is incomplete. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI, then try connect again.",
+            "google-workspace",
+          );
+          return {
+            success: false,
+            text,
+            userFacingText: text,
+            verifiedUserFacing: true,
+            data: {
+              actionName: ACTION_NAME,
+              connector: "google",
+              subaction,
+              error: "GOOGLE_OAUTH_CONFIG_INCOMPLETE",
+              awaitingUserAction: true,
+              awaitingUserInput: true,
+            },
+          };
+        }
+        throw error;
+      }
     }
     case "disconnect": {
       const status = await service.disconnectGoogleConnector(
@@ -1368,6 +1520,10 @@ export const connectorAction: Action & {
 } = {
   name: ACTION_NAME,
   similes: [
+    // Prefer CONNECT_GOOGLE_ACCOUNT for account-level Google OAuth. Calendar
+    // feed connect phrases ("connect google calendar") must route to
+    // CALENDAR_SOURCES — CONNECT_GOOGLE remains as a legacy alias only.
+    "CONNECT_GOOGLE_ACCOUNT",
     "CONNECT_GOOGLE",
     "CONNECT_TELEGRAM",
     "CONNECT_DISCORD",
@@ -1391,15 +1547,15 @@ export const connectorAction: Action & {
   description:
     "Installed connector account state: connect, disconnect, verify, status, list. " +
     `Actions: ${VALID_SUBACTIONS.join(", ")}. ` +
-    "External accounts: Google, Telegram, Discord, Slack, etc. " +
+    "External accounts: Google (Gmail/Drive package OAuth), Telegram, Discord, Slack, etc. " +
+    "Do NOT use this for 'connect Google Calendar' / calendar feed authorization — use CALENDAR_SOURCES. " +
     "Connector kinds from runtime ConnectorRegistry; verify active upstream API probe. " +
     "Plugin install/uninstall/configure -> use PLUGIN.",
   descriptionCompressed:
-    "CONNECTOR accounts: connect|disconnect|verify|status|list; plugin install/config -> PLUGIN",
+    "CONNECTOR accounts: connect|disconnect|verify|status|list; calendar feed connect -> CALENDAR_SOURCES; plugin install -> PLUGIN",
   contexts: [
     "connectors",
     "settings",
-    "calendar",
     "email",
     "messaging",
     "contacts",
@@ -1407,9 +1563,15 @@ export const connectorAction: Action & {
     "browser",
   ],
   roleGate: { minRole: "OWNER" },
+  routingHint:
+    "connect/link Google Calendar or any calendar source/feed authorization -> CALENDAR_SOURCES; Gmail/Drive/account Google OAuth without calendar-feed wording -> CONNECTOR; package install/config -> PLUGIN",
   suppressPostActionContinuation: true,
 
-  validate: async () => true,
+  validate: async (_runtime, message) => {
+    // Exclude CONNECTOR from selection for calendar-feed connect phrasing so
+    // the planner must use CALENDAR_SOURCES instead of CONNECT_GOOGLE.
+    return !isCalendarFeedConnectPhrase(messageText(message));
+  },
 
   handler: async (
     runtime: IAgentRuntime,
@@ -1422,6 +1584,18 @@ export const connectorAction: Action & {
         success: false,
         text: "Connector account actions are restricted to the owner.",
         data: { actionName: ACTION_NAME, error: "PERMISSION_DENIED" },
+      };
+    }
+
+    if (isCalendarFeedConnectPhrase(messageText(message))) {
+      return {
+        success: false,
+        text: "Calendar feed connection uses CALENDAR_SOURCES, not CONNECTOR. Call CALENDAR_SOURCES with operation=connect and provider=google|microsoft|apple_calendar.",
+        data: {
+          actionName: ACTION_NAME,
+          error: "USE_CALENDAR_SOURCES",
+          redirectAction: "CALENDAR_SOURCES",
+        },
       };
     }
 

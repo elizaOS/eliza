@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   extractActionParamsViaLlm: vi.fn(),
   hasLifeOpsAccess: vi.fn(async () => true),
   connected: { value: false },
+  startGoogleConnector: vi.fn(),
 }));
 
 vi.mock("@elizaos/agent", () => ({
@@ -47,6 +48,16 @@ vi.mock("../src/lifeops/connectors/index.js", () => ({
 // same shape, which is all the connect dispatchers read.
 vi.mock("../src/lifeops/service.js", () => {
   const status = () => ({ connected: mocks.connected.value });
+  class LifeOpsServiceError extends Error {
+    status: number;
+    code?: string;
+    constructor(status: number, message: string, code?: string) {
+      super(message);
+      this.name = "LifeOpsServiceError";
+      this.status = status;
+      this.code = code;
+    }
+  }
   return {
     LifeOpsService: class LifeOpsService {
       getDiscordConnectorStatus = vi.fn(async () => status());
@@ -54,10 +65,9 @@ vi.mock("../src/lifeops/service.js", () => {
       getSignalConnectorStatus = vi.fn(async () => status());
       getIMessageConnectorStatus = vi.fn(async () => status());
       getWhatsAppConnectorStatus = vi.fn(async () => status());
+      startGoogleConnector = mocks.startGoogleConnector;
     },
-    LifeOpsServiceError: class LifeOpsServiceError extends Error {
-      status = 500;
-    },
+    LifeOpsServiceError,
   };
 });
 
@@ -108,6 +118,133 @@ beforeEach(() => {
   mocks.extractActionParamsViaLlm.mockReset();
   mocks.hasLifeOpsAccess.mockReset().mockResolvedValue(true);
   mocks.connected.value = false;
+  mocks.startGoogleConnector.mockReset();
+});
+
+describe("CONNECTOR Google connect handoff cards", () => {
+  it("pins trusted Google OAuth URLs as verified user-facing text", async () => {
+    mocks.startGoogleConnector.mockResolvedValue({
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth?client_id=test",
+      mode: "local",
+      side: "owner",
+    });
+    const result = await connect("google");
+    expect(result.success).toBe(true);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.userFacingText).toContain(
+      "https://accounts.google.com/o/oauth2/v2/auth?client_id=test",
+    );
+    expect(result.text).toContain(
+      "https://accounts.google.com/o/oauth2/v2/auth?client_id=test",
+    );
+    expect(result.data).toMatchObject({
+      awaitingUserAction: true,
+      awaitingUserInput: true,
+    });
+  });
+
+  it("refuses untrusted OAuth URL hosts", async () => {
+    mocks.startGoogleConnector.mockResolvedValue({
+      authUrl: "https://evil.example/phish",
+      mode: "local",
+      side: "owner",
+    });
+    const result = await connect("google");
+    expect(result.success).toBe(false);
+    expect(result.verifiedUserFacing).not.toBe(true);
+    expect(result.data).toMatchObject({ error: "GOOGLE_AUTH_URL_UNTRUSTED" });
+  });
+
+  it("fails closed when authUrl is missing", async () => {
+    mocks.startGoogleConnector.mockResolvedValue({
+      authUrl: "",
+      mode: "local",
+      side: "owner",
+    });
+    const result = await connect("google");
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "GOOGLE_AUTH_URL_MISSING" });
+  });
+
+  it("validate rejects calendar-feed connect phrasing", async () => {
+    await expect(
+      connectorAction.validate?.(
+        {} as never,
+        { content: { text: "connect google calendar" } } as never,
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      connectorAction.validate?.(
+        {} as never,
+        { content: { text: "link my microsoft cal" } } as never,
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      connectorAction.validate?.(
+        {} as never,
+        { content: { text: "connect my gmail" } } as never,
+      ),
+    ).resolves.toBe(true);
+    // Whole-word boundaries: calculation/call must not trip the calendar gate.
+    await expect(
+      connectorAction.validate?.(
+        {} as never,
+        { content: { text: "add a note about the calculation" } } as never,
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      connectorAction.validate?.(
+        {} as never,
+        { content: { text: "connect the support call" } } as never,
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it("emits a verified [CONFIG:google-workspace] card with sanitized copy when OAuth cannot start", async () => {
+    const { LifeOpsServiceError } = await import("../src/lifeops/service.js");
+    mocks.startGoogleConnector.mockRejectedValue(
+      new LifeOpsServiceError(
+        503,
+        "@elizaos/plugin-google-workspace is required before starting Google OAuth. internal-debug=xyz",
+      ),
+    );
+    const result = await connect("google");
+    expect(result.success).toBe(false);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.text).toContain("[CONFIG:google-workspace]");
+    expect(result.userFacingText).toContain("[CONFIG:google-workspace]");
+    // Must not leak raw upstream / internal error text into verified UI copy.
+    expect(result.text).not.toContain("internal-debug");
+    expect(result.userFacingText).toMatch(
+      /Google Workspace enabled and OAuth configured/i,
+    );
+    expect(result.data).toMatchObject({
+      awaitingUserAction: true,
+      status: 503,
+    });
+  });
+
+  it("maps incomplete GOOGLE_CLIENT_* Error to google-workspace setup card", async () => {
+    mocks.startGoogleConnector.mockRejectedValue(
+      new Error(
+        "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured.",
+      ),
+    );
+    const result = await connect("google");
+    expect(result.success).toBe(false);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.text).toContain("[CONFIG:google-workspace]");
+    expect(result.data).toMatchObject({
+      error: "GOOGLE_OAUTH_CONFIG_INCOMPLETE",
+    });
+  });
+
+  it("routes calendar-feed connect away from CONNECTOR in metadata", () => {
+    expect(connectorAction.routingHint).toMatch(/CALENDAR_SOURCES/);
+    expect(connectorAction.routingHint).toMatch(/calendar/i);
+    expect(connectorAction.description).toMatch(/CALENDAR_SOURCES/);
+    expect(connectorAction.contexts).not.toContain("calendar");
+  });
 });
 
 describe("CONNECTOR connect emits the setup-card marker", () => {

@@ -365,6 +365,59 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
  */
 export type PluginLoadReasons = Map<string, string>;
 
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/** True when a googlechat connector block has real config, not just `{}`. */
+function isGoogleChatConnectorConfigured(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const config = value as Record<string, unknown>;
+  if (config.enabled === false) return false;
+  // Usable Chat credential material only — projectId alone is not enough.
+  if (nonEmptyString(config.serviceAccountKey)) return true;
+  if (nonEmptyString(config.serviceAccount)) return true;
+  if (Array.isArray(config.accounts)) {
+    return config.accounts.some((account) => {
+      if (!account || typeof account !== "object" || Array.isArray(account)) {
+        return false;
+      }
+      const row = account as Record<string, unknown>;
+      return Boolean(
+        nonEmptyString(row.serviceAccountKey) || nonEmptyString(row.keyFile),
+      );
+    });
+  }
+  return false;
+}
+
+/**
+ * Explicit Google signals only — never inferred from the universal Calendar
+ * home tile (Apple/Microsoft/ICS also use Calendar).
+ */
+function shouldLoadGoogleWorkspace(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv,
+  pluginEntries: Record<string, { enabled?: boolean } | undefined> | undefined,
+): boolean {
+  if (pluginEntries?.["google-workspace"]?.enabled === true) {
+    return true;
+  }
+
+  const connectors = config.connectors as Record<string, unknown> | undefined;
+  if (isGoogleChatConnectorConfigured(connectors?.googlechat)) {
+    return true;
+  }
+
+  // Match readClientConfig(): OAuth cannot start without redirect URI either.
+  const clientId = env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
+  const redirectUri = env.GOOGLE_REDIRECT_URI?.trim();
+  return Boolean(clientId && clientSecret && redirectUri);
+}
+
 /**
  * Collect plugin package names to load from config, env, feature flags, and
  * connector-derived allow-list mutations.
@@ -617,6 +670,13 @@ export function collectPluginNames(
     if ((channelConfig as Record<string, unknown>).enabled === false) {
       continue;
     }
+    // googlechat → google-workspace: require real Chat config, not empty `{}`.
+    if (
+      channelName === "googlechat" &&
+      !isGoogleChatConnectorConfigured(channelConfig)
+    ) {
+      continue;
+    }
     const pluginName = CHANNEL_PLUGIN_MAP[channelName];
     if (pluginName) {
       pluginsToLoad.add(pluginName);
@@ -807,12 +867,46 @@ export function collectPluginNames(
     }
   }
 
+  // Calendar home tiles load on every platform (MOBILE_VIEW_PLUGINS). Calendar
+  // hard-depends on plugin-scheduling (watch/reminder spine); always companion
+  // that primitive when calendar is present.
+  //
+  // Do NOT infer Google Workspace from Calendar alone — Calendar also covers
+  // Apple/Microsoft/ICS. Load google-workspace only on an explicit Google
+  // signal (entries enable, googlechat connector, or full GOOGLE_CLIENT_* trio),
+  // and never when entries["google-workspace"].enabled === false.
+  //
+  // Run BEFORE the mobile allow-list so Node-only Workspace cannot be re-added
+  // after mobile filtering (APK has no google-workspace bundle).
+  if (pluginsToLoad.has("@elizaos/plugin-calendar")) {
+    if (!pluginsToLoad.has("@elizaos/plugin-scheduling")) {
+      pluginsToLoad.add("@elizaos/plugin-scheduling");
+      track("@elizaos/plugin-scheduling", "calendar companion");
+    }
+  }
+  if (
+    !pluginsToLoad.has("@elizaos/plugin-google-workspace") &&
+    !isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace") &&
+    shouldLoadGoogleWorkspace(config, process.env, pluginEntries)
+  ) {
+    pluginsToLoad.add("@elizaos/plugin-google-workspace");
+    track(
+      "@elizaos/plugin-google-workspace",
+      "explicit Google signal (entries / googlechat / GOOGLE_CLIENT_*)",
+    );
+  }
+  // Final deny: explicit disable wins even if an earlier path added Workspace.
+  if (isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace")) {
+    pluginsToLoad.delete("@elizaos/plugin-google-workspace");
+  }
+
   // Mobile: restrict the final set to plugins that the bundled mobile runtime
   // can actually load — the mobile-core list plus model-provider plugins that
   // are statically imported in `runtime/eliza.ts`. Anything else (connector
   // plugins, feature plugins from `plugins.entries`, drop-in plugins from
   // `plugins.installs`) would force a dynamic `import("@elizaos/plugin-...")`
   // against a `node_modules` tree that does not ship in the APK.
+  // Must run AFTER companion adds so google-workspace cannot bypass the filter.
   if (onMobile) {
     const mobileAllowed = new Set<string>([
       ...MOBILE_CORE_PLUGINS,
