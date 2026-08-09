@@ -4,7 +4,7 @@ Google Workspace integration for Gmail, Calendar, Drive, and Meet with account-s
 
 ## Purpose / role
 
-Adds `GoogleWorkspaceService` to an Eliza agent runtime, exposing Gmail, Google Calendar, Google Drive, and Google Meet operations through a single account-scoped OAuth grant. It also exports `GoogleGmailAdapter`, the Gmail-owned message-triage adapter used by assistant plugins such as LifeOps. The plugin is opt-in — load it as `googlePlugin` from this package. It also registers with `ConnectorAccountManager` so the generic connector HTTP routes can manage Google accounts and run OAuth flows automatically.
+Adds `GoogleWorkspaceService` to an Eliza agent runtime, exposing Gmail, Google Calendar, Google Drive, and Google Meet operations through a single account-scoped OAuth grant. It also exports `GoogleGmailAdapter`, the Gmail-owned message-triage adapter used by assistant plugins such as LifeOps. The plugin is opt-in — load it as `googlePlugin` from this package. It also registers with `ConnectorAccountManager` so the generic connector HTTP routes can manage Google accounts and run OAuth flows automatically; that provider registration also mounts the Gmail send `MessageConnector` (`source: "gmail"`, aliases `email`/`mail`) so `MESSAGE op=send` can compose and send email through the connected account.
 
 Google Chat lives here too, as the `src/chat/` module: `GoogleChatService` (service type `"google-chat"`) registers a runtime `MessageConnector` for spaces, DMs, threads, reactions, and attachments, and `GoogleChatWorkflowCredentialProvider` (service type `"workflow_credential_provider"`) supplies `googleChatOAuth2Api` credentials to the workflow plugin. Chat authenticates with a service account (scope `https://www.googleapis.com/auth/chat.bot`), NOT the consolidated Workspace OAuth grant — the two auth models are intentionally separate even though they share this package. The plugin auto-enables when a `connectors.googlechat` block is present and not explicitly disabled (`auto-enable.ts`); the Workspace OAuth side stays opt-in.
 
@@ -13,7 +13,8 @@ Google Chat lives here too, as the `src/chat/` module: `GoogleChatService` (serv
 The plugin object (`googlePlugin`, service name `"google"`) registers:
 
 - **Services:** `GoogleWorkspaceService` — wraps four sub-clients (Gmail, Calendar, Drive, Meet), retrieved via `runtime.getService("google")`; `GoogleChatService` — the Chat connector, retrieved via `runtime.getService("google-chat")`; `GoogleChatWorkflowCredentialProvider` — workflow credential supplier.
-- **Message adapters:** `GoogleGmailAdapter` — Gmail projection into the core message-triage shape for assistant plugins.
+- **Message adapters:** `GoogleGmailAdapter` — Gmail projection into the core message-triage shape for assistant plugins (thread replies and new outbound email).
+- **Message connectors:** the Gmail send connector from `gmail-message-connector.ts`, registered through the Google connector-account provider — routes `MESSAGE op=send source=gmail` / email-literal targets to `GoogleWorkspaceService.sendGmailMessage`.
 - **Actions:** none (empty array).
 - **Providers:** none (registered separately via `ConnectorAccountManager` at init time).
 - **Events:** none.
@@ -63,6 +64,7 @@ src/
   connector-credential-refs.ts   Credential ref persistence helpers (persistConnectorCredentialRefs)
   service.ts                   GoogleWorkspaceService — assembles the four sub-clients
   gmail.ts                     GoogleGmailClient — all Gmail operations
+  gmail-message-connector.ts   Gmail send MessageConnector (MESSAGE op=send source=gmail)
   lifeops-message-adapter.ts   GoogleGmailAdapter for assistant/LifeOps message triage registration
   calendar.ts                  GoogleCalendarClient — Calendar list/CRUD
   drive.ts                     GoogleDriveClient — Drive/Docs/Sheets operations
