@@ -756,7 +756,7 @@ export default function Leaderboard() {
   );
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: pointer-gesture swipe/drag surface only; the switcher buttons remain the keyboard-accessible platform-switch path.
+    // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart only cancels native HTML drag so the pointer-gesture surface keeps working; it adds no interactive semantics.
     <div
       {...bind()}
       // Horizontal swipes cross the QR image and Get Started link; without
@@ -972,39 +972,171 @@ export default function Leaderboard() {
             </AnimatedDiv>
           </div>
         </div>
-        <AnimatedDiv
+        {/* inert / aria-hidden / visibility markers live on a plain wrapper:
+            react-spring re-applies an animated element's captured props on
+            every frame and can never remove an attribute, so a starved frame
+            loop (CI software rendering) resurrects stale inert state. */}
+        <div
           data-landing-chrome="composer"
           data-landing-chrome-visible={inputBarVisible ? "true" : "false"}
-          className={`fixed left-1/2 -translate-x-1/2 z-20 w-full  ${tryPlatform === "telegram" ? "px-2 pt-3 pb-3 bg-white" : tryPlatform === "discord" ? "px-2 pt-3 pb-3 bg-[#36393f] border-t border-[#202225]" : "px-5 pt-20 pb-6"}`}
+          className="contents"
           {...hiddenChromeDomProps(inputBarVisible)}
-          style={{
-            bottom: landingChromeBottomCss(COMPOSER_VIEWPORT_LIFT_PX),
-            maxWidth: loginMaxW + 12,
-            opacity: inputBarSpring.opacity,
-            pointerEvents: inputBarVisible ? "auto" : "none",
-            transform:
-              tryPlatform === "telegram" || tryPlatform === "discord"
-                ? inputBarSpring.y.to(
-                    (y) =>
-                      `perspective(600px) rotateX(5deg) translateY(${y}px)`,
-                  )
-                : "perspective(600px) rotateX(5deg)",
-            transformOrigin: "bottom center",
-          }}
         >
-          {tryPlatform === "telegram" || tryPlatform === "discord" ? (
-            <div className="flex items-end gap-2">
-              <div
-                className={`flex-1 flex items-end rounded-xs border pl-5 pr-1.5 py-1.5 ${tryPlatform === "discord" ? "bg-[#40444b] border-[#40444b]" : tryPlatform === "telegram" ? "bg-white border-neutral-300" : "bg-white border-neutral-200"}`}
+          <AnimatedDiv
+            className={`fixed left-1/2 -translate-x-1/2 z-20 w-full  ${tryPlatform === "telegram" ? "px-2 pt-3 pb-3 bg-white" : tryPlatform === "discord" ? "px-2 pt-3 pb-3 bg-[#36393f] border-t border-[#202225]" : "px-5 pt-20 pb-6"}`}
+            style={{
+              bottom: landingChromeBottomCss(COMPOSER_VIEWPORT_LIFT_PX),
+              maxWidth: loginMaxW + 12,
+              opacity: inputBarSpring.opacity,
+              pointerEvents: inputBarVisible ? "auto" : "none",
+              transform:
+                tryPlatform === "telegram" || tryPlatform === "discord"
+                  ? inputBarSpring.y.to(
+                      (y) =>
+                        `perspective(600px) rotateX(5deg) translateY(${y}px)`,
+                    )
+                  : "perspective(600px) rotateX(5deg)",
+              transformOrigin: "bottom center",
+            }}
+          >
+            {tryPlatform === "telegram" || tryPlatform === "discord" ? (
+              <div className="flex items-end gap-2">
+                <div
+                  className={`flex-1 flex items-end rounded-xs border pl-5 pr-1.5 py-1.5 ${tryPlatform === "discord" ? "bg-[#40444b] border-[#40444b]" : tryPlatform === "telegram" ? "bg-white border-neutral-300" : "bg-white border-neutral-200"}`}
+                >
+                  <label htmlFor="landing-try-message" className="sr-only">
+                    {t("homepage_eliza.leaderboard.messageLabel", {
+                      defaultValue: "Message Eliza",
+                    })}
+                  </label>
+                  <textarea
+                    ref={textareaRef}
+                    id="landing-try-message"
+                    rows={1}
+                    value={tryInput}
+                    onChange={(e) => {
+                      setTryInput(e.target.value);
+                      e.target.style.height = "auto";
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 320)}px`;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        if (tryInput.trim() && !waiting) {
+                          if (listening) recognitionRef.current?.stop();
+                          modelRef.current?.sendMessage(tryInput.trim());
+                          setTryInput("");
+                          if (textareaRef.current)
+                            textareaRef.current.style.height = "auto";
+                        }
+                      }
+                    }}
+                    placeholder={
+                      tryPlatform === "telegram"
+                        ? t("homepage_eliza.leaderboard.placeholderTelegram", {
+                            defaultValue: "Message",
+                          })
+                        : tryPlatform === "discord"
+                          ? t("homepage_eliza.leaderboard.placeholderDiscord", {
+                              defaultValue: "Message #general",
+                            })
+                          : ""
+                    }
+                    aria-label={t("homepage_eliza.leaderboard.messageLabel", {
+                      defaultValue: "Message Eliza",
+                    })}
+                    className={`flex-1 min-h-11 bg-transparent text-lg outline-none resize-none py-1.5 max-h-80 leading-snug scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] ${tryPlatform === "discord" ? "text-white placeholder-[#72767d] caret-white" : tryPlatform === "telegram" ? "text-black placeholder-neutral-400 caret-[#2AABEE]" : "text-black caret-green-600"}`}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (tryInput.trim() && !waiting) {
+                      if (listening) recognitionRef.current?.stop();
+                      modelRef.current?.sendMessage(tryInput.trim());
+                      setTryInput("");
+                      if (textareaRef.current)
+                        textareaRef.current.style.height = "auto";
+                    } else {
+                      toggleVoiceInput();
+                    }
+                  }}
+                  aria-label={
+                    tryInput.trim()
+                      ? t("homepage_eliza.leaderboard.ariaSend", {
+                          defaultValue: "Send message",
+                        })
+                      : t("homepage_eliza.leaderboard.ariaVoice", {
+                          defaultValue: "Start voice input",
+                        })
+                  }
+                  className={`shrink-0 flex items-center justify-center rounded-xs cursor-pointer ${tryInput.trim() ? (waiting ? "size-12 bg-neutral-300 text-white" : tryPlatform === "discord" ? "size-12 text-[#5865F2]" : "size-12 text-[#2AABEE]") : listening ? (tryPlatform === "discord" ? "size-12 bg-[#5865F2] text-white" : "size-12 bg-[#2AABEE] text-white") : "size-12 text-neutral-400"}`}
+                >
+                  {tryInput.trim() ? (
+                    tryPlatform === "telegram" ? (
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        className="size-12"
+                      >
+                        <title>
+                          {t("homepage_eliza.leaderboard.iconTitleTelegram", {
+                            defaultValue: "Telegram",
+                          })}
+                        </title>
+                        <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+                      </svg>
+                    ) : (
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        className="size-5"
+                      >
+                        <title>
+                          {t("homepage_eliza.leaderboard.iconTitleSend", {
+                            defaultValue: "Send message",
+                          })}
+                        </title>
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                      </svg>
+                    )
+                  ) : (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.8}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="size-6"
+                    >
+                      <title>
+                        {t("homepage_eliza.leaderboard.iconTitleVoice", {
+                          defaultValue: "Voice input",
+                        })}
+                      </title>
+                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                      <path d="M12 19v4M8 23h8" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <AnimatedDiv
+                className="flex items-end gap-3 bg-white border border-black rounded-xs pl-5 pr-1.5 py-1.5"
+                style={{
+                  transform: inputBarSpring.y.to((y) => `translateY(${y}px)`),
+                }}
               >
-                <label htmlFor="landing-try-message" className="sr-only">
+                <label htmlFor="landing-eliza-message" className="sr-only">
                   {t("homepage_eliza.leaderboard.messageLabel", {
                     defaultValue: "Message Eliza",
                   })}
                 </label>
                 <textarea
                   ref={textareaRef}
-                  id="landing-try-message"
+                  id="landing-eliza-message"
                   rows={1}
                   value={tryInput}
                   onChange={(e) => {
@@ -1024,65 +1156,49 @@ export default function Leaderboard() {
                       }
                     }
                   }}
-                  placeholder={
-                    tryPlatform === "telegram"
-                      ? t("homepage_eliza.leaderboard.placeholderTelegram", {
-                          defaultValue: "Message",
-                        })
-                      : tryPlatform === "discord"
-                        ? t("homepage_eliza.leaderboard.placeholderDiscord", {
-                            defaultValue: "Message #general",
-                          })
-                        : ""
-                  }
+                  placeholder={t(
+                    "homepage_eliza.leaderboard.placeholderEliza",
+                    {
+                      defaultValue: "Message Eliza...",
+                    },
+                  )}
                   aria-label={t("homepage_eliza.leaderboard.messageLabel", {
                     defaultValue: "Message Eliza",
                   })}
-                  className={`flex-1 min-h-11 bg-transparent text-lg outline-none resize-none py-1.5 max-h-80 leading-snug scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] ${tryPlatform === "discord" ? "text-white placeholder-[#72767d] caret-white" : tryPlatform === "telegram" ? "text-black placeholder-neutral-400 caret-[#2AABEE]" : "text-black caret-green-600"}`}
+                  className="flex-1 min-h-11 bg-transparent text-black placeholder-black/40 font-light text-lg outline-none resize-none py-1.5 max-h-80 leading-snug caret-blue-500 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none]"
                 />
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (tryInput.trim() && !waiting) {
-                    if (listening) recognitionRef.current?.stop();
-                    modelRef.current?.sendMessage(tryInput.trim());
-                    setTryInput("");
-                    if (textareaRef.current)
-                      textareaRef.current.style.height = "auto";
-                  } else {
-                    toggleVoiceInput();
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (tryInput.trim() && !waiting) {
+                      if (listening) recognitionRef.current?.stop();
+                      modelRef.current?.sendMessage(tryInput.trim());
+                      setTryInput("");
+                      if (textareaRef.current)
+                        textareaRef.current.style.height = "auto";
+                    } else {
+                      toggleVoiceInput();
+                    }
+                  }}
+                  aria-label={
+                    tryInput.trim()
+                      ? t("homepage_eliza.leaderboard.ariaSend", {
+                          defaultValue: "Send message",
+                        })
+                      : t("homepage_eliza.leaderboard.ariaVoice", {
+                          defaultValue: "Start voice input",
+                        })
                   }
-                }}
-                aria-label={
-                  tryInput.trim()
-                    ? t("homepage_eliza.leaderboard.ariaSend", {
-                        defaultValue: "Send message",
-                      })
-                    : t("homepage_eliza.leaderboard.ariaVoice", {
-                        defaultValue: "Start voice input",
-                      })
-                }
-                className={`shrink-0 flex items-center justify-center rounded-xs cursor-pointer ${tryInput.trim() ? (waiting ? "size-12 bg-neutral-300 text-white" : tryPlatform === "discord" ? "size-12 text-[#5865F2]" : "size-12 text-[#2AABEE]") : listening ? (tryPlatform === "discord" ? "size-12 bg-[#5865F2] text-white" : "size-12 bg-[#2AABEE] text-white") : "size-12 text-neutral-400"}`}
-              >
-                {tryInput.trim() ? (
-                  tryPlatform === "telegram" ? (
+                  className={`shrink-0 flex min-h-11 min-w-11 items-center justify-center rounded-xs mb-0.5 cursor-pointer ${tryInput.trim() ? (waiting ? "w-12 h-11 bg-neutral-300 text-white" : "w-12 h-11 bg-[var(--brand-blue)] text-white") : listening ? "w-12 h-11 bg-[var(--brand-blue)] text-white" : "w-11 h-11 text-black/40"}`}
+                >
+                  {tryInput.trim() ? (
                     <svg
                       viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="size-12"
-                    >
-                      <title>
-                        {t("homepage_eliza.leaderboard.iconTitleTelegram", {
-                          defaultValue: "Telegram",
-                        })}
-                      </title>
-                      <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
-                    </svg>
-                  ) : (
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                       className="size-5"
                     >
                       <title>
@@ -1090,357 +1206,265 @@ export default function Leaderboard() {
                           defaultValue: "Send message",
                         })}
                       </title>
-                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                      <path d="M12 22V4M5 11l7-7 7 7" />
                     </svg>
-                  )
-                ) : (
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={1.8}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="size-6"
-                  >
-                    <title>
-                      {t("homepage_eliza.leaderboard.iconTitleVoice", {
-                        defaultValue: "Voice input",
-                      })}
-                    </title>
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <path d="M12 19v4M8 23h8" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          ) : (
-            <AnimatedDiv
-              className="flex items-end gap-3 bg-white border border-black rounded-xs pl-5 pr-1.5 py-1.5"
-              style={{
-                transform: inputBarSpring.y.to((y) => `translateY(${y}px)`),
-              }}
-            >
-              <label htmlFor="landing-eliza-message" className="sr-only">
-                {t("homepage_eliza.leaderboard.messageLabel", {
-                  defaultValue: "Message Eliza",
-                })}
-              </label>
-              <textarea
-                ref={textareaRef}
-                id="landing-eliza-message"
-                rows={1}
-                value={tryInput}
-                onChange={(e) => {
-                  setTryInput(e.target.value);
-                  e.target.style.height = "auto";
-                  e.target.style.height = `${Math.min(e.target.scrollHeight, 320)}px`;
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    if (tryInput.trim() && !waiting) {
-                      if (listening) recognitionRef.current?.stop();
-                      modelRef.current?.sendMessage(tryInput.trim());
-                      setTryInput("");
-                      if (textareaRef.current)
-                        textareaRef.current.style.height = "auto";
-                    }
-                  }
-                }}
-                placeholder={t("homepage_eliza.leaderboard.placeholderEliza", {
-                  defaultValue: "Message Eliza...",
-                })}
-                aria-label={t("homepage_eliza.leaderboard.messageLabel", {
-                  defaultValue: "Message Eliza",
-                })}
-                className="flex-1 min-h-11 bg-transparent text-black placeholder-black/40 font-light text-lg outline-none resize-none py-1.5 max-h-80 leading-snug caret-blue-500 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none]"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if (tryInput.trim() && !waiting) {
-                    if (listening) recognitionRef.current?.stop();
-                    modelRef.current?.sendMessage(tryInput.trim());
-                    setTryInput("");
-                    if (textareaRef.current)
-                      textareaRef.current.style.height = "auto";
-                  } else {
-                    toggleVoiceInput();
-                  }
-                }}
-                aria-label={
-                  tryInput.trim()
-                    ? t("homepage_eliza.leaderboard.ariaSend", {
-                        defaultValue: "Send message",
-                      })
-                    : t("homepage_eliza.leaderboard.ariaVoice", {
-                        defaultValue: "Start voice input",
-                      })
-                }
-                className={`shrink-0 flex min-h-11 min-w-11 items-center justify-center rounded-xs mb-0.5 cursor-pointer ${tryInput.trim() ? (waiting ? "w-12 h-11 bg-neutral-300 text-white" : "w-12 h-11 bg-[var(--brand-blue)] text-white") : listening ? "w-12 h-11 bg-[var(--brand-blue)] text-white" : "w-11 h-11 text-black/40"}`}
-              >
-                {tryInput.trim() ? (
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={2.5}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="size-5"
-                  >
-                    <title>
-                      {t("homepage_eliza.leaderboard.iconTitleSend", {
-                        defaultValue: "Send message",
-                      })}
-                    </title>
-                    <path d="M12 22V4M5 11l7-7 7 7" />
-                  </svg>
-                ) : listening ? (
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="size-5"
-                  >
-                    <title>
-                      {t("homepage_eliza.leaderboard.iconTitleVoice", {
-                        defaultValue: "Voice input",
-                      })}
-                    </title>
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <path d="M12 19v4M8 23h8" />
-                  </svg>
-                ) : (
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="size-5"
-                  >
-                    <title>
-                      {t("homepage_eliza.leaderboard.iconTitleVoice", {
-                        defaultValue: "Voice input",
-                      })}
-                    </title>
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <path d="M12 19v4M8 23h8" />
-                  </svg>
-                )}
-              </button>
-            </AnimatedDiv>
-          )}
-        </AnimatedDiv>
-        <AnimatedDiv
+                  ) : listening ? (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="size-5"
+                    >
+                      <title>
+                        {t("homepage_eliza.leaderboard.iconTitleVoice", {
+                          defaultValue: "Voice input",
+                        })}
+                      </title>
+                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                      <path d="M12 19v4M8 23h8" />
+                    </svg>
+                  ) : (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="size-5"
+                    >
+                      <title>
+                        {t("homepage_eliza.leaderboard.iconTitleVoice", {
+                          defaultValue: "Voice input",
+                        })}
+                      </title>
+                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                      <path d="M12 19v4M8 23h8" />
+                    </svg>
+                  )}
+                </button>
+              </AnimatedDiv>
+            )}
+          </AnimatedDiv>
+        </div>
+        <div
           data-landing-chrome="login"
           data-landing-chrome-visible={loginBarVisible ? "true" : "false"}
-          className="fixed left-1/2 -translate-x-1/2 z-20 w-full gap-4 px-8 flex flex-col "
+          className="contents"
           {...hiddenChromeDomProps(loginBarVisible)}
-          style={{
-            bottom: landingChromeBottomCss(loginBottom),
-            maxWidth: loginMaxW,
-            opacity: loginBarSpring.opacity,
-            pointerEvents: loginBarVisible ? "auto" : "none",
-            transform: to(
-              [loginBarSpring.y, loginBarSpring.scale],
-              (y, s) =>
-                `perspective(600px) rotateX(5deg) translateY(${y}px) scale(${s})`,
-            ),
-            transformOrigin: "bottom center",
-          }}
         >
-          <div className="flex items-center gap-4 bg-white border border-black rounded-xs px-4 py-4">
-            <div className="relative flex items-center gap-1.5 text-neutral-600 cursor-pointer">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="size-4"
-              >
-                <title>
-                  {t("homepage_eliza.leaderboard.iconTitleSelectCountry", {
-                    defaultValue: "Select country",
-                  })}
-                </title>
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-              <span className="text-3xl leading-none">{country.flag}</span>
-              <select
-                value={selectedCountry}
-                onChange={(e) => {
-                  setSelectedCountry(e.target.value);
-                  setPhoneDigits("");
-                }}
-                className="absolute inset-0 opacity-0 cursor-pointer"
-              >
-                {COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.flag} {c.name} ({c.dial})
-                  </option>
-                ))}
-              </select>
-            </div>
+          <AnimatedDiv
+            className="fixed left-1/2 -translate-x-1/2 z-20 w-full gap-4 px-8 flex flex-col "
+            style={{
+              bottom: landingChromeBottomCss(loginBottom),
+              maxWidth: loginMaxW,
+              opacity: loginBarSpring.opacity,
+              pointerEvents: loginBarVisible ? "auto" : "none",
+              transform: to(
+                [loginBarSpring.y, loginBarSpring.scale],
+                (y, s) =>
+                  `perspective(600px) rotateX(5deg) translateY(${y}px) scale(${s})`,
+              ),
+              transformOrigin: "bottom center",
+            }}
+          >
+            <div className="flex items-center gap-4 bg-white border border-black rounded-xs px-4 py-4">
+              <div className="relative flex items-center gap-1.5 text-neutral-600 cursor-pointer">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="size-4"
+                >
+                  <title>
+                    {t("homepage_eliza.leaderboard.iconTitleSelectCountry", {
+                      defaultValue: "Select country",
+                    })}
+                  </title>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+                <span className="text-3xl leading-none">{country.flag}</span>
+                <select
+                  value={selectedCountry}
+                  onChange={(e) => {
+                    setSelectedCountry(e.target.value);
+                    setPhoneDigits("");
+                  }}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                >
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.flag} {c.name} ({c.dial})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <input
-              type="tel"
-              value={formatPhone(phoneDigits, country.placeholder)}
-              onChange={(e) => {
-                const raw = e.target.value.replace(/\D/g, "");
-                const maxDigits = country.placeholder.replace(/\D/g, "").length;
-                setPhoneDigits(raw.slice(0, maxDigits));
+              <input
+                type="tel"
+                value={formatPhone(phoneDigits, country.placeholder)}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, "");
+                  const maxDigits = country.placeholder.replace(
+                    /\D/g,
+                    "",
+                  ).length;
+                  setPhoneDigits(raw.slice(0, maxDigits));
+                }}
+                placeholder={country.placeholder}
+                className="flex-1 bg-transparent text-black text-lg outline-none font-light"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={
+                phoneDigits.length !==
+                country.placeholder.replace(/\D/g, "").length
+              }
+              onClick={() => {
+                if (
+                  phoneDigits.length ===
+                  country.placeholder.replace(/\D/g, "").length
+                ) {
+                  setSubmittedPhone(
+                    `${country.dial} ${formatPhone(phoneDigits, country.placeholder)}`,
+                  );
+                  setLoginStep("verify");
+                  setPhoneDigits("");
+                  setVerifyCode(["", "", "", "", "", ""]);
+                  startResendCountdown();
+                  setTimeout(() => verifyInputsRef.current[0]?.focus(), 100);
+                }
               }}
-              placeholder={country.placeholder}
-              className="flex-1 bg-transparent text-black text-lg outline-none font-light"
-            />
-          </div>
-          <button
-            type="button"
-            disabled={
-              phoneDigits.length !==
-              country.placeholder.replace(/\D/g, "").length
-            }
-            onClick={() => {
-              if (
+              className={`w-full rounded-xs py-4 text-[17px] font-semibold transition-colors ${
                 phoneDigits.length ===
                 country.placeholder.replace(/\D/g, "").length
-              ) {
-                setSubmittedPhone(
-                  `${country.dial} ${formatPhone(phoneDigits, country.placeholder)}`,
-                );
-                setLoginStep("verify");
-                setPhoneDigits("");
-                setVerifyCode(["", "", "", "", "", ""]);
-                startResendCountdown();
-                setTimeout(() => verifyInputsRef.current[0]?.focus(), 100);
-              }
-            }}
-            className={`w-full rounded-xs py-4 text-[17px] font-semibold transition-colors ${
-              phoneDigits.length ===
-              country.placeholder.replace(/\D/g, "").length
-                ? "bg-black text-white hover:bg-white hover:text-black cursor-pointer"
-                : "bg-white/60 text-black/40 cursor-not-allowed"
-            }`}
-          >
-            {t("homepage_eliza.leaderboard.continueWithPhone", {
-              defaultValue: "Continue with phone",
-            })}
-          </button>
-        </AnimatedDiv>
-        <AnimatedDiv
+                  ? "bg-black text-white hover:bg-white hover:text-black cursor-pointer"
+                  : "bg-white/60 text-black/40 cursor-not-allowed"
+              }`}
+            >
+              {t("homepage_eliza.leaderboard.continueWithPhone", {
+                defaultValue: "Continue with phone",
+              })}
+            </button>
+          </AnimatedDiv>
+        </div>
+        <div
           data-landing-chrome="verify"
           data-landing-chrome-visible={verifyBarVisible ? "true" : "false"}
-          className="fixed left-1/2 -translate-x-1/2 z-20 w-full gap-4 px-8 flex flex-col"
+          className="contents"
           {...hiddenChromeDomProps(verifyBarVisible)}
-          style={{
-            bottom: landingChromeBottomCss(Math.max(loginBottom - 36, 0)),
-            maxWidth: loginMaxW,
-            opacity: verifyBarSpring.opacity,
-            pointerEvents: verifyBarVisible ? "auto" : "none",
-            transform: verifyBarSpring.y.to(
-              (y) => `perspective(600px) rotateX(5deg) translateY(${y}px)`,
-            ),
-            transformOrigin: "bottom center",
-          }}
         >
-          <div className="flex items-center gap-2">
-            {VERIFY_CODE_INPUT_KEYS.map((key, i) => {
-              const digit = verifyCode[i] ?? "";
-              return (
-                <input
-                  key={key}
-                  ref={(el) => {
-                    verifyInputsRef.current[i] = el;
-                  }}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, "");
-                    if (!val && !digit) return;
-                    const newCode = [...verifyCode];
-                    newCode[i] = val.slice(-1);
-                    setVerifyCode(newCode);
-                    if (val && i < 5) {
-                      verifyInputsRef.current[i + 1]?.focus();
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Backspace" && !digit && i > 0) {
-                      const newCode = [...verifyCode];
-                      newCode[i - 1] = "";
-                      setVerifyCode(newCode);
-                      verifyInputsRef.current[i - 1]?.focus();
-                    }
-                  }}
-                  onPaste={(e) => {
-                    e.preventDefault();
-                    const pasted = e.clipboardData
-                      .getData("text")
-                      .replace(/\D/g, "")
-                      .slice(0, 6);
-                    if (!pasted) return;
-                    const newCode = [...verifyCode];
-                    for (let j = 0; j < pasted.length && i + j < 6; j++) {
-                      newCode[i + j] = pasted[j];
-                    }
-                    setVerifyCode(newCode);
-                    const focusIdx = Math.min(i + pasted.length, 5);
-                    verifyInputsRef.current[focusIdx]?.focus();
-                  }}
-                  className="flex-1 min-w-0 aspect-square bg-white border border-black rounded-xs text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-[var(--brand-orange)]"
-                />
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            disabled={verifyCode.some((d) => !d)}
-            className={`w-full rounded-xs py-4 text-[17px] font-semibold transition-colors ${
-              verifyCode.every((d) => d)
-                ? "bg-black text-white hover:bg-white hover:text-black cursor-pointer"
-                : "bg-white/60 text-black/40 cursor-not-allowed"
-            }`}
+          <AnimatedDiv
+            className="fixed left-1/2 -translate-x-1/2 z-20 w-full gap-4 px-8 flex flex-col"
+            style={{
+              bottom: landingChromeBottomCss(Math.max(loginBottom - 36, 0)),
+              maxWidth: loginMaxW,
+              opacity: verifyBarSpring.opacity,
+              pointerEvents: verifyBarVisible ? "auto" : "none",
+              transform: verifyBarSpring.y.to(
+                (y) => `perspective(600px) rotateX(5deg) translateY(${y}px)`,
+              ),
+              transformOrigin: "bottom center",
+            }}
           >
-            {t("homepage_eliza.leaderboard.verify", { defaultValue: "Verify" })}
-          </button>
-          <p className="text-center text-sm text-neutral-500">
-            {resendCountdown > 0 ? (
-              t("homepage_eliza.leaderboard.resendCountdown", {
-                defaultValue: "Didn’t receive a code? Resend in {{s}}s",
-                s: resendCountdown,
-              })
-            ) : (
-              <>
-                {t("homepage_eliza.leaderboard.resendPrefix", {
-                  defaultValue: "Didn’t receive a code?",
-                })}{" "}
-                <button
-                  type="button"
-                  onClick={startResendCountdown}
-                  className="text-neutral-900 font-medium underline cursor-pointer"
-                >
-                  {t("homepage_eliza.leaderboard.resend", {
-                    defaultValue: "Resend",
-                  })}
-                </button>
-              </>
-            )}
-          </p>
-        </AnimatedDiv>
+            <div className="flex items-center gap-2">
+              {VERIFY_CODE_INPUT_KEYS.map((key, i) => {
+                const digit = verifyCode[i] ?? "";
+                return (
+                  <input
+                    key={key}
+                    ref={(el) => {
+                      verifyInputsRef.current[i] = el;
+                    }}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "");
+                      if (!val && !digit) return;
+                      const newCode = [...verifyCode];
+                      newCode[i] = val.slice(-1);
+                      setVerifyCode(newCode);
+                      if (val && i < 5) {
+                        verifyInputsRef.current[i + 1]?.focus();
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Backspace" && !digit && i > 0) {
+                        const newCode = [...verifyCode];
+                        newCode[i - 1] = "";
+                        setVerifyCode(newCode);
+                        verifyInputsRef.current[i - 1]?.focus();
+                      }
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pasted = e.clipboardData
+                        .getData("text")
+                        .replace(/\D/g, "")
+                        .slice(0, 6);
+                      if (!pasted) return;
+                      const newCode = [...verifyCode];
+                      for (let j = 0; j < pasted.length && i + j < 6; j++) {
+                        newCode[i + j] = pasted[j];
+                      }
+                      setVerifyCode(newCode);
+                      const focusIdx = Math.min(i + pasted.length, 5);
+                      verifyInputsRef.current[focusIdx]?.focus();
+                    }}
+                    className="flex-1 min-w-0 aspect-square bg-white border border-black rounded-xs text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-[var(--brand-orange)]"
+                  />
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              disabled={verifyCode.some((d) => !d)}
+              className={`w-full rounded-xs py-4 text-[17px] font-semibold transition-colors ${
+                verifyCode.every((d) => d)
+                  ? "bg-black text-white hover:bg-white hover:text-black cursor-pointer"
+                  : "bg-white/60 text-black/40 cursor-not-allowed"
+              }`}
+            >
+              {t("homepage_eliza.leaderboard.verify", {
+                defaultValue: "Verify",
+              })}
+            </button>
+            <p className="text-center text-sm text-neutral-500">
+              {resendCountdown > 0 ? (
+                t("homepage_eliza.leaderboard.resendCountdown", {
+                  defaultValue: "Didn’t receive a code? Resend in {{s}}s",
+                  s: resendCountdown,
+                })
+              ) : (
+                <>
+                  {t("homepage_eliza.leaderboard.resendPrefix", {
+                    defaultValue: "Didn’t receive a code?",
+                  })}{" "}
+                  <button
+                    type="button"
+                    onClick={startResendCountdown}
+                    className="text-neutral-900 font-medium underline cursor-pointer"
+                  >
+                    {t("homepage_eliza.leaderboard.resend", {
+                      defaultValue: "Resend",
+                    })}
+                  </button>
+                </>
+              )}
+            </p>
+          </AnimatedDiv>
+        </div>
         {showVideo && (
           <Suspense fallback={null}>
             <VideoCall
