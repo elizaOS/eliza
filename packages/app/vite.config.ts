@@ -16,6 +16,7 @@ import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import {
   createLogger,
+  defaultClientConditions,
   defineConfig,
   loadEnv,
   type Plugin,
@@ -2100,7 +2101,7 @@ const optimizerNodePolyfills: Readonly<Record<string, string>> = (() => {
   return resolved;
 })();
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   root: here,
   customLogger: viteLogger,
   // Native shells (Electrobun `views://`, Capacitor `file://`) load assets
@@ -2385,6 +2386,13 @@ export const INVALID_TRACER_PROVIDER = {};
     target: "es2022",
   },
   resolve: {
+    // Development serves workspace source before any package dist exists.
+    // Retain Vite's browser/development conditions so packages without a
+    // source export keep resolving to their browser entry points. Production
+    // builds intentionally retain Vite's untouched default condition set.
+    ...(command === "serve"
+      ? { conditions: ["eliza-source", ...defaultClientConditions] }
+      : {}),
     dedupe: [
       "react",
       "react-dom",
@@ -3354,4 +3362,4 @@ export const INVALID_TRACER_PROVIDER = {};
       ],
     },
   },
-});
+}));
