@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   composeRoomDigest,
+  isSupervisorStalled,
   runSupervisorTick,
   type SupervisorTaskView,
   statusEmoji,
@@ -140,31 +141,11 @@ describe("runSupervisorTick (#8900)", () => {
     expect(first.posted).toEqual([]); // failed, nothing posted
     // A failed digest is REMEMBERED as `undeliverable:<digest>` so the loop does
     // not re-hammer a permanently-dead target every tick (the ~1871 warns/day
-    // storm ebdc4bc fixed). It re-posts only when the digest CHANGES — staleness
-    // bands mutate it within minutes; covered by the escalation test below.
+    // storm ebdc4bc fixed). It re-posts only when the digest CHANGES — i.e. on
+    // a structural transition, not on the passage of idle time.
     expect(seen.get(ROOM_A)?.startsWith("undeliverable:")).toBe(true);
     const second = await runSupervisorTick(views, send, seen);
     expect(second.posted).toEqual([]); // same digest still dead → damped, not retried
-  });
-
-  it("re-posts a STUCK task when its staleness band escalates (not deduped silent)", async () => {
-    const send = vi.fn(async () => undefined);
-    const seen = new Map<string, string>();
-    // First tick: task is fresh (no staleness) → posts.
-    const first = await runSupervisorTick(
-      [view({ id: "t1", status: "active" })],
-      send,
-      seen,
-    );
-    expect(first.posted).toEqual([ROOM_A]);
-    // Same task, same status/sessions, but now idle 8m+ (a stall) → the digest
-    // changes and it RE-POSTS, instead of being deduped into silence.
-    const second = await runSupervisorTick(
-      [view({ id: "t1", status: "active", staleness: "⏳ idle 8m+" })],
-      send,
-      seen,
-    );
-    expect(second.posted).toEqual([ROOM_A]);
   });
 });
 
@@ -183,16 +164,148 @@ describe("supervisorStalenessLabel (#8900)", () => {
     expect(supervisorStalenessLabel(min(25), t0)).toBe("⏳ idle 20m+");
     expect(supervisorStalenessLabel(min(90), t0)).toBe("⚠️ stalled 45m+");
   });
-  it("folds into the digest line", () => {
+  it("isSupervisorStalled trips only at the top (stalled) band", () => {
+    expect(isSupervisorStalled(min(10), t0)).toBe(false);
+    expect(isSupervisorStalled(min(44), t0)).toBe(false);
+    expect(isSupervisorStalled(min(45), t0)).toBe(true);
+    expect(isSupervisorStalled(min(90), t0)).toBe(true);
+    expect(isSupervisorStalled(null, t0)).toBe(false);
+    expect(isSupervisorStalled(0, t0)).toBe(false);
+  });
+  it("never folds idle/stall age into the room digest line", () => {
     const digest = composeRoomDigest([
-      view({
-        id: "t1",
-        label: "grind",
-        status: "active",
-        staleness: "⏳ idle 8m+",
-      }),
+      view({ id: "t1", label: "grind", status: "active" }),
     ]);
-    expect(digest).toContain("grind — active (1 running) ⏳ idle 8m+");
+    expect(digest).toContain("grind — active (1 running)");
+    expect(digest).not.toContain("idle");
+    expect(digest).not.toContain("stalled");
+  });
+});
+
+describe("stalled tasks never re-post to the room; they escalate to the owner", () => {
+  function stalledRuntime(opts: { latestActivityAt: number | null }) {
+    const reportError = vi.fn();
+    const listTasks = vi.fn(async () => [
+      {
+        id: "t-stuck",
+        title: "app-build",
+        status: "active",
+        activeSessionCount: 1,
+        latestSessionLabel: "codex",
+        latestActivityAt: opts.latestActivityAt,
+        createdAt: new Date(Date.now() - 3_600_000).toISOString(),
+      },
+    ]);
+    const runtime = {
+      getService: (type: string) =>
+        type === "ORCHESTRATOR_TASK_SERVICE"
+          ? {
+              listTasks,
+              getTaskOriginTarget: async () => ({
+                roomId: ROOM_A,
+                source: "discord",
+              }),
+            }
+          : undefined,
+      sendMessageToTarget: async () => ({
+        kind: "delivered" as const,
+        receipt: {
+          providerMessageIds: ["digest-1"] as [string],
+          acceptedAt: 1_780_000_000_000,
+          persistence: { status: "persisted" as const, memoryIds: [] },
+        },
+        memories: [],
+      }),
+      getSetting: () => undefined,
+      reportError,
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+    } as never;
+    return { runtime, reportError, listTasks };
+  }
+
+  it("an idle-timer tick does not re-post the digest (no group-channel stall spam)", async () => {
+    const { runtime, listTasks } = stalledRuntime({
+      latestActivityAt: Date.now() - 4 * 60_000,
+    });
+    const svc = await TaskSupervisorService.start(runtime);
+    const first = await svc.runOnce();
+    expect(first.posted).toEqual([ROOM_A]);
+    // Idle deepens across band boundaries; structure is unchanged → deduped.
+    listTasks.mockResolvedValue([
+      {
+        id: "t-stuck",
+        title: "app-build",
+        status: "active",
+        activeSessionCount: 1,
+        latestSessionLabel: "codex",
+        latestActivityAt: Date.now() - 50 * 60_000,
+        createdAt: new Date(Date.now() - 3_600_000).toISOString(),
+      },
+    ]);
+    const second = await svc.runOnce();
+    expect(second.posted).toEqual([]);
+    expect(second.skipped).toEqual([ROOM_A]);
+    await svc.stop();
+  });
+
+  it("a task crossing the stalled band escalates to the owner ONCE via reportError, not to the room", async () => {
+    const { runtime, reportError } = stalledRuntime({
+      latestActivityAt: Date.now() - 50 * 60_000,
+    });
+    const svc = await TaskSupervisorService.start(runtime);
+    const first = await svc.runOnce();
+    // The first digest for the room may post (structural), but the stall itself
+    // rides reportError — scope + task context, no room target.
+    expect(reportError).toHaveBeenCalledTimes(1);
+    expect(reportError).toHaveBeenCalledWith(
+      "TaskSupervisorService.stalledTask",
+      expect.any(Error),
+      expect.objectContaining({ taskId: "t-stuck", status: "active" }),
+    );
+    // Digest text never carries the stall.
+    expect(first.posted).toEqual([ROOM_A]);
+    // Still stalled next tick → no second escalation, no re-post.
+    const second = await svc.runOnce();
+    expect(reportError).toHaveBeenCalledTimes(1);
+    expect(second.posted).toEqual([]);
+    await svc.stop();
+  });
+
+  it("a recovered task clears its escalation mark so a later re-stall re-reports", async () => {
+    const { runtime, reportError, listTasks } = stalledRuntime({
+      latestActivityAt: Date.now() - 50 * 60_000,
+    });
+    const svc = await TaskSupervisorService.start(runtime);
+    await svc.runOnce();
+    expect(reportError).toHaveBeenCalledTimes(1);
+    // Fresh activity → recovered → mark cleared.
+    listTasks.mockResolvedValue([
+      {
+        id: "t-stuck",
+        title: "app-build",
+        status: "active",
+        activeSessionCount: 1,
+        latestSessionLabel: "codex",
+        latestActivityAt: Date.now() - 60_000,
+        createdAt: new Date(Date.now() - 3_600_000).toISOString(),
+      },
+    ]);
+    await svc.runOnce();
+    // Stalls again → re-escalates.
+    listTasks.mockResolvedValue([
+      {
+        id: "t-stuck",
+        title: "app-build",
+        status: "active",
+        activeSessionCount: 1,
+        latestSessionLabel: "codex",
+        latestActivityAt: Date.now() - 90 * 60_000,
+        createdAt: new Date(Date.now() - 7_200_000).toISOString(),
+      },
+    ]);
+    await svc.runOnce();
+    expect(reportError).toHaveBeenCalledTimes(2);
+    await svc.stop();
   });
 });
 
@@ -340,16 +453,14 @@ describe("digest damping (uncoordinated-messages burst)", () => {
         status: "active",
         activeSessions: 1,
         sessionLabel: "codex · acct-2",
-        staleness: "⏳ idle 8m+",
         heldAfterCompletion: true,
       }),
     ]);
     expect(digest).toContain(`${statusEmoji("active")} build-app — active`);
     expect(digest).not.toContain("running");
     expect(digest).not.toContain("codex");
-    expect(digest).not.toContain("idle");
-    // Verify-retry churn (new session label, escalating staleness) no longer
-    // mutates the digest, so the tick dedups instead of re-posting.
+    // Verify-retry churn (new session label) no longer mutates the digest, so
+    // the tick dedups instead of re-posting.
     const send = vi.fn(async () => undefined);
     const seen = new Map<string, string>();
     await runSupervisorTick(
@@ -370,7 +481,6 @@ describe("digest damping (uncoordinated-messages burst)", () => {
           id: "t1",
           label: "build-app",
           sessionLabel: "retry-2",
-          staleness: "⏳ idle 3m+",
           heldAfterCompletion: true,
         }),
       ],
