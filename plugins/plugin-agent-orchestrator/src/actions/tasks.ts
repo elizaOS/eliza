@@ -4442,20 +4442,11 @@ async function settleTasksOperation(args: {
   let result = args.result;
   const helperEmittedCallback = args.capturedCallbacks.length > 0;
   let canonical = args.capturedCallbacks.at(-1);
-  // A FAILED op's `text` is planner-facing diagnostic by core contract
-  // (PlannerToolResult.text) — refusal codes carry redirect instructions for
-  // the model, not copy for the user. Promoting it to canonical
-  // `verifiedUserFacing` text hands it do-not-paraphrase authority over even
-  // the evaluator's own human reply, which shipped the LINK_SHARE_NOT_A_TASK
-  // redirect envelope verbatim to chat (live tj-f1e0716132eb14). Only a
-  // successful op's text — or text a failure path actually delivered through
-  // its own callback — may become canonical.
-  if (!canonical && result.success !== false && effectString(result.text)) {
+  if (!canonical && effectString(result.text)) {
     canonical = { response: { text: effectString(result.text) } };
   }
   if (
     args.capturedCallbacks.length > 1 &&
-    result.success !== false &&
     effectString(result.text) !== undefined
   ) {
     canonical = {
@@ -4488,15 +4479,24 @@ async function settleTasksOperation(args: {
     };
   }
 
+  // A failed op keeps its canonical text as a plain user-facing projection but
+  // never the `verifiedUserFacing` do-not-paraphrase license: that license
+  // outranks the evaluator's own reply at the terminal boundary, and granting
+  // it to an undelivered failure shipped the LINK_SHARE_NOT_A_TASK redirect
+  // envelope to chat word-for-word OVER the evaluator's correct human line
+  // (live tj-f1e0716132eb14). Receipt binding follows the license: a failed
+  // receipt proves nothing the exact text is entitled to claim.
   const effectResult: ActionResult = {
     ...result,
     effectReceipts: [receipt],
     ...(canonical?.response.text
-      ? {
-          userFacingText: canonical.response.text,
-          verifiedUserFacing: true,
-          userFacingEffectReceiptIds: [receipt.receiptId],
-        }
+      ? result.success !== false
+        ? {
+            userFacingText: canonical.response.text,
+            verifiedUserFacing: true,
+            userFacingEffectReceiptIds: [receipt.receiptId],
+          }
+        : { userFacingText: canonical.response.text }
       : {}),
   };
   if (canonical && args.callback && helperEmittedCallback) {
