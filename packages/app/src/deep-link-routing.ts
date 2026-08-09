@@ -34,6 +34,11 @@ export interface AssistantLaunchHashRouteOptions {
 export interface DeepLinkNavigationIntent {
   viewId: string;
   viewPath: string;
+  /**
+   * Settings section id, optionally with a nested connectors detail segment
+   * (`connectors` or `connectors/discord`). SettingsView / ConnectorsSection
+   * parse nested forms via the structured settings hash route helpers.
+   */
   subview?: string;
 }
 
@@ -54,14 +59,21 @@ export interface DeepLinkNavigationIntent {
 export function resolveDeepLinkNavigationIntent(
   path: string,
 ): DeepLinkNavigationIntent | null {
-  // eliza://connectors and eliza://settings/connectors/<provider> → open
-  // Settings focused on the Connectors section (a Settings section, not a
-  // top-level tab).
-  if (
-    path === "connectors" ||
-    /^settings\/connectors\/[a-z0-9-]+$/i.test(path)
-  ) {
+  // eliza://connectors → Settings → Connectors index.
+  // eliza://settings/connectors/<provider> → Settings → connector detail.
+  if (path === "connectors" || path === "settings/connectors") {
     return { viewId: "settings", viewPath: "/settings", subview: "connectors" };
+  }
+  const connectorDetail = path.match(
+    /^settings\/connectors\/([a-z0-9-]+)$/i,
+  );
+  if (connectorDetail?.[1]) {
+    const connectorId = connectorDetail[1].toLowerCase();
+    return {
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: `connectors/${connectorId === "twitter" ? "x" : connectorId}`,
+    };
   }
 
   switch (path) {

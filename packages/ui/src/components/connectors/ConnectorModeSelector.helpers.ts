@@ -11,7 +11,11 @@ import {
   connectorAccountManagementPanelPluginId,
   getConnectorPluginManagedAccountOption,
 } from "./connector-account-options";
-import { getDeclaredConnectorModes } from "./connector-mode-registry";
+import type { ConnectorChannelMode } from "./connector-channel-mode";
+import {
+  connectorSupportsChannelMode,
+  getDeclaredConnectorModes,
+} from "./connector-mode-registry";
 
 export type ConnectorMode = {
   id: string;
@@ -25,9 +29,20 @@ export type ConnectorMode = {
 function withPluginManagedMode(
   connectorId: string,
   modes: ConnectorMode[],
+  channelMode?: ConnectorChannelMode,
 ): ConnectorMode[] {
   const option = getConnectorPluginManagedAccountOption(connectorId);
   if (!option) return modes;
+  // Same policy as the Connectors index: a catalog connector classified out of
+  // the active lens (e.g. Google under Bot via its fallback) must not expose
+  // plugin-managed inventory there. Mixed-role connectors stay available in
+  // both lenses; their panel filters records by stored account role.
+  if (
+    channelMode !== undefined &&
+    !connectorSupportsChannelMode(connectorId, channelMode)
+  ) {
+    return modes;
+  }
   return [
     {
       id: CONNECTOR_PLUGIN_MANAGED_MODE_ID,
@@ -42,15 +57,28 @@ function withPluginManagedMode(
 /**
  * Returns available modes for a connector, rendered generically from the modes
  * the connector plugin declared in the connector-mode registry. Cloud-only
- * modes are filtered out when Eliza Cloud is not connected.
+ * modes are filtered out when Eliza Cloud is not connected. When a global
+ * `channelMode` lens is given, declared modes classified into the *other* lens
+ * are filtered out too, and plugin-managed injection follows the same
+ * `connectorSupportsChannelMode` policy used by the index/detail surfaces.
  */
 export function getConnectorModes(
   connectorId: string,
-  options?: { elizaCloudConnected?: boolean },
+  options?: {
+    elizaCloudConnected?: boolean;
+    channelMode?: ConnectorChannelMode;
+  },
 ): ConnectorMode[] {
   const cloud = options?.elizaCloudConnected ?? false;
+  const lens = options?.channelMode;
   const modes: ConnectorMode[] = getDeclaredConnectorModes(connectorId)
     .filter((mode) => cloud || !mode.cloudOnly)
+    .filter(
+      (mode) =>
+        lens === undefined ||
+        mode.channelMode === undefined ||
+        mode.channelMode === lens,
+    )
     .map((mode) => ({
       id: mode.id,
       label: mode.label,
@@ -59,7 +87,7 @@ export function getConnectorModes(
       descriptionKey: mode.descriptionKey,
       managementMode: mode.managementMode,
     }));
-  return withPluginManagedMode(connectorId, modes);
+  return withPluginManagedMode(connectorId, modes, lens);
 }
 
 /**

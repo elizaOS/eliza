@@ -47,6 +47,15 @@ export type ConfigUiHint = {
   patternError?: string;
   /** Legacy conditional visibility. */
   showIf?: ShowIfCondition;
+  /**
+   * Show only after every listed key is present (draft non-empty or
+   * persisted/`isSet`, including masked secrets).
+   */
+  requires?: string | string[];
+  /** Show when any one of the listed keys is present. */
+  requiresAny?: string | string[];
+  /** Rich visibility condition (shared ConfigUiHint shape). */
+  visible?: unknown;
   /** Enhanced options for select/radio/multiselect fields. */
   options?: Array<{
     value: string;
@@ -117,6 +126,9 @@ export type PluginUiMetadata = {
       | "pattern"
       | "patternError"
       | "showIf"
+      | "requires"
+      | "requiresAny"
+      | "visible"
       | "options"
       | "min"
       | "max"

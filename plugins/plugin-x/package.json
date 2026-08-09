@@ -405,6 +405,227 @@
         "default": "home",
         "sensitive": false
       }
+    },
+    "configUiHints": {
+      "TWITTER_API_KEY": { "order": 1, "group": "connection" },
+      "TWITTER_API_SECRET_KEY": { "order": 2, "group": "connection" },
+      "TWITTER_ACCESS_TOKEN": { "order": 3, "group": "connection" },
+      "TWITTER_ACCESS_TOKEN_SECRET": { "order": 4, "group": "connection" },
+      "TWITTER_CLIENT_ID": { "order": 5, "group": "connection" },
+      "TWITTER_REDIRECT_URI": { "order": 6, "group": "connection" },
+      "TWITTER_ACCOUNTS": { "order": 7, "group": "connection" },
+      "TWITTER_POLL_INTERVAL": {
+        "label": "Timeline poll interval",
+        "unit": "s",
+        "order": 20,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_RETRY_LIMIT": {
+        "order": 21,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_DRY_RUN": {
+        "order": 22,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_ENABLE_POST": {
+        "order": 23,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_POST_INTERVAL_MIN": {
+        "order": 24,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_POST_INTERVAL_MAX": {
+        "order": 25,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_POST_INTERVAL": {
+        "order": 26,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_POST_IMMEDIATELY": {
+        "order": 27,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_POST_INTERVAL_VARIANCE": {
+        "order": 28,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_INTERACTION_INTERVAL_MIN": {
+        "order": 29,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_INTERACTION_INTERVAL_MAX": {
+        "order": 30,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_INTERACTION_INTERVAL_VARIANCE": {
+        "order": 31,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_ACTION_INTERVAL": {
+        "order": 32,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_ENGAGEMENT_INTERVAL": {
+        "order": 33,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_ENGAGEMENT_INTERVAL_MIN": {
+        "order": 34,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_ENGAGEMENT_INTERVAL_MAX": {
+        "order": 35,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_DISCOVERY_INTERVAL_MIN": {
+        "order": 36,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_DISCOVERY_INTERVAL_MAX": {
+        "order": 37,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_TARGET_USERS": {
+        "order": 38,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_TIMELINE_ALGORITHM": {
+        "order": 39,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      },
+      "TWITTER_TIMELINE_MODE": {
+        "order": 40,
+        "group": "behavior",
+        "requiresAny": [
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_API_KEY",
+          "TWITTER_CLIENT_ID",
+          "TWITTER_ACCOUNTS"
+        ]
+      }
     }
   },
   "peerDependencies": {

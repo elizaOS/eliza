@@ -17,6 +17,10 @@
  * this component for an AGENT-only flow while keeping the dual-role shape.
  */
 
+import type {
+  ConnectorAccountCreateInput,
+  ConnectorAccountRole,
+} from "../../api/client-agent";
 import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
 import { cn } from "../../lib/utils";
 import {
@@ -33,6 +37,15 @@ export interface OwnerAgentConnectorSetupPanelProps {
   enableOwner?: boolean;
   /** When false, the AGENT section is hidden (e.g. owner-only connector). */
   enableAgent?: boolean;
+  /** TEAM accounts are identity-neutral and may appear in either lens. */
+  enableTeam?: boolean;
+  /** Optional non-OAuth account factory; OAuth lists use their normal flow. */
+  onAddAccount?: (
+    role: ConnectorAccountRole,
+  ) =>
+    | Promise<ConnectorAccountCreateInput | undefined>
+    | ConnectorAccountCreateInput
+    | undefined;
   ownerTitle?: string;
   agentTitle?: string;
   /** Optional help text rendered above the two sections. */
@@ -46,6 +59,8 @@ export function OwnerAgentConnectorSetupPanel({
   pollMs,
   enableOwner = true,
   enableAgent = true,
+  enableTeam = false,
+  onAddAccount,
   ownerTitle,
   agentTitle,
   description,
@@ -76,6 +91,7 @@ export function OwnerAgentConnectorSetupPanel({
           accountRole="OWNER"
           title={ownerTitle}
           externalAccounts={accountsHook}
+          onAddAccount={onAddAccount ? () => onAddAccount("OWNER") : undefined}
         />
       ) : null}
       {enableAgent ? (
@@ -85,6 +101,16 @@ export function OwnerAgentConnectorSetupPanel({
           accountRole="AGENT"
           title={agentTitle}
           externalAccounts={accountsHook}
+          onAddAccount={onAddAccount ? () => onAddAccount("AGENT") : undefined}
+        />
+      ) : null}
+      {enableTeam ? (
+        <ConnectorAccountList
+          provider={provider}
+          connectorId={connectorId}
+          accountRole="TEAM"
+          externalAccounts={accountsHook}
+          onAddAccount={onAddAccount ? () => onAddAccount("TEAM") : undefined}
         />
       ) : null}
       {hasUnknownRoleAccounts ? (

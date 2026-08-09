@@ -14,18 +14,25 @@ import { useAgentElement } from "../../agent-surface";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
+import { getWindowNavigationPath } from "../../navigation";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
 import { DesktopSettingsNavigation } from "../settings/DesktopSettingsNavigation";
 import { SettingsHubList } from "../settings/SettingsHubList";
 import {
+  backFromConnectorDetail,
   type GroupedSettingsSections,
   getAllSettingsSections,
   groupSettingsSections,
+  openConnectorsIndexHash,
+  parseSettingsHash,
+  readSettingsHashRoute,
   readSettingsHashSection,
+  replaceConnectorDetailHash,
   replaceSettingsHash,
+  type SettingsRoute,
   type SettingsSectionDef,
   settingsSectionLabel,
   settingsSectionTitle,
@@ -224,10 +231,14 @@ export function SettingsView({
     loadPlugins: s.loadPlugins,
     walletEnabled: s.walletEnabled,
   }));
+  const plugins = useAppSelector((s) => s.plugins);
   const enabledKinds = useEnabledViewKinds();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [activeSection, setActiveSection] = useState<string | null>(
     () => initialSection ?? readSettingsHashSection(),
+  );
+  const [settingsRoute, setSettingsRoute] = useState<SettingsRoute>(() =>
+    readSettingsHashRoute(),
   );
   const [primePermission, setPrimePermission] = useState<PermissionId | null>(
     null,
@@ -254,21 +265,71 @@ export function SettingsView({
     void loadPlugins();
   }, [loadPlugins]);
 
+  // Legacy path deep links: /connectors, /connectors/<id>, /settings/connectors/<id>
+  // → structured hash the connectors body already understands.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const path = getWindowNavigationPath();
+    const connectorsPath = path.match(
+      /^\/(?:settings\/)?connectors(?:\/([a-z0-9-]+))?\/?$/i,
+    );
+    if (!connectorsPath) return;
+    const connectorId = connectorsPath[1]?.toLowerCase();
+    if (connectorId) {
+      setActiveSection("connectors");
+      replaceConnectorDetailHash(connectorId === "twitter" ? "x" : connectorId);
+      setSettingsRoute({
+        kind: "connector-detail",
+        sectionId: "connectors",
+        connectorId: connectorId === "twitter" ? "x" : connectorId,
+      });
+    } else {
+      setActiveSection("connectors");
+      openConnectorsIndexHash();
+      setSettingsRoute({ kind: "section", sectionId: "connectors" });
+    }
+    window.dispatchEvent(new Event("popstate"));
+  }, []);
+
   const openSection = useCallback((sectionId: string) => {
     setActiveSection(sectionId);
     replaceSettingsHash(sectionId);
+    setSettingsRoute({ kind: "section", sectionId });
   }, []);
 
   const backToHub = useCallback(() => {
     setActiveSection(null);
+    setSettingsRoute({ kind: "hub" });
     if (typeof window !== "undefined") {
-      window.history.replaceState(null, "", "#");
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${window.location.search}`,
+      );
     }
+  }, []);
+
+  const backToConnectorsIndex = useCallback(() => {
+    backFromConnectorDetail();
   }, []);
 
   useEffect(() => {
     if (!initialSection) return;
-    openSection(initialSection);
+    // initialSection may be a nested connectors route (`connectors/discord`)
+    // from deep links / focus events — parse before treating it as a flat id.
+    const route = parseSettingsHash(initialSection);
+    if (route.kind === "connector-detail") {
+      setActiveSection("connectors");
+      setSettingsRoute(route);
+      replaceConnectorDetailHash(route.connectorId);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("popstate"));
+      }
+      return;
+    }
+    if (route.kind === "section") {
+      openSection(route.sectionId);
+    }
   }, [initialSection, openSection]);
 
   useEffect(() => {
@@ -283,6 +344,8 @@ export function SettingsView({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleLocationChange = () => {
+      const route = readSettingsHashRoute();
+      setSettingsRoute(route);
       const nextSection = readSettingsHashSection();
       if (
         nextSection &&
@@ -320,13 +383,32 @@ export function SettingsView({
   const displayedSectionDef = isDesktop ? desktopSectionDef : activeSectionDef;
 
   // Mobile keeps the uniform top bar: the hub shows "Settings" and a section
-  // shows its title with a back action. Desktop uses an in-pane title instead.
+  // shows its title with a back action. Connector detail is one level deeper
+  // (detail → connectors index → settings hub → launcher).
   const settingsTitle = t("nav.settings", { defaultValue: "Settings" });
-  const headerTitle = activeSectionDef
-    ? settingsSectionTitle(activeSectionDef, t)
-    : settingsTitle;
-  const onBack = activeSectionDef ? backToHub : navigateBackToLauncher;
-  const backLabel = activeSectionDef ? "Back to Settings" : "Back to launcher";
+  const connectorDetailId =
+    settingsRoute.kind === "connector-detail"
+      ? settingsRoute.connectorId
+      : null;
+  const connectorDetailName = connectorDetailId
+    ? (plugins.find((p) => p.id === connectorDetailId)?.name ??
+      connectorDetailId)
+    : null;
+  const headerTitle = connectorDetailName
+    ? connectorDetailName
+    : activeSectionDef
+      ? settingsSectionTitle(activeSectionDef, t)
+      : settingsTitle;
+  const onBack = connectorDetailId
+    ? backToConnectorsIndex
+    : activeSectionDef
+      ? backToHub
+      : navigateBackToLauncher;
+  const backLabel = connectorDetailId
+    ? "Back to Connectors"
+    : activeSectionDef
+      ? "Back to Settings"
+      : "Back to launcher";
   const desktopSidebar = isDesktop ? (
     <DesktopSettingsNavigation
       grouped={grouped}

@@ -346,13 +346,20 @@ describe("top-level-surface deep-link navigation intents", () => {
     });
   });
 
-  it("routes a per-provider connectors deep link to Settings → Connectors", () => {
+  it("routes a per-provider connectors deep link to Settings → connector detail", () => {
     expect(
       resolveDeepLinkNavigationIntent("settings/connectors/discord"),
     ).toEqual({
       viewId: "settings",
       viewPath: "/settings",
-      subview: "connectors",
+      subview: "connectors/discord",
+    });
+    expect(
+      resolveDeepLinkNavigationIntent("settings/connectors/twitter"),
+    ).toEqual({
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: "connectors/x",
     });
   });
 
