@@ -2326,7 +2326,10 @@ function AppContent() {
     const handleFocusConnector = (event: Event) => {
       const detail = (event as CustomEvent<FocusConnectorEventDetail>).detail;
       if (!detail?.connectorId) return;
-      setSettingsInitialSection("connectors");
+      const id = detail.connectorId.trim().toLowerCase();
+      setSettingsInitialSection(
+        id ? `connectors/${id === "twitter" ? "x" : id}` : "connectors",
+      );
       setTab("settings");
     };
     document.addEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);

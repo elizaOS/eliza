@@ -117,6 +117,48 @@
         "required": false,
         "sensitive": false
       }
+    },
+    "configUiHints": {
+      "IMESSAGE_CLI_PATH": {
+        "label": "CLI path",
+        "order": 1,
+        "group": "connection"
+      },
+      "IMESSAGE_DB_PATH": {
+        "label": "Database path",
+        "order": 2,
+        "group": "connection"
+      },
+      "IMESSAGE_ENABLED": {
+        "label": "Enabled",
+        "order": 3,
+        "group": "connection"
+      },
+      "IMESSAGE_POLL_INTERVAL_MS": {
+        "label": "Polling interval",
+        "unit": "ms",
+        "order": 10,
+        "group": "behavior",
+        "requiresAny": ["IMESSAGE_CLI_PATH", "IMESSAGE_DB_PATH"]
+      },
+      "IMESSAGE_DM_POLICY": {
+        "label": "DM policy",
+        "order": 11,
+        "group": "behavior",
+        "requiresAny": ["IMESSAGE_CLI_PATH", "IMESSAGE_DB_PATH"]
+      },
+      "IMESSAGE_GROUP_POLICY": {
+        "label": "Group policy",
+        "order": 12,
+        "group": "behavior",
+        "requiresAny": ["IMESSAGE_CLI_PATH", "IMESSAGE_DB_PATH"]
+      },
+      "IMESSAGE_ALLOW_FROM": {
+        "label": "Allow from",
+        "order": 13,
+        "group": "behavior",
+        "requiresAny": ["IMESSAGE_CLI_PATH", "IMESSAGE_DB_PATH"]
+      }
     }
   }
 }

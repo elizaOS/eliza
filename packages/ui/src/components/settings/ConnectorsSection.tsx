@@ -1,25 +1,17 @@
 /**
- * Settings → Connectors section.
- *
- * The connector id→panel dispatch is hardcoded — AGENTS.md commandment 5 (zero
- * polymorphism for runtime type branching) explicitly allows this for
- * adapter/target registries.
+ * Settings → Connectors: index list (Delegate/Bot lens + grouped rows) and
+ * per-connector detail pages (`#connectors/<id>`). Setup lives on the detail
+ * surface — Connection / Support / General cards — not inline accordions.
  */
 
-import {
-  ChevronDown,
-  type LucideIcon,
-  type LucideProps,
-  Puzzle,
-  Save,
-} from "lucide-react";
+import { ChevronRight, type LucideIcon, type LucideProps, Puzzle, Save } from "lucide-react";
 import {
   forwardRef,
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo } from "../../api";
@@ -29,41 +21,53 @@ import {
   type FocusConnectorEventDetail,
   readPendingFocusConnector,
 } from "../../events";
+import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
+import {
+  ConnectorChannelModeSwitch,
+  connectorChannelModeCopy,
+} from "../connectors/ConnectorChannelModeSwitch";
 import { ConnectorModeSelector } from "../connectors/ConnectorModeSelector";
 import type { ConnectorMode } from "../connectors/ConnectorModeSelector.helpers";
 import { useConnectorMode } from "../connectors/ConnectorModeSelector.hooks";
 import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { hasConnectorSetupPanel } from "../connectors/ConnectorSetupPanel.helpers";
-import { getConnectorModeConfigFormHint } from "../connectors/connector-mode-registry";
+import {
+  type ConnectorChannelMode,
+  setConnectorChannelMode,
+  useConnectorChannelMode,
+} from "../connectors/connector-channel-mode";
+import {
+  connectorSupportsChannelMode,
+  getConnectorModeConfigFormHint,
+} from "../connectors/connector-mode-registry";
+import {
+  CONNECTOR_UI_GROUPS,
+  connectorStatusLabel,
+  getConnectorUiGroupId,
+} from "../connectors/connector-ui-groups";
 import { getBrandIcon } from "../conversations/brand-icons";
 import { PluginConfigForm } from "../pages/PluginConfigForm";
 import {
   ALWAYS_ON_PLUGIN_IDS,
+  getPluginResourceLinks,
   iconImageSource,
+  pluginResourceLinkLabel,
   resolveIcon,
 } from "../pages/plugin-list-utils";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
-import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
-
-type ConnectorStatusTone = "ok" | "warn" | "off";
+import {
+  normalizeConnectorRouteId,
+  openConnectorDetailHash,
+  openConnectorsIndexHash,
+  readSettingsHashRoute,
+  type SettingsRoute,
+} from "./settings-route";
 
 /**
  * Whether Settings → Connectors should render the generic plugin-config (env
  * credential) form for the selected connector mode.
- *
- * The form is shown for a `local-config` mode whose setup target is the
- * plugin itself and that actually declares parameters — and for connectors
- * with NO declared mode list at all (farcaster, bluesky, matrix, nostr, …):
- * those have no dedicated panel to protect, so a declared-parameters plugin
- * gets the credential form instead of a dead-end. Every other mode kind —
- * `local-setup` (iMessage Full-Disk-Access status, Signal/WhatsApp QR pairing,
- * Discord/Telegram desktop panels), `plugin-managed` account lists, and
- * `cloud-managed` gateways — keeps its dedicated {@link ConnectorSetupPanel}
- * surface. Gating on the mode KIND rather than the incidental
- * "this plugin declares parameters" is what keeps those dedicated panels
- * reachable instead of being overwritten by a raw env form.
  */
 export function shouldRenderConnectorConfigForm(args: {
   managementMode: ConnectorMode["managementMode"] | undefined;
@@ -78,29 +82,39 @@ export function shouldRenderConnectorConfigForm(args: {
   );
 }
 
-function statusTone(plugin: PluginInfo): ConnectorStatusTone {
-  if (!plugin.enabled) return "off";
-  if (plugin.validationErrors.length > 0) return "warn";
-  if (!plugin.configured) return "warn";
-  return "ok";
+function subscribeHash(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("hashchange", onStoreChange);
+  window.addEventListener("popstate", onStoreChange);
+  return () => {
+    window.removeEventListener("hashchange", onStoreChange);
+    window.removeEventListener("popstate", onStoreChange);
+  };
 }
 
-function statusDotClass(tone: ConnectorStatusTone): string {
-  switch (tone) {
-    case "ok":
-      return "bg-ok";
-    case "warn":
-      return "bg-warn";
-    case "off":
-      return "bg-muted/60";
-  }
+// useSyncExternalStore requires a stable getSnapshot reference equality when
+// the underlying store has not changed — parse once per hash string.
+let cachedRouteHash = "\0";
+let cachedRoute: SettingsRoute = { kind: "hub" };
+const SERVER_ROUTE: SettingsRoute = { kind: "hub" };
+
+function getSettingsRouteSnapshot(): SettingsRoute {
+  if (typeof window === "undefined") return SERVER_ROUTE;
+  const hash = window.location.hash;
+  if (hash === cachedRouteHash) return cachedRoute;
+  cachedRouteHash = hash;
+  cachedRoute = readSettingsHashRoute();
+  return cachedRoute;
 }
 
-/**
- * A {@link LucideIcon}-compatible medallion icon for a connector so it can be
- * passed to {@link SettingsRow}'s `icon` slot — brand SVG, plugin image, or a
- * Puzzle fallback.
- */
+function useSettingsRoute(): SettingsRoute {
+  return useSyncExternalStore(
+    subscribeHash,
+    getSettingsRouteSnapshot,
+    () => SERVER_ROUTE,
+  );
+}
+
 function connectorIcon(plugin: PluginInfo): LucideIcon {
   const Brand = getBrandIcon(plugin.id);
   const icon = resolveIcon(plugin);
@@ -125,7 +139,115 @@ function connectorIcon(plugin: PluginInfo): LucideIcon {
   });
 }
 
-function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
+function statusToneClass(tone: "ok" | "warn" | "muted" | "danger"): string {
+  switch (tone) {
+    case "ok":
+      return "text-ok";
+    case "warn":
+      return "text-warn";
+    case "danger":
+      return "text-danger";
+    default:
+      return "text-muted";
+  }
+}
+
+function SettingsCard({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-lg border border-border/60 bg-card/40",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SettingsCardRow({
+  title,
+  description,
+  action,
+  className,
+}: {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-4 py-3",
+        className,
+      )}
+    >
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="text-sm font-medium text-txt-strong">{title}</div>
+        {description ? (
+          <div className="text-xs leading-relaxed text-muted">{description}</div>
+        ) : null}
+      </div>
+      {action ? (
+        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {action}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ConnectorListRow({
+  plugin,
+  onOpen,
+}: {
+  plugin: PluginInfo;
+  onOpen: () => void;
+}) {
+  const t = useAppSelector((s) => s.t);
+  const Icon = useMemo(() => connectorIcon(plugin), [plugin]);
+  const status = connectorStatusLabel(plugin, t);
+  const label = t("connectors.configure", {
+    defaultValue: "Configure",
+  });
+
+  return (
+    <button
+      type="button"
+      data-connector={plugin.id}
+      data-testid={`connector-row-${plugin.id}`}
+      onClick={onOpen}
+      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg-hover/60"
+    >
+      <Icon className="h-[18px] w-[18px] shrink-0 text-muted" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-txt-strong">
+          {plugin.name}
+        </span>
+        <span className={cn("block text-xs", statusToneClass(status.tone))}>
+          {status.label}
+        </span>
+      </span>
+      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted">
+        {label}
+        <ChevronRight className="h-4 w-4" aria-hidden />
+      </span>
+    </button>
+  );
+}
+
+function ConnectorConfigurationSurface({
+  plugin,
+}: {
+  plugin: PluginInfo;
+}) {
   const t = useAppSelector((s) => s.t);
   const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
   const handlePluginConfigSave = useAppSelector(
@@ -136,7 +258,10 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
   const [pluginConfigs, setPluginConfigs] = useState<
     Record<string, Record<string, string>>
   >({});
-  const connectorMode = useConnectorMode(plugin.id, { elizaCloudConnected });
+  // Detail is lens-independent: show every setup mode the connector declares.
+  const connectorMode = useConnectorMode(plugin.id, {
+    elizaCloudConnected,
+  });
   const setupPluginId = connectorMode.setupPluginId;
   const setupPanel =
     setupPluginId && hasConnectorSetupPanel(setupPluginId) ? (
@@ -148,9 +273,6 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
   const selectedMode = connectorMode.modes.find(
     (mode) => mode.id === connectorMode.selectedMode,
   );
-  // Owner-declared config-form footnote for the selected mode (e.g. Discord's
-  // "Application ID is optional" hint), resolved from connector-mode metadata
-  // instead of matching plugin.id (#12090 item 28).
   const configFormHint = getConnectorModeConfigFormHint(
     plugin.id,
     connectorMode.selectedMode,
@@ -158,9 +280,6 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
   const showPluginConfig = shouldRenderConnectorConfigForm({
     managementMode: selectedMode?.managementMode,
     hasParameters: plugin.parameters.length > 0,
-    // Mirror the canonical /connectors fallback: a connector with no declared
-    // mode list has no companion setup plugin, so its own credential form is
-    // the setup surface (previously a dead-end "uses its own setup surface").
     setupTargetsPlugin: (setupPluginId ?? plugin.id) === plugin.id,
   });
   const pendingConfig = pluginConfigs[plugin.id] ?? {};
@@ -179,8 +298,6 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
   );
 
   const handleSave = useCallback(async () => {
-    // Only clear the draft when the save persisted — sensitive params never
-    // echo back from the server, so wiping on failure loses the pasted token.
     const saved = await handlePluginConfigSave(plugin.id, pendingConfig);
     if (!saved) return;
     setPluginConfigs((prev) => {
@@ -191,7 +308,7 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
   }, [handlePluginConfigSave, pendingConfig, plugin.id]);
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-3 [&>*]:mt-0">
       {connectorMode.modes.length > 1 ? (
         <ConnectorModeSelector
           connectorId={plugin.id}
@@ -208,19 +325,23 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
             pluginConfigs={pluginConfigs}
             onParamChange={handleParamChange}
           />
-          {/* Co-render the live setup/status panel (e.g. Telegram bot-token
-              validation + identity) directly under the env-config form, matching
-              the canonical /connectors surface (plugin-view-connectors.tsx) where
-              the panel sits between the form and the save action. Without this, a
-              `local-config` connector that also has a setup panel (telegram bot
-              mode) showed the raw-token form only. `setupPanel` is already
-              null-gated to `setupPluginId`, so it is a no-op otherwise. */}
           {setupPanel}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="min-w-0 flex-1">
+              {configFormHint ? (
+                <span className="text-xs-tight text-muted">
+                  {configFormHint.key
+                    ? t(configFormHint.key, {
+                        defaultValue: configFormHint.fallback,
+                      })
+                    : configFormHint.fallback}
+                </span>
+              ) : null}
+            </div>
             <Button
               variant="default"
               size="sm"
-              className="h-8 gap-1.5 rounded-sm px-4 text-xs-tight font-semibold"
+              className="h-8 shrink-0 gap-1.5 self-end rounded-sm px-3 text-xs-tight font-semibold sm:self-start"
               onClick={() => {
                 void handleSave();
               }}
@@ -235,15 +356,6 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
                       defaultValue: "Save settings",
                     })}
             </Button>
-            {configFormHint ? (
-              <span className="text-xs-tight text-muted">
-                {configFormHint.key
-                  ? t(configFormHint.key, {
-                      defaultValue: configFormHint.fallback,
-                    })
-                  : configFormHint.fallback}
-              </span>
-            ) : null}
           </div>
         </div>
       ) : setupPanel ? (
@@ -293,8 +405,6 @@ function ConnectorEnableSwitch({
       ref={ref}
       checked={plugin.enabled}
       disabled={busy}
-      onClick={(event) => event.stopPropagation()}
-      onKeyDown={(event) => event.stopPropagation()}
       onCheckedChange={(checked) => onToggle(checked)}
       aria-label={label}
       {...agentProps}
@@ -302,122 +412,326 @@ function ConnectorEnableSwitch({
   );
 }
 
-function ConnectorRow({
+function ConnectorDetailPage({
   plugin,
-  busy,
-  onToggle,
+  onBack,
 }: {
   plugin: PluginInfo;
-  busy: boolean;
-  onToggle: (enabled: boolean) => void;
+  onBack: () => void;
 }) {
-  const tone = statusTone(plugin);
-  const icon = useMemo(() => connectorIcon(plugin), [plugin]);
+  const t = useAppSelector((s) => s.t);
+  const handlePluginToggle = useAppSelector((s) => s.handlePluginToggle);
+  const [busy, setBusy] = useState(false);
+  const Icon = useMemo(() => connectorIcon(plugin), [plugin]);
+  const status = connectorStatusLabel(plugin, t);
+  const links = useMemo(() => getPluginResourceLinks(plugin), [plugin]);
+  const tagline =
+    plugin.description?.trim() ||
+    t("connectors.detail.taglineFallback", {
+      defaultValue: "Connect {{name}} so the agent can use this channel.",
+      name: plugin.name,
+    });
+
+  const onToggle = useCallback(
+    async (enabled: boolean) => {
+      setBusy(true);
+      try {
+        await handlePluginToggle(plugin.id, enabled);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [handlePluginToggle, plugin.id],
+  );
 
   return (
-    <details className="group relative" data-connector={plugin.id}>
-      <summary className="cursor-pointer select-none list-none pr-14">
-        <SettingsRow
-          icon={icon}
-          label={
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate">{plugin.name}</span>
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(tone)}`}
-                aria-hidden="true"
+    <div className="flex flex-col gap-6" data-testid="connector-detail">
+      <div className="flex flex-col gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="self-start text-xs font-medium text-muted hover:text-txt"
+          data-testid="connector-detail-back"
+        >
+          {t("connectors.detail.back", { defaultValue: "← Connectors" })}
+        </button>
+        <div className="flex items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border/50 bg-bg-accent/70">
+            <Icon className="h-5 w-5 text-txt" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold tracking-tight text-txt-strong">
+              {plugin.name}
+            </h2>
+            <p className="mt-0.5 text-sm text-muted">{tagline}</p>
+            <p className={cn("mt-1 text-xs font-medium", statusToneClass(status.tone))}>
+              {status.label}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <section className="space-y-2">
+        <h3 className="text-xs font-medium text-muted">
+          {t("connectors.detail.connection", { defaultValue: "Connection" })}
+        </h3>
+        <SettingsCard>
+          <SettingsCardRow
+            title={t("connectors.detail.connectionTitle", {
+              defaultValue: "Connection",
+            })}
+            description={t("connectors.detail.connectionHelp", {
+              defaultValue: "Set up how Eliza talks to {{name}}.",
+              name: plugin.name,
+            })}
+          />
+          <div className="border-t border-border/50 px-4 py-3">
+            <ConnectorConfigurationSurface plugin={plugin} />
+          </div>
+        </SettingsCard>
+      </section>
+
+      {links.length > 0 ? (
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium text-muted">
+            {t("connectors.detail.support", { defaultValue: "Support" })}
+          </h3>
+          <SettingsCard>
+            {links.map((link, index) => (
+              <SettingsCardRow
+                key={link.key}
+                className={index > 0 ? "border-t border-border/50" : undefined}
+                title={pluginResourceLinkLabel(t, link.key)}
+                description={
+                  link.key === "guide"
+                    ? t("connectors.detail.docsHelp", {
+                        defaultValue: "Learn how {{name}} works with Eliza.",
+                        name: plugin.name,
+                      })
+                    : undefined
+                }
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
+                    asChild
+                  >
+                    <a href={link.url} target="_blank" rel="noopener noreferrer">
+                      {t("connectors.detail.openLink", {
+                        defaultValue: "Open",
+                      })}{" "}
+                      ↗
+                    </a>
+                  </Button>
+                }
               />
-            </span>
-          }
-          trailing={
-            <ChevronDown
-              aria-hidden
-              className="h-4 w-4 shrink-0 text-muted transition-transform group-open:rotate-180"
-            />
-          }
-        />
-      </summary>
-      <div className="absolute right-0 top-3 z-10">
-        <ConnectorEnableSwitch
-          plugin={plugin}
-          busy={busy}
-          onToggle={onToggle}
-        />
+            ))}
+          </SettingsCard>
+        </section>
+      ) : null}
+
+      <section className="space-y-2">
+        <h3 className="text-xs font-medium text-muted">
+          {t("connectors.detail.general", { defaultValue: "General" })}
+        </h3>
+        <SettingsCard>
+          <SettingsCardRow
+            title={t("settings.sections.connectors.enablePlugin", {
+              defaultValue: "Enable {{name}} connector",
+              name: plugin.name,
+            })}
+            description={t("settings.sections.connectors.enableHelp", {
+              defaultValue:
+                "Load the plugin so the agent can use this channel when configured.",
+            })}
+            action={
+              <ConnectorEnableSwitch
+                plugin={plugin}
+                busy={busy}
+                onToggle={(checked) => {
+                  void onToggle(checked);
+                }}
+              />
+            }
+          />
+        </SettingsCard>
+      </section>
+    </div>
+  );
+}
+
+function ConnectorsIndex({
+  connectors,
+  hiddenConnectors,
+  channelMode,
+  onOpen,
+}: {
+  connectors: PluginInfo[];
+  hiddenConnectors: PluginInfo[];
+  channelMode: ConnectorChannelMode;
+  onOpen: (id: string) => void;
+}) {
+  const t = useAppSelector((s) => s.t);
+  const channelModeCopy = connectorChannelModeCopy(t);
+  const otherChannelMode: ConnectorChannelMode =
+    channelMode === "delegate" ? "bot" : "delegate";
+
+  const grouped = useMemo(() => {
+    const buckets = new Map<string, PluginInfo[]>();
+    for (const plugin of connectors) {
+      const groupId = getConnectorUiGroupId(plugin.id);
+      const list = buckets.get(groupId) ?? [];
+      list.push(plugin);
+      buckets.set(groupId, list);
+    }
+    return CONNECTOR_UI_GROUPS.map((meta) => ({
+      meta,
+      items: (buckets.get(meta.id) ?? []).slice().sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    })).filter((entry) => entry.items.length > 0);
+  }, [connectors]);
+
+  return (
+    <div className="flex flex-col gap-5" data-testid="connectors-index">
+      <div className="flex flex-col items-start gap-1">
+        <ConnectorChannelModeSwitch />
+        <p className="text-xs-tight text-muted">
+          {channelModeCopy[channelMode].description}
+        </p>
       </div>
-      <div className="pb-3 pl-[30px]">
-        <ConnectorBody plugin={plugin} />
-      </div>
-    </details>
+
+      {grouped.map(({ meta, items }) => (
+        <section key={meta.id} className="space-y-2">
+          <div>
+            <h3 className="text-sm font-medium text-txt-strong">
+              {t(`connectors.groups.${meta.id}.label`, {
+                defaultValue: meta.label,
+              })}
+            </h3>
+            <p className="text-xs text-muted">
+              {t(`connectors.groups.${meta.id}.description`, {
+                defaultValue: meta.description,
+              })}
+            </p>
+          </div>
+          <SettingsCard>
+            {items.map((plugin, index) => (
+              <div
+                key={plugin.id}
+                className={index > 0 ? "border-t border-border/50" : undefined}
+              >
+                <ConnectorListRow
+                  plugin={plugin}
+                  onOpen={() => onOpen(plugin.id)}
+                />
+              </div>
+            ))}
+          </SettingsCard>
+        </section>
+      ))}
+
+      {hiddenConnectors.length > 0 ? (
+        <p className="text-xs-tight text-muted">
+          {t("settings.sections.connectors.channelModeHidden", {
+            defaultValue: "Available in {{mode}} mode: {{names}}.",
+            mode: channelModeCopy[otherChannelMode].label,
+            names: hiddenConnectors.map((p) => p.name).join(", "),
+          })}{" "}
+          <button
+            type="button"
+            className="font-medium text-accent underline-offset-2 hover:underline"
+            onClick={() => setConnectorChannelMode(otherChannelMode)}
+          >
+            {t("settings.sections.connectors.channelModeSwitch", {
+              defaultValue: "Switch to {{mode}}",
+              mode: channelModeCopy[otherChannelMode].label,
+            })}
+          </button>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
 export function ConnectorsSection() {
   const plugins = useAppSelector((s) => s.plugins);
-  const handlePluginToggle = useAppSelector((s) => s.handlePluginToggle);
   const t = useAppSelector((s) => s.t);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [togglingPlugins, setTogglingPlugins] = useState<Set<string>>(
-    new Set(),
+  const channelMode = useConnectorChannelMode();
+  const route = useSettingsRoute();
+  const detailId =
+    route.kind === "connector-detail"
+      ? normalizeConnectorRouteId(route.connectorId)
+      : null;
+
+  const allConnectorPlugins = useMemo(
+    () =>
+      plugins.filter(
+        (p) =>
+          p.category === "connector" &&
+          !ALWAYS_ON_PLUGIN_IDS.has(p.id) &&
+          p.visible !== false,
+      ),
+    [plugins],
   );
 
-  const connectorPlugins = plugins.filter(
-    (p) =>
-      p.category === "connector" &&
-      !ALWAYS_ON_PLUGIN_IDS.has(p.id) &&
-      p.visible !== false,
+  const connectorPlugins = useMemo(
+    () =>
+      allConnectorPlugins.filter((p) =>
+        connectorSupportsChannelMode(p.id, channelMode),
+      ),
+    [allConnectorPlugins, channelMode],
   );
 
-  const focusConnector = useCallback((connectorId: string) => {
-    const escapedId = connectorId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    const focus = () => {
-      const row = containerRef.current?.querySelector(
-        `[data-connector="${escapedId}"]`,
-      );
-      if (!(row instanceof HTMLDetailsElement)) return false;
-      row.open = true;
-      row.scrollIntoView({ block: "center", behavior: "smooth" });
-      const summary = row.querySelector("summary");
-      if (summary instanceof HTMLElement)
-        summary.focus({ preventScroll: true });
-      clearPendingFocusConnector(connectorId);
-      return true;
-    };
-    if (focus()) return;
-    window.setTimeout(() => {
-      focus();
-    }, 80);
+  const hiddenConnectors = useMemo(
+    () =>
+      allConnectorPlugins.filter(
+        (p) => !connectorSupportsChannelMode(p.id, channelMode),
+      ),
+    [allConnectorPlugins, channelMode],
+  );
+
+  const detailPlugin = useMemo(() => {
+    if (!detailId) return null;
+    return (
+      allConnectorPlugins.find(
+        (p) => normalizeConnectorRouteId(p.id) === detailId,
+      ) ?? null
+    );
+  }, [allConnectorPlugins, detailId]);
+
+  const openDetail = useCallback((connectorId: string) => {
+    openConnectorDetailHash(connectorId);
+    // replaceState does not emit hashchange — nudge subscribers.
+    window.dispatchEvent(new Event("popstate"));
   }, []);
 
+  const backToIndex = useCallback(() => {
+    openConnectorsIndexHash();
+    window.dispatchEvent(new Event("popstate"));
+  }, []);
+
+  // Focus / deep-link events navigate to detail (no accordion open).
   useEffect(() => {
     if (typeof document === "undefined") return;
     const handleFocusConnector = (event: Event) => {
       const detail = (event as CustomEvent<FocusConnectorEventDetail>).detail;
       if (!detail?.connectorId) return;
-      focusConnector(detail.connectorId);
+      openDetail(detail.connectorId);
+      clearPendingFocusConnector(detail.connectorId);
     };
     document.addEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
     const pending = readPendingFocusConnector();
-    if (pending) focusConnector(pending);
+    if (pending) {
+      openDetail(pending);
+      clearPendingFocusConnector(pending);
+    }
     return () =>
       document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
-  }, [focusConnector]);
+  }, [openDetail]);
 
-  const handleToggle = useCallback(
-    async (pluginId: string, enabled: boolean) => {
-      setTogglingPlugins((prev) => new Set(prev).add(pluginId));
-      try {
-        await handlePluginToggle(pluginId, enabled);
-      } finally {
-        setTogglingPlugins((prev) => {
-          const next = new Set(prev);
-          next.delete(pluginId);
-          return next;
-        });
-      }
-    },
-    [handlePluginToggle],
-  );
-
-  if (connectorPlugins.length === 0) {
+  if (allConnectorPlugins.length === 0) {
     return (
       <p className="text-sm text-muted">
         {t("pluginsview.NoConnectorsAvailable", {
@@ -427,30 +741,38 @@ export function ConnectorsSection() {
     );
   }
 
-  return (
-    <SettingsStack>
-      <SettingsGroup
-        bare
-        title={t("settings.sections.connectors.groupTitle", {
-          defaultValue: "Connectors",
-        })}
-      >
-        <div ref={containerRef} className="flex flex-col">
-          {connectorPlugins.map((plugin) => {
-            const isBusy = togglingPlugins.has(plugin.id);
-            return (
-              <ConnectorRow
-                key={plugin.id}
-                plugin={plugin}
-                busy={isBusy}
-                onToggle={(checked) => {
-                  void handleToggle(plugin.id, checked);
-                }}
-              />
-            );
-          })}
+  if (detailId) {
+    if (!detailPlugin) {
+      return (
+        <div className="space-y-3" data-testid="connector-not-found">
+          <p className="text-sm text-muted">
+            {t("connectors.detail.notFound", {
+              defaultValue: "Connector \"{{id}}\" was not found.",
+              id: detailId,
+            })}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={backToIndex}
+            className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
+          >
+            {t("connectors.detail.backToList", {
+              defaultValue: "Back to Connectors",
+            })}
+          </Button>
         </div>
-      </SettingsGroup>
-    </SettingsStack>
+      );
+    }
+    return <ConnectorDetailPage plugin={detailPlugin} onBack={backToIndex} />;
+  }
+
+  return (
+    <ConnectorsIndex
+      connectors={connectorPlugins}
+      hiddenConnectors={hiddenConnectors}
+      channelMode={channelMode}
+      onOpen={openDetail}
+    />
   );
 }

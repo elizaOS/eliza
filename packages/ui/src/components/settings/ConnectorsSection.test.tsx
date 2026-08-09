@@ -2,11 +2,17 @@
 // @vitest-environment jsdom
 /**
  * Renders ConnectorsSection with a mocked App context and connector-mode
- * registry to assert icon fallbacks (no raw emoji glyphs) and the setup-panel
- * routing. jsdom, no backend.
+ * registry to assert index/detail routing, icon fallbacks, and setup-panel
+ * co-render on the detail page. jsdom, no backend.
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginInfo } from "../../api";
 
@@ -49,8 +55,6 @@ vi.mock("../connectors/WhatsAppQrOverlay", () => ({
   WhatsAppQrOverlay: () => <div />,
 }));
 
-// Controllable connector-mode per plugin id. Defaults to a benign mode so the
-// pre-existing icon test is unaffected; tests opt into telegram/discord modes.
 const connectorModeMock = vi.hoisted(() => ({
   byId: {} as Record<
     string,
@@ -58,6 +62,7 @@ const connectorModeMock = vi.hoisted(() => ({
       setupPluginId: string | null;
       selectedMode: string;
       modes: Array<{ id: string; managementMode: string | undefined }>;
+      setSelectedMode?: (id: string) => void;
     }
   >,
 }));
@@ -67,6 +72,7 @@ vi.mock("../connectors/ConnectorModeSelector.hooks", () => ({
       setupPluginId: pluginId,
       selectedMode: "default",
       modes: [{ id: "default", managementMode: undefined }],
+      setSelectedMode: () => {},
     },
 }));
 vi.mock("../connectors/ConnectorModeSelector", () => ({
@@ -77,10 +83,15 @@ vi.mock("../connectors/ConnectorSetupPanel", () => ({
     <div data-testid="connector-setup-panel">setup:{pluginId}</div>
   ),
 }));
+vi.mock("../connectors/ConnectorSetupPanel.helpers", () => ({
+  hasConnectorSetupPanel: (id: string) =>
+    id === "telegram" || id === "whatsapp",
+}));
 vi.mock("../pages/PluginConfigForm", () => ({
   PluginConfigForm: () => <div data-testid="plugin-config-form" />,
 }));
 
+import { setConnectorChannelMode } from "../connectors/connector-channel-mode";
 import { ConnectorsSection } from "./ConnectorsSection";
 
 function plugin(overrides: Partial<PluginInfo> = {}): PluginInfo {
@@ -101,6 +112,10 @@ function plugin(overrides: Partial<PluginInfo> = {}): PluginInfo {
   } as PluginInfo;
 }
 
+function openDetail(name: string) {
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(name, "i") }));
+}
+
 describe("ConnectorsSection", () => {
   beforeEach(() => {
     appMock.value = {
@@ -113,6 +128,8 @@ describe("ConnectorsSection", () => {
       t: (_key, options) => options?.defaultValue ?? _key,
     };
     connectorModeMock.byId = {};
+    setConnectorChannelMode("delegate");
+    window.history.replaceState(null, "", "/");
   });
 
   afterEach(() => {
@@ -146,14 +163,12 @@ describe("ConnectorsSection", () => {
     };
   }
 
-  // Regression #10281: Settings → Connectors must co-render the live setup
-  // panel alongside the env-config form (the canonical /connectors page does).
-  // Before the fix, the showPluginConfig branch dropped the panel.
-  it("co-renders the live setup panel alongside the config form for telegram bot mode", () => {
+  it("opens a detail page from the index and co-renders setup + config for telegram bot mode", () => {
     connectorModeMock.byId.telegram = {
       setupPluginId: "telegram",
       selectedMode: "bot",
       modes: [{ id: "bot", managementMode: "local-config" }],
+      setSelectedMode: () => {},
     };
     appMock.value.plugins = [
       plugin({
@@ -164,20 +179,21 @@ describe("ConnectorsSection", () => {
     ];
 
     render(<ConnectorsSection />);
+    expect(screen.getByTestId("connectors-index")).toBeTruthy();
+    openDetail("Telegram");
 
+    expect(screen.getByTestId("connector-detail")).toBeTruthy();
     expect(screen.getByTestId("plugin-config-form")).toBeTruthy();
     const panel = screen.getByTestId("connector-setup-panel");
-    expect(panel).toBeTruthy();
     expect(panel.textContent ?? "").toContain("telegram");
   });
 
-  // whatsapp business mode is the third local-config + has-panel case; it must
-  // co-render like /connectors does (the panel is the whatsapp pairing surface).
-  it("co-renders the setup panel for whatsapp business mode", () => {
+  it("co-renders the setup panel for whatsapp business mode on detail", () => {
     connectorModeMock.byId.whatsapp = {
       setupPluginId: "whatsapp",
       selectedMode: "business",
       modes: [{ id: "business", managementMode: "local-config" }],
+      setSelectedMode: () => {},
     };
     appMock.value.plugins = [
       plugin({
@@ -188,6 +204,7 @@ describe("ConnectorsSection", () => {
     ];
 
     render(<ConnectorsSection />);
+    openDetail("WhatsApp");
 
     expect(screen.getByTestId("plugin-config-form")).toBeTruthy();
     expect(
@@ -197,11 +214,12 @@ describe("ConnectorsSection", () => {
     ).toBe(true);
   });
 
-  it("renders no setup panel for a local-config connector that has none (discord)", () => {
+  it("renders config form without setup panel for discord bot local-config", () => {
     connectorModeMock.byId.discord = {
       setupPluginId: "discord",
       selectedMode: "bot",
       modes: [{ id: "bot", managementMode: "local-config" }],
+      setSelectedMode: () => {},
     };
     appMock.value.plugins = [
       plugin({
@@ -212,8 +230,51 @@ describe("ConnectorsSection", () => {
     ];
 
     render(<ConnectorsSection />);
+    openDetail("Discord");
 
     expect(screen.getByTestId("plugin-config-form")).toBeTruthy();
     expect(screen.queryByTestId("connector-setup-panel")).toBeNull();
+  });
+
+  it("hides bot-only connectors under the delegate lens and restores them via the footnote switch", () => {
+    appMock.value.plugins = [
+      plugin({ id: "slack", name: "Slack" }),
+      plugin({ id: "signal", name: "Signal" }),
+    ];
+
+    render(<ConnectorsSection />);
+
+    expect(screen.getByText("Signal")).toBeTruthy();
+    expect(screen.queryByText("Slack")).toBeNull();
+    const footnoteSwitch = screen.getByRole("button", {
+      name: /Switch to/,
+    });
+
+    fireEvent.click(footnoteSwitch);
+
+    expect(screen.getByText("Slack")).toBeTruthy();
+    expect(screen.queryByText("Signal")).toBeNull();
+    expect(screen.getByRole("button", { name: /Switch to/ })).toBeTruthy();
+  });
+
+  it("keeps unclassified connectors visible under both lenses", () => {
+    appMock.value.plugins = [
+      plugin({ id: "acmechat-unknown", name: "Acme Chat" }),
+    ];
+
+    render(<ConnectorsSection />);
+    expect(screen.getByText("Acme Chat")).toBeTruthy();
+
+    act(() => setConnectorChannelMode("bot"));
+    expect(screen.getByText("Acme Chat")).toBeTruthy();
+  });
+
+  it("returns to the index from detail back control", () => {
+    appMock.value.plugins = [plugin({ id: "signal", name: "Signal" })];
+    render(<ConnectorsSection />);
+    openDetail("Signal");
+    expect(screen.getByTestId("connector-detail")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("connector-detail-back"));
+    expect(screen.getByTestId("connectors-index")).toBeTruthy();
   });
 });

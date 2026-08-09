@@ -33,6 +33,10 @@ import {
 import { type ComponentType, type LazyExoticComponent, lazy } from "react";
 import { registerCloudConnectorsSettingsSection } from "../../cloud/connectors";
 import {
+  readSettingsHashSectionId,
+  replaceSettingsHashRoute,
+} from "./settings-route";
+import {
   CLOUD_SETTINGS_GROUP_ID,
   listExtraSettingsGroups,
   registerSettingsGroup,
@@ -748,31 +752,33 @@ export function settingsSectionTitle(
   return t(section.titleKey, { defaultValue: section.defaultTitle });
 }
 
-/**
- * Legacy hash aliases → section ids. `#billing` / `#api-keys` are the hashes
- * older in-app links and bookmarks carry; the registered cloud sections use
- * `cloud-*` ids so they never collide with the built-in local sections.
- */
-const SETTINGS_HASH_ALIASES: Readonly<Record<string, string>> = {
-  cloud: "ai-model",
-  providers: "ai-model",
-  billing: "cloud-billing",
-  "api-keys": "cloud-api-keys",
-};
+export {
+  normalizeConnectorRouteId,
+  openConnectorDetailHash,
+  openConnectorsIndexHash,
+  parseSettingsHash,
+  readSettingsHashRoute,
+  readSettingsHashSectionId,
+  replaceSettingsHashRoute,
+  settingsRouteToHash,
+  type SettingsRoute,
+} from "./settings-route";
 
+/**
+ * Back-compat: section id only. Nested connector detail (`#connectors/discord`)
+ * still resolves to `"connectors"` so existing SettingsView callers keep the
+ * section selected while the connectors body reads the detail segment. Unknown
+ * section ids return null (registry gate).
+ */
 export function readSettingsHashSection(): string | null {
-  if (typeof window === "undefined") return null;
-  const rawHash = window.location.hash.replace(/^#/, "");
-  if (!rawHash) return null;
-  const hash = SETTINGS_HASH_ALIASES[rawHash] ?? rawHash;
-  return getAllSettingsSections().some((section) => section.id === hash)
-    ? hash
+  const sectionId = readSettingsHashSectionId();
+  if (!sectionId) return null;
+  return getAllSettingsSections().some((section) => section.id === sectionId)
+    ? sectionId
     : null;
 }
 
+/** Write a flat section hash (clears any connector detail segment). */
 export function replaceSettingsHash(sectionId: string): void {
-  if (typeof window === "undefined") return;
-  const nextHash = `#${sectionId}`;
-  if (window.location.hash === nextHash) return;
-  window.history.replaceState(null, "", nextHash);
+  replaceSettingsHashRoute({ kind: "section", sectionId });
 }

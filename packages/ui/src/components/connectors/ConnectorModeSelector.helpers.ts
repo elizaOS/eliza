@@ -11,6 +11,7 @@ import {
   connectorAccountManagementPanelPluginId,
   getConnectorPluginManagedAccountOption,
 } from "./connector-account-options";
+import type { ConnectorChannelMode } from "./connector-channel-mode";
 import { getDeclaredConnectorModes } from "./connector-mode-registry";
 
 export type ConnectorMode = {
@@ -42,15 +43,28 @@ function withPluginManagedMode(
 /**
  * Returns available modes for a connector, rendered generically from the modes
  * the connector plugin declared in the connector-mode registry. Cloud-only
- * modes are filtered out when Eliza Cloud is not connected.
+ * modes are filtered out when Eliza Cloud is not connected. When a global
+ * `channelMode` lens is given, declared modes classified into the *other* lens
+ * are filtered out too (unclassified modes are lens-neutral and always kept, as
+ * is the injected plugin-managed account-inventory mode).
  */
 export function getConnectorModes(
   connectorId: string,
-  options?: { elizaCloudConnected?: boolean },
+  options?: {
+    elizaCloudConnected?: boolean;
+    channelMode?: ConnectorChannelMode;
+  },
 ): ConnectorMode[] {
   const cloud = options?.elizaCloudConnected ?? false;
+  const lens = options?.channelMode;
   const modes: ConnectorMode[] = getDeclaredConnectorModes(connectorId)
     .filter((mode) => cloud || !mode.cloudOnly)
+    .filter(
+      (mode) =>
+        lens === undefined ||
+        mode.channelMode === undefined ||
+        mode.channelMode === lens,
+    )
     .map((mode) => ({
       id: mode.id,
       label: mode.label,

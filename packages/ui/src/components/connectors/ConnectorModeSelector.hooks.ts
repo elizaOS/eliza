@@ -10,14 +10,20 @@ import {
   getDefaultConnectorModeId,
   modeToSetupPluginId,
 } from "./ConnectorModeSelector.helpers";
+import type { ConnectorChannelMode } from "./connector-channel-mode";
 
 /**
  * Hook to manage connector mode state. Reads initial mode from config
- * or defaults to the first available mode.
+ * or defaults to the first available mode. When the available mode list
+ * changes (Eliza Cloud connects, the global channel-mode lens flips) a
+ * selection that is no longer offered re-defaults automatically.
  */
 export function useConnectorMode(
   connectorId: string,
-  options?: { elizaCloudConnected?: boolean },
+  options?: {
+    elizaCloudConnected?: boolean;
+    channelMode?: ConnectorChannelMode;
+  },
 ) {
   const modes = getConnectorModes(connectorId, options);
   const defaultMode = getDefaultConnectorModeId(connectorId, modes);

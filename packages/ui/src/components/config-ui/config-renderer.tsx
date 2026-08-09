@@ -22,7 +22,7 @@ import type {
   ResolvedField,
 } from "../../config/config-catalog";
 import {
-  evaluateVisibility,
+  evaluateFieldVisibility,
   resolveFields,
   runValidation,
 } from "../../config/config-catalog";
@@ -332,17 +332,18 @@ export const ConfigRenderer = forwardRef<
 
   const isFieldVisible = useCallback(
     (field: ResolvedField): boolean => {
-      // Hidden fields are never visible
-      if (field.hidden) return false;
-
-      // Rich visibility condition (json-render style) takes priority
-      if (field.visible !== undefined) {
-        return evaluateVisibility(field.visible, values);
-      }
-
-      return true;
+      // requires / requiresAny honor setKeys so masked secrets unlock
+      // dependent fields (poll interval, channel lists, …) without echoing.
+      return evaluateFieldVisibility({
+        hidden: field.hidden,
+        requires: field.requires,
+        requiresAny: field.requiresAny,
+        visible: field.visible,
+        values,
+        setKeys,
+      });
     },
-    [values],
+    [values, setKeys],
   );
 
   // ── Field change handler ─────────────────────────────────────────────
