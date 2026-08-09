@@ -1163,7 +1163,7 @@ export default function StewardLoginSection() {
             }
           }}
           disabled={isLoading}
-          className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong focus-visible:border-accent disabled:opacity-50"
+          className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
           autoComplete={showPasskey ? "email webauthn" : "email"}
         />
       </div>
@@ -1175,7 +1175,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover focus-visible:border-txt-strong active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}
@@ -1187,7 +1187,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handleEmail}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.button.magicLink", { defaultValue: "Magic Link" })}
@@ -1237,7 +1237,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("google")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading === "google" ? <Spinner /> : <GoogleIcon />}{" "}
               {t("cloud.login.button.google", { defaultValue: "Google" })}
@@ -1249,7 +1249,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("discord")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading === "discord" ? (
                 <Spinner />
@@ -1265,7 +1265,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("github")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 sm:col-span-2"
+              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 sm:col-span-2"
             >
               {loading === "github" ? (
                 <Spinner />
@@ -1332,7 +1332,7 @@ export default function StewardLoginSection() {
                   type="button"
                   onClick={() => handleWalletIntent("ethereum")}
                   disabled={isLoading}
-                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                 >
                   {t("cloud.login.wallet.evm", { defaultValue: "EVM wallet" })}
                 </Button>
@@ -1343,7 +1343,7 @@ export default function StewardLoginSection() {
                   type="button"
                   onClick={() => handleWalletIntent("solana")}
                   disabled={isLoading}
-                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                 >
                   {t("cloud.login.wallet.solana", {
                     defaultValue: "Solana wallet",

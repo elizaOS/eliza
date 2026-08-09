@@ -211,7 +211,7 @@ function BrowserTabCard({
           <span
             className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
               isAgent
-                ? "bg-bg-muted text-txt ring-1 ring-inset ring-border/70"
+                ? "bg-bg-muted text-txt border border-border/70"
                 : "bg-card text-muted"
             }`}
           >
@@ -301,8 +301,8 @@ export function BrowserTabSwitcher({
         data-testid="browser-workspace-tab-switcher"
         data-view-overlay="browser-tabs"
         data-chat-clearance-aware="true"
-        overlayClassName="z-[8800] bg-black/65 backdrop-blur-[2px]"
-        className="z-[8810] gap-4 rounded-3xl border-border/60 bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] shadow-[0_24px_80px_rgba(0,0,0,.48)] backdrop-blur-[28px] max-sm:-translate-y-1/2 max-sm:rounded-3xl"
+        overlayClassName="z-[8800] bg-black/65"
+        className="z-[8810] gap-4 rounded-3xl border-border/60 bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] shadow-[0_24px_80px_rgba(0,0,0,.48)] max-sm:-translate-y-1/2 max-sm:rounded-3xl"
         style={{
           top: "calc((100dvh - var(--eliza-chat-clearance, 5.25rem)) / 2)",
           bottom: "auto",

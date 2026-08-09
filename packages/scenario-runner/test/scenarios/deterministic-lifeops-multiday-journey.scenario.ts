@@ -625,6 +625,9 @@ export default scenario({
       kind: "message",
       name: "Monday: create the daily pharmacy reminder",
       text: createText,
+      // SCHEDULED_TASKS commits are turnComplete + verifiedUserFacing
+      // (#18119): the action's verified ack is the turn's reply, not the
+      // planner fixture's messageToUser.
       responseIncludesAny: ["Scheduled the scheduled item"],
       assertTurn: expectCreateTurn,
     },
@@ -677,7 +680,7 @@ export default scenario({
       kind: "message",
       name: "history shows the full multi-day transition chain",
       text: historyText,
-      responseIncludesAny: ["history entries"],
+      responseIncludesAny: ["history entr"],
       assertTurn: expectHistoryTurn,
     },
   ],

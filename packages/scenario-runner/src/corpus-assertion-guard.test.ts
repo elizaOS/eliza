@@ -323,9 +323,8 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "computeruse.get-cursor-position",
   "convo.echo-self-test",
   "convo.greeting-dynamic",
-  // Creative owner-voice draft persistence (#14871): keyless proof that
-  // CREATIVE_DRAFT compose/revise persists the standing document. Registered
-  // here retroactively — the scenario landed without this guard update.
+  // Owner-voice drafting persistence proof (#14871): deterministic compose +
+  // revise round-trip with a custom predicate over the persisted draft artifact.
   "creative-owner-voice-draft-persistence",
   "elizacloud.account-status",
   "finances.owner-finances-dashboard",

@@ -126,6 +126,11 @@ async function fillOrToggleInput(input: Locator, index: number): Promise<void> {
 }
 
 test.describe("plugin view interaction coverage", () => {
+  // The fuzz pass's worst case (60s+30s mount waits, MAX_INPUTS fills and
+  // MAX_CLICKS clicks each bounded by the 15s action timeout) can exceed the
+  // suite's 180s default on a loaded CI runner even when nothing is broken,
+  // so this spec carries its own budget.
+  test.setTimeout(360_000);
   for (const view of GUI_CASES) {
     test(`${view.id} — exercise every control, no crash`, async ({ page }) => {
       const pageErrors: string[] = [];

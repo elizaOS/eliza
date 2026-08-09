@@ -209,9 +209,9 @@ describe("BrowserTabSwitcher", () => {
     renderSwitcher();
     const agentCard = screen.getByTestId("browser-tab-card-agent-0");
     const userCard = screen.getByTestId("browser-tab-card-user-0");
-    expect(agentCard.innerHTML).toContain("ring-border/70");
+    expect(agentCard.innerHTML).toContain("border-border/70");
     expect(agentCard.innerHTML).not.toContain("accent");
-    expect(userCard.innerHTML).not.toContain("ring-border/70");
+    expect(userCard.innerHTML).not.toContain("bg-bg-muted text-txt");
   });
 
   it("shows a neutral session dot (not the monogram) for the focused tab", () => {

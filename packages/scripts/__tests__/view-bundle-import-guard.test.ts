@@ -64,21 +64,25 @@ function fixture() {
 }
 
 describe("view bundle import guard", () => {
-  // The first validateViewBundles call pays one-time host-registry parsing
-  // cost, which exceeds the 5s default on loaded CI runners.
-  test("reports a configured bundle that was not built", async () => {
-    const { options } = fixture();
-    const result = await validateViewBundles({
-      ...options,
-      enforceFreshOutputs: true,
-    });
-    expect(result.bundleCount).toBe(0);
-    expect(result.expectedBundleCount).toBe(1);
-    expect(result.missingBundles).toHaveLength(1);
-    expect(result.violations).toEqual([]);
-    expect(result.unexpectedChunks).toEqual([]);
-    expect(result.unexpectedArtifacts).toEqual([]);
-  }, 30000);
+  // First test in the file pays module-import warmup on a loaded CI runner
+  // (observed >7s), so it carries an explicit timeout above the 5s default.
+  test(
+    "reports a configured bundle that was not built",
+    async () => {
+      const { options } = fixture();
+      const result = await validateViewBundles({
+        ...options,
+        enforceFreshOutputs: true,
+      });
+      expect(result.bundleCount).toBe(0);
+      expect(result.expectedBundleCount).toBe(1);
+      expect(result.missingBundles).toHaveLength(1);
+      expect(result.violations).toEqual([]);
+      expect(result.unexpectedChunks).toEqual([]);
+      expect(result.unexpectedArtifacts).toEqual([]);
+    },
+    30_000,
+  );
 
   test("reports unsupported imports from a real emitted bundle", async () => {
     const { absoluteDir, options } = fixture();

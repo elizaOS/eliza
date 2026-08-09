@@ -795,13 +795,17 @@ export function useFirstRunConductor(): void {
   const startCloudProvisionFlow = React.useCallback(() => {
     busyRef.current = true;
     // Explicit waiting state on the opener while Cloud auth runs in the
-    // popup/tab — the sign-in CTA must not look idle (#18001).
-    seedTurn(
-      makeTurn(
-        "first-run:cloud-login-waiting",
-        "Waiting for sign-in in the window we opened… Finish there, then this tab will continue. If nothing opened, use the link in Settings → Cloud or tap Sign in again.",
-      ),
-    );
+    // popup/tab — the sign-in CTA must not look idle (#18001). A silent cloud
+    // entry (#15133) reuses a stored session and never opens a window, so it
+    // must stay silent: no waiting turn until the flow turns interactive.
+    if (!silentCloudEntryRef.current) {
+      seedTurn(
+        makeTurn(
+          "first-run:cloud-login-waiting",
+          "Waiting for sign-in in the window we opened… Finish there, then this tab will continue. If nothing opened, use the link in Settings → Cloud or tap Sign in again.",
+        ),
+      );
+    }
     // Pre-open the cloud-login popup synchronously NOW — the action handler is
     // still inside the user gesture, but the provision flow below awaits
     // several network round-trips before reaching the (async) interactive login

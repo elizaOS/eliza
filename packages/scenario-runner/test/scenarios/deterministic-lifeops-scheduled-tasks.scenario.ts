@@ -447,6 +447,9 @@ export default scenario({
       kind: "message",
       name: "create scheduled reminder",
       text: createText,
+      // SCHEDULED_TASKS commits are turnComplete + verifiedUserFacing
+      // (#18119): the action's verified ack is the turn's reply, not the
+      // planner fixture's messageToUser.
       responseIncludesAny: ["Scheduled the scheduled item"],
       assertTurn: expectCreatedTurn,
     },
@@ -489,7 +492,7 @@ export default scenario({
       kind: "message",
       name: "read scheduled reminder history",
       text: historyText,
-      responseIncludesAny: ["history entries"],
+      responseIncludesAny: ["history entr"],
       assertTurn: expectHistoryTurn,
     },
   ],

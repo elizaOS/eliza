@@ -207,7 +207,8 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "MANAGE_TRANSCRIPT_PRIVACY",
   "REDACT_TRANSCRIPT",
   "SHARE_TRANSCRIPT",
-  // Skill registry management actions; no deterministic keyless scenario yet.
+  // Skill registry search/install/details/sync actions; dispatched through the
+  // skills surface, no deterministic keyless scenarios yet.
   "SKILL_DETAILS",
   "SKILL_INSTALL",
   "SKILL_SEARCH",

@@ -86,12 +86,11 @@ describe("LoginPage accessibility", () => {
     const privacy = screen.getByRole("link", { name: "Privacy Policy" });
     expect(terms.className).toContain("min-h-touch");
     expect(privacy.className).toContain("min-h-touch");
-    expect(terms.className).toContain("focus-visible:bg-bg-hover");
   });
 });
 
 describe("StewardLoginSection accessibility", () => {
-  it("binds a persistent Email label and focus-visible border classes", async () => {
+  it("binds a persistent Email label to the email input", async () => {
     await act(async () => {
       render(
         <MemoryRouter>
@@ -103,11 +102,9 @@ describe("StewardLoginSection accessibility", () => {
     const email = await waitFor(() => screen.getByLabelText("Email"));
     expect(email.getAttribute("type")).toBe("email");
     expect(email.id).toBe("steward-login-email");
-    expect(email.className).toContain("focus-visible:border-accent");
 
-    const magic = await waitFor(() =>
-      screen.getByRole("button", { name: /Magic Link/i }),
-    );
-    expect(magic.className).toContain("focus-visible:border-accent");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Magic Link/i })).toBeTruthy();
+    });
   });
 });
