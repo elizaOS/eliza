@@ -128,9 +128,12 @@ const URL_TOKEN_PATTERN = /\bhttps?:\/\/[^\s<>()]+/giu;
 /** Connector-appended link-preview blocks (Discord renders shared-link embeds
  * into the processed text as "Embed #N:\n  Title:…\n  Description:…"). Preview
  * text is DERIVED from the linked page — it is never a user instruction, so
- * intent detection must not read it as one. */
+ * intent detection must not read it as one. The header tail must stay on
+ * `[ \t]*`: a `\s*` there greedily eats the newline plus the next line's
+ * indent, so the indented Title/Description lines never match and page-derived
+ * text leaks into the residue. */
 const LINK_EMBED_BLOCK_PATTERN =
-	/(?:^|\n)\s*Embed #\d+:\s*(?:\n[ \t]+[^\n]*)*/giu;
+	/(?:^|\n)[ \t]*Embed #\d+:[ \t]*(?:\n[ \t]+[^\n]*)*/giu;
 
 /** Explicit work imperatives in the user's OWN words (outside URLs and embed
  * previews) that turn a link share into a genuine request. */
@@ -167,6 +170,23 @@ export function looksLikeBareLinkShare(text: string): boolean {
 	if (residue.length > 120) return false;
 	if (residue.length === 0) return true;
 	return !LINK_SHARE_WORK_IMPERATIVE_PATTERN.test(residue);
+}
+
+/**
+ * The user's OWN words in a link-share message: connector-derived embed
+ * preview blocks and the URLs themselves removed, original punctuation kept.
+ * Lets delivery seams distinguish "here's a link" from "here's a link — does
+ * it do X?" without re-deriving the connector text shape (a bare share and a
+ * short question both route to the web-read light path, but they want
+ * different answer styles).
+ */
+export function linkShareOwnText(text: string): string {
+	return text
+		.trim()
+		.replace(LINK_EMBED_BLOCK_PATTERN, " ")
+		.replace(URL_TOKEN_PATTERN, " ")
+		.replace(/\s+/gu, " ")
+		.trim();
 }
 
 export function looksLikeWebSearchRequest(text: string): boolean {

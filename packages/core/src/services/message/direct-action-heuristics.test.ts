@@ -17,6 +17,7 @@ import {
 	inferDirectCurrentRequestCandidateActions,
 	inferDirectCurrentRequestCandidateInference,
 	isShellDirectActionName,
+	linkShareOwnText,
 	looksLikeBareLinkShare,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
@@ -40,6 +41,16 @@ describe("looksLikeBareLinkShare", () => {
 		// The embed title contains workflow-ish words ("decides to message
 		// people"); they must not read as user intent.
 		expect(looksLikeBareLinkShare(DISCORD_LINK_WITH_EMBED)).toBe(true);
+	});
+
+	it("fires even when the embed TITLE carries a work imperative — derived text never defeats the guard", () => {
+		const imperativeTitle = [
+			"https://example.com/build-guide",
+			"Embed #1:",
+			"  Title:Build and deploy your first app",
+			"  Description:A tutorial for creating projects",
+		].join("\n");
+		expect(looksLikeBareLinkShare(imperativeTitle)).toBe(true);
 	});
 
 	it("fires on a URL with short non-imperative commentary", () => {
@@ -72,6 +83,27 @@ describe("looksLikeBareLinkShare", () => {
 		expect(looksLikeBareLinkShare("")).toBe(false);
 		const longCommentary = `${"here is a very long analysis of the situation with many words that go on ".repeat(3)}https://example.com`;
 		expect(looksLikeBareLinkShare(longCommentary)).toBe(false);
+	});
+});
+
+describe("linkShareOwnText", () => {
+	it("keeps only the user's own words, punctuation intact", () => {
+		expect(
+			linkShareOwnText("does it support backups? https://example.com"),
+		).toBe("does it support backups?");
+		expect(linkShareOwnText("https://example.com/some/page")).toBe("");
+	});
+
+	it("drops connector embed preview text — a page title is not the user asking", () => {
+		// The embed title carries a question mark that must not surface as the
+		// user's own phrasing.
+		const shared = [
+			"https://example.com/what-is-it",
+			"Embed #1:",
+			"  Title:What is umbrelOS?",
+			"  Description:(none)",
+		].join("\n");
+		expect(linkShareOwnText(shared)).toBe("");
 	});
 });
 
