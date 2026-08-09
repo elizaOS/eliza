@@ -756,6 +756,7 @@ export default function Leaderboard() {
   );
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: pointer-gesture swipe/drag surface only; the switcher buttons remain the keyboard-accessible platform-switch path.
     <div
       {...bind()}
       // Horizontal swipes cross the QR image and Get Started link; without
