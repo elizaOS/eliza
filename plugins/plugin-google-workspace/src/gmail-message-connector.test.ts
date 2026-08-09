@@ -273,6 +273,61 @@ describe("gmail send handler", () => {
     expect(sendGmailMessage).not.toHaveBeenCalled();
   });
 
+  it("refuses structurally when the contact has multiple distinct stored emails", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      entity: {
+        id: SHADOW_ID,
+        names: ["Shadow"],
+        components: [
+          { type: "contact_info", data: { email: "shadow.work@example.com" } },
+          { type: "rolodex", data: { email: "shadow.personal@example.com" } },
+        ],
+      },
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "not_delivered",
+      code: "GMAIL_RECIPIENT_AMBIGUOUS",
+    });
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+
+  it("ignores email-shaped values in unrelated fields when a named email field exists", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      entity: {
+        id: SHADOW_ID,
+        names: ["Shadow"],
+        components: [
+          { type: "notes", data: { assistant: "third.party@example.com" } },
+          { type: "contact_info", data: { email: "shadow@example.com" } },
+        ],
+      },
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome.kind).toBe("delivered");
+    expect(sendGmailMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["shadow@example.com"] })
+    );
+  });
+
   it("refuses structurally when no recipient email can be resolved", async () => {
     const { runtime, sendGmailMessage } = runtimeStub({
       accounts: [CONNECTED_ACCOUNT],

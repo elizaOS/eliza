@@ -199,6 +199,19 @@ describe("GoogleGmailAdapter", () => {
     ).rejects.toThrow(/email-address recipient/);
   });
 
+  it("rejects a new draft when any requested recipient is invalid (no silent drop)", async () => {
+    const sendGmailMessage = vi.fn();
+    const runtime = runtimeWithGoogleService({ sendGmailMessage });
+    await expect(
+      new GoogleGmailAdapter().createDraft(runtime, {
+        source: "gmail",
+        to: [{ identifier: "valid@example.com" }, { identifier: "typo" }],
+        body: "hello",
+      })
+    ).rejects.toThrow(/invalid: typo/);
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+
   it("manages Gmail messages and unsubscribe requests with plugin-google-workspace operations", async () => {
     const listGmailTriageMessages = vi.fn(async () => [gmailMessage()]);
     const modifyGmailMessages = vi.fn(async () => undefined);

@@ -109,44 +109,51 @@ async function resolveGmailAccountId(
   };
 }
 
+type RecipientResolution =
+  | { kind: "resolved"; email: string }
+  | { kind: "unresolved" }
+  | { kind: "ambiguous"; candidates: string[] };
+
 /**
- * Resolve the recipient address: literal target address first, then the
- * entity graph's stored email handles for an entity-store UUID.
+ * Resolve the recipient address fail-closed: a literal target address wins;
+ * otherwise the entity graph must yield exactly one distinct stored email
+ * (across explicitly email-named component fields, or — only when no named
+ * field exists — email-shaped component values). Multiple distinct candidates
+ * refuse rather than guess, so a contact with work + personal addresses never
+ * gets mail routed by component iteration order.
  */
 async function resolveRecipientEmail(
   runtime: IAgentRuntime,
   target: TargetInfo
-): Promise<string | null> {
+): Promise<RecipientResolution> {
   const literal = emailLiteral(target.channelId) ?? emailLiteral(target.entityId);
-  if (literal) return literal;
+  if (literal) return { kind: "resolved", email: literal };
 
   const entityId = String(target.entityId ?? "").trim();
   if (!UUID_PATTERN.test(entityId) || typeof runtime.getEntityById !== "function") {
-    return null;
+    return { kind: "unresolved" };
   }
   const entity = await runtime.getEntityById(entityId as UUID);
-  if (!entity) return null;
+  if (!entity) return { kind: "unresolved" };
 
-  // Prefer explicitly email-named component fields; fall back to any
-  // email-shaped component value (covers rolodex custom fields and handles).
-  let fallback: string | null = null;
+  const named = new Set<string>();
+  const emailShaped = new Set<string>();
   for (const component of entity.components ?? []) {
     const data = component.data ?? {};
     for (const key of EMAIL_COMPONENT_KEYS) {
       const value = emailLiteral(data[key]);
-      if (value) return value;
+      if (value) named.add(value.toLowerCase());
     }
-    if (!fallback) {
-      for (const value of Object.values(data)) {
-        const email = emailLiteral(value);
-        if (email) {
-          fallback = email;
-          break;
-        }
-      }
+    for (const value of Object.values(data)) {
+      const email = emailLiteral(value);
+      if (email) emailShaped.add(email.toLowerCase());
     }
   }
-  return fallback;
+
+  const candidates = named.size > 0 ? named : emailShaped;
+  if (candidates.size === 0) return { kind: "unresolved" };
+  if (candidates.size > 1) return { kind: "ambiguous", candidates: [...candidates].sort() };
+  return { kind: "resolved", email: [...candidates][0] };
 }
 
 function subjectFromContent(content: Content): string {
@@ -180,8 +187,8 @@ async function sendGmailFromTarget(
     };
   }
 
-  const recipient = await resolveRecipientEmail(runtime, target);
-  if (!recipient) {
+  const resolution = await resolveRecipientEmail(runtime, target);
+  if (resolution.kind === "unresolved") {
     return {
       kind: "not_delivered",
       code: "GMAIL_RECIPIENT_UNRESOLVED",
@@ -189,6 +196,16 @@ async function sendGmailFromTarget(
         "Could not resolve an email address for the recipient. Provide a literal address (name@example.com) or a contact with a stored email.",
     };
   }
+  if (resolution.kind === "ambiguous") {
+    return {
+      kind: "not_delivered",
+      code: "GMAIL_RECIPIENT_AMBIGUOUS",
+      message: `The contact has multiple stored email addresses (${resolution.candidates.join(
+        ", "
+      )}). Provide the literal address to use.`,
+    };
+  }
+  const recipient = resolution.email;
 
   const account = await resolveGmailAccountId(runtime, target.accountId);
   if ("error" in account) {
