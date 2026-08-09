@@ -200,7 +200,7 @@ function BrowserTabCard({
         onClick={onActivate}
         variant="ghost"
         className={`flex h-auto min-h-11 w-full min-w-0 flex-col items-start justify-start gap-1 whitespace-normal rounded-xl border p-3 text-left font-normal transition-colors ${
-          tab.closable ? "pr-10" : "pr-3"
+          tab.closable ? "pr-14" : "pr-3"
         } ${
           active
             ? "border-txt/20 bg-bg-muted/80 text-txt shadow-[inset_0_1px_0_rgba(255,255,255,.06)]"
@@ -247,7 +247,7 @@ function BrowserTabCard({
             onClose();
           }}
           data-testid={`browser-tab-card-close-${tab.id}`}
-          className="absolute right-1 top-1 h-9 w-9 rounded-full text-muted transition-colors hover:bg-bg-muted/60 hover:text-danger"
+          className="absolute right-1 top-1 h-11 w-11 rounded-full text-muted transition-colors hover:bg-bg-muted/60 hover:text-danger"
         >
           <X className="h-4 w-4" />
         </Button>
@@ -316,7 +316,7 @@ export function BrowserTabSwitcher({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-9 min-h-9 shrink-0 gap-1.5 rounded-full border border-border/50 bg-card/55 px-3 hover:bg-bg-muted/70"
+            className="h-11 min-h-11 shrink-0 gap-1.5 rounded-full border border-border/50 bg-card/55 px-3 hover:bg-bg-muted/70"
             disabled={actionsDisabled}
             onClick={() => {
               onNewTab();

@@ -144,6 +144,40 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     ).toBe(true);
   });
 
+  it("reserves the measured resting chat footprint and safe-area stack from the page viewport", async () => {
+    render(<BrowserWorkspaceView />);
+    expect(await screen.findByText("No page open")).not.toBeNull();
+
+    const root = screen.getByTestId("browser-workspace-view");
+    const surface = screen.getByTestId("browser-workspace-surface-panel");
+    expect(root.getAttribute("data-chat-clearance-aware")).toBe("true");
+    expect(root.className).toContain("--eliza-chat-clearance");
+    expect(root.className).toContain("--eliza-mobile-nav-offset");
+    expect(root.className).toContain("--safe-area-bottom");
+    expect(root.className).toContain("--android-gesture-inset-bottom");
+    expect(root.contains(surface)).toBe(true);
+  });
+
+  it("uses a compact two-row mobile toolbar without shrinking any navigation target below 44px", async () => {
+    render(<BrowserWorkspaceView />);
+    expect(await screen.findByText("No page open")).not.toBeNull();
+
+    const toolbar = screen.getByTestId("browser-workspace-toolbar");
+    const nav = toolbar.firstElementChild as HTMLElement | null;
+    expect(nav).not.toBeNull();
+    expect(nav?.className).toContain("grid-cols-");
+    expect(nav?.className).toContain("sm:grid-cols-");
+    expect(nav?.className).toContain("gap-1");
+    expect(nav?.className).toContain("py-1");
+
+    expect(
+      screen.getByTestId("browser-workspace-address-input").className,
+    ).toContain("col-span-2");
+    for (const control of toolbar.querySelectorAll("button, input")) {
+      expect(control.className).toMatch(/(?:h-11|min-h-11)/);
+    }
+  });
+
   it("returns autofocus that arrives after iframe load to the control that opened Browser", async () => {
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
     const composer = document.createElement("textarea");

@@ -28,4 +28,13 @@ describe("browser overlay clearance regression (#14320)", () => {
       "[@media(orientation:landscape)_and_(max-height:520px)]:pb-",
     );
   });
+
+  it("ends the live page and native-surface anchor above the resting chat footprint", () => {
+    expect(source).toContain('data-chat-clearance-aware="true"');
+    expect(source).toContain('data-testid="browser-workspace-surface-panel"');
+    expect(source).toContain("var(--eliza-chat-clearance,5.25rem)");
+    expect(source).toContain("var(--eliza-mobile-nav-offset,0px)");
+    expect(source).toContain("var(--safe-area-bottom,0px)");
+    expect(source).toContain("var(--android-gesture-inset-bottom,0px)");
+  });
 });
