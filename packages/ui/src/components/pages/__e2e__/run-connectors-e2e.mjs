@@ -7,7 +7,8 @@
  * loads it in headless chromium via Playwright, and:
  *
  *   - asserts the Signal config form AND the delegated account-management
- *     setup panel co-render (the #10705 fix),
+ *     setup panel co-render (the #10705 fix): lens-scoped OWNER section,
+ *     presentation description, and a canned OWNER account,
  *   - captures screenshots at desktop (1280×900) and mobile (390×844).
  *
  * With --with-baseline it ALSO builds the fixture against the pre-fix
@@ -174,8 +175,12 @@ async function snap(page, name) {
 }
 
 const CONFIG_FIELD = "#field-signal-SIGNAL_PHONE_NUMBER";
-const PANEL_TITLE = "Signal accounts";
+// Lens-scoped account management no longer renders the cosmetic catalog title
+// ("Signal accounts"). Under the default Delegate lens the OWNER section uses
+// the role default title and the canned OWNER account from the api stub.
+const PANEL_SECTION_TITLE = "Owner accounts";
 const ACCOUNT_LABEL = "Owner device";
+const PANEL_DESCRIPTION = "Manage Signal account records";
 
 async function capture(browser, { label, js, css, expectConfigForm }) {
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>connectors e2e — ${label}</title>
@@ -204,14 +209,16 @@ async function capture(browser, { label, js, css, expectConfigForm }) {
     await page.waitForTimeout(400);
 
     const hasConfigField = (await page.locator(CONFIG_FIELD).count()) > 0;
-    const hasPanelTitle =
-      (await page.locator(`text=${PANEL_TITLE}`).count()) > 0;
+    const hasPanelSection =
+      (await page.locator(`text=${PANEL_SECTION_TITLE}`).count()) > 0;
+    const hasPanelDescription =
+      (await page.locator(`text=${PANEL_DESCRIPTION}`).count()) > 0;
     const hasAccount =
       (await page.locator(`text=${ACCOUNT_LABEL}`).count()) > 0;
 
     assert(
-      hasPanelTitle && hasAccount,
-      `${label}/${vpName}: delegated setup panel renders ("${PANEL_TITLE}" + "${ACCOUNT_LABEL}")`,
+      hasPanelSection && hasPanelDescription && hasAccount,
+      `${label}/${vpName}: delegated setup panel renders ("${PANEL_SECTION_TITLE}" + description + "${ACCOUNT_LABEL}")`,
     );
     assert(
       hasConfigField === expectConfigForm,

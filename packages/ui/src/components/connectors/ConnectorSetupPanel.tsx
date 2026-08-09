@@ -7,7 +7,6 @@
 
 import { getBootConfig } from "../../config/boot-config";
 import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
-import { ConnectorAccountList } from "./ConnectorAccountList";
 import { ConnectorAccountSetupScope } from "./ConnectorAccountSetupScope";
 import {
   connectorSetupRegistry,
@@ -18,9 +17,11 @@ import {
   getConnectorPluginManagedAccountOption,
   parseConnectorAccountManagementPanelPluginId,
 } from "./connector-account-options";
+import { useConnectorChannelMode } from "./connector-channel-mode";
 import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registry";
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
+import { OwnerAgentConnectorSetupPanel } from "./OwnerAgentConnectorSetupPanel";
 import { SignalQrOverlay } from "./SignalQrOverlay";
 import { TelegramAccountConnectorPanel } from "./TelegramAccountConnectorPanel";
 import { TelegramBotSetupPanel } from "./TelegramBotSetupPanel";
@@ -33,19 +34,25 @@ function ConnectorAccountManagementPanel({
   provider: string;
   connectorId: string;
 }) {
+  const channelMode = useConnectorChannelMode();
   const option =
     getConnectorPluginManagedAccountOption(connectorId) ??
     getConnectorPluginManagedAccountOption(provider);
   const createInput = option?.supportsOAuth
     ? undefined
-    : () => getConnectorPluginManagedAccountCreateInput(connectorId);
+    : getConnectorPluginManagedAccountCreateInput(connectorId);
 
   return (
-    <ConnectorAccountList
+    <OwnerAgentConnectorSetupPanel
       provider={provider}
       connectorId={connectorId}
-      title={option?.title ?? "Plugin-managed accounts"}
-      onAddAccount={createInput}
+      enableOwner={channelMode === "delegate"}
+      enableAgent={channelMode === "bot"}
+      enableTeam
+      description={option?.description}
+      onAddAccount={
+        createInput ? (role) => ({ ...createInput, role }) : undefined
+      }
     />
   );
 }

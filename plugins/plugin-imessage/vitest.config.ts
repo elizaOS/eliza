@@ -8,6 +8,9 @@ export default defineConfig({
     setupFiles: ["./__tests__/core-test-mock.ts"],
     // Real SQLite fixture setup can exceed Vitest's 5s default while the
     // repository plugin shards contend for CPU and disk on shared CI runners.
-    testTimeout: 15_000,
+    // Observed on loaded runners: sibling fixture tests take 10-21s each
+    // (module import alone can exceed 60s), so 15s still flaked; use a
+    // budget with real headroom.
+    testTimeout: 90_000,
   },
 });
