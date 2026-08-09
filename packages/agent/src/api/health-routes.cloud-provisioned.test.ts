@@ -3,66 +3,49 @@
  * runtime boundary the UI reads:
  *
  *   prepareManagedElizaBaseEnvironment()
- *     → container process env (producer map applied)
- *     → isCloudProvisionedContainer() (shared detector used by elizacloud)
+ *     → container process env (full producer map applied)
+ *     → isCloudProvisionedContainer() (@elizaos/shared)
  *     → handleHealthRoutes GET /api/status → cloud.cloudProvisioned
  *
  * Also covers self-hosted (no managed env) and bare-marker-without-credential
  * controls. Snapshots and restores every process.env key this suite mutates.
  */
 
-import { mock } from "bun:test";
 import type { AgentRuntime } from "@elizaos/core";
 import { isCloudProvisionedContainer } from "@elizaos/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   type HealthRouteContext,
   handleHealthRoutes,
 } from "./health-routes.ts";
 
-// Mock the Cloud control-plane API-key mint used by the managed env producer so
-// the agent package can call prepareManagedElizaBaseEnvironment without a DB.
-mock.module(
-  new URL("../../../cloud/shared/src/lib/services/api-keys.ts", import.meta.url)
-    .href,
-  () => ({
-    apiKeysService: {
-      createForAgent: async () => ({ plainKey: "agent-api-key" }),
-    },
-  }),
-);
+// Mock the control-plane API-key mint so the agent package can call the real
+// managed env producer without a Cloud DB. Path is static for vitest hoisting.
+vi.mock("../../../cloud/shared/src/lib/services/api-keys.ts", () => ({
+  apiKeysService: {
+    createForAgent: async () => ({
+      plainKey: "agent-api-key",
+      apiKey: {},
+    }),
+  },
+}));
 
 const { prepareManagedElizaBaseEnvironment } = await import(
-  new URL(
-    "../../../cloud/shared/src/lib/services/managed-eliza-config.ts",
-    import.meta.url,
-  ).href
+  "../../../cloud/shared/src/lib/services/managed-eliza-config.ts"
 );
 
-function snapshotEnv(): Record<string, string | undefined> {
+function snapshotEnv(): NodeJS.ProcessEnv {
   return { ...process.env };
 }
 
-function restoreEnv(snapshot: Record<string, string | undefined>): void {
+function restoreEnv(snapshot: NodeJS.ProcessEnv): void {
   for (const key of Object.keys(process.env)) {
     if (!(key in snapshot)) {
       delete process.env[key];
     }
   }
-  for (const [key, value] of Object.entries(snapshot)) {
-    if (value === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = value;
-    }
-  }
-}
-
-function applyProducerEnv(environmentVars: Record<string, string>): void {
-  for (const [key, value] of Object.entries(environmentVars)) {
-    process.env[key] = value;
-  }
+  Object.assign(process.env, snapshot);
 }
 
 function clearManagedDetectionKeys(): void {
@@ -118,7 +101,7 @@ function makeStatusContext(agentName: string): {
 }
 
 describe("producer → detector → GET /api/status cloudProvisioned", () => {
-  let envSnapshot: Record<string, string | undefined>;
+  let envSnapshot: NodeJS.ProcessEnv;
 
   beforeEach(() => {
     envSnapshot = snapshotEnv();
@@ -143,10 +126,9 @@ describe("producer → detector → GET /api/status cloudProvisioned", () => {
     expect(produced.environmentVars.ELIZA_CLOUD_PROVISIONED).toBe("1");
     expect(produced.environmentVars.ELIZA_API_TOKEN?.length).toBeGreaterThan(0);
 
-    // Control-plane container create injects the producer map as process env.
-    applyProducerEnv(produced.environmentVars);
+    // Control-plane container create injects the full producer map.
+    Object.assign(process.env, produced.environmentVars);
 
-    // Real shared detector (same contract plugin-elizacloud / status use).
     expect(isCloudProvisionedContainer()).toBe(true);
 
     const { ctx, responses } = makeStatusContext("managed-boundary-agent");
