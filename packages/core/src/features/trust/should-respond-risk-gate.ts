@@ -90,9 +90,23 @@ const SCORE_WEIGHTS = {
  * commands" that falsely match `INJECTION_PATTERNS` (issue #18159). Risk
  * extraction and adjudication must operate on the user's actual words, not the
  * framework-generated armor.
+ *
+ * `unwrapUserMessageText` intentionally returns empty for envelope-shaped
+ * payloads that fail authenticity validation (e.g. malformed legacy envelopes,
+ * mangled markers). In that case the raw `content.text` carries no trustworthy
+ * payload to score — but it may still contain an injection. Fall back to the raw
+ * text so risk extraction can still see the injection attempt, rather than
+ * treating an empty unwrap as zero risk (which would fail open).
  */
 function payloadTextOf(message: Memory): string {
-	return unwrapUserMessageText(message);
+	const payload = unwrapUserMessageText(message);
+	if (payload) return payload;
+	// Empty unwrap with non-empty raw text: the message was hardened but the
+	// payload couldn't be recovered. Score the raw text as a conservative
+	// fallback — better to over-scan than to silently allow.
+	const raw =
+		typeof message.content?.text === "string" ? message.content.text : "";
+	return raw;
 }
 
 /**
