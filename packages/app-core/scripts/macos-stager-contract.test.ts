@@ -1,11 +1,6 @@
 /**
- * Mutation tests for the macOS artifact-stager gate (#17680).
- *
- * These run against the REAL stager script, not a fixture: the gate's whole job
- * is to notice edits to that file, so a fixture would test the fixture. Each
- * case mutates a copy of the real script and asserts the gate's own predicate
- * changes verdict. A test that only checks the unmodified script passes is the
- * failure mode that let this regression exist.
+ * Mutation tests for the macOS artifact-stager gate (#17680) run against the
+ * real script so edits cannot make a fixture pass while releases fail open.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -14,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   containsContiguousBlock,
   requiredMacStaplerFailureBlock,
-} from "./release-check";
+} from "./lib/macos-stager-contract";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const stagerPath = path.join(
