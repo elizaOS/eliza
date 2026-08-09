@@ -27,6 +27,11 @@ const LIVE_PARAMETER_REQUEST =
 	"add a strict rule to my personality: never say 'bet' under any circumstances.";
 /** The exact raw owner message from the live turn. */
 const LIVE_RAW_MESSAGE = "change your personality to never say bet";
+const ROUTED_CHAT_LOCAL_REQUESTS = [
+	"never mention this code in this chat",
+	"always use metric units in this answer",
+	"be more careful with this transaction",
+] as const;
 
 const INTENT_PROMPT_MARKER = "character modification intent";
 const PARSE_PROMPT_MARKER = "structured global character update";
@@ -130,6 +135,15 @@ describe("detectModificationIntentByRules — fast-path shapes", () => {
 		});
 	}
 
+	for (const shape of ROUTED_CHAT_LOCAL_REQUESTS) {
+		test(`keeps the routed CHARACTER fast path for "${shape}"`, () => {
+			const result = detectModificationIntentByRules(shape);
+			expect(result.definitive).toBe(true);
+			expect(result.intent.isModificationRequest).toBe(true);
+			expect(result.intent.requestType).toBe("explicit");
+		});
+	}
+
 	test("unrelated text is definitively not a modification request", () => {
 		const result = detectModificationIntentByRules("what's the weather today");
 		expect(result.definitive).toBe(true);
@@ -146,6 +160,16 @@ describe("detectModificationIntentByRules — fast-path shapes", () => {
 });
 
 describe("CHARACTER.modify — rule fast path skips the intent model call", () => {
+	for (const messageText of ROUTED_CHAT_LOCAL_REQUESTS) {
+		test(`keeps the fast path after CHARACTER routing for "${messageText}"`, async () => {
+			const scripted = scriptedRuntime([]);
+			const result = await runModify(scripted, messageText);
+			expect(result.success).toBe(true);
+			expect(result.values?.modificationsApplied).toBe(true);
+			expect(scripted.intentPrompts).toHaveLength(0);
+		});
+	}
+
 	test("the exact live planner request applies without an intent round-trip", async () => {
 		const scripted = scriptedRuntime([]);
 		const result = await runModify(
