@@ -326,7 +326,7 @@ test("landing composer is inert while hidden and stays in-viewport when active",
   });
   expect(tabTargetsWhileHidden).toMatchObject({ anyIsFocusable: false });
 
-// Swipe imessage → telegram → discord → try to reveal the composer. Each
+  // Swipe imessage → telegram → discord → try to reveal the composer. Each
   // mouse.move step waits for a rendered frame, and CI's software-GL frames
   // for the full-viewport shader are seconds long — so keep the drag to the
   // minimum pointer dispatches the gesture recognizer needs. A loaded
