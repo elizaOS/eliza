@@ -1,7 +1,7 @@
 /**
- * Verifies the Browser view's fullscreen chrome, focus handoff, and workspace
- * refresh precedence. The real component renders in jsdom with deterministic
- * API responses so background polls cannot impersonate foreground failures.
+ * Verifies Browser fullscreen chrome, focus handoff, refresh precedence, and
+ * wallet-origin authority. The real component renders in jsdom with
+ * deterministic workspace API responses.
  */
 // @vitest-environment jsdom
 
@@ -59,6 +59,9 @@ vi.mock("../../api", async (importOriginal) => {
       navigateBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
+      closeBrowserWorkspaceTab: vi
+        .fn()
+        .mockRejectedValue(new Error("no api in test")),
       snapshotBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
@@ -68,6 +71,10 @@ vi.mock("../../api", async (importOriginal) => {
 
 import { client } from "../../api";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
+import {
+  BROWSER_WALLET_READY_TYPE,
+  BROWSER_WALLET_REQUEST_TYPE,
+} from "./browser-workspace-wallet";
 
 const GOOGLE_WORKSPACE = {
   mode: "web" as const,
@@ -131,6 +138,9 @@ beforeEach(() => {
     new Error("no api in test"),
   );
   vi.mocked(client.navigateBrowserWorkspaceTab).mockRejectedValue(
+    new Error("no api in test"),
+  );
+  vi.mocked(client.closeBrowserWorkspaceTab).mockRejectedValue(
     new Error("no api in test"),
   );
 });
@@ -480,5 +490,105 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("updates wallet authority before iframe navigation and revokes it before closed-frame removal", async () => {
+    const navigationSnapshot = deferred<typeof EXAMPLE_WORKSPACE>();
+    const closedSnapshot = deferred<{ mode: "web"; tabs: [] }>();
+    let workspaceRead = 0;
+    vi.mocked(client.getBrowserWorkspace).mockImplementation(() => {
+      workspaceRead += 1;
+      if (workspaceRead === 1) return Promise.resolve(APPLE_WORKSPACE);
+      if (workspaceRead === 2) return navigationSnapshot.promise;
+      return closedSnapshot.promise;
+    });
+    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
+      tab: EXAMPLE_WORKSPACE.tabs[0],
+    });
+    vi.mocked(client.closeBrowserWorkspaceTab).mockResolvedValue({
+      closed: true,
+    });
+
+    render(<BrowserWorkspaceView />);
+    const iframe = (await screen.findByTitle("Apple")) as HTMLIFrameElement;
+    const postMessageCalls: Array<[unknown, string]> = [];
+    const spiedWindows = new Set<Window>();
+    const spyFrameWindow = () => {
+      const frameWindow = iframe.contentWindow as Window;
+      if (!spiedWindows.has(frameWindow)) {
+        spiedWindows.add(frameWindow);
+        vi.spyOn(frameWindow, "postMessage").mockImplementation(
+          (message, targetOrigin) => {
+            postMessageCalls.push([message, String(targetOrigin)]);
+          },
+        );
+      }
+    };
+    spyFrameWindow();
+    const readyCalls = () =>
+      postMessageCalls.filter(
+        ([message]) =>
+          (message as { type?: unknown }).type === BROWSER_WALLET_READY_TYPE,
+      );
+    const requestState = async (origin: string, requestId: string) => {
+      await act(async () => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: {
+              type: BROWSER_WALLET_REQUEST_TYPE,
+              requestId,
+              method: "getState",
+            },
+            origin,
+            source: iframe.contentWindow,
+          }),
+        );
+        await Promise.resolve();
+      });
+    };
+
+    await requestState("https://www.apple.com", "ready-a");
+    expect(readyCalls()).toHaveLength(1);
+
+    const address = screen.getByTestId("browser-workspace-address-input");
+    fireEvent.change(address, {
+      target: { value: EXAMPLE_WORKSPACE.tabs[0].url },
+    });
+    fireEvent.keyDown(address, { key: "Enter" });
+    await waitFor(() =>
+      expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
+        "tab-apple",
+        EXAMPLE_WORKSPACE.tabs[0].url,
+      ),
+    );
+    await waitFor(() => expect(iframe.src).toBe(EXAMPLE_WORKSPACE.tabs[0].url));
+    expect(screen.getByTitle("Apple")).toBe(iframe);
+    spyFrameWindow();
+
+    await requestState("https://example.com", "ready-b");
+    expect(readyCalls()).toHaveLength(2);
+    expect(readyCalls().at(-1)?.[1]).toBe("https://example.com");
+    await requestState("https://www.apple.com", "stale-a");
+    expect(readyCalls()).toHaveLength(2);
+    await requestState("https://example.com", "duplicate-b");
+    expect(readyCalls()).toHaveLength(2);
+
+    navigationSnapshot.resolve(EXAMPLE_WORKSPACE);
+    expect(await screen.findByTitle("Example")).toBe(iframe);
+    expect(readyCalls()).toHaveLength(2);
+
+    fireEvent.click(screen.getByTestId("browser-workspace-close-all-tabs"));
+    await waitFor(() =>
+      expect(client.closeBrowserWorkspaceTab).toHaveBeenCalledWith("tab-apple"),
+    );
+    await waitFor(() =>
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(3),
+    );
+    const callsBeforeClosedRequest = postMessageCalls.length;
+    await requestState("https://example.com", "closed-b");
+    expect(postMessageCalls).toHaveLength(callsBeforeClosedRequest);
+
+    closedSnapshot.resolve({ mode: "web", tabs: [] });
+    expect(await screen.findByText("No page open")).not.toBeNull();
   });
 });
