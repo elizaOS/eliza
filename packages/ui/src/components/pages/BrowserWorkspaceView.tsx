@@ -2502,7 +2502,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   });
 
   const navNode = (
-    <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+    <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,2.75rem)] items-center gap-1 px-1.5 py-1 sm:grid-cols-[minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] sm:gap-1.5 sm:px-2 sm:py-1.5 lg:gap-2 lg:px-3 lg:py-2">
       {/* Folded tabs (#13596): one compact count control opens the switcher —
           no permanent tab strip. It names the active tab so the user always
           knows which page is live even with the rest folded away. */}
@@ -2628,7 +2628,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })}
         data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}
-        className="h-11 min-w-[10rem] flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
+        className="col-span-2 h-11 min-w-[10rem] flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt sm:col-span-1"
       />
       <BrowserNavButton
         agentId="go"
@@ -2672,7 +2672,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-8 w-8"
+        className="h-11 w-11"
         aria-label={t("browserworkspace.OpenExternal", {
           defaultValue: "Open external",
         })}
@@ -2915,9 +2915,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               : "pointer-events-none opacity-0";
             return (
               // The native WKWebView / Android WebView is layered over this
-              // placeholder by `useMobileNativeTabSurfaces`; the div only reports
-              // the full content rect. React chrome is composed through native
-              // occlusion holes, so the page is never resized around the chat.
+              // placeholder by `useMobileNativeTabSurfaces`; the div reports
+              // the chat-safe content rect. Expanded overlays still use native
+              // occlusion holes, while the resting composer owns real layout
+              // space so page controls never sit underneath it.
               <div
                 key={tab.id}
                 ref={(el) =>
@@ -3124,17 +3125,19 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   // this view edge-to-edge (`header: "fullscreen"` in the builtin registry), so
   // the view owns its whole chrome — no host ViewHeader row, no workspace
   // chrome. The toolbar (folded-tab control + URL bar) floats as a glass panel
-  // over the opaque app background using the same clamp gutter, safe-area
-  // padding, and glass material the Notes and Calendar views use, and the web
-  // surface fills the remaining height as a second rounded panel. Tabs stay
-  // folded into the switcher (no permanent tab strip), matching #13596.
+  // over the opaque app background. Compact mobile gutters leave more room for
+  // the page without shrinking touch targets; large screens retain the shared
+  // Notes/Calendar clamp rhythm. The web surface fills the remaining height as
+  // a second rounded panel. Tabs stay folded into the switcher (no permanent
+  // tab strip), matching #13596.
   const mainNode = (
     <main
       ref={workspaceRootRef}
       aria-label={t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
       data-testid="browser-workspace-view"
+      data-chat-clearance-aware="true"
       tabIndex={-1}
-      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-[clamp(8px,1.6vw,14px)] overflow-hidden bg-bg px-[clamp(8px,2.4vw,24px)] pt-[calc(clamp(8px,2.4vw,24px)+var(--safe-area-top,0px))] pb-[clamp(8px,2.4vw,24px)]"
+      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-1.5 overflow-hidden bg-bg px-1.5 pt-[calc(0.375rem+var(--safe-area-top,0px))] pb-[calc(0.5rem+var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem))] lg:gap-[clamp(8px,1.6vw,14px)] lg:px-[clamp(8px,2.4vw,24px)] lg:pt-[calc(clamp(8px,2.4vw,24px)+var(--safe-area-top,0px))] lg:pb-[calc(clamp(8px,2.4vw,24px)+var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem))]"
     >
       <div
         data-testid="browser-workspace-toolbar"
@@ -3146,7 +3149,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           A shadow on this near-full-viewport panel reads as visual furniture
           (and the minimalism occupancy scan rightly counts it as such in
           short landscape); the toolbar above keeps the full glass treatment. */}
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)]">
+      <div
+        data-testid="browser-workspace-surface-panel"
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)]"
+      >
         {browserSurface}
       </div>
     </main>
