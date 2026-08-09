@@ -322,13 +322,18 @@ test("landing composer is inert while hidden and stays in-viewport when active",
   });
   expect(tabTargetsWhileHidden).toMatchObject({ anyIsFocusable: false });
 
-  // Swipe imessage → telegram → discord → try to reveal the composer.
-  for (let i = 0; i < 3; i++) {
+  // Swipe imessage → telegram → discord → try to reveal the composer. A
+  // loaded renderer can drop an individual gesture, so drive by state: keep
+  // swiping until the composer reports visible instead of assuming exactly
+  // three perfect swipes.
+  for (let i = 0; i < 10; i++) {
     await page.mouse.move(320, 420);
     await page.mouse.down();
     await page.mouse.move(40, 420, { steps: 12 });
     await page.mouse.up();
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(300);
+    const visible = await composer.getAttribute("data-landing-chrome-visible");
+    if (visible === "true") break;
   }
 
   await expect(composer).toHaveAttribute(

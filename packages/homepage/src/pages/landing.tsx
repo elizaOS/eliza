@@ -205,6 +205,21 @@ export default function Leaderboard() {
     config: { mass: 1, tension: 120, friction: 8 },
   }));
 
+  // Capture-phase native guard: the platform switcher is a horizontal drag
+  // surface whose path crosses images and links, and a native HTML drag both
+  // breaks the gesture and wedges pointer input (Chromium never acks further
+  // mouse events mid-DnD). The React onDragStart on the root div misses drags
+  // originating in subtrees where synthetic delivery lapses, so cancel at the
+  // window in the capture phase for the landing page's lifetime.
+  useEffect(() => {
+    const cancelNativeDrag = (event: DragEvent) => event.preventDefault();
+    window.addEventListener("dragstart", cancelNativeDrag, { capture: true });
+    return () =>
+      window.removeEventListener("dragstart", cancelNativeDrag, {
+        capture: true,
+      });
+  }, []);
+
   useEffect(() => {
     if (!measured) return;
     lScaleApi.start({
@@ -756,7 +771,6 @@ export default function Leaderboard() {
   );
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart only cancels native HTML drag so the pointer-gesture surface keeps working; it adds no interactive semantics.
     <div
       {...bind()}
       // Horizontal swipes cross the QR image and Get Started link; without
