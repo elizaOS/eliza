@@ -172,7 +172,7 @@
     "test:cloud:preflight:self-test": "node packages/scripts/test-cloud-run-preflight.self-test.mjs",
     "test:cloud:full": "bun run test:cloud && bun run test:cloud:e2e",
     "test:cloud:e2e": "bun run --cwd packages/cloud/api test:e2e",
-    "test:cloud:integration": "node packages/cloud/scripts/admin/run-integration-tests.mjs",
+    "test:cloud:integration": "node --test packages/cloud/scripts/admin/run-integration-tests.test.mjs && node packages/cloud/scripts/admin/run-integration-tests.mjs",
     "cloud:chat-latency": "node packages/cloud/scripts/chat-latency.mjs",
     "test:chat-latency": "node --test packages/cloud/scripts/chat-latency.test.mjs",
     "cloud:inference-auth-latency": "node packages/cloud/scripts/inference-auth-latency.mjs",
