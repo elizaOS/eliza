@@ -40,9 +40,7 @@ describe("v5 evaluator skeleton", () => {
 		expect(evaluatorTemplate).toContain(
 			"omit messageToUser entirely unless you add NEW task-grounded substance",
 		);
-		expect(evaluatorTemplate).toContain(
-			"ground it in THIS request's outcome",
-		);
+		expect(evaluatorTemplate).toContain("ground it in THIS request's outcome");
 		expect(evaluatorTemplate).toContain(
 			"Do not rely on a fixed canned phrase list",
 		);

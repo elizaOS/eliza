@@ -121,9 +121,7 @@ function isNonEmptyString(value: unknown): boolean {
 
 /** Object (record) form of a service-account credential — never an array. */
 function isRecordObject(value: unknown): boolean {
-	return (
-		typeof value === "object" && value !== null && !Array.isArray(value)
-	);
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

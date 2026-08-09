@@ -279,7 +279,9 @@ test("landing page renders its animated shell and primary entrypoint", async ({
 }) => {
   await page.goto("/");
 
-  await expect(page.getByLabel("Eliza", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByLabel("Eliza", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
   await expect(page.getByRole("button", { name: "Try Now" })).toBeVisible({
     timeout: 20_000,
   });
