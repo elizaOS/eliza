@@ -1,0 +1,156 @@
+/**
+ * Onboarding continuation hand-through for the messaging → cloud signup funnel.
+ *
+ * A messaging transport (Discord DM today) hands the browser an opaque
+ * continuation token (`?onboardingSession=<token>`) proving ownership of the
+ * platform-scoped onboarding session. The token must survive the Steward login
+ * round trip (OAuth popup, email magic link, OTP) that loses URL params, so it
+ * is persisted here — mirroring the pending-OAuth `returnTo` pattern in
+ * `public-pages/lib/login-return-to.ts` — and redeemed exactly once after
+ * authentication by POSTing the onboarding chat endpoint with the Steward
+ * bearer. That server-side exchange is what binds the session to the account,
+ * links the attested platform identity (e.g. discord_id), and kicks agent
+ * provisioning. The redirect itself is never trusted with any of that.
+ *
+ * Client-side single-use: the stored token is cleared only after the exchange
+ * succeeds, so a transient failure keeps it for retry. Server-side the token
+ * has its own TTL and first-bind-wins semantics (a session bound to another
+ * account is never handed over).
+ */
+
+import { api } from "../../lib/api-client";
+
+const PENDING_ONBOARDING_SESSION_KEY = "eliza.join.onboardingSession";
+/** Long enough for an email magic-link round trip; short enough not to haunt
+ * the browser for weeks. The server enforces its own (longer) session TTL. */
+const PENDING_ONBOARDING_SESSION_TTL_MS = 60 * 60 * 1000;
+
+/** Mirrors the server's onboarding session-id shape (SESSION_ID_PATTERN). */
+const ONBOARDING_TOKEN_PATTERN = /^[a-zA-Z0-9:+_-]{8,180}$/;
+
+interface StoredPendingOnboardingSession {
+  token: string;
+  expiresAt: number;
+}
+
+/**
+ * Validate a raw `?onboardingSession=` value. Platform-scoped ids
+ * (`platform:...`) are rejected: those are derived from guessable messaging
+ * ids and only a trusted gateway may present them — the browser leg always
+ * carries the opaque continuation credential.
+ */
+export function sanitizeOnboardingSessionToken(
+  value: string | null | undefined,
+): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  if (!ONBOARDING_TOKEN_PATTERN.test(trimmed)) return null;
+  if (trimmed.startsWith("platform:")) return null;
+  return trimmed;
+}
+
+function eachStorage(): Storage[] {
+  if (typeof window === "undefined") return [];
+  const storages: Storage[] = [];
+  try {
+    storages.push(window.sessionStorage);
+  } catch {
+    // Storage can be disabled entirely (private browsing hard mode).
+  }
+  try {
+    storages.push(window.localStorage);
+  } catch {
+    // Same as above — the funnel degrades to the URL-param path only.
+  }
+  return storages;
+}
+
+/** Persist the pending continuation token across the login round trip. */
+export function storePendingOnboardingSession(token: string): void {
+  const sanitized = sanitizeOnboardingSessionToken(token);
+  if (!sanitized) return;
+  const stored = JSON.stringify({
+    token: sanitized,
+    expiresAt: Date.now() + PENDING_ONBOARDING_SESSION_TTL_MS,
+  } satisfies StoredPendingOnboardingSession);
+  for (const storage of eachStorage()) {
+    try {
+      storage.setItem(PENDING_ONBOARDING_SESSION_KEY, stored);
+    } catch {
+      // error-policy:J3 unwritable storage — losing the pending token degrades
+      // to a signup without the messaging link, never a failed login.
+    }
+  }
+}
+
+function parseStored(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<StoredPendingOnboardingSession>;
+    if (
+      typeof parsed.token === "string" &&
+      typeof parsed.expiresAt === "number" &&
+      parsed.expiresAt >= Date.now()
+    ) {
+      return sanitizeOnboardingSessionToken(parsed.token);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read the pending token WITHOUT consuming it (cleared only on success). */
+export function peekPendingOnboardingSession(): string | null {
+  for (const storage of eachStorage()) {
+    try {
+      const token = parseStored(
+        storage.getItem(PENDING_ONBOARDING_SESSION_KEY),
+      );
+      if (token) return token;
+    } catch {
+      // error-policy:J3 unreadable storage reads as no pending token.
+    }
+  }
+  return null;
+}
+
+/** Drop the pending token from every storage (post-success, single-use). */
+export function clearPendingOnboardingSession(): void {
+  for (const storage of eachStorage()) {
+    try {
+      storage.removeItem(PENDING_ONBOARDING_SESSION_KEY);
+    } catch {
+      // error-policy:J6 best-effort cleanup; an expired leftover is inert.
+    }
+  }
+}
+
+/** The transport seam, injectable for tests. */
+export interface OnboardingContinuationTransport {
+  post(path: string, body: Record<string, unknown>): Promise<unknown>;
+}
+
+const defaultTransport: OnboardingContinuationTransport = {
+  post: (path, body) => api(path, { method: "POST", json: body }),
+};
+
+/**
+ * Redeem the continuation server-side with the caller's Steward session: the
+ * onboarding chat endpoint resolves the opaque token to the platform session,
+ * binds it to the authenticated account, links the trusted platform identity,
+ * and starts provisioning. Success clears the stored token (single-use);
+ * failure throws AND keeps it so a retry can redeem it.
+ */
+export async function completePendingOnboardingContinuation(
+  token: string,
+  transport: OnboardingContinuationTransport = defaultTransport,
+): Promise<void> {
+  const sanitized = sanitizeOnboardingSessionToken(token);
+  if (!sanitized) return;
+  await transport.post("/api/eliza-app/onboarding/chat", {
+    sessionId: sanitized,
+    platform: "web",
+  });
+  clearPendingOnboardingSession();
+}

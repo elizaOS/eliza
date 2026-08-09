@@ -6,14 +6,17 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const findByDiscordIdWithOrganization = mock();
+const findByCanonicalDiscordIdWithOrganization = mock();
 const findByPhoneNumberWithOrganization = mock();
 const update = mock();
 const linkVerifiedPhone = mock();
 const linkTelegramAndPhoneIdentity = mock();
+const refreshDiscordProjectionForWrite = mock();
 
 mock.module("../../../db/repositories/users", () => ({
   usersRepository: {
     findByDiscordIdWithOrganization,
+    findByCanonicalDiscordIdWithOrganization,
     findByPhoneNumberWithOrganization,
     findByTelegramIdWithOrganization: mock(),
     findByEmailWithOrganization: mock(),
@@ -22,6 +25,7 @@ mock.module("../../../db/repositories/users", () => ({
     update,
     linkVerifiedPhone,
     linkTelegramAndPhoneIdentity,
+    refreshDiscordProjectionForWrite,
     create: mock(),
   },
 }));
@@ -66,11 +70,33 @@ function uniqueConstraintError(): Error {
 describe("ElizaAppUserService.findOrCreateByDiscordId error policy", () => {
   beforeEach(() => {
     findByDiscordIdWithOrganization.mockReset();
+    findByCanonicalDiscordIdWithOrganization.mockReset();
     findByPhoneNumberWithOrganization.mockReset();
     update.mockReset();
     linkVerifiedPhone.mockReset();
+    refreshDiscordProjectionForWrite.mockReset();
+    refreshDiscordProjectionForWrite.mockResolvedValue(undefined);
+    // No canonical-only legacy link by default.
+    findByCanonicalDiscordIdWithOrganization.mockResolvedValue(undefined);
     // Phone is unowned by default so the phone-link branch is reachable.
     findByPhoneNumberWithOrganization.mockResolvedValue(undefined);
+  });
+
+  test("converges a canonical-only legacy Discord link into the projection instead of forking a second account", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue(undefined);
+    findByCanonicalDiscordIdWithOrganization.mockResolvedValue({
+      id: "legacy-user",
+      discord_id: "d-legacy",
+      organization: { id: "org-legacy" },
+    });
+
+    const result = await elizaAppUserService.findOrCreateByDiscordId("d-legacy", {
+      username: "legacy",
+    });
+
+    expect(result.isNew).toBe(false);
+    expect(result.user.id).toBe("legacy-user");
+    expect(refreshDiscordProjectionForWrite).toHaveBeenCalledWith("legacy-user");
   });
 
   test("propagates a real DB failure while linking a phone (fail closed)", async () => {
@@ -239,5 +265,75 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
     );
 
     expect(result).toEqual({ success: false, error: "The account no longer exists" });
+  });
+});
+
+describe("ElizaAppUserService.linkDiscordToUser", () => {
+  beforeEach(() => {
+    findByDiscordIdWithOrganization.mockReset();
+    update.mockReset();
+    refreshDiscordProjectionForWrite.mockReset();
+    refreshDiscordProjectionForWrite.mockResolvedValue(undefined);
+  });
+
+  test("projects the canonical Discord write into the routing identity row", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue(undefined);
+    update.mockResolvedValue({ id: "user-1" });
+
+    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
+      discordId: "d-100",
+      username: "sam",
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(refreshDiscordProjectionForWrite).toHaveBeenCalledWith("user-1");
+  });
+
+  test("idempotent re-link still converges the projection (heals canonical-only links)", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue({
+      id: "user-1",
+      organization: { id: "org-1" },
+    });
+
+    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
+      discordId: "d-100",
+      username: "sam",
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(update).not.toHaveBeenCalled();
+    expect(refreshDiscordProjectionForWrite).toHaveBeenCalledWith("user-1");
+  });
+
+  test("declines when the Discord id belongs to another account, without touching the projection", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue({
+      id: "other-user",
+      organization: { id: "other-org" },
+    });
+
+    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
+      discordId: "d-100",
+      username: "sam",
+    });
+
+    expect(result.success).toBe(false);
+    expect(update).not.toHaveBeenCalled();
+    expect(refreshDiscordProjectionForWrite).not.toHaveBeenCalled();
+  });
+
+  test("propagates a projection-refresh failure (fail closed — routing convergence is not cosmetic)", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue(undefined);
+    update.mockResolvedValue({ id: "user-1" });
+    refreshDiscordProjectionForWrite.mockRejectedValue(
+      new Error("connection terminated unexpectedly"),
+    );
+
+    await expect(
+      elizaAppUserService.linkDiscordToUser("user-1", {
+        discordId: "d-100",
+        username: "sam",
+      }),
+    ).rejects.toThrow("connection terminated unexpectedly");
   });
 });

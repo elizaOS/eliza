@@ -19,6 +19,7 @@ const ensureElizaAppProvisioning = mock();
 const getElizaAppProvisioningStatus = mock();
 const findOrCreateByPhone = mock();
 const linkPhoneToUser = mock();
+const linkDiscordToUser = mock();
 const launchManagedElizaAgent = mock();
 const loggerWarn = mock();
 let cloudEnv: Record<string, string | undefined> = {};
@@ -73,6 +74,7 @@ mock.module("./user-service", () => ({
   elizaAppUserService: {
     findOrCreateByPhone,
     linkPhoneToUser,
+    linkDiscordToUser,
   },
 }));
 
@@ -88,6 +90,8 @@ describe("runOnboardingChat", () => {
     findOrCreateByPhone.mockReset();
     linkPhoneToUser.mockReset();
     linkPhoneToUser.mockResolvedValue({ success: true });
+    linkDiscordToUser.mockReset();
+    linkDiscordToUser.mockResolvedValue({ success: true });
     launchManagedElizaAgent.mockReset();
     loggerWarn.mockReset();
     cloudEnv = {};
@@ -1010,6 +1014,126 @@ describe("runOnboardingChat", () => {
       expect(continued.session.platform).toBe("blooio");
       expect(continued.session.platformUserId).toBe(PHONE);
       expect(linkPhoneToUser).toHaveBeenCalledWith("user-1", PHONE);
+    });
+  });
+
+  describe("discord identity auto-link", () => {
+    const DISCORD_ID = "999900000000000099";
+    const DISCORD_SESSION = `platform:discord:${DISCORD_ID}`;
+
+    async function runTrustedDiscordTurn(message: string) {
+      return runOnboardingChat({
+        message,
+        platform: "discord",
+        platformUserId: DISCORD_ID,
+        platformDisplayName: "SolTest",
+        sessionId: DISCORD_SESSION,
+        trustedPlatformIdentity: true,
+      });
+    }
+
+    test("an authenticated web continuation of a trusted Discord session links the Discord identity", async () => {
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: "agent-d",
+        bridgeUrl: null,
+        sandbox: null,
+      });
+
+      const gatewayTurn = await runTrustedDiscordTurn("My name is Sam");
+      const continued = await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "steward-user", organizationId: "steward-org" },
+      });
+
+      expect(continued.session.platform).toBe("discord");
+      expect(continued.session.platformUserId).toBe(DISCORD_ID);
+      expect(linkDiscordToUser).toHaveBeenCalledWith("steward-user", {
+        discordId: DISCORD_ID,
+        username: "SolTest",
+      });
+      expect(linkPhoneToUser).not.toHaveBeenCalled();
+      expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
+        userId: "steward-user",
+        organizationId: "steward-org",
+      });
+    });
+
+    test("an authenticated caller cannot bind a Discord id claimed in an untrusted body", async () => {
+      getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
+      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
+
+      await runOnboardingChat({
+        message: "My name is Eve",
+        platform: "discord",
+        platformUserId: DISCORD_ID,
+        authenticatedUser: {
+          userId: "attacker-user",
+          organizationId: "attacker-org",
+        },
+      });
+
+      expect(linkDiscordToUser).not.toHaveBeenCalled();
+    });
+
+    test("a tenant-safety decline (identity owned by another account) does not fail the turn", async () => {
+      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
+      getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
+      linkDiscordToUser.mockResolvedValue({
+        success: false,
+        error: "This Discord account is already linked to another account",
+      });
+
+      const gatewayTurn = await runTrustedDiscordTurn("My name is Sam");
+      const continued = await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "second-user", organizationId: "second-org" },
+      });
+
+      expect(continued.session.userId).toBe("second-user");
+      expect(loggerWarn).toHaveBeenCalledWith(
+        "[eliza-app onboarding] discord link declined",
+        expect.objectContaining({ userId: "second-user" }),
+      );
+    });
+
+    test("a linkDiscordToUser infra failure propagates (fail closed, self-heals next turn)", async () => {
+      linkDiscordToUser.mockRejectedValue(new Error("db down"));
+
+      const gatewayTurn = await runTrustedDiscordTurn("My name is Sam");
+      await expect(
+        runOnboardingChat({
+          sessionId: continuationToken(gatewayTurn),
+          platform: "web",
+          authenticatedUser: { userId: "steward-user", organizationId: "steward-org" },
+        }),
+      ).rejects.toThrow("db down");
+    });
+
+    test("falls back to the platform user id when the display name is blank", async () => {
+      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
+      getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
+
+      const gatewayTurn = await runOnboardingChat({
+        message: "My name is Sam",
+        platform: "discord",
+        platformUserId: DISCORD_ID,
+        platformDisplayName: "   ",
+        sessionId: DISCORD_SESSION,
+        trustedPlatformIdentity: true,
+      });
+      await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "steward-user", organizationId: "steward-org" },
+      });
+
+      expect(linkDiscordToUser).toHaveBeenCalledWith("steward-user", {
+        discordId: DISCORD_ID,
+        username: DISCORD_ID,
+      });
     });
   });
 

@@ -226,6 +226,19 @@ export class UsersRepository {
     return this.findWithOrganization(identity.user_id);
   }
 
+  /**
+   * Finds a user by the CANONICAL `users.discord_id` column, bypassing the
+   * identity projection. Only for converging legacy canonical-only links
+   * (written before {@link refreshDiscordProjectionForWrite} existed) back
+   * into the projection — routing and normal lookups must keep resolving via
+   * {@link findByDiscordIdWithOrganization}.
+   */
+  async findByCanonicalDiscordIdWithOrganization(
+    discordId: string,
+  ): Promise<UserWithOrganization | undefined> {
+    return await this.findUserWithOrganizationByPredicate(dbRead, eq(users.discord_id, discordId));
+  }
+
   async listForAdminDashboard(
     limit: number,
   ): Promise<
@@ -580,6 +593,83 @@ export class UsersRepository {
         updated_at: new Date(),
       })
       .where(eq(userIdentities.user_id, userId));
+  }
+
+  /**
+   * Refreshes Discord projection fields from the canonical users row.
+   * Inbound Discord routing resolves senders exclusively through the
+   * `user_identities` projection (see {@link findByDiscordIdWithOrganization}),
+   * so a canonical-only `users.discord_id` write is invisible to routing until
+   * this refresh projects it.
+   *
+   * Two deliberate behaviors, mirroring {@link refreshWhatsAppProjectionForWrite}
+   * and {@link linkTelegramAndPhoneIdentity}:
+   * - an existing projection row owned by a DIFFERENT user for the same
+   *   discord_id declines the refresh (tenant safety) instead of stealing the
+   *   identity;
+   * - a user with no projection row yet (created before projection upserts
+   *   existed) gets one, because an UPDATE-only refresh would silently leave
+   *   routing broken for exactly the accounts this method exists to repair.
+   */
+  async refreshDiscordProjectionForWrite(userId: string): Promise<void> {
+    const [canonical] = await dbWrite
+      .select({
+        steward_user_id: users.steward_user_id,
+        is_anonymous: users.is_anonymous,
+        anonymous_session_id: users.anonymous_session_id,
+        expires_at: users.expires_at,
+        discord_id: users.discord_id,
+        discord_username: users.discord_username,
+        discord_global_name: users.discord_global_name,
+        discord_avatar_url: users.discord_avatar_url,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!canonical) {
+      return;
+    }
+
+    if (canonical.discord_id) {
+      const conflictingProjection = await dbWrite.query.userIdentities.findFirst({
+        where: and(
+          eq(userIdentities.discord_id, canonical.discord_id),
+          ne(userIdentities.user_id, userId),
+        ),
+      });
+
+      if (conflictingProjection) {
+        return;
+      }
+    }
+
+    const updatedAt = new Date();
+    const discordProjection = {
+      discord_id: canonical.discord_id ?? null,
+      discord_username: canonical.discord_id ? (canonical.discord_username ?? null) : null,
+      discord_global_name: canonical.discord_id ? (canonical.discord_global_name ?? null) : null,
+      discord_avatar_url: canonical.discord_id ? (canonical.discord_avatar_url ?? null) : null,
+    };
+
+    await dbWrite
+      .insert(userIdentities)
+      .values({
+        user_id: userId,
+        steward_user_id: canonical.steward_user_id,
+        is_anonymous: canonical.is_anonymous,
+        anonymous_session_id: canonical.anonymous_session_id,
+        expires_at: canonical.expires_at,
+        ...discordProjection,
+        updated_at: updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: userIdentities.user_id,
+        set: {
+          ...discordProjection,
+          updated_at: updatedAt,
+        },
+      });
   }
 
   /**
