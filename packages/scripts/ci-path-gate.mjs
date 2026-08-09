@@ -69,6 +69,7 @@ const CONFIGS = {
         ],
         patterns: [
           ".github/workflows/ci.yml",
+          ".github/workflows/test.yml",
           ".github/actions/setup-bun-workspace/**",
           "packages/scripts/ci-path-gate.mjs",
         ],
@@ -120,6 +121,18 @@ const CONFIGS = {
         lanes: ["plugins", "zero_key"],
         patterns: ["plugins/**"],
         reason: "plugin surface",
+      },
+      {
+        lanes: ["server"],
+        patterns: [
+          "packages/auth/**",
+          "packages/evidence/**",
+          "packages/logger/**",
+          "packages/native/**",
+          "packages/registry/**",
+        ],
+        reason:
+          "shared runtime package covered by test:server - without this rule the android_aab rule below would mark the path matched and bypass the server fail-safe",
       },
       {
         lanes: ["android_aab"],
