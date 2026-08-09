@@ -5459,6 +5459,244 @@ describe("runV5MessageRuntimeStage1", () => {
 	});
 });
 
+// A read action that already spoke to the user must be the turn's single final
+// message. Live incident: a calendar read's callback posted "clear tomorrow.",
+// then the evaluator — unaware of the delivery — authored "you're clear
+// tomorrow.", a semantic paraphrase the byte-level dedupe correctly refuses to
+// touch, so one question produced two bubbles. The structural contract under
+// test: a verified callback-delivered answer declares `turnComplete`, the
+// gated evaluator path skips the paraphrase-capable model call entirely, and
+// the provenance suppression drops the byte-equal finalMessage as already
+// delivered. Side-effect turns without a verified answer keep their model
+// reply, and byte-identical echoes stay deduped without `turnComplete`.
+describe("verified read actions own the turn's single user-facing message", () => {
+	const CALENDAR_ANSWER = "clear tomorrow.";
+
+	function makeCalendarReadAction(handler: Action["handler"]): Action {
+		return {
+			name: "CALENDAR",
+			similes: [],
+			tags: ["domain:calendar", "capability:read"],
+			description: "Read the owner's live calendar.",
+			contexts: ["calendar"],
+			suppressPostActionContinuation: true,
+			parameters: [
+				{
+					name: "intent",
+					description: "Natural-language calendar request.",
+					schema: { type: "string" },
+				},
+			],
+			validate: async () => true,
+			handler,
+		} as Action;
+	}
+
+	function calendarPlannerResponses(): unknown[] {
+		return [
+			stage1Response({
+				contexts: ["calendar"],
+				candidateActionNames: ["CALENDAR"],
+				replyText: "",
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Read tomorrow's calendar.",
+				toolCalls: [
+					{
+						id: "calendar-1",
+						name: "CALENDAR",
+						args: { intent: "whats on my calendar tomorrow" },
+					},
+				],
+			},
+		];
+	}
+
+	it("delivers a turnComplete verified read answer exactly once with no model paraphrase", async () => {
+		const runtime = makeRuntime(calendarPlannerResponses());
+		const calendarHandler = vi.fn(
+			async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({
+					text: CALENDAR_ANSWER,
+					source: "action",
+					action: "CALENDAR",
+				});
+				return {
+					success: true,
+					text: CALENDAR_ANSWER,
+					userFacingText: CALENDAR_ANSWER,
+					verifiedUserFacing: true,
+					turnComplete: true,
+				};
+			},
+		);
+		runtime.actions = [makeCalendarReadAction(calendarHandler)] as never;
+		const deliveredVisibleTexts = new Set<string>();
+		const delivered: string[] = [];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "whats on my calendar tomorrow" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			deliveredVisibleTexts,
+			callback: async (content) => {
+				if (content.text) {
+					delivered.push(content.text);
+					deliveredVisibleTexts.add(content.text.toLowerCase());
+				}
+				return [];
+			},
+		});
+
+		expect(calendarHandler).toHaveBeenCalledTimes(1);
+		// The action's own delivery is the turn's only user-facing message.
+		expect(delivered).toEqual([CALENDAR_ANSWER]);
+		// The gated evaluator skips the paraphrase-capable model call outright:
+		// Stage 1 + planner only, no in-loop evaluator call remains queued.
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseMessages).toEqual([]);
+		}
+	});
+
+	it("keeps the model reply for a side-effect action without a verified answer", async () => {
+		const modelReply = "Sunny out — nothing to reschedule.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				candidateActionNames: ["WEB_SEARCH"],
+				replyText: "",
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Check the demo weather.",
+				toolCalls: [
+					{
+						id: "search-1",
+						name: "WEB_SEARCH",
+						args: { query: "demo weather" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Summarize the result.",
+				messageToUser: modelReply,
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "WEB_SEARCH",
+				similes: [],
+				tags: ["resource:web", "capability:read"],
+				description: "Read current public information.",
+				contexts: ["general", "web"],
+				parameters: [
+					{
+						name: "query",
+						description: "Search query",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: async () => true,
+				handler: async () => ({
+					success: true,
+					text: "Sunny.",
+					data: { query: "demo weather" },
+				}),
+			},
+		] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Search for the demo weather." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		// No verified user-facing answer was delivered by the action, so the
+		// evaluator still runs and its reply still ships.
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(modelReply);
+		}
+	});
+
+	it("still dedupes a byte-identical model echo of a delivered answer without turnComplete", async () => {
+		const runtime = makeRuntime([
+			...calendarPlannerResponses(),
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Relay the calendar answer.",
+				messageToUser: CALENDAR_ANSWER,
+			}),
+		]);
+		const calendarHandler = vi.fn(
+			async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({
+					text: CALENDAR_ANSWER,
+					source: "action",
+					action: "CALENDAR",
+				});
+				return {
+					success: true,
+					text: CALENDAR_ANSWER,
+					userFacingText: CALENDAR_ANSWER,
+					verifiedUserFacing: true,
+				};
+			},
+		);
+		runtime.actions = [makeCalendarReadAction(calendarHandler)] as never;
+		const deliveredVisibleTexts = new Set<string>();
+		const delivered: string[] = [];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "whats on my calendar tomorrow" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			deliveredVisibleTexts,
+			callback: async (content) => {
+				if (content.text) {
+					delivered.push(content.text);
+					deliveredVisibleTexts.add(content.text.toLowerCase());
+				}
+				return [];
+			},
+		});
+
+		// Without turnComplete the evaluator still runs, but its byte-identical
+		// echo of the delivered answer is suppressed (regression guard for the
+		// pre-existing dedupe).
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(delivered).toEqual([CALENDAR_ANSWER]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseMessages).toEqual([]);
+		}
+	});
+});
+
 // A sub-agent completion relay's envelope echoes the ORIGINAL task text
 // ("[sub-agent: Build and deploy…]"), so the direct-candidate injection
 // backstop used to read a FINISHED task as fresh task intent: it forced

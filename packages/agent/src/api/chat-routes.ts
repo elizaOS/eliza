@@ -33,6 +33,7 @@ import {
   INSUFFICIENT_CREDITS_REPLY,
   InferenceTurnTimer,
   isRateLimitError,
+  isTextGenerationModelType,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   type MessageMetadata,
@@ -1486,10 +1487,17 @@ const NO_PROVIDER_ERROR_FRAGMENTS = [
   "No provider registered for",
   "No model registered for",
 ];
+const MISSING_DELEGATE_TYPE_PATTERN =
+  /No handler found for delegate type:\s*([A-Z][A-Z0-9_]*)/i;
 function isNoProviderError(err: unknown): boolean {
   const msg =
     err instanceof Error ? err.message : typeof err === "string" ? err : "";
-  return NO_PROVIDER_ERROR_FRAGMENTS.some((frag) => msg.includes(frag));
+  if (NO_PROVIDER_ERROR_FRAGMENTS.some((frag) => msg.includes(frag))) {
+    return true;
+  }
+
+  const missingDelegateType = msg.match(MISSING_DELEGATE_TYPE_PATTERN)?.[1];
+  return isTextGenerationModelType(missingDelegateType);
 }
 const NO_PROVIDER_CHAT_MESSAGE =
   "Connect an LLM provider to start chatting. Open Settings → Providers, " +

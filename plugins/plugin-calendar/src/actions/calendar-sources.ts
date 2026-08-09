@@ -1001,7 +1001,14 @@ async function resultWithCallback(
     action: ACTION_NAME,
     ...(result.verifiedUserFacing === true ? { agentVoiced: true } : {}),
   });
-  return result;
+  // The callback above is the turn's single visible delivery of this text. A
+  // successful verified result is therefore the complete answer: declaring the
+  // turn complete (unless explicitly disclaimed) opts into the gated-evaluator
+  // skip so the model cannot paraphrase the already-delivered source list as a
+  // second message. Failures and unverified results stay un-gated.
+  return result.success === true && result.verifiedUserFacing === true
+    ? { ...result, turnComplete: result.turnComplete ?? true }
+    : result;
 }
 
 function defaultAuthorize(

@@ -3,10 +3,11 @@
  * shape consumed by assistant plugins such as LifeOps. Maps Gmail triage
  * summaries to `MessageRef`s, translates the generic manage operations
  * (archive/trash/spam/label/mark-read/unsubscribe) into Gmail bulk operations,
- * and implements reply drafting/sending over `GoogleWorkspaceService`'s Gmail
- * methods. Resolves the Google service by name at runtime and no-ops as
- * unavailable when the plugin is not loaded; `accountId` is carried on each
- * `MessageRef` via `worldId` so triage stays multi-account.
+ * and implements draft/send over `GoogleWorkspaceService`'s Gmail methods —
+ * both thread replies (`inReplyToId`) and new outbound email (`to` recipients,
+ * used by draft_followup). Resolves the Google service by name at runtime and
+ * no-ops as unavailable when the plugin is not loaded; `accountId` is carried
+ * on each `MessageRef` via `worldId` so triage stays multi-account.
  */
 import {
   BaseMessageAdapter,
@@ -20,6 +21,7 @@ import {
   type MessageSource,
   type SearchMessagesFilters,
 } from "@elizaos/core/node";
+import { isEmailAddress } from "./gmail-message-connector.js";
 import type {
   GoogleGmailBulkOperation,
   GoogleGmailMessageSummary,
@@ -31,6 +33,7 @@ const GMAIL_ADAPTER_METHODS = [
   "listGmailTriageMessages",
   "searchGmailMessages",
   "sendGmailReply",
+  "sendGmailMessage",
   "modifyGmailMessages",
   "createGmailFilterForSender",
 ] as const satisfies readonly (keyof IGoogleGmailService)[];
@@ -160,6 +163,12 @@ function messageAccountId(message: MessageRef | null | undefined): string {
   return message?.worldId ?? DEFAULT_GOOGLE_ACCOUNT_ID;
 }
 
+function newDraftRecipients(draft: DraftRequest): string[] {
+  return draft.to
+    .map((recipient) => recipient.identifier.trim())
+    .filter((identifier) => isEmailAddress(identifier));
+}
+
 export class GoogleGmailAdapter extends BaseMessageAdapter {
   readonly source: MessageSource = "gmail";
 
@@ -182,7 +191,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
         markRead: true,
         unsubscribe: true,
       },
-      send: { reply: true, new: false, schedule: false },
+      send: { reply: true, new: true, schedule: false },
       worlds: "multi",
       channels: "explicit",
     };
@@ -236,13 +245,23 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     runtime: IAgentRuntime,
     draft: DraftRequest
   ): Promise<{ draftId: string; preview: string }> {
+    const preview = clip(draft.body, 240);
     if (!draft.inReplyToId) {
-      throw new Error("[GoogleGmailAdapter] Gmail replies require inReplyToId");
+      // New outbound email (draft_followup): recipients must be literal
+      // addresses — Gmail has no in-thread sender to fall back to.
+      const recipients = newDraftRecipients(draft);
+      if (recipients.length === 0) {
+        throw new Error(
+          "[GoogleGmailAdapter] a new Gmail draft requires at least one email-address recipient"
+        );
+      }
+      const draftId = `gmail-new:${Date.now()}`;
+      this.draftCache.set(draftId, { request: draft, preview });
+      return { draftId, preview };
     }
     await this.ensureMessage(runtime, draft.inReplyToId);
     const messageId = externalMessageId(draft.inReplyToId);
     const draftId = `gmail-draft:${messageId}:${Date.now()}`;
-    const preview = clip(draft.body, 240);
     this.draftCache.set(draftId, { request: draft, preview });
     return { draftId, preview };
   }
@@ -252,16 +271,26 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     draftId: string
   ): Promise<{ externalId: string }> {
     const draft = this.draftCache.get(draftId);
-    if (!draft?.request.inReplyToId) {
+    if (!draft) {
       throw new Error(`[GoogleGmailAdapter] no cached draft for ${draftId}`);
     }
-    const message = await this.ensureMessage(runtime, draft.request.inReplyToId);
     const service = this.requireService(runtime);
+    const request = draft.request;
+    if (!request.inReplyToId) {
+      const sent = await service.sendGmailMessage({
+        accountId: request.worldId ?? DEFAULT_GOOGLE_ACCOUNT_ID,
+        to: newDraftRecipients(request),
+        subject: request.subject?.trim() || "",
+        bodyText: request.body,
+      });
+      return { externalId: sent.messageId ?? `gmail-new:${draftId}` };
+    }
+    const message = await this.ensureMessage(runtime, request.inReplyToId);
     const sent = await service.sendGmailReply({
       accountId: messageAccountId(message),
       to: [message.from.identifier],
       subject: message.subject ?? "Re: your message",
-      bodyText: draft.request.body,
+      bodyText: request.body,
       inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),
       references: metadataString(message.metadata ?? {}, "references"),
     });

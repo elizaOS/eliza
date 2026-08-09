@@ -6,9 +6,12 @@
  * `GoogleChatWorkflowCredentialProvider` — service-account auth, MessageConnector
  * messaging). At init it attaches both connector-account providers to the
  * runtime's `ConnectorAccountManager` so the generic connector HTTP routes can
- * manage accounts and drive OAuth. It registers no actions or providers of its
- * own; callers invoke the services directly, and Chat messaging routes through
- * the MessageConnector that `GoogleChatService` registers.
+ * manage accounts and drive OAuth; registering the Google provider also mounts
+ * the Gmail send MessageConnector (`source: "gmail"`, aliases email/mail) so
+ * MESSAGE op=send can compose and send email. It registers no actions or
+ * providers of its own; callers invoke the services directly, and Chat
+ * messaging routes through the MessageConnector that `GoogleChatService`
+ * registers.
  */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
@@ -36,6 +39,7 @@ export * from "./connector-account-provider.js";
 export * from "./credential-resolver.js";
 export * from "./drive.js";
 export * from "./gmail.js";
+export * from "./gmail-message-connector.js";
 export { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 export * from "./meet.js";
 export * from "./scopes.js";
