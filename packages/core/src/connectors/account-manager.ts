@@ -695,26 +695,35 @@ export class InMemoryConnectorAccountStorage
 
 	/**
 	 * Read-only snapshot of migratable state: every account plus each unique
-	 * pending, unconsumed, unexpired OAuth flow (the flows map stores every
-	 * flow under both its id and state keys).
+	 * pending, unexpired OAuth flow (the flows map stores every flow under both
+	 * its id and state keys). Consumed-but-in-flight flows — consumed here while
+	 * their `completeOAuth` awaits the provider — are returned separately so the
+	 * handoff can reconstruct the consumed marker in the durable backend; the
+	 * terminal `updateOAuthFlow` after the provider resolves must still find
+	 * them.
 	 */
 	snapshotForMigration(): {
 		accounts: ConnectorAccount[];
 		flows: ConnectorOAuthFlow[];
+		consumedPendingFlows: ConnectorOAuthFlow[];
 	} {
 		const accounts = Array.from(this.accounts.values()).map(cloneAccount);
 		const flows: ConnectorOAuthFlow[] = [];
+		const consumedPendingFlows: ConnectorOAuthFlow[] = [];
 		const seen = new Set<string>();
 		for (const flow of this.flows.values()) {
 			const key = flowKey(flow.provider, flow.id);
 			if (seen.has(key)) continue;
 			seen.add(key);
 			if (flow.status !== "pending") continue;
-			if (this.consumedFlows.has(key)) continue;
 			if (flow.expiresAt && flow.expiresAt <= nowMs()) continue;
-			flows.push(cloneFlow(flow));
+			if (this.consumedFlows.has(key)) {
+				consumedPendingFlows.push(cloneFlow(flow));
+			} else {
+				flows.push(cloneFlow(flow));
+			}
 		}
-		return { accounts, flows };
+		return { accounts, flows, consumedPendingFlows };
 	}
 
 	/** Drop all migratable state after a successful durable handoff. */
@@ -1288,19 +1297,32 @@ export class ConnectorAccountManager extends Service {
 		target: ConnectorAccountStorage,
 	): Promise<void> {
 		const fallback = this.fallbackStorage;
-		if (!fallback || !fallback.hasStateForMigration()) {
+		if (!fallback?.hasStateForMigration()) {
 			return;
 		}
-		const { accounts, flows } = fallback.snapshotForMigration();
+		const { accounts, flows, consumedPendingFlows } =
+			fallback.snapshotForMigration();
 		for (const account of accounts) {
 			await target.upsertAccount(account);
 		}
 		for (const flow of flows) {
 			await target.createOAuthFlow(flow);
 		}
+		// A flow consumed in the fallback while its completeOAuth awaits the
+		// provider must stay addressable after the handoff: recreate it and
+		// replay the consumption so the terminal updateOAuthFlow lands on the
+		// durable backend instead of vanishing.
+		for (const flow of consumedPendingFlows) {
+			await target.createOAuthFlow(flow);
+			await target.consumeOAuthFlow(
+				flow.provider,
+				flow.state,
+				"fallback-migration",
+			);
+		}
 		fallback.clearAfterMigration();
 		logger.info(
-			`[ConnectorAccountManager] migrated ${accounts.length} connector account(s) and ${flows.length} pending OAuth flow(s) from the boot-time in-memory fallback to durable storage`,
+			`[ConnectorAccountManager] migrated ${accounts.length} connector account(s), ${flows.length} pending OAuth flow(s), and ${consumedPendingFlows.length} in-flight consumed OAuth flow(s) from the boot-time in-memory fallback to durable storage`,
 		);
 	}
 

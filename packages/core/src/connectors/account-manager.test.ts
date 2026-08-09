@@ -507,4 +507,51 @@ describe("fallback-to-durable state handoff", () => {
 			},
 		});
 	});
+
+	it("completes an OAuth flow whose provider attaches the adapter mid-completeOAuth", async () => {
+		// The consumed-but-in-flight case: completeOAuth consumes the flow in the
+		// fallback, the adapter attaches while the provider callback is awaited,
+		// and the terminal updateOAuthFlow must still find the flow (migrated as
+		// consumed) instead of returning the original pending flow.
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		manager.registerProvider({
+			provider: "oauth-complete-split",
+			startOAuth: async () => ({ authUrl: "https://auth.example/start" }),
+			completeOAuth: async () => {
+				const adapter = new InMemoryDatabaseAdapter();
+				await adapter.initialize();
+				(runtime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter =
+					adapter;
+				return {
+					account: {
+						id: "oauth-complete-split-account",
+						provider: "oauth-complete-split",
+						label: "Complete-split account",
+						role: "OWNER",
+						purpose: ["messaging"],
+						accessGate: "open",
+						status: "connected",
+						createdAt: 1,
+						updatedAt: 1,
+					},
+				};
+			},
+		});
+
+		const flow = await manager.startOAuth("oauth-complete-split");
+		const result = await manager.completeOAuth("oauth-complete-split", {
+			state: flow.state,
+			code: "code-1",
+		});
+		expect(result.account).toMatchObject({
+			provider: "oauth-complete-split",
+			label: "Complete-split account",
+			status: "connected",
+		});
+		expect(result.flow.status).toBe("completed");
+		// The completed flow is queryable afterward from the durable backend.
+		const stored = await manager.getOAuthFlow("oauth-complete-split", flow.id);
+		expect(stored?.status).toBe("completed");
+	});
 });
