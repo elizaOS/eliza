@@ -57,6 +57,17 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   page,
   request,
 }) => {
+  const walletOriginMismatchWarnings: string[] = [];
+  page.on("console", (message) => {
+    const text = message.text();
+    if (
+      text.includes("Failed to execute 'postMessage'") &&
+      text.includes("target origin") &&
+      text.includes("does not match")
+    ) {
+      walletOriginMismatchWarnings.push(text);
+    }
+  });
   await resetBrowserWorkspaceTabs(request);
   await openAppPath(page, "/browser");
   await expect(page).toHaveURL(/\/browser$/, { timeout: 20_000 });
@@ -198,6 +209,7 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   // server-owned.
   await closeAllButton.click();
   await expect(closeAllButton).toBeDisabled({ timeout: 60_000 });
+  expect(walletOriginMismatchWarnings).toEqual([]);
 });
 
 test("browser page clears the resting chat and keeps compact mobile chrome touch-safe", async ({
