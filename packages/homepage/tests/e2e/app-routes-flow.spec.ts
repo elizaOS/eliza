@@ -291,6 +291,10 @@ test("landing page renders its animated shell and primary entrypoint", async ({
 test("landing composer is inert while hidden and stays in-viewport when active", async ({
   page,
 }) => {
+  // Three platform swipes each trigger the phone-model spin animation, and on
+  // CI's software GL those animation frames run seconds-per-frame; the default
+  // 60s budget is not enough for the full imessage → try traversal.
+  test.setTimeout(180_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await waitForLandingIntro(page);
@@ -322,14 +326,17 @@ test("landing composer is inert while hidden and stays in-viewport when active",
   });
   expect(tabTargetsWhileHidden).toMatchObject({ anyIsFocusable: false });
 
-  // Swipe imessage → telegram → discord → try to reveal the composer. A
-  // loaded renderer can drop an individual gesture, so drive by state: keep
+// Swipe imessage → telegram → discord → try to reveal the composer. Each
+  // mouse.move step waits for a rendered frame, and CI's software-GL frames
+  // for the full-viewport shader are seconds long — so keep the drag to the
+  // minimum pointer dispatches the gesture recognizer needs. A loaded
+  // renderer can also drop an individual gesture, so drive by state: keep
   // swiping until the composer reports visible instead of assuming exactly
   // three perfect swipes.
   for (let i = 0; i < 10; i++) {
     await page.mouse.move(320, 420);
     await page.mouse.down();
-    await page.mouse.move(40, 420, { steps: 12 });
+    await page.mouse.move(40, 420, { steps: 2 });
     await page.mouse.up();
     await page.waitForTimeout(300);
     const visible = await composer.getAttribute("data-landing-chrome-visible");
