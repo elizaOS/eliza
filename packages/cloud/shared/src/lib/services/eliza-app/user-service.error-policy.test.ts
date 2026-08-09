@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 const findByDiscordIdWithOrganization = mock();
 const findByPhoneNumberWithOrganization = mock();
 const update = mock();
+const linkTelegramAndPhoneIdentityForWrite = mock();
 
 mock.module("../../../db/repositories/users", () => ({
   usersRepository: {
@@ -16,6 +17,7 @@ mock.module("../../../db/repositories/users", () => ({
     findByWhatsAppIdWithOrganization: mock(),
     findWithOrganization: mock(),
     update,
+    linkTelegramAndPhoneIdentityForWrite,
     create: mock(),
   },
 }));
@@ -121,10 +123,11 @@ describe("ElizaAppUserService.findOrCreateByDiscordId error policy", () => {
 describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
   beforeEach(() => {
     update.mockReset();
+    linkTelegramAndPhoneIdentityForWrite.mockReset();
   });
 
-  test("writes the Telegram and phone identity pair in one update", async () => {
-    update.mockResolvedValue({ id: "user-1" });
+  test("writes the Telegram and phone identity pair through the atomic canonical+projection boundary", async () => {
+    linkTelegramAndPhoneIdentityForWrite.mockResolvedValue({ id: "user-1" });
 
     const result = await elizaAppUserService.linkTelegramAndPhoneToUser(
       "user-1",
@@ -139,8 +142,8 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
     );
 
     expect(result).toEqual({ success: true });
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(update).toHaveBeenCalledWith(
+    expect(linkTelegramAndPhoneIdentityForWrite).toHaveBeenCalledTimes(1);
+    expect(linkTelegramAndPhoneIdentityForWrite).toHaveBeenCalledWith(
       "user-1",
       expect.objectContaining({
         telegram_id: "123456789",
@@ -149,10 +152,13 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
         phone_verified: true,
       }),
     );
+    // The atomic repository boundary owns both writes; the service must not
+    // issue a separate canonical update around it.
+    expect(update).not.toHaveBeenCalled();
   });
 
   test("reports a uniqueness race without issuing a compensating write", async () => {
-    update.mockRejectedValue(uniqueConstraintError());
+    linkTelegramAndPhoneIdentityForWrite.mockRejectedValue(uniqueConstraintError());
 
     const result = await elizaAppUserService.linkTelegramAndPhoneToUser(
       "user-1",
@@ -167,6 +173,7 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("already linked");
-    expect(update).toHaveBeenCalledTimes(1);
+    expect(linkTelegramAndPhoneIdentityForWrite).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
   });
 });

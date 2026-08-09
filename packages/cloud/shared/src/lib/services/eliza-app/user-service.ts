@@ -835,8 +835,10 @@ class ElizaAppUserService {
   }
 
   /**
-   * Links the Telegram and phone identities in one database statement so a
-   * uniqueness race cannot persist only half of the requested identity pair.
+   * Links the Telegram and phone identities atomically across the canonical
+   * users row AND the user_identities projection that auth lookups read, so a
+   * uniqueness race or a projection collision cannot persist half of the
+   * requested identity pair in either table.
    */
   async linkTelegramAndPhoneToUser(
     userId: string,
@@ -847,14 +849,13 @@ class ElizaAppUserService {
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
 
     try {
-      const updated = await usersRepository.update(userId, {
+      const updated = await usersRepository.linkTelegramAndPhoneIdentityForWrite(userId, {
         telegram_id: telegramId,
         telegram_username: telegramData.username,
         telegram_first_name: telegramData.first_name,
         telegram_photo_url: telegramData.photo_url,
         phone_number: normalizedPhone,
         phone_verified: true,
-        updated_at: new Date(),
       });
       if (!updated) {
         return { success: false, error: "The account no longer exists" };
