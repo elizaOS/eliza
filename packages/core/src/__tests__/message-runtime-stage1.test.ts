@@ -6080,3 +6080,267 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		expect(stage1Content).not.toContain("trigger_automation_policy");
 	});
 });
+
+// The room used by every gate case: this agent plus one bot and one human
+// participant, so name→id resolution works and human/bot addressing is
+// symmetric.
+function withRoomEntities(runtime: IAgentRuntime): IAgentRuntime {
+	(runtime as unknown as Record<string, unknown>).getEntitiesForRoom = vi.fn(
+		async () => [
+			{
+				id: "00000000-0000-0000-0000-000000000003" as UUID,
+				names: ["Test Agent"],
+			},
+			{
+				id: "00000000-0000-0000-0000-0000000000bb" as UUID,
+				names: ["OtherBot"],
+			},
+			{ id: "00000000-0000-0000-0000-0000000000cc" as UUID, names: ["Alice"] },
+		],
+	);
+	return runtime;
+}
+
+// Installs a fake PersonalityStore whose every slot pins `reply_gate` to the
+// given mode, reachable through the same getService seam the real store uses.
+function withReplyGateMode(
+	runtime: IAgentRuntime,
+	mode: string,
+): IAgentRuntime {
+	const slot = { reply_gate: mode };
+	(runtime as unknown as Record<string, unknown>).getService = vi.fn(
+		(type: string) =>
+			type === "PERSONALITY_STORE" ? { getSlot: () => slot } : null,
+	);
+	return runtime;
+}
+
+describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
+	// Live incident: in a busy multi-user group channel the agent replied to
+	// turns its own Stage-1 output tagged as addressed to another participant
+	// (27 posts in 20 minutes). The gate extends #9874's addressing signal from
+	// tool promotion to the full reply / planner / early-ack routing.
+
+	it("ignores a simple-path turn addressed to another participant — no reply ships", async () => {
+		const runtime = withRoomEntities(
+			makeRuntime([
+				stage1Response({
+					thought: "Overheard.",
+					contexts: ["simple"],
+					replyText: "I can help with that!",
+					addressedTo: ["Alice"],
+				}),
+			]),
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Alice, can you take a look?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000b1" as UUID,
+		});
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+	});
+
+	it("ignores an addressed-to-other mixed-context turn — planner never entered, no early ack emitted", async () => {
+		const runtime = withRoomEntities(
+			makeRuntime([
+				stage1Response({
+					thought: "Overheard with tool hints.",
+					contexts: ["simple", "calendar"],
+					candidateActionNames: ["CALENDAR"],
+					replyText: "On it.",
+					addressedTo: ["Alice"],
+				}),
+			]),
+		);
+		const onResponseHandlerEarlyReply = vi.fn(async () => true);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Alice, can you check the calendar?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000b2" as UUID,
+			onResponseHandlerEarlyReply,
+		});
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+		// Stage 1 was the only model call — the planner never ran.
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		expect(onResponseHandlerEarlyReply).not.toHaveBeenCalled();
+	});
+
+	it("gates identically whether the addressee is a bot or a human participant (uniform)", async () => {
+		for (const addressee of ["OtherBot", "Alice"]) {
+			const runtime = withRoomEntities(
+				makeRuntime([
+					stage1Response({
+						thought: "Overheard.",
+						contexts: ["simple"],
+						replyText: "Sure thing!",
+						addressedTo: [addressee],
+					}),
+				]),
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: `${addressee}, your turn` }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-0000000000b3" as UUID,
+			});
+			expect(result.kind).toBe("terminal");
+			if (result.kind === "terminal") {
+				expect(result.action).toBe("IGNORE");
+			}
+		}
+	});
+
+	it("does not gate undirected banter (addressedTo: []) — the simple reply ships unchanged", async () => {
+		const runtime = withRoomEntities(
+			makeRuntime([
+				stage1Response({
+					thought: "Undirected.",
+					contexts: ["simple"],
+					replyText: "Hello everyone.",
+					addressedTo: [],
+				}),
+			]),
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "morning all" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000b4" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Hello everyone.");
+		}
+	});
+
+	it("does not gate a turn that names the agent alongside another participant", async () => {
+		const runtime = withRoomEntities(
+			makeRuntime([
+				stage1Response({
+					thought: "We are among the addressees.",
+					contexts: ["simple"],
+					replyText: "Happy to help.",
+					addressedTo: ["Test Agent", "Alice"],
+				}),
+			]),
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Test Agent and Alice, thoughts?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000b5" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+	});
+
+	it("bypasses the gate on a platform mention/reply even when addressedTo names another participant", async () => {
+		const runtime = withRoomEntities(
+			makeRuntime([
+				stage1Response({
+					thought: "Mentioned turn.",
+					contexts: ["simple"],
+					replyText: "Here's my take.",
+					addressedTo: ["Alice"],
+				}),
+			]),
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what do you think Alice should do here?",
+				mentionContext: { isMention: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000b6" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+	});
+
+	it("bypasses the gate when the effective personality reply_gate is an explicit 'always'", async () => {
+		const runtime = withReplyGateMode(
+			withRoomEntities(
+				makeRuntime([
+					stage1Response({
+						thought: "Chatty agent overhears.",
+						contexts: ["simple"],
+						replyText: "Jumping in anyway!",
+						addressedTo: ["Alice"],
+					}),
+				]),
+			),
+			"always",
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Alice, can you take a look?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000b7" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Jumping in anyway!");
+		}
+	});
+
+	it("keeps the gate armed under reply_gate 'addressed_or_ambient' (only 'always' bypasses)", async () => {
+		const runtime = withReplyGateMode(
+			withRoomEntities(
+				makeRuntime([
+					stage1Response({
+						thought: "Overheard.",
+						contexts: ["simple"],
+						replyText: "I could answer this.",
+						addressedTo: ["Alice"],
+					}),
+				]),
+			),
+			"addressed_or_ambient",
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Alice, can you take a look?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000b8" as UUID,
+		});
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+	});
+
+	it("fails open when addressee resolution errors — the turn proceeds unsuppressed (J4)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Room lookup breaks.",
+				contexts: ["simple"],
+				replyText: "Still here.",
+				addressedTo: ["Alice"],
+			}),
+		]);
+		(runtime as unknown as Record<string, unknown>).getEntitiesForRoom = vi.fn(
+			async () => {
+				throw new Error("room lookup down");
+			},
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Alice, can you take a look?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000b9" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Still here.");
+		}
+		const scopes = reportErrorCalls(runtime).map((call) => call[0]);
+		expect(scopes).toContain("MessageService.resolveAddressees");
+	});
+});

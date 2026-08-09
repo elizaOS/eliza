@@ -27,6 +27,8 @@ import {
 import {
 	decideReplyGate,
 	enforceVerbosity,
+	type ReplyGateMode,
+	resolveEffectiveReplyGate,
 } from "../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
 import {
@@ -516,6 +518,30 @@ function messageExplicitlyAddressesAgent(
 			runtime.character?.username,
 		])
 	);
+}
+
+/**
+ * Resolves the sender's effective personality `reply_gate` mode (user slot →
+ * global slot) for the post-Stage-1 engagement addressing gate. An explicit
+ * `"always"` is the deliberate opt-out that keeps intentionally-chatty agents
+ * replying even to turns addressed to another participant; every other mode —
+ * including the default unset state — leaves that gate armed.
+ */
+function resolveStage1ReplyGateMode(
+	runtime: IAgentRuntime,
+	message: Memory,
+): ReplyGateMode | null {
+	if (typeof runtime.getService !== "function") {
+		return null;
+	}
+	const store = getPersonalityStore(runtime);
+	if (!store || message.entityId === runtime.agentId) {
+		return null;
+	}
+	return resolveEffectiveReplyGate(
+		store.getSlot(message.entityId),
+		store.getSlot("global"),
+	).mode;
 }
 
 function getPlannerActionObjectName(action: Record<string, unknown>): string {
@@ -7676,23 +7702,27 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.contexts,
 			availableContexts,
 		);
-		// #9874 item 1: skip the simple→requiresTool promotion when this turn is
-		// explicitly addressed to another participant (not us) — the agent is
-		// overhearing, not being asked to act, so forcing a tool fabricates a
-		// phantom task. Uniform addressing gate, NOT bot-specific: it fires the
-		// same for human and bot addressees (bot-ness is surfaced to the model as
-		// transcript context, not handled here). Cheap-gated: only resolve
-		// addressees when a promotion could actually fire (requiresTool /
-		// candidateActions) and the message carries explicit addressees.
-		const mayPromoteToTool =
-			messageHandler.plan.requiresTool === true ||
-			(messageHandler.plan.candidateActions?.length ?? 0) > 0;
+		// Full engagement addressing gate (extends #9874 item 1 from tool
+		// promotion to reply + planner + early-ack routing): when Stage 1 tagged
+		// this turn as explicitly addressed to ANOTHER participant (not us), the
+		// agent is overhearing — it must not reply, enter the planner, or
+		// fabricate a tool task. Uniform, NOT bot-specific: it fires the same
+		// for human and bot addressees (bot-ness is surfaced to the model as
+		// transcript context, not handled here). Undirected banter
+		// (addressedTo: []) never gates, so chatty agents still interject per
+		// their character. Two structural bypasses keep deliberately-engaged
+		// turns first-class: the turn also addresses the agent (platform
+		// mention/reply or the agent's name in the text), or the sender's
+		// effective personality reply_gate is an explicit "always".
+		//
 		// Fail SAFE on any resolution error (DB hiccup in getEntitiesForRoom): a
-		// transient failure must NOT convert a normal turn into the generic
-		// failure reply — it just means "don't suppress", matching the
-		// conservative contract and the fire-and-forget addressee handling above.
-		const suppressToolPromotion =
-			mayPromoteToTool && addressedTo.length > 0
+		// transient failure must NOT convert a normal turn into silence — it
+		// just means "don't suppress", matching the conservative contract and
+		// the fire-and-forget addressee handling above.
+		const addressedToOtherParticipant =
+			addressedTo.length > 0 &&
+			!messageExplicitlyAddressesAgent(args.runtime, args.message) &&
+			resolveStage1ReplyGateMode(args.runtime, args.message) !== "always"
 				? await messageAddressedToOtherParticipant({
 						runtime: args.runtime,
 						message: args.message,
@@ -7710,8 +7740,18 @@ export async function runV5MessageRuntimeStage1(args: {
 						return false;
 					})
 				: false;
+		if (addressedToOtherParticipant) {
+			args.runtime.logger?.debug?.(
+				{
+					src: "service:message",
+					roomId: args.message.roomId,
+					addressedToCount: addressedTo.length,
+				},
+				"[message] Turn addressed to another participant — engagement gate ignores it",
+			);
+		}
 		const route = routeMessageHandlerOutput(messageHandler, {
-			suppressToolPromotion,
+			addressedToOtherParticipant,
 		});
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
@@ -7854,7 +7894,13 @@ export async function runV5MessageRuntimeStage1(args: {
 				earlyReplyText = "";
 			}
 		}
+		// The addressing gate above already terminal-routes addressed-to-other
+		// turns to ignored, so a gated turn cannot normally reach this planning
+		// path — but the early ack ships user-visible text BEFORE the planner,
+		// so it is re-checked here as defense in depth: no ack may leak from a
+		// gated turn regardless of how routing evolves upstream.
 		const earlyReplyEligible =
+			!addressedToOtherParticipant &&
 			messageHandler.processMessage === "RESPOND" &&
 			earlyReplyText.length > 0 &&
 			typeof onResponseHandlerEarlyReply === "function";

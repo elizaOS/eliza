@@ -209,7 +209,9 @@ function summarizeSlot(slot: PersonalitySlot): string {
 			? "staying silent until told otherwise"
 			: slot.reply_gate === "on_mention"
 				? "replying only when mentioned"
-				: "replying normally";
+				: slot.reply_gate === "addressed_or_ambient"
+					? "replying when addressed or to undirected chat"
+					: "replying normally";
 	const count = slot.custom_directives.length;
 	const directives =
 		count === 0
@@ -698,6 +700,11 @@ async function runSetReplyGate(
 			args.scope === "user"
 				? "Got it — I'll only reply when you @-mention me."
 				: "Got it — I'll only reply when @-mentioned (global).";
+	} else if (mode === "addressed_or_ambient") {
+		text =
+			args.scope === "user"
+				? "Got it — I'll join in when you address me or when chat is undirected, and stay out of turns aimed at someone else."
+				: "Got it — I'll engage when addressed or when chat is undirected, never in turns aimed at someone else (global).";
 	} else {
 		text =
 			args.scope === "user"
