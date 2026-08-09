@@ -293,14 +293,20 @@ describe("deepToWellFormedUnicode", () => {
 	it("preserves own __proto__ key as a data member on the function-preservation branch (#18081 review)", () => {
 		// An own __proto__ data key (from JSON.parse) + execute() to select
 		// the function/symbol-preserving copy-on-write branch.
+		// A malformed sibling key ("bad\uD83D") forces `changed = true` so the
+		// clone path actually executes — without it, sanitizeObjectPreservingSymbols
+		// early-returns the original input and the assertions would merely observe
+		// the JSON.parse output, not the clone.
 		const input = JSON.parse(
-			'{"execute":"placeholder","__proto__":{"marker":"kept"}}',
+			'{"execute":"placeholder","__proto__":{"marker":"kept"},"bad\\uD83D":"sibling"}',
 		) as Record<string, unknown>;
 		// Replace the string with a real function to select the special branch.
 		input.execute = () => "ok";
 
 		const output = deepToWellFormedUnicode(input);
 
+		// The clone path ran (the malformed key forced changed = true).
+		expect(output).not.toBe(input);
 		// The own __proto__ key must survive as an enumerable own property.
 		const desc = Object.getOwnPropertyDescriptor(output, "__proto__");
 		expect(desc).toBeDefined();
