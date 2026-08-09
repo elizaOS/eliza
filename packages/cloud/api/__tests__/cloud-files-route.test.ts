@@ -1,9 +1,22 @@
 // Exercises cloud API tests cloud files route.test behavior with deterministic Worker route fixtures.
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+	afterAll,
+	beforeEach,
+	describe,
+	expect,
+	mock,
+	setDefaultTimeout,
+	test,
+} from "bun:test";
 import { Hono } from "hono";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit-hono-cloudflare";
 import * as cloudFilesActual from "@/lib/services/cloud-files";
+
+// Pure-mock suite that runs in ~1.5s idle, but on a CPU-starved host the
+// first test has been observed at 6.4s — past bun's 5s default. Match the
+// package's slow-host budget (see sso-bridge.test.ts).
+setDefaultTimeout(90_000);
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const OTHER_ORG = "00000000-0000-4000-8000-0000000000cc";
