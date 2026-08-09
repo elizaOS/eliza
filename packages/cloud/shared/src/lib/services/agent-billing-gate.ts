@@ -8,11 +8,25 @@
 import { organizationsRepository } from "../../db/repositories";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
+import {
+  readWelcomeBonusWithheldSettings,
+  type SignupGrantWithheldReason,
+} from "./signup-grant-guard";
 
 export interface CreditGateResult {
   allowed: boolean;
   balance: number;
   error?: string;
+  /**
+   * Set when this org's balance is zero BECAUSE the signup welcome bonus was
+   * withheld by the anti-sybil per-IP grant cap (recorded on the org's
+   * settings at signup — see `welcomeBonusWithheldSettingsPatch`). Lets the
+   * canonical 402 body explain "this network reached the daily free-credit
+   * limit" instead of a bare "Insufficient credits", which a genuine user
+   * behind CGNAT reads as a broken app.
+   */
+  welcomeBonusWithheldReason?: SignupGrantWithheldReason;
+  welcomeBonusWithheldMessage?: string;
 }
 
 /**
@@ -93,10 +107,22 @@ async function runCreditGate(
     const balance = parseGateCreditBalance(org.credit_balance);
 
     if (balance <= minimumBalance) {
+      // A zero balance on an org whose welcome bonus was withheld at signup is
+      // the anti-sybil cap talking, not a drained account — attach the recorded
+      // reason so the 402 the routes serialize can say so. Balance > 0 means
+      // the org was topped up since signup; the withheld record is then stale
+      // history and the plain insufficient-credits message is the honest one.
+      const withheld = balance <= 0 ? readWelcomeBonusWithheldSettings(org.settings) : null;
       return {
         allowed: false,
         balance,
         error: insufficientMessage(balance),
+        ...(withheld
+          ? {
+              welcomeBonusWithheldReason: withheld.reason,
+              ...(withheld.message ? { welcomeBonusWithheldMessage: withheld.message } : {}),
+            }
+          : {}),
       };
     }
 
