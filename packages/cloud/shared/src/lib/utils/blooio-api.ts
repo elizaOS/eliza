@@ -7,7 +7,7 @@
 import crypto from "crypto";
 import { z } from "zod";
 
-export const BLOOIO_API_BASE = "https://backend.blooio.com/v2/api";
+export const BLOOIO_API_BASE = "https://api.blooio.com/v2/api";
 
 export interface BlooioSendMessageRequest {
   text?: string;
@@ -49,6 +49,16 @@ export interface BlooioWebhookEvent {
  * Uses .nullish() instead of .optional() because Blooio sends explicit null
  * values for absent fields (e.g., "text": null instead of omitting the field)
  */
+const BlooioAttachmentSchema = z.union([
+  z.string(),
+  z
+    .object({
+      url: z.string().url(),
+      name: z.string().nullish(),
+    })
+    .passthrough(),
+]);
+
 export const BlooioWebhookEventSchema = z.object({
   event: z.string().min(1, "Event type is required"),
   message_id: z.string().nullish(),
@@ -56,21 +66,34 @@ export const BlooioWebhookEventSchema = z.object({
   internal_id: z.string().nullish(),
   sender: z.string().nullish(),
   text: z.string().nullish(),
-  attachments: z
-    .array(
-      z.union([
-        z.string(),
-        z.object({
-          url: z.string().url(),
-          name: z.string().nullish(),
-        }),
-      ]),
-    )
-    .nullish(),
+  attachments: z.array(BlooioAttachmentSchema).nullish(),
   protocol: z.string().nullish(),
   is_group: z.boolean().nullish(),
   received_at: z.number().nullish(),
   timestamp: z.number().nullish(),
+});
+
+const BlooioV4MessageSchema = z
+  .object({
+    id: z.string().trim().min(1).nullish(),
+    message_id: z.string().trim().min(1).nullish(),
+    sender: z.string().trim().min(1).nullish(),
+    recipient: z.string().nullish(),
+    channel_address: z.string().nullish(),
+    contact: z.object({ identifier: z.string().trim().min(1).nullish() }).nullish(),
+    text: z.string().nullish(),
+    attachments: z.array(BlooioAttachmentSchema).nullish(),
+    protocol: z.string().nullish(),
+    is_group: z.boolean().nullish(),
+    group: z.unknown().nullish(),
+  })
+  .passthrough();
+
+const BlooioV4WebhookEnvelopeSchema = z.object({
+  id: z.string().trim().min(1),
+  type: z.string().min(1),
+  created_at: z.number(),
+  data: BlooioV4MessageSchema,
 });
 
 /**
@@ -78,7 +101,26 @@ export const BlooioWebhookEventSchema = z.object({
  * Returns the validated payload or throws a ZodError
  */
 export function parseBlooioWebhookEvent(data: unknown): BlooioWebhookEvent {
-  return BlooioWebhookEventSchema.parse(data);
+  const v2 = BlooioWebhookEventSchema.safeParse(data);
+  if (v2.success) return v2.data;
+
+  const envelope = BlooioV4WebhookEnvelopeSchema.parse(data);
+  const message = envelope.data;
+  const sender = message.sender ?? message.contact?.identifier ?? null;
+
+  return {
+    event: envelope.type,
+    message_id: message.message_id ?? message.id,
+    external_id: sender,
+    internal_id: message.recipient ?? message.channel_address,
+    sender,
+    text: message.text,
+    attachments: message.attachments,
+    protocol: message.protocol,
+    is_group: message.is_group ?? message.group != null,
+    received_at: envelope.created_at,
+    timestamp: envelope.created_at,
+  };
 }
 
 /**
@@ -142,7 +184,7 @@ export async function verifyBlooioSignature(
   webhookSecret: string,
   signatureHeader: string,
   rawBody: string,
-  toleranceSeconds = 120, // 2 minutes - industry standard for webhook signatures
+  toleranceSeconds = 300,
 ): Promise<boolean> {
   if (!signatureHeader || !webhookSecret) {
     return false;

@@ -140,6 +140,29 @@ describe("verifyLocalWebhookSignature", () => {
     ).resolves.toBe(false);
   });
 
+  test("accepts Blooio retries inside the documented five-minute window", async () => {
+    const body = JSON.stringify({
+      type: "message.sent",
+      id: "evt_1",
+      created_at: Date.now(),
+      data: { id: "m1" },
+    });
+    const timestamp = Math.floor(Date.now() / 1000) - 200;
+    const signature = await hmacHex("blooio-secret", `${timestamp}.${body}`);
+    const request = new Request(
+      "https://api.example.test/api/eliza-app/webhook/blooio",
+      {
+        method: "POST",
+        headers: { "x-blooio-signature": `t=${timestamp},v1=${signature}` },
+        body,
+      },
+    );
+
+    await expect(
+      verifyLocalWebhookSignature(request, "blooio", body, "blooio-secret"),
+    ).resolves.toBe(true);
+  });
+
   test("accepts and rejects WhatsApp sha256 signatures", async () => {
     const body = JSON.stringify({ object: "whatsapp_business_account" });
     const signature = await hmacHex("whatsapp-secret", body);

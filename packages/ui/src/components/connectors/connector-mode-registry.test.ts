@@ -119,10 +119,29 @@ describe("connector mode registry seam", () => {
       getConnectorModes("imessage", { elizaCloudConnected: true }).map(
         (mode) => mode.id,
       ),
-    ).toEqual(["cloud-bluebubbles", "direct", "bluebubbles", "blooio"]);
+    ).toEqual(["blooio", "cloud-bluebubbles", "direct", "bluebubbles"]);
     expect(
       getConnectorModeCloudGatewaySetup("imessage", "cloud-bluebubbles"),
     ).toBe("phone-registration");
+  });
+
+  it("defaults iMessage to Blooio in Cloud and direct chat.db offline", () => {
+    const offline = getConnectorModes("imessage", {
+      elizaCloudConnected: false,
+    });
+    expect(offline.map((mode) => mode.id)).toEqual(["direct", "bluebubbles"]);
+    expect(getDefaultConnectorModeId("imessage", offline)).toBe("direct");
+
+    const online = getConnectorModes("imessage", {
+      elizaCloudConnected: true,
+    });
+    expect(online.map((mode) => mode.id)).toEqual([
+      "blooio",
+      "cloud-bluebubbles",
+      "direct",
+      "bluebubbles",
+    ]);
+    expect(getDefaultConnectorModeId("imessage", online)).toBe("blooio");
   });
 
   it("treats twitter as an alias of x (dead case is gone, not the behavior)", () => {

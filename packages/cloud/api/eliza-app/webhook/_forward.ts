@@ -36,6 +36,11 @@ const WEBHOOK_GATEWAY_SECRET_ENV_KEYS = [
 // the Discord handler) and stamped ONLY on gateway forwards.
 const GATEWAY_SECRET_HEADER = "x-eliza-webhook-forwarder-secret";
 
+// Blooio documents a five-minute replay window. The edge and gateway must use
+// the same tolerance or a valid provider retry can pass one boundary and fail
+// the other.
+const BLOOIO_SIGNATURE_TOLERANCE_SECONDS = 300;
+
 function readStringEnv(c: AppContext, keys: readonly string[]): string | null {
   for (const key of keys) {
     const value = c.env[key];
@@ -168,7 +173,8 @@ async function verifyBlooioSignature(
   const timestamp = Number.parseInt(timestampPart.slice(2), 10);
   if (!Number.isFinite(timestamp)) return false;
   const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - timestamp) > 120) return false;
+  if (Math.abs(now - timestamp) > BLOOIO_SIGNATURE_TOLERANCE_SECONDS)
+    return false;
 
   const expected = signaturePart.slice(3);
   const computed = await hmacHex(secret, `${timestamp}.${rawBody}`, "SHA-256");
