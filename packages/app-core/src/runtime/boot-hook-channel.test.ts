@@ -1,31 +1,21 @@
 /**
  * Unit coverage for `drainBootHookContributors`, the generic PRE-READY boot-hook
-<<<<<<< HEAD
- * channel that `repairRuntimeAfterBoot` drains before the runtime is marked
- * ready. It invokes each registry-declared contributor's `invoke(runtime)` in
- * declared order, silently skips a contributor whose optional plugin is absent
- * (OptionalAppRoutePluginUnavailableError), and rethrows any real failure —
- * short-circuiting the remaining contributors (matching the fixed if-chain it
- * replaced for plugin-local-inference's boot, arch-audit #12089 item 18).
-=======
  * channel that the shared agent host drains before the runtime is marked ready.
- * It invokes each registry-declared contributor in order, retains the packaged
- * local-inference fallback, and rethrows real failures.
->>>>>>> 6f9fa8ef572 (fix(ci): repair post-merge workflow regressions)
+ * It invokes each registry-declared contributor in order and rethrows any real
+ * failure, short-circuiting the remaining contributors.
  */
-import type { AgentRuntime } from "@elizaos/core";
-import { OptionalAppRoutePluginUnavailableError } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
 
 import {
   drainBootHookContributors,
+  getBootHookContributors,
   resolveBootHookContributors,
-} from "./startup/app-contributors.ts";
+} from "@elizaos/agent/runtime/boot-hooks";
+import type { AgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 
 // The generic boot-hook channel the pre-ready boot path drains. A "contributor"
 // is an app/plugin that declared a `bootHook` in the registry; the drain invokes
-// each against the runtime, skips an uninstalled optional plugin gracefully, and
-// rethrows a real failure.
+// each against the runtime and rethrows a real failure.
 function makeFakeRuntime(): AgentRuntime {
   return {} as AgentRuntime;
 }
@@ -72,29 +62,6 @@ describe("drainBootHookContributors — generic pre-ready boot-hook channel", ()
     ).resolves.toBeUndefined();
   });
 
-  it("skips a contributor whose optional plugin is unavailable", async () => {
-    const runtime = makeFakeRuntime();
-    const after = vi.fn().mockResolvedValue(undefined);
-
-    await expect(
-      drainBootHookContributors(runtime, [
-        {
-          id: "@elizaos/plugin-missing",
-          invoke: () =>
-            Promise.reject(
-              new OptionalAppRoutePluginUnavailableError(
-                "@elizaos/plugin-missing",
-              ),
-            ),
-        },
-        { id: "@elizaos/plugin-present", invoke: after },
-      ]),
-    ).resolves.toBeUndefined();
-
-    // The graceful skip does not abort the rest of the drain.
-    expect(after).toHaveBeenCalledOnce();
-  });
-
   it("rethrows a real contributor failure (not mistaken for a benign absence)", async () => {
     const runtime = makeFakeRuntime();
     const boom = new Error("boot hook init blew up");
@@ -113,35 +80,23 @@ describe("drainBootHookContributors — generic pre-ready boot-hook channel", ()
   });
 });
 
-<<<<<<< HEAD
-describe("resolveBootHookContributors — legacy local-inference fallback", () => {
-  it("falls back to the legacy local-inference boot hook when the registry is empty", () => {
-    // Packaged builds can ship without generated.json, so loadRegistry() is
-    // empty. The fallback guarantees the local model handlers still install
-    // (the pre-migration guarantee the hard-wired path used to provide).
-    const contributors = resolveBootHookContributors([]);
-    expect(contributors.map((c) => c.id)).toEqual([
-      "@elizaos/plugin-local-inference",
-    ]);
-  });
-
-  it("uses the registry-declared local-inference boot hook (no duplicate) when present", () => {
-=======
-describe("resolveBootHookContributors — declared hooks and packaged fallback", () => 
+describe("resolveBootHookContributors — data-declared hooks", () => {
   it("discovers the local inference hook from the generated registry", () => {
     expect(
       getBootHookContributors().map((contributor) => contributor.id),
     ).toContain("@elizaos/plugin-local-inference");
   });
 
-  it("retains local inference when a packaged build has no registry data", () => {
+  it("keeps the host-owned local-inference fallback when the registry declares no hooks", () => {
+    // #17964: a packaged bundle ships an intentionally empty registry, so the
+    // host appends its own local-inference declaration rather than losing the
+    // voice-critical hook.
     expect(
       resolveBootHookContributors([]).map((contributor) => contributor.id),
     ).toEqual(["@elizaos/plugin-local-inference"]);
   });
 
   it("resolves a registry-declared hook", () => {
->>>>>>> 6f9fa8ef572 (fix(ci): repair post-merge workflow regressions)
     const contributors = resolveBootHookContributors([
       {
         id: "@elizaos/plugin-local-inference",
@@ -149,35 +104,27 @@ describe("resolveBootHookContributors — declared hooks and packaged fallback",
         exportName: "registerLocalInferenceBoot",
       },
     ]);
-    // Registry entry wins by id — the fallback must NOT add a second
-    // local-inference contributor.
     expect(contributors.map((c) => c.id)).toEqual([
       "@elizaos/plugin-local-inference",
     ]);
   });
 
-<<<<<<< HEAD
-  it("includes other registry-declared boot hooks alongside the fallback", () => 
-=======
-  it("deduplicates declarations by id while retaining the packaged fallback", () => {
->>>>>>> 6f9fa8ef572 (fix(ci): repair post-merge workflow regressions)
+  it("deduplicates declarations by id and appends the host fallback", () => {
     const contributors = resolveBootHookContributors([
       {
-        id: "@elizaos/plugin-some-app",
-        specifier: "@elizaos/plugin-some-app",
-        exportName: "registerSomeBoot",
+        id: "same-plugin",
+        specifier: "first-module",
+        exportName: "firstHook",
+      },
+      {
+        id: "same-plugin",
+        specifier: "second-module",
+        exportName: "secondHook",
       },
     ]);
-<<<<<<< HEAD
-    const ids = contributors.map((c) => c.id);
-    // The declared app hook plus the legacy local-inference fallback.
-    expect(ids).toContain("@elizaos/plugin-some-app");
-    expect(ids).toContain("@elizaos/plugin-local-inference");
-    expect(ids).toHaveLength(2);
-=======
     expect(contributors.map((contributor) => contributor.id)).toEqual([
       "same-plugin",
       "@elizaos/plugin-local-inference",
     ]);
->>>>>>> 6f9fa8ef572 (fix(ci): repair post-merge workflow regressions)
-  }););
+  });
+});

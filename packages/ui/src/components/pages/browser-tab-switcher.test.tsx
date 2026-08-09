@@ -1,15 +1,10 @@
-/** Verifies foldBrowserTabs through the package's configured test harness. */
-// @vitest-environment jsdom
-
 /**
- * Folded browser tab switcher (#13596). Covers the two contracts the redesign
- * turns on: the pure `foldBrowserTabs` model (grouping, count, active
- * resolution) and the real rendered switcher/control — many-tabs fold, active
- * tab always visible, agent-tab distinction, open/select/close wiring, and the
- * ≥44px touch targets the mobile pass requires. Radix Dialog mounts for real in
- * jsdom; `useAgentElement` is stubbed to a passthrough so the tests exercise the
- * component's own markup, not the agent-surface registry.
+ * Verifies the folded Browser tab model and real Radix switcher: grouping,
+ * active resolution, neutral session distinction, chrome layering, tab
+ * controls, empty state, and touch targets. The agent-surface registry is
+ * stubbed so the rendered assertions isolate this component's own contract.
  */
+// @vitest-environment jsdom
 
 import {
   cleanup,
@@ -20,6 +15,11 @@ import {
 } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  Z_SHELL_OVERLAY,
+  Z_VIEW_MODAL,
+  Z_VIEW_MODAL_BACKDROP,
+} from "../../lib/floating-layers";
 
 vi.mock("../../agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
@@ -205,16 +205,16 @@ describe("BrowserTabSwitcher", () => {
     expect(screen.queryByTestId("browser-tab-card-close-app-0")).toBeNull();
   });
 
-  it("distinguishes agent-session tabs with an accent monogram", () => {
+  it("distinguishes agent-session tabs without accent-colored chrome", () => {
     renderSwitcher();
     const agentCard = screen.getByTestId("browser-tab-card-agent-0");
     const userCard = screen.getByTestId("browser-tab-card-user-0");
-    // Agent tabs carry the accent tint; user tabs use the neutral muted tint.
-    expect(agentCard.innerHTML).toContain("text-accent");
-    expect(userCard.innerHTML).not.toContain("bg-accent/15");
+    expect(agentCard.innerHTML).toContain("ring-border/70");
+    expect(agentCard.innerHTML).not.toContain("accent");
+    expect(userCard.innerHTML).not.toContain("ring-border/70");
   });
 
-  it("shows an accent session dot (not the monogram) for the focused tab", () => {
+  it("shows a neutral session dot (not the monogram) for the focused tab", () => {
     render(
       <BrowserTabSwitcher
         open
@@ -237,6 +237,26 @@ describe("BrowserTabSwitcher", () => {
     );
     const card = screen.getByTestId("browser-tab-card-focused");
     expect(within(card).getByText("Agent is on this tab")).toBeTruthy();
+    expect(card.innerHTML).toContain("bg-txt");
+    expect(card.innerHTML).not.toContain("bg-accent");
+  });
+
+  it("keeps neutral Browser chrome below chat and inside its reserved clearance", () => {
+    renderSwitcher();
+    const dialog = screen.getByTestId("browser-workspace-tab-switcher");
+    expect(dialog.className).toContain("z-[8810]");
+    expect(dialog.getAttribute("data-chat-clearance-aware")).toBe("true");
+    expect(dialog.style.top).toContain("--eliza-chat-clearance");
+    expect(dialog.style.maxHeight).toContain("--eliza-chat-clearance");
+    expect(dialog.className).toContain("rounded-3xl");
+    expect(dialog.className).not.toContain("accent");
+    expect(Z_VIEW_MODAL).toBeLessThan(Z_SHELL_OVERLAY);
+    expect(Z_VIEW_MODAL_BACKDROP).toBeLessThan(Z_VIEW_MODAL);
+
+    const overlay = Array.from(document.body.querySelectorAll("div")).find(
+      (element) => element.className.includes("z-[8800]"),
+    );
+    expect(overlay).toBeTruthy();
   });
 
   it('"new tab" opens a tab and closes the switcher', () => {

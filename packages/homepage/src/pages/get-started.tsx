@@ -27,6 +27,11 @@ import {
   PhoneNumberInput,
   useCountryOptions,
 } from "@/components/login/phone-number-input";
+import {
+  clearRememberedReturnTo,
+  peekReturnTo,
+  rememberReturnTo,
+} from "@/lib/auth-return";
 import { useT } from "@/providers/I18nProvider";
 
 // Defer the WebGL shader background so the form UI is interactive immediately.
@@ -360,6 +365,8 @@ export default function GetStartedPage() {
   const discordCode = searchParams.get("code");
   const discordState = searchParams.get("state");
   const guideParam = searchParams.get("guide");
+  const returnTo = searchParams.get("returnTo");
+  const postAuthDestination = peekReturnTo(returnTo);
   const isLinkMode =
     searchParams.get("link") === "true" ||
     (typeof window !== "undefined" &&
@@ -443,6 +450,7 @@ export default function GetStartedPage() {
 
     const state = generateOAuthState();
     sessionStorage.setItem(DISCORD_OAUTH_STATE_KEY, state);
+    rememberReturnTo(returnTo);
 
     if (isLinkMode) {
       sessionStorage.setItem(DISCORD_LINK_MODE_KEY, "true");
@@ -461,7 +469,7 @@ export default function GetStartedPage() {
 
     window.location.href = `https://discord.com/oauth2/authorize?${params.toString()}`;
     return true;
-  }, [isLinkMode, t]);
+  }, [isLinkMode, returnTo, t]);
 
   useEffect(() => {
     if (
@@ -474,7 +482,8 @@ export default function GetStartedPage() {
       !discordCode &&
       step !== "PROVISIONING_CHAT"
     ) {
-      navigate("/connected", { replace: true });
+      clearRememberedReturnTo();
+      navigate(postAuthDestination, { replace: true });
     }
   }, [
     isAuthenticated,
@@ -486,6 +495,7 @@ export default function GetStartedPage() {
     isLinkMode,
     discordCode,
     step,
+    postAuthDestination,
   ]);
 
   useEffect(() => {
@@ -598,7 +608,8 @@ export default function GetStartedPage() {
     try {
       const result = await loginWithSolana();
       if (result.success) {
-        navigate("/connected", { replace: true });
+        clearRememberedReturnTo();
+        navigate(postAuthDestination, { replace: true });
       } else {
         setSolanaError(
           result.error ??
@@ -612,7 +623,7 @@ export default function GetStartedPage() {
     } finally {
       setIsSolanaLoading(false);
     }
-  }, [loginWithSolana, navigate, t]);
+  }, [loginWithSolana, navigate, postAuthDestination, t]);
 
   const handleMethodSelect = (method: OnboardingMethod) => {
     setSelectedMethod(method);
@@ -911,7 +922,8 @@ export default function GetStartedPage() {
   };
 
   const handleContinueToConnected = () => {
-    navigate("/connected");
+    clearRememberedReturnTo();
+    navigate(postAuthDestination);
   };
 
   if (authLoading) {
@@ -1006,7 +1018,7 @@ export default function GetStartedPage() {
             </Link>
           )}
         </div>
-        <ElizaLogo className="h-8" />
+        <ElizaLogo variant="svg" className="h-8 w-auto" />
         <div className="w-16" />
       </header>
 
@@ -1397,7 +1409,10 @@ export default function GetStartedPage() {
           {step === "PROVISIONING_CHAT" && (
             <ProvisioningChatStep
               onboardingSessionId={onboardingSessionId}
-              onContinue={() => navigate("/connected")}
+              onContinue={() => {
+                clearRememberedReturnTo();
+                navigate(postAuthDestination);
+              }}
             />
           )}
 

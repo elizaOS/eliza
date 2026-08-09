@@ -25,11 +25,19 @@ export const entitiesProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	dynamic: spec.dynamic ?? true,
-	contexts: ["contacts", "memory"],
-	contextGate: { anyOf: ["contacts", "memory"] },
+	// "messaging" is deliberately included: on a "tell <name> …" turn the
+	// planner needs to SEE who is present in the room to prefer a plain
+	// in-room reply over a contact search or DM lookup for someone who is
+	// standing right there (the over-routing family, with #17923 semantics).
+	contexts: ["contacts", "memory", "messaging"],
+	contextGate: { anyOf: ["contacts", "memory", "messaging"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "USER" },
+	// GUEST floor: who's present in the CURRENT room — the member list every
+	// participant already sees. Gating at USER let the agent-host role gate
+	// blank it for unassigned group-channel senders (GUEST floor), leaving the
+	// bot unable to name who it was talking to.
+	roleGate: { minRole: "GUEST" },
 
 	get: async (runtime: IAgentRuntime, message: Memory) => {
 		const { roomId, entityId } = message;

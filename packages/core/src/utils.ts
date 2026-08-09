@@ -38,6 +38,7 @@ import {
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
+import { truncateWellFormed } from "./utils/well-formed";
 
 // Token / embedding budget constants
 export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
@@ -352,6 +353,23 @@ export const composePromptFromState = ({
 export const addHeader = (header: string, body: string) => {
 	return body.length > 0 ? `${header ? `${header}\n` : header}${body}\n` : "";
 };
+
+/**
+ * Canonical header for a rendered recent-conversation block.
+ *
+ * The parenthetical is load-bearing: it tells the model the visible dialogue
+ * is only the most recent window of a longer stored conversation, so
+ * beyond-window recall questions are not answered from the window alone
+ * (tj-69d82bb89ebb69). Every renderer of this block — the recent-messages
+ * provider and the conversation compactors — must emit the header through
+ * this helper; rebuilding from a bare "# Conversation Messages" constant
+ * silently strips the disclosure.
+ *
+ * @param {number} visibleCount - Number of messages rendered in the block.
+ * @returns {string} The annotated section header.
+ */
+export const conversationMessagesHeader = (visibleCount: number): string =>
+	`# Conversation Messages (most recent ${visibleCount}; older history is not shown here)`;
 
 /**
  * Generates a string with random user names populated in a template.
@@ -965,8 +983,8 @@ export function truncateToCompleteSentence(
 		}
 	}
 
-	// Fallback: Hard truncate and add ellipsis
-	const hardTruncated = text.slice(0, maxLength - 3).trim();
+	// Fallback: Hard truncate (surrogate-safe) and add ellipsis
+	const hardTruncated = truncateWellFormed(text, maxLength - 3).trim();
 	return `${hardTruncated}...`;
 }
 

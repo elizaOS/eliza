@@ -32,6 +32,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import {
   type AccountCredentialRecord,
+  assertCanonicalAccountId,
+  createRuntimeAccountStoragePolicy,
   deleteAccount,
   listAccounts,
   loadAccount,
@@ -75,6 +77,10 @@ import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 const execFileAsync = promisify(execFile);
+
+function accountStoragePolicy() {
+  return createRuntimeAccountStoragePolicy(resolveStateDir());
+}
 
 async function commandAvailable(command: string): Promise<boolean> {
   const executablePath = process.env.PATH;
@@ -996,6 +1002,7 @@ async function handleCreateApiKeyAccount(
     error(res, message, 400);
     return true;
   }
+  const storagePolicy = accountStoragePolicy();
 
   // Compute priority BEFORE we save the credential — once `saveAccount`
   // lands, the pool's auto-assignment in `loadAllAccounts` would slot
@@ -1023,7 +1030,7 @@ async function handleCreateApiKeyAccount(
     return true;
   }
   const previousRecord = replaceAccountId
-    ? await loadAccount(accountProvider, replaceAccountId)
+    ? loadAccount(accountProvider, replaceAccountId, storagePolicy)
     : null;
   if (replaceAccountId && !previousRecord) {
     error(res, "Replacement account credential not found", 404);
@@ -1088,15 +1095,15 @@ async function handleCreateApiKeyAccount(
         health: "ok" as const,
       }
     : buildLinkedAccountConfigFromRecord(record, priority);
-  await saveAccount(record);
+  saveAccount(record, storagePolicy);
   try {
     await pool.upsert(linkedConfig);
   } catch (cause) {
     if (previousRecord && replacementTarget) {
-      await saveAccount(previousRecord);
+      saveAccount(previousRecord, storagePolicy);
       await pool.upsert(replacementTarget);
     } else {
-      await deleteAccount(accountProvider, record.id);
+      deleteAccount(accountProvider, record.id, storagePolicy);
     }
     throw new ElizaError("Account credential adoption failed", {
       code: "accounts.credential_adoption_failed",
@@ -1187,9 +1194,10 @@ async function handleOAuthRoutes(
       );
       return true;
     }
+    const storagePolicy = accountStoragePolicy();
     if (
       replaceAccountId &&
-      !(await loadAccount(subscription, replaceAccountId))
+      !loadAccount(subscription, replaceAccountId, storagePolicy)
     ) {
       error(res, "Replacement account credential not found", 404);
       return true;
@@ -1250,6 +1258,7 @@ async function handleOAuthRoutes(
         await ensureSubscriptionCli(subscription);
       }
       handle = await startFlow({
+        storagePolicy,
         label: parsed.data.label,
         accountId,
         ...(replaceAccountId ? { replaceAccountId } : {}),
@@ -1415,6 +1424,8 @@ async function handlePatchAccount(
     error(res, parsed.error.issues[0]?.message ?? "Invalid body", 400);
     return true;
   }
+  assertCanonicalAccountId(accountId);
+  const storagePolicy = accountStoragePolicy();
   const pool = await getPool();
   const existing = pool.get(accountId, providerId);
   if (!existing || existing.providerId !== providerId) {
@@ -1453,9 +1464,9 @@ async function handlePatchAccount(
   if (parsed.data.label !== undefined) {
     const accountProvider = asAccountCredentialProvider(providerId);
     if (accountProvider) {
-      const record = await loadAccount(accountProvider, accountId);
+      const record = loadAccount(accountProvider, accountId, storagePolicy);
       if (record && record.label !== parsed.data.label) {
-        await saveAccount({ ...record, label: parsed.data.label });
+        saveAccount({ ...record, label: parsed.data.label }, storagePolicy);
       }
     }
   }
@@ -1470,12 +1481,14 @@ async function handleDeleteAccount(
   accountId: string,
 ): Promise<boolean> {
   const { res, json } = ctx;
-  const pool = await getPool();
-  await pool.deleteMetadata(providerId, accountId);
+  assertCanonicalAccountId(accountId);
+  const storagePolicy = accountStoragePolicy();
   const accountProvider = asAccountCredentialProvider(providerId);
   if (accountProvider) {
-    await deleteAccount(accountProvider, accountId);
+    deleteAccount(accountProvider, accountId, storagePolicy);
   }
+  const pool = await getPool();
+  await pool.deleteMetadata(providerId, accountId);
   json(res, { deleted: true });
   return true;
 }
@@ -1493,7 +1506,9 @@ async function handleTestAccount(
     error(res, `Test not supported for ${providerId}`, 501);
     return true;
   }
-  const accessToken = await getAccessToken(tokenProvider, accountId);
+  const accessToken = await getAccessToken(tokenProvider, accountId, {
+    storagePolicy: accountStoragePolicy(),
+  });
   if (!accessToken) {
     json(res, { ok: false, error: "No credential available" });
     return true;
@@ -1556,7 +1571,9 @@ async function handleRefreshUsage(
     error(res, "Account not found", 404);
     return true;
   }
-  const accessToken = await getAccessToken(tokenProvider, accountId);
+  const accessToken = await getAccessToken(tokenProvider, accountId, {
+    storagePolicy: accountStoragePolicy(),
+  });
   if (!accessToken) {
     error(res, "No credential available", 400);
     return true;

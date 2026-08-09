@@ -1,7 +1,7 @@
 /**
  * Public homepage download and launch surface for elizaOS apps.
  */
-import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
+import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import {
   ArrowRight,
   BadgeCheck,
@@ -145,10 +145,10 @@ export default function MarketingPage() {
           className="app-brand"
         >
           <img
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupBlack}`}
+            src="/brand/logos/eliza_wordmark_black.svg"
             alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
-            width={420}
-            height={104}
+            width={512}
+            height={216}
             draggable={false}
             className="app-brand-mark"
           />
@@ -445,10 +445,10 @@ export default function MarketingPage() {
       <footer className="app-footer">
         <div className="app-footer-inner">
           <img
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaWhite}`}
+            src="/brand/logos/eliza_wordmark_white.svg"
             alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
-            width={269}
-            height={99}
+            width={512}
+            height={216}
             className="app-footer-logo"
             draggable={false}
           />

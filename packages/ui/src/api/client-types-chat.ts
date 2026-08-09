@@ -350,6 +350,21 @@ export interface ConversationMessage {
   /** True when the SSE stream was interrupted before receiving a "done" event. */
   interrupted?: boolean;
   /**
+   * True while this in-flight assistant turn's visible text is an action-
+   * callback delivery the turn's final reply may replace wholesale (server
+   * marks those stream frames `provisional`). Text rendering treats it like
+   * any streamed text; VOICE OUTPUT MUST NOT SPEAK IT — speech cannot be
+   * retracted, and speaking the callback ack plus the final reply is the
+   * voice "double-speak" defect. Cleared by the terminal reconciliation.
+   */
+  provisional?: boolean;
+  /**
+   * UI-local assistant reply with no durable server row. It remains visible so
+   * the user can read the terminal failure, then retires when the next user turn
+   * begins instead of surviving beneath a successful retry.
+   */
+  assistantEphemeral?: boolean;
+  /**
    * Agent reasoning/thought for this turn, rendered as a collapsed-by-default
    * block separate from `text`. Sourced from the SSE `done` event's `thought`
    * field; absent when the model emitted no reasoning.

@@ -28,6 +28,7 @@ import { experiencePatternEvaluator } from "./experience/evaluators/experience-i
 import { experienceProvider } from "./experience/providers/experienceProvider.ts";
 import { characterAction } from "./personality/actions/character.ts";
 import { personalityAction } from "./personality/actions/personality.ts";
+import { characterGateNoticeProvider } from "./personality/providers/character-gate-notice.ts";
 import { userPersonalityProvider } from "./personality/providers/user-personality.ts";
 
 // Re-export action, provider, and post-message-action modules
@@ -81,6 +82,7 @@ export const advancedProviders = [
 	settingsProvider,
 	experienceProvider,
 	userPersonalityProvider,
+	characterGateNoticeProvider,
 ];
 
 /**

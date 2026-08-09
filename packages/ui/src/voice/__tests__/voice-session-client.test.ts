@@ -27,6 +27,7 @@ interface MintOverrides {
   status?: number;
   malformed?: boolean;
   code?: string;
+  expiresAtMs?: number;
 }
 
 /** A mint fetch that returns the §7.1 shape, tracking each call. */
@@ -52,7 +53,7 @@ function makeMintFetch(overrides: MintOverrides[] = []) {
           sessionId: `sess-${n}`,
           wsUrl: `wss://cloud/api/v1/voice/session/ws?sessionId=sess-${n}`,
           token: o.token ?? `tok-${n}`,
-          expiresAt: Date.now() + 60_000,
+          expiresAt: o.expiresAtMs ?? Date.now() + 60_000,
           uplink: { codecs: o.uplinkCodecs ?? ["pcm16"] },
           downlink: { codecs: o.downlinkCodecs ?? ["pcm16"] },
           iceServers: null,
@@ -352,6 +353,66 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     await client.stop();
   });
 
+  it("mutes the live microphone as PCM silence without ending the session", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const clientWithMic = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "mute",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+    });
+    await clientWithMic.start();
+    await flush();
+    const socket = ws.last();
+    socket.emitOpen();
+    socket.emitControl({
+      t: "ready",
+      sessionId: "sess-mute",
+      traceId: "T-mute",
+    });
+    await flush();
+
+    const input = new Float32Array(1600).fill(0.25);
+    micCtx.scriptNode?.feed(input);
+    let frames = socket.sent.filter(
+      (value): value is ArrayBuffer => value instanceof ArrayBuffer,
+    );
+    expect(frames).toHaveLength(1);
+    expect(
+      Array.from(new Uint8Array(frames[0])).some((byte) => byte !== 0),
+    ).toBe(true);
+
+    clientWithMic.setMicrophoneMuted(true);
+    expect(clientWithMic.microphoneMuted).toBe(true);
+    micCtx.scriptNode?.feed(input);
+    frames = socket.sent.filter(
+      (value): value is ArrayBuffer => value instanceof ArrayBuffer,
+    );
+    expect(frames).toHaveLength(2);
+    expect(
+      Array.from(new Uint8Array(frames[1])).every((byte) => byte === 0),
+    ).toBe(true);
+    expect(clientWithMic.state.phase).toBe("listening");
+
+    clientWithMic.setMicrophoneMuted(false);
+    micCtx.scriptNode?.feed(input);
+    frames = socket.sent.filter(
+      (value): value is ArrayBuffer => value instanceof ArrayBuffer,
+    );
+    expect(frames).toHaveLength(3);
+    expect(
+      Array.from(new Uint8Array(frames[2])).some((byte) => byte !== 0),
+    ).toBe(true);
+    await clientWithMic.stop();
+    expect(clientWithMic.microphoneMuted).toBe(false);
+  });
+
   it("an empty stt_final (noise EOT) loops straight back to listening (#16662)", async () => {
     const mint = makeMintFetch();
     const ws = makeWsFactory();
@@ -523,6 +584,45 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     expect(firstMicContext.closed).toBe(true);
     expect(mint.calls.length).toBe(2);
     expect(ws.sockets).toHaveLength(2);
+    await client.stop();
+  });
+
+  it("publishes connecting before a delayed mic teardown completes", async () => {
+    const micClose = deferred<void>();
+    class DeferredMicCloseContext extends FakeMicAudioContext {
+      override async close(): Promise<void> {
+        await micClose.promise;
+        await super.close();
+      }
+    }
+    const mint = makeMintFetch([{}, {}]);
+    const ws = makeWsFactory();
+    const phases: string[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => `nonce-${mint.calls.length + 1}`,
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new DeferredMicCloseContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onState: (next) => phases.push(next.phase),
+    });
+
+    await client.start();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await vi.waitFor(() => expect(client.state.phase).toBe("listening"));
+
+    first.emitClose(1006, "transport lost");
+    expect(client.state.phase).toBe("connecting");
+    expect(phases.at(-1)).toBe("connecting");
+    expect(ws.sockets).toHaveLength(1);
+
+    micClose.resolve();
+    await vi.waitFor(() => expect(ws.sockets).toHaveLength(2));
     await client.stop();
   });
 
@@ -1039,3 +1139,311 @@ function floatSpeaking(samples: number): Uint8Array {
   for (let i = 0; i < samples; i += 1) view.setInt16(i * 2, 16384, true);
   return out;
 }
+
+describe("transport-loss recovery (stop-class hardening)", () => {
+  function recoveryClient(
+    mint: ReturnType<typeof makeMintFetch>,
+    ws: ReturnType<typeof makeWsFactory>,
+    overrides: Partial<Parameters<typeof createVoiceSessionClient>[0]> = {},
+  ) {
+    const marks: VoiceTraceMark[] = [];
+    const errors: Error[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => `nonce-${mint.calls.length + 1}`,
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onTraceMark: (m) => marks.push(m),
+      onError: (e) => errors.push(e),
+      preLiveMaxAttempts: 1,
+      preLiveRetryDelayMs: 0,
+      reconnectBackoffMs: 1,
+      // Rotation is opt-in per test; keep it inert unless a test arms it.
+      rotationLeadMs: 0,
+      ...overrides,
+    });
+    return { client, marks, errors };
+  }
+
+  async function settleTimers(ms = 25): Promise<void> {
+    await new Promise((r) => setTimeout(r, ms));
+    await flush();
+  }
+
+  it("a transport drop MID-UTTERANCE re-mints and returns to listening", async () => {
+    const mint = makeMintFetch([{ token: "A" }, { token: "B" }]);
+    const ws = makeWsFactory();
+    const { client, errors } = recoveryClient(mint, ws);
+    await client.start();
+    await flush();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await flush();
+    first.emitControl({ t: "speaking_start", traceId: "T1" });
+    expect(client.state.phase).toBe("speaking");
+
+    // The wifi-switch class: the socket dies while the agent is speaking.
+    first.emitClose(1006, "network change");
+    await settleTimers();
+    expect(mint.calls).toHaveLength(2);
+    const second = ws.last();
+    expect(second).not.toBe(first);
+    second.emitOpen();
+    second.emitControl({ t: "ready", sessionId: "s2", traceId: "T2" });
+    await flush();
+    expect(client.state.phase).toBe("listening");
+    expect(errors).toEqual([]);
+    await client.stop();
+  });
+
+  it("a transient re-mint failure consumes the NEXT budgeted attempt instead of dying", async () => {
+    const mint = makeMintFetch([{}, { status: 500 }, { status: 500 }, {}]);
+    const ws = makeWsFactory();
+    const { client, errors } = recoveryClient(mint, ws, { maxReconnects: 3 });
+    await client.start();
+    await flush();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await flush();
+
+    first.emitClose(1006, "network change");
+    // Attempts 2 and 3 wait the (tiny) growing backoff before re-minting.
+    await settleTimers(40);
+    expect(mint.calls).toHaveLength(4);
+    expect(ws.sockets).toHaveLength(2);
+    expect(errors).toEqual([]);
+    await client.stop();
+  });
+
+  it("recovery give-up is transport-shaped, never a mint/consent latch", async () => {
+    const mint = makeMintFetch([{}, { status: 500 }]);
+    const ws = makeWsFactory();
+    const { client, errors } = recoveryClient(mint, ws, { maxReconnects: 1 });
+    await client.start();
+    await flush();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await flush();
+
+    first.emitClose(1006, "outage");
+    await settleTimers(40);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toMatch(/voice session lost/);
+    // The underlying fault is preserved as the cause, not surfaced as the
+    // primary error (a raw mint error would latch realtime off in the hook).
+    expect(errors[0].cause).toBeInstanceOf(VoiceSessionMintError);
+    expect(client.state.phase).toBe("idle");
+    await client.stop();
+  });
+
+  it("a session healthy past the reset window refills the reconnect budget", async () => {
+    const mint = makeMintFetch([{}, {}, {}]);
+    const ws = makeWsFactory();
+    let clock = 0;
+    const { client, errors } = recoveryClient(mint, ws, {
+      maxReconnects: 1,
+      reconnectBudgetResetMs: 1_000,
+      now: () => clock,
+    });
+    await client.start();
+    await flush();
+    ws.last().emitOpen();
+    ws.last().emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await flush();
+
+    clock = 5_000; // healthy for 5s >= 1s reset window
+    ws.last().emitClose(1006, "drop 1");
+    await settleTimers();
+    ws.last().emitOpen();
+    ws.last().emitControl({ t: "ready", sessionId: "s2", traceId: "T2" });
+    await flush();
+
+    clock = 10_000; // healthy again — the budget must have refilled
+    ws.last().emitClose(1006, "drop 2");
+    await settleTimers();
+    expect(mint.calls).toHaveLength(3);
+    expect(ws.sockets).toHaveLength(3);
+    expect(errors).toEqual([]);
+    await client.stop();
+  });
+
+  it("a connect-die loop does NOT refill the budget and stays bounded", async () => {
+    const mint = makeMintFetch([{}, {}, {}]);
+    const ws = makeWsFactory();
+    let clock = 0;
+    const { client, errors } = recoveryClient(mint, ws, {
+      maxReconnects: 1,
+      reconnectBudgetResetMs: 1_000,
+      now: () => clock,
+    });
+    await client.start();
+    await flush();
+    ws.last().emitOpen();
+    ws.last().emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await flush();
+
+    clock = 100; // died within the window — no refill
+    ws.last().emitClose(1006, "drop 1");
+    await settleTimers();
+    ws.last().emitOpen();
+    ws.last().emitControl({ t: "ready", sessionId: "s2", traceId: "T2" });
+    await flush();
+
+    clock = 200; // still inside the window
+    ws.last().emitClose(1006, "drop 2");
+    await settleTimers();
+    expect(errors.some((e) => /voice session lost/.test(e.message))).toBe(true);
+    expect(client.state.phase).toBe("idle");
+    expect(mint.calls).toHaveLength(2);
+  });
+
+  it("quota_exhausted is terminal: no re-mint, a typed stop instead", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const { client, errors } = recoveryClient(mint, ws);
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await flush();
+
+    sock.emitControl({ t: "error", code: "quota_exhausted", retryable: false });
+    await settleTimers();
+    expect(mint.calls).toHaveLength(1);
+    expect(ws.sockets).toHaveLength(1);
+    expect(errors.some((e) => /quota_exhausted/.test(e.message))).toBe(true);
+    expect(client.state.phase).toBe("idle");
+  });
+
+  it("rotates the session before token expiry at a listening boundary without consuming budget", async () => {
+    const mint = makeMintFetch([
+      { token: "A", expiresAtMs: Date.now() + 120 },
+      { token: "B" },
+      { token: "C" },
+    ]);
+    const ws = makeWsFactory();
+    const { client, marks, errors } = recoveryClient(mint, ws, {
+      maxReconnects: 1,
+      rotationLeadMs: 90,
+      rotationRecheckMs: 10,
+      reconnectBudgetResetMs: 1e9,
+    });
+    await client.start();
+    await flush();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await flush();
+
+    // Rotation due ~30ms after mint; the session is idle (listening).
+    await settleTimers(70);
+    expect(marks.some((m) => m.name === "token_rotation")).toBe(true);
+    // Clean bye + normal close on the OLD socket — the server sees a
+    // completed session, not an error.
+    expect(first.sentControls().some((c) => c.t === "bye")).toBe(true);
+    expect(first.closed?.code).toBe(1000);
+    expect(mint.calls).toHaveLength(2);
+    const second = ws.last();
+    expect(second).not.toBe(first);
+    second.emitOpen();
+    expect(second.sentControls()[0]).toMatchObject({ t: "hello", token: "B" });
+    second.emitControl({ t: "ready", sessionId: "s2", traceId: "T2" });
+    await flush();
+    expect(client.state.phase).toBe("listening");
+    expect(errors).toEqual([]);
+
+    // The rotation consumed NO budget: a real drop right after still recovers
+    // within maxReconnects: 1.
+    second.emitClose(1006, "drop after rotation");
+    await settleTimers();
+    expect(mint.calls).toHaveLength(3);
+    expect(errors).toEqual([]);
+    await client.stop();
+  });
+
+  it("defers a due rotation while a turn is in flight, then rotates at listening", async () => {
+    const mint = makeMintFetch([
+      { token: "A", expiresAtMs: Date.now() + 2_000 },
+      { token: "B" },
+    ]);
+    const ws = makeWsFactory();
+    const { client, marks, errors } = recoveryClient(mint, ws, {
+      rotationLeadMs: 1_980,
+      rotationRecheckMs: 20,
+    });
+    await client.start();
+    await flush();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await flush();
+    first.emitControl({ t: "speaking_start", traceId: "T1" });
+    expect(client.state.phase).toBe("speaking");
+
+    // Rotation comes due while SPEAKING: it must defer, not cut the audio.
+    await settleTimers(80);
+    expect(ws.sockets).toHaveLength(1);
+    expect(marks.some((m) => m.name === "token_rotation_deferred")).toBe(true);
+    expect(marks.some((m) => m.name === "token_rotation")).toBe(false);
+
+    // Turn completes → the deferred rotation fires at the idle boundary.
+    first.emitControl({ t: "speaking_end", traceId: "T1" });
+    expect(client.state.phase).toBe("listening");
+    await settleTimers(80);
+    expect(marks.some((m) => m.name === "token_rotation")).toBe(true);
+    expect(mint.calls).toHaveLength(2);
+    expect(errors).toEqual([]);
+    await client.stop();
+  });
+
+  it("a completed utterance racing a server close recovers instead of double-tearing", async () => {
+    const mint = makeMintFetch([{ token: "A" }, { token: "B" }]);
+    const ws = makeWsFactory();
+    const { client, errors } = recoveryClient(mint, ws);
+    await client.start();
+    await flush();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await flush();
+    first.emitControl({ t: "speaking_start", traceId: "T1" });
+    first.emitControl({ t: "speaking_end", traceId: "T1" });
+    // The server severs right on the turn boundary (the 120s expiry class).
+    first.emitClose(1000, "expired");
+    await settleTimers();
+    expect(mint.calls).toHaveLength(2);
+    expect(ws.sockets).toHaveLength(2);
+    expect(errors).toEqual([]);
+    await client.stop();
+  });
+
+  it("a completed utterance racing client stop() stays a clean stop — no re-mint", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const { client, errors } = recoveryClient(mint, ws);
+    await client.start();
+    await flush();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await flush();
+    first.emitControl({ t: "speaking_start", traceId: "T1" });
+    first.emitControl({ t: "speaking_end", traceId: "T1" });
+    const stopping = client.stop();
+    first.emitClose(1000, "client bye");
+    await stopping;
+    await settleTimers();
+    expect(mint.calls).toHaveLength(1);
+    expect(ws.sockets).toHaveLength(1);
+    expect(client.state.phase).toBe("idle");
+    expect(errors).toEqual([]);
+  });
+});

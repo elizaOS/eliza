@@ -12,6 +12,11 @@ import {
   isProviderConfigured,
 } from "@/lib/services/oauth/provider-registry";
 import { handleOAuth2Callback } from "@/lib/services/oauth/providers";
+import {
+  clearOAuthSuccessParams,
+  isOAuthSuccessLandingPath,
+  mintOAuthSuccessProof,
+} from "@/lib/services/oauth/success-proof";
 import { logger } from "@/lib/utils/logger";
 
 function appendParam(url: string, param: string): string {
@@ -117,9 +122,34 @@ export async function handleGenericOAuthCallback(
       );
     }
 
-    // Add success parameters
-    const successParams = `${platform}_connected=true&platform=${platform}&connection_id=${result.connectionId}`;
-    const finalUrl = appendParam(redirectTarget.toString(), successParams);
+    // Replace only reserved OAuth success markers (known provider `*_connected`,
+    // proof/platform/connection_id). Unrelated caller query state such as
+    // `socket_connected` is preserved.
+    clearOAuthSuccessParams(redirectTarget);
+    redirectTarget.searchParams.set(`${platformLower}_connected`, "true");
+    redirectTarget.searchParams.set("platform", platformLower);
+    redirectTarget.searchParams.set("connection_id", result.connectionId);
+    // Proofs are only consumed by `/auth/success`. Do not attach transferable
+    // tokens to dashboard/settings or other callback consumers that strip
+    // markers but historically leave unknown query keys in history/Referer.
+    if (isOAuthSuccessLandingPath(redirectTarget.pathname)) {
+      const proof = await mintOAuthSuccessProof({
+        platform: platformLower,
+        connectionId: result.connectionId,
+        organizationId: result.organizationId,
+        userId: result.userId,
+      });
+      if (proof) {
+        redirectTarget.searchParams.set("proof", proof);
+      } else {
+        // connection_id remains for sessioned ownership; without a mintable
+        // ticket the success page cannot claim Connected from a proof alone.
+        logger.error(
+          `[OAuth ${platform}] success proof secret/ticket unavailable; /auth/success will require a browser session to verify connection_id`,
+        );
+      }
+    }
+    const finalUrl = redirectTarget.toString();
 
     try {
       await Promise.all([

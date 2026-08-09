@@ -66,12 +66,188 @@ describe("resolveInjectedDashboardToken", () => {
 describe("injectApiBaseIntoHtml token embedding", () => {
   const html = "<!doctype html><html><head></head><body></body></html>";
 
-  it("embeds the token into the served HTML when provided", () => {
+  it("embeds the token into boot config and localStorage when provided", () => {
     const out = injectApiBaseIntoHtml(Buffer.from(html), undefined, {
       apiToken: TOKEN,
     }).toString("utf-8");
     expect(out).toContain(TOKEN);
+    expect(out).toContain("apiToken");
+    expect(out).toContain("elizaos.app.boot-config");
+    expect(out).toContain("elizaos:active-server");
+    expect(out).toContain("accessToken");
+  });
+
+  // The native web shims (plugin-native-agent, plugin-native-websiteblocker)
+  // and the Android WebView read this global directly and fall back only to
+  // sessionStorage, so removing it sends their API calls unauthenticated.
+  it("keeps seeding the window token global the native web shims read", () => {
+    const out = injectApiBaseIntoHtml(Buffer.from(html), undefined, {
+      apiToken: TOKEN,
+    }).toString("utf-8");
     expect(out).toContain("__ELIZA_API_TOKEN__");
+  });
+
+  // String matching cannot tell a working seed from a syntactically broken one.
+  // Run the injected script against a stubbed browser global and assert the
+  // state every reader actually consults.
+  it("executes cleanly and populates every token sink a reader consults", () => {
+    const out = injectApiBaseIntoHtml(Buffer.from(html), undefined, {
+      apiToken: TOKEN,
+    }).toString("utf-8");
+    const script = out.slice(
+      out.indexOf("<script>") + "<script>".length,
+      out.indexOf("</script>"),
+    );
+
+    const store = new Map<string, string>();
+    const localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+    };
+    const win: Record<PropertyKey, unknown> = {};
+    new Function("window", "localStorage", script)(win, localStorage);
+
+    const bootKey = Symbol.for("elizaos.app.boot-config");
+    expect(
+      (win.__ELIZAOS_APP_BOOT_CONFIG__ as { apiToken?: string }).apiToken,
+    ).toBe(TOKEN);
+    expect(
+      (win[bootKey] as { current: { apiToken?: string } }).current.apiToken,
+    ).toBe(TOKEN);
+    expect(win.__ELIZA_API_TOKEN__).toBe(TOKEN);
+
+    expect(JSON.parse(store.get("elizaos:active-server") ?? "{}")).toEqual({
+      id: "local:embedded",
+      kind: "local",
+      label: "This device",
+      accessToken: TOKEN,
+    });
+    // Onboarding state is not ours to decide — ELIZA_FORCE_INJECT_TOKEN says
+    // the operator accepts HTML token injection, not that setup finished.
+    expect(store.get("eliza:first-run-complete")).toBeUndefined();
+  });
+
+  // The persisted record can point anywhere the user has previously connected.
+  // Startup restore sends `accessToken` to that record's `apiBase`, so merging
+  // our token into a remote/cloud record would hand this agent's
+  // full-capability token to an unrelated host.
+  function runInjectedScript(stored?: unknown) {
+    const out = injectApiBaseIntoHtml(Buffer.from(html), undefined, {
+      apiToken: TOKEN,
+    }).toString("utf-8");
+    const script = out.slice(
+      out.indexOf("<script>") + "<script>".length,
+      out.indexOf("</script>"),
+    );
+    const store = new Map<string, string>();
+    if (stored !== undefined) {
+      store.set("elizaos:active-server", JSON.stringify(stored));
+    }
+    const localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+    };
+    new Function("window", "localStorage", script)({}, localStorage);
+    return store;
+  }
+
+  it("never attaches the token to a persisted remote server", () => {
+    const remote = {
+      id: "remote:https://box.lan",
+      kind: "remote",
+      label: "box.lan",
+      apiBase: "https://box.lan",
+    };
+    const store = runInjectedScript(remote);
+    expect(JSON.parse(store.get("elizaos:active-server") ?? "{}")).toEqual(
+      remote,
+    );
+  });
+
+  it("never attaches the token to a persisted cloud server", () => {
+    const cloud = {
+      id: "cloud:https://elizacloud.ai",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://elizacloud.ai",
+    };
+    const store = runInjectedScript(cloud);
+    expect(JSON.parse(store.get("elizaos:active-server") ?? "{}")).toEqual(
+      cloud,
+    );
+  });
+
+  it("refreshes the token on this device's own local record", () => {
+    const store = runInjectedScript({
+      id: "local:embedded",
+      kind: "local",
+      label: "This device",
+      accessToken: "stale-token",
+    });
+    expect(JSON.parse(store.get("elizaos:active-server") ?? "{}")).toEqual({
+      id: "local:embedded",
+      kind: "local",
+      label: "This device",
+      accessToken: TOKEN,
+    });
+  });
+
+  it("seeds a local record when a corrupt one is stored", () => {
+    const out = injectApiBaseIntoHtml(Buffer.from(html), undefined, {
+      apiToken: TOKEN,
+    }).toString("utf-8");
+    const script = out.slice(
+      out.indexOf("<script>") + "<script>".length,
+      out.indexOf("</script>"),
+    );
+    const store = new Map<string, string>([
+      ["elizaos:active-server", "{not json"],
+    ]);
+    const localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+    };
+    new Function("window", "localStorage", script)({}, localStorage);
+    expect(JSON.parse(store.get("elizaos:active-server") ?? "{}")).toEqual({
+      id: "local:embedded",
+      kind: "local",
+      label: "This device",
+      accessToken: TOKEN,
+    });
+  });
+
+  // Private-mode Safari throws on localStorage access. The boot-config and
+  // window sinks must still land; only the persistence sink degrades.
+  it("still seeds the in-memory sinks when localStorage throws", () => {
+    const out = injectApiBaseIntoHtml(Buffer.from(html), undefined, {
+      apiToken: TOKEN,
+    }).toString("utf-8");
+    const script = out.slice(
+      out.indexOf("<script>") + "<script>".length,
+      out.indexOf("</script>"),
+    );
+    const hostile = {
+      getItem: () => {
+        throw new Error("SecurityError");
+      },
+      setItem: () => {
+        throw new Error("SecurityError");
+      },
+    };
+    const win: Record<PropertyKey, unknown> = {};
+    expect(() =>
+      new Function("window", "localStorage", script)(win, hostile),
+    ).not.toThrow();
+    expect(
+      (win.__ELIZAOS_APP_BOOT_CONFIG__ as { apiToken?: string }).apiToken,
+    ).toBe(TOKEN);
+    expect(win.__ELIZA_API_TOKEN__).toBe(TOKEN);
   });
 
   it("never leaks a token into the HTML when none is injected", () => {

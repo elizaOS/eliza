@@ -17,10 +17,6 @@ import {
   OrgRateLimitCacheNotReadyError,
 } from "@/lib/middleware/rate-limit";
 import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
   estimateTokens,
   getProviderFromModel,
   normalizeModelName,
@@ -60,15 +56,6 @@ interface EmbeddingsRequest {
 }
 
 const app = new Hono<AppEnv>();
-
-// Embeddings use RELAXED to match chat completions and responses — embeddings
-// are typically issued in batches for RAG ingestion.
-app.use(
-  "*",
-  rateLimit(RateLimitPresets.RELAXED, {
-    bindingName: "CHAT_ROUTE_RATE_LIMITER",
-  }),
-);
 
 app.post("/", async (c) => {
   let settleReservation: OrganizationInferenceAdmission["settle"] | undefined;

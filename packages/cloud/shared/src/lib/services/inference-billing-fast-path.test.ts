@@ -113,12 +113,9 @@ const {
 const { cache } = await import("../cache/client");
 const { CacheKeys } = await import("../cache/keys");
 const { logger } = await import("../utils/logger");
-const {
-  INFERENCE_AUTH_CONTEXT_VERSION,
-  invalidateOrgBalanceHint,
-  readOrgBalanceHint,
-  writeOrgBalanceHint,
-} = await import("./inference-auth-cache");
+const { invalidateOrgBalanceHint, readOrgBalanceHint, writeOrgBalanceHint } = await import(
+  "./inference-auth-cache"
+);
 const { isOrgAdmissionRefused, markOrgAdmissionRefused } = await import(
   "./inference-billing-deferred"
 );
@@ -235,7 +232,7 @@ describe("isOptimisticEligible", () => {
 describe("isPendingInferenceCharge shape guard", () => {
   test("accepts a full record, rejects partial / wrong version", () => {
     const ok = {
-      v: INFERENCE_AUTH_CONTEXT_VERSION,
+      v: 2,
       requestId: "r",
       organizationId: "o",
       userId: "u",
@@ -247,12 +244,10 @@ describe("isPendingInferenceCharge shape guard", () => {
       enqueuedAt: 1,
     };
     expect(isPendingInferenceCharge(ok)).toBe(true);
-    expect(
-      isPendingInferenceCharge({
-        ...ok,
-        v: INFERENCE_AUTH_CONTEXT_VERSION + 1,
-      }),
-    ).toBe(false);
+    // Stale pre-IAC-v2 records must be rejected, not migrated (#17805 bumped
+    // INFERENCE_AUTH_CONTEXT_VERSION 1 -> 2; the sweep drops unversioned strays).
+    expect(isPendingInferenceCharge({ ...ok, v: 1 })).toBe(false);
+    expect(isPendingInferenceCharge({ ...ok, v: 3 })).toBe(false);
     expect(isPendingInferenceCharge({ ...ok, estimatedCostUsd: Number.NaN })).toBe(false);
     expect(isPendingInferenceCharge(null)).toBe(false);
     expect(isPendingInferenceCharge({ requestId: "r" })).toBe(false);

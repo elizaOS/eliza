@@ -165,6 +165,31 @@ function actionMatchesContexts(
   );
 }
 
+// Bounds the available-action listing embedded in the structured
+// child-unavailable failure so a wide page (owner spans nine contexts) cannot
+// flood the planner prompt.
+const MAX_LISTED_PAGE_CHILD_ACTIONS = 40;
+
+/**
+ * Names of the child actions actually registered for a page's context set.
+ * Fed back on a failed dispatch so the planner corrects to a real capability
+ * instead of blind-guessing further child names (observed live: CREATE_HABIT →
+ * CREATE_REMINDER → SET_HABIT, three dead iterations with zero information).
+ */
+function availablePageChildActionNames(
+  runtime: IAgentRuntime,
+  contexts: AgentContext[],
+): string[] {
+  const allowedContexts = new Set(contexts.map(normalizeContext));
+  const names = new Set<string>();
+  for (const action of runtime.actions) {
+    if (isPageDelegate(action)) continue;
+    if (!actionMatchesContexts(action, allowedContexts)) continue;
+    names.add(normalizeActionName(action.name));
+  }
+  return [...names].sort().slice(0, MAX_LISTED_PAGE_CHILD_ACTIONS);
+}
+
 function findChildAction(
   runtime: IAgentRuntime,
   actionName: string,
@@ -342,9 +367,29 @@ export const pageDelegateAction: PageActionGroup = {
       }
     }
     if (!childAction) {
+      // Structured, non-retryable failure: the same page+action combination
+      // cannot succeed later this turn (registration does not change
+      // mid-turn), and listing what IS registered turns the next planner
+      // iteration into a correction instead of another guess.
+      const availableActions = availablePageChildActionNames(
+        runtime,
+        childContexts,
+      );
       return {
         success: false,
-        text: `${requestedAction} is not available on the ${page} page.`,
+        text:
+          `${requestedAction} is not available on the ${page} page.` +
+          (availableActions.length > 0
+            ? ` Actions available on the ${page} page: ${availableActions.join(", ")}.`
+            : ` No child actions are registered for the ${page} page in this deployment.`),
+        data: {
+          actionName: "PAGE_DELEGATE",
+          code: "PAGE_CHILD_UNAVAILABLE",
+          page,
+          requestedAction,
+          availableActions,
+          retryable: false,
+        },
       };
     }
 
@@ -352,6 +397,13 @@ export const pageDelegateAction: PageActionGroup = {
       return {
         success: false,
         text: `${childAction.name} is not available for this request.`,
+        data: {
+          actionName: "PAGE_DELEGATE",
+          code: "PAGE_CHILD_VALIDATE_REJECTED",
+          page,
+          requestedAction: childAction.name,
+          retryable: false,
+        },
       };
     }
     if (aliasedDiscriminator) {
@@ -403,7 +455,7 @@ export const pageDelegateAction: PageActionGroup = {
       description:
         "Parameters forwarded to the selected child action. Use the child action's parameter names.",
       required: false,
-      schema: { type: "object" as const },
+      schema: { type: "object" as const, additionalProperties: true },
     },
   ],
   examples: [

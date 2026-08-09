@@ -10,7 +10,9 @@
     "since #14459): otherwise it resolves to the package's `dist/index.js`, which does",
     "not exist on the CI --ignore-scripts install, and the API server crashes at boot.",
     "Core subpath exports need their own mapping because the exact root path does not",
-    "cover imports such as @elizaos/core/atomic-json."
+    "cover imports such as @elizaos/core/atomic-json. Core and auth also reach logger",
+    "and vault source during this clean-install lane, so neither may fall through to",
+    "an absent dist build."
   ],
   "compilerOptions": {
     "baseUrl": "../../../..",
@@ -22,6 +24,7 @@
       "@elizaos/core/atomic-json": ["packages/core/src/utils/atomic-json.ts"],
       "@elizaos/cloud-routing": ["packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["packages/cloud/routing/src/*"],
+      "@elizaos/logger": ["packages/logger/src/index.ts"],
       "@elizaos/shared": ["packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["packages/shared/src/*"],
       "@elizaos/vault": ["packages/vault/src/index.ts"],

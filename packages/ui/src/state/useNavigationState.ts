@@ -18,6 +18,7 @@ import { pathForTab, shouldUseHashNavigation, type Tab } from "../navigation";
 import { shellHistory } from "../surface-realm-channel";
 import {
   loadLastNativeTab,
+  type SetTabOptions,
   type ShellView,
   saveLastNativeTab,
   saveUiShellMode,
@@ -72,17 +73,23 @@ export function useNavigationState(deps: NavigationStateDeps) {
   // ── setTab (with URL sync) ──────────────────────────────────────────
 
   const setTab = useCallback(
-    (newTab: Tab) => {
+    (newTab: Tab, options: SetTabOptions = {}) => {
       setTabRaw(newTab);
       if (newTab === "apps") {
         setAppsSubTab(hasActiveGameRun ? "games" : "browse");
       }
+      if (options.history === "preserve") return;
       const path = pathForTab(newTab);
       try {
         if (shouldUseHashNavigation()) {
           window.location.hash = path;
         } else {
           shellHistory.pushState(null, "", pathWithCurrentShellMode(path));
+          // pushState does not emit a browser event. Publish the committed path
+          // so route-derived layout/background policy advances in the same
+          // transaction as the tab instead of rendering the previous view's
+          // shell around the new view.
+          window.dispatchEvent(new PopStateEvent("popstate"));
         }
       } catch {
         // non-fatal: browser history update fails in restricted environments

@@ -29,7 +29,7 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
 	APPEARANCE_APPLY_EVENT,
 	type AppearanceApplyPayload,
@@ -50,6 +50,7 @@ import {
 	type SETTINGS_NON_CATALOG_SECTION_META,
 	SETTINGS_SECTION_META,
 } from "@elizaos/ui/components/settings/settings-section-meta";
+import { getAppControlApiBase } from "../loopback-api.js";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
@@ -1742,8 +1743,7 @@ export function humanizeSettingsRouteFailure(
 async function defaultRouteFetch(
 	request: SettingsRouteRequest,
 ): Promise<SettingsRouteOutcome> {
-	const port = resolveServerOnlyPort(process.env);
-	const response = await fetch(`http://127.0.0.1:${port}${request.path}`, {
+	const response = await fetch(`${getAppControlApiBase()}${request.path}`, {
 		method: request.method,
 		// Every settings route crosses the same token-protected local API
 		// boundary (/api/config, /api/permissions, /api/wallet, /api/backups,

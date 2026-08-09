@@ -23,6 +23,7 @@ import {
   ChannelType,
   logger as coreLogger,
   ElizaError,
+  looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
   unwrapUserMessageText,
@@ -221,6 +222,44 @@ function readOp(params: Record<string, unknown>): TaskOp | null {
 function requestText(message: Memory): string {
   if (typeof message.content === "string") return message.content;
   return unwrapUserMessageText(message);
+}
+
+/**
+ * Pre-spawn intent gate — fails fast BEFORE any ACP session exists. A coding
+ * sub-agent must only be spawned on an explicit instruction. Refuses:
+ *
+ * 1. An empty/whitespace task prompt: a session spawned with nothing to do
+ *    dead-ends its planner and surfaces an opaque "runtime step failed" to the
+ *    user (observed live: spawn args with body/instruction/input all empty).
+ * 2. A task derived ONLY from a shared link (bare URL, optionally with the
+ *    connector's embed preview text, and no explicit work imperative in the
+ *    user's own words): a shared link is content to read and react to, not a
+ *    work order. The refusal text points the planner at the web-read light
+ *    path instead.
+ *
+ * Sub-agent re-spawn turns (router-synthesized inbounds) skip the link check —
+ * their root turn was already gated and their task comes from stored metadata.
+ * Refusal text is planner-facing; the model phrases the user-visible reply.
+ */
+function guardSpawnTaskIntent(args: {
+  task: string;
+  originatingText: string;
+  isSubAgentRespawn: boolean;
+}): ActionResult | undefined {
+  if (!args.task.trim()) {
+    return errorResult(
+      "EMPTY_TASK_PROMPT",
+      "Refused to spawn a coding sub-agent: the task prompt is empty, so there is nothing to delegate. No session was created. Ask the user what they actually want built, fixed, or investigated before delegating.",
+    );
+  }
+  if (args.isSubAgentRespawn) return undefined;
+  if (looksLikeBareLinkShare(args.originatingText)) {
+    return errorResult(
+      "LINK_SHARE_NOT_A_TASK",
+      "Refused to spawn a coding sub-agent: the user's message is a shared link with no explicit build/fix/code instruction — the candidate task text was derived from the link's embed preview, not from the user. No session was created. Instead, read the page (WEB_FETCH) and respond about its actual content; if it is not fetchable (private or auth-walled), react using the embed title/description already present in the message and ask whether the user wants anything specific done with it.",
+    );
+  }
+  return undefined;
 }
 
 function taskParts(
@@ -934,14 +973,17 @@ async function runCreateLegacy(
           : {}),
         ...(taskRoomId ? { taskRoomId } : {}),
         acceptanceCriteria,
-        ...(objectValue(extraMetadata.lane)
-          ? {
-              metadata: {
-                waveId: extraMetadata.waveId,
-                lane: extraMetadata.lane,
-              },
-            }
-          : {}),
+        metadata: {
+          // Persist the originating connector source on the durable record so
+          // proactive surfaces (TaskSupervisorService digest) can reach the
+          // origin room through a registered send handler.
+          ...(typeof content.source === "string" && content.source
+            ? { source: content.source }
+            : {}),
+          ...(objectValue(extraMetadata.lane)
+            ? { waveId: extraMetadata.waveId, lane: extraMetadata.lane }
+            : {}),
+        },
       });
       threadId = detail?.id ?? null;
       if (useSmithers && !threadId) {
@@ -1046,6 +1088,14 @@ async function runCreateLegacy(
           userId: message.entityId,
           label,
           source: content.source,
+          // Session-metadata copy of the task (NOT the spawn-option
+          // `initialTask`, which would double-deliver the prompt — this path
+          // delivers via sendPrompt). The router's recovery valves
+          // (retryIncompleteBuild / respawnStateLost) read `meta.initialTask`
+          // to reconstruct the work; without this stamp both silently return
+          // false on every TASKS:create session and a failed verification
+          // posts a failure instead of re-dispatching.
+          initialTask: taskWithRouteHints,
           workdirRouteId: route?.id,
           workdirRoute: route,
           keepAliveAfterComplete,
@@ -1258,6 +1308,25 @@ async function runCreate(
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
+  // Fail fast on empty/derived-only tasks BEFORE any planner or ACP work; this
+  // single gate covers the lane-planner path and every runCreateLegacy fallback.
+  // A missing ACP service still wins (SERVICE_UNAVAILABLE) — capability absence
+  // outranks input validation, and the legacy path owns that refusal.
+  if (getAcpService(runtime)) {
+    const guardFallbackText = requestText(message);
+    const createGuard = guardSpawnTaskIntent({
+      task:
+        taskParts(params, content, guardFallbackText)
+          .find((part) => part.trim())
+          ?.trim() ?? "",
+      originatingText:
+        (await resolveOriginatingRequestText(runtime, message, state)) ||
+        guardFallbackText,
+      isSubAgentRespawn: content.source === MESSAGE_SOURCE_SUB_AGENT,
+    });
+    if (createGuard) return createGuard;
+  }
+
   if (!shouldUseLanePlanner(runtime)) {
     return runCreateLegacy(runtime, message, state, params, content, callback);
   }
@@ -1674,6 +1743,14 @@ async function runSpawnAgent(
       message,
       state,
     );
+    // Fail fast on empty/derived-only tasks BEFORE resolving backends or
+    // creating any ACP session (see guardSpawnTaskIntent).
+    const spawnGuard = guardSpawnTaskIntent({
+      task,
+      originatingText: routingRequest || text,
+      isSubAgentRespawn: content.source === MESSAGE_SOURCE_SUB_AGENT,
+    });
+    if (spawnGuard) return spawnGuard;
     // Backend routing (see resolveCodingBackend): an explicit user ask wins,
     // then declared `character.routing.coding` policy, then the operator pin
     // (ELIZA_ACP_DEFAULT_AGENT), then the planner's heuristic `agentType` guess.
@@ -1954,15 +2031,25 @@ async function runSpawnAgent(
   } catch (error) {
     // error-policy:J1 spawn action boundary → structured failure to the
     // planner; no visible callback (see runSend's catch) — the evaluator
-    // reports the failure in voice instead of a raw canned bubble.
+    // reports the failure in voice instead of a raw canned bubble. The
+    // planner echoes `text` toward chat, so producers must keep their
+    // messages human (ElizaError with technical fields in `context`);
+    // that context is preserved here in the action's error data.
     const messageTextValue = failureMessage(error);
-    const code = isAuthError(error) ? "INVALID_CREDENTIALS" : messageTextValue;
+    const code = isAuthError(error)
+      ? "INVALID_CREDENTIALS"
+      : error instanceof ElizaError
+        ? error.code
+        : messageTextValue;
     return {
       success: false,
       error: code,
       text: isAuthError(error)
         ? "Task-agent credentials are invalid; tell the user the coding agent could not authenticate."
         : `Failed to spawn agent: ${messageTextValue}`,
+      ...(error instanceof ElizaError && error.context
+        ? { data: { errorCode: error.code, errorContext: error.context } }
+        : {}),
       continueChain: false,
     };
   }
@@ -2602,6 +2689,41 @@ function sessionMatchesTaskStatus(
   return status === taskStatus;
 }
 
+/**
+ * Best-effort probe for the empty-history answer: "I found no task threads"
+ * while a build is visibly running mid-turn reads as a contradiction in chat
+ * (observed live on "what did you just change?" during a build). Prefers the
+ * durable candidates the filters excluded, then falls back to any non-terminal
+ * ACP session. Returns a chat-safe display name (title/label in quotes — never
+ * a raw uuid) plus structural ids for the action data.
+ */
+async function findInFlightWork(
+  runtime: IAgentRuntime,
+  candidates: readonly TaskThreadDto[],
+): Promise<{ name: string; taskId?: string; sessionId?: string } | undefined> {
+  const running = candidates.find(
+    (task) =>
+      !task.paused &&
+      task.activeSessionCount > 0 &&
+      (task.status === "active" || task.status === "open"),
+  );
+  if (running) return { name: `"${running.title}"`, taskId: running.id };
+  const service = getAcpService(runtime);
+  if (!service) return undefined;
+  const active = (await listSessionsWithin(service)).find(
+    (session) => !TERMINAL_SESSION_STATUSES.has(session.status.toLowerCase()),
+  );
+  if (!active) return undefined;
+  const label =
+    typeof active.metadata?.label === "string"
+      ? active.metadata.label
+      : active.name;
+  return {
+    name: label ? `"${label}"` : "a coding task",
+    sessionId: active.id,
+  };
+}
+
 function failureResult(
   actionName: string,
   error: string,
@@ -2687,22 +2809,28 @@ async function runHistory(
         statuses.length > 0 ? `statuses ${statuses.join(", ")}` : undefined,
         search ? `search "${search}"` : undefined,
         projectId ? `project ${projectId}` : undefined,
-        sessionId ? `session ${sessionId}` : undefined,
+        // The raw session uuid is planner/log detail (kept in data.filters);
+        // user-bound text refers to it in plain words.
+        sessionId ? "that session" : undefined,
         includeArchived ? "including archived" : undefined,
       ].filter((part): part is string => Boolean(part));
       const filterSuffix =
         filterParts.length > 0 ? ` matching ${filterParts.join("; ")}` : "";
 
       let responseText = "";
+      let inFlight: Awaited<ReturnType<typeof findInFlightWork>> | undefined;
       if (metric === "count") {
         responseText = `I found ${count} orchestrator task${count === 1 ? "" : "s"}${filterSuffix}.`;
       } else if (tasks.length === 0) {
-        responseText = `I did not find any orchestrator task threads${filterSuffix}.`;
+        inFlight = await findInFlightWork(runtime, taskCandidates);
+        responseText = inFlight
+          ? `Nothing has finished yet — I'm still working on ${inFlight.name}.`
+          : `I did not find any orchestrator task threads${filterSuffix}.`;
       } else if (metric === "detail") {
         const task = tasks[0];
         responseText = [
           sessionId
-            ? `The orchestrator task containing session ${sessionId} is "${task.title}" [${task.status}].`
+            ? `The orchestrator task for that session is "${task.title}" [${task.status}].`
             : `The most recent orchestrator task is "${task.title}" [${task.status}].`,
           `Task id: ${task.id}`,
           `Latest session: ${task.latestSessionLabel ?? task.latestSessionId ?? "none"}`,
@@ -2729,6 +2857,16 @@ async function runHistory(
           actionName: "TASKS:history",
           count,
           taskIds: tasks.map((task) => task.id),
+          ...(inFlight
+            ? {
+                inFlight: {
+                  ...(inFlight.taskId ? { taskId: inFlight.taskId } : {}),
+                  ...(inFlight.sessionId
+                    ? { sessionId: inFlight.sessionId }
+                    : {}),
+                },
+              }
+            : {}),
           filters: {
             metric,
             ...(window ? { window } : {}),

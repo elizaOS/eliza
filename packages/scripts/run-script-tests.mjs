@@ -226,8 +226,12 @@ function parseJunitDocument(xml) {
   return root;
 }
 
+function normalizeRepositoryIdentity(value) {
+  return typeof value === "string" ? value.replaceAll("\\", "/") : value;
+}
+
 function reconcileTestcase(testcase, suiteFile) {
-  const file = testcase.attributes.file;
+  const file = normalizeRepositoryIdentity(testcase.attributes.file);
   if (file !== suiteFile) {
     throw new Error(
       `JUnit testcase file ${file ?? "<missing>"} does not match suite file ${suiteFile}`,
@@ -253,7 +257,7 @@ function reconcileTestcase(testcase, suiteFile) {
 }
 
 function reconcileSuite(suite, inheritedFile, identities) {
-  const file = suite.attributes.file;
+  const file = normalizeRepositoryIdentity(suite.attributes.file);
   if (typeof file !== "string" || file.length === 0) {
     throw new Error("JUnit testsuite has no file identity");
   }
@@ -320,7 +324,7 @@ export function validateJunitEvidence(
   const skipsByFile = new Map();
   const actual = { tests: 0, assertions: 0, failures: 0, skipped: 0 };
   for (const suite of directSuites) {
-    const file = suite.attributes.file;
+    const file = normalizeRepositoryIdentity(suite.attributes.file);
     if (suiteFiles.has(file)) {
       throw new Error(`JUnit contains duplicate top-level suite for ${file}`);
     }
@@ -346,7 +350,9 @@ export function validateJunitEvidence(
   if (tests === 0) {
     throw new Error("JUnit artifact contains zero tests");
   }
-  const expectedFiles = new Set(inventoryFiles);
+  const expectedFiles = new Set(
+    inventoryFiles.map(normalizeRepositoryIdentity),
+  );
   const missingFiles = [...expectedFiles].filter(
     (file) => !suiteFiles.has(file),
   );

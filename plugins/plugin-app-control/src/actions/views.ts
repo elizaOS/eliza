@@ -25,6 +25,7 @@ import {
 	AGENT_SURFACE_CAPABILITY_IDS,
 	STANDARD_CAPABILITIES,
 } from "@elizaos/shared";
+import { getAppControlApiBase } from "../loopback-api.js";
 import {
 	describeTargetReference,
 	normalizeActionOptions,
@@ -36,6 +37,7 @@ import { matchViewCommand } from "./view-command-matcher.js";
 import {
 	createViewsClient,
 	parseViewInteractionResponse,
+	readViewInteractionEffectContract,
 	readViewInteractionReceipt,
 	type ViewSummary,
 	type ViewsClient,
@@ -136,6 +138,14 @@ const DESKTOP_ONLY_VIEW_MODES = new Set<ViewsMode>([
 // app-control must not import orchestrator internals, so this constant is kept
 // local and points at the orchestrator's owning constant.
 const SUB_AGENT_RELAY_SOURCE = "sub_agent";
+const SAFE_VIEW_CLIENT_ID = /^[A-Za-z0-9._-]{1,128}$/;
+
+function readViewInteractionClientId(message: Memory): string | undefined {
+	const clientId = readContentMetadata(message).viewClientId;
+	return typeof clientId === "string" && SAFE_VIEW_CLIENT_ID.test(clientId)
+		? clientId
+		: undefined;
+}
 
 function lowerSource(source: unknown): string {
 	return typeof source === "string" ? source.toLowerCase() : "";
@@ -814,8 +824,9 @@ function operationFamilyForTokens(tokens: Set<string>): OperationFamily | null {
 function operationFamilyForCapability(
 	capability: ViewCapability,
 ): OperationFamily | null {
-	return operationFamilyForTokens(
-		tokensFor(`${capability.id} ${capability.description ?? ""}`),
+	return (
+		operationFamilyForTokens(tokensFor(capability.id)) ??
+		operationFamilyForTokens(tokensFor(capability.description))
 	);
 }
 
@@ -918,6 +929,18 @@ function isViewNavigationRequest(
 		readStringOption(options, "action") ?? readStringOption(options, "mode");
 	const source = `${text} ${explicit ?? ""}`;
 	if (mode === "open") return true;
+	const normalizedExplicit = explicit?.trim().toLowerCase().replace(/-/g, "_");
+	const explicitTarget = readViewTargetOption(options);
+	// A schema-valid planner decision owns the operation boundary. Text scoring
+	// may infer a capability only when the planner did not explicitly choose
+	// navigation to a named target; target validity belongs to the navigation
+	// boundary so stale ids fail honestly instead of becoming mutations.
+	if (
+		(normalizedExplicit === "show" || normalizedExplicit === "open") &&
+		explicitTarget
+	) {
+		return true;
+	}
 	if (
 		/\b(open|launch|switch to|go to|navigate to|pull up|bring up)\b/i.test(
 			source,
@@ -930,7 +953,6 @@ function isViewNavigationRequest(
 	// capabilities), so a request that targets it can never be a foreground-view
 	// capability read (#17299).
 	if (matchViewCommand(viewRequestText(text)) === "chat") return true;
-	const explicitTarget = readViewTargetOption(options);
 	if (explicitTarget && matchViewCommand(explicitTarget) === "chat") {
 		return true;
 	}
@@ -1007,6 +1029,10 @@ function resolveViewCapability({
 		);
 		if (currentExact) return currentExact;
 		if (exactCandidates.length === 1) return exactCandidates[0];
+		// An explicit capability without an explicit view may resolve only by its
+		// declared id. Letting fuzzy scoring reinterpret an unknown capability on
+		// the foreground view can turn a Calendar request into a Notes mutation.
+		if (!requestedView) return null;
 	}
 
 	const sourceText = [actionToken ?? text, explicitCapability]
@@ -1061,6 +1087,41 @@ function resolveViewCapability({
 	}
 
 	return best?.candidate ?? null;
+}
+
+function correctCapabilityOperationFamily(
+	view: ViewSummary,
+	capability: ViewCapability,
+	text: string,
+): ViewCapability {
+	const requestTokens = tokensFor(viewRequestText(text));
+	const requestedFamily = operationFamilyForTokens(requestTokens);
+	const selectedFamily = operationFamilyForCapability(capability);
+	if (
+		!requestedFamily ||
+		!selectedFamily ||
+		requestedFamily === selectedFamily
+	) {
+		return capability;
+	}
+
+	const familyMatches = (view.capabilities ?? []).filter(
+		(candidate) => operationFamilyForCapability(candidate) === requestedFamily,
+	);
+	if (familyMatches.length === 1 && familyMatches[0]) return familyMatches[0];
+
+	const ranked = familyMatches
+		.map((candidate) => ({
+			candidate,
+			score: countIntersection(requestTokens, capabilityTokens(candidate)),
+		}))
+		.sort((left, right) => right.score - left.score);
+	// Multiple semantic siblings are corrected only when the user's nouns make
+	// one a unique best match; a tie preserves the planner decision rather than
+	// guessing between collection and single-record reads.
+	return ranked[0] && ranked[0].score > (ranked[1]?.score ?? -1)
+		? ranked[0].candidate
+		: capability;
 }
 
 type CapabilityParamsResolution =
@@ -1152,6 +1213,27 @@ function readCapabilityParams(
 	if (nested !== undefined && !isCapabilityParamsRecord(nested)) {
 		return { ok: false, error: 'parameter "params" must be an object' };
 	}
+	const normalizedNested = isCapabilityParamsRecord(nested)
+		? { ...nested }
+		: undefined;
+	if (capabilityParamKeys.has("content") && normalizedNested) {
+		const legacyBody = normalizedNested.body;
+		if (normalizedNested.content === undefined) {
+			if (typeof legacyBody === "string") {
+				normalizedNested.content = legacyBody;
+			} else if (
+				isCapabilityParamsRecord(legacyBody) &&
+				typeof legacyBody.content === "string"
+			) {
+				normalizedNested.content = legacyBody.content;
+			}
+		}
+		// A one-field capability owns its own deterministic storage label. Old
+		// planners may still emit a title/body pair, but forwarding either key
+		// would violate the declared contract and reintroduce model-authored labels.
+		if (!capabilityParamKeys.has("body")) delete normalizedNested.body;
+		if (!capabilityParamKeys.has("title")) delete normalizedNested.title;
+	}
 
 	for (const [key, value] of Object.entries(options ?? {})) {
 		if (key === "params") continue;
@@ -1165,14 +1247,29 @@ function readCapabilityParams(
 			params[key] = value;
 			continue;
 		}
+		if (
+			key === "body" &&
+			capabilityParamKeys.has("content") &&
+			params.content === undefined
+		) {
+			if (typeof value === "string") {
+				params.content = value;
+			} else if (
+				isCapabilityParamsRecord(value) &&
+				typeof value.content === "string"
+			) {
+				params.content = value.content;
+			}
+			continue;
+		}
 		if (!capability && !CAPABILITY_PARAM_RESERVED_KEYS.has(key)) {
 			params[key] = value;
 		}
 	}
 
-	if (isCapabilityParamsRecord(nested)) {
+	if (normalizedNested) {
 		if (capability) {
-			const unknownKey = Object.keys(nested).find(
+			const unknownKey = Object.keys(normalizedNested).find(
 				(key) => !capabilityParamKeys.has(key),
 			);
 			if (unknownKey) {
@@ -1182,7 +1279,7 @@ function readCapabilityParams(
 				};
 			}
 		}
-		Object.assign(params, nested);
+		Object.assign(params, normalizedNested);
 	}
 
 	const intent = readStringOption(options, "intent");
@@ -1203,6 +1300,7 @@ function readCapabilityParams(
 			),
 		);
 	}
+	normalizeDateReadAlias(params, capability, messageText);
 
 	for (const key of Object.keys(params)) {
 		if (params[key] === undefined) {
@@ -1234,6 +1332,31 @@ function readCapabilityParams(
 	};
 }
 
+function normalizeDateReadAlias(
+	params: Record<string, unknown>,
+	capability: ViewCapability | null | undefined,
+	messageText?: string,
+): void {
+	if (
+		!capability ||
+		operationFamilyForCapability(capability) !== "read" ||
+		!("date" in (capability.params ?? {})) ||
+		typeof params.title !== "string" ||
+		params.date !== undefined
+	) {
+		return;
+	}
+	const title = params.title.trim();
+	if (
+		extractIsoDate(title) !== title ||
+		/\b(?:titled?|named)\b/i.test(viewRequestText(messageText ?? ""))
+	) {
+		return;
+	}
+	params.date = title;
+	delete params.title;
+}
+
 function deriveParamsFromIntent(
 	intent: string,
 	capability: ViewCapability | null | undefined,
@@ -1257,6 +1380,13 @@ function deriveParamsFromIntent(
 	const body = extractIntentTextAfter(trimmed, ["body", "content"]);
 	if (capabilityParamKeys.has("body") && existing.body === undefined && body) {
 		derived.body = body;
+	}
+	if (
+		capabilityParamKeys.has("content") &&
+		existing.content === undefined &&
+		body
+	) {
+		derived.content = body;
 	}
 	const notes = extractIntentTextAfter(trimmed, ["notes", "note"]);
 	if (
@@ -1303,6 +1433,19 @@ function extractIntentTextAfter(
 	return null;
 }
 
+function extractReferencedTitle(intent: string): string | null {
+	const quoted = /\b(?:titled?|named)\s+["']([^"']{1,240})["']/i.exec(
+		intent,
+	)?.[1];
+	if (quoted?.trim()) return quoted.trim();
+
+	const unquoted =
+		/\b(?:titled?|named)\s+(.+?)(?=\s*(?:[.,;]|\b(?:and|then|with|on|at|rename|change|update|move|delete|remove)\b|$))/i.exec(
+			intent,
+		)?.[1];
+	return unquoted?.trim() || null;
+}
+
 function deriveParamsFromMessageText(
 	text: string,
 	capability: ViewCapability,
@@ -1310,7 +1453,7 @@ function deriveParamsFromMessageText(
 	existing: Record<string, unknown>,
 ): Record<string, unknown> {
 	const derived: Record<string, unknown> = {};
-	const trimmed = text.trim();
+	const trimmed = viewRequestText(text).trim();
 	if (!trimmed) return derived;
 
 	const family = operationFamilyForCapability(capability);
@@ -1325,10 +1468,40 @@ function deriveParamsFromMessageText(
 		if (capabilityParamKeys.has("body") && !existing.body && body) {
 			derived.body = body;
 		}
+		if (capabilityParamKeys.has("content") && !existing.content && body) {
+			derived.content = body;
+		}
 		const title = extractIntentTitle(trimmed);
 		if (capabilityParamKeys.has("title") && !existing.title && title) {
 			derived.title = title;
 		}
+	}
+
+	if (
+		family === "read" &&
+		capabilityParamKeys.has("title") &&
+		existing.title === undefined
+	) {
+		const title = extractReferencedTitle(trimmed);
+		if (title) derived.title = title;
+	}
+
+	if (
+		family === "update" &&
+		capabilityParamKeys.has("oldTitle") &&
+		existing.oldTitle === undefined
+	) {
+		const oldTitle = extractReferencedTitle(trimmed);
+		if (oldTitle) derived.oldTitle = oldTitle;
+	}
+
+	if (
+		family === "select" &&
+		capabilityParamKeys.has("date") &&
+		existing.date === undefined
+	) {
+		const date = extractIsoDate(trimmed);
+		if (date) derived.date = date;
 	}
 
 	if (family === "delete") {
@@ -1351,14 +1524,26 @@ function deriveParamsFromMessageText(
 }
 
 function extractDeleteTargetText(text: string): string | null {
-	const match =
-		/\b(?:delete|remove|drop|destroy)\s+(?:the\s+)?(.+?)(?:\s+(?:note|notes|event|events|record|records|item|items))?\s*$/i.exec(
+	const quoted =
+		/\b(?:delete|remove|drop|destroy)\s+(?:the\s+)?(?:(?:sticky\s+note|calendar\s+event|note|notes|event|events|record|records|item|items)\s+)?["“'‘]([^"”'’]{1,240})["”'’]/i.exec(
 			text,
-		);
+		)?.[1];
+	if (quoted?.trim()) return quoted.trim();
+
+	const match = /\b(?:delete|remove|drop|destroy)\s+(?:the\s+)?(.+?)\s*$/i.exec(
+		text,
+	);
 	const target = match?.[1]?.trim();
 	if (!target) return null;
 	const cleaned = target
-		.replace(/\b(?:sticky|calendar)\b/gi, " ")
+		.replace(
+			/^(?:(?:sticky|calendar)\s+)?(?:note|notes|event|events|record|records|item|items)\b\s*/i,
+			"",
+		)
+		.replace(
+			/\s+\b(?:note|notes|event|events|record|records|item|items)\b\s*$/i,
+			"",
+		)
 		.replace(/\s+/g, " ")
 		.trim();
 	return cleaned.length > 0 ? cleaned : null;
@@ -2055,6 +2240,19 @@ function withViewsUserFacingText(result: ActionResult): ActionResult {
 	};
 }
 
+const VIEWS_ROUTING_HINT = [
+	"UI view/window/panel/app navigation and layout -> VIEWS.",
+	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
+	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and capabilities that the selected view actually declares.",
+	"Opening the Calendar surface uses VIEWS action=show; reading or changing calendar events uses the CALENDAR action because the first-party Calendar view is read-only.",
+	"Sticky Notes operations use the registered Notes capabilities. Create and update pass the complete user-authored note in the single content field; never invent a separate title or body. Do not route Notes to documents or Knowledge.",
+	"Phone flashlight requests use action=interact view=device-control capability=set-flashlight with params={enabled:true|false}; never claim success before the capability returns success.",
+	"For declared domain capabilities, use action=interact with an explicit view and capability. Semantic record capabilities are required; agent-fill and agent-click are only for an explicitly requested form-control interaction. Pass parameters in params rather than dotted keys.",
+	"Close/hide means VIEWS action=close, never delete/remove.",
+	"Listing, launching, or restarting installed applications uses APP; only opening the apps/views page uses VIEWS.",
+	"Changing a settings or permission value uses SETTINGS; VIEWS only opens the Settings surface.",
+].join(" ");
+
 export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 	const clientFactory = () => deps.client ?? createViewsClient();
 	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
@@ -2094,15 +2292,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"ARRANGE_VIEWS",
 			"USE_VIEW_CAPABILITY",
 			"CALL_VIEW_CAPABILITY",
+			"SET_FLASHLIGHT",
+			"TURN_ON_FLASHLIGHT",
+			"TURN_OFF_FLASHLIGHT",
 			"CREATE_NOTE",
 			"CREATE_STICKY_NOTE",
 			"SHOW_NOTES",
 			"GET_NOTES",
 			"LIST_NOTES",
-			"CREATE_CALENDAR_EVENT",
-			"ADD_CALENDAR_EVENT",
-			"GET_CALENDAR_EVENTS",
-			"LIST_CALENDAR_EVENTS",
 			"GO_EMAIL",
 			"GO_INBOX",
 			"OPEN_EMAIL",
@@ -2210,15 +2407,21 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"coding",
 			"app-builder",
 			"task-coordinator",
+			"device",
+			"hardware",
+			"flashlight",
+			"torch",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open a specific view, close/hide a view without deleting its plugin, search views by name or capability, show the view manager, broadcast events to views, invoke registered capabilities on plugin views for view-backed content such as notes, calendar events, dashboards, and records, pin a view as a desktop tab, open a view in a separate window, request split/tiled layouts across multiple views, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), regenerate a view's icon/hero image, or delete/uninstall a view plugin.",
+			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke capabilities that a view declares, including Notes and native device controls. Calendar event reads and writes belong to the CALENDAR action; VIEWS only opens the Calendar surface.",
 		descriptionCompressed:
-			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|icon|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins; regenerate a view icon/hero",
-		routingHint:
-			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'what apps are installed/running'), launching/restarting an app, or building a new app is the APP action, not VIEWS (the user's own Eliza Cloud apps/sites are LIST_CLOUD_APPS); only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
+			"navigate/close/arrange UI views; invoke declared Notes/device capabilities; Calendar records use CALENDAR",
+		routingHint: VIEWS_ROUTING_HINT,
 		allowAdditionalParameters: true,
 		toolSchemaStrict: false,
+		// Every mode reports its authoritative outcome through its handler
+		// callback, after the shell or capability boundary has actually settled.
+		suppressEarlyReply: true,
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -2338,56 +2541,84 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "capability",
 				description:
-					"Capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'create-calendar-event', 'get-calendar-state', 'click-button', 'get-state', 'refresh', or 'focus-element'.",
+					"Declared capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'set-flashlight', 'click-button', 'get-state', 'refresh', or 'focus-element'. Use semantic capabilities for domain record mutations and native device controls; agent-fill/agent-click are only for deliberate form-control interaction, not record creation, updates, or deletion.",
 				required: false,
 				schema: { type: "string" },
 			},
 			{
 				name: "params",
 				description:
-					"Object parameters for the capability (interact mode), e.g. { title: 'launch checklist', body: 'test auth' } or { title: 'team sync', date: '2026-06-08', time: '17:00' }. Do not use dotted parameter names like 'params.title'.",
+					"Object parameters for the capability (interact mode), e.g. Notes create uses { content: 'launch checklist' }. Use only parameters declared by that capability and never dotted names like 'params.content'.",
 				required: false,
 				schema: { type: "object", additionalProperties: true },
 			},
 			{
 				name: "title",
 				description:
-					"Top-level passthrough for registered view capabilities that accept a title, such as create-note or create-calendar-event.",
+					"Top-level passthrough only for registered view capabilities that explicitly accept a title. Notes create/update use content instead.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "oldTitle",
+				description:
+					"Current exact title used to locate a note or event for a rename/update.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "newTitle",
+				description:
+					"Replacement-title alias for registered view capabilities that expose newTitle.",
 				required: false,
 				schema: { type: "string" },
 			},
 			{
 				name: "body",
 				description:
-					"Top-level passthrough for registered view capabilities that accept body/content text, such as create-note.",
+					"Compatibility alias for text capabilities. Prefer the capability's declared field; Notes create/update use content.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "content",
+				description:
+					"Complete user-authored content for a registered one-field capability, including Notes create/update. Preserve the user's wording and do not add a separate title.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "details",
+				description:
+					"Top-level passthrough for registered view capabilities that accept details text.",
 				required: false,
 				schema: { type: "string" },
 			},
 			{
 				name: "date",
 				description:
-					"Top-level passthrough for registered view capabilities that accept an ISO date, such as create-calendar-event.",
+					"Top-level passthrough for a registered view capability that accepts an ISO date.",
 				required: false,
 				schema: { type: "string" },
 			},
 			{
 				name: "time",
 				description:
-					"Top-level passthrough for registered view capabilities that accept a time label, such as create-calendar-event.",
+					"Top-level passthrough for a registered view capability that accepts a time label.",
 				required: false,
 				schema: { type: "string" },
 			},
 			{
 				name: "notes",
 				description:
-					"Top-level passthrough for registered view capabilities that accept notes/details text, such as create-calendar-event.",
+					"Top-level passthrough for a registered view capability that accepts notes/details text.",
 				required: false,
 				schema: { type: "string" },
 			},
 			{
 				name: "color",
 				description:
-					"Top-level passthrough for registered view capabilities that accept a color, such as notes or calendar events.",
+					"Top-level passthrough for registered view capabilities that accept a color, such as Notes.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -2607,10 +2838,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 
 				if (shouldResolveModeAsCapability(effectiveMode, text, actionOptions)) {
-					const views = await getViews().catch(() => []);
+					const capabilityResolutionViews = await getViews();
 					const currentView = await getCurrentView();
 					forcedResolvedCapability = resolveViewCapability({
-						views,
+						views: capabilityResolutionViews,
 						text,
 						options: actionOptions,
 						viewType,
@@ -2655,6 +2886,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							options: actionOptions,
 							viewType,
 							callback,
+							originatingClientId: readViewInteractionClientId(message),
 						});
 
 					case "close":
@@ -2787,6 +3019,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						}
 						const resolvedView =
 							resolvedCapability?.view ?? resolveViewTarget(viewId, views);
+						const standardCapability = STANDARD_VIEW_CAPABILITY_BY_KEY.get(
+							normalizeCapabilityKey(capability),
+						);
 						if (!resolvedCapability && resolvedView) {
 							const matches = (resolvedView.capabilities ?? []).filter(
 								(candidate) =>
@@ -2799,7 +3034,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 									capability: matches[0],
 								};
 								capability = matches[0].id;
-							} else if (matches.length === 0) {
+							} else if (matches.length === 0 && !standardCapability) {
 								// Generated action labels may be a unique semantic alias for
 								// a declared catalog capability. Keep the view target fixed so
 								// this cannot dispatch across an unrelated surface.
@@ -2820,16 +3055,76 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								}
 							}
 						}
-						const standardCapability = STANDARD_VIEW_CAPABILITY_BY_KEY.get(
-							normalizeCapabilityKey(capability),
-						);
 						if (!resolvedCapability && !standardCapability) {
+							if (
+								resolvedView?.id === "browser" &&
+								["browse", "navigate", "open"].includes(
+									normalizeCapabilityKey(capability),
+								)
+							) {
+								if (!(await ownerCheck(runtime, message))) {
+									const reply =
+										"Browser control is only available to the workspace owner.";
+									await callback?.({ text: reply });
+									return { success: false, text: reply };
+								}
+								const browserAction = runtime.actions.find(
+									(action) => action.name === "BROWSER",
+								);
+								if (!browserAction?.handler) {
+									const reply =
+										"Browser control is unavailable in this runtime.";
+									await callback?.({ text: reply });
+									return { success: false, text: reply };
+								}
+								const nestedParams =
+									actionOptions?.params &&
+									typeof actionOptions.params === "object" &&
+									!Array.isArray(actionOptions.params)
+										? actionOptions.params
+										: {};
+								const browserParameters = {
+									...nestedParams,
+									action: "navigate",
+								};
+								if (!(await browserAction.validate(runtime, message, _state))) {
+									const reply = "Browser control rejected this request.";
+									await callback?.({ text: reply });
+									return { success: false, text: reply };
+								}
+								return (
+									(await browserAction.handler(
+										runtime,
+										message,
+										_state,
+										{ ...options, parameters: browserParameters },
+										callback,
+									)) ?? {
+										success: true,
+										text: "Browser navigation completed.",
+									}
+								);
+							}
 							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`;
 							await callback?.({ text: reply });
 							return { success: false, text: reply };
 						}
 						if (!resolvedCapability && standardCapability)
 							capability = standardCapability;
+						if (resolvedCapability) {
+							const correctedCapability = correctCapabilityOperationFamily(
+								resolvedCapability.view,
+								resolvedCapability.capability,
+								text,
+							);
+							if (correctedCapability.id !== resolvedCapability.capability.id) {
+								resolvedCapability = {
+									...resolvedCapability,
+									capability: correctedCapability,
+								};
+								capability = correctedCapability.id;
+							}
+						}
 						const paramsResolution = readCapabilityParams(
 							actionOptions,
 							resolvedCapability?.capability,
@@ -2852,10 +3147,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							params,
 							timeoutMs,
 							resolvedViewType,
+							readViewInteractionClientId(message),
 						);
 						const resultText = interaction.text;
 						const receipt = interaction.success
 							? readViewInteractionReceipt(interaction.result)
+							: undefined;
+						const effectContract = interaction.success
+							? readViewInteractionEffectContract(interaction.result)
 							: undefined;
 						await callback?.({ text: resultText });
 						return {
@@ -2868,6 +3167,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 										turnComplete: true,
 									}
 								: {}),
+							...(effectContract ?? {}),
 							values: {
 								mode: "interact",
 								viewId,
@@ -3196,49 +3496,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: {
-						text: "add a calendar event titled team sync on 2026-06-08 at 17:00",
-					},
-				},
-				{
-					name: "{{agentName}}",
-					content: {
-						text: 'Created event "team sync".',
-						action: "VIEWS",
-					},
-				},
-			],
-			[
-				{
-					name: "{{user1}}",
-					content: {
-						text: "tomorrow is my birthday can you add that to calendar",
-					},
-				},
-				{
-					name: "{{agentName}}",
-					content: {
-						text: 'Created event "Birthday".',
-						action: "VIEWS",
-					},
-				},
-			],
-			[
-				{
-					name: "{{user1}}",
-					content: { text: "show calendar events for 2026-06-08" },
-				},
-				{
-					name: "{{agentName}}",
-					content: {
-						text: "1 event on 2026-06-08.",
-						action: "VIEWS",
-					},
-				},
-			],
-			[
-				{
-					name: "{{user1}}",
 					content: { text: "create a new view for tracking habits" },
 				},
 				{
@@ -3285,9 +3542,42 @@ export function createViewsAliasAction(
 ): Action {
 	const action = createViewsAction(deps);
 	const closeAll = name === "CLOSE_ALL_VIEWS";
+	const targetParameters: Action["parameters"] = closeAll
+		? []
+		: [
+				{
+					name: "view",
+					description: "View name, label, or id to close.",
+					required: false,
+					schema: { type: "string" },
+				},
+				{
+					name: "id",
+					description: "Alias for view.",
+					required: false,
+					schema: { type: "string" },
+				},
+				{
+					name: "name",
+					description: "Alias for view.",
+					required: false,
+					schema: { type: "string" },
+				},
+				{
+					name: "target",
+					description: "Alias for view.",
+					required: false,
+					schema: { type: "string" },
+				},
+			];
 	return {
 		...action,
 		name,
+		parameters: targetParameters,
+		allowAdditionalParameters: false,
+		tags: closeAll
+			? ["close", "hide", "dismiss", "tabs", "windows"]
+			: ["close", "hide", "dismiss", "panel", "tab"],
 		similes: closeAll
 			? ["CLOSE_ALL_VIEW_TABS", "HIDE_ALL_VIEWS", "DISMISS_ALL_VIEWS"]
 			: ["HIDE_VIEW", "DISMISS_VIEW", "CLOSE_PANEL", "CLOSE_APP_VIEW"],
@@ -3297,6 +3587,9 @@ export function createViewsAliasAction(
 		descriptionCompressed: closeAll
 			? "close all open UI views/tabs; never deletes plugins"
 			: "close one UI view/tab by view/id/name/target; never deletes plugins",
+		routingHint: closeAll
+			? "Close, hide, or dismiss every open UI view/tab -> CLOSE_ALL_VIEWS. Never use this to open a view or delete a plugin."
+			: "Close, hide, or dismiss one open UI view/tab -> CLOSE_VIEW. Never use this to open a view or delete a plugin.",
 		handler: async (runtime, message, state, options, callback) => {
 			const actionOptions = {
 				...normalizeActionOptions(options),
@@ -3329,9 +3622,7 @@ async function navigateToPath(
 	pathStr: string,
 	label: string,
 ): Promise<ShellNavResult> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 
 	try {
 		const resp = await fetch(`${base}/api/views/__view-manager__/navigate`, {
@@ -3366,9 +3657,7 @@ async function navigateViewWithShellAction(
 	viewType?: ViewType,
 	alwaysOnTop = false,
 ): Promise<ShellNavResult> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 
 	try {
 		const resp = await fetch(
@@ -3414,9 +3703,7 @@ async function navigateViewLayout({
 	successText: string;
 	fallbackText: string;
 }): Promise<ShellNavResult> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 
 	try {
 		const resp = await fetch(
@@ -3487,10 +3774,9 @@ async function interactWithView(
 	params: Record<string, unknown> | undefined,
 	timeoutMs: number,
 	viewType?: ViewType,
+	clientId?: string,
 ): Promise<{ success: boolean; text: string; result?: unknown }> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 
 	let resp: Response;
 	try {
@@ -3498,7 +3784,10 @@ async function interactWithView(
 			`${base}/api/views/${encodeURIComponent(viewId)}/interact${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
-				headers: createViewsRequestHeaders(),
+				headers: {
+					...createViewsRequestHeaders(),
+					...(clientId ? { "X-ElizaOS-Client-Id": clientId } : {}),
+				},
 				body: JSON.stringify({ capability, params, timeoutMs, viewType }),
 				signal: AbortSignal.timeout(timeoutMs + 1_000),
 			},
@@ -3629,9 +3918,7 @@ async function broadcastViewEvent(
 	eventType: string,
 	payload: Record<string, unknown>,
 ): Promise<ShellNavResult> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 
 	try {
 		const resp = await fetch(`${base}/api/views/events/broadcast`, {

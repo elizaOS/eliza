@@ -131,6 +131,7 @@ import {
   ConversationMessagesCtx,
   type ConversationMessagesValue,
 } from "../state/ConversationMessagesContext.hooks";
+import { CLOUD_LOGIN_POPUP_NAME } from "../state/cloud-login-launch";
 import type { AppContextValue } from "../state/internal";
 import { classifyDeviceRamTier } from "./device-ram-tier";
 import {
@@ -199,7 +200,7 @@ function resetTutorialState(): void {
 
 interface AppStoreSpies {
   completeFirstRun: ReturnType<typeof vi.fn>;
-  handleCloudLogin: ReturnType<typeof vi.fn>;
+  handleInteractiveCloudLogin: ReturnType<typeof vi.fn>;
   setTab: ReturnType<typeof vi.fn>;
   setState: ReturnType<typeof vi.fn>;
 }
@@ -208,7 +209,7 @@ interface AppStoreSpies {
 function seedAppStore(overrides: Record<string, unknown> = {}): AppStoreSpies {
   const spies: AppStoreSpies = {
     completeFirstRun: vi.fn(),
-    handleCloudLogin: vi.fn(async () => undefined),
+    handleInteractiveCloudLogin: vi.fn(async () => undefined),
     setTab: vi.fn(),
     setState: vi.fn(),
   };
@@ -268,6 +269,11 @@ async function waitForTurn(
 beforeEach(() => {
   ensureLocalStorage().clear();
   vi.clearAllMocks();
+  // jsdom's window.open is unimplemented and logs a console error the setup
+  // gate would flag; the flow launchers claim a real popup on every runtime /
+  // provider pick, so default it to the popup-blocked (null) signal. Tests
+  // that assert the popup lifecycle re-configure this same spy.
+  vi.spyOn(window, "open").mockReturnValue(null);
   mocks.deviceRamTier = null;
   mocks.client.listLocalAgentBackups.mockResolvedValue([]);
   // `clearAllMocks` resets call history but NOT implementations, so restore the
@@ -632,11 +638,8 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("pre-opens the Cloud auth window synchronously and reuses it for login", async () => {
-    const authWindow = { close: vi.fn() } as unknown as Window;
-    mocks.preOpenCloudLoginWindow.mockReturnValue(authWindow);
-    mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
-    // No stored bearer: a usable stored token now short-circuits login
+  it("reaches the interactive Cloud login entry point with client auth required", async () => {
+    // No stored bearer: a usable stored token would short-circuit login
     // entirely (the agents list is the connectivity probe), so the popup
     // path this test pins is only reachable when login is genuinely needed.
     localStorage.removeItem("steward_session_token");
@@ -646,9 +649,8 @@ describe("useFirstRunConductor", () => {
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
 
-    expect(mocks.preOpenCloudLoginWindow).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(spies.handleCloudLogin).toHaveBeenCalledWith(authWindow, {
+      expect(spies.handleInteractiveCloudLogin).toHaveBeenCalledWith({
         requireClientAuth: true,
       });
     });
@@ -946,19 +948,23 @@ describe("useFirstRunConductor", () => {
     mocks.client.getCloudStatus
       .mockResolvedValueOnce({ connected: false })
       .mockResolvedValue({ connected: true });
-    const handleCloudLogin = vi.fn(async () => {
+    // The interactive entry point owns the popup lifecycle itself (#17129):
+    // it pre-opens the named window and closes it once auth lands.
+    const handleInteractiveCloudLogin = vi.fn(async () => {
+      const authWindow = mocks.preOpenCloudLoginWindow();
       localStorage.setItem("steward_session_token", "cloud-token");
+      authWindow?.close();
     });
     seedAppStore({
       elizaCloudConnected: false,
-      handleCloudLogin,
+      handleInteractiveCloudLogin,
     });
     const { turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await waitFor(() => {
-      expect(handleCloudLogin).toHaveBeenCalledWith(popup, {
+      expect(handleInteractiveCloudLogin).toHaveBeenCalledWith({
         requireClientAuth: true,
       });
     });
@@ -967,6 +973,48 @@ describe("useFirstRunConductor", () => {
     });
     expect(turn("first-run:cloud-oauth")?.secretRequest?.form).toBeUndefined();
 
+    unmount();
+  });
+
+  it("closes the gesture-claimed popup when a LOCAL finish never reaches interactive login", async () => {
+    // The provider tap claims the popup synchronously (gesture window), but a
+    // local-runtime finish never consumes it — the launcher's finally must
+    // close the stray about:blank window instead of leaking it (#17572).
+    const close = vi.fn();
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: false, close } as unknown as Window);
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(openSpy).toHaveBeenCalledWith("about:blank", CLOUD_LOGIN_POPUP_NAME);
+    await waitFor(() => {
+      expect(close).toHaveBeenCalledTimes(1);
+    });
+    unmount();
+  });
+
+  it("closes the gesture-claimed popup when an already-authenticated cloud provision skips login", async () => {
+    // Token + connection are live (beforeEach defaults), so getCloudAuthToken
+    // short-circuits and interactive login never consumes the claimed handle.
+    const close = vi.fn();
+    vi.spyOn(window, "open").mockReturnValue({
+      closed: false,
+      close,
+    } as unknown as Window);
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitFor(() => {
+      expect(close).toHaveBeenCalledTimes(1);
+    });
     unmount();
   });
 
@@ -1679,7 +1727,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     localStorage.removeItem("steward_session_token");
     mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
     let finishLogin: () => void = () => {};
-    const handleCloudLogin = vi.fn(
+    const handleInteractiveCloudLogin = vi.fn(
       () =>
         new Promise<void>((resolve) => {
           finishLogin = resolve;
@@ -1687,14 +1735,14 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     );
     const spies = seedAppStore({
       elizaCloudConnected: false,
-      handleCloudLogin,
+      handleInteractiveCloudLogin,
     });
     const { turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await waitFor(() => {
-      expect(handleCloudLogin).toHaveBeenCalledTimes(1);
+      expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     });
     localStorage.setItem("steward_session_token", "cloud-token");
     await new Promise((resolve) => setTimeout(resolve, 650));
@@ -1847,7 +1895,7 @@ function makeFinishPorts(): FirstRunFinishPorts {
   return {
     uiLanguage: "en",
     elizaCloudConnected: true,
-    handleCloudLogin: async () => undefined,
+    handleInteractiveCloudLogin: async () => undefined,
     setRuntimeState: () => {},
     setTab: () => {},
     completeFirstRun: () => {},
@@ -2029,6 +2077,9 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
     expect(provider.text).toContain("__first_run__:back:runtime=");
 
     // The blocked on-device pick is refused with a fresh provider choice.
+    // Freeze the wall clock across both rejected picks: their retry turns must
+    // remain distinct even when the user moves faster than clock resolution.
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_789_000_000_000);
     expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
       true,
     );
@@ -2047,6 +2098,7 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
     // Configure-later is a full local runtime mode, so it retains the 8 GB
     // floor even though it does not download a model immediately.
     expect(tryHandleFirstRunAction("__first_run__:provider:other")).toBe(true);
+    nowSpy.mockRestore();
     await waitFor(() => {
       expect(
         transcript.current.some((m) =>

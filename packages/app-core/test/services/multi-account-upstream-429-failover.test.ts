@@ -30,7 +30,10 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import type { IAgentRuntime } from "@elizaos/core";
 import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -186,19 +189,22 @@ function writeSubscriptionAccount(
   access: string,
   createdAt: number,
 ): void {
-  saveAccount({
-    id,
-    providerId: "anthropic-subscription",
-    label: id,
-    source: "oauth",
-    credentials: {
-      access,
-      refresh: `${access}-refresh`,
-      expires: FAR_FUTURE,
+  saveAccount(
+    {
+      id,
+      providerId: "anthropic-subscription",
+      label: id,
+      source: "oauth",
+      credentials: {
+        access,
+        refresh: `${access}-refresh`,
+        expires: FAR_FUTURE,
+      },
+      createdAt,
+      updatedAt: Date.now(),
     },
-    createdAt,
-    updatedAt: Date.now(),
-  });
+    createIsolatedAccountStoragePolicy(home),
+  );
 }
 
 function oauthRuntime(baseUrl: string): IAgentRuntime {

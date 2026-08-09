@@ -1,0 +1,202 @@
+name: UI Core Fixture E2E
+
+# #9954/#10722: the chat-sheet drag-detent, TopicGroup gesture, and home-screen
+# e2e runners (src/components/shell/__e2e__/run-*.mjs) esbuild-bundle a fixture
+# and drive it with REAL input in headless Chromium — genuine CDP touch
+# (src/testing/real-touch-gestures.ts) for the phone profiles plus real mouse
+# for the fine-pointer flows — coverage no jsdom unit test can reach. They
+# existed but were wired to NO workflow, so a swipe/sheet/launcher regression
+# could only be caught by hand. This gates them on packages/ui changes. Mirrors
+# ui-story-gate.yml (same lean bun workspace + Playwright Chromium setup); the
+# runners self-bundle, so no Storybook/dist build is needed.
+#
+# chat-ambient/onboarding have their own follow-ups.
+
+on:
+  # Reusable entry for the scheduled exhaustive develop lane (#12342).
+  workflow_call:
+    inputs:
+      concurrency_scope:
+        description: "Caller-owned concurrency namespace"
+        required: false
+        type: string
+        default: standalone
+  pull_request:
+    branches: [develop, main]
+    paths:
+      # The fixture runners esbuild-bundle from the full packages/ui/src tree,
+      # so any source change there can reach a bundled runner.
+      - "packages/ui/src/**"
+      - "packages/ui/package.json"
+      # The proactive-suggestions e2e drives these server modules for real.
+      - "packages/agent/src/services/proactive-interaction-*.ts"
+      - "packages/agent/src/api/views-routes.ts"
+      - "packages/agent/src/api/interactions-routes.ts"
+      - "packages/agent/src/api/server-helpers-swarm.ts"
+      - ".github/workflows/ui-e2e-gate.yml"
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/ui/src/**"
+      - "packages/ui/package.json"
+      - "packages/agent/src/services/proactive-interaction-*.ts"
+      - "packages/agent/src/api/views-routes.ts"
+      - "packages/agent/src/api/interactions-routes.ts"
+      - "packages/agent/src/api/server-helpers-swarm.ts"
+
+# Standalone PR and push runs share stable keys so obsolete work is superseded.
+# Reusable callers pass a distinct scope, keeping exhaustive work outside those
+# domains; schedule and dispatch events never cancel an active run.
+concurrency:
+  group: ui-e2e-gate-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "1.3.14"
+  NODE_VERSION: "24.15.0"
+
+jobs:
+  ui-core-fixture-e2e:
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile
+          cache-bun-install: "false"
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Install Playwright Chromium
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
+
+      # AgentSurface capability bridge: list/focus/fill/click over synthetic and
+      # real plugin-hosted controls.
+      - name: Agent surface e2e
+        run: bun run --cwd packages/ui test:agent-surface-e2e
+
+      # Coding account + task-room roster widget visual states.
+      - name: Orchestrator accounts widget e2e
+        run: bun run --cwd packages/ui test:orchestrator-accounts-e2e
+
+      # Background view apply/undo/reset/export flow.
+      - name: Background view e2e
+        run: bun run --cwd packages/ui test:background-e2e
+
+      # Connector setup-panel config fields and screenshots.
+      - name: Connectors view e2e
+        run: bun run --cwd packages/ui test:connectors-e2e
+
+      # Chat-sheet drag detents (open/peek/close pull-sheet state machine).
+      - name: Chat sheet drag-gesture e2e
+        run: bun run --cwd packages/ui test:chat-sheet-e2e
+
+      # Mobile bottom-bar affordances and overlays.
+      - name: Bottom bar e2e
+        run: bun run --cwd packages/ui test:bottombar-e2e
+
+      # Ambient /chat background screenshot pass.
+      - name: Chat ambient e2e
+        run: bun run --cwd packages/ui test:chat-ambient-e2e
+
+      # TopicGroup collapse/expand (#8928) under REAL input (#10722): CDP touch
+      # taps + the touch-action pan-y contract, and mouse flicks for the
+      # fine-pointer profile.
+      - name: Chat TopicGroup gesture e2e
+        run: bun run --cwd packages/ui test:chatux-gesture-e2e
+
+      # iOS-style HomeScreen + home↔launcher rail (#10722): REAL-touch rail
+      # swipes, inner launcher paging, and long-press on the mobile profile;
+      # mouse drag + `< >` edge buttons on the desktop/fine-pointer profiles.
+      - name: Home-screen real-touch e2e
+        run: bun run --cwd packages/ui test:home-screen-e2e
+
+      # Fused wake phrase + shell integration fixture.
+      - name: Fused wake integration e2e
+        run: bun run --cwd packages/ui test:fused-wake-integration-e2e
+
+      # Warm-up eviction (#11670): a user message sent while the local model
+      # 503s during warm-up must survive the post-turn reconcile, show a
+      # retryable failed turn, and deliver exactly once on Retry.
+      - name: Warm-up message eviction e2e
+        run: bun run --cwd packages/ui test:warmup-eviction-e2e
+
+      # Launcher grid (#10722): genuine CDP long-press pointer drag-to-reorder
+      # (section 2b) → onReorder → persisted LAUNCHER_STORAGE_KEY order +
+      # reorder telemetry + no duplicate ids. The jsdom Launcher.gestures suite
+      # explicitly defers this physics coverage here.
+      - name: Launcher real-drag reorder e2e
+        run: bun run --cwd packages/ui test:launcher-e2e
+
+      # App-shell view lifecycle transitions, errors, teardown, and telemetry.
+      - name: View lifecycle e2e
+        run: bun run --cwd packages/ui test:view-lifecycle-e2e
+
+      # Proactive suggestions (#8792): real views/interactions routes → real
+      # decider + governance gate (rate limit, cooldowns, dedup, kill switch)
+      # → real broadcast frames → real ChatTranscript suggestion affordance
+      # (Suggestion chip, "Do it", dismiss) exercised with real clicks.
+      - name: Proactive suggestions pipeline + UI e2e
+        run: bun run --cwd packages/ui test:suggestions-e2e
+
+      # Frontend-hosting dashboard tab (#10690): real mock cloud stack
+      # publish → activate → rollback → delete lifecycle, desktop + mobile.
+      - name: Frontend hosting e2e
+        run: bun run --cwd packages/ui test:frontend-hosting-e2e
+
+      # Org Team Credential Pool tab (#11332/#11488): real mock cloud stack
+      # contribute (probe fail/pass) → masked list → toggle → invite/connect
+      # link → remove, desktop + mobile.
+      - name: Credentials e2e
+        run: bun run --cwd packages/ui test:credentials-e2e
+
+      # Cloud-surface unification (#11341): real mock cloud stack; every legacy
+      # /dashboard/* deep link redirects to /settings#<section>, and each
+      # canonical Settings section renders real data, desktop + mobile.
+      - name: Cloud settings surface (slop-removal) e2e
+        run: bun run --cwd packages/ui test:slop-removal-e2e
+
+      - name: Upload UI fixture e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ui-core-fixture-e2e-output
+          path: |
+            packages/ui/src/agent-surface/__e2e__/output
+            packages/ui/src/components/chat/widgets/__e2e__/output
+            packages/ui/src/components/chat/widgets/__e2e__/output-ftu
+            packages/ui/src/components/pages/__e2e__/output-background
+            packages/ui/src/components/pages/__e2e__/output-connectors
+            packages/ui/src/components/views/__e2e__/output-view-lifecycle
+            packages/ui/src/components/shell/__e2e__/output
+            packages/ui/src/components/shell/__e2e__/output-chatux
+            packages/ui/src/components/shell/__e2e__/output-home
+            packages/ui/src/components/shell/__e2e__/output-bottombar
+            packages/ui/src/components/shell/__e2e__/output-fused-wake-integration
+            packages/ui/src/components/pages/__e2e__/output-launcher
+            packages/ui/src/components/pages/__e2e__/output-background
+            packages/ui/src/components/pages/__e2e__/output-suggestions
+            packages/ui/src/cloud/applications/__e2e__/output-frontend-hosting
+            packages/ui/src/cloud/organization/__e2e__/output-credentials
+            packages/ui/src/cloud/__e2e__/output-slop-removal
+            packages/ui/src/components/shell/__e2e__/output-warmup-eviction
+          retention-days: 14
+          if-no-files-found: ignore

@@ -20,16 +20,41 @@ export function handleRenderedMutationFailure(cause: unknown): void {
 
 export const VIEW_ROOT_STYLE: CSSProperties = {
   boxSizing: "border-box",
-  width: "calc(100% - var(--eliza-chat-side-clearance, 0px))",
-  height: "calc(100% - var(--eliza-chat-clearance, 5.25rem))",
+  position: "relative",
+  width: "100%",
+  height: "100%",
+  minHeight: 0,
+  overflowX: "hidden",
+  overflowY: "hidden",
+  color: "var(--txt, #f5f5f5)",
+  fontFamily: "inherit",
+};
+
+export const VIEW_SCROLL_STYLE: CSSProperties = {
+  boxSizing: "border-box",
+  position: "absolute",
+  insetBlockStart: 0,
+  insetBlockEnd: 0,
+  insetInlineStart: 0,
+  insetInlineEnd: 0,
+  minWidth: 0,
   minHeight: 0,
   overflowX: "hidden",
   overflowY: "auto",
   overscrollBehavior: "contain",
   padding: "clamp(8px, 2.4vw, 24px)",
   paddingTop: "calc(clamp(8px, 2.4vw, 24px) + var(--safe-area-top, 0px))",
-  scrollPaddingBottom: "clamp(8px, 2.4vw, 24px)",
-  scrollPaddingInlineEnd: "clamp(8px, 2.4vw, 24px)",
+  // The scroll surface reaches the routed viewport edge so translucent chat
+  // chrome reveals real view content. Padding keeps the final item reachable
+  // above the composer and landscape side rail without clipping the surface.
+  paddingBottom:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-clearance, 5.25rem))",
+  paddingInlineEnd:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-side-clearance, 0px))",
+  scrollPaddingBottom:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-clearance, 5.25rem))",
+  scrollPaddingInlineEnd:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-side-clearance, 0px))",
   color: "var(--txt, #f5f5f5)",
   fontFamily: "inherit",
 };
@@ -37,7 +62,7 @@ export const VIEW_ROOT_STYLE: CSSProperties = {
 export const GLASS_PANEL_STYLE: CSSProperties = {
   boxSizing: "border-box",
   border: "none",
-  borderRadius: 22,
+  borderRadius: 24,
   background:
     "color-mix(in srgb, var(--card, rgba(16,16,16,.88)) 76%, transparent)",
   boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), 0 18px 48px rgba(0,0,0,.20)",
@@ -50,7 +75,7 @@ export const FIELD_STYLE: CSSProperties = {
   width: "100%",
   minHeight: 44,
   border: "none",
-  borderRadius: 13,
+  borderRadius: 12,
   padding: "10px 12px",
   background: "color-mix(in srgb, var(--bg, #080808) 78%, transparent)",
   color: "var(--txt, #f5f5f5)",
@@ -284,7 +309,7 @@ export function ColorPicker({
             width: 44,
             minHeight: 44,
             height: 44,
-            borderRadius: 999,
+            borderRadius: 9999,
             background: COLOR_MATERIALS[color].fill,
             boxShadow:
               value === color
@@ -297,7 +322,7 @@ export function ColorPicker({
             style={{
               width: 10,
               height: 10,
-              borderRadius: 999,
+              borderRadius: 9999,
               background: COLOR_MATERIALS[color].dot,
             }}
           />
@@ -328,7 +353,7 @@ export function ViewHeader({
         gap: 14,
         marginBottom: 14,
         padding: "12px 14px",
-        borderRadius: 18,
+        borderRadius: 16,
       }}
     >
       <div
@@ -391,7 +416,7 @@ export function ViewState({
   empty: boolean;
   emptyTitle: string;
   emptyBody: string;
-  onRetry: () => void;
+  onRetry?: () => void;
 }) {
   if (loading) {
     return (
@@ -421,14 +446,16 @@ export function ViewState({
         >
           {error}
         </p>
-        <AgentAction
-          agentId="notes-retry"
-          agentLabel="Retry Notes"
-          agentGroup="notes-status"
-          onClick={onRetry}
-        >
-          Retry
-        </AgentAction>
+        {onRetry ? (
+          <AgentAction
+            agentId="notes-retry"
+            agentLabel="Retry Notes"
+            agentGroup="notes-status"
+            onClick={onRetry}
+          >
+            Retry
+          </AgentAction>
+        ) : null}
       </div>
     );
   }

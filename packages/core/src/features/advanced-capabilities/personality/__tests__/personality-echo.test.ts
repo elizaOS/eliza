@@ -65,7 +65,7 @@ describe("personalityAction — blob-safe param echoes", () => {
 		});
 		expect(result.success).toBe(false);
 		expect(calls[0].text).toBe(
-			"No profile named that profile. Try list_profiles.",
+			"I don't have a profile named that profile saved — ask me to list the profiles.",
 		);
 		expect(calls[0].text).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
 		expect(calls[0].text).not.toContain("SECURITY NOTICE");
@@ -76,7 +76,7 @@ describe("personalityAction — blob-safe param echoes", () => {
 			name: "mystery-profile-name",
 		});
 		expect(calls[0].text).toBe(
-			'No profile named "mystery-profile-name". Try list_profiles.',
+			'I don\'t have a profile named "mystery-profile-name" saved — ask me to list the profiles.',
 		);
 	});
 
@@ -98,7 +98,9 @@ describe("personalityAction — blob-safe param echoes", () => {
 			value: ENVELOPE_BLOB,
 		});
 		expect(result.success).toBe(false);
-		expect(calls[0].text).toBe("Invalid value that value for trait 'tone'.");
+		expect(calls[0].text).toBe(
+			"I can't set tone to that value — that's not one of the options.",
+		);
 		expect(calls[0].text).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
 		expect(calls[0].text).not.toContain("SECURITY NOTICE");
 	});

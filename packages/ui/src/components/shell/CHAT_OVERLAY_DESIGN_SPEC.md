@@ -43,9 +43,13 @@ glass tokens (`glass/tokens.ts`), not a hand-rolled inline recipe. The overlay
 imports the exact same constants the `sheet` recipe uses, so token and surface
 can never drift:
 
-- **Fill** — `GLASS_SHEET_FILL` = `color-mix(in srgb, var(--card) 62%, transparent)`.
-  A mostly-translucent dark card so the live view behind reads as a soft, bright
-  frost, not a gray near-opaque slab.
+- **Fill** — `GLASS_SHEET_FILL` = `color-mix(in srgb, var(--card) 62%, transparent)`
+  at REST (pill/input): the composer bar frosts the live view behind it. The
+  drag-up blends the fill to the opaque panel `--bg` by the HALF detent
+  (`sheetBlackoutProgress` riding the live thread height), so the OPEN sheet is
+  BLACK over any substrate — a bright web page or the warm wallpaper both washed
+  a translucent open sheet into gray/brown. The blend is continuous with the
+  finger, never a pop at a detent commit.
 - **Backdrop** — `GLASS_SHEET_BACKDROP_FILTER` = `blur(30px)`. A heavy **neutral**
   blur: it keeps text legible while letting the backdrop's color and light
   through. **No `saturate`** — saturate muddies the warm/orange field to brown

@@ -13,8 +13,9 @@
  * than once per turn (vector + hybrid document search, experience recall,
  * relevant-conversations). Identical normalized query text within one turn
  * resolves to a single embed call; concurrent identical embeds share one
- * in-flight promise. The cache is scoped to the turn and evicted when a new
- * turn's key is observed, so it never grows unbounded.
+ * in-flight promise. Each runtime retains a bounded LRU of recent turn slots so
+ * concurrent rooms and detached post-turn work cannot evict one another, while
+ * memory use remains fixed.
  *
  * **Turn key = `runId`, plus a `messageId` that survives the run transition.**
  * The API chat path embeds the user query during document augmentation *before*
@@ -43,8 +44,11 @@
  * **Fail-open on error only.** A failed embed (the model handler rejects — e.g.
  * its own request timeout aborts, or the provider errors) returns `null`; the
  * caller falls open to keyword/BM25 recall (or, for callers with no keyword
- * path, to empty recall context) — recall richness is lost, the reply is never
- * blocked on an *error*, and recall is never silently dropped (we log it).
+ * path, to empty recall context) — recall richness is lost, but the reply is
+ * never blocked on an *error*. The provider owns diagnosis of a typed, expected
+ * capability-unavailable state; every unexpected failure is reported here with
+ * a stable recall code so it remains eligible for runtime diagnostics and
+ * escalation without turning a known missing capability into chat noise.
  *
  * There is deliberately NO app-level latency timeout here. A short, arbitrary
  * race on every healthy-but-slow embed would silently degrade vector recall to
@@ -55,10 +59,35 @@
  * (fail-open), with no silent middle ground.
  */
 
+import { toElizaError } from "../../errors";
 import { recordInferenceSpan } from "../../inference-timing";
 import { getStreamingContext } from "../../streaming-context";
 import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
+import {
+	isExpectedLocalEmbeddingUnavailability,
+	modelProviderFailureDetails,
+} from "../../utils/expected-local-embedding-unavailability";
+
+function reportUnexpectedEmbeddingFailure(
+	runtime: IAgentRuntime,
+	error: unknown,
+	phase: "synchronous" | "asynchronous",
+): void {
+	if (isExpectedLocalEmbeddingUnavailability(error)) return;
+	const details = modelProviderFailureDetails(error);
+	runtime.reportError(
+		"DocumentRecall.embedding",
+		toElizaError(error, "RECALL_EMBEDDING_FAILED"),
+		{
+			phase,
+			...(details.code ? { providerErrorCode: details.code } : {}),
+			...(details.modelType ? { modelType: details.modelType } : {}),
+			...(details.provider ? { provider: details.provider } : {}),
+			...(details.reason ? { reason: details.reason } : {}),
+		},
+	);
+}
 
 /** Normalize query text so trivially-different strings share one cache slot. */
 function normalizeQuery(text: string): string {
@@ -79,11 +108,55 @@ interface TurnEmbedCache {
 }
 
 /**
- * One cache per runtime instance, scoped to the current turn. A `WeakMap` keyed
- * by the runtime keeps this self-contained (no runtime field, no global leak)
- * and lets the cache be GC'd with the runtime.
+ * A runtime can process independent rooms concurrently and can still have
+ * post-turn recall work settling when the next room starts. Retaining only one
+ * slot lets either turn evict the other's pre-run warm before it is adopted.
+ * The small LRU keeps those legitimate overlaps isolated without retaining an
+ * unbounded conversation history; evicting a very old slot costs only a cache
+ * miss, never a vector attributed to the wrong turn.
  */
-const turnCaches = new WeakMap<IAgentRuntime, TurnEmbedCache>();
+interface RuntimeTurnEmbedCaches {
+	byRunId: Map<string, TurnEmbedCache>;
+	byMessageId: Map<string, TurnEmbedCache>;
+	lru: TurnEmbedCache[];
+}
+
+const MAX_RECENT_TURN_CACHES = 32;
+const turnCaches = new WeakMap<IAgentRuntime, RuntimeTurnEmbedCaches>();
+
+function getRuntimeCaches(runtime: IAgentRuntime): RuntimeTurnEmbedCaches {
+	const existing = turnCaches.get(runtime);
+	if (existing) return existing;
+	const created: RuntimeTurnEmbedCaches = {
+		byRunId: new Map(),
+		byMessageId: new Map(),
+		lru: [],
+	};
+	turnCaches.set(runtime, created);
+	return created;
+}
+
+function touchCache(
+	caches: RuntimeTurnEmbedCaches,
+	cache: TurnEmbedCache,
+): void {
+	const priorIndex = caches.lru.indexOf(cache);
+	if (priorIndex >= 0) caches.lru.splice(priorIndex, 1);
+	caches.lru.push(cache);
+	while (caches.lru.length > MAX_RECENT_TURN_CACHES) {
+		const evicted = caches.lru.shift();
+		if (!evicted) return;
+		if (evicted.runId && caches.byRunId.get(evicted.runId) === evicted) {
+			caches.byRunId.delete(evicted.runId);
+		}
+		if (
+			evicted.messageId &&
+			caches.byMessageId.get(evicted.messageId) === evicted
+		) {
+			caches.byMessageId.delete(evicted.messageId);
+		}
+	}
+}
 
 /**
  * Resolve the current turn's cache, creating a fresh one on a turn boundary.
@@ -103,25 +176,29 @@ const turnCaches = new WeakMap<IAgentRuntime, TurnEmbedCache>();
  *
  * A `runId`-only caller (no `messageId`) matches only on a real `runId`, so it
  * can never promote an unrelated concurrent turn's slot into its own — worst
- * case a cache miss, never a wrong vector. No match replaces the slot wholesale,
- * bounding memory to a single turn's distinct queries.
+ * case a cache miss, never a wrong vector. Unrelated turns occupy separate
+ * bounded LRU slots so one room cannot evict another room's in-flight warm.
  */
 function getTurnCache(
 	runtime: IAgentRuntime,
 	runId: string,
 	messageId?: string,
 ): TurnEmbedCache {
-	const existing = turnCaches.get(runtime);
+	const caches = getRuntimeCaches(runtime);
+	const messageCache =
+		messageId !== undefined ? caches.byMessageId.get(messageId) : undefined;
+	const runCache = runId !== "" ? caches.byRunId.get(runId) : undefined;
+	const existing = messageCache ?? runCache;
 	if (existing) {
-		const runIdMatch = runId !== "" && existing.runId === runId;
-		const messageIdMatch =
-			messageId !== undefined && existing.messageId === messageId;
-		if (runIdMatch || messageIdMatch) {
-			if (messageIdMatch && runId !== "" && existing.runId !== runId) {
-				existing.runId = runId;
+		if (messageCache && runId !== "" && existing.runId !== runId) {
+			if (existing.runId && caches.byRunId.get(existing.runId) === existing) {
+				caches.byRunId.delete(existing.runId);
 			}
-			return existing;
+			existing.runId = runId;
+			caches.byRunId.set(runId, existing);
 		}
+		touchCache(caches, existing);
+		return existing;
 	}
 	const fresh: TurnEmbedCache = {
 		runId,
@@ -129,7 +206,9 @@ function getTurnCache(
 		results: new Map(),
 		inFlight: new Map(),
 	};
-	turnCaches.set(runtime, fresh);
+	if (runId !== "") caches.byRunId.set(runId, fresh);
+	if (messageId !== undefined) caches.byMessageId.set(messageId, fresh);
+	touchCache(caches, fresh);
 	return fresh;
 }
 
@@ -214,10 +293,9 @@ export async function embedRecallQuery(
 				throw signal.reason ?? error;
 			}
 			// error-policy:J4 semantic recall explicitly degrades to keyword recall;
-			// surface the embedding failure before returning the unavailable signal.
-			runtime.reportError("DocumentRecall.embedding", error, {
-				phase: "synchronous",
-			});
+			// unexpected failures remain observable, while a provider-owned typed
+			// unavailable state is already diagnosed at its registration/probe boundary.
+			reportUnexpectedEmbeddingFailure(runtime, error, "synchronous");
 			return null;
 		}
 		cache?.inFlight.set(normalized, pending);
@@ -249,10 +327,9 @@ export async function embedRecallQuery(
 			throw signal.reason ?? error;
 		}
 		// error-policy:J4 semantic recall explicitly degrades to keyword recall;
-		// surface the embedding failure before returning the unavailable signal.
-		runtime.reportError("DocumentRecall.embedding", error, {
-			phase: "asynchronous",
-		});
+		// unexpected failures remain observable, while a provider-owned typed
+		// unavailable state is already diagnosed at its registration/probe boundary.
+		reportUnexpectedEmbeddingFailure(runtime, error, "asynchronous");
 		return null;
 	}
 }
@@ -262,12 +339,14 @@ export async function embedRecallQuery(
  * recall caller presenting `aliasText` resolves to `sourceText`'s vector from
  * the per-turn cache instead of issuing its own embed round-trip.
  *
- * The one producer is document augmentation: after it rewrites the turn's
- * message text into the contextual-documents envelope, the in-run recall
- * callers (TTFT prefetch, relevant-conversations, FACTS) all present the
- * envelope text. Without the alias each turn with a document match pays a
- * second serial embed for a query that is strictly WORSE (the injected
- * document snippets drown the user's request); with it, one embed of the clean
+ * The producers are the turn-text rewriters: document augmentation (the
+ * contextual-documents envelope on the API chat path) and the message
+ * service's incoming-hook seam (the external-content security envelope every
+ * untrusted-source message gets). After a rewrite, the in-run recall callers
+ * (relevant-conversations, document recall, experience recall) all present
+ * the envelope text. Without the alias each rewritten turn pays a second
+ * serial embed for a query that is strictly WORSE (injected snippets or
+ * security armor drown the user's request); with it, one embed of the clean
  * prompt serves the whole turn.
  *
  * The alias joins an in-flight source embed rather than waiting for it, so it

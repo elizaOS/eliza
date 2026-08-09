@@ -682,6 +682,7 @@ import type { AwarenessRegistryLike } from "./agent-status-routes.ts";
 import { createApiEventHub } from "./event-hub.ts";
 import { listenHttpServer } from "./http-listener.ts";
 import { createRouteKernel } from "./route-kernel.ts";
+import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
 import { createServerResources } from "./server-resources.ts";
 import { createServerState } from "./server-state.ts";
 import type {
@@ -1610,6 +1611,7 @@ async function handleRequest(
         return false;
       }
 
+      await quiesceRuntimeBeforeReplacement(previousRuntime, newRuntime);
       state.runtime = newRuntime;
       state.chatConnectionReady = null;
       state.chatConnectionPromise = null;

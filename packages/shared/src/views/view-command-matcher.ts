@@ -320,6 +320,7 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
   ],
   calendar: [
     "calendar",
+    "calender",
     "agenda",
     "schedule",
     "calendario",
@@ -761,18 +762,33 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
     "cloud app",
     "cloud applications",
     "eliza cloud apps",
+    "apps studio",
+    "app studio",
+    "application studio",
     "published apps",
     "deployed apps",
     "app deployments",
     "aplicaciones en la nube",
+    "estudio de aplicaciones",
+    "aplicações na nuvem",
+    "aplicacoes na nuvem",
     "aplicativos na nuvem",
+    "estúdio de aplicativos",
+    "estudio de aplicativos",
     "applications cloud",
+    "studio d'applications",
     "cloud-apps",
+    "anwendungsstudio",
     "cloud-anwendungen",
     "云应用",
     "云端应用",
+    "雲端應用",
+    "应用工作室",
+    "應用工作室",
     "クラウドアプリ",
+    "アプリスタジオ",
     "클라우드 앱",
+    "앱 스튜디오",
     "ứng dụng đám mây",
     "ung dung dam may",
   ],
@@ -817,6 +833,23 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
     "máy ảnh",
     "may anh",
   ],
+  browser: [
+    "browser",
+    "web browser",
+    "internet browser",
+    "navegador",
+    "navegador web",
+    "navigateur",
+    "navigateur web",
+    "internetbrowser",
+    "浏览器",
+    "瀏覽器",
+    "ブラウザ",
+    "웹 브라우저",
+    "브라우저",
+    "trình duyệt",
+    "trinh duyet",
+  ],
 };
 
 // Priority order: more-specific / multiword views before generic ones so
@@ -843,6 +876,7 @@ const VIEW_PRIORITY = [
   "character",
   "plugins-page",
   "cloud-apps",
+  "browser",
   "camera",
   "help",
   "chat",
@@ -946,6 +980,150 @@ function nounAlt(items: readonly string[]): string {
 const VERB_ALT = alt(NAV_VERBS);
 const VW_ALT = alt(VIEW_WORDS);
 const POSS_ALT = alt(POSSESSIVES);
+const CLOUD_APPS_VIEW_ID = "cloud-apps";
+const CLOUD_APPS_STRONG_NAV_VERBS = [
+  // en
+  "open",
+  "go to",
+  "goto",
+  "take me to",
+  "navigate to",
+  "switch to",
+  "bring up",
+  "pull up",
+  "jump to",
+  "head to",
+  "get me to",
+  "send me to",
+  "let's go to",
+  "lets go to",
+  "change to",
+  "launch",
+  "back to",
+  "return to",
+  // es
+  "abre",
+  "abrir",
+  "ábreme",
+  "abreme",
+  "ir a",
+  "ve a",
+  "llévame a",
+  "llevame a",
+  "cambia a",
+  // pt
+  "abra",
+  "vá para",
+  "va para",
+  "vai para",
+  "me leva para",
+  "muda para",
+  // fr
+  "ouvre",
+  "ouvrir",
+  "va à",
+  "va a",
+  "amène-moi à",
+  "accède à",
+  // de
+  "öffne",
+  "öffnen",
+  "offne",
+  "geh zu",
+  "bring mich zu",
+  "wechsle zu",
+  // zh
+  "打开",
+  "打開",
+  "切换到",
+  "切換到",
+  "进入",
+  "進入",
+  "转到",
+  "轉到",
+  "跳转到",
+  "去",
+  // ja
+  "開いて",
+  "開く",
+  "ひらいて",
+  "に移動",
+  "に行って",
+  // ko
+  "열어",
+  "열어줘",
+  "열기",
+  "로 이동",
+  "으로 이동",
+  "가줘",
+  // vi
+  "mở",
+  "đi tới",
+  "đi đến",
+  "chuyển sang",
+  // tl
+  "buksan",
+  "pumunta sa",
+  "dalhin mo ako sa",
+] as const;
+const CLOUD_APPS_ARTICLES = [
+  "the",
+  "my",
+  "las",
+  "mis",
+  "os",
+  "meus",
+  "les",
+  "mes",
+  "die",
+  "meine",
+  "ang",
+] as const;
+const CLOUD_APPS_PARTICLES = [
+  "を",
+  "へ",
+  "に",
+  "은",
+  "는",
+  "이",
+  "가",
+  "을",
+  "를",
+  "로",
+  "으로",
+] as const;
+const CLOUD_APPS_COURTESY = [
+  "please",
+  "por favor",
+  "s'il vous plaît",
+  "s il vous plait",
+  "bitte",
+] as const;
+const CLOUD_APPS_NOUNS = VIEW_NOUNS[CLOUD_APPS_VIEW_ID].filter(
+  // A singular cloud app takes an app name ("open the cloud app Acme") and is
+  // an APP/domain request, never a request for the inventory studio.
+  (noun) => noun !== "cloud app",
+);
+const CLOUD_APPS_VERB_ALT = alt(CLOUD_APPS_STRONG_NAV_VERBS);
+const CLOUD_APPS_NOUN_ALT = nounAlt(CLOUD_APPS_NOUNS);
+const CLOUD_APPS_MENTION_RE = new RegExp(
+  nounAlt(VIEW_NOUNS[CLOUD_APPS_VIEW_ID]),
+  "iu",
+);
+const CLOUD_APPS_ARTICLE_ALT = alt(CLOUD_APPS_ARTICLES);
+const CLOUD_APPS_PARTICLE_ALT = rawAlt(CLOUD_APPS_PARTICLES);
+const CLOUD_APPS_COURTESY_ALT = alt(CLOUD_APPS_COURTESY);
+const CLOUD_APPS_EDGE = `[\\s\\p{P}]*`;
+const CLOUD_APPS_OPTIONAL_COURTESY = `(?:(?:${CLOUD_APPS_COURTESY_ALT})[\\s\\p{P}]+)?`;
+const CLOUD_APPS_OPTIONAL_ARTICLE = `(?:(?:${CLOUD_APPS_ARTICLE_ALT})[\\s\\p{P}]+)?`;
+const CLOUD_APPS_OPTIONAL_PARTICLE = `(?:${CLOUD_APPS_PARTICLE_ALT})?`;
+const CLOUD_APPS_COMMAND_RE = new RegExp(
+  [
+    `^${CLOUD_APPS_EDGE}${CLOUD_APPS_OPTIONAL_COURTESY}(?:${CLOUD_APPS_VERB_ALT})[\\s\\p{P}]*${CLOUD_APPS_OPTIONAL_ARTICLE}(?:${CLOUD_APPS_NOUN_ALT})${CLOUD_APPS_EDGE}(?:(?:${CLOUD_APPS_COURTESY_ALT})${CLOUD_APPS_EDGE})?$`,
+    `^${CLOUD_APPS_EDGE}${CLOUD_APPS_OPTIONAL_COURTESY}(?:${CLOUD_APPS_NOUN_ALT})${CLOUD_APPS_OPTIONAL_PARTICLE}[\\s\\p{P}]*(?:${CLOUD_APPS_VERB_ALT})${CLOUD_APPS_EDGE}(?:(?:${CLOUD_APPS_COURTESY_ALT})${CLOUD_APPS_EDGE})?$`,
+  ].join("|"),
+  "iu",
+);
 const COMPANION_ACTION_VERBS = new Set([
   "DRAW",
   "GENERATE",
@@ -980,19 +1158,24 @@ interface CompiledView {
 //   whole message == noun (just "settings")
 // Gaps use [\s\S]{0,N} so CJK (no spaces) and short filler both match, while
 // staying tight enough to avoid cross-clause false positives.
-const COMPILED: CompiledView[] = VIEW_PRIORITY.filter((v) => VIEW_NOUNS[v]).map(
-  (viewId) => {
-    const N = nounAlt(VIEW_NOUNS[viewId]);
-    const pattern = [
-      `(?:${VERB_ALT})[\\s\\S]{0,16}?(?:${N})`,
-      `(?:${N})[\\s\\S]{0,8}?(?:${VERB_ALT})`,
-      `(?:${POSS_ALT})[\\s\\S]{0,4}?(?:${N})`,
-      `(?:${N})[\\s\\S]{0,4}?(?:${VW_ALT})`,
-      `^[\\s\\p{P}]*(?:${N})[\\s\\p{P}]*$`,
-    ].join("|");
-    return { viewId, re: new RegExp(pattern, "iu") };
-  },
-);
+const COMPILED: CompiledView[] = VIEW_PRIORITY.filter(
+  (v) => v !== CLOUD_APPS_VIEW_ID && VIEW_NOUNS[v],
+).map((viewId) => {
+  const N = nounAlt(VIEW_NOUNS[viewId]);
+  const pattern = [
+    `(?:${VERB_ALT})[\\s\\S]{0,16}?(?:${N})`,
+    `(?:${N})[\\s\\S]{0,8}?(?:${VERB_ALT})`,
+    `(?:${POSS_ALT})[\\s\\S]{0,4}?(?:${N})`,
+    `(?:${N})[\\s\\S]{0,4}?(?:${VW_ALT})`,
+    `^[\\s\\p{P}]*(?:${N})[\\s\\p{P}]*$`,
+  ].join("|");
+  return { viewId, re: new RegExp(pattern, "iu") };
+});
+
+// Bare "go back" is the conversational counterpart of the shell's Home affordance.
+// Browser/OS history remains a client-owned gesture, so this exact whole-message
+// form can safely return to the canonical chat surface without guessing history.
+const BARE_HOME_NAVIGATION = /^[\s\p{P}]*go\s+back[\s\p{P}]*$/iu;
 
 function stripDiacritics(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -1008,7 +1191,16 @@ export function matchViewCommand(text: string | undefined): string | null {
   if (!raw || raw.length > 160) return null; // commands are short
   const lower = raw.toLowerCase();
   if (looksLikeCompanionActionRequest(lower)) return null;
+  if (BARE_HOME_NAVIGATION.test(lower)) return "chat";
   const variants = [lower, stripDiacritics(lower)];
+  if (variants.some((variant) => CLOUD_APPS_COMMAND_RE.test(variant))) {
+    return CLOUD_APPS_VIEW_ID;
+  }
+  // A Cloud Apps phrase that is not the strict command above belongs to normal
+  // action planning. Do not let another noun in the same sentence ("help",
+  // "documentation") hijack it into an unrelated deterministic view.
+  if (variants.some((variant) => CLOUD_APPS_MENTION_RE.test(variant)))
+    return null;
   for (const { viewId, re } of COMPILED) {
     for (const v of variants) {
       if (re.test(v)) return viewId;

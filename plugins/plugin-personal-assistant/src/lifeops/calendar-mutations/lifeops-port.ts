@@ -259,7 +259,7 @@ function providerVersion(event: LifeOpsCalendarEvent): string | null {
 function requireConditionalProviderVersion(
   event: LifeOpsCalendarEvent,
 ): string {
-  if (event.provider !== "google") {
+  if (event.provider !== "google" && event.provider !== "eliza") {
     throw new CalendarMutationPreflightError(
       "CALENDAR_CONDITIONAL_MUTATION_UNSUPPORTED",
       `${event.provider} does not expose an atomic provider-version precondition through this executor.`,
@@ -678,7 +678,9 @@ async function resolveExactEvent(
           eventId: payload.eventId,
           approvedProviderVersion: binding.expectedProviderVersion,
           currentProviderVersion:
-            event.provider === "google" ? (event.metadata.etag ?? null) : null,
+            event.provider === "google" || event.provider === "eliza"
+              ? (event.metadata.etag ?? null)
+              : null,
           approvedUpdatedAt: binding.expectedUpdatedAt,
           currentUpdatedAt: event.updatedAt,
           approvedStartAt: binding.expectedStartAt,

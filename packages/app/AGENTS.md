@@ -245,6 +245,7 @@ All env vars use the `ELIZA_` prefix (set in `app.config.ts` → `envPrefix: "EL
 |---|---|
 | `ELIZA_API_PORT` | Agent API server port (default 31337; `ELIZA_PORT` is a fallback) |
 | `ELIZA_UI_PORT` | Vite dev/UI server port (default 2138) |
+| `ELIZA_LOCAL_VOICE_GATEWAY_PORT` | Dev-only loopback voice gateway port; when set, Vite routes `/api/v1/voice` HTTP/WS traffic there, including realtime sessions and TTS |
 | `ELIZA_APP_SOURCEMAP` | Enable source maps in production build |
 | `ELIZA_DESKTOP_VITE_FAST_DIST` | Set by Electrobun dev orchestrator for Rollup watch mode |
 | `ELIZA_DEV_POLLING` | Enable filesystem polling for watch (useful in VMs) |

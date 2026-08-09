@@ -1,0 +1,91 @@
+/**
+ * Comprehensive security unit tests for document store route actor resolution
+ * and process-private principal authorization (Requirement 8).
+ *
+ * Verifies that:
+ * - Missing AccessContext returns OWNER (trunk-authorized owner boundary).
+ * - AccessContext with requesterEntityId resolves to the correct RouteActor.
+ * - OWNER/ADMIN roles map to OWNER; USER/GUEST map to USER.
+ * - Missing requesterEntityId returns null.
+ */
+
+import type { AccessContext, UUID } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+import { resolveRouteActor } from "./routes.js";
+
+const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
+const OWNER_ID = "00000000-0000-0000-0000-000000000002" as UUID;
+const USER_ID = "00000000-0000-0000-0000-000000000003" as UUID;
+
+describe("resolveRouteActor process-private principal authorization", () => {
+  it("returns OWNER for trunk-authorized owner boundary (no AccessContext)", () => {
+    const actor = resolveRouteActor(AGENT_ID, OWNER_ID);
+    expect(actor).not.toBeNull();
+    expect(actor?.role).toBe("OWNER");
+    expect(actor?.entityId).toBe(OWNER_ID);
+  });
+
+  it("returns OWNER with agentId fallback when ownerEntityId is absent", () => {
+    const actor = resolveRouteActor(AGENT_ID);
+    expect(actor).not.toBeNull();
+    expect(actor?.role).toBe("OWNER");
+    expect(actor?.entityId).toBe(AGENT_ID);
+  });
+
+  it("grants OWNER permissions for OWNER AccessContext role", () => {
+    const actor = resolveRouteActor(AGENT_ID, OWNER_ID, {
+      requesterEntityId: OWNER_ID,
+      role: "OWNER",
+      isOwner: true,
+    } satisfies AccessContext);
+    expect(actor).not.toBeNull();
+    expect(actor?.role).toBe("OWNER");
+    expect(actor?.entityId).toBe(OWNER_ID);
+  });
+
+  it("grants OWNER permissions for ADMIN AccessContext role", () => {
+    const actor = resolveRouteActor(AGENT_ID, OWNER_ID, {
+      requesterEntityId: OWNER_ID,
+      role: "ADMIN",
+    } satisfies AccessContext);
+    expect(actor).not.toBeNull();
+    expect(actor?.role).toBe("OWNER");
+  });
+
+  it("grants USER permissions for USER AccessContext role", () => {
+    const actor = resolveRouteActor(AGENT_ID, OWNER_ID, {
+      requesterEntityId: USER_ID,
+      role: "USER",
+    } satisfies AccessContext);
+    expect(actor).not.toBeNull();
+    expect(actor?.role).toBe("USER");
+    expect(actor?.entityId).toBe(USER_ID);
+    expect(actor?.entityId).not.toBe(OWNER_ID);
+  });
+
+  it("grants USER permissions for GUEST AccessContext role", () => {
+    const actor = resolveRouteActor(AGENT_ID, OWNER_ID, {
+      requesterEntityId: USER_ID,
+      role: "GUEST",
+    } satisfies AccessContext);
+    expect(actor).not.toBeNull();
+    expect(actor?.role).toBe("USER");
+  });
+
+  it("returns null when AccessContext lacks requesterEntityId", () => {
+    const actor = resolveRouteActor(AGENT_ID, OWNER_ID, {
+      role: "USER",
+    } satisfies AccessContext);
+    expect(actor).toBeNull();
+  });
+
+  it("uses isOwner flag to grant OWNER role even with USER role name", () => {
+    const actor = resolveRouteActor(AGENT_ID, OWNER_ID, {
+      requesterEntityId: OWNER_ID,
+      role: "USER",
+      isOwner: true,
+    } satisfies AccessContext);
+    expect(actor).not.toBeNull();
+    expect(actor?.role).toBe("OWNER");
+  });
+});

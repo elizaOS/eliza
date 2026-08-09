@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Bounded Anthropic reviewer-provider preflight.
+ * Bounded reviewer-provider preflight for Anthropic or OpenAI.
  *
  * The walkthrough calls this before starting the expensive browser journey.
  * It sends one tiny text-only request and classifies credential and billing
@@ -12,7 +12,18 @@ import { pathToFileURL } from "node:url";
 
 const DEFAULT_ENDPOINT = "https://api.anthropic.com/v1/messages";
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+const DEFAULT_OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions";
+const DEFAULT_OPENAI_MODEL = "gpt-5-mini";
 const ANTHROPIC_VERSION = "2023-06-01";
+
+export function resolveReviewerBackend(env = process.env) {
+  const explicit = env.AI_QA_VISION_BACKEND?.trim().toLowerCase();
+  if (explicit === "anthropic" || explicit === "openai") return explicit;
+  if (explicit) return null;
+  if (env.ANTHROPIC_API_KEY?.trim()) return "anthropic";
+  if (env.OPENAI_API_KEY?.trim()) return "openai";
+  return null;
+}
 
 export function classifyReviewerFailure(status, responseBody = "") {
   const body = String(responseBody).toLowerCase();
@@ -35,39 +46,70 @@ export function classifyReviewerFailure(status, responseBody = "") {
 }
 
 export async function preflightReviewer({
-  apiKey = process.env.ANTHROPIC_API_KEY,
-  endpoint = DEFAULT_ENDPOINT,
-  model = process.env.AI_QA_VISION_MODEL || DEFAULT_MODEL,
+  backend = "anthropic",
+  apiKey,
+  endpoint,
+  model,
   timeoutMs = 15_000,
   fetchImpl = fetch,
 } = {}) {
-  if (!apiKey?.trim()) {
+  const isOpenAi = backend === "openai";
+  const resolvedApiKey =
+    apiKey ??
+    (isOpenAi ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY);
+  const resolvedEndpoint =
+    endpoint ?? (isOpenAi ? DEFAULT_OPENAI_ENDPOINT : DEFAULT_ENDPOINT);
+  const resolvedModel =
+    model ??
+    process.env.AI_QA_VISION_MODEL ??
+    (isOpenAi ? DEFAULT_OPENAI_MODEL : DEFAULT_MODEL);
+  if (!resolvedApiKey?.trim()) {
     return {
       ok: false,
       classification: "missing-credentials",
-      detail: "ANTHROPIC_API_KEY is not configured",
+      detail: `${isOpenAi ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"} is not configured`,
     };
   }
 
   let response;
   try {
-    response = await fetchImpl(endpoint, {
+    response = await fetchImpl(resolvedEndpoint, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1,
-        messages: [
-          {
-            role: "user",
-            content: "Reply with one character to validate reviewer access.",
+      headers: isOpenAi
+        ? {
+            "content-type": "application/json",
+            authorization: `Bearer ${resolvedApiKey}`,
+          }
+        : {
+            "content-type": "application/json",
+            "x-api-key": resolvedApiKey,
+            "anthropic-version": ANTHROPIC_VERSION,
           },
-        ],
-      }),
+      body: JSON.stringify(
+        isOpenAi
+          ? {
+              model: resolvedModel,
+              max_completion_tokens: 16,
+              messages: [
+                {
+                  role: "user",
+                  content:
+                    "Reply with one character to validate reviewer access.",
+                },
+              ],
+            }
+          : {
+              model: resolvedModel,
+              max_tokens: 1,
+              messages: [
+                {
+                  role: "user",
+                  content:
+                    "Reply with one character to validate reviewer access.",
+                },
+              ],
+            },
+      ),
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
@@ -95,9 +137,17 @@ export async function preflightReviewer({
 }
 
 async function main() {
-  const result = await preflightReviewer();
+  const backend = resolveReviewerBackend();
+  if (backend === null) {
+    console.error(
+      "[walkthrough-vision] reviewer preflight failed (missing-credentials): configure AI_QA_VISION_BACKEND with its provider key",
+    );
+    process.exitCode = 2;
+    return;
+  }
+  const result = await preflightReviewer({ backend });
   if (result.ok) {
-    console.log("[walkthrough-vision] reviewer preflight: ready");
+    console.log(`[walkthrough-vision] reviewer preflight: ${backend} ready`);
     return;
   }
 

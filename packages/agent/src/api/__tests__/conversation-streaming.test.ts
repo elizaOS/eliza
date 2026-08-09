@@ -16,6 +16,7 @@ import {
   createMessageMemory,
   INSUFFICIENT_CREDITS_REPLY,
   type Memory,
+  RoomHandlerQueue,
   stringToUuid,
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
@@ -87,6 +88,7 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
     },
     emitEvent: vi.fn(async () => undefined),
     reportError: vi.fn(),
+    roomHandlerQueue: new RoomHandlerQueue(),
     getMemories: vi.fn(async () => []),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
@@ -267,12 +269,14 @@ describe("chat route helper coverage", () => {
       legacy.res,
       "A",
       "A",
+      undefined,
     );
     expect(deps.writeChatTokenSse).toHaveBeenNthCalledWith(
       2,
       legacy.res,
       "AB",
       "AB",
+      undefined,
     );
 
     const deltaDeps = {
@@ -373,6 +377,23 @@ describe("chat route helper coverage", () => {
     ).resolves.toBeNull();
     expect(error).toHaveBeenCalledWith(res, "channelType is invalid", 400);
 
+    error.mockClear();
+    readJsonBodyMock.mockResolvedValueOnce({
+      text: "hi",
+      clientMessageId: "x".repeat(129),
+    });
+    await expect(
+      readChatRequestPayload(req as never, res as never, {
+        readJsonBody,
+        error,
+      }),
+    ).resolves.toBeNull();
+    expect(error).toHaveBeenCalledWith(
+      res,
+      "clientMessageId must be a non-empty string of at most 128 characters",
+      400,
+    );
+
     readJsonBodyMock.mockResolvedValueOnce({ text: "   " });
     await expect(
       readChatRequestPayload(req as never, res as never, {
@@ -463,6 +484,24 @@ describe("chat route helper coverage", () => {
     expect(
       getChatFailureReply(new Error("No provider registered for TEXT"), []),
     ).toContain("Connect an LLM provider");
+    expect(
+      getChatFailureReply(
+        new Error("No handler found for delegate type: TEXT_LARGE"),
+        [],
+      ),
+    ).toContain("Connect an LLM provider");
+    expect(
+      classifyChatFailure(
+        new Error("No handler found for delegate type: REASONING_SMALL"),
+        [],
+      ),
+    ).toBe("no_provider");
+    expect(
+      classifyChatFailure(
+        new Error("No handler found for delegate type: TEXT_TO_SPEECH"),
+        [],
+      ),
+    ).toBe("provider_issue");
     expect(
       classifyChatFailure(new Error("local inference unavailable"), []),
     ).toBe("local_inference");
@@ -704,6 +743,110 @@ describe("generateChatResponse token streaming", () => {
     expect(chunks).toEqual([]);
     expect(snapshots).toEqual(["Navigated to Notes (gui)."]);
     expect(result.text).toBe("Navigated to Notes (gui).");
+  });
+
+  it("keeps a visible action callback visible when its terminal receipt is internal", async () => {
+    const text = "Opened Notes.";
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, callback) {
+        await callback?.({ text }, "VIEWS");
+        return {
+          didRespond: true,
+          responseContent: { text, transcriptVisibility: "internal" as const },
+          responseMessages: [],
+          mode: "actions" as const,
+          actionResults: [
+            {
+              success: true,
+              text,
+              transcriptVisibility: "internal" as const,
+              data: { actionName: "VIEWS" },
+            },
+          ],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "visible-callback-internal-receipt-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+    const chunks: string[] = [];
+    const snapshots: string[] = [];
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("open notes"),
+      "Streaming Agent",
+      {
+        onChunk: (chunk) => chunks.push(chunk),
+        onSnapshot: (snapshot) => snapshots.push(snapshot),
+      },
+    );
+
+    expect(chunks).toEqual([]);
+    expect(snapshots).toEqual([text]);
+    expect(result.text).toBe(text);
+    expect(result.transcriptVisibility).toBeUndefined();
+  });
+
+  // Voice double-speak fix: the PERSONALITY-style turn delivers TWO texts
+  // through the same HandlerCallback — the action's own ack (with actionName)
+  // and the reply handler's terminal delivery (no actionName). The ack must be
+  // emitted with origin "action_callback" (→ provisional wire frames a voice
+  // client holds) and the reply with origin "model"; the returned final text
+  // is the reply only.
+  it("marks the action ack as action_callback origin and the reply delivery as model origin", async () => {
+    const ack = "Set tone=warm for you.";
+    const reply = "okay i changed personality to warm";
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, callback) {
+        // The action's own callback — provisional status text.
+        await callback?.(
+          { text: ack, actions: ["PERSONALITY"] },
+          "PERSONALITY",
+        );
+        // The reply handler's terminal delivery (mode "simple") — the turn's
+        // actual reply, delivered with no actionName.
+        await callback?.({ text: reply });
+        return {
+          didRespond: true,
+          responseContent: { text: reply },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "double-speak-origin-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+
+    const chunks: Array<{ text: string; origin?: string }> = [];
+    const snapshots: Array<{ text: string; origin?: string }> = [];
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("change your personality to warm"),
+      "Streaming Agent",
+      {
+        onChunk: (chunk, origin) => chunks.push({ text: chunk, origin }),
+        onSnapshot: (text, origin) => snapshots.push({ text, origin }),
+      },
+    );
+
+    expect(chunks).toEqual([]);
+    expect(snapshots).toEqual([
+      { text: ack, origin: "action_callback" },
+      { text: reply, origin: "model" },
+    ]);
+    // The reply wins the turn's final text — exactly one final message.
+    expect(result.text).toBe(reply);
   });
 
   it("uses authoritative accumulated text for an in-place stream revision", async () => {
@@ -998,6 +1141,36 @@ describe("generateChatResponse token streaming", () => {
         streamedChunks: 2,
       }),
     );
+  });
+
+  it("keeps device-bridge chat on the full host runtime without explicit local-reply opt-in", async () => {
+    const messageService = createStreamingMessageService([
+      "Host planner reply.",
+    ]);
+    const handleMessage = vi.spyOn(messageService, "handleMessage");
+    const useModel = createUseModelMock(async () => "Unexpected local reply.");
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_DEVICE_BRIDGE_ENABLED: "1",
+        };
+        return values[key] ?? null;
+      },
+      messageService,
+      useModel,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello from the phone"),
+      "Streaming Agent",
+    );
+
+    expect(handleMessage).toHaveBeenCalledOnce();
+    expect(useModel).not.toHaveBeenCalled();
+    expect(result.text).toBe("Host planner reply.");
+    expect(result.localInference).toBeUndefined();
   });
 
   it("finalizes an Android local result that wins the cancellation race", async () => {

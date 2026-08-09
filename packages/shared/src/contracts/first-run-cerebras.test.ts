@@ -78,6 +78,20 @@ describe("Cerebras first-run provider", () => {
 // the other, these assertions fail. Removing Cerebras from the core copy — the
 // original bug — trips both the catalog deep-equal and the normalize check.
 describe("first-run provider catalog core/shared alignment", () => {
+  it("routes Ollama through the in-repo zerollama provider", () => {
+    const ollama = FIRST_RUN_PROVIDER_CATALOG.find(
+      (provider) => provider.id === "ollama",
+    );
+    expect(ollama?.pluginName).toBe("@elizaos/plugin-zerollama");
+  });
+
+  it("normalizes legacy local-provider aliases identically", () => {
+    expect(normalizeFirstRunProviderId("llama_local")).toBe("ollama");
+    expect(coreNormalizeFirstRunProviderId("llama_local")).toBe("ollama");
+    expect(normalizeFirstRunProviderId("llama-local")).toBe("ollama");
+    expect(coreNormalizeFirstRunProviderId("llama-local")).toBe("ollama");
+  });
+
   it("core and shared expose an identical provider catalog", () => {
     expect(CORE_CATALOG).toEqual(FIRST_RUN_PROVIDER_CATALOG);
     expect(CORE_CATALOG.map((p) => p.id)).toEqual(

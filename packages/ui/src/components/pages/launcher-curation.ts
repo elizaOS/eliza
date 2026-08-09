@@ -43,6 +43,10 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "wallet",
   "tasks",
   "calendar",
+  // The runtime-backed compact Calendar keeps its own route id so launcher
+  // navigation reaches the registered bundle, but occupies Calendar's curated
+  // slot when it supersedes the connected-calendar surface below.
+  "simple-calendar",
   "notes",
   "automations",
   "my-apps",
@@ -119,6 +123,10 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   // `chat` is the home/primary surface, not a launcher tile — a Chat tile is
   // pure redundancy next to the always-present home chat (#14479).
   "chat",
+  // Headless agent-capability surface (VIEWS action=interact set-flashlight):
+  // it declares no `path` and renders nothing, on any platform, so a tile
+  // would open a broken route and push real tiles below the mobile fold.
+  "device-control",
   // The Eliza Cloud Applications studio (`cloud-apps`, registered by
   // `@elizaos/app` on native shells). My Apps is the ONE apps destination in
   // the launcher: the studio is reached from the My Apps view's Eliza Cloud
@@ -233,6 +241,15 @@ function preferenceScore(entry: ViewEntry): number {
   return score;
 }
 
+function hasRuntimeBackedSimpleCalendar(entries: ViewEntry[]): boolean {
+  return entries.some(
+    (entry) =>
+      entry.id === "simple-calendar" &&
+      entry.state === "loaded" &&
+      entry.view?.available === true,
+  );
+}
+
 /**
  * Launcher tiles that require an Eliza Cloud account. Plugin-provided views
  * such as Notes and Calendar are governed by the live view catalogue instead:
@@ -282,6 +299,17 @@ export function curateLauncherPages(
   { isAosp, enabledKinds, cloudActive }: CurateLauncherOptions,
 ): ViewEntry[] {
   const byCanonical = new Map<string, ViewEntry>();
+  // Simple Views is the product Calendar surface when its live view-registry
+  // entry is available. Native clients intentionally strip remote bundle URLs
+  // and contribute the bundled component through the in-process app-shell
+  // registry, so `view.available` — not bundle transport — is authoritative.
+  const connectedCalendarIsPresent = entries.some(
+    (entry) =>
+      entry.id === "calendar" &&
+      entry.state === "loaded" &&
+      entry.view?.available !== false,
+  );
+  const simpleCalendarIsRuntimeBacked = hasRuntimeBackedSimpleCalendar(entries);
   // Each winner's score is frozen at insert time. Re-scoring the STORED entry
   // on later comparisons would hand an alias-winning tile the canonical-id
   // bonus it never earned (its id is rewritten to the canonical id below),
@@ -290,6 +318,14 @@ export function curateLauncherPages(
   // alias label ("Fin Tuning") could beat the real Fine-Tuning tile.
   const scoreByCanonical = new Map<string, number>();
   for (const entry of entries) {
+    if (entry.id === "calendar" && simpleCalendarIsRuntimeBacked) continue;
+    if (
+      entry.id === "simple-calendar" &&
+      connectedCalendarIsPresent &&
+      !simpleCalendarIsRuntimeBacked
+    ) {
+      continue;
+    }
     const canonicalId = canonicalLauncherId(entry.id);
     if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
     if (isGroupedLauncherSubPage(canonicalId, entry)) continue;

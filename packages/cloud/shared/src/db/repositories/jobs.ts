@@ -19,7 +19,6 @@ import {
   offloadJsonField,
   offloadTextField,
 } from "../../lib/storage/object-store";
-import { logger } from "../../lib/utils/logger";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -27,7 +26,12 @@ import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { jobExecutionLeases } from "../schemas/job-execution-leases";
 import type { Job, NewJob } from "../schemas/jobs";
 import { jobs } from "../schemas/jobs";
+import { cutoverResumeWindowAllows, msWindowTimestampMatch } from "./job-timestamp-fence";
 
+export {
+  cutoverResumeWindowAllows,
+  msWindowTimestampMatch,
+} from "./job-timestamp-fence";
 export type { Job, NewJob };
 
 /**
@@ -46,6 +50,21 @@ export type RecoveryFailureWritebackBuilder = (
   hydratedJob: Job,
   error: string,
 ) => JobFailureWriteback | undefined;
+
+export interface JobRecoveryFailure {
+  jobId: string;
+  jobType: string;
+  cause: unknown;
+}
+
+/** Complete outcome for one type-scoped recovery query. */
+export interface JobRecoverySweepResult {
+  scanned: number;
+  retried: number;
+  permanentlyFailed: number;
+  unchanged: number;
+  failures: JobRecoveryFailure[];
+}
 
 export const DEFAULT_JOB_EXECUTION_LEASE_MS = 60_000;
 export const JOB_EXECUTION_RECOVERY_GRACE_MS = 30_000;
@@ -129,10 +148,6 @@ function sameTimestamp(left: Date | string | null, right: Date | string | null):
   return timestampMillis(left) === timestampMillis(right);
 }
 
-function normalizedTimestamp(value: Date | string | null): Date | null {
-  return value === null ? null : value instanceof Date ? value : new Date(value);
-}
-
 function hasValidTimestamp(value: string): boolean {
   return Number.isFinite(Date.parse(value));
 }
@@ -173,8 +188,11 @@ function hasRecoverableAdminCanaryCutover(job: Job): boolean {
   const resumedCleanupClaim =
     rowStartedAt !== null &&
     rowUpdatedAt !== null &&
-    cutoverAt <= rowStartedAt &&
-    rowStartedAt <= rowUpdatedAt;
+    cutoverResumeWindowAllows({
+      cutoverAtMs: cutoverAt,
+      rowStartedAtMs: rowStartedAt,
+      rowUpdatedAtMs: rowUpdatedAt,
+    });
   return (
     job.organization_id === data.organizationId &&
     job.user_id === data.userId &&
@@ -237,10 +255,10 @@ function retryPayloadFence(job: Job) {
     AND ${jobs.attempts} = ${job.attempts}
     AND ${jobs.max_attempts} = ${job.max_attempts}
     AND ${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}
-    AND ${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.execution_quiesced_at)}
-    AND ${jobs.started_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.started_at)}
-    AND ${jobs.completed_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.completed_at)}
-    AND ${jobs.updated_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.updated_at)}
+    AND ${msWindowTimestampMatch(jobs.execution_quiesced_at, job.execution_quiesced_at)}
+    AND ${msWindowTimestampMatch(jobs.started_at, job.started_at)}
+    AND ${msWindowTimestampMatch(jobs.completed_at, job.completed_at)}
+    AND ${msWindowTimestampMatch(jobs.updated_at, job.updated_at)}
     AND ${jobs.data_storage} = ${job.data_storage}
     AND ${jobs.data_key} IS NOT DISTINCT FROM ${job.data_key}
     AND ${dataFence}
@@ -317,6 +335,10 @@ function hasAgentLifecycleFence(job: Job): job is Job & { agent_id: string } {
 
 function hasDetachedProvisioningExecution(type: string): boolean {
   return Object.values(JOB_TYPES).includes(type as ProvisioningJobType);
+}
+
+function isDurableRetryJob(type: string): boolean {
+  return type === JOB_TYPES.APP_CACHE_INVALIDATE;
 }
 
 export async function hydrateJob(job: Job): Promise<Job> {
@@ -425,9 +447,19 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
         }
       : {}),
     ...(result
-      ? { result: result.value, result_storage: result.storage, result_key: result.key }
+      ? {
+          result: result.value,
+          result_storage: result.storage,
+          result_key: result.key,
+        }
       : {}),
-    ...(error ? { error: error.value, error_storage: error.storage, error_key: error.key } : {}),
+    ...(error
+      ? {
+          error: error.value,
+          error_storage: error.storage,
+          error_key: error.key,
+        }
+      : {}),
   };
 }
 
@@ -565,6 +597,38 @@ export class JobsRepository {
       .limit(filters.limit || 1000)
       .orderBy(filters.orderBy === "desc" ? desc(jobs.created_at) : jobs.created_at);
     return await Promise.all(rows.map(hydrateJob));
+  }
+
+  /**
+   * Most recent lifecycle job for one agent, whatever its status.
+   *
+   * `findByFilters` cannot express this: it has no `agent_id` predicate, and
+   * widening it would change a reader many callers share. Callers use this to
+   * decide whether enough time has passed since the last attempt — so the row
+   * must be the latest attempt, not the latest *failed* one, or a retry that
+   * is still running would look like an opportunity to start another.
+   *
+   * Served by `jobs_org_type_agent_created_idx` on
+   * (organization_id, type, agent_id, created_at) WHERE agent_id IS NOT NULL.
+   */
+  async findLatestAgentLifecycleJob(filters: {
+    type: ProvisioningJobType;
+    organizationId: string;
+    agentId: string;
+  }): Promise<Job | null> {
+    const [row] = await dbRead
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.organization_id, filters.organizationId),
+          eq(jobs.type, filters.type),
+          eq(jobs.agent_id, filters.agentId),
+        ),
+      )
+      .orderBy(desc(jobs.created_at))
+      .limit(1);
+    return row ? await hydrateJob(row) : null;
   }
 
   /**
@@ -888,11 +952,11 @@ export class JobsRepository {
    * and takeover grace are current. Other job families retain elapsed-time
    * recovery.
    *
-   * Increments attempts counter to prevent infinite retry loops.
-   * Jobs exceeding maxAttempts are marked as failed instead of pending.
+   * Increments attempts for finite retry jobs and marks exhausted jobs failed.
+   * Durable idempotent tasks retain their attempt budget across interruption.
    *
    * @param filters - Filter criteria including type, organizationId, staleThresholdMs, and maxAttempts.
-   * @returns Number of jobs recovered (reset to pending, not failed).
+   * @returns Typed counts and failures for every row selected by the sweep.
    */
   async recoverStaleJobs(filters: {
     type: string;
@@ -901,9 +965,7 @@ export class JobsRepository {
     maxAttempts?: number;
     /** Settles dependent rows for jobs this sweep flips to `failed`. */
     buildFailureWriteback?: RecoveryFailureWritebackBuilder;
-    /** Post-commit hook for a committed flip (cache eviction); gets the hydrated job. */
-    onPermanentFailure?: (failedJob: Job) => Promise<void>;
-  }): Promise<number> {
+  }): Promise<JobRecoverySweepResult> {
     const staleThreshold = new Date(Date.now() - filters.staleThresholdMs);
     const conditions = [
       eq(jobs.type, filters.type),
@@ -931,79 +993,62 @@ export class JobsRepository {
       .from(jobs)
       .where(and(...conditions));
 
-    let recoveredCount = 0;
-    let sweepFailures = 0;
+    const result: JobRecoverySweepResult = {
+      scanned: staleJobs.length,
+      retried: 0,
+      permanentlyFailed: 0,
+      unchanged: 0,
+      failures: [],
+    };
 
     // Process each stale job, incrementing attempts and failing if max reached
     for (const job of staleJobs) {
       const resumeCommittedCanary = hasRecoverableAdminCanaryCutover(job);
-      const newAttempts = resumeCommittedCanary ? job.attempts : (job.attempts || 0) + 1;
+      const preservesAttempt = resumeCommittedCanary || isDurableRetryJob(job.type);
+      const newAttempts = preservesAttempt ? job.attempts : (job.attempts || 0) + 1;
       const maxAttempts = job.max_attempts ?? filters.maxAttempts ?? 3;
-      const isFailed = !resumeCommittedCanary && newAttempts >= maxAttempts;
+      const isFailed = !preservesAttempt && newAttempts >= maxAttempts;
       const timeoutError = resumeCommittedCanary
         ? "Admin canary cutover cleanup timed out - recovered without consuming a terminal attempt"
-        : isFailed
-          ? `Job timed out ${newAttempts} times - max attempts reached`
-          : `Job timed out - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
+        : isDurableRetryJob(job.type)
+          ? "Durable job timed out - recovered without consuming an attempt"
+          : isFailed
+            ? `Job timed out ${newAttempts} times - max attempts reached`
+            : `Job timed out - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
       const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
-      // Per-job isolation so one poisoned payload cannot starve the sweep. A
-      // batch where EVERY job failed is an infrastructure outage instead, and
-      // that signal must keep reaching the caller, so it is counted and
-      // rethrown below.
-      try {
-        const { onFailedInTx, hydratedJob } = isFailed
-          ? await this.prepareRecoveryWriteback(job, timeoutError, filters.buildFailureWriteback)
-          : {};
-        const updated = await this.recoverJobFromSnapshot({
-          job,
-          startedBefore: staleThreshold,
-          isFailed,
-          newAttempts,
-          error: timeoutError,
-          recoveryFence,
-          onFailedInTx,
-          hydratedJob,
-        });
-        if (updated && !isFailed) {
-          recoveredCount++;
-        }
-        if (updated && isFailed && filters.onPermanentFailure) {
-          try {
-            await filters.onPermanentFailure(updated);
-          } catch (hookError) {
-            // error-policy:J7 the recovery itself committed; only the
-            // post-commit hook failed.
-            logger.warn("[jobs] Post-failure hook failed after a committed recovery", {
-              jobId: job.id,
-              type: job.type,
-              error: hookError instanceof Error ? hookError.message : String(hookError),
-            });
-          }
-        }
-      } catch (error) {
-        // error-policy:J1/J7 per-job isolation with the outage signal kept.
-        sweepFailures++;
-        logger.error("[jobs] Stale-job recovery failed for one job; continuing sweep", {
+      const [attempt] = await Promise.allSettled([
+        (async () => {
+          const { onFailedInTx, hydratedJob } = isFailed
+            ? await this.prepareRecoveryWriteback(job, timeoutError, filters.buildFailureWriteback)
+            : {};
+          return await this.recoverJobFromSnapshot({
+            job,
+            startedBefore: staleThreshold,
+            isFailed,
+            newAttempts,
+            error: timeoutError,
+            recoveryFence,
+            onFailedInTx,
+            hydratedJob,
+          });
+        })(),
+      ]);
+      if (!attempt || attempt.status === "rejected") {
+        result.failures.push({
           jobId: job.id,
-          type: job.type,
-          error: error instanceof Error ? error.message : String(error),
+          jobType: job.type,
+          cause: attempt?.reason,
         });
+      } else if (!attempt.value) {
+        result.unchanged++;
+      } else if (isFailed) {
+        result.permanentlyFailed++;
+      } else {
+        result.retried++;
       }
     }
 
-    if (sweepFailures > 0) {
-      logger.error("[jobs] Stale-job sweep finished degraded", {
-        swept: staleJobs.length,
-        failed: sweepFailures,
-      });
-      if (sweepFailures === staleJobs.length) {
-        throw new Error(
-          `Stale-job recovery failed for every job in the batch (${sweepFailures}/${staleJobs.length})`,
-        );
-      }
-    }
-
-    return recoveredCount;
+    return result;
   }
 
   /**
@@ -1018,9 +1063,7 @@ export class JobsRepository {
     maxAttempts?: number;
     /** Settles dependent rows for jobs this sweep flips to `failed`. */
     buildFailureWriteback?: RecoveryFailureWritebackBuilder;
-    /** Post-commit hook for a committed flip (cache eviction); gets the hydrated job. */
-    onPermanentFailure?: (failedJob: Job) => Promise<void>;
-  }): Promise<number> {
+  }): Promise<JobRecoverySweepResult> {
     const conditions = [
       eq(jobs.type, filters.type),
       eq(jobs.status, "in_progress"),
@@ -1042,75 +1085,61 @@ export class JobsRepository {
       .from(jobs)
       .where(and(...conditions));
 
-    let recoveredCount = 0;
-    let sweepFailures = 0;
+    const result: JobRecoverySweepResult = {
+      scanned: interruptedJobs.length,
+      retried: 0,
+      permanentlyFailed: 0,
+      unchanged: 0,
+      failures: [],
+    };
 
     for (const job of interruptedJobs) {
       const resumeCommittedCanary = hasRecoverableAdminCanaryCutover(job);
-      const newAttempts = resumeCommittedCanary ? job.attempts : (job.attempts || 0) + 1;
+      const preservesAttempt = resumeCommittedCanary || isDurableRetryJob(job.type);
+      const newAttempts = preservesAttempt ? job.attempts : (job.attempts || 0) + 1;
       const maxAttempts = job.max_attempts ?? filters.maxAttempts ?? 3;
-      const isFailed = !resumeCommittedCanary && newAttempts >= maxAttempts;
+      const isFailed = !preservesAttempt && newAttempts >= maxAttempts;
       const error = resumeCommittedCanary
         ? "Admin canary cutover cleanup interrupted by worker restart - recovered without consuming a terminal attempt"
-        : isFailed
-          ? `Job interrupted by worker restart ${newAttempts} times - max attempts reached`
-          : `Job interrupted by worker restart - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
+        : isDurableRetryJob(job.type)
+          ? "Durable job interrupted by worker restart - recovered without consuming an attempt"
+          : isFailed
+            ? `Job interrupted by worker restart ${newAttempts} times - max attempts reached`
+            : `Job interrupted by worker restart - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
       const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
-      // Per-job isolation with the outage signal preserved — same policy as
-      // the stale sweep.
-      try {
-        const { onFailedInTx, hydratedJob } = isFailed
-          ? await this.prepareRecoveryWriteback(job, error, filters.buildFailureWriteback)
-          : {};
-        const updated = await this.recoverJobFromSnapshot({
-          job,
-          startedBefore: filters.startedBefore,
-          isFailed,
-          newAttempts,
-          error,
-          recoveryFence,
-          onFailedInTx,
-          hydratedJob,
-        });
-        if (updated && !isFailed) {
-          recoveredCount++;
-        }
-        if (updated && isFailed && filters.onPermanentFailure) {
-          try {
-            await filters.onPermanentFailure(updated);
-          } catch (hookError) {
-            // error-policy:J7 the recovery committed; only the hook failed.
-            logger.warn("[jobs] Post-failure hook failed after a committed recovery", {
-              jobId: job.id,
-              type: job.type,
-              error: hookError instanceof Error ? hookError.message : String(hookError),
-            });
-          }
-        }
-      } catch (loopError) {
-        // error-policy:J1/J7 per-job isolation with the outage signal kept.
-        sweepFailures++;
-        logger.error("[jobs] Startup recovery failed for one job; continuing sweep", {
+      const [attempt] = await Promise.allSettled([
+        (async () => {
+          const { onFailedInTx, hydratedJob } = isFailed
+            ? await this.prepareRecoveryWriteback(job, error, filters.buildFailureWriteback)
+            : {};
+          return await this.recoverJobFromSnapshot({
+            job,
+            startedBefore: filters.startedBefore,
+            isFailed,
+            newAttempts,
+            error,
+            recoveryFence,
+            onFailedInTx,
+            hydratedJob,
+          });
+        })(),
+      ]);
+      if (!attempt || attempt.status === "rejected") {
+        result.failures.push({
           jobId: job.id,
-          type: job.type,
-          error: loopError instanceof Error ? loopError.message : String(loopError),
+          jobType: job.type,
+          cause: attempt?.reason,
         });
+      } else if (!attempt.value) {
+        result.unchanged++;
+      } else if (isFailed) {
+        result.permanentlyFailed++;
+      } else {
+        result.retried++;
       }
     }
 
-    if (sweepFailures > 0) {
-      logger.error("[jobs] Startup recovery sweep finished degraded", {
-        swept: interruptedJobs.length,
-        failed: sweepFailures,
-      });
-      if (sweepFailures === interruptedJobs.length) {
-        throw new Error(
-          `Startup recovery failed for every job in the batch (${sweepFailures}/${interruptedJobs.length})`,
-        );
-      }
-    }
-
-    return recoveredCount;
+    return result;
   }
 
   /**
@@ -1168,7 +1197,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
-            sql`${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(params.job.execution_quiesced_at)}`,
+            msWindowTimestampMatch(jobs.execution_quiesced_at, params.job.execution_quiesced_at),
             lt(jobs.started_at, params.startedBefore),
             params.recoveryFence,
           ),
@@ -1206,7 +1235,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
-            sql`${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(params.job.execution_quiesced_at)}`,
+            msWindowTimestampMatch(jobs.execution_quiesced_at, params.job.execution_quiesced_at),
             lt(jobs.started_at, params.startedBefore),
             params.recoveryFence,
             requiresExecutionLease && params.job.execution_generation

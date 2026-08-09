@@ -11,9 +11,9 @@ export interface ScriptMetadata {
   /** Documented exceptions to the "tsgo checks, tsc emits" build model. */
   buildModel?: {
     /** Build deliberately keeps a full tsc type-check. */
-    doubleCheck?: true;
-    /** typecheck still runs `tsc` rather than `tsgo` (migration pending). */
-    tscTypecheck?: true;
+    doubleCheck?: { reason: string };
+    /** typecheck still runs compatibility `tsc6` rather than stable `tsc`. */
+    tscTypecheck?: { reason: string };
   };
   /** turbo `#build` override enumerates build deps a source scan cannot see. */
   turboNonImportedBuildDeps?: true;
@@ -60,7 +60,11 @@ export declare function resolveTestLaneDirs(
 
 export declare function resolveBuildModelExceptions(
   opts?: WorkspaceDiscoveryOptions,
-): { doubleCheck: Set<string>; tscTypecheck: Set<string> };
+): {
+  doubleCheck: Map<string, string>;
+  tscTypecheck: Map<string, string>;
+  invalid: string[];
+};
 
 export declare function resolveTurboNonImportedBuildDepOwners(
   opts?: WorkspaceDiscoveryOptions,

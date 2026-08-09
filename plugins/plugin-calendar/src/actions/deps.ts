@@ -34,6 +34,17 @@ export interface CalendarJsonModelResult<
   parsed: T | null;
 }
 
+export interface CalendarGroundedReplyArgs {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  intent: string;
+  scenario: string;
+  fallback: string;
+  context?: Record<string, unknown>;
+  additionalRules: string[];
+}
+
 /**
  * Result of resolving a travel buffer for a freshly created event. Shape
  * mirrors the LifeOps `TravelBufferResult` fields the calendar handler reads.
@@ -156,9 +167,9 @@ export interface CalendarMutationCancelRequest {
 }
 
 /**
- * Approval boundary for conversational writes. The calendar action resolves
- * and validates an exact source/target, but only the host-owned approval queue
- * may persist mutation intent; provider CRUD happens later in the ledger.
+ * Approval boundary for consequential connected-provider writes. The built-in
+ * Eliza calendar is local and reversible, so its conversational CRUD executes
+ * directly against CalendarService with optimistic concurrency.
  */
 export interface CalendarMutationGatewayDep {
   schedule(args: {
@@ -202,12 +213,17 @@ export interface CalendarActionDeps {
     state: State | undefined;
     limit: number;
   }): Promise<string[]>;
+  /**
+   * Render the final human-facing reply through the host's model boundary.
+   * Hosts that omit this optional presentation seam receive the canonical,
+   * already-grounded action reply without changing action settlement.
+   */
+  renderGroundedReply?(args: CalendarGroundedReplyArgs): Promise<string>;
   /** Optional travel-buffer integration (LifeOps travel domain). */
   travelBuffer?: CalendarTravelBufferDep;
   /**
-   * Immutable owner-approval boundary for all conversational calendar writes.
-   * Hosts without an approval ledger may still use calendar reads, but writes
-   * fail explicitly instead of mutating the provider directly.
+   * Immutable owner-approval boundary for connected-provider calendar writes.
+   * The built-in Eliza calendar remains usable without this dependency.
    */
   mutationGateway?: CalendarMutationGatewayDep;
 }

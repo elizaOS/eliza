@@ -36,7 +36,7 @@ cat > "$STAGE/package.json" <<'JSON'
 JSON
 
 cat > "$STAGE/Dockerfile" <<'DOCKER'
-FROM oven/bun:canary-alpine
+FROM oven/bun:1.3.14-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 gateway

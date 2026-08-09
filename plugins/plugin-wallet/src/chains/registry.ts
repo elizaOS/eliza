@@ -318,6 +318,7 @@ async function executeEvmSwap(
     fromToken,
     toToken,
     amount: params.amount ?? "",
+    slippageBps: params.slippageBps,
   });
   return transactionToExecution(
     {

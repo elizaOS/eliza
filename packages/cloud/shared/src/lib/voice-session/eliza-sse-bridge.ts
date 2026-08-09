@@ -8,8 +8,11 @@
  *     `X-Eliza-Voice-Trace-Id` header (reusing #15931's trace contract);
  *   - propagate an `AbortSignal` so an interruption cancels the in-flight fetch,
  *     which cancels the upstream provider stream (the route's tee/abort seam);
- *   - decode the OpenAI-shaped SSE `delta.content` tokens into a plain string
- *     stream for the phrase aggregator.
+ *   - decode canonical `chunk`, local runtime `type=token`, and OpenAI-shaped
+ *     `delta.content` frames into one authoritative text stream for phrase
+ *     aggregation. Action-callback frames are explicitly provisional, so they
+ *     stay buffered until a model replacement or the terminal frame selects
+ *     the one reply TTS may speak.
  *
  * It holds no provider key; the canonical route owns auth, billing, and
  * persistence. `fetchImpl` is injectable so the
@@ -17,12 +20,15 @@
  * decoding path, no live model.
  */
 
+import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+
 export const VOICE_TRACE_HEADER = "X-Eliza-Voice-Trace-Id";
 /** Scope headers so the configured endpoint routes the turn to the right agent. */
 export const VOICE_AGENT_HEADER = "X-Eliza-Agent-Id";
 export const VOICE_CONVERSATION_HEADER = "X-Eliza-Conversation-Id";
 export const VOICE_ORGANIZATION_HEADER = "X-Eliza-Organization-Id";
 export const VOICE_USER_HEADER = "X-Eliza-User-Id";
+export const VOICE_STREAM_PROTOCOL = "delta-v2" as const;
 
 export interface ElizaSseBridgeRequest {
   /** API origin hosting the canonical agent conversation routes. */
@@ -51,10 +57,18 @@ export interface ElizaSseBridgeRequest {
 }
 
 export interface ElizaSseBridgeResult {
-  /** True if the stream completed normally (saw `[DONE]` or clean end). */
+  /** True only after an explicit `[DONE]` or structured terminal frame. */
   completed: boolean;
   /** True if the stream was aborted (interruption / disconnect). */
   aborted: boolean;
+  /** Successful model-selected VIEWS handoff carried by the terminal frame. */
+  viewHandoff?: ElizaVoiceViewHandoff;
+}
+
+export interface ElizaVoiceViewHandoff {
+  viewId: string;
+  viewPath?: string;
+  subview?: string;
 }
 
 export class ElizaSseBridgeError extends Error {
@@ -78,7 +92,8 @@ export class ElizaSseBridgeError extends Error {
 
 /**
  * Stream LLM text deltas for a turn. Invokes `onDelta` for each non-empty
- * content token as it arrives. Resolves when the stream ends or is aborted.
+ * content token as it arrives. Resolves on an explicit terminal frame or abort;
+ * an unframed EOF is a protocol failure because it cannot authorize snapshots.
  */
 export async function streamElizaConversation(
   request: ElizaSseBridgeRequest,
@@ -110,7 +125,15 @@ export async function streamElizaConversation(
       // This is the canonical message contract. Agent and conversation identity
       // are structural URL segments, so the route cannot silently discard them;
       // sharedRestMessageSend/bridgeStream executes and persists this turn.
-      body: JSON.stringify({ text: request.transcript }),
+      body: JSON.stringify({
+        text: request.transcript,
+        metadata: {
+          clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+        },
+        // Snapshot-only action replies must remain distinguishable from model
+        // deltas. The local loopback adapter preserves this exact negotiation.
+        streamProtocol: VOICE_STREAM_PROTOCOL,
+      }),
       signal: request.signal,
     });
   } catch (error) {
@@ -161,6 +184,46 @@ export async function streamElizaConversation(
   const decoder = new TextDecoder();
   let buffered = "";
   let eventType = "";
+  let emittedText = "";
+  let pendingProvisionalText: string | null = null;
+  const emitDelta = (text: string): void => {
+    if (!text) return;
+    emittedText += text;
+    onDelta(text);
+  };
+  const authorizeText = (authoritativeText: string): void => {
+    pendingProvisionalText = null;
+    if (!authoritativeText.startsWith(emittedText)) {
+      throw new ElizaSseBridgeError(
+        "Eliza agent authoritative reply diverged from text already sent to speech",
+        "protocol_error",
+      );
+    }
+    emitDelta(authoritativeText.slice(emittedText.length));
+  };
+  const applyTextUpdate = (update: VoiceTextUpdate): void => {
+    if (update.provisional) {
+      pendingProvisionalText =
+        update.kind === "snapshot"
+          ? update.text
+          : `${pendingProvisionalText ?? emittedText}${update.text}`;
+      return;
+    }
+
+    if (update.kind === "delta") {
+      // A delta extends the current wire buffer, so its non-provisional frame
+      // authorizes the held prefix as well. A snapshot below replaces it.
+      authorizeText(`${pendingProvisionalText ?? emittedText}${update.text}`);
+      return;
+    }
+    authorizeText(update.text);
+  };
+  const finishAuthoritativeText = (payload: string): void => {
+    const terminal = extractTerminalText(payload);
+    const terminalText = terminal.present ? terminal.text : pendingProvisionalText;
+    if (terminalText === null) return;
+    authorizeText(terminalText);
+  };
   try {
     for (;;) {
       let chunk: Awaited<ReturnType<typeof reader.read>>;
@@ -195,17 +258,24 @@ export async function streamElizaConversation(
         if (!line.startsWith("data:")) continue;
         const payload = line.slice(5).trim();
         if (payload === "") continue;
-        if (payload === "[DONE]" || eventType === "done") {
-          return { completed: true, aborted: false };
+        const payloadType = extractPayloadType(payload);
+        if (payload === "[DONE]" || eventType === "done" || payloadType === "done") {
+          finishAuthoritativeText(payload);
+          const viewHandoff = payload === "[DONE]" ? null : extractViewHandoff(payload);
+          return {
+            completed: true,
+            aborted: false,
+            ...(viewHandoff ? { viewHandoff } : {}),
+          };
         }
-        if (eventType === "error") {
+        if (eventType === "error" || payloadType === "error") {
           throw new ElizaSseBridgeError(
             `Eliza agent stream error: ${extractErrorMessage(payload)}`,
             "upstream_error",
           );
         }
-        const delta = extractDeltaContent(payload);
-        if (delta) onDelta(delta);
+        const update = extractTextUpdate(payload);
+        if (update) applyTextUpdate(update);
       }
     }
   } finally {
@@ -224,7 +294,10 @@ export async function streamElizaConversation(
   }
 
   if (request.signal.aborted) return { completed: false, aborted: true };
-  return { completed: true, aborted: false };
+  throw new ElizaSseBridgeError(
+    "Eliza agent stream ended before its terminal reply",
+    "protocol_error",
+  );
 }
 
 function canonicalConversationStreamUrl(
@@ -336,7 +409,23 @@ function extractErrorMessage(payload: string): string {
   return payload.slice(0, 256) || "unknown agent stream error";
 }
 
-function extractDeltaContent(payload: string): string | null {
+function extractPayloadType(payload: string): string | null {
+  try {
+    const parsed = JSON.parse(payload) as { type?: unknown };
+    return typeof parsed.type === "string" ? parsed.type : null;
+  } catch (ignoredError) {
+    void ignoredError;
+    // error-policy:J3 untrusted SSE payloads without JSON have no typed control
+    // meaning; token extraction and explicit event labels still handle them.
+    return null;
+  }
+}
+
+type VoiceTextUpdate =
+  | { kind: "delta"; text: string; provisional: boolean }
+  | { kind: "snapshot"; text: string; provisional: boolean };
+
+function extractTextUpdate(payload: string): VoiceTextUpdate | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
@@ -348,17 +437,117 @@ function extractDeltaContent(payload: string): string | null {
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;
+  const provisional = (parsed as { provisional?: unknown }).provisional === true;
   // Canonical agent message streams emit event:chunk with a top-level chunk.
   const canonicalChunk = (parsed as { chunk?: unknown }).chunk;
-  if (typeof canonicalChunk === "string" && canonicalChunk.length > 0) return canonicalChunk;
+  if (typeof canonicalChunk === "string" && canonicalChunk.length > 0) {
+    return { kind: "delta", text: canonicalChunk, provisional };
+  }
+  const localToken = parsed as {
+    type?: unknown;
+    text?: unknown;
+    fullText?: unknown;
+  };
+  // Delta-v2 checkpoints may carry both the latest delta and accumulated text.
+  // The snapshot is canonical; consuming both would duplicate the latest chunk.
+  if (
+    localToken.type === "token" &&
+    typeof localToken.fullText === "string" &&
+    localToken.fullText.length > 0
+  ) {
+    return { kind: "snapshot", text: localToken.fullText, provisional };
+  }
+  if (
+    localToken.type === "token" &&
+    typeof localToken.text === "string" &&
+    localToken.text.length > 0
+  ) {
+    return { kind: "delta", text: localToken.text, provisional };
+  }
   const choices = (parsed as { choices?: unknown }).choices;
   if (!Array.isArray(choices) || choices.length === 0) return null;
   const first = choices[0] as { delta?: { content?: unknown }; text?: unknown };
   const content = first?.delta?.content;
-  if (typeof content === "string" && content.length > 0) return content;
+  if (typeof content === "string" && content.length > 0) {
+    return { kind: "delta", text: content, provisional };
+  }
   // Some providers stream `text` on legacy completions; accept it too.
-  if (typeof first?.text === "string" && first.text.length > 0) return first.text;
+  if (typeof first?.text === "string" && first.text.length > 0) {
+    return { kind: "delta", text: first.text, provisional };
+  }
   return null;
+}
+
+function extractTerminalText(payload: string): {
+  present: boolean;
+  text: string;
+} {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch (ignoredError) {
+    void ignoredError;
+    // error-policy:J3 terminal SSE text is untrusted; malformed JSON cannot
+    // become speakable content.
+    return { present: false, text: "" };
+  }
+  if (!isRecord(parsed)) return { present: false, text: "" };
+  if (typeof parsed.fullText === "string") {
+    return { present: true, text: parsed.fullText };
+  }
+  if (typeof parsed.text === "string") {
+    return { present: true, text: parsed.text };
+  }
+  return { present: false, text: "" };
+}
+
+function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch (ignoredError) {
+    void ignoredError;
+    // error-policy:J3 terminal SSE metadata is untrusted input; malformed JSON
+    // produces an explicit absent handoff and never a fabricated navigation.
+    return null;
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.actionResults)) return null;
+
+  for (let index = parsed.actionResults.length - 1; index >= 0; index--) {
+    const candidate = parsed.actionResults[index];
+    if (!isRecord(candidate) || candidate.success !== true) continue;
+    const data = isRecord(candidate.data) ? candidate.data : null;
+    const actionName =
+      typeof candidate.actionName === "string"
+        ? candidate.actionName
+        : typeof data?.actionName === "string"
+          ? data.actionName
+          : null;
+    if (actionName?.toUpperCase() !== "VIEWS" || !isRecord(candidate.values)) {
+      continue;
+    }
+    const mode = readBoundedString(candidate.values.mode)?.toLowerCase();
+    const viewId = readBoundedString(candidate.values.viewId);
+    if ((mode !== "show" && mode !== "open") || !viewId) continue;
+    const viewPath = readBoundedString(candidate.values.viewPath);
+    const subview = readBoundedString(candidate.values.subview);
+    return {
+      viewId,
+      ...(viewPath ? { viewPath } : {}),
+      ...(subview ? { subview } : {}),
+    };
+  }
+  return null;
+}
+
+function readBoundedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized.length <= 256 ? normalized : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isAbortError(error: unknown): boolean {

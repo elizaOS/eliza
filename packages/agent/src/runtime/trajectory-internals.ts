@@ -18,11 +18,13 @@ import {
   logger as coreLogger,
   ElizaError,
   type IAgentRuntime,
+  type JsonValue,
   ModelType,
   observationExtractionTemplate,
   redactBasicEmails,
   resolveStateDir,
   resolveTrajectoryGate,
+  sanitizeTrajectoryJsonObject,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 
@@ -30,8 +32,10 @@ export { asRecord };
 
 import {
   TRAJECTORY_STEP_SCRIPT_MAX_CHARS,
+  type TrajectoryActionAttempt,
   type TrajectoryLlmCall,
   type TrajectoryProviderAccess,
+  type TrajectorySkillInvocation,
   type TrajectoryStatus,
   type TrajectoryStep,
   type TrajectoryStepKind,
@@ -43,7 +47,10 @@ import {
 
 export type RuntimeDb = {
   execute: (query: { queryChunks: object[] }) => Promise<unknown>;
+  transaction?: <T>(work: (tx: RuntimeDb) => Promise<T>) => Promise<T>;
 };
+
+export type RawSqlExecutor = (sqlText: string) => Promise<unknown>;
 
 export type TrajectoryLoggerLike = {
   listTrajectories?: unknown;
@@ -76,25 +83,16 @@ export type PersistedLlmCall = TrajectoryLlmCall & {
   callId: string;
   timestamp: number;
   model: string;
-  systemPrompt: string;
-  userPrompt: string;
   response: string;
-  temperature: number;
-  maxTokens: number;
   maxTokensOmitted?: boolean;
   purpose: string;
   actionType: string;
-  latencyMs: number;
 };
 
 export type PersistedProviderAccess = TrajectoryProviderAccess & {
   providerId: string;
   providerName: string;
   timestamp: number;
-  startedAt: number | null;
-  endedAt: number | null;
-  durationMs: number | null;
-  overlapsWith: Array<{ providerName: string; overlapMs: number }>;
   data: Record<string, unknown>;
   purpose: string;
 };
@@ -112,7 +110,7 @@ export type PersistedStep = TrajectoryStep & {
   kind?: TrajectoryStepKind;
   /** Step IDs of nested trajectory steps. */
   childSteps?: string[];
-  /** Inline script source for script-backed steps (capped). */
+  /** Full inline script source for script-backed dedicated rows. */
   script?: string;
   /** sha256 hex digest of the original script when it exceeded the cap. */
   scriptHash?: string;
@@ -122,14 +120,20 @@ export type PersistedStep = TrajectoryStep & {
 
 export type PersistedTrajectory = {
   id: string;
+  agentId: string;
   source: string;
   status: TrajectoryStatus;
   startTime: number;
   endTime: number | null;
   scenarioId?: string;
+  traceId?: string;
+  episodeId?: string;
   batchId?: string;
+  groupIndex?: number;
   steps: PersistedStep[];
   metadata: Record<string, unknown>;
+  metrics: Record<string, JsonValue>;
+  rewardComponents: Record<string, JsonValue>;
   totalReward: number;
   createdAt: string;
   updatedAt: string;
@@ -672,7 +676,7 @@ export async function flushObservationBuffer(
         : [];
       meta.observations = [...existing, ...observations].slice(-30);
       trajectory.metadata = meta;
-      await saveTrajectory(runtime, trajectory);
+      await saveTrajectory(runtime, trajectory, { changedStepIds: [] });
     }
 
     return observations;
@@ -699,15 +703,66 @@ export function parseMetadata(value: unknown): Record<string, unknown> {
   return record ?? {};
 }
 
-export function parseSteps(value: unknown): PersistedStep[] {
+export function parsePersistedMetadata(
+  value: unknown,
+  trajectoryId: string,
+): Record<string, unknown> {
+  if (value === undefined || value === null) return {};
   const parsed = parseJsonValue(value);
-  if (Array.isArray(parsed)) {
-    return parsed as PersistedStep[];
-  }
   const record = asRecord(parsed);
-  if (!record) return [];
-  const nested = parseJsonValue(readRecordValue(record, ["steps"]));
-  return Array.isArray(nested) ? (nested as PersistedStep[]) : [];
+  if (!record || !isJsonValue(record)) {
+    throw new ElizaError("Persisted trajectory metadata is invalid", {
+      code: "TRAJECTORY_ROW_INVALID",
+      context: { trajectoryId, field: "metadata_json" },
+    });
+  }
+  return record;
+}
+
+function parseCanonicalJsonObject(
+  value: unknown,
+  field: "metrics" | "rewardComponents",
+  trajectoryId: string,
+): Record<string, JsonValue> {
+  if (value === undefined || value === null) return {};
+  const parsed = parseJsonValue(value);
+  const record = asRecord(parsed);
+  if (!record || !isJsonValue(record)) {
+    throw new ElizaError(`Persisted trajectory ${field} are invalid`, {
+      code:
+        field === "metrics"
+          ? "TRAJECTORY_METRICS_INVALID"
+          : "TRAJECTORY_REWARD_COMPONENTS_INVALID",
+      context: { trajectoryId },
+    });
+  }
+  return record as Record<string, JsonValue>;
+}
+
+export function parseSteps(
+  value: unknown,
+  trajectoryId = "unknown",
+): PersistedStep[] {
+  if (value === undefined || value === null) return [];
+  const parsed = parseJsonValue(value);
+  const records = Array.isArray(parsed)
+    ? parsed
+    : (() => {
+        const record = asRecord(parsed);
+        const nested = record
+          ? parseJsonValue(readRecordValue(record, ["steps"]))
+          : undefined;
+        return Array.isArray(nested) ? nested : null;
+      })();
+  if (!records) {
+    throw new ElizaError("Persisted trajectory steps are invalid", {
+      code: "TRAJECTORY_ROW_INVALID",
+      context: { trajectoryId, field: "steps_json" },
+    });
+  }
+  return records.map((step, index) =>
+    parsePersistedStepObject(step, trajectoryId, index),
+  );
 }
 
 export function sqlQuote(value: string): string {
@@ -731,7 +786,7 @@ export async function getSqlRaw(): Promise<
 }
 
 export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb | null {
-  const adapterDb = runtime.adapter.db as RuntimeDb | undefined;
+  const adapterDb = runtime.adapter?.db as RuntimeDb | undefined;
   // Legacy runtimes may expose `databaseAdapter` instead of `adapter`
   const fallbackDb = (
     runtime as IAgentRuntime & {
@@ -759,6 +814,21 @@ export async function executeRawSql(
   return db.execute(raw(sqlText));
 }
 
+export async function executeRawSqlTransaction<T>(
+  runtime: IAgentRuntime,
+  work: (execute: RawSqlExecutor) => Promise<T>,
+): Promise<T> {
+  const db = getRuntimeDb(runtime);
+  if (!db || typeof db.transaction !== "function") {
+    throw new ElizaError("Trajectory database transactions are unavailable", {
+      code: "TRAJECTORY_TRANSACTION_UNAVAILABLE",
+      context: { agentId: String(runtime.agentId) },
+    });
+  }
+  const raw = await getSqlRaw();
+  return db.transaction((tx) => work((sqlText) => tx.execute(raw(sqlText))));
+}
+
 export function extractRows(result: unknown): unknown[] {
   if (Array.isArray(result)) return result;
   const record = asRecord(result);
@@ -766,31 +836,53 @@ export function extractRows(result: unknown): unknown[] {
   return Array.isArray(record.rows) ? record.rows : [];
 }
 
+export function extractRequiredRows(
+  result: unknown,
+  context: Record<string, unknown> = {},
+): unknown[] {
+  if (Array.isArray(result)) return result;
+  const record = asRecord(result);
+  if (!record || !Array.isArray(record.rows)) {
+    throw new ElizaError("Trajectory query result is invalid", {
+      code: "TRAJECTORY_ROW_INVALID",
+      context,
+    });
+  }
+  return record.rows;
+}
+
 export async function computeBySource(
   runtime: IAgentRuntime,
 ): Promise<Record<string, number>> {
-  try {
-    const result = await executeRawSql(
-      runtime,
-      "SELECT source, count(*) AS cnt FROM trajectories GROUP BY source",
-    );
-    const rows = extractRows(result);
-    const bySource: Record<string, number> = {};
-    for (const row of rows) {
-      const r = asRecord(row);
-      if (!r) continue;
-      const src = typeof r.source === "string" ? r.source : "";
-      if (src) bySource[src] = toNumber(r.cnt, 0);
+  const result = await executeRawSql(
+    runtime,
+    `SELECT source, count(*) AS cnt FROM trajectories
+     WHERE agent_id = ${sqlQuote(runtime.agentId)} GROUP BY source`,
+  );
+  const rows = extractRequiredRows(result, {
+    operation: "aggregate trajectories by source",
+    agentId: runtime.agentId,
+  });
+  const bySource: Record<string, number> = {};
+  for (const [index, row] of rows.entries()) {
+    const record = asRecord(row);
+    const source =
+      typeof record?.source === "string" ? record.source.trim() : "";
+    const count = toOptionalNumber(record?.cnt);
+    if (
+      !source ||
+      count === undefined ||
+      !Number.isInteger(count) ||
+      count < 0
+    ) {
+      throw new ElizaError("Trajectory source aggregation row is invalid", {
+        code: "TRAJECTORY_ROW_INVALID",
+        context: { agentId: runtime.agentId, index },
+      });
     }
-    return bySource;
-  } catch (err) {
-    warnRuntime(
-      runtime,
-      "[trajectory-persistence] source aggregation failed",
-      err,
-    );
-    return {};
+    bySource[source] = count;
   }
+  return bySource;
 }
 
 export function warnRuntime(
@@ -844,6 +936,15 @@ function isDuplicateColumnError(error: unknown): boolean {
   ]);
 }
 
+function isMissingCurrentTrajectoryColumnError(error: unknown): boolean {
+  return databaseErrorMatches(error, [
+    /column ["'`]?(?:metadata_json|metrics_json|reward_components_json)["'`]?.*does not exist/i,
+    /no column named ["'`]?(?:metadata_json|metrics_json|reward_components_json)["'`]?/i,
+    /has no column named ["'`]?(?:metadata_json|metrics_json|reward_components_json)["'`]?/i,
+    /unknown column ["'`]?(?:metadata_json|metrics_json|reward_components_json)["'`]?/i,
+  ]);
+}
+
 async function addColumnIfMissing(
   runtime: IAgentRuntime,
   table: string,
@@ -871,7 +972,10 @@ export async function ensureTrajectoriesTable(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
   const key = runtime as object;
-  if (schemaVersions.get(key) === SCHEMA_VERSION) return true;
+  if (schemaVersions.get(key) === SCHEMA_VERSION) {
+    await forwardMigrateStepsJsonToRows(runtime);
+    return true;
+  }
   const existing = trajectorySchemaInitializationPromises.get(key);
   if (existing) return existing;
 
@@ -905,9 +1009,19 @@ async function initializeTrajectoriesTable(
       const optionalColumns = [
         { name: "trajectory_id", def: "TEXT" },
         { name: "metadata", def: "TEXT NOT NULL DEFAULT '{}'" },
+        // Canonical Core columns (#17730): prefer these for primary writes.
+        { name: "metadata_json", def: "TEXT NOT NULL DEFAULT '{}'" },
+        { name: "metrics_json", def: "TEXT NOT NULL DEFAULT '{}'" },
+        {
+          name: "reward_components_json",
+          def: "TEXT NOT NULL DEFAULT '{}'",
+        },
         { name: "steps_json", def: "TEXT NOT NULL DEFAULT '[]'" },
         { name: "scenario_id", def: "TEXT" },
+        { name: "trace_id", def: "TEXT" },
+        { name: "episode_id", def: "TEXT" },
         { name: "batch_id", def: "TEXT" },
+        { name: "group_index", def: "INTEGER" },
         { name: "archetype", def: "TEXT" },
         { name: "episode_length", def: "INTEGER" },
         {
@@ -954,9 +1068,15 @@ async function initializeTrajectoriesTable(
         total_cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
         total_reward REAL NOT NULL DEFAULT 0,
         scenario_id TEXT,
+        trace_id TEXT,
+        episode_id TEXT,
         batch_id TEXT,
+        group_index INTEGER,
         steps_json TEXT NOT NULL DEFAULT '[]',
         metadata TEXT NOT NULL DEFAULT '{}',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        metrics_json TEXT NOT NULL DEFAULT '{}',
+        reward_components_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         episode_length INTEGER,
@@ -1035,6 +1155,16 @@ async function initializeTrajectoriesTable(
     );
     await addColumnIfMissing(runtime, "trajectory_archive", "batch_id", "TEXT");
 
+    let trajectoryStepsExisted = true;
+    try {
+      await executeRawSql(runtime, `SELECT id FROM trajectory_steps LIMIT 1`);
+    } catch (error) {
+      // error-policy:J4 A typed missing-table result selects the explicit
+      // first-install schema path; every other storage failure still propagates.
+      if (!isMissingTableError(error)) throw error;
+      trajectoryStepsExisted = false;
+    }
+
     // Per-step rows; script column is unbounded TEXT (no legacy 4096-char cap).
     await executeRawSql(
       runtime,
@@ -1048,8 +1178,17 @@ async function initializeTrajectoriesTable(
         started_at BIGINT,
         ended_at BIGINT,
         payload TEXT NOT NULL DEFAULT '{}',
-        script TEXT
+        script TEXT,
+        UNIQUE (trajectory_id, id),
+        FOREIGN KEY (trajectory_id) REFERENCES trajectories(id) ON DELETE CASCADE,
+        FOREIGN KEY (trajectory_id, parent_step_id)
+          REFERENCES trajectory_steps(trajectory_id, id)
+          ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
       )`,
+    );
+    await ensureTrajectoryStepsConstraintSchema(
+      runtime,
+      trajectoryStepsExisted,
     );
     await executeRawSql(
       runtime,
@@ -1060,9 +1199,9 @@ async function initializeTrajectoriesTable(
       `CREATE INDEX IF NOT EXISTS idx_trajectory_steps_ordinal ON trajectory_steps(trajectory_id, ordinal)`,
     );
 
-    // One-shot forward migration from steps_json into trajectory_steps.
-    // Idempotent: only migrates trajectories whose steps are absent from the
-    // dedicated table.
+    // A trajectory becomes row-authoritative only after its complete legacy
+    // snapshot commits in one transaction; failed trajectories remain
+    // readable from steps_json and are eligible for the next retry.
     await forwardMigrateStepsJsonToRows(runtime);
 
     if (needsRecreate) {
@@ -1085,24 +1224,99 @@ async function initializeTrajectoriesTable(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Forward migration: steps_json -> trajectory_steps
-//
-// Direction: ONE-WAY (legacy JSONB -> dedicated rows). Runs once per
-// runtime + schema version. After this migration runs, writes go to
-// both stores (rows are authoritative, `steps_json` is kept as a
-// best-effort fallback only). There is no reverse migration.
-// ---------------------------------------------------------------------------
+const TRAJECTORY_STEPS_CONSTRAINT_MIGRATION = "trajectory_steps_constraints_v1";
+
+async function ensureTrajectoryStepsConstraintSchema(
+  runtime: IAgentRuntime,
+  trajectoryStepsExisted: boolean,
+): Promise<void> {
+  await executeRawSql(
+    runtime,
+    `CREATE TABLE IF NOT EXISTS trajectory_schema_migrations (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL
+    )`,
+  );
+
+  await executeRawSqlTransaction(runtime, async (execute) => {
+    const claimed = extractRequiredRows(
+      await execute(
+        `INSERT INTO trajectory_schema_migrations (id, created_at)
+         VALUES (
+           ${sqlQuote(TRAJECTORY_STEPS_CONSTRAINT_MIGRATION)},
+           ${sqlQuote(new Date().toISOString())}
+         )
+         ON CONFLICT (id) DO NOTHING
+         RETURNING id`,
+      ),
+      { operation: "claim trajectory step schema migration" },
+    );
+    if (claimed.length === 0 || !trajectoryStepsExisted) return;
+
+    const migrationTable = "trajectory_steps_constraint_migration";
+    await execute(`DROP TABLE IF EXISTS ${migrationTable}`);
+    await execute(
+      `CREATE TABLE ${migrationTable} (
+        id TEXT PRIMARY KEY,
+        trajectory_id TEXT NOT NULL,
+        ordinal INTEGER NOT NULL,
+        parent_step_id TEXT,
+        step_type TEXT NOT NULL DEFAULT 'llm',
+        name TEXT,
+        started_at BIGINT,
+        ended_at BIGINT,
+        payload TEXT NOT NULL DEFAULT '{}',
+        script TEXT,
+        UNIQUE (trajectory_id, id),
+        FOREIGN KEY (trajectory_id) REFERENCES trajectories(id) ON DELETE CASCADE,
+        FOREIGN KEY (trajectory_id, parent_step_id)
+          REFERENCES ${migrationTable}(trajectory_id, id)
+          ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+      )`,
+    );
+    await execute(
+      `INSERT INTO ${migrationTable} (
+        id, trajectory_id, ordinal, parent_step_id, step_type, name,
+        started_at, ended_at, payload, script
+      )
+      SELECT id, trajectory_id, ordinal, parent_step_id, step_type, name,
+             started_at, ended_at, payload, script
+      FROM trajectory_steps`,
+    );
+    await execute(`DROP TABLE trajectory_steps`);
+    await execute(`ALTER TABLE ${migrationTable} RENAME TO trajectory_steps`);
+  });
+}
+
+// Dedicated rows become canonical per trajectory. The parent snapshot remains
+// a bounded compatibility projection for readers that predate the row store.
 
 const stepsForwardMigrationRan = new WeakSet<object>();
+const stepsForwardMigrationPromises = new WeakMap<object, Promise<boolean>>();
 
 async function forwardMigrateStepsJsonToRows(
   runtime: IAgentRuntime,
-): Promise<void> {
+): Promise<boolean> {
   const key = runtime as object;
-  if (stepsForwardMigrationRan.has(key)) return;
-  stepsForwardMigrationRan.add(key);
+  if (stepsForwardMigrationRan.has(key)) return true;
+  const existing = stepsForwardMigrationPromises.get(key);
+  if (existing) return existing;
+  const migration = runForwardStepsMigration(runtime);
+  stepsForwardMigrationPromises.set(key, migration);
+  try {
+    const succeeded = await migration;
+    if (succeeded) stepsForwardMigrationRan.add(key);
+    return succeeded;
+  } finally {
+    if (stepsForwardMigrationPromises.get(key) === migration) {
+      stepsForwardMigrationPromises.delete(key);
+    }
+  }
+}
 
+async function runForwardStepsMigration(
+  runtime: IAgentRuntime,
+): Promise<boolean> {
   try {
     // Find trajectories that have steps_json content but no rows yet.
     const result = await executeRawSql(
@@ -1115,71 +1329,57 @@ async function forwardMigrateStepsJsonToRows(
          AND CAST(t.steps_json AS TEXT) <> ''
          AND CAST(t.steps_json AS TEXT) <> '[]'`,
     );
-    const rows = extractRows(result);
-    if (rows.length === 0) return;
+    const rows = extractRequiredRows(result, {
+      operation: "discover legacy trajectory steps",
+    });
+    if (rows.length === 0) return true;
 
     let migrated = 0;
+    let failed = false;
     for (const row of rows) {
       const record = asRecord(row);
-      if (!record) continue;
+      if (!record) {
+        failed = true;
+        continue;
+      }
       const trajectoryId = toText(record.id, "");
-      if (!trajectoryId) continue;
+      if (!trajectoryId) {
+        failed = true;
+        continue;
+      }
       const stepsRaw = record.steps_json;
       const parsed = parseJsonValue(stepsRaw);
-      if (!Array.isArray(parsed)) continue;
+      if (!Array.isArray(parsed)) {
+        failed = true;
+        continue;
+      }
 
-      for (const stepValue of parsed) {
-        const step = asRecord(stepValue);
-        if (!step) continue;
-        const stepId = toText(step.stepId, "");
-        if (!stepId) continue;
-        const ordinal = toNumber(step.stepNumber, 0);
-        const startedAt = toOptionalNumber(step.timestamp);
-        const endedAt = startedAt;
-        const kindRaw = toText(step.kind, "");
-        const stepType =
-          kindRaw === "llm" || kindRaw === "action" || kindRaw === "evaluator"
-            ? kindRaw
-            : "llm";
-        const script =
-          typeof step.script === "string" && step.script.length > 0
-            ? step.script
-            : null;
-        const { script: _script, ...payloadObj } = step as Record<
-          string,
-          unknown
-        >;
-        const payload = JSON.stringify(payloadObj);
-
-        try {
-          await executeRawSql(
-            runtime,
-            `INSERT INTO trajectory_steps (
-              id, trajectory_id, ordinal, parent_step_id, step_type,
-              name, started_at, ended_at, payload, script
-            ) VALUES (
-              ${sqlQuote(stepId)},
-              ${sqlQuote(trajectoryId)},
-              ${sqlNumber(ordinal)},
-              NULL,
-              ${sqlQuote(stepType)},
-              NULL,
-              ${sqlNumber(startedAt ?? null)},
-              ${sqlNumber(endedAt ?? null)},
-              ${sqlQuote(payload)},
-              ${script !== null ? sqlQuote(script) : "NULL"}
-            )
-            ON CONFLICT (id) DO NOTHING`,
+      try {
+        const steps = parsed.map((stepValue, index) =>
+          normalizeMigratedStep(stepValue, trajectoryId, index),
+        );
+        await executeRawSqlTransaction(runtime, async (execute) => {
+          await replaceStepsForTrajectoryInternal(
+            trajectoryId,
+            steps,
+            execute,
+            true,
           );
-          migrated += 1;
-        } catch (err) {
-          // Continue migrating other steps on individual failures.
-          warnRuntime(
-            runtime,
-            `forwardMigrateStepsJsonToRows: failed to insert step ${stepId} for trajectory ${trajectoryId}`,
-            err,
-          );
-        }
+        });
+        migrated += steps.length;
+      } catch (error) {
+        // error-policy:J7 The complete legacy snapshot remains authoritative
+        // after rollback, while diagnostics keep this trajectory retryable.
+        failed = true;
+        warnRuntime(
+          runtime,
+          `forwardMigrateStepsJsonToRows: failed trajectory ${trajectoryId}`,
+          error,
+        );
+        runtime.reportError("TrajectoryStorage.migrateSteps", error, {
+          trajectoryId,
+          diagnosticOnly: true,
+        });
       }
     }
 
@@ -1188,14 +1388,28 @@ async function forwardMigrateStepsJsonToRows(
         `[trajectory-persistence] Forward-migrated ${migrated} step rows from steps_json into trajectory_steps`,
       );
     }
+    return !failed;
   } catch (err) {
-    // Best-effort: failure here doesn't block new writes; legacy steps_json remains readable.
+    // error-policy:J7 legacy JSON remains authoritative until a complete retry
+    // commits, so migration diagnostics cannot block ordinary reads.
     warnRuntime(
       runtime,
       "forwardMigrateStepsJsonToRows: migration query failed; legacy steps_json still readable",
       err,
     );
+    runtime.reportError("TrajectoryStorage.migrateSteps", err, {
+      diagnosticOnly: true,
+    });
+    return false;
   }
+}
+
+function normalizeMigratedStep(
+  value: unknown,
+  trajectoryId: string,
+  index: number,
+): PersistedStep {
+  return parsePersistedStepObject(value, trajectoryId, index);
 }
 
 // ---------------------------------------------------------------------------
@@ -1211,11 +1425,32 @@ export function normalizeStatus(
     status === "active" ||
     status === "completed" ||
     status === "error" ||
-    status === "timeout"
+    status === "timeout" ||
+    status === "terminated"
   ) {
     return status;
   }
   return fallback;
+}
+
+export function parsePersistedTrajectoryStatus(
+  value: unknown,
+  trajectoryId: string,
+): TrajectoryStatus {
+  const status = toText(value, "").toLowerCase();
+  if (
+    status === "active" ||
+    status === "completed" ||
+    status === "error" ||
+    status === "timeout" ||
+    status === "terminated"
+  ) {
+    return status;
+  }
+  throw new ElizaError("Persisted trajectory status is invalid", {
+    code: "TRAJECTORY_ROW_INVALID",
+    context: { trajectoryId, field: "status", status: value },
+  });
 }
 
 export function toOptionalEpochMs(value: unknown): number | undefined {
@@ -1304,7 +1539,8 @@ export function normalizePersistedUpdatedAt(input: {
 }
 
 export function normalizeStepId(value: unknown): string | null {
-  const stepId = toText(value, "").trim();
+  if (typeof value !== "string") return null;
+  const stepId = value.trim();
   return stepId.length > 0 ? stepId : null;
 }
 
@@ -1334,76 +1570,375 @@ function redactTrajectoryParams(
   return cloned ?? params;
 }
 
+function snapshotCaptureParams(
+  params: Record<string, unknown>,
+  stepId: string,
+): Record<string, unknown> {
+  const snapshot = sanitizeTrajectoryJsonObject(params);
+  if (!snapshot) {
+    throw new ElizaError("Trajectory capture payload is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { stepId, field: "payload" },
+    });
+  }
+  return snapshot;
+}
+
 export function normalizeLlmCallPayload(
   args: unknown[],
 ): { stepId: string; params: Record<string, unknown> } | null {
-  if (args.length === 0) return null;
+  if (args.length === 0) {
+    throw new ElizaError("Trajectory LLM capture is missing", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { field: "payload" },
+    });
+  }
   if (typeof args[0] === "string") {
     const stepId = normalizeStepId(args[0]);
     const details = asRecord(args[1]);
-    if (!stepId || !details) return null;
+    if (!stepId || !details) {
+      throw new ElizaError("Trajectory LLM capture is invalid", {
+        code: "TRAJECTORY_CAPTURE_INVALID",
+        context: { field: !stepId ? "stepId" : "payload" },
+      });
+    }
+    const params = redactTrajectoryParams({
+      ...details,
+      stepId,
+    });
+    validateLlmCapture(params, stepId);
+    const snapshot = snapshotCaptureParams(params, stepId);
+    validateLlmCapture(snapshot, stepId);
     return {
       stepId,
-      params: redactTrajectoryParams({
-        ...details,
-        stepId,
-      }),
+      params: snapshot,
     };
   }
 
   const params = asRecord(args[0]);
-  if (!params) return null;
-  const stepId = normalizeStepId(params.stepId);
-  if (!stepId) return null;
-  if (params.stepId === stepId) {
-    return {
-      stepId,
-      params: redactTrajectoryParams(params),
-    };
+  if (!params) {
+    throw new ElizaError("Trajectory LLM capture is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { field: "payload" },
+    });
   }
+  const stepId = normalizeStepId(params.stepId);
+  if (!stepId) {
+    throw new ElizaError("Trajectory LLM capture is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { field: "stepId" },
+    });
+  }
+  const normalizedParams =
+    params.stepId === stepId ? params : { ...params, stepId };
+  const redactedParams = redactTrajectoryParams(normalizedParams);
+  validateLlmCapture(redactedParams, stepId);
+  const snapshot = snapshotCaptureParams(redactedParams, stepId);
+  validateLlmCapture(snapshot, stepId);
   return {
     stepId,
-    params: redactTrajectoryParams({
-      ...params,
-      stepId,
-    }),
+    params: snapshot,
   };
+}
+
+function requireCaptureString(
+  params: Record<string, unknown>,
+  field: string,
+  stepId: string,
+  allowEmpty = false,
+): void {
+  const value = params[field];
+  if (typeof value === "string" && (allowEmpty || value.trim().length > 0)) {
+    return;
+  }
+  throw new ElizaError("Trajectory capture field is invalid", {
+    code: "TRAJECTORY_CAPTURE_INVALID",
+    context: { stepId, field },
+  });
+}
+
+function validateLlmCapture(
+  params: Record<string, unknown>,
+  stepId: string,
+): void {
+  requireCaptureString(params, "model", stepId);
+  requireCaptureString(params, "response", stepId, true);
+  requireCaptureString(params, "purpose", stepId);
+  requireCaptureString(params, "actionType", stepId);
+  for (const field of [
+    "callId",
+    "provider",
+    "modelType",
+    "systemPrompt",
+    "userPrompt",
+    "input",
+    "prompt",
+    "finishReason",
+    "modelVersion",
+    "reasoning",
+    "stepType",
+    "modelSlot",
+    "runId",
+    "roomId",
+    "messageId",
+    "executionTraceId",
+    "createdAt",
+    "evaluatorName",
+  ] as const) {
+    if (params[field] !== undefined && typeof params[field] !== "string") {
+      throw new ElizaError("Trajectory capture field is invalid", {
+        code: "TRAJECTORY_CAPTURE_INVALID",
+        context: { stepId, field },
+      });
+    }
+  }
+  if (typeof params.callId === "string" && params.callId.trim().length === 0) {
+    throw new ElizaError("Trajectory capture field is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { stepId, field: "callId" },
+    });
+  }
+  for (const field of [
+    "timestamp",
+    "temperature",
+    "maxTokens",
+    "topP",
+    "latencyMs",
+    "promptTokens",
+    "completionTokens",
+    "cacheReadInputTokens",
+    "cacheCreationInputTokens",
+    "reasoningTokens",
+  ] as const) {
+    if (
+      params[field] !== undefined &&
+      (typeof params[field] !== "number" ||
+        !Number.isFinite(params[field]) ||
+        params[field] < 0)
+    ) {
+      throw new ElizaError("Trajectory capture field is invalid", {
+        code: "TRAJECTORY_CAPTURE_INVALID",
+        context: { stepId, field },
+      });
+    }
+  }
+  for (const field of ["messages", "toolCalls"] as const) {
+    if (params[field] !== undefined && !Array.isArray(params[field])) {
+      throw new ElizaError("Trajectory capture field is invalid", {
+        code: "TRAJECTORY_CAPTURE_INVALID",
+        context: { stepId, field },
+      });
+    }
+  }
+  if (
+    params.tools !== undefined &&
+    !Array.isArray(params.tools) &&
+    !asRecord(params.tools)
+  ) {
+    throw new ElizaError("Trajectory capture field is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { stepId, field: "tools" },
+    });
+  }
+  for (const field of ["tags", "providerOrder"] as const) {
+    if (
+      params[field] !== undefined &&
+      (!Array.isArray(params[field]) ||
+        params[field].some((entry) => typeof entry !== "string"))
+    ) {
+      throw new ElizaError("Trajectory capture field is invalid", {
+        code: "TRAJECTORY_CAPTURE_INVALID",
+        context: { stepId, field },
+      });
+    }
+  }
+  if (
+    params.providerAttributions !== undefined &&
+    (!Array.isArray(params.providerAttributions) ||
+      params.providerAttributions.some((entry) => {
+        const record = asRecord(entry);
+        return (
+          !record ||
+          typeof record.providerName !== "string" ||
+          record.providerName.trim().length === 0 ||
+          typeof record.sha256 !== "string" ||
+          record.sha256.trim().length === 0 ||
+          typeof record.tokenCount !== "number" ||
+          !Number.isFinite(record.tokenCount) ||
+          record.tokenCount < 0 ||
+          typeof record.position !== "number" ||
+          !Number.isFinite(record.position) ||
+          record.position < 0 ||
+          (record.tokenCountEstimated !== undefined &&
+            typeof record.tokenCountEstimated !== "boolean") ||
+          (record.spanStart !== undefined &&
+            (typeof record.spanStart !== "number" ||
+              !Number.isFinite(record.spanStart) ||
+              record.spanStart < 0)) ||
+          (record.spanEnd !== undefined &&
+            (typeof record.spanEnd !== "number" ||
+              !Number.isFinite(record.spanEnd) ||
+              record.spanEnd < 0))
+        );
+      }))
+  ) {
+    throw new ElizaError("Trajectory capture field is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { stepId, field: "providerAttributions" },
+    });
+  }
+  for (const field of ["maxTokensOmitted", "tokenUsageEstimated"] as const) {
+    if (params[field] !== undefined && typeof params[field] !== "boolean") {
+      throw new ElizaError("Trajectory capture field is invalid", {
+        code: "TRAJECTORY_CAPTURE_INVALID",
+        context: { stepId, field },
+      });
+    }
+  }
 }
 
 export function normalizeProviderAccessPayload(
   args: unknown[],
 ): { stepId: string; params: Record<string, unknown> } | null {
-  if (args.length === 0) return null;
+  if (args.length === 0) {
+    throw new ElizaError("Trajectory provider capture is missing", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { field: "payload" },
+    });
+  }
   if (typeof args[0] === "string") {
     const stepId = normalizeStepId(args[0]);
     const details = asRecord(args[1]);
-    if (!stepId || !details) return null;
+    if (!stepId || !details) {
+      throw new ElizaError("Trajectory provider capture is invalid", {
+        code: "TRAJECTORY_CAPTURE_INVALID",
+        context: { field: !stepId ? "stepId" : "payload" },
+      });
+    }
+    const params = {
+      ...details,
+      stepId,
+    };
+    validateProviderCapture(params, stepId);
+    const snapshot = snapshotCaptureParams(params, stepId);
+    validateProviderCapture(snapshot, stepId);
     return {
       stepId,
-      params: {
-        ...details,
-        stepId,
-      },
+      params: snapshot,
     };
   }
 
   const params = asRecord(args[0]);
-  if (!params) return null;
-  const stepId = normalizeStepId(params.stepId);
-  if (!stepId) return null;
-  if (params.stepId === stepId) {
-    return {
-      stepId,
-      params,
-    };
+  if (!params) {
+    throw new ElizaError("Trajectory provider capture is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { field: "payload" },
+    });
   }
+  const stepId = normalizeStepId(params.stepId);
+  if (!stepId) {
+    throw new ElizaError("Trajectory provider capture is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { field: "stepId" },
+    });
+  }
+  const normalizedParams =
+    params.stepId === stepId ? params : { ...params, stepId };
+  validateProviderCapture(normalizedParams, stepId);
+  const snapshot = snapshotCaptureParams(normalizedParams, stepId);
+  validateProviderCapture(snapshot, stepId);
   return {
     stepId,
-    params: {
-      ...params,
-      stepId,
-    },
+    params: snapshot,
   };
+}
+
+function validateProviderCapture(
+  params: Record<string, unknown>,
+  stepId: string,
+): void {
+  requireCaptureString(params, "providerName", stepId);
+  requireCaptureString(params, "purpose", stepId);
+  if (!asRecord(params.data)) {
+    throw new ElizaError("Trajectory capture field is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { stepId, field: "data" },
+    });
+  }
+  for (const field of [
+    "providerId",
+    "sha256",
+    "runId",
+    "roomId",
+    "messageId",
+    "executionTraceId",
+    "createdAt",
+  ] as const) {
+    if (params[field] !== undefined && typeof params[field] !== "string") {
+      throw new ElizaError("Trajectory capture field is invalid", {
+        code: "TRAJECTORY_CAPTURE_INVALID",
+        context: { stepId, field },
+      });
+    }
+  }
+  if (
+    typeof params.providerId === "string" &&
+    params.providerId.trim().length === 0
+  ) {
+    throw new ElizaError("Trajectory capture field is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { stepId, field: "providerId" },
+    });
+  }
+  for (const field of [
+    "timestamp",
+    "startedAt",
+    "endedAt",
+    "durationMs",
+    "tokenCount",
+    "position",
+    "spanStart",
+    "spanEnd",
+  ] as const) {
+    if (
+      params[field] !== undefined &&
+      params[field] !== null &&
+      (typeof params[field] !== "number" ||
+        !Number.isFinite(params[field]) ||
+        params[field] < 0)
+    ) {
+      throw new ElizaError("Trajectory capture field is invalid", {
+        code: "TRAJECTORY_CAPTURE_INVALID",
+        context: { stepId, field },
+      });
+    }
+  }
+  if (params.query !== undefined && !asRecord(params.query)) {
+    throw new ElizaError("Trajectory capture field is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { stepId, field: "query" },
+    });
+  }
+  if (
+    params.overlapsWith !== undefined &&
+    (!Array.isArray(params.overlapsWith) ||
+      params.overlapsWith.some((entry) => {
+        const record = asRecord(entry);
+        return (
+          !record ||
+          typeof record.providerName !== "string" ||
+          record.providerName.trim().length === 0 ||
+          typeof record.overlapMs !== "number" ||
+          !Number.isFinite(record.overlapMs) ||
+          record.overlapMs < 0
+        );
+      }))
+  ) {
+    throw new ElizaError("Trajectory capture field is invalid", {
+      code: "TRAJECTORY_CAPTURE_INVALID",
+      context: { stepId, field: "overlapsWith" },
+    });
+  }
 }
 
 export function isNumericVectorString(value: string): boolean {
@@ -1510,14 +2045,39 @@ export function enqueueStepWrite(
 
   const previous = perStep.get(stepId) ?? Promise.resolve();
   const current = previous
-    .catch(() => undefined)
-    .then(work)
-    .catch((err: unknown) => {
-      warnRuntime(
-        runtime,
-        "Failed to write trajectory update to database",
-        err,
-      );
+    .catch(() => {
+      // error-policy:J5 The rejected write remains observable through its own
+      // returned promise; this sequencing tail keeps later independent work on
+      // the same owner from being chain-blocked by that prior failure.
+    })
+    .then(async () => {
+      try {
+        await work();
+      } catch (error) {
+        // error-policy:J7 trajectory diagnostics must not hide persistence
+        // failure from lifecycle callers. diagnosticOnly keeps the durable
+        // signal out of ordinary assistant prose while preserving logs/events.
+        warnRuntime(
+          runtime,
+          "Failed to write trajectory update to database",
+          error,
+        );
+        try {
+          runtime.reportError("TrajectoryStorage.write", error, {
+            stepId,
+            diagnosticOnly: true,
+          });
+        } catch (reportError) {
+          // error-policy:J7 reporting a diagnostic must not replace the
+          // original database error that the queue returns to its observer.
+          warnRuntime(
+            runtime,
+            "Failed to report trajectory database write error",
+            reportError,
+          );
+        }
+        throw error;
+      }
     })
     .finally(() => {
       const latest = perStep.get(stepId);
@@ -1527,12 +2087,19 @@ export function enqueueStepWrite(
     });
 
   perStep.set(stepId, current);
+  void current.catch((error) => {
+    // error-policy:J5 lifecycle and flush observe this same rejecting promise;
+    // this detached branch only prevents fire-and-forget capture from becoming
+    // an unhandled process rejection before that boundary drains the queue.
+    void error;
+  });
   return current;
 }
 
 export function createBaseTrajectory(
   stepId: string,
   now: number,
+  agentId: string,
   source?: string,
   metadata?: Record<string, unknown>,
 ): PersistedTrajectory {
@@ -1541,6 +2108,7 @@ export function createBaseTrajectory(
   const normalizedMetadata = normalizeTrajectoryMetadata(metadata);
   return {
     id: stepId,
+    agentId,
     source: normalizedSource,
     status: "active",
     startTime: now,
@@ -1557,6 +2125,8 @@ export function createBaseTrajectory(
       },
     ],
     metadata: normalizedMetadata.metadata,
+    metrics: {},
+    rewardComponents: { environmentReward: 0 },
     totalReward: 0,
     createdAt,
     updatedAt: createdAt,
@@ -1659,66 +2229,173 @@ export function parsePersistedTrajectoryRow(
   row: Record<string, unknown>,
   fallbackId: string,
 ): PersistedTrajectory {
-  const startTime = toNumber(
-    readRecordValue(row, ["start_time", "startTime"]),
-    Date.now(),
+  const id = requiredPersistedString(
+    readRecordValue(row, ["id", "trajectory_id", "trajectoryId"]),
+    fallbackId,
+    "id",
   );
-  const status = normalizeStatus(readRecordValue(row, ["status"]), "completed");
+  const agentId = requiredPersistedString(
+    readRecordValue(row, ["agent_id", "agentId"]),
+    id,
+    "agent_id",
+  );
+  const source = requiredPersistedString(
+    readRecordValue(row, ["source"]),
+    id,
+    "source",
+  );
+  const startTime = requiredPersistedNumber(
+    readRecordValue(row, ["start_time", "startTime"]),
+    id,
+    "start_time",
+  );
+  const status = parsePersistedTrajectoryStatus(
+    readRecordValue(row, ["status"]),
+    fallbackId,
+  );
   const rawCreatedAt = readRecordValue(row, ["created_at", "createdAt"]);
   const rawUpdatedAt = readRecordValue(row, ["updated_at", "updatedAt"]);
+  const createdAt = requiredPersistedString(rawCreatedAt, id, "created_at");
+  const updatedAt = requiredPersistedString(rawUpdatedAt, id, "updated_at");
+  if (
+    !Number.isFinite(Date.parse(createdAt)) ||
+    !Number.isFinite(Date.parse(updatedAt))
+  ) {
+    throw persistedRowError(id, "created_at/updated_at");
+  }
+  const rawEndTime = readRecordValue(row, ["end_time", "endTime"]);
+  const rawDurationMs = readRecordValue(row, ["duration_ms", "durationMs"]);
+  const endTime =
+    rawEndTime === undefined || rawEndTime === null
+      ? null
+      : requiredPersistedNumber(rawEndTime, id, "end_time");
+  const durationMs =
+    rawDurationMs === undefined || rawDurationMs === null
+      ? null
+      : requiredPersistedNumber(rawDurationMs, id, "duration_ms");
+  if (
+    (status === "active" && (endTime !== null || durationMs !== null)) ||
+    (status !== "active" &&
+      (endTime === null ||
+        endTime < startTime ||
+        durationMs === null ||
+        durationMs < 0 ||
+        durationMs !== endTime - startTime))
+  ) {
+    throw persistedRowError(id, "end_time/duration_ms");
+  }
   const timing = normalizePersistedTrajectoryTiming({
     status,
     startTime,
-    endTime:
-      toOptionalNumber(readRecordValue(row, ["end_time", "endTime"])) ?? null,
-    durationMs:
-      toOptionalNumber(readRecordValue(row, ["duration_ms", "durationMs"])) ??
-      null,
-    createdAt: rawCreatedAt,
-    updatedAt: rawUpdatedAt,
+    endTime,
+    durationMs,
+    createdAt,
+    updatedAt,
   });
   const steps = parseSteps(
     readRecordValue(row, ["steps_json", "stepsJson", "steps"]),
+    id,
   );
+  const optionalRowString = (
+    keys: string[],
+    field: string,
+  ): string | undefined => {
+    const value = readRecordValue(row, keys);
+    if (value === undefined || value === null) return undefined;
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw persistedRowError(id, field);
+    }
+    return value;
+  };
+  const scenarioId = optionalRowString(
+    ["scenario_id", "scenarioId"],
+    "scenario_id",
+  );
+  const traceId = optionalRowString(["trace_id", "traceId"], "trace_id");
+  const episodeId = optionalRowString(
+    ["episode_id", "episodeId"],
+    "episode_id",
+  );
+  const batchId = optionalRowString(["batch_id", "batchId"], "batch_id");
+  const rawGroupIndex = readRecordValue(row, ["group_index", "groupIndex"]);
+  const groupIndex =
+    rawGroupIndex === undefined || rawGroupIndex === null
+      ? undefined
+      : requiredPersistedNumber(rawGroupIndex, id, "group_index");
+  if (
+    groupIndex !== undefined &&
+    (!Number.isInteger(groupIndex) || groupIndex < 0)
+  ) {
+    throw persistedRowError(id, "group_index");
+  }
   const normalizedMetadata = normalizeTrajectoryMetadata(
-    parseMetadata(
+    parsePersistedMetadata(
       readRecordValue(row, [
         "metadata_json",
         "metadataJson",
         "metadata",
         "meta",
       ]),
+      id,
     ),
     {
-      scenarioId: readRecordValue(row, ["scenario_id", "scenarioId"]),
-      batchId: readRecordValue(row, ["batch_id", "batchId"]),
+      scenarioId,
+      batchId,
     },
   );
+  const totalReward = requiredPersistedNumber(
+    readRecordValue(row, ["total_reward", "totalReward"]),
+    id,
+    "total_reward",
+  );
+  const parsedMetrics = parseCanonicalJsonObject(
+    readRecordValue(row, ["metrics_json", "metricsJson", "metrics"]),
+    "metrics",
+    fallbackId,
+  );
+  const parsedRewardComponents = parseCanonicalJsonObject(
+    readRecordValue(row, [
+      "reward_components_json",
+      "rewardComponentsJson",
+      "rewardComponents",
+    ]),
+    "rewardComponents",
+    fallbackId,
+  );
+  const rewardComponents = {
+    ...parsedRewardComponents,
+  } as Record<string, JsonValue>;
+  if (rewardComponents.environmentReward === undefined) {
+    rewardComponents.environmentReward = totalReward;
+  } else if (
+    typeof rewardComponents.environmentReward !== "number" ||
+    !Number.isFinite(rewardComponents.environmentReward)
+  ) {
+    throw new ElizaError("Persisted trajectory environment reward is invalid", {
+      code: "TRAJECTORY_REWARD_COMPONENTS_INVALID",
+      context: { trajectoryId: fallbackId },
+    });
+  }
 
   return {
-    id: toText(
-      readRecordValue(row, ["id", "trajectory_id", "trajectoryId"]),
-      fallbackId,
-    ),
-    source: toText(readRecordValue(row, ["source"]), "runtime"),
+    id,
+    agentId,
+    source,
     status,
     startTime,
     endTime: timing.endTime,
     scenarioId: normalizedMetadata.scenarioId,
+    traceId,
+    episodeId,
     batchId: normalizedMetadata.batchId,
+    groupIndex,
     steps,
     metadata: normalizedMetadata.metadata,
-    totalReward: toNumber(
-      readRecordValue(row, ["total_reward", "totalReward"]),
-      0,
-    ),
-    createdAt: toText(rawCreatedAt, new Date(startTime).toISOString()),
-    updatedAt: normalizePersistedUpdatedAt({
-      startTime,
-      endTime: timing.endTime,
-      createdAt: rawCreatedAt,
-      updatedAt: rawUpdatedAt,
-    }),
+    metrics: parsedMetrics,
+    rewardComponents,
+    totalReward,
+    createdAt,
+    updatedAt,
   };
 }
 
@@ -1734,12 +2411,23 @@ export async function loadTrajectoryById(
   try {
     const result = await executeRawSql(
       runtime,
-      `SELECT * FROM trajectories WHERE id = ${safeId} LIMIT 1`,
+      `SELECT * FROM trajectories
+       WHERE id = ${safeId} AND agent_id = ${sqlQuote(runtime.agentId)}
+       LIMIT 1`,
     );
-    const rows = extractRows(result);
+    const rows = extractRequiredRows(result, {
+      operation: "load trajectory",
+      stepId,
+      agentId: runtime.agentId,
+    });
     if (rows.length === 0) return null;
     const row = asRecord(rows[0]);
-    if (!row) return null;
+    if (!row) {
+      throw new ElizaError("Stored trajectory row is invalid", {
+        code: "TRAJECTORY_ROW_INVALID",
+        context: { stepId, agentId: runtime.agentId },
+      });
+    }
     const trajectory = parsePersistedTrajectoryRow(row, stepId);
     // Prefer steps from the dedicated trajectory_steps table when present.
     // Falls back to the legacy steps_json blob (already populated from
@@ -1764,11 +2452,8 @@ export async function loadTrajectoryById(
 }
 
 /**
- * Internal helper — loads all step rows from the dedicated
- * `trajectory_steps` table. Returns `null` when the table has no rows
- * for the given trajectory (signal to fall back to the JSONB blob).
- * Returns an empty array when the table exists but the trajectory
- * legitimately has no steps yet.
+ * Loads the canonical step rows, using `null` solely to signal that a
+ * trajectory has not yet been promoted from its compatibility snapshot.
  */
 async function loadAllStepsFromDedicatedTable(
   runtime: IAgentRuntime,
@@ -1782,13 +2467,29 @@ async function loadAllStepsFromDedicatedTable(
        WHERE trajectory_id = ${safeId}
        ORDER BY ordinal ASC`,
     );
-    const rows = extractRows(result);
+    const rows = extractRequiredRows(result, {
+      operation: "load dedicated steps",
+      trajectoryId,
+    });
     if (rows.length === 0) return null;
-    return rows
-      .map((row) => asRecord(row))
-      .filter((row): row is Record<string, unknown> => Boolean(row))
-      .map(stepRowToPersistedStep);
+    return rows.map((row, index) => {
+      const record = asRecord(row);
+      if (!record) {
+        throw new ElizaError("Stored trajectory step row is invalid", {
+          code: "TRAJECTORY_STEP_ROW_INVALID",
+          context: { trajectoryId, index },
+        });
+      }
+      return stepRowToPersistedStep(record);
+    });
   } catch (error) {
+    if (
+      error instanceof ElizaError &&
+      (error.code === "TRAJECTORY_ROW_INVALID" ||
+        error.code === "TRAJECTORY_STEP_ROW_INVALID")
+    ) {
+      throw error;
+    }
     // error-policy:J2 absence is represented by a successful zero-row query;
     // storage failures retain their cause.
     throw new ElizaError("Could not load trajectory steps", {
@@ -1799,51 +2500,909 @@ async function loadAllStepsFromDedicatedTable(
   }
 }
 
-function stepRowToPersistedStep(row: Record<string, unknown>): PersistedStep {
+export function stepRowToPersistedStep(
+  row: Record<string, unknown>,
+): PersistedStep {
   const payload = parseJsonValue(readRecordValue(row, ["payload"]));
-  const payloadRecord = asRecord(payload) ?? {};
-  const llmCalls = Array.isArray(payloadRecord.llmCalls)
-    ? (payloadRecord.llmCalls as PersistedStep["llmCalls"])
-    : [];
-  const providerAccesses = Array.isArray(payloadRecord.providerAccesses)
-    ? (payloadRecord.providerAccesses as PersistedStep["providerAccesses"])
-    : [];
-  const childSteps = Array.isArray(payloadRecord.childSteps)
-    ? (payloadRecord.childSteps as string[])
-    : undefined;
-  const usedSkills = Array.isArray(payloadRecord.usedSkills)
-    ? (payloadRecord.usedSkills as string[])
-    : undefined;
-
-  const stepNumber = toNumber(readRecordValue(row, ["ordinal"]), 0);
+  const payloadRecord = asRecord(payload);
+  const trajectoryId = toText(
+    readRecordValue(row, ["trajectory_id", "trajectoryId"]),
+    "",
+  ).trim();
+  const stepId = toText(readRecordValue(row, ["id"]), "").trim();
+  const stepNumber = toOptionalNumber(readRecordValue(row, ["ordinal"]));
   const startedAt = toOptionalNumber(readRecordValue(row, ["started_at"]));
   const endedAt = toOptionalNumber(readRecordValue(row, ["ended_at"]));
-  const kindRaw = toText(readRecordValue(row, ["step_type"]), "");
+  if (
+    !payloadRecord ||
+    !trajectoryId ||
+    !stepId ||
+    stepNumber === undefined ||
+    (startedAt === undefined && endedAt === undefined) ||
+    !Array.isArray(payloadRecord.llmCalls) ||
+    !Array.isArray(payloadRecord.providerAccesses)
+  ) {
+    throw new ElizaError("Stored trajectory step row is invalid", {
+      code: "TRAJECTORY_STEP_ROW_INVALID",
+      context: { stepId },
+    });
+  }
+  const parentStepValue = readRecordValue(row, [
+    "parent_step_id",
+    "parentStepId",
+  ]);
+  const parentStepId =
+    parentStepValue === undefined || parentStepValue === null
+      ? undefined
+      : typeof parentStepValue === "string" && parentStepValue.trim().length > 0
+        ? parentStepValue.trim()
+        : null;
+  const kindRaw = readRecordValue(row, ["step_type"]);
   const kind =
     kindRaw === "llm" || kindRaw === "action" || kindRaw === "evaluator"
       ? kindRaw
-      : undefined;
+      : null;
   const scriptValue = readRecordValue(row, ["script"]);
   const script =
-    typeof scriptValue === "string" && scriptValue.length > 0
-      ? scriptValue
-      : undefined;
+    scriptValue === undefined || scriptValue === null
+      ? undefined
+      : typeof scriptValue === "string"
+        ? scriptValue
+        : null;
+  if (parentStepId === null || kind === null || script === null) {
+    throw new ElizaError("Stored trajectory step row is invalid", {
+      code: "TRAJECTORY_STEP_ROW_INVALID",
+      context: {
+        trajectoryId,
+        stepId,
+        field:
+          parentStepId === null
+            ? "parent_step_id"
+            : kind === null
+              ? "step_type"
+              : "script",
+      },
+    });
+  }
   const scriptHash =
     typeof payloadRecord.scriptHash === "string"
       ? payloadRecord.scriptHash
       : undefined;
 
-  return {
-    stepId: toText(readRecordValue(row, ["id"]), ""),
+  return parsePersistedStepObject(
+    {
+      ...payloadRecord,
+      stepId,
+      stepNumber,
+      timestamp: startedAt ?? (endedAt as number),
+      parentStepId,
+      kind,
+      script,
+      ...(scriptHash !== undefined ? { scriptHash } : {}),
+      ...(kind === "evaluator" && payloadRecord.evaluatorName === undefined
+        ? { evaluatorName: readRecordValue(row, ["name"]) }
+        : {}),
+    },
+    trajectoryId,
     stepNumber,
-    timestamp: startedAt ?? endedAt ?? Date.now(),
-    llmCalls,
-    providerAccesses,
+  );
+}
+
+export function buildTrajectoryStepUpsertSql(
+  trajectoryId: string,
+  step: PersistedStep,
+  parentStepIdOverride?: string | null,
+  conflictAction = "DO UPDATE SET",
+): string {
+  const stepType =
+    step.kind === "llm" || step.kind === "action" || step.kind === "evaluator"
+      ? step.kind
+      : "llm";
+  const script =
+    typeof step.script === "string" && step.script.length > 0
+      ? step.script
+      : null;
+  const { script: _script, ...payloadObject } = step;
+  const startedAt = Number.isFinite(step.timestamp) ? step.timestamp : null;
+  const name =
+    step.kind === "evaluator" && step.evaluatorName
+      ? step.evaluatorName
+      : (step.llmCalls[0]?.purpose ??
+        step.providerAccesses[0]?.providerName ??
+        null);
+  const parentStepId =
+    parentStepIdOverride !== undefined
+      ? parentStepIdOverride
+      : typeof step.parentStepId === "string" && step.parentStepId.length > 0
+        ? step.parentStepId
+        : null;
+  const updateClause =
+    conflictAction === "DO NOTHING"
+      ? "DO NOTHING"
+      : `DO UPDATE SET
+        trajectory_id = EXCLUDED.trajectory_id,
+        ordinal = EXCLUDED.ordinal,
+        parent_step_id = EXCLUDED.parent_step_id,
+        step_type = EXCLUDED.step_type,
+        name = EXCLUDED.name,
+        started_at = EXCLUDED.started_at,
+        ended_at = EXCLUDED.ended_at,
+        payload = EXCLUDED.payload,
+        script = EXCLUDED.script
+        WHERE trajectory_steps.trajectory_id = EXCLUDED.trajectory_id`;
+
+  return `INSERT INTO trajectory_steps (
+      id, trajectory_id, ordinal, parent_step_id, step_type,
+      name, started_at, ended_at, payload, script
+    ) VALUES (
+      ${sqlQuote(step.stepId)},
+      ${sqlQuote(trajectoryId)},
+      ${sqlNumber(step.stepNumber)},
+      ${parentStepId !== null ? sqlQuote(parentStepId) : "NULL"},
+      ${sqlQuote(stepType)},
+      ${name ? sqlQuote(name) : "NULL"},
+      ${sqlNumber(startedAt)},
+      ${sqlNumber(startedAt)},
+      ${sqlQuote(JSON.stringify(payloadObject))},
+      ${script !== null ? sqlQuote(script) : "NULL"}
+    )
+    ON CONFLICT (id) ${updateClause}`;
+}
+
+export async function assertTrajectoryStepOwnership(
+  execute: RawSqlExecutor,
+  trajectoryId: string,
+  stepId: string,
+): Promise<void> {
+  const result = await execute(
+    `SELECT trajectory_id FROM trajectory_steps WHERE id = ${sqlQuote(stepId)} LIMIT 1`,
+  );
+  const existing = asRecord(
+    extractRequiredRows(result, {
+      operation: "check trajectory step ownership",
+      trajectoryId,
+      stepId,
+    })[0],
+  );
+  const existingTrajectoryId = toOptionalText(existing?.trajectory_id);
+  if (existingTrajectoryId && existingTrajectoryId !== trajectoryId) {
+    throw new ElizaError("Trajectory step belongs to another trajectory", {
+      code: "TRAJECTORY_STEP_OWNERSHIP_CONFLICT",
+      context: { stepId, trajectoryId, existingTrajectoryId },
+    });
+  }
+}
+
+export async function assertTrajectoryAgentOwnership(
+  execute: RawSqlExecutor,
+  trajectoryId: string,
+  agentId: string,
+  allowMissing = false,
+): Promise<void> {
+  const result = await execute(
+    `SELECT agent_id FROM trajectories WHERE id = ${sqlQuote(trajectoryId)} LIMIT 1`,
+  );
+  const owner = toOptionalText(
+    asRecord(
+      extractRequiredRows(result, {
+        operation: "check trajectory ownership",
+        trajectoryId,
+        agentId,
+      })[0],
+    )?.agent_id,
+  );
+  if (!owner && allowMissing) return;
+  if (!owner) {
+    throw new ElizaError("Trajectory parent is unavailable", {
+      code: "TRAJECTORY_PARENT_NOT_FOUND",
+      context: { trajectoryId, agentId },
+    });
+  }
+  if (owner !== agentId) {
+    throw new ElizaError("Trajectory belongs to another agent", {
+      code: "TRAJECTORY_AGENT_OWNERSHIP_CONFLICT",
+      context: {
+        trajectoryId,
+        existingAgentId: owner,
+        runtimeAgentId: agentId,
+      },
+    });
+  }
+}
+
+export async function assertTrajectoryStepParentOwnership(
+  execute: RawSqlExecutor,
+  trajectoryId: string,
+  step: PersistedStep,
+): Promise<void> {
+  const parentStepId = step.parentStepId?.trim();
+  if (!parentStepId) return;
+  if (parentStepId === step.stepId) {
+    throw new ElizaError("Trajectory step cannot parent itself", {
+      code: "TRAJECTORY_STEP_PARENT_INVALID",
+      context: { trajectoryId, stepId: step.stepId, parentStepId },
+    });
+  }
+  const result = await execute(
+    `SELECT trajectory_id FROM trajectory_steps
+     WHERE id = ${sqlQuote(parentStepId)} LIMIT 1`,
+  );
+  const parentOwner = toOptionalText(
+    asRecord(
+      extractRequiredRows(result, {
+        operation: "check trajectory step parent",
+        trajectoryId,
+        stepId: step.stepId,
+        parentStepId,
+      })[0],
+    )?.trajectory_id,
+  );
+  if (parentOwner !== trajectoryId) {
+    throw new ElizaError("Trajectory step parent is unavailable", {
+      code: "TRAJECTORY_STEP_PARENT_INVALID",
+      context: {
+        trajectoryId,
+        stepId: step.stepId,
+        parentStepId,
+        ...(parentOwner ? { parentOwner } : {}),
+      },
+    });
+  }
+}
+
+export function parsePersistedEvaluatorName(
+  value: unknown,
+): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new ElizaError("Stored trajectory evaluator name is invalid", {
+      code: "TRAJECTORY_EVALUATOR_NAME_INVALID",
+    });
+  }
+  return value;
+}
+
+export function parsePersistedSkillInvocations(
+  value: unknown,
+): TrajectorySkillInvocation[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) {
+    throw new ElizaError("Stored trajectory skill invocations are invalid", {
+      code: "TRAJECTORY_SKILL_INVOCATIONS_INVALID",
+    });
+  }
+
+  return value.map((entry, index) => {
+    const record = asRecord(entry);
+    const skillSlug = toText(record?.skillSlug, "").trim();
+    const durationMs = toOptionalNumber(record?.durationMs);
+    const parentStepId = toText(record?.parentStepId, "").trim();
+    const startedAt = toOptionalNumber(record?.startedAt);
+    if (
+      !record ||
+      !skillSlug ||
+      durationMs === undefined ||
+      durationMs < 0 ||
+      !parentStepId ||
+      typeof record.success !== "boolean" ||
+      startedAt === undefined
+    ) {
+      throw new ElizaError("Stored trajectory skill invocation is invalid", {
+        code: "TRAJECTORY_SKILL_INVOCATION_INVALID",
+        context: { index, skillSlug },
+      });
+    }
+
+    const optionalStrings = ["args", "result", "script"] as const;
+    for (const field of optionalStrings) {
+      if (record[field] !== undefined && typeof record[field] !== "string") {
+        throw new ElizaError(
+          `Stored trajectory skill invocation ${field} is invalid`,
+          {
+            code: "TRAJECTORY_SKILL_INVOCATION_INVALID",
+            context: { index, skillSlug, field },
+          },
+        );
+      }
+    }
+    if (
+      record.mode !== undefined &&
+      record.mode !== "script" &&
+      record.mode !== "guidance"
+    ) {
+      throw new ElizaError(
+        "Stored trajectory skill invocation mode is invalid",
+        {
+          code: "TRAJECTORY_SKILL_INVOCATION_INVALID",
+          context: { index, skillSlug, field: "mode" },
+        },
+      );
+    }
+
+    let truncated: TrajectorySkillInvocation["truncated"];
+    if (record.truncated !== undefined) {
+      if (!Array.isArray(record.truncated)) {
+        throw new ElizaError(
+          "Stored trajectory skill invocation truncation is invalid",
+          {
+            code: "TRAJECTORY_SKILL_INVOCATION_INVALID",
+            context: { index, skillSlug, field: "truncated" },
+          },
+        );
+      }
+      truncated = record.truncated.map((marker, markerIndex) => {
+        const markerRecord = asRecord(marker);
+        const field = markerRecord?.field;
+        const originalBytes = toOptionalNumber(markerRecord?.originalBytes);
+        const capBytes = toOptionalNumber(markerRecord?.capBytes);
+        if (
+          !markerRecord ||
+          (field !== "args" && field !== "result") ||
+          originalBytes === undefined ||
+          originalBytes < 0 ||
+          capBytes === undefined ||
+          capBytes < 0
+        ) {
+          throw new ElizaError(
+            "Stored trajectory skill invocation truncation marker is invalid",
+            {
+              code: "TRAJECTORY_SKILL_INVOCATION_INVALID",
+              context: { index, markerIndex, skillSlug },
+            },
+          );
+        }
+        return { field, originalBytes, capBytes };
+      });
+    }
+
+    return {
+      skillSlug,
+      durationMs,
+      parentStepId,
+      success: record.success,
+      startedAt,
+      ...(record.args !== undefined ? { args: record.args as string } : {}),
+      ...(record.result !== undefined
+        ? { result: record.result as string }
+        : {}),
+      ...(record.script !== undefined
+        ? { script: record.script as string }
+        : {}),
+      ...(record.mode !== undefined ? { mode: record.mode } : {}),
+      ...(truncated !== undefined ? { truncated } : {}),
+    };
+  });
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  const record = asRecord(value);
+  return record ? Object.values(record).every(isJsonValue) : false;
+}
+
+function parsePersistedActionAttempt(
+  value: unknown,
+): TrajectoryActionAttempt | undefined {
+  if (value === undefined || value === null) return undefined;
+  const record = asRecord(value);
+  const attemptId = toText(record?.attemptId, "").trim();
+  const timestamp =
+    typeof record?.timestamp === "number" && Number.isFinite(record.timestamp)
+      ? record.timestamp
+      : undefined;
+  const actionType = toText(record?.actionType, "").trim();
+  const actionName = toText(record?.actionName, "").trim();
+  const parameters = asRecord(record?.parameters);
+  const success = record?.success;
+  if (
+    !record ||
+    !attemptId ||
+    timestamp === undefined ||
+    !actionType ||
+    !actionName ||
+    !parameters ||
+    !isJsonValue(parameters) ||
+    typeof success !== "boolean"
+  ) {
+    throw new ElizaError("Stored trajectory action is invalid", {
+      code: "TRAJECTORY_ACTION_INVALID",
+      context: { actionName, actionType },
+    });
+  }
+
+  const result = asRecord(record.result);
+  if (record.result !== undefined && (!result || !isJsonValue(result))) {
+    throw new ElizaError("Stored trajectory action result is invalid", {
+      code: "TRAJECTORY_ACTION_RESULT_INVALID",
+      context: { actionName, actionType },
+    });
+  }
+  for (const field of ["error", "reasoning", "llmCallId"] as const) {
+    if (record[field] !== undefined && typeof record[field] !== "string") {
+      throw new ElizaError("Stored trajectory action field is invalid", {
+        code: "TRAJECTORY_ACTION_INVALID",
+        context: { actionName, actionType, field },
+      });
+    }
+  }
+  if (
+    record.immediateReward !== undefined &&
+    (typeof record.immediateReward !== "number" ||
+      !Number.isFinite(record.immediateReward))
+  ) {
+    throw new ElizaError("Stored trajectory action reward is invalid", {
+      code: "TRAJECTORY_ACTION_INVALID",
+      context: { actionName, actionType, field: "immediateReward" },
+    });
+  }
+
+  return {
+    attemptId,
+    timestamp,
+    actionType,
+    actionName,
+    parameters,
+    success,
+    ...(result ? { result: result as Record<string, JsonValue> } : {}),
+    ...(typeof record.error === "string" ? { error: record.error } : {}),
+    ...(typeof record.reasoning === "string"
+      ? { reasoning: record.reasoning }
+      : {}),
+    ...(typeof record.llmCallId === "string"
+      ? { llmCallId: record.llmCallId }
+      : {}),
+    ...(typeof record.immediateReward === "number"
+      ? { immediateReward: record.immediateReward }
+      : {}),
+  };
+}
+
+function persistedRowError(
+  trajectoryId: string,
+  field: string,
+  stepId?: string,
+  index?: number,
+): ElizaError {
+  return new ElizaError("Stored trajectory row is invalid", {
+    code: "TRAJECTORY_ROW_INVALID",
+    context: {
+      trajectoryId,
+      field,
+      ...(stepId ? { stepId } : {}),
+      ...(index !== undefined ? { index } : {}),
+    },
+  });
+}
+
+function requiredPersistedString(
+  value: unknown,
+  trajectoryId: string,
+  field: string,
+  stepId?: string,
+  allowEmpty = false,
+): string {
+  if (typeof value !== "string" || (!allowEmpty && value.trim().length === 0)) {
+    throw persistedRowError(trajectoryId, field, stepId);
+  }
+  return value;
+}
+
+function requiredPersistedNumber(
+  value: unknown,
+  trajectoryId: string,
+  field: string,
+  stepId?: string,
+): number {
+  const parsed = toOptionalNumber(value);
+  if (parsed === undefined) {
+    throw persistedRowError(trajectoryId, field, stepId);
+  }
+  return parsed;
+}
+
+function requiredPersistedJsonNumber(
+  value: unknown,
+  trajectoryId: string,
+  field: string,
+  stepId?: string,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw persistedRowError(trajectoryId, field, stepId);
+  }
+  return value;
+}
+
+function parseOptionalPersistedString(
+  record: Record<string, unknown>,
+  field: string,
+  trajectoryId: string,
+  stepId: string,
+): string | undefined {
+  const value = record[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") {
+    throw persistedRowError(trajectoryId, field, stepId);
+  }
+  return value;
+}
+
+function parseOptionalPersistedNumber(
+  record: Record<string, unknown>,
+  field: string,
+  trajectoryId: string,
+  stepId: string,
+): number | undefined {
+  const value = record[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw persistedRowError(trajectoryId, field, stepId);
+  }
+  return value;
+}
+
+export function parsePersistedLlmCall(
+  value: unknown,
+  trajectoryId: string,
+  stepId: string,
+  index: number,
+): PersistedLlmCall {
+  const record = asRecord(value);
+  if (!record) {
+    throw persistedRowError(trajectoryId, "llmCalls", stepId, index);
+  }
+  const callId = requiredPersistedString(
+    record.callId,
+    trajectoryId,
+    `llmCalls[${index}].callId`,
+    stepId,
+  );
+  const timestamp = requiredPersistedJsonNumber(
+    record.timestamp,
+    trajectoryId,
+    `llmCalls[${index}].timestamp`,
+    stepId,
+  );
+  const model = requiredPersistedString(
+    record.model,
+    trajectoryId,
+    `llmCalls[${index}].model`,
+    stepId,
+  );
+  const response = requiredPersistedString(
+    record.response,
+    trajectoryId,
+    `llmCalls[${index}].response`,
+    stepId,
+    true,
+  );
+  const purpose = requiredPersistedString(
+    record.purpose,
+    trajectoryId,
+    `llmCalls[${index}].purpose`,
+    stepId,
+  );
+  const actionType = requiredPersistedString(
+    record.actionType,
+    trajectoryId,
+    `llmCalls[${index}].actionType`,
+    stepId,
+  );
+  const stringFields = [
+    "provider",
+    "modelVersion",
+    "modelType",
+    "systemPrompt",
+    "userPrompt",
+    "prompt",
+    "finishReason",
+    "reasoning",
+    "stepType",
+    "modelSlot",
+    "runId",
+    "roomId",
+    "messageId",
+    "executionTraceId",
+    "createdAt",
+  ] as const;
+  const numericFields = [
+    "temperature",
+    "maxTokens",
+    "topP",
+    "latencyMs",
+    "promptTokens",
+    "completionTokens",
+    "cacheReadInputTokens",
+    "cacheCreationInputTokens",
+    "reasoningTokens",
+  ] as const;
+  const optional: Record<string, unknown> = {};
+  for (const field of stringFields) {
+    const parsed = parseOptionalPersistedString(
+      record,
+      field,
+      trajectoryId,
+      stepId,
+    );
+    if (parsed !== undefined) optional[field] = parsed;
+  }
+  for (const field of numericFields) {
+    const parsed = parseOptionalPersistedNumber(
+      record,
+      field,
+      trajectoryId,
+      stepId,
+    );
+    if (parsed !== undefined) optional[field] = parsed;
+  }
+  for (const field of [
+    "messages",
+    "toolCalls",
+    "tags",
+    "providerOrder",
+  ] as const) {
+    if (record[field] !== undefined && !Array.isArray(record[field])) {
+      throw persistedRowError(
+        trajectoryId,
+        `llmCalls[${index}].${field}`,
+        stepId,
+      );
+    }
+  }
+  for (const field of ["maxTokensOmitted", "tokenUsageEstimated"] as const) {
+    if (record[field] !== undefined && typeof record[field] !== "boolean") {
+      throw persistedRowError(
+        trajectoryId,
+        `llmCalls[${index}].${field}`,
+        stepId,
+      );
+    }
+  }
+  return {
+    ...record,
+    ...optional,
+    callId,
+    timestamp,
+    model,
+    response,
+    purpose,
+    actionType,
+  } as PersistedLlmCall;
+}
+
+export function parsePersistedProviderAccess(
+  value: unknown,
+  trajectoryId: string,
+  stepId: string,
+  index: number,
+): PersistedProviderAccess {
+  const record = asRecord(value);
+  if (!record) {
+    throw persistedRowError(trajectoryId, "providerAccesses", stepId, index);
+  }
+  const providerId = requiredPersistedString(
+    record.providerId,
+    trajectoryId,
+    `providerAccesses[${index}].providerId`,
+    stepId,
+  );
+  const providerName = requiredPersistedString(
+    record.providerName,
+    trajectoryId,
+    `providerAccesses[${index}].providerName`,
+    stepId,
+  );
+  const timestamp = requiredPersistedJsonNumber(
+    record.timestamp,
+    trajectoryId,
+    `providerAccesses[${index}].timestamp`,
+    stepId,
+  );
+  const purpose = requiredPersistedString(
+    record.purpose,
+    trajectoryId,
+    `providerAccesses[${index}].purpose`,
+    stepId,
+  );
+  const data = asRecord(record.data);
+  if (!data || !isJsonValue(data)) {
+    throw persistedRowError(
+      trajectoryId,
+      `providerAccesses[${index}].data`,
+      stepId,
+    );
+  }
+  const optional: Record<string, unknown> = {};
+  for (const field of [
+    "startedAt",
+    "endedAt",
+    "durationMs",
+    "tokenCount",
+    "position",
+    "spanStart",
+    "spanEnd",
+  ] as const) {
+    if (
+      (field === "startedAt" ||
+        field === "endedAt" ||
+        field === "durationMs") &&
+      record[field] === null
+    ) {
+      optional[field] = null;
+      continue;
+    }
+    const parsed = parseOptionalPersistedNumber(
+      record,
+      field,
+      trajectoryId,
+      stepId,
+    );
+    if (parsed !== undefined) optional[field] = parsed;
+  }
+  for (const field of [
+    "runId",
+    "roomId",
+    "messageId",
+    "executionTraceId",
+    "createdAt",
+  ] as const) {
+    const parsed = parseOptionalPersistedString(
+      record,
+      field,
+      trajectoryId,
+      stepId,
+    );
+    if (parsed !== undefined) optional[field] = parsed;
+  }
+  if (
+    record.query !== undefined &&
+    (!asRecord(record.query) || !isJsonValue(record.query))
+  ) {
+    throw persistedRowError(
+      trajectoryId,
+      `providerAccesses[${index}].query`,
+      stepId,
+    );
+  }
+  if (
+    record.overlapsWith !== undefined &&
+    (!Array.isArray(record.overlapsWith) ||
+      record.overlapsWith.some((overlap) => {
+        const overlapRecord = asRecord(overlap);
+        return (
+          !overlapRecord ||
+          typeof overlapRecord.providerName !== "string" ||
+          overlapRecord.providerName.trim().length === 0 ||
+          typeof overlapRecord.overlapMs !== "number" ||
+          !Number.isFinite(overlapRecord.overlapMs) ||
+          overlapRecord.overlapMs < 0
+        );
+      }))
+  ) {
+    throw persistedRowError(
+      trajectoryId,
+      `providerAccesses[${index}].overlapsWith`,
+      stepId,
+    );
+  }
+  return {
+    ...record,
+    ...optional,
+    providerId,
+    providerName,
+    timestamp,
+    purpose,
+    data,
+  } as PersistedProviderAccess;
+}
+
+export function parsePersistedStepObject(
+  value: unknown,
+  trajectoryId: string,
+  index: number,
+): PersistedStep {
+  const record = asRecord(value);
+  if (!record) throw persistedRowError(trajectoryId, "steps", undefined, index);
+  const stepId = requiredPersistedString(
+    record.stepId,
+    trajectoryId,
+    `steps[${index}].stepId`,
+  );
+  const stepNumber = requiredPersistedJsonNumber(
+    record.stepNumber,
+    trajectoryId,
+    `steps[${index}].stepNumber`,
+    stepId,
+  );
+  if (!Number.isInteger(stepNumber) || stepNumber < 0) {
+    throw persistedRowError(trajectoryId, `steps[${index}].stepNumber`, stepId);
+  }
+  const timestamp = requiredPersistedJsonNumber(
+    record.timestamp,
+    trajectoryId,
+    `steps[${index}].timestamp`,
+    stepId,
+  );
+  if (
+    !Array.isArray(record.llmCalls) ||
+    !Array.isArray(record.providerAccesses)
+  ) {
+    throw persistedRowError(trajectoryId, `steps[${index}].captures`, stepId);
+  }
+  const childSteps = record.childSteps;
+  const usedSkills = record.usedSkills;
+  if (
+    childSteps !== undefined &&
+    (!Array.isArray(childSteps) ||
+      childSteps.some((entry) => typeof entry !== "string"))
+  ) {
+    throw persistedRowError(trajectoryId, `steps[${index}].childSteps`, stepId);
+  }
+  if (
+    usedSkills !== undefined &&
+    (!Array.isArray(usedSkills) ||
+      usedSkills.some((entry) => typeof entry !== "string"))
+  ) {
+    throw persistedRowError(trajectoryId, `steps[${index}].usedSkills`, stepId);
+  }
+  const parentStepId = parseOptionalPersistedString(
+    record,
+    "parentStepId",
+    trajectoryId,
+    stepId,
+  );
+  const kind = record.kind;
+  if (
+    kind !== undefined &&
+    kind !== "llm" &&
+    kind !== "action" &&
+    kind !== "evaluator"
+  ) {
+    throw persistedRowError(trajectoryId, `steps[${index}].kind`, stepId);
+  }
+  const script = parseOptionalPersistedString(
+    record,
+    "script",
+    trajectoryId,
+    stepId,
+  );
+  const scriptHash = parseOptionalPersistedString(
+    record,
+    "scriptHash",
+    trajectoryId,
+    stepId,
+  );
+  const evaluatorName = parsePersistedEvaluatorName(record.evaluatorName);
+  const skillInvocations = parsePersistedSkillInvocations(
+    record.skillInvocations,
+  );
+  const action = parsePersistedActionAttempt(record.action);
+  return {
+    stepId,
+    stepNumber,
+    timestamp,
+    llmCalls: record.llmCalls.map((call, callIndex) =>
+      parsePersistedLlmCall(call, trajectoryId, stepId, callIndex),
+    ),
+    providerAccesses: record.providerAccesses.map((access, accessIndex) =>
+      parsePersistedProviderAccess(access, trajectoryId, stepId, accessIndex),
+    ),
+    ...(parentStepId !== undefined ? { parentStepId } : {}),
     ...(kind !== undefined ? { kind } : {}),
-    ...(childSteps !== undefined ? { childSteps } : {}),
+    ...(action !== undefined ? { action } : {}),
+    ...(childSteps !== undefined ? { childSteps: [...childSteps] } : {}),
+    ...(usedSkills !== undefined ? { usedSkills: [...usedSkills] } : {}),
     ...(script !== undefined ? { script } : {}),
     ...(scriptHash !== undefined ? { scriptHash } : {}),
-    ...(usedSkills !== undefined ? { usedSkills } : {}),
+    ...(evaluatorName !== undefined ? { evaluatorName } : {}),
+    ...(skillInvocations !== undefined ? { skillInvocations } : {}),
   };
 }
 
@@ -1861,19 +3420,51 @@ export async function loadTrajectoryByStepId(
     return null;
   }
 
+  const dedicatedResult = await executeRawSql(
+    runtime,
+    `SELECT s.trajectory_id
+     FROM trajectory_steps s
+     JOIN trajectories t ON t.id = s.trajectory_id
+     WHERE s.id = ${sqlQuote(normalizedStepId)}
+       AND t.agent_id = ${sqlQuote(runtime.agentId)}
+     LIMIT 1`,
+  );
+  const dedicatedTrajectoryId = toOptionalText(
+    asRecord(
+      extractRequiredRows(dedicatedResult, {
+        operation: "resolve trajectory step owner",
+        stepId: normalizedStepId,
+        agentId: runtime.agentId,
+      })[0],
+    )?.trajectory_id,
+  );
+  if (dedicatedTrajectoryId) {
+    return loadTrajectoryById(runtime, dedicatedTrajectoryId);
+  }
+
   const stepPattern = sqlQuote(`%"stepId":"${normalizedStepId}"%`);
   try {
     const result = await executeRawSql(
       runtime,
       `SELECT * FROM trajectories
-       WHERE COALESCE(steps_json, '') LIKE ${stepPattern}
+       WHERE agent_id = ${sqlQuote(runtime.agentId)}
+         AND COALESCE(steps_json::text, '') LIKE ${stepPattern}
+         AND NOT EXISTS (
+           SELECT 1 FROM trajectory_steps s WHERE s.trajectory_id = trajectories.id
+         )
        ORDER BY updated_at DESC, created_at DESC
        LIMIT 1`,
     );
-    const rows = extractRows(result);
+    const rows = extractRequiredRows(result, {
+      operation: "search legacy trajectory steps",
+      stepId: normalizedStepId,
+      agentId: runtime.agentId,
+    });
     if (rows.length === 0) return null;
     const row = asRecord(rows[0]);
-    if (!row) return null;
+    if (!row) {
+      throw persistedRowError(normalizedStepId, "row");
+    }
     return parsePersistedTrajectoryRow(row, normalizedStepId);
   } catch (error) {
     // error-policy:J2 a failed search cannot be represented as no matching
@@ -1886,10 +3477,90 @@ export async function loadTrajectoryByStepId(
   }
 }
 
+function normalizeStepForPersistence(
+  trajectoryId: string,
+  step: PersistedStep,
+): PersistedStep {
+  const {
+    llmCalls,
+    providerAccesses,
+    childSteps,
+    usedSkills,
+    skillInvocations,
+    script,
+    ...scalarFields
+  } = step;
+  const boundedScalars = sanitizeTrajectoryJsonObject(scalarFields);
+  if (!boundedScalars) {
+    throw new ElizaError("Trajectory step could not be normalized", {
+      code: "TRAJECTORY_STEP_INVALID",
+      context: { trajectoryId, stepId: step.stepId },
+    });
+  }
+  const normalizeRecord = (
+    value: unknown,
+    field: "llmCalls" | "providerAccesses",
+    index: number,
+  ): Record<string, unknown> => {
+    const bounded = sanitizeTrajectoryJsonObject(value);
+    if (!bounded) {
+      throw new ElizaError("Trajectory step record could not be normalized", {
+        code: "TRAJECTORY_STEP_INVALID",
+        context: { trajectoryId, stepId: step.stepId, field, index },
+      });
+    }
+    return bounded;
+  };
+
+  return {
+    ...(boundedScalars as unknown as PersistedStep),
+    stepId: step.stepId,
+    stepNumber: step.stepNumber,
+    timestamp: step.timestamp,
+    llmCalls: llmCalls.map(
+      (call, index) =>
+        normalizeRecord(call, "llmCalls", index) as unknown as PersistedLlmCall,
+    ),
+    providerAccesses: providerAccesses.map(
+      (access, index) =>
+        normalizeRecord(
+          access,
+          "providerAccesses",
+          index,
+        ) as unknown as PersistedProviderAccess,
+    ),
+    ...(childSteps !== undefined ? { childSteps: [...childSteps] } : {}),
+    ...(usedSkills !== undefined ? { usedSkills: [...usedSkills] } : {}),
+    ...(skillInvocations !== undefined
+      ? {
+          skillInvocations:
+            parsePersistedSkillInvocations(skillInvocations) ?? [],
+        }
+      : {}),
+    ...(script !== undefined ? { script } : {}),
+  };
+}
+
 export async function saveTrajectory(
   runtime: IAgentRuntime,
   trajectory: PersistedTrajectory,
+  options: {
+    changedStepIds?: readonly string[];
+    updateLegacySnapshot?: boolean;
+    requireActiveExisting?: boolean;
+    expectedUpdatedAt?: string;
+  } = {},
 ): Promise<boolean> {
+  if (trajectory.agentId !== runtime.agentId) {
+    throw new ElizaError("Trajectory belongs to another agent", {
+      code: "TRAJECTORY_AGENT_OWNERSHIP_CONFLICT",
+      context: {
+        trajectoryId: trajectory.id,
+        trajectoryAgentId: trajectory.agentId,
+        runtimeAgentId: runtime.agentId,
+      },
+    });
+  }
   const normalizedMetadata = normalizeTrajectoryMetadata(trajectory.metadata, {
     scenarioId: trajectory.scenarioId,
     batchId: trajectory.batchId,
@@ -1919,22 +3590,184 @@ export async function saveTrajectory(
     trajectory.createdAt || new Date(summary.startTime).toISOString();
   const updatedAt =
     trajectory.updatedAt || new Date(endTime ?? summary.endTime).toISOString();
-  const serializedSteps = sqlQuote(JSON.stringify(trajectory.steps));
-  const serializedMetadata = sqlQuote(JSON.stringify(trajectory.metadata));
-  const serializedCompatMetrics = sqlQuote(
-    JSON.stringify({
-      episodeLength: trajectory.steps.length,
-      finalStatus: trajectory.status,
-      llmCallCount: summary.llmCallCount,
-      providerAccessCount: summary.providerAccessCount,
-      totalPromptTokens: summary.totalPromptTokens,
-      totalCompletionTokens: summary.totalCompletionTokens,
-      totalCacheReadInputTokens: summary.totalCacheReadInputTokens,
-      totalCacheCreationInputTokens: summary.totalCacheCreationInputTokens,
-    }),
+  const boundedSteps = trajectory.steps.map((step) =>
+    normalizeStepForPersistence(trajectory.id, step),
   );
+  const legacySteps = boundedSteps.map((step) => {
+    if (typeof step.script !== "string") return step;
+    const capped = capScriptForPersistence(step.script);
+    return {
+      ...step,
+      script: capped.script,
+      ...(capped.scriptHash !== undefined
+        ? { scriptHash: capped.scriptHash }
+        : {}),
+    };
+  });
+  const boundedMetadata = sanitizeTrajectoryJsonObject(trajectory.metadata);
+  if (!boundedMetadata) {
+    throw new ElizaError("Trajectory metadata could not be normalized", {
+      code: "TRAJECTORY_METADATA_INVALID",
+      context: { trajectoryId: trajectory.id },
+    });
+  }
+  const serializedSteps = sqlQuote(JSON.stringify(legacySteps));
+  const serializedMetadata = sqlQuote(JSON.stringify(boundedMetadata));
+  // Canonical metrics_json shape required by Core validators and the viewer
+  // duck contract. Primary write targets the current schema; legacy
+  // metadata/episode_length is only a fallback when those columns are absent
+  // (#17730).
+  const boundedMetrics = sanitizeTrajectoryJsonObject({
+    ...trajectory.metrics,
+    episodeLength: trajectory.steps.length,
+    finalStatus: trajectory.status,
+    llmCallCount: summary.llmCallCount,
+    providerAccessCount: summary.providerAccessCount,
+    totalPromptTokens: summary.totalPromptTokens,
+    totalCompletionTokens: summary.totalCompletionTokens,
+    totalCacheReadInputTokens: summary.totalCacheReadInputTokens,
+    totalCacheCreationInputTokens: summary.totalCacheCreationInputTokens,
+  });
+  const boundedRewardComponents = sanitizeTrajectoryJsonObject(
+    trajectory.rewardComponents,
+  );
+  if (!boundedMetrics || !boundedRewardComponents) {
+    throw new ElizaError("Trajectory metrics could not be normalized", {
+      code: "TRAJECTORY_METRICS_INVALID",
+      context: { trajectoryId: trajectory.id },
+    });
+  }
+  const serializedMetrics = sqlQuote(JSON.stringify(boundedMetrics));
+  const serializedRewardComponents = sqlQuote(
+    JSON.stringify(boundedRewardComponents),
+  );
+  const replaceAllSteps = options.changedStepIds === undefined;
+  const changedStepIds = new Set(options.changedStepIds ?? []);
+  const stepsToPersist = replaceAllSteps
+    ? boundedSteps
+    : boundedSteps.filter((step) => changedStepIds.has(step.stepId));
+  const updateLegacyStepsSql =
+    replaceAllSteps || options.updateLegacySnapshot
+      ? "steps_json = EXCLUDED.steps_json,"
+      : "";
+  const updateLegacyStepsValueSql =
+    replaceAllSteps || options.updateLegacySnapshot
+      ? `steps_json = ${serializedSteps},`
+      : "";
 
-  const sql = `INSERT INTO trajectories (
+  // Current schema (Core TrajectoriesService): metrics_json / metadata_json /
+  // reward_components_json. Prefer this so active/completed metrics are always
+  // valid for strict Core readers that share the table.
+  const currentSchemaSql = `INSERT INTO trajectories (
+      id,
+      agent_id,
+      source,
+      status,
+      start_time,
+      end_time,
+      duration_ms,
+      step_count,
+      llm_call_count,
+      provider_access_count,
+      total_prompt_tokens,
+      total_completion_tokens,
+      total_cache_read_input_tokens,
+      total_cache_creation_input_tokens,
+      total_reward,
+      scenario_id,
+      trace_id,
+      episode_id,
+      batch_id,
+      group_index,
+      steps_json,
+      metadata_json,
+      metrics_json,
+      reward_components_json,
+      created_at,
+      updated_at
+    ) VALUES (
+      ${sqlQuote(trajectory.id)},
+      ${sqlQuote(runtime.agentId)},
+      ${sqlQuote(trajectory.source)},
+      ${sqlQuote(trajectory.status)},
+      ${sqlNumber(summary.startTime)},
+      ${sqlNumber(endTime)},
+      ${sqlNumber(durationMs)},
+      ${sqlNumber(trajectory.steps.length)},
+      ${sqlNumber(summary.llmCallCount)},
+      ${sqlNumber(summary.providerAccessCount)},
+      ${sqlNumber(summary.totalPromptTokens)},
+      ${sqlNumber(summary.totalCompletionTokens)},
+      ${sqlNumber(summary.totalCacheReadInputTokens)},
+      ${sqlNumber(summary.totalCacheCreationInputTokens)},
+      ${sqlNumber(trajectory.totalReward)},
+      ${trajectory.scenarioId ? sqlQuote(trajectory.scenarioId) : "NULL"},
+      ${trajectory.traceId ? sqlQuote(trajectory.traceId) : "NULL"},
+      ${trajectory.episodeId ? sqlQuote(trajectory.episodeId) : "NULL"},
+      ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
+      ${sqlNumber(trajectory.groupIndex)},
+      ${serializedSteps},
+      ${serializedMetadata},
+      ${serializedMetrics},
+      ${serializedRewardComponents},
+      ${sqlQuote(createdAt)},
+      ${sqlQuote(updatedAt)}
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      source = EXCLUDED.source,
+      status = EXCLUDED.status,
+      start_time = EXCLUDED.start_time,
+      end_time = EXCLUDED.end_time,
+      duration_ms = EXCLUDED.duration_ms,
+      step_count = EXCLUDED.step_count,
+      llm_call_count = EXCLUDED.llm_call_count,
+      provider_access_count = EXCLUDED.provider_access_count,
+      total_prompt_tokens = EXCLUDED.total_prompt_tokens,
+      total_completion_tokens = EXCLUDED.total_completion_tokens,
+      total_cache_read_input_tokens = EXCLUDED.total_cache_read_input_tokens,
+      total_cache_creation_input_tokens = EXCLUDED.total_cache_creation_input_tokens,
+      total_reward = EXCLUDED.total_reward,
+      scenario_id = EXCLUDED.scenario_id,
+      trace_id = EXCLUDED.trace_id,
+      episode_id = EXCLUDED.episode_id,
+      batch_id = EXCLUDED.batch_id,
+      group_index = EXCLUDED.group_index,
+      ${updateLegacyStepsSql}
+      metadata_json = EXCLUDED.metadata_json,
+      metrics_json = EXCLUDED.metrics_json,
+      reward_components_json = EXCLUDED.reward_components_json,
+      created_at = EXCLUDED.created_at,
+      updated_at = EXCLUDED.updated_at`;
+
+  const currentSchemaUpdateSql = `UPDATE trajectories SET
+      source = ${sqlQuote(trajectory.source)},
+      status = ${sqlQuote(trajectory.status)},
+      start_time = ${sqlNumber(summary.startTime)},
+      end_time = ${sqlNumber(endTime)},
+      duration_ms = ${sqlNumber(durationMs)},
+      step_count = ${sqlNumber(trajectory.steps.length)},
+      llm_call_count = ${sqlNumber(summary.llmCallCount)},
+      provider_access_count = ${sqlNumber(summary.providerAccessCount)},
+      total_prompt_tokens = ${sqlNumber(summary.totalPromptTokens)},
+      total_completion_tokens = ${sqlNumber(summary.totalCompletionTokens)},
+      total_cache_read_input_tokens = ${sqlNumber(summary.totalCacheReadInputTokens)},
+      total_cache_creation_input_tokens = ${sqlNumber(summary.totalCacheCreationInputTokens)},
+      total_reward = ${sqlNumber(trajectory.totalReward)},
+      scenario_id = ${trajectory.scenarioId ? sqlQuote(trajectory.scenarioId) : "NULL"},
+      trace_id = ${trajectory.traceId ? sqlQuote(trajectory.traceId) : "NULL"},
+      episode_id = ${trajectory.episodeId ? sqlQuote(trajectory.episodeId) : "NULL"},
+      batch_id = ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
+      group_index = ${sqlNumber(trajectory.groupIndex)},
+      ${updateLegacyStepsValueSql}
+      metadata_json = ${serializedMetadata},
+      metrics_json = ${serializedMetrics},
+      reward_components_json = ${serializedRewardComponents},
+      created_at = ${sqlQuote(createdAt)},
+      updated_at = ${sqlQuote(updatedAt)}`;
+
+  // Legacy Eliza schema (metadata TEXT + episode_length) when canonical
+  // JSONB columns are missing on the adapter.
+  const legacySchemaSql = `INSERT INTO trajectories (
       id,
       agent_id,
       source,
@@ -1982,7 +3815,6 @@ export async function saveTrajectory(
       ${sqlNumber(trajectory.steps.length)}
     )
     ON CONFLICT (id) DO UPDATE SET
-      agent_id = EXCLUDED.agent_id,
       source = EXCLUDED.source,
       status = EXCLUDED.status,
       start_time = EXCLUDED.start_time,
@@ -1998,181 +3830,256 @@ export async function saveTrajectory(
       total_reward = EXCLUDED.total_reward,
       scenario_id = EXCLUDED.scenario_id,
       batch_id = EXCLUDED.batch_id,
-      steps_json = EXCLUDED.steps_json,
+      ${updateLegacyStepsSql}
       metadata = EXCLUDED.metadata,
       created_at = EXCLUDED.created_at,
       updated_at = EXCLUDED.updated_at,
       episode_length = EXCLUDED.episode_length`;
 
-  const compatSql = `INSERT INTO trajectories (
-      id,
-      agent_id,
-      source,
-      status,
-      start_time,
-      end_time,
-      duration_ms,
-      step_count,
-      llm_call_count,
-      provider_access_count,
-      total_prompt_tokens,
-      total_completion_tokens,
-      total_cache_read_input_tokens,
-      total_cache_creation_input_tokens,
-      total_reward,
-      scenario_id,
-      batch_id,
-      steps_json,
-      metadata_json,
-      metrics_json,
-      created_at,
-      updated_at
-    ) VALUES (
-      ${sqlQuote(trajectory.id)},
-      ${sqlQuote(runtime.agentId)},
-      ${sqlQuote(trajectory.source)},
-      ${sqlQuote(trajectory.status)},
-      ${sqlNumber(summary.startTime)},
-      ${sqlNumber(endTime)},
-      ${sqlNumber(durationMs)},
-      ${sqlNumber(trajectory.steps.length)},
-      ${sqlNumber(summary.llmCallCount)},
-      ${sqlNumber(summary.providerAccessCount)},
-      ${sqlNumber(summary.totalPromptTokens)},
-      ${sqlNumber(summary.totalCompletionTokens)},
-      ${sqlNumber(summary.totalCacheReadInputTokens)},
-      ${sqlNumber(summary.totalCacheCreationInputTokens)},
-      ${sqlNumber(trajectory.totalReward)},
-      ${trajectory.scenarioId ? sqlQuote(trajectory.scenarioId) : "NULL"},
-      ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
-      ${serializedSteps},
-      ${serializedMetadata},
-      ${serializedCompatMetrics},
-      ${sqlQuote(createdAt)},
-      ${sqlQuote(updatedAt)}
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      agent_id = EXCLUDED.agent_id,
-      source = EXCLUDED.source,
-      status = EXCLUDED.status,
-      start_time = EXCLUDED.start_time,
-      end_time = EXCLUDED.end_time,
-      duration_ms = EXCLUDED.duration_ms,
-      step_count = EXCLUDED.step_count,
-      llm_call_count = EXCLUDED.llm_call_count,
-      provider_access_count = EXCLUDED.provider_access_count,
-      total_prompt_tokens = EXCLUDED.total_prompt_tokens,
-      total_completion_tokens = EXCLUDED.total_completion_tokens,
-      total_cache_read_input_tokens = EXCLUDED.total_cache_read_input_tokens,
-      total_cache_creation_input_tokens = EXCLUDED.total_cache_creation_input_tokens,
-      total_reward = EXCLUDED.total_reward,
-      scenario_id = EXCLUDED.scenario_id,
-      batch_id = EXCLUDED.batch_id,
-      steps_json = EXCLUDED.steps_json,
-      metadata_json = EXCLUDED.metadata_json,
-      metrics_json = EXCLUDED.metrics_json,
-      created_at = EXCLUDED.created_at,
-      updated_at = EXCLUDED.updated_at`;
+  const legacySchemaUpdateSql = `UPDATE trajectories SET
+      source = ${sqlQuote(trajectory.source)},
+      status = ${sqlQuote(trajectory.status)},
+      start_time = ${sqlNumber(summary.startTime)},
+      end_time = ${sqlNumber(endTime)},
+      duration_ms = ${sqlNumber(durationMs)},
+      step_count = ${sqlNumber(trajectory.steps.length)},
+      llm_call_count = ${sqlNumber(summary.llmCallCount)},
+      provider_access_count = ${sqlNumber(summary.providerAccessCount)},
+      total_prompt_tokens = ${sqlNumber(summary.totalPromptTokens)},
+      total_completion_tokens = ${sqlNumber(summary.totalCompletionTokens)},
+      total_cache_read_input_tokens = ${sqlNumber(summary.totalCacheReadInputTokens)},
+      total_cache_creation_input_tokens = ${sqlNumber(summary.totalCacheCreationInputTokens)},
+      total_reward = ${sqlNumber(trajectory.totalReward)},
+      scenario_id = ${trajectory.scenarioId ? sqlQuote(trajectory.scenarioId) : "NULL"},
+      batch_id = ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
+      ${updateLegacyStepsValueSql}
+      metadata = ${serializedMetadata},
+      created_at = ${sqlQuote(createdAt)},
+      updated_at = ${sqlQuote(updatedAt)},
+      episode_length = ${sqlNumber(trajectory.steps.length)}`;
 
-  let saved = false;
   try {
-    await executeRawSql(runtime, sql);
-    saved = true;
-  } catch (err) {
+    await persistTrajectoryAndSteps(
+      runtime,
+      currentSchemaSql,
+      currentSchemaUpdateSql,
+      trajectory.id,
+      stepsToPersist,
+      replaceAllSteps,
+      {
+        requireActiveExisting: options.requireActiveExisting === true,
+        expectedUpdatedAt: options.expectedUpdatedAt,
+      },
+    );
+  } catch (currentSchemaError) {
+    if (
+      currentSchemaError instanceof ElizaError &&
+      [
+        "TRAJECTORY_STEPS_SAVE_FAILED",
+        "TRAJECTORY_AGENT_OWNERSHIP_CONFLICT",
+        "TRAJECTORY_STEP_OWNERSHIP_CONFLICT",
+        "TRAJECTORY_STEP_PARENT_INVALID",
+        "TRAJECTORY_OWNER_CLOSED",
+        "TRAJECTORY_WRITE_CONFLICT",
+        "TRAJECTORY_PARENT_NOT_FOUND",
+      ].includes(currentSchemaError.code)
+    ) {
+      throw currentSchemaError;
+    }
+    // error-policy:J3 Only an explicit missing canonical column selects the
+    // legacy shape; connectivity, constraints, and malformed data fail closed.
+    if (!isMissingCurrentTrajectoryColumnError(currentSchemaError)) {
+      // error-policy:J2 Preserve the canonical write failure for its caller.
+      throw new ElizaError("Could not save trajectory", {
+        code: "TRAJECTORY_SAVE_FAILED",
+        cause: currentSchemaError,
+        context: { trajectoryId: trajectory.id },
+      });
+    }
+    // Agent-only deployments may still own the legacy table shape; use it only
+    // when the canonical service schema explicitly lacks its columns.
     try {
-      await executeRawSql(runtime, compatSql);
-      saved = true;
-    } catch (compatErr) {
+      await persistTrajectoryAndSteps(
+        runtime,
+        legacySchemaSql,
+        legacySchemaUpdateSql,
+        trajectory.id,
+        stepsToPersist,
+        replaceAllSteps,
+        {
+          requireActiveExisting: options.requireActiveExisting === true,
+          expectedUpdatedAt: options.expectedUpdatedAt,
+        },
+      );
+    } catch (legacySchemaError) {
+      if (
+        legacySchemaError instanceof ElizaError &&
+        [
+          "TRAJECTORY_STEPS_SAVE_FAILED",
+          "TRAJECTORY_AGENT_OWNERSHIP_CONFLICT",
+          "TRAJECTORY_STEP_OWNERSHIP_CONFLICT",
+          "TRAJECTORY_STEP_PARENT_INVALID",
+          "TRAJECTORY_OWNER_CLOSED",
+          "TRAJECTORY_WRITE_CONFLICT",
+          "TRAJECTORY_PARENT_NOT_FOUND",
+        ].includes(legacySchemaError.code)
+      ) {
+        throw legacySchemaError;
+      }
       // error-policy:J2 both supported SQL shapes failed; surface both causes
       // rather than returning a false value that downstream code may ignore.
       throw new ElizaError("Could not save trajectory", {
         code: "TRAJECTORY_SAVE_FAILED",
-        cause: new AggregateError([err, compatErr]),
+        cause: new AggregateError([currentSchemaError, legacySchemaError]),
         context: { trajectoryId: trajectory.id },
       });
     }
   }
 
-  if (saved) {
-    // Mirror steps into the dedicated `trajectory_steps` table. Writes
-    // here are the new source of truth for step data; the JSONB blob in
-    // `trajectories.steps_json` is kept in lockstep for back-compat
-    // readers that still consume the legacy column.
+  return true;
+}
+
+async function persistTrajectoryAndSteps(
+  runtime: IAgentRuntime,
+  parentUpsertSql: string,
+  parentUpdateSql: string,
+  trajectoryId: string,
+  steps: PersistedStep[],
+  replaceAllSteps: boolean,
+  precondition: {
+    requireActiveExisting: boolean;
+    expectedUpdatedAt?: string;
+  },
+): Promise<void> {
+  await executeRawSqlTransaction(runtime, async (execute) => {
+    const requiresConditionalWrite =
+      precondition.requireActiveExisting ||
+      precondition.expectedUpdatedAt !== undefined;
+    if (!requiresConditionalWrite) {
+      await assertTrajectoryAgentOwnership(
+        execute,
+        trajectoryId,
+        runtime.agentId,
+        true,
+      );
+      await execute(parentUpsertSql);
+    } else {
+      const conflictPredicates = [
+        `trajectories.id = ${sqlQuote(trajectoryId)}`,
+        `trajectories.agent_id = ${sqlQuote(runtime.agentId)}`,
+        ...(precondition.requireActiveExisting
+          ? ["trajectories.status = 'active'"]
+          : []),
+        ...(precondition.expectedUpdatedAt !== undefined
+          ? [
+              `CAST(trajectories.updated_at AS TIMESTAMPTZ) = CAST(${sqlQuote(precondition.expectedUpdatedAt)} AS TIMESTAMPTZ)`,
+            ]
+          : []),
+      ];
+      const parentWriteResult = await execute(
+        `${parentUpdateSql}
+         WHERE ${conflictPredicates.join(" AND ")}
+         RETURNING id`,
+      );
+      const parentWriteRows = extractRequiredRows(parentWriteResult, {
+        operation: "write trajectory parent",
+        trajectoryId,
+        agentId: runtime.agentId,
+      });
+      if (parentWriteRows.length === 0) {
+        const parentResult = await execute(
+          `SELECT agent_id, status, updated_at FROM trajectories
+           WHERE id = ${sqlQuote(trajectoryId)}`,
+        );
+        const parentRows = extractRequiredRows(parentResult, {
+          operation: "diagnose trajectory write conflict",
+          trajectoryId,
+          agentId: runtime.agentId,
+        });
+        const parent = asRecord(parentRows[0]);
+        if (!parent) {
+          throw new ElizaError("Trajectory parent is unavailable", {
+            code: "TRAJECTORY_PARENT_NOT_FOUND",
+            context: { trajectoryId, agentId: runtime.agentId },
+          });
+        }
+        const owner = toOptionalText(parent.agent_id);
+        if (owner !== runtime.agentId) {
+          throw new ElizaError("Trajectory belongs to another agent", {
+            code: "TRAJECTORY_AGENT_OWNERSHIP_CONFLICT",
+            context: {
+              trajectoryId,
+              existingAgentId: owner,
+              runtimeAgentId: runtime.agentId,
+            },
+          });
+        }
+        if (toOptionalText(parent.status) !== "active") {
+          throw new ElizaError("Trajectory owner is already terminal", {
+            code: "TRAJECTORY_OWNER_CLOSED",
+            context: { trajectoryId, status: toOptionalText(parent.status) },
+          });
+        }
+        throw new ElizaError("Trajectory changed before persistence", {
+          code: "TRAJECTORY_WRITE_CONFLICT",
+          context: {
+            trajectoryId,
+            storedUpdatedAt: toOptionalText(parent.updated_at),
+            expectedUpdatedAt: precondition.expectedUpdatedAt,
+          },
+        });
+      }
+    }
     try {
+      // Dedicated rows are authoritative whenever any exist, so the parent
+      // snapshot and the complete replacement set must become visible together.
       await replaceStepsForTrajectoryInternal(
-        runtime,
-        trajectory.id,
-        trajectory.steps,
+        trajectoryId,
+        steps,
+        execute,
+        replaceAllSteps,
       );
     } catch (error) {
-      // error-policy:J2 the dedicated step table is authoritative; a partial
-      // parent-only write is an observable persistence failure.
+      if (
+        error instanceof ElizaError &&
+        [
+          "TRAJECTORY_AGENT_OWNERSHIP_CONFLICT",
+          "TRAJECTORY_STEP_OWNERSHIP_CONFLICT",
+          "TRAJECTORY_STEP_PARENT_INVALID",
+        ].includes(error.code)
+      ) {
+        throw error;
+      }
+      // error-policy:J2 rejecting the transaction preserves the prior parent
+      // and full step set; callers receive the failing dedicated write cause.
       throw new ElizaError("Could not save trajectory steps", {
         code: "TRAJECTORY_STEPS_SAVE_FAILED",
         cause: error,
-        context: { trajectoryId: trajectory.id },
+        context: { trajectoryId },
       });
     }
-  }
-
-  return saved;
+  });
 }
 
 async function replaceStepsForTrajectoryInternal(
-  runtime: IAgentRuntime,
   trajectoryId: string,
   steps: PersistedStep[],
+  execute: RawSqlExecutor,
+  replaceAllSteps: boolean,
 ): Promise<void> {
-  const safeId = sqlQuote(trajectoryId);
-  await executeRawSql(
-    runtime,
-    `DELETE FROM trajectory_steps WHERE trajectory_id = ${safeId}`,
-  );
-  for (const step of steps) {
-    const stepType =
-      step.kind === "llm" || step.kind === "action" || step.kind === "evaluator"
-        ? step.kind
-        : "llm";
-    const script =
-      typeof step.script === "string" && step.script.length > 0
-        ? step.script
-        : null;
-    const { script: _script, ...payloadObj } = step;
-    const payload = JSON.stringify(payloadObj);
-    const startedAt = Number.isFinite(step.timestamp) ? step.timestamp : null;
-    const endedAt = startedAt;
-    const firstCallPurpose =
-      step.llmCalls[0]?.purpose ??
-      step.providerAccesses[0]?.providerName ??
-      null;
-    await executeRawSql(
-      runtime,
-      `INSERT INTO trajectory_steps (
-        id, trajectory_id, ordinal, parent_step_id, step_type,
-        name, started_at, ended_at, payload, script
-      ) VALUES (
-        ${sqlQuote(step.stepId)},
-        ${sqlQuote(trajectoryId)},
-        ${sqlNumber(step.stepNumber)},
-        NULL,
-        ${sqlQuote(stepType)},
-        ${firstCallPurpose ? sqlQuote(firstCallPurpose) : "NULL"},
-        ${sqlNumber(startedAt)},
-        ${sqlNumber(endedAt)},
-        ${sqlQuote(payload)},
-        ${script !== null ? sqlQuote(script) : "NULL"}
-      )
-      ON CONFLICT (id) DO UPDATE SET
-        trajectory_id = EXCLUDED.trajectory_id,
-        ordinal = EXCLUDED.ordinal,
-        parent_step_id = EXCLUDED.parent_step_id,
-        step_type = EXCLUDED.step_type,
-        name = EXCLUDED.name,
-        started_at = EXCLUDED.started_at,
-        ended_at = EXCLUDED.ended_at,
-        payload = EXCLUDED.payload,
-        script = EXCLUDED.script`,
+  if (replaceAllSteps) {
+    const safeId = sqlQuote(trajectoryId);
+    await execute(
+      `DELETE FROM trajectory_steps WHERE trajectory_id = ${safeId}`,
     );
+  }
+  const orderedSteps = [...steps].sort(
+    (left, right) => left.stepNumber - right.stepNumber,
+  );
+  for (const step of orderedSteps) {
+    await assertTrajectoryStepOwnership(execute, trajectoryId, step.stepId);
+    await assertTrajectoryStepParentOwnership(execute, trajectoryId, step);
+    await execute(buildTrajectoryStepUpsertSql(trajectoryId, step));
   }
 }
 

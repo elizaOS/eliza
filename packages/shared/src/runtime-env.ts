@@ -21,6 +21,7 @@ const WILDCARD_BIND_RE = /^(0\.0\.0\.0|::|0:0:0:0:0:0:0:0)$/i;
 
 const API_BIND_KEYS = ["ELIZA_API_BIND"] as const;
 const API_TOKEN_KEYS = ["ELIZA_API_TOKEN"] as const;
+const LEGACY_SELF_API_TOKEN_KEYS = ["ELIZA_API_AUTH_TOKEN"] as const;
 const API_ALLOWED_ORIGINS_KEYS = [
   "ELIZA_ALLOWED_ORIGINS",
   "CORS_ORIGINS",
@@ -304,13 +305,26 @@ export function resolveUiPort(env: RuntimeEnvRecord = process.env): number {
   return resolveDesktopUiPort(env);
 }
 
+/** Removes an optional leading `Bearer ` so stored and sent forms compare equal. */
+function stripBearerPrefix(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const stripped = value.replace(/^Bearer\s+/i, "").trim();
+  return stripped || null;
+}
+
 export function resolveApiSecurityConfig(
   env: RuntimeEnvRecord = process.env,
 ): ResolvedApiSecurityConfig {
   const bindHost = firstNonEmpty(env, API_BIND_KEYS) ?? DEFAULT_API_BIND_HOST;
   return {
     bindHost,
-    token: firstNonEmpty(env, API_TOKEN_KEYS),
+    // Strip an optional leading `Bearer ` here rather than at each consumer.
+    // The UI sends `Authorization: Bearer <token>` and the server compares the
+    // extracted value, so an operator who sets ELIZA_API_TOKEN="Bearer x"
+    // previously happened to work only because BOTH sides carried the prefix.
+    // Normalising at the single source keeps every consumer in agreement by
+    // construction instead of by coincidence.
+    token: stripBearerPrefix(firstNonEmpty(env, API_TOKEN_KEYS)),
     disableAutoApiToken: parseEnabledFlag(env, DISABLE_AUTO_API_TOKEN_KEYS),
     allowedOrigins: parseCsv(env, API_ALLOWED_ORIGINS_KEYS),
     allowedHosts: parseCsv(env, API_ALLOWED_HOSTS_KEYS),
@@ -330,6 +344,41 @@ export function resolveApiToken(
   env: RuntimeEnvRecord = process.env,
 ): string | null {
   return resolveApiSecurityConfig(env).token;
+}
+
+/**
+ * The single credential both sides of the protected self-API boundary compare.
+ *
+ * Both the caller building `Authorization` and the server resolving what it
+ * expects MUST derive their bytes here. When only the caller normalized, a
+ * configured `ELIZA_API_TOKEN` of `"Bearer x"` produced `Authorization: Bearer x`
+ * while the server still expected the literal `"Bearer x"` — the server strips
+ * one `Bearer ` prefix off the REQUEST but never off its own configured value,
+ * so the comparison failed and every protected caller 401'd. A legacy-only
+ * deployment failed the same way because the server read no compatibility key.
+ * Keeping one resolver makes that class of drift unrepresentable rather than
+ * merely fixed (#17043).
+ */
+export function resolveSelfApiCredential(
+  env: RuntimeEnvRecord = process.env,
+): string | null {
+  const token =
+    firstWinningEnvString(env, API_TOKEN_KEYS)?.value ??
+    firstWinningEnvString(env, LEGACY_SELF_API_TOKEN_KEYS)?.value;
+  return stripBearerPrefix(token);
+}
+
+/**
+ * Bearer headers for requests a process makes back to its own elizaOS API.
+ * The server's canonical token wins over the documented compatibility key,
+ * brand aliases are honored, and callers never have to repeat Bearer parsing.
+ */
+export function createSelfApiRequestHeaders(
+  env: RuntimeEnvRecord = process.env,
+): Record<string, string> {
+  const credential = resolveSelfApiCredential(env);
+  if (!credential) return {};
+  return { Authorization: `Bearer ${credential}` };
 }
 
 export function isDevApiWatchEnabled(

@@ -1,18 +1,12 @@
 /** Verifies source-checkout discovery and staleness policy for the macOS native bridge. */
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveMacNativeEffectsDevPlan } from "./macos-native-effects-dev.mjs";
 
 const cwd = "/repo";
-const packageDir = path.join(
-  cwd,
-  "packages",
-  "app-core",
-  "platforms",
-  "electrobun",
-);
-const source = path.join(packageDir, "native", "macos", "window-effects.mm");
-const output = path.join(packageDir, "src", "libMacWindowEffects.dylib");
+const source =
+  "/repo/packages/app-core/platforms/electrobun/native/macos/window-effects.mm";
+const output =
+  "/repo/packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib";
 
 function plan({
   env = {},
@@ -47,7 +41,7 @@ describe("macOS native effects dev plan", () => {
   it("builds a missing source-checkout artifact", () => {
     expect(plan()).toEqual({
       kind: "build",
-      packageDir,
+      packageDir: "/repo/packages/app-core/platforms/electrobun",
       dylibPath: output,
     });
   });

@@ -1,8 +1,126 @@
-/** Verifies multi-account replacement payloads at the real client transport boundary. */
+/** Verifies linked-account response and mutation contracts at the transport boundary. */
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client";
+import { ACCOUNTS_RESPONSE_INVALID_CODE } from "./client-agent-accounts-validator";
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function accountsClient(body: unknown): ElizaClient {
+  const client = new ElizaClient("http://agent.example:31337", "token");
+  client.setRequestTransport({
+    request: vi.fn(async () => jsonResponse(body)),
+  });
+  return client;
+}
 
 describe("ElizaClient account replacement transport", () => {
+  it("accepts the canonical providers response and preserves server metadata", async () => {
+    const body = {
+      providers: [
+        {
+          providerId: "openai-api",
+          strategy: "priority",
+          runtimeEligibility: {
+            chat: { available: true },
+            codingAgent: { available: true },
+          },
+          accounts: [
+            {
+              id: "primary",
+              providerId: "openai-api",
+              label: "Primary",
+              source: "api-key",
+              enabled: true,
+              priority: 0,
+              createdAt: 1,
+              health: "ok",
+              hasCredential: true,
+              observability: { activeLeaseCount: 0 },
+            },
+          ],
+        },
+      ],
+    };
+
+    await expect(accountsClient(body).listAccounts()).resolves.toEqual(body);
+  });
+
+  it.each([
+    [
+      "the legacy walkthrough shape",
+      { accounts: [] },
+      "response.providers",
+      "an array",
+    ],
+    [
+      "a non-array provider list",
+      { providers: {} },
+      "response.providers",
+      "an array",
+    ],
+    [
+      "an account missing required fields",
+      {
+        providers: [
+          {
+            providerId: "openai-api",
+            strategy: "priority",
+            accounts: [{ id: "broken" }],
+          },
+        ],
+      },
+      "response.providers[0].accounts[0].providerId",
+      "a supported linked-account provider",
+    ],
+    [
+      "an account assigned to the wrong provider",
+      {
+        providers: [
+          {
+            providerId: "openai-api",
+            strategy: "priority",
+            accounts: [
+              {
+                id: "wrong-parent",
+                providerId: "anthropic-api",
+                label: "Wrong parent",
+                source: "api-key",
+                enabled: true,
+                priority: 0,
+                createdAt: 1,
+                health: "ok",
+                hasCredential: true,
+              },
+            ],
+          },
+        ],
+      },
+      "response.providers[0].accounts[0].providerId",
+      'the parent provider "openai-api"',
+    ],
+  ])("rejects %s", async (_label, body, path, expected) => {
+    const outcome = await accountsClient(body)
+      .listAccounts()
+      .then(
+        () => ({ status: "resolved" as const }),
+        (error: unknown) => ({ status: "rejected" as const, error }),
+      );
+
+    expect(outcome.status).toBe("rejected");
+    if (outcome.status !== "rejected") return;
+    expect(outcome.error).toBeInstanceOf(ElizaError);
+    expect(outcome.error).toMatchObject({
+      code: ACCOUNTS_RESPONSE_INVALID_CODE,
+      context: { path, expected },
+    });
+  });
+
   it("sends explicit API-key and OAuth replacement targets", async () => {
     const request = vi.fn(
       async (input: RequestInfo | URL, _init?: RequestInit) => {

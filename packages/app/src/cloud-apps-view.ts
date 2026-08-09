@@ -1,20 +1,16 @@
 /**
  * In-process app-shell registration for the Eliza Cloud **Applications**
- * dashboard on native runtimes (iOS / Android / Electrobun desktop).
+ * dashboard across web and native runtimes.
  *
- * On the web build the Applications surfaces are served by the top-level
- * `CloudRouterShell` `<BrowserRouter>` (mounted only when `__ELIZA_WEB_SHELL__`
- * is true). Native runtimes never mount that shell — the renderer boots the
- * tab/view `App` directly — so the same Applications components are surfaced
- * here as an in-process app-shell page that mounts the self-contained
- * `NativeAppsStudio` (a `MemoryRouter` + cloud providers + native Steward auth
- * context; see `@elizaos/ui/cloud/applications/NativeAppsStudio`).
+ * The web build keeps this route inside the tab/view `App`, where the shared
+ * navigate-view listener remains mounted while Cloud Apps is active. Its
+ * `WebAppsStudio` inherits the top-level cloud providers. Native runtimes use
+ * the self-contained `NativeAppsStudio` with its own router and providers.
  *
  * This uses the in-process app-shell registration mechanism (the same one
- * `orchestrator` / `wallet.inventory` use). It is gated to non-web platforms so
- * it never competes with the web shell's route, and the import stays **lazy**
- * (the studio chunk — and the whole applications domain it pulls — loads only
- * when the studio is opened), preserving the native bundle's tree-shake.
+ * `orchestrator` / `wallet.inventory` use). The platform-specific import stays
+ * **lazy** so the studio chunk and its Applications domain load only when the
+ * studio is opened.
  *
  * The page id is `cloud-apps` (the local installed-`AppsView` owns `apps`), the
  * route is `/cloud-apps`, and the label is "Cloud Apps". The page is NOT a
@@ -26,19 +22,24 @@
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { getFrontendPlatform } from "@elizaos/ui/platform";
 
-// "web" → served by CloudRouterShell; every other platform (ios / android /
-// desktop) boots the tab/view app directly and needs this in-process mount.
-if (getFrontendPlatform() !== "web") {
-  registerAppShellPage({
-    id: "cloud-apps",
-    viewKind: "release",
-    pluginId: "@elizaos/app",
-    label: "Cloud Apps",
-    icon: "Grid3x3",
-    path: "/cloud-apps",
-    loader: () =>
-      import("@elizaos/ui/cloud/applications/NativeAppsStudio").then((m) => ({
-        default: m.default,
-      })),
-  });
+/** Choose the provider/router wrapper owned by the current host platform. */
+export function cloudAppsStudioKind(platform: string): "web" | "native" {
+  return platform === "web" ? "web" : "native";
 }
+
+const studioKind = cloudAppsStudioKind(getFrontendPlatform());
+const loadCloudAppsStudio =
+  studioKind === "web"
+    ? () => import("@elizaos/ui/cloud/applications/WebAppsStudio")
+    : () => import("@elizaos/ui/cloud/applications/NativeAppsStudio");
+
+registerAppShellPage({
+  id: "cloud-apps",
+  viewKind: "release",
+  pluginId: "@elizaos/app",
+  label: "Cloud Apps",
+  icon: "Grid3x3",
+  path: "/cloud-apps",
+  loader: () =>
+    loadCloudAppsStudio().then((module) => ({ default: module.default })),
+});

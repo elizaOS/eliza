@@ -69,6 +69,7 @@ import {
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
+import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import {
 	EMBEDDING_PRESETS,
@@ -129,6 +130,7 @@ type RuntimeWithModelRegistration = AgentRuntime & {
 		handler: LocalModelHandler,
 		provider: string,
 		priority?: number,
+		metadata?: { local?: boolean; streamable?: boolean },
 	) => void;
 };
 
@@ -893,6 +895,7 @@ function makeTextToSpeechHandler(): TextToSpeechHandler {
 		return localInferenceEngine.synthesizeSpeech(
 			text,
 			extractSpeechSignal(params),
+			extractRequestedKokoroVoiceId(params),
 		);
 	};
 }
@@ -1621,6 +1624,7 @@ export async function ensureLocalInferenceHandler(
 				makeHandler(slot),
 				provider,
 				LOCAL_INFERENCE_PRIORITY,
+				{ local: true, streamable: true },
 			);
 		} catch (err) {
 			logger.warn(

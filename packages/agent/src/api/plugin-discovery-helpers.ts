@@ -707,6 +707,7 @@ export const AGENT_EVENT_ALLOWED_STREAMS = new Set([
   "action",
   "notification",
   "viewer_stats",
+  "voice-control",
 ]);
 
 // ---------------------------------------------------------------------------

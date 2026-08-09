@@ -251,7 +251,7 @@ export default function ConnectedPage() {
           })}
           className="inline-flex items-center pointer-events-auto"
         >
-          <ElizaLogo className="h-8" />
+          <ElizaLogo variant="svg" className="h-8 w-auto" />
         </Link>
         <div />
       </header>

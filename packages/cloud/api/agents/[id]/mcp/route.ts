@@ -41,7 +41,6 @@ import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
-import { isInferenceAuthCacheEnabled } from "@/lib/services/inference-hot-path-caches";
 import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -150,14 +149,25 @@ app.post("/", async (c) => {
   if (!id) return c.json({ error: "Missing id" }, 400);
 
   const executionCtx = getGenerativeExecutionContext(c);
-  const characterResolution =
-    executionCtx && isInferenceAuthCacheEnabled(c.env)
-      ? await charactersService.getByIdCacheOnly(id, { executionCtx })
-      : {
-          kind: "ready" as const,
-          character: (await charactersService.getById(id)) ?? null,
-        };
+  const characterResolution = executionCtx
+    ? await charactersService.getByIdCacheOnly(id, { executionCtx })
+    : {
+        kind: "ready" as const,
+        character: (await charactersService.getById(id)) ?? null,
+      };
   if (characterResolution.kind !== "ready") {
+    // Confirm only the negative cold-cache case. Existing agents remain
+    // fail-closed until their cached character is ready for inference.
+    if (!(await charactersService.getById(id))) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32001, message: "Agent not found" },
+          id: null,
+        },
+        404,
+      );
+    }
     return c.json(
       {
         jsonrpc: "2.0",

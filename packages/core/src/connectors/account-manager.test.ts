@@ -301,4 +301,257 @@ describe("ConnectorAccountManager", () => {
 			reason: "owner binding has not been verified",
 		});
 	});
+
+	it("fails a flow whose PKCE verifier died with a restart instead of forwarding a doomed exchange", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const runtime = makeRuntime(adapter);
+		const manager = getConnectorAccountManager(runtime);
+		const exchange = vi.fn();
+		manager.registerProvider({
+			provider: "oauth-restart",
+			startOAuth: () => ({ authUrl: "https://auth.example/start" }),
+			completeOAuth: exchange,
+		});
+
+		// Exactly what a restart leaves behind: a durable flow row whose
+		// codeVerifierRef points at a process-local PKCE secret that no longer
+		// exists in this process.
+		await adapter.createOAuthFlowState?.({
+			state: "state-restart-1",
+			provider: "oauth-restart",
+			codeVerifierRef: "connector-oauth-pkce:gone-after-restart",
+			metadata: { status: "pending", flowId: "oauth_restart_1" },
+		});
+
+		const result = await manager.completeOAuth("oauth-restart", {
+			state: "state-restart-1",
+			code: "auth-code-1",
+		});
+		expect(result.flow.status).toBe("failed");
+		expect(result.flow.error).toMatch(/before the agent restarted/i);
+		expect(result.flow.error).toMatch(/start the oauth flow again/i);
+		expect(exchange).not.toHaveBeenCalled();
+	});
+});
+
+describe("durable storage binding", () => {
+	const GOOGLE_ACCOUNT = {
+		id: "3a899cd0-170f-4b3e-932e-46ec68119b35",
+		provider: "google",
+		label: "user@example.com",
+		externalId: "user@example.com",
+		role: "OWNER" as const,
+		purpose: ["automation" as const],
+		accessGate: "open" as const,
+		status: "connected" as const,
+		createdAt: 10,
+		updatedAt: 20,
+		metadata: {},
+	};
+
+	it("writes through the database adapter even when the manager was constructed before the adapter registered", async () => {
+		// Connector plugins construct the manager during concurrent plugin
+		// registration, before plugin-sql attaches the adapter to the runtime.
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		(runtime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter =
+			adapter;
+
+		await manager.upsertAccount("google", GOOGLE_ACCOUNT);
+
+		// The row must land in the durable adapter, not a boot-time fallback Map.
+		const record = await adapter.getConnectorAccount({
+			provider: "google",
+			accountKey: "user@example.com",
+		});
+		expect(record).not.toBeNull();
+		expect(record?.status).toBe("connected");
+
+		// Simulated restart: a fresh runtime + manager over the same durable
+		// backing must still see the account.
+		const restartedManager = getConnectorAccountManager(makeRuntime(adapter));
+		const accounts = await restartedManager.listAccounts("google");
+		expect(accounts).toHaveLength(1);
+		expect(accounts[0]).toMatchObject({
+			provider: "google",
+			externalId: "user@example.com",
+			status: "connected",
+		});
+	});
+
+	it("keeps one consistent in-memory fallback while no adapter exists", async () => {
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		await manager.upsertAccount("google", GOOGLE_ACCOUNT);
+		const accounts = await manager.listAccounts("google");
+		expect(accounts).toHaveLength(1);
+		expect(manager.getStorage()).toBe(manager.getStorage());
+	});
+
+	it("prefers an explicitly injected storage over the runtime adapter", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const runtime = makeRuntime(adapter);
+		const manager = getConnectorAccountManager(runtime);
+		const injected = {
+			listAccounts: vi.fn(async () => []),
+			getAccount: vi.fn(async () => null),
+			upsertAccount: vi.fn(async (account: unknown) => account),
+			deleteAccount: vi.fn(async () => true),
+			createOAuthFlow: vi.fn(),
+			getOAuthFlow: vi.fn(),
+			updateOAuthFlow: vi.fn(),
+			consumeOAuthFlow: vi.fn(),
+			deleteOAuthFlow: vi.fn(),
+		};
+		manager.setStorage(injected as never);
+		await manager.listAccounts("google");
+		expect(injected.listAccounts).toHaveBeenCalled();
+	});
+});
+
+describe("fallback-to-durable state handoff", () => {
+	const BOOT_ACCOUNT = {
+		id: "3a899cd0-170f-4b3e-932e-46ec68119b35",
+		provider: "google",
+		label: "user@example.com",
+		externalId: "user@example.com",
+		role: "OWNER" as const,
+		purpose: ["automation" as const],
+		accessGate: "open" as const,
+		status: "connected" as const,
+		createdAt: 10,
+		updatedAt: 20,
+		metadata: {},
+	};
+
+	it("migrates an account written before adapter attachment into the adapter instead of masking it", async () => {
+		// The exact review repro: the write lands in the fallback, THEN the
+		// adapter attaches. The next read must hand the state off, not hide it.
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		await manager.upsertAccount("google", BOOT_ACCOUNT);
+
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		(runtime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter =
+			adapter;
+
+		// Post-attachment read sees the boot-window account...
+		const accounts = await manager.listAccounts("google");
+		expect(accounts).toHaveLength(1);
+		expect(accounts[0]).toMatchObject({
+			provider: "google",
+			externalId: "user@example.com",
+		});
+		// ...because it now lives in the durable adapter, not the fallback.
+		const record = await adapter.getConnectorAccount({
+			provider: "google",
+			accountKey: "user@example.com",
+		});
+		expect(record).not.toBeNull();
+		// A restart (fresh runtime + manager over the same adapter) keeps it.
+		const restarted = getConnectorAccountManager(makeRuntime(adapter));
+		await expect(restarted.listAccounts("google")).resolves.toHaveLength(1);
+	});
+
+	it("completes an OAuth flow whose provider attaches the adapter mid-startOAuth", async () => {
+		// createOAuthFlow lands in the fallback; the adapter attaches while
+		// startOAuth is awaited; updateOAuthFlow/completeOAuth then resolve the
+		// database wrapper and must find the migrated flow.
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		manager.registerProvider({
+			provider: "oauth-split",
+			startOAuth: async () => {
+				const adapter = new InMemoryDatabaseAdapter();
+				await adapter.initialize();
+				(runtime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter =
+					adapter;
+				return { authUrl: "https://auth.example/start" };
+			},
+			completeOAuth: () => ({
+				account: {
+					id: "oauth-split-account",
+					provider: "oauth-split",
+					label: "Split account",
+					role: "OWNER",
+					purpose: ["messaging"],
+					accessGate: "open",
+					status: "connected",
+					createdAt: 1,
+					updatedAt: 1,
+				},
+			}),
+		});
+
+		const flow = await manager.startOAuth("oauth-split");
+		expect(flow.authUrl).toBe("https://auth.example/start");
+
+		await expect(
+			manager.completeOAuth("oauth-split", {
+				state: flow.state,
+				code: "code-1",
+			}),
+			// The database path mints a UUID for a non-UUID provider account id;
+			// identity is carried by provider/label/status.
+		).resolves.toMatchObject({
+			account: {
+				provider: "oauth-split",
+				label: "Split account",
+				status: "connected",
+			},
+		});
+	});
+
+	it("completes an OAuth flow whose provider attaches the adapter mid-completeOAuth", async () => {
+		// The consumed-but-in-flight case: completeOAuth consumes the flow in the
+		// fallback, the adapter attaches while the provider callback is awaited,
+		// and the terminal updateOAuthFlow must still find the flow (migrated as
+		// consumed) instead of returning the original pending flow.
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		manager.registerProvider({
+			provider: "oauth-complete-split",
+			startOAuth: async () => ({ authUrl: "https://auth.example/start" }),
+			completeOAuth: async () => {
+				const adapter = new InMemoryDatabaseAdapter();
+				await adapter.initialize();
+				(runtime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter =
+					adapter;
+				return {
+					account: {
+						id: "oauth-complete-split-account",
+						provider: "oauth-complete-split",
+						label: "Complete-split account",
+						role: "OWNER",
+						purpose: ["messaging"],
+						accessGate: "open",
+						status: "connected",
+						createdAt: 1,
+						updatedAt: 1,
+					},
+				};
+			},
+		});
+
+		const flow = await manager.startOAuth("oauth-complete-split");
+		const result = await manager.completeOAuth("oauth-complete-split", {
+			state: flow.state,
+			code: "code-1",
+		});
+		expect(result.account).toMatchObject({
+			provider: "oauth-complete-split",
+			label: "Complete-split account",
+			status: "connected",
+		});
+		expect(result.flow.status).toBe("completed");
+		// The completed flow is queryable afterward from the durable backend.
+		const stored = await manager.getOAuthFlow("oauth-complete-split", flow.id);
+		expect(stored?.status).toBe("completed");
+	});
 });

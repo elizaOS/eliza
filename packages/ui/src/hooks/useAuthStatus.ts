@@ -4,8 +4,10 @@
  * Returns a discriminated union that lets the shell decide whether to render
  * the login gate or the main dashboard.
  *
- * Fail-closed: network errors are treated as server-unavailable so the app
- * never leaks the dashboard, but also does not imply bad credentials.
+ * The initial probe fails closed: network errors become server-unavailable so
+ * the app never paints a protected shell before auth is known. Background and
+ * visibility revalidation keep the last resolved state until the new result
+ * arrives; briefly publishing `loading` there would tear down the live shell.
  *
  * Call `refetch()` after login / logout to force a fresh check.
  *
@@ -21,6 +23,9 @@ import {
   type AuthSessionInfo,
   authMe,
 } from "../api/auth-client";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
+import { scrubRejectedActiveServerCredential } from "../state/active-server-credential";
+import { loadPersistedActiveServer } from "../state/persistence";
 
 export type AuthStatusState =
   | { phase: "loading" }
@@ -81,18 +86,36 @@ function publishAuthStatus(state: AuthStatusState): void {
   }
 }
 
+async function authMeWithRejectedBearerRecovery() {
+  const result = await authMe();
+  if (result.ok || result.status !== 401 || result.access?.mode !== "remote") {
+    return result;
+  }
+
+  const apiToken = getBootConfig().apiToken?.trim();
+  const activeServer = loadPersistedActiveServer();
+  if (!apiToken || activeServer?.kind === "cloud") return result;
+
+  // A 401 makes this bearer definitively unusable for the selected non-cloud
+  // target. Remove it before the one retry so a valid cookie can win, or the
+  // server can return the unauthenticated pairing/password contract instead of
+  // seeing the same rejected Authorization header twice.
+  setBootConfig({ ...getBootConfig(), apiToken: undefined });
+  scrubRejectedActiveServerCredential(apiToken);
+  return authMe();
+}
+
 async function fetchAuthStatus(): Promise<void> {
   if (authStatusFetch) return authStatusFetch;
 
-  publishAuthStatus(
-    authStatusSnapshot.phase === "loading"
-      ? authStatusSnapshot
-      : { phase: "loading" },
-  );
+  // The shared snapshot already starts in `loading`, so the cold probe remains
+  // fail-closed. Once resolved, revalidation is stale-while-revalidate: the
+  // backend still enforces auth while the UI retains its mounted shell until an
+  // authoritative authenticated/unauthenticated/unavailable result arrives.
 
   authStatusFetch = (async () => {
     for (let attempt = 0; ; attempt += 1) {
-      const result = await authMe();
+      const result = await authMeWithRejectedBearerRecovery();
       if (result.ok === true) {
         publishAuthStatus({
           phase: "authenticated",
@@ -151,7 +174,7 @@ export function primeAuthStatusProbe(): void {
   if (authStatusPrime || authStatusFetch) return;
   if (authStatusSnapshot.phase !== "loading") return;
   authStatusPrime = (async () => {
-    const result = await authMe();
+    const result = await authMeWithRejectedBearerRecovery();
     // A real fetch started (or a state was published) while the prime was in
     // flight — that path owns the snapshot; drop the primed result.
     if (authStatusFetch || authStatusSnapshot.phase !== "loading") return;

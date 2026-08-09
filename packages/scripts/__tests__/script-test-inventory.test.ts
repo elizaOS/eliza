@@ -153,7 +153,7 @@ describe("packages/scripts executable-test inventory", () => {
         .readFileSync(junit, "utf8")
         .matchAll(/<testsuite\b[^>]*\bfile="([^"]+)"/g),
     ]
-      .map((match) => match[1])
+      .map((match) => match[1].replaceAll("\\", "/"))
       .sort();
     const inventoryFiles = fixtures.filter(isScriptTestPath).sort();
     expect(bunFiles).toEqual(inventoryFiles);
@@ -571,6 +571,19 @@ jobs:
       assertions: 2,
       failures: 0,
       skipped: 0,
+      suiteFileCount: 1,
+    });
+    expect(
+      validateJunitEvidence(
+        xml.replaceAll(
+          "packages/scripts/example.test.ts",
+          "packages\\scripts\\example.test.ts",
+        ),
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+      ),
+    ).toMatchObject({
+      status: "valid",
       suiteFileCount: 1,
     });
     expect(() =>

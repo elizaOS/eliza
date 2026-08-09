@@ -40,6 +40,7 @@ import type {
 	NavigateViewDetail,
 } from "@elizaos/shared/events";
 import { BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
+import { resolveAppControlLoopbackPort } from "../loopback-api.js";
 import {
 	normalizeActionOptions,
 	readStringOption,
@@ -574,8 +575,7 @@ export interface BackgroundActionDeps {
 }
 
 async function loopbackPort(): Promise<number> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	return resolveServerOnlyPort(process.env);
+	return resolveAppControlLoopbackPort();
 }
 
 async function defaultEmit(payload: BackgroundApplyPayload): Promise<void> {

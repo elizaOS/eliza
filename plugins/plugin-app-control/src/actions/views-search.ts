@@ -17,7 +17,7 @@
  */
 
 import type { ActionResult, HandlerCallback, ViewType } from "@elizaos/core";
-import { resolveServerOnlyPort } from "@elizaos/core";
+import { getAppControlApiBase } from "../loopback-api.js";
 import { describeTargetReference, targetReferenceLogView } from "../params.js";
 import {
 	parseViewSummary,
@@ -84,8 +84,7 @@ async function fetchSemanticSearch(
 	viewType?: ViewType,
 ): Promise<ScoredView[] | null> {
 	try {
-		const port = resolveServerOnlyPort(process.env);
-		const url = new URL(`http://127.0.0.1:${port}/api/views/search`);
+		const url = new URL(`${getAppControlApiBase()}/api/views/search`);
 		url.searchParams.set("q", query);
 		url.searchParams.set("limit", String(limit));
 		if (viewType) url.searchParams.set("viewType", viewType);

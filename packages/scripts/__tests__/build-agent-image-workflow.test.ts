@@ -402,6 +402,29 @@ describe("build-agent-image workflow", () => {
     ]);
   });
 
+  test("repairs and proves runner Docker access before Buildx setup", () => {
+    const steps = workflowStepNames();
+    const accessIndex = steps.indexOf("Ensure Docker daemon access");
+    const buildxIndex = workflowText.indexOf(
+      "uses: docker/setup-buildx-action@",
+    );
+
+    expect(accessIndex).toBeGreaterThanOrEqual(0);
+    expect(buildxIndex).toBeGreaterThan(
+      workflowText.indexOf("- name: Ensure Docker daemon access"),
+    );
+
+    const runBlock = extractStepRunBlock("Ensure Docker daemon access");
+    expect(runBlock).toContain("set -euo pipefail");
+    expect(runBlock).toContain("docker info");
+    expect(runBlock).toContain("/var/run/docker.sock");
+    expect(runBlock).toContain("setfacl");
+    expect(runBlock).toContain("RUNNER_ENVIRONMENT:-");
+    expect(runBlock).not.toContain("docker info || true");
+    expect(runBlock).not.toContain("chmod 666");
+    expect(runBlock).not.toContain("chmod 777");
+  });
+
   test("keeps Node ESM dist rewrite after the Turbo build", () => {
     const steps = workflowStepNames();
     const buildIndex = steps.indexOf("Build Docker workspace artifacts");

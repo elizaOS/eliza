@@ -336,6 +336,37 @@ describe("delta-v2 chat token stream writer", () => {
     });
   });
 
+  // Voice double-speak fix: action-callback text rides the wire marked
+  // `provisional: true` so a voice client holds it (speech cannot be
+  // retracted); the reply frames stay unmarked. Non-provisional frames must
+  // remain byte-identical to the pre-fix wire.
+  it("marks provisional frames on both writers and leaves normal frames untouched", () => {
+    for (const protocol of ["legacy", "delta-v2"] as const) {
+      const mock = createMockResponse();
+      const writer = createChatTokenStreamWriter(protocol, streamWriterDeps);
+
+      writer.writeSnapshot(mock.res, "Set tone=warm for you.", {
+        provisional: true,
+      });
+      writer.writeChunk(mock.res, "ok", "ok", { provisional: true });
+      writer.writeSnapshot(mock.res, "okay i changed personality to warm");
+      writer.writeChunk(mock.res, " done", "okay… done");
+
+      const frames = parseFrames(mock.writes);
+      expect(frames).toHaveLength(4);
+      expect(frames[0].payload.provisional).toBe(true);
+      expect(frames[0].payload.fullText).toBe("Set tone=warm for you.");
+      expect(frames[1].payload.provisional).toBe(true);
+      // The reply snapshot and later deltas carry NO provisional key at all —
+      // the field is additive and absent on the unchanged wire.
+      expect(frames[2].payload).not.toHaveProperty("provisional");
+      expect(frames[2].payload.fullText).toBe(
+        "okay i changed personality to warm",
+      );
+      expect(frames[3].payload).not.toHaveProperty("provisional");
+    }
+  });
+
   it("carries linear (O(N)) bytes vs the legacy writer's quadratic wire", () => {
     const chunkText = "x".repeat(8);
     const chunkCount = 500;

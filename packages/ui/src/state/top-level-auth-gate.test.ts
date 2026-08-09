@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
+  shouldShowRemoteAgentPairingGate,
   topLevelAuthGateOwnsSurface,
 } from "./top-level-auth-gate";
 
@@ -104,5 +105,43 @@ describe("authProbeShouldHoldShell — pre-auth poll suppression", () => {
       authProbeShouldHoldShell("first-run-required", false, "loading"),
     ).toBe(false);
     expect(authProbeShouldHoldShell("ready", false, "loading")).toBe(false);
+  });
+});
+
+describe("shouldShowRemoteAgentPairingGate — LAN standalone agent auth", () => {
+  it("prefers pairing for a standalone remote agent with a configured bearer", () => {
+    expect(
+      shouldShowRemoteAgentPairingGate({
+        reason: "remote_auth_required",
+        access: {
+          mode: "remote",
+          passwordConfigured: true,
+          ownerConfigured: false,
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("does not replace app-core password login or password-not-configured screens", () => {
+    expect(
+      shouldShowRemoteAgentPairingGate({
+        reason: "remote_auth_required",
+        access: {
+          mode: "remote",
+          passwordConfigured: true,
+          ownerConfigured: true,
+        },
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowRemoteAgentPairingGate({
+        reason: "remote_password_not_configured",
+        access: {
+          mode: "remote",
+          passwordConfigured: false,
+          ownerConfigured: false,
+        },
+      }),
+    ).toBe(false);
   });
 });

@@ -163,7 +163,10 @@ export class SwapAction {
       toToken: resolvedToToken as Address,
     };
 
-    const slippageLevels = [0.01, 0.015, 0.02];
+    // A confirmed slippageBps is the tolerance the user approved, so quote at
+    // exactly that level; only the unstated case escalates through the ladder.
+    const slippageLevels =
+      params.slippageBps === undefined ? [0.01, 0.015, 0.02] : [params.slippageBps / 10000];
     let lastError: Error | undefined;
     let attemptCount = 0;
 
@@ -257,7 +260,12 @@ export class SwapAction {
 
     const quotesPromises: Promise<SwapQuote | undefined>[] = [
       this.getLifiQuote(fromAddress, params, fromTokenDecimals, slippage),
-      this.getBebopQuote(fromAddress, params, fromTokenDecimals),
+      // The current Bebop request does not carry an enforceable slippage
+      // bound. Keep it available for the legacy default path, but never let
+      // it win a quote the user confirmed with an explicit tolerance.
+      ...(params.slippageBps === undefined
+        ? [this.getBebopQuote(fromAddress, params, fromTokenDecimals)]
+        : []),
       this.getKyberSwapQuote(fromAddress, params, fromTokenDecimals, slippage),
     ];
 

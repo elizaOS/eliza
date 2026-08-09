@@ -48,10 +48,21 @@ const SENSITIVE_ENV_KEY_PATTERN = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|
  * row (bridge auth, proxies, pairing) — never encrypted. All of them are
  * blocked from the user PATCH surface by the reserved-key gate except
  * `ELIZAOS_API_KEY`, the legacy bridge-token alias `getAgentApiToken` falls
- * back to.
+ * back to, and `ELIZA_ALLOW_WS_QUERY_TOKEN`.
+ *
+ * `ELIZA_ALLOW_WS_QUERY_TOKEN` is NOT a secret: `prepareManagedElizaEnvironment`
+ * stamps the literal `"1"` on every managed agent as a boolean feature flag
+ * (managed-eliza-config.ts). It only lands here because the deliberately broad
+ * `SENSITIVE_ENV_KEY_PATTERN` matches the substring `TOKEN` in its NAME. Left
+ * encryptable it makes the flag the single at-rest ciphertext on every agent
+ * row, so any environment whose Worker holds `SECRETS_MASTER_KEY` while its
+ * provisioning daemon does not fails EVERY provision closed at env
+ * materialization — with no user secret involved at all.
  */
 const NEVER_ENCRYPT_ENV_KEYS: ReadonlySet<string> = new Set(
-  [...RESERVED_PLATFORM_ENV_KEYS, "ELIZAOS_API_KEY"].map((key) => key.toUpperCase()),
+  [...RESERVED_PLATFORM_ENV_KEYS, "ELIZAOS_API_KEY", "ELIZA_ALLOW_WS_QUERY_TOKEN"].map((key) =>
+    key.toUpperCase(),
+  ),
 );
 
 /** Whether a caller-supplied env key should be encrypted at rest. */

@@ -195,15 +195,29 @@ function clarifyScopeResult(op: PersonalityOp): ActionResult {
 	};
 }
 
+/** Render a slot as a human sentence fragment (#17923: user-facing text stays
+ * human; the raw slot rides in `data.slot` for planner/log consumers). */
 function summarizeSlot(slot: PersonalitySlot): string {
-	const parts = [
-		`verbosity=${slot.verbosity ?? "—"}`,
-		`tone=${slot.tone ?? "—"}`,
-		`formality=${slot.formality ?? "—"}`,
-		`reply_gate=${slot.reply_gate ?? "—"}`,
-		`directives=${slot.custom_directives.length}`,
-	];
-	return parts.join(" ");
+	const traits = [
+		slot.verbosity ? `verbosity ${slot.verbosity}` : null,
+		slot.tone ? `tone ${slot.tone}` : null,
+		slot.formality ? `formality ${slot.formality}` : null,
+	].filter((part): part is string => part !== null);
+	const traitPart = traits.length > 0 ? traits.join(", ") : "no traits pinned";
+	const gate =
+		slot.reply_gate === "never_until_lift"
+			? "staying silent until told otherwise"
+			: slot.reply_gate === "on_mention"
+				? "replying only when mentioned"
+				: "replying normally";
+	const count = slot.custom_directives.length;
+	const directives =
+		count === 0
+			? "no custom directives"
+			: count === 1
+				? "one custom directive"
+				: `${count} custom directives`;
+	return `${traitPart}; ${gate}; ${directives}`;
 }
 
 export const personalityAction: Action = {
@@ -218,7 +232,6 @@ export const personalityAction: Action = {
 		"BE_LESS_RESPONSIVE",
 		"BE_MORE_AGREEABLE",
 		"SHUT_UP",
-		"STOP_TALKING",
 		"BE_VERBOSE",
 		"BE_WARMER",
 		"BE_COLDER",
@@ -311,13 +324,16 @@ export const personalityAction: Action = {
 		const rawOp = params.op ?? params.action ?? params.subaction;
 		const op = isPersonalityOp(rawOp) ? rawOp : null;
 		if (!op) {
-			const text = `PERSONALITY requires an op: ${PERSONALITY_OPS.join(", ")}.`;
+			const text =
+				"Tell me what to change — a trait (verbosity, tone, formality), the reply gate, a directive, or a saved profile.";
 			await callback?.({ text, thought: "Missing or invalid op" });
 			return {
 				text,
 				success: false,
 				values: { error: "INVALID_OP" },
-				data: { action: "PERSONALITY" },
+				// Machine detail (the op vocabulary) stays out of the user-facing
+				// text (#17923) and rides here for the planner instead.
+				data: { action: "PERSONALITY", ops: [...PERSONALITY_OPS] },
 			};
 		}
 
@@ -340,7 +356,7 @@ export const personalityAction: Action = {
 		if (ADMIN_ONLY_OPS.has(op) && !isAdmin) {
 			return denyResult(
 				op,
-				`Permission denied: only admins or the owner may run ${op}.`,
+				"Only admins or the owner can manage saved personality profiles.",
 			);
 		}
 
@@ -549,18 +565,18 @@ async function runSetTrait(
 	const trait = args.params.trait;
 	const value = args.params.value;
 	if (!trait || !(TRAIT_VALUES as readonly string[]).includes(trait)) {
-		const text = `set_trait requires a trait: ${TRAIT_VALUES.join(", ")}.`;
+		const text = "Which trait should I change — verbosity, tone, or formality?";
 		await args.callback?.({ text, thought: "Missing trait" });
 		return paramError("set_trait", text);
 	}
 	if (typeof value !== "string" || value.length === 0) {
-		const text = "set_trait requires a value.";
+		const text = "What should I set it to? (e.g. terse, warm, casual.)";
 		await args.callback?.({ text, thought: "Missing value" });
 		return paramError("set_trait", text);
 	}
 	if (!isValidTraitValue(trait as "verbosity" | "tone" | "formality", value)) {
 		// Blob-safe rendering rationale lives in utils/reference-echo.ts.
-		const text = `Invalid value ${describeUserReference(value, "that value")} for trait '${trait}'.`;
+		const text = `I can't set ${trait} to ${describeUserReference(value, "that value")} — that's not one of the options.`;
 		await args.callback?.({ text, thought: "Invalid value" });
 		return paramError("set_trait", text);
 	}
@@ -583,10 +599,12 @@ async function runSetTrait(
 		after,
 	);
 
+	// Human ack (#17923): the trait/value pair is machine detail and already
+	// rides in `values` + `data.after`; the spoken/rendered line stays plain.
 	const text =
 		args.scope === "user"
-			? `Set ${trait}=${value} for you.`
-			: `Set ${trait}=${value} globally.`;
+			? `Okay — I'll be ${value} with you from here on.`
+			: `Okay — I'll be ${value} with everyone from now on.`;
 	await args.callback?.({
 		text,
 		thought: `Personality trait updated: ${trait}=${value} (${args.scope})`,
@@ -608,7 +626,7 @@ async function runClearTrait(
 ): Promise<ActionResult> {
 	const trait = args.params.trait;
 	if (!trait || !(TRAIT_VALUES as readonly string[]).includes(trait)) {
-		const text = `clear_trait requires a trait: ${TRAIT_VALUES.join(", ")}.`;
+		const text = "Which trait should I clear — verbosity, tone, or formality?";
 		await args.callback?.({ text, thought: "Missing trait" });
 		return paramError("clear_trait", text);
 	}
@@ -649,7 +667,8 @@ async function runSetReplyGate(
 ): Promise<ActionResult> {
 	const mode = args.params.mode;
 	if (!mode || !(REPLY_GATE_VALUES as readonly string[]).includes(mode)) {
-		const text = `set_reply_gate requires mode: ${REPLY_GATE_VALUES.join(", ")}.`;
+		const text =
+			"Should I always reply, reply only when mentioned, or stay silent until told otherwise?";
 		await args.callback?.({ text, thought: "Missing mode" });
 		return paramError("set_reply_gate", text);
 	}
@@ -736,18 +755,19 @@ async function runAddDirective(
 	},
 ): Promise<ActionResult> {
 	if (args.scope !== "user") {
-		const text = "add_directive only supports scope='user' in this release.";
+		const text =
+			"Custom directives are per-person right now — I can only add that for you specifically.";
 		await args.callback?.({ text, thought: "Unsupported scope" });
 		return paramError("add_directive", text);
 	}
 	const directive = args.params.directive?.trim();
 	if (!directive) {
-		const text = "add_directive requires a directive string.";
+		const text = "What should I keep in mind? Give me the directive text.";
 		await args.callback?.({ text, thought: "Missing directive" });
 		return paramError("add_directive", text);
 	}
 	if (directive.length > MAX_DIRECTIVE_CHARS) {
-		const text = `Directive too long (max ${MAX_DIRECTIVE_CHARS} chars).`;
+		const text = `That directive is too long — keep it under ${MAX_DIRECTIVE_CHARS} characters.`;
 		await args.callback?.({ text, thought: "Directive too long" });
 		return paramError("add_directive", text);
 	}
@@ -826,14 +846,14 @@ async function runLoadProfile(args: {
 }): Promise<ActionResult> {
 	const name = args.params.name?.trim();
 	if (!name) {
-		const text = "load_profile requires `name`.";
+		const text = "Which profile should I load?";
 		await args.callback?.({ text, thought: "Missing name" });
 		return paramError("load_profile", text);
 	}
 	const profile = args.store.getProfile(name);
 	if (!profile) {
 		// Blob-safe rendering rationale lives in utils/reference-echo.ts.
-		const text = `No profile named ${describeUserReference(name, "that profile")}. Try list_profiles.`;
+		const text = `I don't have a profile named ${describeUserReference(name, "that profile")} saved — ask me to list the profiles.`;
 		await args.callback?.({ text, thought: "Unknown profile" });
 		return paramError("load_profile", text);
 	}
@@ -873,7 +893,7 @@ async function runSaveProfile(args: {
 	// re-broadcast wholesale on every later list_profiles render.
 	const name = userReferenceLogView(args.params.name?.trim() ?? "");
 	if (!name) {
-		const text = "save_profile requires `name`.";
+		const text = "What should I call this profile?";
 		await args.callback?.({ text, thought: "Missing name" });
 		return paramError("save_profile", text);
 	}
@@ -897,9 +917,12 @@ async function runListProfiles(args: {
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
 	const profiles = args.store.listProfiles();
-	const text = profiles
-		.map((profile) => `• ${profile.name}: ${profile.description}`)
-		.join("\n");
+	const text =
+		profiles.length === 0
+			? "No saved profiles yet."
+			: profiles
+					.map((profile) => `• ${profile.name}: ${profile.description}`)
+					.join("\n");
 	await args.callback?.({ text, actions: ["PERSONALITY"] });
 	return {
 		text,
@@ -920,7 +943,10 @@ async function runShowState(args: {
 		args.scope === "global" ? GLOBAL_PERSONALITY_SCOPE : args.userId;
 	const slot = args.store.getSlot(target, args.agentId);
 	const recent = args.store.getRecentAudit(10);
-	const text = `Current ${args.scope} personality — ${summarizeSlot(slot)}`;
+	const text =
+		args.scope === "user"
+			? `Here's how I'm tuned for you: ${summarizeSlot(slot)}.`
+			: `Here's how I'm tuned for everyone: ${summarizeSlot(slot)}.`;
 	await args.callback?.({ text, actions: ["PERSONALITY"] });
 	return {
 		text,

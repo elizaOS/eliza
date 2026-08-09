@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { serializeTrajectoryExport } from "../../services/trajectory-export";
+import { sanitizeTrajectoryJsonValue } from "../../services/trajectory-json";
 import type {
 	TrajectoryExportOptions as CanonicalTrajectoryExportOptions,
 	TrajectoryDetailRecord,
@@ -49,6 +50,9 @@ interface SqlExecuteResult {
 	fields?: Array<{ name: string }>;
 }
 
+type TrajectorySqlResult = { rows: SqlRow[]; columns: string[] };
+type TrajectorySqlExecutor = (sqlText: string) => Promise<TrajectorySqlResult>;
+
 // ============================================================================
 // List/Filter Options
 // ============================================================================
@@ -56,7 +60,7 @@ interface SqlExecuteResult {
 export interface TrajectoryListOptions {
 	limit?: number;
 	offset?: number;
-	status?: "active" | "completed" | "error" | "timeout";
+	status?: "active" | "completed" | "error" | "timeout" | "terminated";
 	source?: string;
 	runId?: string;
 	startDate?: string;
@@ -83,7 +87,7 @@ export interface TrajectoryListItem {
 	roomId: string | null;
 	entityId: string | null;
 	metadata: Record<string, JsonValue | undefined>;
-	status: "active" | "completed" | "error" | "timeout";
+	status: "active" | "completed" | "error" | "timeout" | "terminated";
 	startTime: number;
 	endTime: number | null;
 	durationMs: number | null;
@@ -119,7 +123,7 @@ export interface TrajectoryZipExportOptions {
 	includePrompts?: boolean;
 	trajectoryIds?: string[];
 	source?: string;
-	status?: "active" | "completed" | "error" | "timeout";
+	status?: "active" | "completed" | "error" | "timeout" | "terminated";
 	runId?: string;
 	search?: string;
 	startDate?: string;
@@ -247,143 +251,6 @@ function stringArrayValue(value: unknown): string[] | undefined {
 		value.every((entry) => typeof entry === "string")
 		? value
 		: undefined;
-}
-
-const TRAJECTORY_JSON_MAX_DEPTH = 20;
-const TRAJECTORY_JSON_MAX_ARRAY_ITEMS = 250;
-const TRAJECTORY_JSON_MAX_OBJECT_KEYS = 200;
-const TRAJECTORY_JSON_MAX_STRING_CHARS = 64 * 1024;
-const TRAJECTORY_JSON_TRUNCATION_SUFFIX = "...[truncated]";
-
-function truncateTrajectoryString(value: string): string {
-	if (value.length <= TRAJECTORY_JSON_MAX_STRING_CHARS) return value;
-	const previewLength = Math.max(
-		0,
-		TRAJECTORY_JSON_MAX_STRING_CHARS - TRAJECTORY_JSON_TRUNCATION_SUFFIX.length,
-	);
-	return `${value.slice(0, previewLength)}${TRAJECTORY_JSON_TRUNCATION_SUFFIX}`;
-}
-
-function sanitizeTrajectoryJsonValue(
-	value: unknown,
-	seen: WeakSet<object> = new WeakSet<object>(),
-	depth = 0,
-): JsonValue | undefined {
-	if (depth > TRAJECTORY_JSON_MAX_DEPTH) return "[MaxDepth]";
-	if (value === null) return null;
-	if (typeof value === "string") return truncateTrajectoryString(value);
-	if (typeof value === "number") return Number.isFinite(value) ? value : null;
-	if (typeof value === "boolean") return value;
-	if (typeof value === "bigint") return value.toString();
-	if (value === undefined) return undefined;
-	if (typeof value === "function") {
-		const fnName = (value as { name?: string }).name;
-		return `[Function ${typeof fnName === "string" && fnName ? fnName : "anonymous"}]`;
-	}
-	if (typeof value === "symbol") return value.toString();
-	if (value instanceof Date) return value.toISOString();
-	if (value instanceof Error) {
-		return sanitizeTrajectoryJsonValue(
-			{
-				name: value.name,
-				message: value.message,
-				stack: value.stack,
-			},
-			seen,
-			depth + 1,
-		);
-	}
-	if (value instanceof RegExp) return value.toString();
-	if (value instanceof ArrayBuffer) {
-		return { type: "ArrayBuffer", byteLength: value.byteLength };
-	}
-	if (ArrayBuffer.isView(value)) {
-		return {
-			type: value.constructor.name || "ArrayBufferView",
-			byteLength: value.byteLength,
-		};
-	}
-	if (value instanceof Map) {
-		if (seen.has(value)) return "[Circular]";
-		seen.add(value);
-		const output: Record<string, JsonValue> = {};
-		let index = 0;
-		for (const [key, entry] of value.entries()) {
-			if (index >= TRAJECTORY_JSON_MAX_OBJECT_KEYS) break;
-			const sanitized = sanitizeTrajectoryJsonValue(entry, seen, depth + 1);
-			if (sanitized !== undefined) {
-				output[String(key)] = sanitized;
-			}
-			index++;
-		}
-		if (value.size > TRAJECTORY_JSON_MAX_OBJECT_KEYS) {
-			output.__truncatedKeys = value.size - TRAJECTORY_JSON_MAX_OBJECT_KEYS;
-		}
-		seen.delete(value);
-		return output;
-	}
-	if (value instanceof Set) {
-		if (seen.has(value)) return "[Circular]";
-		seen.add(value);
-		const output: JsonValue[] = [];
-		let index = 0;
-		for (const entry of value.values()) {
-			if (index >= TRAJECTORY_JSON_MAX_ARRAY_ITEMS) break;
-			output.push(sanitizeTrajectoryJsonValue(entry, seen, depth + 1) ?? null);
-			index++;
-		}
-		if (value.size > TRAJECTORY_JSON_MAX_ARRAY_ITEMS) {
-			output.push({
-				__truncatedItems: value.size - TRAJECTORY_JSON_MAX_ARRAY_ITEMS,
-			});
-		}
-		seen.delete(value);
-		return output;
-	}
-	if (Array.isArray(value)) {
-		if (seen.has(value)) return "[Circular]";
-		seen.add(value);
-		const output: JsonValue[] = [];
-		const length = Math.min(value.length, TRAJECTORY_JSON_MAX_ARRAY_ITEMS);
-		for (let i = 0; i < length; i++) {
-			output.push(
-				sanitizeTrajectoryJsonValue(value[i], seen, depth + 1) ?? null,
-			);
-		}
-		if (value.length > TRAJECTORY_JSON_MAX_ARRAY_ITEMS) {
-			output.push({
-				__truncatedItems: value.length - TRAJECTORY_JSON_MAX_ARRAY_ITEMS,
-			});
-		}
-		seen.delete(value);
-		return output;
-	}
-	if (typeof value === "object") {
-		if (seen.has(value)) return "[Circular]";
-		seen.add(value);
-		const entries = Object.entries(value as Record<string, unknown>);
-		if (entries.length === 0) {
-			seen.delete(value);
-			const proto = Object.getPrototypeOf(value);
-			return proto === Object.prototype || proto === null ? {} : String(value);
-		}
-		const output: Record<string, JsonValue> = {};
-		for (const [key, entry] of entries.slice(
-			0,
-			TRAJECTORY_JSON_MAX_OBJECT_KEYS,
-		)) {
-			const sanitized = sanitizeTrajectoryJsonValue(entry, seen, depth + 1);
-			if (sanitized !== undefined) {
-				output[key] = sanitized;
-			}
-		}
-		if (entries.length > TRAJECTORY_JSON_MAX_OBJECT_KEYS) {
-			output.__truncatedKeys = entries.length - TRAJECTORY_JSON_MAX_OBJECT_KEYS;
-		}
-		seen.delete(value);
-		return output;
-	}
-	return String(value);
 }
 
 function sanitizeTrajectoryJsonArray(value: unknown): unknown[] | undefined {
@@ -525,6 +392,7 @@ function normalizeLlmCall(value: unknown): LLMCall | null {
 		"latencyMs",
 		"cacheReadInputTokens",
 		"cacheCreationInputTokens",
+		"reasoningTokens",
 	] as const) {
 		const numericValue = numberValue(value[key]);
 		if (numericValue !== null) {
@@ -617,6 +485,7 @@ function normalizeActionAttempt(value: unknown): ActionAttempt | null {
 	const parameters = isJsonObject(value.parameters) ? value.parameters : null;
 	const success = booleanValue(value.success);
 	if (
+		!attemptId ||
 		timestamp === null ||
 		!actionType ||
 		!actionName ||
@@ -626,7 +495,7 @@ function normalizeActionAttempt(value: unknown): ActionAttempt | null {
 		return null;
 	}
 	const action: ActionAttempt = {
-		attemptId: attemptId || "pending",
+		attemptId,
 		timestamp,
 		actionType,
 		actionName,
@@ -654,7 +523,8 @@ function normalizeTrajectoryStep(value: unknown): TrajectoryStep | null {
 	const observation = isJsonObject(value.observation)
 		? value.observation
 		: null;
-	const action = normalizeActionAttempt(value.action);
+	const hasAction = Object.hasOwn(value, "action");
+	const action = hasAction ? normalizeActionAttempt(value.action) : null;
 	const reward = numberValue(value.reward);
 	const done = booleanValue(value.done);
 	if (
@@ -665,7 +535,7 @@ function normalizeTrajectoryStep(value: unknown): TrajectoryStep | null {
 		!observation ||
 		!Array.isArray(value.llmCalls) ||
 		!Array.isArray(value.providerAccesses) ||
-		!action ||
+		(hasAction && !action) ||
 		reward === null ||
 		done === null
 	) {
@@ -691,7 +561,7 @@ function normalizeTrajectoryStep(value: unknown): TrajectoryStep | null {
 		observation,
 		llmCalls,
 		providerAccesses,
-		action,
+		...(action ? { action } : {}),
 		reward,
 		done,
 	};
@@ -839,46 +709,75 @@ function isFinalTrajectoryStatus(status: unknown): boolean {
 	);
 }
 
+function parseTrajectoryStatus(
+	value: SqlCell | undefined,
+	rowId?: string,
+): TrajectoryStatus {
+	const status = typeof value === "string" ? value : null;
+	if (
+		status === "active" ||
+		status === "completed" ||
+		status === "error" ||
+		status === "timeout" ||
+		status === "terminated"
+	) {
+		return status;
+	}
+	throw new ElizaError("Trajectory database row has an invalid status", {
+		code: "TRAJECTORY_ROW_INVALID",
+		context: { field: "status", ...(rowId ? { rowId } : {}) },
+	});
+}
+
+function parseNullableNumberCell(
+	value: SqlCell | undefined,
+	field: string,
+	rowId?: string,
+): number | null {
+	if (value === null) return null;
+	const numeric = asNumber(value);
+	if (numeric !== null) return numeric;
+	throw new ElizaError(`Trajectory database row has an invalid ${field}`, {
+		code: "TRAJECTORY_ROW_INVALID",
+		context: { field, ...(rowId ? { rowId } : {}) },
+	});
+}
+
 function normalizeReadTrajectoryTiming(input: {
-	status: unknown;
+	status: TrajectoryStatus;
 	startTime: number;
 	endTime: number | null;
 	durationMs: number | null;
-	createdAtMs?: number | null;
-	updatedAtMs?: number | null;
+	rowId?: string;
 }): { endTime: number | null; durationMs: number | null } {
-	if (!isFinalTrajectoryStatus(input.status)) {
+	if (input.status === "active") {
+		if (input.endTime !== null || input.durationMs !== null) {
+			throw new ElizaError("Active trajectory timing is invalid", {
+				code: "TRAJECTORY_ROW_INVALID",
+				context: {
+					field: "end_time",
+					...(input.rowId ? { rowId: input.rowId } : {}),
+				},
+			});
+		}
 		return { endTime: null, durationMs: null };
 	}
-
-	const startTime = Number.isFinite(input.startTime) ? input.startTime : 0;
-	const existingEndTime =
-		typeof input.endTime === "number" &&
-		Number.isFinite(input.endTime) &&
-		input.endTime > 0 &&
-		input.endTime >= startTime
-			? input.endTime
-			: null;
-	const fallbackEndTime = startTime > 0 ? startTime : Date.now();
-	const endTime =
-		existingEndTime ??
-		[input.updatedAtMs, input.createdAtMs, fallbackEndTime].find(
-			(candidate): candidate is number =>
-				typeof candidate === "number" &&
-				Number.isFinite(candidate) &&
-				candidate > 0 &&
-				candidate >= startTime,
-		) ??
-		startTime;
-	const durationMs =
-		existingEndTime !== null &&
-		typeof input.durationMs === "number" &&
-		Number.isFinite(input.durationMs) &&
-		input.durationMs >= 0
-			? input.durationMs
-			: Math.max(0, endTime - startTime);
-
-	return { endTime, durationMs };
+	if (
+		input.endTime === null ||
+		input.endTime < input.startTime ||
+		input.durationMs === null ||
+		input.durationMs < 0 ||
+		input.durationMs !== input.endTime - input.startTime
+	) {
+		throw new ElizaError("Terminal trajectory timing is invalid", {
+			code: "TRAJECTORY_ROW_INVALID",
+			context: {
+				field: "duration_ms",
+				...(input.rowId ? { rowId: input.rowId } : {}),
+			},
+		});
+	}
+	return { endTime: input.endTime, durationMs: input.durationMs };
 }
 
 function normalizeReadTrajectoryUpdatedAt(input: {
@@ -887,28 +786,20 @@ function normalizeReadTrajectoryUpdatedAt(input: {
 	createdAtMs?: number | null;
 	updatedAtMs?: number | null;
 }): string {
-	const startTime = Number.isFinite(input.startTime) ? input.startTime : 0;
-	const floorTime =
-		typeof input.endTime === "number" && Number.isFinite(input.endTime)
-			? input.endTime
-			: startTime;
-	const timestamp =
-		(typeof input.updatedAtMs === "number" &&
-		input.updatedAtMs > 0 &&
-		input.updatedAtMs >= floorTime
-			? input.updatedAtMs
-			: null) ??
-		(typeof input.endTime === "number" &&
-		Number.isFinite(input.endTime) &&
-		input.endTime > 0
-			? input.endTime
-			: null) ??
-		(typeof input.createdAtMs === "number" && input.createdAtMs > 0
-			? input.createdAtMs
-			: null) ??
-		(startTime > 0 ? startTime : Date.now());
-
-	return new Date(timestamp).toISOString();
+	const floorTime = input.endTime ?? input.startTime;
+	if (
+		typeof input.createdAtMs !== "number" ||
+		!Number.isFinite(input.createdAtMs) ||
+		typeof input.updatedAtMs !== "number" ||
+		!Number.isFinite(input.updatedAtMs) ||
+		input.updatedAtMs < floorTime
+	) {
+		throw new ElizaError("Trajectory update timestamp is invalid", {
+			code: "TRAJECTORY_ROW_INVALID",
+			context: { field: "updated_at" },
+		});
+	}
+	return new Date(input.updatedAtMs).toISOString();
 }
 
 type StartTrajectoryOptions = {
@@ -1007,12 +898,85 @@ export class TrajectoriesService extends Service {
 
 	private enabled = true;
 	private initialized = false;
+	private stopping = false;
 
 	// Only keep lightweight ID caches for sync compatibility.
 	// Trajectory payloads are always read from / written to the database.
 	private activeStepIds: Map<string, string> = new Map();
 	private stepToTrajectory: Map<string, string> = new Map();
 	private writeQueues: Map<string, Promise<void>> = new Map();
+	private inflightOperations: Set<Promise<unknown>> = new Set();
+	private closedStepIds: Map<string, true> = new Map();
+
+	private acceptsNewCapture(): boolean {
+		return this.enabled && !this.stopping;
+	}
+
+	private rememberClosedStep(stepId: string): void {
+		this.closedStepIds.delete(stepId);
+		this.closedStepIds.set(stepId, true);
+		while (this.closedStepIds.size > 10_000) {
+			const oldest = this.closedStepIds.keys().next().value;
+			if (typeof oldest !== "string") break;
+			this.closedStepIds.delete(oldest);
+		}
+	}
+
+	private reportLateCapture(
+		stepId: string,
+		captureType: "llm" | "provider",
+	): void {
+		const error = new ElizaError(
+			"Trajectory capture arrived after terminalization",
+			{
+				code: "TRAJECTORY_OWNER_CLOSED",
+				context: { stepId, captureType },
+			},
+		);
+		logger.warn(
+			{ err: error, stepId, captureType },
+			"[trajectory-logger] Rejected late trajectory capture",
+		);
+		this.runtime.reportError("TrajectoriesService.lateCapture", error, {
+			stepId,
+			captureType,
+			diagnosticOnly: true,
+		});
+	}
+
+	private releaseTrajectoryRouting(trajectoryId: string): void {
+		this.activeStepIds.delete(trajectoryId);
+		this.rememberClosedStep(trajectoryId);
+		for (const [
+			stepId,
+			mappedTrajectoryId,
+		] of this.stepToTrajectory.entries()) {
+			if (mappedTrajectoryId === trajectoryId) {
+				this.rememberClosedStep(stepId);
+				this.stepToTrajectory.delete(stepId);
+			}
+		}
+	}
+
+	// Cache-miss capture has no owner queue until its database lookup resolves;
+	// shutdown therefore drains the full lookup-through-write operation here.
+	private trackInflightOperation<T>(operation: Promise<T>): Promise<T> {
+		this.inflightOperations.add(operation);
+		void operation.then(
+			() => this.inflightOperations.delete(operation),
+			() => this.inflightOperations.delete(operation),
+		);
+		return operation;
+	}
+
+	private async drainInflightOperations(): Promise<void> {
+		while (this.inflightOperations.size > 0 || this.writeQueues.size > 0) {
+			await Promise.allSettled([
+				...this.inflightOperations,
+				...this.writeQueues.values(),
+			]);
+		}
+	}
 
 	private exposeBoundMethods(): void {
 		const service = this as this & {
@@ -1052,12 +1016,24 @@ export class TrajectoriesService extends Service {
 	}
 
 	async stop(): Promise<void> {
+		this.stopping = true;
+		await this.drainInflightOperations();
 		this.enabled = false;
-		await Promise.allSettled(this.writeQueues.values());
+		for (const trajectoryId of new Set(this.stepToTrajectory.values())) {
+			this.releaseTrajectoryRouting(trajectoryId);
+		}
+		for (const trajectoryId of this.activeStepIds.keys()) {
+			this.releaseTrajectoryRouting(trajectoryId);
+		}
 	}
 
 	setEnabled(enabled: boolean): void {
 		this.enabled = enabled;
+		if (!enabled) {
+			for (const trajectoryId of new Set(this.stepToTrajectory.values())) {
+				this.releaseTrajectoryRouting(trajectoryId);
+			}
+		}
 	}
 
 	isEnabled(): boolean {
@@ -1072,9 +1048,7 @@ export class TrajectoriesService extends Service {
 		return sql;
 	}
 
-	private async executeRawSql(
-		sqlText: string,
-	): Promise<{ rows: SqlRow[]; columns: string[] }> {
+	private async executeRawSql(sqlText: string): Promise<TrajectorySqlResult> {
 		const runtime = this.runtime as IAgentRuntime & {
 			adapter?: { db?: unknown };
 		};
@@ -1096,7 +1070,13 @@ export class TrajectoriesService extends Service {
 		};
 		const query = sqlHelper.raw(sqlText);
 		const result = await db.execute(query);
-		const rows = Array.isArray(result.rows) ? result.rows : [];
+		if (!result || !Array.isArray(result.rows)) {
+			throw new ElizaError("Trajectory SQL result is invalid", {
+				code: "TRAJECTORY_ROW_INVALID",
+				context: { operation: "execute" },
+			});
+		}
+		const rows = result.rows;
 		const columns =
 			result.fields && Array.isArray(result.fields)
 				? result.fields.map((field) => field.name)
@@ -1104,6 +1084,49 @@ export class TrajectoriesService extends Service {
 					? Object.keys(rows[0])
 					: [];
 		return { rows, columns };
+	}
+
+	private async executeRawSqlTransaction<T>(
+		work: (execute: TrajectorySqlExecutor) => Promise<T>,
+	): Promise<T> {
+		const runtime = this.runtime as IAgentRuntime & {
+			adapter?: { db?: unknown };
+		};
+		const db = runtime.adapter?.db as
+			| {
+					transaction?: <TResult>(
+						callback: (tx: {
+							execute(
+								query: ReturnType<typeof sql.raw>,
+							): Promise<SqlExecuteResult>;
+						}) => Promise<TResult>,
+					) => Promise<TResult>;
+			  }
+			| undefined;
+		if (!db || typeof db.transaction !== "function") {
+			throw new ElizaError("Trajectory storage transactions are unavailable", {
+				code: "TRAJECTORY_TRANSACTION_UNAVAILABLE",
+			});
+		}
+		return db.transaction((tx) =>
+			work(async (sqlText) => {
+				const result = await tx.execute(this.getSqlHelper().raw(sqlText));
+				if (!result || !Array.isArray(result.rows)) {
+					throw new ElizaError("Trajectory SQL result is invalid", {
+						code: "TRAJECTORY_ROW_INVALID",
+						context: { operation: "transaction" },
+					});
+				}
+				const rows = result.rows;
+				const columns =
+					result.fields && Array.isArray(result.fields)
+						? result.fields.map((field) => field.name)
+						: rows.length > 0
+							? Object.keys(rows[0])
+							: [];
+				return { rows, columns };
+			}),
+		);
 	}
 
 	async initialize(): Promise<void> {
@@ -1360,6 +1383,24 @@ export class TrajectoriesService extends Service {
 		await this.executeRawSql(
 			`CREATE INDEX IF NOT EXISTS idx_trajectory_step_index_is_active ON trajectory_step_index(is_active)`,
 		);
+		await this.executeRawSql(`
+      CREATE TABLE IF NOT EXISTS trajectory_steps (
+        id TEXT PRIMARY KEY,
+        trajectory_id TEXT NOT NULL REFERENCES trajectories(id) ON DELETE CASCADE,
+        ordinal INTEGER NOT NULL,
+        parent_step_id TEXT,
+        step_type TEXT NOT NULL,
+        name TEXT,
+        started_at BIGINT,
+        ended_at BIGINT,
+        payload JSONB NOT NULL DEFAULT '{}',
+        script TEXT,
+        UNIQUE (trajectory_id, id),
+        FOREIGN KEY (trajectory_id, parent_step_id)
+          REFERENCES trajectory_steps(trajectory_id, id)
+          ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+      )
+    `);
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -1379,17 +1420,6 @@ export class TrajectoriesService extends Service {
 		return { timestamp };
 	}
 
-	private createPendingAction(stepTimestamp: number): ActionAttempt {
-		return {
-			attemptId: uuidv4(),
-			timestamp: stepTimestamp,
-			actionType: "pending",
-			actionName: "pending",
-			parameters: {},
-			success: false,
-		};
-	}
-
 	private createStep(
 		stepId: string,
 		stepNumber: number,
@@ -1404,7 +1434,6 @@ export class TrajectoriesService extends Service {
 			observation: {},
 			llmCalls: [],
 			providerAccesses: [],
-			action: this.createPendingAction(timestamp),
 			reward: 0,
 			done: false,
 		};
@@ -1497,26 +1526,35 @@ export class TrajectoriesService extends Service {
 		err: unknown,
 	): void {
 		logger.error({ err, ...metadata }, message);
-		this.runtime.reportError(
-			"TrajectoriesService.detachedWrite",
-			err,
-			metadata,
-		);
+		this.runtime.reportError("TrajectoriesService.detachedWrite", err, {
+			...metadata,
+			diagnosticOnly: true,
+		});
 	}
 
 	private async getTrajectoryById(
 		trajectoryId: string,
+		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
 	): Promise<Trajectory | null> {
-		const result = await this.executeRawSql(
-			`SELECT * FROM trajectories WHERE id = ${sqlLiteral(trajectoryId)} LIMIT 1`,
+		const result = await execute(
+			`SELECT * FROM trajectories
+			 WHERE id = ${sqlLiteral(trajectoryId)}
+			   AND agent_id = ${sqlLiteral(this.runtime.agentId)} LIMIT 1`,
 		);
 		if (result.rows.length === 0) return null;
 		return this.rowToTrajectory(result.rows[0]);
 	}
 
-	private async getStepIndex(stepId: string): Promise<StepIndexRow | null> {
-		const result = await this.executeRawSql(
-			`SELECT trajectory_id, step_number, is_active FROM trajectory_step_index WHERE step_id = ${sqlLiteral(stepId)} LIMIT 1`,
+	private async getStepIndex(
+		stepId: string,
+		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
+	): Promise<StepIndexRow | null> {
+		const result = await execute(
+			`SELECT i.trajectory_id, i.step_number, i.is_active
+			 FROM trajectory_step_index i
+			 JOIN trajectories t ON t.id = i.trajectory_id
+			 WHERE i.step_id = ${sqlLiteral(stepId)}
+			   AND t.agent_id = ${sqlLiteral(this.runtime.agentId)} LIMIT 1`,
 		);
 		const row = result.rows[0];
 		if (!row) return null;
@@ -1537,8 +1575,34 @@ export class TrajectoriesService extends Service {
 		trajectoryId: string,
 		stepNumber: number,
 		isActive: boolean,
+		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
 	): Promise<void> {
-		await this.executeRawSql(`
+		const existing = await execute(`
+	      SELECT t.agent_id, i.trajectory_id
+      FROM trajectory_step_index i
+      JOIN trajectories t ON t.id = i.trajectory_id
+      WHERE i.step_id = ${sqlLiteral(stepId)}
+      LIMIT 1
+    `);
+		const existingAgentId = existing.rows[0]
+			? asString(pickCell(existing.rows[0], "agent_id"))
+			: null;
+		const existingTrajectoryId = existing.rows[0]
+			? asString(pickCell(existing.rows[0], "trajectory_id"))
+			: null;
+		if (existingAgentId && existingAgentId !== this.runtime.agentId) {
+			throw new ElizaError("Trajectory step belongs to another agent", {
+				code: "TRAJECTORY_STEP_OWNERSHIP_CONFLICT",
+				context: { stepId, trajectoryId, existingAgentId },
+			});
+		}
+		if (existingTrajectoryId && existingTrajectoryId !== trajectoryId) {
+			throw new ElizaError("Trajectory step belongs to another trajectory", {
+				code: "TRAJECTORY_STEP_OWNERSHIP_CONFLICT",
+				context: { stepId, trajectoryId, existingTrajectoryId },
+			});
+		}
+		await execute(`
       INSERT INTO trajectory_step_index (
         step_id, trajectory_id, step_number, is_active, updated_at
       ) VALUES (
@@ -1556,8 +1620,11 @@ export class TrajectoriesService extends Service {
     `);
 	}
 
-	private async markAllStepsInactive(trajectoryId: string): Promise<void> {
-		await this.executeRawSql(`
+	private async markAllStepsInactive(
+		trajectoryId: string,
+		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
+	): Promise<void> {
+		await execute(`
       UPDATE trajectory_step_index
       SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
       WHERE trajectory_id = ${sqlLiteral(trajectoryId)}
@@ -1577,7 +1644,9 @@ export class TrajectoriesService extends Service {
 		}
 
 		const byId = await this.executeRawSql(
-			`SELECT id FROM trajectories WHERE id = ${sqlLiteral(stepIdOrTrajectoryId)} LIMIT 1`,
+			`SELECT id FROM trajectories
+			 WHERE id = ${sqlLiteral(stepIdOrTrajectoryId)}
+			   AND agent_id = ${sqlLiteral(this.runtime.agentId)} LIMIT 1`,
 		);
 		const row = byId.rows[0];
 		const id = row ? asString(pickCell(row, "id")) : null;
@@ -1586,8 +1655,9 @@ export class TrajectoriesService extends Service {
 
 	private async getCurrentStepIdFromDb(
 		trajectoryId: string,
+		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
 	): Promise<string | null> {
-		const result = await this.executeRawSql(`
+		const result = await execute(`
       SELECT step_id
       FROM trajectory_step_index
       WHERE trajectory_id = ${sqlLiteral(trajectoryId)} AND is_active = TRUE
@@ -1602,6 +1672,8 @@ export class TrajectoriesService extends Service {
 		trajectoryId: string,
 		trajectory: Trajectory,
 		status: TrajectoryStatus = "active",
+		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
+		allowCompatibilityFallback = true,
 	): Promise<void> {
 		const totals = this.computeTotals(trajectory.steps);
 		const isFinalStatus = status !== "active";
@@ -1609,7 +1681,7 @@ export class TrajectoriesService extends Service {
 		const persistedDuration = isFinalStatus ? trajectory.durationMs : null;
 		const updatedAtIso = new Date().toISOString();
 		try {
-			await this.executeRawSql(`
+			await execute(`
         UPDATE trajectories SET
           status = ${sqlLiteral(status)},
           end_time = ${sqlLiteral(persistedEndTime)},
@@ -1630,11 +1702,12 @@ export class TrajectoriesService extends Service {
         WHERE id = ${sqlLiteral(trajectoryId)}
       `);
 		} catch (modernErr) {
+			if (!allowCompatibilityFallback) throw modernErr;
 			// error-policy:J4 A legacy schema receives its compatible update
 			// shape; failure of both forms is raised below.
 			// Compatibility fallback for legacy Eliza schema.
 			try {
-				await this.executeRawSql(`
+				await execute(`
         UPDATE trajectories SET
           status = ${sqlLiteral(status)},
           end_time = ${sqlLiteral(persistedEndTime)},
@@ -1673,6 +1746,7 @@ export class TrajectoriesService extends Service {
 	private async ensureStepExists(
 		trajectory: Trajectory,
 		stepId: string,
+		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
 	): Promise<TrajectoryStep> {
 		let step = trajectory.steps.find((entry) => entry.stepId === stepId);
 		if (step) {
@@ -1681,7 +1755,7 @@ export class TrajectoriesService extends Service {
 			return step;
 		}
 
-		const index = await this.getStepIndex(stepId);
+		const index = await this.getStepIndex(stepId, execute);
 		const stepNumber = index?.stepNumber ?? trajectory.steps.length;
 		step = this.createStep(stepId, stepNumber, this.defaultEnvironmentState());
 		trajectory.steps.push(step);
@@ -1694,8 +1768,12 @@ export class TrajectoriesService extends Service {
 	 * This is the interface the runtime expects.
 	 */
 	logLlmCall(params: TrajectoryRuntimeLlmCallParams): void {
-		if (!this.enabled) return;
+		if (!this.acceptsNewCapture()) return;
 		if (isEmbeddingLlmCall(params)) return;
+		if (this.closedStepIds.has(params.stepId)) {
+			this.reportLateCapture(params.stepId, "llm");
+			return;
+		}
 
 		// Resolve trajectory synchronously from in-memory map (set by startStep).
 		// Enter the write lock IMMEDIATELY so flushWriteQueue() in endAutonomousTick
@@ -1704,11 +1782,14 @@ export class TrajectoriesService extends Service {
 		const trajectoryId = this.stepToTrajectory.get(params.stepId);
 		if (!trajectoryId) {
 			// Async resolution for legacy paths that populate the step map later.
-			void (async () => {
-				const resolved = await this.resolveTrajectoryId(params.stepId);
-				if (!resolved) return;
-				await this._persistLlmCall(resolved, params);
-			})().catch((err) => {
+			const operation = this.trackInflightOperation(
+				(async () => {
+					const resolved = await this.resolveTrajectoryId(params.stepId);
+					if (!resolved) return;
+					await this._persistLlmCall(resolved, params);
+				})(),
+			);
+			void operation.catch((err) => {
 				// error-policy:J7 Detached legacy step resolution reports persistence
 				// failure without producing an unhandled rejection.
 				this.reportDetachedWriteFailure(
@@ -1721,7 +1802,10 @@ export class TrajectoriesService extends Service {
 		}
 
 		// Enter the write lock synchronously so flushWriteQueue sees this pending write
-		void this._persistLlmCall(trajectoryId, params).catch((err) => {
+		const operation = this.trackInflightOperation(
+			this._persistLlmCall(trajectoryId, params),
+		);
+		void operation.catch((err) => {
 			// error-policy:J7 The public logging hook is synchronous; its detached
 			// persistence failure is reported through the service diagnostic boundary.
 			this.reportDetachedWriteFailure(
@@ -1739,6 +1823,12 @@ export class TrajectoriesService extends Service {
 		await this.withTrajectoryWriteLock(trajectoryId, async () => {
 			const trajectory = await this.getTrajectoryById(trajectoryId);
 			if (!trajectory) return;
+			if (trajectory.metrics.finalStatus !== "active") {
+				this.rememberClosedStep(params.stepId);
+				this.releaseTrajectoryRouting(trajectoryId);
+				this.reportLateCapture(params.stepId, "llm");
+				return;
+			}
 
 			const step = await this.ensureStepExists(trajectory, params.stepId);
 			const systemPrompt = sanitizeTrajectoryText(params.systemPrompt) ?? "";
@@ -1943,7 +2033,7 @@ export class TrajectoriesService extends Service {
 			query?: Record<string, unknown>;
 		},
 	): void {
-		if (!this.enabled) return;
+		if (!this.acceptsNewCapture()) return;
 		const params =
 			typeof arg1 === "string"
 				? {
@@ -1963,20 +2053,27 @@ export class TrajectoriesService extends Service {
 						query: arg2?.query,
 					}
 				: arg1;
+		if (this.closedStepIds.has(params.stepId)) {
+			this.reportLateCapture(params.stepId, "provider");
+			return;
+		}
 
 		const trajectoryId = this.stepToTrajectory.get(params.stepId);
 		if (!trajectoryId) {
-			void (async () => {
-				const resolved = await this.resolveTrajectoryId(params.stepId);
-				if (!resolved) {
-					logger.debug(
-						{ stepId: params.stepId },
-						"[trajectory-logger] No trajectory mapping for provider access",
-					);
-					return;
-				}
-				await this._persistProviderAccess(resolved, params);
-			})().catch((err) => {
+			const operation = this.trackInflightOperation(
+				(async () => {
+					const resolved = await this.resolveTrajectoryId(params.stepId);
+					if (!resolved) {
+						logger.debug(
+							{ stepId: params.stepId },
+							"[trajectory-logger] No trajectory mapping for provider access",
+						);
+						return;
+					}
+					await this._persistProviderAccess(resolved, params);
+				})(),
+			);
+			void operation.catch((err) => {
 				// error-policy:J7 Detached legacy step resolution reports provider
 				// telemetry failure without producing an unhandled rejection.
 				this.reportDetachedWriteFailure(
@@ -1988,7 +2085,10 @@ export class TrajectoriesService extends Service {
 			return;
 		}
 
-		void this._persistProviderAccess(trajectoryId, params).catch((err) => {
+		const operation = this.trackInflightOperation(
+			this._persistProviderAccess(trajectoryId, params),
+		);
+		void operation.catch((err) => {
 			// error-policy:J7 Provider telemetry persistence is detached and reported
 			// without interrupting the provider that already completed.
 			this.reportDetachedWriteFailure(
@@ -2025,6 +2125,12 @@ export class TrajectoriesService extends Service {
 		await this.withTrajectoryWriteLock(trajectoryId, async () => {
 			const trajectory = await this.getTrajectoryById(trajectoryId);
 			if (!trajectory) return;
+			if (trajectory.metrics.finalStatus !== "active") {
+				this.rememberClosedStep(params.stepId);
+				this.releaseTrajectoryRouting(trajectoryId);
+				this.reportLateCapture(params.stepId, "provider");
+				return;
+			}
 
 			const step = await this.ensureStepExists(trajectory, params.stepId);
 			const access: ProviderAccess = {
@@ -2114,16 +2220,26 @@ export class TrajectoriesService extends Service {
 		stepIdOrAgentId: string,
 		options: StartTrajectoryOptions = {},
 	): Promise<string> {
-		if (!this.enabled) return uuidv4();
+		if (!this.acceptsNewCapture()) return uuidv4();
 
-		const legacyStepId =
-			typeof options.agentId === "string" && options.agentId.length > 0
-				? stepIdOrAgentId
-				: null;
-		const agentId =
-			typeof options.agentId === "string" && options.agentId.length > 0
-				? options.agentId
-				: stepIdOrAgentId;
+		const isLegacySignature = options.agentId !== undefined;
+		const legacyStepId = isLegacySignature ? stepIdOrAgentId : null;
+		const requestedAgentId = isLegacySignature
+			? options.agentId
+			: stepIdOrAgentId;
+		if (requestedAgentId !== this.runtime.agentId) {
+			throw new ElizaError(
+				"Trajectory owner does not match the runtime agent",
+				{
+					code: "TRAJECTORY_AGENT_OWNERSHIP_CONFLICT",
+					context: {
+						runtimeAgentId: this.runtime.agentId,
+						requestedAgentId,
+					},
+				},
+			);
+		}
+		const agentId = this.runtime.agentId;
 
 		const trajectoryId = uuidv4();
 		const now = Date.now();
@@ -2165,33 +2281,45 @@ export class TrajectoriesService extends Service {
 			},
 		};
 
-		let persistedStart = false;
+		const insertSql = `
+			INSERT INTO trajectories (
+				id, agent_id, source, status, start_time, scenario_id, trace_id, episode_id,
+				batch_id, group_index, metadata_json, steps_json, reward_components_json, metrics_json,
+				created_at, updated_at
+			) VALUES (
+				${sqlLiteral(trajectoryId)},
+				${sqlLiteral(agentId)},
+				${sqlLiteral(options.source ?? "chat")},
+				'active',
+				${now},
+				${sqlLiteral(options.scenarioId ?? null)},
+				${sqlLiteral(options.traceId ?? null)},
+				${sqlLiteral(options.episodeId ?? null)},
+				${sqlLiteral(options.batchId ?? null)},
+				${options.groupIndex ?? "NULL"},
+				${sqlLiteral(trajectory.metadata)},
+				${sqlLiteral([])},
+				${sqlLiteral(trajectory.rewardComponents)},
+				${sqlLiteral(trajectory.metrics)},
+				${sqlLiteral(timestampIso)},
+				${sqlLiteral(timestampIso)}
+			)
+		`;
 		try {
-			await this.executeRawSql(`
-        INSERT INTO trajectories (
-          id, agent_id, source, status, start_time, scenario_id, trace_id, episode_id,
-          batch_id, group_index, metadata_json, steps_json, reward_components_json, metrics_json,
-          created_at, updated_at
-        ) VALUES (
-          ${sqlLiteral(trajectoryId)},
-          ${sqlLiteral(agentId)},
-          ${sqlLiteral(options.source ?? "chat")},
-          'active',
-          ${now},
-          ${sqlLiteral(options.scenarioId ?? null)},
-          ${sqlLiteral(options.traceId ?? null)},
-          ${sqlLiteral(options.episodeId ?? null)},
-          ${sqlLiteral(options.batchId ?? null)},
-          ${options.groupIndex ?? "NULL"},
-          ${sqlLiteral(trajectory.metadata)},
-          ${sqlLiteral([])},
-          ${sqlLiteral(trajectory.rewardComponents)},
-          ${sqlLiteral(trajectory.metrics)},
-          ${sqlLiteral(timestampIso)},
-          ${sqlLiteral(timestampIso)}
-        )
-      `);
-			persistedStart = true;
+			if (legacyStepId) {
+				await this.executeRawSqlTransaction(async (execute) => {
+					await execute(insertSql);
+					await this.setStepIndex(
+						legacyStepId,
+						trajectoryId,
+						-1,
+						false,
+						execute,
+					);
+				});
+			} else {
+				await this.executeRawSql(insertSql);
+			}
 		} catch (error) {
 			// error-policy:J2 Preserve the database cause with trajectory identity.
 			throw new ElizaError(
@@ -2204,23 +2332,8 @@ export class TrajectoriesService extends Service {
 			);
 		}
 
-		if (persistedStart && legacyStepId) {
+		if (legacyStepId) {
 			this.stepToTrajectory.set(legacyStepId, trajectoryId);
-			try {
-				await this.setStepIndex(legacyStepId, trajectoryId, -1, false);
-			} catch (indexErr) {
-				// error-policy:J7 The trajectory start is durable; report its
-				// diagnostic routing-index failure without fabricating success.
-				logger.warn(
-					{ err: indexErr, trajectoryId, stepId: legacyStepId },
-					"[trajectory-logger] Failed to persist step index for trajectory start",
-				);
-				this.runtime.reportError(
-					"TrajectoriesService.persistStartStepIndex",
-					indexErr,
-					{ trajectoryId, stepId: legacyStepId },
-				);
-			}
 		}
 
 		return trajectoryId;
@@ -2230,27 +2343,63 @@ export class TrajectoriesService extends Service {
 	 * Start a new step within a trajectory.
 	 */
 	startStep(trajectoryId: string, envState: EnvironmentState): string {
-		if (!this.enabled) return uuidv4();
+		if (!this.acceptsNewCapture()) return uuidv4();
 
 		const stepId = uuidv4();
+		this.closedStepIds.delete(trajectoryId);
+		this.closedStepIds.delete(stepId);
 		this.activeStepIds.set(trajectoryId, stepId);
 		this.stepToTrajectory.set(stepId, trajectoryId);
 
 		void this.withTrajectoryWriteLock(trajectoryId, async () => {
-			const trajectory = await this.getTrajectoryById(trajectoryId);
-			if (!trajectory) {
-				logger.warn(
-					{ trajectoryId },
-					"[trajectory-logger] Trajectory not found for startStep",
-				);
-				return;
-			}
+			let committed = false;
+			try {
+				await this.executeRawSqlTransaction(async (execute) => {
+					const trajectory = await this.getTrajectoryById(
+						trajectoryId,
+						execute,
+					);
+					if (!trajectory) {
+						throw new ElizaError("Trajectory not found for startStep", {
+							code: "TRAJECTORY_PARENT_NOT_FOUND",
+							context: { trajectoryId, stepId },
+						});
+					}
 
-			const step = this.createStep(stepId, trajectory.steps.length, envState);
-			trajectory.steps.push(step);
-			await this.markAllStepsInactive(trajectoryId);
-			await this.setStepIndex(stepId, trajectoryId, step.stepNumber, true);
-			await this.persistTrajectory(trajectoryId, trajectory, "active");
+					const step = this.createStep(
+						stepId,
+						trajectory.steps.length,
+						envState,
+					);
+					trajectory.steps.push(step);
+					await this.markAllStepsInactive(trajectoryId, execute);
+					await this.setStepIndex(
+						stepId,
+						trajectoryId,
+						step.stepNumber,
+						true,
+						execute,
+					);
+					await this.persistTrajectory(
+						trajectoryId,
+						trajectory,
+						"active",
+						execute,
+						false,
+					);
+				});
+				committed = true;
+			} finally {
+				if (!committed) {
+					if (this.activeStepIds.get(trajectoryId) === stepId) {
+						this.activeStepIds.delete(trajectoryId);
+					}
+					if (this.stepToTrajectory.get(stepId) === trajectoryId) {
+						this.stepToTrajectory.delete(stepId);
+					}
+					this.rememberClosedStep(stepId);
+				}
+			}
 		}).catch((err) => {
 			// error-policy:J7 startStep has a synchronous id contract; detached
 			// persistence failures are surfaced through runtime diagnostics.
@@ -2289,7 +2438,7 @@ export class TrajectoriesService extends Service {
 			| CompleteStepRewardInfo,
 		maybeReward?: CompleteStepRewardInfo,
 	): void {
-		if (!this.enabled) return;
+		if (!this.acceptsNewCapture()) return;
 
 		const explicitStepId =
 			typeof actionOrStepId === "string" ? actionOrStepId : null;
@@ -2303,42 +2452,47 @@ export class TrajectoriesService extends Service {
 		if (!action) return;
 
 		void this.withTrajectoryWriteLock(trajectoryId, async () => {
-			const trajectory = await this.getTrajectoryById(trajectoryId);
-			if (!trajectory) return;
+			let completedStepId: string | null = null;
+			await this.executeRawSqlTransaction(async (execute) => {
+				const trajectory = await this.getTrajectoryById(trajectoryId, execute);
+				if (!trajectory) return;
 
-			const stepId =
-				explicitStepId ??
-				this.activeStepIds.get(trajectoryId) ??
-				(await this.getCurrentStepIdFromDb(trajectoryId));
-			if (!stepId) return;
+				const stepId =
+					explicitStepId ??
+					this.activeStepIds.get(trajectoryId) ??
+					(await this.getCurrentStepIdFromDb(trajectoryId, execute));
+				if (!stepId) return;
 
-			const step = await this.ensureStepExists(trajectory, stepId);
-			step.action = {
-				attemptId: uuidv4(),
-				timestamp: Date.now(),
-				...action,
-			};
-			step.done = true;
-
-			if (rewardInfo?.reward !== undefined) {
-				step.reward = rewardInfo.reward;
-				trajectory.totalReward += rewardInfo.reward;
-			}
-			if (rewardInfo?.components) {
-				trajectory.rewardComponents = {
-					...trajectory.rewardComponents,
-					...rewardInfo.components,
+				const step = await this.ensureStepExists(trajectory, stepId, execute);
+				step.action = {
+					attemptId: uuidv4(),
+					timestamp: Date.now(),
+					...action,
 				};
-			}
+				step.done = true;
 
-			await this.setStepIndex(stepId, trajectoryId, step.stepNumber, false);
-			this.activeStepIds.delete(trajectoryId);
+				if (rewardInfo?.reward !== undefined) {
+					step.reward = rewardInfo.reward;
+					trajectory.totalReward += rewardInfo.reward;
+				}
+				if (rewardInfo?.components) {
+					trajectory.rewardComponents = {
+						...trajectory.rewardComponents,
+						...rewardInfo.components,
+					};
+				}
 
-			// Targeted UPDATE: only write steps data, reward, and summary columns.
-			// Do NOT touch status — same rationale as _persistLlmCall.
-			const totals = this.computeTotals(trajectory.steps);
-			const updatedAtIso = new Date().toISOString();
-			await this.executeRawSql(`
+				await this.setStepIndex(
+					stepId,
+					trajectoryId,
+					step.stepNumber,
+					false,
+					execute,
+				);
+
+				const totals = this.computeTotals(trajectory.steps);
+				const updatedAtIso = new Date().toISOString();
+				await execute(`
 				UPDATE trajectories SET
 					steps_json = ${sqlLiteral(trajectory.steps)},
 					step_count = ${totals.stepCount},
@@ -2352,7 +2506,12 @@ export class TrajectoriesService extends Service {
 					reward_components_json = ${sqlLiteral(trajectory.rewardComponents)},
 					updated_at = ${sqlLiteral(updatedAtIso)}
 				WHERE id = ${sqlLiteral(trajectoryId)}
-			`);
+				`);
+				completedStepId = stepId;
+			});
+			if (completedStepId !== null) {
+				this.activeStepIds.delete(trajectoryId);
+			}
 		}).catch((err) => {
 			// error-policy:J7 completeStep is a synchronous telemetry hook; detached
 			// persistence failures are surfaced through runtime diagnostics.
@@ -2372,8 +2531,21 @@ export class TrajectoriesService extends Service {
 		status: "completed" | "error" | "timeout" | "terminated" = "completed",
 		finalMetrics?: Record<string, JsonValue>,
 	): Promise<void> {
-		if (!this.enabled) return;
+		if (!this.acceptsNewCapture()) return;
+		return this.trackInflightOperation(
+			this.endTrajectoryAfterResolution(
+				stepIdOrTrajectoryId,
+				status,
+				finalMetrics,
+			),
+		);
+	}
 
+	private async endTrajectoryAfterResolution(
+		stepIdOrTrajectoryId: string,
+		status: "completed" | "error" | "timeout" | "terminated",
+		finalMetrics?: Record<string, JsonValue>,
+	): Promise<void> {
 		const trajectoryId = await this.resolveTrajectoryId(stepIdOrTrajectoryId);
 		if (!trajectoryId) {
 			logger.debug(
@@ -2384,45 +2556,47 @@ export class TrajectoriesService extends Service {
 		}
 
 		await this.withTrajectoryWriteLock(trajectoryId, async () => {
-			const trajectory = await this.getTrajectoryById(trajectoryId);
-			if (!trajectory) {
-				logger.debug(
-					{ trajectoryId },
-					"[trajectory-logger] Trajectory not found while ending",
+			await this.executeRawSqlTransaction(async (execute) => {
+				const trajectory = await this.getTrajectoryById(trajectoryId, execute);
+				if (!trajectory) {
+					throw new ElizaError("Trajectory not found while ending", {
+						code: "TRAJECTORY_PARENT_NOT_FOUND",
+						context: { trajectoryId },
+					});
+				}
+
+				const now = Date.now();
+				trajectory.endTime = now;
+				trajectory.durationMs = now - trajectory.startTime;
+				trajectory.metrics = {
+					...trajectory.metrics,
+					...(finalMetrics ?? {}),
+					finalStatus: status,
+					episodeLength: trajectory.steps.length,
+				};
+
+				await this.markAllStepsInactive(trajectoryId, execute);
+				await this.persistTrajectory(
+					trajectoryId,
+					trajectory,
+					status,
+					execute,
+					false,
 				);
-				return;
-			}
-
-			const now = Date.now();
-			trajectory.endTime = now;
-			trajectory.durationMs = now - trajectory.startTime;
-			trajectory.metrics = {
-				...trajectory.metrics,
-				finalStatus: status,
-				episodeLength: trajectory.steps.length,
-			};
-			if (finalMetrics) {
-				Object.assign(trajectory.metrics, finalMetrics);
-			}
-
-			await this.markAllStepsInactive(trajectoryId);
-			this.activeStepIds.delete(trajectoryId);
-
-			// persistTrajectory recomputes summary columns (llm_call_count,
-			// step_count, etc.) from steps_json and calls ensureAtLeastOneLlmCall
-			// for non-active statuses. The write lock serializes this with any
-			// pending logLlmCall / completeStep writes so steps_json is stable.
-			await this.persistTrajectory(trajectoryId, trajectory, status);
+			});
 		});
 
-		for (const [
-			stepId,
-			mappedTrajectoryId,
-		] of this.stepToTrajectory.entries()) {
-			if (mappedTrajectoryId === trajectoryId) {
-				this.stepToTrajectory.delete(stepId);
-			}
-		}
+		this.releaseTrajectoryRouting(trajectoryId);
+	}
+
+	/**
+	 * Release in-memory routing after an outer event boundary has reported an
+	 * unrecoverable terminal write. This never changes persisted trajectory data.
+	 */
+	releaseTrajectoryOwnership(stepIdOrTrajectoryId: string): void {
+		const trajectoryId =
+			this.stepToTrajectory.get(stepIdOrTrajectoryId) ?? stepIdOrTrajectoryId;
+		this.releaseTrajectoryRouting(trajectoryId);
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -2444,7 +2618,9 @@ export class TrajectoriesService extends Service {
 		const offset = Math.max(0, options.offset ?? 0);
 		const limit = Math.min(500, Math.max(1, options.limit ?? 50));
 
-		const whereClauses: string[] = [];
+		const whereClauses: string[] = [
+			`agent_id = ${sqlLiteral(this.runtime.agentId)}`,
+		];
 		if (options.status) {
 			whereClauses.push(`status = ${sqlLiteral(options.status)}`);
 		}
@@ -2508,7 +2684,9 @@ export class TrajectoriesService extends Service {
         id, agent_id, source, status, start_time, end_time, duration_ms,
         step_count, llm_call_count, total_prompt_tokens, total_completion_tokens,
         total_cache_read_input_tokens, total_cache_creation_input_tokens,
-        total_reward, scenario_id, batch_id, metadata_json, created_at, updated_at
+        total_reward, scenario_id, episode_id, batch_id, group_index,
+        metadata_json, steps_json, reward_components_json, metrics_json,
+        created_at, updated_at
       FROM trajectories
       ${whereClause}
       ORDER BY created_at DESC
@@ -2517,35 +2695,12 @@ export class TrajectoriesService extends Service {
 
 		const trajectories: TrajectoryListItem[] = rowsResult.rows.map((row) => {
 			const id = requiredTrajectoryCell(asString(pickCell(row, "id")), "id");
-			const rawStatus = asString(pickCell(row, "status"));
-			const status = requiredTrajectoryCell(
-				rawStatus === "active" ||
-					rawStatus === "completed" ||
-					rawStatus === "error" ||
-					rawStatus === "timeout"
-					? rawStatus
-					: null,
-				"status",
-				id,
-			);
-			const startTime = requiredTrajectoryCell(
-				asNumber(pickCell(row, "start_time")),
-				"start_time",
-				id,
-			);
-			const timing = normalizeReadTrajectoryTiming({
-				status,
-				startTime,
-				endTime: asNumber(pickCell(row, "end_time")),
-				durationMs: asNumber(pickCell(row, "duration_ms")),
-				createdAtMs: asEpochMs(pickCell(row, "created_at")),
-				updatedAtMs: asEpochMs(pickCell(row, "updated_at")),
-			});
+			const decoded = this.rowToTrajectory(row);
+			const status = parseTrajectoryStatus(pickCell(row, "status"), id);
+			const startTime = decoded.startTime;
 			const requiredNumber = (field: string): number =>
 				requiredTrajectoryCell(asNumber(pickCell(row, field)), field, id);
-			const metadata = parseTrajectoryMetadata(
-				pickCell(row, "metadata_json", "metadata"),
-			);
+			const metadata = decoded.metadata;
 			const asNullableString = (value: JsonValue | undefined): string | null =>
 				typeof value === "string" ? value : null;
 
@@ -2566,8 +2721,8 @@ export class TrajectoriesService extends Service {
 				metadata,
 				status,
 				startTime,
-				endTime: timing.endTime,
-				durationMs: timing.durationMs,
+				endTime: decoded.endTime ?? null,
+				durationMs: decoded.durationMs ?? null,
 				stepCount: requiredNumber("step_count"),
 				llmCallCount: requiredNumber("llm_call_count"),
 				totalPromptTokens: requiredNumber("total_prompt_tokens"),
@@ -2588,7 +2743,7 @@ export class TrajectoriesService extends Service {
 				),
 				updatedAt: normalizeReadTrajectoryUpdatedAt({
 					startTime,
-					endTime: timing.endTime,
+					endTime: decoded.endTime ?? null,
 					createdAtMs: asEpochMs(pickCell(row, "created_at")),
 					updatedAtMs: asEpochMs(pickCell(row, "updated_at")),
 				}),
@@ -2605,7 +2760,8 @@ export class TrajectoriesService extends Service {
 
 		const safeId = trajectoryId.replace(/'/g, "''");
 		const result = await this.executeRawSql(
-			`SELECT * FROM trajectories WHERE id = '${safeId}' LIMIT 1`,
+			`SELECT * FROM trajectories WHERE id = '${safeId}'
+			 AND agent_id = ${sqlLiteral(this.runtime.agentId)} LIMIT 1`,
 		);
 
 		if (result.rows.length === 0) return null;
@@ -2632,17 +2788,20 @@ export class TrajectoriesService extends Service {
         COALESCE(avg(duration_ms), 0)::int AS avg_duration_ms,
         COALESCE(avg(total_reward), 0)::real AS avg_reward
       FROM trajectories
+      WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}
     `);
 
 		const sourceResult = await this.executeRawSql(`
       SELECT source, count(*)::int AS cnt
       FROM trajectories
+      WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}
       GROUP BY source
     `);
 
 		const statusResult = await this.executeRawSql(`
       SELECT status, count(*)::int AS cnt
       FROM trajectories
+      WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}
       GROUP BY status
     `);
 
@@ -2650,6 +2809,7 @@ export class TrajectoriesService extends Service {
       SELECT scenario_id, count(*)::int AS cnt
       FROM trajectories
       WHERE scenario_id IS NOT NULL
+        AND agent_id = ${sqlLiteral(this.runtime.agentId)}
       GROUP BY scenario_id
     `);
 
@@ -2703,10 +2863,17 @@ export class TrajectoriesService extends Service {
 		await this.ensureStorageReady();
 
 		const ids = trajectoryIds.map(sqlLiteral).join(", ");
-		const result = await this.executeRawSql(
-			`DELETE FROM trajectories WHERE id IN (${ids}) RETURNING id`,
-		);
-		return result.rows.length;
+		return this.executeRawSqlTransaction(async (execute) => {
+			await execute(`DELETE FROM trajectory_steps WHERE trajectory_id IN (
+				SELECT id FROM trajectories WHERE id IN (${ids})
+				AND agent_id = ${sqlLiteral(this.runtime.agentId)}
+			)`);
+			const result = await execute(
+				`DELETE FROM trajectories WHERE id IN (${ids})
+				 AND agent_id = ${sqlLiteral(this.runtime.agentId)} RETURNING id`,
+			);
+			return result.rows.length;
+		});
 	}
 
 	async clearAllTrajectories(): Promise<number> {
@@ -2714,16 +2881,23 @@ export class TrajectoriesService extends Service {
 		if (!runtime.adapter) throw this.storageUnavailableError();
 		await this.ensureStorageReady();
 
-		const countResult = await this.executeRawSql(
-			`SELECT count(*)::int AS cnt FROM trajectories`,
-		);
-		const count = requiredTrajectoryCell(
-			asNumber(pickCell(countResult.rows[0] ?? {}, "cnt")),
-			"cnt",
-		);
-
-		await this.executeRawSql(`DELETE FROM trajectories`);
-		return count;
+		return this.executeRawSqlTransaction(async (execute) => {
+			const countResult = await execute(
+				`SELECT count(*)::int AS cnt FROM trajectories
+				 WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}`,
+			);
+			const count = requiredTrajectoryCell(
+				asNumber(pickCell(countResult.rows[0] ?? {}, "cnt")),
+				"cnt",
+			);
+			await execute(`DELETE FROM trajectory_steps WHERE trajectory_id IN (
+				SELECT id FROM trajectories WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}
+			)`);
+			await execute(
+				`DELETE FROM trajectories WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}`,
+			);
+			return count;
+		});
 	}
 
 	private storageUnavailableError(): ElizaError {
@@ -2950,7 +3124,9 @@ export class TrajectoriesService extends Service {
 		}
 		await this.ensureStorageReady();
 
-		const whereClauses: string[] = [];
+		const whereClauses: string[] = [
+			`agent_id = ${sqlLiteral(this.runtime.agentId)}`,
+		];
 		if (options.trajectoryIds && options.trajectoryIds.length > 0) {
 			const ids = options.trajectoryIds.map(sqlLiteral).join(", ");
 			whereClauses.push(`id IN (${ids})`);
@@ -3032,13 +3208,30 @@ export class TrajectoriesService extends Service {
 		const metrics = parseTrajectoryMetrics(
 			pickCell(row, "metrics_json", "metrics"),
 		);
+		const status = parseTrajectoryStatus(pickCell(row, "status"), id);
+		if (metrics.finalStatus !== status) {
+			throw new ElizaError(
+				"Trajectory status does not match its canonical metrics",
+				{
+					code: "TRAJECTORY_ROW_INVALID",
+					context: { rowId: id, field: "metrics_json.finalStatus" },
+				},
+			);
+		}
 		const timing = normalizeReadTrajectoryTiming({
-			status: asString(pickCell(row, "status")) ?? metrics.finalStatus,
+			status,
 			startTime,
-			endTime: asNumber(pickCell(row, "end_time")),
-			durationMs: asNumber(pickCell(row, "duration_ms")),
-			createdAtMs: asEpochMs(pickCell(row, "created_at")),
-			updatedAtMs: asEpochMs(pickCell(row, "updated_at")),
+			endTime: parseNullableNumberCell(
+				pickCell(row, "end_time"),
+				"end_time",
+				id,
+			),
+			durationMs: parseNullableNumberCell(
+				pickCell(row, "duration_ms"),
+				"duration_ms",
+				id,
+			),
+			rowId: id,
 		});
 
 		return {
@@ -3083,7 +3276,9 @@ export class TrajectoriesService extends Service {
 	 * Get current step ID for a trajectory
 	 */
 	getCurrentStepId(trajectoryId: string): string | null {
-		return this.activeStepIds.get(trajectoryId) || null;
+		return this.acceptsNewCapture()
+			? this.activeStepIds.get(trajectoryId) || null
+			: null;
 	}
 
 	/**

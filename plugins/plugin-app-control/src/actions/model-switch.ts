@@ -20,11 +20,12 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
 	DEFAULT_ELIGIBLE_MODEL_IDS,
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "@elizaos/shared";
+import { getAppControlApiBase } from "../loopback-api.js";
 import { readStringOption, userRequestMessageText } from "../params.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
@@ -56,9 +57,8 @@ async function defaultSwitchModel(request: {
 	target: ModelSwitchTarget;
 	model?: string;
 }): Promise<ModelSwitchOutcome> {
-	const port = resolveServerOnlyPort(process.env);
 	const response = await fetch(
-		`http://127.0.0.1:${port}/api/runtime/model-switch`,
+		`${getAppControlApiBase()}/api/runtime/model-switch`,
 		{
 			method: "POST",
 			headers: createViewsRequestHeaders(),

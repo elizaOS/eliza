@@ -151,6 +151,24 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
             });
             return;
           }
+          if (body?.code === "session_ended") {
+            // The user explicitly logged out (possibly on the PAIRED origin —
+            // the cross-host SSO logout marker outranks this origin's surviving
+            // token). Unlike a bare 401 this code is only ever emitted on
+            // purpose, so it bypasses the stale-proxy guard below: clear the
+            // stored session instead of retrying it for the rest of its
+            // lifetime. This is what propagates a sign-out across the host
+            // pair without a shared cookie.
+            reportRendererDiagnostic({
+              scope: "steward.session-ended",
+              error: new Error("Session was ended by an explicit logout"),
+              severity: "warning",
+            });
+            lastSyncedToken.current = null;
+            wasAuthenticated.current = false;
+            clearStaleStewardSession();
+            return;
+          }
           // Same stale-proxy guard as the refresh path: a still-valid token that
           // gets a 401 from the session-sync endpoint is far more likely a
           // misproxied control plane than a real revocation. Only clear once the

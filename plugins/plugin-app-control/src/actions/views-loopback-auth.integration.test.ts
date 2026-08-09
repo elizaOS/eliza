@@ -14,6 +14,7 @@ import { createSettingsAction } from "./settings.js";
 import { createViewsAction } from "./views.js";
 import {
 	createViewsClient,
+	readViewInteractionEffectContract,
 	type ViewSummary,
 	type ViewsClient,
 } from "./views-client.js";
@@ -37,6 +38,7 @@ const ENV_KEYS = [
 	"ELIZA_UI_PORT",
 	"ELIZA_API_TOKEN",
 	"ELIZA_API_AUTH_TOKEN",
+	"ELIZA_REQUIRE_LOCAL_AUTH",
 ] as const;
 
 const SETTINGS_VIEW: ViewSummary = {
@@ -72,6 +74,25 @@ const NOTES_VIEW: ViewSummary = {
 		},
 	],
 };
+
+const LOOPBACK_EFFECT_RECEIPT = {
+	receiptId: "simple-views:create-note:note-loopback:9",
+	operation: "simple-views.create-note",
+	resource: {
+		kind: "simple-views.note",
+		id: "note-loopback",
+		version: "9",
+	},
+	artifacts: [],
+	idempotency: { key: null, replayed: false },
+	observedAt: "2026-08-02T12:00:00.000Z",
+	outcome: "applied",
+	commit: {
+		kind: "durable",
+		id: "simple-views:revision:9",
+		committedAt: "2026-08-02T12:00:00.000Z",
+	},
+} as const;
 
 const servers: http.Server[] = [];
 let previousEnv: Record<(typeof ENV_KEYS)[number], string | undefined>;
@@ -156,6 +177,24 @@ async function startAuthenticatedViewsServer(
 				request.pathname.startsWith("/api/views/") &&
 				request.pathname.endsWith("/interact")
 			) {
+				const interactionBody = JSON.parse(body) as {
+					capability?: unknown;
+				};
+				if (interactionBody.capability === "create-note") {
+					sendJson(res, 200, {
+						requestId: "request-loopback",
+						success: true,
+						result: {
+							success: true,
+							text: "interaction complete",
+							state: { revision: 9 },
+							data: { note: { id: "note-loopback" } },
+							effectReceipts: [LOOPBACK_EFFECT_RECEIPT],
+							userFacingEffectReceiptIds: [LOOPBACK_EFFECT_RECEIPT.receiptId],
+						},
+					});
+					return;
+				}
 				sendJson(res, 200, { success: true, text: "interaction complete" });
 				return;
 			}
@@ -231,6 +270,7 @@ beforeEach(() => {
 		ENV_KEYS.map((key) => [key, process.env[key]]),
 	) as Record<(typeof ENV_KEYS)[number], string | undefined>;
 	for (const key of ENV_KEYS) delete process.env[key];
+	process.env.ELIZA_REQUIRE_LOCAL_AUTH = "1";
 });
 
 afterEach(async () => {
@@ -252,10 +292,29 @@ afterEach(async () => {
 });
 
 describe("authenticated view loopback requests", () => {
+	it("fails closed on partial or unbound view mutation proof", () => {
+		expect(
+			readViewInteractionEffectContract({ success: true }),
+		).toBeUndefined();
+		expect(() =>
+			readViewInteractionEffectContract({ effectReceipts: [] }),
+		).toThrow(
+			"View interaction mutation proof must include both receipts and user-facing receipt IDs.",
+		);
+		expect(() =>
+			readViewInteractionEffectContract({
+				effectReceipts: [LOOPBACK_EFFECT_RECEIPT],
+				userFacingEffectReceiptIds: ["missing-receipt"],
+			}),
+		).toThrow(
+			"View interaction user-facing receipt IDs must resolve to applied mutation receipts.",
+		);
+	});
+
 	it("uses the canonical token, falls back to the legacy key, and omits empty auth", () => {
 		expect(
 			createViewsRequestHeaders({
-				ELIZA_API_TOKEN: " canonical-token ",
+				ELIZA_API_TOKEN: " bearer   canonical-token ",
 				ELIZA_API_AUTH_TOKEN: "legacy-token",
 			}),
 		).toEqual({
@@ -396,6 +455,8 @@ describe("authenticated view loopback requests", () => {
 			userFacingText: "interaction complete",
 			verifiedUserFacing: true,
 			turnComplete: true,
+			effectReceipts: [LOOPBACK_EFFECT_RECEIPT],
+			userFacingEffectReceiptIds: [LOOPBACK_EFFECT_RECEIPT.receiptId],
 		});
 		expect(server.requests.at(-1)).toMatchObject({
 			method: "POST",

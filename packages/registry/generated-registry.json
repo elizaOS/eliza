@@ -138,6 +138,51 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@iqlabs-official/plugin-clawbal": {
+      "git": {
+        "repo": "IQCoreTeam/milady-clawbal",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@iqlabs-official/plugin-clawbal",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Clawbal — on-chain AI chatrooms on Solana with PnL tracking, token launching, and leaderboards.",
+      "homepage": "https://github.com/IQCoreTeam/milady-clawbal",
+      "topics": [
+        "solana",
+        "chat",
+        "on-chain",
+        "pnl",
+        "trading"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@lmxcloud/plugin-lmxcloud": {
       "git": {
         "repo": "LMXCloud/plugin-lmxcloud",
@@ -583,6 +628,186 @@
       "registryKind": "plugin",
       "directory": "adapters/eliza"
     },
+    "@vohlsyr/plugin-chainscope": {
+      "git": {
+        "repo": "Vohlsyr/plugin-chainscope",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@vohlsyr/plugin-chainscope",
+        "v0": null,
+        "v1": null,
+        "v2": "0.3.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Multi-chain wallet and transaction intelligence with OFAC sanctions screening via ChainScope, paid per call in USDC on Base through x402.",
+      "homepage": "https://chainsscope.duckdns.org",
+      "topics": [
+        "x402",
+        "blockchain",
+        "wallet",
+        "multi-chain",
+        "payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "@vohlsyr/plugin-concordance": {
+      "git": {
+        "repo": "Vohlsyr/plugin-concordance",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@vohlsyr/plugin-concordance",
+        "v0": null,
+        "v1": null,
+        "v2": "0.3.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Cross-source search and claim corroboration across 18 real-time data sources via Concordance, paid per call in USDC on Base through x402 -- no API keys.",
+      "homepage": "https://concordancehq.duckdns.org",
+      "topics": [
+        "x402",
+        "search",
+        "data",
+        "corroboration",
+        "payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "@vohlsyr/plugin-trading-strategy-data": {
+      "git": {
+        "repo": "Vohlsyr/plugin-trading-strategy-data",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@vohlsyr/plugin-trading-strategy-data",
+        "v0": null,
+        "v1": null,
+        "v2": "0.3.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Backtestable crypto trend signals and on-demand backtesting for BTC/ETH/SOL/XRP/ADA via Trading Strategy Data, paid per call in USDC on Base through x402.",
+      "homepage": "https://strategysignals.duckdns.org",
+      "topics": [
+        "x402",
+        "trading",
+        "crypto",
+        "backtest",
+        "payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "@vohlsyr/plugin-trustfetch": {
+      "git": {
+        "repo": "Vohlsyr/plugin-trustfetch",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@vohlsyr/plugin-trustfetch",
+        "v0": null,
+        "v1": null,
+        "v2": "0.3.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Prompt-injection scanning and clean webpage fetching for AI agents via TrustFetch, paid per call in USDC on Base through x402.",
+      "homepage": "https://trustfetch.duckdns.org",
+      "topics": [
+        "x402",
+        "security",
+        "prompt-injection",
+        "web-fetch",
+        "payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@wasmagent/eliza-rollout-plugin": {
       "git": {
         "repo": "WasmAgent/wasmagent-js",
@@ -721,6 +946,53 @@
       "kind": "plugin",
       "registryKind": "plugin",
       "directory": "plugin-eliza"
+    },
+    "@zeromodern/eliza-plugin-0mod": {
+      "git": {
+        "repo": "zeromodern/eliza-plugin-0mod",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@zeromodern/eliza-plugin-0mod",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ElizaOS plugin for 0mod HTTP 402 API Gateway (stealth-dom, airgap-scrub, rag-shrink) using x402 micropayments on Base USDC",
+      "homepage": "https://github.com/zeromodern/eliza-plugin-0mod",
+      "topics": [
+        "x402",
+        "payments",
+        "base",
+        "usdc",
+        "micropayments",
+        "0mod",
+        "stealth-dom"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
     },
     "blackwall-eliza-guardrail": {
       "git": {
@@ -1278,6 +1550,138 @@
         "rag",
         "research",
         "current-information"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-syndicate": {
+      "git": {
+        "repo": "sailorpepe/plugin-syndicate",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-syndicate",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Run a crime family in The Syndicate: a deterministic, turn-based city where the loot is real trading cards priced by a live on-chain oracle. Agents and humans share one world and one leaderboard.",
+      "homepage": "https://play.the-undesirables.com",
+      "topics": [
+        "game",
+        "agent-gameplay",
+        "strategy",
+        "trading-cards",
+        "oracle",
+        "deterministic"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "app",
+      "registryKind": "app",
+      "directory": null,
+      "app": {
+        "displayName": "The Syndicate",
+        "category": "game",
+        "launchType": "connect",
+        "launchUrl": "https://play.the-undesirables.com",
+        "icon": "https://play.the-undesirables.com/favicon.png",
+        "heroImage": "https://play.the-undesirables.com/og-image.png",
+        "capabilities": [
+          "agent-gameplay",
+          "bounded-autonomy",
+          "spectate-and-steer",
+          "real-market-data",
+          "deterministic-replay"
+        ],
+        "minPlayers": 1,
+        "maxPlayers": null,
+        "runtimePlugin": "plugin-syndicate",
+        "viewer": {
+          "url": "https://play.the-undesirables.com",
+          "postMessageAuth": false,
+          "sandbox": "allow-scripts allow-same-origin allow-popups"
+        },
+        "session": {
+          "mode": "spectate-and-steer",
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
+        },
+        "visibleInAppStore": true,
+        "catalogSection": "other"
+      }
+    },
+    "plugin-undesirables": {
+      "git": {
+        "repo": "sailorpepe/plugin-undesirables",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-undesirables",
+        "v0": null,
+        "v1": null,
+        "v2": "2.7.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Personality-as-code: load any of 4,444 on-chain Undesirable souls as a deterministic agent personality, and price real trading-card markets from a live on-chain oracle.",
+      "homepage": "https://the-undesirables.com",
+      "topics": [
+        "personality",
+        "agent-personality",
+        "nft",
+        "ethereum",
+        "market-data",
+        "live-pricing",
+        "trading-cards",
+        "tcg",
+        "oracle-api",
+        "x402",
+        "mcp",
+        "base",
+        "usdc"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",

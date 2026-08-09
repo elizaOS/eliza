@@ -167,7 +167,7 @@ AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"
-ELIZA_ONBOARDING_APP_URL = "https://eliza.app"
+ELIZA_ONBOARDING_APP_URL = "https://app.elizacloud.ai"
 BLUEBUBBLES_GATEWAY_PHONE_NUMBER = "+14159611510"
 NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
@@ -205,7 +205,7 @@ REDIS_RATE_LIMITING = "false"
 # misses warm and retry instead of joining an authoritative database fallback.
 # SAFE_BALANCE_THRESHOLD remains a non-Worker compatibility control; exact
 # Durable Object admission does not impose a minimum account-balance floor.
-INFERENCE_OPTIMISTIC_BILLING = "false"
+INFERENCE_OPTIMISTIC_BILLING = "true"
 # Thin chat-only bootstrap. Keep production off until staging parity/latency soak passes.
 THIN_INFERENCE_ENTRY_ENABLED = "false"
 SAFE_BALANCE_THRESHOLD = ""
@@ -214,7 +214,7 @@ SAFE_BALANCE_THRESHOLD = ""
 INFERENCE_BILLING_LEDGER = "db"
 # Required for the Worker cache-only path. The only pre-provider write is the
 # per-organization Durable Object lease; Postgres accounting starts afterward.
-INFERENCE_DEFERRED_ADMISSION = "false"
+INFERENCE_DEFERRED_ADMISSION = "true"
 # Enables local decision memos in front of shared revisioned caches. Exact
 # organization rate and spend decisions remain in the Durable Object.
 INFERENCE_HOT_PATH_CACHES = "false"
@@ -317,6 +317,22 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   DISCORD_BOT_TOKEN / DISCORD_CHANNEL_ID
 #   GATEWAY_BOOTSTRAP_SECRET / GATEWAY_INTERNAL_SECRET
 #   JWT_SIGNING_PRIVATE_KEY / JWT_SIGNING_PUBLIC_KEY
+#   OIDC_SIGNING_JWKS                  OIDC provider key ring: JSON array of PRIVATE JWKs
+#                                      (element 0 signs, all published at jwks_uri).
+#                                      Generate with packages/cloud/scripts/admin/generate-oidc-keys.ts.
+#   OIDC_CLIENTS                       OIDC relying-party registry: JSON array; client
+#                                      secrets stored as sha256 hex only.
+#                                      NOTE: both are SECRETS on purpose — a wiped secret
+#                                      makes SSO fail closed (503) rather than serve an
+#                                      empty registry. OIDC_ENABLED / OIDC_ISSUER_URL are
+#                                      committed [vars] below for the same reason inverted:
+#                                      losing them must not silently change the issuer.
+#                                      OIDC_WALLET_EMAIL_DOMAIN is a var for that same
+#                                      reason and is normally UNSET: it defaults to
+#                                      users.noreply.<issuer hostname>, and an override is
+#                                      accepted only as a strict subdomain of that hostname
+#                                      (the rule that makes the domain unregisterable by a
+#                                      user). Set but invalid fails the provider closed.
 #   COINGECKO_API_KEY / BRAVE_SEARCH_API_KEY
 #   TWITTER_BEARER_TOKEN / X_API_KEY / X_API_KEY_SECRET
 #   X402_RECIPIENT_ADDRESS / PINATA_JWT
@@ -378,6 +394,19 @@ APPS_DEPLOY_ENABLED = "1"
 NEXT_PUBLIC_APP_URL = "https://staging.elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api-staging.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
+# OpenID Connect provider (Eliza Cloud as the OP for Eliza Hub). Committed vars,
+# not secrets: the issuer string is byte-compared by every relying party, so it
+# must survive a redeploy that wipes secrets rather than silently disappear.
+# OIDC_ENABLED is the kill switch; the provider serves nothing until it is "true".
+# The issuer MUST be a bare origin on a host this Worker is routed for (see
+# `routes` above) — the apex elizacloud.ai is the SPA and never reaches the
+# Worker, and a path on the issuer is refused because every endpoint is served
+# from the host root. The console SPA must be built with the same string as
+# VITE_OIDC_ISSUER_URL or signed-out relying-party logins cannot resume; the
+# `build:web` env blocks in .github/workflows/cloud-cf-deploy.yml carry it, and
+# `packages/cloud/shared/src/lib/oidc/config.test.ts` fails if the two drift.
+OIDC_ENABLED = "true"
+OIDC_ISSUER_URL = "https://api-staging.elizacloud.ai"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
 # redirects email magic-link callbacks to staging.elizacloud.ai instead of the
 # prod fallback (www.elizacloud.ai). Tenant row provisioned manually.
@@ -585,6 +614,12 @@ NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+# OpenID Connect provider — see the staging block for why these are vars, not
+# secrets. Flip OIDC_ENABLED to "true" only after OIDC_SIGNING_JWKS and
+# OIDC_CLIENTS are pushed; changing OIDC_ISSUER_URL afterwards invalidates every
+# relying-party account link.
+OIDC_ENABLED = "true"
+OIDC_ISSUER_URL = "https://api.elizacloud.ai"
 # Pin the prod Steward tenant explicitly instead of leaning on the implicit
 # DEFAULT_STEWARD_TENANT_ID ("elizacloud") in steward-tenant-config.ts. That
 # implicit fallback is what the prod magic-link bug hinged on — make it explicit
@@ -595,7 +630,7 @@ AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"
-ELIZA_ONBOARDING_APP_URL = "https://eliza.app"
+ELIZA_ONBOARDING_APP_URL = "https://app.elizacloud.ai"
 BLUEBUBBLES_GATEWAY_PHONE_NUMBER = "+14159611510"
 NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"

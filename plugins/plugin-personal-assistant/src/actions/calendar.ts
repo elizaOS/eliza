@@ -12,6 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -39,6 +40,7 @@ import {
   CalendarServiceError,
   createCalendarActionRunner,
   isAppleCalendarGrant,
+  isElizaCalendarGrant,
   isMicrosoftCalendarGrantId,
 } from "@elizaos/plugin-calendar";
 import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "@elizaos/plugin-calendar/calendar-action-schema";
@@ -250,6 +252,8 @@ function calendarApprovalChannel(
       return "apple_calendar";
     case "ics":
       return "ics_calendar";
+    case "eliza":
+      return "internal";
   }
 }
 
@@ -262,6 +266,7 @@ function calendarApprovalChannel(
 function boundCalendarProviderForGrant(
   grantId: string,
 ): LifeOpsCalendarProvider {
+  if (isElizaCalendarGrant(grantId)) return "eliza";
   if (isAppleCalendarGrant(grantId)) return "apple_calendar";
   if (isMicrosoftCalendarGrantId(grantId)) return "microsoft";
   return "google";
@@ -533,6 +538,12 @@ const calendarActionDeps: CalendarActionDeps = {
       ...(args.purpose ? { purpose: args.purpose } : {}),
     }),
   recentConversationTexts: (args) => recentConversationTexts(args),
+  renderGroundedReply: (args) =>
+    renderGroundedActionReply({
+      ...args,
+      domain: "calendar",
+      preferCharacterVoice: true,
+    }),
   mutationGateway: createCalendarMutationApprovalGateway(),
   travelBuffer: {
     resolveTravelIntent: (args) => resolveCreateEventTravelIntent(args),

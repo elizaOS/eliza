@@ -1,9 +1,11 @@
 /**
  * The CURRENT_TIME provider: injects the current date and time into the prompt
  * in several formats (ISO, unix, date-only, time-only, day-of-week, and a human
- * readable full form), resolved against the agent's TIMEZONE setting (default
- * UTC) so the agent can reason about "now". Text content comes from the
- * centralized CURRENT_TIME provider spec.
+ * readable full form), resolved against the sending client's IANA timezone
+ * when available, then the agent's TIMEZONE setting, then the runtime host's
+ * IANA timezone. Turn-local time keeps relative dates aligned with the device
+ * the user is actively using while direct API callers remain local-time safe.
+ * Text content comes from the centralized CURRENT_TIME provider spec.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import type {
@@ -15,6 +17,61 @@ import type {
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("CURRENT_TIME");
+
+function clientTimeZone(message: Memory): string | null {
+	const metadata = message.content?.metadata;
+	if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+		return null;
+	}
+	const candidate = (metadata as Record<string, unknown>).uiTimeZone;
+	if (typeof candidate !== "string" || candidate.trim().length === 0) {
+		return null;
+	}
+	const timeZone = candidate.trim();
+	try {
+		new Intl.DateTimeFormat("en-US", { timeZone }).format(0);
+		return timeZone;
+	} catch {
+		// error-policy:J3 message metadata is untrusted; an invalid timezone is
+		// explicitly rejected so the configured runtime timezone remains authoritative.
+		return null;
+	}
+}
+
+function validTimeZone(value: unknown): string | null {
+	if (typeof value !== "string" || value.trim().length === 0) return null;
+	const timeZone = value.trim();
+	try {
+		new Intl.DateTimeFormat("en-US", { timeZone }).format(0);
+		return timeZone;
+	} catch {
+		// error-policy:J3 runtime settings cross a configuration boundary; an
+		// unknown IANA zone is explicitly rejected before prompt composition.
+		return null;
+	}
+}
+
+function hostTimeZone(): string {
+	return (
+		validTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone) ?? "UTC"
+	);
+}
+
+/**
+ * Resolve the timezone for turn-local dates and clock times. The sender's
+ * device is authoritative for the active turn; runtime configuration covers
+ * non-interactive callers, and the host is the final local deployment fallback.
+ */
+export function resolveMessageTimeZone(
+	runtime: IAgentRuntime,
+	message: Memory,
+): string {
+	return (
+		clientTimeZone(message) ??
+		validTimeZone(runtime.getSetting("TIMEZONE")) ??
+		hostTimeZone()
+	);
+}
 
 /**
  * Current time provider function that retrieves the current date and time
@@ -36,8 +93,7 @@ export const currentTimeProvider: Provider = {
 
 	get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
 		const now = new Date();
-		const setting = _runtime.getSetting("TIMEZONE");
-		const timeZone = (typeof setting === "string" ? setting : "UTC") || "UTC";
+		const timeZone = resolveMessageTimeZone(_runtime, _message);
 
 		const isoTimestamp = now.toISOString();
 		const unixTimestamp = Math.floor(now.getTime() / 1000);
@@ -73,6 +129,7 @@ export const currentTimeProvider: Provider = {
 				currentDate: dateOnly,
 				dayOfWeek: dayOfWeek,
 				unixTimestamp: unixTimestamp,
+				timeZone,
 			},
 			data: {
 				iso: isoTimestamp,
@@ -81,6 +138,7 @@ export const currentTimeProvider: Provider = {
 				dayOfWeek: dayOfWeek,
 				humanReadable: humanReadable,
 				unixTimestamp: unixTimestamp,
+				timeZone,
 			},
 		};
 	},

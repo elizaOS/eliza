@@ -21,3 +21,24 @@ export function persistActiveServerCredential(token: string): void {
     updateAgentProfile(activeProfile.id, { accessToken: token });
   }
 }
+
+/**
+ * Removes only the rejected bearer from the active target and profile. Other
+ * saved targets keep their credentials so one expired agent cannot sign the
+ * user out of every configured runtime.
+ */
+export function scrubRejectedActiveServerCredential(token: string): void {
+  const rejected = token.trim();
+  if (!rejected) return;
+
+  const activeServer = loadPersistedActiveServer();
+  if (activeServer?.accessToken === rejected) {
+    const { accessToken: _rejected, ...serverWithoutToken } = activeServer;
+    savePersistedActiveServer(serverWithoutToken);
+  }
+
+  const activeProfile = getActiveProfile();
+  if (activeProfile?.accessToken === rejected) {
+    updateAgentProfile(activeProfile.id, { accessToken: undefined });
+  }
+}

@@ -33,6 +33,8 @@ import { matchViewCommand } from "@elizaos/shared/views/view-command-matcher";
 export interface SharedNavIntent {
   /** Client view id resolved against the routable registry (settings, inventory, chat, …). */
   viewId: string;
+  /** Canonical client path for a host-owned destination. */
+  viewPath?: string;
   /** Optional settings sub-section token to deep-link (e.g. "voice"). */
   subview?: string;
   /** Human label used in the confirmation reply. */
@@ -95,7 +97,12 @@ export function resolveSharedNavIntent(message: string | undefined): SharedNavIn
   const target = SHARED_NAV_TARGETS[matcherId];
   if (!target) return null;
 
-  return { viewId: target.viewId, label: target.label, reply: navReply(target.label) };
+  return {
+    viewId: target.viewId,
+    ...(target.viewPath ? { viewPath: target.viewPath } : {}),
+    label: target.label,
+    reply: navReply(target.label),
+  };
 }
 
 /**
@@ -110,7 +117,13 @@ export function navIntentActionResult(intent: SharedNavIntent): {
   actionName: "VIEWS";
   success: true;
   text: string;
-  values: { mode: "show"; viewId: string; subview?: string; source: "agent" };
+  values: {
+    mode: "show";
+    viewId: string;
+    viewPath?: string;
+    subview?: string;
+    source: "agent";
+  };
 } {
   return {
     actionName: "VIEWS",
@@ -119,6 +132,7 @@ export function navIntentActionResult(intent: SharedNavIntent): {
     values: {
       mode: "show",
       viewId: intent.viewId,
+      ...(intent.viewPath ? { viewPath: intent.viewPath } : {}),
       ...(intent.subview ? { subview: intent.subview } : {}),
       source: "agent",
     },

@@ -127,11 +127,10 @@ export interface Content {
 
 	/**
 	 * Provenance flag for the humanness voice gate (#14873): `true` marks text
-	 * that is already the agent's own composed voice (a model-generated reply,
-	 * or output the voice gate has already rephrased) so `ensureAgentVoice`
-	 * passes it through untouched instead of double-voicing it. Hardcoded
-	 * templates and raw error strings leave this unset so the gate rephrases
-	 * them into the agent's voice before delivery.
+	 * that is already final user-facing copy (a model-generated reply, output
+	 * the voice gate already rephrased, or a byte-exact canonical action reply)
+	 * so `ensureAgentVoice` preserves it. Hardcoded templates, ordinary tool
+	 * output, and raw error strings leave this unset for rephrasing.
 	 */
 	agentVoiced?: boolean;
 

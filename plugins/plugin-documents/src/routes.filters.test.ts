@@ -5,7 +5,7 @@
  * filters compose with tags[] and that access control still applies after
  * filtering (owner-private items don't leak to a non-owner actor).
  */
-import type { Memory, UUID } from "@elizaos/core";
+import type { AccessContext, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { type DocumentRouteContext, handleDocumentsRoutes } from "./routes.ts";
 
@@ -102,6 +102,15 @@ function makeRuntimeAndService(docs: Memory[]) {
   return { runtime, documentsService };
 }
 
+function makeAccessContext(actorEntityId?: UUID): AccessContext | undefined {
+  if (!actorEntityId) return undefined;
+  return {
+    requesterEntityId: actorEntityId,
+    role: actorEntityId === OWNER_ENTITY ? "OWNER" : "USER",
+    isOwner: actorEntityId === OWNER_ENTITY,
+  } satisfies AccessContext;
+}
+
 async function listDocuments(params: {
   query: string;
   actorEntityId?: UUID;
@@ -114,15 +123,13 @@ async function listDocuments(params: {
     setHeader: vi.fn(),
   } as unknown as DocumentRouteContext["res"];
 
-  const headers: Record<string, string> = {};
-  if (params.actorEntityId) headers["x-eliza-entity-id"] = params.actorEntityId;
-
   const ctx = {
-    req: { headers } as DocumentRouteContext["req"],
+    req: { headers: {} } as DocumentRouteContext["req"],
     res,
     method: "GET",
     pathname: "/api/documents",
     url,
+    accessContext: makeAccessContext(params.actorEntityId),
     runtime: runtime as never,
     json: (_res: unknown, data: unknown, status = 200) => {
       captured = { status, body: data };
@@ -223,14 +230,13 @@ async function requestDocuments(params: {
   const { runtime } = makeRuntimeAndService(seedDocuments());
   const url = new URL(`http://local${params.pathname}?${params.query}`);
   let captured: { status: number; body: unknown } = { status: 0, body: null };
-  const headers: Record<string, string> = {};
-  if (params.actorEntityId) headers["x-eliza-entity-id"] = params.actorEntityId;
   const ctx = {
-    req: { headers } as DocumentRouteContext["req"],
+    req: { headers: {} } as DocumentRouteContext["req"],
     res: { setHeader: vi.fn() } as unknown as DocumentRouteContext["res"],
     method: "GET",
     pathname: params.pathname,
     url,
+    accessContext: makeAccessContext(params.actorEntityId),
     runtime: runtime as never,
     json: (_res: unknown, data: unknown, status = 200) => {
       captured = { status, body: data };
@@ -353,11 +359,12 @@ describe("GET /api/documents/search — roomId pushed into service scope (#13593
     );
     let captured: unknown = null;
     const ctx = {
-      req: { headers: { "x-eliza-entity-id": OWNER_ENTITY } },
+      req: { headers: {} },
       res: { setHeader: vi.fn() },
       method: "GET",
       pathname: "/api/documents/search",
       url,
+      accessContext: makeAccessContext(OWNER_ENTITY),
       runtime: runtime as never,
       json: (_res: unknown, data: unknown) => {
         captured = data;
@@ -416,11 +423,12 @@ describe("GET /api/documents/search — roomId pushed into service scope (#13593
     );
     let captured: unknown = null;
     const ctx = {
-      req: { headers: { "x-eliza-entity-id": OWNER_ENTITY } },
+      req: { headers: {} },
       res: { setHeader: vi.fn() },
       method: "GET",
       pathname: "/api/documents/search",
       url,
+      accessContext: makeAccessContext(OWNER_ENTITY),
       runtime: runtime as never,
       json: (_res: unknown, data: unknown) => {
         captured = data;

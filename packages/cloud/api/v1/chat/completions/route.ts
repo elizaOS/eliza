@@ -31,10 +31,6 @@ import {
   OrgRateLimitCacheNotReadyError,
 } from "@/lib/middleware/rate-limit";
 import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
   bindGatewayHandoffTelemetry,
   type GatewayHandoffTelemetry,
   type GatewayPreforwardTiming,
@@ -3681,23 +3677,17 @@ honoRouter.options("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-honoRouter.post(
-  "/",
-  rateLimit(RateLimitPresets.RELAXED, {
-    bindingName: "CHAT_ROUTE_RATE_LIMITER",
-  }),
-  async (c) => {
-    try {
-      return await handleChatCompletionsPOST(c.req.raw, {
-        executionCtx: c.executionCtx,
-        traceId: c.get("traceId"),
-      });
-    } catch (error) {
-      // error-policy:J1 route boundary — every catch in v1/chat/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty completion). Credit reservations are released before rethrow on the streaming paths above.
-      return failureResponse(c, error);
-    }
-  },
-);
+honoRouter.post("/", async (c) => {
+  try {
+    return await handleChatCompletionsPOST(c.req.raw, {
+      executionCtx: c.executionCtx,
+      traceId: c.get("traceId"),
+    });
+  } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/chat/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty completion). Credit reservations are released before rethrow on the streaming paths above.
+    return failureResponse(c, error);
+  }
+});
 export default honoRouter;
 
 /**

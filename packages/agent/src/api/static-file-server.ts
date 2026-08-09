@@ -174,7 +174,38 @@ export function injectApiBaseIntoHtml(
     );
   }
   if (trimmedToken) {
-    parts.push(`window.__ELIZA_API_TOKEN__=${JSON.stringify(trimmedToken)};`);
+    // Three sinks, because three different readers resolve the token:
+    //
+    // 1. boot-config `apiToken` — the single source of truth for
+    //    `getElizaApiToken()`, which reads ONLY the boot-config store. Seeding
+    //    it before React boots is what actually fixes first-render auth; the
+    //    bare window global below was never consulted by that accessor.
+    // 2. `window.__ELIZA_API_TOKEN__` — still the documented contract for the
+    //    native web shims (`plugin-native-agent`, `plugin-native-websiteblocker`)
+    //    and the Android WebView hydration. They read the global directly and
+    //    fall back only to `sessionStorage`, so dropping it would silently send
+    //    their API calls unauthenticated.
+    // 3. `elizaos:active-server.accessToken` — so the startup-restore phase
+    //    re-authenticates after a hard reload without re-pairing, for LAN
+    //    clients (e.g. iPad Safari) that cannot paste a token by hand.
+    //
+    // Sink 3 is scoped to THIS backend, and that scoping is the security
+    // boundary. The persisted record can point at any host the user has
+    // previously connected to; startup restore sends `accessToken` to that
+    // record's `apiBase`. Merging our token into a `remote`/`cloud` record
+    // would hand this agent's full-capability token to an unrelated LAN or
+    // Tailscale host. So: seed a fresh `local:embedded` record when none
+    // exists, refresh the token when the stored record is already this
+    // device's local backend, and otherwise leave the record untouched.
+    //
+    // `eliza:first-run-complete` is deliberately NOT written here.
+    // `ELIZA_FORCE_INJECT_TOKEN` only attests that the operator accepts HTML
+    // token injection; it does not prove character/provider setup finished, so
+    // suppressing onboarding off the back of it would strand a partially
+    // configured self-hosted deployment.
+    parts.push(
+      `(function(){var t=${JSON.stringify(trimmedToken)},k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiToken:t});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};w.__ELIZA_API_TOKEN__=t;try{var sk="elizaos:active-server",sp=null;try{sp=JSON.parse(localStorage.getItem(sk)||"null");}catch(e){sp=null;}if(!sp||typeof sp!=="object"){localStorage.setItem(sk,JSON.stringify({id:"local:embedded",kind:"local",label:"This device",accessToken:t}));}else if(sp.kind==="local"){localStorage.setItem(sk,JSON.stringify(Object.assign({},sp,{accessToken:t})));}}catch(e){}})();`,
+    );
   }
   const injection = Buffer.from(`<script>${parts.join("")}</script>`);
 

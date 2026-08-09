@@ -86,6 +86,7 @@
     "@elizaos/plugin-app-control": "workspace:*",
     "@elizaos/plugin-blocker": "workspace:*",
     "@elizaos/plugin-capacitor-bridge": "workspace:*",
+    "@elizaos/plugin-cli-inference": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-commands": "workspace:*",
     "@elizaos/plugin-native-filesystem": "workspace:*",
@@ -98,6 +99,7 @@
     "@elizaos/plugin-workflow": "workspace:*",
     "@elizaos/plugin-todos": "workspace:*",
     "@elizaos/plugin-video": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "ws": "^8.19.0",
     "@elizaos/auth": "workspace:*"

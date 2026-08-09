@@ -354,9 +354,32 @@ export function buildUnresolvedAgentResponse(
       },
     );
   }
+  // Distinguish a missing row (deleted / never existed) from a row that is
+  // merely non-running (pending/stopped/disconnected). Clients may destructively
+  // drop a binding only on the definitive not-found code — not on recoverable
+  // cold/stopped states that share the old 404 body (#18048 / #18070 review).
+  if (!sandbox) {
+    return Response.json(
+      {
+        error: "agent not found or not running",
+        code: "agent_not_found",
+      },
+      { status: 404, headers: corsHeaders(origin) },
+    );
+  }
   return Response.json(
-    { error: "agent not found or not running" },
-    { status: 404, headers: corsHeaders(origin) },
+    {
+      error: "agent not running",
+      code: "agent_not_running",
+      status: sandbox.status,
+    },
+    {
+      status: 503,
+      headers: {
+        ...corsHeaders(origin),
+        "retry-after": String(UNROUTABLE_RETRY_AFTER_SECONDS),
+      },
+    },
   );
 }
 

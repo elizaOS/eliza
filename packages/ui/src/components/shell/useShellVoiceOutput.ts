@@ -11,13 +11,21 @@ import { useVoiceConfig } from "../../voice/useVoiceConfig";
 /** `useVoiceChat` requires a transcript sink; the overlay owns input elsewhere. */
 const NOOP_TRANSCRIPT = (): void => {};
 
-function findLatestAssistantText(
-  messages: readonly ConversationMessage[],
-): { id: string; text: string; source?: string } | null {
+function findLatestAssistantText(messages: readonly ConversationMessage[]): {
+  id: string;
+  text: string;
+  source?: string;
+  provisional?: boolean;
+} | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message && message.role === "assistant" && message.text.trim()) {
-      return { id: message.id, text: message.text, source: message.source };
+      return {
+        id: message.id,
+        text: message.text,
+        source: message.source,
+        provisional: message.provisional,
+      };
     }
   }
   return null;
@@ -66,12 +74,14 @@ export interface ShellVoiceOutputOptions {
   toggleAgentVoiceMute: () => void;
   uiLanguage: string;
   cloudConnected: boolean;
+  /** Route manual shell playback through the active realtime voice provider. */
+  realtimeVoiceEnabled: boolean;
 }
 
 /**
- * Voice OUTPUT for the ambient `/chat` overlay — speaks assistant replies aloud
- * so the overlay is bidirectional. Input (mic → ASR) stays in
- * {@link useShellController} via the capture factory; this hook only drives TTS.
+ * Voice OUTPUT for the ambient `/chat` overlay. Realtime sessions own their
+ * streamed reply audio; this hook provides manual playback for every surface
+ * and automatic reply playback for the non-realtime voice path.
  *
  * It reuses the single TTS engine ({@link useVoiceChat}) output-only: it never
  * calls `startListening`, so it never opens the microphone (the overlay's own
@@ -91,9 +101,17 @@ export function useShellVoiceOutput(
     toggleAgentVoiceMute,
     uiLanguage,
     cloudConnected,
+    realtimeVoiceEnabled,
   } = options;
 
   const { voiceConfig, voiceBootstrapTick } = useVoiceConfig(uiLanguage);
+  const playbackVoiceConfig = React.useMemo(
+    () =>
+      realtimeVoiceEnabled
+        ? { ...voiceConfig, provider: "eliza-cloud" as const }
+        : voiceConfig,
+    [realtimeVoiceEnabled, voiceConfig],
+  );
 
   const {
     queueAssistantSpeech,
@@ -103,8 +121,9 @@ export function useShellVoiceOutput(
     needsAudioUnlock,
     unlockAudio,
   } = useVoiceChat({
-    voiceConfig,
+    voiceConfig: playbackVoiceConfig,
     cloudConnected,
+    ...(realtimeVoiceEnabled ? { ttsRouteOverride: "/api/v1/voice/tts" } : {}),
     // Output-only here: the overlay's capture owns the mic, so `useVoiceChat`'s
     // own speech-interrupt path is unused — barge-in is driven by `recording`.
     interruptOnSpeech: false,
@@ -126,6 +145,10 @@ export function useShellVoiceOutput(
   // Speak the latest assistant message as it streams and completes. Never speaks
   // a reply to a typed message, nor a pre-existing message on first mount.
   React.useEffect(() => {
+    // Cartesia realtime already streams Sonic audio for this reply. Keeping the
+    // message watcher active would synthesize the same answer a second time;
+    // the `speak` callback above remains available for explicit Play audio.
+    if (realtimeVoiceEnabled) return;
     if (agentVoiceMuted) return;
     if (voiceBootstrapTick === 0) return; // voice config not loaded yet
     const latest = findLatestAssistantText(conversationMessages);
@@ -149,6 +172,17 @@ export function useShellVoiceOutput(
       if (!lastTurnVoiceRef.current) return;
       voiceReplyIdsRef.current.add(latest.id);
     }
+
+    // Single utterance per turn: provisional text is an in-flight action
+    // callback the turn's final reply may replace wholesale ("Set tone=warm
+    // for you." → "okay i changed personality to warm"). A chat bubble can be
+    // re-rendered; speech cannot be retracted — speaking it here and then the
+    // reply is the voice "double-speak" defect. Hold until a non-provisional
+    // frame or the terminal reconciliation confirms the turn's final message
+    // (a turnComplete-style action ack IS that final message and is spoken
+    // then, exactly once). spokenRef is deliberately not advanced, so the
+    // final text is treated as never-spoken and voiced in full.
+    if (latest.provisional) return;
 
     const previous = spokenRef.current;
     if (
@@ -175,6 +209,7 @@ export function useShellVoiceOutput(
     });
   }, [
     agentVoiceMuted,
+    realtimeVoiceEnabled,
     voiceBootstrapTick,
     conversationMessages,
     chatSending,

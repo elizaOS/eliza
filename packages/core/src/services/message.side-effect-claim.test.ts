@@ -656,6 +656,28 @@ describe("evaluatePlannedReplyEgress", () => {
 		).toEqual({ verdict: "allow" });
 	});
 
+	it("uses the unique receipt-owned action reply when the planner paraphrases a completed effect", () => {
+		const canonical = "Updated “Local calendar proof” for tomorrow at 9:10 PM.";
+		const updated: ActionResult = {
+			success: true,
+			userFacingText: canonical,
+			verifiedUserFacing: true,
+			effectReceipts: [appliedReceipt],
+			userFacingEffectReceiptIds: [appliedReceipt.receiptId],
+			data: { actionName: "OWNER_REMINDERS", action: "update" },
+		};
+		const decision = evaluatePlannedReplyEgress({
+			reply: 'Done. I renamed it to "Local calendar proof."',
+			actionResults: [updated],
+			actions: [reminderSurface],
+		});
+		expect(decision).toEqual({
+			verdict: "reject",
+			kind: "completed_side_effect",
+			fallbackReply: canonical,
+		});
+	});
+
 	it("allows a completion claim grounded by a replayed no-op (already exists)", () => {
 		// The idempotent-duplicate outcome: the handler verified this turn that
 		// an equivalent committed item already satisfies the request. A truthful

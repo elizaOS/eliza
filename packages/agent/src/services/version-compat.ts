@@ -18,13 +18,16 @@ export const AI_PROVIDER_PLUGINS: readonly string[] = [
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
   "@elizaos/plugin-openrouter",
-  "@elizaos/plugin-ollama",
+  "@elizaos/plugin-zerollama",
   "@elizaos/plugin-google-genai",
   "@elizaos/plugin-groq",
   "@elizaos/plugin-xai",
   "@elizaos/plugin-zai",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-codex-cli",
+  "@elizaos/plugin-cli-inference",
+  "@elizaos/plugin-nearai",
+  "@elizaos/plugin-vercel-ai-gateway",
 ];
 
 /**

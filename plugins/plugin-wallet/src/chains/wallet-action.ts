@@ -26,6 +26,7 @@ import { walletSearchAddressHandler } from "../analytics/birdeye/actions/wallet-
 import { tokenInfoHandler } from "../analytics/token-info/action.js";
 import {
   assertEvmTransferRecipientAuthorized,
+  assertSolanaTransferRecipientAuthorized,
   assertWalletFinancialActionAllowed,
 } from "../security/wallet-context-safety.js";
 import {
@@ -376,19 +377,32 @@ async function runWalletRouter(
     };
   }
 
+  // GHSA-7qxr-x6cg-r9cc: bridge is guarded alongside transfer because
+  // routeEvmBridge maps params.recipient to the Li.Fi destination toAddress,
+  // so an unstated injected recipient there is the same class as an unstated
+  // transfer recipient.
   if (
-    params.subaction === "transfer" &&
+    (params.subaction === "transfer" || params.subaction === "bridge") &&
     params.recipient &&
-    /^0x[a-fA-F0-9]{40}$/.test(params.recipient)
+    (/^0x[a-fA-F0-9]{40}$/.test(params.recipient) ||
+      /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(params.recipient))
   ) {
     try {
-      assertEvmTransferRecipientAuthorized(
-        message,
-        options as Record<string, unknown> | undefined,
-        params.recipient,
-      );
+      if (/^0x[a-fA-F0-9]{40}$/.test(params.recipient)) {
+        assertEvmTransferRecipientAuthorized(
+          message,
+          options as Record<string, unknown> | undefined,
+          params.recipient,
+        );
+      } else {
+        assertSolanaTransferRecipientAuthorized(
+          message,
+          options as Record<string, unknown> | undefined,
+          params.recipient,
+        );
+      }
     } catch (error) {
-      const text = `Invalid wallet transfer recipient: ${
+      const text = `Invalid wallet ${params.subaction} recipient: ${
         error instanceof Error ? error.message : String(error)
       }`;
       await callback?.({ text, content: { error: "INVALID_PARAMS" } });

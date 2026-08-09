@@ -6,7 +6,7 @@
  * spanning the blocking/deferred boot split. Deterministic — a real on-disk
  * fixture package under a temp workspace, no live model.
  */
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import fs, { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { logger, type Plugin } from "@elizaos/core";
@@ -101,6 +101,43 @@ describe("resolvePlugins manifest discovery", () => {
         delete process.env.THIRD_PARTY_PLUGIN_ENABLE;
       else process.env.THIRD_PARTY_PLUGIN_ENABLE = previousEnv;
       await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("does not probe filesystem plugin manifests on mobile", async () => {
+    const previousPlatform = process.env.ELIZA_PLATFORM;
+    const { CORE_PLUGINS, MOBILE_CORE_PLUGINS, MOBILE_VIEW_PLUGINS } =
+      await import("./core-plugins");
+    const filesystemProbe = vi.spyOn(fs, "readdir").mockRejectedValue(
+      Object.assign(new Error("filesystem discovery unsupported"), {
+        code: "ENOSYS",
+      }),
+    );
+
+    try {
+      process.env.ELIZA_PLATFORM = "ios";
+      const resolved = await resolvePlugins(
+        {
+          plugins: {
+            allow: [],
+            deny: [
+              ...new Set([
+                ...CORE_PLUGINS,
+                ...MOBILE_CORE_PLUGINS,
+                ...MOBILE_VIEW_PLUGINS,
+              ]),
+            ],
+          },
+        },
+        { quiet: true },
+      );
+
+      expect(resolved).toEqual([]);
+      expect(filesystemProbe).not.toHaveBeenCalled();
+    } finally {
+      filesystemProbe.mockRestore();
+      if (previousPlatform === undefined) delete process.env.ELIZA_PLATFORM;
+      else process.env.ELIZA_PLATFORM = previousPlatform;
     }
   });
 });

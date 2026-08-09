@@ -45,7 +45,6 @@ describe("Twilio adapter channel addressing", () => {
     }) as unknown as typeof fetch;
 
     const config: WebhookConfig = {
-      agentId: "public-onboarding-agent",
       accountSid: "AC_test",
       authToken: "twilio-secret",
       phoneNumber: "whatsapp:+14155238886",
@@ -86,7 +85,6 @@ describe("Twilio adapter channel addressing", () => {
 
     await twilioAdapter.sendReply(
       {
-        agentId: "public-onboarding-agent",
         accountSid: "AC_test",
         authToken: "twilio-secret",
         phoneNumber: "+15550000000",

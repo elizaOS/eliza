@@ -1,11 +1,14 @@
 /** Builds a real AgentRuntime backed by an in-process PGLite database. */
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
+import {
+  createTestPgliteDataDir,
+  isInMemoryPgliteDataDir,
+} from "@elizaos/core/testing";
 
 const helperDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,7 +17,11 @@ export interface TestRuntimeOptions {
   characterName?: string;
   /** Additional plugins to register (plugin-sql is always included). */
   plugins?: Plugin[];
-  /** Reuse an existing PGLite data directory instead of creating a temp one. */
+  /**
+   * Reuse an existing PGLite data directory instead of the default per-call
+   * in-memory database. Pass a real directory only when the test proves
+   * restart persistence.
+   */
   pgliteDir?: string;
   /**
    * Remove the PGLite data directory during cleanup.
@@ -108,10 +115,10 @@ export async function createTestRuntime(
   options?: TestRuntimeOptions,
 ): Promise<TestRuntimeResult> {
   const pgliteDir =
-    options?.pgliteDir ??
-    fs.mkdtempSync(path.join(os.tmpdir(), "eliza-test-pglite-"));
+    options?.pgliteDir ?? createTestPgliteDataDir("eliza-test-pglite-");
   const removePgliteDirOnCleanup =
-    options?.removePgliteDirOnCleanup ?? options?.pgliteDir === undefined;
+    options?.removePgliteDirOnCleanup ??
+    (options?.pgliteDir === undefined && !isInMemoryPgliteDataDir(pgliteDir));
 
   const prevPgliteDir = process.env.PGLITE_DATA_DIR;
   process.env.PGLITE_DATA_DIR = pgliteDir;

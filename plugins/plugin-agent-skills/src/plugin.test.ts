@@ -53,6 +53,7 @@ describe("agent skills command-service readiness", () => {
 	it("uses a post-registration lifecycle service", () => {
 		expect(agentSkillsPlugin.init).toBeUndefined();
 		expect(agentSkillsPlugin.dependencies).toContain("@elizaos/plugin-commands");
+		expect(agentSkillsPlugin.chatPreHandlers ?? []).toEqual([]);
 		expect(agentSkillsPlugin.services).toContain(
 			AgentSkillsPluginLifecycleService,
 		);

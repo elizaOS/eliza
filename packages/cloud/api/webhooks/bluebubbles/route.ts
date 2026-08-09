@@ -11,17 +11,14 @@ import { z } from "zod";
 import { webhookEventsRepository } from "@/db/repositories/webhook-events";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { agentGatewayRouterService } from "@/lib/services/agent-gateway-router";
-import {
-  type AuthenticatedBlueBubblesGateway,
-  authenticateBlueBubblesGateway,
-  registerPhoneGatewayDevice,
-  touchBlueBubblesGateway,
-} from "@/lib/services/phone-gateway-devices";
+import { registerPhoneGatewayDevice } from "@/lib/services/phone-gateway-devices";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const DEFAULT_GATEWAY_ORG_ID = "00000000-0000-4000-8000-000000000000";
 const DEFAULT_GATEWAY_PHONE_NUMBER = "+14159611510";
+const FIRST_CONTACT_REPLY =
+  "hey, I'm Eliza. I can get you set up with your own agent. it texts right here, remembers everything you talk about, and your first $5 is on me. what should I call you?";
 
 const BlueBubblesHandleSchema = z
   .object({
@@ -70,7 +67,7 @@ function readPayloadString(
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function legacyAuthorized(c: AppContext): boolean {
+function authorized(c: AppContext): boolean {
   const expected =
     readEnvString(c, "BLUEBUBBLES_GATEWAY_SECRET") ??
     readEnvString(c, "GATEWAY_INTERNAL_SECRET");
@@ -86,32 +83,6 @@ function legacyAuthorized(c: AppContext): boolean {
   return timingSafeEqualSecret(provided, expected);
 }
 
-function readGatewayToken(c: AppContext): string {
-  const authorization = c.req.header("authorization") ?? "";
-  if (/^Bearer\s+/i.test(authorization)) {
-    return authorization.replace(/^Bearer\s+/i, "").trim();
-  }
-  return c.req.header("x-bluebubbles-gateway-token")?.trim() ?? "";
-}
-
-async function resolveGatewayAuthorization(
-  c: AppContext,
-  bridgeId: string,
-): Promise<
-  | { kind: "registered"; gateway: AuthenticatedBlueBubblesGateway }
-  | { kind: "legacy"; gateway: null }
-  | null
-> {
-  if (bridgeId.startsWith("bb-")) {
-    const gateway = await authenticateBlueBubblesGateway(
-      bridgeId,
-      readGatewayToken(c),
-    );
-    return gateway ? { kind: "registered", gateway } : null;
-  }
-  return legacyAuthorized(c) ? { kind: "legacy", gateway: null } : null;
-}
-
 function resolveSender(
   data: z.infer<typeof BlueBubblesMessageSchema>,
 ): string | null {
@@ -124,15 +95,18 @@ function resolveSender(
   return null;
 }
 
+function hasPreferredNameSignal(text: string): boolean {
+  return /\b(?:my name is|i am|i'm|call me)\s+[a-z][a-z .'-]{1,40}\b/i.test(
+    text,
+  );
+}
+
 export async function handleBlueBubblesWebhook(
   c: AppContext,
 ): Promise<Response> {
   return handleBlueBubblesWebhookPayload(
     c,
-    await c.req.json().catch(() => {
-      // error-policy:J3 malformed webhook JSON is represented as invalid input.
-      return null;
-    }),
+    await c.req.json().catch(() => null),
   );
 }
 
@@ -148,8 +122,7 @@ export async function handleBlueBubblesWebhookPayload(
     c.req.param("orgId") ??
     "default";
 
-  const authorization = await resolveGatewayAuthorization(c, bridgeId);
-  if (!authorization) {
+  if (!authorized(c)) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
@@ -193,12 +166,9 @@ export async function handleBlueBubblesWebhookPayload(
   // The local relay retries deliveries, so without this a re-delivered message
   // is routed to the agent twice (duplicate reply + double credit spend).
   const messageGuid = data.guid?.trim() ?? null;
-  const dedupeEventId = messageGuid
-    ? `bluebubbles:${bridgeId}:${messageGuid}`
-    : null;
   if (messageGuid) {
     const dedupe = await webhookEventsRepository.tryCreate({
-      event_id: dedupeEventId!,
+      event_id: `bluebubbles:${messageGuid}`,
       provider: "bluebubbles",
       event_type: type,
       payload_hash: messageGuid,
@@ -212,68 +182,58 @@ export async function handleBlueBubblesWebhookPayload(
     }
   }
 
-  const registeredGateway = authorization.gateway;
   const organizationId =
-    registeredGateway?.organizationId ??
-    readEnvString(c, "BLUEBUBBLES_GATEWAY_ORG_ID") ??
-    DEFAULT_GATEWAY_ORG_ID;
-  const configuredRecipient = registeredGateway?.phoneNumber
-    ? registeredGateway.phoneNumber
-    : readEnvString(c, "BLUEBUBBLES_GATEWAY_PHONE_NUMBER");
+    readEnvString(c, "BLUEBUBBLES_GATEWAY_ORG_ID") ?? DEFAULT_GATEWAY_ORG_ID;
+  const configuredRecipient = readEnvString(
+    c,
+    "BLUEBUBBLES_GATEWAY_PHONE_NUMBER",
+  );
   const recipient =
     configuredRecipient ??
     readPayloadString(data.metadata, "localPhoneNumber") ??
     readPayloadString(data.metadata, "phoneNumber") ??
     DEFAULT_GATEWAY_PHONE_NUMBER;
-  const phoneAccountId = registeredGateway
-    ? registeredGateway.phoneNumber
-    : configuredRecipient
-      ? recipient
-      : (readPayloadString(data.metadata, "phoneAccountId") ?? recipient);
-  const phoneAccountLabel = registeredGateway
-    ? (registeredGateway.friendlyName ?? registeredGateway.phoneNumber)
-    : configuredRecipient
-      ? recipient
-      : (readPayloadString(data.metadata, "phoneAccountLabel") ?? recipient);
+  const phoneAccountId = configuredRecipient
+    ? recipient
+    : (readPayloadString(data.metadata, "phoneAccountId") ?? recipient);
+  const phoneAccountLabel = configuredRecipient
+    ? recipient
+    : (readPayloadString(data.metadata, "phoneAccountLabel") ?? recipient);
   let gatewayDevice = {
-    id: registeredGateway?.id ?? (null as string | null),
-    registered: Boolean(registeredGateway),
+    id: null as string | null,
+    registered: false,
   };
 
-  if (registeredGateway) {
-    await touchBlueBubblesGateway(registeredGateway.id);
-  } else {
-    try {
-      gatewayDevice = await registerPhoneGatewayDevice({
-        organizationId,
-        provider: "blooio",
-        phoneNumber: recipient,
-        bridgeId,
-        phoneAccountId,
-        phoneAccountLabel,
-        friendlyName: phoneAccountLabel,
-        sendMethod: "bluebubbles-local-bridge",
-        cloudWebhookUrl: c.req.url,
-        metadata: {
-          eventType: type,
-          chatGuid: data.chats?.[0]?.guid ?? undefined,
-          chatIdentifier: data.chats?.[0]?.chatIdentifier ?? undefined,
-          detectedService: data.handle?.service ?? undefined,
-        },
-      });
-    } catch (error) {
-      // error-policy:J4 legacy device discovery may degrade without affecting routing.
-      logger.warn("[BlueBubblesWebhook] Gateway device registration failed", {
-        bridgeId,
-        recipient,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+  try {
+    gatewayDevice = await registerPhoneGatewayDevice({
+      organizationId,
+      provider: "blooio",
+      phoneNumber: recipient,
+      bridgeId,
+      phoneAccountId,
+      phoneAccountLabel,
+      friendlyName: phoneAccountLabel,
+      sendMethod: "bluebubbles-local-bridge",
+      cloudWebhookUrl: c.req.url,
+      metadata: {
+        eventType: type,
+        chatGuid: data.chats?.[0]?.guid ?? undefined,
+        chatIdentifier: data.chats?.[0]?.chatIdentifier ?? undefined,
+        detectedService: data.handle?.service ?? undefined,
+      },
+    });
+  } catch (error) {
+    logger.warn("[BlueBubblesWebhook] Gateway device registration failed", {
+      bridgeId,
+      recipient,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   try {
-    const routingInput = {
+    const routed = await agentGatewayRouterService.routePhoneMessage({
       organizationId,
+      provider: "blooio",
       from: sender,
       to: recipient,
       body,
@@ -291,34 +251,18 @@ export async function handleBlueBubblesWebhookPayload(
         phoneGatewayDeviceId: gatewayDevice.id ?? undefined,
         phoneGatewayDeviceRegistered: gatewayDevice.registered,
       },
-    };
-    let routed: Awaited<
-      ReturnType<typeof agentGatewayRouterService.routePhoneMessage>
-    >;
-    if (registeredGateway?.routingMode === "fixed-agent") {
-      if (!registeredGateway.agentId) {
-        throw new Error(
-          "Fixed-agent BlueBubbles registration is missing its agent id",
-        );
-      }
-      routed =
-        await agentGatewayRouterService.routeRegisteredBlueBubblesMessage({
-          ...routingInput,
-          userId: registeredGateway.userId,
-          agentId: registeredGateway.agentId,
-        });
-    } else {
-      routed = await agentGatewayRouterService.routePhoneMessage({
-        ...routingInput,
-        provider: "blooio",
-      });
-    }
+    });
+
+    const replyText =
+      routed.reason === "unknown_owner" && !hasPreferredNameSignal(body)
+        ? FIRST_CONTACT_REPLY
+        : (routed.replyText ?? null);
 
     return c.json({
       success: true,
       handled: routed.handled,
       reason: routed.reason,
-      replyText: routed.replyText ?? null,
+      replyText,
       agentId: routed.agentId,
       organizationId: routed.organizationId,
       userId: routed.userId,
@@ -326,40 +270,28 @@ export async function handleBlueBubblesWebhookPayload(
       gatewayDeviceRegistered: gatewayDevice.registered,
       gatewayDevicePhoneNumber: recipient,
       gatewayDeviceBridgeId: bridgeId,
-      gatewayDeviceProvider: registeredGateway ? "bluebubbles" : "blooio",
-      gatewayRoutingMode: registeredGateway?.routingMode ?? "sender-owned",
+      gatewayDeviceProvider: "blooio",
     });
   } catch (error) {
-    // error-policy:J1 the webhook boundary returns an explicit transport failure.
     logger.error("[BlueBubblesWebhook] Routing failed", {
       bridgeId,
       type,
       messageId: data.guid,
+      sender,
       error: error instanceof Error ? error.message : String(error),
     });
-    if (dedupeEventId) {
-      // The marker is created before routing so concurrent deliveries cannot
-      // double-spend. Remove it when routing fails so BlueBubbles or the local
-      // relay can retry the same message guid instead of losing the message.
-      await webhookEventsRepository.deleteByEventId(
-        dedupeEventId,
-        "bluebubbles",
-      );
-    }
-    return c.json(
-      {
-        success: false,
-        handled: false,
-        reason: "bridge_failed",
-        gatewayDeviceId: gatewayDevice.id,
-        gatewayDeviceRegistered: gatewayDevice.registered,
-        gatewayDevicePhoneNumber: recipient,
-        gatewayDeviceBridgeId: bridgeId,
-        gatewayDeviceProvider: registeredGateway ? "bluebubbles" : "blooio",
-        routingError: "BlueBubbles routing failed",
-      },
-      503,
-    );
+    return c.json({
+      success: true,
+      handled: true,
+      reason: "bridge_failed",
+      replyText: FIRST_CONTACT_REPLY,
+      gatewayDeviceId: gatewayDevice.id,
+      gatewayDeviceRegistered: gatewayDevice.registered,
+      gatewayDevicePhoneNumber: recipient,
+      gatewayDeviceBridgeId: bridgeId,
+      gatewayDeviceProvider: "blooio",
+      routingError: "BlueBubbles routing failed",
+    });
   }
 }
 

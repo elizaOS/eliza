@@ -65,6 +65,37 @@ jobs:
           submodules: false
           show-progress: false
 
+      - name: Ensure Docker daemon access
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker info >/dev/null 2>&1; then
+            exit 0
+          fi
+          docker_socket=/var/run/docker.sock
+          if [ ! -S "$docker_socket" ]; then
+            echo "::error::Docker is installed, but its daemon socket is unavailable." >&2
+            exit 1
+          fi
+          if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true; then
+            echo "::error::The runner cannot repair Docker socket access without passwordless sudo." >&2
+            exit 1
+          fi
+          # Buildx invokes Docker as the runner account, so proving only that
+          # `sudo docker` works would leave the publication step broken. Prefer
+          # a per-user ACL; the ownership fallback is limited to dedicated
+          # runners where the ACL utility is not installed.
+          if command -v setfacl >/dev/null 2>&1; then
+            sudo -n setfacl -m "u:$(id -u):rw" "$docker_socket"
+          elif [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+            sudo -n chown "$(id -u):$(id -g)" "$docker_socket"
+            sudo -n chmod u+rw "$docker_socket"
+          else
+            echo "::error::Docker socket ACL tooling is unavailable on this runner." >&2
+            exit 1
+          fi
+          docker info
+
       - name: Free up disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc

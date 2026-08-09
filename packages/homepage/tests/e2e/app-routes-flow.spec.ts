@@ -124,10 +124,61 @@ test("login routes anonymous and authenticated users to the correct next page", 
     page.getByRole("heading", { name: "Anywhere you want her to be." }),
   ).toBeVisible();
 
+  await page.goto("/login?returnTo=https%3A%2F%2Fexample.com");
+  await expect(page).toHaveURL(/\/get-started$/);
+
   await seedAuthenticatedSession(page);
   await page.goto("/login");
   await expect(page).toHaveURL(/\/connected$/);
   await expect(page.getByRole("heading", { name: "Connected." })).toBeVisible();
+});
+
+test("profile editor preserves sign-in return path and generates a compatible marker", async ({
+  context,
+  page,
+}) => {
+  await page.goto("/profile/edit");
+  await expect(page).toHaveURL(/\/get-started\?returnTo=%2Fprofile%2Fedit$/);
+
+  await seedAuthenticatedSession(page);
+  await page.goto("/get-started?returnTo=%2Fprofile%2Fedit");
+  await expect(page).toHaveURL(/\/profile\/edit$/);
+
+  // A completed deep-link login must not redirect unrelated future auth flows.
+  await page.goto("/login");
+  await expect(page).toHaveURL(/\/connected$/);
+
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/profile/edit");
+
+  await expect(
+    page.getByRole("heading", { name: "Link a public wallet." }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Ethereum / EVM address")
+    .fill("0xd2Bb04998A32BBd6A5F666EA306F4745a606495E");
+  await page.getByRole("button", { name: "Generate README marker" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Enter a valid EVM address",
+  );
+
+  await page
+    .getByLabel("Ethereum / EVM address")
+    .fill("0xd2Bb04998A32BBd6A5F666EA306F4745a606495f");
+  await page.getByRole("button", { name: "Generate README marker" }).click();
+
+  const generated = page.getByLabel("Generated wallet linking comment");
+  await expect(generated).toContainText("<!-- WALLET-LINKING-BEGIN");
+  await expect(generated).toContainText('"chain": "ethereum"');
+  await expect(generated).toContainText(
+    '"address": "0xd2Bb04998A32BBd6A5F666EA306F4745a606495f"',
+  );
+  await expect(generated).toContainText("WALLET-LINKING-END -->");
+
+  await page.getByRole("button", { name: "Copy hidden comment" }).click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain("WALLET-LINKING-BEGIN");
 });
 
 test("get-started covers method selection, phone input, country dropdown, and direct messaging options", async ({
@@ -154,14 +205,6 @@ test("get-started covers method selection, phone input, country dropdown, and di
 
   await page.getByRole("button", { name: "Back" }).dispatchEvent("click");
   await page.getByRole("button", { name: /^Telegram$/ }).dispatchEvent("click");
-  await expect(
-    page.getByRole("heading", { name: "Message Eliza on Telegram" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /Open Telegram/i }),
-  ).toHaveAttribute("href", "https://t.me/Elizav2_Bot");
-
-  await page.goto("/get-started?method=telegram&link=true");
   await expect(
     page.getByRole("heading", { name: "Connect with Telegram" }),
   ).toBeVisible();
@@ -231,30 +274,100 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await expect(page).toHaveURL(/\/get-started\?method=discord&link=true/);
 });
 
-test("landing page renders its fixed phone and direct entrypoints", async ({
+test("landing page renders its animated shell and primary entrypoint", async ({
   page,
 }) => {
   await page.goto("/");
 
-  await expect(page.getByLabel("Eliza home")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("link", { name: "Sign In" })).toBeVisible({
+  await expect(page.getByLabel("Eliza", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByRole("button", { name: "Try Now" })).toBeVisible({
     timeout: 20_000,
   });
   await waitForLandingIntro(page);
-  await expect(page.getByRole("button", { name: "Verify" })).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: "Open Eliza in iMessage" }),
-  ).toHaveAttribute(
-    "href",
-    "sms:+14159611510?&body=Hey%20Eliza%2C%20what%20can%20you%20do%3F",
+});
+
+test("landing composer is inert while hidden and stays in-viewport when active", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await waitForLandingIntro(page);
+
+  const composer = page.locator('[data-landing-chrome="composer"]');
+  await expect(composer).toHaveAttribute(
+    "data-landing-chrome-visible",
+    "false",
   );
-  await expect(
-    page.getByRole("link", { name: "Open Eliza in WhatsApp" }),
-  ).toHaveAttribute("href", /https:\/\/wa\.me\/\d+/);
-  await expect(
-    page.getByRole("link", { name: "Open Eliza in Telegram" }),
-  ).toHaveAttribute("href", /https:\/\/t\.me\//);
-  await expect(
-    page.getByRole("link", { name: "Open Eliza in Discord" }),
-  ).toHaveAttribute("href", /https:\/\/discord\.com\/users\//);
+  await expect(composer).toHaveAttribute("inert", "");
+  await expect(composer).toHaveAttribute("aria-hidden", "true");
+
+  // Opacity-only hide must not leave the message field in the tab order.
+  const tabTargetsWhileHidden = await page.evaluate(() => {
+    const root = document.querySelector('[data-landing-chrome="composer"]');
+    if (!(root instanceof HTMLElement)) {
+      return { error: "missing-composer" };
+    }
+    const focusables = [
+      ...root.querySelectorAll("textarea, button, a, select, input"),
+    ] as HTMLElement[];
+    return {
+      count: focusables.length,
+      anyIsFocusable: focusables.some((el) => {
+        el.focus();
+        return document.activeElement === el;
+      }),
+    };
+  });
+  expect(tabTargetsWhileHidden).toMatchObject({ anyIsFocusable: false });
+
+  // Swipe imessage → telegram → discord → try to reveal the composer.
+  for (let i = 0; i < 3; i++) {
+    await page.mouse.move(320, 420);
+    await page.mouse.down();
+    await page.mouse.move(40, 420, { steps: 12 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+  }
+
+  await expect(composer).toHaveAttribute(
+    "data-landing-chrome-visible",
+    "true",
+    {
+      timeout: 10_000,
+    },
+  );
+  await expect(composer).not.toHaveAttribute("inert", "");
+  await expect(composer).not.toHaveAttribute("aria-hidden", "true");
+
+  const message = page.getByRole("textbox", { name: "Message Eliza" }).first();
+  await expect(message).toBeVisible();
+  await message.focus();
+  await expect(message).toBeFocused();
+
+  const bounds = await message.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      // The composer sits under a deliberate perspective/rotateX tilt, which
+      // shrinks the projected rect slightly; the touch-target floor applies to
+      // the layout box, so measure offsetHeight rather than rect.height.
+      layoutHeight: (el as HTMLElement).offsetHeight,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(bounds.layoutHeight).toBeGreaterThanOrEqual(44);
+  expect(bounds.top).toBeGreaterThanOrEqual(0);
+  expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight + 0.5);
+
+  const voice = page.getByRole("button", { name: /voice input|Send message/i });
+  const voiceBox = await voice.boundingBox();
+  expect(voiceBox).not.toBeNull();
+  if (voiceBox) {
+    expect(voiceBox.height).toBeGreaterThanOrEqual(44);
+    expect(voiceBox.width).toBeGreaterThanOrEqual(44);
+    expect(voiceBox.y + voiceBox.height).toBeLessThanOrEqual(844 + 0.5);
+  }
 });

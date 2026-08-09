@@ -24,6 +24,7 @@ vi.mock("@elizaos/ui/api", () => ({
 }));
 
 vi.mock("@elizaos/ui/events", () => ({
+  VIEW_EVENTS: { VIEW_REFRESH: "view:refresh" },
   useViewEvent: (eventType: string, callback: () => void) => {
     transport.viewEvents.set(eventType, callback);
   },
@@ -156,7 +157,7 @@ describe("useNotesState", () => {
     expect(result.current.loading).toBe(false);
   });
 
-  it("refreshes shared state after a broker or service update event", async () => {
+  it("refreshes shared state after view updates or a completed chat action", async () => {
     transport.fetchState.mockResolvedValueOnce(snapshot(1));
     const { result } = renderHook(() => useNotesState());
     await waitFor(() => expect(result.current.snapshot?.revision).toBe(1));
@@ -169,6 +170,10 @@ describe("useNotesState", () => {
     act(() => transport.viewEvents.get("notes:state-updated")?.());
     await waitFor(() => expect(result.current.snapshot?.revision).toBe(3));
 
-    expect(transport.fetchState).toHaveBeenCalledTimes(3);
+    transport.fetchState.mockResolvedValueOnce(snapshot(4));
+    act(() => transport.viewEvents.get("view:refresh")?.());
+    await waitFor(() => expect(result.current.snapshot?.revision).toBe(4));
+
+    expect(transport.fetchState).toHaveBeenCalledTimes(4);
   });
 });

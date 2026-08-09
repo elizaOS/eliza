@@ -356,7 +356,11 @@ const ALLOWLIST: Record<string, string> = {
   "auth/cli-login": "cloud public page: CLI auth flow, pre-authentication",
   "auth/callback/email":
     "cloud public page: email auth callback, pre-authentication",
+  "auth/bridge":
+    "cloud public page: sso bridge leg between the dashboard and app origins; must render pre-auth to carry the one-time code, and every privileged step happens server-side behind Origin, referrer, and PKCE checks",
   "app-auth/authorize": "cloud public page: app-auth flow, pre-authentication",
+  "oidc/continue":
+    "cloud public page: resumes the OpenID Provider authorization request after login; must render before authentication so the API origin can validate the parked request",
   "terms-of-service": "cloud public page: legal page, no auth",
   "privacy-policy": "cloud public page: legal page, no auth",
   bsc: "cloud public page: BSC landing page, no auth",

@@ -18,9 +18,9 @@
  *       short input pull springs back · pill tap → INPUT (no keyboard) ·
  *       grabber tap steps INPUT → HALF → INPUT.
  *       Full matrix: CHAT_SHEET_STATE_MATRIX.md.
- *   - AUTOSCROLL, per input type: tail follows at bottom, a single >80px
- *       streamed growth remains pinned, reading-scrollback is not yanked, and
- *       scrollback remains stable without extra floating controls.
+ *   - AUTOSCROLL, per input type: tail follows at bottom through streamed
+ *       growth and live sheet resizing, reading-scrollback is not yanked by
+ *       either content growth or resizing, and no floating controls appear.
  *   - EVERY control/state via deterministic fixture loads + interactions:
  *       empty · peek/half/full · typing→send · attach image→thumbnail→remove ·
  *       mic press→recording · voice speaking→mute toggle · responding typing
@@ -119,6 +119,45 @@ async function waitForHeaderShown(p, timeout = 1500) {
     { timeout },
   );
 }
+// --- Bounded settle-waits -------------------------------------------------
+// The sheet's detent/variant/chat-state attributes and the composer's control
+// morphs land asynchronously (state machine commit + React render + spring
+// tail). Sampling them immediately — or after a fixed sleep — races the render
+// on loaded CI runners (observed: grabber-visibility timeout, thread at 477px
+// after "closed", mic still mounted right after fill()). Each helper polls the
+// LIVE predicate with a bounded interval wait and ALWAYS resolves: the caller's
+// assert stays the single failure surface and the contract is unchanged — only
+// the sampling now waits for the state to settle.
+const SETTLE_WAIT_MS = 4000;
+const settleWait = (p, fn, arg, timeout = SETTLE_WAIT_MS) =>
+  p.waitForFunction(fn, arg, { timeout, polling: 100 }).catch(() => {});
+const settleAttr = (p, attr, want) =>
+  settleWait(
+    p,
+    ({ attr, want }) =>
+      document
+        .querySelector('[data-testid="chat-sheet"]')
+        ?.getAttribute(attr) === want,
+    { attr, want },
+  );
+const settleVariant = (p, want) => settleAttr(p, "data-variant", want);
+const settleDetent = (p, want) => settleAttr(p, "data-detent", want);
+const settleChatState = (p, want) => settleAttr(p, "data-chat-state", want);
+const settleCount = (p, selector, want) =>
+  settleWait(
+    p,
+    ({ selector, want }) => document.querySelectorAll(selector).length === want,
+    { selector, want },
+  );
+const settleVisible = (p, selector) =>
+  settleWait(
+    p,
+    (selector) => {
+      const b = document.querySelector(selector)?.getBoundingClientRect();
+      return !!b && b.width > 0 && b.height > 0;
+    },
+    selector,
+  );
 // The history (thread) is the element whose height animates 0 → half → full;
 // the panel (chat-sheet) also holds the always-present input, so measure the
 // thread for detent heights.
@@ -142,7 +181,7 @@ const threadScrollState = (p) =>
       bottomDelta: maxScrollTop - el.scrollTop,
     };
   });
-async function waitForSheetHeightNear(p, expected, tolerance, timeout = 1500) {
+async function waitForSheetHeightNear(p, expected, tolerance, timeout = 5000) {
   await p
     .waitForFunction(
       ({ expected, tolerance }) => {
@@ -313,7 +352,18 @@ const testIdSelector = (testId) => `[data-testid="${testId}"]`;
 
 async function visibleBoxForTestId(p, target, timeout = 3000) {
   const selector = testIdSelector(target);
+  const isVisibleNow = () =>
+    p.evaluate((selector) => {
+      const el = document.querySelector(selector);
+      if (!el) return false;
+      const b = el.getBoundingClientRect();
+      return b.width > 0 && b.height > 0;
+    }, selector);
   try {
+    // Interval polling, not the default rAF polling: the sheet's spring
+    // transitions can starve rAF on a loaded CI runner, timing this wait out
+    // while the element is in fact visible (observed on run 31291669417, where
+    // the failure context reported a fully visible grabber rect).
     await p.waitForFunction(
       (selector) => {
         const el = document.querySelector(selector);
@@ -322,9 +372,18 @@ async function visibleBoxForTestId(p, target, timeout = 3000) {
         return b.width > 0 && b.height > 0;
       },
       selector,
-      { timeout },
+      { timeout, polling: 100 },
     );
   } catch (error) {
+    // Last direct look before failing: if the element is visible NOW, the wait
+    // raced a mid-transition remount/starved poller — proceed instead of
+    // failing the lane on a satisfied predicate.
+    if (await isVisibleNow().catch(() => false)) {
+      return await p.evaluate((selector) => {
+        const b = document.querySelector(selector).getBoundingClientRect();
+        return { x: b.x, y: b.y, width: b.width, height: b.height };
+      }, selector);
+    }
     const state = await p.evaluate(() => {
       const sheet = document.querySelector('[data-testid="chat-sheet"]');
       const restore = document.querySelector(
@@ -445,19 +504,92 @@ async function release(p, pointer, up = 0) {
   }
 }
 
+/** Real touch swipe from a chosen point inside a rendered element. Attachment
+ * tiles intentionally reserve their lower-right 44px hit region for Remove, so
+ * their draggable pixels must be exercised from a non-control point instead of
+ * the element center. */
+async function touchSwipeFromFraction(
+  p,
+  selector,
+  dx,
+  dy,
+  { xFraction = 0.18, yFraction = 0.18, steps = 8, stepDelayMs = 4 } = {},
+) {
+  await p.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => resolve())),
+  );
+  const box = await p.locator(selector).boundingBox();
+  assert(Boolean(box), `real-touch: ${selector} has a rendered box`);
+  const startX = box.x + box.width * xFraction;
+  const startY = box.y + box.height * yFraction;
+  const client = await p.context().newCDPSession(p);
+  const touchPoint = (x, y) => ({
+    x,
+    y,
+    id: 1,
+    radiusX: 4,
+    radiusY: 4,
+    force: 1,
+  });
+  let ended = false;
+  try {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [touchPoint(startX, startY)],
+    });
+    for (let i = 1; i <= steps; i += 1) {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          touchPoint(startX + (dx * i) / steps, startY + (dy * i) / steps),
+        ],
+      });
+      if (stepDelayMs > 0) await p.waitForTimeout(stepDelayMs);
+    }
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    ended = true;
+  } finally {
+    if (!ended) {
+      await Promise.allSettled([
+        client.send("Input.dispatchTouchEvent", {
+          type: "touchCancel",
+          touchPoints: [],
+        }),
+      ]);
+    }
+    await client.detach();
+  }
+}
+
 async function maximizeByPull(p, pointer = "mouse") {
   await gesture(p, 760, { pointer, slow: true, steps: 24 });
   await p.waitForTimeout(SETTLE);
 }
 
-async function openToFullDetent(p, pointer, label = "open to FULL") {
+async function openToFullDetent(
+  p,
+  pointer,
+  expectedHeight,
+  label = "open to FULL",
+) {
   await gesture(p, 160, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
   if ((await detent(p)) !== "full") {
     await gesture(p, 220, { pointer, slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
   }
-  assert((await detent(p)) === "full", `[${pointer}] ${label}`);
+  // The state commits before the spring reaches its rendered target. Video
+  // capture can starve animation frames on CI, so geometry—not elapsed wall
+  // time—is the boundary that makes the following drag independent.
+  await waitForSheetHeightNear(p, expectedHeight, 36);
+  const renderedHeight = Math.round(await sheetHeight(p));
+  assert(
+    (await detent(p)) === "full" && near(renderedHeight, expectedHeight, 36),
+    `[${pointer}] ${label} (height ${renderedHeight}px ≈ ${expectedHeight}px)`,
+  );
 }
 
 // `keyboardTouch`: after a big BEYOND-full over-pull the full-bleed panel on the
@@ -471,9 +603,8 @@ async function openToFullDetent(p, pointer, label = "open to FULL") {
 async function restoreFromMaximized(p, pointer = "mouse", keyboardTouch = false) {
   const zone = p.getByTestId("chat-maximize-restore-zone");
   await zone.waitFor();
-  // Cross the component's 90% restore line on every viewport. A fixed 120px
-  // pull works on desktop but remains inside the top 10% band on the tall mobile
-  // fixture, where full-screen must intentionally stay filled.
+  // Pull far enough to exercise the complete restore shape on every viewport;
+  // the component itself hands control to the finger after only a small slop.
   const restoreDistance = Math.max(120, Math.ceil((await viewportH(p)) * 0.12));
   if (pointer === "touch" && keyboardTouch) {
     await zone.focus();
@@ -509,14 +640,18 @@ async function runDragSuite(p, pointer, tag) {
   await p.waitForTimeout(150);
 
   // fully collapsed at rest — the thread is gone (height 0), just the input
+  await settleVariant(p, "closed");
   assert((await variant(p)) === "closed", `[${pointer}] starts COLLAPSED (closed)`);
+  await settleDetent(p, "collapsed");
   assert((await detent(p)) === "collapsed", `[${pointer}] detent is collapsed at rest`);
+  await waitForSheetHeightNear(p, 0, 6);
   assert(near(await sheetHeight(p), 0, 6), `[${pointer}] COLLAPSED thread height ≈ 0px`);
   await snap(p, `${tag}-collapsed`);
 
   // FLICK up → HALF (fast deliberate pull crosses the velocity threshold → snap to a detent)
   await gesture(p, 160, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
+  await settleDetent(p, "half");
   assert((await detent(p)) === "half", `[${pointer}] flick-up snaps COLLAPSED→HALF`);
   await waitForSheetHeightNear(p, halfH, TOL);
   assert(near(await sheetHeight(p), halfH, TOL), `[${pointer}] HALF height ≈ ${halfH}px (got ${Math.round(await sheetHeight(p))})`);
@@ -550,6 +685,7 @@ async function runDragSuite(p, pointer, tag) {
   // FLICK up again → FULL — the sheet rises to the top of the screen
   await gesture(p, 140, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
+  await settleDetent(p, "full");
   assert((await detent(p)) === "full", `[${pointer}] flick-up snaps HALF→FULL`);
   fullH = Math.round(await sheetHeight(p));
   assert(fullH > halfH + 40, `[${pointer}] FULL is taller than HALF (full ${fullH} > half ${halfH})`);
@@ -653,7 +789,12 @@ async function runDragSuite(p, pointer, tag) {
   // free-rest assertion so it only tests the open-sheet grabber.
   await p.keyboard.press("Escape");
   await p.waitForTimeout(SETTLE);
-  await openToFullDetent(p, pointer, "free-rest reset reaches FULL");
+  await openToFullDetent(
+    p,
+    pointer,
+    fullH,
+    "free-rest reset reaches FULL",
+  );
   const startFree = Math.round(await sheetHeight(p));
   await gesture(p, -240, { pointer, slow: true, steps: 24 });
   await p.waitForTimeout(SETTLE);
@@ -669,6 +810,7 @@ async function runDragSuite(p, pointer, tag) {
       `[${pointer}] slow drag rests open (rested ${restedH}, start ${startFree})`,
     );
   }
+  await settleVariant(p, "open");
   assert((await variant(p)) === "open", `[${pointer}] free-rested sheet stays open`);
   await snap(p, `${tag}-free-rest`);
 
@@ -679,12 +821,18 @@ async function runDragSuite(p, pointer, tag) {
     await gesture(p, -130, { pointer, slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
   }
+  await settleVariant(p, "closed");
   assert((await variant(p)) === "closed", `[${pointer}] flick-down returns to COLLAPSED`);
-  // Let the collapse spring fully settle before measuring the resting thread.
-  await p.waitForTimeout(SETTLE);
+  // Wait for the collapse spring to actually finish rather than a fixed sleep:
+  // `variant` flips to closed at release while the thread height is still
+  // animating toward 0, and on a loaded CI runner the tail can outlast a fixed
+  // SETTLE (observed: closed with thread at 477px). Poll the real height into
+  // the tolerance band; the assert below still owns the contract.
+  const collapseTol = pointer === "mouse" ? 30 : 48;
+  await waitForSheetHeightNear(p, 0, collapseTol);
   // thread ≈ 0; allow a small band for the spring tail (touch dispatch wider).
   assert(
-    near(await sheetHeight(p), 0, pointer === "mouse" ? 30 : 48),
+    near(await sheetHeight(p), 0, collapseTol),
     `[${pointer}] back COLLAPSED, thread ≈ 0px (got ${Math.round(await sheetHeight(p))})`,
   );
   await snap(p, `${tag}-back-to-collapsed`);
@@ -692,6 +840,7 @@ async function runDragSuite(p, pointer, tag) {
   // click-out collapses: open, then click the dimmed scrim → collapses.
   await gesture(p, 120, { pointer, slow: true });
   await p.waitForTimeout(SETTLE);
+  await settleVariant(p, "open");
   assert((await variant(p)) === "open", `[${pointer}] re-opened for the click-out check`);
   // The backdrop is deliberately pointer-transparent in production. Dispatch
   // the synthetic pointer sequence directly so its target remains the backdrop
@@ -713,6 +862,7 @@ async function runDragSuite(p, pointer, tag) {
     clientY: 16,
   });
   await p.waitForTimeout(SETTLE);
+  await settleVariant(p, "closed");
   assert((await variant(p)) === "closed", `[${pointer}] clicking outside COLLAPSES the chat`);
   await snap(p, `${tag}-clicked-out-collapsed`);
 
@@ -726,6 +876,7 @@ async function runDragSuite(p, pointer, tag) {
     stepDelayMs: pointer === "touch" ? 0 : undefined,
   });
   await p.waitForTimeout(SETTLE);
+  await settleVariant(p, "open");
   assert((await variant(p)) === "open", `[${pointer}] FLICK up opens despite <56px travel (velocity)`);
   await snap(p, `${tag}-flick-open`);
 
@@ -733,6 +884,7 @@ async function runDragSuite(p, pointer, tag) {
   const beforeNudge = await variant(p);
   await gesture(p, -34, { pointer, slow: true });
   await p.waitForTimeout(SETTLE);
+  await settleVariant(p, beforeNudge);
   assert((await variant(p)) === beforeNudge, `[${pointer}] sub-threshold nudge snaps back (no detent change)`);
   await snap(p, `${tag}-nudge-snapback`);
 }
@@ -1012,6 +1164,12 @@ async function runContinuumSuite(p, pointer, tag) {
     (await detent(p)) === "half",
     `[${tag}-continuum] grabber tap from INPUT reveals the thread at HALF`,
   );
+  assert(
+    (await p.evaluate(
+      () => document.activeElement?.getAttribute("data-testid"),
+    )) !== "chat-composer-textarea",
+    `[${tag}-continuum] grabber tap keeps the keyboard down after the handle moves`,
+  );
   await grabberTap();
   assert(
     (await detent(p)) === "collapsed" && (await variant(p)) === "closed",
@@ -1224,6 +1382,7 @@ async function openSheetToFull(p, pointer) {
     await gesture(p, 220, { pointer, slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
   }
+  await settleDetent(p, "full");
   assert((await detent(p)) === "full", `[${pointer}] AUTOSCROLL opens the sheet to FULL`);
   await waitForThreadBottom(p);
   const state = await threadScrollState(p);
@@ -1253,6 +1412,83 @@ async function scrollReaderUp(p, pointer) {
     `[${pointer}] AUTOSCROLL real ${pointer === "mouse" ? "wheel" : "touch"} scroll moves reader into history (${Math.round(before?.scrollTop ?? 0)} → ${Math.round(after?.scrollTop ?? 0)})`,
   );
   return after;
+}
+
+async function startResizeAnchorProbe(p) {
+  await p.evaluate(() => {
+    const viewport = document.querySelector(
+      '[data-testid="chat-thread-scroll"]',
+    );
+    if (!(viewport instanceof HTMLElement)) {
+      throw new Error("chat transcript viewport is missing");
+    }
+    const samples = [];
+    const sample = () => {
+      const messages = viewport.querySelectorAll("[data-message-id]");
+      const last = messages.item(messages.length - 1);
+      const viewportRect = viewport.getBoundingClientRect();
+      const lastRect = last?.getBoundingClientRect();
+      const sheet = document.querySelector('[data-testid="chat-sheet"]');
+      samples.push({
+        bottomDelta:
+          Math.max(0, viewport.scrollHeight - viewport.clientHeight) -
+          viewport.scrollTop,
+        lastGap: lastRect ? viewportRect.bottom - lastRect.bottom : null,
+        sheetHeight: sheet?.getBoundingClientRect().height ?? 0,
+      });
+    };
+    // This probe registers after the product observer. Sampling in a microtask
+    // observes the state after every observer in the delivery has run, while
+    // still preceding the dependency's deliberately deferred next-frame work.
+    const observer = new ResizeObserver(() => queueMicrotask(sample));
+    observer.observe(viewport);
+    sample();
+    window.__chatResizeAnchorProbe = { observer, samples };
+  });
+}
+
+async function stopResizeAnchorProbe(p) {
+  return p.evaluate(() => {
+    const probe = window.__chatResizeAnchorProbe;
+    probe?.observer.disconnect();
+    delete window.__chatResizeAnchorProbe;
+    return probe?.samples ?? [];
+  });
+}
+
+async function provePinnedResizeStability(p, pointer) {
+  await startResizeAnchorProbe(p);
+  await gesture(p, -120, {
+    pointer,
+    hold: true,
+    slow: true,
+    steps: 24,
+    target: "chat-sheet-grabber",
+  });
+  await p.waitForTimeout(60);
+  const samples = await stopResizeAnchorProbe(p);
+  await release(p, pointer);
+  await p.waitForTimeout(SETTLE);
+
+  const heights = samples.map((sample) => sample.sheetHeight);
+  const bottomDeltas = samples.map((sample) => Math.abs(sample.bottomDelta));
+  const lastGaps = samples
+    .map((sample) => sample.lastGap)
+    .filter((gap) => gap !== null);
+  const heightTravel = Math.max(...heights) - Math.min(...heights);
+  const gapTravel = Math.max(...lastGaps) - Math.min(...lastGaps);
+  assert(
+    samples.length >= 8 && heightTravel >= 80,
+    `[${pointer}] AUTOSCROLL samples a meaningful slow resize (${samples.length} samples, ${heightTravel.toFixed(1)}px)`,
+  );
+  assert(
+    Math.max(...bottomDeltas) <= 1.5,
+    `[${pointer}] AUTOSCROLL stays synchronously bottom-pinned during resize (max delta ${Math.max(...bottomDeltas).toFixed(2)}px)`,
+  );
+  assert(
+    lastGaps.length >= 8 && gapTravel <= 1.5,
+    `[${pointer}] AUTOSCROLL last message has no painted jump during resize (gap travel ${gapTravel.toFixed(2)}px)`,
+  );
 }
 
 async function runAutoScrollSuite(p, pointer, tag) {
@@ -1285,7 +1521,30 @@ async function runAutoScrollSuite(p, pointer, tag) {
     `[${pointer}] AUTOSCROLL stays pinned after a new assistant line (delta=${Math.round(afterAppend?.bottomDelta ?? -1)})`,
   );
 
+  await provePinnedResizeStability(p, pointer);
+  await waitForThreadBottom(p);
+
   const readerPosition = await scrollReaderUp(p, pointer);
+  await gesture(p, -80, {
+    pointer,
+    hold: true,
+    slow: true,
+    steps: 16,
+    target: "chat-sheet-grabber",
+  });
+  const resizedReaderPosition = await threadScrollState(p);
+  await release(p, pointer);
+  await p.waitForTimeout(SETTLE);
+  const settledReaderPosition = await threadScrollState(p);
+  assert(
+    !!readerPosition &&
+      !!resizedReaderPosition &&
+      !!settledReaderPosition &&
+      Math.abs(resizedReaderPosition.scrollTop - readerPosition.scrollTop) <=
+        2 &&
+      Math.abs(settledReaderPosition.scrollTop - readerPosition.scrollTop) <= 2,
+    `[${pointer}] AUTOSCROLL resize and settle preserve a reader in history (${Math.round(readerPosition?.scrollTop ?? 0)} → ${Math.round(resizedReaderPosition?.scrollTop ?? 0)} → ${Math.round(settledReaderPosition?.scrollTop ?? 0)})`,
+  );
   await mutateAssistant(
     p,
     "__growLastAssistant",
@@ -1345,11 +1604,33 @@ async function sampleGrabberDrag(
       (await page
         .getByTestId("chat-sheet")
         .getAttribute("data-maximized")) === "true";
+    const material = await page.evaluate(() => {
+      const rim = document.querySelector('[data-testid="chat-sheet-rim"]');
+      const surface = document.querySelector(
+        '[data-testid="chat-sheet-surface"]',
+      );
+      return {
+        rimMounted: rim != null,
+        rimOpacity: rim
+          ? Number.parseFloat(getComputedStyle(rim).opacity)
+          : null,
+        sheetGrabbers: document.querySelectorAll(
+          '[data-testid="chat-sheet-grabber"]',
+        ).length,
+        restoreHandles: document.querySelectorAll(
+          '[data-testid="chat-maximize-restore-handle"]',
+        ).length,
+        surfaceBorderWidth: surface
+          ? Number.parseFloat(getComputedStyle(surface).borderTopWidth)
+          : null,
+      };
+    });
     rows.push({
       cursorY,
       top,
       maximized,
       div: top == null ? null : top - cursorY,
+      ...material,
     });
   }
   await page.mouse.up();
@@ -1401,49 +1682,69 @@ function assertFingerTracking(rows, band, label, topFloor = 40) {
 // geometry reads.
 async function runFingerTrackingSuite(page) {
   // (A) OPEN → drag the grabber past the very top (maximize). Below the inset
-  // ceiling the panel top tracks the finger 1:1; the last stretch to the screen
-  // top is the DISCRETE maximize spring, so the 1:1 band is measured on the
-  // sub-ceiling samples (topFloor 90) and the drag runs PAST the top so the
-  // discrete commit fires and the panel reaches the edge.
+  // ceiling the panel top tracks the finger 1:1; the final rounded→full-bleed
+  // interval shares that same live motion coordinate, and the state commit only
+  // chooses its resting endpoint.
   await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
   const vh = await viewportH(page);
   const up = await sampleGrabberDrag(page, -30);
   const upStats = assertFingerTracking(up, 28, "[finger] UP open→top", 90);
-  // The top must actually be reachable in one drag. The 90% crossing starts a
-  // discrete spring, so the last finger sample may catch that spring in flight;
-  // verify its settled endpoint instead of requiring the animation to finish
-  // inside the sampling loop's final 20ms slice.
+  // The top must actually be reachable in one drag. Verify the settled endpoint
+  // too so the release cannot rebound after a correct held frame.
   const minTop = Math.min(...up.filter((r) => r.top != null).map((r) => r.top));
   await page.waitForTimeout(SETTLE);
   const settledUpTop = await panelTop(page);
   assert(
     settledUpTop <= 8,
-    `[finger] UP drag snaps from 90% to the screen top (sample min ${Math.round(minTop)}px, settled top ${Math.round(settledUpTop)}px ≤ 8px)`,
+    `[finger] UP drag reaches and settles at the screen top (sample min ${Math.round(minTop)}px, settled top ${Math.round(settledUpTop)}px ≤ 8px)`,
   );
 
-  // (B) MAXIMIZED → drag the restore strip all the way down. Full-screen stays
-  // pinned while the finger remains above the 90% crossing, then the window
-  // edge follows 1:1 and the chat ends collapsed at the bottom (pill/input).
+  // (B) MAXIMIZED → drag the restore strip all the way down. A tiny accidental
+  // wobble is inert; the first deliberate movement exits full-screen and the
+  // window edge follows 1:1 to the bottom.
   const down = await sampleGrabberDrag(
     page,
     vh - 8,
     34,
     "chat-maximize-restore-zone",
   );
-  const downMaximized = down.filter(
-    (row) => row.maximized && row.top != null,
+  const firstMovingIndex = down.findIndex(
+    (row) => row.top != null && row.top > 4,
   );
   assert(
-    downMaximized.length > 0 && downMaximized.every((row) => row.top <= 8),
-    `[finger] DOWN restore keeps full-screen pinned above the 90% crossing`,
+    firstMovingIndex >= 0 && firstMovingIndex <= 1,
+    `[finger] DOWN restore hands control to the finger on its first deliberate sample (index ${firstMovingIndex})`,
   );
-  const firstWindowRow = down.find(
-    (row) => !row.maximized && row.top != null,
+  const firstMovingRow = down.find((row) => row.top != null && row.top > 4);
+  assert(
+    firstMovingRow != null && firstMovingRow.top <= 80,
+    `[finger] DOWN restore begins near the finger with no viewport dead zone (top ${Math.round(firstMovingRow?.top ?? -1)}px)`,
   );
   assert(
-    firstWindowRow != null && firstWindowRow.top <= vh * 0.1 + 40,
-    `[finger] DOWN restore animates to window mode near 90% (top ${Math.round(firstWindowRow?.top ?? -1)}px)`,
+    firstMovingRow?.rimOpacity != null && firstMovingRow.rimOpacity < 0.75,
+    `[finger] DOWN restore unwinds fullscreen material continuously on its first frame (rim opacity ${firstMovingRow?.rimOpacity?.toFixed(2) ?? "n/a"} < 0.75)`,
+  );
+  assert(
+    down.every((row) => row.maximized),
+    `[finger] held restore keeps one committed render state until pointer-up`,
+  );
+  assert(
+    down.every(
+      (row) => row.sheetGrabbers === 0 && row.restoreHandles === 0,
+    ),
+    `[finger] held restore does not paint a second handle over the sheet chrome`,
+  );
+  assert(
+    down.every((row) => row.rimMounted),
+    `[finger] restore keeps one persistent outer rim mounted through full-screen and window states`,
+  );
+  assert(
+    down.every(
+      (row) =>
+        row.surfaceBorderWidth != null && row.surfaceBorderWidth === 0,
+    ),
+    `[finger] restore keeps the painted surface borderless so the rim has one owner`,
   );
   const downStats = assertFingerTracking(
     down,
@@ -1486,9 +1787,19 @@ async function runFingerTrackingSuite(page) {
         .getByTestId("chat-sheet")
         .evaluate((sheet) => ({
           top: sheet.getBoundingClientRect().top,
+          bottom: sheet.getBoundingClientRect().bottom,
+          surfaceBottom:
+            document
+              .querySelector('[data-testid="chat-sheet-surface"]')
+              ?.getBoundingClientRect().bottom ?? null,
           maximized: sheet.getAttribute("data-maximized") === "true",
         }))
-        .catch(() => ({ top: null, maximized: false }));
+        .catch(() => ({
+          top: null,
+          bottom: null,
+          surfaceBottom: null,
+          maximized: false,
+        }));
       rows.push({ phase, cursorY, ...state });
     };
     await page.mouse.move(cx, startY);
@@ -1523,6 +1834,17 @@ async function runFingerTrackingSuite(page) {
       upTop <= 8,
       `[finger] FULL→top drag reaches the screen top under the finger (min top ${Math.round(upTop)}px ≤ 8px — no freeze)`,
     );
+    const heldBottomEdgeDeltas = rows
+      .filter(
+        (r) =>
+          r.maximized && r.bottom != null && r.surfaceBottom != null,
+      )
+      .map((r) => Math.abs(r.bottom - r.surfaceBottom));
+    const maxHeldBottomEdgeDelta = Math.max(...heldBottomEdgeDeltas, 0);
+    assert(
+      heldBottomEdgeDeltas.length > 0 && maxHeldBottomEdgeDelta <= 2,
+      `[finger] held maximize keeps one shared sheet/surface bottom edge (max delta ${Math.round(maxHeldBottomEdgeDelta)}px ≤ 2px)`,
+    );
     // While the pull remains above the 90% restore line, MAXIMIZED must mean
     // truly full-height: no wallpaper strip is allowed above the panel. Once
     // the finger crosses below 90%, the state flips back to the inset window.
@@ -1547,7 +1869,7 @@ async function runFingerTrackingSuite(page) {
   }
 
   console.log(
-    `  ℹ finger tracking: up/down drift ${Math.round(upStats?.worst ?? -1)}/${Math.round(downStats?.worst ?? -1)}px (handle offsets ${Math.round(upStats?.median ?? 0)}/${Math.round(downStats?.median ?? 0)}px); restore crossed to window at top ${Math.round(firstWindowRow?.top ?? -1)}px`,
+    `  ℹ finger tracking: up/down drift ${Math.round(upStats?.worst ?? -1)}/${Math.round(downStats?.worst ?? -1)}px (handle offsets ${Math.round(upStats?.median ?? 0)}/${Math.round(downStats?.median ?? 0)}px); restore began moving at top ${Math.round(firstMovingRow?.top ?? -1)}px`,
   );
 }
 
@@ -1860,6 +2182,7 @@ try {
     await gotoFixture(desktop);
     await desktop.waitForSelector('[data-testid="chat-sheet"]');
     await desktop.waitForTimeout(700);
+    await settleVariant(desktop, "closed");
     assert((await variant(desktop)) === "closed", "[webkit mouse] starts closed");
     await snap(desktop, "safari-desktop-collapsed");
     await gesture(desktop, Math.round((await viewportH(desktop)) * 0.46), {
@@ -1868,6 +2191,7 @@ try {
       steps: 3,
     });
     await desktop.waitForTimeout(SETTLE);
+    await settleVariant(desktop, "open");
     assert((await variant(desktop)) === "open", "[webkit mouse] flick opens the sheet");
     assert(await headerShown(desktop), "[webkit mouse] open sheet exposes the header strip");
     assert(
@@ -1901,9 +2225,11 @@ try {
     await gotoFixture(mobile);
     await mobile.waitForSelector('[data-testid="chat-sheet"]');
     await mobile.waitForTimeout(700);
+    await settleVariant(mobile, "closed");
     assert((await variant(mobile)) === "closed", "[webkit mobile] starts closed");
     await gesture(mobile, 140, { pointer: "mouse", slow: false, steps: 3 });
     await mobile.waitForTimeout(SETTLE);
+    await settleVariant(mobile, "open");
     assert((await variant(mobile)) === "open", "[webkit mobile] flick opens the sheet");
     assert(
       await mobile.getByTestId("chat-composer-textarea").isVisible(),
@@ -2176,9 +2502,15 @@ try {
     await gotoFixture(p, `${url}?empty`);
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(650);
+    await settleCount(p, '[data-testid="chat-thread"]', 0);
     assert((await p.locator('[data-testid="chat-thread"]').count()) === 0, "EMPTY: no thread/history mounted (just the input panel)");
+    await settleVisible(p, '[data-testid="chat-composer-plus"]');
     assert(await p.getByTestId("chat-composer-plus").isVisible(), "EMPTY: chat actions (+) button shown");
     await p.getByTestId("chat-composer-plus").click();
+    await p
+      .getByText("Upload file", { exact: true })
+      .waitFor({ state: "visible", timeout: SETTLE_WAIT_MS })
+      .catch(() => {});
     assert(await p.getByText("Upload file", { exact: true }).isVisible(), "EMPTY: upload lives in the chat-actions menu");
     // The + menu is the first migrated liquid-glass menu surface: assert the
     // glass class is live (GlassStyles mounted by the fixture shell) and
@@ -2189,6 +2521,7 @@ try {
     );
     await snap(p, "state-plus-menu-glass");
     await p.keyboard.press("Escape");
+    await settleCount(p, '[data-testid="chat-composer-mic"]', 1);
     assert((await p.getByTestId("chat-composer-mic").count()) === 1, "EMPTY: mic button shown (no draft)");
     await snap(p, "state-empty");
     await p.close();
@@ -2296,6 +2629,7 @@ try {
     await p.getByTestId("chat-sheet-grabber").focus();
     await p.keyboard.press("ArrowUp"); // open to half behind the chip
     await p.waitForTimeout(450);
+    await settleVariant(p, "open");
     assert((await variant(p)) === "open", "UNLOCK: sheet opens behind the audio-unlock chip");
     await snap(p, "state-audio-unlock-open");
     await p.getByTestId("overlay-voice-audio-unlock").click();
@@ -2316,11 +2650,9 @@ try {
     await p.close();
   }
 
-  // TRANSCRIBING while an inline reply is in flight (#9880 path).
-  //
-  // Transcription-only finalization and the master privacy stop are independent:
-  // the latter must remain live while a reply is in flight so one tap can stop
-  // both transcription and capture.
+  // TRANSCRIBING while an inline reply is in flight (#9880 path). Long-form
+  // transcription owns the trailing controls exclusively: one Stop finalizes
+  // the transcript so capture never exposes two competing stop affordances.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2329,44 +2661,45 @@ try {
     await gotoFixture(p, `${url}?transcribing&recording&speaking&phase=listening`);
     await p.waitForSelector('[data-testid="chat-composer-transcription-stop"]');
     await p.waitForTimeout(500);
-    const masterMic = p.getByTestId("chat-composer-mic");
     assert(
-      (await masterMic.count()) === 1,
-      "TRANSCRIBING+REPLY: exactly one master mic stop is rendered",
+      (await p.getByTestId("chat-composer-mic").count()) === 0,
+      "TRANSCRIBING+REPLY: the duplicate mic control stays removed",
+    );
+    const transcriptionStop = p.getByTestId(
+      "chat-composer-transcription-stop",
     );
     assert(
-      (await masterMic.getAttribute("aria-label")) === "stop transcription and mic",
-      "TRANSCRIBING+REPLY: the mic names its master privacy-stop behavior",
+      (await transcriptionStop.count()) === 1,
+      "TRANSCRIBING+REPLY: exactly one transcription Stop is rendered",
     );
     assert(
-      (await masterMic.getAttribute("aria-disabled")) !== "true",
-      "TRANSCRIBING+REPLY: the master mic stop is enabled during the reply",
-    );
-    assert(
-      (await p.getByTestId("chat-composer-transcription-stop").count()) === 1,
-      "TRANSCRIBING+REPLY: the independent transcription-only Stop is rendered",
+      (await transcriptionStop.getAttribute("aria-label")) ===
+        "stop transcription",
+      "TRANSCRIBING+REPLY: the exclusive Stop names its finalization behavior",
     );
     // The Stop must be live mid-reply — the #9880 defect was an inert control
     // while `responding` was true, so an enabled Stop is the real regression pin.
     assert(
-      (await p
-        .getByTestId("chat-composer-transcription-stop")
-        .getAttribute("aria-disabled")) !== "true",
+      (await transcriptionStop.getAttribute("aria-disabled")) !== "true",
       "TRANSCRIBING+REPLY: the Stop is enabled even while the reply is in flight",
     );
     await snap(p, "state-transcribing-inline-reply");
-    await masterMic.click();
+    await transcriptionStop.click();
     await p.waitForFunction(
       () =>
-        document.querySelector('[data-testid="chat-composer-mic"]') === null,
+        document.querySelector(
+          '[data-testid="chat-composer-transcription-stop"]',
+        ) === null,
     );
     assert(
-      logs.some((text) => text.includes("[fixture] stopTranscriptionAndMic")),
-      "TRANSCRIBING+REPLY: the master mic stop reaches the controller",
+      logs.some((text) =>
+        text.includes("[fixture] toggleTranscriptionMode -> false"),
+      ),
+      "TRANSCRIBING+REPLY: the exclusive Stop reaches the transcription controller",
     );
     assert(
-      (await p.getByTestId("chat-composer-stop").count()) === 1,
-      "TRANSCRIBING+REPLY: generation Stop owns the trailing slot after capture stops",
+      (await p.getByTestId("chat-composer-mic").count()) <= 1,
+      "TRANSCRIBING+REPLY: finalization never revives a duplicate mic control",
     );
     await p.close();
   }
@@ -2381,6 +2714,7 @@ try {
     await p.getByTestId("chat-sheet-grabber").focus();
     await p.keyboard.press("ArrowUp"); // open to half so the dots are visible
     await p.waitForTimeout(450);
+    await settleVisible(p, '[data-testid="turn-status-indicator"]');
     assert(await p.getByTestId("turn-status-indicator").isVisible(), "RESPONDING: turn status shown in the open sheet");
     await snap(p, "state-responding");
     await p.close();
@@ -2396,8 +2730,11 @@ try {
     const input = p.getByTestId("chat-composer-textarea");
     await input.fill("draft message");
     await p.waitForTimeout(200);
+    await settleVisible(p, '[data-testid="chat-composer-action"]');
     assert(await p.getByTestId("chat-composer-action").isVisible(), "TYPING: trailing control morphs mic→send");
+    await settleCount(p, '[data-testid="chat-composer-mic"]', 0);
     assert((await p.getByTestId("chat-composer-mic").count()) === 0, "TYPING: mic hidden while a draft exists");
+    await settleVariant(p, "open");
     assert((await variant(p)) === "open", "TYPING: composing pulls the sheet open");
     await snap(p, "state-typing-send");
     // SEND-TAP: tapping the send button must keep the composer focused so the
@@ -2426,7 +2763,8 @@ try {
     await p.close();
   }
 
-  // attach image → thumbnail + remove button (real file through the hidden input)
+  // Attachments keep their remove controls above the grabber while their tile
+  // and gap pixels remain part of the continuous sheet-drag surface.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2436,19 +2774,64 @@ try {
     // 1x1 transparent PNG
     const pngB64 =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    await p.setInputFiles('input[type="file"]', [
+      {
+        name: "shot.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(pngB64, "base64"),
+      },
+      {
+        name: "shot-two.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(pngB64, "base64"),
+      },
+    ]);
+    await p.waitForTimeout(350);
+    await settleCount(p, 'img[alt="shot.png"]', 1);
+    assert((await p.locator('img[alt="shot.png"]').count()) === 1, "ATTACH: pending image thumbnail rendered");
+    await settleCount(p, 'img[alt="shot-two.png"]', 1);
+    assert((await p.locator('img[alt="shot-two.png"]').count()) === 1, "ATTACH: second thumbnail renders a real inter-tile gap");
+    await settleVisible(p, '[data-testid="chat-composer-action"]');
+    assert(await p.getByTestId("chat-composer-action").isVisible(), "ATTACH: send button shown for image-only turn");
+    await p
+      .getByLabel("remove shot.png")
+      .waitFor({ state: "visible", timeout: SETTLE_WAIT_MS })
+      .catch(() => {});
+    assert(await p.getByLabel("remove shot.png").isVisible(), "ATTACH: per-image remove button shown");
+    await snap(p, "state-image-attached");
+    await p.getByLabel("remove shot.png").click();
+    await p.waitForTimeout(250);
+    await settleCount(p, 'img[alt="shot.png"]', 0);
+    assert((await p.locator('img[alt="shot.png"]').count()) === 0, "REMOVE: thumbnail cleared after remove");
+
+    // Re-add the first tile, then start a real touch pull on its image pixels.
+    // The list owns the same pull binding as the grabber, while each remove
+    // button stops pointerdown before it can seed a sheet gesture.
     await p.setInputFiles('input[type="file"]', {
       name: "shot.png",
       mimeType: "image/png",
       buffer: Buffer.from(pngB64, "base64"),
     });
-    await p.waitForTimeout(350);
-    assert((await p.locator('img[alt="shot.png"]').count()) === 1, "ATTACH: pending image thumbnail rendered");
-    assert(await p.getByTestId("chat-composer-action").isVisible(), "ATTACH: send button shown for image-only turn");
-    assert(await p.getByLabel("remove shot.png").isVisible(), "ATTACH: per-image remove button shown");
-    await snap(p, "state-image-attached");
-    await p.getByLabel("remove shot.png").click();
     await p.waitForTimeout(250);
-    assert((await p.locator('img[alt="shot.png"]').count()) === 0, "REMOVE: thumbnail cleared after remove");
+    await touchSwipeFromFraction(p, 'img[alt="shot.png"]', 0, -160, {
+      steps: 8,
+      stepDelayMs: 4,
+    });
+    await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "half");
+    assert((await detent(p)) === "half", "ATTACH DRAG: pull through tile pixels opens the sheet");
+
+    await p.keyboard.press("Escape");
+    await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "collapsed");
+    assert((await detent(p)) === "collapsed", "ATTACH DRAG: Escape restores input before gap proof");
+    await touchSwipe(p, testIdSelector("chat-pending-attachment-list"), 0, -160, {
+      steps: 8,
+      stepDelayMs: 4,
+    });
+    await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "half");
+    assert((await detent(p)) === "half", "ATTACH DRAG: pull through attachment-list gap opens the sheet");
     await p.close();
   }
 
@@ -2548,9 +2931,9 @@ try {
     await p.close();
   }
 
-  // PUSH-TO-TALK: press-and-hold the mic (>200ms, no drag) starts a "dictate"
-  // capture; release stops it — and it must NOT toggle hands-free (the
-  // suppress-click guard). Asserted via the fixture intent log.
+  // The primary Talk control has one action regardless of press duration. A
+  // held release must enter realtime conversation exactly once and must never
+  // revive the hidden batch-dictation path removed from this surface.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2568,23 +2951,24 @@ try {
     await p.mouse.up();
     await p.waitForTimeout(200);
     assert(
-      sink.logs.slice(n).some((l) => l.includes("startRecording(dictate)")),
-      "PTT: press-and-hold starts a DICTATE capture",
+      !sink.logs.slice(n).some((l) => l.includes("startRecording(dictate)")),
+      "TALK HOLD: does not start hidden batch dictation",
     );
     assert(
-      sink.logs.slice(n).some((l) => l.includes("stopRecording")),
-      "PTT: release stops the capture",
+      !sink.logs.slice(n).some((l) => l.includes("stopRecording")),
+      "TALK HOLD: does not stop a batch capture that never started",
     );
     assert(
-      !sink.logs.slice(n).some((l) => l.includes("toggleHandsFree")),
-      "PTT: a held press does NOT toggle hands-free (suppress-click guard)",
+      sink.logs
+        .slice(n)
+        .filter((l) => l.includes("toggleHandsFree")).length === 1,
+      "TALK HOLD: release toggles realtime conversation exactly once",
     );
     await p.close();
   }
 
-  // PTT CANCEL must NOT leak the click-suppress (the "next tap eaten" bug): a
-  // held press ended by pointercancel (not pointerup) stops dictation but leaves
-  // the NEXT quick tap free to toggle hands-free.
+  // Cancelling a held pointer is inert, and the next deliberate tap must still
+  // toggle realtime conversation exactly once.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2594,23 +2978,27 @@ try {
     const mic = p.getByTestId("chat-composer-mic");
     const n0 = sink.logs.length;
     await mic.dispatchEvent("pointerdown", { pointerId: 7, button: 0 });
-    await p.waitForTimeout(280); // > 200ms → dictation starts
+    await p.waitForTimeout(280);
     await mic.dispatchEvent("pointercancel", { pointerId: 7 });
     await p.waitForTimeout(150);
     assert(
-      sink.logs.slice(n0).some((l) => l.includes("startRecording(dictate)")),
-      "PTT-CANCEL: the hold started dictation",
+      !sink.logs.slice(n0).some((l) => l.includes("startRecording(dictate)")),
+      "TALK CANCEL: does not start hidden batch dictation",
     );
     assert(
-      sink.logs.slice(n0).some((l) => l.includes("stopRecording")),
-      "PTT-CANCEL: pointercancel stops the capture",
+      !sink.logs.slice(n0).some((l) => l.includes("stopRecording")),
+      "TALK CANCEL: does not stop a batch capture that never started",
+    );
+    assert(
+      !sink.logs.slice(n0).some((l) => l.includes("toggleHandsFree")),
+      "TALK CANCEL: pointercancel does not trigger realtime conversation",
     );
     const n1 = sink.logs.length;
     await mic.click();
     await p.waitForTimeout(150);
     assert(
       sink.logs.slice(n1).some((l) => l.includes("toggleHandsFree")),
-      "PTT-CANCEL: the NEXT tap still toggles hands-free (suppress did not leak)",
+      "TALK CANCEL: the next tap still toggles realtime conversation",
     );
     await p.close();
   }
@@ -2679,6 +3067,7 @@ try {
     await p.getByTestId("chat-composer-textarea").focus();
     await p.waitForTimeout(150);
     assert(await focused(), "FOCUS: composer holds focus");
+    await settleVariant(p, "open");
     assert((await variant(p)) === "open", "FOCUS: focusing opens the chat");
     await p
       .getByTestId("chat-sheet-backdrop")
@@ -2688,6 +3077,7 @@ try {
       (await focused()) === false,
       "CLICK-OUT: blurs the composer (mobile keyboard drops)",
     );
+    await settleVariant(p, "closed");
     assert((await variant(p)) === "closed", "CLICK-OUT: collapses the chat");
     await p.close();
   }
@@ -2820,11 +3210,16 @@ try {
     await p.getByTestId("chat-sheet-grabber").focus();
     await p.keyboard.press("ArrowUp"); // open the sheet to reveal the gate
     await p.waitForTimeout(450);
+    await p
+      .getByText("Connect a provider to chat")
+      .waitFor({ state: "visible", timeout: SETTLE_WAIT_MS })
+      .catch(() => {});
     assert(
       await p.getByText("Connect a provider to chat").isVisible(),
       "NO_PROVIDER: structured recovery gate is rendered (not raw error text)",
     );
     const cta = p.getByTestId("chat-no-provider-settings");
+    await cta.waitFor({ state: "visible", timeout: SETTLE_WAIT_MS }).catch(() => {});
     assert(await cta.isVisible(), "NO_PROVIDER: 'Open Settings' CTA shown");
     await snap(p, "state-no-provider-gate");
     await cta.click();
@@ -2845,19 +3240,23 @@ try {
     await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
+    await settleDetent(p, "collapsed");
     assert((await detent(p)) === "collapsed", "PILL: starts at input (collapsed)");
     // A SLOW drag down from the collapsed input also collapses to the pill —
     // there's nothing to "size" below the input, so down always means pill.
     await gesture(p, -90, { pointer: "touch", slow: true, steps: 12 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "pill");
     assert((await detent(p)) === "pill", "PILL: slow drag-down collapses the input → pill");
     // Reset to the input peek and verify a quick FLICK down pills it too.
     await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
+    await settleDetent(p, "collapsed");
     assert((await detent(p)) === "collapsed", "PILL: reset to the input peek before flick check");
     await gesture(p, -90, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "pill");
     assert((await detent(p)) === "pill", "PILL: flick-down collapses the input → pill");
     assert(
       (await p.getByTestId("chat-pill").count()) === 1,
@@ -2900,6 +3299,7 @@ try {
     await p.waitForTimeout(500);
     await gesture(p, -90, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "pill");
     assert((await detent(p)) === "pill", "PILL-TAP: collapsed to pill first");
     // Real tap: touchStart then touchEnd at the SAME spot (no move).
     await touchTap(p, '[data-testid="chat-pill"]');
@@ -2935,6 +3335,7 @@ try {
     await p.waitForTimeout(600);
     await gesture(p, 120, { pointer: "mouse", slow: true });
     await p.waitForTimeout(200);
+    await settleVariant(p, "open");
     assert((await variant(p)) === "open", "REDUCED-MOTION: pull-up still opens");
     await snap(p, "state-reduced-motion-open");
     await p.close();
@@ -2951,6 +3352,7 @@ try {
     await p.waitForTimeout(600);
     await gesture(p, 120, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "half");
     assert((await detent(p)) === "half", "NAV: opened to half");
     await waitForHeaderShown(p);
     assert(
@@ -3013,6 +3415,7 @@ try {
     await p.waitForTimeout(600);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "half");
     assert((await detent(p)) === "half", "MAX-HALF: at half before maximize");
     await maximizeByPull(p);
     if (
@@ -3043,8 +3446,11 @@ try {
   // clearance), so the panel must fill the WHOLE viewport. The bug: panelMaxH
   // still subtracted the stale bottomPad, so the maximized panel floated a
   // gesture-inset BELOW the top — a hard-cut glass seam under the status bar and
-  // the safe-area-padded status strip pushed down. Assert: panel reaches y≈0 AND
-  // the header strip starts at the viewport top, not a gesture-inset lower.
+  // the safe-area-padded status strip pushed down. The rounded surface must stay
+  // coincident with the sheet while that inset closes; extending the rounded
+  // surface below the sheet paints a second bottom rim. Assert: one shared
+  // bottom edge throughout, then a gap-free final endpoint; panel reaches y≈0
+  // and the header strip starts at the viewport top.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -3072,6 +3478,7 @@ try {
         if (sheet && surface) {
           globalThis.__maximizeBottomFrames.push({
             maximized: sheet.getAttribute("data-maximized") === "true",
+            sheetBottom: sheet.getBoundingClientRect().bottom,
             surfaceBottom: surface.getBoundingClientRect().bottom,
             viewportHeight: window.innerHeight,
           });
@@ -3093,15 +3500,23 @@ try {
       () => globalThis.__maximizeBottomFrames,
     );
     const committedFrames = maximizeFrames.filter((frame) => frame.maximized);
-    const maxFloorGap = Math.max(
+    const maxBottomEdgeDelta = Math.max(
       0,
       ...committedFrames.map(
-        (frame) => frame.viewportHeight - frame.surfaceBottom,
+        (frame) => Math.abs(frame.sheetBottom - frame.surfaceBottom),
       ),
     );
     assert(
-      committedFrames.length > 2 && maxFloorGap <= 1,
-      `MAX-INSET: painted glass covers the bottom throughout the maximize animation (max gap ${maxFloorGap.toFixed(1)}px)`,
+      committedFrames.length > 2 && maxBottomEdgeDelta <= 1,
+      `MAX-INSET: sheet and painted glass retain one bottom edge throughout maximize (max delta ${maxBottomEdgeDelta.toFixed(1)}px)`,
+    );
+    const finalFrame = committedFrames.at(-1);
+    const finalFloorGap = finalFrame
+      ? finalFrame.viewportHeight - finalFrame.surfaceBottom
+      : Number.POSITIVE_INFINITY;
+    assert(
+      finalFloorGap <= 1,
+      `MAX-INSET: settled painted glass reaches the viewport floor (gap ${finalFloorGap.toFixed(1)}px)`,
     );
     const box = await p.getByTestId("chat-sheet").boundingBox();
     assert(
@@ -3137,6 +3552,7 @@ try {
     const vh = await viewportH(p);
     const halfH = Math.round(vh * 0.46);
 
+    await settleChatState(p, "INPUT");
     assert((await chatState(p)) === "INPUT", "STATES: rest is INPUT");
     assert(
       !(await headerShown(p)),
@@ -3267,6 +3683,7 @@ try {
     await p.waitForTimeout(600);
     await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleChatState(p, "CLOSED");
     assert((await chatState(p)) === "CLOSED", "PILL-MORPH: collapsed to pill");
 
     // MID-DRAG hold: slow-pull the PILL up ~half the open distance and HOLD —
@@ -3380,6 +3797,7 @@ try {
     await p.waitForTimeout(500);
     await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "pill");
     assert((await detent(p)) === "pill", "PILL-INPUT: collapsed to pill first");
     // SLOW pull up ~80px: past the 60px halfway-open mark (commits to leaving the
     // pill) but under PILL_OPEN_DISTANCE (120px), so only the input bar forms.
@@ -3439,6 +3857,7 @@ try {
     await p.waitForTimeout(500);
     await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
+    await settleDetent(p, "pill");
     assert((await detent(p)) === "pill", "ROTATION: collapsed to pill first");
     await gesture(p, 60, {
       pointer: "mouse",

@@ -5,6 +5,7 @@
  * without circular dependency issues.
  */
 
+import { logger } from "@elizaos/logger";
 import {
   extractAssistantReplyText,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
@@ -17,6 +18,16 @@ import {
 } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
+import { isAndroidLocalSideloadBuild } from "../platform/android-runtime";
+import {
+  loadAgentProfileRegistry,
+  saveAgentProfileRegistry,
+} from "../state/agent-profiles";
+import {
+  clearPersistedActiveServer,
+  loadPersistedActiveServer,
+} from "../state/persistence";
+import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   clearElizaApiBase,
@@ -43,7 +54,7 @@ import type {
   WebSocketConnectionState,
   WsEventHandler,
 } from "./client-types";
-import { ApiError } from "./client-types";
+import { ApiError, isCloudAgentGoneError } from "./client-types";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
 import {
@@ -84,6 +95,14 @@ type StreamChatEvent = {
   type?: string;
   text?: string;
   fullText?: string;
+  /**
+   * `type: "token"` only — the carried text is an in-flight action-callback
+   * delivery the turn's final reply may replace wholesale. Text bubbles render
+   * it exactly like any streamed text; voice output must NOT synthesize it
+   * until the terminal frame confirms it (speech cannot be retracted — the
+   * voice "double-speak" defect).
+   */
+  provisional?: boolean;
   transcriptVisibility?: "internal";
   agentName?: string;
   messageId?: string;
@@ -302,7 +321,11 @@ function parseStreamChatDataLine(line: string): StreamChatEvent | null {
 function applyStreamChatTokenEvent(
   parsed: StreamChatEvent,
   state: StreamChatState,
-  onToken: (token: string, accumulatedText?: string) => void,
+  onToken: (
+    token: string,
+    accumulatedText?: string,
+    provisional?: boolean,
+  ) => void,
 ): boolean {
   const chunk = parsed.text ?? "";
   const nextFullText =
@@ -321,7 +344,7 @@ function applyStreamChatTokenEvent(
         : state.fullText;
   if (nextFullText === state.fullText) return false;
   state.fullText = nextFullText;
-  onToken(chunk, state.fullText);
+  onToken(chunk, state.fullText, parsed.provisional === true);
   return false;
 }
 
@@ -381,7 +404,11 @@ function applyStreamChatDoneEvent(
 function applyStreamChatDataLine(
   line: string,
   state: StreamChatState,
-  onToken: (token: string, accumulatedText?: string) => void,
+  onToken: (
+    token: string,
+    accumulatedText?: string,
+    provisional?: boolean,
+  ) => void,
   onStatus?: (status: ChatTurnStatus) => void,
   onToolEvent?: (event: ChatToolCallEvent) => void,
 ): boolean {
@@ -497,16 +524,32 @@ function getInjectedWsBase(): string | undefined {
 
 function shouldUseRestOnlyForInsecureWebSocket(
   wsProtocol: "ws:" | "wss:",
+  host: string,
 ): boolean {
   if (wsProtocol !== "ws:") return false;
   if (typeof window === "undefined") return false;
   const rendererProtocol = window.location?.protocol;
-  return rendererProtocol === "https:" || rendererProtocol === "capacitor:";
+  if (rendererProtocol !== "https:" && rendererProtocol !== "capacitor:") {
+    return false;
+  }
+
+  // Direct Android builds enable mixed content so their packaged
+  // https://localhost renderer can keep the paired runtime's backchannel
+  // alive. The same trust gate that protects persisted API bases restricts
+  // this exception to loopback/private-LAN hosts; store and public cleartext
+  // endpoints retain the browser's stricter boundary.
+  const isTrustedPairedHost = isTrustedRestoreApiBaseUrl(`http://${host}`);
+  if (isTrustedPairedHost && isAndroidLocalSideloadBuild()) return false;
+
+  return true;
 }
 
 /**
- * True only inside a Capacitor native app, where the page origin is a synthetic
- * bundle host with no server behind it. Plain browsers keep same-origin WS.
+ * True only inside a Capacitor NATIVE app (iOS/Android WebView), where the
+ * page origin is a synthetic bundle host with no server behind it. A plain
+ * browser (including one loading a Capacitor-built web bundle over HTTP) has
+ * no `Capacitor.isNativePlatform()` → false, so same-origin deployments keep
+ * their realtime WebSocket.
  */
 function isCapacitorNativeRuntime(): boolean {
   try {
@@ -515,8 +558,8 @@ function isCapacitorNativeRuntime(): boolean {
       | undefined;
     return Boolean(cap?.isNativePlatform?.());
   } catch {
-    // error-policy:J4 capability probe — an unanswerable Capacitor check
-    // means this is not a native mobile shell.
+    // error-policy:J4 an unanswerable platform probe reads as "not native",
+    // preserving the browser's WebSocket path.
     return false;
   }
 }
@@ -670,6 +713,8 @@ export class ElizaClient {
   private _baseUrl: string;
   private _userSetBase: boolean;
   private _token: string | null;
+  /** Last cloud agent base released after an agent-gone 404 (idempotency). */
+  private _releasedGoneAgentBase: string | null = null;
   private readonly clientId: string;
   private requestTransport: AgentRequestTransport = fetchAgentTransport;
   private ws: WebSocket | null = null;
@@ -981,6 +1026,9 @@ export class ElizaClient {
         message: "API not available (no HTTP origin)",
       });
     }
+    // Capture the base this request was issued against so a concurrent
+    // setBaseUrl cannot attribute another host's 404 to the new binding.
+    const requestBase = this.baseUrl;
     const requestUrl = this.rawRequestUrl(path);
     const token =
       this.apiToken ?? (await hydrateAndroidLocalAgentTokenForUrl(requestUrl));
@@ -1034,20 +1082,32 @@ export class ElizaClient {
         retryAfter: resumeRetryDelayMs(res) / 1000,
       });
     }
-    if (!res.ok && !options?.allowNonOk) {
-      const body = (await this.readBodyText(res, path, options?.timeoutMs, init)
-        .then((text) => JSON.parse(text) as Record<string, unknown>)
-        .catch(() => ({ error: res.statusText }))) as Record<
-        string,
-        unknown
-      > | null;
+    if (!res.ok) {
+      const rawText = await this.readBodyText(
+        res,
+        path,
+        options?.timeoutMs,
+        init,
+      ).catch(() => "");
+      let body: Record<string, unknown> | null = null;
+      if (rawText) {
+        try {
+          body = JSON.parse(rawText) as Record<string, unknown>;
+        } catch {
+          // error-policy:J3 untrusted error body stays an explicit null parse.
+          body = null;
+        }
+      }
+      if (!body) {
+        body = { error: res.statusText || `HTTP ${res.status}` };
+      }
       const message =
-        typeof body?.error === "string"
+        typeof body.error === "string"
           ? body.error
-          : typeof body?.message === "string"
+          : typeof body.message === "string"
             ? body.message
             : `HTTP ${res.status}`;
-      const code = typeof body?.code === "string" ? body.code : undefined;
+      const code = typeof body.code === "string" ? body.code : undefined;
       // `Number(null) === 0` and `Number(undefined) === NaN`, so we must guard
       // each source before coercing — otherwise an absent `Retry-After` header
       // produces a spurious `retryAfter = 0` on every non-rate-limit error
@@ -1057,14 +1117,14 @@ export class ElizaClient {
         headerValue !== null && Number.isFinite(Number(headerValue))
           ? Number(headerValue)
           : undefined;
-      const rawBodyRetryAfter = body?.retryAfter;
+      const rawBodyRetryAfter = body.retryAfter;
       const bodyRetryAfter =
         typeof rawBodyRetryAfter === "number" &&
         Number.isFinite(rawBodyRetryAfter)
           ? rawBodyRetryAfter
           : undefined;
       const retryAfter = bodyRetryAfter ?? headerRetryAfter;
-      throw new ApiError({
+      const error = new ApiError({
         kind: "http",
         path,
         status: res.status,
@@ -1072,8 +1132,100 @@ export class ElizaClient {
         code,
         retryAfter,
       });
+      // Structural agent-gone from a bound cloud agent host: drop the dead
+      // binding at the request choke point so background callers (lifeops
+      // activity-signals, status probes with allowNonOk, …) stop hammering a
+      // deleted agent forever. Join-flow recovery alone only covered the
+      // selection path (#17837); login-page background posts were still bound
+      // (#18048). Uses the request-time base so a concurrent setBaseUrl cannot
+      // attribute this 404 to a newly selected agent.
+      this.releaseStaleCloudAgentBindingIfGone(error, requestBase);
+      if (!options?.allowNonOk) {
+        throw error;
+      }
+      // allowNonOk callers still need a Response whose body is unread.
+      return new Response(rawText, {
+        status: res.status,
+        statusText: res.statusText,
+        headers: res.headers,
+      });
     }
     return res;
+  }
+
+  /**
+   * When a cloud agent host answers the unambiguous "agent not found or not
+   * running" 404, clear the live base + persisted active-server / matching
+   * agent profiles so subsequent requests stop targeting the corpse. No-ops for
+   * local agents, control-plane hosts, non-agent-gone errors, and requests
+   * whose base no longer matches the live client (concurrent switch). Marks a
+   * base released only after teardown succeeds so a partial failure can retry.
+   */
+  private releaseStaleCloudAgentBindingIfGone(
+    error: ApiError,
+    requestBase: string,
+  ): void {
+    if (!isCloudAgentGoneError(error)) return;
+    const base = normalizeBaseUrl(requestBase);
+    if (!base) return;
+    if (
+      !isDedicatedCloudAgentBase(base) &&
+      !isSharedRuntimeRestAdapterBase(base)
+    ) {
+      return;
+    }
+    if (this._releasedGoneAgentBase === base) return;
+
+    // A concurrent switch may have already moved the live client off this
+    // corpse — never tear down the new binding because of a stale response.
+    const liveBase = normalizeBaseUrl(this.baseUrl);
+    if (liveBase && liveBase !== base) return;
+
+    try {
+      const persisted = loadPersistedActiveServer();
+      const persistedBase = normalizeBaseUrl(persisted?.apiBase);
+      if (!persisted || persistedBase === base) {
+        clearPersistedActiveServer();
+      }
+
+      // One registry write: drop matching profiles and leave activeProfileId
+      // null rather than auto-activating an unconnected survivor (removeAgentProfile
+      // would promote profiles[0]).
+      const registry = loadAgentProfileRegistry();
+      const remaining = registry.profiles.filter((profile) => {
+        const profileBase = normalizeBaseUrl(profile.apiBase);
+        return !profileBase || profileBase !== base;
+      });
+      if (remaining.length !== registry.profiles.length) {
+        const activeStillPresent = remaining.some(
+          (profile) => profile.id === registry.activeProfileId,
+        );
+        saveAgentProfileRegistry({
+          version: 1,
+          activeProfileId: activeStillPresent ? registry.activeProfileId : null,
+          profiles: remaining,
+        });
+      }
+
+      if (!liveBase || liveBase === base) {
+        this.setBaseUrl(null);
+      }
+      this._releasedGoneAgentBase = base;
+    } catch (teardownError) {
+      // error-policy:J6 best-effort binding teardown must not mask the original
+      // agent-gone error; leave _releasedGoneAgentBase unset so a later 404 can
+      // retry incomplete cleanup.
+      logger.warn(
+        {
+          requestBase: base,
+          error:
+            teardownError instanceof Error
+              ? teardownError.message
+              : String(teardownError),
+        },
+        "[ElizaClient] failed to release stale cloud agent binding after agent-gone 404",
+      );
+    }
   }
 
   private rawRequestUrl(path: string): string {
@@ -1436,7 +1588,7 @@ export class ElizaClient {
     // renderer also cannot use that cleartext WebView socket even though its
     // native HTTP bridge keeps REST healthy. Both origins therefore use the
     // same REST-only state instead of reporting a dead backend (#16843).
-    if (shouldUseRestOnlyForInsecureWebSocket(wsProtocol)) {
+    if (shouldUseRestOnlyForInsecureWebSocket(wsProtocol, host)) {
       this.backoffMs = 500;
       this.reconnectAttempt = 0;
       this.disconnectedAt = null;
@@ -1449,8 +1601,16 @@ export class ElizaClient {
 
     // On Capacitor native (iosScheme/androidScheme = "https"), the origin host
     // is a synthetic bundle host (e.g. "localhost" with no server behind it).
-    // Only the native shell gets this exception. A browser on portless HTTPS
-    // commonly has nginx forwarding its real same-origin /ws endpoint.
+    // Skip WS there when we have no explicit baseUrl and the host doesn't look
+    // like a real backend (no port, not an IP, not a known API domain).
+    //
+    // The skip is gated on the Capacitor native runtime: a plain BROWSER served
+    // same-origin from a portless HTTPS host (nginx terminating TLS in front of
+    // the agent — the standard self-hosted deployment shape) is a real backend
+    // whose /ws must connect. Ungated, this guard silently disabled the
+    // realtime WebSocket (proactive-message, conversation-updated, agent
+    // events) for every such deployment while REST kept working, so live
+    // server-pushed messages never rendered until a manual reload.
     if (
       !this.baseUrl &&
       isCapacitorNativeRuntime() &&
@@ -1843,7 +2003,14 @@ export class ElizaClient {
   async streamChatEndpoint(
     path: string,
     text: string,
-    onToken: (token: string, accumulatedText?: string) => void,
+    onToken: (
+      token: string,
+      accumulatedText?: string,
+      /** True when this text state is an in-flight action-callback delivery
+       *  the final reply may replace — voice output must hold it (see
+       *  StreamChatEvent.provisional). */
+      provisional?: boolean,
+    ) => void,
     channelType: ConversationChannelType = "DM",
     signal?: AbortSignal,
     images?: ImageAttachment[],
@@ -2039,12 +2206,12 @@ export class ElizaClient {
       }
     }
 
+    const rawReplyText = streamState.doneText ?? streamState.fullText;
     const resolvedText =
-      streamState.doneNoResponseReason === "ignored"
+      streamState.doneNoResponseReason === "ignored" ||
+      (!streamState.receivedDone && rawReplyText.trim().length === 0)
         ? ""
-        : this.normalizeAssistantText(
-            streamState.doneText ?? streamState.fullText,
-          );
+        : this.normalizeAssistantText(rawReplyText);
     return {
       text: resolvedText,
       agentName: streamState.doneAgentName ?? "Eliza",

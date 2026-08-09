@@ -5,6 +5,7 @@ ALTER ROLE postgres WITH PASSWORD 'postgres';
 CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA public;
 CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA public;
 CREATE EXTENSION IF NOT EXISTS "fuzzystrmatch" WITH SCHEMA public;
+CREATE EXTENSION IF NOT EXISTS "pg_trgm" WITH SCHEMA public;
 
 -- Clean up RLS functions that may exist from previous test runs
 -- This is required because CREATE OR REPLACE FUNCTION requires ownership

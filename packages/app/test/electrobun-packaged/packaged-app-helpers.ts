@@ -967,7 +967,11 @@ export class PackagedDesktopHarness {
         return response.result;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (!message.includes("/main-window/eval failed (500)")) {
+        const isTransientEvalFailure =
+          message.includes("/main-window/eval failed (500)") ||
+          (message.includes("/main-window/eval") &&
+            message.includes("timed out after"));
+        if (!isTransientEvalFailure) {
           throw error;
         }
         lastError = error instanceof Error ? error : new Error(message);

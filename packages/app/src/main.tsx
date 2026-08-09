@@ -78,6 +78,7 @@ import {
 } from "@elizaos/ui/bridge/storage-bridge";
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
+import { cloudPairTokenKeyForAgent } from "@elizaos/ui/components/auth/CloudPairRelay";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import type {
@@ -144,10 +145,12 @@ import {
 } from "@elizaos/ui/platform/window-shell";
 import { AppProvider } from "@elizaos/ui/state";
 import { upsertAndActivateAgentProfile } from "@elizaos/ui/state/agent-profiles";
+import { resolveDedicatedAgentId } from "@elizaos/ui/state/agent-session-recovery";
 import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";
 import {
   applyUiTheme,
   createPersistedActiveServer,
+  loadPersistedActiveServer,
   loadUiLanguage,
   loadUiThemeMode,
   resolveUiTheme,
@@ -426,39 +429,101 @@ function getWindowUrlSearchParams(): URLSearchParams {
 
 function applyCloudPairSessionToken(): void {
   if (typeof window === "undefined") return;
+  // Gate 0 — trusted shell. The durable pair credential is adopted only by
+  // the real app shell; an embedded third-party surface (Telegram Mini App /
+  // Discord Activity iframe, #9947) must not read, migrate, or stamp it —
+  // those surfaces get a scoped session from the embed handshake instead.
+  if (isEmbedPath(window.location.pathname)) return;
+  // Gate 1 — resolve the intended target base BEFORE touching storage. The
+  // durable pair credential is only ever adopted toward a dedicated cloud
+  // agent base; a control-plane, shared-adapter, local, or arbitrary origin
+  // must never read, migrate, or stamp it (#16666). Resolving the base first
+  // means a stale token on a non-dedicated origin is simply never adopted
+  // and never mirrored into the active-server/profile stores.
+  const apiBase = isDedicatedCloudAgentBase(window.location.origin)
+    ? window.location.origin
+    : getBootConfig().apiBase?.trim();
+  if (!isDedicatedCloudAgentBase(apiBase)) return;
+  // Gate 2 — the target must resolve to a dedicated agent id. A base that
+  // passes the suffix check but carries no agent label must not adopt the
+  // credential either; an unscoped adopter is the exact unscoped re-adoption
+  // path #16666 is closing.
+  const agentId = dedicatedCloudAgentIdFromBase(apiBase);
+  if (!agentId) return;
+  // Gate 3 — owner-bound read. The durable credential is stored under a
+  // per-agent key (`eliza:cloud-pair:api-token:<agentId>`), so this boot only
+  // ever reads the key belonging to the agent it resolved. A token persisted
+  // for agent A is invisible to a boot targeting agent B — it can never be
+  // adopted or mirrored across agents (#17579).
+  const agentTokenKey = cloudPairTokenKeyForAgent(agentId);
   let token: string | null = null;
   try {
-    token =
-      window.localStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() || null;
+    token = window.localStorage.getItem(agentTokenKey)?.trim() || null;
   } catch {
     // error-policy:J4 localStorage can be unavailable in hardened browser
     // contexts — sessionStorage remains the compatibility handoff.
   }
   if (!token) {
     try {
-      token =
-        window.sessionStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() ||
-        null;
+      token = window.sessionStorage.getItem(agentTokenKey)?.trim() || null;
     } catch {
       // error-policy:J4 sessionStorage can be unavailable in hardened browser
       // contexts — the pairing token is simply not adopted.
     }
     if (token) {
       try {
-        shellLocalStorage.setItem(CLOUD_PAIR_SESSION_TOKEN_KEY, token);
+        shellLocalStorage.setItem(agentTokenKey, token);
       } catch {
         // error-policy:J4 migration is best-effort; the same-tab token still
         // authenticates this launch.
       }
     }
   }
+  // Gate 4 — legacy single-key migration with target equality. A pre-#17579
+  // install stored the bearer under the global `eliza:cloud-pair:api-token`
+  // key with no owner binding. That key is adopted ONLY when the persisted
+  // active server for THIS agent still carries the identical bearer — i.e.
+  // the local record proves the legacy credential belongs to the agent being
+  // booted. Without that proof the legacy key is left untouched (never
+  // mirrored onto an agent that cannot claim it) and the pairing flow writes
+  // the scoped key on the next explicit pair.
+  if (!token) {
+    let legacyToken: string | null = null;
+    try {
+      legacyToken =
+        window.localStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() ||
+        null;
+    } catch {
+      // error-policy:J4 unreadable legacy storage — no adoption.
+    }
+    if (legacyToken) {
+      try {
+        const activeServer = loadPersistedActiveServer();
+        const ownedByTarget =
+          activeServer !== null &&
+          resolveDedicatedAgentId(activeServer) === agentId &&
+          activeServer.accessToken === legacyToken;
+        if (ownedByTarget) {
+          token = legacyToken;
+          try {
+            shellLocalStorage.setItem(agentTokenKey, token);
+          } catch {
+            // error-policy:J4 best-effort migration write.
+          }
+          try {
+            shellLocalStorage.removeItem(CLOUD_PAIR_SESSION_TOKEN_KEY);
+          } catch {
+            // error-policy:J3 best-effort legacy cleanup.
+          }
+        }
+      } catch {
+        // error-policy:J4 unreadable active-server record — legacy key stays
+        // unadopted rather than being stamped onto an unproven target.
+      }
+    }
+  }
   if (!token) return;
   client.setToken(token);
-  const apiBase = isDedicatedCloudAgentBase(window.location.origin)
-    ? window.location.origin
-    : getBootConfig().apiBase?.trim();
-  if (!isDedicatedCloudAgentBase(apiBase)) return;
-  const agentId = dedicatedCloudAgentIdFromBase(apiBase);
   const activeServer = createPersistedActiveServer({
     kind: "cloud",
     ...(agentId ? { id: `cloud:${agentId}` } : {}),

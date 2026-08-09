@@ -1,0 +1,47 @@
+# Base-trusted conditional merge gate. It only reads PR metadata and check
+# results, and never checks out or executes pull-request code.
+name: Security Advisory Gate
+
+on:
+  pull_request_target:
+    branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      canary:
+        description: Deterministic gate canary
+        required: true
+        type: choice
+        options: [bypass, protected, waiting, success, failure]
+
+concurrency:
+  group: security-advisory-gate-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  gate:
+    name: Security Advisory Gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      POLL_TIMEOUT_SECONDS: "1200"
+      POLL_INTERVAL_SECONDS: "30"
+      POLL_COMPLETION_GRACE_SECONDS: "240"
+      CANARY_SCENARIO: ${{ github.event_name == 'workflow_dispatch' && inputs.canary || '' }}
+    steps:
+      - name: Check out trusted gate implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Run security advisory gate
+        run: node scripts/security/security-advisory-gate.mjs

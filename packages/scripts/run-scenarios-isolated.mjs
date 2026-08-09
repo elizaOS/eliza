@@ -97,6 +97,7 @@ for (const id of ids) {
     "/tmp",
     `scenario-isolated-${id.replace(/[^a-z0-9._-]/gi, "_")}.json`,
   );
+  fs.rmSync(tmpReport, { force: true });
   const child = spawnSync(
     "bun",
     [CLI, "run", dir, "--scenario", id, "--report", tmpReport],

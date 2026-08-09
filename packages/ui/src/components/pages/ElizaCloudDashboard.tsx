@@ -28,7 +28,7 @@ import {
 import { useBranding } from "../../config/branding";
 import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
 import { useAppSelectorShallow } from "../../state";
-import { preOpenCloudLoginWindow } from "../../state/cloud-login-launch";
+import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { openExternalUrl } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";
 import { Button } from "../ui/button";
@@ -68,7 +68,7 @@ export function CloudDashboard() {
     cloudDashboardView,
     elizaCloudLoginBusy,
     elizaCloudLoginFallbackUrl,
-    handleCloudLogin,
+    handleInteractiveCloudLogin,
     handleCloudDisconnect,
     cloudDisconnecting,
     setActionNotice,
@@ -86,7 +86,7 @@ export function CloudDashboard() {
     cloudDashboardView: s.cloudDashboardView,
     elizaCloudLoginBusy: s.elizaCloudLoginBusy,
     elizaCloudLoginFallbackUrl: s.elizaCloudLoginFallbackUrl,
-    handleCloudLogin: s.handleCloudLogin,
+    handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
     handleCloudDisconnect: s.handleCloudDisconnect,
     cloudDisconnecting: s.elizaCloudDisconnecting,
     setActionNotice: s.setActionNotice,
@@ -622,7 +622,10 @@ export function CloudDashboard() {
             variant="default"
             size="sm"
             className="h-8 rounded-sm px-3 text-xs font-semibold"
-            onClick={() => void handleCloudLogin(preOpenCloudLoginWindow())}
+            onClick={() => {
+              claimCloudLoginWindow();
+              void handleInteractiveCloudLogin();
+            }}
             disabled={elizaCloudLoginBusy}
           >
             {elizaCloudLoginBusy ? (

@@ -46,7 +46,7 @@ describe("ElizaClient agent streaming transport", () => {
       messageId: "assistant-db-id",
       userMessageId: "user-db-id",
     });
-    expect(onToken).toHaveBeenCalledWith("hi", "hi");
+    expect(onToken).toHaveBeenCalledWith("hi", "hi", false);
     expect(read).toHaveBeenCalledTimes(1);
     expect(cancel).toHaveBeenCalledWith("elizaos-sse-terminal-done");
   });
@@ -307,7 +307,9 @@ describe("ElizaClient agent streaming transport", () => {
     );
 
     // Token 'a' must surface while the 2nd chunk is still pending.
-    await vi.waitFor(() => expect(onToken).toHaveBeenCalledWith("a", "a"));
+    await vi.waitFor(() =>
+      expect(onToken).toHaveBeenCalledWith("a", "a", false),
+    );
     expect(onToken).toHaveBeenCalledTimes(1);
 
     // Release the 2nd chunk (token 'b'); the stream then completes on the done event.
@@ -319,7 +321,7 @@ describe("ElizaClient agent streaming transport", () => {
     });
 
     const result = await resultPromise;
-    expect(onToken).toHaveBeenNthCalledWith(2, "b", "ab");
+    expect(onToken).toHaveBeenNthCalledWith(2, "b", "ab", false);
     expect(result).toEqual({ text: "ab", agentName: "Eliza", completed: true });
   });
 
@@ -360,7 +362,7 @@ describe("ElizaClient agent streaming transport", () => {
 
     // Exactly one well-formed token — no partial/malformed emission from chunk-1.
     expect(onToken).toHaveBeenCalledTimes(1);
-    expect(onToken).toHaveBeenCalledWith("hi", "hi");
+    expect(onToken).toHaveBeenCalledWith("hi", "hi", false);
     expect(result).toEqual({ text: "hi", agentName: "Eliza", completed: true });
   });
 
@@ -456,7 +458,7 @@ describe("ElizaClient chat-turn status SSE (#8813)", () => {
     // The reply still streams + completes — status is purely additive.
     expect(result.text).toBe("Done.");
     expect(result.completed).toBe(true);
-    expect(onToken).toHaveBeenCalledWith("Done.", "Done.");
+    expect(onToken).toHaveBeenCalledWith("Done.", "Done.", false);
     // Every status event surfaced, in order, with action detail preserved.
     expect(onStatus.mock.calls.map((c) => c[0])).toEqual([
       { kind: "thinking" },
@@ -577,7 +579,7 @@ describe("ElizaClient chat-turn status SSE (#8813)", () => {
       agentName: "Eliza",
       completed: true,
     });
-    expect(onToken).toHaveBeenCalledWith("hi", "hi");
+    expect(onToken).toHaveBeenCalledWith("hi", "hi", false);
   });
 
   it("keeps partial text when the stream transport rejects without fabricating a provider error", async () => {
@@ -612,6 +614,33 @@ describe("ElizaClient chat-turn status SSE (#8813)", () => {
     expect(result.completed).toBe(false);
     expect(result.failureKind).toBeUndefined();
     expect(result.text).toContain("par");
+    expect(cancel).toHaveBeenCalledWith("elizaos-sse-read-failed");
+  });
+
+  it("does not fabricate an assistant error when an empty stream ends before its terminal frame", async () => {
+    const read = vi.fn().mockRejectedValueOnce(new Error("socket reset"));
+    const cancel = vi.fn(async () => {});
+    const request = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          body: { getReader: () => ({ read, cancel }) },
+        }) as unknown as Response,
+    );
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "go home",
+      vi.fn(),
+    );
+
+    expect(result).toMatchObject({
+      text: "",
+      completed: false,
+    });
     expect(cancel).toHaveBeenCalledWith("elizaos-sse-read-failed");
   });
 });

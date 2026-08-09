@@ -20,7 +20,7 @@
  */
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { type ComponentType, type ReactNode, Suspense } from "react";
+import { type ComponentType, lazy, type ReactNode, Suspense } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -29,6 +29,7 @@ import {
   useLocation,
   useParams,
 } from "react-router-dom";
+import { isAppModeHost } from "../app-mode/app-mode";
 import { queryClient } from "../lib/query-client";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { isApexControlPlaneHost } from "./apex-host";
@@ -276,8 +277,16 @@ const APEX_AUTHENTICATED_HOME = "/dashboard";
  *    the app while auth resolves lets its tab system rewrite the URL and
  *    strand the visitor before the redirect can fire.
  *
- * Every non-apex host (per-agent subdomains, app.elizacloud.ai, localhost) is
- * untouched: chat stays home.
+ * On the Eliza APP hosts (app.elizacloud.ai / app-staging — checked AFTER the
+ * apex branch, so apex behavior is untouched) the catch-all renders the
+ * app-mode entry gate instead: signed-in visitors land in the same-origin
+ * chat app (the chat floor — see `../app-mode/AppModeEntryRoute`; entry never
+ * pairing-redirects into a per-agent web UI), and an org with no agents at
+ * all is sent to the `/join` deploy-first-agent flow. The gate chunk is lazy
+ * so no app-mode code loads on any other host.
+ *
+ * Every other host (per-agent subdomains, localhost) is untouched: chat stays
+ * home.
  */
 export function AppCatchAllRoute({
   appElement,
@@ -298,8 +307,19 @@ export function AppCatchAllRoute({
     }
     return <Navigate to={APEX_AUTHENTICATED_HOME} replace />;
   }
+  if (isAppModeHost()) {
+    return (
+      <Suspense fallback={<RouteChunkFallback />}>
+        <AppModeEntryRoute appElement={appElement} />
+      </Suspense>
+    );
+  }
   return <>{appElement}</>;
 }
+
+/** App-mode entry gate, loaded only on the Eliza app hosts (see
+ * {@link AppCatchAllRoute}); apex + per-agent hosts never fetch this chunk. */
+const AppModeEntryRoute = lazy(() => import("../app-mode/AppModeEntryRoute"));
 
 /**
  * The shell. Mounts the registered cloud routes + the `/dashboard/*` compat

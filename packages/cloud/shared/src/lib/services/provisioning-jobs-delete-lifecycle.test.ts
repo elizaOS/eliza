@@ -76,6 +76,13 @@ afterAll(() => {
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
 const USER = "33333333-3333-4333-8333-333333333333";
+const EMPTY_RECOVERY = {
+  scanned: 0,
+  retried: 0,
+  permanentlyFailed: 0,
+  unchanged: 0,
+  failures: [],
+};
 
 function makeJob(type: ProvisioningJobType, extraData: Record<string, unknown> = {}): Job {
   const now = new Date("2026-06-20T00:00:00.000Z");
@@ -128,7 +135,7 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
   const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockImplementation(
     async (f: { type: string }) => (f.type === type ? [job] : []),
   );
-  const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+  const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
   const assertLeaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
   const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
   const updateSpy = spyOn(jobsRepository, "updateForExecution").mockImplementation(

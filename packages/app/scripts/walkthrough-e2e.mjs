@@ -10,7 +10,8 @@
  *      `--live` lane (real backend agent + model). Tees the runner output and
  *      extracts the backend `[ClassName]` / `[ui-smoke][api]` lines.
  *   2. Runs the per-step vision review (`scripts/ai-qa/review-walkthrough.mjs`)
- *      when ANTHROPIC_API_KEY is present, writing the committed verdict markdown.
+ *      when a configured reviewer provider key is present, writing the
+ *      committed verdict markdown.
  *   3. Stitches ONE human-speed, step-labeled recording per viewport from the
  *      ordered `NN-<step>.png` frames (ffmpeg) into `e2e-recordings/`, with a
  *      contact sheet + a viewer entry — not 25 headless per-test clips.
@@ -508,6 +509,8 @@ async function main() {
     for (const key of [
       "ANTHROPIC_API_KEY",
       "OPENAI_API_KEY",
+      "AI_QA_VISION_BACKEND",
+      "AI_QA_VISION_MODEL",
       "GROQ_API_KEY",
       "OPENROUTER_API_KEY",
       "GOOGLE_GENERATIVE_AI_API_KEY",
@@ -516,8 +519,6 @@ async function main() {
     ]) {
       if (!childEnv[key] && env[key]) childEnv[key] = env[key];
     }
-    if (childEnv.ANTHROPIC_API_KEY)
-      childEnv.ELIZA_UI_SMOKE_LIVE_PROVIDER = "anthropic";
   }
 
   // The live lane promises reviewed visual evidence. Reject unavailable,
@@ -582,10 +583,11 @@ async function main() {
   let reviewOk = true;
   if (!args.skipReview) {
     const reviewEnv = { ...childEnv };
-    if (!reviewEnv.ANTHROPIC_API_KEY) {
+    if (!reviewEnv.ANTHROPIC_API_KEY || !reviewEnv.OPENAI_API_KEY) {
       const env = loadEnvFile(join(REPO_ROOT, ".env.local"));
       if (env.ANTHROPIC_API_KEY)
         reviewEnv.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
+      if (env.OPENAI_API_KEY) reviewEnv.OPENAI_API_KEY = env.OPENAI_API_KEY;
     }
     const review = await run(
       process.execPath,

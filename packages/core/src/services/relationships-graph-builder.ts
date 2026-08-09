@@ -9,6 +9,7 @@
  * lookup across every member of a person's identity cluster.
  */
 import { getCloudAuthService } from "../cloud-auth-service";
+import { logger } from "../logger";
 import type {
 	Entity,
 	IAgentRuntime,
@@ -228,6 +229,13 @@ export type RelationshipsGraphService = {
 		entityB: UUID,
 		evidence: RelationshipsMergeProposalEvidence,
 	) => Promise<UUID>;
+	/**
+	 * Kick a background graph-model build so the first user turn after boot
+	 * can hit the stale-while-revalidate cache instead of awaiting a cold
+	 * CPU-bound rebuild that pins the event loop past the 3s rolodex budget
+	 * (#17932). Safe to call multiple times; builds are single-flighted.
+	 */
+	prewarmGraphModel: () => void;
 };
 
 type RelationshipsContactLike = {
@@ -2241,8 +2249,14 @@ async function buildGraphModel(
 	};
 }
 
-/** TTL cache for the expensive graph model build. */
-const MODEL_CACHE_TTL_MS = 30_000; // 30 seconds
+/**
+ * TTL cache for the expensive graph model build. Expiry serves the stale
+ * snapshot while a single-flight rebuild refreshes it in the background (see
+ * getCachedModel), so the TTL governs snapshot staleness only, never turn
+ * latency. Five minutes matches how fast a human-scale contact graph actually
+ * changes; merge mutations still invalidate immediately.
+ */
+const MODEL_CACHE_TTL_MS = 300_000;
 
 type CachedModel = Awaited<ReturnType<typeof buildGraphModel>>;
 type ModelCache = { model: CachedModel; timestamp: number };
@@ -2285,11 +2299,29 @@ export function createNativeRelationshipsGraphService(
 					return model;
 				})
 				.catch((err) => {
-					// error-policy:J5 The shared promise is returned to callers, who observe
-					// the rejection; this branch only clears the single-flight slot.
+					// error-policy:J5 First-build callers await the shared promise and
+					// observe the rejection; the single observer attached below logs it
+					// for stale-serving callers. This branch only clears the
+					// single-flight slot so the next expired read retries.
 					modelBuildPromise = null;
 					throw err;
 				});
+			modelBuildPromise.catch((err) => {
+				// error-policy:J5 Observed once per build here (and by any first-build
+				// awaiter); prevents an unhandled rejection when stale-serving callers
+				// never await the background refresh. The last good snapshot stays.
+				logger.warn(
+					`[RelationshipsGraph] Graph model rebuild failed; last good snapshot retained: ${
+						err instanceof Error ? err.message : String(err)
+					}`,
+				);
+			});
+		}
+		// Stale-while-revalidate: an expired snapshot answers the turn
+		// immediately while the single-flight rebuild refreshes it in the
+		// background. Only the first-ever build (no snapshot at all) awaits.
+		if (modelCache) {
+			return modelCache.model;
 		}
 		return modelBuildPromise;
 	}
@@ -2297,6 +2329,15 @@ export function createNativeRelationshipsGraphService(
 	function invalidateModelCache(): void {
 		modelCache = null;
 		modelBuildPromise = null;
+	}
+
+	/**
+	 * Fire-and-forget first-build of the graph model. Does not await; errors
+	 * are already observed by the shared getCachedModel catch handler.
+	 */
+	function prewarmGraphModel(): void {
+		if (modelCache || modelBuildPromise) return;
+		void getCachedModel();
 	}
 
 	function applyOwnerName(
@@ -2310,6 +2351,7 @@ export function createNativeRelationshipsGraphService(
 	}
 
 	return {
+		prewarmGraphModel,
 		async getGraphSnapshot(query = {}): Promise<RelationshipsGraphSnapshot> {
 			const [model, ownerName] = await Promise.all([
 				getCachedModel(),

@@ -99,4 +99,16 @@ describe("NativeAppsStudio — native Applications mount", () => {
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith("/api/v1/apps"));
     expect(screen.queryByText("Smoke Test App")).toBeNull();
   });
+
+  it("shows an explicit signed-out state without requesting an inventory", async () => {
+    window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+
+    render(<NativeAppsStudio />);
+
+    expect(
+      await screen.findByText("Sign in to Eliza Cloud to manage Cloud Apps."),
+    ).toBeTruthy();
+    expect(apiMock).not.toHaveBeenCalled();
+    expect(screen.queryByText("Total Apps")).toBeNull();
+  });
 });

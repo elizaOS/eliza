@@ -12,6 +12,13 @@ const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
 const USER = "33333333-3333-4333-8333-333333333333";
 const DOCKER_IMAGE = "ghcr.io/elizaos/eliza-agent:latest";
 const FROM_DIGEST = "sha256:postupgrade";
+const EMPTY_RECOVERY = {
+  scanned: 0,
+  retried: 0,
+  permanentlyFailed: 0,
+  unchanged: 0,
+  failures: [],
+};
 
 function makeDowngradeJob(): Job {
   const now = new Date("2026-06-20T00:00:00.000Z");
@@ -67,7 +74,7 @@ function withClaimedDowngradeJob() {
     async (filters: { type: ProvisioningJobType }) =>
       filters.type === JOB_TYPES.AGENT_DOWNGRADE ? [job] : [],
   );
-  const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+  const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
   const assertLeaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
   const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
   const incrementSpy = spyOn(jobsRepository, "incrementAttempt").mockResolvedValue(undefined);

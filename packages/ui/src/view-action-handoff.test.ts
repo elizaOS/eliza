@@ -72,6 +72,7 @@ describe("view action handoff", () => {
       viewPath: "/calendar",
       viewLabel: "Calendar",
       viewType: "gui",
+      source: "agent",
     });
   });
 
@@ -86,7 +87,33 @@ describe("view action handoff", () => {
     expect(dispatchViewActionHandoffDirect([sharedKnowledge], dispatch)).toBe(
       true,
     );
-    expect(dispatch).toHaveBeenCalledWith({ viewId: "documents" });
+    expect(dispatch).toHaveBeenCalledWith({
+      viewId: "documents",
+      source: "agent",
+    });
+  });
+
+  it("dispatches a shared host destination at its canonical path", () => {
+    const dispatch = vi.fn();
+    const sharedCloudApps: ChatActionResultSummary = {
+      actionName: "VIEWS",
+      success: true,
+      values: {
+        mode: "show",
+        viewId: "cloud-apps",
+        viewPath: "/cloud-apps",
+        source: "agent",
+      },
+    };
+
+    expect(dispatchViewActionHandoffDirect([sharedCloudApps], dispatch)).toBe(
+      true,
+    );
+    expect(dispatch).toHaveBeenCalledWith({
+      viewId: "cloud-apps",
+      viewPath: "/cloud-apps",
+      source: "agent",
+    });
   });
 
   it("does not duplicate history when the WebSocket already switched the route", async () => {

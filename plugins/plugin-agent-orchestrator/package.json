@@ -193,9 +193,8 @@
       },
       "ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE": {
         "type": "string",
-        "description": "Codex ACP sandbox_mode used when Linux Landlock is unavailable.",
+        "description": "Codex ACP sandbox_mode used when Linux Landlock is unavailable. Required for fail-closed no-Landlock fallback; no default (unset throws CODEX_NO_LANDLOCK_NO_FALLBACK).",
         "required": false,
-        "default": "danger-full-access",
         "sensitive": false
       },
       "ELIZA_CODEX_ACP_APPROVAL_POLICY": {

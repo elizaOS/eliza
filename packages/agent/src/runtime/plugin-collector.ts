@@ -13,7 +13,10 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/core";
+import {
+  isGoogleChatConfigured,
+  lifeOpsPassiveConnectorsEnabled,
+} from "@elizaos/core";
 import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
   type: "json",
 };
@@ -24,10 +27,12 @@ import shortIdPluginMap from "@elizaos/registry/first-party/short-id-plugin-map.
   type: "json",
 };
 import {
+  getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
+  normalizeFirstRunProviderId,
   type ResolvedElizaCloudTopology,
   readAliasedEnv,
   resolveDeploymentTargetInConfig,
@@ -181,6 +186,44 @@ function packageNameFromPluginConfigId(pluginId: string): string {
   return `@elizaos/plugin-${pluginId}`;
 }
 
+function providerPluginNameFromBackend(backend: string): string {
+  const explicitPluginName = resolvePluginPackageAlias(
+    packageNameFromPluginConfigId(backend),
+  );
+  if (
+    DIRECT_MODEL_PROVIDER_PLUGINS.has(explicitPluginName) ||
+    LOCAL_MODEL_PROVIDER_PLUGINS.has(explicitPluginName)
+  ) {
+    return explicitPluginName;
+  }
+  const providerId = normalizeFirstRunProviderId(backend);
+  if (providerId && providerId !== "elizacloud") {
+    const provider = getFirstRunProviderOption(providerId);
+    if (provider) {
+      return resolvePluginPackageAlias(provider.pluginName);
+    }
+  }
+  return explicitPluginName;
+}
+
+function isDirectlyRoutableProviderPlugin(
+  backend: string,
+  pluginName: string,
+): boolean {
+  if (
+    DIRECT_MODEL_PROVIDER_PLUGINS.has(pluginName) ||
+    LOCAL_MODEL_PROVIDER_PLUGINS.has(pluginName)
+  ) {
+    return true;
+  }
+  const provider = getFirstRunProviderOption(backend);
+  return (
+    provider !== null &&
+    provider.id !== "elizacloud" &&
+    resolvePluginPackageAlias(provider.pluginName) === pluginName
+  );
+}
+
 function isTruthyCloudEnvValue(raw: string | undefined): boolean {
   if (!raw) return false;
   const value = raw.trim().toLowerCase();
@@ -227,6 +270,7 @@ export const MODEL_PROVIDER_PLUGIN_NAMES: ReadonlySet<string> = new Set(
 
 const LOCAL_MODEL_PROVIDER_PLUGINS = new Set<string>([
   "@elizaos/plugin-local-inference",
+  "@elizaos/plugin-zerollama",
 ]);
 
 const REMOTE_MODEL_PROVIDER_PLUGINS = new Set(
@@ -323,6 +367,31 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
  * source, operators assume the framework is broken instead of fixing config/env.
  */
 export type PluginLoadReasons = Map<string, string>;
+
+/**
+ * Explicit Google signals only — never inferred from the universal Calendar
+ * home tile (Apple/Microsoft/ICS also use Calendar).
+ */
+function shouldLoadGoogleWorkspace(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv,
+  pluginEntries: Record<string, { enabled?: boolean } | undefined> | undefined,
+): boolean {
+  if (pluginEntries?.["google-workspace"]?.enabled === true) {
+    return true;
+  }
+
+  const connectors = config.connectors as Record<string, unknown> | undefined;
+  if (isGoogleChatConfigured(connectors?.googlechat)) {
+    return true;
+  }
+
+  // Match readClientConfig(): OAuth cannot start without redirect URI either.
+  const clientId = env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
+  const redirectUri = env.GOOGLE_REDIRECT_URI?.trim();
+  return Boolean(clientId && clientSecret && redirectUri);
+}
 
 /**
  * Collect plugin package names to load from config, env, feature flags, and
@@ -576,6 +645,13 @@ export function collectPluginNames(
     if ((channelConfig as Record<string, unknown>).enabled === false) {
       continue;
     }
+    // googlechat → google-workspace: require real Chat config, not empty `{}`.
+    if (
+      channelName === "googlechat" &&
+      !isGoogleChatConfigured(channelConfig)
+    ) {
+      continue;
+    }
     const pluginName = CHANNEL_PLUGIN_MAP[channelName];
     if (pluginName) {
       pluginsToLoad.add(pluginName);
@@ -618,7 +694,32 @@ export function collectPluginNames(
     }
 
     if (deploymentTarget.runtime === "cloud") {
+      // A Cloud runtime can keep its managed state/capability routes while the
+      // owner supplies the text brain directly. The canonical llmText route is
+      // the arbitration signal; stripping direct providers here would make the
+      // persisted route impossible to execute and let Cloud inference win.
+      const directlyRoutedProviderPlugins = new Set(
+        Object.values(serviceRouting ?? {}).flatMap((route) => {
+          if (route?.transport !== "direct" || !route.backend) return [];
+          const pluginName = providerPluginNameFromBackend(route.backend);
+          return isDirectlyRoutableProviderPlugin(route.backend, pluginName)
+            ? [pluginName]
+            : [];
+        }),
+      );
+      // Ambient credentials may belong to other tools or stale configuration;
+      // the canonical route matrix is the sole ownership signal in Cloud mode.
       removeDirectModelProviderSurfaces(pluginsToLoad);
+      for (const pluginName of directlyRoutedProviderPlugins) {
+        pluginsToLoad.add(pluginName);
+      }
+      for (const pluginName of LOCAL_MODEL_PROVIDER_PLUGINS) {
+        if (directlyRoutedProviderPlugins.has(pluginName)) {
+          pluginsToLoad.add(pluginName);
+        } else {
+          pluginsToLoad.delete(pluginName);
+        }
+      }
       if (cloudEffectivelyEnabled) {
         pluginsToLoad.add("@elizaos/plugin-elizacloud");
       } else {
@@ -741,12 +842,46 @@ export function collectPluginNames(
     }
   }
 
+  // Calendar home tiles load on every platform (MOBILE_VIEW_PLUGINS). Calendar
+  // hard-depends on plugin-scheduling (watch/reminder spine); always companion
+  // that primitive when calendar is present.
+  //
+  // Do NOT infer Google Workspace from Calendar alone — Calendar also covers
+  // Apple/Microsoft/ICS. Load google-workspace only on an explicit Google
+  // signal (entries enable, googlechat connector, or full GOOGLE_CLIENT_* trio),
+  // and never when entries["google-workspace"].enabled === false.
+  //
+  // Run BEFORE the mobile allow-list so Node-only Workspace cannot be re-added
+  // after mobile filtering (APK has no google-workspace bundle).
+  if (pluginsToLoad.has("@elizaos/plugin-calendar")) {
+    if (!pluginsToLoad.has("@elizaos/plugin-scheduling")) {
+      pluginsToLoad.add("@elizaos/plugin-scheduling");
+      track("@elizaos/plugin-scheduling", "calendar companion");
+    }
+  }
+  if (
+    !pluginsToLoad.has("@elizaos/plugin-google-workspace") &&
+    !isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace") &&
+    shouldLoadGoogleWorkspace(config, process.env, pluginEntries)
+  ) {
+    pluginsToLoad.add("@elizaos/plugin-google-workspace");
+    track(
+      "@elizaos/plugin-google-workspace",
+      "explicit Google signal (entries / googlechat / GOOGLE_CLIENT_*)",
+    );
+  }
+  // Final deny: explicit disable wins even if an earlier path added Workspace.
+  if (isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace")) {
+    pluginsToLoad.delete("@elizaos/plugin-google-workspace");
+  }
+
   // Mobile: restrict the final set to plugins that the bundled mobile runtime
   // can actually load — the mobile-core list plus model-provider plugins that
   // are statically imported in `runtime/eliza.ts`. Anything else (connector
   // plugins, feature plugins from `plugins.entries`, drop-in plugins from
   // `plugins.installs`) would force a dynamic `import("@elizaos/plugin-...")`
   // against a `node_modules` tree that does not ship in the APK.
+  // Must run AFTER companion adds so google-workspace cannot bypass the filter.
   if (onMobile) {
     const mobileAllowed = new Set<string>([
       ...MOBILE_CORE_PLUGINS,

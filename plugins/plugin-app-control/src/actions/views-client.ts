@@ -7,12 +7,16 @@
  * the full AppControlClient (different concern, different surface).
  */
 
-import type {
-	ViewCapability,
-	ViewCapabilityParameter,
-	ViewType,
+import {
+	type EffectReceipt,
+	ElizaError,
+	normalizeEffectReceipts,
+	normalizeUserFacingEffectReceiptIds,
+	type ViewCapability,
+	type ViewCapabilityParameter,
+	type ViewType,
 } from "@elizaos/core";
-import { resolveServerOnlyPort } from "@elizaos/core";
+import { getAppControlApiBase } from "../loopback-api.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -57,8 +61,7 @@ export interface CurrentViewSummary {
 }
 
 function getApiBase(): string {
-	const port = resolveServerOnlyPort(process.env);
-	return `http://127.0.0.1:${port}`;
+	return getAppControlApiBase();
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -83,6 +86,11 @@ export interface ViewInteractionReceipt {
 		kind: "note" | "event";
 		id: string;
 	};
+}
+
+export interface ViewInteractionEffectContract {
+	effectReceipts: readonly EffectReceipt[];
+	userFacingEffectReceiptIds: readonly string[];
 }
 
 function readBoundedReceiptId(value: unknown): string | undefined {
@@ -127,6 +135,56 @@ export function readViewInteractionReceipt(
 		...(revision !== undefined ? { revision } : {}),
 		...(entity ? { entity } : {}),
 	};
+}
+
+/** Validate the authoritative mutation proof returned by a view capability. */
+export function readViewInteractionEffectContract(
+	result: unknown,
+): ViewInteractionEffectContract | undefined {
+	if (!isObject(result)) return undefined;
+	const capabilityResult = isObject(result.result) ? result.result : result;
+	const hasReceipts = Object.hasOwn(capabilityResult, "effectReceipts");
+	const hasReceiptIds = Object.hasOwn(
+		capabilityResult,
+		"userFacingEffectReceiptIds",
+	);
+	if (!hasReceipts && !hasReceiptIds) return undefined;
+	if (!hasReceipts || !hasReceiptIds) {
+		throw new ElizaError(
+			"View interaction mutation proof must include both receipts and user-facing receipt IDs.",
+			{
+				code: "INVALID_VIEW_INTERACTION_EFFECT_CONTRACT",
+				severity: "fatal",
+			},
+		);
+	}
+
+	const effectReceipts = normalizeEffectReceipts(
+		capabilityResult.effectReceipts,
+	);
+	const userFacingEffectReceiptIds = normalizeUserFacingEffectReceiptIds(
+		capabilityResult.userFacingEffectReceiptIds,
+	);
+	const receiptsById = new Map(
+		effectReceipts.map((receipt) => [receipt.receiptId, receipt]),
+	);
+	if (
+		effectReceipts.length === 0 ||
+		userFacingEffectReceiptIds.length === 0 ||
+		userFacingEffectReceiptIds.some(
+			(id) => receiptsById.get(id)?.outcome !== "applied",
+		)
+	) {
+		throw new ElizaError(
+			"View interaction user-facing receipt IDs must resolve to applied mutation receipts.",
+			{
+				code: "INVALID_VIEW_INTERACTION_EFFECT_CONTRACT",
+				severity: "fatal",
+			},
+		);
+	}
+
+	return { effectReceipts, userFacingEffectReceiptIds };
 }
 
 /**

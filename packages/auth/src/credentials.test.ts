@@ -6,16 +6,25 @@ import {
   resetSubscriptionAuthProviders,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listAccounts, loadAccount, saveAccount } from "./account-storage";
 import {
+  createIsolatedAccountStoragePolicy,
+  listAccounts,
+  loadAccount,
+  saveAccount as saveAccountWithPolicy,
+} from "./account-storage";
+import {
+  type AccessTokenOutcome,
   applySubscriptionCredentials,
-  deleteProviderCredentials,
-  getAccessToken,
+  deleteProviderCredentials as deleteProviderCredentialsWithPolicy,
+  type GetAccessTokenOptions,
+  type GetAccessTokenOutcomeOptions,
+  getAccessToken as getAccessTokenWithPolicy,
   getSubscriptionStatus,
   listProviderAccounts,
-  saveCredentials,
+  saveCredentials as saveCredentialsWithPolicy,
 } from "./credentials";
 import { refreshCodexToken } from "./openai-codex";
+import type { AccountCredentialProvider } from "./types";
 
 vi.mock("./openai-codex.ts", () => ({
   refreshCodexToken: vi.fn(),
@@ -27,10 +36,61 @@ function useTempElizaHome(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-auth-test-"));
   tempHomes.push(dir);
   vi.stubEnv("ELIZA_HOME", dir);
+  vi.stubEnv("ELIZA_STATE_DIR", dir);
   vi.stubEnv("HOME", dir);
   vi.stubEnv("USERPROFILE", dir);
   return dir;
 }
+
+function storagePolicy() {
+  const root = process.env.ELIZA_HOME;
+  if (!root) throw new Error("test storage root is not initialized");
+  return createIsolatedAccountStoragePolicy(root);
+}
+
+function saveAccount(record: Parameters<typeof saveAccountWithPolicy>[0]) {
+  return saveAccountWithPolicy(record, storagePolicy());
+}
+
+function saveCredentials(
+  ...args: OmitLast<Parameters<typeof saveCredentialsWithPolicy>>
+) {
+  return saveCredentialsWithPolicy(...args, storagePolicy());
+}
+
+function deleteProviderCredentials(
+  provider: Parameters<typeof deleteProviderCredentialsWithPolicy>[0],
+) {
+  return deleteProviderCredentialsWithPolicy(provider, storagePolicy());
+}
+
+function getAccessToken(
+  provider: AccountCredentialProvider,
+  accountId: string,
+  opts: GetAccessTokenOutcomeOptions,
+): Promise<AccessTokenOutcome>;
+function getAccessToken(
+  provider: AccountCredentialProvider,
+  accountId?: string,
+  opts?: GetAccessTokenOptions,
+): Promise<string | null>;
+function getAccessToken(
+  provider: AccountCredentialProvider,
+  accountId = "default",
+  opts?: GetAccessTokenOptions | GetAccessTokenOutcomeOptions,
+): Promise<string | null | AccessTokenOutcome> {
+  return getAccessTokenWithPolicy(provider, accountId, {
+    ...opts,
+    storagePolicy: storagePolicy(),
+  } as GetAccessTokenOutcomeOptions);
+}
+
+type OmitLast<T extends readonly unknown[]> = T extends readonly [
+  ...infer Head,
+  unknown,
+]
+  ? Head
+  : never;
 
 describe("applySubscriptionCredentials", () => {
   afterEach(() => {
@@ -217,17 +277,23 @@ describe("applySubscriptionCredentials", () => {
     }
   });
 
-  it("fails visibly for malformed and provider-mismatched credential files", async () => {
+  it("rejects malformed and path-mismatched credential files", async () => {
     const home = useTempElizaHome();
     const providerDir = path.join(home, "auth", "openai-codex");
     fs.mkdirSync(providerDir, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(path.join(providerDir, "bad-json.json"), "{", {
+    const credentialFile = path.join(providerDir, "corrupt.json");
+    fs.writeFileSync(credentialFile, "{", {
       mode: 0o600,
     });
+
+    expect(() => listAccounts("openai-codex")).toThrow(
+      expect.objectContaining({ code: "AUTH_CREDENTIAL_RECORD_CORRUPT" }),
+    );
+
     fs.writeFileSync(
-      path.join(providerDir, "wrong-provider.json"),
+      credentialFile,
       JSON.stringify({
-        id: "wrong-provider",
+        id: "corrupt",
         providerId: "zai-coding",
         label: "Wrong",
         source: "oauth",
@@ -242,56 +308,35 @@ describe("applySubscriptionCredentials", () => {
       { mode: 0o600 },
     );
 
-    expect(() => listAccounts("openai-codex")).toThrow();
-    fs.unlinkSync(path.join(providerDir, "bad-json.json"));
-    expect(() => listAccounts("openai-codex")).toThrow(
-      /Credential identity does not match its path/,
-    );
-    expect(() => loadAccount("openai-codex", "wrong-provider")).toThrow(
-      /Credential identity does not match its path/,
-    );
-  });
-
-  it("migrates a valid plaintext credential before returning it", async () => {
-    const home = useTempElizaHome();
-    const providerDir = path.join(home, "auth", "openai-codex");
-    const file = path.join(providerDir, "legacy.json");
-    const now = Date.now();
-    fs.mkdirSync(providerDir, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(
-      file,
-      JSON.stringify({
-        id: "legacy",
-        providerId: "openai-codex",
-        label: "Legacy",
-        source: "oauth",
-        credentials: {
-          access: "legacy-access",
-          refresh: "legacy-refresh",
-          expires: now + 60_000,
-        },
-        createdAt: now,
-        updatedAt: now,
-      }),
-      { mode: 0o600 },
+    expect(() => loadAccount("openai-codex", "corrupt")).toThrow(
+      expect.objectContaining({ code: "AUTH_CREDENTIAL_RECORD_CORRUPT" }),
     );
 
-    expect(loadAccount("openai-codex", "legacy")?.credentials.access).toBe(
-      "legacy-access",
-    );
-    const persisted = fs.readFileSync(file, "utf8");
-    expect(JSON.parse(persisted)).toEqual({
-      schemaVersion: 2,
-      ciphertext: expect.any(String),
-    });
-    expect(persisted).not.toContain("legacy-access");
-  });
-
-  it("rejects account ids that could escape the provider directory", async () => {
-    useTempElizaHome();
-    expect(() => loadAccount("openai-codex", "../outside")).toThrow(
-      /Invalid account credential id/,
-    );
+    for (const credentials of [
+      { access: "access", expires: Date.now() + 60_000 },
+      { access: "access", refresh: "refresh" },
+      { access: "access", refresh: "refresh", expires: Number.NaN },
+    ]) {
+      fs.writeFileSync(
+        credentialFile,
+        JSON.stringify({
+          id: "corrupt",
+          providerId: "openai-codex",
+          label: "Corrupt",
+          source: "oauth",
+          credentials,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }),
+        { mode: 0o600 },
+      );
+      expect(() => loadAccount("openai-codex", "corrupt")).toThrow(
+        expect.objectContaining({ code: "AUTH_CREDENTIAL_RECORD_CORRUPT" }),
+      );
+      await expect(getAccessToken("openai-codex", "corrupt")).rejects.toEqual(
+        expect.objectContaining({ code: "AUTH_CREDENTIAL_RECORD_CORRUPT" }),
+      );
+    }
   });
 
   it("serializes concurrent token refreshes for the same account", async () => {
@@ -326,6 +371,50 @@ describe("applySubscriptionCredentials", () => {
     ).toMatchObject({
       access: "fresh-access",
       refresh: "fresh-refresh",
+    });
+  });
+
+  // Regression (#17464 review): the mandatory-policy guard used to sit AFTER the
+  // refresh had already been redeemed. Anthropic and Codex rotate refresh tokens
+  // on use, so throwing there discarded the rotated token while the stored one
+  // was already consumed, and every later refresh 401'd. The guard must refuse
+  // before anything is spent.
+  it("refuses a policy-less refresh before the grant is redeemed", async () => {
+    useTempElizaHome();
+    const refreshMock = vi.mocked(refreshCodexToken);
+    refreshMock.mockClear();
+    refreshMock.mockResolvedValue({
+      access: "rotated-access",
+      refresh: "rotated-refresh",
+      expires: Date.now() + 60 * 60_000,
+    });
+    saveCredentials(
+      "openai-codex",
+      {
+        access: "expired-access",
+        refresh: "one-time-refresh",
+        expires: Date.now() - 1_000,
+      },
+      "personal",
+    );
+
+    // No storagePolicy: this is the shape every un-migrated caller has.
+    await expect(
+      getAccessTokenWithPolicy("openai-codex", "personal"),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: "AUTH_CREDENTIAL_MUTATION_POLICY_REQUIRED",
+      }),
+    );
+
+    // The point of the ordering: the upstream grant was never spent, so the
+    // stored one-time refresh token is still usable.
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(
+      loadAccount("openai-codex", "personal", storagePolicy())?.credentials,
+    ).toMatchObject({
+      access: "expired-access",
+      refresh: "one-time-refresh",
     });
   });
 

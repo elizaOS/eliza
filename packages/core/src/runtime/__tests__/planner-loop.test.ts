@@ -17,6 +17,7 @@ import {
 	PROGRESS_ONLY_ANSWER_REJECT,
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
+	partitionRedundantSucceededCalls,
 	runPlannerLoop,
 	TURN_SCOPE_ARG,
 	TURN_SCOPE_FINAL,
@@ -254,6 +255,18 @@ describe("v5 planner loop skeleton", () => {
 		);
 		expect(plannerTemplate).toContain(
 			"owner goal save/create/update/review when OWNER_GOALS is exposed",
+		);
+	});
+
+	it("keeps terminal planner replies human-readable unless raw output was requested", () => {
+		expect(plannerTemplate).toContain(
+			"natural conversation, not a database or debug log",
+		);
+		expect(plannerTemplate).toContain(
+			"Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times",
+		);
+		expect(plannerTemplate).toContain(
+			"unless the user explicitly asks for raw or technical output",
 		);
 	});
 
@@ -1577,6 +1590,156 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toContain("42");
 	});
 
+	it("does not re-execute an identical call that failed with retryable:false and forces a terminal synthesis", async () => {
+		// Live regression: PAGE_DELEGATE returned "CREATE_HABIT is not available
+		// on the owner page" and the planner re-issued the SAME page+action call
+		// on every iteration — a deterministic dead end (registration cannot
+		// change mid-turn). The structural `data.retryable === false` marker must
+		// settle the identity exactly like a success does.
+		const sameCall = {
+			id: "delegate-1",
+			name: "PAGE_DELEGATE",
+			arguments: { page: "owner", action: "CREATE_HABIT" },
+		};
+		const runtime = {
+			useModel: vi
+				.fn()
+				// iter 1 (fresh) → executes and fails non-retryably; iters 2-3
+				// repeat it → skipped dead rounds; then forced synthesis.
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				.mockResolvedValueOnce(
+					'{"thought":"That capability is unavailable.","messageToUser":"I cannot create habits here.","toolCalls":[]}',
+				),
+			logger: { debug: vi.fn(), warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "CREATE_HABIT is not available on the owner page.",
+			data: {
+				actionName: "PAGE_DELEGATE",
+				code: "PAGE_CHILD_UNAVAILABLE",
+				retryable: false,
+			},
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "CONTINUE" as const,
+			thought: "Keep going.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "PAGE_DELEGATE", description: "Delegate to a page." }],
+			config: { maxRepeatedToolCalls: 1 },
+			executeToolCall,
+			evaluate,
+		});
+
+		// The dead call ran exactly once; identical repeats were skipped, and the
+		// loop ended in synthesis instead of burning iterations to the token cap.
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(result.status).toBe("finished");
+		const instructions = (result.trajectory.context.events ?? [])
+			.filter((event) => event.type === "instruction")
+			.map((event) => event.content)
+			.join(" ");
+		expect(instructions).toContain("non-retryable");
+	});
+
+	it("re-executes an identical failed call when the failure is not marked non-retryable", async () => {
+		// Contrast case: an ordinary failure (no structural retryable:false) may
+		// be transient, so an identical retry is still allowed to run.
+		const sameCall = {
+			id: "fetch-1",
+			name: "WEB_FETCH",
+			arguments: { url: "https://api.example.test/price" },
+		};
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] }),
+			logger: { debug: vi.fn(), warn: vi.fn() },
+		};
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({ success: false, text: "upstream timeout" })
+			.mockResolvedValueOnce({ success: true, text: "price=42" });
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Retry once.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "The price is 42.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "WEB_FETCH", description: "Fetch a URL." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("The price is 42.");
+	});
+
+	it("keeps settled call identities across mid-turn compaction into archivedSteps", () => {
+		// partitionRedundantSucceededCalls must scan archived (compacted) steps
+		// too: input-budget compaction moves steps out of `trajectory.steps`, and
+		// a call settled before compaction must not become executable again.
+		const archivedSuccess = {
+			name: "WEB_FETCH",
+			params: { url: "https://api.example.test/price" },
+		};
+		const archivedDeadEnd = {
+			name: "PAGE_DELEGATE",
+			params: { page: "owner", action: "CREATE_HABIT" },
+		};
+		const trajectory = {
+			context: { id: "ctx" },
+			steps: [],
+			archivedSteps: [
+				{
+					iteration: 1,
+					toolCall: archivedSuccess,
+					result: { success: true, text: "price=42" },
+				},
+				{
+					iteration: 2,
+					toolCall: archivedDeadEnd,
+					result: {
+						success: false,
+						text: "CREATE_HABIT is not available on the owner page.",
+						data: { retryable: false },
+					},
+				},
+			],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+		};
+
+		const freshCall = { name: "WEB_FETCH", params: { url: "https://other" } };
+		const partitioned = partitionRedundantSucceededCalls(
+			[archivedSuccess, archivedDeadEnd, freshCall],
+			trajectory,
+		);
+		expect(partitioned.redundant).toEqual([archivedSuccess]);
+		expect(partitioned.nonRetryable).toEqual([archivedDeadEnd]);
+		expect(partitioned.fresh).toEqual([freshCall]);
+	});
+
 	it("does not capture native text fallback as a required-tool refusal", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
@@ -2216,6 +2379,14 @@ describe("v5 planner loop skeleton", () => {
 							arguments: { command: "curl https://backup.example.com" },
 						},
 					],
+				})
+				// Failure-aware synthesis pass (#17948): the evaluator's
+				// success-claiming reply was discarded by the failure authority, so
+				// the loop asks the model for an honest failure reply instead of
+				// shipping the generic failed-step sentence.
+				.mockResolvedValueOnce({
+					text: "The primary lookup failed on a DNS error; the backup source did return a result.",
+					toolCalls: [],
 				}),
 		};
 		const executeToolCall = vi
@@ -2250,7 +2421,7 @@ describe("v5 planner loop skeleton", () => {
 			evaluate,
 		});
 
-		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
@@ -2266,8 +2437,21 @@ describe("v5 planner loop skeleton", () => {
 			},
 			expect.objectContaining({ iteration: 2 }),
 		);
+		// The uncorrelated success still cannot launder the failure — but the
+		// reply is now the model's own failure-aware synthesis, primed with the
+		// failed step and its cause, not the fixed canned sentence (#17948).
+		const synthesisParams = runtime.useModel.mock.calls[2]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const synthesisPrompt = (synthesisParams.messages ?? [])
+			.map((message) =>
+				typeof message.content === "string" ? message.content : "",
+			)
+			.join("\n");
+		expect(synthesisPrompt).toContain("The SHELL step failed");
+		expect(synthesisPrompt).toContain("DNS lookup failed");
 		expect(result.finalMessage).toBe(
-			"I tried to complete that, but the available runtime step failed before it produced a usable result.",
+			"The primary lookup failed on a DNS error; the backup source did return a result.",
 		);
 	});
 
@@ -2598,8 +2782,11 @@ describe("v5 planner loop skeleton", () => {
 		});
 
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		// A FINISH that declares success:false is a structural failure
+		// acknowledgment, so the evaluator's own diagnosis ships instead of
+		// being replaced by the generic failed-step sentence (#17948).
 		expect(result.finalMessage).toBe(
-			"I tried to complete that, but the available runtime step failed before it produced a usable result.",
+			"I could not retrieve that from the available sources.",
 		);
 	});
 
@@ -2977,6 +3164,67 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(evalEvents).toHaveLength(1);
 	});
 
+	it("pins: ack-shaped planner messageToUser + successful tool is gated as the terminal reply (not a pre-tool progress channel)", async () => {
+		// Runtime contract for PR #18011 review: JSON-mode messageToUser is NOT
+		// delivered before tools run. It is stored as lastPlannerExplicitMessageToUser;
+		// after a successful tool drains the queue, tryGateEvaluator treats it as
+		// an explicit terminal reply, skips the evaluator, and ships it as
+		// finalMessage. A compliant model that puts a pre-tool ack in
+		// messageToUser ("I'm connecting your calendar.") with a CONNECT tool
+		// therefore posts that ack *after* the tool and can drop the outcome.
+		// The planner prompt must forbid that pattern; this test pins the
+		// inversion so a future prompt regression cannot claim messageToUser is
+		// a progress channel.
+		expect(plannerTemplate).toContain(
+			"Do not put a pre-tool progress or acknowledgement bubble in messageToUser",
+		);
+		expect(plannerTemplate).not.toContain("Brief acks before tools run");
+
+		const preToolAck = "I'm connecting your calendar.";
+		const toolOutcome =
+			"Open this link to finish connecting Google Calendar: https://oauth.example/connect";
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: preToolAck,
+				toolCalls: [{ name: "CONNECT_CALENDAR", args: { provider: "google" } }],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: toolOutcome,
+			userFacingText: toolOutcome,
+			// verified without turnComplete: the gate still prefers the planner's
+			// explicit messageToUser over the tool outcome when turnComplete is
+			// unset — the exact dead-end class the prompt change must not teach.
+			verifiedUserFacing: true,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "should not be called",
+			messageToUser: toolOutcome,
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.status).toBe("finished");
+		// Gate ships the pre-tool ack as the synthesized evaluator message.
+		expect(result.evaluator?.messageToUser).toBe(preToolAck);
+		expect(result.evaluator?.thought).toContain("Gated FINISH");
+		// Preferred-final may still recover verified tool text when the model
+		// text is only process-status; either way the gated path skipped the
+		// evaluator that would have owned a grounded post-tool reply. Pin the
+		// gate inversion itself so prompt authors cannot treat messageToUser as
+		// a pre-tool progress channel.
+		expect(result.evaluator?.messageToUser).not.toBe(toolOutcome);
+	});
+
 	it("FIRES: emits a recorder evaluation stage marked gated for trajectory-replay parity", async () => {
 		// Gated iterations must still surface on the recorder timeline so replay
 		// tools see a stage at the same slot a model-produced evaluation would
@@ -3249,6 +3497,9 @@ describe("v5 planner loop — evaluator gate", () => {
 		};
 		expect(dispatched.params).toMatchObject({ key: "shell", value: "off" });
 		expect(dispatched.params?.[TURN_SCOPE_ARG]).toBeUndefined();
+		expect(executeToolCall.mock.calls[0]?.[1]).toMatchObject({
+			plannerCompleted: false,
+		});
 	});
 
 	it("SKIPS in native-mode when the call declares final scope alongside a terminal action result", async () => {
@@ -3374,6 +3625,12 @@ describe("v5 planner loop — evaluator gate", () => {
 		});
 
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(executeToolCall.mock.calls[0]?.[1]).toMatchObject({
+			plannerCompleted: false,
+		});
+		expect(executeToolCall.mock.calls[1]?.[1]).toMatchObject({
+			plannerCompleted: true,
+		});
 		expect(evaluate).toHaveBeenCalledTimes(2);
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe(
@@ -3850,6 +4107,28 @@ describe("routing hints — promoted-family fallback", () => {
 		expect((block ?? "").split("reminders -> TRIGGER_CREATE").length - 1).toBe(
 			1,
 		);
+	});
+
+	it("renders identical hints once across separately named actions", () => {
+		const routingHint = "UI navigation and layout -> VIEWS";
+		const actions = ["VIEWS", "CLOSE_VIEW", "CLOSE_ALL_VIEWS"].map((name) => ({
+			name,
+			description: name,
+			routingHint,
+			validate: async () => true,
+			handler: async () => ({ success: true }),
+		}));
+		const ctx = {
+			events: actions.map((action, index) => ({
+				id: `tool-${index}`,
+				type: "tool" as const,
+				tool: { name: action.name, description: action.description, action },
+			})),
+		} as unknown as Parameters<typeof __renderRoutingHintsBlockForTests>[0];
+
+		const block = __renderRoutingHintsBlockForTests(ctx);
+
+		expect((block ?? "").split(routingHint).length - 1).toBe(1);
 	});
 });
 

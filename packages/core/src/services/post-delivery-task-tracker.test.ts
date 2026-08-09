@@ -3,17 +3,21 @@
  * tasks spawned by tasks and failure reporting at the detached boundary.
  */
 import { describe, expect, it, vi } from "vitest";
+import { RoomHandlerQueue } from "../runtime/room-handler-queue.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import {
 	drainPostDeliveryTasks,
+	drainRoomPostDeliveryTasks,
 	pendingPostDeliveryTaskCount,
+	pendingRoomPostDeliveryTaskCount,
 	trackPostDeliveryTask,
 } from "./post-delivery-task-tracker.ts";
 
-function runtimeStub() {
+function runtimeStub(roomHandlerQueue?: RoomHandlerQueue) {
 	return {
 		agentId: "00000000-0000-4000-8000-000000000001",
 		reportError: vi.fn(),
+		roomHandlerQueue,
 	} as unknown as Pick<IAgentRuntime, "agentId" | "reportError">;
 }
 
@@ -51,5 +55,60 @@ describe("post-delivery task tracker", () => {
 			expect.objectContaining({ label: "broken" }),
 		);
 		expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
+	});
+
+	it("treats unclassified room work as state-bearing and drains it before ownership ends", async () => {
+		const roomId = "00000000-0000-4000-8000-000000000002";
+		const queue = new RoomHandlerQueue();
+		const runtime = runtimeStub(queue);
+		const lease = await queue.acquire(roomId);
+		let releaseTask!: () => void;
+		const taskGate = new Promise<void>((resolve) => {
+			releaseTask = resolve;
+		});
+
+		queue.runInLease(roomId, lease, () => {
+			trackPostDeliveryTask(runtime, "new-room-task", async () => taskGate);
+		});
+		expect(pendingRoomPostDeliveryTaskCount(runtime, roomId)).toBe(1);
+
+		releaseTask();
+		await drainRoomPostDeliveryTasks(runtime, roomId);
+		expect(pendingRoomPostDeliveryTaskCount(runtime, roomId)).toBe(0);
+		await lease.release();
+	});
+
+	it("requires and drains explicit room ownership without async-local context", async () => {
+		const roomId = "00000000-0000-4000-8000-000000000003";
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		const runtime = runtimeStub(queue);
+		expect(() =>
+			trackPostDeliveryTask(
+				runtime,
+				"unowned-room-task",
+				async () => undefined,
+			),
+		).toThrowError(
+			expect.objectContaining({
+				code: "POST_DELIVERY_ROOM_OWNERSHIP_REQUIRED",
+			}),
+		);
+
+		const lease = await queue.acquire(roomId);
+		let releaseTask!: () => void;
+		const taskGate = new Promise<void>((resolve) => {
+			releaseTask = resolve;
+		});
+		trackPostDeliveryTask(runtime, "explicit-room-task", async () => taskGate, {
+			kind: "room-state",
+			roomId,
+			roomHandlerLease: lease,
+		});
+		expect(pendingRoomPostDeliveryTaskCount(runtime, roomId)).toBe(1);
+
+		releaseTask();
+		await drainRoomPostDeliveryTasks(runtime, roomId);
+		await lease.release();
+		expect(pendingRoomPostDeliveryTaskCount(runtime, roomId)).toBe(0);
 	});
 });

@@ -8,6 +8,7 @@
  * Cloud state. Sits behind the authenticated dashboard gate; not public.
  */
 import path from "node:path";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
 import type { AgentRuntime, RouteRequestMeta, UUID } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
@@ -20,6 +21,7 @@ import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import { clearPersistedFirstRunConfig } from "./provider-switch-config.ts";
+import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
 
 type AgentStateStatus =
   | "not_started"
@@ -138,6 +140,7 @@ export async function handleAgentAdminRoutes(
       const previousRuntime = state.runtime;
       const newRuntime = await onRestart();
       if (newRuntime) {
+        await quiesceRuntimeBeforeReplacement(previousRuntime, newRuntime);
         state.runtime = newRuntime;
         state.chatConnectionReady = null;
         state.chatConnectionPromise = null;
@@ -193,7 +196,10 @@ export async function handleAgentAdminRoutes(
         removeStateDir(dataDir);
       }
 
-      await clearPersistedFirstRunConfig(config);
+      clearPersistedFirstRunConfig(
+        config,
+        createRuntimeAccountStoragePolicy(stateDir),
+      );
       saveElizaConfig(config);
 
       // Wipe cloud-related vault entries so the next boot doesn't re-hydrate

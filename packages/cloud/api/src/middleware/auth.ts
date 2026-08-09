@@ -44,6 +44,12 @@ const publicPathPrefixes = [
   "/api/auth/steward-session",
   "/api/auth/steward-nonce-exchange",
   "/api/auth/steward-refresh",
+  // Cross-host SSO bridge: /mint self-authenticates (Bearer verified in the
+  // handler — the global gate's cookie acceptance must NOT vouch for it, see
+  // the route's plant-a-cookie rationale), /exchange is authenticated by the
+  // single-use code itself (the caller has no credentials yet — that is the
+  // point). Both legs are rate-limited and strictly origin-gated in the route.
+  "/api/auth/sso-bridge",
   // Logout must be reachable without a valid session: the client clears the
   // Steward cookies before (or independently of) this call, and an expired
   // session still needs to tear down server state + clear cookies. The handler
@@ -52,6 +58,13 @@ const publicPathPrefixes = [
   // every logout 401 once cookies were gone, so the server-side teardown never
   // ran and stale refresh cookies could silently re-mint a session.
   "/api/auth/logout",
+  // OpenID Connect provider. Every leg self-authenticates with a credential
+  // this gate cannot vouch for: /authorize resolves the Steward COOKIE only
+  // (never a Bearer, and never JIT-provisioning), /token authenticates the
+  // relying party's client secret, and /userinfo verifies a bearer access
+  // token against the OIDC key ring. Gating them here would 401 /token and
+  // /userinfo, whose callers hold no Cloud session at all.
+  "/api/oidc",
   "/api/set-anonymous-session",
   "/api/anonymous-session",
   "/api/auth/create-anonymous-session",
@@ -131,6 +144,9 @@ const publicPathPrefixes = [
   "/api/v1/voice/session/ws",
   "/api/v1/oauth/providers",
   "/api/v1/oauth/callback",
+  // Short-lived HMAC proof check for the browser OAuth success landing page
+  // (API-key OAuth cannot inherit Authorization into the redirect target).
+  "/api/v1/oauth/success-proof/verify",
   "/api/v1/user/wallets/rpc",
   "/api/v1/app-auth",
   "/api/.well-known",
@@ -183,6 +199,12 @@ export function isPublicPath(pathname: string): boolean {
     return true;
   }
   if (pathname === "/api/v1/oauth/callback") return true;
+  if (
+    pathname === "/api/v1/oauth/success-proof/verify" ||
+    pathname === "/api/v1/oauth/success-proof/verify/"
+  ) {
+    return true;
+  }
   if (/^\/api\/v1\/oauth\/[^/]+\/callback\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/generate-image\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/public\/?$/.test(pathname)) return true;

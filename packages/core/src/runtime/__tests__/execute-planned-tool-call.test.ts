@@ -151,6 +151,10 @@ describe("executePlannedToolCall", () => {
 		expect(String(result.error)).toContain(
 			"Argument 'title' expected string, got number",
 		);
+		expect(result.data).toMatchObject({
+			parameterErrors: ["Argument 'title' expected string, got number"],
+			invalidParameterNames: ["title"],
+		});
 		expect(handler).not.toHaveBeenCalled();
 	});
 
@@ -564,6 +568,35 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("preserves byte-exact canonical callback text through later voice gates", async () => {
+		const canonicalText =
+			"“Send demo video” is scheduled for Tuesday, August 4, 2026 at 9:00 AM.";
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const action = makeAction({
+			name: "READ_CALENDAR",
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: canonicalText });
+				return {
+					success: true,
+					text: canonicalText,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+				};
+			},
+		});
+
+		await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage(), callback },
+			{ name: "READ_CALENDAR", params: {} },
+		);
+
+		expect(callback).toHaveBeenCalledWith(
+			{ text: canonicalText, agentVoiced: true },
+			"READ_CALENDAR",
+		);
+	});
+
 	it("suppresses mutation callbacks until their result carries receipt proof", async () => {
 		const callback: HandlerCallback = vi.fn(async () => []);
 		const action = makeAction({
@@ -900,6 +933,7 @@ describe("executePlannedToolCall", () => {
 		const trajectoryLogger = {
 			isEnabled: vi.fn(() => true),
 			startStep: vi.fn(() => "action-step-1"),
+			completeStep: vi.fn(),
 			flushWriteQueue: vi.fn(async () => {}),
 			annotateStep: vi.fn(async () => {}),
 		};
@@ -944,6 +978,8 @@ describe("executePlannedToolCall", () => {
 			"trajectory-1",
 			expect.objectContaining({
 				timestamp: expect.any(Number),
+				parentStepId: "parent-step-1",
+				kind: "action",
 			}),
 		);
 		expect(observedContexts[0]).toMatchObject({
@@ -952,13 +988,91 @@ describe("executePlannedToolCall", () => {
 			parentStepId: "parent-step-1",
 			purpose: "action",
 		});
-		expect(trajectoryLogger.annotateStep).toHaveBeenCalledWith({
-			stepId: "parent-step-1",
-			appendChildSteps: ["action-step-1"],
-		});
+		expect(trajectoryLogger.completeStep).toHaveBeenCalledWith(
+			"trajectory-1",
+			"action-step-1",
+			expect.objectContaining({
+				actionType: "CLASSIFY_INBOX",
+				actionName: "CLASSIFY_INBOX",
+				parameters: {},
+				success: true,
+				result: expect.objectContaining({ success: true }),
+			}),
+		);
 		expect(trajectoryLogger.flushWriteQueue).toHaveBeenCalledWith(
 			"trajectory-1",
 		);
+	});
+
+	it("bounds oversized action parameters and results before trajectory settlement", async () => {
+		const trajectoryLogger = {
+			isEnabled: vi.fn(() => true),
+			startStep: vi.fn(() => "bounded-action-step"),
+			completeStep: vi.fn(),
+			flushWriteQueue: vi.fn(async () => {}),
+			annotateStep: vi.fn(async () => {}),
+		};
+		const deep: Record<string, unknown> = {};
+		let cursor = deep;
+		for (let depth = 0; depth < 25; depth++) {
+			const next: Record<string, unknown> = {};
+			cursor.next = next;
+			cursor = next;
+		}
+		const oversized = {
+			long: "x".repeat(80_000),
+			items: Array.from({ length: 300 }, (_, index) => index),
+			deep,
+		};
+		const action = makeAction({
+			name: "BOUNDED_ACTION",
+			parameters: [
+				{
+					name: "payload",
+					description: "Oversized persistence fixture",
+					required: true,
+					schema: { type: "object", additionalProperties: true },
+				},
+			],
+			handler: async () => ({ success: true, data: oversized }),
+		});
+		const runtime = makeRuntime([action], {
+			getService: vi.fn((serviceType: string) =>
+				serviceType === "trajectories" ? trajectoryLogger : undefined,
+			),
+			getServicesByType: vi.fn(() => []),
+		});
+
+		const result = await runWithTrajectoryContext(
+			{
+				trajectoryId: "bounded-trajectory",
+				trajectoryStepId: "bounded-parent",
+			},
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: makeMessage() },
+					{ name: "BOUNDED_ACTION", params: { payload: oversized } },
+				),
+		);
+		expect(result.success).toBe(true);
+
+		const settlement = trajectoryLogger.completeStep.mock.calls[0]?.[2] as {
+			parameters: { payload: typeof oversized };
+			result: { data: typeof oversized };
+			success: boolean;
+		};
+		for (const bounded of [
+			settlement.parameters.payload,
+			settlement.result.data,
+		]) {
+			expect(bounded.long).toHaveLength(64 * 1024);
+			expect(bounded.long).toMatch(/\.\.\.\[truncated\]$/);
+			expect(bounded.items).toHaveLength(251);
+			expect(bounded.items[250]).toEqual({ __truncatedItems: 50 });
+			expect(JSON.stringify(bounded.deep)).toContain("[MaxDepth]");
+		}
+		expect(settlement.success).toBe(true);
 	});
 
 	it("rebuilds action trajectory context from message metadata when planner execution lost ALS", async () => {
@@ -1010,6 +1124,8 @@ describe("executePlannedToolCall", () => {
 			"trajectory-1",
 			expect.objectContaining({
 				timestamp: expect.any(Number),
+				parentStepId: "parent-step-1",
+				kind: "action",
 			}),
 		);
 		expect(observedContexts[0]).toMatchObject({
@@ -1020,10 +1136,6 @@ describe("executePlannedToolCall", () => {
 			runId: "run-1",
 			roomId: "room-id",
 			messageId: "message-id",
-		});
-		expect(trajectoryLogger.annotateStep).toHaveBeenCalledWith({
-			stepId: "parent-step-1",
-			appendChildSteps: ["action-step-1"],
 		});
 		expect(trajectoryLogger.flushWriteQueue).toHaveBeenCalledWith(
 			"trajectory-1",

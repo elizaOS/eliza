@@ -31,10 +31,6 @@ import {
   OrgRateLimitCacheNotReadyError,
 } from "@/lib/middleware/rate-limit";
 import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
   bindGatewayHandoffTelemetry,
   type GatewayHandoffTelemetry,
   type GatewayPreforwardTiming,
@@ -548,12 +544,6 @@ function modelNotAvailableMessage(model: string): string {
 }
 
 const app = new Hono<AppEnv>();
-app.use(
-  "*",
-  rateLimit(RateLimitPresets.RELAXED, {
-    bindingName: "CHAT_ROUTE_RATE_LIMITER",
-  }),
-);
 
 app.post("/", async (c) => {
   const startTime = Date.now();

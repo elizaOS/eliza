@@ -7,6 +7,7 @@
  * network-status-change event it emits. WebSocket stubbed, no live server.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NETWORK_STATUS_CHANGE_EVENT } from "../events";
 import { __resetNetworkStatusForTests, ElizaClient } from "./client-base";
@@ -106,6 +107,7 @@ function stubWindowOrigin(protocol: string, host: string): void {
 
 describe("ElizaClient websocket connection policy", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     __resetNetworkStatusForTests();
   });
@@ -173,18 +175,6 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls[0]).toContain("token=agent-token");
   });
 
-  it("opens same-origin websocket when the Capacitor web runtime is present but not native", () => {
-    const createdUrls = stubWebSocket();
-    stubWindowOrigin("https:", "web-build.example.test");
-    vi.stubGlobal("Capacitor", { isNativePlatform: () => false });
-
-    const client = new ElizaClient("", "agent-token");
-    client.connectWs();
-
-    expect(createdUrls).toHaveLength(1);
-    expect(createdUrls[0]).toContain("wss://web-build.example.test/ws?");
-  });
-
   it("still skips the synthetic-host websocket on Capacitor native", () => {
     const createdUrls = stubWebSocket();
     stubWindowOrigin("https:", "myapp.app");
@@ -229,6 +219,39 @@ describe("ElizaClient websocket connection policy", () => {
       maxReconnectAttempts: 15,
       disconnectedAt: null,
     });
+  });
+
+  it("opens loopback ws from a local Android sideload renderer", () => {
+    const createdUrls = stubWebSocket();
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    const client = new ElizaClient("http://127.0.0.1:31338", "agent-token");
+
+    client.connectWs();
+
+    expect(window.location.protocol).toBe("https:");
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://127.0.0.1:31338/ws?");
+  });
+
+  it("opens trusted private-LAN ws from a local Android sideload renderer", () => {
+    const createdUrls = stubWebSocket();
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    const client = new ElizaClient("http://192.168.1.10:31338", "agent-token");
+
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://192.168.1.10:31338/ws?");
+  });
+
+  it("still blocks public cleartext ws from a local Android sideload renderer", () => {
+    const createdUrls = stubWebSocket();
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    const client = new ElizaClient("http://203.0.113.10:31338", "agent-token");
+
+    client.connectWs();
+
+    expect(createdUrls).toEqual([]);
   });
 
   it("still opens cleartext ws from an HTTP page", () => {

@@ -52,12 +52,18 @@ export type StreamingTextModification =
       mode: "append";
       /** Raw delta token from the SSE stream. */
       token: string;
+      /** The delta is action-callback text the final reply may replace —
+       *  stamped on the message so voice output holds it (double-speak fix). */
+      provisional?: boolean;
     }
   | {
       messageId: string;
       mode: "replace";
       /** Cumulative snapshot text from the SSE stream. */
       fullText: string;
+      /** The snapshot is action-callback text the final reply may replace —
+       *  stamped on the message so voice output holds it (double-speak fix). */
+      provisional?: boolean;
     }
   | {
       messageId: string;
@@ -73,6 +79,8 @@ export type StreamingTextModification =
       accountConnect?: AccountConnectRequest;
       /** Optional agent reasoning/thought to stamp on the completed turn. */
       reasoning?: string;
+      /** The server intentionally did not persist this assistant turn. */
+      assistantEphemeral?: boolean;
       /** Persisted server id replacing the optimistic temp-resp-* stream id. */
       persistedMessageId?: string;
     }
@@ -105,6 +113,24 @@ export type StreamingTextModification =
     };
 
 /**
+ * Stamp or clear the `provisional` marker (action-callback text the final
+ * reply may replace — held back from voice output). The latest frame is
+ * authoritative: a non-provisional frame clears the marker so the reply can
+ * be spoken the moment it lands.
+ */
+function withProvisional(
+  message: ConversationMessage,
+  provisional: boolean,
+): ConversationMessage {
+  if (provisional) {
+    message.provisional = true;
+    return message;
+  }
+  if (message.provisional !== undefined) delete message.provisional;
+  return message;
+}
+
+/**
  * Compute the patched message for a single modification, or return `null`
  * if the modification produces no observable change.
  */
@@ -115,12 +141,26 @@ function computeNextMessage(
   switch (mod.mode) {
     case "append": {
       const nextText = mergeStreamingText(message.text, mod.token);
-      if (nextText === message.text) return null;
-      return { ...message, text: nextText };
+      if (
+        nextText === message.text &&
+        !mod.provisional === !message.provisional
+      )
+        return null;
+      return withProvisional(
+        { ...message, text: nextText },
+        mod.provisional === true,
+      );
     }
     case "replace": {
-      if (mod.fullText === message.text) return null;
-      return { ...message, text: mod.fullText };
+      if (
+        mod.fullText === message.text &&
+        !mod.provisional === !message.provisional
+      )
+        return null;
+      return withProvisional(
+        { ...message, text: mod.fullText },
+        mod.provisional === true,
+      );
     }
     case "complete": {
       const sameText = message.text === mod.fullText;
@@ -128,6 +168,8 @@ function computeNextMessage(
       const sameAccountConnect = message.accountConnect === mod.accountConnect;
       const sameReasoning =
         mod.reasoning === undefined || message.reasoning === mod.reasoning;
+      const sameAssistantEphemeral =
+        message.assistantEphemeral === mod.assistantEphemeral;
       const sameId =
         mod.persistedMessageId === undefined ||
         message.id === mod.persistedMessageId;
@@ -136,15 +178,22 @@ function computeNextMessage(
         sameFailure &&
         sameAccountConnect &&
         sameReasoning &&
-        sameId
+        sameAssistantEphemeral &&
+        sameId &&
+        message.provisional === undefined
       ) {
         return null;
       }
-      const next: ConversationMessage = {
-        ...message,
-        ...(mod.persistedMessageId ? { id: mod.persistedMessageId } : {}),
-        text: mod.fullText,
-      };
+      const next: ConversationMessage = withProvisional(
+        {
+          ...message,
+          ...(mod.persistedMessageId ? { id: mod.persistedMessageId } : {}),
+          text: mod.fullText,
+        },
+        // Terminal reconciliation: the text is now the turn's final message —
+        // never provisional, so voice output may speak it.
+        false,
+      );
       if (mod.failureKind) {
         next.failureKind = mod.failureKind;
       } else if (message.failureKind !== undefined) {
@@ -157,6 +206,11 @@ function computeNextMessage(
       }
       if (mod.reasoning) {
         next.reasoning = mod.reasoning;
+      }
+      if (mod.assistantEphemeral) {
+        next.assistantEphemeral = true;
+      } else if (message.assistantEphemeral !== undefined) {
+        delete next.assistantEphemeral;
       }
       return next;
     }

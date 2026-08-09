@@ -24,6 +24,7 @@ import http from "node:http";
 import {
   type AgentRuntime,
   ModelType,
+  RoomHandlerQueue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -190,9 +191,14 @@ function createRuntime(
     emitEvent: vi.fn(async () => undefined),
     drainChatPreHandlers: vi.fn(async () => null),
     useModel: vi.fn(async () => ""),
+    // generateChatResponse acquires per-room ownership through the runtime's
+    // real RoomHandlerQueue; a mock without one 500s every turn.
+    roomHandlerQueue: new RoomHandlerQueue(),
     ...overrides,
   };
-  return runtime as unknown as AgentRuntime;
+  const contractCheckedRuntime: Pick<AgentRuntime, "getParticipantsForRoom"> =
+    runtime;
+  return contractCheckedRuntime as unknown as AgentRuntime;
 }
 
 function createCtx(opts: {

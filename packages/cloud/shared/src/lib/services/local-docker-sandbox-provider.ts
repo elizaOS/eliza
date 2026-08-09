@@ -27,7 +27,12 @@ import {
   validateEnvKey,
   validateEnvValue,
 } from "./docker-sandbox-utils";
-import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
+import type {
+  SandboxCreateConfig,
+  SandboxDeletionStopOutcome,
+  SandboxHandle,
+  SandboxProvider,
+} from "./sandbox-provider-types";
 
 const execFileAsync = promisify(execFile);
 
@@ -384,29 +389,9 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
   // stop
   // ------------------------------------------------------------------
 
-  async stop(sandboxId: string): Promise<void> {
-    validateContainerName(sandboxId);
-    const meta = this.containers.get(sandboxId);
-
-    logger.info(`${LOG_PREFIX} Stopping container ${sandboxId}`);
-
-    await this.execDocker(["stop", "-t", "10", sandboxId]).catch((err: unknown) => {
-      logger.warn(
-        `${LOG_PREFIX} docker stop failed for ${sandboxId}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
-
-    await this.execDocker(["rm", "-f", sandboxId]).catch((err: unknown) => {
-      logger.warn(
-        `${LOG_PREFIX} docker rm failed for ${sandboxId}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
-
-    if (meta) {
-      this.ports.release(meta.bridgePort);
-      this.ports.release(meta.healthPort);
-      this.containers.delete(sandboxId);
-    }
+  async stopForDeletion(sandboxId: string): Promise<SandboxDeletionStopOutcome> {
+    await this.stopForReplacement(sandboxId);
+    return { kind: "not-running-proven" };
   }
 
   async stopForReplacement(sandboxId: string): Promise<void> {
@@ -525,7 +510,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
 
   /** Fully delete the agent: stop + rm + remove host volume directory. */
   async deleteAgent(handle: SandboxHandle): Promise<void> {
-    await this.stop(handle.sandboxId);
+    await this.stopForDeletion(handle.sandboxId);
     const meta = handle.metadata as Partial<LocalDockerSandboxMetadata> | undefined;
     const volumePath = meta?.volumePath;
     if (typeof volumePath === "string" && volumePath.startsWith("/") && existsSync(volumePath)) {

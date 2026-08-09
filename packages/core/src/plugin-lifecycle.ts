@@ -131,6 +131,9 @@ type RuntimePrivateState = {
 	servicePromises: Map<ServiceTypeName, Promise<Service>>;
 	servicePromiseHandlers: Map<ServiceTypeName, RuntimeServicePromiseHandler>;
 	startingServices: Map<ServiceTypeName, Promise<Service | null>>;
+	startingServiceClasses: Map<RuntimeServiceClass, Promise<Service>>;
+	serviceInstancesByClass: Map<RuntimeServiceClass, Service>;
+	failedServiceClasses: Set<RuntimeServiceClass>;
 	serviceRegistrationStatus: Map<
 		ServiceTypeName,
 		RuntimeServiceRegistrationStatus
@@ -589,23 +592,23 @@ async function stopOwnedServices(
 		}
 
 		const ownedClassSet = new Set(ownedClasses);
-		const removalIndices: number[] = [];
-		currentClasses.forEach((serviceClass, index) => {
-			if (ownedClassSet.has(serviceClass)) {
-				removalIndices.push(index);
-			}
-		});
-
 		const instances = runtime.services.get(key) ?? [];
-		for (const removalIndex of [...removalIndices].sort((a, b) => b - a)) {
-			const instance = instances[removalIndex];
+		for (const ownedClass of ownedClasses) {
+			const instance = privateState.serviceInstancesByClass.get(ownedClass);
 			if (instance && typeof instance.stop === "function") {
 				await instance.stop();
 			}
-			instances.splice(removalIndex, 1);
+			if (instance) {
+				const instanceIndex = instances.indexOf(instance);
+				if (instanceIndex !== -1) {
+					instances.splice(instanceIndex, 1);
+				}
+				privateState.serviceInstancesByClass.delete(ownedClass);
+			}
 		}
 
 		for (const ownedClass of ownedClasses) {
+			privateState.failedServiceClasses.delete(ownedClass);
 			if (typeof ownedClass.stopRuntime === "function") {
 				await ownedClass.stopRuntime(runtime);
 			}
@@ -1083,9 +1086,36 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	runtimeWithLifecycle.registerPlugin = (async (plugin: Plugin) => {
 		const pluginsBefore = new Set(runtimeWithLifecycle.plugins);
 		const routesBefore = new Set(runtimeWithLifecycle.routes);
+		const serviceClassCountsBefore = new Map<RuntimeServiceClass, number>();
+		for (const classes of privateState.serviceTypes.values()) {
+			for (const serviceClass of classes) {
+				serviceClassCountsBefore.set(
+					serviceClass,
+					(serviceClassCountsBefore.get(serviceClass) ?? 0) + 1,
+				);
+			}
+		}
 		const capture: RuntimePluginRegistrationCapture = {
 			ownership: createEmptyOwnership(plugin),
 			adapterBefore: runtimeWithLifecycle.adapter,
+		};
+		const captureDeclaredServices = (): void => {
+			for (const serviceClass of plugin.services ?? []) {
+				const serviceType = serviceClass.serviceType as ServiceTypeName;
+				const registeredCount = (
+					privateState.serviceTypes.get(serviceType) ?? []
+				).filter((candidate) => candidate === serviceClass).length;
+				if (
+					registeredCount <= (serviceClassCountsBefore.get(serviceClass) ?? 0)
+				) {
+					continue;
+				}
+				serviceClassOwners.set(serviceClass, capture.ownership.pluginName);
+				pushUniqueService(capture.ownership.services, {
+					serviceType,
+					serviceClass,
+				});
+			}
 		};
 
 		try {
@@ -1098,6 +1128,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				pluginsBefore,
 				routesBefore,
 			);
+			captureDeclaredServices();
 			if (
 				capture.ownership.registeredPlugin ||
 				capture.ownership.actions.length > 0 ||
@@ -1125,6 +1156,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				pluginsBefore,
 				routesBefore,
 			);
+			captureDeclaredServices();
 			await teardownPluginOwnership(runtimeWithLifecycle, capture.ownership, {
 				allowAdapterUnload: true,
 				removeOwnership: true,

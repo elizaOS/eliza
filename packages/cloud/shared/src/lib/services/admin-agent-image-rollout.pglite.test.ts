@@ -2973,12 +2973,14 @@ describe("admin agent image rollout on primary PGlite", () => {
       .where(eq(jobs.id, persisted.id));
     await expireExecutionLease(persisted.id);
     expect(
-      await jobsRepository.recoverInProgressJobsStartedBefore({
-        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-        organizationId: seeded.targets[0]!.organizationId,
-        startedBefore: new Date("2026-07-23T00:00:00.000Z"),
-        maxAttempts: 2,
-      }),
+      (
+        await jobsRepository.recoverInProgressJobsStartedBefore({
+          type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+          organizationId: seeded.targets[0]!.organizationId,
+          startedBefore: new Date("2026-07-23T00:00:00.000Z"),
+          maxAttempts: 2,
+        })
+      ).retried,
     ).toBe(0);
     expect(await jobsRepository.findByIdForWrite(persisted.id)).toMatchObject({
       status: "failed",
@@ -3077,11 +3079,13 @@ describe("admin agent image rollout on primary PGlite", () => {
     await expireExecutionLease(claimed.id);
 
     expect(
-      await jobsRepository.recoverInProgressJobsStartedBefore({
-        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-        organizationId: seeded.organizationId,
-        startedBefore: new Date("2026-07-23T00:02:00.000Z"),
-      }),
+      (
+        await jobsRepository.recoverInProgressJobsStartedBefore({
+          type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+          organizationId: seeded.organizationId,
+          startedBefore: new Date("2026-07-23T00:02:00.000Z"),
+        })
+      ).retried,
     ).toBe(1);
     expect(await jobsRepository.findByIdForWrite(claimed.id)).toMatchObject({
       status: "pending",
@@ -3412,11 +3416,13 @@ describe("admin agent image rollout on primary PGlite", () => {
     });
     await expireExecutionLease(claimed.id);
     expect(
-      await jobsRepository.recoverInProgressJobsStartedBefore({
-        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-        organizationId: seeded.organizationId,
-        startedBefore: new Date("2026-07-23T02:02:00.000Z"),
-      }),
+      (
+        await jobsRepository.recoverInProgressJobsStartedBefore({
+          type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+          organizationId: seeded.organizationId,
+          startedBefore: new Date("2026-07-23T02:02:00.000Z"),
+        })
+      ).retried,
     ).toBe(1);
 
     const duplicateExecution = spyOn(
@@ -3514,11 +3520,13 @@ describe("admin agent image rollout on primary PGlite", () => {
     });
     await expireExecutionLease(claimed.id);
     expect(
-      await jobsRepository.recoverInProgressJobsStartedBefore({
-        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-        organizationId: seeded.organizationId,
-        startedBefore: new Date("2026-07-23T03:02:00.000Z"),
-      }),
+      (
+        await jobsRepository.recoverInProgressJobsStartedBefore({
+          type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+          organizationId: seeded.organizationId,
+          startedBefore: new Date("2026-07-23T03:02:00.000Z"),
+        })
+      ).retried,
     ).toBe(1);
 
     const cleanupProvider = new DockerSandboxProvider();
@@ -3642,18 +3650,22 @@ describe("admin agent image rollout on primary PGlite", () => {
       .where(eq(jobs.id, enqueued.job.id));
 
     expect(
-      await jobsRepository.recoverStaleJobs({
-        type: JOB_TYPES.AGENT_UPGRADE,
-        organizationId: seeded.targets[0]!.organizationId,
-        staleThresholdMs: 1_000,
-        maxAttempts: 3,
-      }),
+      (
+        await jobsRepository.recoverStaleJobs({
+          type: JOB_TYPES.AGENT_UPGRADE,
+          organizationId: seeded.targets[0]!.organizationId,
+          staleThresholdMs: 1_000,
+          maxAttempts: 3,
+        })
+      ).retried,
     ).toBe(0);
     await expireExecutionLease(enqueued.job.id);
     expect(
-      await provisioningJobService.recoverInterruptedJobsOnStartup(new Date(), [
-        JOB_TYPES.AGENT_UPGRADE,
-      ]),
+      (
+        await provisioningJobService.recoverInterruptedJobsOnStartup(new Date(), [
+          JOB_TYPES.AGENT_UPGRADE,
+        ])
+      ).retried,
     ).toBe(1);
     expect(await jobsRepository.findByIdForWrite(enqueued.job.id)).toMatchObject({
       status: "pending",

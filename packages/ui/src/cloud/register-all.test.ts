@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { registerAllCloudSurfaces } from "./register-all";
-import { listCloudRoutes } from "./shell/cloud-route-registry";
+import { getCloudRoute, listCloudRoutes } from "./shell/cloud-route-registry";
 
 /**
  * Guards the boot-time wiring: every cloud domain must register its routes when
@@ -52,6 +52,15 @@ describe("registerAllCloudSurfaces", () => {
     ]) {
       expect(paths, `missing route ${p}`).toContain(p);
     }
+  });
+
+  it("leaves the web Cloud Apps handoff in the tab/view app", () => {
+    registerAllCloudSurfaces();
+    const cloudApps = getCloudRoute("cloud-apps");
+
+    // Registering this as a top-level cloud route unmounts App and therefore
+    // its navigate-view listener, stranding the user on the handoff surface.
+    expect(cloudApps).toBeUndefined();
   });
 
   it("keeps legacy-only spellings as redirects, not routes", () => {

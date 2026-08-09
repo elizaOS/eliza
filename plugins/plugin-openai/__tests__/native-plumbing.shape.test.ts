@@ -105,6 +105,8 @@ interface CapturedLlmCall {
   response?: string;
   promptTokens?: number;
   completionTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
   finishReason?: string;
   toolCalls?: unknown;
 }
@@ -912,7 +914,50 @@ describe("OpenAI native text plumbing", () => {
       response: "hello",
       promptTokens: 2,
       completionTokens: 1,
+      cacheReadInputTokens: 1,
       finishReason: "stop",
+      toolCalls,
+    });
+  });
+
+  it("records completed buffered-stream output and usage before returning", async () => {
+    vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "1");
+    const trajectoryCalls: CapturedLlmCall[] = [];
+    const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];
+    aiMocks.streamText.mockReturnValue({
+      textStream: (async function* textStream() {
+        yield '{"answer":"ok"}';
+      })(),
+      text: Promise.resolve('{"answer":"ok"}'),
+      toolCalls: Promise.resolve(toolCalls),
+      finishReason: Promise.resolve("tool-calls"),
+      usage: Promise.resolve({ inputTokens: 8, outputTokens: 4, cachedInputTokens: 6 }),
+    });
+
+    const runtime = createRuntime({ trajectoryCalls });
+    const { handleTextSmall } = await import("../models/text");
+    await runWithTrajectoryContext({ trajectoryStepId: "step-openai-buffered" }, () =>
+      handleTextSmall(runtime, {
+        prompt: "structured stream",
+        stream: true,
+        tools: { lookup: { description: "Lookup", inputSchema: { type: "object" } } },
+        responseSchema: {
+          type: "object",
+          properties: { answer: { type: "string" } },
+          required: ["answer"],
+        },
+      } as never)
+    );
+
+    expect(trajectoryCalls).toHaveLength(1);
+    expect(trajectoryCalls[0]).toMatchObject({
+      stepId: "step-openai-buffered",
+      actionType: "ai.streamText",
+      response: '{"answer":"ok"}',
+      promptTokens: 8,
+      completionTokens: 4,
+      cacheReadInputTokens: 6,
+      finishReason: "tool-calls",
       toolCalls,
     });
   });

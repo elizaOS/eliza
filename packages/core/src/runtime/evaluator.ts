@@ -17,10 +17,10 @@ import {
 	ModelType,
 	type PromptSegment,
 } from "../types/model";
+import { modelProviderErrorDetail } from "../utils/model-errors";
 import { computePrefixHashes } from "./context-hash";
 import {
 	buildStageChatMessages,
-	cachePrefixSegments,
 	normalizePromptSegments,
 	renderContextObject,
 } from "./context-renderer";
@@ -97,9 +97,7 @@ export async function runEvaluator(
 		trajectory: params.trajectory,
 	});
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
-	const cachePrefixHashes = computePrefixHashes(
-		cachePrefixSegments(renderedInput.promptSegments),
-	);
+	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
 		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
 		"no-context-segments";
@@ -126,26 +124,67 @@ export async function runEvaluator(
 	};
 	const startedAt = Date.now();
 	const modelType = params.modelType ?? ModelType.RESPONSE_HANDLER;
-	const raw = await runWithStreamingContext(
-		streamingContext
-			? {
-					...streamingContext,
-					onStreamChunk: async () => undefined,
-				}
-			: undefined,
-		() =>
-			params.runtime.useModel(
-				modelType,
-				{
-					messages: renderedInput.messages,
-					maxTokens: DEFAULT_EVALUATOR_MAX_TOKENS,
-					responseSchema: evaluatorSchema,
-					promptSegments: renderedInput.promptSegments,
-					providerOptions,
-				},
-				params.provider,
-			),
-	);
+	let raw: Awaited<ReturnType<EvaluatorRuntime["useModel"]>>;
+	try {
+		raw = await runWithStreamingContext(
+			streamingContext
+				? {
+						...streamingContext,
+						onStreamChunk: async () => undefined,
+					}
+				: undefined,
+			() =>
+				params.runtime.useModel(
+					modelType,
+					{
+						messages: renderedInput.messages,
+						maxTokens: DEFAULT_EVALUATOR_MAX_TOKENS,
+						responseSchema: evaluatorSchema,
+						promptSegments: renderedInput.promptSegments,
+						providerOptions,
+					},
+					params.provider,
+				),
+		);
+	} catch (error) {
+		// error-policy:J2 context-adding rethrow — the evaluator model call is
+		// the one whose REQUEST is otherwise never persisted: on success the
+		// stage records below, but a provider failure (e.g. an intermittent
+		// Cerebras 400) used to leave the trajectory with no evaluation stage at
+		// all, making the failing request undiagnosable. Record the errored
+		// stage WITH the request messages and the provider's real error detail,
+		// then rethrow for the planner-loop's degrade/propagate policy.
+		const detail = modelProviderErrorDetail(error);
+		await recordEvaluationStage({
+			runtime: params.runtime,
+			recorder: params.recorder,
+			trajectoryId: params.trajectoryId,
+			parentStageId: params.parentStageId,
+			iteration: params.iteration ?? 1,
+			modelType: String(modelType),
+			provider: params.provider,
+			messages: renderedInput.messages,
+			providerOptions,
+			raw: `[evaluator model call failed] ${
+				error instanceof Error ? error.message : String(error)
+			}${detail?.providerMessage ? ` | provider: ${detail.providerMessage}` : ""}${
+				detail?.status !== undefined ? ` | status: ${detail.status}` : ""
+			}`,
+			output: {
+				success: false,
+				decision: "CONTINUE",
+				thought: "Evaluator model call failed before producing output.",
+				protocolFailure: true,
+				raw: {},
+			},
+			startedAt,
+			endedAt: Date.now(),
+			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+			prefixHash,
+			logger: params.runtime.logger,
+		});
+		throw error;
+	}
 	const endedAt = Date.now();
 	const output = sanitizeOutputMessage(
 		repairFinishedToolTurnWithoutUserMessage(
@@ -339,6 +378,7 @@ function renderEvaluatorModelInput(params: {
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
+	cacheKeySegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? evaluatorTemplate;
@@ -349,10 +389,18 @@ function renderEvaluatorModelInput(params: {
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
 	// the segment `stable: true` makes them cacheable on Anthropic's wire path.
+	const stableContextSegments = renderedContext.promptSegments.filter(
+		(segment) => segment.stable,
+	);
+	const dynamicContextSegments = renderedContext.promptSegments.filter(
+		(segment) => !segment.stable,
+	);
 	const promptSegments = normalizePromptSegments([
-		...renderedContext.promptSegments,
+		...stableContextSegments,
 		{ content: `evaluator_stage:\n${instructions}`, stable: true },
+		...dynamicContextSegments,
 	]);
+	const cacheKeySegments = normalizePromptSegments(stableContextSegments);
 	// Use proper assistant/tool message pairs so the evaluator sees the same
 	// native tool-calling format as the planner. The trajectory JSON is NOT
 	// included in dynamicBlocks — it is conveyed through stepMessages.
@@ -363,7 +411,7 @@ function renderEvaluatorModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments };
+	return { messages, promptSegments, cacheKeySegments };
 }
 
 export function parseEvaluatorOutput(

@@ -79,6 +79,7 @@ export function createErrorReportedEscalationHandler(
   windowMinutes: number,
 ): (payload: ErrorReportedPayload) => Promise<void> {
   return async (payload: ErrorReportedPayload): Promise<void> => {
+    if (payload.context?.diagnosticOnly === true) return;
     // Internal scheduler/plumbing codes are self-healing or operator-facing and
     // must never be escalated into the owner's chat (#SHADOW-ACCOUNT-DEBUG). The
     // orphaned-task loop tripped this threshold repeatedly, narrating the same

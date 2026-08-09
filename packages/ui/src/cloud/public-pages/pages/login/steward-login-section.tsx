@@ -43,6 +43,7 @@ import {
   preOpenCloudLoginWindow,
 } from "../../../../state/cloud-login-launch";
 import { navigatePreOpenedWindow } from "../../../../utils/openExternalUrl";
+import { isCloudAuthHandoffSurface } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
@@ -773,7 +774,15 @@ export default function StewardLoginSection() {
     // PKCE challenge is asynchronous, so opening after it resolves is blocked
     // by browsers. Touch-primary browsers intentionally return null here and
     // continue in the current tab.
-    const authWindow = preOpenCloudLoginWindow();
+    //
+    // When this /login is already the device-code handoff surface (named
+    // popup or opened from local first-run), never nest a second OAuth
+    // window — that left the Steward sign-in form stranded while auth
+    // finished elsewhere (#18001). Stay same-tab instead.
+    // Popup name matches CLOUD_LOGIN_POPUP_NAME ("eliza-cloud-auth") — keep
+    // the default argument so partial mocks of cloud-login-launch still work.
+    const alreadyHandoffSurface = isCloudAuthHandoffSurface();
+    const authWindow = alreadyHandoffSurface ? null : preOpenCloudLoginWindow();
     setLoading(provider);
     setError(null);
     const host = window.location.hostname.toLowerCase();
@@ -804,7 +813,10 @@ export default function StewardLoginSection() {
       stewardTenantId: STEWARD_TENANT_ID,
       codeChallenge,
     });
-    if (authWindow && !authWindow.closed) {
+    if (alreadyHandoffSurface) {
+      // Stay in this tab so nested OAuth does not orphan the Steward form.
+      window.location.href = authorizeUrl;
+    } else if (authWindow && !authWindow.closed) {
       navigatePreOpenedWindow(authWindow, authorizeUrl);
     } else if (canNavigateSameTabForBlockedPopup()) {
       // Plain web can safely preserve the sign-in round trip in this tab.
@@ -1124,27 +1136,37 @@ export default function StewardLoginSection() {
         </Alert>
       )}
 
-      <Input
-        ref={emailInputRef}
-        type="email"
-        placeholder={t("cloud.login.emailPlaceholder", {
-          defaultValue: "you@example.com",
-        })}
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            if (showPasskey) {
-              handlePasskey();
-            } else if (providers.email !== false) {
-              handleEmail();
+      <div className="space-y-2">
+        <label
+          htmlFor="steward-login-email"
+          className="block text-left text-sm font-medium text-txt"
+        >
+          {t("cloud.login.emailLabel", { defaultValue: "Email" })}
+        </label>
+        <Input
+          ref={emailInputRef}
+          id="steward-login-email"
+          type="email"
+          name="email"
+          placeholder={t("cloud.login.emailPlaceholder", {
+            defaultValue: "you@example.com",
+          })}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              if (showPasskey) {
+                handlePasskey();
+              } else if (providers.email !== false) {
+                handleEmail();
+              }
             }
-          }
-        }}
-        disabled={isLoading}
-        className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
-        autoComplete={showPasskey ? "email webauthn" : "email"}
-      />
+          }}
+          disabled={isLoading}
+          className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong focus-visible:border-accent disabled:opacity-50"
+          autoComplete={showPasskey ? "email webauthn" : "email"}
+        />
+      </div>
 
       <div className="flex gap-2">
         {showPasskey && (
@@ -1153,7 +1175,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover focus-visible:border-txt-strong active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}
@@ -1165,7 +1187,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handleEmail}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.button.magicLink", { defaultValue: "Magic Link" })}
@@ -1215,7 +1237,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("google")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading === "google" ? <Spinner /> : <GoogleIcon />}{" "}
               {t("cloud.login.button.google", { defaultValue: "Google" })}
@@ -1227,7 +1249,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("discord")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading === "discord" ? (
                 <Spinner />
@@ -1243,7 +1265,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("github")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 sm:col-span-2"
+              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 sm:col-span-2"
             >
               {loading === "github" ? (
                 <Spinner />
@@ -1310,7 +1332,7 @@ export default function StewardLoginSection() {
                   type="button"
                   onClick={() => handleWalletIntent("ethereum")}
                   disabled={isLoading}
-                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                 >
                   {t("cloud.login.wallet.evm", { defaultValue: "EVM wallet" })}
                 </Button>
@@ -1321,7 +1343,7 @@ export default function StewardLoginSection() {
                   type="button"
                   onClick={() => handleWalletIntent("solana")}
                   disabled={isLoading}
-                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                 >
                   {t("cloud.login.wallet.solana", {
                     defaultValue: "Solana wallet",

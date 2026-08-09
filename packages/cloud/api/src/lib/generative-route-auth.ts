@@ -205,17 +205,20 @@ export async function requireGenerativeRouteCaller(
           import("@/lib/middleware/rate-limit"),
           import("@/lib/services/inference-admission-snapshot"),
         ]);
-      const rateLimitConfig = inferenceRateLimitConfig(
-        resolution.ctx.admission,
-        options.rateLimitEndpoint,
-      );
       const limited = await enforceOrgRateLimit(
         resolution.ctx.orgId,
         options.rateLimitEndpoint,
         {
-          cacheOnly: rateLimitConfig !== undefined,
+          // The combined decision carries the rate policy only when the hot
+          // cache is enabled. Development and integration Workers still have
+          // an execution context, but their authoritative origin decision has
+          // no snapshot and must retain the compatibility limiter path.
+          cacheOnly: Boolean(resolution.ctx.admission),
           executionCtx,
-          config: rateLimitConfig,
+          config: inferenceRateLimitConfig(
+            resolution.ctx.admission,
+            options.rateLimitEndpoint,
+          ),
         },
       );
       if (limited) {

@@ -2,17 +2,16 @@
  * Static route-matrix coverage guard for homepage live and visual Playwright specs.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "playwright/test";
+import { VISUAL_ROUTES } from "./visual-routes";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(HERE, "../..");
 const APP_SOURCE = path.join(PACKAGE_ROOT, "src/App.tsx");
 const LIVE_ROUTES_SPEC = path.join(HERE, "live-routes.spec.ts");
-const VISUAL_SPEC = path.join(HERE, "visual.spec.ts");
-const VISUAL_ROUTES = path.join(HERE, "visual-routes.ts");
 
 function routePathsFromApp(): string[] {
   const source = readFileSync(APP_SOURCE, "utf8");
@@ -21,11 +20,8 @@ function routePathsFromApp(): string[] {
   );
 }
 
-function routePathsFromSpecs(filePaths: string[]): Set<string> {
-  const source = filePaths
-    .filter((filePath) => existsSync(filePath))
-    .map((filePath) => readFileSync(filePath, "utf8"))
-    .join("\n");
+function routePathsFromSpec(filePath: string): Set<string> {
+  const source = readFileSync(filePath, "utf8");
   return new Set(
     [...source.matchAll(/path:\s*"([^"]+)"/g)].map((match) => match[1] ?? ""),
   );
@@ -33,8 +29,8 @@ function routePathsFromSpecs(filePaths: string[]): Set<string> {
 
 test("homepage route matrices cover every routed page", () => {
   const appRoutes = routePathsFromApp();
-  const liveRoutes = routePathsFromSpecs([LIVE_ROUTES_SPEC]);
-  const visualRoutes = routePathsFromSpecs([VISUAL_SPEC, VISUAL_ROUTES]);
+  const liveRoutes = routePathsFromSpec(LIVE_ROUTES_SPEC);
+  const visualRoutes = new Set(VISUAL_ROUTES.map((route) => route.path));
 
   expect(appRoutes).toEqual([
     "/",
@@ -43,6 +39,8 @@ test("homepage route matrices cover every routed page", () => {
     "/login",
     "/connected",
     "/get-started",
+    "/profile/edit",
+    "*",
   ]);
 
   const missingLiveRoutes = appRoutes.filter((route) => !liveRoutes.has(route));

@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import {
   BUILTIN_TAB_METADATA,
   resolveBuiltinBackgroundPolicy,
+  resolveBuiltinRoutedViewManifest,
   resolveBuiltinSurfaceManifest,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
@@ -132,8 +133,8 @@ describe("browser: native-webview isolation manifest (#13596)", () => {
 
   it("resolves to native-webview isolation (the catalogue's canonical consumer)", () => {
     // The browser hosts arbitrary third-party web content in a native child
-    // web-content surface with its own renderer process; it must never share
-    // the host realm. See surface-isolation.ts's catalogue entry.
+    // web-content surface outside the host renderer realm. See
+    // surface-isolation.ts's catalogue entry for each platform's guarantee.
     expect(resolveSurfaceManifest({ surface }).isolation).toBe(
       "native-webview",
     );
@@ -144,6 +145,38 @@ describe("browser: native-webview isolation manifest (#13596)", () => {
       "opaque",
     );
     expect(resolveSurfaceManifest({ surface }).background).toBe("opaque");
+  });
+
+  it("declares the fullscreen header so the shell frames it like the other full-surface views", () => {
+    // Notes/Calendar register `surface.header: "fullscreen"` as app-shell
+    // pages; the Browser is the builtin peer and must take the identical
+    // full-bleed shell path (no host top bar, view-owned chrome).
+    expect(resolveSurfaceManifest({ surface }).header).toBe("fullscreen");
+  });
+});
+
+describe("resolveBuiltinRoutedViewManifest: routed-content manifests only", () => {
+  it("resolves the browser to its fullscreen native-webview manifest", () => {
+    const manifest = resolveBuiltinRoutedViewManifest("browser");
+    expect(manifest).not.toBeNull();
+    expect(manifest?.header).toBe("fullscreen");
+    expect(manifest?.isolation).toBe("native-webview");
+    expect(manifest?.background).toBe("opaque");
+  });
+
+  it("excludes the immersive wallpaper surfaces (structural shell branches)", () => {
+    // chat/background declare IMMERSIVE_WALLPAPER_SURFACE for the wallpaper
+    // grant; routing them through the full-bleed view path would replace the
+    // ambient chat home / transparent background editor with an opaque shell.
+    expect(resolveBuiltinRoutedViewManifest("chat")).toBeNull();
+    expect(resolveBuiltinRoutedViewManifest("background")).toBeNull();
+  });
+
+  it("falls through for path-predicate and undeclared tabs", () => {
+    expect(resolveBuiltinRoutedViewManifest("views")).toBeNull();
+    expect(resolveBuiltinRoutedViewManifest("apps")).toBeNull();
+    expect(resolveBuiltinRoutedViewManifest("settings")).toBeNull();
+    expect(resolveBuiltinRoutedViewManifest("does-not-exist")).toBeNull();
   });
 });
 

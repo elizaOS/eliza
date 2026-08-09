@@ -1,25 +1,8 @@
 /**
- * Current-view acknowledgement provider.
- *
- * Carries two related signals into the prompt:
- *  - **Ambient state** — the view the user is currently looking at, so replies
- *    stay aware of where they are ("the user is currently viewing Settings").
- *  - **Just-switched acknowledgement** — when a switch just happened (or is
- *    *about* to happen this turn), the text is phrased so the agent acknowledges
- *    the move in its reply ("opening your calendar now").
- *
- * Same-turn acknowledgement for explicit commands is the hard case: at
- * response-compose time the server still reports the *previous* view because the
- * VIEWS action has not executed yet. We detect the imminent switch the same
- * deterministic way the early shortcut does — `resolveIntentView(message.text)`
- * — and phrase forward-looking. Already-executed switches (the contextual
- * evaluator, or a prior turn's action) are caught via the server `justSwitched`
- * stamp. Reads the live server state over loopback (GET /api/views/current).
- *
- * This provider is intentionally NOT `alwaysInResponseState`: it is injected
- * into the Stage-1 response state only on switch turns by the
- * `compose_state_providers` hook (see `index.ts`), so non-switch turns pay no
- * extra prompt/token cost.
+ * Exposes the renderer's current view and the explicit target requested in the
+ * current turn. Navigation callbacks own visible acknowledgements, so a
+ * server-side "just switched" stamp is state only and never instructs a later
+ * message to repeat an old completion.
  */
 import type {
 	IAgentRuntime,
@@ -46,40 +29,35 @@ function humanizeViewId(viewId: string): string {
 export const currentViewProvider: Provider = {
 	name: "current_view",
 	description:
-		"The UI view the user is currently looking at — and whether the agent just switched it — so replies acknowledge the move and stay aware of view switches.",
-	// Explicitly retain the historical general-context fallback. The compose hook
-	// below remains the authority that adds this provider to Stage 1 only for
-	// switch turns, so declaring the context does not make it always-on.
+		"The UI view the user is currently looking at, plus any explicit target requested on this turn.",
 	contexts: ["general"],
 	// Just after available_apps. Composed in the planner state by default; pulled
 	// into the Stage-1 response state on switch turns by the compose hook.
 	position: -7,
 	get: async (
-		_runtime: IAgentRuntime,
+		runtime: IAgentRuntime,
 		message: Memory,
 	): Promise<ProviderResult> => {
 		try {
 			// Security-unwrapped user words — never raw (possibly enveloped) text.
 			const text = userRequestMessageText(message);
-			// Imminent explicit switch: the early shortcut will force VIEWS for this
-			// exact phrase, so the reply being generated now can acknowledge it.
+			// An explicit target is authoritative before the planner applies it. Do
+			// not wait on the renderer here: its current value cannot change that
+			// decision and may sit behind a native bridge or remote shell boundary.
 			const intentTargetId = resolveIntentView(text);
-
-			const current = await createViewsClient().getCurrentView();
-
-			if (intentTargetId && intentTargetId !== current?.viewId) {
+			if (intentTargetId) {
 				const label = humanizeViewId(intentTargetId);
 				return {
-					text: `The user asked to open the ${label} view and you are switching them there now. Acknowledge the switch in your reply (e.g. "opening your ${label} now").`,
+					text: `Requested view target: ${label} (id: ${intentTargetId}). Navigation has not completed yet. The requested target is authoritative for this turn.`,
 					values: {
-						currentViewId: current?.viewId,
 						switchingToViewId: intentTargetId,
-						viewJustSwitched: true,
-						viewSwitchSource: "agent",
+						viewSwitchPending: true,
 					},
-					data: { currentView: current, switchingTo: intentTargetId },
+					data: { switchingTo: intentTargetId },
 				};
 			}
+
+			const current = await createViewsClient().getCurrentView();
 
 			if (!current) return EMPTY;
 
@@ -87,24 +65,6 @@ export const currentViewProvider: Provider = {
 			const where = current.viewPath
 				? `${current.viewLabel} view (${current.viewPath})${section}`
 				: `${current.viewLabel} view${section}`;
-
-			if (current.justSwitched) {
-				const agentInitiated = current.source !== "user";
-				const ackText = agentInitiated
-					? `You just switched the user to the ${where}. Acknowledge the switch in your reply (e.g. "opening your ${current.viewLabel} now").`
-					: `The user just switched to the ${where} themselves. Refer to it if it helps; you did not move them.`;
-				return {
-					text: ackText,
-					values: {
-						currentViewId: current.viewId,
-						currentViewLabel: current.viewLabel,
-						...(current.subview ? { currentViewSubview: current.subview } : {}),
-						viewJustSwitched: true,
-						viewSwitchSource: current.source ?? "agent",
-					},
-					data: { currentView: current },
-				};
-			}
 
 			return {
 				text: `The user is currently viewing the ${where}. If they ask to go somewhere else, switch with the VIEWS action.`,
@@ -117,7 +77,12 @@ export const currentViewProvider: Provider = {
 				data: { currentView: current },
 			};
 		} catch (error) {
-			// A loopback failure must not break prompt composition — degrade silently.
+			// error-policy:J7 prompt diagnostics must not break the reply loop, but
+			// the missing renderer state must remain observable to the agent and owner.
+			runtime.reportError("app-control.current-view", error, {
+				messageId: message.id,
+				roomId: message.roomId,
+			});
 			logger.debug(
 				"[current_view] could not resolve current view:",
 				error instanceof Error ? error.message : String(error),

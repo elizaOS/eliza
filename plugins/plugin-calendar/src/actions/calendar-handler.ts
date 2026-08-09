@@ -11,7 +11,6 @@
  * calendar assistant action.
  */
 import { createHash } from "node:crypto";
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
 import type {
   Action,
   ActionExample,
@@ -51,6 +50,10 @@ import {
   parseCalendarJsonRecord,
   toActionData,
 } from "../internal/detail.js";
+import {
+  ELIZA_CALENDAR_GRANT_ID,
+  ELIZA_CALENDAR_PROVIDER,
+} from "../internal/eliza-calendar.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   formatCalendarEventDateTime,
@@ -167,6 +170,16 @@ function requireCompleteFreshCalendarFeed(
     );
   }
   return feed;
+}
+
+// Mutation lookups must stay unscoped when the planner omits grantId: the
+// aggregated feed already includes the built-in Eliza source alongside every
+// connected provider, so defaulting the lookup to one grant would hide
+// external events (and their busy windows) from update/delete/create flows.
+function mutationGrantId(
+  details: Record<string, unknown> | undefined,
+): string | undefined {
+  return detailString(details, "grantId");
 }
 
 type CreateEventTravelIntent = CalendarTravelIntent;
@@ -312,6 +325,7 @@ const CALENDAR_DETAIL_ALIASES = {
     "google_event_id",
   ],
   newTitle: ["newtitle", "new_title", "renameto", "rename_to"],
+  oldTitle: ["oldtitle", "old_title"],
   description: ["desc", "summary", "body"],
   location: ["place", "venue"],
   recurrence: [
@@ -1122,16 +1136,16 @@ async function renderCalendarActionReply(args: {
   context?: Record<string, unknown>;
 }): Promise<string> {
   const { runtime, message, state, intent, scenario, fallback, context } = args;
-  return renderGroundedActionReply({
+  const renderGroundedReply = deps().renderGroundedReply;
+  if (!renderGroundedReply) return fallback;
+  return renderGroundedReply({
     runtime,
     message,
     state,
     intent,
-    domain: "calendar",
     scenario,
     fallback,
     context,
-    preferCharacterVoice: true,
     additionalRules: [
       "Mirror the user's phrasing for dates, times, ranges, and scheduling language when possible.",
       "Prefer phrases like tomorrow morning, next week, later, earlier, free, busy, or the user's own wording over robotic calendar language.",
@@ -1239,7 +1253,16 @@ function normalizeCalendarDetails(
     return undefined;
   }
 
-  const normalized: Record<string, unknown> = { ...details };
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(details)) {
+    // Some tool-model providers serialize an omitted string field as the
+    // literal "unknown". Treat it as absent at this boundary so it cannot be
+    // mistaken for an event ID, grant binding, date, or other real value.
+    if (typeof value === "string" && value.trim().toLowerCase() === "unknown") {
+      continue;
+    }
+    normalized[key] = value;
+  }
   const aliasMap = new Map<string, string>();
   for (const [canonical, aliases] of Object.entries(CALENDAR_DETAIL_ALIASES)) {
     aliasMap.set(normalizeLookupKey(canonical), canonical);
@@ -1249,6 +1272,9 @@ function normalizeCalendarDetails(
   }
 
   for (const [key, value] of Object.entries(details)) {
+    if (typeof value === "string" && value.trim().toLowerCase() === "unknown") {
+      continue;
+    }
     const canonical = aliasMap.get(normalizeLookupKey(key));
     if (!canonical) {
       continue;
@@ -1894,7 +1920,7 @@ async function loadCreateEventCalendarContext(
       | "cloud_managed"
       | undefined,
     side: detailString(details, "side") as "owner" | "agent" | undefined,
-    grantId: detailString(details, "grantId"),
+    grantId: mutationGrantId(details),
     calendarId: detailString(details, "calendarId"),
     timeZone: requestTimeZone,
     forceSync: true,
@@ -2197,6 +2223,28 @@ function eventDateSearchTerms(event: LifeOpsCalendarEvent): Set<string> {
   );
 }
 
+function formatCalendarLocalDate(parts: {
+  year: number;
+  month: number;
+  day: number;
+}): string {
+  return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function buildCalendarLocalDateAnchors(now: Date, timeZone: string): string {
+  const localDateParts = getZonedDateParts(now, timeZone);
+  const localDate = {
+    year: localDateParts.year,
+    month: localDateParts.month,
+    day: localDateParts.day,
+  };
+  return [
+    `yesterday = ${formatCalendarLocalDate(addDaysToLocalDate(localDate, -1))}`,
+    `today = ${formatCalendarLocalDate(localDate)}`,
+    `tomorrow = ${formatCalendarLocalDate(addDaysToLocalDate(localDate, 1))}`,
+  ].join(", ");
+}
+
 export async function extractCalendarPlanWithLlm(
   runtime: IAgentRuntime,
   message: Memory,
@@ -2213,46 +2261,7 @@ export async function extractCalendarPlanWithLlm(
     dateStyle: "full",
     timeStyle: "long",
   }).format(now);
-  // Derive "today/tomorrow/yesterday" explicitly in the user's timezone so the
-  // LLM does not have to do date arithmetic across the UTC/local boundary.
-  // Without this anchor we have observed the planner shift "tomorrow" by one
-  // day whenever local-midnight crosses the UTC day line.
-  const localDateParts = getZonedDateParts(now, timeZone);
-  const todayLocal = addDaysToLocalDate(
-    {
-      year: localDateParts.year,
-      month: localDateParts.month,
-      day: localDateParts.day,
-    },
-    0,
-  );
-  const tomorrowLocal = addDaysToLocalDate(
-    {
-      year: localDateParts.year,
-      month: localDateParts.month,
-      day: localDateParts.day,
-    },
-    1,
-  );
-  const yesterdayLocal = addDaysToLocalDate(
-    {
-      year: localDateParts.year,
-      month: localDateParts.month,
-      day: localDateParts.day,
-    },
-    -1,
-  );
-  const formatLocalDate = (parts: {
-    year: number;
-    month: number;
-    day: number;
-  }) =>
-    `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
-  const localDateAnchors = [
-    `yesterday = ${formatLocalDate(yesterdayLocal)}`,
-    `today = ${formatLocalDate(todayLocal)}`,
-    `tomorrow = ${formatLocalDate(tomorrowLocal)}`,
-  ].join(", ");
+  const localDateAnchors = buildCalendarLocalDateAnchors(now, timeZone);
   const instructions = resolveOptimizedPromptForRuntime(
     runtime,
     "calendar_extract",
@@ -2719,6 +2728,7 @@ async function inferCreateEventDetails(
     dateStyle: "full",
     timeStyle: "long",
   }).format(now);
+  const localDateAnchors = buildCalendarLocalDateAnchors(now, timeZone);
   const prompt = [
     "Extract calendar event creation fields from the request.",
     "The user may speak in any language.",
@@ -2740,8 +2750,8 @@ async function inferCreateEventDetails(
     "title: event title",
     "description: optional description",
     "location: optional location",
-    "startAt: ISO datetime if explicit or resolvable from a date phrase",
-    "endAt: ISO datetime if explicit",
+    "startAt: RFC 3339 datetime if explicit or resolvable from a date phrase; include the numeric UTC offset that represents the requested wall-clock time in the calendar timezone",
+    "endAt: RFC 3339 datetime if explicit; use the same offset rules as startAt",
     "durationMinutes: number if implied",
     "windowPreset: tomorrow_morning|tomorrow_afternoon|tomorrow_evening",
     "timeZone: IANA timezone if stated",
@@ -2751,8 +2761,10 @@ async function inferCreateEventDetails(
     "",
     `Current timezone: ${timeZone}`,
     `Calendar timezone for scheduling: ${calendarTimeZone}`,
+    `LOCAL DATE ANCHORS (authoritative — IGNORE UTC day for date arithmetic): ${localDateAnchors}.`,
     `Current local datetime: ${nowReadable}`,
-    `Current ISO datetime: ${nowIso}`,
+    `Current ISO datetime (informational only — do NOT use for 'today/tomorrow/yesterday'): ${nowIso}`,
+    "Resolve relative dates from the LOCAL DATE ANCHORS. Preserve the requested local clock time: for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z. Use Z only when the calendar timezone is UTC.",
     "",
     `Current request:\n${currentMessage}`,
     `Resolved intent:\n${intent}`,
@@ -3528,6 +3540,61 @@ function calendarApprovalReceipt(
   );
 }
 
+function calendarEventMutationReceipt(args: {
+  event: LifeOpsCalendarEvent;
+  idempotencyKey: string;
+  operation:
+    | "calendar.event.create"
+    | "calendar.event.update"
+    | "calendar.event.delete";
+  deleted?: boolean;
+}): EffectReceipt {
+  const observedAt = latestCalendarTimestamp(
+    [args.event.updatedAt, args.event.syncedAt],
+    new Date().toISOString(),
+  );
+  const providerVersion =
+    typeof args.event.metadata.etag === "string"
+      ? args.event.metadata.etag
+      : args.event.updatedAt;
+  const version = args.deleted ? `deleted:${providerVersion}` : providerVersion;
+  return normalizeEffectReceipt({
+    receiptId: calendarEffectId("calendar-event-mutation-receipt-v1", [
+      args.operation,
+      args.event.id,
+      version,
+      args.idempotencyKey,
+    ]),
+    operation: args.operation,
+    resource: {
+      kind: "calendar.event",
+      id: args.event.id,
+      version,
+    },
+    artifacts: [],
+    idempotency: { key: args.idempotencyKey, replayed: false },
+    observedAt,
+    outcome: "applied",
+    commit: {
+      kind: "durable",
+      id: args.event.id,
+      committedAt: observedAt,
+    },
+  });
+}
+
+function localCalendarOperationKey(args: {
+  message: Memory;
+  operation: "create" | "update" | "delete";
+  payload: unknown;
+}): string {
+  return calendarEffectId("calendar-local-operation-v1", [
+    String(args.message.id),
+    args.operation,
+    JSON.stringify(args.payload),
+  ]);
+}
+
 export type CalendarHandlerAction = Action & {
   suppressPostActionContinuation?: boolean;
 };
@@ -3644,6 +3711,7 @@ const calendarAction: CalendarHandlerAction = {
         params.query ||
         (params.queries?.length ?? 0) > 0 ||
         detailString(details, "query") ||
+        detailString(details, "oldTitle") ||
         (detailArray(details, "queries")?.length ?? 0) > 0 ||
         detailString(details, "eventId") ||
         detailString(details, "startAt") ||
@@ -3661,6 +3729,7 @@ const calendarAction: CalendarHandlerAction = {
       explicitQueries: [
         params.query,
         detailString(details, "query"),
+        detailString(details, "oldTitle"),
         ...(params.queries ?? []),
         ...(detailArray(details, "queries")?.map((value) =>
           typeof value === "string" ? value : undefined,
@@ -3699,6 +3768,14 @@ const calendarAction: CalendarHandlerAction = {
         text,
         userFacingText: text,
         verifiedUserFacing: true,
+        // The callback above already delivered this exact text, and the action
+        // description promises the final grounded reply. A successful calendar
+        // operation is a single-operation turn whose delivered text IS the
+        // answer, so declare it complete — the gated-evaluator skip keeps the
+        // model from re-rendering the delivery as a second message ("clear
+        // tomorrow." followed by "you're clear tomorrow."). Failures stay
+        // un-gated so the evaluator may still add recovery guidance.
+        ...(payload.success ? { turnComplete: true } : {}),
         effectReceipts: [effectReceipt],
         userFacingEffectReceiptIds: [effectReceipt.receiptId],
         ...(payload.data !== undefined ? { data: payload.data } : {}),
@@ -3821,6 +3898,10 @@ const calendarAction: CalendarHandlerAction = {
           explicitTitle,
           inferredTitle,
           intent,
+          // The outer planner identifies CALENDAR and supplies hints; this
+          // domain-specific extraction has the authoritative calendar context,
+          // timezone, and local-date anchors needed to normalize wall time.
+          preferExtractedDetails: true,
         });
         const { title, resolvedStartAt, resolvedWindowPreset, request } =
           createEventBuild;
@@ -3939,6 +4020,46 @@ const calendarAction: CalendarHandlerAction = {
             throw error;
           }
         }
+        if (requestToApprove.grantId === ELIZA_CALENDAR_GRANT_ID) {
+          const idempotencyKey = localCalendarOperationKey({
+            message,
+            operation: "create",
+            payload: requestToApprove,
+          });
+          const createdEvent = await service.createCalendarEvent(INTERNAL_URL, {
+            ...requestToApprove,
+            idempotencyKey,
+          });
+          if (travelBuffer && travel) {
+            await travel.reserveTravelBuffer({
+              runtime,
+              eventId: createdEvent.id,
+              travelBuffer,
+            });
+          }
+          const fallback = `Created “${createdEvent.title}” for ${formatCalendarEventDateTime(
+            createdEvent,
+            { includeTimeZoneName: true },
+          )}.`;
+          return respond({
+            success: true,
+            text: await renderReply("create_event_completed", fallback, {
+              event: createdEvent,
+            }),
+            effectReceipt: calendarEventMutationReceipt({
+              event: createdEvent,
+              idempotencyKey,
+              operation: "calendar.event.create",
+            }),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "create_event",
+              approvalRequired: false,
+              event: createdEvent,
+              ...(travelBuffer ? { travelBuffer } : {}),
+            },
+          });
+        }
         const approval = await requireCalendarMutationGateway().schedule({
           runtime,
           message,
@@ -4009,7 +4130,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               forceSync: true,
               ...feedRequest,
             }),
@@ -4113,7 +4234,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               calendarId: resolvedCalendarId,
               eventId: resolvedEventId,
             },
@@ -4240,6 +4361,48 @@ const calendarAction: CalendarHandlerAction = {
           recurrenceScope: recurrenceScopeForUpdate ?? undefined,
           notifyAttendees: detailBoolean(details, "notifyAttendees") === true,
         };
+        if (targetEvent.provider === ELIZA_CALENDAR_PROVIDER) {
+          const expectedProviderVersion = targetEvent.metadata.etag;
+          if (typeof expectedProviderVersion !== "string") {
+            throw new CalendarServiceError(
+              409,
+              "The built-in calendar event is missing its version. Refresh and try again.",
+              "ELIZA_CALENDAR_VERSION_REQUIRED",
+            );
+          }
+          const idempotencyKey = localCalendarOperationKey({
+            message,
+            operation: "update",
+            payload: updateRequest,
+          });
+          const updatedEvent = await service.updateCalendarEvent(INTERNAL_URL, {
+            ...updateRequest,
+            expectedProviderVersion,
+            idempotencyKey,
+          });
+          const fallback = `Updated “${updatedEvent.title}” for ${formatCalendarEventDateTime(
+            updatedEvent,
+            { includeTimeZoneName: true },
+          )}.`;
+          return respond({
+            success: true,
+            text: await renderReply("update_event_completed", fallback, {
+              event: updatedEvent,
+            }),
+            effectReceipt: calendarEventMutationReceipt({
+              event: updatedEvent,
+              idempotencyKey,
+              operation: "calendar.event.update",
+            }),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "update_event",
+              approvalRequired: false,
+              event: updatedEvent,
+              targetEvent,
+            },
+          });
+        }
         const approval = await requireCalendarMutationGateway().modify({
           runtime,
           message,
@@ -4315,7 +4478,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               forceSync: true,
               ...feedRequest,
             }),
@@ -4382,7 +4545,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               calendarId: detailString(details, "calendarId"),
               eventId: explicitEventId,
             },
@@ -4457,6 +4620,46 @@ const calendarAction: CalendarHandlerAction = {
             : {}),
           notifyAttendees: detailBoolean(details, "notifyAttendees") === true,
         };
+        if (targetEvent.provider === ELIZA_CALENDAR_PROVIDER) {
+          const expectedProviderVersion = targetEvent.metadata.etag;
+          if (typeof expectedProviderVersion !== "string") {
+            throw new CalendarServiceError(
+              409,
+              "The built-in calendar event is missing its version. Refresh and try again.",
+              "ELIZA_CALENDAR_VERSION_REQUIRED",
+            );
+          }
+          const idempotencyKey = localCalendarOperationKey({
+            message,
+            operation: "delete",
+            payload: cancelRequest,
+          });
+          await service.deleteCalendarEvent(INTERNAL_URL, {
+            ...cancelRequest,
+            expectedProviderVersion,
+            idempotencyKey,
+          });
+          const fallback = `Deleted “${targetEvent.title}” from your calendar.`;
+          return respond({
+            success: true,
+            text: await renderReply("delete_event_completed", fallback, {
+              event: targetEvent,
+            }),
+            effectReceipt: calendarEventMutationReceipt({
+              event: targetEvent,
+              idempotencyKey,
+              operation: "calendar.event.delete",
+              deleted: true,
+            }),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "delete_event",
+              approvalRequired: false,
+              deleted: true,
+              targetEvent,
+            },
+          });
+        }
         const approval = await requireCalendarMutationGateway().cancel({
           runtime,
           message,
@@ -4901,6 +5104,7 @@ const calendarAction: CalendarHandlerAction = {
       name: "details",
       description:
         "Optional structured calendar fields such as time bounds, timezone, calendar id, create-event timing, location, attendees, " +
+        "start/end datetimes must be RFC 3339 with a numeric offset matching timeZone (use Z only for UTC); " +
         'recurrence (RFC 5545 RRULE line(s) like "RRULE:FREQ=WEEKLY;BYDAY=MO" for repeating events), and recurrenceScope ' +
         '("instance" for one occurrence, "this_and_following" to split at the selected occurrence, "series" for the whole series).',
       required: false,

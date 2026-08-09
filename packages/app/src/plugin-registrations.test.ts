@@ -32,6 +32,7 @@ const SCAN_ROOTS = [
 // Role-qualified loader identities expected to self-declare renderer
 // registration: `<canonical package name>#<appRegister mode>`.
 const EXPECTED_SIDE_EFFECT_MODULES = [
+  "@elizaos/plugin-calendar#register",
   "@elizaos/plugin-contacts#register",
   "@elizaos/plugin-native-settings#register",
   "@elizaos/plugin-notes#register",

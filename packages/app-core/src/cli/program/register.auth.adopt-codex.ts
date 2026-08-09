@@ -70,8 +70,13 @@ export async function runAuthAdoptCodex(
   const { adoptCodexCliLogin } = await import(
     "@elizaos/auth/subscription-auth/adopt-codex-cli-login"
   );
+  const { createRuntimeAccountStoragePolicy } = await import(
+    "@elizaos/auth/account-storage"
+  );
+  const { resolveStateDir } = await import("@elizaos/core");
   try {
     const result = adoptCodexCliLogin({
+      storagePolicy: createRuntimeAccountStoragePolicy(resolveStateDir()),
       accountId,
       ...(params.codexHome ? { codexHome: params.codexHome } : {}),
       ...(params.overwrite ? { overwrite: true } : {}),

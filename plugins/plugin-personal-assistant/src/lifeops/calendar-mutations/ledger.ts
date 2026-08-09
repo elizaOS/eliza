@@ -65,6 +65,7 @@ const VALID_PROVIDERS: ReadonlySet<string> = new Set([
   "microsoft",
   "apple_calendar",
   "ics",
+  "eliza",
 ]);
 
 const SELECT_COLUMNS = [
@@ -212,6 +213,7 @@ function parseSnapshotProvider(value: unknown): LifeOpsCalendarProvider {
     case "microsoft":
     case "apple_calendar":
     case "ics":
+    case "eliza":
       return value;
     default:
       return receiptInvariant(

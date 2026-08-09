@@ -756,6 +756,10 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
     "live-only real-LLM EXPERIENCE deletion flow; the live model routes EXPERIENCE with no deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract. Keyless gating proof: the experience service unit suites.",
   "live-help-knowledge":
     "live-only real-LLM help-knowledge lane (#14360); the model answers from bundled help documents in prose, routing no action.",
+  "live-history-recall-memory-routing":
+    "live-only real-LLM proof of the Stage-1 history-capability gate (#17564, with-MEMORY branch); the live model routes MEMORY op:search with no deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract. Keyless gating proof: the message-runtime-stage1 capability-matrix suites in core.",
+  "live-history-recall-honest-denial":
+    "live-only real-LLM proof of the Stage-1 history-capability gate (#17564, no-action branch); the runtime has no role-visible MEMORY search action and the model must answer in prose without calling it, routing no action. Keyless gating proof: the message-runtime-stage1 denial-branch suites in core.",
   "live-lifeops-task-filter-due-window":
     "live-only real-LLM counterpart of the deterministic lifeops scheduled-task lanes; the live model routes SCHEDULED_TASKS with no deterministic ACTION_PLANNER fixture. The deterministic twins gate the keyless lane.",
   "live-missing-input-terminal-relay":
