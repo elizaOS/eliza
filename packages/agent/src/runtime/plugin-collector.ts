@@ -13,7 +13,10 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/core";
+import {
+  isGoogleChatConfigured,
+  lifeOpsPassiveConnectorsEnabled,
+} from "@elizaos/core";
 import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
   type: "json",
 };
@@ -365,34 +368,6 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
  */
 export type PluginLoadReasons = Map<string, string>;
 
-function nonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-/** True when a googlechat connector block has real config, not just `{}`. */
-function isGoogleChatConnectorConfigured(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const config = value as Record<string, unknown>;
-  if (config.enabled === false) return false;
-  // Usable Chat credential material only — projectId alone is not enough.
-  if (nonEmptyString(config.serviceAccountKey)) return true;
-  if (nonEmptyString(config.serviceAccount)) return true;
-  if (Array.isArray(config.accounts)) {
-    return config.accounts.some((account) => {
-      if (!account || typeof account !== "object" || Array.isArray(account)) {
-        return false;
-      }
-      const row = account as Record<string, unknown>;
-      return Boolean(
-        nonEmptyString(row.serviceAccountKey) || nonEmptyString(row.keyFile),
-      );
-    });
-  }
-  return false;
-}
-
 /**
  * Explicit Google signals only — never inferred from the universal Calendar
  * home tile (Apple/Microsoft/ICS also use Calendar).
@@ -407,7 +382,7 @@ function shouldLoadGoogleWorkspace(
   }
 
   const connectors = config.connectors as Record<string, unknown> | undefined;
-  if (isGoogleChatConnectorConfigured(connectors?.googlechat)) {
+  if (isGoogleChatConfigured(connectors?.googlechat)) {
     return true;
   }
 
@@ -673,7 +648,7 @@ export function collectPluginNames(
     // googlechat → google-workspace: require real Chat config, not empty `{}`.
     if (
       channelName === "googlechat" &&
-      !isGoogleChatConnectorConfigured(channelConfig)
+      !isGoogleChatConfigured(channelConfig)
     ) {
       continue;
     }

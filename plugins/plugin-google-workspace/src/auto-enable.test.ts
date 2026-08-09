@@ -24,6 +24,70 @@ describe("plugin-google-workspace shouldEnable", () => {
     ).toBe(true);
   });
 
+  it("enables for an object-form serviceAccount (parsed key JSON)", () => {
+    expect(
+      shouldEnable(
+        ctx({
+          config: {
+            connectors: {
+              googlechat: {
+                serviceAccount: { client_email: "bot@example.iam", private_key: "k" },
+              },
+            },
+          },
+        })
+      )
+    ).toBe(true);
+  });
+
+  it("enables for a serviceAccountFile path", () => {
+    expect(
+      shouldEnable(
+        ctx({
+          config: {
+            connectors: { googlechat: { serviceAccountFile: "/keys/chat.json" } },
+          },
+        })
+      )
+    ).toBe(true);
+  });
+
+  it("enables for a record-form accounts map with a credentialed account", () => {
+    expect(
+      shouldEnable(
+        ctx({
+          config: {
+            connectors: {
+              googlechat: {
+                accounts: {
+                  main: { serviceAccountFile: "/keys/main.json" },
+                },
+              },
+            },
+          },
+        })
+      )
+    ).toBe(true);
+  });
+
+  it("skips accounts rows with enabled=false when detecting credentials", () => {
+    expect(
+      shouldEnable(
+        ctx({
+          config: {
+            connectors: {
+              googlechat: {
+                accounts: {
+                  off: { enabled: false, serviceAccount: "{}" },
+                },
+              },
+            },
+          },
+        })
+      )
+    ).toBe(false);
+  });
+
   it("does not enable when googlechat is explicitly disabled", () => {
     expect(
       shouldEnable(

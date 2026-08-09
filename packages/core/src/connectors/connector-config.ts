@@ -103,6 +103,8 @@ export function isConnectorConfigured(
 			);
 		case "wechat":
 			return isWechatConfigured(config);
+		case "googlechat":
+			return isGoogleChatConfigured(config);
 		default:
 			return false;
 	}
@@ -113,6 +115,69 @@ export function isConnectorConfigured(
  * check in `isConnectorConfigured`; this helper handles the multi-account
  * variant where each account in `config.accounts.*.apiKey` is checked.
  */
+function isNonEmptyString(value: unknown): boolean {
+	return typeof value === "string" && value.trim().length > 0;
+}
+
+/** Object (record) form of a service-account credential — never an array. */
+function isRecordObject(value: unknown): boolean {
+	return (
+		typeof value === "object" && value !== null && !Array.isArray(value)
+	);
+}
+
+/**
+ * True when a Google Chat account row (top-level block or `accounts.*` record
+ * entry) carries usable service-account credential material. Mirrors
+ * GoogleChatAccountSchema: `serviceAccount` is a string OR a parsed key
+ * object, `serviceAccountFile` is a path string. `serviceAccountKey` is not a
+ * schema field but is accepted because the GOOGLE_CHAT_SERVICE_ACCOUNT_KEY
+ * env alias historically mapped there.
+ */
+function hasGoogleChatCredential(row: Record<string, unknown>): boolean {
+	return (
+		isNonEmptyString(row.serviceAccount) ||
+		isRecordObject(row.serviceAccount) ||
+		isNonEmptyString(row.serviceAccountFile) ||
+		isNonEmptyString(row.serviceAccountKey)
+	);
+}
+
+/**
+ * Google Chat connector detection. The connector authenticates with a service
+ * account, so `projectId` or webhook settings alone are not enough. Credential
+ * material may live at the top level or on any enabled entry of the
+ * `accounts` record (GoogleChatConfigSchema keys accounts by id, not array).
+ */
+export function isGoogleChatConfigured(value: unknown): boolean {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return false;
+	}
+	const config = value as Record<string, unknown>;
+	if (config.enabled === false) {
+		return false;
+	}
+	if (hasGoogleChatCredential(config)) {
+		return true;
+	}
+	const accounts = config.accounts;
+	if (accounts && typeof accounts === "object" && !Array.isArray(accounts)) {
+		return Object.values(accounts as Record<string, unknown>).some(
+			(account) => {
+				if (!account || typeof account !== "object" || Array.isArray(account)) {
+					return false;
+				}
+				const row = account as Record<string, unknown>;
+				if (row.enabled === false) {
+					return false;
+				}
+				return hasGoogleChatCredential(row);
+			},
+		);
+	}
+	return false;
+}
+
 export function isWechatConfigured(
 	config: Record<string, unknown> | null | undefined,
 ): boolean {

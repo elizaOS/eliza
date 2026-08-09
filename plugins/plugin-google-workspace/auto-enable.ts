@@ -4,7 +4,10 @@
 // `elizaos.plugin.autoEnableModule`. Keep this module light: env reads only,
 // no service init, no transitive imports of the full plugin runtime. The
 // auto-enable engine loads dozens of these per boot.
-import type { PluginAutoEnableContext } from "@elizaos/core";
+import {
+  isGoogleChatConfigured,
+  type PluginAutoEnableContext,
+} from "@elizaos/core";
 
 function entryEnabled(
   entries: Record<string, unknown> | undefined,
@@ -21,34 +24,6 @@ function hasNonEmptyEnv(
 ): boolean {
   const value = env[key];
   return typeof value === "string" && value.trim().length > 0;
-}
-
-function nonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-/** True when a googlechat block has real config fields, not just `{}`. */
-function isGoogleChatConnectorConfigured(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const config = value as Record<string, unknown>;
-  if (config.enabled === false) return false;
-  // Usable Chat credential material only — projectId alone is not enough.
-  if (nonEmptyString(config.serviceAccountKey)) return true;
-  if (nonEmptyString(config.serviceAccount)) return true;
-  if (Array.isArray(config.accounts)) {
-    return config.accounts.some((account) => {
-      if (!account || typeof account !== "object" || Array.isArray(account)) {
-        return false;
-      }
-      const row = account as Record<string, unknown>;
-      return Boolean(
-        nonEmptyString(row.serviceAccountKey) || nonEmptyString(row.keyFile),
-      );
-    });
-  }
-  return false;
 }
 
 /**
@@ -79,7 +54,7 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   const connectors = ctx.config.connectors as
     | Record<string, unknown>
     | undefined;
-  if (isGoogleChatConnectorConfigured(connectors?.googlechat)) {
+  if (isGoogleChatConfigured(connectors?.googlechat)) {
     return true;
   }
 

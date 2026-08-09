@@ -122,6 +122,63 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-google-workspace")).toBe(false);
   });
 
+  it("loads google-workspace for an object-form serviceAccount", () => {
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    const config: ElizaConfig = {
+      connectors: {
+        googlechat: {
+          serviceAccount: { client_email: "bot@example.iam", private_key: "k" },
+        },
+      },
+    } as ElizaConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
+  });
+
+  it("loads google-workspace for a serviceAccountFile path", () => {
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    const config: ElizaConfig = {
+      connectors: { googlechat: { serviceAccountFile: "/keys/chat.json" } },
+    } as ElizaConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
+  });
+
+  it("loads google-workspace for a record-form accounts map with credentials", () => {
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    const config: ElizaConfig = {
+      connectors: {
+        googlechat: {
+          accounts: { main: { serviceAccountFile: "/keys/main.json" } },
+        },
+      },
+    } as ElizaConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
+  });
+
+  it("ignores accounts rows disabled with enabled=false", () => {
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    const config: ElizaConfig = {
+      connectors: {
+        googlechat: {
+          accounts: { off: { enabled: false, serviceAccount: "{}" } },
+        },
+      },
+    } as ElizaConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(false);
+  });
+
+  it("still loads google-workspace for a legacy serviceAccountKey string", () => {
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    const config: ElizaConfig = {
+      connectors: { googlechat: { serviceAccountKey: "{}" } },
+    } as ElizaConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
+  });
+
   it("does not load google-workspace for an empty googlechat block", () => {
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
     const config: ElizaConfig = {
