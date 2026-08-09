@@ -19,7 +19,13 @@
 import { Globe, Plus, X } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 /** A tab as the switcher needs to render it — the view maps its richer
  *  `BrowserWorkspaceTab` down to this display shape so the switcher stays free
@@ -297,12 +303,12 @@ export function BrowserTabSwitcher({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        showCloseButton
+        showCloseButton={false}
         data-testid="browser-workspace-tab-switcher"
         data-view-overlay="browser-tabs"
         data-chat-clearance-aware="true"
-        overlayClassName="z-[8800] bg-black/65"
-        className="z-[8810] gap-4 rounded-3xl border-border/60 bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] shadow-[0_24px_80px_rgba(0,0,0,.48)] max-sm:-translate-y-1/2 max-sm:rounded-3xl"
+        overlayClassName="z-[8800] bg-black/70"
+        className="z-[8810] grid-rows-[auto_minmax(0,1fr)] gap-4 rounded-3xl border-border/60 bg-bg shadow-[0_24px_80px_rgba(0,0,0,.48)] max-sm:-translate-y-1/2 max-sm:rounded-3xl"
         style={{
           top: "calc((100dvh - var(--eliza-chat-clearance, 5.25rem)) / 2)",
           bottom: "auto",
@@ -310,7 +316,10 @@ export function BrowserTabSwitcher({
             "min(calc(100dvh - var(--eliza-chat-clearance, 5.25rem) - var(--safe-area-top, 0px) - 1.5rem), 42rem)",
         }}
       >
-        <DialogHeader className="flex-row items-center justify-between gap-2 pr-8 text-left">
+        <DialogHeader
+          data-testid="browser-workspace-tab-switcher-header"
+          className="flex-row items-center justify-between gap-2 pr-12 text-left"
+        >
           <DialogTitle>{title}</DialogTitle>
           <Button
             type="button"
@@ -329,7 +338,11 @@ export function BrowserTabSwitcher({
             <span className="truncate">{newTabLabel}</span>
           </Button>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          data-testid="browser-workspace-tab-switcher-scroll"
+          data-scroll-cert-scroller
+          className="min-h-0 overflow-y-auto overscroll-contain"
+        >
           {folded.count === 0 ? (
             <p className="px-1 py-6 text-center text-sm text-muted">
               {emptyLabel}
@@ -367,6 +380,12 @@ export function BrowserTabSwitcher({
             </div>
           )}
         </div>
+        <DialogClose
+          aria-label="Close"
+          className="absolute right-1 top-1 inline-flex h-11 w-11 items-center justify-center rounded-sm text-muted opacity-70 transition-opacity hover:text-txt hover:opacity-100 disabled:pointer-events-none"
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </DialogClose>
       </DialogContent>
     </Dialog>
   );
