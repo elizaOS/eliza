@@ -57,4 +57,29 @@ describe("workspace package resolution", () => {
       await server.close();
     }
   });
+
+  test("resolves shared wildcard subpaths from source on a cold checkout", async () => {
+    const serveConfig = await resolveAppViteConfig("serve");
+    const server = await createServer({
+      configFile: false,
+      root: appRoot,
+      logLevel: "silent",
+      optimizeDeps: { noDiscovery: true },
+      resolve: { conditions: serveConfig.resolve?.conditions },
+      server: { middlewareMode: true },
+    });
+
+    try {
+      const resolved =
+        await server.environments.client.pluginContainer.resolveId(
+          "@elizaos/shared/terminal/palette",
+          path.resolve(appRoot, "../ui/src/terminal/palette.ts"),
+        );
+      expect(resolved?.id).toBe(
+        path.resolve(appRoot, "../shared/src/terminal/palette.ts"),
+      );
+    } finally {
+      await server.close();
+    }
+  });
 });
