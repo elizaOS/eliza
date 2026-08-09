@@ -25,8 +25,12 @@ export const entitiesProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	dynamic: spec.dynamic ?? true,
-	contexts: ["contacts", "memory"],
-	contextGate: { anyOf: ["contacts", "memory"] },
+	// "messaging" is deliberately included: on a "tell <name> …" turn the
+	// planner needs to SEE who is present in the room to prefer a plain
+	// in-room reply over a contact search or DM lookup for someone who is
+	// standing right there (the over-routing family, with #17923 semantics).
+	contexts: ["contacts", "memory", "messaging"],
+	contextGate: { anyOf: ["contacts", "memory", "messaging"] },
 	cacheStable: false,
 	cacheScope: "turn",
 	roleGate: { minRole: "USER" },

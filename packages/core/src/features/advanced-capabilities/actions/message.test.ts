@@ -733,3 +733,318 @@ describe("inferOp is i18n-safe (#10471)", () => {
 		expect(inferOp({ text: "そのメッセージを削除して" })).toBe("send");
 	});
 });
+
+describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => {
+	const ROOM_ID = "00000000-0000-0000-0000-0000000000bb";
+	const SHADOW_ID = "00000000-0000-0000-0000-0000000000e1";
+	const OTHER_ID = "00000000-0000-0000-0000-0000000000e2";
+
+	function roomFixture() {
+		return {
+			id: ROOM_ID,
+			name: "#general",
+			source: "discord",
+			channelId: "chan-1",
+			serverId: "guild-1",
+		};
+	}
+
+	function harness(options: {
+		roomEntities: Array<{
+			id: string;
+			names: string[];
+			components?: Array<{ data?: Record<string, unknown> }>;
+		}>;
+		hookCandidates?: Array<Record<string, unknown>>;
+		getEntityById?: (id: string) => Promise<unknown>;
+		getRelationships?: () => Promise<unknown[]>;
+	}) {
+		const sends: Array<{ target: Record<string, unknown>; text: string }> = [];
+		const resolveTargets = vi.fn(async () => options.hookCandidates ?? []);
+		const cache = new Map<string, unknown>();
+		const runtime = createMockRuntime({
+			agentId: "00000000-0000-0000-0000-000000000001",
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
+			getMessageConnectors: () => [
+				{
+					source: "discord",
+					label: "Discord",
+					capabilities: [],
+					supportedTargetKinds: ["user", "room", "channel"],
+					contexts: [],
+					resolveTargets,
+				},
+			],
+			getRoom: async () => roomFixture(),
+			getEntitiesForRoom: async () => options.roomEntities,
+			getEntityById: (options.getEntityById ??
+				(async () => null)) as IAgentRuntime["getEntityById"],
+			getRelationships: (options.getRelationships ??
+				(async () => [])) as IAgentRuntime["getRelationships"],
+			getCache: (async (key: string) =>
+				cache.get(key)) as IAgentRuntime["getCache"],
+			setCache: (async (key: string, value: unknown) => {
+				cache.set(key, value);
+				return true;
+			}) as IAgentRuntime["setCache"],
+			deleteCache: (async (key: string) =>
+				cache.delete(key)) as IAgentRuntime["deleteCache"],
+			sendMessageToTarget: async (target, content) => {
+				sends.push({
+					target: target as unknown as Record<string, unknown>,
+					text: String(content.text ?? ""),
+				});
+				return { id: "00000000-0000-0000-0000-0000000000ff" } as Memory;
+			},
+			useModel: async () => {
+				throw new Error(
+					"room-first resolution must be deterministic — no model call",
+				);
+			},
+			reportError: () => undefined,
+		});
+		return { runtime, sends, resolveTargets };
+	}
+
+	async function send(
+		runtime: IAgentRuntime,
+		params: Record<string, unknown>,
+		text = "tell vega to take a break",
+	): Promise<ActionResult> {
+		const result = await messageAction.handler(
+			runtime,
+			{
+				...message,
+				content: { text, source: "discord" },
+			} as Memory,
+			undefined,
+			{ parameters: { action: "send", persist: false, ...params } },
+			undefined,
+			undefined,
+		);
+		if (!result) throw new Error("no result");
+		return result;
+	}
+
+	it("a name matching a room participant resolves to an in-channel utterance, not a DM or contact lookup", async () => {
+		const { runtime, sends, resolveTargets } = harness({
+			roomEntities: [
+				{ id: SHADOW_ID, names: ["Vega"] },
+				{ id: OTHER_ID, names: ["Someone Else"] },
+			],
+			// A guild-wide fuzzy stranger match must never be consulted first.
+			hookCandidates: [
+				{
+					target: { source: "discord", entityId: "555000111" },
+					label: "@vegafox",
+					kind: "user",
+					score: 0.95,
+					contexts: [],
+				},
+			],
+		});
+		const result = await send(runtime, {
+			target: "vega",
+			message: "take a break",
+		});
+
+		expect(result.success).toBe(true);
+		expect(sends).toHaveLength(1);
+		// Delivered IN the originating channel — never as an entity DM.
+		expect(sends[0].target).toMatchObject({
+			source: "discord",
+			roomId: ROOM_ID,
+			channelId: "chan-1",
+		});
+		expect(sends[0].target.entityId).toBeUndefined();
+		// The in-channel utterance addresses the member.
+		expect(sends[0].text).toBe("@Vega take a break");
+		// Room-first short-circuits the connector-wide fuzzy lookup entirely.
+		expect(resolveTargets).not.toHaveBeenCalled();
+	});
+
+	it("does not double-address when the text already names the member", async () => {
+		const { runtime, sends } = harness({
+			roomEntities: [{ id: SHADOW_ID, names: ["Vega"] }],
+		});
+		const result = await send(runtime, {
+			target: "vega",
+			message: "vega, please take a break",
+		});
+		expect(result.success).toBe(true);
+		expect(sends[0].text).toBe("vega, please take a break");
+	});
+
+	it("matches through connector component names (username/displayName)", async () => {
+		const { runtime, sends } = harness({
+			roomEntities: [
+				{
+					id: SHADOW_ID,
+					names: ["Casts No Light"],
+					components: [{ data: { username: "vega" } }],
+				},
+			],
+		});
+		const result = await send(runtime, {
+			target: "@vega",
+			message: "take a break",
+		});
+		expect(result.success).toBe(true);
+		expect(sends[0].target).toMatchObject({ roomId: ROOM_ID });
+	});
+
+	it("two matching room participants stay ambiguous — asks instead of guessing", async () => {
+		const { runtime, sends } = harness({
+			roomEntities: [
+				{ id: SHADOW_ID, names: ["Vega"] },
+				{
+					id: OTHER_ID,
+					names: ["Vega Two"],
+					components: [{ data: { username: "vega" } }],
+				},
+			],
+		});
+		const result = await send(runtime, {
+			target: "vega",
+			message: "take a break",
+		});
+
+		expect(result.success).toBe(false);
+		expect((result.data as { error?: string })?.error).toBe("TARGET_AMBIGUOUS");
+		expect(
+			(result.data as { candidates?: unknown[] })?.candidates,
+		).toHaveLength(2);
+		expect(sends).toHaveLength(0);
+	});
+});
+
+describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM close)", () => {
+	const STRANGER_PLATFORM_ID = "555000111";
+	const KNOWN_PLATFORM_ID = "555000222";
+
+	function harness(options: {
+		known: boolean;
+		roomEntities?: Array<{ id: string; names: string[] }>;
+	}) {
+		const sends: Array<{ target: Record<string, unknown> }> = [];
+		const cache = new Map<string, unknown>();
+		const platformId = options.known ? KNOWN_PLATFORM_ID : STRANGER_PLATFORM_ID;
+		const runtime = createMockRuntime({
+			agentId: "00000000-0000-0000-0000-000000000001",
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
+			getMessageConnectors: () => [
+				{
+					source: "discord",
+					label: "Discord",
+					capabilities: [],
+					supportedTargetKinds: ["user"],
+					contexts: [],
+					resolveTargets: async () => [
+						{
+							target: { source: "discord", entityId: platformId },
+							label: "@fuzzymatch",
+							kind: "user" as const,
+							score: 0.95,
+							contexts: [],
+						},
+					],
+				},
+			],
+			getRoom: async () => null,
+			getEntitiesForRoom: async () => options.roomEntities ?? [],
+			getEntityById: (async (id: string) =>
+				options.known
+					? { id, names: ["Known Friend"] }
+					: null) as IAgentRuntime["getEntityById"],
+			getRelationships: (async () =>
+				options.known
+					? [{ sourceEntityId: "a", targetEntityId: "b" }]
+					: []) as IAgentRuntime["getRelationships"],
+			getCache: (async (key: string) =>
+				cache.get(key)) as IAgentRuntime["getCache"],
+			setCache: (async (key: string, value: unknown) => {
+				cache.set(key, value);
+				return true;
+			}) as IAgentRuntime["setCache"],
+			deleteCache: (async (key: string) =>
+				cache.delete(key)) as IAgentRuntime["deleteCache"],
+			sendMessageToTarget: async (target) => {
+				sends.push({ target: target as unknown as Record<string, unknown> });
+				return { id: "00000000-0000-0000-0000-0000000000ff" } as Memory;
+			},
+			useModel: async () => {
+				throw new Error("gate must be deterministic — no model call");
+			},
+			reportError: () => undefined,
+		});
+		return { runtime, sends };
+	}
+
+	async function send(
+		runtime: IAgentRuntime,
+		text: string,
+	): Promise<ActionResult> {
+		const result = await messageAction.handler(
+			runtime,
+			{ ...message, content: { text, source: "discord" } } as Memory,
+			undefined,
+			{
+				parameters: {
+					action: "send",
+					persist: false,
+					target: "fuzzymatch",
+					targetKind: "user",
+					message: "hey there",
+				},
+			},
+			undefined,
+			undefined,
+		);
+		if (!result) throw new Error("no result");
+		return result;
+	}
+
+	it("a fuzzy connector match to a STRANGER is confirm-gated — nothing is sent", async () => {
+		const { runtime, sends } = harness({ known: false });
+		const result = await send(runtime, "message fuzzymatch saying hey");
+
+		expect(result.success).toBe(true);
+		expect(result.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
+		expect(sends).toHaveLength(0);
+	});
+
+	it("after the user confirms, the send proceeds", async () => {
+		const { runtime, sends } = harness({ known: false });
+		const first = await send(runtime, "message fuzzymatch saying hey");
+		expect(first.data).toMatchObject({ awaitingUserInput: true });
+		expect(sends).toHaveLength(0);
+
+		const second = await send(runtime, "yes");
+		expect(second.success).toBe(true);
+		expect(sends).toHaveLength(1);
+		expect(sends[0].target).toMatchObject({ entityId: STRANGER_PLATFORM_ID });
+	});
+
+	it("a declined confirmation cancels the send", async () => {
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey");
+		const second = await send(runtime, "no, don't do that");
+
+		expect(second.success).toBe(false);
+		expect(second.data).toMatchObject({ cancelled: true });
+		expect(sends).toHaveLength(0);
+	});
+
+	it("a relationship-backed recipient still DMs directly (saved-contact path unchanged)", async () => {
+		const { runtime, sends } = harness({ known: true });
+		const result = await send(runtime, "message my friend saying hey");
+
+		expect(result.success).toBe(true);
+		expect(result.data).not.toMatchObject({ confirmationRequired: true });
+		expect(sends).toHaveLength(1);
+		expect(sends[0].target).toMatchObject({ entityId: KNOWN_PLATFORM_ID });
+	});
+});
