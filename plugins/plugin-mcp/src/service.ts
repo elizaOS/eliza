@@ -4,6 +4,11 @@
  * connects the SDK client, and discovers its tools, resources, and resource
  * templates.
  *
+ * Servers come from `settings.mcp.servers` and from `MCP_SERVER_<NAME>_URL`
+ * environment variables (env wins on a name collision). Env declaration keeps a
+ * credential-bearing URL out of character settings, so it never persists into
+ * the character file or the agent database.
+ *
  * Stdio connections are health-checked with a periodic ping and reconnected with
  * exponential backoff; HTTP/SSE connections rely on transport error/close events
  * instead. Exposes callTool / readResource / getServers / getProviderData /
@@ -122,6 +127,18 @@ export class McpService extends Service {
   }
 
   private getMcpSettings(): McpSettings | undefined {
+    const configured = this.getConfiguredMcpSettings();
+    const envServers = this.readEnvMcpServers();
+    if (Object.keys(envServers).length === 0) {
+      return configured;
+    }
+    return {
+      ...(configured ?? {}),
+      servers: { ...(configured?.servers ?? {}), ...envServers },
+    };
+  }
+
+  private getConfiguredMcpSettings(): McpSettings | undefined {
     const rawSettings = this.runtime.getSetting("mcp");
     if (rawSettings !== undefined && rawSettings !== null) {
       if (!isMcpSettings(rawSettings)) {
@@ -146,6 +163,25 @@ export class McpService extends Service {
     }
 
     return undefined;
+  }
+
+  /**
+   * Servers declared via the host environment as `MCP_SERVER_<NAME>_URL`, with
+   * an optional `MCP_SERVER_<NAME>_TYPE` of `sse` or `http` (anything else
+   * falls back to `streamable-http`). Env-declared servers still pass the same
+   * security validation as configured ones.
+   */
+  private readEnvMcpServers(): Record<string, McpServerConfig> {
+    const servers: Record<string, McpServerConfig> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      const match = key.match(/^MCP_SERVER_(.+)_URL$/);
+      if (!match || !value || !value.trim()) continue;
+      const name = match[1].toLowerCase();
+      const typeRaw = process.env[`MCP_SERVER_${match[1]}_TYPE`]?.trim().toLowerCase();
+      const type = typeRaw === "http" || typeRaw === "sse" ? typeRaw : "streamable-http";
+      servers[name] = { type, url: value.trim() };
+    }
+    return servers;
   }
 
   private async validateServerConfigs(
@@ -180,12 +216,26 @@ export class McpService extends Service {
     }
 
     const connectionPromises = Object.entries(safeConfigs).map(async ([name, config]) => {
-      const currentConnection = this.connections.get(name);
-      if (!currentConnection) {
-        await this.initializeConnection(name, config);
-      } else if (JSON.stringify(config) !== currentConnection.server.config) {
-        await this.deleteConnection(name);
-        await this.initializeConnection(name, config);
+      try {
+        const currentConnection = this.connections.get(name);
+        if (!currentConnection) {
+          await this.initializeConnection(name, config);
+        } else if (JSON.stringify(config) !== currentConnection.server.config) {
+          await this.deleteConnection(name);
+          await this.initializeConnection(name, config);
+        }
+      } catch (error) {
+        // error-policy:J4 per-server containment — one unreachable server must
+        // not abort its siblings' connections or fail McpService start. The
+        // failed server surfaces as a visibly distinct disconnected entry (or
+        // is absent when it never got a transport), and the failure lands in
+        // RECENT_ERRORS via reportError.
+        const partial = this.connections.get(name);
+        if (partial && partial.server.status !== "connected") {
+          partial.server.status = "disconnected";
+          this.appendErrorMessage(partial, error instanceof Error ? error.message : String(error));
+        }
+        this.runtime.reportError("mcp.connect", error, { serverName: name });
       }
     });
 
@@ -253,12 +303,21 @@ export class McpService extends Service {
 
     connection.transport.onerror = async (error): Promise<void> => {
       const errorMessage = error?.message ?? String(error);
+      const lower = errorMessage.toLowerCase();
+      // For HTTP transports the optional server→client stream (the long-lived
+      // GET/SSE channel) routinely times out or disconnects on request/response
+      // servers that never hold it open. That is benign and must not tear down
+      // the working POST channel, so match the SDK's message variants
+      // ("timeout" / "timed out" / "SSE error" / "SSE stream disconnected")
+      // case-insensitively.
       const isExpectedTimeout =
         isHttpTransport &&
         (errorMessage === "undefined" ||
           errorMessage === "" ||
-          errorMessage.includes("SSE error") ||
-          errorMessage.includes("timeout"));
+          lower.includes("sse error") ||
+          lower.includes("sse stream disconnected") ||
+          lower.includes("timeout") ||
+          lower.includes("timed out"));
 
       if (!isExpectedTimeout) {
         logger.error({ error, serverName: name }, `Transport error for "${name}"`);

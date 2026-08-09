@@ -90,6 +90,47 @@ function getDirectResourceSelection(options?: unknown): ResourceSelection | null
   };
 }
 
+export interface DirectToolSelection {
+  readonly serverName: string;
+  readonly toolName: string;
+  /** Absent when the planner named the tool but supplied no arguments. */
+  readonly toolArguments?: Readonly<Record<string, unknown>>;
+  readonly reasoning: string;
+}
+
+export function getDirectToolSelection(options?: unknown): DirectToolSelection | null {
+  const params = readOptions(options as HandlerOptions);
+  const serverName = typeof params.serverName === "string" ? params.serverName.trim() : "";
+  const toolName = typeof params.toolName === "string" ? params.toolName.trim() : "";
+  if (!serverName || !toolName) return null;
+
+  let toolArguments: Record<string, unknown> | undefined;
+  const rawArgs = params.arguments ?? params.toolArguments;
+  if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
+    toolArguments = rawArgs as Record<string, unknown>;
+  } else if (typeof rawArgs === "string" && rawArgs.trim()) {
+    try {
+      const parsed: unknown = JSON.parse(rawArgs);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        toolArguments = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // error-policy:J3 untrusted planner input — a non-JSON arguments string
+      // is treated as absent so the model argument pass derives them instead.
+    }
+  }
+
+  return {
+    serverName,
+    toolName,
+    ...(toolArguments !== undefined ? { toolArguments } : {}),
+    reasoning:
+      typeof params.reasoning === "string" && params.reasoning.trim()
+        ? params.reasoning.trim()
+        : "Selected from structured MCP call_tool parameters.",
+  };
+}
+
 function createResourceSelectionPrompt(composedState: State, userMessage: string): string {
   const mcpData = (composedState.values.mcp ?? {}) as Record<string, McpServerInfo>;
   const serverNames = Object.keys(mcpData);
@@ -129,6 +170,7 @@ function createResourceSelectionPrompt(composedState: State, userMessage: string
 async function handleCallTool(
   runtime: IAgentRuntime,
   message: Memory,
+  options: HandlerOptions | Record<string, unknown> | undefined,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const composedState = await runtime.composeState(message, ["RECENT_MESSAGES", "MCP"]);
@@ -139,35 +181,61 @@ async function handleCallTool(
   const mcpProvider = mcpService.getProviderData();
 
   try {
-    const toolSelectionName = await createToolSelectionName({
-      runtime,
-      state: composedState,
-      message,
-      callback,
-      mcpProvider,
-    });
-    if (!toolSelectionName || toolSelectionName.noToolAvailable) {
-      return await handleNoToolAvailable(callback, toolSelectionName);
-    }
-    const { serverName, toolName } = toolSelectionName;
+    // Honor the planner's explicit tool selection (serverName + toolName, and
+    // arguments when given) instead of re-deriving it with a second model
+    // selection pass. When the planner already named the tool, that second pass
+    // can spuriously return noToolAvailable and fail an otherwise-valid call.
+    let selection: { serverName: string; toolName: string; reasoning?: string };
+    let toolArguments: Readonly<Record<string, unknown>>;
 
-    const toolSelectionArgument = await createToolSelectionArgument({
-      runtime,
-      state: composedState,
-      message,
-      callback,
-      mcpProvider,
-      toolSelectionName,
-    });
-    if (!toolSelectionArgument) {
-      return await handleNoToolAvailable(callback, toolSelectionName);
-    }
+    const direct = getDirectToolSelection(options);
+    if (direct) {
+      selection = direct;
+      if (direct.toolArguments) {
+        toolArguments = direct.toolArguments;
+      } else {
+        const derived = await createToolSelectionArgument({
+          runtime,
+          state: composedState,
+          message,
+          callback,
+          mcpProvider,
+          toolSelectionName: direct,
+        });
+        if (!derived) {
+          return await handleNoToolAvailable(callback, direct);
+        }
+        toolArguments = derived.toolArguments;
+      }
+    } else {
+      const toolSelectionName = await createToolSelectionName({
+        runtime,
+        state: composedState,
+        message,
+        callback,
+        mcpProvider,
+      });
+      if (!toolSelectionName || toolSelectionName.noToolAvailable) {
+        return await handleNoToolAvailable(callback, toolSelectionName);
+      }
 
-    const result = await mcpService.callTool(
-      serverName,
-      toolName,
-      toolSelectionArgument.toolArguments
-    );
+      const toolSelectionArgument = await createToolSelectionArgument({
+        runtime,
+        state: composedState,
+        message,
+        callback,
+        mcpProvider,
+        toolSelectionName,
+      });
+      if (!toolSelectionArgument) {
+        return await handleNoToolAvailable(callback, toolSelectionName);
+      }
+      selection = toolSelectionName;
+      toolArguments = toolSelectionArgument.toolArguments;
+    }
+    const { serverName, toolName } = selection;
+
+    const result = await mcpService.callTool(serverName, toolName, toolArguments);
 
     const { toolOutput, hasAttachments, attachments } = processToolResult(
       result,
@@ -182,7 +250,7 @@ async function handleCallTool(
       message,
       serverName,
       toolName,
-      toolSelectionArgument.toolArguments,
+      toolArguments,
       toolOutput,
       hasAttachments,
       attachments,
@@ -206,8 +274,8 @@ async function handleCallTool(
         op: "call_tool",
         serverName,
         toolName,
-        toolArgumentsJson: JSON.stringify(toolSelectionArgument.toolArguments),
-        reasoning: toolSelectionName.reasoning,
+        toolArgumentsJson: JSON.stringify(toolArguments),
+        reasoning: selection.reasoning,
         output: toolOutput,
         attachmentCount: attachments?.length ?? 0,
       },
@@ -497,7 +565,7 @@ export const mcpAction: Action = {
       };
     }
 
-    return handleCallTool(runtime, message, callback);
+    return handleCallTool(runtime, message, options, callback);
   },
 
   examples: [
