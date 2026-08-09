@@ -163,10 +163,22 @@ function messageAccountId(message: MessageRef | null | undefined): string {
   return message?.worldId ?? DEFAULT_GOOGLE_ACCOUNT_ID;
 }
 
+/**
+ * Fail-closed recipient extraction for new outbound drafts: every requested
+ * recipient must be a literal email address. Throwing on any invalid entry
+ * (rather than filtering) prevents a mixed list like `[valid@x.com, typo]`
+ * from being accepted, cached, and later sent to only part of its audience
+ * while reporting success.
+ */
 function newDraftRecipients(draft: DraftRequest): string[] {
-  return draft.to
-    .map((recipient) => recipient.identifier.trim())
-    .filter((identifier) => isEmailAddress(identifier));
+  const identifiers = draft.to.map((recipient) => recipient.identifier.trim());
+  const invalid = identifiers.filter((identifier) => !isEmailAddress(identifier));
+  if (invalid.length > 0) {
+    throw new Error(
+      `[GoogleGmailAdapter] every new Gmail draft entry must be a literal email-address recipient; invalid: ${invalid.join(", ")}`
+    );
+  }
+  return identifiers;
 }
 
 export class GoogleGmailAdapter extends BaseMessageAdapter {

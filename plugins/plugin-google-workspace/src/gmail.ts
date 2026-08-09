@@ -333,13 +333,15 @@ export class GoogleGmailClient {
     }
   ): Promise<GoogleGmailSendResult> {
     const raw = encodeRawGmailMessage([
-      `To: ${params.to.join(", ")}`,
-      ...(params.cc && params.cc.length > 0 ? [`Cc: ${params.cc.join(", ")}`] : []),
-      `Subject: ${normalizeReplySubject(params.subject)}`,
+      `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
+      ...(params.cc && params.cc.length > 0
+        ? [`Cc: ${sanitizeMailHeaderValue(params.cc.join(", "))}`]
+        : []),
+      `Subject: ${sanitizeMailHeaderValue(normalizeReplySubject(params.subject))}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
-      ...(params.inReplyTo ? [`In-Reply-To: ${params.inReplyTo}`] : []),
-      ...(params.references ? [`References: ${params.references}`] : []),
+      ...(params.inReplyTo ? [`In-Reply-To: ${sanitizeMailHeaderValue(params.inReplyTo)}`] : []),
+      ...(params.references ? [`References: ${sanitizeMailHeaderValue(params.references)}`] : []),
       "",
       params.bodyText.replace(/\r?\n/g, "\r\n"),
     ]);
@@ -356,10 +358,14 @@ export class GoogleGmailClient {
     }
   ): Promise<GoogleGmailSendResult> {
     const raw = encodeRawGmailMessage([
-      `To: ${params.to.join(", ")}`,
-      ...(params.cc && params.cc.length > 0 ? [`Cc: ${params.cc.join(", ")}`] : []),
-      ...(params.bcc && params.bcc.length > 0 ? [`Bcc: ${params.bcc.join(", ")}`] : []),
-      `Subject: ${params.subject.trim() || "(no subject)"}`,
+      `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
+      ...(params.cc && params.cc.length > 0
+        ? [`Cc: ${sanitizeMailHeaderValue(params.cc.join(", "))}`]
+        : []),
+      ...(params.bcc && params.bcc.length > 0
+        ? [`Bcc: ${sanitizeMailHeaderValue(params.bcc.join(", "))}`]
+        : []),
+      `Subject: ${sanitizeMailHeaderValue(params.subject.trim()) || "(no subject)"}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
       "",
@@ -688,10 +694,12 @@ function collectMessagePart(
 
 function encodeMessage(input: GoogleSendEmailInput): string {
   const headers = [
-    `To: ${formatEmailAddresses(input.to)}`,
-    input.cc?.length ? `Cc: ${formatEmailAddresses(input.cc)}` : undefined,
-    input.bcc?.length ? `Bcc: ${formatEmailAddresses(input.bcc)}` : undefined,
-    `Subject: ${input.subject}`,
+    `To: ${sanitizeMailHeaderValue(formatEmailAddresses(input.to))}`,
+    input.cc?.length ? `Cc: ${sanitizeMailHeaderValue(formatEmailAddresses(input.cc))}` : undefined,
+    input.bcc?.length
+      ? `Bcc: ${sanitizeMailHeaderValue(formatEmailAddresses(input.bcc))}`
+      : undefined,
+    `Subject: ${sanitizeMailHeaderValue(input.subject)}`,
     "MIME-Version: 1.0",
   ].filter(Boolean);
 
@@ -909,6 +917,15 @@ function labelsForOperation(
     remove_label: { removeLabelIds: labelIds },
   };
   return labels[operation];
+}
+
+/**
+ * Collapses CR/LF sequences in caller-supplied header values so LLM-composed
+ * subjects or recipient strings cannot inject additional MIME headers (for
+ * example a smuggled `Bcc:`) into the raw message.
+ */
+function sanitizeMailHeaderValue(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").trim();
 }
 
 function normalizeReplySubject(subject: string): string {
