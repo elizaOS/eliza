@@ -13,17 +13,19 @@ import type { WorkflowDefinition, WorkflowExecution, WorkflowNode } from '../../
 const outputPath = process.env.SMITHERS_RUNTIME_CASE_OUTPUT;
 if (!outputPath) throw new Error('Smithers exit-without-close fixture requires an output path');
 
-// The worker consumes the payload pipe to EOF first so the payload write
+// The worker consumes the initial stdin payload line first so the payload write
 // deterministically succeeds, then hands its stdout/stderr write ends to a
 // detached grandchild and exits. The grandchild never writes; it only holds
 // the pipes open long past the run deadline.
 const workerScript = `
-  const { readFileSync } = require('node:fs');
-  readFileSync(3, 'utf8');
   const { spawn } = require('node:child_process');
-  const grandchild = spawn('sleep', ['60'], { stdio: ['ignore', 1, 2], detached: true });
-  grandchild.unref();
-  process.exit(0);
+  process.stdin.setEncoding('utf8');
+  process.stdin.once('data', (input) => {
+    if (!String(input).trim()) process.exit(2);
+    const grandchild = spawn('sleep', ['60'], { stdio: ['ignore', 1, 2], detached: true });
+    grandchild.unref();
+    process.exit(0);
+  });
 `;
 
 const realSpawn = childProcess.spawn;
@@ -31,7 +33,7 @@ let workerExited = false;
 let workerClosed = false;
 
 // Only process creation is redirected: the replacement is still a real child
-// with the same four-pipe topology as the production worker.
+// with the same standard-stdio topology as the production worker.
 Object.defineProperty(childProcess, 'spawn', {
   configurable: true,
   value: (_command: unknown, _args: unknown, options: childProcess.SpawnOptions | undefined) => {
