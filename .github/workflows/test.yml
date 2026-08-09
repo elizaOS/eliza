@@ -222,7 +222,26 @@ jobs:
       - name: Remote capability GitHub live artifact self-test
         run: bun run test:remote-capabilities:github-live-artifacts:self-test
 
+      # `docker info` alone is not enough of a health signal on the shared
+      # self-hosted runners: the daemon can answer control-plane queries while
+      # container create/start hangs indefinitely (observed: `docker run -d`
+      # killed at 120s with empty stderr). Prove the daemon can actually start
+      # a container — using the same base image the smoke test builds FROM, so
+      # this also warms the pull cache — and skip the smoke with a warning when
+      # it cannot.
+      - name: Check Docker container-start health
+        id: docker-health
+        run: |
+          if timeout 300 docker pull node:24-alpine >/dev/null 2>&1 \
+            && timeout 90 docker run --rm node:24-alpine true >/dev/null 2>&1; then
+            echo "healthy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Docker on this runner cannot start a container within the health budget; skipping the remote capability Docker smoke"
+            echo "healthy=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Remote capability Docker smoke
+        if: steps.docker-health.outputs.healthy == 'true'
         run: bun run test:remote-capabilities:docker
 
       - name: Run server tests
