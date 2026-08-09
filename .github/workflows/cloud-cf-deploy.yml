@@ -900,8 +900,28 @@ jobs:
     if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # GitHub preserves outputs from successful jobs when only failed jobs are
+    # rerun. Consumers must therefore use the producer's attempt, not their own
+    # newer github.run_attempt. A full rerun executes this job again and emits
+    # the new attempt, so its deploy jobs consume the newly built artifacts.
+    outputs:
+      artifact_run_id: ${{ steps.pages-artifact.outputs.run_id }}
+      artifact_run_attempt: ${{ steps.pages-artifact.outputs.run_attempt }}
+      artifact_source_sha: ${{ steps.pages-artifact.outputs.source_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Bind Pages artifacts to this producer attempt
+        id: pages-artifact
+        env:
+          PRODUCER_RUN_ID: ${{ github.run_id }}
+          PRODUCER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PRODUCER_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "run_id=$PRODUCER_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$PRODUCER_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$PRODUCER_SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -940,7 +960,7 @@ jobs:
       - name: Upload console artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: pages-console-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pages-console-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
           path: |
             packages/app/dist
             packages/app/functions
@@ -969,7 +989,7 @@ jobs:
       - name: Upload app artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: pages-app-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pages-app-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
           path: |
             packages/app/dist
             packages/app/functions
@@ -1118,10 +1138,36 @@ jobs:
           # lookup during setup. See elizaOS/eliza#10839.
           bun-version: "1.3.14"
 
+      - name: Resolve immutable console artifact
+        id: pages-artifact
+        env:
+          PRODUCER_RUN_ID: ${{ needs.build-pages.outputs.artifact_run_id }}
+          PRODUCER_RUN_ATTEMPT: ${{ needs.build-pages.outputs.artifact_run_attempt }}
+          PRODUCER_SOURCE_SHA: ${{ needs.build-pages.outputs.artifact_source_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PRODUCER_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run ID is missing or invalid"
+            exit 1
+          fi
+          if ! [[ "$PRODUCER_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run attempt is missing or invalid"
+            exit 1
+          fi
+          if [ "$PRODUCER_RUN_ID" != "$GITHUB_RUN_ID" ]; then
+            echo "::error::Pages artifact run mismatch: producer=$PRODUCER_RUN_ID consumer=$GITHUB_RUN_ID"
+            exit 1
+          fi
+          if [ "$PRODUCER_SOURCE_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::Pages artifact SHA mismatch: producer=$PRODUCER_SOURCE_SHA consumer=$GITHUB_SHA"
+            exit 1
+          fi
+          echo "name=pages-console-${PRODUCER_RUN_ID}-${PRODUCER_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
       - name: Download immutable console artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: pages-console-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ steps.pages-artifact.outputs.name }}
           path: ${{ env.CHECKOUT_DIR }}/packages/app
 
       - name: Legacy inline fallback - install dependencies
@@ -1526,10 +1572,36 @@ jobs:
           # lookup during setup. See elizaOS/eliza#10839.
           bun-version: "1.3.14"
 
+      - name: Resolve immutable app artifact
+        id: pages-artifact
+        env:
+          PRODUCER_RUN_ID: ${{ needs.build-pages.outputs.artifact_run_id }}
+          PRODUCER_RUN_ATTEMPT: ${{ needs.build-pages.outputs.artifact_run_attempt }}
+          PRODUCER_SOURCE_SHA: ${{ needs.build-pages.outputs.artifact_source_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PRODUCER_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run ID is missing or invalid"
+            exit 1
+          fi
+          if ! [[ "$PRODUCER_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run attempt is missing or invalid"
+            exit 1
+          fi
+          if [ "$PRODUCER_RUN_ID" != "$GITHUB_RUN_ID" ]; then
+            echo "::error::Pages artifact run mismatch: producer=$PRODUCER_RUN_ID consumer=$GITHUB_RUN_ID"
+            exit 1
+          fi
+          if [ "$PRODUCER_SOURCE_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::Pages artifact SHA mismatch: producer=$PRODUCER_SOURCE_SHA consumer=$GITHUB_SHA"
+            exit 1
+          fi
+          echo "name=pages-app-${PRODUCER_RUN_ID}-${PRODUCER_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
       - name: Download immutable app artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: pages-app-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ steps.pages-artifact.outputs.name }}
           path: ${{ env.CHECKOUT_DIR }}/packages/app
 
       - name: Legacy inline fallback - install dependencies
