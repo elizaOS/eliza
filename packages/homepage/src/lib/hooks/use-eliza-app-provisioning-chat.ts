@@ -202,7 +202,9 @@ export function useElizaAppProvisioningChat(
           "/api/eliza-app/onboarding/chat",
           {
             method: "POST",
-            body: JSON.stringify(buildProvisioningPollBody(onboardingSessionId)),
+            body: JSON.stringify(
+              buildProvisioningPollBody(onboardingSessionId),
+            ),
           },
         );
         if (stoppedRef.current) return;

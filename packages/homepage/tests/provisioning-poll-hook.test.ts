@@ -20,7 +20,6 @@ const fetchCalls: Array<{ url: string; body: unknown }> = [];
 // The mock returns a provisioning-pending response so the poll loop keeps
 // running until the test deliberately flips the status to "running".
 let nextStatus = "pending";
-let nextBridgeUrl: string | null = null;
 
 // --- Controllable interval scheduler ---
 // Production calls setInterval(cb, 5000). We capture the callback so tests
@@ -40,7 +39,7 @@ let activeTimers: Set<CapturedTimer> = new Set();
 const clientMock = {
   elizacloudAuthFetch: mock(async (url: string, init?: RequestInit) => {
     const bodyStr = init?.body as string | undefined;
-    let parsedBody: unknown = undefined;
+    let parsedBody: unknown;
     if (bodyStr) {
       try {
         parsedBody = JSON.parse(bodyStr);
@@ -71,7 +70,11 @@ const clientMock = {
             bridgeUrl: isRunning ? "https://agent-123.example" : null,
           },
           messages: [
-            { role: "assistant" as const, content: "Hi! I'm Eliza.", createdAt: "2026-01-01T00:00:00Z" },
+            {
+              role: "assistant" as const,
+              content: "Hi! I'm Eliza.",
+              createdAt: "2026-01-01T00:00:00Z",
+            },
           ],
           handoffComplete: false,
         },
@@ -161,7 +164,10 @@ function mountHook(
     const result = useElizaAppProvisioningChat(active, sessionId);
     React.useEffect(() => {
       state = {
-        messages: result.messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: result.messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
         containerStatus: result.containerStatus,
         isReady: result.isReady,
       };
@@ -169,7 +175,8 @@ function mountHook(
     return React.createElement("div");
   }
 
-  const container = window.document.getElementById("root")!;
+  const container = window.document.getElementById("root");
+  if (!container) throw new Error("root element not found");
   // Clear any previous render (container is a known empty div from setupDom)
   container.textContent = "";
   const root = createRoot(container);
@@ -186,7 +193,6 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     setupDom();
     fetchCalls.length = 0;
     nextStatus = "pending";
-    nextBridgeUrl = null;
     capturedTimers = [];
     activeTimers = new Set();
   });
@@ -197,7 +203,9 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     // Wait for the mount effect + immediate poll to fire.
     await new Promise((r) => setTimeout(r, 150));
 
-    const chatCalls = fetchCalls.filter((c) => c.url === "/api/eliza-app/onboarding/chat");
+    const chatCalls = fetchCalls.filter(
+      (c) => c.url === "/api/eliza-app/onboarding/chat",
+    );
 
     // The polling effect fires immediately on mount. That call uses
     // buildProvisioningPollBody which must carry statusOnly:true.
@@ -266,7 +274,10 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
   });
 
   test("repeated polls do not append duplicate assistant replies to the transcript", async () => {
-    const { getState, unmount } = mountHook(true, "platform:blooio:+123****7890");
+    const { getState, unmount } = mountHook(
+      true,
+      "platform:blooio:+123****7890",
+    );
 
     // Wait for mount + immediate poll.
     await new Promise((r) => setTimeout(r, 150));
@@ -282,14 +293,19 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     // responses carry one welcome message array; the hook's applyOnboardingResponse
     // replaces (not appends) the messages.
     const state = getState();
-    const assistantMessages = state.messages.filter((m) => m.role === "assistant");
+    const assistantMessages = state.messages.filter(
+      (m) => m.role === "assistant",
+    );
     expect(assistantMessages.length).toBeLessThanOrEqual(2);
 
     unmount();
   });
 
   test("ready-state transition stops further polling", async () => {
-    const { getState, unmount } = mountHook(true, "platform:blooio:+123****7890");
+    const { getState, unmount } = mountHook(
+      true,
+      "platform:blooio:+123****7890",
+    );
 
     // Wait for mount + immediate poll (status pending).
     await new Promise((r) => setTimeout(r, 150));
