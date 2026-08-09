@@ -52,7 +52,7 @@ interface CreatedTask {
   metadata: TriggerTaskMetadata;
 }
 
-function makeRuntime(opts: { enableAutonomy: boolean }): {
+function makeRuntime(opts: { enableAutonomy: boolean; timeZone?: string }): {
   runtime: IAgentRuntime;
   createdTasks: CreatedTask[];
 } {
@@ -66,7 +66,8 @@ function makeRuntime(opts: { enableAutonomy: boolean }): {
       error: vi.fn(),
       debug: vi.fn(),
     },
-    getSetting: () => undefined,
+    getSetting: (key: string) =>
+      key === "TIMEZONE" ? opts.timeZone : undefined,
     getService: (name: string) =>
       name === AUTONOMY_SERVICE_TYPE
         ? { getAutonomousRoomId: () => AUTONOMY_ROOM_ID }
@@ -84,14 +85,19 @@ function makeRuntime(opts: { enableAutonomy: boolean }): {
 
 function makeMessage(
   text: string,
-  from?: { entityId?: UUID; roomId?: UUID },
+  from?: { entityId?: UUID; roomId?: UUID; uiTimeZone?: string },
 ): Memory {
   return {
     id: stringToUuid(`msg-${text.slice(0, 24)}`),
     entityId: from?.entityId ?? USER_ID,
     agentId: AGENT_ID,
     roomId: from?.roomId ?? CHAT_ROOM_ID,
-    content: { text },
+    content: {
+      text,
+      ...(from?.uiTimeZone
+        ? { metadata: { uiTimeZone: from.uiTimeZone } }
+        : {}),
+    },
     createdAt: Date.now(),
   } as Memory;
 }
@@ -100,7 +106,7 @@ async function create(
   runtime: IAgentRuntime,
   parameters: Record<string, unknown>,
   text = "remind me to drink water",
-  from?: { entityId?: UUID; roomId?: UUID },
+  from?: { entityId?: UUID; roomId?: UUID; uiTimeZone?: string },
 ) {
   return triggerAction.handler(runtime, makeMessage(text, from), undefined, {
     parameters: { action: "create", ...parameters },
@@ -176,6 +182,37 @@ describe("TRIGGER create — prompt-kind reminders", () => {
     expect(createdTasks[0].metadata.trigger?.scheduledAtIso).toBe(explicit);
   });
 
+  it("accepts an explicit one-shot timestamp when the planner sprays unused zero schedule fields", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const scheduledAtIso = new Date(Date.now() + 3_600_000).toISOString();
+    const result = await create(runtime, {
+      instructions: "join the meeting",
+      triggerType: "once",
+      scheduledAtIso,
+      delaySeconds: 0,
+      delayMinutes: 0,
+      intervalMs: 0,
+    });
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0].metadata.trigger).toMatchObject({
+      triggerType: "once",
+      scheduledAtIso,
+    });
+    expect(createdTasks[0].metadata.trigger?.intervalMs).toBeUndefined();
+
+    for (const parameterName of [
+      "delaySeconds",
+      "delayMinutes",
+      "intervalMs",
+    ]) {
+      expect(
+        triggerAction.parameters?.find(
+          (parameter) => parameter.name === parameterName,
+        )?.schema,
+      ).toMatchObject({ minimum: 0 });
+    }
+  });
+
   it("rejects a non-positive delay with a structured failure", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const result = await create(runtime, {
@@ -184,6 +221,18 @@ describe("TRIGGER create — prompt-kind reminders", () => {
     });
     expect(result?.success).toBe(false);
     expect(result?.error).toBe("INVALID_DELAY");
+    expect(createdTasks).toHaveLength(0);
+  });
+
+  it("rejects a zero interval when interval is the selected schedule", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "review open pull requests",
+      triggerType: "interval",
+      intervalMs: 0,
+    });
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("INVALID_INTERVAL");
     expect(createdTasks).toHaveLength(0);
   });
 
@@ -218,6 +267,22 @@ describe("TRIGGER create — prompt-kind reminders", () => {
     });
     expect(result?.success).toBe(true);
     expect(createdTasks[0].metadata.trigger?.triggerType).toBe("once");
+  });
+
+  it("keeps an explicit interval when unused delay fields are sprayed as zero", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "review open pull requests",
+      triggerType: "interval",
+      intervalMs: 60_000,
+      delaySeconds: 0,
+      delayMinutes: 0,
+    });
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0].metadata.trigger).toMatchObject({
+      triggerType: "interval",
+      intervalMs: 60_000,
+    });
   });
 
   it("dedupes an identical delay-derived reminder (planner retry double-emit)", async () => {
@@ -568,12 +633,17 @@ describe("TRIGGER replies — humanized schedule, single final message", () => {
   });
 
   it("renders a daily cron as human recurrence — no cron string in user text", async () => {
-    const { runtime } = makeRuntime({ enableAutonomy: false });
-    const result = await create(runtime, {
-      instructions: "take vitamins",
-      displayName: "take vitamins",
-      cronExpression: "0 8 * * *",
-    });
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "take vitamins",
+        displayName: "take vitamins",
+        cronExpression: "0 8 * * *",
+      },
+      "remind me to take vitamins every morning",
+      { uiTimeZone: "America/New_York" },
+    );
     if (!result) throw new Error("expected a result");
     expect(result.success).toBe(true);
     expect(result.text).toBe(
@@ -584,6 +654,7 @@ describe("TRIGGER replies — humanized schedule, single final message", () => {
     expect(result.text).not.toMatch(ISO_TIMESTAMP);
     // Machine detail stays in structured data for the planner/telemetry.
     expect(result.data?.cronExpression).toBe("0 8 * * *");
+    expect(createdTasks[0].metadata.trigger?.timezone).toBe("America/New_York");
   });
 
   it("renders a weekly cron as its weekday recurrence", async () => {
@@ -599,19 +670,22 @@ describe("TRIGGER replies — humanized schedule, single final message", () => {
     );
   });
 
-  it("renders a one-shot ISO timestamp as a friendly local time — never the raw ISO", async () => {
+  it("renders a one-shot ISO timestamp in the sending client's timezone without changing the instant", async () => {
     vi.useFakeTimers();
-    // Local noon: "tomorrow at 8am" is deterministic in any test timezone
-    // because both the action and the expectation use local time.
-    vi.setSystemTime(new Date(2026, 7, 8, 12, 0, 0));
+    vi.setSystemTime(new Date("2026-08-08T12:00:00.000Z"));
     try {
       const { runtime } = makeRuntime({ enableAutonomy: false });
-      const scheduledAtIso = new Date(2026, 7, 9, 8, 0, 0).toISOString();
-      const result = await create(runtime, {
-        instructions: "take vitamins",
-        displayName: "take vitamins",
-        scheduledAtIso,
-      });
+      const scheduledAtIso = "2026-08-09T12:00:00.000Z";
+      const result = await create(
+        runtime,
+        {
+          instructions: "take vitamins",
+          displayName: "take vitamins",
+          scheduledAtIso,
+        },
+        "remind me to take vitamins",
+        { uiTimeZone: "America/New_York" },
+      );
       if (!result) throw new Error("expected a result");
       expect(result.success).toBe(true);
       expect(result.text).toBe(
@@ -619,6 +693,65 @@ describe("TRIGGER replies — humanized schedule, single final message", () => {
       );
       expect(result.text).not.toMatch(ISO_TIMESTAMP);
       expect(result.data?.scheduledAtIso).toBe(scheduledAtIso);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the client timezone at a date boundary", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-08T23:30:00.000Z"));
+    try {
+      const { runtime } = makeRuntime({
+        enableAutonomy: false,
+        timeZone: "UTC",
+      });
+      const result = await create(
+        runtime,
+        {
+          instructions: "check the oven",
+          displayName: "check the oven",
+          scheduledAtIso: "2026-08-09T01:00:00.000Z",
+        },
+        "remind me to check the oven",
+        { uiTimeZone: "America/New_York" },
+      );
+      expect(result?.text).toBe(
+        'Reminder set: "check the oven" — today at 9pm.',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back from an invalid client timezone to the agent timezone", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-08T20:00:00.000Z"));
+    try {
+      const { runtime, createdTasks } = makeRuntime({
+        enableAutonomy: false,
+        timeZone: "Europe/Paris",
+      });
+      const scheduledAtIso = "2026-08-08T22:00:00.000Z";
+      const result = await create(
+        runtime,
+        {
+          instructions: "turn off the lights",
+          displayName: "turn off the lights",
+          scheduledAtIso,
+        },
+        "remind me to turn off the lights",
+        { uiTimeZone: "Mars/Olympus" },
+      );
+      expect(result?.text).toBe(
+        'Reminder set: "turn off the lights" — tomorrow at 12am.',
+      );
+      expect(result?.data?.scheduledAtIso).toBe(scheduledAtIso);
+      expect(result?.data?.timezone).toBe("Europe/Paris");
+      expect(createdTasks[0].metadata.trigger?.scheduledAtIso).toBe(
+        scheduledAtIso,
+      );
+      expect(createdTasks[0].metadata.trigger?.timezone).toBe("Europe/Paris");
     } finally {
       vi.useRealTimers();
     }
@@ -818,7 +951,10 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     metadata?: TriggerTaskMetadata;
   }
 
-  function makeLifecycleRuntime(tasks: Task[]): {
+  function makeLifecycleRuntime(
+    tasks: Task[],
+    timeZone?: string,
+  ): {
     runtime: IAgentRuntime;
     updates: Array<{ taskId: UUID; patch: TaskPatch }>;
     deletions: UUID[];
@@ -834,12 +970,21 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
         error: vi.fn(),
         debug: vi.fn(),
       },
-      getSetting: () => undefined,
+      getSetting: (key: string) => (key === "TIMEZONE" ? timeZone : undefined),
       getService: () => null,
       getTask: vi.fn(async (id: UUID) => tasks.find((t) => t.id === id)),
       getTasks: vi.fn(async () => tasks),
+      createTask: vi.fn(async (input: CreatedTask) => {
+        const taskId = stringToUuid(`lifecycle-created-${tasks.length}`);
+        tasks.push({ id: taskId, ...input } as unknown as Task);
+        return taskId;
+      }),
       updateTask: vi.fn(async (taskId: UUID, patch: TaskPatch) => {
         updates.push({ taskId, patch });
+        const index = tasks.findIndex((task) => task.id === taskId);
+        if (index >= 0) {
+          tasks[index] = { ...tasks[index], ...patch } as Task;
+        }
       }),
       deleteTask: vi.fn(async (taskId: UUID) => {
         deletions.push(taskId);
@@ -851,10 +996,11 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
   async function dispatch(
     runtime: IAgentRuntime,
     parameters: ActionParameters,
+    from?: { uiTimeZone?: string },
   ) {
     return triggerAction.handler(
       runtime,
-      makeMessage("manage my triggers"),
+      makeMessage("manage my triggers", from),
       undefined,
       { parameters },
     );
@@ -882,6 +1028,116 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     expect(next?.intervalMs).toBe(120_000);
     // buildTriggerMetadata re-armed the schedule off the new interval.
     expect(next?.nextRunAtMs).toBeGreaterThanOrEqual(before + 120_000);
+  });
+
+  it("uses neutral wording for a legacy cron whose scheduler timezone is unknown", async () => {
+    const { runtime } = makeLifecycleRuntime([
+      makeTriggerTask(
+        makePromptTrigger({
+          triggerType: "cron",
+          intervalMs: undefined,
+          cronExpression: "0 8 * * *",
+          timezone: undefined,
+        }),
+      ),
+    ]);
+    const result = await dispatch(runtime, {
+      action: "update",
+      taskId: LIFECYCLE_TASK_ID,
+      displayName: "Trigger: morning check",
+    });
+    expect(result?.text).toBe(
+      'Updated "morning check" — on its saved recurring schedule.',
+    );
+  });
+
+  it("anchors an updated cron to the sending client's timezone", async () => {
+    const { runtime, updates } = makeLifecycleRuntime([
+      makeTriggerTask(
+        makePromptTrigger({
+          triggerType: "cron",
+          intervalMs: undefined,
+          cronExpression: "0 8 * * *",
+          timezone: "UTC",
+        }),
+      ),
+    ]);
+    const result = await dispatch(
+      runtime,
+      {
+        action: "update",
+        taskId: LIFECYCLE_TASK_ID,
+        cronExpression: "0 9 * * *",
+      },
+      { uiTimeZone: "America/New_York" },
+    );
+    expect(result?.text).toBe(
+      'Updated "water the plants" — every morning at 9am.',
+    );
+    expect(updates[0].patch.metadata?.trigger?.timezone).toBe(
+      "America/New_York",
+    );
+  });
+
+  it("rekeys a cron after a timezone update so old and current schedules dedupe correctly", async () => {
+    const seed = makeRuntime({ enableAutonomy: false });
+    const seeded = await create(
+      seed.runtime,
+      {
+        instructions: "water the plants",
+        cronExpression: "0 8 * * *",
+      },
+      "remind me to water the plants every morning at 8",
+      { uiTimeZone: "America/New_York" },
+    );
+    expect(seeded?.success).toBe(true);
+    const initialTrigger = seed.createdTasks[0].metadata.trigger;
+    if (!initialTrigger) throw new Error("expected seeded trigger");
+    const originalDedupeKey = initialTrigger.dedupeKey;
+    const tasks = [makeTriggerTask(initialTrigger as PromptTriggerConfig)];
+    const { runtime, updates } = makeLifecycleRuntime(tasks);
+
+    const updated = await dispatch(
+      runtime,
+      {
+        action: "update",
+        taskId: LIFECYCLE_TASK_ID,
+        cronExpression: "0 8 * * *",
+      },
+      { uiTimeZone: "America/Los_Angeles" },
+    );
+    expect(updated?.success).toBe(true);
+    const updatedTrigger = updates[0].patch.metadata?.trigger;
+    expect(updatedTrigger?.timezone).toBe("America/Los_Angeles");
+    expect(updatedTrigger?.dedupeKey).not.toBe(originalDedupeKey);
+
+    const recreatedOldSchedule = await create(
+      runtime,
+      {
+        instructions: "water the plants",
+        cronExpression: "0 8 * * *",
+      },
+      "remind me to water the plants every morning at 8",
+      { uiTimeZone: "America/New_York" },
+    );
+    expect(recreatedOldSchedule?.success).toBe(true);
+    expect(recreatedOldSchedule?.data?.duplicateTaskId).toBeUndefined();
+    expect(tasks).toHaveLength(2);
+
+    const replayedCurrentSchedule = await create(
+      runtime,
+      {
+        instructions: "water the plants",
+        cronExpression: "0 8 * * *",
+      },
+      "remind me to water the plants every morning at 8",
+      { uiTimeZone: "America/Los_Angeles" },
+    );
+    expect(replayedCurrentSchedule?.success).toBe(true);
+    expect(replayedCurrentSchedule?.data?.duplicateTaskId).toBe(
+      LIFECYCLE_TASK_ID,
+    );
+    expect(tasks).toHaveLength(2);
   });
 
   it("update fails structurally on a missing or unknown taskId without persisting", async () => {
