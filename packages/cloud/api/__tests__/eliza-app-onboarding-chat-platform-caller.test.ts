@@ -386,7 +386,8 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       );
       expect(first.status).toBe(200);
       const firstData = await dataOf(first.clone());
-      const firstMessages = (firstData.messages as Array<{ role: string; content: string }>) ?? [];
+      const firstMessages =
+        (firstData.messages as Array<{ role: string; content: string }>) ?? [];
 
       // Repeated status-only polls through the Hono route.
       for (let i = 0; i < 5; i++) {
