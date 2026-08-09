@@ -1834,6 +1834,7 @@
   "cloud.login.callback.serverError": "Something went wrong on our end. Try again in a moment.",
   "cloud.login.callback.unknown": "Couldn't complete sign-in. Try again.",
   "cloud.login.checkInbox": "Check your inbox and click the link to sign in.",
+  "cloud.login.emailLabel": "Email",
   "cloud.login.emailPlaceholder": "you@example.com",
   "cloud.login.error.enterEmail": "Enter your email first",
   "cloud.login.error.enterEmailShort": "Enter your email",
