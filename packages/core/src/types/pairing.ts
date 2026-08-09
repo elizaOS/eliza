@@ -121,12 +121,16 @@ export function normalizePairingPageOptions(
 	const limit = options.limit ?? DEFAULT_PAIRING_PAGE_LIMIT;
 	const offset = options.offset ?? 0;
 
-	if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAIRING_PAGE_LIMIT) {
+	if (
+		!Number.isSafeInteger(limit) ||
+		limit < 1 ||
+		limit > MAX_PAIRING_PAGE_LIMIT
+	) {
 		throw new RangeError(
 			`Pairing page limit must be an integer between 1 and ${MAX_PAIRING_PAGE_LIMIT}`,
 		);
 	}
-	if (!Number.isInteger(offset) || offset < 0) {
+	if (!Number.isSafeInteger(offset) || offset < 0) {
 		throw new RangeError("Pairing page offset must be a non-negative integer");
 	}
 

@@ -1894,7 +1894,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 					requests.push(request);
 				}
 			}
+			const isPaged = query.limit !== undefined || query.offset !== undefined;
 			const direction = query.order === "newest" ? -1 : 1;
+			if (!isPaged && query.order === undefined) {
+				// Keep the legacy complete-array contract: chronological ordering with
+				// stable insertion order for records sharing a timestamp.
+				requests.sort(
+					(a, b) =>
+						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+				);
+				result.push({ channel, agentId, requests });
+				continue;
+			}
+
 			requests.sort((a, b) => {
 				const timeDifference =
 					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -1903,8 +1915,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				const bId = String(b.id);
 				return aId === bId ? 0 : aId < bId ? -direction : direction;
 			});
-
-			if (query.limit === undefined && query.offset === undefined) {
+			if (!isPaged) {
 				result.push({ channel, agentId, requests });
 				continue;
 			}
@@ -1973,7 +1984,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 					entries.push(entry);
 				}
 			}
+			const isPaged = query.limit !== undefined || query.offset !== undefined;
 			const direction = query.order === "newest" ? -1 : 1;
+			if (!isPaged && query.order === undefined) {
+				// Keep the legacy complete-array contract: chronological ordering with
+				// stable insertion order for records sharing a timestamp.
+				entries.sort(
+					(a, b) =>
+						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+				);
+				result.push({ channel, agentId, entries });
+				continue;
+			}
+
 			entries.sort((a, b) => {
 				const timeDifference =
 					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -1982,8 +2005,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				const bId = String(b.id);
 				return aId === bId ? 0 : aId < bId ? -direction : direction;
 			});
-
-			if (query.limit === undefined && query.offset === undefined) {
+			if (!isPaged) {
 				result.push({ channel, agentId, entries });
 				continue;
 			}

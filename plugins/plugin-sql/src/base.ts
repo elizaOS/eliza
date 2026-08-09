@@ -5763,11 +5763,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       return Promise.all(
         queries.map(async (query) => {
           const { channel, agentId } = query;
-          const orderBy =
-            query.order === "newest"
-              ? [desc(pairingRequestTable.createdAt), desc(pairingRequestTable.id)]
-              : [asc(pairingRequestTable.createdAt), asc(pairingRequestTable.id)];
-          const orderedQuery = this.db
+          const isPaged = query.limit !== undefined || query.offset !== undefined;
+          const pageOptions = isPaged ? normalizePairingPageOptions(query) : null;
+          const filteredQuery = this.db
             .select()
             .from(pairingRequestTable)
             .where(
@@ -5778,10 +5776,24 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                   ? gte(pairingRequestTable.createdAt, query.createdAfter)
                   : undefined
               )
-            )
-            .orderBy(...orderBy);
-          const isPaged = query.limit !== undefined || query.offset !== undefined;
-          const pageOptions = isPaged ? normalizePairingPageOptions(query) : null;
+            );
+          const orderedQuery =
+            query.order === "newest"
+              ? filteredQuery.orderBy(
+                  desc(pairingRequestTable.createdAt),
+                  desc(pairingRequestTable.id)
+                )
+              : query.order === "oldest"
+                ? filteredQuery.orderBy(
+                    asc(pairingRequestTable.createdAt),
+                    asc(pairingRequestTable.id)
+                  )
+                : isPaged
+                  ? filteredQuery.orderBy(
+                      asc(pairingRequestTable.createdAt),
+                      asc(pairingRequestTable.id)
+                    )
+                  : filteredQuery.orderBy(pairingRequestTable.createdAt);
           const results = pageOptions
             ? await orderedQuery.limit(pageOptions.limit + 1).offset(pageOptions.offset)
             : await orderedQuery;
@@ -6664,11 +6676,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       return Promise.all(
         queries.map(async (query) => {
           const { channel, agentId } = query;
-          const orderBy =
-            query.order === "newest"
-              ? [desc(pairingAllowlistTable.createdAt), desc(pairingAllowlistTable.id)]
-              : [asc(pairingAllowlistTable.createdAt), asc(pairingAllowlistTable.id)];
-          const orderedQuery = this.db
+          const isPaged = query.limit !== undefined || query.offset !== undefined;
+          const pageOptions = isPaged ? normalizePairingPageOptions(query) : null;
+          const filteredQuery = this.db
             .select()
             .from(pairingAllowlistTable)
             .where(
@@ -6676,10 +6686,24 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                 eq(pairingAllowlistTable.channel, channel),
                 eq(pairingAllowlistTable.agentId, agentId)
               )
-            )
-            .orderBy(...orderBy);
-          const isPaged = query.limit !== undefined || query.offset !== undefined;
-          const pageOptions = isPaged ? normalizePairingPageOptions(query) : null;
+            );
+          const orderedQuery =
+            query.order === "newest"
+              ? filteredQuery.orderBy(
+                  desc(pairingAllowlistTable.createdAt),
+                  desc(pairingAllowlistTable.id)
+                )
+              : query.order === "oldest"
+                ? filteredQuery.orderBy(
+                    asc(pairingAllowlistTable.createdAt),
+                    asc(pairingAllowlistTable.id)
+                  )
+                : isPaged
+                  ? filteredQuery.orderBy(
+                      asc(pairingAllowlistTable.createdAt),
+                      asc(pairingAllowlistTable.id)
+                    )
+                  : filteredQuery.orderBy(pairingAllowlistTable.createdAt);
           const results = pageOptions
             ? await orderedQuery.limit(pageOptions.limit + 1).offset(pageOptions.offset)
             : await orderedQuery;

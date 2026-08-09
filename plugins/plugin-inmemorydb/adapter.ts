@@ -1685,6 +1685,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
           r.agentId === agentId &&
           (!query.createdAfter || new Date(r.createdAt).getTime() >= query.createdAfter.getTime())
       );
+      const isPaged = query.limit !== undefined || query.offset !== undefined;
+      if (!isPaged && query.order === undefined) {
+        result.push({ channel, agentId, requests });
+        continue;
+      }
+
       const direction = query.order === "newest" ? -1 : 1;
       requests.sort((a, b) => {
         const timeDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -1693,8 +1699,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         const bId = String(b.id);
         return aId === bId ? 0 : aId < bId ? -direction : direction;
       });
-
-      if (query.limit === undefined && query.offset === undefined) {
+      if (!isPaged) {
         result.push({ channel, agentId, requests });
         continue;
       }
@@ -1725,6 +1730,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         COLLECTIONS.PAIRING_ALLOWLIST,
         (e) => e.channel === channel && e.agentId === agentId
       );
+      const isPaged = query.limit !== undefined || query.offset !== undefined;
+      if (!isPaged && query.order === undefined) {
+        result.push({ channel, agentId, entries });
+        continue;
+      }
+
       const direction = query.order === "newest" ? -1 : 1;
       entries.sort((a, b) => {
         const timeDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -1733,8 +1744,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         const bId = String(b.id);
         return aId === bId ? 0 : aId < bId ? -direction : direction;
       });
-
-      if (query.limit === undefined && query.offset === undefined) {
+      if (!isPaged) {
         result.push({ channel, agentId, entries });
         continue;
       }

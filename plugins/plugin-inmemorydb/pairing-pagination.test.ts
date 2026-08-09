@@ -10,24 +10,24 @@ function id(index: number): UUID {
   return `20000000-0000-0000-0000-${index.toString().padStart(12, "0")}` as UUID;
 }
 
-function request(index: number): PairingRequest {
+function request(index: number, createdAt = index * 1_000): PairingRequest {
   return {
     id: id(index),
     channel: "telegram",
     senderId: `sender-${index}`,
     code: `CODE${index}`,
-    createdAt: new Date(index * 1_000),
-    lastSeenAt: new Date(index * 1_000),
+    createdAt: new Date(createdAt),
+    lastSeenAt: new Date(createdAt),
     agentId: AGENT_ID,
   };
 }
 
-function entry(index: number): PairingAllowlistEntry {
+function entry(index: number, createdAt = index * 1_000): PairingAllowlistEntry {
   return {
     id: id(index),
     channel: "telegram",
     senderId: `allowed-${index}`,
-    createdAt: new Date(index * 1_000),
+    createdAt: new Date(createdAt),
     agentId: AGENT_ID,
   };
 }
@@ -36,8 +36,22 @@ describe("plugin-inmemorydb pairing pagination", () => {
   it("orders, filters, and bounds request and allowlist queries", async () => {
     const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
     await adapter.initialize();
-    await adapter.createPairingRequests([request(1), request(2), request(3)]);
-    await adapter.createPairingAllowlistEntries([entry(4), entry(5), entry(6)]);
+    await adapter.createPairingRequests([request(3, 2_000), request(1), request(2, 2_000)]);
+    await adapter.createPairingAllowlistEntries([
+      entry(6, 2_000),
+      entry(4, 1_000),
+      entry(5, 2_000),
+    ]);
+
+    const [legacyRequests] = await adapter.getPairingRequests([
+      { channel: "telegram", agentId: AGENT_ID },
+    ]);
+    expect(legacyRequests.requests.map((item) => item.id)).toEqual([id(3), id(1), id(2)]);
+
+    const [legacyAllowlist] = await adapter.getPairingAllowlists([
+      { channel: "telegram", agentId: AGENT_ID },
+    ]);
+    expect(legacyAllowlist.entries.map((item) => item.id)).toEqual([id(6), id(4), id(5)]);
 
     const [requests] = await adapter.getPairingRequests([
       {

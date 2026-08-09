@@ -10,6 +10,7 @@ import type {
 	PairingRequest,
 	UUID,
 } from "../types";
+import { normalizePairingPageOptions } from "../types";
 import { PairingService } from "./pairing";
 
 function uuid(index: number): UUID {
@@ -126,6 +127,48 @@ describe("PairingService bounded reads", () => {
 		]);
 	});
 
+	it("uses one TTL cutoff for storage and post-filtering", async () => {
+		vi.useFakeTimers();
+		const now = new Date("2026-01-10T00:00:00.000Z");
+		vi.setSystemTime(now);
+		const createdAt = new Date(now.getTime() - 500);
+		const requestNearExpiry = request(7, createdAt);
+		const getPairingRequests = vi.fn<IAgentRuntime["getPairingRequests"]>(
+			async () => {
+				// Simulate the clock crossing the TTL boundary while the adapter reads.
+				vi.setSystemTime(new Date(now.getTime() + 501));
+				return [
+					{
+						channel: "discord",
+						agentId: MOCK_AGENT_ID,
+						requests: [requestNearExpiry],
+						pageInfo: {
+							limit: 1,
+							offset: 0,
+							hasMore: false,
+							nextOffset: null,
+						},
+					},
+				];
+			},
+		);
+		const runtime = runtimeWith({
+			getPairingRequests,
+			getPairingAllowlists: vi.fn(async () => []),
+		});
+
+		await expect(
+			new PairingService(runtime, {
+				requestTtlMs: 1_000,
+			}).listPendingRequestsPage("discord", { limit: 1 }),
+		).resolves.toMatchObject({ items: [requestNearExpiry] });
+		expect(getPairingRequests).toHaveBeenCalledWith([
+			expect.objectContaining({
+				createdAfter: new Date(now.getTime() - 1_000),
+			}),
+		]);
+	});
+
 	it("bounds legacy third-party adapter results when page metadata is absent", async () => {
 		const getPairingAllowlists = vi.fn<IAgentRuntime["getPairingAllowlists"]>(
 			async () => [
@@ -198,6 +241,8 @@ describe("PairingService bounded reads", () => {
 		{ limit: 1.5 },
 		{ offset: -1 },
 		{ offset: 1.5 },
+		{ offset: Number.MAX_SAFE_INTEGER + 1 },
+		{ offset: Number.MAX_VALUE },
 	])(
 		"rejects invalid page options before reading storage: %j",
 		async (options) => {
@@ -215,4 +260,16 @@ describe("PairingService bounded reads", () => {
 			expect(getPairingRequests).not.toHaveBeenCalled();
 		},
 	);
+
+	it("accepts the maximum safe offset and rejects unsafe integers", () => {
+		expect(
+			normalizePairingPageOptions({ offset: Number.MAX_SAFE_INTEGER }),
+		).toEqual({
+			limit: 50,
+			offset: Number.MAX_SAFE_INTEGER,
+		});
+		expect(() =>
+			normalizePairingPageOptions({ offset: Number.MAX_SAFE_INTEGER + 1 }),
+		).toThrow(RangeError);
+	});
 });

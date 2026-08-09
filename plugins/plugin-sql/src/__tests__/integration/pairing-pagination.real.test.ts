@@ -36,15 +36,6 @@ describe("BaseDrizzleAdapter pairing pagination", () => {
         agentId,
       },
       {
-        id: id(2),
-        channel: "msteams",
-        senderId: "sender-2",
-        code: "CODE0002",
-        createdAt: new Date(2_000),
-        lastSeenAt: new Date(2_000),
-        agentId,
-      },
-      {
         id: id(3),
         channel: "msteams",
         senderId: "sender-3",
@@ -53,11 +44,20 @@ describe("BaseDrizzleAdapter pairing pagination", () => {
         lastSeenAt: new Date(2_000),
         agentId,
       },
+      {
+        id: id(2),
+        channel: "msteams",
+        senderId: "sender-2",
+        code: "CODE0002",
+        createdAt: new Date(2_000),
+        lastSeenAt: new Date(2_000),
+        agentId,
+      },
     ];
     await adapter.createPairingRequests(requests);
 
     const [legacy] = await adapter.getPairingRequests([{ channel: "msteams", agentId }]);
-    expect(legacy.requests.map((request) => request.id)).toEqual([id(1), id(2), id(3)]);
+    expect(legacy.requests.map((request) => request.id)).toEqual([id(1), id(3), id(2)]);
     expect(legacy.pageInfo).toBeUndefined();
 
     const [firstPage] = await adapter.getPairingRequests([
@@ -93,14 +93,17 @@ describe("BaseDrizzleAdapter pairing pagination", () => {
   });
 
   it("applies the same bounds to allowlist pages", async () => {
-    const entries: PairingAllowlistEntry[] = [4, 5, 6].map((index) => ({
+    const entries: PairingAllowlistEntry[] = [6, 4, 5].map((index) => ({
       id: id(index),
       channel: "msteams",
       senderId: `allowed-${index}`,
-      createdAt: new Date(index * 1_000),
+      createdAt: new Date(index === 4 ? 1_000 : 2_000),
       agentId,
     }));
     await adapter.createPairingAllowlistEntries(entries);
+
+    const [legacy] = await adapter.getPairingAllowlists([{ channel: "msteams", agentId }]);
+    expect(legacy.entries.map((entry) => entry.id)).toEqual([id(4), id(6), id(5)]);
 
     const [page] = await adapter.getPairingAllowlists([
       {

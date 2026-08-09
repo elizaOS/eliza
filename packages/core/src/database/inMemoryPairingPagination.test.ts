@@ -37,8 +37,8 @@ describe("InMemoryDatabaseAdapter pairing pagination", () => {
 		await adapter.initialize();
 		await adapter.createPairingRequests([
 			request(1, 1_000),
-			request(2, 2_000),
 			request(3, 2_000),
+			request(2, 2_000),
 		]);
 
 		const [legacy] = await adapter.getPairingRequests([
@@ -46,8 +46,8 @@ describe("InMemoryDatabaseAdapter pairing pagination", () => {
 		]);
 		expect(legacy.requests.map((item) => item.id)).toEqual([
 			id(1),
-			id(2),
 			id(3),
+			id(2),
 		]);
 		expect(legacy.pageInfo).toBeUndefined();
 
@@ -88,8 +88,17 @@ describe("InMemoryDatabaseAdapter pairing pagination", () => {
 		await adapter.initialize();
 		await adapter.createPairingAllowlistEntries([
 			entry(4, 1_000),
+			entry(6, 2_000),
 			entry(5, 2_000),
-			entry(6, 3_000),
+		]);
+
+		const [legacy] = await adapter.getPairingAllowlists([
+			{ channel: "signal", agentId: AGENT_ID },
+		]);
+		expect(legacy.entries.map((item) => item.id)).toEqual([
+			id(4),
+			id(6),
+			id(5),
 		]);
 
 		const [page] = await adapter.getPairingAllowlists([

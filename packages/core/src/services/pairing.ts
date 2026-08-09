@@ -112,15 +112,19 @@ export class PairingService extends Service {
 	 * Check if a pairing request is expired.
 	 */
 	private isExpired(request: PairingRequest): boolean {
+		return this.isExpiredAt(request, Date.now());
+	}
+
+	private isExpiredAt(request: PairingRequest, now: number): boolean {
 		const createdAt =
 			request.createdAt instanceof Date
 				? request.createdAt.getTime()
 				: new Date(request.createdAt).getTime();
-		return Date.now() - createdAt > this.pairingConfig.requestTtlMs;
+		return now - createdAt > this.pairingConfig.requestTtlMs;
 	}
 
-	private requestExpiryCutoff(): Date {
-		return new Date(Date.now() - this.pairingConfig.requestTtlMs);
+	private requestExpiryCutoff(now = Date.now()): Date {
+		return new Date(now - this.pairingConfig.requestTtlMs);
 	}
 
 	private cleanupExpiredRequests(requests: PairingRequest[]): PairingRequest[] {
@@ -212,6 +216,7 @@ export class PairingService extends Service {
 		options: PairingPageOptions = {},
 	): Promise<PairingPage<PairingRequest>> {
 		const { limit, offset } = normalizePairingPageOptions(options);
+		const now = Date.now();
 		const [result] = await this.runtime.getPairingRequests([
 			{
 				channel,
@@ -219,11 +224,11 @@ export class PairingService extends Service {
 				limit,
 				offset,
 				order: "newest",
-				createdAfter: this.requestExpiryCutoff(),
+				createdAfter: this.requestExpiryCutoff(now),
 			},
 		]);
 		const validRequests = (result?.requests ?? []).filter(
-			(request) => !this.isExpired(request),
+			(request) => !this.isExpiredAt(request, now),
 		);
 
 		if (result?.pageInfo) {
