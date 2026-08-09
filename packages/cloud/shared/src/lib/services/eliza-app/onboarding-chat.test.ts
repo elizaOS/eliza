@@ -1553,9 +1553,9 @@ describe("runOnboardingChat", () => {
 
         // Exactly one remember call with a transcript containing no duplicates.
         expect(rememberRequests).toHaveLength(1);
-        const transcript = String(
-          (rememberRequests[0]?.body as { text: string }).text,
-        );
+        const firstRequest = rememberRequests[0];
+        if (!firstRequest) throw new Error("Expected at least one remember request");
+        const transcript = String((firstRequest.body as { text: string }).text);
 
         // Count both user lines AND assistant lines to catch any
         // poll-generated duplicate "Eliza onboarding:" entries that a
