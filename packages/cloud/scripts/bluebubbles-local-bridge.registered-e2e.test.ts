@@ -8,7 +8,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 const childProcesses: Bun.Subprocess[] = [];
 const servers: ReturnType<typeof Bun.serve>[] = [];
@@ -168,10 +168,10 @@ describe("registered BlueBubbles local bridge E2E", () => {
       [
         process.execPath,
         "run",
-        resolve("packages/cloud/scripts/bluebubbles-local-bridge.ts"),
+        join(import.meta.dir, "bluebubbles-local-bridge.ts"),
       ],
       {
-        cwd: resolve("."),
+        cwd: import.meta.dir,
         env: {
           ...process.env,
           BLUEBUBBLES_BRIDGE_PORT: String(relayPort),

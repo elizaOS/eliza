@@ -87,21 +87,6 @@ mock.module("./api-keys", () => ({
     },
   },
 }));
-mock.module("./inference-admission-snapshot", () => ({
-  loadInferenceAdmissionSnapshot: async () => ({
-    balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
-    rateLimits: {
-      completionsRpm: 60,
-      embeddingsRpm: 100,
-      standardRpm: 30,
-      strictRpm: 5,
-    },
-  }),
-}));
-mock.module("./inference-app-key-scope", () => ({
-  loadInferenceAppKeyScope: async () => null,
-}));
-
 const { resolveInferenceAuthContext } = await import("./inference-auth-context");
 const { hashApiKey, invalidateInferenceAuthContextByKeyHash } = await import(
   "./inference-auth-cache"
