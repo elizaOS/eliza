@@ -457,7 +457,9 @@ export const searchKnowledgeAction: Action = {
     return {
       success: true,
       text,
-      ...(items.length ? { userFacingText: text, verifiedUserFacing: true } : {}),
+      ...(items.length
+        ? { userFacingText: text, verifiedUserFacing: true }
+        : {}),
       data: { query, count: items.length, items },
     };
   },
