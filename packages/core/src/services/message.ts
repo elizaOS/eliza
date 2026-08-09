@@ -532,9 +532,6 @@ function resolveStage1ReplyGateMode(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): ReplyGateMode | null {
-	if (typeof runtime.getService !== "function") {
-		return null;
-	}
 	const store = getPersonalityStore(runtime);
 	if (!store || message.entityId === runtime.agentId) {
 		return null;
@@ -7795,18 +7792,20 @@ export async function runV5MessageRuntimeStage1(args: {
 		// for human and bot addressees (bot-ness is surfaced to the model as
 		// transcript context, not handled here). Undirected banter
 		// (addressedTo: []) never gates, so chatty agents still interject per
-		// their character. Two structural bypasses keep deliberately-engaged
-		// turns first-class: the turn also addresses the agent (platform
-		// mention/reply or the agent's name in the text), or the sender's
-		// effective personality reply_gate is an explicit "always".
+		// their character. Eligibility is bounded by the canonical `ambientTurn`
+		// classifier: only positively identified unaddressed text-group traffic
+		// can be suppressed. Direct/API/self turns, client chat, autonomous and
+		// sub-agent traffic, explicit mentions/replies/names, and unknown channel
+		// types all fail open. The sender's effective personality reply_gate also
+		// provides a deliberate opt-out when it is explicitly "always".
 		//
-		// Fail SAFE on any resolution error (DB hiccup in getEntitiesForRoom): a
+		// Fail OPEN on any resolution error (DB hiccup in getEntitiesForRoom): a
 		// transient failure must NOT convert a normal turn into silence — it
 		// just means "don't suppress", matching the conservative contract and
 		// the fire-and-forget addressee handling above.
 		const addressedToOtherParticipant =
+			ambientTurn &&
 			addressedTo.length > 0 &&
-			!messageExplicitlyAddressesAgent(args.runtime, args.message) &&
 			resolveStage1ReplyGateMode(args.runtime, args.message) !== "always"
 				? await messageAddressedToOtherParticipant({
 						runtime: args.runtime,
