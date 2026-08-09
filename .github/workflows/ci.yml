@@ -88,14 +88,21 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      # build:core runs first so package typechecks resolve workspace dist
+      # output instead of each racing to rebuild it inside the verify fan-out.
+      - name: Build core contract
+        run: bun run build:core
+
+      # RUN_TURBO_CONCURRENCY=4: hosted runners have 4 vCPUs and ~16 GB; the
+      # package-script default of 8 concurrent tsc processes on a full
+      # workspace cone OOM-kills the runner VM (exit 143, #15140).
       - name: Repository verification
+        env:
+          RUN_TURBO_CONCURRENCY: "4"
         run: bun run verify
 
       - name: Formatting
         run: bun run format:check
-
-      - name: Build core contract
-        run: bun run build:core
 
   tests:
     name: Tests
@@ -158,6 +165,14 @@ jobs:
           setup-python: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+
+      # The dev server resolves @elizaos/core's workspace deps (e.g.
+      # @elizaos/cloud-routing) from their built dist/, and the frozen
+      # --ignore-scripts install never builds them. Turbo builds core plus its
+      # dependency graph, matching the prelude in dev-smoke.yml.
+      - name: Build @elizaos/core and workspace deps
+        if: needs.changes.outputs.desktop == 'true'
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
 
       - name: Desktop startup smoke
         if: needs.changes.outputs.desktop == 'true'
