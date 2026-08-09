@@ -3,7 +3,11 @@
  * the sender cannot access the CHARACTER action. This boundary deliberately
  * favors precision over recall: ordinary turn instructions must not become a
  * false authorization refusal merely because the action classifier accepts
- * broad language after routing.
+ * broad language after routing. Engagement/disengagement directives ("stop
+ * replying", "be quiet", "never respond to everything") are conversation-scoped
+ * behavior requests, not configuration changes: they must reach the normal
+ * response path — where STOP/IGNORE is available for the turn — instead of
+ * being preempted by a scripted permissions refusal.
  */
 import { hasRoleAccess, type RoleName } from "../../../../roles.ts";
 import { resolveActionRolePolicyRole } from "../../../../runtime/action-role-policy.ts";
@@ -77,20 +81,20 @@ const PERSISTENT_REQUEST_PREFIX =
 const MIND_REQUEST_PREFIX =
 	/^(?:can|could|would|do)\s+you\s+mind\s*(?:[,;:]|—|--+)?\s*/i;
 const CONFIGURATION_MUTATION =
-	/^(?:change|update|modify|adjust|set|configure|reset)\s+your\s+(?:personality|character|behaviou?r|tone|voice|language|(?:response|interaction)\s+style|preferences?|configuration|settings?|bio|name)(?=\s*(?:$|[.!?;,]|\b(?:to|as|into|from|so|back|permanently|forever|going\s+forward)\b))/i;
+	/^(?:change|update|modify|adjust|set|configure|reset|rewrite)\s+your\s+(?:personality|character|behaviou?r|tone|voice|language|(?:response|interaction)\s+style|preferences?|configuration|settings?|bio|name|(?:system\s+)?prompt)(?=\s*(?:$|[.!?;,]|\b(?:to|as|into|from|so|back|permanently|forever|going\s+forward)\b))/i;
 const CONFIGURATION_GERUND =
-	/^(changing|updating|modifying|adjusting|setting|configuring|resetting)\b/i;
+	/^(changing|updating|modifying|adjusting|setting|configuring|resetting|rewriting)\b/i;
 const COORDINATED_CONFIGURATION_GERUND =
-	/((?:[,;]\s*)?\b(?:and|but|or)\b\s+)(changing|updating|modifying|adjusting|setting|configuring|resetting)\b/gi;
+	/((?:[,;]\s*)?\b(?:and|but|or)\b\s+)(changing|updating|modifying|adjusting|setting|configuring|resetting|rewriting)\b/gi;
 const STANDING_RULE =
 	/^(?:(?:always|never)\s+(?:be|act|behave|answer|respond|reply|speak|talk|say|use|mention)\b|(?:be|act|behave|answer|respond|reply|speak|talk|say|use|mention)\b[\s\S]*\b(?:from\s+now\s+on|going\s+forward|permanently|forever|by\s+default|every\s+time)\b)/i;
 const STANDING_BEHAVIOR_START =
 	/^(?:be|act|behave|answer|respond|reply|speak|talk|say|use|mention)\b/i;
 const AFFIRMATIVE_IMPERATIVE_START =
-	/^(?:change|update|modify|adjust|set|configure|reset|always|never|be|act|behave|answer|respond|reply|speak|talk|say|use|mention)\b/i;
+	/^(?:change|update|modify|adjust|set|configure|reset|rewrite|always|never|be|act|behave|answer|respond|reply|speak|talk|say|use|mention)\b/i;
 const NEGATED_IMPERATIVE_START = /^(?:don['’]t|do\s+not)\b/i;
 const NEVER_CONFIGURATION_MUTATION =
-	/^never\s+(?:change|changing|update|updating|modify|modifying|adjust|adjusting|set|setting|configure|configuring|reset|resetting)\b/i;
+	/^never\s+(?:change|changing|update|updating|modify|modifying|adjust|adjusting|set|setting|configure|configuring|reset|resetting|rewrite|rewriting)\b/i;
 const TALK_OR_SPEAK = /^(?:always|never)\s+(?:talk|speak)\b/i;
 const EXPLICIT_PERSISTENT_SCOPE =
 	/\b(?:from\s+now\s+on|going\s+forward|permanently|forever|by\s+default|every\s+time)\b/i;
@@ -102,7 +106,33 @@ const GERUND_TO_IMPERATIVE = new Map<string, string>([
 	["setting", "set"],
 	["configuring", "configure"],
 	["resetting", "reset"],
+	["rewriting", "rewrite"],
 ]);
+
+// Disengagement grammar: a cessation or quieting predicate whose tail carries
+// only an audience, extent, or persistence marker. Content-bearing tails
+// ("never reply with your real name", "keep quiet about the merger") fail the
+// tail match and stay on the configuration side.
+const DISENGAGEMENT_AUDIENCE = String.raw`(?:(?:to|with|at)\s+)?(?:me|us|him|her|them|everyone|everybody|anyone|anybody|all|people|others|every\s+(?:message|msg|post|thread)|everything)`;
+const DISENGAGEMENT_EXTENT = String.raw`(?:again|anymore|any\s+more|ever|at\s+all|so\s+(?:much|often)|all\s+the\s+time|constantly|nonstop|non-stop|first|unprompted|unsolicited|here|in\s+here|in\s+(?:this|the)\s+(?:chat|channel|conversation|group|room|server|thread)|right\s+now|for\s+now|please|kindly|from\s+now\s+on|going\s+forward|permanently|forever|by\s+default|every\s+time)`;
+const DISENGAGEMENT_TAIL = String.raw`(?:[\s,]+(?:${DISENGAGEMENT_AUDIENCE}|${DISENGAGEMENT_EXTENT}))*[\s,]*$`;
+const CESSATION_PREFIX = String.raw`(?:never|stop|quit|cease|don['’]t|do\s+not|no\s+longer)`;
+const COMMUNICATION_CESSATION_VERB = String.raw`(?:answer(?:ing)?|respond(?:ing)?|repl(?:y|ying)|speak(?:ing)?|talk(?:ing)?|messag(?:e|ing)|text(?:ing)?|ping(?:ing)?|dm(?:['’]?ing)?)`;
+const QUIETING_PREDICATE = String.raw`(?:(?:be|stay|remain|keep)\s+(?:quiet|silent)|shut\s+up|pipe\s+down)`;
+const DISENGAGEMENT_DIRECTIVE = new RegExp(
+	String.raw`^(?:(?:please|kindly|just)\s+)*(?:${CESSATION_PREFIX}\s+(?:ever\s+)?${COMMUNICATION_CESSATION_VERB}\b${DISENGAGEMENT_TAIL}|(?:(?:always|never|just|please)\s+)*${QUIETING_PREDICATE}\b${DISENGAGEMENT_TAIL})`,
+	"iu",
+);
+
+/**
+ * Recognizes conversation-scoped disengagement directives so they never gate.
+ * These asks are satisfiable on the normal response path (which can choose
+ * STOP/IGNORE for the turn), so treating them as gated configuration requests
+ * would replace a graceful exit with an authorization retort.
+ */
+function isDisengagementDirective(body: string): boolean {
+	return DISENGAGEMENT_DIRECTIVE.test(body);
+}
 
 function escapeRegExp(text: string): string {
 	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -279,6 +309,12 @@ function isPersistentRequestClause(
 		(normalized.hasPersistentRequestPrefix &&
 			STANDING_BEHAVIOR_START.test(body));
 	if (!isConfigurationMutation && !isStandingRule) return false;
+	// A standing-rule match whose content is disengagement ("never reply to
+	// me", "always be quiet") is an engagement request, not a configuration
+	// change; leave the turn to normal handling where STOP is reachable.
+	if (!isConfigurationMutation && isDisengagementDirective(body)) {
+		return false;
+	}
 	if (hasAffirmativeLocalScope(clause, LOCAL_OCCASION_SCOPE_PATTERNS)) {
 		return false;
 	}
