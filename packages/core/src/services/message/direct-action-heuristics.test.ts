@@ -212,6 +212,62 @@ describe("bare link share routes to the web-read light path, never coding", () =
 		expect(inference.names).toEqual(["TASKS"]);
 	});
 
+	it("work orders with unlisted verbs are NOT forced to the web-read path (issue #18108)", () => {
+		// These are the exact utterances from issue #18108. Before the fix,
+		// looksLikeBareLinkShare returned true for each because the verb
+		// (review/audit/investigate) was absent from the old closed allowlist,
+		// so inferDirectCurrentRequestCandidateInference shunted them to the
+		// web-read light path before the coding hook was ever consulted.
+		// After the fix, the residue is non-empty and non-conversational, so
+		// looksLikeBareLinkShare returns false and inference falls through to
+		// ordinary routing — where a coding hook (if present) can select TASKS.
+		for (const text of [
+			"review this PR https://github.com/elizaOS/eliza/pull/18106",
+			"audit this repository https://github.com/elizaOS/eliza",
+			"investigate the failure here https://example.com/run",
+		]) {
+			// Without a coding hook, the inference must NOT be "web" — proving
+			// the utterance was not forced to the link-share light path.
+			const inference = inferDirectCurrentRequestCandidateInference(
+				actions,
+				text,
+				{},
+			);
+			expect(inference.kind).not.toBe("web");
+			expect(inference.names).not.toContain("WEB_FETCH");
+
+			// With a coding hook that recognizes the verb, it routes to TASKS.
+			const codingInference = inferDirectCurrentRequestCandidateInference(
+				actions,
+				text,
+				{
+					looksLikeCodingWorkRequest: () => true,
+					findCodingDelegationActionName: () => "TASKS",
+				},
+			);
+			expect(codingInference.kind).toBe("coding");
+			expect(codingInference.names).toEqual(["TASKS"]);
+		}
+	});
+
+	it("a bare URL / 'thoughts?' still routes to the web-read light path (control)", () => {
+		// The control: messages that ARE genuine passive link shares must
+		// still be forced to the web-read path. This proves the fix did not
+		// widen the routing to let passive shares reach TASKS.
+		for (const text of [
+			"https://example.com/some/page",
+			"thoughts? https://example.com",
+		]) {
+			const inference = inferDirectCurrentRequestCandidateInference(
+				actions,
+				text,
+				{},
+			);
+			expect(inference.kind).toBe("web");
+			expect(inference.names).toEqual(["WEB_FETCH", "WEB_SEARCH"]);
+		}
+	});
+
 	it("with no web backend the link share yields no forced candidate", () => {
 		const inference = inferDirectCurrentRequestCandidateInference(
 			[{ name: "REPLY", similes: [] }] as unknown as ReadonlyArray<
