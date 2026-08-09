@@ -1,11 +1,6 @@
-/**
- * Resolves whether LifeOps passive connectors are enabled, reading the
- * `ELIZA_LIFEOPS_PASSIVE_CONNECTORS` / `LIFEOPS_PASSIVE_CONNECTORS` setting from
- * a runtime (`getSetting`) first, then the process env. Defaults to enabled;
- * only an explicit falsey value (`0`/`false`/`off`/`no`/`disabled`) disables it.
- */
 type SettingsReader = {
 	getSetting?: (key: string) => unknown;
+	plugins?: Array<{ name: string }>;
 };
 
 type EnvLike = Record<string, string | undefined>;
@@ -14,6 +9,8 @@ const PASSIVE_CONNECTOR_SETTING_KEYS = [
 	"ELIZA_LIFEOPS_PASSIVE_CONNECTORS",
 	"LIFEOPS_PASSIVE_CONNECTORS",
 ] as const;
+
+const LIFEOPS_PLUGIN_NAME = "@elizaos/plugin-personal-assistant";
 
 function readFirstSetting(
 	runtime: SettingsReader | null | undefined,
@@ -56,10 +53,38 @@ function isExplicitFalse(value: unknown): boolean {
 	);
 }
 
+function isLifeOpsPluginLoaded(
+	runtime: SettingsReader | null | undefined,
+): boolean {
+	return (
+		Array.isArray(runtime?.plugins) &&
+		runtime.plugins.some((plugin) => plugin.name === LIFEOPS_PLUGIN_NAME)
+	);
+}
+
+/**
+ * Resolves whether LifeOps passive connectors are enabled.
+ *
+ * WHY: passive mode belongs to LifeOps, where connector plugins ingest inbound
+ * messages and the personal-assistant pipeline decides what to do later.
+ * Standalone agents do not have that pipeline, so defaulting them to passive
+ * makes Discord/Telegram/iMessage/etc appear connected but silent.
+ *
+ * Explicit runtime/env settings still win for operators. A `null` runtime is the
+ * pre-runtime signal used by standalone bootstrap checks, where plugin presence
+ * cannot be known yet; keep that conservative passive-on default so LifeOps
+ * deployments do not start duplicate connector loops before the runtime exists.
+ */
 export function lifeOpsPassiveConnectorsEnabled(
 	runtime?: SettingsReader | null,
 	env: EnvLike = defaultEnv(),
 ): boolean {
 	const value = readFirstSetting(runtime, env);
-	return value === undefined ? true : !isExplicitFalse(value);
+	if (value !== undefined) {
+		return !isExplicitFalse(value);
+	}
+	if (runtime === null) {
+		return true;
+	}
+	return isLifeOpsPluginLoaded(runtime);
 }
