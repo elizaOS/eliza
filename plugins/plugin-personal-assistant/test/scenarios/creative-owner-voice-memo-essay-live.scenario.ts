@@ -4,7 +4,6 @@
  * an accepted edit when the standing document is revised on the next turn.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 const ownerSources = [
@@ -115,11 +114,12 @@ export default scenario({
       status: "success",
       minCount: 2,
     },
-    judgeRubric({
+    {
+      type: "judgeRubric",
       name: "memo-essay-owner-voice-and-revision-rubric",
-      threshold: 0.75,
-      description:
+      minimumScore: 0.75,
+      rubric:
         "End-to-end: two affected memo transcripts became one owner-voice essay, the angry argument was not smoothed away, the hopeful argument remained, and a later revision updated the persisted standing draft while preserving the accepted opening and vetoed phrase.",
-    }),
+    },
   ],
 });

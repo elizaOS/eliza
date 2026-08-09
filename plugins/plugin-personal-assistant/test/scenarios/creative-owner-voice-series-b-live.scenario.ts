@@ -4,7 +4,6 @@
  * consultant baseline through the trajectory judge.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
@@ -83,11 +82,12 @@ export default scenario({
       status: "success",
       minCount: 1,
     },
-    judgeRubric({
+    {
+      type: "judgeRubric",
       name: "series-b-owner-fidelity-vs-consultant-baseline",
-      threshold: 0.75,
-      description:
+      minimumScore: 0.75,
+      rubric:
         "Compare the generated Series B thread to the supplied owner exemplars and the explicit generic consultant baseline. Pass only if the draft preserves the seeded arguments and is materially closer in diction, cadence, stance, and specificity to the owner examples than to the baseline.",
-    }),
+    },
   ],
 });
