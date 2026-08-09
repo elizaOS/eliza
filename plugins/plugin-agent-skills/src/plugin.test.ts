@@ -98,6 +98,66 @@ describe("agent skills command-service readiness", () => {
 		disposeAgentSkillsPlugin(runtime);
 	});
 
+	it("keeps skills active when the optional commands service is absent", async () => {
+		const service = {
+			getLoadedSkills: () => [],
+			getCatalogStats: () => ({
+				loaded: 0,
+				total: 0,
+				storageType: "memory",
+			}),
+		} as unknown as AgentSkillsService;
+		const debug = vi.fn();
+		const runtime = {
+			getServiceLoadPromise: vi.fn((name: string) =>
+				name === "AGENT_SKILLS_SERVICE"
+					? Promise.resolve(service)
+					: Promise.reject(
+							new Error("Service commands not found or failed to start"),
+						),
+			),
+			getService: vi.fn(() => service),
+			logger: { debug, info: vi.fn(), warn: vi.fn() },
+			reportError: vi.fn(),
+		} as unknown as IAgentRuntime;
+
+		try {
+			await expect(initializeAgentSkillsPlugin(runtime)).resolves.toBeUndefined();
+			expect(debug).toHaveBeenCalledWith(
+				"AgentSkills: Commands service unavailable; skipping slash command registration",
+			);
+		} finally {
+			disposeAgentSkillsPlugin(runtime);
+		}
+	});
+
+	it("surfaces a commands service that failed to start", async () => {
+		const service = {
+			getLoadedSkills: () => [],
+			getCatalogStats: () => ({
+				loaded: 0,
+				total: 0,
+				storageType: "memory",
+			}),
+		} as unknown as AgentSkillsService;
+		const startupFailure = Object.assign(
+			new Error("Service commands not found or failed to start"),
+			{ code: "SERVICE_START_FAILED" },
+		);
+		const runtime = {
+			getServiceLoadPromise: vi.fn((name: string) =>
+				name === "AGENT_SKILLS_SERVICE"
+					? Promise.resolve(service)
+					: Promise.reject(startupFailure),
+			),
+			logger: { debug: vi.fn() },
+		} as unknown as IAgentRuntime;
+
+		await expect(initializeAgentSkillsPlugin(runtime)).rejects.toBe(
+			startupFailure,
+		);
+	});
+
 	it("keeps periodic catalog work isolated between runtimes", async () => {
 		vi.useFakeTimers();
 		const buildRuntime = () => {

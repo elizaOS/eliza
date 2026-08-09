@@ -99,6 +99,10 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
   ],
   "@elizaos/plugin-agent-skills": [
     "SKILL",
+    "SKILL_DETAILS",
+    "SKILL_INSTALL",
+    "SKILL_SEARCH",
+    "SKILL_SYNC",
     "SKILL_TOGGLE",
     "SKILL_UNINSTALL",
     "USE_SKILL",
@@ -107,6 +111,7 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "GENERATE_MEDIA",
     "IDENTIFY_SPEAKER",
     "LOCAL_INFERENCE",
+    "MANAGE_TRANSCRIPT_PRIVACY",
     "REDACT_TRANSCRIPT",
     "SHARE_TRANSCRIPT",
     "START_TRANSCRIPTION",
@@ -210,6 +215,18 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "MODEL_SWITCH",
   // Local-inference management action; no deterministic keyless scenario yet.
   "LOCAL_INFERENCE",
+  // plugin-local-inference owns transcript artifact privacy/retention. Its
+  // handler-level suite proves real TranscriptStore visibility mutation, but
+  // the keyless scenario corpus does not yet route this semantic action.
+  "MANAGE_TRANSCRIPT_PRIVACY",
+  // Catalog-backed Agent Skills operations cross the configured ClawHub HTTP
+  // boundary (including package download for install). The deterministic local
+  // scenario intentionally covers only USE_SKILL/toggle/uninstall with real
+  // managed storage until a registry loopback harness exists.
+  "SKILL_DETAILS",
+  "SKILL_INSTALL",
+  "SKILL_SEARCH",
+  "SKILL_SYNC",
   // plugin-commands slash-command actions (/help, /status, /reset, /compact,
   // /think, /model, /tts, …) are dispatched through the command palette, not
   // the keyless scenario pipeline, so they have no deterministic scenario yet.
@@ -1047,6 +1064,18 @@ describe("deterministic action coverage", () => {
       }
     }
     expect(drift, drift.join("\n")).toEqual([]);
+  });
+
+  it("local-inference owns the transcript artifact privacy action contract", () => {
+    const action = localInferencePlugin.actions?.find(
+      (candidate) => candidate.name === "MANAGE_TRANSCRIPT_PRIVACY",
+    );
+
+    expect(action?.roleGate).toEqual({ minRole: "USER" });
+    expect(
+      sorted((action?.parameters ?? []).map((parameter) => parameter.name)),
+    ).toEqual(["artifact", "deleteSourceAudio", "state", "transcriptId"]);
+    expect(KNOWN_UNCOVERED).toContain("MANAGE_TRANSCRIPT_PRIVACY");
   });
 
   it("service/registry core plugins expose no agent actions", () => {

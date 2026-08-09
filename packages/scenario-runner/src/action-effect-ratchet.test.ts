@@ -77,6 +77,14 @@ function finalCheckTypes(sourceFile: ts.SourceFile): string[] {
     ) {
       found = true;
       for (const el of node.initializer.elements) {
+        if (
+          ts.isCallExpression(el) &&
+          ts.isIdentifier(el.expression) &&
+          el.expression.text === "judgeRubric"
+        ) {
+          types.push("judgeRubric");
+          continue;
+        }
         if (!ts.isObjectLiteralExpression(el)) continue;
         for (const prop of el.properties) {
           if (!ts.isPropertyAssignment(prop)) continue;
@@ -137,6 +145,23 @@ const flagged = SCENARIO_ROOTS.flatMap(walkScenarioFiles)
 const BASELINE = 0;
 
 describe("action-effect ratchet (#9310)", () => {
+  it("recognizes helper-built judge checks as effect checks", () => {
+    const sourceFile = ts.createSourceFile(
+      "judge-helper.scenario.ts",
+      `export default scenario({ finalChecks: [
+        { type: "actionCalled", actionName: "CREATIVE_DRAFT" },
+        judgeRubric({ name: "owner-voice", threshold: 0.75 }),
+      ] });`,
+      ts.ScriptTarget.Latest,
+      true,
+    );
+
+    expect(finalCheckTypes(sourceFile)).toEqual([
+      "actionCalled",
+      "judgeRubric",
+    ]);
+  });
+
   it("finds the scenario corpus (guard is actually scanning)", () => {
     const total = SCENARIO_ROOTS.flatMap(walkScenarioFiles).length;
     expect(total).toBeGreaterThan(400);

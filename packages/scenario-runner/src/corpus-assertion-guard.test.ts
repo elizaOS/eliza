@@ -323,6 +323,10 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "computeruse.get-cursor-position",
   "convo.echo-self-test",
   "convo.greeting-dynamic",
+  // Owner-voice drafting (#14871) drives compose then revise through the real
+  // CREATIVE_DRAFT handler and verifies the persisted document identity,
+  // source-memo affect/provenance, accepted edit, and untouched section.
+  "creative-owner-voice-draft-persistence",
   "elizacloud.account-status",
   "finances.owner-finances-dashboard",
   "form.restore-stashed",
