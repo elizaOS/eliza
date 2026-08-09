@@ -292,8 +292,16 @@ export function createVoiceSessionClient(
   const doFetch =
     options.fetch ??
     (async (url: string, init?: RequestInit) => {
-      const { fetchWithCsrf } = await import("../api/csrf-client");
-      return fetchWithCsrf(url, init);
+      // Mint targets the control-plane Worker on managed-cloud agent bases
+      // (the route does not exist in agent containers); everywhere else the
+      // relative same-origin path is unchanged. Mirrors the consent fetch in
+      // useRealtimeVoiceMint (LOGIN-FLOW-AUDIT 2026-08-09 cliff #3).
+      const { realtimeVoiceSessionFetch, resolveRealtimeVoiceSessionUrl } =
+        await import("./realtime-voice-control-plane");
+      return realtimeVoiceSessionFetch(
+        resolveRealtimeVoiceSessionUrl(url),
+        init,
+      );
     });
   const wsFactory =
     options.webSocketFactory ??

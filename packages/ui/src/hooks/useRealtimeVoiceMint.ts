@@ -49,14 +49,20 @@ export function isRealtimeVoiceForceEnabled(): boolean {
 
 /**
  * The default consent fetch = the same CSRF/bearer helper every other dashboard
- * /api/v1 call uses.
+ * /api/v1 call uses, PLUS control-plane routing: the consent/probe routes only
+ * exist on the Eliza Cloud Worker, so on a managed-cloud agent base (dedicated
+ * subdomain or shared REST adapter) the relative path must resolve to the
+ * control-plane origin — resolving it against the AGENT base 404s inside the
+ * container (LOGIN-FLOW-AUDIT 2026-08-09 cliff #3). Self-hosted/standalone
+ * bases keep the unchanged relative same-origin path.
  */
 async function defaultConsentFetch(
   url: string,
   init?: RequestInit,
 ): Promise<Response> {
-  const { fetchWithCsrf } = await import("../api/csrf-client");
-  return fetchWithCsrf(url, init);
+  const { realtimeVoiceSessionFetch, resolveRealtimeVoiceSessionUrl } =
+    await import("../voice/realtime-voice-control-plane");
+  return realtimeVoiceSessionFetch(resolveRealtimeVoiceSessionUrl(url), init);
 }
 
 /** UUID v-any shape guard so we never mint with a non-UUID id (the route 400s). */
