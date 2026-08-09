@@ -193,9 +193,12 @@ export function workflowExecutionSteps(source, file = "<workflow>") {
       ? root.jobs
       : undefined;
   if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) return [];
+  const workflowWorkingDirectory = readWorkflowWorkingDirectory(root);
   const executionSteps = [];
-  for (const job of Object.values(jobs)) {
+  for (const [jobName, job] of Object.entries(jobs)) {
     if (!job || typeof job !== "object" || !Array.isArray(job.steps)) continue;
+    const jobWorkingDirectory =
+      readWorkflowWorkingDirectory(job) ?? workflowWorkingDirectory;
     for (const step of job.steps) {
       if (!step || typeof step !== "object" || !Object.hasOwn(step, "run")) {
         continue;
@@ -204,15 +207,71 @@ export function workflowExecutionSteps(source, file = "<workflow>") {
         throw new Error(`workflow run step in ${file} must be a string`);
       }
       executionSteps.push({
+        job: jobName,
         run: step.run,
         workingDirectory:
           typeof step["working-directory"] === "string"
             ? step["working-directory"]
-            : undefined,
+            : jobWorkingDirectory,
       });
     }
   }
   return executionSteps;
+}
+
+function readWorkflowWorkingDirectory(scope) {
+  const defaults = scope?.defaults;
+  if (!defaults || typeof defaults !== "object" || Array.isArray(defaults)) {
+    return undefined;
+  }
+  const run = defaults.run;
+  if (!run || typeof run !== "object" || Array.isArray(run)) return undefined;
+  return typeof run["working-directory"] === "string"
+    ? run["working-directory"]
+    : undefined;
+}
+
+function isRepositoryRootDirectory(directory) {
+  if (directory === undefined || directory === ".") return true;
+  return [
+    "$GITHUB_WORKSPACE",
+    "$" + "{GITHUB_WORKSPACE}",
+    "$" + "{{ github.workspace }}",
+  ].includes(directory);
+}
+
+function directoryAfterCd(command, currentlyAtRoot) {
+  const match = command.match(
+    /(?:^|\s)(?:if\s+|then\s+|elif\s+|while\s+|until\s+|do\s+)?cd\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/,
+  );
+  if (!match) return currentlyAtRoot;
+  return isRepositoryRootDirectory(match[1] ?? match[2] ?? match[3]);
+}
+
+/** Root package scripts executed by one parsed workflow. */
+export function workflowRootScriptReferences(source, file = "<workflow>") {
+  const references = [];
+  for (const step of workflowExecutionSteps(source, file)) {
+    let atRepositoryRoot = isRepositoryRootDirectory(step.workingDirectory);
+    for (const command of step.run.split(/&&|\|\||[;|\n]/)) {
+      atRepositoryRoot = directoryAfterCd(command, atRepositoryRoot);
+      if (!atRepositoryRoot) continue;
+      for (const script of referencedRootScripts(command)) {
+        references.push({ file, job: step.job, script });
+      }
+    }
+  }
+  return references;
+}
+
+/** Missing root package scripts referenced from executable workflow steps. */
+export function missingWorkflowRootScriptReferences(
+  workflowSources,
+  rootScripts,
+) {
+  return workflowSources
+    .flatMap(({ file, source }) => workflowRootScriptReferences(source, file))
+    .filter(({ script }) => !Object.hasOwn(rootScripts, script));
 }
 
 function loc(relative) {
@@ -244,7 +303,7 @@ function collectScriptFiles(candidateFiles) {
 function referencedRootScripts(body) {
   const names = new Set();
   const re =
-    /\b(?:bun|npm|pnpm|yarn)\s+(?:--silent\s+)?run\s+([a-z0-9][a-z0-9:_-]*)/gi;
+    /\b(?:bun|npm|pnpm|yarn)\s+(?:--silent\s+)?run\s+([a-z0-9][a-z0-9:_-]*)(?=$|\s|[;&|)])/gi;
   for (const match of body.matchAll(re)) names.add(match[1]);
   return names;
 }
@@ -572,7 +631,22 @@ function buildInventory() {
     packageScripts: rootScripts,
     scenarioWorkflow: readRepositoryText(scenarioWorkflowPath),
   });
-  const ciRootSeeds = referencedRootScripts(ciText);
+  const missingWorkflowScripts = missingWorkflowRootScriptReferences(
+    workflowSources,
+    rootScripts,
+  );
+  if (missingWorkflowScripts.length > 0) {
+    throw new Error(
+      `GitHub workflows reference missing root package scripts:\n${missingWorkflowScripts
+        .map(({ file, job, script }) => `- ${file} (${job}): ${script}`)
+        .join("\n")}`,
+    );
+  }
+  const ciRootSeeds = new Set(
+    workflowSources.flatMap(({ file, source }) =>
+      workflowRootScriptReferences(source, file).map(({ script }) => script),
+    ),
+  );
   const ciFileSeeds = referencedScriptFiles(ciText, fileUniverse);
 
   // Reachable root-script sets per seed entrypoint.
