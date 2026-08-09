@@ -410,8 +410,23 @@ runs:
         if [ -n "$install_js" ] && [ -f "$install_js" ]; then
           echo "Running bun postinstall: $install_js"
           (cd "$(dirname "$install_js")" && node install.js)
+          exit 0
+        fi
+        # Only warn when the `bun` npm package is actually installed but its
+        # install.js is missing. When no workspace depends on the package at
+        # all (the current state of this repo), there is no placeholder binary
+        # to materialize and an unconditional warning just mis-directs triage
+        # on every job toward setup instead of the real failure.
+        bun_pkg_present=""
+        if [ -d node_modules/bun ]; then
+          bun_pkg_present=1
+        elif [ -d node_modules/.bun ] && find node_modules/.bun -maxdepth 1 -name 'bun@*' -print -quit 2>/dev/null | grep -q .; then
+          bun_pkg_present=1
+        fi
+        if [ -n "$bun_pkg_present" ]; then
+          echo "::warning::bun npm package is installed but its install.js was not found; downstream bun run calls may fail"
         else
-          echo "::warning::No bun/install.js found; downstream bun run calls may fail"
+          echo "bun npm package is not a workspace dependency; nothing to materialize"
         fi
 
     - name: Run repository postinstall

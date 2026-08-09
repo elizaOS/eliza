@@ -63,10 +63,12 @@ type ControlSnapshot = {
   url: string;
   apiRequestCount: number;
   visibleDismissibleSurfaces: number;
+  pageFingerprint: string;
   details: ControlDetails | null;
 };
 
 const CLICK_OBSERVED_ATTRIBUTES = [
+  "data-agent-id",
   "aria-expanded",
   "aria-pressed",
   "aria-selected",
@@ -297,6 +299,23 @@ async function visibleDismissibleSurfaceCount(page: Page): Promise<number> {
   });
 }
 
+/**
+ * Cheap whole-page content fingerprint (visible text length + djb2 hash).
+ * Catches semantic outcomes that land elsewhere in the page than on the
+ * clicked control itself — a dialer display updating, a sidebar collapsing,
+ * a pager flipping surfaces — without enumerating product-specific testids.
+ */
+async function pageContentFingerprint(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const text = document.body?.innerText ?? "";
+    let hash = 5381;
+    for (let i = 0; i < text.length; i++) {
+      hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
+    }
+    return `${text.length}:${hash}`;
+  });
+}
+
 async function snapshotControl(
   page: Page,
   control: ElementHandle<Element>,
@@ -334,6 +353,7 @@ async function snapshotControl(
     url: page.url(),
     apiRequestCount,
     visibleDismissibleSurfaces: await visibleDismissibleSurfaceCount(page),
+    pageFingerprint: await pageContentFingerprint(page),
     details,
   };
 }
@@ -388,6 +408,11 @@ function semanticDelta(
       return `${attr} changed from "${String(before.details.attributes[attr])}" to "${String(after.details.attributes[attr])}"`;
     }
   }
+  // Last-resort DOM-state signal: the outcome landed elsewhere in the page
+  // (dial display, collapsed sidebar, flipped pager surface, toast).
+  if (after.pageFingerprint !== before.pageFingerprint) {
+    return `page content changed (${before.pageFingerprint} -> ${after.pageFingerprint})`;
+  }
   return null;
 }
 
@@ -438,6 +463,12 @@ function documentedClickNoop(
     before.visibleDismissibleSurfaces === 0
   ) {
     return "dismiss/back control had no visible overlay or modal to close";
+  }
+  if (details.attributes["data-agent-id"]) {
+    // Spatial-view controls (data-agent-id) dispatch their action to the agent
+    // runtime; the DOM outcome depends on the agent round-trip, which the
+    // keyless stub does not perform.
+    return "spatial agent-dispatch control routes its action to the agent runtime; no local DOM outcome in the keyless stub";
   }
   return null;
 }

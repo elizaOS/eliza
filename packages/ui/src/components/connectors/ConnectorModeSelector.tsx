@@ -8,6 +8,7 @@
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { getConnectorModes } from "./ConnectorModeSelector.helpers";
+import type { ConnectorChannelMode } from "./connector-channel-mode";
 
 export type { ConnectorMode } from "./ConnectorModeSelector.helpers";
 
@@ -16,14 +17,20 @@ export function ConnectorModeSelector({
   selectedMode,
   onModeChange,
   elizaCloudConnected,
+  channelMode,
 }: {
   connectorId: string;
   selectedMode: string;
   onModeChange: (modeId: string) => void;
   elizaCloudConnected?: boolean;
+  /** Global channel-mode lens; filters out modes classified into the other lens. */
+  channelMode?: ConnectorChannelMode;
 }) {
   const t = useAppSelector((s) => s.t);
-  const modes = getConnectorModes(connectorId, { elizaCloudConnected });
+  const modes = getConnectorModes(connectorId, {
+    elizaCloudConnected,
+    channelMode,
+  });
 
   if (modes.length <= 1) return null;
 

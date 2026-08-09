@@ -103,10 +103,10 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
   test("(2) resolved lean-chat plugin set excludes local-inference/wallet/workflow, includes elizacloud", async () => {
     const env = await buildManagedEnv();
     // The plugin resolver reads these signals from process.env directly.
+    // Managed env producer always injects ELIZA_CLOUD_PROVISIONED=1 so the
+    // agent/UI can detect managed Cloud vs user-owned installs.
     Object.assign(process.env, env);
-    // ELIZA_CLOUD_PROVISIONED is set by the provisioning path, not the env
-    // producer; the container always boots with it. Mirror that here.
-    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    expect(process.env.ELIZA_CLOUD_PROVISIONED).toBe("1");
     // Must not be mobile (lean-chat only applies off-mobile).
     delete process.env.ELIZA_PLATFORM;
 

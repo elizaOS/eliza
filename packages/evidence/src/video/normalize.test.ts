@@ -206,8 +206,11 @@ describe("normalizeVideo degradation", () => {
       if (ffmpeg.available) {
         expect(ffmpeg.source).toBe("bundled");
       } else {
+        // Same honest-degradation contract as the ffprobe branch above: a host
+        // where the packaged install genuinely fails (no network, download
+        // rejected) reports the probe failure rather than faking availability.
         expect(ffmpeg.reason).toMatch(
-          /bundled ffmpeg-static package is unavailable/,
+          /ffmpeg (not found on PATH and bundled ffmpeg-static package is unavailable|system binary missing and bundled binary failed)/,
         );
       }
     } finally {

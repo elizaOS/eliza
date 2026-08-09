@@ -12,8 +12,10 @@
 
 import {
   type ConnectorManagementMode,
+  getConnectorPluginManagedAccountOption,
   normalizeConnectorCatalogId,
 } from "./connector-account-options";
+import type { ConnectorChannelMode } from "./connector-channel-mode";
 
 /**
  * Declarative description of a single connector setup mode: the metadata a
@@ -53,6 +55,14 @@ export interface ConnectorModeDeclaration {
   /** Mode is only offered when Eliza Cloud is connected. */
   cloudOnly?: boolean;
   /**
+   * Which global channel-mode lens this setup mode belongs to: `"delegate"`
+   * when the agent acts through the owner's own account on the platform, or
+   * `"bot"` when the agent runs as its own bot identity the owner messages.
+   * The Connectors surface filters modes (and connectors) by the active lens.
+   * Omitted = the mode is identity-neutral and shown under both lenses.
+   */
+  channelMode?: ConnectorChannelMode;
+  /**
    * UI affordance a cloud-managed gateway mode declares so the connector page
    * renders the right gateway setup surface generically, instead of matching
    * `plugin.id` + mode id string literals (#12090 item 28).
@@ -90,6 +100,8 @@ export interface ConnectorModeDeclaration {
    */
   configFormHintKey?: string;
   configFormHint?: string;
+  /** Config keys belonging to another setup mode and hidden for this mode. */
+  hiddenConfigKeys?: readonly string[];
   /**
    * Preference rank when picking the default selected mode (lower wins). Ties
    * are broken by declaration order. Modes without a rank are never chosen as
@@ -197,6 +209,17 @@ export interface ConnectorConfigFormHint {
  * is scoped to the modes that declare it, so it does not leak onto an unrelated
  * selected mode.
  */
+export function getConnectorModeHiddenConfigKeys(
+  connectorId: string,
+  modeId: string | null | undefined,
+): readonly string[] {
+  if (!modeId) return [];
+  return (
+    getDeclaredConnectorModes(connectorId).find((mode) => mode.id === modeId)
+      ?.hiddenConfigKeys ?? []
+  );
+}
+
 export function getConnectorModeConfigFormHint(
   connectorId: string,
   modeId: string | null | undefined,
@@ -212,6 +235,57 @@ export function getConnectorModeConfigFormHint(
         fallback: declaration.configFormHint,
       }
     : { fallback: declaration.configFormHint };
+}
+
+/**
+ * Channel-mode classification for connectors with NO declared mode list —
+ * the single-credential-form connectors (bluesky, matrix, msteams, …) whose
+ * whole setup surface belongs to one lens. Keyed by normalized connector id;
+ * a connector plugin can register its own via
+ * {@link registerConnectorChannelModeFallback}. Connectors absent from both
+ * this map and the mode registry stay lens-neutral (shown under both lenses),
+ * the safe default for unknown third-party connectors.
+ */
+const fallbackChannelModes = new Map<string, ConnectorChannelMode>();
+
+export function registerConnectorChannelModeFallback(
+  connectorId: string,
+  channelMode: ConnectorChannelMode,
+): void {
+  fallbackChannelModes.set(
+    normalizeConnectorCatalogId(connectorId),
+    channelMode,
+  );
+}
+
+/**
+ * Whether a connector belongs under the given global channel-mode lens.
+ *
+ * A connector with declared modes matches when any mode is classified into the
+ * lens (a mode omitting `channelMode` is lens-neutral and always matches). A
+ * connector with no declared modes uses its registered fallback classification;
+ * with neither, it shows under both lenses. A connector whose every declared
+ * mode is classified into the *other* lens (e.g. Slack under `"delegate"`,
+ * Signal under `"bot"`) is filtered out of that lens by the Connectors surface.
+ */
+export function connectorSupportsChannelMode(
+  connectorId: string,
+  channelMode: ConnectorChannelMode,
+): boolean {
+  const modes = getDeclaredConnectorModes(connectorId);
+  if (modes.length === 0) {
+    const fallback = fallbackChannelModes.get(
+      normalizeConnectorCatalogId(connectorId),
+    );
+    return fallback === undefined || fallback === channelMode;
+  }
+  const declaredModeMatches = modes.some(
+    (mode) =>
+      mode.channelMode === undefined || mode.channelMode === channelMode,
+  );
+  const hasManagedMode =
+    getConnectorPluginManagedAccountOption(connectorId) !== null;
+  return declaredModeMatches || hasManagedMode;
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +308,7 @@ registerConnectorModes("discord", [
     descriptionKey: "connectormode.discord.managed.description",
     managementMode: "cloud-managed",
     setupPluginId: "discord",
+    channelMode: "bot",
     cloudOnly: true,
     cloudGatewaySetup: "managed-agent-picker",
     cloudGatewayProvider: "eliza-cloud-discord",
@@ -246,6 +321,7 @@ registerConnectorModes("discord", [
     descriptionKey: "connectormode.discord.local.description",
     managementMode: "local-setup",
     setupPluginId: "discordlocal",
+    channelMode: "delegate",
   },
   {
     id: "bot",
@@ -256,6 +332,7 @@ registerConnectorModes("discord", [
     descriptionKey: "connectormode.discord.bot.description",
     managementMode: "local-config",
     setupPluginId: "discord",
+    channelMode: "bot",
     defaultPriority: 1,
     configFormHintKey: "settings.sections.connectors.discordAppIdHint",
     configFormHint:
@@ -273,6 +350,7 @@ registerConnectorModes("telegram", [
     descriptionKey: "connectormode.telegram.cloudBot.description",
     managementMode: "cloud-managed",
     setupPluginId: "telegram",
+    channelMode: "bot",
     cloudOnly: true,
     cloudGatewaySetup: "webhook-notice",
   },
@@ -284,6 +362,7 @@ registerConnectorModes("telegram", [
     descriptionKey: "connectormode.telegram.bot.description",
     managementMode: "local-config",
     setupPluginId: "telegram",
+    channelMode: "bot",
     defaultPriority: 1,
   },
   {
@@ -295,6 +374,7 @@ registerConnectorModes("telegram", [
     descriptionKey: "connectormode.telegram.account.description",
     managementMode: "local-setup",
     setupPluginId: "telegramaccount",
+    channelMode: "delegate",
   },
 ]);
 
@@ -308,6 +388,7 @@ registerConnectorModes("slack", [
     descriptionKey: "connectormode.slack.oauth.description",
     managementMode: "cloud-managed",
     setupPluginId: "slack",
+    channelMode: "bot",
     cloudOnly: true,
     defaultPriority: 1,
   },
@@ -320,6 +401,7 @@ registerConnectorModes("slack", [
     descriptionKey: "connectormode.slack.socket.description",
     managementMode: "local-config",
     setupPluginId: "slack",
+    channelMode: "bot",
     defaultPriority: 2,
   },
 ]);
@@ -334,6 +416,7 @@ registerConnectorModes("x", [
     descriptionKey: "connectormode.x.oauth.description",
     managementMode: "cloud-managed",
     setupPluginId: "x",
+    channelMode: "delegate",
     cloudOnly: true,
     defaultPriority: 1,
   },
@@ -346,6 +429,7 @@ registerConnectorModes("x", [
     descriptionKey: "connectormode.x.localOauth.description",
     managementMode: "local-config",
     setupPluginId: "x",
+    channelMode: "delegate",
     defaultPriority: 2,
   },
   {
@@ -357,6 +441,7 @@ registerConnectorModes("x", [
     descriptionKey: "connectormode.x.developer.description",
     managementMode: "local-config",
     setupPluginId: "x",
+    channelMode: "delegate",
   },
 ]);
 
@@ -369,6 +454,7 @@ registerConnectorModes("signal", [
     descriptionKey: "connectormode.signal.qr.description",
     managementMode: "local-setup",
     setupPluginId: "signal",
+    channelMode: "delegate",
   },
 ]);
 
@@ -381,6 +467,7 @@ registerConnectorModes("whatsapp", [
     descriptionKey: "connectormode.whatsapp.qr.description",
     managementMode: "local-setup",
     setupPluginId: "whatsapp",
+    channelMode: "delegate",
   },
   {
     id: "business",
@@ -391,6 +478,12 @@ registerConnectorModes("whatsapp", [
     descriptionKey: "connectormode.whatsapp.business.description",
     managementMode: "local-config",
     setupPluginId: "whatsapp",
+    channelMode: "bot",
+    hiddenConfigKeys: [
+      "WHATSAPP_AUTH_METHOD",
+      "WHATSAPP_AUTH_DIR",
+      "WHATSAPP_PRINT_QR",
+    ],
   },
 ]);
 
@@ -402,6 +495,7 @@ registerConnectorModes("imessage", [
       "Register a Mac-hosted BlueBubbles relay for your real iPhone number; each sender reaches their own Eliza Cloud agent.",
     managementMode: "cloud-managed",
     setupPluginId: "bluebubbles",
+    channelMode: "delegate",
     cloudOnly: true,
     cloudGatewaySetup: "phone-registration",
     defaultPriority: 0,
@@ -415,6 +509,7 @@ registerConnectorModes("imessage", [
     descriptionKey: "connectormode.imessage.direct.description",
     managementMode: "local-setup",
     setupPluginId: "imessage",
+    channelMode: "delegate",
     defaultPriority: 1,
   },
   {
@@ -426,6 +521,7 @@ registerConnectorModes("imessage", [
     descriptionKey: "connectormode.imessage.bluebubbles.description",
     managementMode: "local-config",
     setupPluginId: "bluebubbles",
+    channelMode: "delegate",
   },
   {
     id: "blooio",
@@ -436,6 +532,7 @@ registerConnectorModes("imessage", [
     descriptionKey: "connectormode.imessage.blooio.description",
     managementMode: "cloud-managed",
     setupPluginId: "blooio",
+    channelMode: "bot",
     cloudOnly: true,
   },
 ]);
@@ -448,6 +545,7 @@ registerConnectorModes("bluebubbles", [
       "Register this Mac/iPhone bridge with Eliza Cloud so each sender reaches their own agent.",
     managementMode: "cloud-managed",
     setupPluginId: "bluebubbles",
+    channelMode: "delegate",
     cloudOnly: true,
     cloudGatewaySetup: "phone-registration",
     defaultPriority: 0,
@@ -459,6 +557,38 @@ registerConnectorModes("bluebubbles", [
       "Connect this app directly to a BlueBubbles server on your local network.",
     managementMode: "local-config",
     setupPluginId: "bluebubbles",
+    channelMode: "delegate",
     defaultPriority: 1,
   },
 ]);
+
+// ---------------------------------------------------------------------------
+// Channel-mode fallbacks for the single-form connectors (no declared mode
+// list). "bot" = the connector configures the agent's own standalone account /
+// bot app that the owner chats with; "delegate" = the credentials are the
+// owner's own account, which the agent works inside. Connectors not listed
+// here (and not in the mode registry) stay visible under both lenses.
+// ---------------------------------------------------------------------------
+
+for (const connectorId of [
+  "bluesky",
+  "farcaster",
+  "nostr",
+  "matrix",
+  "msteams",
+  "mattermost",
+  "google-chat",
+  "feishu",
+  "line",
+  "zalo",
+  "tlon",
+  "nextcloud-talk",
+  "twitch",
+  "blooio",
+]) {
+  registerConnectorChannelModeFallback(connectorId, "bot");
+}
+
+for (const connectorId of ["instagram", "zalouser", "google"]) {
+  registerConnectorChannelModeFallback(connectorId, "delegate");
+}

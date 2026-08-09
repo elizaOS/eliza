@@ -18,6 +18,10 @@ import {
   getSwarmCoordinatorService,
   hasTextGenerationHandler,
 } from "@elizaos/core";
+// Pure env detector lives in shared so status can report managed hosting mode
+// without loading the full cloud plugin graph (which may fail in lean test
+// harnesses or partial installs).
+import { isCloudProvisionedContainer } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
@@ -25,21 +29,20 @@ import type { ConnectorHealthMonitor } from "./connector-health.ts";
 import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
 
-type CloudHealthApi = {
-  isCloudProvisionedContainer: () => boolean;
+type CloudApiKeyResolver = {
   resolveCloudApiKey: (
     config: ElizaConfig,
     runtime: AgentRuntime | null,
   ) => string | undefined;
 };
 
-let cloudHealthApiPromise: Promise<CloudHealthApi> | null = null;
+let cloudApiKeyResolverPromise: Promise<CloudApiKeyResolver> | null = null;
 
-function getCloudHealthApi(): Promise<CloudHealthApi> {
-  cloudHealthApiPromise ??= import(
+function getCloudApiKeyResolver(): Promise<CloudApiKeyResolver> {
+  cloudApiKeyResolverPromise ??= import(
     "@elizaos/plugin-elizacloud"
-  ) as Promise<CloudHealthApi>;
-  return cloudHealthApiPromise;
+  ) as Promise<CloudApiKeyResolver>;
+  return cloudApiKeyResolverPromise;
 }
 
 // ---------------------------------------------------------------------------
@@ -508,32 +511,25 @@ export async function handleHealthRoutes(
       state.model ??
       activeLocalModel ??
       detectRuntimeModel(state.runtime ?? null, state.config);
-    // Cloud health is optional status info under the same resilience contract:
-    // a missing/unloadable @elizaos/plugin-elizacloud must degrade to
-    // "disconnected", not 500 the status endpoint.
-    let cloudStatus = {
-      connectionStatus: "disconnected",
-      activeAgentId: null as string | null,
-      cloudProvisioned: false,
-      hasApiKey: false,
-    };
+    // Managed hosting detection is a pure env check from @elizaos/shared and
+    // must not depend on loading plugin-elizacloud. Optional hasApiKey still
+    // comes from the plugin and degrades to false if the plugin is unloadable
+    // — never 500 the status endpoint for optional cloud status fields.
+    const cloudProvisioned = isCloudProvisionedContainer();
+    let hasCloudApiKey = false;
     try {
-      const { isCloudProvisionedContainer, resolveCloudApiKey } =
-        await getCloudHealthApi();
-      const cloudProvisioned = isCloudProvisionedContainer();
-      const hasCloudApiKey = Boolean(
-        resolveCloudApiKey(state.config, state.runtime),
-      );
-      cloudStatus = {
-        connectionStatus:
-          cloudProvisioned || hasCloudApiKey ? "connected" : "disconnected",
-        activeAgentId: cloudProvisioned ? state.agentName : null,
-        cloudProvisioned,
-        hasApiKey: hasCloudApiKey,
-      };
+      const { resolveCloudApiKey } = await getCloudApiKeyResolver();
+      hasCloudApiKey = Boolean(resolveCloudApiKey(state.config, state.runtime));
     } catch {
-      // keep the disconnected default — cloud health is optional status info
+      // error-policy:J4 optional cloud API-key probe must not fail /api/status
     }
+    const cloudStatus = {
+      connectionStatus:
+        cloudProvisioned || hasCloudApiKey ? "connected" : "disconnected",
+      activeAgentId: cloudProvisioned ? state.agentName : null,
+      cloudProvisioned,
+      hasApiKey: hasCloudApiKey,
+    };
 
     json(res, {
       state: state.agentState,
