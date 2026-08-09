@@ -33,6 +33,7 @@ packages/shared/
       ...                        30+ additional config sub-modules
     contracts/
       index.ts                   Re-exports all API route contracts
+      google-workspace-mcp.ts    Cross-host endpoint catalog and executable canary policy
       agent-routes.ts            /api/agents/* route types
       apps*.ts                   /api/apps/* route types
       auth-routes.ts             /api/auth/* route types
@@ -138,6 +139,8 @@ All items below are re-exported from the root `@elizaos/shared` barrel unless no
 **Runtime env** — `resolveRuntimePorts`, `resolveApiSecurityConfig`, `ELIZA_RUNTIME_ENV_KEYS`, `isMobilePlatform` from `src/runtime-env.ts`. Key env vars read: `ELIZA_PORT`, `ELIZA_API_PORT`, `ELIZA_UI_PORT`, `ELIZA_API_BIND`, `ELIZA_API_TOKEN`, `ELIZA_ALLOWED_ORIGINS`, `ELIZA_ALLOWED_HOSTS`, `ELIZA_ALLOW_NULL_ORIGIN`, `ELIZA_DISABLE_AUTO_API_TOKEN`, `ELIZA_PLATFORM`.
 
 **API contracts** — All `*-routes.ts` types in `src/contracts/` (agent, apps, auth, character, connectors, conversations, inbox, memory, plugins, skills, subscriptions, wallet, workbench, …). Import from `@elizaos/shared` root.
+
+**Connector execution contracts** — `GOOGLE_WORKSPACE_MCP_ENDPOINTS` records the official per-product resources, while `GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES` is the smaller reviewed tool/scope policy shared by local and Cloud execution hosts. Import these from `@elizaos/shared/contracts`.
 
 **Steward auth** — `syncStewardSession`, `exchangeStewardCode`, `clearStewardSession`, `readStoredStewardToken`, `STEWARD_TOKEN_KEY`, `STEWARD_SESSION_ENDPOINT`, `StewardSessionError` from `@elizaos/shared/steward-session-client`.
 

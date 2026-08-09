@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import type { TargetInfo } from "../types";
+import { DEFAULT_UUID, type TargetInfo, type UUID } from "../types";
 import type {
 	IAgentRuntime,
 	MessageConnectorRegistration,
@@ -18,7 +18,10 @@ class TestRuntime {
 	private messageConnectors: MessageConnectorRegistration[] = [];
 	private postConnectors: PostConnectorRegistration[] = [];
 
-	constructor(public readonly adapter?: InMemoryDatabaseAdapter) {}
+	constructor(
+		public readonly adapter?: InMemoryDatabaseAdapter,
+		public readonly agentId: UUID = DEFAULT_UUID,
+	) {}
 
 	getService(): undefined {
 		return undefined;
@@ -48,8 +51,11 @@ class TestRuntime {
 	}
 }
 
-function makeRuntime(adapter?: InMemoryDatabaseAdapter): IAgentRuntime {
-	return new TestRuntime(adapter) as IAgentRuntime;
+function makeRuntime(
+	adapter?: InMemoryDatabaseAdapter,
+	agentId?: UUID,
+): IAgentRuntime {
+	return new TestRuntime(adapter, agentId) as IAgentRuntime;
 }
 
 function makeTarget(source: string): TargetInfo {
@@ -163,6 +169,71 @@ describe("ConnectorAccountManager", () => {
 			id: "default",
 			role: "OWNER",
 		});
+	});
+
+	it("requires every capability declared by connector action policy", async () => {
+		const manager = getConnectorAccountManager(makeRuntime());
+		await manager.upsertAccount("google", {
+			id: "google-read-only",
+			provider: "google",
+			role: "OWNER",
+			purpose: ["automation"],
+			accessGate: "open",
+			status: "connected",
+			capabilities: ["gmail.read"],
+			createdAt: 1,
+			updatedAt: 1,
+		});
+
+		await expect(
+			manager.evaluatePolicy({
+				provider: "google",
+				requiredCapabilities: ["gmail.read"],
+			}),
+		).resolves.toMatchObject({ allowed: true });
+		await expect(
+			manager.evaluatePolicy(
+				{
+					provider: "google",
+					requiredCapabilities: ["gmail.read", "gmail.send"],
+				},
+				{ accountId: "google-read-only" },
+			),
+		).resolves.toMatchObject({
+			allowed: false,
+			reason: expect.stringContaining("gmail.send"),
+		});
+	});
+
+	it("notifies a provider after the durable account state is available", async () => {
+		const manager = getConnectorAccountManager(makeRuntime());
+		const afterAccountUpsert = vi.fn();
+		manager.registerProvider({
+			provider: "dynamic-tools",
+			afterAccountUpsert,
+		});
+
+		const created = await manager.createAccount("dynamic-tools", {
+			role: "OWNER",
+			purpose: ["automation"],
+			accessGate: "open",
+			status: "connected",
+			capabilities: ["read"],
+		});
+
+		expect(afterAccountUpsert).toHaveBeenCalledWith(
+			expect.objectContaining({ id: created.id, capabilities: ["read"] }),
+			"create",
+			manager,
+		);
+		await manager.patchAccount("dynamic-tools", created.id, {
+			capabilities: ["read", "search"],
+		});
+		expect(afterAccountUpsert).toHaveBeenLastCalledWith(
+			expect.objectContaining({ capabilities: ["read", "search"] }),
+			"patch",
+			manager,
+		);
 	});
 
 	it("consumes OAuth callback state only once", async () => {
@@ -381,6 +452,74 @@ describe("durable storage binding", () => {
 			externalId: "user@example.com",
 			status: "connected",
 		});
+	});
+
+	it("preserves granted scopes and capabilities across durable account reloads", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const manager = getConnectorAccountManager(makeRuntime(adapter));
+
+		await manager.upsertAccount("google", {
+			...GOOGLE_ACCOUNT,
+			scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+			capabilities: ["google.gmail.read"],
+			oauthMode: "eliza_managed",
+			executionTarget: "cloud_broker",
+			selectedProducts: ["gmail", "calendar"],
+			isDefault: true,
+		});
+
+		const restartedManager = getConnectorAccountManager(makeRuntime(adapter));
+		await expect(
+			restartedManager.listAccounts("google"),
+		).resolves.toMatchObject([
+			{
+				scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+				capabilities: ["google.gmail.read"],
+				oauthMode: "eliza_managed",
+				executionTarget: "cloud_broker",
+				selectedProducts: ["gmail", "calendar"],
+				isDefault: true,
+			},
+		]);
+	});
+
+	it("isolates durable connector accounts by the runtime agent id", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const firstAgentId = "10000000-0000-0000-0000-000000000001" as UUID;
+		const secondAgentId = "20000000-0000-0000-0000-000000000002" as UUID;
+		const firstManager = getConnectorAccountManager(
+			makeRuntime(adapter, firstAgentId),
+		);
+		const secondManager = getConnectorAccountManager(
+			makeRuntime(adapter, secondAgentId),
+		);
+
+		await firstManager.upsertAccount("google", {
+			...GOOGLE_ACCOUNT,
+			label: "first@example.com",
+			capabilities: ["google.gmail.read"],
+		});
+		await secondManager.upsertAccount("google", {
+			...GOOGLE_ACCOUNT,
+			id: "4b899cd0-170f-4b3e-932e-46ec68119b36",
+			label: "second@example.com",
+			capabilities: ["google.calendar.read"],
+		});
+
+		await expect(firstManager.listAccounts("google")).resolves.toMatchObject([
+			{
+				label: "first@example.com",
+				capabilities: ["google.gmail.read"],
+			},
+		]);
+		await expect(secondManager.listAccounts("google")).resolves.toMatchObject([
+			{
+				label: "second@example.com",
+				capabilities: ["google.calendar.read"],
+			},
+		]);
 	});
 
 	it("keeps one consistent in-memory fallback while no adapter exists", async () => {

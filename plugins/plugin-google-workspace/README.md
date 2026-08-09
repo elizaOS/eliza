@@ -4,7 +4,9 @@ Google Workspace integration for [elizaOS](https://github.com/elizaOS/eliza) age
 
 ## What it does
 
-This plugin adds `GoogleWorkspaceService` to an Eliza agent runtime. The service exposes typed methods for reading and writing to Gmail, Calendar, Drive (including Docs and Sheets), and Meet. Authentication is account-scoped: every method call includes an `accountId` that maps to a stored OAuth token, so one agent can operate across multiple Google accounts simultaneously.
+This plugin adds `GoogleWorkspaceService` to an Eliza agent runtime. The service exposes typed methods for Gmail, Calendar, Drive (including Docs and Sheets), and Meet. Authentication is account-scoped: every method call includes an `accountId` that maps to a stored OAuth credential, so one agent can operate across multiple Google accounts simultaneously.
+
+For connected local accounts, the service also attaches Google's official Gmail and Calendar MCP endpoints. Discovery promotes only two schema-pinned, read-only actions (`GOOGLE_GMAIL_SEARCH_THREADS` and `GOOGLE_CALENDAR_LIST_EVENTS`); disconnect removes them. Typed Calendar reads prefer MCP and fall back to the direct API when the preview server is unavailable or incompatible. Sends and mutations remain on the established policy-bearing REST path.
 
 The plugin also registers with the elizaOS `ConnectorAccountManager` so the built-in connector HTTP routes can manage Google accounts (list, create, delete) and run the OAuth flow (PKCE, offline access, incremental consent) without extra integration work.
 

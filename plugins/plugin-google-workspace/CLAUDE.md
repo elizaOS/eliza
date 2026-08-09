@@ -4,7 +4,7 @@ Google Workspace integration for Gmail, Calendar, Drive, and Meet with account-s
 
 ## Purpose / role
 
-Adds `GoogleWorkspaceService` to an Eliza agent runtime, exposing Gmail, Google Calendar, Google Drive, and Google Meet operations through a single account-scoped OAuth grant. It also exports `GoogleGmailAdapter`, the Gmail-owned message-triage adapter used by assistant plugins such as LifeOps. The plugin is opt-in — load it as `googlePlugin` from this package. It also registers with `ConnectorAccountManager` so the generic connector HTTP routes can manage Google accounts and run OAuth flows automatically; that provider registration also mounts the Gmail send `MessageConnector` (`source: "gmail"`, aliases `email`/`mail`) so `MESSAGE op=send` can compose and send email through the connected account.
+Adds `GoogleWorkspaceService` to an Eliza agent runtime, exposing a stable typed Gmail, Calendar, Drive, and Meet facade through one account-scoped OAuth grant. Connected local accounts can also attach the official per-product Gmail and Calendar MCP resources and materialize curated read actions when discovery matches the pinned manifest; typed Calendar reads prefer MCP and visibly fall back to the direct API. It also exports `GoogleGmailAdapter`, the Gmail-owned message-triage adapter used by assistant plugins such as LifeOps. The plugin is opt-in — load it as `googlePlugin` from this package. It registers with `ConnectorAccountManager` so generic connector routes can manage Google accounts and OAuth, and mounts the Gmail send `MessageConnector` (`source: "gmail"`, aliases `email`/`mail`).
 
 Google Chat lives here too, as the `src/chat/` module: `GoogleChatService` (service type `"google-chat"`) registers a runtime `MessageConnector` for spaces, DMs, threads, reactions, and attachments, and `GoogleChatWorkflowCredentialProvider` (service type `"workflow_credential_provider"`) supplies `googleChatOAuth2Api` credentials to the workflow plugin. Chat authenticates with a service account (scope `https://www.googleapis.com/auth/chat.bot`), NOT the consolidated Workspace OAuth grant — the two auth models are intentionally separate even though they share this package. The plugin auto-enables when a `connectors.googlechat` block is present and not explicitly disabled (`auto-enable.ts`); the Workspace OAuth side stays opt-in.
 
@@ -15,7 +15,7 @@ The plugin object (`googlePlugin`, service name `"google"`) registers:
 - **Services:** `GoogleWorkspaceService` — wraps four sub-clients (Gmail, Calendar, Drive, Meet), retrieved via `runtime.getService("google")`; `GoogleChatService` — the Chat connector, retrieved via `runtime.getService("google-chat")`; `GoogleChatWorkflowCredentialProvider` — workflow credential supplier.
 - **Message adapters:** `GoogleGmailAdapter` — Gmail projection into the core message-triage shape for assistant plugins (thread replies and new outbound email).
 - **Message connectors:** the Gmail send connector from `gmail-message-connector.ts`, registered through the Google connector-account provider — routes `MESSAGE op=send source=gmail` / email-literal targets to `GoogleWorkspaceService.sendGmailMessage`.
-- **Actions:** none (empty array).
+- **Actions:** the static plugin array is empty. `GoogleMcpCapabilityHost` dynamically owns `GOOGLE_GMAIL_SEARCH_THREADS` and `GOOGLE_CALENDAR_LIST_EVENTS` while at least one authorized, schema-compatible account is connected, and removes them on disconnect.
 - **Providers:** none (registered separately via `ConnectorAccountManager` at init time).
 - **Events:** none.
 
@@ -69,6 +69,10 @@ src/
   calendar.ts                  GoogleCalendarClient — Calendar list/CRUD
   drive.ts                     GoogleDriveClient — Drive/Docs/Sheets operations
   meet.ts                      GoogleMeetClient — Meet space/conference/artifact operations
+  mcp/                         Curated official-MCP execution seam
+    capability-host.ts         Per-account Gmail/Calendar attachments and dynamic actions
+    access-token-provider.ts   Short-lived bearer projection; refresh tokens stay in the resolver
+    calendar-read-adapter.ts   Preview response validation into stable Calendar DTOs
   chat/                        Google Chat connector (service-account auth, MessageConnector)
     service.ts                 GoogleChatService — Chat REST client, webhook processing, multi-account
     accounts.ts                Multi-account config resolution, env var parsing
@@ -158,7 +162,9 @@ Google Chat (service-account auth; see `src/chat/accounts.ts` for full resolutio
 - **Every method takes `GoogleAccountRef` (`{ accountId: string }`)** as the first positional field. All API calls are account-scoped; there is no single-account shortcut.
 - **Credential resolution is pluggable.** The default `DefaultGoogleCredentialResolver` reads from `ConnectorAccountManager` → `ConnectorAccountStorage` → vault. For tests, inject a custom `GoogleCredentialResolver` via `GoogleWorkspaceService` constructor options or `service.setCredentialResolver(...)`.
 - **Single consolidated OAuth grant.** All capabilities (Gmail, Calendar, Drive, Meet) share one OAuth token per account. Callers may pass a subset of capabilities to `startOAuth` to limit the requested scopes.
-- **No actions or providers are registered by default.** Callers that need agent-facing actions must implement them separately and call `GoogleWorkspaceService` methods directly.
+- **Dynamic MCP actions are account-scoped.** The static plugin action array stays empty; discovery-compatible read actions appear only after a connected local `agent_host` account grants the required capability and disappear on disconnect.
+- **MCP is not the policy owner.** The connector manager, capability policy, typed service, approval paths, audit, and REST fallback remain authoritative. Preview write tools are not promoted; Gmail send and Calendar mutations still use the established policy-bearing paths.
+- **Cloud-broker accounts do not export tokens to the local runtime.** Cloud Mode A bindings are materialized by the Cloud MCP broker, which resolves the binding credential internally.
 - **Node-only.** `package.json` declares `"runtime": "node"`. This plugin uses `node:crypto` and `googleapis` (Node SDK); it will not run in browser or edge environments.
 - **googleapis clients are created per-call.** `GoogleApiClientFactory` creates a new googleapis client each call (auth client is cached by credential version in `DefaultGoogleCredentialResolver`).
 - **Chat and Workspace auth never mix.** Chat uses service-account credentials and its own webhook audience model; Workspace uses the consolidated per-account OAuth grant. Do not route Chat calls through `GoogleApiClientFactory` or Workspace calls through the Chat account state.

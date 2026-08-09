@@ -4,16 +4,17 @@ elizaOS plugin that connects Eliza agents to external MCP (Model Context Protoco
 
 ## Purpose / role
 
-Adds MCP client support to any Eliza agent. At runtime the plugin starts `McpService`, which connects to one or more MCP servers (stdio, SSE, or streamable-HTTP), discovers their tools and resources, and makes them available via a unified `MCP` action and `MCP` provider. The plugin is opt-in — add it to the `plugins` array in the character file and configure servers under `settings.mcp.servers`.
+Adds MCP client support to any Eliza agent. At runtime the plugin starts the legacy `McpService`, which connects to configured stdio, SSE, or streamable-HTTP servers and exposes operation subactions plus an `MCP` provider. Product-managed connectors use the separate `@elizaos/plugin-mcp/resource-engine` entry: a stateless, exact-call MCP 2026 client whose authorization is supplied by a callback instead of serialized headers. The plugin is opt-in — add it to the `plugins` array in the character file and configure legacy servers under `settings.mcp.servers`.
 
 ## Plugin surface
 
 | Kind | Name | What it does |
 |---|---|---|
-| Action | `MCP` | Single entry point for all MCP operations. Routes to `call_tool` (invoke a server tool), `read_resource` (fetch a server resource), or the cloud-only `search_actions`/`list_connections` ops. Similes include `CALL_MCP_TOOL`, `READ_MCP_RESOURCE`, `USE_TOOL`, etc. |
+| Actions | `MCP` plus promoted operation subactions | Routes to `call_tool` (invoke a server tool), `read_resource` (fetch a server resource), or the cloud-only `search_actions`/`list_connections` ops. These are operation-level actions, not one action per discovered vendor tool. |
 | Provider | `MCP` | Injects a text summary of connected servers, their status, tools, and resources into the agent context on every turn. Contexts: `connectors`, `settings`. |
 | Service | `McpService` | Manages all MCP connections (connect, ping, reconnect, disconnect). Exposes `callTool`, `readResource`, `getServers`, `getProviderData`, `restartConnection`. Service type key: `"mcp"`. |
 | Routes (exported helper) | `handleMcpRoutes` | HTTP route handler for `/api/mcp/*` — config CRUD, marketplace search, and runtime status. Consumed by the host server; not registered directly by the plugin object. |
+| Library entry | `@elizaos/plugin-mcp/resource-engine` | Attaches validated remote resources, discovers paginated schemas, and performs literal tool calls with operation-local v2 clients. It owns no OAuth persistence, policy, action promotion, or fallback semantics. |
 
 The plugin also exports `McpRouteContext` (type) for host servers wiring up `handleMcpRoutes`.
 
@@ -29,6 +30,7 @@ plugins/plugin-mcp/
                                 ping monitoring, reconnect backoff
     provider.ts               MCP provider — formats connected-server summary for agent state
     routes-mcp.ts             handleMcpRoutes — /api/mcp/config, /api/mcp/status, marketplace
+    resource-engine.ts        Stateless authenticated remote-resource discovery and exact calls
     mcp-marketplace.ts        Client for registry.modelcontextprotocol.io (search + details)
     prompts.ts                All Handlebars-style prompt templates (tool/resource
                                 selection, reasoning, feedback, errorAnalysis)
@@ -86,7 +88,7 @@ All config is read from the character `settings` object (or runtime settings), n
 | Key (in `settings`) | Type | Required | Description |
 |---|---|---|---|
 | `mcp.servers` | `Record<string, McpServerConfig>` | Yes (for any connectivity) | Map of server name → transport config |
-| `mcp.maxRetries` | `number` | No (default `2`) | Max reconnect attempts per server |
+| `mcp.maxRetries` | `number` | No (default `2`) | Max model-selection retries for the legacy umbrella action; transport reconnects use their own policy |
 
 Transport config shapes (see `src/types.ts`):
 
@@ -128,6 +130,8 @@ Add a branch in `src/routes-mcp.ts` `handleMcpRoutes`. The host server passes a 
 - **Security validation is blocking.** `validateMcpServerConfig` from `@elizaos/agent` runs before every connection and spawn. Servers that fail validation are silently skipped (logged at error level).
 - **Marketplace is read-only.** `mcp-marketplace.ts` queries `https://registry.modelcontextprotocol.io` to browse and discover MCP servers; it does not install them.
 - **`promoteSubactionsToActions`** is applied to `mcpAction` in `index.ts`, so any sub-action expansion follows the elizaOS core convention.
+- **Do not serialize product OAuth credentials in MCP config.** Product connectors inject an access-token provider into the resource engine; refresh tokens remain in the connector vault or Cloud broker.
+- **Remote product calls negotiate MCP protocol versions.** The resource engine and Cloud remote client use SDK v2 `versionNegotiation: { mode: "auto" }`; legacy stdio connections retain the older lifecycle.
 - For architecture rules, logger conventions, ESM requirements, and naming standards, see the root `CLAUDE.md`.
 
 ## Verification

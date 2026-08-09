@@ -41,6 +41,8 @@ src/
                            v1/, auth/, agents/, billing/, stripe/, mcp/, mcps/, a2a/,
                            analytics/, admin/, training/, webhooks/, organizations/, etc.
                            Each route.ts exports a Hono app (default export).
+v1/eliza/agents/[agentId]/connectors/
+                           Canonical-agent binding CRUD and binding-scoped Google MCP broker routes.
 .well-known/               jwks.json/route.ts, agent-card.json/route.ts,
                            openid-configuration/route.ts, oidc/jwks.json/route.ts
                            (the last two are ALSO root-mounted by bootstrap-app).
@@ -105,6 +107,7 @@ Add an endpoint:
 - `src/stubs/*` exist because workerd lacks some node-only deps; they are wired via `wrangler.toml` aliases/`[define]`, not by direct import. Don't import node-only modules in route code.
 - Special-cased routes registered manually in `bootstrap-app.ts` (root `/`, `/steward*`, blooio/bluebubbles webhooks, legacy birdeye 308 redirect, jwks, OIDC discovery + OIDC jwks) bypass the codegen tree — keep that list in sync when touching those surfaces. The OIDC pair must stay root-mounted: relying parties derive `/.well-known/openid-configuration` from the issuer origin and never look under `/api`.
 - This is the only `@elizaos/*` package with no published consumers; treat `wrangler.toml` + `index.ts` as the contract.
+- Agent connector routes may accept a sandbox ID for compatibility, but must resolve and persist the canonical character/runtime ID. Broker routes authorize by binding ID and must never accept or return a platform credential locator or OAuth token.
 
 ## Verification
 

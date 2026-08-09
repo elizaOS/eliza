@@ -7,6 +7,7 @@ Shared cross-platform contract library for [elizaOS](https://github.com/elizaOS/
 `@elizaos/shared` is the lowest-level internal library in the elizaOS monorepo that can be safely imported by both server-side (Node.js/Bun) and browser/React code. It contains:
 
 - **HTTP API contracts** — typed request/response shapes for every agent API route
+- **Connector execution contracts** — runtime-neutral vendor endpoint and curated canary policy shared by local and Cloud hosts
 - **Configuration schema** — `ElizaConfig` and ~150 named sub-types covering agents, connectors, gateway, models, memory, TTS, auth, and more
 - **Runtime environment resolution** — port and security config derived from env vars (`ELIZA_PORT`, `ELIZA_API_PORT`, `ELIZA_API_TOKEN`, etc.)
 - **Eliza Cloud session helpers** — `syncStewardSession`, `exchangeStewardCode`, and the full Steward auth contract
@@ -66,4 +67,3 @@ bun run --cwd packages/shared test        # run tests
 
 - The root barrel (`src/index.ts`) must remain importable in both browser and Node.js. Do not add Node.js-only or value-level React imports to it. The only React reference is a type-only `import type { ReactNode }` in `src/config/config-catalog.ts`, which is erased at compile time.
 - Do not import from `@elizaos/agent` inside this package — it creates an ESM cycle that breaks server boot. See comments in `src/config/config.ts`.
-

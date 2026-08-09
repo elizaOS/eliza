@@ -557,6 +557,9 @@ describe("google plugin", () => {
           metadata: {
             requestedCapabilities: ["gmail.read"],
             requestedScopes: scopesForGoogleCapabilities(["gmail.read"]),
+            oauthMode: "eliza_managed",
+            executionTarget: "agent_host",
+            isDefault: true,
           },
         },
       },
@@ -566,6 +569,12 @@ describe("google plugin", () => {
     const account = result?.account as ConnectorAccount;
     const metadata = account.metadata as Record<string, unknown>;
     expect(account.purpose).toEqual(["messaging"]);
+    expect(account.scopes).toEqual(returnedScopes);
+    expect(account.capabilities).toEqual(["gmail.read"]);
+    expect(account.oauthMode).toBe("eliza_managed");
+    expect(account.executionTarget).toBe("cloud_broker");
+    expect(account.selectedProducts).toEqual(["gmail"]);
+    expect(account.isDefault).toBe(true);
     expect(metadata.grantedCapabilities).toEqual(["gmail.read"]);
     expect(metadata.grantedScopes).toEqual(returnedScopes);
     expect(
@@ -1597,6 +1606,12 @@ function createOAuthCallbackManager(
         displayHandle: input.displayHandle ?? undefined,
         ownerBindingId: input.ownerBindingId ?? undefined,
         ownerIdentityId: input.ownerIdentityId ?? undefined,
+        scopes: input.scopes,
+        capabilities: input.capabilities,
+        oauthMode: input.oauthMode,
+        executionTarget: input.executionTarget,
+        selectedProducts: input.selectedProducts,
+        isDefault: input.isDefault,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         metadata: input.metadata,

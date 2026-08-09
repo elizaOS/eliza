@@ -75,6 +75,22 @@ interface GoogleCalendarWatchRevocationService {
   revokeGoogleCalendarWatchesByAccount(accountId: string): Promise<void>;
 }
 
+interface GoogleMcpAccountLifecycleService {
+  connectMcpAccount(account: ConnectorAccount): Promise<unknown>;
+  disconnectMcpAccount(accountId: string): Promise<void>;
+}
+
+function isGoogleMcpAccountLifecycleService(
+  value: unknown
+): value is GoogleMcpAccountLifecycleService {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    typeof (value as Partial<GoogleMcpAccountLifecycleService>).connectMcpAccount === "function" &&
+    typeof (value as Partial<GoogleMcpAccountLifecycleService>).disconnectMcpAccount === "function"
+  );
+}
+
 function isGoogleCalendarWatchRevocationService(
   value: unknown
 ): value is GoogleCalendarWatchRevocationService {
@@ -290,6 +306,30 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
   return "OWNER";
 }
 
+function oauthModeFromMetadata(metadata: unknown): "eliza_managed" | "bring_your_own" {
+  return isRecord(metadata) && metadata.oauthMode === "eliza_managed"
+    ? "eliza_managed"
+    : "bring_your_own";
+}
+
+function executionTargetFromMetadata(
+  metadata: unknown,
+  oauthMode: "eliza_managed" | "bring_your_own"
+): "agent_host" | "cloud_broker" {
+  if (oauthMode === "eliza_managed") return "cloud_broker";
+  return isRecord(metadata) && metadata.executionTarget === "cloud_broker"
+    ? "cloud_broker"
+    : "agent_host";
+}
+
+function isDefaultFromMetadata(metadata: unknown): boolean {
+  return isRecord(metadata) && metadata.isDefault === true;
+}
+
+function productsForCapabilities(capabilities: readonly GoogleCapability[]): string[] {
+  return [...new Set(capabilities.map((capability) => capability.split(".")[0]))];
+}
+
 function parseIdTokenClaims(idToken: string | undefined): GoogleIdentity {
   if (!idToken) return {};
   const segments = idToken.split(".");
@@ -406,6 +446,10 @@ export function createGoogleConnectorAccountProvider(
       if (isGoogleCalendarWatchRevocationService(calendarService)) {
         await calendarService.revokeGoogleCalendarWatchesByAccount(accountId);
       }
+      const workspaceService = runtime.getService(GOOGLE_SERVICE_NAME);
+      if (isGoogleMcpAccountLifecycleService(workspaceService)) {
+        await workspaceService.disconnectMcpAccount(accountId);
+      }
       // Credential cleanup is the credential store's responsibility; the
       // manager removes the account row after this resolves.
     },
@@ -442,6 +486,11 @@ export function createGoogleConnectorAccountProvider(
           requestedCapabilities: capabilities,
           requestedScopes: oauthScopes,
           redirectUri,
+          oauthMode: oauthModeFromMetadata(request.metadata),
+          executionTarget: executionTargetFromMetadata(
+            request.metadata,
+            oauthModeFromMetadata(request.metadata)
+          ),
         },
       };
     },
@@ -505,6 +554,10 @@ export function createGoogleConnectorAccountProvider(
         );
       }
       const purposes = purposesForCapabilities(grantedCapabilities);
+      const effectiveGrantedScopes =
+        grantedScopes.length > 0 ? grantedScopes : scopesForGoogleCapabilities(grantedCapabilities);
+      const oauthMode = oauthModeFromMetadata(request.flow.metadata);
+      const executionTarget = executionTargetFromMetadata(request.flow.metadata, oauthMode);
 
       let identity = parseIdTokenClaims(tokens.id_token);
       if (!identity.email) {
@@ -524,10 +577,7 @@ export function createGoogleConnectorAccountProvider(
         picture: identity.picture ?? null,
         locale: identity.locale ?? null,
         grantedCapabilities,
-        grantedScopes:
-          grantedScopes.length > 0
-            ? grantedScopes
-            : scopesForGoogleCapabilities(grantedCapabilities),
+        grantedScopes: effectiveGrantedScopes,
         identityScopes: [...GOOGLE_IDENTITY_SCOPES],
         tokenType: tokens.token_type ?? "Bearer",
         hasRefreshToken: Boolean(tokens.refresh_token),
@@ -542,6 +592,12 @@ export function createGoogleConnectorAccountProvider(
           purpose: purposes,
           accessGate: "open",
           status: "pending",
+          scopes: effectiveGrantedScopes,
+          capabilities: grantedCapabilities,
+          oauthMode,
+          executionTarget,
+          selectedProducts: productsForCapabilities(grantedCapabilities),
+          isDefault: isDefaultFromMetadata(request.flow.metadata),
           externalId,
           displayHandle: nonEmptyString(identity.email) ?? nonEmptyString(identity.name),
           label:
@@ -613,6 +669,16 @@ export function createGoogleConnectorAccountProvider(
         account: accountPatch,
         flow: { status: "completed" },
       };
+    },
+
+    afterAccountUpsert: async (account) => {
+      const workspaceService = runtime.getService(GOOGLE_SERVICE_NAME);
+      if (!isGoogleMcpAccountLifecycleService(workspaceService)) return;
+      if (account.status === "connected") {
+        await workspaceService.connectMcpAccount(account);
+      } else {
+        await workspaceService.disconnectMcpAccount(account.id);
+      }
     },
   };
 }

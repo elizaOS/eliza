@@ -37,6 +37,8 @@ export interface ConnectorAccountPolicy {
 	purposes?: ConnectorAccountPurpose[];
 	accessGates?: ConnectorAccountAccessGate[];
 	statuses?: ConnectorAccountStatus[];
+	/** Every listed stable capability must be granted on the selected account. */
+	requiredCapabilities?: string[];
 	accountIdParam?: string;
 	required?: boolean;
 }

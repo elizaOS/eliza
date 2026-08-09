@@ -1,6 +1,6 @@
 // Wires hosted Eliza agent bm25 index behavior for cloud runtime services.
 import { BM25 } from "@elizaos/core";
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool } from "@modelcontextprotocol/client";
 
 export interface Tier2ToolEntry {
   serverName: string;

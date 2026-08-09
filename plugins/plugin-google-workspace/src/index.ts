@@ -8,10 +8,11 @@
  * runtime's `ConnectorAccountManager` so the generic connector HTTP routes can
  * manage accounts and drive OAuth; registering the Google provider also mounts
  * the Gmail send MessageConnector (`source: "gmail"`, aliases email/mail) so
- * MESSAGE op=send can compose and send email. It registers no actions or
- * providers of its own; callers invoke the services directly, and Chat
- * messaging routes through the MessageConnector that `GoogleChatService`
- * registers.
+ * MESSAGE op=send can compose and send email. Its static action array remains
+ * empty, while the Workspace service materializes curated Gmail and Calendar
+ * actions only for connected accounts whose discovered MCP schemas match.
+ * Chat messaging remains on the MessageConnector registered by
+ * `GoogleChatService`.
  */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
@@ -41,6 +42,9 @@ export * from "./drive.js";
 export * from "./gmail.js";
 export * from "./gmail-message-connector.js";
 export { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
+export * from "./mcp/access-token-provider.js";
+export * from "./mcp/calendar-read-adapter.js";
+export * from "./mcp/capability-host.js";
 export * from "./meet.js";
 export * from "./scopes.js";
 export * from "./types.js";
@@ -64,6 +68,7 @@ export const googlePlugin: Plugin = {
   },
 
   async dispose(runtime: IAgentRuntime) {
+    await runtime.getService<GoogleWorkspaceService>(GoogleWorkspaceService.serviceType)?.stop();
     await runtime.getService<GoogleChatService>(GoogleChatService.serviceType)?.stop();
     await runtime
       .getService<GoogleChatWorkflowCredentialProvider>(

@@ -1,5 +1,5 @@
 // Wires hosted Eliza agent action naming behavior for cloud runtime services.
-function normalize(str: string): string {
+export function normalizeActionName(str: string): string {
   return str
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, "_")
@@ -8,8 +8,8 @@ function normalize(str: string): string {
 }
 
 export function toActionName(serverName: string, toolName: string): string {
-  const server = normalize(serverName);
-  const tool = normalize(toolName);
+  const server = normalizeActionName(serverName);
+  const tool = normalizeActionName(toolName);
 
   if (!server) return tool || "_";
   if (!tool) return server + "_";
@@ -19,7 +19,7 @@ export function toActionName(serverName: string, toolName: string): string {
 }
 
 export function generateSimiles(serverName: string, toolName: string): string[] {
-  const tool = normalize(toolName);
+  const tool = normalizeActionName(toolName);
   const fullName = toActionName(serverName, toolName);
 
   const similes = [
@@ -41,7 +41,7 @@ export function generateSimiles(serverName: string, toolName: string): string[] 
 export function parseActionName(
   actionName: string,
 ): { serverName: string; toolName: string } | null {
-  const normalized = normalize(actionName);
+  const normalized = normalizeActionName(actionName);
   const idx = normalized.indexOf("_");
   if (idx === -1) return null;
 
@@ -52,7 +52,7 @@ export function parseActionName(
 }
 
 export function actionNamesCollide(name1: string, name2: string): boolean {
-  return normalize(name1) === normalize(name2);
+  return normalizeActionName(name1) === normalizeActionName(name2);
 }
 
 export function makeUniqueActionName(

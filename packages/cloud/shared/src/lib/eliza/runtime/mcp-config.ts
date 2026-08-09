@@ -1,10 +1,10 @@
 // Wires hosted Eliza agent mcp config behavior for cloud runtime services.
 import { elizaLogger } from "@elizaos/core";
+import { GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES } from "@elizaos/shared/contracts";
 import { getRequestContext } from "../../services/entity-settings/request-context";
 import type { UserContext } from "../user-context";
 
 export const MCP_SERVER_CONFIGS: Record<string, { url: string; type: string }> = {
-  google: { url: "/api/mcps/google/streamable-http", type: "streamable-http" },
   hubspot: {
     url: "/api/mcps/hubspot/streamable-http",
     type: "streamable-http",
@@ -40,6 +40,56 @@ export const MCP_SERVER_CONFIGS: Record<string, { url: string; type: string }> =
     type: "streamable-http",
   },
 };
+
+const GOOGLE_MCP_PRODUCT_CAPABILITIES = Object.fromEntries(
+  Object.entries(GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES).map(([product, config]) => [
+    product,
+    config.capability,
+  ]),
+) as Readonly<Record<string, string>>;
+
+function googleBindingServers(context: UserContext): Record<string, { url: string; type: string }> {
+  if (!context.characterId) return {};
+  const servers: Record<string, { url: string; type: string }> = {};
+  const rolePriority = { OWNER: 0, AGENT: 1, TEAM: 2 } as const;
+  const priorityForRole = (role: string): number =>
+    rolePriority[role as keyof typeof rolePriority] ?? Number.MAX_SAFE_INTEGER;
+  const bindings = [...(context.connectorBindings ?? [])].sort(
+    (left, right) =>
+      Number(Boolean(right.isDefault)) - Number(Boolean(left.isDefault)) ||
+      priorityForRole(left.role) - priorityForRole(right.role) ||
+      left.id.localeCompare(right.id),
+  );
+  for (const binding of bindings) {
+    if (
+      binding.provider !== "google" ||
+      binding.status !== "connected" ||
+      binding.executionTarget !== "cloud_broker"
+    ) {
+      continue;
+    }
+    for (const product of binding.selectedProducts) {
+      const normalizedProduct = product.trim().toLowerCase();
+      const capability = GOOGLE_MCP_PRODUCT_CAPABILITIES[normalizedProduct];
+      if (!capability || !binding.allowedCapabilities.includes(capability)) continue;
+      const serverName = `google-${normalizedProduct}`;
+      if (servers[serverName]) continue;
+      servers[serverName] = {
+        type: "streamable-http",
+        url: `/api/v1/eliza/agents/${context.characterId}/connectors/${binding.id}/mcp/${normalizedProduct}`,
+      };
+    }
+  }
+  return servers;
+}
+
+function enabledServers(context: UserContext): Record<string, { url: string; type: string }> {
+  const connected = getConnectedPlatforms(context);
+  const legacy = Object.fromEntries(
+    Object.entries(MCP_SERVER_CONFIGS).filter(([provider]) => connected.has(provider)),
+  );
+  return { ...legacy, ...googleBindingServers(context) };
+}
 
 /**
  * Transform MCP settings by resolving relative URLs to absolute URLs.
@@ -80,8 +130,7 @@ export function getConnectedPlatforms(context: UserContext): Set<string> {
 }
 
 export function getConnectedMcpPlatforms(context: UserContext): string[] {
-  const connected = getConnectedPlatforms(context);
-  return Object.keys(MCP_SERVER_CONFIGS).filter((p) => connected.has(p));
+  return Object.keys(enabledServers(context));
 }
 
 export function shouldEnableMcp(context: UserContext): boolean {
@@ -100,16 +149,13 @@ export function setMcpEnabledServers(context: UserContext): void {
 }
 
 export function buildMcpSettings(context: UserContext): { mcp?: Record<string, unknown> } {
-  const connected = getConnectedPlatforms(context);
-  const enabledServers = Object.fromEntries(
-    Object.entries(MCP_SERVER_CONFIGS).filter(([p]) => connected.has(p)),
-  );
+  const servers = enabledServers(context);
 
-  if (Object.keys(enabledServers).length === 0) return {};
+  if (Object.keys(servers).length === 0) return {};
 
-  elizaLogger.debug(`[RuntimeFactory] MCP enabled: ${Object.keys(enabledServers).join(", ")}`);
+  elizaLogger.debug(`[RuntimeFactory] MCP enabled: ${Object.keys(servers).join(", ")}`);
 
   return {
-    mcp: transformMcpSettings({ servers: enabledServers }),
+    mcp: transformMcpSettings({ servers }),
   };
 }

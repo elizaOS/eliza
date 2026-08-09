@@ -7,6 +7,7 @@ import { oauthService } from "../oauth";
 import { getPreferredActiveConnection } from "../oauth/oauth-service";
 import { getProvider, isProviderConfigured } from "../oauth/provider-registry";
 import type { OAuthConnectionRole } from "../oauth/types";
+import { normalizeOAuthConnectionRole } from "../oauth/types";
 
 const DEFAULT_GOOGLE_CONNECTOR_CAPABILITIES = [
   "google.basic_identity",
@@ -491,23 +492,51 @@ export async function initiateManagedGoogleConnection(args: {
   organizationId: string;
   userId: string;
   side: OAuthConnectionRole;
+  agentId?: string;
   redirectUrl?: string;
   capabilities?: AgentGoogleCapability[];
 }) {
   const requestedCapabilities = normalizeCapabilities(args.capabilities);
+  const selectedProducts = [
+    ...(requestedCapabilities.some((capability) => capability.startsWith("google.gmail."))
+      ? ["gmail"]
+      : []),
+    ...(requestedCapabilities.some((capability) => capability.startsWith("google.calendar."))
+      ? ["calendar"]
+      : []),
+  ];
+  const allowedCapabilities = [
+    ...(requestedCapabilities.includes("google.gmail.triage") ? ["gmail.read"] : []),
+    ...(requestedCapabilities.includes("google.calendar.read") ? ["calendar.read"] : []),
+  ];
+  const role = normalizeOAuthConnectionRole(args.side);
   const auth = await managedGoogleConnectorDeps.oauthService.initiateAuth({
     organizationId: args.organizationId,
     userId: args.userId,
     platform: "google",
     redirectUrl: args.redirectUrl,
     scopes: capabilitiesToScopes(requestedCapabilities),
-    connectionRole: args.side,
+    connectionRole: role,
+    ...(args.agentId
+      ? {
+          agentBinding: {
+            agentId: args.agentId,
+            role,
+            selectedProducts,
+            allowedCapabilities,
+            oauthMode: "eliza_managed" as const,
+            executionTarget: "cloud_broker" as const,
+            isDefault: true,
+          },
+        }
+      : {}),
   });
   return {
     provider: "google" as const,
     side: args.side,
     mode: "cloud_managed" as const,
     requestedCapabilities,
+    selectedProducts,
     redirectUri: args.redirectUrl ?? "/auth/success?platform=google",
     authUrl: auth.authUrl,
   };

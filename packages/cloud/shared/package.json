@@ -42,6 +42,7 @@
     "generate:email-templates": "node scripts/generate-email-templates.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
     "@ai-sdk/anthropic": "^3.0.72",
     "@ai-sdk/openai": "^3.0.54",
     "@aws-sdk/client-kms": "^3.1047.0",
