@@ -1,8 +1,8 @@
 /**
  * Deterministic unit tests for the trigger-schedule humanizers: cron
- * recurrence phrasing, one-shot friendly times, and interval descriptions.
- * Time-relative cases pin "now" and build targets with the local-time Date
- * constructor so expectations hold in any test-runner timezone.
+ * recurrence phrasing, one-shot sender-local times, and interval descriptions.
+ * Absolute instants and explicit IANA zones keep the assertions independent
+ * of the test runner's host timezone.
  */
 import { describe, expect, it } from "vitest";
 
@@ -57,46 +57,67 @@ describe("describeCronSchedule", () => {
 });
 
 describe("describeOnceAt", () => {
-  const NOW = new Date(2026, 7, 8, 12, 0, 0);
-
-  const iso = (d: Date) => d.toISOString();
+  const TIME_ZONE = "America/New_York";
+  const NOW_MS = Date.parse("2026-08-08T16:00:00.000Z");
 
   it("renders near-term fires as a countdown", () => {
     expect(
-      describeOnceAt(iso(new Date(NOW.getTime() + 30_000)), NOW.getTime()),
+      describeOnceAt(
+        new Date(NOW_MS + 30_000).toISOString(),
+        NOW_MS,
+        TIME_ZONE,
+      ),
     ).toBe("in under a minute");
     expect(
-      describeOnceAt(iso(new Date(NOW.getTime() + 90_000)), NOW.getTime()),
+      describeOnceAt(
+        new Date(NOW_MS + 90_000).toISOString(),
+        NOW_MS,
+        TIME_ZONE,
+      ),
     ).toBe("in 2 minutes");
     expect(
-      describeOnceAt(iso(new Date(NOW.getTime() + 5 * 60_000)), NOW.getTime()),
+      describeOnceAt(
+        new Date(NOW_MS + 5 * 60_000).toISOString(),
+        NOW_MS,
+        TIME_ZONE,
+      ),
     ).toBe("in 5 minutes");
   });
 
-  it("renders same-day, next-day, and same-week fires as local clock times", () => {
-    expect(
-      describeOnceAt(iso(new Date(2026, 7, 8, 15, 30, 0)), NOW.getTime()),
-    ).toBe("today at 3:30pm");
-    expect(
-      describeOnceAt(iso(new Date(2026, 7, 9, 8, 0, 0)), NOW.getTime()),
-    ).toBe("tomorrow at 8am");
+  it("renders same-day, next-day, and same-week fires in the supplied timezone", () => {
+    expect(describeOnceAt("2026-08-08T19:30:00.000Z", NOW_MS, TIME_ZONE)).toBe(
+      "today at 3:30pm",
+    );
+    expect(describeOnceAt("2026-08-09T12:00:00.000Z", NOW_MS, TIME_ZONE)).toBe(
+      "tomorrow at 8am",
+    );
     // 2026-08-12 is a Wednesday.
+    expect(describeOnceAt("2026-08-12T12:00:00.000Z", NOW_MS, TIME_ZONE)).toBe(
+      "on Wednesday at 8am",
+    );
+  });
+
+  it("uses the supplied timezone for calendar-day boundaries", () => {
     expect(
-      describeOnceAt(iso(new Date(2026, 7, 12, 8, 0, 0)), NOW.getTime()),
-    ).toBe("on Wednesday at 8am");
+      describeOnceAt(
+        "2026-08-09T01:00:00.000Z",
+        Date.parse("2026-08-08T23:30:00.000Z"),
+        TIME_ZONE,
+      ),
+    ).toBe("today at 9pm");
   });
 
   it("renders far-out fires as dates, with the year only when it differs", () => {
-    expect(
-      describeOnceAt(iso(new Date(2026, 7, 20, 8, 0, 0)), NOW.getTime()),
-    ).toBe("on Aug 20 at 8am");
-    expect(
-      describeOnceAt(iso(new Date(2027, 0, 2, 9, 0, 0)), NOW.getTime()),
-    ).toBe("on Jan 2, 2027 at 9am");
+    expect(describeOnceAt("2026-08-20T12:00:00.000Z", NOW_MS, TIME_ZONE)).toBe(
+      "on Aug 20 at 8am",
+    );
+    expect(describeOnceAt("2027-01-02T14:00:00.000Z", NOW_MS, TIME_ZONE)).toBe(
+      "on Jan 2, 2027 at 9am",
+    );
   });
 
   it("returns null for an unparseable timestamp", () => {
-    expect(describeOnceAt("not a timestamp", NOW.getTime())).toBeNull();
+    expect(describeOnceAt("not a timestamp", NOW_MS, TIME_ZONE)).toBeNull();
   });
 });
 

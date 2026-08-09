@@ -3,10 +3,9 @@
  * timestamps, cron expressions, raw millisecond intervals — must never reach
  * the user's message; the TRIGGER action renders schedules through these
  * helpers and keeps the machine detail in its structured `data` payload.
- * Clock times render in the process-local timezone: the local-first
- * deployment runs the agent on the user's own machine, so local time is the
- * user's time. Cron fields are echoed as written (the scheduler interprets
- * them in the trigger's own timezone), so no conversion applies there.
+ * One-shot clock times render in the resolved sender timezone supplied by the
+ * action boundary. Cron fields are echoed as written because the scheduler
+ * interprets them as wall-clock fields in the trigger's persisted timezone.
  */
 
 const DAY_NAMES = [
@@ -39,6 +38,47 @@ const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 /** Below this lead time a one-shot reads as a countdown ("in 20 minutes"). */
 const RELATIVE_CUTOFF_MS = 45 * MINUTE_MS;
+
+interface ZonedDateParts {
+  year: number;
+  month: number;
+  day: number;
+  weekday: string;
+  hour: number;
+  minute: number;
+}
+
+function zonedDateParts(date: Date, timeZone: string): ZonedDateParts {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    weekday: "long",
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const requiredNumber = (type: Intl.DateTimeFormatPartTypes): number => {
+    const value = parts.find((part) => part.type === type)?.value;
+    if (value === undefined) {
+      throw new Error(`Intl.DateTimeFormat omitted required ${type} part`);
+    }
+    return Number.parseInt(value, 10);
+  };
+  const weekday = parts.find((part) => part.type === "weekday")?.value;
+  if (weekday === undefined) {
+    throw new Error("Intl.DateTimeFormat omitted required weekday part");
+  }
+  return {
+    year: requiredNumber("year"),
+    month: requiredNumber("month"),
+    day: requiredNumber("day"),
+    weekday,
+    hour: requiredNumber("hour"),
+    minute: requiredNumber("minute"),
+  };
+}
 
 function formatClockTime(hour: number, minute: number): string {
   const h12 = hour % 12 === 0 ? 12 : hour % 12;
@@ -124,13 +164,14 @@ export function describeCronSchedule(expression: string): string | null {
 
 /**
  * Describe a one-shot fire time relative to now: a countdown for near-term
- * fires ("in 5 minutes"), then local clock forms ("today at 3pm", "tomorrow
- * at 8am", "on Saturday at 8am", "on Aug 20 at 8am"). Returns null only for
- * an unparseable timestamp.
+ * fires ("in 5 minutes"), then clock forms in the resolved sender timezone
+ * ("today at 3pm", "tomorrow at 8am", "on Saturday at 8am"). Returns null
+ * only for an unparseable timestamp.
  */
 export function describeOnceAt(
   scheduledAtIso: string,
   nowMs: number,
+  timeZone: string,
 ): string | null {
   const atMs = Date.parse(scheduledAtIso);
   if (Number.isNaN(atMs)) return null;
@@ -141,20 +182,21 @@ export function describeOnceAt(
     return minutes <= 1 ? "in a minute" : `in ${minutes} minutes`;
   }
 
-  const at = new Date(atMs);
-  const now = new Date(nowMs);
-  const time = formatClockTime(at.getHours(), at.getMinutes());
-  const startOfDay = (d: Date) =>
-    new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const dayDiff = Math.round((startOfDay(at) - startOfDay(now)) / DAY_MS);
+  const at = zonedDateParts(new Date(atMs), timeZone);
+  const now = zonedDateParts(new Date(nowMs), timeZone);
+  const time = formatClockTime(at.hour, at.minute);
+  const dayDiff = Math.round(
+    (Date.UTC(at.year, at.month - 1, at.day) -
+      Date.UTC(now.year, now.month - 1, now.day)) /
+      DAY_MS,
+  );
   if (dayDiff === 0) return `today at ${time}`;
   if (dayDiff === 1) return `tomorrow at ${time}`;
   if (dayDiff > 1 && dayDiff < 7) {
-    return `on ${DAY_NAMES[at.getDay()]} at ${time}`;
+    return `on ${at.weekday} at ${time}`;
   }
-  const year =
-    at.getFullYear() === now.getFullYear() ? "" : `, ${at.getFullYear()}`;
-  return `on ${MONTH_NAMES[at.getMonth()]} ${at.getDate()}${year} at ${time}`;
+  const year = at.year === now.year ? "" : `, ${at.year}`;
+  return `on ${MONTH_NAMES[at.month - 1]} ${at.day}${year} at ${time}`;
 }
 
 /**
