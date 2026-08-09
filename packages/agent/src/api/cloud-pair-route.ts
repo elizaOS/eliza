@@ -68,21 +68,64 @@ const CLOUD_CONSOLE_ORIGIN_BY_API_HOST: Record<string, string> = {
   "api-staging.elizacloud.ai": "https://staging.elizacloud.ai",
 };
 
+const PRODUCTION_CONSOLE_ORIGIN = "https://www.elizacloud.ai";
+
+function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+}
+
 /**
  * Console origin for the environment this agent is actually attached to.
- * Falls back to the resolved cloud root for self-hosted deployments, whose
- * console is served from that same origin.
+ *
+ * The configured base URL is untrusted input that ends up inside an `href`, so
+ * parseability alone is not a safety property: `javascript:` parses fine, and
+ * credentials/path/query in a configured URL must never reach the attribute.
+ * Only an https origin (or loopback http, for self-hosted development) becomes
+ * a clickable link, and always as the parser's canonical `origin` rather than
+ * the raw configured string. Anything else falls back to the production
+ * console, which is a dead-but-harmless link rather than a scriptable one.
  */
 function resolveCloudConsoleOrigin(): string {
-  const root = resolveCloudAuthRoot();
+  let url: URL;
   try {
-    const host = new URL(root).hostname.toLowerCase();
-    return CLOUD_CONSOLE_ORIGIN_BY_API_HOST[host] ?? root;
+    url = new URL(resolveCloudAuthRoot());
   } catch {
-    // error-policy:J3 a malformed configured base URL is untrusted input; the
-    // production console is the only safe default for a link we cannot derive.
-    return "https://www.elizacloud.ai";
+    // error-policy:J3 a malformed configured base URL is untrusted input; a
+    // known-safe origin is the only defensible default for a rendered link.
+    return PRODUCTION_CONSOLE_ORIGIN;
   }
+
+  const mapped = CLOUD_CONSOLE_ORIGIN_BY_API_HOST[url.hostname.toLowerCase()];
+  if (mapped) return mapped;
+
+  if (
+    url.protocol === "https:" ||
+    (url.protocol === "http:" && isLoopbackHostname(url.hostname))
+  ) {
+    return url.origin;
+  }
+
+  return PRODUCTION_CONSOLE_ORIGIN;
+}
+
+/**
+ * Attribute-context escaping. `escapeHtml` covers text nodes only and leaves
+ * quotes intact, which would let a quote-bearing value break out of an
+ * attribute even after the origin allowlist above.
+ */
+function escapeHtmlAttribute(value: string): string {
+  return value.replace(/[<>&"']/g, (c) =>
+    c === "<"
+      ? "&lt;"
+      : c === ">"
+        ? "&gt;"
+        : c === "&"
+          ? "&amp;"
+          : c === '"'
+            ? "&quot;"
+            : "&#39;",
+  );
 }
 
 function resolveRequestOrigin(req: http.IncomingMessage): string {
@@ -178,7 +221,7 @@ function renderErrorHtml(title: string, message: string): string {
   <div class="card">
     <h1>${safeTitle}</h1>
     <p>${safeMessage}</p>
-    <a href="${escapeHtml(resolveCloudConsoleOrigin())}/dashboard/agents" target="_top" rel="noopener">Back to Eliza Cloud</a>
+    <a href="${escapeHtmlAttribute(`${resolveCloudConsoleOrigin()}/dashboard/agents`)}" target="_top" rel="noopener">Back to Eliza Cloud</a>
   </div>
 </body>
 </html>`;
@@ -251,6 +294,7 @@ export async function handleStandaloneCloudPairRoute(
   const exchangeUrl = `${resolveCloudAuthRoot()}/api/auth/pair`;
   let exchanged: PairResponse | null = null;
   let status = 0;
+  let nonOkExchange = false;
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS);
@@ -270,9 +314,9 @@ export async function handleStandaloneCloudPairRoute(
         .json()
         .catch(() => null)) as PairResponse | null;
     } else {
-      logger.warn(
-        `[cloud-pair] exchange returned non-2xx status=${status} url=${exchangeUrl}`,
-      );
+      // The rejection branches below own the diagnostic for the statuses they
+      // handle; a second generic line here would double-report the same event.
+      nonOkExchange = true;
     }
   } catch (err) {
     logger.error(
@@ -299,8 +343,11 @@ export async function handleStandaloneCloudPairRoute(
     // was diagnosed only after proving the rejected token was seconds old.
     // Keep the copy about what is actually known, and put the upstream status
     // and the exchange origin in the log so the next report is actionable.
+    // Structured context, never the token itself: the pairing token is a
+    // single-use credential and must not reach logs.
     logger.warn(
-      `[cloud-pair] exchange rejected status=${status} exchangeUrl=${exchangeUrl} requestOrigin=${origin}`,
+      { status, exchangeUrl, requestOrigin: origin },
+      "[cloud-pair] exchange rejected the pairing token",
     );
     sendHtml(
       res,
@@ -326,6 +373,13 @@ export async function handleStandaloneCloudPairRoute(
   }
 
   if (!exchanged || typeof exchanged.apiKey !== "string" || !exchanged.apiKey) {
+    // Covers both an unhandled non-2xx (500s, gateway errors) and a 2xx whose
+    // body lacked the key. Same structured shape as the rejection branch so
+    // one query surfaces every failed exchange; never logs the token.
+    logger.warn(
+      { status, exchangeUrl, requestOrigin: origin, nonOkExchange },
+      "[cloud-pair] exchange did not yield an agent credential",
+    );
     sendHtml(
       res,
       502,
