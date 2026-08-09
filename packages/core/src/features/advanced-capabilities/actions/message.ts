@@ -13,7 +13,7 @@
 
 import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
-import { findEntityByName } from "../../../entities.ts";
+import { createUniqueUuid, findEntityByName } from "../../../entities.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
@@ -50,6 +50,7 @@ import {
 } from "../../../types/index.ts";
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../../types/message-source.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
+import { requireConfirmation } from "../../../utils/confirmation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import { stringToUuid } from "../../../utils.ts";
@@ -823,6 +824,10 @@ type SendCandidate = {
 	description?: string;
 	score: number;
 	reasons: string[];
+	/** When the resolved delivery is an in-room utterance aimed at a specific
+	 * room participant (the room-first name resolution), the member to address
+	 * in the outgoing text. Absent for every other candidate shape. */
+	address?: { entityId: UUID; name: string };
 };
 
 type TargetResolution =
@@ -1418,6 +1423,121 @@ async function currentRoomCandidate(
 	};
 }
 
+/** Component-data keys that carry a person's platform-visible name. Used for
+ * the deterministic room-first name match so "tell vega …" resolves against
+ * how the participant actually appears in the channel, not only the canonical
+ * entity name list. */
+const MEMBER_NAME_COMPONENT_KEYS = [
+	"username",
+	"handle",
+	"displayName",
+	"globalName",
+	"name",
+	"nick",
+	"nickname",
+] as const;
+
+function entityDisplayNames(entity: {
+	names: string[];
+	components?: Array<{ data?: Record<string, unknown> }>;
+}): string[] {
+	const names = [...entity.names];
+	for (const component of entity.components ?? []) {
+		for (const key of MEMBER_NAME_COMPONENT_KEYS) {
+			const value = component.data?.[key];
+			if (typeof value === "string" && value.trim().length > 0) {
+				names.push(value);
+			}
+		}
+	}
+	return names;
+}
+
+/**
+ * Room-first target resolution: a `target` name that exactly matches someone
+ * PRESENT in the current room resolves to an in-room utterance addressing that
+ * member — a surface the agent already speaks in — instead of falling through
+ * to the saved-contacts rolodex or a connector-wide fuzzy user lookup (which
+ * reported room participants as "not in your contacts", or worse, DM'd a
+ * fuzzy-matched stranger). Deterministic exact-name matching only; fuzzy
+ * resolution stays with the entity/connector paths.
+ */
+async function currentRoomMemberCandidates(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State | undefined,
+	considered: ConnectorWithHooks[],
+	params: NormalizedSendParams,
+): Promise<SendCandidate[]> {
+	const rawTarget = params.target?.trim();
+	if (!rawTarget) return [];
+	// An explicit field prefix that is not user/contact-shaped pins the target
+	// to a non-person kind; leave it to the explicit-target path.
+	const fieldMatch = rawTarget.match(
+		/^(room|channel|server|entity|user|contact|thread|group|email|phone):(.+)$/i,
+	);
+	if (
+		fieldMatch?.[1] &&
+		!["user", "contact", "entity"].includes(fieldMatch[1].toLowerCase())
+	) {
+		return [];
+	}
+	if (rawTarget.startsWith("#")) return [];
+	if (
+		params.targetKind &&
+		!kindAliases(params.targetKind).has("user") &&
+		!kindAliases(params.targetKind).has("contact")
+	) {
+		return [];
+	}
+	const query = normalizeComparable(
+		stripTargetPrefix(fieldMatch?.[2] ?? rawTarget),
+	);
+	if (!query || isUuidLike(query)) return [];
+
+	const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
+	const roomSource =
+		typeof room?.source === "string"
+			? room.source
+			: trustedConnectorSource(message);
+	const connector = findConnectorBySource(considered, roomSource);
+	if (!connector) return [];
+
+	const entities = await runtime.getEntitiesForRoom(message.roomId, true);
+	const matches: Array<{ entityId: UUID; name: string }> = [];
+	for (const entity of entities) {
+		if (!entity.id || entity.id === runtime.agentId) continue;
+		const matched = entityDisplayNames(entity).find(
+			(name) => normalizeComparable(name) === query,
+		);
+		if (matched) {
+			matches.push({
+				entityId: entity.id as UUID,
+				name: entity.names[0] ?? matched,
+			});
+		}
+	}
+	if (matches.length === 0) return [];
+
+	const base = await currentRoomCandidate(
+		runtime,
+		message,
+		state,
+		connector,
+		Boolean(params.source),
+		params.accountId,
+	);
+	return matches.map((member) => ({
+		...base,
+		label: `${member.name} (in ${base.label})`,
+		// Deterministic room-participant hit: outranks every fuzzy connector user
+		// candidate (hook base 0.74 + boosts) without an LLM in the loop.
+		score: 0.97,
+		reasons: ["currentRoomMember"],
+		address: member,
+	}));
+}
+
 function dedupeCandidates(candidates: SendCandidate[]): SendCandidate[] {
 	const byKey = new Map<string, SendCandidate>();
 	for (const c of candidates) {
@@ -1568,6 +1688,38 @@ async function resolveSendTarget(
 		const currentSource = trustedConnectorSource(message);
 		const currentConnector = findConnectorBySource(considered, currentSource);
 		if (currentConnector) considered = [currentConnector];
+	}
+
+	// Check the room before the rolodex: someone present in the current room is
+	// the closest, least-surprising referent for a bare name — resolve to an
+	// in-room utterance addressing them before any connector-wide fuzzy lookup
+	// or contact search gets a chance to misroute the send.
+	if (params.target) {
+		const roomMembers = await currentRoomMemberCandidates(
+			runtime,
+			message,
+			state,
+			considered,
+			params,
+		);
+		const soleMember = roomMembers.length === 1 ? roomMembers[0] : undefined;
+		if (soleMember) {
+			return {
+				status: "resolved",
+				candidate: soleMember,
+				sourceResolution: params.source ? params.sourceResolution : "defaulted",
+			};
+		}
+		if (roomMembers.length > 1) {
+			return {
+				status: "ambiguous",
+				text:
+					`MESSAGE op=send matched ${roomMembers.length} people in the current room for "${params.target}". Pick one:\n` +
+					formatCandidates(roomMembers),
+				candidates: roomMembers,
+				sourceResolution: params.source ? params.sourceResolution : "defaulted",
+			};
+		}
 	}
 
 	const candidates: SendCandidate[] = [];
@@ -2069,6 +2221,87 @@ async function ensureSendAccountAllowed(
 	);
 }
 
+/** Candidate origins whose recipient identity is already vetted: the admin
+ * shortcut, the entity path (findEntityByName only surfaces room/relationship
+ * entities), and in-room deliveries (no DM is involved). */
+const RECIPIENT_VETTED_REASONS = new Set([
+	"admin",
+	"entity",
+	"component",
+	"currentRoom",
+	"currentRoomMember",
+]);
+
+/**
+ * True when the selected candidate is a direct-to-person delivery whose
+ * recipient identity came from an UNVETTED source — a connector discovery hook
+ * (e.g. Discord's guild-wide fuzzy member match) or a raw explicit target.
+ * These must be backed by a room-participant/relationship entity or confirmed
+ * by the user before delivery; without this gate, `target="name"` could DM a
+ * fuzzy-matched stranger with no confirmation.
+ */
+function isUnvettedDirectUserCandidate(candidate: SendCandidate): boolean {
+	const entityId = candidate.target.entityId;
+	if (!entityId) return false;
+	// Address-routed deliveries (an explicit channel/room, or phone/email whose
+	// dial string doubles as the channel) are not identity-fuzzy.
+	if (candidate.target.channelId || candidate.target.roomId) return false;
+	// An entity-store UUID is an unambiguous identifier the planner obtained
+	// from a real lookup, not a fuzzy name match.
+	if (isUuidLike(String(entityId))) return false;
+	if (candidate.reasons.some((reason) => RECIPIENT_VETTED_REASONS.has(reason)))
+		return false;
+	if (candidate.kind) {
+		const aliases = kindAliases(candidate.kind);
+		return aliases.has("user") || aliases.has("contact");
+	}
+	// No declared kind: a bare entityId with no routing address is a DM shape.
+	return true;
+}
+
+/**
+ * A recipient is "known" when they participate in the current room or are
+ * relationship-backed in the entity graph. Connector candidates carry raw
+ * platform ids (e.g. Discord snowflakes), so both the raw id and its
+ * agent-scoped entity UUID (`createUniqueUuid`) are checked, plus the room
+ * participants' connector component data. Mere existence of an entity record
+ * is NOT enough — history backfill creates entities for every past chatter.
+ */
+async function recipientIsKnownEntity(
+	runtime: IAgentRuntime,
+	message: Memory,
+	target: TargetInfo,
+): Promise<boolean> {
+	const raw = String(target.entityId ?? "").trim();
+	if (!raw) return false;
+	const candidateIds = new Set<string>([
+		createUniqueUuid(runtime, raw).toLowerCase(),
+	]);
+	if (isUuidLike(raw)) candidateIds.add(raw.toLowerCase());
+
+	const roomEntities = await runtime.getEntitiesForRoom(message.roomId, true);
+	for (const entity of roomEntities) {
+		if (!entity.id) continue;
+		if (candidateIds.has(String(entity.id).toLowerCase())) return true;
+		for (const component of entity.components ?? []) {
+			const values = Object.values(component.data ?? {});
+			if (values.some((value) => typeof value === "string" && value === raw)) {
+				return true;
+			}
+		}
+	}
+
+	for (const id of candidateIds) {
+		const entity = await runtime.getEntityById(id as UUID);
+		if (!entity?.id) continue;
+		const relationships = await runtime.getRelationships({
+			entityIds: [entity.id],
+		});
+		if (relationships.length > 0) return true;
+	}
+	return false;
+}
+
 async function handleSend(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -2135,9 +2368,57 @@ async function handleSend(
 		return gate;
 	}
 
+	// A direct-to-person delivery resolved from an unvetted source (connector
+	// fuzzy match / raw explicit target) must be a known recipient — present in
+	// this room or relationship-backed — or explicitly confirmed by the user.
+	if (isUnvettedDirectUserCandidate(selected)) {
+		const known = await recipientIsKnownEntity(runtime, message, target);
+		if (!known) {
+			const decision = await requireConfirmation({
+				runtime,
+				message,
+				actionName: "MESSAGE",
+				pendingKey: `send:${selected.connector.source}:${String(target.entityId)}`,
+				prompt: `Send this via ${selected.connector.label} to ${selected.label}? They are not in this room, your contacts, or your relationship graph.`,
+			});
+			if (decision.status !== "confirmed") {
+				const pending = decision.status === "pending";
+				return {
+					success: pending,
+					text: pending
+						? `"${selected.label}" on ${selected.connector.label} is not in this room or the user's relationship graph. Ask the user to confirm sending to this recipient (yes/no) before the message is delivered; nothing was sent.`
+						: "The user declined sending to this recipient; nothing was sent.",
+					data: {
+						actionName: "MESSAGE",
+						operation: "send",
+						confirmationRequired: pending,
+						awaitingUserInput: pending,
+						cancelled: !pending,
+						source: selected.connector.source,
+						targetLabel: selected.label,
+					},
+				};
+			}
+		}
+	}
+
+	// Room-first member delivery: the utterance lands in the shared channel, so
+	// address the intended member by name unless the text already does.
+	const outboundMessage =
+		selected.address &&
+		!normalizeComparable(normalized.message).includes(
+			normalizeComparable(selected.address.name),
+		)
+			? `@${selected.address.name} ${normalized.message}`.trim()
+			: normalized.message;
+
 	const content = applyContentShaping(
 		selected.connector,
-		buildContent({ ...normalized, source: selected.connector.source }),
+		buildContent({
+			...normalized,
+			message: outboundMessage,
+			source: selected.connector.source,
+		}),
 	);
 
 	let persisted: Memory | undefined;
