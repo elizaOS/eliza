@@ -31,6 +31,7 @@ import {
 } from "@elizaos/core";
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
 import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
+import { createGmailMessageConnector } from "./gmail-message-connector.js";
 import {
   GOOGLE_CAPABILITIES,
   GOOGLE_IDENTITY_SCOPES,
@@ -362,6 +363,11 @@ export function createGoogleConnectorAccountProvider(
   return {
     provider: GOOGLE_SERVICE_NAME,
     label: GOOGLE_OAUTH_PROVIDER_METADATA.label,
+
+    // Registering the provider also registers Gmail as a MESSAGE send
+    // connector, so `op=send source=gmail` (aliases "email"/"mail") routes to
+    // Gmail compose+send instead of SOURCE_CONNECTOR_NOT_FOUND.
+    messageConnector: createGmailMessageConnector(runtime),
 
     listAccounts: async (manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
       return manager.getStorage().listAccounts(GOOGLE_SERVICE_NAME);
