@@ -547,8 +547,12 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return "settings";
   }
 
-  // Legacy /connectors — redirect into Settings → Connectors.
-  if (normalized === "/connectors") return "settings";
+  // Legacy /connectors and /connectors/<id> — Settings → Connectors (index or
+  // detail). The hash `#connectors` / `#connectors/<id>` is written by the
+  // shell when these paths are opened so ConnectorsSection can deep-link.
+  if (normalized === "/connectors" || normalized.startsWith("/connectors/")) {
+    return "settings";
+  }
 
   // Check current paths first, then route unknown top-level paths through the
   // view registry. Plugin views can declare routes that are not built-in tabs;
