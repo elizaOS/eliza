@@ -756,6 +756,7 @@ export default function Leaderboard() {
   );
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart only cancels native HTML drag so the pointer-gesture surface keeps working; it adds no interactive semantics.
     <div
       {...bind()}
       // Horizontal swipes cross the QR image and Get Started link; without

@@ -143,6 +143,19 @@ const settleAttr = (p, attr, want) =>
 const settleVariant = (p, want) => settleAttr(p, "data-variant", want);
 const settleDetent = (p, want) => settleAttr(p, "data-detent", want);
 const settleChatState = (p, want) => settleAttr(p, "data-chat-state", want);
+// The pill capsule fades through an ancestor-opacity chain; poll the composed
+// opacity so a paint assert doesn't race the crossfade tail.
+const settlePillPainted = (p) =>
+  settleWait(p, () => {
+    let el = document.querySelector('[data-testid="chat-pill"]');
+    if (!el) return false;
+    let o = 1;
+    while (el && !(el instanceof HTMLFieldSetElement)) {
+      o *= Number.parseFloat(getComputedStyle(el).opacity);
+      el = el.parentElement;
+    }
+    return o >= 0.9;
+  });
 const settleCount = (p, selector, want) =>
   settleWait(
     p,
@@ -958,16 +971,20 @@ async function runContinuumSuite(p, pointer, tag) {
   const halfH = Math.round(vh * 0.46);
 
   // -- INPUT → PILL (flick down on the grabber) ------------------------------
+  await settleVariant(p, "closed");
   assert(
     (await variant(p)) === "closed",
     `[${tag}-continuum] starts at the INPUT resting state`,
   );
   await gesture(p, -120, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
+  await settleDetent(p, "pill");
+  await settleChatState(p, "CLOSED");
   assert(
     (await detent(p)) === "pill" && (await chatState(p)) === "CLOSED",
     `[${tag}-continuum] flick-down collapses INPUT → PILL`,
   );
+  await settlePillPainted(p);
   assert(
     (await effectivePillOpacity(p)) >= 0.9,
     `[${tag}-continuum] pill capsule is painted at rest (opacity ≥ 0.9)`,
@@ -977,6 +994,7 @@ async function runContinuumSuite(p, pointer, tag) {
   // -- Detent rule: a small slow pull on the pill springs back to the pill ---
   await gesture(p, 40, { pointer, slow: true, steps: 8, target: "chat-pill" });
   await p.waitForTimeout(SETTLE);
+  await settleDetent(p, "pill");
   assert(
     (await detent(p)) === "pill",
     `[${tag}-continuum] sub-halfway pill nudge (40px) springs back to PILL`,
@@ -986,6 +1004,7 @@ async function runContinuumSuite(p, pointer, tag) {
   //    lands on the INPUT bar (pill → input → chat is one continuum) ---------
   await gesture(p, 90, { pointer, slow: true, steps: 10, target: "chat-pill" });
   await p.waitForTimeout(SETTLE);
+  await settleDetent(p, "collapsed");
   assert(
     (await detent(p)) === "collapsed",
     `[${tag}-continuum] pill drag past halfway (90px) rests at INPUT, not half`,
@@ -994,6 +1013,8 @@ async function runContinuumSuite(p, pointer, tag) {
   // -- Detent rule: a short input pull (under a visible row) springs back ----
   await gesture(p, 50, { pointer, slow: true, steps: 8 });
   await p.waitForTimeout(SETTLE);
+  await settleVariant(p, "closed");
+  await waitForSheetHeightNear(p, 0, 24);
   assert(
     (await variant(p)) === "closed" && near(await sheetHeight(p), 0, 24),
     `[${tag}-continuum] 50px input pull (no full row) springs back to INPUT`,
@@ -1002,6 +1023,7 @@ async function runContinuumSuite(p, pointer, tag) {
   // -- Back to the pill for the big held drag --------------------------------
   await gesture(p, -120, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
+  await settleDetent(p, "pill");
   assert(
     (await detent(p)) === "pill",
     `[${tag}-continuum] re-collapsed to PILL for the held continuum drag`,
@@ -1036,6 +1058,8 @@ async function runContinuumSuite(p, pointer, tag) {
     await drag.release();
   }
   await p.waitForTimeout(SETTLE);
+  await settleAttr(p, "data-maximized", "true");
+  await settleChatState(p, "MAXIMIZED");
   assert(
     (await p
       .locator('[data-testid="chat-sheet"][data-maximized="true"]')
@@ -1117,6 +1141,8 @@ async function runContinuumSuite(p, pointer, tag) {
     await cdp.detach().catch(() => {});
   }
   await p.waitForTimeout(SETTLE);
+  await settleDetent(p, "pill");
+  await settleChatState(p, "CLOSED");
   assert(
     (await detent(p)) === "pill" && (await chatState(p)) === "CLOSED",
     `[${tag}-continuum] releasing the held top→bottom drag lands on the PILL`,
@@ -1127,6 +1153,7 @@ async function runContinuumSuite(p, pointer, tag) {
       .count()) === 0,
     `[${tag}-continuum] full-bleed dropped on the way down`,
   );
+  await settlePillPainted(p);
   assert(
     (await effectivePillOpacity(p)) >= 0.9,
     `[${tag}-continuum] pill capsule painted again after the round trip`,
@@ -1140,6 +1167,8 @@ async function runContinuumSuite(p, pointer, tag) {
     await touchTap(p, testIdSelector("chat-pill"));
   }
   await p.waitForTimeout(SETTLE);
+  await settleDetent(p, "collapsed");
+  await settleVariant(p, "closed");
   assert(
     (await detent(p)) === "collapsed" && (await variant(p)) === "closed",
     `[${tag}-continuum] pill tap steps ONE state to the INPUT bar (never the thread detent)`,
@@ -1160,6 +1189,7 @@ async function runContinuumSuite(p, pointer, tag) {
     await p.waitForTimeout(SETTLE);
   };
   await grabberTap();
+  await settleDetent(p, "half");
   assert(
     (await detent(p)) === "half",
     `[${tag}-continuum] grabber tap from INPUT reveals the thread at HALF`,
@@ -1171,6 +1201,8 @@ async function runContinuumSuite(p, pointer, tag) {
     `[${tag}-continuum] grabber tap keeps the keyboard down after the handle moves`,
   );
   await grabberTap();
+  await settleDetent(p, "collapsed");
+  await settleVariant(p, "closed");
   assert(
     (await detent(p)) === "collapsed" && (await variant(p)) === "closed",
     `[${tag}-continuum] grabber tap on the open sheet collapses to INPUT`,
