@@ -446,7 +446,7 @@ export async function forwardToWebhookGateway(
   const headerOverrides: Record<string, string> = {};
   if (platform === "twilio") {
     const secret = platformSecret(c, platform);
-    const body = validation.body ?? "";
+    const body = signedBody ?? "";
     if (secret) {
       // Twilio signs the complete public webhook URL. The BFF changes the path
       // from /api/eliza-app/webhook/twilio to /webhook/eliza-app/twilio, so the

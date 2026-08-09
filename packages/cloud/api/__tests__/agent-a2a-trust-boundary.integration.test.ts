@@ -50,9 +50,6 @@ const { pushSchema } = await import("@/db/push-schema-for-tests");
 const { apiKeys } = await import("@/db/schemas/api-keys");
 const { creditTransactions } = await import("@/db/schemas/credit-transactions");
 const { organizations } = await import("@/db/schemas/organizations");
-const { userModerationStatus, userModerationStatusEnum } = await import(
-  "@/db/schemas/moderation-violations"
-);
 const { userCharacters } = await import("@/db/schemas/user-characters");
 // The IAC v2 combined identity decision (#17805) folds the moderation read
 // into API-key authorization, so the authoritative auth chain now queries
@@ -129,8 +126,6 @@ beforeAll(async () => {
       userModerationStatus,
       userModerationStatusEnum,
       creditTransactions,
-      userModerationStatus,
-      userModerationStatusEnum,
     } as never,
     dbWrite as never,
   );
