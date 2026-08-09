@@ -165,6 +165,8 @@
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.leaderboard.closeSwitcher": "Close platform switcher",
   "homepage_eliza.leaderboard.brandAria": "Eliza",
+  "homepage_eliza.leaderboard.pageHeading": "Eliza",
+  "homepage_eliza.leaderboard.messageLabel": "Message Eliza",
   "homepage_eliza.leaderboard.getStarted": "Get Started",
   "homepage_eliza.leaderboard.tryNow": "Try Now",
   "homepage_eliza.leaderboard.placeholderTelegram": "Message",
