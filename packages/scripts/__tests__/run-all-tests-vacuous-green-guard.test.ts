@@ -128,6 +128,22 @@ describe("root test lane require-work wiring (#13620)", () => {
     expect(install).toBeGreaterThan(-1);
     expect(contract).toBeGreaterThan(install);
   });
+
+  test("the develop PR plugin lane uses the supported semantic guard", () => {
+    const workflow = readFileSync(
+      join(repoRoot, ".github", "workflows", "develop-pr.yml"),
+      "utf8",
+    );
+    const jobStart = workflow.indexOf("  plugin-tests:");
+    expect(jobStart).toBeGreaterThan(-1);
+    const job = workflow.slice(jobStart);
+    expect(job).toContain("TEST_PACKAGE_FILTER:");
+    expect(job).toContain(
+      "node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --require-work",
+    );
+    expect(job).not.toContain("--min-tasks");
+    expect(job).not.toContain("steps.changed.outputs.count");
+  });
 });
 
 describe("run-all-tests --require-work vacuous-green guard", () => {

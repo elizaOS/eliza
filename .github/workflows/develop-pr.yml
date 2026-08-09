@@ -240,12 +240,10 @@ jobs:
 
           if [ "${#selected[@]}" -eq 0 ]; then
             echo "filter=" >> "$GITHUB_OUTPUT"
-            echo "count=0" >> "$GITHUB_OUTPUT"
             echo "No changed plugin package has a test script; nothing to gate."
           else
             joined=$(IFS='|'; echo "${selected[*]}")
             echo "filter=\\(plugins/($joined)\\)" >> "$GITHUB_OUTPUT"
-            echo "count=${#selected[@]}" >> "$GITHUB_OUTPUT"
             echo "Gating ${#selected[@]} plugin package(s): $joined"
           fi
 
@@ -275,4 +273,4 @@ jobs:
         run: |
           bun run build:core
           bun run build:views
-          node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --min-tasks=${{ steps.changed.outputs.count }}
+          node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --require-work
