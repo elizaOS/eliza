@@ -1,3 +1,7 @@
+/**
+ * Covers the MCP Registry marketplace client's bounded I/O, schema validation,
+ * transport mapping, and stable error boundary with deterministic responses.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getMcpServerDetails,
@@ -78,6 +82,85 @@ describe("searchMcpMarketplace", () => {
         signal: expect.any(AbortSignal),
       }),
     );
+  });
+
+  it("accepts mixed official argument and package transport unions", async () => {
+    const packageServer = {
+      name: "io.example/packaged",
+      title: "Packaged Example",
+      description: "A package with configurable arguments",
+      version: "2.0.0",
+      packages: [
+        {
+          registryType: "npm",
+          identifier: "@example/packaged-mcp",
+          version: "2.0.0",
+          transport: {
+            type: "streamable-http",
+            url: "https://example.test/packaged/mcp",
+          },
+          packageArguments: [
+            {
+              type: "positional",
+              valueHint: "workspace",
+              isRequired: true,
+            },
+            {
+              type: "named",
+              name: "--token",
+              isSecret: true,
+            },
+          ],
+        },
+        {
+          registryType: "npm",
+          identifier: "@example/packaged-sse",
+          transport: {
+            type: "sse",
+            url: "https://example.test/packaged/sse",
+          },
+          runtimeArguments: [
+            {
+              type: "positional",
+              value: "--verbose",
+            },
+          ],
+        },
+      ],
+    };
+    const officialMeta = {
+      "io.modelcontextprotocol.registry/official": {
+        isLatest: true,
+        publishedAt: "2026-08-09T00:00:00Z",
+      },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      listResponse({
+        servers: [
+          { server: packageServer, _meta: officialMeta },
+          { server, _meta: officialMeta },
+        ],
+        metadata: { count: 2 },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(searchMcpMarketplace()).resolves.toMatchObject({
+      results: [
+        {
+          name: "io.example/packaged",
+          connectionType: "remote",
+          connectionUrl: "https://example.test/packaged/mcp",
+          npmPackage: undefined,
+          dockerImage: undefined,
+        },
+        {
+          name: "io.example/files",
+          connectionType: "remote",
+          connectionUrl: "https://example.test/mcp",
+        },
+      ],
+    });
   });
 
   it("rejects malformed registry payloads with a stable typed error", async () => {

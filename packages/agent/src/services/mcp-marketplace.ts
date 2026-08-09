@@ -47,6 +47,65 @@ export interface McpMarketplaceRequestOptions {
   maxResponseBytes?: number;
 }
 
+export interface McpRegistryInput {
+  choices?: string[];
+  default?: string;
+  description?: string;
+  format?: "string" | "number" | "boolean" | "filepath";
+  isRequired?: boolean;
+  isSecret?: boolean;
+  placeholder?: string;
+  value?: string;
+  variables?: Record<string, unknown>;
+}
+
+export interface McpRegistryKeyValueInput extends McpRegistryInput {
+  name: string;
+}
+
+export type McpRegistryArgument =
+  | (McpRegistryInput & {
+      type: "positional";
+      valueHint?: string;
+      isRepeated?: boolean;
+    })
+  | (McpRegistryInput & {
+      type: "named";
+      name: string;
+      isRepeated?: boolean;
+    });
+
+export type McpRegistryLocalTransport =
+  | { type: "stdio" }
+  | {
+      type: "streamable-http";
+      url: string;
+      headers?: McpRegistryKeyValueInput[];
+    }
+  | {
+      type: "sse";
+      url: string;
+      headers?: McpRegistryKeyValueInput[];
+    };
+
+export type McpRegistryRemoteTransport =
+  | {
+      type: "streamable-http";
+      url: string;
+      headers?: McpRegistryKeyValueInput[];
+    }
+  | {
+      type: "sse";
+      url: string;
+      headers?: McpRegistryKeyValueInput[];
+    }
+  | {
+      /** Retained for compatibility with older registry payloads. */
+      type: "http";
+      url: string;
+      headers?: McpRegistryKeyValueInput[];
+    };
+
 export interface McpRegistryServer {
   name: string;
   title?: string;
@@ -57,37 +116,16 @@ export interface McpRegistryServer {
     url?: string;
     source?: string;
   };
-  remotes?: Array<{
-    type: "streamable-http" | "sse" | "http";
-    url: string;
-    headers?: Array<{
-      name: string;
-      description?: string;
-      isRequired?: boolean;
-      isSecret?: boolean;
-    }>;
-  }>;
+  remotes?: McpRegistryRemoteTransport[];
   packages?: Array<{
     registryType: string;
     identifier: string;
     version?: string;
-    transport?: {
-      type: "stdio";
-    };
-    environmentVariables?: Array<{
-      name: string;
-      description?: string;
-      isSecret?: boolean;
-      isRequired?: boolean;
-      default?: string;
-    }>;
+    transport?: McpRegistryLocalTransport;
+    environmentVariables?: McpRegistryKeyValueInput[];
     runtimeHint?: string;
-    packageArguments?: Array<{
-      name: string;
-      description?: string;
-      default?: string;
-      isRequired?: boolean;
-    }>;
+    runtimeArguments?: McpRegistryArgument[];
+    packageArguments?: McpRegistryArgument[];
   }>;
   icons?: Array<{
     src: string;
@@ -127,13 +165,79 @@ export interface McpServerConfig {
 const optionalString = z.string().optional();
 const registryInputSchema = z
   .object({
-    name: z.string(),
+    choices: z.array(z.string()).optional(),
+    default: optionalString,
     description: optionalString,
+    format: z.enum(["string", "number", "boolean", "filepath"]).optional(),
     isSecret: z.boolean().optional(),
     isRequired: z.boolean().optional(),
-    default: optionalString,
+    placeholder: optionalString,
+    value: optionalString,
+    variables: z.record(z.string(), z.unknown()).optional(),
   })
   .passthrough();
+
+const registryKeyValueInputSchema = registryInputSchema.extend({
+  name: z.string(),
+});
+
+const registryPositionalArgumentSchema = registryInputSchema
+  .extend({
+    type: z.literal("positional"),
+    valueHint: optionalString,
+    isRepeated: z.boolean().optional(),
+  })
+  .refine(
+    (argument) =>
+      argument.valueHint !== undefined || argument.value !== undefined,
+    "Positional arguments require valueHint or value",
+  );
+
+const registryNamedArgumentSchema = registryInputSchema.extend({
+  type: z.literal("named"),
+  name: z.string(),
+  isRepeated: z.boolean().optional(),
+});
+
+const registryArgumentSchema = z.union([
+  registryPositionalArgumentSchema,
+  registryNamedArgumentSchema,
+]);
+
+const registryStdioTransportSchema = z
+  .object({ type: z.literal("stdio") })
+  .passthrough();
+const registryStreamableHttpTransportSchema = z
+  .object({
+    type: z.literal("streamable-http"),
+    url: z.string(),
+    headers: z.array(registryKeyValueInputSchema).optional(),
+  })
+  .passthrough();
+const registrySseTransportSchema = z
+  .object({
+    type: z.literal("sse"),
+    url: z.string(),
+    headers: z.array(registryKeyValueInputSchema).optional(),
+  })
+  .passthrough();
+const registryLocalTransportSchema = z.union([
+  registryStdioTransportSchema,
+  registryStreamableHttpTransportSchema,
+  registrySseTransportSchema,
+]);
+const registryRemoteTransportSchema = z.union([
+  registryStreamableHttpTransportSchema,
+  registrySseTransportSchema,
+  z
+    .object({
+      /** Older registry payloads used `http` for streamable HTTP. */
+      type: z.literal("http"),
+      url: z.string(),
+      headers: z.array(registryKeyValueInputSchema).optional(),
+    })
+    .passthrough(),
+]);
 
 const registryServerSchema = z
   .object({
@@ -149,17 +253,7 @@ const registryServerSchema = z
       })
       .passthrough()
       .optional(),
-    remotes: z
-      .array(
-        z
-          .object({
-            type: z.enum(["streamable-http", "sse", "http"]),
-            url: z.string(),
-            headers: z.array(registryInputSchema).optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
+    remotes: z.array(registryRemoteTransportSchema).optional(),
     packages: z
       .array(
         z
@@ -167,13 +261,13 @@ const registryServerSchema = z
             registryType: z.string().min(1),
             identifier: z.string().min(1),
             version: optionalString,
-            transport: z
-              .object({ type: z.literal("stdio") })
-              .passthrough()
+            transport: registryLocalTransportSchema.optional(),
+            environmentVariables: z
+              .array(registryKeyValueInputSchema)
               .optional(),
-            environmentVariables: z.array(registryInputSchema).optional(),
             runtimeHint: optionalString,
-            packageArguments: z.array(registryInputSchema).optional(),
+            runtimeArguments: z.array(registryArgumentSchema).optional(),
+            packageArguments: z.array(registryArgumentSchema).optional(),
           })
           .passthrough(),
       )
@@ -478,11 +572,16 @@ export async function searchMcpMarketplace(
       connectionUrl = server.remotes[0].url;
     } else if (server.packages && server.packages.length > 0) {
       const pkg = server.packages[0];
-      connectionType = "stdio";
-      if (pkg.registryType === "npm") {
-        npmPackage = pkg.identifier;
-      } else if (pkg.registryType === "oci") {
-        dockerImage = pkg.identifier;
+      if (pkg.transport && pkg.transport.type !== "stdio") {
+        connectionType = "remote";
+        connectionUrl = pkg.transport.url;
+      } else {
+        connectionType = "stdio";
+        if (pkg.registryType === "npm") {
+          npmPackage = pkg.identifier;
+        } else if (pkg.registryType === "oci") {
+          dockerImage = pkg.identifier;
+        }
       }
     }
 
