@@ -59,6 +59,32 @@ function resolveCloudAuthRoot(): string {
   return resolveCloudApiBaseUrl().replace(/\/api\/v1\/?$/, "");
 }
 
+/** API host -> the console host that actually serves `/dashboard/*` for the
+ * SAME environment. A staging agent linking a user at the production console
+ * (or at its own API origin, which serves no UI) is a dead link, so the
+ * mapping is explicit rather than string-munged. */
+const CLOUD_CONSOLE_ORIGIN_BY_API_HOST: Record<string, string> = {
+  "api.elizacloud.ai": "https://www.elizacloud.ai",
+  "api-staging.elizacloud.ai": "https://staging.elizacloud.ai",
+};
+
+/**
+ * Console origin for the environment this agent is actually attached to.
+ * Falls back to the resolved cloud root for self-hosted deployments, whose
+ * console is served from that same origin.
+ */
+function resolveCloudConsoleOrigin(): string {
+  const root = resolveCloudAuthRoot();
+  try {
+    const host = new URL(root).hostname.toLowerCase();
+    return CLOUD_CONSOLE_ORIGIN_BY_API_HOST[host] ?? root;
+  } catch {
+    // error-policy:J3 a malformed configured base URL is untrusted input; the
+    // production console is the only safe default for a link we cannot derive.
+    return "https://www.elizacloud.ai";
+  }
+}
+
 function resolveRequestOrigin(req: http.IncomingMessage): string {
   const proto =
     (req.headers["x-forwarded-proto"] as string | undefined) ||
@@ -152,7 +178,7 @@ function renderErrorHtml(title: string, message: string): string {
   <div class="card">
     <h1>${safeTitle}</h1>
     <p>${safeMessage}</p>
-    <a href="https://www.elizacloud.ai/dashboard/agents" target="_top" rel="noopener">Back to Eliza Cloud</a>
+    <a href="${escapeHtml(resolveCloudConsoleOrigin())}/dashboard/agents" target="_top" rel="noopener">Back to Eliza Cloud</a>
   </div>
 </body>
 </html>`;
@@ -266,12 +292,22 @@ export async function handleStandaloneCloudPairRoute(
   }
 
   if (status === 401 || status === 403 || status === 410) {
+    // Cloud answers the same opaque "Invalid or expired pairing code" for an
+    // expired token, an unknown one, an origin the token is not bound to, and
+    // a cross-environment mint. Asserting expiry to the user sends them to
+    // retry a link that was never the problem — the app-host dead-end (#18178)
+    // was diagnosed only after proving the rejected token was seconds old.
+    // Keep the copy about what is actually known, and put the upstream status
+    // and the exchange origin in the log so the next report is actionable.
+    logger.warn(
+      `[cloud-pair] exchange rejected status=${status} exchangeUrl=${exchangeUrl} requestOrigin=${origin}`,
+    );
     sendHtml(
       res,
       403,
       renderErrorHtml(
-        "Sign-in link expired",
-        "Pairing links are single-use and only valid for a minute. Open your agent again from Eliza Cloud.",
+        "Sign-in link could not be verified",
+        "Eliza Cloud did not accept this sign-in link. It may have already been used, or it may have expired — pairing links are single-use and short-lived. Open your agent again from Eliza Cloud to get a fresh one.",
       ),
     );
     return true;

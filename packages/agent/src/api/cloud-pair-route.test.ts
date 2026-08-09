@@ -75,6 +75,8 @@ function fakeReq(opts: {
 
 const originalFetch = globalThis.fetch;
 
+const originalCloudBaseUrl = process.env.ELIZAOS_CLOUD_BASE_URL;
+
 beforeEach(() => {
   __resetCloudPairRateLimitForTests();
 });
@@ -82,6 +84,13 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = originalFetch;
   vi.unstubAllGlobals();
+  // The console-link cases pin the agent's environment; leaking that would
+  // silently retarget every later case's recovery link.
+  if (originalCloudBaseUrl === undefined) {
+    delete process.env.ELIZAOS_CLOUD_BASE_URL;
+  } else {
+    process.env.ELIZAOS_CLOUD_BASE_URL = originalCloudBaseUrl;
+  }
 });
 
 describe("handleStandaloneCloudPairRoute", () => {
@@ -169,7 +178,77 @@ describe("handleStandaloneCloudPairRoute", () => {
     );
 
     expect(harness.status()).toBe(403);
-    expect(harness.body()).toContain("Sign-in link expired");
+    expect(harness.body()).toContain("Sign-in link could not be verified");
     expect(harness.body()).not.toContain('window.location.replace("/")');
+  });
+
+  it("does not assert expiry for a rejection Cloud never attributed to expiry", async () => {
+    // Cloud returns the same opaque body for expired / unknown / origin-bound /
+    // cross-environment rejections. #18178 was a FRESH token rejected here, and
+    // the "expired" copy sent the reporter chasing the wrong cause.
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 403 })),
+    );
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({ pathname: "/pair", search: "?token=fresh-but-rejected" }),
+      harness.res,
+    );
+
+    expect(harness.status()).toBe(403);
+    expect(harness.body()).not.toContain("Sign-in link expired");
+    expect(harness.body()).toContain("did not accept this sign-in link");
+  });
+
+  it("points the recovery link at the console for the agent's OWN environment", async () => {
+    // A staging agent linking users at the production console is a dead end:
+    // the account, org, and agent all live in the staging deployment.
+    process.env.ELIZAOS_CLOUD_BASE_URL =
+      "https://api-staging.elizacloud.ai/api/v1";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 410 })),
+    );
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({
+        pathname: "/pair",
+        search: "?token=expired",
+        host: "agent-123.staging.elizacloud.ai",
+      }),
+      harness.res,
+    );
+
+    expect(harness.body()).toContain(
+      'href="https://staging.elizacloud.ai/dashboard/agents"',
+    );
+    expect(harness.body()).not.toContain("www.elizacloud.ai");
+  });
+
+  it("keeps the production console link for a production agent", async () => {
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.elizacloud.ai/api/v1";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 410 })),
+    );
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({ pathname: "/pair", search: "?token=expired" }),
+      harness.res,
+    );
+
+    expect(harness.body()).toContain(
+      'href="https://www.elizacloud.ai/dashboard/agents"',
+    );
   });
 });
