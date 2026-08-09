@@ -9,6 +9,7 @@
 import type http from "node:http";
 import { logger, type ReadJsonBodyOptions } from "@elizaos/core";
 import { getMcpServerDetails, searchMcpMarketplace } from "./mcp-marketplace.js";
+import { MCP_SERVICE_NAME } from "./types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -351,7 +352,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
 
     if (state.runtime) {
       try {
-        const mcpService = state.runtime.getService("MCP") as {
+        const mcpService = state.runtime.getService(MCP_SERVICE_NAME) as {
           getServers?: () => Array<{
             name: string;
             status: string;
