@@ -6,6 +6,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  backFromConnectorDetail,
   normalizeConnectorRouteId,
   openConnectorDetailHash,
   parseSettingsHash,
@@ -15,6 +16,12 @@ import {
 beforeEach(() => {
   window.history.replaceState(null, "", "/#connectors");
 });
+
+function nextPopState(): Promise<void> {
+  return new Promise((resolve) => {
+    window.addEventListener("popstate", () => resolve(), { once: true });
+  });
+}
 
 describe("parseSettingsHash", () => {
   it("parses hub, flat section, and connectors detail", () => {
@@ -72,12 +79,27 @@ describe("connector detail history", () => {
     openConnectorDetailHash("signal");
     expect(window.location.hash).toBe("#connectors/signal");
 
-    await new Promise<void>((resolve) => {
-      window.addEventListener("popstate", () => resolve(), { once: true });
-      window.history.back();
-    });
+    const popped = nextPopState();
+    window.history.back();
+    await popped;
 
     expect(window.location.hash).toBe("#connectors");
+  });
+
+  it("consumes detail on visible Back so the next hardware Back leaves index", async () => {
+    window.history.replaceState(null, "", "/#appearance");
+    window.history.pushState(null, "", "#connectors");
+    openConnectorDetailHash("signal");
+
+    let popped = nextPopState();
+    backFromConnectorDetail();
+    await popped;
+    expect(window.location.hash).toBe("#connectors");
+
+    popped = nextPopState();
+    window.history.back();
+    await popped;
+    expect(window.location.hash).toBe("#appearance");
   });
 });
 

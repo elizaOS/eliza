@@ -65,9 +65,9 @@ import {
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import {
+  backFromConnectorDetail,
   normalizeConnectorRouteId,
   openConnectorDetailHash,
-  openConnectorsIndexHash,
   readSettingsHashRoute,
   replaceConnectorDetailHash,
   type SettingsRoute,
@@ -518,7 +518,7 @@ function ConnectorDetailPage({
         <button
           type="button"
           onClick={onBack}
-          className="hidden self-start text-xs font-medium text-muted hover:text-txt md:inline-flex"
+          className="self-start text-xs font-medium text-muted hover:text-txt"
           data-testid="connector-detail-back"
         >
           {t("connectors.detail.back", { defaultValue: "← Connectors" })}
@@ -775,8 +775,7 @@ export function ConnectorsSection() {
   }, []);
 
   const backToIndex = useCallback(() => {
-    openConnectorsIndexHash();
-    window.dispatchEvent(new Event("popstate"));
+    backFromConnectorDetail();
   }, []);
 
   // Focus / deep-link events navigate to detail (no accordion open).

@@ -33,14 +33,14 @@ import {
 import { type ComponentType, type LazyExoticComponent, lazy } from "react";
 import { registerCloudConnectorsSettingsSection } from "../../cloud/connectors";
 import {
-  readSettingsHashSectionId,
-  replaceSettingsHashRoute,
-} from "./settings-route";
-import {
   CLOUD_SETTINGS_GROUP_ID,
   listExtraSettingsGroups,
   registerSettingsGroup,
 } from "../../cloud/settings/cloud-settings-group";
+import {
+  readSettingsHashSectionId,
+  replaceSettingsHashRoute,
+} from "./settings-route";
 import {
   SETTINGS_GROUP_LABEL,
   SETTINGS_GROUP_ORDER,
@@ -753,15 +753,17 @@ export function settingsSectionTitle(
 }
 
 export {
+  backFromConnectorDetail,
   normalizeConnectorRouteId,
   openConnectorDetailHash,
   openConnectorsIndexHash,
   parseSettingsHash,
   readSettingsHashRoute,
   readSettingsHashSectionId,
+  replaceConnectorDetailHash,
   replaceSettingsHashRoute,
-  settingsRouteToHash,
   type SettingsRoute,
+  settingsRouteToHash,
 } from "./settings-route";
 
 /**

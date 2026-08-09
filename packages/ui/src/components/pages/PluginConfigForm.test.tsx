@@ -168,6 +168,18 @@ describe("PluginConfigForm connector row layout", () => {
     expect(save.hasAttribute("disabled")).toBe(true);
     fireEvent.click(save);
     expect(onParamChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Remove API token?",
+    );
+    expect(onParamChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Clear value" }));
+    expect(onParamChange).toHaveBeenCalledWith(
+      "discord",
+      "DISCORD_API_TOKEN",
+      "",
+    );
   });
 
   it("edits structured text through the same Save/Cancel dialog pattern", () => {

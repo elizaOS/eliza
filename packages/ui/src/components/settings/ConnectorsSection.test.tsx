@@ -404,12 +404,14 @@ describe("ConnectorsSection", () => {
     expect(screen.getByText("Acme Chat")).toBeTruthy();
   });
 
-  it("returns to the index from detail back control", () => {
+  it("returns to the index from detail back control", async () => {
     appMock.value.plugins = [plugin({ id: "signal", name: "Signal" })];
     render(<ConnectorsSection />);
     openDetail("Signal");
     expect(screen.getByTestId("connector-detail")).toBeTruthy();
     fireEvent.click(screen.getByTestId("connector-detail-back"));
-    expect(screen.getByTestId("connectors-index")).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByTestId("connectors-index")).toBeTruthy(),
+    );
   });
 });

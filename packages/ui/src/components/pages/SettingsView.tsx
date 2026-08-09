@@ -14,23 +14,23 @@ import { useAgentElement } from "../../agent-surface";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
+import { getWindowNavigationPath } from "../../navigation";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
 import { DesktopSettingsNavigation } from "../settings/DesktopSettingsNavigation";
 import { SettingsHubList } from "../settings/SettingsHubList";
-import { getWindowNavigationPath } from "../../navigation";
-import { useAppSelector } from "../../state";
 import {
+  backFromConnectorDetail,
   type GroupedSettingsSections,
   getAllSettingsSections,
   groupSettingsSections,
-  openConnectorDetailHash,
   openConnectorsIndexHash,
   parseSettingsHash,
   readSettingsHashRoute,
   readSettingsHashSection,
+  replaceConnectorDetailHash,
   replaceSettingsHash,
   type SettingsRoute,
   type SettingsSectionDef,
@@ -277,7 +277,7 @@ export function SettingsView({
     const connectorId = connectorsPath[1]?.toLowerCase();
     if (connectorId) {
       setActiveSection("connectors");
-      openConnectorDetailHash(connectorId === "twitter" ? "x" : connectorId);
+      replaceConnectorDetailHash(connectorId === "twitter" ? "x" : connectorId);
       setSettingsRoute({
         kind: "connector-detail",
         sectionId: "connectors",
@@ -310,12 +310,7 @@ export function SettingsView({
   }, []);
 
   const backToConnectorsIndex = useCallback(() => {
-    setActiveSection("connectors");
-    openConnectorsIndexHash();
-    setSettingsRoute({ kind: "section", sectionId: "connectors" });
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("popstate"));
-    }
+    backFromConnectorDetail();
   }, []);
 
   useEffect(() => {
@@ -326,7 +321,7 @@ export function SettingsView({
     if (route.kind === "connector-detail") {
       setActiveSection("connectors");
       setSettingsRoute(route);
-      openConnectorDetailHash(route.connectorId);
+      replaceConnectorDetailHash(route.connectorId);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("popstate"));
       }

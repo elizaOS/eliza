@@ -131,6 +131,7 @@ export function ConfigField({
     defaultRenderers.text;
 
   const [editOpen, setEditOpen] = useState(false);
+  const [clearConfirming, setClearConfirming] = useState(false);
   const [draft, setDraft] = useState(() => draftFromProps(renderProps));
 
   useEffect(() => {
@@ -144,6 +145,8 @@ export function ConfigField({
   const isSensitiveEdit =
     renderProps.hint.sensitive || renderProps.fieldType === "password";
   const canSaveDraft = !isSensitiveEdit || draft.trim().length > 0;
+  const canClearSecret =
+    isSensitiveEdit && renderProps.isSet && !renderProps.required;
 
   const statusBadges = (
     <>
@@ -241,7 +244,10 @@ export function ConfigField({
                 <button
                   type="button"
                   disabled={renderProps.readonly}
-                  onClick={() => setEditOpen(true)}
+                  onClick={() => {
+                    setClearConfirming(false);
+                    setEditOpen(true);
+                  }}
                   className={cn(
                     "inline-flex max-w-[14rem] items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-left text-xs font-semibold text-txt-strong transition-colors",
                     "hover:border-border-strong hover:bg-bg-hover",
@@ -259,7 +265,13 @@ export function ConfigField({
                   <Pencil className="h-3 w-3 shrink-0 text-muted" aria-hidden />
                 </button>
 
-                <Dialog open={editOpen} onOpenChange={setEditOpen}>
+                <Dialog
+                  open={editOpen}
+                  onOpenChange={(open) => {
+                    setEditOpen(open);
+                    if (!open) setClearConfirming(false);
+                  }}
+                >
                   <DialogContent className="max-w-md gap-4 bg-card sm:max-w-md">
                     <DialogHeader>
                       <DialogTitle>
@@ -338,29 +350,84 @@ export function ConfigField({
                       )}
                     </div>
 
+                    {clearConfirming ? (
+                      <div
+                        role="alert"
+                        className="rounded-sm border border-danger/50 bg-destructive-subtle px-3 py-2 text-xs text-danger"
+                      >
+                        {t("config-field.clearConfirmation", {
+                          defaultValue:
+                            "Remove {{label}}? The removal is applied when you save changes.",
+                          label,
+                        })}
+                      </div>
+                    ) : null}
+
                     <DialogFooter className="gap-2 sm:gap-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-txt"
-                        onClick={() => setEditOpen(false)}
-                      >
-                        {t("common.cancel", { defaultValue: "Cancel" })}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="default"
-                        size="sm"
-                        disabled={!canSaveDraft}
-                        onClick={() => {
-                          if (!canSaveDraft) return;
-                          renderProps.onChange(draft);
-                          setEditOpen(false);
-                        }}
-                      >
-                        {t("common.save", { defaultValue: "Save" })}
-                      </Button>
+                      {clearConfirming ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setClearConfirming(false)}
+                          >
+                            {t("config-field.keepValue", {
+                              defaultValue: "Keep value",
+                            })}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => {
+                              renderProps.onChange("");
+                              setClearConfirming(false);
+                              setEditOpen(false);
+                            }}
+                          >
+                            {t("config-field.clearValue", {
+                              defaultValue: "Clear value",
+                            })}
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          {canClearSecret ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="mr-auto text-danger hover:text-danger"
+                              onClick={() => setClearConfirming(true)}
+                            >
+                              {t("common.clear", { defaultValue: "Clear" })}
+                            </Button>
+                          ) : null}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-txt"
+                            onClick={() => setEditOpen(false)}
+                          >
+                            {t("common.cancel", { defaultValue: "Cancel" })}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            disabled={!canSaveDraft}
+                            onClick={() => {
+                              if (!canSaveDraft) return;
+                              renderProps.onChange(draft);
+                              setEditOpen(false);
+                            }}
+                          >
+                            {t("common.save", { defaultValue: "Save" })}
+                          </Button>
+                        </>
+                      )}
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>

@@ -161,3 +161,17 @@ export function replaceConnectorDetailHash(connectorId: string): void {
 export function isPushedConnectorDetailRoute(): boolean {
   return Boolean(window.history.state?.[CONNECTOR_DETAIL_HISTORY_KEY]);
 }
+
+/**
+ * Visible Back consumes a user-pushed detail entry. Direct/programmatic detail
+ * routes have no marker, so they safely canonicalize to the connectors index.
+ */
+export function backFromConnectorDetail(): void {
+  if (typeof window === "undefined") return;
+  if (isPushedConnectorDetailRoute()) {
+    window.history.back();
+    return;
+  }
+  openConnectorsIndexHash();
+  window.dispatchEvent(new Event("popstate"));
+}
