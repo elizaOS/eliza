@@ -6,6 +6,7 @@ Standalone elizaOS agent and HTTP backend. Plugin routes can be registered on `A
 
 - **Paid HTTP routes (webhooks, plugins):** see the docs site section on [webhooks and routes](https://docs.elizaos.ai/plugins/webhooks-and-routes).
 - **x402 micropayments on plugin routes:** see [x402 paid plugin routes](https://docs.elizaos.ai/plugins/x402-paid-routes) for protocol alignment and env vars.
+- **MCP Registry client:** see [MCP marketplace client](./docs/mcp-marketplace-client.md) for cancellation, resource limits, validation, and typed errors.
 
 ## Local development
 
