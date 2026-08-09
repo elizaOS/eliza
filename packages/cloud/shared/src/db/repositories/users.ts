@@ -51,6 +51,14 @@ export type UserWithOrganization = User & {
   organization: Organization | null;
 };
 
+export interface TelegramPhoneIdentityLink {
+  telegram_id: string;
+  telegram_username?: string;
+  telegram_first_name?: string;
+  telegram_photo_url?: string;
+  phone_number: string;
+}
+
 /**
  * Repository for user database operations.
  *
@@ -142,24 +150,18 @@ export class UsersRepository {
   }
 
   /**
-   * Finds a user by Telegram ID. The identity projection is authoritative
-   * when it resolves; the canonical users row is the fallback so a stale or
-   * absent projection (steward-scoped rows only) cannot strand an account
-   * whose canonical identity already holds the value.
+   * Finds a user by Telegram ID (via identity table).
    */
   async findByTelegramId(telegramId: string): Promise<User | undefined> {
     const identity = await dbRead.query.userIdentities.findFirst({
       where: eq(userIdentities.telegram_id, telegramId),
     });
-    if (identity) return this.findById(identity.user_id);
-    return await dbRead.query.users.findFirst({
-      where: eq(users.telegram_id, telegramId),
-    });
+    if (!identity) return undefined;
+    return this.findById(identity.user_id);
   }
 
   /**
-   * Finds a user by Telegram ID with organization data (projection first,
-   * canonical users fallback).
+   * Finds a user by Telegram ID with organization data (via identity table).
    */
   async findByTelegramIdWithOrganization(
     telegramId: string,
@@ -167,31 +169,23 @@ export class UsersRepository {
     const identity = await dbRead.query.userIdentities.findFirst({
       where: eq(userIdentities.telegram_id, telegramId),
     });
-    if (identity) return this.findWithOrganization(identity.user_id);
-    const canonical = await dbRead.query.users.findFirst({
-      where: eq(users.telegram_id, telegramId),
-    });
-    if (!canonical) return undefined;
-    return this.findWithOrganization(canonical.id);
+    if (!identity) return undefined;
+    return this.findWithOrganization(identity.user_id);
   }
 
   /**
-   * Finds a user by phone number (E.164 format; projection first, canonical
-   * users fallback).
+   * Finds a user by phone number (E.164 format, via identity table).
    */
   async findByPhoneNumber(phoneNumber: string): Promise<User | undefined> {
     const identity = await dbRead.query.userIdentities.findFirst({
       where: eq(userIdentities.phone_number, phoneNumber),
     });
-    if (identity) return this.findById(identity.user_id);
-    return await dbRead.query.users.findFirst({
-      where: eq(users.phone_number, phoneNumber),
-    });
+    if (!identity) return undefined;
+    return this.findById(identity.user_id);
   }
 
   /**
-   * Finds a user by phone number with organization data (projection first,
-   * canonical users fallback).
+   * Finds a user by phone number with organization data (via identity table).
    */
   async findByPhoneNumberWithOrganization(
     phoneNumber: string,
@@ -199,12 +193,8 @@ export class UsersRepository {
     const identity = await dbRead.query.userIdentities.findFirst({
       where: eq(userIdentities.phone_number, phoneNumber),
     });
-    if (identity) return this.findWithOrganization(identity.user_id);
-    const canonical = await dbRead.query.users.findFirst({
-      where: eq(users.phone_number, phoneNumber),
-    });
-    if (!canonical) return undefined;
-    return this.findWithOrganization(canonical.id);
+    if (!identity) return undefined;
+    return this.findWithOrganization(identity.user_id);
   }
 
   /**
@@ -399,6 +389,67 @@ export class UsersRepository {
   }
 
   /**
+   * Links Telegram and phone on the canonical row and its lookup projection in
+   * one transaction. A uniqueness failure in either table rolls back both.
+   */
+  async linkTelegramAndPhoneIdentity(
+    userId: string,
+    identity: TelegramPhoneIdentityLink,
+  ): Promise<User | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      const updatedAt = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({
+          ...identity,
+          phone_verified: true,
+          updated_at: updatedAt,
+        })
+        .where(eq(users.id, userId))
+        .returning();
+
+      if (!updated) {
+        return undefined;
+      }
+
+      await tx
+        .insert(userIdentities)
+        .values({
+          user_id: updated.id,
+          steward_user_id: updated.steward_user_id,
+          is_anonymous: updated.is_anonymous,
+          anonymous_session_id: updated.anonymous_session_id,
+          expires_at: updated.expires_at,
+          telegram_id: updated.telegram_id,
+          telegram_username: updated.telegram_username,
+          telegram_first_name: updated.telegram_first_name,
+          telegram_photo_url: updated.telegram_photo_url,
+          phone_number: updated.phone_number,
+          phone_verified: updated.phone_verified,
+          updated_at: updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: userIdentities.user_id,
+          set: {
+            steward_user_id: updated.steward_user_id,
+            is_anonymous: updated.is_anonymous,
+            anonymous_session_id: updated.anonymous_session_id,
+            expires_at: updated.expires_at,
+            telegram_id: updated.telegram_id,
+            telegram_username: updated.telegram_username,
+            telegram_first_name: updated.telegram_first_name,
+            telegram_photo_url: updated.telegram_photo_url,
+            phone_number: updated.phone_number,
+            phone_verified: updated.phone_verified,
+            updated_at: updatedAt,
+          },
+        });
+
+      return updated;
+    });
+  }
+
+  /**
    * Links a Steward user ID to an existing user.
    */
   async linkStewardId(userId: string, stewardUserId: string): Promise<User | undefined> {
@@ -411,64 +462,6 @@ export class UsersRepository {
       .where(eq(users.id, userId))
       .returning();
     return updated;
-  }
-
-  /**
-   * Links the Telegram and phone identity pair on the canonical users row and
-   * mirrors it into the user_identities projection as ONE atomic consistency
-   * boundary. Auth lookups resolve through the projection first, so a
-   * canonical-only write would strand the account for sessionless logins; a
-   * unique-value collision in either table aborts the transaction and leaves
-   * no half-link anywhere.
-   *
-   * The projection row is steward-scoped (steward_user_id is NOT NULL), so a
-   * user without one commits the canonical write alone and resolves through
-   * the canonical fallback reads.
-   */
-  async linkTelegramAndPhoneIdentityForWrite(
-    userId: string,
-    identity: {
-      telegram_id: string;
-      telegram_username?: string;
-      telegram_first_name?: string;
-      telegram_photo_url?: string;
-      phone_number: string;
-      phone_verified: boolean;
-    },
-  ): Promise<User | undefined> {
-    return await dbWrite.transaction(async (tx) => {
-      const [updated] = await tx
-        .update(users)
-        .set({
-          telegram_id: identity.telegram_id,
-          telegram_username: identity.telegram_username,
-          telegram_first_name: identity.telegram_first_name,
-          telegram_photo_url: identity.telegram_photo_url,
-          phone_number: identity.phone_number,
-          phone_verified: identity.phone_verified,
-          updated_at: new Date(),
-        })
-        .where(eq(users.id, userId))
-        .returning();
-      if (!updated) return undefined;
-
-      // Mirror the freshly committed canonical values, not the caller input:
-      // the projection must be a pure function of the users row.
-      await tx
-        .update(userIdentities)
-        .set({
-          telegram_id: updated.telegram_id,
-          telegram_username: updated.telegram_username,
-          telegram_first_name: updated.telegram_first_name,
-          telegram_photo_url: updated.telegram_photo_url,
-          phone_number: updated.phone_number,
-          phone_verified: updated.phone_verified,
-          updated_at: new Date(),
-        })
-        .where(eq(userIdentities.user_id, userId));
-
-      return updated;
-    });
   }
 
   /**

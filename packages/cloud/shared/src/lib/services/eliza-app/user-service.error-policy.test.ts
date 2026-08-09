@@ -1,12 +1,14 @@
-// Pins fail-closed identity-linking behavior in ElizaAppUserService. Real tenant-identity
-// write failures propagate, combined Telegram/phone links use one atomic update, and only
-// cosmetic Discord profile-refresh failures degrade to success. Deterministic fixtures.
+/**
+ * Pins fail-closed identity linking with deterministic service fixtures: real
+ * write failures propagate, Telegram-plus-phone writes use the atomic
+ * repository boundary, and only cosmetic Discord refreshes may degrade.
+ */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const findByDiscordIdWithOrganization = mock();
 const findByPhoneNumberWithOrganization = mock();
 const update = mock();
-const linkTelegramAndPhoneIdentityForWrite = mock();
+const linkTelegramAndPhoneIdentity = mock();
 
 mock.module("../../../db/repositories/users", () => ({
   usersRepository: {
@@ -17,7 +19,7 @@ mock.module("../../../db/repositories/users", () => ({
     findByWhatsAppIdWithOrganization: mock(),
     findWithOrganization: mock(),
     update,
-    linkTelegramAndPhoneIdentityForWrite,
+    linkTelegramAndPhoneIdentity,
     create: mock(),
   },
 }));
@@ -123,11 +125,11 @@ describe("ElizaAppUserService.findOrCreateByDiscordId error policy", () => {
 describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
   beforeEach(() => {
     update.mockReset();
-    linkTelegramAndPhoneIdentityForWrite.mockReset();
+    linkTelegramAndPhoneIdentity.mockReset();
   });
 
-  test("writes the Telegram and phone identity pair through the atomic canonical+projection boundary", async () => {
-    linkTelegramAndPhoneIdentityForWrite.mockResolvedValue({ id: "user-1" });
+  test("delegates the Telegram and phone identity pair to the atomic repository boundary", async () => {
+    linkTelegramAndPhoneIdentity.mockResolvedValue({ id: "user-1" });
 
     const result = await elizaAppUserService.linkTelegramAndPhoneToUser(
       "user-1",
@@ -142,14 +144,13 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
     );
 
     expect(result).toEqual({ success: true });
-    expect(linkTelegramAndPhoneIdentityForWrite).toHaveBeenCalledTimes(1);
-    expect(linkTelegramAndPhoneIdentityForWrite).toHaveBeenCalledWith(
+    expect(linkTelegramAndPhoneIdentity).toHaveBeenCalledTimes(1);
+    expect(linkTelegramAndPhoneIdentity).toHaveBeenCalledWith(
       "user-1",
       expect.objectContaining({
         telegram_id: "123456789",
         telegram_username: "sam",
         phone_number: "+14155550123",
-        phone_verified: true,
       }),
     );
     // The atomic repository boundary owns both writes; the service must not
@@ -157,8 +158,8 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  test("reports a uniqueness race without issuing a compensating write", async () => {
-    linkTelegramAndPhoneIdentityForWrite.mockRejectedValue(uniqueConstraintError());
+  test("reports an atomic repository uniqueness race without a compensating write", async () => {
+    linkTelegramAndPhoneIdentity.mockRejectedValue(uniqueConstraintError());
 
     const result = await elizaAppUserService.linkTelegramAndPhoneToUser(
       "user-1",
@@ -173,7 +174,7 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("already linked");
-    expect(linkTelegramAndPhoneIdentityForWrite).toHaveBeenCalledTimes(1);
+    expect(linkTelegramAndPhoneIdentity).toHaveBeenCalledTimes(1);
     expect(update).not.toHaveBeenCalled();
   });
 });
