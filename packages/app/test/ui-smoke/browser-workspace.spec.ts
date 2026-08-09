@@ -200,6 +200,118 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   await expect(closeAllButton).toBeDisabled({ timeout: 60_000 });
 });
 
+test("browser page clears the resting chat and keeps compact mobile chrome touch-safe", async ({
+  page,
+  request,
+}) => {
+  await resetBrowserWorkspaceTabs(request);
+  await openAppPath(page, "/browser");
+  const browserWorkspaceView = page.getByTestId("browser-workspace-view");
+  await expect(browserWorkspaceView).toBeVisible({ timeout: 60_000 });
+
+  const addressInput = browserWorkspaceView.getByTestId(
+    "browser-workspace-address-input",
+  );
+  await expect(addressInput).toBeVisible({ timeout: 120_000 });
+  await addressInput.fill("example.com");
+  await addressInput.press("Enter");
+
+  const pageSurface = browserWorkspaceView.getByTestId(
+    "browser-workspace-surface-panel",
+  );
+  const iframe = browserWorkspaceView.locator("iframe").first();
+  await expect(iframe).toBeVisible({ timeout: 20_000 });
+  const collapsedGeometry = await page.evaluate(() => {
+    const surface = document.querySelector<HTMLElement>(
+      '[data-testid="browser-workspace-surface-panel"]',
+    );
+    const frame = document.querySelector<HTMLIFrameElement>(
+      '[data-testid="browser-workspace-view"] iframe',
+    );
+    const chat = document.querySelector<HTMLElement>(
+      '[data-testid="chat-sheet-surface"]',
+    );
+    const toolbar = document.querySelector<HTMLElement>(
+      '[data-testid="browser-workspace-toolbar"]',
+    );
+    if (!surface || !frame || !chat || !toolbar) return null;
+    return {
+      surfaceBottom: surface.getBoundingClientRect().bottom,
+      frameBottom: frame.getBoundingClientRect().bottom,
+      chatTop: chat.getBoundingClientRect().top,
+      toolbarHeight: toolbar.getBoundingClientRect().height,
+      viewportWidth: window.innerWidth,
+      controls: Array.from(
+        toolbar.querySelectorAll<HTMLElement>("button, input"),
+      ).map((control) => ({
+        label:
+          control.getAttribute("aria-label") ??
+          control.getAttribute("data-testid") ??
+          control.tagName,
+        width: control.getBoundingClientRect().width,
+        height: control.getBoundingClientRect().height,
+      })),
+    };
+  });
+  expect(collapsedGeometry).not.toBeNull();
+  expect(collapsedGeometry?.surfaceBottom).toBeLessThanOrEqual(
+    (collapsedGeometry?.chatTop ?? 0) - 7,
+  );
+  expect(collapsedGeometry?.frameBottom).toBeLessThanOrEqual(
+    collapsedGeometry?.surfaceBottom ?? 0,
+  );
+  for (const control of collapsedGeometry?.controls ?? []) {
+    expect(control.height, control.label).toBeGreaterThanOrEqual(44);
+    expect(control.width, control.label).toBeGreaterThanOrEqual(44);
+  }
+  if ((collapsedGeometry?.viewportWidth ?? 0) < 640) {
+    expect(collapsedGeometry?.toolbarHeight).toBeLessThanOrEqual(100);
+  }
+
+  const surfaceBeforeSafeArea = await pageSurface.boundingBox();
+  const surfaceBeforeSafeAreaBottom =
+    (surfaceBeforeSafeArea?.y ?? 0) + (surfaceBeforeSafeArea?.height ?? 0);
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--safe-area-bottom", "24px");
+  });
+  await expect
+    .poll(async () => {
+      const box = await pageSurface.boundingBox();
+      return box ? Math.round(box.y + box.height) : null;
+    })
+    .toBe(Math.round(surfaceBeforeSafeAreaBottom - 24));
+
+  const composer = page.getByRole("combobox", { name: "message" });
+  await composer.focus();
+  const chatOverlay = page.getByTestId("chat-overlay");
+  await expect(chatOverlay).toHaveAttribute("data-open", "true");
+  const expandedGeometry = await page.evaluate(() => {
+    const surface = document.querySelector<HTMLElement>(
+      '[data-testid="browser-workspace-surface-panel"]',
+    );
+    const chat = document.querySelector<HTMLElement>(
+      '[data-testid="chat-overlay"]',
+    );
+    if (!surface || !chat) return null;
+    const surfaceZ = Number.parseInt(getComputedStyle(surface).zIndex, 10);
+    return {
+      surfaceBottom: surface.getBoundingClientRect().bottom,
+      chatZ: Number(getComputedStyle(chat).zIndex),
+      surfaceZ: Number.isFinite(surfaceZ) ? surfaceZ : 0,
+    };
+  });
+  expect(expandedGeometry).not.toBeNull();
+  expect(Math.round(expandedGeometry?.surfaceBottom ?? 0)).toBe(
+    Math.round(surfaceBeforeSafeAreaBottom - 24),
+  );
+  expect(expandedGeometry?.chatZ).toBeGreaterThan(
+    expandedGeometry?.surfaceZ ?? 0,
+  );
+
+  await page.keyboard.press("Escape");
+  await expect(chatOverlay).not.toHaveAttribute("data-open", "true");
+});
+
 test("browser iframe focus handoff survives delayed autofocus without stealing deliberate clicks", async ({
   page,
   request,
