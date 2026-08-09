@@ -11,11 +11,6 @@ const RETRY_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 2_000;
 const RETRY_INCREMENT_MS = 1_000;
 const IDENTITY_CACHE_TTL_SECONDS = 300;
-// A linked identity with no agent yet is a transient provisioning state, and an
-// unlinked identity becomes linked the moment onboarding finishes. Both are
-// cached only long enough to blunt webhook retry storms; a long TTL would strand
-// a just-provisioned or just-linked user in onboarding for the rest of the TTL.
-const IDENTITY_TRANSIENT_CACHE_TTL_SECONDS = 15;
 
 interface ServerRoute {
   serverName: string;
@@ -84,9 +79,9 @@ export async function resolveIdentity(
       });
     }
     if (res.status === 404) {
-      await redis.set(cacheKey, JSON.stringify({ notFound: true }), {
-        ex: IDENTITY_TRANSIENT_CACHE_TTL_SECONDS,
-      });
+      // An unlinked sender can become linked while the browser onboarding flow
+      // is open. Do not cache this transition state: the very next provider
+      // message must observe the completed identity link.
       return null;
     }
     if (!res.ok) throw new Error(`Identity resolve failed: ${res.status}`);
@@ -139,11 +134,14 @@ export async function resolveIdentity(
       organizationId,
       agentId: agentId ?? null,
     };
-    await redis.set(cacheKey, JSON.stringify(identity), {
-      ex: identity.agentId
-        ? IDENTITY_CACHE_TTL_SECONDS
-        : IDENTITY_TRANSIENT_CACHE_TTL_SECONDS,
-    });
+    // A linked account can gain its assigned agent at any moment during
+    // provisioning. Cache only the stable user+agent route so the first message
+    // after provisioning cannot be stranded behind a stale agentId:null entry.
+    if (identity.agentId) {
+      await redis.set(cacheKey, JSON.stringify(identity), {
+        ex: IDENTITY_CACHE_TTL_SECONDS,
+      });
+    }
     return identity;
   } finally {
     clearTimeout(timeoutId);
