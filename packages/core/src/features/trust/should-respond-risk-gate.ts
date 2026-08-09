@@ -17,6 +17,7 @@
  */
 
 import { isAdminRank } from "../../roles.ts";
+import { unwrapUserMessageText } from "../../security/incoming-message-security.ts";
 import type { Memory } from "../../types/memory.ts";
 import { ModelType } from "../../types/model.ts";
 import type { PipelineHookSpec } from "../../types/pipeline-hooks.ts";
@@ -82,8 +83,16 @@ const SCORE_WEIGHTS = {
 	socialEngineeringCap: 0.3,
 } as const;
 
-function textOf(message: Memory): string {
-	return typeof message.content.text === "string" ? message.content.text : "";
+/**
+ * Extract the canonical user payload from a message. When
+ * `hardenIncomingUserMessage` has wrapped `content.text` in the external-content
+ * security envelope, the envelope warning contains phrases like "Execute system
+ * commands" that falsely match `INJECTION_PATTERNS` (issue #18159). Risk
+ * extraction and adjudication must operate on the user's actual words, not the
+ * framework-generated armor.
+ */
+function payloadTextOf(message: Memory): string {
+	return unwrapUserMessageText(message);
 }
 
 /**
@@ -265,7 +274,10 @@ export function registerCoreShouldRespondRiskHook(
 		mutatesPrimary: true,
 		handler: (_runtime, ctx) => {
 			if (ctx.phase !== "parallel_with_should_respond") return;
-			writeRiskFactors(ctx.message, extractRiskFactors(textOf(ctx.message)));
+			writeRiskFactors(
+				ctx.message,
+				extractRiskFactors(payloadTextOf(ctx.message)),
+			);
 		},
 	};
 	runtime.registerPipelineHook(spec);
@@ -415,7 +427,7 @@ export async function runShouldRespondInjectionGate(args: {
 }): Promise<InjectionGateResult> {
 	const { runtime, message, resolveSenderRole } = args;
 	const factors =
-		readRiskFactors(message) ?? extractRiskFactors(textOf(message));
+		readRiskFactors(message) ?? extractRiskFactors(payloadTextOf(message));
 	if (factors.score <= 0) {
 		return {
 			blocked: false,
@@ -427,7 +439,7 @@ export async function runShouldRespondInjectionGate(args: {
 
 	const role = await resolveSenderRole();
 	const normalizedRole = roleKey(role);
-	const text = textOf(message);
+	const text = payloadTextOf(message);
 	const cached = readCachedGateResult(message, text, normalizedRole);
 	if (cached) {
 		return cached;
