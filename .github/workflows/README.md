@@ -6,23 +6,28 @@ runners, environments, and a concise job graph.
 
 ## Required validation
 
-`ci.yml` is the only pull-request workflow. It classifies changed paths, runs
-repository quality checks, affected tests, deterministic smoke tests, a
+`ci.yml` is the canonical required CI workflow. It classifies changed paths,
+runs repository quality checks, affected tests, deterministic smoke tests, a
 path-scoped Android release AAB audit, and a diff-scoped secret scan. Branch
-rules require only the stable `CI / Required` job. Individual jobs remain
-visible for diagnosis but are not separately wired into branch protection.
+rules require only the stable `CI / Required` job. Specialized and path-scoped
+workflows also create pull-request checks, but they do not replace that stable
+aggregate status.
 
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.
 
 ## Manual operations
 
-- `live-smoke.yml` is the only credential-backed integration-test entry point.
-- `release.yaml` is the only package/tag/GitHub Release entry point.
+- `live-smoke.yml` is the general credential-backed integration-test dispatcher.
+- `app-live-e2e.yml` and `voice-live-e2e.yml` retain specialized scheduled and
+  manually dispatched live-service evidence.
+- `release.yaml` is the only npm package/tag/GitHub Release authority.
+- `release-electrobun.yml` and `snap-publish.yml` own their specialized
+  desktop and Snap release graphs without publishing the npm cohort.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
 - `voice-code-bench.yml` retains the bounded real-ASR benchmark.
 
-These workflows use `workflow_dispatch` and never run for pull requests.
+These operational workflows never run for pull requests.
 
 ## Deployments
 
