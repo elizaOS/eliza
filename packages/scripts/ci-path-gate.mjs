@@ -167,6 +167,140 @@ const CONFIGS = {
         "unmapped code path - no lane rule matched; running the server lane as a fail-safe so a code change can never skip every test lane",
     },
   },
+  "scenario-pr": {
+    title: "Scenario PR E2E path gate",
+    outputs: ["run_scenario_pr"],
+    labels: {
+      "ci:full": ["run_scenario_pr"],
+      "ci:e2e": ["run_scenario_pr"],
+      "ci:scenario": ["run_scenario_pr"],
+      "ci:zero-key": ["run_scenario_pr"],
+    },
+    rules: [
+      {
+        lanes: ["run_scenario_pr"],
+        patterns: [
+          "package.json",
+          "bun.lock",
+          "turbo.json",
+          "tsconfig*.json",
+          "vite.config.*",
+          "vitest.config.*",
+        ],
+        reason: "workspace toolchain",
+      },
+      {
+        lanes: ["run_scenario_pr"],
+        patterns: [
+          ".github/workflows/scenario-pr.yml",
+          ".github/actions/setup-bun-workspace/**",
+          "packages/scripts/ci-path-gate.mjs",
+        ],
+        reason: "scenario workflow or shared CI setup",
+      },
+      {
+        lanes: ["run_scenario_pr"],
+        patterns: [
+          "packages/app/**",
+          "packages/ui/**",
+          "packages/app-core/**",
+          "packages/scenario-runner/**",
+          "packages/core/**",
+          "packages/agent/**",
+          "packages/shared/**",
+          "packages/scripts/**",
+          "packages/cloud/scripts/**",
+          "packages/test/**",
+          "packages/prompts/**",
+        ],
+        reason: "scenario runtime, UI, or support package",
+      },
+      {
+        lanes: ["run_scenario_pr"],
+        patterns: [
+          "plugins/plugin-app-control/**",
+          "plugins/plugin-computeruse/**",
+          "plugins/plugin-github/**",
+        ],
+        reason: "scenario-critical plugin",
+      },
+      {
+        lanes: ["run_scenario_pr"],
+        patterns: [
+          "plugins/plugin-*/src/**",
+          "plugins/plugin-*/package.json",
+          "plugins/plugin-*/vite.config.*",
+          "plugins/plugin-*/vitest.config.*",
+        ],
+        reason: "plugin implementation surface",
+      },
+    ],
+  },
+  docker: {
+    title: "Docker smoke path gate",
+    outputs: ["docker"],
+    labels: {
+      "ci:full": ["docker"],
+      "ci:docker": ["docker"],
+    },
+    rules: [
+      {
+        lanes: ["docker"],
+        patterns: [
+          ".github/workflows/docker-ci-smoke.yml",
+          ".github/actions/setup-bun-workspace/**",
+          "packages/scripts/ci-path-gate.mjs",
+          "package.json",
+          "bun.lock",
+          "bunfig.toml",
+          "turbo.json",
+          "packages/app-core/deploy/**",
+          "packages/app-core/scripts/docker-ci-smoke.sh",
+          "packages/app-core/scripts/docker-healthcheck.mjs",
+        ],
+        reason: "Docker smoke workflow or image contract",
+      },
+      {
+        lanes: ["docker"],
+        patterns: [
+          "packages/app-core/**",
+          "packages/agent/**",
+          "packages/core/**",
+          "packages/shared/**",
+          "packages/prompts/**",
+          "plugins/**",
+        ],
+        reason: "runtime included in production image",
+      },
+    ],
+  },
+  "dev-smoke": {
+    title: "Dev smoke path gate",
+    outputs: ["dev_smoke"],
+    labels: {
+      "ci:full": ["dev_smoke"],
+      "ci:dev-smoke": ["dev_smoke"],
+      "ci:e2e": ["dev_smoke"],
+    },
+    rules: [
+      {
+        lanes: ["dev_smoke"],
+        patterns: [
+          ".github/workflows/dev-smoke.yml",
+          ".github/actions/setup-bun-workspace/**",
+          "packages/scripts/ci-path-gate.mjs",
+          "package.json",
+          "bun.lock",
+          "packages/app/**",
+          "packages/app-core/**",
+          "packages/core/**",
+          "packages/shared/**",
+          "packages/ui/**",
+        ],
+        reason: "dev server or onboarding chat surface",
+      },
+    ],
+  },
 };
 
 function parseArgs(argv) {
