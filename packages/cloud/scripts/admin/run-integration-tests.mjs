@@ -9,6 +9,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,7 +24,34 @@ const preloadPath = path.join(integrationRoot, "preload.ts");
 const serverPreload = preloadPath;
 const dbPreload = preloadPath;
 const timeoutMs = process.env.CLOUD_INTEGRATION_TIMEOUT_MS || "120000";
-const apiPort = process.env.API_DEV_PORT || "8787";
+
+/**
+ * Reserve an OS-assigned free port. Shared self-hosted runners host several
+ * concurrent jobs on one machine; a fixed 8787 meant this runner could adopt a
+ * DIFFERENT job's wrangler as "its" healthy server (its own wrangler then died
+ * with EADDRINUSE), and the suite collapsed mid-run when that foreign job
+ * finished and tore its server down. Only used when the caller did not pin a
+ * port or target URL.
+ */
+function reserveFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolve(String(port)));
+    });
+  });
+}
+
+const callerPinnedTarget = Boolean(
+  process.env.API_DEV_PORT ||
+    process.env.TEST_API_BASE_URL?.trim() ||
+    process.env.TEST_BASE_URL?.trim(),
+);
+const apiPort = callerPinnedTarget
+  ? process.env.API_DEV_PORT || "8787"
+  : await reserveFreePort();
 const baseUrl =
   process.env.TEST_API_BASE_URL?.trim() ||
   process.env.TEST_BASE_URL?.trim() ||
