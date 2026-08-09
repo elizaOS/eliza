@@ -39,6 +39,11 @@ import {
 } from "@elizaos/core";
 
 import {
+  describeCronSchedule,
+  describeIntervalMs,
+  describeOnceAt,
+} from "../triggers/humanize.ts";
+import {
   executeTriggerTask,
   readTriggerConfig,
   TRIGGER_TASK_NAME,
@@ -180,13 +185,14 @@ function ok(
   };
 }
 
-// TRIGGER never emits a mid-turn callback (see the handler note below), so the
-// planner's final message is the only user-facing ack — and the planned-reply
-// egress gate refuses any completion claim not bound to a committed effect
-// receipt with exact action-owned text. Every mutating op therefore returns
-// the full receipt contract; a bare {success,text} result made even a genuine
-// "reminder is set" ack structurally unverifiable, so it was replaced with the
-// unverified-effect fallback at egress.
+// TRIGGER never emits a mid-turn callback (see the handler note below), and
+// every committed mutation opts into `turnComplete`, so the action's own
+// humanized ack is the single user-facing message for a single-op turn — and
+// the planned-reply egress gate refuses any completion claim not bound to a
+// committed effect receipt with exact action-owned text. Every mutating op
+// therefore returns the full receipt contract; a bare {success,text} result
+// made even a genuine "reminder is set" ack structurally unverifiable, so it
+// was replaced with the unverified-effect fallback at egress.
 //
 // The receiptId carries a random component: the planner can re-dispatch the
 // identical create within one turn (both invocations landing on the dedupe
@@ -226,7 +232,11 @@ function triggerReceipt(
 }
 
 // Committed-mutation result: binds the canonical text to its receipt so the
-// egress verifier can ground a completion claim on it.
+// egress verifier can ground a completion claim on it. `turnComplete` makes
+// this ack the turn's single user-facing message when the op was the turn's
+// sole tool — without it the planner-loop combines the verified text with the
+// evaluator's prose, double-speaking the same fact ("Created trigger … . on
+// it. set for 8am every morning." observed live).
 function okCommitted(
   op: TriggerOp,
   text: string,
@@ -238,6 +248,7 @@ function okCommitted(
     ...ok(op, text, data, values),
     userFacingText: text,
     verifiedUserFacing: true,
+    turnComplete: true,
     effectReceipts: [receipt],
     userFacingEffectReceiptIds: [receipt.receiptId],
   };
@@ -257,11 +268,31 @@ function dedupeHash(input: string): string {
   return `trigger-${Math.abs(h >>> 0).toString(16)}`;
 }
 
-function describeSchedule(t: TriggerConfig): string {
-  if (t.triggerType === "interval")
-    return `every ${t.intervalMs ?? DEFAULT_INTERVAL_MS}ms`;
-  if (t.triggerType === "once") return `once at ${t.scheduledAtIso ?? "?"}`;
-  return `cron ${t.cronExpression ?? "* * * * *"}`;
+// Chat-facing schedule phrasing. The raw forms (ISO timestamp, cron
+// expression, interval milliseconds) are machine detail: they stay in the
+// ActionResult's `data`, never in user text. Unrecognized shapes degrade to a
+// neutral phrase rather than echoing the raw value.
+function describeSchedule(t: TriggerConfig, nowMs = Date.now()): string {
+  if (t.triggerType === "interval") {
+    return describeIntervalMs(t.intervalMs ?? DEFAULT_INTERVAL_MS);
+  }
+  if (t.triggerType === "once") {
+    const friendly = t.scheduledAtIso
+      ? describeOnceAt(t.scheduledAtIso, nowMs)
+      : null;
+    return friendly ?? "soon";
+  }
+  const friendly = t.cronExpression
+    ? describeCronSchedule(t.cronExpression)
+    : null;
+  return friendly ?? "on a custom schedule";
+}
+
+// The stored displayName defaults to "Trigger: <instructions>" — an internal
+// naming convention, not something to read back at the user.
+function displayLabel(name: string): string {
+  const stripped = name.replace(/^trigger:\s*/i, "").trim();
+  return stripped.length > 0 ? stripped : name;
 }
 
 function triggersDisabled(runtime: IAgentRuntime): boolean {
@@ -641,9 +672,16 @@ async function opCreate(
     metadata,
   });
 
+  // A prompt trigger IS a reminder to the person who asked for it; a workflow
+  // trigger is a scheduled job. Either way the schedule reads as a human
+  // phrase — the machine forms live in `data` below.
+  const schedule = describeSchedule(triggerConfig);
+  const label = displayLabel(displayName);
   return okCommitted(
     "create",
-    `Created trigger "${displayName}" (${describeSchedule(triggerConfig)}).`,
+    triggerConfig.kind === "workflow"
+      ? `Scheduled "${label}" — ${schedule}.`
+      : `Reminder set: "${label}" — ${schedule}.`,
     triggerReceipt("create", String(taskId), { key: dedupeKey }),
     {
       triggerId,
@@ -654,6 +692,9 @@ async function opCreate(
       kind: triggerConfig.kind,
       workflowId,
       workflowName,
+      scheduledAtIso: triggerConfig.scheduledAtIso,
+      cronExpression: triggerConfig.cronExpression,
+      intervalMs: triggerConfig.intervalMs,
     },
     { triggerId, taskId, workflowId },
   );
@@ -725,9 +766,16 @@ async function opUpdate(
   });
   return okCommitted(
     "update",
-    `Updated trigger "${next.displayName}".`,
+    `Updated "${displayLabel(next.displayName)}" — ${describeSchedule(next)}.`,
     triggerReceipt("update", String(task.id), { key: null }),
-    { taskId: String(task.id), triggerId: next.triggerId },
+    {
+      taskId: String(task.id),
+      triggerId: next.triggerId,
+      triggerType: next.triggerType,
+      scheduledAtIso: next.scheduledAtIso,
+      cronExpression: next.cronExpression,
+      intervalMs: next.intervalMs,
+    },
   );
 }
 
@@ -742,7 +790,7 @@ async function opDelete(
   await runtime.deleteTask(loaded.task.id);
   return okCommitted(
     "delete",
-    `Deleted trigger "${loaded.trigger.displayName}".`,
+    `Deleted "${displayLabel(loaded.trigger.displayName)}".`,
     triggerReceipt("delete", String(loaded.task.id), { key: null }),
     { taskId: String(loaded.task.id) },
   );
@@ -766,7 +814,7 @@ async function opRun(
       { triggerId: loaded.trigger.triggerId },
     );
   }
-  return ok("run", `Ran trigger "${loaded.trigger.displayName}".`, {
+  return ok("run", `Ran "${displayLabel(loaded.trigger.displayName)}".`, {
     taskId: String(loaded.task.id),
     triggerId: loaded.trigger.triggerId,
     status: result.status,
@@ -800,7 +848,7 @@ async function opToggle(
   await runtime.updateTask(task.id, { metadata });
   return okCommitted(
     "toggle",
-    `${enabled ? "Enabled" : "Disabled"} trigger "${trigger.displayName}".`,
+    `${enabled ? "Enabled" : "Disabled"} "${displayLabel(trigger.displayName)}".`,
     triggerReceipt("toggle", String(task.id), { key: null }),
     { taskId: String(task.id), triggerId: trigger.triggerId, enabled },
   );
@@ -851,10 +899,12 @@ export const triggerAction: Action = {
     const op: TriggerOp = opRaw;
 
     // The handler never emits user-visible text itself: every outcome reaches
-    // the planner through the ActionResult, and the planner's final message is
-    // the single user-facing ack. A mid-turn callback here double-posts — the
-    // mechanical `Created trigger "…" (once at …)` line landed seconds before
-    // the planner's own confirmation of the same fact.
+    // the planner through the ActionResult. A mid-turn callback here
+    // double-posts — the mechanical create line landed seconds before the
+    // planner's own confirmation of the same fact. For committed mutations
+    // the ActionResult additionally sets `turnComplete`, making the action's
+    // humanized ack the turn's single final message instead of being merged
+    // with the evaluator's restatement of it.
     switch (op) {
       case "create":
         return opCreate(runtime, message, params);
@@ -980,7 +1030,7 @@ export const triggerAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: 'Created trigger "Trigger: review open PRs" (every 43200000ms).',
+          text: 'Reminder set: "review open PRs" — every 12 hours.',
           action: TRIGGER_ACTION,
         },
       },
@@ -995,7 +1045,7 @@ export const triggerAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: 'Created trigger "take vitamins" (cron 0 8 * * *).',
+          text: 'Reminder set: "take vitamins" — every morning at 8am.',
           action: TRIGGER_ACTION,
         },
       },
@@ -1008,7 +1058,7 @@ export const triggerAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: 'Disabled trigger "Trigger: review open PRs".',
+          text: 'Disabled "review open PRs".',
           action: TRIGGER_ACTION,
         },
       },
