@@ -28,8 +28,10 @@ import {
   savePersistedFirstRunComplete,
 } from "../../state/persistence";
 import { openCloudBillingConsole } from "../billing-console";
+import { appModeNavigation } from "../app-mode/app-mode";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { describeJoinCreditGateError } from "./lib/join-credit-gate-error";
+import { resolveApexJoinHandoff } from "./lib/apex-app-handoff";
 import {
   resolveJoinAuthToken,
   resolveJoinCloudApiBase,
@@ -76,6 +78,10 @@ export default function JoinPage(): React.JSX.Element {
   const [creditGateWithheldReason, setCreditGateWithheldReason] = useState<
     "ip_daily_cap" | "count_unavailable" | null
   >(null);
+  const appHandoff =
+    typeof window === "undefined"
+      ? null
+      : resolveApexJoinHandoff(window.location.hostname);
   // Guard so React StrictMode's double-mount (and re-renders) don't double-run
   // the provisioning network calls.
   const startedRef = useRef(false);
@@ -113,7 +119,7 @@ export default function JoinPage(): React.JSX.Element {
       // the resolved agent in scope for future telemetry without unused-var noise.
       void result;
       if (typeof window !== "undefined") {
-        window.location.assign("/");
+        appModeNavigation.assign("/");
       }
     } catch (err) {
       // The Cloud's credit gate (402) is a payment state, not a connection
@@ -138,12 +144,19 @@ export default function JoinPage(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (!session.ready) return;
-    if (!session.authenticated) return;
+    if (!session.ready || !session.authenticated) return;
+    if (appHandoff) {
+      // The apex is the billing console and cannot boot chat. Hand off before
+      // any join/provisioning request. The app host restores the domain-wide
+      // session through the existing SSO bridge, then its entry gate selects
+      // or provisions the agent and opens chat.
+      appModeNavigation.replace(appHandoff);
+      return;
+    }
     if (startedRef.current) return;
     startedRef.current = true;
     void start();
-  }, [session.ready, session.authenticated, start]);
+  }, [session.ready, session.authenticated, appHandoff, start]);
 
   const handleRetry = useCallback(() => {
     startedRef.current = true;
