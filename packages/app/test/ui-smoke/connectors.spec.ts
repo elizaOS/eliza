@@ -224,11 +224,40 @@ async function openConnectors(page: Page): Promise<void> {
   ).toBeVisible();
 }
 
-async function expandConnector(page: Page, connectorId: string): Promise<void> {
-  const section = page.locator(`[data-connector="${connectorId}"]`);
-  await expect(section).toBeVisible();
-  await section.locator("summary").click();
-  await expect(section).toHaveAttribute("open", "");
+// The connectors settings surface is a list of rows that navigate to a
+// per-connector detail page (#connectors/<id>); the old inline <details>
+// accordion is gone. Opening a connector means clicking its row and landing
+// on the detail surface.
+async function openConnectorDetail(
+  page: Page,
+  connectorId: string,
+): Promise<void> {
+  const row = page.locator(`[data-connector="${connectorId}"]`);
+  await expect(row).toBeVisible();
+  await row.click();
+  await expect(page.getByTestId("connector-detail")).toBeVisible();
+}
+
+async function backToConnectorList(page: Page): Promise<void> {
+  // Desktop (>=md) has an inline "back to Connectors" control inside the detail
+  // body and mobile has the ViewHeader icon back ("Back to Connectors").
+  // NOTE: the built CSS currently orders the md: responsive utilities before
+  // the base `.hidden` utility, so the desktop inline control computes
+  // display:none at every width (tracked separately); when neither back
+  // affordance is visible, fall back to the settings sidebar "Connectors"
+  // entry, which routes back to the index the same way a user would recover.
+  const candidates = [
+    page.getByTestId("connector-detail-back"),
+    page.getByRole("button", { name: "Back to Connectors" }),
+    page.getByRole("button", { name: /^Connectors$/ }),
+  ];
+  for (const candidate of candidates) {
+    if (await candidate.first().isVisible()) {
+      await candidate.first().click();
+      break;
+    }
+  }
+  await expect(page.getByTestId("connector-detail")).toHaveCount(0);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -242,16 +271,26 @@ test("connector settings list enabled connectors and expand setup panels", async
   await installConnectorRoutes(page, { cloudConnected: false });
   await openConnectors(page);
 
-  await expandConnector(page, "telegram");
+  await openConnectorDetail(page, "telegram");
+  const telegramDetail = page.getByTestId("connector-detail");
   await expect(
-    page.getByText(/Connect your Telegram account|Telegram/i).first(),
+    telegramDetail.getByText(/Connect your Telegram account|Telegram/i).first(),
   ).toBeVisible();
 
-  await expandConnector(page, "discord");
-  const discord = page.locator('[data-connector="discord"]');
-  await discord.getByRole("button", { name: "Desktop App" }).click();
+  await backToConnectorList(page);
+  await openConnectorDetail(page, "discord");
+  const discordDetail = page.getByTestId("connector-detail");
+  // In the default Delegate lens Discord has a single applicable mode
+  // (Desktop App), so the mode selector is omitted and the desktop-IPC setup
+  // panel renders directly; click the mode button only when a selector exists.
+  const desktopModeButton = discordDetail.getByRole("button", {
+    name: "Desktop App",
+  });
+  if (await desktopModeButton.isVisible()) {
+    await desktopModeButton.click();
+  }
   await expect(
-    discord.getByRole("button", { name: "Authorize Discord desktop" }),
+    discordDetail.getByRole("button", { name: "Authorize Discord desktop" }),
   ).toBeVisible();
 });
 
@@ -261,10 +300,18 @@ test("cloud-connected connector settings keep local setup controls available", a
   await installConnectorRoutes(page, { cloudConnected: true });
   await openConnectors(page);
 
-  await expandConnector(page, "discord");
-  const discord = page.locator('[data-connector="discord"]');
-  await discord.getByRole("button", { name: "Desktop App" }).click();
+  await openConnectorDetail(page, "discord");
+  const discordDetail = page.getByTestId("connector-detail");
+  // In the default Delegate lens Discord has a single applicable mode
+  // (Desktop App), so the mode selector is omitted and the desktop-IPC setup
+  // panel renders directly; click the mode button only when a selector exists.
+  const desktopModeButton = discordDetail.getByRole("button", {
+    name: "Desktop App",
+  });
+  if (await desktopModeButton.isVisible()) {
+    await desktopModeButton.click();
+  }
   await expect(
-    discord.getByRole("button", { name: "Authorize Discord desktop" }),
+    discordDetail.getByRole("button", { name: "Authorize Discord desktop" }),
   ).toBeVisible();
 });
