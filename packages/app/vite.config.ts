@@ -1000,13 +1000,26 @@ export function resolveAppShellLocalCspSources(
   };
 }
 
-function appShellMetadataPlugin(): Plugin {
+/** Viewport policies selected by the app-shell metadata transform. */
+export const VIEWPORT_META_NATIVE =
+  "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
+export const VIEWPORT_META_WEB =
+  "width=device-width, initial-scale=1.0, viewport-fit=cover";
+
+/** Creates the metadata transform; the target override keeps build-mode tests exact. */
+export function appShellMetadataPlugin(
+  options: { capacitorBuildTarget?: string } = {},
+): Plugin {
+  const capacitorBuildTarget =
+    options.capacitorBuildTarget ?? CAPACITOR_BUILD_TARGET;
+  const isCapacitorMobileBuild =
+    capacitorBuildTarget === "ios" || capacitorBuildTarget === "android";
   const isIosStoreBuild =
-    CAPACITOR_BUILD_TARGET === "ios" &&
+    capacitorBuildTarget === "ios" &&
     (process.env.ELIZA_BUILD_VARIANT === "store" ||
       process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store");
   const { localHttpSources, localConnectSources } =
-    resolveAppShellLocalCspSources(CAPACITOR_BUILD_TARGET, isIosStoreBuild);
+    resolveAppShellLocalCspSources(capacitorBuildTarget, isIosStoreBuild);
   const manifest = `${JSON.stringify(
     {
       name: APP_SHELL_METADATA.appName,
@@ -1039,6 +1052,10 @@ function appShellMetadataPlugin(): Plugin {
     ["__APP_THEME_COLOR__", APP_SHELL_METADATA.themeColor],
     ["__APP_CSP_LOCAL_HTTP__", localHttpSources],
     ["__APP_CSP_LOCAL_CONNECT__", localConnectSources],
+    [
+      "__APP_VIEWPORT_CONTENT__",
+      isCapacitorMobileBuild ? VIEWPORT_META_NATIVE : VIEWPORT_META_WEB,
+    ],
   ]);
 
   return {

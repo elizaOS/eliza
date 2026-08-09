@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// UI build: Capacitor plugins then Vite. Requires prior `bun install` (postinstall).
-// ELIZA_BUILD_FULL_SETUP=1 prepends install --ignore-scripts + run-repo-setup (CI-style).
+/**
+ * Builds the app's plugin and Vite artifacts, stamps their source revision,
+ * verifies emitted shell contracts, and optionally performs CI-style setup.
+ */
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -29,6 +31,11 @@ const pruneCdnAssetsScript = path.join(
   "app-core",
   "scripts",
   "prune-cdn-local-assets.mjs",
+);
+const viewportMetaVerifier = path.join(
+  appDir,
+  "scripts",
+  "verify-viewport-meta.mjs",
 );
 const bunExecutable = path
   .basename(process.execPath)
@@ -156,6 +163,7 @@ async function main() {
     ["--bun", "vite", "build", "--configLoader", "runner"],
     appDir,
   );
+  await run(process.execPath, [viewportMetaVerifier], appDir);
   if (resolveElizaAssetBaseUrls().appAssetBaseUrl) {
     await run(process.execPath, [pruneCdnAssetsScript], repoRoot);
   }

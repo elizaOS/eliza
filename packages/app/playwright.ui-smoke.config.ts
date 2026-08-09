@@ -166,12 +166,17 @@ export default defineConfig({
       // in the dedicated `chromium-voice-mic` project below, not here. The
       // all-views aesthetic audit runs only via the `audit:app` project; the
       // cloud-surface audit only via `audit:cloud`.
+      // The viewport-zoom spec runs under `mobile-chromium` where the Pixel 7
+      // profile respects viewport-meta zoom caps — Desktop Chrome's CDP
+      // setPageScaleFactor overrides the meta unconditionally, producing a
+      // false positive for both locked and unlocked viewports.
       testIgnore: [
         VOICE_MIC_SPEC,
         AI_QA_CAPTURE_SPEC,
         AUDIT_APP_SPEC,
         AUDIT_CLOUD_SPEC,
         AUDIT_APP_DROPDOWN_SPEC,
+        /viewport-zoom-visualviewport\.spec\.ts/,
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -217,7 +222,7 @@ export default defineConfig({
       // so each surface is exercised at the same WebView viewport that ships on
       // Capacitor iOS/Android.
       testMatch:
-        /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|gesture-matrix|input-modality|launcher-gesture-loop)\.spec\.ts/,
+        /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|gesture-matrix|input-modality|launcher-gesture-loop|viewport-zoom-visualviewport)\.spec\.ts/,
       use: { ...devices["Pixel 7"], ...withLaunchOptions() },
     },
     // WebKit cross-engine lane (opt-in). Only added when PLAYWRIGHT_WEBKIT=1 so a
