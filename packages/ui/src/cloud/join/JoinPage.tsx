@@ -27,6 +27,7 @@ import {
   savePersistedFirstRunComplete,
 } from "../../state/persistence";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { resolveApexJoinHandoff } from "./lib/apex-app-handoff";
 import {
   resolveJoinAuthToken,
   resolveJoinCloudApiBase,
@@ -70,6 +71,10 @@ export default function JoinPage(): React.JSX.Element {
   const [phase, setPhase] = useState<JoinPhase>("connecting");
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const appHandoff =
+    typeof window === "undefined"
+      ? null
+      : resolveApexJoinHandoff(window.location.hostname);
   // Guard so React StrictMode's double-mount (and re-renders) don't double-run
   // the provisioning network calls.
   const startedRef = useRef(false);
@@ -114,12 +119,19 @@ export default function JoinPage(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (!session.ready) return;
-    if (!session.authenticated) return;
+    if (!session.ready || !session.authenticated) return;
+    if (appHandoff) {
+      // The apex is the billing console and cannot boot chat. Hand off before
+      // any join/provisioning request. The app host restores the domain-wide
+      // session through the existing SSO bridge, then its entry gate selects
+      // or provisions the agent and opens chat.
+      window.location.replace(appHandoff);
+      return;
+    }
     if (startedRef.current) return;
     startedRef.current = true;
     void start();
-  }, [session.ready, session.authenticated, start]);
+  }, [session.ready, session.authenticated, appHandoff, start]);
 
   const handleRetry = useCallback(() => {
     startedRef.current = true;

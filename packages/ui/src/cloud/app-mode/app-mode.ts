@@ -39,6 +39,19 @@ export const APP_MODE_HOSTNAMES: ReadonlySet<string> = new Set([
   "app-staging.elizacloud.ai",
 ]);
 
+/** Trusted apex-console → app-host pairing for cross-origin product entry. */
+export function appModeOriginForApexHostname(hostname: string): string | null {
+  switch (hostname.toLowerCase()) {
+    case "elizacloud.ai":
+    case "www.elizacloud.ai":
+      return "https://app.elizacloud.ai";
+    case "staging.elizacloud.ai":
+      return "https://app-staging.elizacloud.ai";
+    default:
+      return null;
+  }
+}
+
 /** Dev-only app-mode emulation: the app hosts are never `localhost`, so the
  * entry routing is otherwise untestable in `vite dev`. Vite inlines the env
  * read on literal access, and production-mode packages/app builds REFUSE to
