@@ -127,7 +127,11 @@ describe("registered BlueBubbles local bridge E2E", () => {
           const messageGuid = decodeURIComponent(
             url.pathname.slice("/api/v1/message/".length),
           );
-          if (["inbound-1", "inbound-retry"].includes(messageGuid)) {
+          if (
+            ["inbound-1", "inbound-retry", "cross-number-inbound"].includes(
+              messageGuid,
+            )
+          ) {
             return Response.json({
               status: 200,
               data: {
@@ -534,11 +538,13 @@ describe("registered BlueBubbles local bridge E2E", () => {
       }),
     });
     expect(crossNumberInbound.status).toBe(200);
+    // Loopback normalization: the Messages DB proves this same-Apple-Account
+    // payload came from a distinct source identity (+14155550998), so it is
+    // rewritten to inbound and forwarded instead of tripping the loop guard.
     await expect(crossNumberInbound.json()).resolves.toMatchObject({
       success: true,
-      skipped: "outbound_message",
-      replied: false,
-      replyQueued: false,
+      replied: true,
+      agentId: "agent-registered",
     });
     expect(
       cloudRequests.filter(
@@ -546,7 +552,11 @@ describe("registered BlueBubbles local bridge E2E", () => {
           (entry.body.data as Record<string, unknown> | undefined)?.guid ===
           "cross-number-inbound",
       ),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
+    expect(blueBubblesSends.at(-1)).toMatchObject({
+      chatGuid: "iMessage;-;+14155550998",
+      message: "verified agent response",
+    });
 
     const crossNumberEvents = await fetch(
       `${relayUrl}/inbound-events?marker=same%20Apple%20Account`,
@@ -556,12 +566,10 @@ describe("registered BlueBubbles local bridge E2E", () => {
       events: [
         {
           messageId: "cross-number-inbound",
-          sender: "+14155550123",
-          isFromMe: true,
-          loopbackNormalized: false,
-          skipped: "outbound_message",
-          replied: false,
-          replyQueued: false,
+          sender: "+14155550998",
+          isFromMe: false,
+          loopbackNormalized: true,
+          replied: true,
         },
       ],
     });

@@ -1685,7 +1685,13 @@ async function handleWebhook(
   }
   if (messageId) processedMessageIds.add(messageId);
 
-  const targetDecision = await gatewayTargetDecision(rawPayload);
+  // Loopback normalization must precede the target decision: a same-Apple-
+  // Account message that the Messages DB proves came from a distinct source
+  // identity is rewritten to inbound here, and only unproven isFromMe
+  // payloads reach the outbound_message loop guard below.
+  const payload = normalizeGatewayLoopbackPayload(rawPayload);
+
+  const targetDecision = await gatewayTargetDecision(payload);
   if (!targetDecision.accepted) {
     const result = {
       success: true,
@@ -1693,7 +1699,7 @@ async function handleWebhook(
       replied: false,
       replyQueued: false,
     };
-    recordInboundDelivery(rawPayload, result);
+    recordInboundDelivery(payload, result);
     if (targetDecision.skipped === "gateway_target_mismatch") {
       console.warn(
         "[bluebubbles-local-bridge] ignored message for a different local identity",
@@ -1707,8 +1713,6 @@ async function handleWebhook(
     json(res, 200, result);
     return;
   }
-
-  const payload = normalizeGatewayLoopbackPayload(rawPayload);
 
   let reply: CloudReply;
   try {
