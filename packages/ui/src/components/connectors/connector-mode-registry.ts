@@ -13,7 +13,6 @@
 import {
   type ConnectorManagementMode,
   getConnectorPluginManagedAccountOption,
-  getConnectorPluginManagedChannelMode,
   normalizeConnectorCatalogId,
 } from "./connector-account-options";
 import type { ConnectorChannelMode } from "./connector-channel-mode";
@@ -286,12 +285,7 @@ export function connectorSupportsChannelMode(
   );
   const hasManagedMode =
     getConnectorPluginManagedAccountOption(connectorId) !== null;
-  const managedMode = getConnectorPluginManagedChannelMode(connectorId);
-  return (
-    declaredModeMatches ||
-    (hasManagedMode &&
-      (managedMode === undefined || managedMode === channelMode))
-  );
+  return declaredModeMatches || hasManagedMode;
 }
 
 // ---------------------------------------------------------------------------

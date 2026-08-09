@@ -24,7 +24,6 @@ import type {
   ConnectorAccountPurpose,
   ConnectorAccountRole,
 } from "../../api/client-agent";
-import type { ConnectorChannelMode } from "./connector-channel-mode";
 
 export interface ConnectorAccountOption<T extends string> {
   value: T;
@@ -229,17 +228,6 @@ export function hasConnectorPluginManagedAccounts(
   connectorId: string | undefined,
 ): boolean {
   return getConnectorPluginManagedAccountOption(connectorId) !== null;
-}
-
-/** Maps account ownership to the connector lens that may manage that account. */
-export function getConnectorPluginManagedChannelMode(
-  connectorId: string | undefined,
-): ConnectorChannelMode | undefined {
-  const role = getConnectorPluginManagedAccountOption(connectorId)?.defaultRole;
-  if (role === "OWNER") return "delegate";
-  if (role === "AGENT") return "bot";
-  // TEAM has no single owner/bot identity, so it remains lens-neutral.
-  return undefined;
 }
 
 export function connectorAccountManagementPanelPluginId(
