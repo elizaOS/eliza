@@ -2,6 +2,7 @@
  * User Context Service - system context for internal agent/runtime operations.
  */
 
+import type { AgentConnectorBinding } from "@elizaos/core";
 import type { AgentMode } from "./agent-mode-types";
 import type { ModelPreferences } from "./model-preferences";
 import type { PromptConfig } from "./prompt-presets";
@@ -49,6 +50,9 @@ export interface UserContext {
 
   // OAuth connections for MCP injection
   oauthConnections?: OAuthConnection[];
+
+  // Agent-scoped, credential-free connector bindings for brokered MCP.
+  connectorBindings?: AgentConnectorBinding[];
 }
 
 export class UserContextService {

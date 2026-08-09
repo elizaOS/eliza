@@ -2,7 +2,7 @@
 
 elizaOS plugin that connects an Eliza agent to external [Model Context Protocol](https://modelcontextprotocol.io) (MCP) servers and exposes their tools and resources as agent capabilities.
 
-The plugin starts `McpService`, which connects to one or more MCP servers (stdio, SSE, or streamable-HTTP), discovers their tools and resources, and surfaces them through a single `MCP` action and an `MCP` provider. It is consumed by an elizaOS agent: add it to the character `plugins` array and configure servers under `settings.mcp.servers`.
+The plugin starts `McpService`, which connects to configured MCP servers and surfaces them through an `MCP` provider plus promoted operation subactions. Product-managed connectors can instead import `@elizaos/plugin-mcp/resource-engine` for authenticated, stateless discovery and exact tool calls without exposing refresh tokens or routing through a second model selection.
 
 Node-only. `index.browser.ts` is a browser-unavailable entry because the MCP SDK's stdio/SSE transports require Node APIs (`eliza.platforms` is `["node"]`).
 
@@ -47,7 +47,7 @@ Config lives entirely in `settings.mcp`, not in environment variables. The host 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `mcp.servers` | `Record<string, McpServerConfig>` | — | Map of server name → transport config |
-| `mcp.maxRetries` | `number` | `2` | Max reconnect attempts per server |
+| `mcp.maxRetries` | `number` | `2` | Max model-selection retries for the legacy MCP action |
 
 Transport config (see `src/types.ts`):
 
@@ -56,8 +56,9 @@ Transport config (see `src/types.ts`):
 
 ## Plugin surface
 
-- **Action `MCP`** — single entry point for all MCP operations. `action=call_tool` invokes a server tool, `action=read_resource` reads a server resource (`search_actions` / `list_connections` are cloud-runtime-only). Similes include `CALL_MCP_TOOL`, `READ_MCP_RESOURCE`, `USE_TOOL`.
+- **Actions `MCP`, `MCP_CALL_TOOL`, `MCP_READ_RESOURCE`, ...** — operation-level actions created by subaction promotion. They do not materialize one action per discovered tool.
 - **Provider `MCP`** — injects a summary of connected servers, their status, tools, and resources into agent context.
+- **Resource engine** — validates a remote endpoint, obtains short-lived access tokens from a callback, negotiates the modern MCP protocol, drains paginated discovery, and performs exact tool calls using a fresh operation-local client.
 - **`handleMcpRoutes`** (exported) — HTTP handler for `/api/mcp/*` (config CRUD, marketplace search, runtime status), wired up by the host server, not by the plugin object. The `McpRouteContext` type is also exported.
 
 ## src layout

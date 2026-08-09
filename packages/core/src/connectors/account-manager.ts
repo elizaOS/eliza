@@ -67,6 +67,18 @@ export interface ConnectorAccount {
 	displayHandle?: string;
 	ownerBindingId?: string;
 	ownerIdentityId?: string;
+	/** OAuth scopes currently granted to this account. */
+	scopes?: string[];
+	/** Stable connector capabilities derived from the granted scopes. */
+	capabilities?: string[];
+	/** Whether elizaOS or the operator supplied the OAuth application. */
+	oauthMode?: "eliza_managed" | "bring_your_own";
+	/** Where credential-bearing connector execution is allowed to run. */
+	executionTarget?: "agent_host" | "cloud_broker";
+	/** Provider product surfaces enabled for this account. */
+	selectedProducts?: string[];
+	/** Product preference when more than one account can satisfy a capability. */
+	isDefault?: boolean;
 	createdAt: number;
 	updatedAt: number;
 	metadata?: Metadata;
@@ -82,6 +94,12 @@ export interface ConnectorAccountPatch {
 	displayHandle?: string | null;
 	ownerBindingId?: string | null;
 	ownerIdentityId?: string | null;
+	scopes?: string[];
+	capabilities?: string[];
+	oauthMode?: "eliza_managed" | "bring_your_own";
+	executionTarget?: "agent_host" | "cloud_broker";
+	selectedProducts?: string[];
+	isDefault?: boolean;
 	metadata?: Metadata;
 }
 
@@ -164,6 +182,11 @@ export interface ConnectorAccountProvider {
 		request: ConnectorOAuthCallbackRequest,
 		manager: ConnectorAccountManager,
 	) => Promise<ConnectorOAuthCallbackResult>;
+	afterAccountUpsert?: (
+		account: ConnectorAccount,
+		reason: "create" | "patch" | "oauth",
+		manager: ConnectorAccountManager,
+	) => Promise<void> | void;
 }
 
 export interface ConnectorAccountProviderRegistrationResult {
@@ -221,17 +244,20 @@ export interface ConnectorAccountStorage {
 
 interface ConnectorAccountDatabaseAdapter {
 	listConnectorAccounts(params?: {
+		agentId?: string;
 		provider?: string;
 		status?: string;
 		limit?: number;
 		offset?: number;
 	}): Promise<ConnectorAccountDatabaseRecord[]>;
 	getConnectorAccount(params: {
+		agentId?: string;
 		id?: string;
 		provider?: string;
 		accountKey?: string;
 	}): Promise<ConnectorAccountDatabaseRecord | null>;
 	upsertConnectorAccount(params: {
+		agentId?: string;
 		id?: string;
 		provider: string;
 		accountKey: string;
@@ -245,10 +271,13 @@ interface ConnectorAccountDatabaseAdapter {
 		purpose?: string[];
 		accessGate?: string;
 		status?: string;
+		scopes?: string[];
+		capabilities?: string[];
 		metadata?: Metadata;
 		connectedAt?: number;
 	}): Promise<ConnectorAccountDatabaseRecord>;
 	deleteConnectorAccount(params: {
+		agentId?: string;
 		id?: string;
 		provider?: string;
 		accountKey?: string;
@@ -318,6 +347,8 @@ interface ConnectorAccountDatabaseRecord {
 	purpose?: string[];
 	accessGate?: string;
 	status?: string;
+	scopes?: string[];
+	capabilities?: string[];
 	metadata?: Metadata;
 	createdAt?: number;
 	updatedAt?: number;
@@ -420,10 +451,71 @@ function cloneMetadata(metadata: Metadata | undefined): Metadata | undefined {
 	return metadata ? ({ ...metadata } as Metadata) : undefined;
 }
 
+const CONNECTOR_BINDING_METADATA_KEY = "connectorBinding";
+
+function readConnectorBindingMetadata(metadata: Metadata | undefined): {
+	oauthMode?: "eliza_managed" | "bring_your_own";
+	executionTarget?: "agent_host" | "cloud_broker";
+	selectedProducts?: string[];
+	isDefault?: boolean;
+} {
+	const value = metadata?.[CONNECTOR_BINDING_METADATA_KEY];
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	const binding = value as Record<string, unknown>;
+	return {
+		...(binding.oauthMode === "eliza_managed" ||
+		binding.oauthMode === "bring_your_own"
+			? { oauthMode: binding.oauthMode }
+			: {}),
+		...(binding.executionTarget === "agent_host" ||
+		binding.executionTarget === "cloud_broker"
+			? { executionTarget: binding.executionTarget }
+			: {}),
+		...(Array.isArray(binding.selectedProducts)
+			? { selectedProducts: normalizeStringArray(binding.selectedProducts) }
+			: {}),
+		...(typeof binding.isDefault === "boolean"
+			? { isDefault: binding.isDefault }
+			: {}),
+	};
+}
+
+function connectorAccountMetadata(
+	account: ConnectorAccount,
+): Metadata | undefined {
+	const metadata = cloneMetadata(account.metadata) ?? {};
+	const existing = metadata[CONNECTOR_BINDING_METADATA_KEY];
+	const binding =
+		existing && typeof existing === "object" && !Array.isArray(existing)
+			? ({ ...(existing as Metadata) } as Metadata)
+			: ({} as Metadata);
+	if (account.oauthMode) binding.oauthMode = account.oauthMode;
+	if (account.executionTarget)
+		binding.executionTarget = account.executionTarget;
+	if (account.selectedProducts) {
+		binding.selectedProducts = [...account.selectedProducts];
+	}
+	if (typeof account.isDefault === "boolean") {
+		binding.isDefault = account.isDefault;
+	}
+	if (Object.keys(binding).length > 0) {
+		metadata[CONNECTOR_BINDING_METADATA_KEY] = binding;
+	}
+	return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
 function cloneAccount(account: ConnectorAccount): ConnectorAccount {
 	return {
 		...account,
 		purpose: [...account.purpose],
+		scopes: account.scopes ? [...account.scopes] : undefined,
+		capabilities: account.capabilities ? [...account.capabilities] : undefined,
+		oauthMode: account.oauthMode,
+		executionTarget: account.executionTarget,
+		selectedProducts: account.selectedProducts
+			? [...account.selectedProducts]
+			: undefined,
+		isDefault: account.isDefault,
 		metadata: cloneMetadata(account.metadata),
 	};
 }
@@ -445,6 +537,24 @@ function mergeStoredAndProviderAccount(
 		displayHandle: stored.displayHandle ?? providerAccount.displayHandle,
 		ownerBindingId: stored.ownerBindingId ?? providerAccount.ownerBindingId,
 		ownerIdentityId: stored.ownerIdentityId ?? providerAccount.ownerIdentityId,
+		scopes: stored.scopes
+			? [...stored.scopes]
+			: providerAccount.scopes
+				? [...providerAccount.scopes]
+				: undefined,
+		capabilities: stored.capabilities
+			? [...stored.capabilities]
+			: providerAccount.capabilities
+				? [...providerAccount.capabilities]
+				: undefined,
+		oauthMode: stored.oauthMode ?? providerAccount.oauthMode,
+		executionTarget: stored.executionTarget ?? providerAccount.executionTarget,
+		selectedProducts: stored.selectedProducts
+			? [...stored.selectedProducts]
+			: providerAccount.selectedProducts
+				? [...providerAccount.selectedProducts]
+				: undefined,
+		isDefault: stored.isDefault ?? providerAccount.isDefault,
 		createdAt: stored.createdAt,
 		updatedAt: Math.max(stored.updatedAt, providerAccount.updatedAt),
 		metadata: {
@@ -468,6 +578,7 @@ function normalizeAccount(
 ): ConnectorAccount {
 	const now = nowMs();
 	const full = input as Partial<ConnectorAccount>;
+	const bindingMetadata = readConnectorBindingMetadata(full.metadata);
 	const id = (full.id ?? accountId ?? "").trim();
 	if (!id) {
 		throw new Error("Connector account requires an id");
@@ -500,6 +611,19 @@ function normalizeAccount(
 			typeof full.ownerIdentityId === "string" && full.ownerIdentityId
 				? full.ownerIdentityId
 				: undefined,
+		scopes: full.scopes ? normalizeStringArray(full.scopes) : undefined,
+		capabilities: full.capabilities
+			? normalizeStringArray(full.capabilities)
+			: undefined,
+		oauthMode: full.oauthMode ?? bindingMetadata.oauthMode,
+		executionTarget: full.executionTarget ?? bindingMetadata.executionTarget,
+		selectedProducts: full.selectedProducts
+			? normalizeStringArray(full.selectedProducts)
+			: bindingMetadata.selectedProducts,
+		isDefault:
+			typeof full.isDefault === "boolean"
+				? full.isDefault
+				: bindingMetadata.isDefault,
 		createdAt: typeof full.createdAt === "number" ? full.createdAt : now,
 		updatedAt: now,
 		metadata: cloneMetadata(full.metadata),
@@ -536,6 +660,12 @@ function mergeAccountPatch(
 				patch.ownerIdentityId === null
 					? undefined
 					: (patch.ownerIdentityId ?? account.ownerIdentityId),
+			scopes: patch.scopes ?? account.scopes,
+			capabilities: patch.capabilities ?? account.capabilities,
+			oauthMode: patch.oauthMode ?? account.oauthMode,
+			executionTarget: patch.executionTarget ?? account.executionTarget,
+			selectedProducts: patch.selectedProducts ?? account.selectedProducts,
+			isDefault: patch.isDefault ?? account.isDefault,
 			createdAt: account.createdAt,
 			metadata:
 				patch.metadata !== undefined ? patch.metadata : account.metadata,
@@ -748,10 +878,14 @@ export class InMemoryConnectorAccountStorage
 class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 	private oauthFallback = new InMemoryConnectorAccountStorage();
 
-	constructor(private readonly adapter: ConnectorAccountDatabaseAdapter) {}
+	constructor(
+		private readonly adapter: ConnectorAccountDatabaseAdapter,
+		private readonly agentId: string,
+	) {}
 
 	async listAccounts(provider?: string): Promise<ConnectorAccount[]> {
 		const records = await this.adapter.listConnectorAccounts({
+			agentId: this.agentId,
 			provider: provider ? normalizeProvider(provider) : undefined,
 			limit: 500,
 		});
@@ -763,7 +897,10 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 		accountId: string,
 	): Promise<ConnectorAccount | null> {
 		if (looksLikeUuid(accountId)) {
-			const byId = await this.adapter.getConnectorAccount({ id: accountId });
+			const byId = await this.adapter.getConnectorAccount({
+				agentId: this.agentId,
+				id: accountId,
+			});
 			if (
 				byId &&
 				normalizeProvider(byId.provider) === normalizeProvider(provider)
@@ -772,6 +909,7 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 			}
 		}
 		const byKey = await this.adapter.getConnectorAccount({
+			agentId: this.agentId,
 			provider: normalizeProvider(provider),
 			accountKey: accountId,
 		});
@@ -780,6 +918,7 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 
 	async upsertAccount(account: ConnectorAccount): Promise<ConnectorAccount> {
 		const record = await this.adapter.upsertConnectorAccount({
+			agentId: this.agentId,
 			...(looksLikeUuid(account.id) ? { id: account.id } : {}),
 			provider: normalizeProvider(account.provider),
 			accountKey: account.externalId ?? account.id,
@@ -792,7 +931,11 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 			purpose: [...account.purpose],
 			accessGate: account.accessGate,
 			status: account.status,
-			metadata: cloneMetadata(account.metadata),
+			scopes: account.scopes ? [...account.scopes] : undefined,
+			capabilities: account.capabilities
+				? [...account.capabilities]
+				: undefined,
+			metadata: connectorAccountMetadata(account),
 			connectedAt: account.createdAt,
 		});
 		return databaseRecordToAccount(record);
@@ -802,8 +945,12 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 		const account = await this.getAccount(provider, accountId);
 		return this.adapter.deleteConnectorAccount(
 			account
-				? { id: account.id }
-				: { provider: normalizeProvider(provider), accountKey: accountId },
+				? { agentId: this.agentId, id: account.id }
+				: {
+						agentId: this.agentId,
+						provider: normalizeProvider(provider),
+						accountKey: accountId,
+					},
 		);
 	}
 
@@ -1085,6 +1232,8 @@ function databaseRecordToAccount(
 	record: ConnectorAccountDatabaseRecord,
 ): ConnectorAccount {
 	const now = nowMs();
+	const metadata = cloneMetadata(record.metadata);
+	const bindingMetadata = readConnectorBindingMetadata(metadata);
 	const status =
 		record.status === "active"
 			? "connected"
@@ -1108,9 +1257,15 @@ function databaseRecordToAccount(
 		displayHandle: record.username ?? record.email ?? undefined,
 		ownerBindingId: record.ownerBindingId ?? undefined,
 		ownerIdentityId: record.ownerIdentityId ?? undefined,
+		scopes: record.scopes ? [...record.scopes] : undefined,
+		capabilities: record.capabilities ? [...record.capabilities] : undefined,
+		oauthMode: bindingMetadata.oauthMode,
+		executionTarget: bindingMetadata.executionTarget,
+		selectedProducts: bindingMetadata.selectedProducts,
+		isDefault: bindingMetadata.isDefault,
 		createdAt: record.createdAt ?? now,
 		updatedAt: record.updatedAt ?? now,
-		metadata: cloneMetadata(record.metadata),
+		metadata,
 	};
 }
 
@@ -1249,7 +1404,10 @@ export class ConnectorAccountManager extends Service {
 			const adapter = (runtime as { adapter?: unknown }).adapter;
 			if (isConnectorAccountDatabaseAdapter(adapter)) {
 				if (this.databaseStorageAdapter !== adapter) {
-					this.databaseStorage = new DatabaseConnectorAccountStorage(adapter);
+					this.databaseStorage = new DatabaseConnectorAccountStorage(
+						adapter,
+						String(runtime.agentId),
+					);
 					this.databaseStorageAdapter = adapter;
 				}
 				return this.databaseStorage as DatabaseConnectorAccountStorage;
@@ -1506,11 +1664,15 @@ export class ConnectorAccountManager extends Service {
 			(input as Partial<ConnectorAccount>).id?.trim()
 				? (input as Partial<ConnectorAccount>).id
 				: randomId(`acct_${providerId}`);
+		let account: ConnectorAccount;
 		if (registered?.createAccount) {
 			const created = await registered.createAccount(input, this);
-			return this.upsertAccount(providerId, created, accountId);
+			account = await this.upsertAccount(providerId, created, accountId);
+		} else {
+			account = await this.upsertAccount(providerId, input, accountId);
 		}
-		return this.upsertAccount(providerId, input, accountId);
+		await this.notifyAccountUpserted(registered, account, "create");
+		return account;
 	}
 
 	async patchAccount(
@@ -1520,13 +1682,20 @@ export class ConnectorAccountManager extends Service {
 	): Promise<ConnectorAccount | null> {
 		const providerId = normalizeProvider(provider);
 		const registered = this.providers.get(providerId);
+		let account: ConnectorAccount | null;
 		if (registered?.patchAccount) {
 			const patched = await registered.patchAccount(accountId, patch, this);
-			return this.upsertAccount(providerId, patched, accountId);
+			account = await this.upsertAccount(providerId, patched, accountId);
+		} else {
+			const existing = await this.storage.getAccount(providerId, accountId);
+			if (!existing) return null;
+			account = await this.upsertAccount(
+				providerId,
+				mergeAccountPatch(existing, patch),
+			);
 		}
-		const existing = await this.storage.getAccount(providerId, accountId);
-		if (!existing) return null;
-		return this.upsertAccount(providerId, mergeAccountPatch(existing, patch));
+		await this.notifyAccountUpserted(registered, account, "patch");
+		return account;
 	}
 
 	async deleteAccount(provider: string, accountId: string): Promise<boolean> {
@@ -1700,6 +1869,9 @@ export class ConnectorAccountManager extends Service {
 			const account = result.account
 				? await this.upsertAccount(providerId, result.account, flow.accountId)
 				: undefined;
+			if (account) {
+				await this.notifyAccountUpserted(registered, account, "oauth");
+			}
 			const completed = await this.storage.updateOAuthFlow(
 				providerId,
 				flow.id,
@@ -1718,6 +1890,29 @@ export class ConnectorAccountManager extends Service {
 		} finally {
 			deleteOAuthCodeVerifier(
 				stringMetadataValue(flow.metadata, "codeVerifierRef"),
+			);
+		}
+	}
+
+	private async notifyAccountUpserted(
+		provider: ConnectorAccountProvider | undefined,
+		account: ConnectorAccount,
+		reason: "create" | "patch" | "oauth",
+	): Promise<void> {
+		if (!provider?.afterAccountUpsert) return;
+		try {
+			await provider.afterAccountUpsert(account, reason, this);
+		} catch (error) {
+			// error-policy:J4 The durable connection remains valid while its
+			// optional execution adapter is explicitly reported as degraded.
+			this.runtime?.reportError?.("connector-account-materialization", error, {
+				provider: account.provider,
+				accountId: account.id,
+				reason,
+			});
+			logger.warn(
+				{ error, provider: account.provider, accountId: account.id, reason },
+				"[ConnectorAccountManager] connector account materialization failed",
 			);
 		}
 	}
@@ -1802,6 +1997,15 @@ export class ConnectorAccountManager extends Service {
 			const actual = new Set(account.purpose);
 			if (!expectedPurposes.some((purpose) => actual.has(purpose))) {
 				return `purpose ${account.purpose.join(",")} is not allowed`;
+			}
+		}
+		if (policy.requiredCapabilities?.length) {
+			const granted = new Set(account.capabilities ?? []);
+			const missing = policy.requiredCapabilities.filter(
+				(capability) => !granted.has(capability),
+			);
+			if (missing.length > 0) {
+				return `required connector capabilities are missing: ${missing.join(",")}`;
 			}
 		}
 		if (
@@ -1920,6 +2124,9 @@ export function getActionConnectorAccountPolicies(
 		purposes: policy.purposes ? [...policy.purposes] : undefined,
 		accessGates: policy.accessGates ? [...policy.accessGates] : undefined,
 		statuses: policy.statuses ? [...policy.statuses] : undefined,
+		requiredCapabilities: policy.requiredCapabilities
+			? [...policy.requiredCapabilities]
+			: undefined,
 	}));
 }
 

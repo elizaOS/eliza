@@ -23,14 +23,14 @@ src/
     credit-markup.ts       calculateCreditMarkup, platform fee breakdown
     index.ts
   db/                      @elizaos/cloud-shared/db — Drizzle (Railway prod, PGlite local)
-    schemas/               ~100 table schemas (apps, agents, billing, containers, ...)
-    repositories/          ~69 CQRS repositories (readers/writers split)
+    schemas/               ~100 table schemas, including agent_connector_bindings
+    repositories/          CQRS repositories, including tenant-checked connector bindings
     migrations/            generated SQL — never hand-edit applied migrations
     client.ts              DB client (Worker routes through the Hyperdrive binding)
     crypto/  utils/
     index.ts
   lib/                     @elizaos/cloud-shared/lib — SERVER-ONLY services + use-cases
-    services/              ~245 service modules (containers, gateways, billing, ...)
+    services/              service modules, including OAuth binding and Google MCP broker policy
     auth.ts auth-anonymous.ts auth-errors.ts   session/API-key/wallet auth
     oidc/                  OpenID Connect PROVIDER domain (Eliza Cloud as the OP):
                            config/keys/clients/codes/claims/username/tokens.
@@ -92,6 +92,8 @@ bun run --cwd packages/cloud/shared generate:email-templates
   utilities) lives in `packages/app`, not here. Only pure isomorphic helpers
   (`billing/`, math/string/validation) are safe to import from the frontend.
 - **Migrations are append-only.** Never edit an applied migration. No `CREATE INDEX CONCURRENTLY` (runs in a transaction). Use `IF NOT EXISTS` / `IF EXISTS`. Keep migrations small and targeted (<100 lines): add objects, backfill, and drop in separate migrations — no omnibus recreate-the-schema files (they lock active prod tables). Never `db:push`.
+- **Connector bindings are the Cloud execution authority.** `agent_connector_bindings` joins a canonical `user_characters.id` to a platform credential. Public projections omit the credential locator; broker reads accept a binding ID and resolve the credential inside the service boundary. OAuth app ownership (`oauth_mode`) and execution location (`execution_target`) are independent.
+- **Google MCP is per product.** Cloud runtime config fans a connected Google binding into binding-scoped Gmail and Calendar broker URLs. The broker forwards only curated tools to Google's fixed official endpoints and obtains a short-lived bearer from the exact bound credential; it never forwards the agent API key upstream.
 - **`typecheck` noise:** errors that surface are often from transitive imports (e.g. `plugins/plugin-elizacloud/...`) pulled in via tsconfig paths, not this package's own source. Filter to your files: `bun run --cwd packages/cloud/shared typecheck 2>&1 | grep <your-file>`.
 - **win32 PGlite quarantine (#15785):** on Windows the `test` entry (`scripts/run-bun-tests.mjs`) runs the PGlite tenant-db placement-claimer and authenticated native pairing suites in their own child `bun test` process and retries them (bounded) ONLY on a Bun native-crash signature (`panic(main thread): Illegal instruction`, exit 3), capturing the panic to `.tmp/bun-pglite-crash/` for the upstream Bun report (`scripts/bun-pglite-crash-upstream-report.md`). Genuine test failures never retry; non-win32 behavior is a plain `bun test --isolate`. Renamed a suite? Update `DEFAULT_QUARANTINED_SUITES` in `scripts/run-bun-tests-helpers.mjs` (the run fails loudly until you do).
 - **Repo-wide rules** (logger-only/no-console, ESM, naming, clean-architecture commandments, CQRS, validate-at-boundary, DTO fields required) live in the root `CLAUDE.md`. The WHY docs under `docs/` explain non-obvious choices: `messaging-onboarding-gateway-design.md` and `CLOUD_ONBOARDING_PROVISIONING_REVIEW.md`.

@@ -12,7 +12,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool } from "@modelcontextprotocol/client";
 import { createHash } from "crypto";
 import type { CachedServerSchema, McpServerConfig } from "../types";
 

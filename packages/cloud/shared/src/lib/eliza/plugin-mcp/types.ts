@@ -1,8 +1,12 @@
 // Wires hosted Eliza agent types behavior for cloud runtime services.
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import type { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import type { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Resource, ResourceTemplate, Tool } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  Client,
+  Resource,
+  ResourceTemplateType,
+  StreamableHTTPClientTransport,
+  Tool,
+} from "@modelcontextprotocol/client";
+import type { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -74,7 +78,7 @@ export interface McpServer {
   disabled?: boolean;
   tools?: Tool[];
   resources?: Resource[];
-  resourceTemplates?: ResourceTemplate[];
+  resourceTemplates?: ResourceTemplateType[];
 }
 
 export interface McpConnection {

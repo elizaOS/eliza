@@ -12,6 +12,8 @@ import {
   type World,
 } from "@elizaos/core";
 import { edgeRuntimeCache, getStaticEmbeddingDimension } from "../../cache/edge-runtime-cache";
+import { agentConnectorBindingsService } from "../../services/agent-connector-bindings";
+import { isValidUUID } from "../../utils/validation";
 import "@/lib/polyfills/dom-polyfills";
 import { agentLoader } from "../agent-loader";
 import { CloudBootstrapMessageService } from "../plugin-cloud-bootstrap/services/cloud-bootstrap-message-service";
@@ -157,6 +159,14 @@ export class RuntimeFactory {
     }
 
     const agentId = (character.id ? stringToUuid(character.id) : this.DEFAULT_AGENT_ID) as UUID;
+    if (context.connectorBindings === undefined && isValidUUID(context.organizationId)) {
+      context.connectorBindings = await agentConnectorBindingsService.list(
+        context.organizationId,
+        agentId,
+      );
+    }
+    context.connectorBindings ??= [];
+    context.characterId = agentId;
     const filteredPlugins = filterPlugins(plugins);
     const mcpShouldBeEnabled = shouldEnableMcp(context);
     const cachePluginNames =

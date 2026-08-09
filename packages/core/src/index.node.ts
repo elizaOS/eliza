@@ -35,6 +35,7 @@ export * from "./cloud-routing";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
 export * from "./connectors/account-manager";
+export * from "./connectors/agent-binding";
 export * from "./connectors/attachments";
 export * from "./connectors/connector-config";
 export * from "./connectors/oauth-role";

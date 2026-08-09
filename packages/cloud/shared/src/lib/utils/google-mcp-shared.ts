@@ -1,8 +1,9 @@
 /**
- * Shared utilities for Google MCP tools.
+ * Shared parsing and authenticated-fetch utilities for Cloud Google adapters.
  *
- * Used by the Google MCP transport (`apps/api/mcps/google/[transport]/route.ts`)
- * for mapper, validation, and fetch-wrapper logic.
+ * Used by the typed Cloud Google REST adapters for mapper, validation, and
+ * access-token fetch behavior. The agent-bound MCP broker has its own fixed
+ * upstream transport and does not use this generic URL helper.
  */
 
 import { logger } from "./logger";

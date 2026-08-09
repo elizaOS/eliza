@@ -23,6 +23,7 @@ export * from "./drop.js";
 export * from "./feature-result.js";
 export * from "./first-run-options.js";
 export * from "./first-run-routes.js";
+export * from "./google-workspace-mcp.js";
 export * from "./health.js";
 export * from "./inbox.js";
 export * from "./inbox-routes.js";

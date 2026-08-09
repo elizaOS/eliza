@@ -3,9 +3,9 @@
  * Build script for @elizaos/plugin-mcp (TypeScript package).
  *
  * Outputs:
- * - ESM (Node): dist/node/index.js
- * - CJS (Node): dist/cjs/index.cjs
- * - Types: dist/index.d.ts + dist/node/index.d.ts + dist/cjs/index.d.ts
+ * - ESM (Node): dist/node/index.js + dist/node/resource-engine.js
+ * - CJS (Node): dist/cjs/index.cjs + dist/cjs/resource-engine.cjs
+ * - Types: dist/index.d.ts + dist/node/*.d.ts + dist/cjs/index.d.ts
  *
  * Runs on the shared `buildPlugin` driver. The CJS bundle is renamed
  * `index.js` -> `index.cjs` with a plain rename; its sibling `index.js.map` is
@@ -29,7 +29,7 @@ await buildPlugin({
   targets: [
     {
       label: "Node (ESM)",
-      entry: "src/index.ts",
+      entry: ["src/index.ts", "src/resource-engine.ts"],
       outSubdir: "node",
       target: "node",
       format: "esm",
@@ -38,14 +38,17 @@ await buildPlugin({
     },
     {
       label: "Node (CJS)",
-      entry: "src/index.ts",
+      entry: ["src/index.ts", "src/resource-engine.ts"],
       outSubdir: "cjs",
       target: "node",
       format: "cjs",
       sourcemap: "external",
       minify: false,
       // Rename Bun's CJS output to .cjs to be loadable under "type": "module".
-      renames: [["index.js", "index.cjs"]],
+      renames: [
+        ["index.js", "index.cjs"],
+        ["resource-engine.js", "resource-engine.cjs"],
+      ],
     },
   ],
   // Type-emit uses a dedicated project because plugin-mcp transitively imports

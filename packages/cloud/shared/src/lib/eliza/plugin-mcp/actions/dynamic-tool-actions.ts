@@ -9,7 +9,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/client";
 import { MCP_SERVICE_NAME } from "../types";
 import { generateSimiles, makeUniqueActionName } from "../utils/action-naming";
 import { checkMcpOAuthAccess } from "../utils/mcp";
