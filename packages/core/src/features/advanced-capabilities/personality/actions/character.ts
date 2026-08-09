@@ -20,7 +20,10 @@
 import { ElizaError } from "../../../../errors.ts";
 import { logger } from "../../../../logger.ts";
 import { hasRoleAccess } from "../../../../roles.ts";
-import { stringifyForModel } from "../../../../runtime/json-output.ts";
+import {
+	parseJsonObject,
+	stringifyForModel,
+} from "../../../../runtime/json-output.ts";
 import type { Character } from "../../../../types/agent.ts";
 import type {
 	Action,
@@ -138,11 +141,12 @@ export const characterAction: Action = {
 	// Coarse floor; per-op requirements (update_identity → OWNER) in CHARACTER_OP_ACCESS.
 	roleGate: { minRole: "ADMIN" },
 	similes: [
-		// Old leaf action names
+		// Old leaf action names. UPDATE_OWNER_NAME deliberately absent: it names
+		// the OWNER's profile name (SETTINGS territory, see the provider-context
+		// catalog), and a double claim drops the simile from routing as ambiguous.
 		"MODIFY_CHARACTER",
 		"PERSIST_CHARACTER",
 		"UPDATE_IDENTITY",
-		"UPDATE_OWNER_NAME",
 		// Identity / naming aliases
 		"IDENTITY",
 		"SET_IDENTITY",
@@ -809,15 +813,23 @@ async function runModify(
 			{ error: error instanceof Error ? error.message : String(error) },
 			"Error in CHARACTER.modify",
 		);
-		const text =
-			"Character modification failed with an unexpected error; tell the user it didn't go through and they can try again.";
+		const intentClassificationFailed =
+			error instanceof ElizaError &&
+			error.code === "CHARACTER_INTENT_CLASSIFICATION_FAILED";
+		// A classification failure is a phrasing problem, not a glitch: tell the
+		// planner what wording works so the user gets an actionable retry.
+		const text = intentClassificationFailed
+			? 'Couldn\'t work out what the user wants changed about the character; ask them to rephrase it concretely, like "change your personality to ...", and try again.'
+			: "Character modification failed with an unexpected error; tell the user it didn't go through and they can try again.";
 		return {
 			text,
 			values: { success: false, error: (error as Error).message },
 			data: {
 				action: "CHARACTER",
 				op: "modify",
-				errorType: "character_modification_error",
+				errorType: intentClassificationFailed
+					? "intent_classification_failed"
+					: "character_modification_error",
 				errorDetails: (error as Error).stack,
 			},
 			success: false,
@@ -828,14 +840,14 @@ async function runModify(
 function parseStructuredRecord(
 	response: string,
 ): Record<string, unknown> | null {
-	try {
-		const parsed = JSON.parse(response.trim()) as unknown;
-		return isRecord(parsed) ? parsed : null;
-	} catch {
-		// error-policy:J3 character model output is untrusted input; malformed
-		// JSON is an explicit invalid response.
-		return null;
-	}
+	// Tolerant of fenced / prose-wrapped output: small hosted models routinely
+	// decorate strict-JSON asks, and a bare JSON.parse here was failing whole
+	// CHARACTER operations on recoverable responses. parseJsonObject is the
+	// same recovery layer runtime/validated-model-call.ts uses for remote
+	// structured output; it returns null (never a fake-valid default) when no
+	// object can be extracted.
+	const parsed = parseJsonObject<Record<string, unknown>>(response);
+	return parsed && isRecord(parsed) ? parsed : null;
 }
 
 function normalizeBoolean(value: unknown): boolean | undefined {
@@ -924,7 +936,7 @@ function buildModificationFromStructuredRecord(
 	return Object.keys(modification).length > 0 ? modification : null;
 }
 
-function detectModificationIntentByRules(messageText: string): {
+export function detectModificationIntentByRules(messageText: string): {
 	intent: ModificationIntentAnalysis;
 	definitive: boolean;
 	potentialRequest: boolean;
@@ -944,7 +956,21 @@ function detectModificationIntentByRules(messageText: string): {
 
 	const characterKeyword =
 		/\b(personality|character|tone|style|voice|behavior|response(?:\s+style|\s+format)?|interaction(?:\s+style)?|preferences?|bio|topics?|name|language)\b/i;
-	const directChangeVerb = /\b(change|update|modify|adjust|set|rename|call)\b/i;
+	// "add a rule to your personality" / "remove X from your topics" are as
+	// direct as "change your personality" — the additive verbs cost nothing
+	// because a character keyword must co-occur (live miss: tj-4c9e654fec50ea).
+	const directChangeVerb =
+		/\b(change|update|modify|adjust|set|rename|call|add|remove|drop)\b/i;
+	// A speech rule addressed to the agent ("never say bet", "stop saying bro",
+	// "don't use emoji") is an explicit behavior modification on its own — this
+	// handler only classifies text already routed to CHARACTER, so a plain
+	// imperative needs no character keyword and no model round-trip.
+	const speechRule =
+		/\b(?:never|always|stop|start|don't|do not|avoid|quit)\s+(?:ever\s+)?(?:say|saying|use|using|mention|mentioning)\b/i;
+	// "be more skeptical" / "act less formal" with an arbitrary trait — the
+	// styleCue list below can't enumerate every adjective.
+	const degreeDirective =
+		/^(?:please\s+)?(?:be|act|sound)\s+(?:a\s+(?:bit|little)\s+|way\s+|much\s+|far\s+)?(?:more|less)\s+\S/i;
 	const stylisticAdjustment =
 		/\b(be|sound|act|respond|reply|talk|speak)\b[\s\S]{0,80}\b(more|less|warmer|cooler|friendlier|formal|casual|direct|verbose|concise|skeptical|encouraging|supportive|detailed|brief|professional|polite)\b/i;
 	const interactionScope =
@@ -965,6 +991,8 @@ function detectModificationIntentByRules(messageText: string): {
 	if (
 		resetPreference.test(normalized) ||
 		(directChangeVerb.test(normalized) && characterKeyword.test(normalized)) ||
+		speechRule.test(normalized) ||
+		degreeDirective.test(normalized) ||
 		soundLikeMe.test(normalized) ||
 		respondInLanguage.test(normalized) ||
 		(interactionScope.test(normalized) &&
@@ -1041,47 +1069,56 @@ Example:
   "confidence": 0.93
 }`;
 
-	try {
-		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt: intentPrompt,
-			temperature: 0.2,
-			maxTokens: 150,
-		});
-		const raw = parseStructuredRecord(response);
-		if (!raw) {
-			throw new ElizaError("Character intent model returned invalid JSON", {
-				code: "CHARACTER_INTENT_INVALID",
+	// One reroll on an invalid response: the TEXT_SMALL tier on live deployments
+	// flakes on strict-JSON asks often enough that a single-shot failure was
+	// killing the whole action (tj-4c9e654fec50ea). Mirrors the remote reroll in
+	// runtime/validated-model-call.ts, capped at one because the heuristic above
+	// already resolved every unambiguous shape.
+	let lastFailure: unknown;
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		try {
+			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt: intentPrompt,
+				temperature: 0.2,
+				maxTokens: 150,
 			});
-		}
+			const raw = parseStructuredRecord(response);
+			if (!raw) {
+				throw new ElizaError("Character intent model returned invalid JSON", {
+					code: "CHARACTER_INTENT_INVALID",
+				});
+			}
 
-		const confidence = normalizeNumber(raw.confidence);
-		const isModificationRequest = normalizeBoolean(raw.isModificationRequest);
-		const requestType = raw.requestType;
-		if (
-			confidence === undefined ||
-			isModificationRequest === undefined ||
-			(requestType !== "explicit" &&
-				requestType !== "suggestion" &&
-				requestType !== "none")
-		) {
-			throw new ElizaError("Character intent model returned invalid fields", {
-				code: "CHARACTER_INTENT_INVALID",
-			});
+			const confidence = normalizeNumber(raw.confidence);
+			const isModificationRequest = normalizeBoolean(raw.isModificationRequest);
+			const requestType = raw.requestType;
+			if (
+				confidence === undefined ||
+				isModificationRequest === undefined ||
+				(requestType !== "explicit" &&
+					requestType !== "suggestion" &&
+					requestType !== "none")
+			) {
+				throw new ElizaError("Character intent model returned invalid fields", {
+					code: "CHARACTER_INTENT_INVALID",
+				});
+			}
+			return {
+				isModificationRequest: isModificationRequest && confidence > 0.5,
+				requestType: requestType as "explicit" | "suggestion" | "none",
+				confidence,
+			};
+		} catch (error) {
+			// error-policy:J2 hold the failure for the single reroll; the terminal
+			// wrapper below rethrows at the classification boundary with the last
+			// cause preserved — an inconclusive rule result is never fabricated.
+			lastFailure = error;
 		}
-		const llmResult = {
-			isModificationRequest: isModificationRequest && confidence > 0.5,
-			requestType: requestType as "explicit" | "suggestion" | "none",
-			confidence,
-		};
-		return llmResult;
-	} catch (error) {
-		// error-policy:J2 preserve the model failure while identifying the intent
-		// classification boundary; an inconclusive rule result is not fabricated.
-		throw new ElizaError("Failed to classify character modification intent", {
-			code: "CHARACTER_INTENT_CLASSIFICATION_FAILED",
-			cause: error,
-		});
 	}
+	throw new ElizaError("Failed to classify character modification intent", {
+		code: "CHARACTER_INTENT_CLASSIFICATION_FAILED",
+		cause: lastFailure,
+	});
 }
 
 async function buildRecentConversationContext(
