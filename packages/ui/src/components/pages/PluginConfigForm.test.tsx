@@ -89,6 +89,67 @@ afterEach(() => {
   cleanup();
 });
 
+describe("PluginConfigForm connector row layout", () => {
+  it("omits keys owned by the surrounding connector surface", () => {
+    const plugin = makePlugin({
+      id: "imessage",
+      key: "IMESSAGE_ENABLED",
+      configUiHints: {
+        IMESSAGE_ENABLED: { label: "Enabled", group: "advanced" },
+      },
+    });
+
+    render(
+      <PluginConfigForm
+        plugin={plugin}
+        pluginConfigs={{}}
+        onParamChange={vi.fn()}
+        layout="rows"
+        hiddenKeys={["IMESSAGE_ENABLED"]}
+      />,
+    );
+
+    expect(configField("imessage", "IMESSAGE_ENABLED")).toBeNull();
+  });
+
+  it("edits structured text through the same Save/Cancel dialog pattern", () => {
+    const onParamChange = vi.fn();
+    const plugin = makePlugin({
+      id: "feishu",
+      key: "FEISHU_ALLOWED_CHATS",
+      configUiHints: {
+        FEISHU_ALLOWED_CHATS: {
+          label: "Allowed chats",
+          type: "json",
+        },
+      },
+    });
+
+    render(
+      <PluginConfigForm
+        plugin={plugin}
+        pluginConfigs={{}}
+        onParamChange={onParamChange}
+        layout="rows"
+      />,
+    );
+
+    expect(
+      document.querySelector('textarea[data-field-type="json"]'),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Set value/ }));
+    const editor = screen.getByRole("textbox", { name: "Allowed chats" });
+    fireEvent.change(editor, { target: { value: '["chat-1"]' } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onParamChange).toHaveBeenCalledWith(
+      "feishu",
+      "FEISHU_ALLOWED_CHATS",
+      '["chat-1"]',
+    );
+  });
+});
+
 describe("PluginConfigForm modeToggle configUiHint", () => {
   it("hides the backing field when the hidden-mode value is active", () => {
     const onParamChange = vi.fn();

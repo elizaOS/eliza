@@ -63,12 +63,15 @@ export function PluginConfigForm({
   pluginConfigs,
   onParamChange,
   layout = "grid",
+  hiddenKeys = [],
 }: {
   plugin: PluginInfo;
   pluginConfigs: Record<string, Record<string, string>>;
   onParamChange: (pluginId: string, paramKey: string, value: string) => void;
   /** Forwarded to ConfigRenderer — use `rows` for one setting per line. */
   layout?: "grid" | "rows";
+  /** Keys owned by a surrounding settings surface and omitted from this form. */
+  hiddenKeys?: readonly string[];
 }) {
   const params = plugin.parameters ?? [];
   const { schema, hints: autoHints } = useMemo(
@@ -86,8 +89,11 @@ export function PluginConfigForm({
         merged[key] = { ...merged[key], ...serverHint };
       }
     }
+    for (const key of hiddenKeys) {
+      merged[key] = { ...merged[key], hidden: true };
+    }
     return merged;
-  }, [autoHints, plugin.configUiHints]);
+  }, [autoHints, hiddenKeys, plugin.configUiHints]);
 
   const getCurrentValue = useCallback(
     (param: PluginParamDef): string => {

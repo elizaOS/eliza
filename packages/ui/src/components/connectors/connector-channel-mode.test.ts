@@ -13,7 +13,10 @@ import {
   getConnectorChannelMode,
   setConnectorChannelMode,
 } from "./connector-channel-mode";
-import { connectorSupportsChannelMode } from "./connector-mode-registry";
+import {
+  connectorSupportsChannelMode,
+  getConnectorModeHiddenConfigKeys,
+} from "./connector-mode-registry";
 
 afterEach(() => {
   setConnectorChannelMode("delegate");
@@ -32,11 +35,11 @@ describe("connector channel-mode store", () => {
 });
 
 describe("connectorSupportsChannelMode", () => {
-  it("classifies bot-only connectors out of the delegate lens", () => {
-    // Slack declares only bot-identity modes (OAuth workspace bot, socket
-    // tokens) — no way for the agent to act as the owner.
+  it("includes role-classified plugin-managed identities", () => {
+    // Slack's declared app-token modes are bots, while its account catalog also
+    // exposes an OWNER OAuth inventory under Delegate.
     expect(connectorSupportsChannelMode("slack", "bot")).toBe(true);
-    expect(connectorSupportsChannelMode("slack", "delegate")).toBe(false);
+    expect(connectorSupportsChannelMode("slack", "delegate")).toBe(true);
   });
 
   it("classifies delegate-only connectors out of the bot lens", () => {
@@ -88,13 +91,33 @@ describe("getConnectorModes channel-mode filtering", () => {
     expect(bot).not.toContain("account");
   });
 
-  it("keeps the injected plugin-managed account mode under both lenses", () => {
-    for (const channelMode of ["delegate", "bot"] as const) {
-      const ids = getConnectorModes("telegram", { channelMode }).map(
-        (mode) => mode.id,
-      );
-      expect(ids).toContain("plugin-managed");
-    }
+  it("filters plugin-managed modes by their catalog account role", () => {
+    const telegramDelegate = getConnectorModes("telegram", {
+      channelMode: "delegate",
+    }).map((mode) => mode.id);
+    const telegramBot = getConnectorModes("telegram", {
+      channelMode: "bot",
+    }).map((mode) => mode.id);
+    const slackDelegate = getConnectorModes("slack", {
+      channelMode: "delegate",
+    }).map((mode) => mode.id);
+    const slackBot = getConnectorModes("slack", {
+      channelMode: "bot",
+    }).map((mode) => mode.id);
+
+    expect(telegramDelegate).not.toContain("plugin-managed");
+    expect(telegramBot).toContain("plugin-managed");
+    expect(slackDelegate).toContain("plugin-managed");
+    expect(slackBot).not.toContain("plugin-managed");
+  });
+
+  it("hides delegate-only QR settings from WhatsApp Business mode", () => {
+    expect(getConnectorModeHiddenConfigKeys("whatsapp", "business")).toEqual([
+      "WHATSAPP_AUTH_METHOD",
+      "WHATSAPP_AUTH_DIR",
+      "WHATSAPP_PRINT_QR",
+    ]);
+    expect(getConnectorModeHiddenConfigKeys("whatsapp", "qr")).toEqual([]);
   });
 
   it("leaves the mode list unfiltered when no lens is given", () => {

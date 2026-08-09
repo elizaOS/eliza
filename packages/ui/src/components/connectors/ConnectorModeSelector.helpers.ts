@@ -10,6 +10,7 @@ import {
   type ConnectorManagementMode,
   connectorAccountManagementPanelPluginId,
   getConnectorPluginManagedAccountOption,
+  getConnectorPluginManagedChannelMode,
 } from "./connector-account-options";
 import type { ConnectorChannelMode } from "./connector-channel-mode";
 import { getDeclaredConnectorModes } from "./connector-mode-registry";
@@ -26,9 +27,18 @@ export type ConnectorMode = {
 function withPluginManagedMode(
   connectorId: string,
   modes: ConnectorMode[],
+  channelMode?: ConnectorChannelMode,
 ): ConnectorMode[] {
   const option = getConnectorPluginManagedAccountOption(connectorId);
-  if (!option) return modes;
+  const managedChannelMode = getConnectorPluginManagedChannelMode(connectorId);
+  if (
+    !option ||
+    (channelMode !== undefined &&
+      managedChannelMode !== undefined &&
+      managedChannelMode !== channelMode)
+  ) {
+    return modes;
+  }
   return [
     {
       id: CONNECTOR_PLUGIN_MANAGED_MODE_ID,
@@ -45,8 +55,8 @@ function withPluginManagedMode(
  * the connector plugin declared in the connector-mode registry. Cloud-only
  * modes are filtered out when Eliza Cloud is not connected. When a global
  * `channelMode` lens is given, declared modes classified into the *other* lens
- * are filtered out too (unclassified modes are lens-neutral and always kept, as
- * is the injected plugin-managed account-inventory mode).
+ * are filtered out too. The plugin-managed inventory follows its catalog role:
+ * OWNER → Delegate, AGENT → Bot, and TEAM/unclassified remains lens-neutral.
  */
 export function getConnectorModes(
   connectorId: string,
@@ -73,7 +83,7 @@ export function getConnectorModes(
       descriptionKey: mode.descriptionKey,
       managementMode: mode.managementMode,
     }));
-  return withPluginManagedMode(connectorId, modes);
+  return withPluginManagedMode(connectorId, modes, lens);
 }
 
 /**

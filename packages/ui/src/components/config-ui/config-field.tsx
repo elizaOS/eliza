@@ -25,6 +25,7 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
+import { Textarea } from "../ui/textarea";
 import { defaultRenderers } from "./config-field.helpers";
 
 /** Field chrome layout. `row` = one setting per line (label left, control right). */
@@ -38,6 +39,18 @@ const DIALOG_EDIT_TYPES = new Set([
   "email",
   "textarea",
   "string",
+  "json",
+  "code",
+  "array",
+  "keyvalue",
+]);
+
+const MULTILINE_DIALOG_TYPES = new Set([
+  "textarea",
+  "json",
+  "code",
+  "array",
+  "keyvalue",
 ]);
 
 function displayValue(
@@ -99,7 +112,6 @@ export function ConfigField({
   const label = renderProps.hint.label ?? renderProps.key;
   const errors = renderProps.errors ?? [];
   const hasError = errors.length > 0;
-  const isRequiredEmpty = renderProps.required && !renderProps.isSet;
   const helpText = renderProps.hint.help ?? renderProps.schema.description;
   const isBoolean =
     renderProps.fieldType === "boolean" ||
@@ -111,6 +123,7 @@ export function ConfigField({
     (DIALOG_EDIT_TYPES.has(renderProps.fieldType) ||
       renderProps.fieldType === "text" ||
       !renderProps.fieldType);
+  const usesMultilineDialog = MULTILINE_DIALOG_TYPES.has(renderProps.fieldType);
 
   const renderFn =
     renderer ??
@@ -189,13 +202,8 @@ export function ConfigField({
         className={cn(
           "group/field border-b border-border/40 px-4 py-3.5 last:border-b-0",
           renderProps.readonly && "pointer-events-none",
-          isRequiredEmpty && "relative",
         )}
       >
-        {isRequiredEmpty ? (
-          <div className="absolute bottom-2 left-0 top-2 w-[2px] rounded-full bg-destructive opacity-40" />
-        ) : null}
-
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1 space-y-0.5">
             <div className="flex flex-wrap items-center gap-2">
@@ -269,41 +277,58 @@ export function ConfigField({
                       >
                         {label}
                       </label>
-                      <Input
-                        id={`${fieldId}-edit`}
-                        type={
-                          renderProps.fieldType === "password" ||
-                          renderProps.hint.sensitive
-                            ? "password"
-                            : renderProps.fieldType === "number"
-                              ? "number"
-                              : renderProps.fieldType === "email"
-                                ? "email"
-                                : renderProps.fieldType === "url"
-                                  ? "url"
-                                  : "text"
-                        }
-                        value={draft}
-                        autoFocus
-                        placeholder={
-                          renderProps.hint.placeholder ||
-                          (renderProps.hint.sensitive ||
-                          renderProps.fieldType === "password"
-                            ? t("config-field.secretPlaceholder", {
-                                defaultValue: "Enter new value",
-                              })
-                            : undefined)
-                        }
-                        onChange={(event) => setDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            renderProps.onChange(draft);
-                            setEditOpen(false);
+                      {usesMultilineDialog ? (
+                        <Textarea
+                          id={`${fieldId}-edit`}
+                          value={draft}
+                          autoFocus
+                          rows={8}
+                          placeholder={
+                            renderProps.hint.placeholder ||
+                            t("config-field.enterValue", {
+                              defaultValue: "Enter a value",
+                            })
                           }
-                        }}
-                        className="h-10 border-border/60 bg-bg-muted"
-                      />
+                          onChange={(event) => setDraft(event.target.value)}
+                          className="min-h-40 resize-y border-border/60 bg-bg-muted font-mono text-sm"
+                        />
+                      ) : (
+                        <Input
+                          id={`${fieldId}-edit`}
+                          type={
+                            renderProps.fieldType === "password" ||
+                            renderProps.hint.sensitive
+                              ? "password"
+                              : renderProps.fieldType === "number"
+                                ? "number"
+                                : renderProps.fieldType === "email"
+                                  ? "email"
+                                  : renderProps.fieldType === "url"
+                                    ? "url"
+                                    : "text"
+                          }
+                          value={draft}
+                          autoFocus
+                          placeholder={
+                            renderProps.hint.placeholder ||
+                            (renderProps.hint.sensitive ||
+                            renderProps.fieldType === "password"
+                              ? t("config-field.secretPlaceholder", {
+                                  defaultValue: "Enter new value",
+                                })
+                              : undefined)
+                          }
+                          onChange={(event) => setDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              renderProps.onChange(draft);
+                              setEditOpen(false);
+                            }
+                          }}
+                          className="h-10 border-border/60 bg-bg-muted"
+                        />
+                      )}
                     </div>
 
                     <DialogFooter className="gap-2 sm:gap-2">
@@ -349,13 +374,9 @@ export function ConfigField({
       }
       className={`group/field py-2.5 ${
         renderProps.readonly ? "pointer-events-none" : ""
-      } ${isRequiredEmpty ? "relative" : ""}`}
+      }`}
     >
-      {isRequiredEmpty && (
-        <div className="absolute bottom-2.5 left-0 top-2.5 w-[2px] rounded-full bg-destructive opacity-40" />
-      )}
-
-      <div className={isRequiredEmpty ? "pl-2.5" : ""}>
+      <div>
         <div className="mb-1.5 flex items-center gap-2">
           <span
             className="font-semibold leading-tight"

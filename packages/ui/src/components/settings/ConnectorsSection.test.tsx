@@ -240,12 +240,16 @@ describe("ConnectorsSection", () => {
     appMock.value.plugins = [
       plugin({ id: "slack", name: "Slack" }),
       plugin({ id: "signal", name: "Signal" }),
+      plugin({ id: "matrix", name: "Matrix" }),
     ];
 
     render(<ConnectorsSection />);
 
     expect(screen.getByText("Signal")).toBeTruthy();
-    expect(screen.queryByText("Slack")).toBeNull();
+    // Slack remains available through its OWNER-role plugin-managed inventory;
+    // its app-token modes themselves are still Bot-only.
+    expect(screen.getByText("Slack")).toBeTruthy();
+    expect(screen.queryByText("Matrix")).toBeNull();
     const footnoteSwitch = screen.getByRole("button", {
       name: /Switch to/,
     });
@@ -253,6 +257,7 @@ describe("ConnectorsSection", () => {
     fireEvent.click(footnoteSwitch);
 
     expect(screen.getByText("Slack")).toBeTruthy();
+    expect(screen.getByText("Matrix")).toBeTruthy();
     expect(screen.queryByText("Signal")).toBeNull();
     expect(screen.getByRole("button", { name: /Switch to/ })).toBeTruthy();
   });

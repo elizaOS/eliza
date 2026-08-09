@@ -12,6 +12,8 @@
 
 import {
   type ConnectorManagementMode,
+  getConnectorPluginManagedAccountOption,
+  getConnectorPluginManagedChannelMode,
   normalizeConnectorCatalogId,
 } from "./connector-account-options";
 import type { ConnectorChannelMode } from "./connector-channel-mode";
@@ -99,6 +101,8 @@ export interface ConnectorModeDeclaration {
    */
   configFormHintKey?: string;
   configFormHint?: string;
+  /** Config keys belonging to another setup mode and hidden for this mode. */
+  hiddenConfigKeys?: readonly string[];
   /**
    * Preference rank when picking the default selected mode (lower wins). Ties
    * are broken by declaration order. Modes without a rank are never chosen as
@@ -206,6 +210,17 @@ export interface ConnectorConfigFormHint {
  * is scoped to the modes that declare it, so it does not leak onto an unrelated
  * selected mode.
  */
+export function getConnectorModeHiddenConfigKeys(
+  connectorId: string,
+  modeId: string | null | undefined,
+): readonly string[] {
+  if (!modeId) return [];
+  return (
+    getDeclaredConnectorModes(connectorId).find((mode) => mode.id === modeId)
+      ?.hiddenConfigKeys ?? []
+  );
+}
+
 export function getConnectorModeConfigFormHint(
   connectorId: string,
   modeId: string | null | undefined,
@@ -265,9 +280,17 @@ export function connectorSupportsChannelMode(
     );
     return fallback === undefined || fallback === channelMode;
   }
-  return modes.some(
+  const declaredModeMatches = modes.some(
     (mode) =>
       mode.channelMode === undefined || mode.channelMode === channelMode,
+  );
+  const hasManagedMode =
+    getConnectorPluginManagedAccountOption(connectorId) !== null;
+  const managedMode = getConnectorPluginManagedChannelMode(connectorId);
+  return (
+    declaredModeMatches ||
+    (hasManagedMode &&
+      (managedMode === undefined || managedMode === channelMode))
   );
 }
 
@@ -462,6 +485,11 @@ registerConnectorModes("whatsapp", [
     managementMode: "local-config",
     setupPluginId: "whatsapp",
     channelMode: "bot",
+    hiddenConfigKeys: [
+      "WHATSAPP_AUTH_METHOD",
+      "WHATSAPP_AUTH_DIR",
+      "WHATSAPP_PRINT_QR",
+    ],
   },
 ]);
 

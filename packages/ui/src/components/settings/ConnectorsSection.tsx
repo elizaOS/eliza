@@ -4,7 +4,12 @@
  * surface — Connection / Support / General cards — not inline accordions.
  */
 
-import { ChevronRight, type LucideIcon, type LucideProps, Puzzle } from "lucide-react";
+import {
+  ChevronRight,
+  type LucideIcon,
+  type LucideProps,
+  Puzzle,
+} from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -40,6 +45,7 @@ import {
 import {
   connectorSupportsChannelMode,
   getConnectorModeConfigFormHint,
+  getConnectorModeHiddenConfigKeys,
 } from "../connectors/connector-mode-registry";
 import {
   CONNECTOR_UI_GROUPS,
@@ -69,6 +75,18 @@ import {
  * Whether Settings → Connectors should render the generic plugin-config (env
  * credential) form for the selected connector mode.
  */
+export function getConnectorSurfaceOwnedConfigKeys(
+  plugin: Pick<PluginInfo, "parameters">,
+): string[] {
+  return plugin.parameters
+    .filter(
+      (parameter) =>
+        parameter.description.trim().toLowerCase() ===
+        "enable or disable this feature",
+    )
+    .map((parameter) => parameter.key);
+}
+
 export function shouldRenderConnectorConfigForm(args: {
   managementMode: ConnectorMode["managementMode"] | undefined;
   hasParameters: boolean;
@@ -192,7 +210,9 @@ function SettingsCardRow({
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="text-sm font-medium text-txt-strong">{title}</div>
         {description ? (
-          <div className="text-xs leading-relaxed text-muted">{description}</div>
+          <div className="text-xs leading-relaxed text-muted">
+            {description}
+          </div>
         ) : null}
       </div>
       {action ? (
@@ -243,11 +263,7 @@ function ConnectorListRow({
   );
 }
 
-function ConnectorConfigurationSurface({
-  plugin,
-}: {
-  plugin: PluginInfo;
-}) {
+function ConnectorConfigurationSurface({ plugin }: { plugin: PluginInfo }) {
   const t = useAppSelector((s) => s.t);
   const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
   const handlePluginConfigSave = useAppSelector(
@@ -282,6 +298,16 @@ function ConnectorConfigurationSurface({
     hasParameters: plugin.parameters.length > 0,
     setupTargetsPlugin: (setupPluginId ?? plugin.id) === plugin.id,
   });
+  const hiddenConfigKeys = useMemo(
+    () => [
+      ...getConnectorSurfaceOwnedConfigKeys(plugin),
+      ...getConnectorModeHiddenConfigKeys(
+        plugin.id,
+        connectorMode.selectedMode,
+      ),
+    ],
+    [connectorMode.selectedMode, plugin],
+  );
   // Row/dialog UX persists per field on dialog Save (or toggle) — no bulk
   // "Save settings" footer. Keep a local draft map only so chips reflect the
   // value immediately while the server write is in flight.
@@ -335,6 +361,7 @@ function ConnectorConfigurationSurface({
             pluginConfigs={pluginConfigs}
             onParamChange={handleParamChange}
             layout="rows"
+            hiddenKeys={hiddenConfigKeys}
           />
           {setupPanel}
           {configFormHint ? (
@@ -453,7 +480,12 @@ function ConnectorDetailPage({
               {plugin.name}
             </h2>
             <p className="mt-0.5 text-sm text-muted">{tagline}</p>
-            <p className={cn("mt-1 text-xs font-medium", statusToneClass(status.tone))}>
+            <p
+              className={cn(
+                "mt-1 text-xs font-medium",
+                statusToneClass(status.tone),
+              )}
+            >
               {status.label}
             </p>
           </div>
@@ -518,7 +550,11 @@ function ConnectorDetailPage({
                     className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
                     asChild
                   >
-                    <a href={link.url} target="_blank" rel="noopener noreferrer">
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       {t("connectors.detail.openLink", {
                         defaultValue: "Open",
                       })}{" "}
@@ -534,7 +570,6 @@ function ConnectorDetailPage({
     </div>
   );
 }
-
 
 function ConnectorsIndex({
   connectors,
@@ -562,9 +597,9 @@ function ConnectorsIndex({
     }
     return CONNECTOR_UI_GROUPS.map((meta) => ({
       meta,
-      items: (buckets.get(meta.id) ?? []).slice().sort((a, b) =>
-        a.name.localeCompare(b.name),
-      ),
+      items: (buckets.get(meta.id) ?? [])
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name)),
     })).filter((entry) => entry.items.length > 0);
   }, [connectors]);
 
@@ -722,7 +757,7 @@ export function ConnectorsSection() {
         <div className="space-y-3" data-testid="connector-not-found">
           <p className="text-sm text-muted">
             {t("connectors.detail.notFound", {
-              defaultValue: "Connector \"{{id}}\" was not found.",
+              defaultValue: 'Connector "{{id}}" was not found.',
               id: detailId,
             })}
           </p>
