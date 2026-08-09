@@ -8,10 +8,35 @@ async function pageScale(page: Page) {
   }));
 }
 
+/**
+ * The served shell can issue a client-side redirect (first-run routing) right
+ * after domcontentloaded, destroying the execution context mid-evaluate. The
+ * assertions here are about the served document's viewport meta, which is
+ * identical across those routes, so retry the read across the navigation.
+ */
+async function evaluateAcrossNavigation<T>(
+  page: Page,
+  fn: () => T,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      return await page.evaluate(fn);
+    } catch (error) {
+      // error-policy:J3 — only the known navigation race is retried; anything
+      // else rethrows immediately.
+      if (!/Execution context was destroyed/.test(String(error))) throw error;
+      lastError = error;
+      await page.waitForLoadState("domcontentloaded");
+    }
+  }
+  throw lastError;
+}
+
 test.describe("WCAG 2.2 SC 1.4.4 browser zoom", () => {
   test("the served web shell allows 2× zoom", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const viewportMeta = await page.evaluate(() => {
+    const viewportMeta = await evaluateAcrossNavigation(page, () => {
       const meta = document.querySelector('meta[name="viewport"]');
       return meta?.getAttribute("content") ?? "";
     });
@@ -22,7 +47,10 @@ test.describe("WCAG 2.2 SC 1.4.4 browser zoom", () => {
     expect(viewportMeta).not.toMatch(/user-scalable\s*=\s*no/i);
     expect(viewportMeta).not.toMatch(/maximum-scale/i);
 
-    const baseline = await pageScale(page);
+    const baseline = await evaluateAcrossNavigation(page, () => ({
+      scale: window.visualViewport?.scale ?? 1,
+      width: window.visualViewport?.width ?? window.innerWidth,
+    }));
     expect(baseline.scale).toBeCloseTo(1, 1);
 
     const client = await page.context().newCDPSession(page);

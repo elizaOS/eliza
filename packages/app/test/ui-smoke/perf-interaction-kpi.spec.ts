@@ -96,7 +96,10 @@ function assertFrameKpi(
   expect(
     summary.p95FrameMs,
     `${label}: p95 ${summary.p95FrameMs.toFixed(1)}ms exceeds jank ceiling ${P95_JANK_CEILING_MS.toFixed(1)}ms`,
-  ).toBeLessThan(P95_JANK_CEILING_MS);
+    // Inclusive: throttled rAF on a loaded shared runner quantizes frame deltas
+    // to whole multiples of the budget, so p95 can land exactly on the ceiling
+    // without a sustained 100ms+ stall.
+  ).toBeLessThanOrEqual(P95_JANK_CEILING_MS);
 }
 
 /**

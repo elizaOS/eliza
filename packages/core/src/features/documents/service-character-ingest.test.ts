@@ -149,6 +149,10 @@ describe("DocumentService character document ingestion boot races", () => {
 		const runtime = createMockRuntime({
 			getSetting: () => undefined,
 			redactSecrets: (text: string) => text,
+			getModel: (type: string) =>
+				type === ModelType.TEXT_EMBEDDING
+					? async () => embeddingFor("registered")
+					: undefined,
 			getMemoryById: async () => null,
 			addEmbeddingToMemory: async (memory: Memory) => {
 				memory.embedding = embeddingFor(memory.content.text ?? "");
@@ -206,6 +210,10 @@ describe("DocumentService character document ingestion boot races", () => {
 		const runtime = createMockRuntime({
 			getSetting: () => undefined,
 			redactSecrets: (text: string) => text,
+			getModel: (type: string) =>
+				type === ModelType.TEXT_EMBEDDING
+					? async () => embeddingFor("registered")
+					: undefined,
 			getMemoryById: async () => null,
 			addEmbeddingToMemory: async (memory: Memory) => {
 				embeddings++;

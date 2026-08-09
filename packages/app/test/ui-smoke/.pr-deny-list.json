@@ -32,11 +32,6 @@
       "reason": "Runs via `bun run --cwd packages/app audit:app` (--project=audit-app); it walks every app view at desktop and mobile, captures artifacts, and writes manual-review stubs, so it is a deliberate visual-audit tool rather than default smoke (also testIgnore'd in the chromium project of playwright.ui-smoke.config.ts)."
     },
     {
-      "spec": "all-views-interaction.spec.ts",
-      "category": "dedicated-tool",
-      "reason": "Generic per-control interaction harness (#8796); for every built-in view it fills inputs and clicks every control. Run on demand via `E2E_RECORD=1 bun run --cwd packages/app test:e2e test/ui-smoke/all-views-interaction.spec.ts`; it exercises destructive controls broadly so it is a coverage tool, not a narrow keyless PR gate."
-    },
-    {
       "spec": "tap-target-geometry-all-views.spec.ts",
       "category": "dedicated-tool",
       "reason": "Generic per-view rendered-geometry 44px tap-target + role/DOM coherence gate (#10722); it walks every built-in view and measures every standalone control, and the component-library defaults still render 32-40px controls, so the gate cannot pass keyless today. Run on demand via `bun run --cwd packages/app test:e2e test/ui-smoke/tap-target-geometry-all-views.spec.ts`; it is a coverage/audit tool, not a narrow keyless PR gate."
