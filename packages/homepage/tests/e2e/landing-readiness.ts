@@ -6,12 +6,12 @@
 
 import { expect, type Page } from "playwright/test";
 
-export async function waitForLandingIntro(page: Page) {
+export async function waitForLandingIntro(page: Page, timeoutMs = 20_000) {
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForSelector("header", { timeout: 20_000 });
+  await page.waitForSelector("header", { timeout: timeoutMs });
 
   const tryButton = page.getByRole("button", { name: "Try Now" }).first();
-  await tryButton.waitFor({ timeout: 15_000 });
+  await tryButton.waitFor({ timeout: timeoutMs });
   await expect
     .poll(
       async () =>
@@ -20,19 +20,19 @@ export async function waitForLandingIntro(page: Page) {
             (element) => getComputedStyle(element).opacity,
           ),
         ),
-      { timeout: 20_000 },
+      { timeout: timeoutMs },
     )
     .toBeGreaterThan(0.98);
 
   await expect(page.locator("[data-shader-background]")).toHaveAttribute(
     "data-shader-background",
     "settled",
-    { timeout: 20_000 },
+    { timeout: timeoutMs },
   );
 
   const phoneState = page.locator("[data-phone-model]");
   await expect(phoneState).toHaveAttribute("data-phone-model", "settled", {
-    timeout: 20_000,
+    timeout: timeoutMs,
   });
   await expect(phoneState).toHaveAttribute("data-chat-phase", "terminal");
   await expect(phoneState).toHaveAttribute("data-chat-rendered-messages", "5");

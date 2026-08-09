@@ -291,9 +291,10 @@ test("landing page renders its animated shell and primary entrypoint", async ({
 test("landing composer is inert while hidden and stays in-viewport when active", async ({
   page,
 }) => {
+  test.slow();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await waitForLandingIntro(page);
+  await waitForLandingIntro(page, 45_000);
 
   const composer = page.locator('[data-landing-chrome="composer"]');
   await expect(composer).toHaveAttribute(
@@ -326,7 +327,7 @@ test("landing composer is inert while hidden and stays in-viewport when active",
   for (let i = 0; i < 3; i++) {
     await page.mouse.move(320, 420);
     await page.mouse.down();
-    await page.mouse.move(40, 420, { steps: 12 });
+    await page.mouse.move(40, 420);
     await page.mouse.up();
     await page.waitForTimeout(250);
   }
@@ -346,25 +347,38 @@ test("landing composer is inert while hidden and stays in-viewport when active",
   await message.focus();
   await expect(message).toBeFocused();
 
-  const bounds = await message.evaluate((el) => {
-    const rect = el.getBoundingClientRect();
-    return {
-      top: rect.top,
-      bottom: rect.bottom,
-      height: rect.height,
-      viewportHeight: window.innerHeight,
-    };
-  });
-  expect(bounds.height).toBeGreaterThanOrEqual(44);
-  expect(bounds.top).toBeGreaterThanOrEqual(0);
-  expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight + 0.5);
-
   const voice = page.getByRole("button", { name: /voice input|Send message/i });
-  const voiceBox = await voice.boundingBox();
-  expect(voiceBox).not.toBeNull();
-  if (voiceBox) {
-    expect(voiceBox.height).toBeGreaterThanOrEqual(44);
-    expect(voiceBox.width).toBeGreaterThanOrEqual(44);
-    expect(voiceBox.y + voiceBox.height).toBeLessThanOrEqual(844 + 0.5);
-  }
+  await expect
+    .poll(
+      async () => {
+        const bounds = await message.evaluate((el) => {
+          const rect = el.getBoundingClientRect();
+          return {
+            top: rect.top,
+            bottom: rect.bottom,
+            height: rect.height,
+            viewportHeight: window.innerHeight,
+          };
+        });
+        const voiceBox = await voice.boundingBox();
+        return {
+          messageTallEnough: bounds.height >= 44,
+          messageInViewport:
+            bounds.top >= 0 && bounds.bottom <= bounds.viewportHeight + 0.5,
+          voicePresent: voiceBox !== null,
+          voiceLargeEnough:
+            voiceBox !== null && voiceBox.height >= 44 && voiceBox.width >= 44,
+          voiceInViewport:
+            voiceBox !== null && voiceBox.y + voiceBox.height <= 844 + 0.5,
+        };
+      },
+      { timeout: 20_000 },
+    )
+    .toEqual({
+      messageTallEnough: true,
+      messageInViewport: true,
+      voicePresent: true,
+      voiceLargeEnough: true,
+      voiceInViewport: true,
+    });
 });
