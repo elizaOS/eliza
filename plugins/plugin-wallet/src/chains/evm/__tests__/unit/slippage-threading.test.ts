@@ -6,34 +6,40 @@
  * regardless of the confirmed value) and both `routeEvmBridge` quote sites
  * hardcoded `DEFAULT_SLIPPAGE_PERCENT`. These tests pin the confirmed value
  * reaching the Li.Fi quote layer and the defaults holding when no slippage
- * was stated. Network boundaries (Li.Fi `getRoutes`, bebop/kyberswap fetch)
- * are mocked; the routing and slippage math under test is the real
- * production code. Also covers the registry swap path forwarding and the
- * parse-layer contract: `SwapParamsSchema`/`BridgeParamsSchema` must accept
- * and bounds-check `slippageBps` so the field cannot be silently stripped
- * between the router boundary and execution.
+ * was stated. It also proves that an explicitly bounded swap cannot select a
+ * Bebop quote whose request has no enforceable tolerance, and that Li.Fi's
+ * exchange-rate refresh hook fails closed instead of widening a confirmed
+ * bridge tolerance. Network boundaries (Li.Fi `getRoutes`/`executeRoute`,
+ * Bebop/KyberSwap fetch) are mocked; the routing and slippage math under test
+ * is the real production code. Also covers the registry swap path forwarding
+ * and the parse-layer contract: `SwapParamsSchema`/`BridgeParamsSchema` must
+ * accept and bounds-check `slippageBps` so the field cannot be silently
+ * stripped between the router boundary and execution.
  */
+
 import type { IAgentRuntime } from "@elizaos/core";
+import type { ExecutionOptions } from "@lifi/sdk";
 import { arbitrum, base } from "viem/chains";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WalletBackendService } from "../../../../services/wallet-backend-service.js";
 import type { WalletChainHandler, WalletRouterContext } from "../../../../types/wallet-router.js";
 import { registerDefaultWalletChainHandlers } from "../../../registry";
 import { SwapAction } from "../../actions/swap";
-import { routeEvmBridge } from "../../bridge-router";
+import { BridgeAction, routeEvmBridge } from "../../bridge-router";
 import { createEvmWalletChainHandler } from "../../chain-handler";
 import { NATIVE_TOKEN_ADDRESS } from "../../constants";
 import type { WalletProvider } from "../../providers/wallet";
 import { parseBridgeParams, parseSwapParams } from "../../types";
 
-const { getRoutesMock, initWalletProviderMock } = vi.hoisted(() => ({
+const { executeRouteMock, getRoutesMock, initWalletProviderMock } = vi.hoisted(() => ({
+  executeRouteMock: vi.fn(),
   getRoutesMock: vi.fn(),
   initWalletProviderMock: vi.fn(),
 }));
 
 vi.mock("@lifi/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@lifi/sdk")>();
-  return { ...actual, getRoutes: getRoutesMock };
+  return { ...actual, executeRoute: executeRouteMock, getRoutes: getRoutesMock };
 });
 
 vi.mock("../../providers/wallet", async (importOriginal) => {
@@ -75,7 +81,12 @@ function quotedSlippages(): number[] {
   );
 }
 
+function requestedUrls(): string[] {
+  return vi.mocked(fetch).mock.calls.map(([url]) => String(url));
+}
+
 beforeEach(() => {
+  executeRouteMock.mockReset();
   getRoutesMock.mockReset();
   getRoutesMock.mockResolvedValue({ routes: [] });
   initWalletProviderMock.mockReset();
@@ -146,6 +157,7 @@ describe("EVM confirmed slippage threading", () => {
     ).rejects.toThrow("No routes found");
 
     expect(quotedSlippages()).toEqual([0.001]);
+    expect(requestedUrls().some((url) => url.includes("api.bebop.xyz"))).toBe(false);
   });
 
   it("keeps the default 1% first quote when no swap slippage was stated", async () => {
@@ -161,6 +173,72 @@ describe("EVM confirmed slippage threading", () => {
     ).rejects.toThrow("No routes found");
 
     expect(quotedSlippages()).toEqual([0.01]);
+    expect(requestedUrls().some((url) => url.includes("api.bebop.xyz"))).toBe(true);
+  });
+
+  it("rejects a Li.Fi bridge rate refresh when the user confirmed an explicit tolerance", async () => {
+    let executionOptions: ExecutionOptions | undefined;
+    getRoutesMock.mockResolvedValue({
+      routes: [{ steps: [{ tool: "lifi" }] }],
+    });
+    executeRouteMock.mockImplementation(async (_route: unknown, options: ExecutionOptions) => {
+      executionOptions = options;
+      throw new Error("stop after capturing execution options");
+    });
+
+    const action = new BridgeAction(createFakeWalletProvider());
+    await expect(
+      action.bridge({
+        fromChain: "base",
+        toChain: "arbitrum",
+        fromToken: NATIVE_TOKEN_ADDRESS,
+        toToken: NATIVE_TOKEN_ADDRESS,
+        amount: "0.5",
+        slippageBps: 10,
+      })
+    ).rejects.toThrow("stop after capturing execution options");
+
+    const hook = executionOptions?.acceptExchangeRateUpdateHook;
+    if (!hook) throw new Error("acceptExchangeRateUpdateHook was not configured");
+    await expect(
+      hook({
+        oldToAmount: "1000000",
+        newToAmount: "990000",
+        toToken: { decimals: 6, symbol: "USDC" },
+      })
+    ).resolves.toBe(false);
+  });
+
+  it("preserves the existing rate-refresh policy when bridge slippage was not explicit", async () => {
+    let executionOptions: ExecutionOptions | undefined;
+    getRoutesMock.mockResolvedValue({
+      routes: [{ steps: [{ tool: "lifi" }] }],
+    });
+    executeRouteMock.mockImplementation(async (_route: unknown, options: ExecutionOptions) => {
+      executionOptions = options;
+      throw new Error("stop after capturing execution options");
+    });
+
+    const action = new BridgeAction(createFakeWalletProvider());
+    await expect(
+      action.bridge({
+        fromChain: "base",
+        toChain: "arbitrum",
+        fromToken: NATIVE_TOKEN_ADDRESS,
+        toToken: NATIVE_TOKEN_ADDRESS,
+        amount: "0.5",
+      })
+    ).rejects.toThrow("stop after capturing execution options");
+
+    const hook = executionOptions?.acceptExchangeRateUpdateHook;
+    if (!hook) throw new Error("acceptExchangeRateUpdateHook was not configured");
+    await expect(
+      hook({
+        oldToAmount: "1000000",
+        newToAmount: "990000",
+        toToken: { decimals: 6, symbol: "USDC" },
+      })
+    ).resolves.toBe(true);
   });
 
   it("quotes the bridge at exactly the confirmed slippage (50 bps -> 0.005)", async () => {

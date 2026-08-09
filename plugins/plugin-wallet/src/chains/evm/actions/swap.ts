@@ -260,7 +260,12 @@ export class SwapAction {
 
     const quotesPromises: Promise<SwapQuote | undefined>[] = [
       this.getLifiQuote(fromAddress, params, fromTokenDecimals, slippage),
-      this.getBebopQuote(fromAddress, params, fromTokenDecimals),
+      // The current Bebop request does not carry an enforceable slippage
+      // bound. Keep it available for the legacy default path, but never let
+      // it win a quote the user confirmed with an explicit tolerance.
+      ...(params.slippageBps === undefined
+        ? [this.getBebopQuote(fromAddress, params, fromTokenDecimals)]
+        : []),
       this.getKyberSwapQuote(fromAddress, params, fromTokenDecimals, slippage),
     ];
 

@@ -198,7 +198,10 @@ export class BridgeAction {
     return Number(decimals);
   }
 
-  private createExecutionOptions(routeId: string): ExecutionOptions {
+  private createExecutionOptions(
+    routeId: string,
+    confirmedSlippageBps?: number,
+  ): ExecutionOptions {
     return {
       updateTransactionRequestHook: async (txRequest) => {
         if (txRequest.gas) {
@@ -216,6 +219,12 @@ export class BridgeAction {
         oldToAmount: string;
         newToAmount: string;
       }) => {
+        // Li.Fi invokes this hook after a refreshed step has already exceeded
+        // the route's slippage. Accepting it would widen an explicit tolerance
+        // after confirmation, so that path must fail closed.
+        if (confirmedSlippageBps !== undefined) {
+          return false;
+        }
         const priceChange =
           ((Number(params.newToAmount) - Number(params.oldToAmount)) /
             Number(params.oldToAmount)) *
@@ -445,7 +454,10 @@ export class BridgeAction {
       .slice(2, 11)}`;
 
     try {
-      const executionOptions = this.createExecutionOptions(routeId);
+      const executionOptions = this.createExecutionOptions(
+        routeId,
+        params.slippageBps,
+      );
       const executedRoute = await executeRoute(selectedRoute, executionOptions);
 
       const sourceSteps = executedRoute.steps.filter((step) =>
