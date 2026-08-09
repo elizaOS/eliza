@@ -155,14 +155,11 @@ export function PanelNotice({
         // mid-width settings panes.
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <div
-            className={cn(
-              "min-w-0 flex-1 basis-[min(100%,16rem)]",
-              toneClass,
-            )}
+            className={cn("min-w-0 flex-1 basis-[min(100%,16rem)]", toneClass)}
           >
             {children}
           </div>
-          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 text-txt">
+          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 text-txt-strong">
             {actions}
           </div>
         </div>

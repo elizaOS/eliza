@@ -27,23 +27,25 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // Keep disabled primary actions visibly subdued without lowering the
+        // orange fill so far that its dark label loses contrast (45% failed).
         default:
-          "bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-accent/45 disabled:text-accent-fg",
+          "bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-accent/80 disabled:text-accent-fg",
         surface:
-          "bg-card text-muted-strong hover:bg-surface disabled:text-muted",
+          "bg-card text-txt-strong hover:bg-surface disabled:text-muted-strong",
         surfaceAccent:
-          "bg-accent-subtle text-txt-strong hover:bg-accent-subtle/70 disabled:text-muted",
+          "bg-accent-subtle text-txt-strong hover:bg-accent-subtle/70 disabled:text-muted-strong",
         surfaceDestructive:
-          "bg-destructive-subtle text-danger hover:bg-destructive-subtle/70 disabled:text-muted",
+          "bg-destructive-subtle text-danger hover:bg-destructive-subtle/70 disabled:text-muted-strong",
         destructive:
-          "bg-destructive text-destructive-fg hover:bg-destructive/85 disabled:bg-destructive/45 disabled:text-destructive-fg",
+          "bg-destructive text-destructive-fg hover:bg-destructive/85 disabled:bg-destructive/65 disabled:text-destructive-fg",
         outline:
-          "border border-border/70 bg-card text-txt-strong hover:bg-surface hover:text-txt-strong disabled:border-border/50 disabled:bg-card disabled:text-muted-strong",
+          "border border-border bg-card text-txt-strong hover:border-border-strong hover:bg-surface hover:text-txt-strong disabled:border-border/60 disabled:bg-card disabled:text-muted-strong",
         secondary:
-          "bg-bg-accent text-txt hover:bg-surface disabled:text-muted",
+          "bg-bg-accent text-txt-strong hover:bg-surface disabled:text-muted-strong",
         ghost:
-          "text-muted-strong hover:bg-surface hover:text-txt disabled:text-muted",
-        link: "text-primary underline-offset-4 hover:underline disabled:text-muted",
+          "text-txt-strong hover:bg-surface hover:text-txt-strong disabled:text-muted-strong",
+        link: "text-accent underline-offset-4 hover:underline disabled:text-muted-strong",
       },
       size: {
         default:
