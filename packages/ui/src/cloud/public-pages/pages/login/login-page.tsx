@@ -178,14 +178,14 @@ export default function LoginPage() {
           })}{" "}
           <Link
             to="/terms-of-service"
-            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,color] hover:underline hover:opacity-80 focus-visible:bg-bg-hover focus-visible:text-txt-strong"
+            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,color] hover:underline hover:opacity-80"
           >
             {t("cloud.login.termsLink", { defaultValue: "Terms" })}
           </Link>{" "}
           {t("cloud.login.and", { defaultValue: "and" })}{" "}
           <Link
             to="/privacy-policy"
-            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,color] hover:underline hover:opacity-80 focus-visible:bg-bg-hover focus-visible:text-txt-strong"
+            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,color] hover:underline hover:opacity-80"
           >
             {t("cloud.login.privacyPolicy", { defaultValue: "Privacy Policy" })}
           </Link>

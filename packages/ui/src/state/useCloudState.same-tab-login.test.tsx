@@ -46,6 +46,9 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
 
   beforeEach(() => {
     localStorage.clear();
+    // jsdom's window.focus logs "Not implemented" through console.error; the
+    // auth-return path calls it best-effort, so stub it out of the run.
+    vi.spyOn(window, "focus").mockImplementation(() => {});
     assignSpy = vi.fn();
     Object.defineProperty(window, "location", {
       configurable: true,
