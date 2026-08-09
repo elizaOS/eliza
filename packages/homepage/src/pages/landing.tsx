@@ -758,6 +758,10 @@ export default function Leaderboard() {
   return (
     <div
       {...bind()}
+      // Horizontal swipes cross the QR image and Get Started link; without
+      // this, a mouse drag starts native HTML drag-and-drop instead of the
+      // platform-switch gesture (and wedges pointer input mid-drag).
+      onDragStart={(event) => event.preventDefault()}
       className="theme-app min-h-screen"
       style={{
         touchAction: "pan-y",

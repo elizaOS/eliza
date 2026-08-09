@@ -351,11 +351,14 @@ test("landing composer is inert while hidden and stays in-viewport when active",
     return {
       top: rect.top,
       bottom: rect.bottom,
-      height: rect.height,
+      // The composer sits under a deliberate perspective/rotateX tilt, which
+      // shrinks the projected rect slightly; the touch-target floor applies to
+      // the layout box, so measure offsetHeight rather than rect.height.
+      layoutHeight: (el as HTMLElement).offsetHeight,
       viewportHeight: window.innerHeight,
     };
   });
-  expect(bounds.height).toBeGreaterThanOrEqual(44);
+  expect(bounds.layoutHeight).toBeGreaterThanOrEqual(44);
   expect(bounds.top).toBeGreaterThanOrEqual(0);
   expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight + 0.5);
 
