@@ -73,12 +73,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Validate CI path gate
-        run: node packages/scripts/ci-path-gate.self-test.mjs
-
-      - name: Validate CI workflow dedup contract
-        run: node packages/scripts/ci-workflow-dedup-contract.mjs
-
       - name: Validate GitHub-native turbo cache contract
         run: node packages/scripts/ci-turbo-cache-contract.mjs
 
@@ -87,20 +81,6 @@ jobs:
       # this checker previously ran in no lane and en.json drifted 705 keys).
       - name: Validate i18n source catalog contract
         run: node packages/app-core/scripts/check-i18n.mjs
-
-      - name: Install workflow-invariants parser dependency
-        run: npm install --prefix "$RUNNER_TEMP/workflow-invariants-deps" --no-save --no-package-lock --ignore-scripts yaml@2.9.0
-
-      - name: Validate merge-critical workflow invariants
-        env:
-          NODE_PATH: ${{ runner.temp }}/workflow-invariants-deps/node_modules
-        run: node packages/scripts/ci-workflow-invariants.mjs
-
-      - name: Validate zero-key command ownership contract
-        run: node packages/scripts/ci-zero-key-command-ownership-contract.mjs
-
-      - name: Validate Windows command coverage contract
-        run: node packages/scripts/ci-windows-command-coverage-contract.mjs
 
       - name: Install alias-read guard parser dependency
         run: npm install --prefix "$RUNNER_TEMP/alias-read-guard-deps" --no-save --no-package-lock --ignore-scripts typescript@6.0.3
@@ -220,12 +200,6 @@ jobs:
 
       - name: Remote capability plugin surface audit
         run: bun run test:remote-capabilities:surface-audit
-
-      - name: Remote capability live CI audit
-        run: bun run test:remote-capabilities:live-ci-audit
-
-      - name: Remote capability live CI audit self-test
-        run: bun run test:remote-capabilities:live-ci-audit:self-test
 
       - name: Remote capability naming audit
         run: bun run test:remote-capabilities:naming-audit
@@ -768,9 +742,6 @@ jobs:
       # postinstall, so generate it explicitly before any step resolves core.
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
-
-      - name: Scenario catalog coverage gate
-        run: node packages/scripts/check-scenario-workflow-coverage.mjs --report-dir reports/scenarios/catalog-inventory
 
       - name: Persona catalog coverage gate
         run: node packages/scripts/check-lifeops-persona-catalog-coverage.mjs

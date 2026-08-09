@@ -56,6 +56,7 @@ function run(args, env = {}) {
 }
 
 const NOWHERE_FILTER = "__no_such_package_zzz__";
+const ZERO_TASK_DIAGNOSTIC = "lane matched 0 runnable tasks";
 const TEMP_PACKAGE_DIR = join(
   repoRoot,
   "packages",
@@ -93,9 +94,7 @@ function rootScript(name) {
   return script;
 }
 
-describe("root test lane min-task wiring (#13620)", () => {
-  // The root lanes moved from per-lane --min-tasks=N floors to the stricter
-  // --require-work guard (exit 3 when a lane selects zero runnable tasks).
+describe("root test lane require-work wiring (#13620)", () => {
   for (const scriptName of [
     "test",
     "test:server",
@@ -105,7 +104,7 @@ describe("root test lane min-task wiring (#13620)", () => {
     "test:live",
     "test:e2e:live",
   ]) {
-    test(`${scriptName} arms the run-all-tests vacuous-green floor`, () => {
+    test(`${scriptName} arms the run-all-tests vacuous-green guard`, () => {
       expect(rootScript(scriptName)).toContain("--require-work");
     });
   }
@@ -133,7 +132,7 @@ describe("root test lane min-task wiring (#13620)", () => {
 
 describe("run-all-tests --require-work vacuous-green guard", () => {
   test(
-    "exits 3 when a collapsed filter selects zero runnable tasks",
+    "exits 3 when a collapsed filter collects zero runnable tasks",
     () => {
       const result = run([
         "--no-cloud",
@@ -144,12 +143,15 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
       expect(`${result.stdout}${result.stderr}`).toContain(
         "VACUOUS-GREEN GUARD",
       );
+      expect(`${result.stdout}${result.stderr}`).toContain(
+        ZERO_TASK_DIAGNOSTIC,
+      );
     },
     SPAWN_TIMEOUT_MS,
   );
 
   test(
-    "enforces the guard before plan mode exits",
+    "enforces the zero-task guard before plan mode exits",
     () => {
       const result = run([
         "--plan=json",
@@ -158,7 +160,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
         "--require-work",
       ]);
       expect(result.status).toBe(3);
-      expect(result.stderr).toContain("VACUOUS-GREEN GUARD");
+      expect(result.stderr).toContain(ZERO_TASK_DIAGNOSTIC);
       expect(result.stdout).toBe("");
     },
     SPAWN_TIMEOUT_MS,
@@ -168,8 +170,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
     "without the guard, a collapsed lane keeps its historical non-failing exit",
     () => {
       // The guard is strictly additive: omitting --require-work must not change
-      // the pre-existing behaviour of a zero-task collapse (green, no guard
-      // text).
+      // the pre-existing behaviour of a zero-task collapse (green, no guard text).
       const result = run(["--no-cloud", `--filter=${NOWHERE_FILTER}`]);
       expect(result.status).toBe(0);
       expect(`${result.stdout}${result.stderr}`).not.toContain(
@@ -180,7 +181,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
   );
 
   test(
-    "plan mode still succeeds with --require-work when a task is selected",
+    "plan mode still succeeds with --require-work when a task is discovered",
     () => {
       // Use a self-contained fixture instead of an authored workspace package:
       // this guard is explicitly invoked from packages/scripts/__tests__, which
@@ -271,7 +272,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
 
 // #13620 task 4: the no-tests-skip reclassification must be narrowed so a
 // non-zero exit whose output ALSO carries a genuine failure signal is not
-// swallowed as SKIP=green. Distinct from the `--min-tasks` guard (task 3,
+// swallowed as SKIP=green. Distinct from the `--require-work` guard (task 3,
 // #12342) pinned above, and from the existing "arbitrary failing script" case
 // whose fixture command is not no-test-skippable (so it never reached the
 // swallow branch). These fixtures use a SINGLE `bun test <file>` command, which

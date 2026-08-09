@@ -75,7 +75,7 @@
  * device-proven shipping boundary: they are inventoried as excluded, never
  * version-checked here.
  */
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "./lib/spawn-sync-captured.mjs";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -138,14 +138,9 @@ const EXCLUDED_SURFACES = [
 
 // Required, scheduled, and deploy-critical install lanes that must wire the
 // concrete pin directly (not merely resolve through indirection). The required
-// `ci-ok` aggregate (test.yml), consolidated gate (ci.yml), and canonical
-// cloud deploy are the load-bearing paths.
-const GATE_WORKFLOWS = [
-  "ci.yml",
-  "test.yml",
-  "develop-pr.yml",
-  "cloud-cf-deploy.yml",
-];
+// `ci-ok` aggregate (test.yml), the develop PR gate, and the canonical cloud
+// deploy are the load-bearing paths.
+const GATE_WORKFLOWS = ["test.yml", "develop-pr.yml", "cloud-cf-deploy.yml"];
 
 // Both the post-merge suite and the required develop PR gate must execute the
 // contract and publish its exact-head inventory. Keeping the PR lane here is
@@ -216,11 +211,20 @@ export function classifyTypeRange(range, canonical) {
 // synthetic fixture trees the tests build (no `.git` there, by construction).
 function trackedFiles(repoRoot) {
   if (existsSync(join(repoRoot, ".git"))) {
-    const output = execFileSync("git", ["-C", repoRoot, "ls-files", "-z"], {
+    // spawn-sync-captured routes child output through files: Bun's test runner
+    // can hand back empty stdio pipes, which made 23k tracked files enumerate
+    // as zero and the whole inventory silently vanish.
+    const result = spawnSync("git", ["-C", repoRoot, "ls-files", "-z"], {
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
     });
-    return output.split("\0").filter((entry) => entry.length > 0);
+    if (result.status !== 0 || result.error) {
+      throw new Error(
+        `git ls-files failed for ${repoRoot}: status=${String(result.status)} ${result.stderr ?? ""}`,
+        { cause: result.error },
+      );
+    }
+    return result.stdout.split("\0").filter((entry) => entry.length > 0);
   }
   const found = [];
   const stack = [repoRoot];
