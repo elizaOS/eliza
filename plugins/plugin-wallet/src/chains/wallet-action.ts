@@ -377,8 +377,12 @@ async function runWalletRouter(
     };
   }
 
+  // GHSA-7qxr-x6cg-r9cc: bridge is guarded alongside transfer because
+  // routeEvmBridge maps params.recipient to the Li.Fi destination toAddress,
+  // so an unstated injected recipient there is the same class as an unstated
+  // transfer recipient.
   if (
-    params.subaction === "transfer" &&
+    (params.subaction === "transfer" || params.subaction === "bridge") &&
     params.recipient &&
     (/^0x[a-fA-F0-9]{40}$/.test(params.recipient) ||
       /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(params.recipient))
@@ -398,7 +402,7 @@ async function runWalletRouter(
         );
       }
     } catch (error) {
-      const text = `Invalid wallet transfer recipient: ${
+      const text = `Invalid wallet ${params.subaction} recipient: ${
         error instanceof Error ? error.message : String(error)
       }`;
       await callback?.({ text, content: { error: "INVALID_PARAMS" } });

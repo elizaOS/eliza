@@ -188,8 +188,13 @@ export function walletFinancialPreview(
       return `Transfer ${params.amount ?? "?"} ${params.fromToken ?? "tokens"} to ${params.recipient ?? "?"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
     case "swap":
       return `Swap ${params.amount ?? "?"} ${params.fromToken ?? "?"} to ${params.toToken ?? "?"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
-    case "bridge":
-      return `Bridge ${params.amount ?? "?"} from ${params.chain ?? "?"} to ${params.toChain ?? "?"}? Reply yes to submit or no to cancel.`;
+    case "bridge": {
+      // params.recipient becomes the Li.Fi destination toAddress, so the user
+      // must see it before confirming; with no recipient the bridge returns
+      // funds to the sender on the destination chain.
+      const destination = params.recipient ? ` to ${params.recipient}` : "";
+      return `Bridge ${params.amount ?? "?"} ${params.fromToken ?? "?"} from ${params.chain ?? "?"} to ${params.toChain ?? "?"}${destination}? Reply yes to submit or no to cancel.`;
+    }
     case "gov":
       return `Governance ${params.op ?? "operation"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
     case "pump_fun_buy":
