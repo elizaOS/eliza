@@ -33,7 +33,11 @@ export const entitiesProvider: Provider = {
 	contextGate: { anyOf: ["contacts", "memory", "messaging"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "USER" },
+	// GUEST floor: who's present in the CURRENT room — the member list every
+	// participant already sees. Gating at USER let the agent-host role gate
+	// blank it for unassigned group-channel senders (GUEST floor), leaving the
+	// bot unable to name who it was talking to.
+	roleGate: { minRole: "GUEST" },
 
 	get: async (runtime: IAgentRuntime, message: Memory) => {
 		const { roomId, entityId } = message;

@@ -29,7 +29,10 @@ export const worldProvider: Provider = {
 	contextGate: { anyOf: ["general"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "USER" },
+	// GUEST floor: world/channel shape for the room the sender is already in —
+	// visible to every participant, so withholding it from GUEST-role senders
+	// (unassigned group-channel members) only broke conversational coherence.
+	roleGate: { minRole: "GUEST" },
 
 	get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
 		logger.debug(
