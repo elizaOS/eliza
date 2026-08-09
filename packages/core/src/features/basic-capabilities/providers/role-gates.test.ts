@@ -12,6 +12,7 @@
  * group conversations for non-admin senders.
  */
 import { describe, expect, it } from "vitest";
+import { currentTimeProvider } from "./currentTime.ts";
 import { entitiesProvider } from "./entities.ts";
 import { recentMessagesProvider } from "./recentMessages.ts";
 import { worldProvider } from "./world.ts";
@@ -27,5 +28,11 @@ describe("current-room context providers stay readable at the GUEST floor", () =
 
 	it("ENTITIES (who is present in the current room) is not gated above GUEST", () => {
 		expect(entitiesProvider.roleGate).toEqual({ minRole: "GUEST" });
+	});
+
+	it("CURRENT_TIME (the date/time signal) is not gated above GUEST", () => {
+		// The system prompt promises the time signal; gating it above GUEST left
+		// non-admin senders to hallucinate the date. Time is not sensitive.
+		expect(currentTimeProvider.roleGate).toEqual({ minRole: "GUEST" });
 	});
 });
