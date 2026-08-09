@@ -129,12 +129,11 @@ function readMessageMetadata(message: Memory): IncomingMessageSecurityMetadata {
 }
 
 /**
- * `userPayloadText` and `externalContentWrapped` are runtime-internal stamps
- * that only this module may set: a connector that forwards client-supplied
- * `content.metadata` would otherwise let an external sender pre-stamp a
- * payload DIFFERENT from the visible text, steering resolvers to a target the
- * model never saw. Same doctrine as the forged autonomy marker — strip both
- * from every inbound message before hardening re-stamps them.
+ * Security metadata is runtime-owned. A connector that forwards
+ * client-supplied `content.metadata` must not pre-stamp a payload different
+ * from the visible text, fabricate an injection result, or pre-populate an
+ * adjudication cache entry. Same doctrine as the forged autonomy marker:
+ * strip every internal security stamp before hardening recomputes its own.
  */
 function stripForgedSecurityStamps(message: Memory): void {
 	const metadata = message.content.metadata;
@@ -147,6 +146,18 @@ function stripForgedSecurityStamps(message: Memory): void {
 	}
 	if ("externalContentWrapped" in record) {
 		delete record.externalContentWrapped;
+	}
+	if ("promptInjectionSuspected" in record) {
+		delete record.promptInjectionSuspected;
+	}
+	if ("promptInjectionPatterns" in record) {
+		delete record.promptInjectionPatterns;
+	}
+	if ("injectionRisk" in record) {
+		delete record.injectionRisk;
+	}
+	if ("injectionRiskAdjudication" in record) {
+		delete record.injectionRiskAdjudication;
 	}
 }
 

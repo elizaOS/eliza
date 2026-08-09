@@ -17,6 +17,7 @@
  */
 
 import { isAdminRank } from "../../roles.ts";
+import { unwrapUserMessageText } from "../../security/incoming-message-security.ts";
 import type { Memory } from "../../types/memory.ts";
 import { ModelType } from "../../types/model.ts";
 import type { PipelineHookSpec } from "../../types/pipeline-hooks.ts";
@@ -82,8 +83,17 @@ const SCORE_WEIGHTS = {
 	socialEngineeringCap: 0.3,
 } as const;
 
-function textOf(message: Memory): string {
+function rawTextOf(message: Memory): string {
 	return typeof message.content.text === "string" ? message.content.text : "";
+}
+
+function riskTextOf(message: Memory): string {
+	// Raw prompt text may be framework-generated external-content armor whose
+	// warning language matches the injection bank. Only the retained payload
+	// represents words supplied by the sender. When canonical unwrapping rejects
+	// malformed or forged armor, scanning the raw text preserves fail-closed
+	// injection detection instead of turning an invalid boundary into no risk.
+	return unwrapUserMessageText(message) || rawTextOf(message);
 }
 
 /**
@@ -177,7 +187,11 @@ export function extractRiskFactors(text: string): RiskFactors {
 const METADATA_KEY = "injectionRisk";
 const ADJUDICATION_METADATA_KEY = "injectionRiskAdjudication";
 
-function writeRiskFactors(message: Memory, factors: RiskFactors): void {
+function writeRiskFactors(
+	message: Memory,
+	factors: RiskFactors,
+	text: string,
+): void {
 	const existing =
 		typeof message.content.metadata === "object" &&
 		message.content.metadata !== null
@@ -188,18 +202,43 @@ function writeRiskFactors(message: Memory, factors: RiskFactors): void {
 		// `RiskFactors` is a flat JSON object (numbers + a string array), so a
 		// fresh spread is structurally a `{ [key: string]: ContentValue }` member
 		// without any cast.
-		[METADATA_KEY]: { ...factors },
+		[METADATA_KEY]: { ...factors, text },
 	} as { [key: string]: ContentValue };
 }
 
-function readRiskFactors(message: Memory): RiskFactors | undefined {
+function readRiskFactors(
+	message: Memory,
+	text: string,
+): RiskFactors | undefined {
 	const metadata = message.content.metadata;
 	if (typeof metadata !== "object" || metadata === null) return undefined;
 	const raw = (metadata as Record<string, unknown>)[METADATA_KEY];
 	if (typeof raw !== "object" || raw === null) return undefined;
-	const candidate = raw as Partial<RiskFactors>;
-	if (typeof candidate.score !== "number") return undefined;
-	return candidate as RiskFactors;
+	const candidate = raw as Partial<RiskFactors> & { text?: unknown };
+	if (
+		candidate.text !== text ||
+		typeof candidate.hiddenCharCount !== "number" ||
+		typeof candidate.nonAsciiCount !== "number" ||
+		typeof candidate.letterSplitHits !== "number" ||
+		typeof candidate.wordReversalHits !== "number" ||
+		typeof candidate.structuralInjectionHits !== "number" ||
+		!Array.isArray(candidate.socialEngineeringClasses) ||
+		!candidate.socialEngineeringClasses.every(
+			(value) => typeof value === "string",
+		) ||
+		typeof candidate.score !== "number"
+	) {
+		return undefined;
+	}
+	return {
+		hiddenCharCount: candidate.hiddenCharCount,
+		nonAsciiCount: candidate.nonAsciiCount,
+		letterSplitHits: candidate.letterSplitHits,
+		wordReversalHits: candidate.wordReversalHits,
+		structuralInjectionHits: candidate.structuralInjectionHits,
+		socialEngineeringClasses: candidate.socialEngineeringClasses,
+		score: candidate.score,
+	};
 }
 
 /** OWNER/ADMIN are trusted and never gated; everything else is untrusted. */
@@ -265,7 +304,8 @@ export function registerCoreShouldRespondRiskHook(
 		mutatesPrimary: true,
 		handler: (_runtime, ctx) => {
 			if (ctx.phase !== "parallel_with_should_respond") return;
-			writeRiskFactors(ctx.message, extractRiskFactors(textOf(ctx.message)));
+			const text = riskTextOf(ctx.message);
+			writeRiskFactors(ctx.message, extractRiskFactors(text), text);
 		},
 	};
 	runtime.registerPipelineHook(spec);
@@ -414,8 +454,8 @@ export async function runShouldRespondInjectionGate(args: {
 	threshold?: number;
 }): Promise<InjectionGateResult> {
 	const { runtime, message, resolveSenderRole } = args;
-	const factors =
-		readRiskFactors(message) ?? extractRiskFactors(textOf(message));
+	const text = riskTextOf(message);
+	const factors = readRiskFactors(message, text) ?? extractRiskFactors(text);
 	if (factors.score <= 0) {
 		return {
 			blocked: false,
@@ -427,7 +467,6 @@ export async function runShouldRespondInjectionGate(args: {
 
 	const role = await resolveSenderRole();
 	const normalizedRole = roleKey(role);
-	const text = textOf(message);
 	const cached = readCachedGateResult(message, text, normalizedRole);
 	if (cached) {
 		return cached;
