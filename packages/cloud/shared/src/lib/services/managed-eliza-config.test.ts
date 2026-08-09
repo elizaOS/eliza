@@ -1,5 +1,5 @@
 // Exercises managed eliza config behavior with deterministic cloud-shared lib fixtures.
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("./api-keys", () => ({
   apiKeysService: {
@@ -395,5 +395,100 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(healed.ELIZA_AGENT_LOCAL_STATE).toBe("1");
     expect(healed.PGLITE_DATA_DIR).toBe("/root/.eliza/.pgdata");
     expect(healed.ELIZA_PLUGIN_SET).toBe("lean-chat");
+  });
+});
+
+/**
+ * Composed boundary: producer map → container env apply → detector contract that
+ * GET /api/status uses for `cloud.cloudProvisioned`. Mirrors
+ * packages/shared isCloudProvisionedContainer for the non-aliased keys the
+ * producer emits (flag + token / cloud API key).
+ */
+function isCloudProvisionedFromProcessEnv(): boolean {
+  const hasFlag = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  const hasSteward = Boolean(process.env.STEWARD_AGENT_TOKEN?.trim());
+  const hasApiToken = Boolean(process.env.ELIZA_API_TOKEN?.trim());
+  const hasCloudKey =
+    process.env.ELIZAOS_CLOUD_ENABLED === "true" &&
+    Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
+  return hasFlag && (hasSteward || hasApiToken || hasCloudKey);
+}
+
+function statusCloudShape(agentName: string) {
+  const cloudProvisioned = isCloudProvisionedFromProcessEnv();
+  return {
+    connectionStatus: cloudProvisioned ? "connected" : "disconnected",
+    activeAgentId: cloudProvisioned ? agentName : null,
+    cloudProvisioned,
+  };
+}
+
+function applyContainerEnv(environmentVars: Record<string, string>) {
+  for (const [key, value] of Object.entries(environmentVars)) {
+    process.env[key] = value;
+  }
+}
+
+describe("managed producer → container env → status detector boundary", () => {
+  const boundaryKeys = [
+    "ELIZA_CLOUD_PROVISIONED",
+    "ELIZA_API_TOKEN",
+    "ELIZAOS_CLOUD_API_KEY",
+    "ELIZAOS_CLOUD_ENABLED",
+    "STEWARD_AGENT_TOKEN",
+  ] as const;
+  const savedBoundary = Object.fromEntries(
+    boundaryKeys.map((key) => [key, process.env[key]]),
+  );
+
+  beforeEach(() => {
+    for (const key of boundaryKeys) {
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(savedBoundary)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  test("producer force-set transports through container env into provisioned status shape", async () => {
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const produced = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-boundary-1",
+      userId: "user-boundary-1",
+      agentSandboxId: "managed-boundary-agent",
+      existingEnv: {
+        // Caller tries to clear the marker; producer must still force it on.
+        ELIZA_CLOUD_PROVISIONED: "0",
+      },
+    });
+
+    expect(produced.environmentVars.ELIZA_CLOUD_PROVISIONED).toBe("1");
+    expect(produced.environmentVars.ELIZA_API_TOKEN?.length).toBeGreaterThan(0);
+    expect(produced.environmentVars.ELIZAOS_CLOUD_ENABLED).toBe("true");
+    expect(produced.environmentVars.ELIZAOS_CLOUD_API_KEY).toBe("agent-api-key");
+
+    // Control-plane container create injects the producer map as process env.
+    applyContainerEnv(produced.environmentVars);
+
+    expect(isCloudProvisionedFromProcessEnv()).toBe(true);
+    expect(statusCloudShape("managed-boundary-agent")).toEqual({
+      connectionStatus: "connected",
+      activeAgentId: "managed-boundary-agent",
+      cloudProvisioned: true,
+    });
+  });
+
+  test("self-hosted process without producer env reports unprovisioned status shape", () => {
+    expect(isCloudProvisionedFromProcessEnv()).toBe(false);
+    expect(statusCloudShape("local-agent")).toEqual({
+      connectionStatus: "disconnected",
+      activeAgentId: null,
+      cloudProvisioned: false,
+    });
   });
 });
