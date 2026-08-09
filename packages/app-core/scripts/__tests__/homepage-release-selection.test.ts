@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  hasDownloadableRelease,
   hasInstallerAsset,
   isInternalRelease,
   pickRelease,
@@ -218,5 +219,63 @@ describe("pickRelease — general exclusion", () => {
     const picked = pickRelease(releases);
     expect(picked).not.toBeNull();
     expect(picked?.tag_name).toBe("v1.2.0-beta");
+  });
+});
+
+describe("hasDownloadableRelease — buildRelease integration", () => {
+  it("returns true for a release with correctly named installer assets", () => {
+    const release = makeRelease({
+      tag_name: "v1.0.0",
+      assets: [
+        makeAsset("ElizaOSApp-1.0.0-macos-arm64.dmg"),
+        makeAsset("ElizaOSApp-Setup-1.0.0.exe"),
+      ],
+    });
+    expect(hasDownloadableRelease(release)).toBe(true);
+  });
+
+  it("returns false for a release with only a loosely-named .dmg that buildRelease rejects", () => {
+    // This is the RP round 2 shadowing scenario: only-one.dmg passes
+    // hasInstallerAsset but produces 0 downloads from buildRelease.
+    const release = makeRelease({
+      tag_name: "v2.0.0",
+      assets: [makeAsset("only-one.dmg")],
+    });
+    expect(hasInstallerAsset(release)).toBe(true);
+    expect(hasDownloadableRelease(release)).toBe(false);
+  });
+
+  it("returns false for null/undefined", () => {
+    expect(hasDownloadableRelease(null)).toBe(false);
+    expect(hasDownloadableRelease(undefined)).toBe(false);
+  });
+});
+
+describe("pickStableRelease — shadowing edge case (RP round 2)", () => {
+  it("skips a newer release with loose installer-like asset, selects older release with real downloads", () => {
+    // newer v2 has only-one.dmg (passes hasInstallerAsset, but buildRelease
+    // produces 0 downloads). Older v1 has correctly named installers.
+    const releases = [
+      makeRelease({
+        tag_name: "v2.0.0",
+        prerelease: false,
+        published_at: "2026-08-01T00:00:00Z",
+        assets: [makeAsset("only-one.dmg")],
+      }),
+      makeRelease({
+        tag_name: "v1.0.0",
+        prerelease: false,
+        published_at: "2026-06-01T00:00:00Z",
+        assets: [
+          makeAsset("ElizaOSApp-1.0.0-macos-arm64.dmg"),
+          makeAsset("ElizaOSApp-Setup-1.0.0.exe"),
+          makeAsset("elizaos-1.0.0-linux.AppImage"),
+          makeAsset("elizaos-1.0.0.apk"),
+        ],
+      }),
+    ];
+    const picked = pickStableRelease(releases);
+    expect(picked).not.toBeNull();
+    expect(picked?.tag_name).toBe("v1.0.0");
   });
 });

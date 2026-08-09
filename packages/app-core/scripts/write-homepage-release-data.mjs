@@ -192,12 +192,17 @@ function sortReleasesByRecency(releases) {
     });
 }
 
+function hasDownloadableRelease(release) {
+  if (!release) return false;
+  return buildRelease(release).downloads.length > 0;
+}
+
 function pickRelease(releases) {
   const published = sortReleasesByRecency(releases);
-  // Prefer a release with installer assets; fall back to any with assets, then
-  // any non-internal release.
+  // Prefer the newest release that resolves at least one installer download;
+  // fall back to any with assets, then any non-internal release.
   return (
-    published.find((r) => hasInstallerAsset(r)) ??
+    published.find((r) => hasDownloadableRelease(r)) ??
     published.find((r) => Array.isArray(r.assets) && r.assets.length > 0) ??
     published[0] ??
     null
@@ -207,7 +212,7 @@ function pickRelease(releases) {
 function pickStableRelease(releases) {
   const stable = sortReleasesByRecency(releases).filter((r) => !r.prerelease);
   return (
-    stable.find((r) => hasInstallerAsset(r)) ??
+    stable.find((r) => hasDownloadableRelease(r)) ??
     stable.find((r) => Array.isArray(r.assets) && r.assets.length > 0) ??
     stable[0] ??
     null
@@ -845,24 +850,20 @@ async function main() {
   try {
     const releases = await fetchReleases();
     const osReleases = await fetchReleases(OS_RELEASES_URL);
+    // Use stable release as primary; fall back to any release if no stable exists
     const stableRelease = pickStableRelease(releases);
     const canaryRelease = pickCanaryRelease(releases);
-    // Use stable release as primary; fall back to any release if no stable exists
     const primaryRelease = stableRelease ?? pickRelease(releases);
     const osArtifacts = await buildOsArtifacts(
       pickRelease(osReleases),
       canaryRelease ?? primaryRelease,
     );
     // A release is displayable only if buildRelease() resolves at least one
-    // installer download for it. Otherwise render the explicit unavailable
-    // state rather than selecting an internal/evidence or incomplete release.
-    const candidateRelease = primaryRelease;
-    const candidatePayload = candidateRelease
-      ? buildRelease(candidateRelease)
-      : null;
+    // installer download for it. pickStableRelease already enforces this, but
+    // pickRelease (the fallback) may select one with only loose assets.
     const displayRelease =
-      candidatePayload && candidatePayload.downloads.length > 0
-        ? candidateRelease
+      primaryRelease && hasDownloadableRelease(primaryRelease)
+        ? primaryRelease
         : null;
     await writePayload(
       buildPayload(displayRelease, canaryRelease, stableRelease, osArtifacts),
@@ -891,6 +892,7 @@ async function main() {
 // Export pure functions for unit testing.
 export {
   buildRelease,
+  hasDownloadableRelease,
   hasInstallerAsset,
   isInternalRelease,
   pickCanaryRelease,
