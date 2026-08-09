@@ -755,6 +755,7 @@ export default function GetStartedPage() {
                 "We couldn't finish linking this Telegram chat. Return to the bot and request a new link.",
             }),
           );
+          setIsSubmittingPhone(false);
           return;
         }
         clearRememberedReturnTo();

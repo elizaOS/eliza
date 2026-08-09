@@ -20,8 +20,7 @@ const createSession = mock(async () => ({
   token: "new-session-token",
   expiresAt: new Date("2026-08-09T00:00:00.000Z"),
 }));
-const linkTelegramToUser = mock(async () => ({ success: true }));
-const linkPhoneToUser = mock(
+const linkTelegramAndPhoneToUser = mock(
   async (): Promise<{ success: boolean; error?: string }> => ({
     success: true,
   }),
@@ -38,6 +37,7 @@ const USER = {
   organization: { id: "org-1", name: "Org 1" },
 };
 const getById = mock(async () => ({ ...USER }));
+const getByIdForWrite = mock(async () => ({ ...USER }));
 const getByTelegramId = mock(
   async (): Promise<Awaited<ReturnType<typeof getById>> | undefined> =>
     undefined,
@@ -99,9 +99,9 @@ const dependencies = {
   verifyAuth,
   validateAuthHeader,
   createSession,
-  linkTelegramToUser,
-  linkPhoneToUser,
+  linkTelegramAndPhoneToUser,
   getById,
+  getByIdForWrite,
   getByTelegramId,
   getByPhoneNumber,
   findOrCreateByTelegramWithPhone,
@@ -141,9 +141,9 @@ describe("Telegram auth bot continuation", () => {
     verifyAuth.mockClear();
     validateAuthHeader.mockReset();
     createSession.mockClear();
-    linkTelegramToUser.mockReset();
-    linkPhoneToUser.mockReset();
+    linkTelegramAndPhoneToUser.mockReset();
     getById.mockReset();
+    getByIdForWrite.mockReset();
     getByTelegramId.mockReset();
     getByPhoneNumber.mockReset();
     findOrCreateByTelegramWithPhone.mockReset();
@@ -154,8 +154,10 @@ describe("Telegram auth bot continuation", () => {
     getByTelegramId.mockResolvedValue(undefined);
     getByPhoneNumber.mockResolvedValue(undefined);
     getById.mockImplementation(async () => ({ ...USER }));
-    linkTelegramToUser.mockImplementation(async () => ({ success: true }));
-    linkPhoneToUser.mockImplementation(async () => ({ success: true }));
+    getByIdForWrite.mockImplementation(async () => ({ ...USER }));
+    linkTelegramAndPhoneToUser.mockImplementation(async () => ({
+      success: true,
+    }));
     findOrCreateByTelegramWithPhone.mockImplementation(async () => {
       throw new Error("unexpected standard auth flow");
     });
@@ -189,8 +191,7 @@ describe("Telegram auth bot continuation", () => {
         organizationId: "org-1",
       },
     });
-    expect(linkTelegramToUser).not.toHaveBeenCalled();
-    expect(linkPhoneToUser).not.toHaveBeenCalled();
+    expect(linkTelegramAndPhoneToUser).not.toHaveBeenCalled();
     expect(runOnboardingChat).not.toHaveBeenCalled();
   });
 
@@ -206,8 +207,7 @@ describe("Telegram auth bot continuation", () => {
     });
 
     expect(response.status).toBe(403);
-    expect(linkTelegramToUser).not.toHaveBeenCalled();
-    expect(linkPhoneToUser).not.toHaveBeenCalled();
+    expect(linkTelegramAndPhoneToUser).not.toHaveBeenCalled();
     expect(runOnboardingChat).not.toHaveBeenCalled();
   });
 
@@ -227,7 +227,12 @@ describe("Telegram auth bot continuation", () => {
     expect(verifyAuth.mock.calls[0]?.[0]).not.toHaveProperty(
       "onboarding_session",
     );
-    expect(linkTelegramToUser).toHaveBeenCalledTimes(1);
+    expect(linkTelegramAndPhoneToUser).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({ id: 123456789 }),
+      AUTH_BODY.phone_number,
+    );
+    expect(getByIdForWrite).toHaveBeenCalledWith("user-1");
     expect(runOnboardingChat).toHaveBeenCalledWith({
       sessionId: "valid-opaque-continuation",
       platform: "telegram",
@@ -282,8 +287,7 @@ describe("Telegram auth bot continuation", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(linkTelegramToUser).not.toHaveBeenCalled();
-    expect(linkPhoneToUser).not.toHaveBeenCalled();
+    expect(linkTelegramAndPhoneToUser).not.toHaveBeenCalled();
     expect(findOrCreateByTelegramWithPhone).not.toHaveBeenCalled();
     expect(runOnboardingChat).not.toHaveBeenCalled();
     expect(completeTelegramOnboardingContinuationClaim).not.toHaveBeenCalled();
@@ -302,7 +306,7 @@ describe("Telegram auth bot continuation", () => {
 
     expect(response.status).toBe(403);
     expect(findOrCreateByTelegramWithPhone).not.toHaveBeenCalled();
-    expect(linkTelegramToUser).not.toHaveBeenCalled();
+    expect(linkTelegramAndPhoneToUser).not.toHaveBeenCalled();
     expect(createSession).not.toHaveBeenCalled();
   });
 
@@ -327,7 +331,7 @@ describe("Telegram auth bot continuation", () => {
     );
 
     expect(response.status).toBe(409);
-    expect(linkTelegramToUser).not.toHaveBeenCalled();
+    expect(linkTelegramAndPhoneToUser).not.toHaveBeenCalled();
     expect(runOnboardingChat).not.toHaveBeenCalled();
     expect(createSession).not.toHaveBeenCalled();
   });
@@ -335,7 +339,7 @@ describe("Telegram auth bot continuation", () => {
   test("fails closed when phone linking fails", async () => {
     const userWithoutPhone = { ...USER, phone_number: null };
     getById.mockImplementation(async () => userWithoutPhone);
-    linkPhoneToUser.mockResolvedValueOnce({
+    linkTelegramAndPhoneToUser.mockResolvedValueOnce({
       success: false,
       error: "PHONE_ALREADY_LINKED",
     });
@@ -363,8 +367,7 @@ describe("Telegram auth bot continuation", () => {
     expect(((await response.json()) as { code?: string }).code).toBe(
       "PHONE_ALREADY_LINKED",
     );
-    expect(linkTelegramToUser).not.toHaveBeenCalled();
-    expect(linkPhoneToUser).not.toHaveBeenCalled();
+    expect(linkTelegramAndPhoneToUser).not.toHaveBeenCalled();
   });
 
   test("session-based linking rejects a phone owned by another account before any durable link", async () => {
@@ -374,8 +377,7 @@ describe("Telegram auth bot continuation", () => {
     const response = await post({ ...AUTH_BODY });
 
     expect(response.status).toBe(409);
-    expect(linkTelegramToUser).not.toHaveBeenCalled();
-    expect(linkPhoneToUser).not.toHaveBeenCalled();
+    expect(linkTelegramAndPhoneToUser).not.toHaveBeenCalled();
   });
 
   test("uses a stable claim id for an identical signed retry", async () => {

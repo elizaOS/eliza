@@ -86,10 +86,10 @@ export interface TelegramAuthDependencies {
   validateAuthHeader: typeof elizaAppSessionService.validateAuthHeader;
   createSession: typeof elizaAppSessionService.createSession;
   getById: typeof elizaAppUserService.getById;
+  getByIdForWrite: typeof elizaAppUserService.getByIdForWrite;
   getByTelegramId: typeof elizaAppUserService.getByTelegramId;
   getByPhoneNumber: typeof elizaAppUserService.getByPhoneNumber;
-  linkTelegramToUser: typeof elizaAppUserService.linkTelegramToUser;
-  linkPhoneToUser: typeof elizaAppUserService.linkPhoneToUser;
+  linkTelegramAndPhoneToUser: typeof elizaAppUserService.linkTelegramAndPhoneToUser;
   findOrCreateByTelegramWithPhone: typeof elizaAppUserService.findOrCreateByTelegramWithPhone;
   claimContinuation: typeof claimTelegramOnboardingContinuation;
   completeContinuationClaim: typeof completeTelegramOnboardingContinuationClaim;
@@ -102,11 +102,11 @@ const defaultDependencies: TelegramAuthDependencies = {
     elizaAppSessionService.validateAuthHeader(header),
   createSession: (...args) => elizaAppSessionService.createSession(...args),
   getById: (id) => elizaAppUserService.getById(id),
+  getByIdForWrite: (id) => elizaAppUserService.getByIdForWrite(id),
   getByTelegramId: (id) => elizaAppUserService.getByTelegramId(id),
   getByPhoneNumber: (phone) => elizaAppUserService.getByPhoneNumber(phone),
-  linkTelegramToUser: (...args) =>
-    elizaAppUserService.linkTelegramToUser(...args),
-  linkPhoneToUser: (...args) => elizaAppUserService.linkPhoneToUser(...args),
+  linkTelegramAndPhoneToUser: (...args) =>
+    elizaAppUserService.linkTelegramAndPhoneToUser(...args),
   findOrCreateByTelegramWithPhone: (...args) =>
     elizaAppUserService.findOrCreateByTelegramWithPhone(...args),
   claimContinuation: (input) => claimTelegramOnboardingContinuation(input),
@@ -377,47 +377,29 @@ export async function handleTelegramAuth(
       );
       if (conflict) return conflict;
     }
-    const linkTelegramResult = await dependencies.linkTelegramToUser(
+    const linkIdentityResult = await dependencies.linkTelegramAndPhoneToUser(
       existingSession.userId,
       authData,
+      phoneNumber,
     );
 
-    if (!linkTelegramResult.success) {
+    if (!linkIdentityResult.success) {
       return Response.json(
         {
           success: false,
           error:
-            linkTelegramResult.error ||
-            "This Telegram account is already linked to another account",
-          code: "TELEGRAM_ALREADY_LINKED",
+            linkIdentityResult.error ||
+            "This Telegram account or phone number could not be linked",
+          code: "IDENTITY_LINK_FAILED",
         },
         { status: 409 },
       );
     }
 
-    // Also link phone number if the existing user doesn't have one
-    const existingUser = await dependencies.getById(existingSession.userId);
-    if (existingUser && !existingUser.phone_number) {
-      const linkPhoneResult = await dependencies.linkPhoneToUser(
-        existingSession.userId,
-        phoneNumber,
-      );
-      if (!linkPhoneResult.success) {
-        return Response.json(
-          {
-            success: false,
-            error:
-              linkPhoneResult.error ||
-              "This phone number could not be linked to this account",
-            code: "PHONE_LINK_FAILED",
-          },
-          { status: 409 },
-        );
-      }
-    }
-
     // Fetch the updated user
-    const updatedUser = await dependencies.getById(existingSession.userId);
+    const updatedUser = await dependencies.getByIdForWrite(
+      existingSession.userId,
+    );
     if (
       !updatedUser?.organization ||
       updatedUser.telegram_id !== String(authData.id) ||

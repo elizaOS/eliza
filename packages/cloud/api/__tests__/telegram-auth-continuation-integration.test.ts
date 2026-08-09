@@ -194,7 +194,7 @@ interface Instrumentation {
   redeemCalls: number;
   redeemSuccesses: number;
   completeCalls: number;
-  linkTelegramCalls: number;
+  linkIdentityCalls: number;
   findOrCreateCalls: number;
   createSessionCalls: number;
 }
@@ -217,7 +217,7 @@ function createDependencies(
     redeemCalls: 0,
     redeemSuccesses: 0,
     completeCalls: 0,
-    linkTelegramCalls: 0,
+    linkIdentityCalls: 0,
     findOrCreateCalls: 0,
     createSessionCalls: 0,
   };
@@ -239,13 +239,13 @@ function createDependencies(
       };
     },
     getById: async () => ({ ...USER }),
+    getByIdForWrite: async () => ({ ...USER }),
     getByTelegramId: async () => (accountCreated ? { ...USER } : undefined),
     getByPhoneNumber: async () => (accountCreated ? { ...USER } : undefined),
-    linkTelegramToUser: async () => {
-      counts.linkTelegramCalls += 1;
+    linkTelegramAndPhoneToUser: async () => {
+      counts.linkIdentityCalls += 1;
       return { success: true };
     },
-    linkPhoneToUser: async () => ({ success: true }),
     findOrCreateByTelegramWithPhone: async () => {
       counts.findOrCreateCalls += 1;
       const isNew = !accountCreated;
@@ -415,7 +415,7 @@ describe("Telegram continuation retry integration (route + coordinator)", () => 
     ).toBe(true);
     expect(counts.redeemSuccesses).toBe(1);
     expect(counts.completeCalls).toBe(1);
-    expect(counts.linkTelegramCalls).toBe(2);
+    expect(counts.linkIdentityCalls).toBe(2);
   });
 
   test("the anonymous create-then-retry transition resumes with a stable claim id", async () => {
@@ -476,7 +476,7 @@ describe("Telegram continuation retry integration (route + coordinator)", () => 
     expect(replay.is_new_user).toBe(false);
     expect(counts.redeemCalls).toBe(1);
     expect(counts.completeCalls).toBe(1);
-    expect(counts.linkTelegramCalls).toBe(1);
+    expect(counts.linkIdentityCalls).toBe(1);
     expect(
       await harness.storageFor(token).get("continuation-claim"),
     ).toBeUndefined();

@@ -473,6 +473,10 @@ class ElizaAppUserService {
     return usersRepository.findWithOrganization(userId);
   }
 
+  async getByIdForWrite(userId: string): Promise<UserWithOrganization | undefined> {
+    return usersRepository.findWithOrganizationForWrite(userId);
+  }
+
   async getByTelegramId(telegramId: string): Promise<UserWithOrganization | undefined> {
     return usersRepository.findByTelegramIdWithOrganization(telegramId);
   }
@@ -824,6 +828,55 @@ class ElizaAppUserService {
 
     logger.info("[ElizaAppUserService] Linked phone to user", {
       userId,
+      phone: `***${normalizedPhone.slice(-2)}`,
+    });
+
+    return { success: true };
+  }
+
+  /**
+   * Links the Telegram and phone identities in one database statement so a
+   * uniqueness race cannot persist only half of the requested identity pair.
+   */
+  async linkTelegramAndPhoneToUser(
+    userId: string,
+    telegramData: TelegramAuthData,
+    phoneNumber: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    const telegramId = String(telegramData.id);
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
+
+    try {
+      const updated = await usersRepository.update(userId, {
+        telegram_id: telegramId,
+        telegram_username: telegramData.username,
+        telegram_first_name: telegramData.first_name,
+        telegram_photo_url: telegramData.photo_url,
+        phone_number: normalizedPhone,
+        phone_verified: true,
+        updated_at: new Date(),
+      });
+      if (!updated) {
+        return { success: false, error: "The account no longer exists" };
+      }
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        logger.warn("[ElizaAppUserService] Telegram or phone linking race condition", {
+          userId,
+          telegramId,
+          phone: `***${normalizedPhone.slice(-2)}`,
+        });
+        return {
+          success: false,
+          error: "This Telegram account or phone number is already linked to another account",
+        };
+      }
+      throw error;
+    }
+
+    logger.info("[ElizaAppUserService] Linked Telegram and phone to user", {
+      userId,
+      telegramId,
       phone: `***${normalizedPhone.slice(-2)}`,
     });
 

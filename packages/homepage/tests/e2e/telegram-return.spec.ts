@@ -202,6 +202,9 @@ test("does not return to Telegram unless the server confirms redemption", async 
       "We couldn't finish linking this Telegram chat. Return to the bot and request a new link.",
     ),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Complete Setup" }),
+  ).toBeEnabled();
 });
 
 test("a completed Telegram handoff offers a direct return to the bot", async ({

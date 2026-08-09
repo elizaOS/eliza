@@ -117,6 +117,14 @@ export class UsersRepository {
   }
 
   /**
+   * Finds a user by ID with organization data from primary. Use after identity
+   * writes when the just-written canonical row must be visible immediately.
+   */
+  async findWithOrganizationForWrite(userId: string): Promise<UserWithOrganization | undefined> {
+    return await this.findUserWithOrganizationById(dbWrite, userId);
+  }
+
+  /**
    * Finds a user by email with organization data.
    */
   async findByEmailWithOrganization(email: string): Promise<UserWithOrganization | undefined> {
