@@ -21,6 +21,7 @@
 import { logger } from "@elizaos/logger";
 import { useEffect, useRef, useState } from "react";
 import { getCloudAuthToken } from "../api/client-cloud";
+import { isAppModeHost } from "../cloud/app-mode/app-mode";
 import { persistCloudPairApiToken } from "../components/auth/CloudPairRelay";
 import { getBootConfig } from "../config/boot-config";
 import { persistActiveServerCredential } from "../state/active-server-credential";
@@ -72,7 +73,21 @@ function defaultNavigate(url: string): void {
   }
 }
 
-function shouldConsumePairRedirectInProcess(): boolean {
+/**
+ * Whether recovery redeems the one-time pairing token in-process instead of
+ * full-page navigating into the per-agent `/pair` relay.
+ *
+ * Native has always consumed in-process (it has no browser navigation). The
+ * Eliza app hosts must too: `../cloud/app-mode/app-mode.ts` established the
+ * chat floor because a cold-starting agent cannot consume a 60s one-time token
+ * inside its TTL, so the redirect dead-ends on "Sign-in link expired" and the
+ * user is bounced back through a second full sign-in. Entry stopped
+ * pairing-redirecting there (#18016); recovery is the remaining caller that
+ * did, which reopened the same dead-end on app-staging. The exchange endpoint
+ * (`/api/auth/pair/native`) authenticates with the Cloud session the browser
+ * already holds, so the app hosts can redeem it directly and stay same-origin.
+ */
+function isNativeRuntime(): boolean {
   try {
     const cap = (globalThis as Record<string, unknown>).Capacitor as
       | { isNativePlatform?: () => boolean }
@@ -83,6 +98,10 @@ function shouldConsumePairRedirectInProcess(): boolean {
     // navigation remains the compatible fallback.
     return false;
   }
+}
+
+function shouldConsumePairRedirectInProcess(): boolean {
+  return isNativeRuntime() || isAppModeHost();
 }
 
 function normalizedOptionalValue(value: string | undefined): string {
@@ -148,8 +167,11 @@ export function useAgentSessionRecovery(
   useEffect(() => {
     const consumeRedirectInProcess = shouldConsumePairRedirectInProcess();
     const activeServer = active ? loadPersistedActiveServer() : null;
+    // Deliberately keyed to the native runtime, not to in-process redemption:
+    // the app hosts now redeem in-process too, and this flag drives the
+    // native-only managed-recovery status UI.
     const isManagedNative =
-      consumeRedirectInProcess && isManagedCloudAgentServer(activeServer);
+      isNativeRuntime() && isManagedCloudAgentServer(activeServer);
     const fallbackStatus = (
       managedStatus: ManagedCloudAgentRecoveryStatus = "cloud-retry-required",
     ): AgentSessionRecoveryStatus => (isManagedNative ? managedStatus : "idle");

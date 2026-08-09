@@ -68,7 +68,10 @@ function buildRuntime(options: RuntimeMockOptions = {}): {
   const runtimeDouble: RespondToEventRuntime = {
     agentId: 'agent-respond-to-event' as UUID,
     db: options.db,
-    getSetting: () => null,
+    // These tests exercise the respondToEvent node, not default-workflow
+    // seeding; opting out keeps each service boot from running the seeded
+    // health-check workflow through a real Smithers subprocess.
+    getSetting: (key: string) => (key === 'WORKFLOW_SEED_DEFAULTS' ? 'false' : null),
     getService: (type: string) => services[type] ?? services[type.toLowerCase()] ?? null,
     getTasks: async () => [],
     createTask: async () => '00000000-0000-4000-8000-000000000001' as UUID,

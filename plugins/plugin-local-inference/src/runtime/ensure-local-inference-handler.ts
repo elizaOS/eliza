@@ -34,6 +34,7 @@ import {
 	ModelType,
 	renderMessageHandlerStablePrefix,
 	resolveBackgroundInferenceBudget,
+	Service,
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
@@ -1268,18 +1269,30 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
  * as plugin-meetings can discover this structural seam without importing this
  * plugin or widening the string-only TRANSCRIPTION model contract.
  */
-function registerTimedAsrService(runtime: AgentRuntime): void {
-	const withRegistration = runtime as AgentRuntime & {
-		registerService?: (name: string, impl: unknown) => unknown;
-	};
-	if (typeof withRegistration.registerService !== "function") return;
-	withRegistration.registerService("timedAsr", {
-		isAvailable: () => localInferenceEngine.voice() !== null,
-		transcribeWav: async (wav: Uint8Array, signal?: AbortSignal) => {
-			const audio = decodeMonoPcm16Wav(wav);
-			return localInferenceEngine.transcribePcmTimed(audio, signal);
-		},
-	});
+class TimedAsrService extends Service {
+	static serviceType = "timedAsr";
+	capabilityDescription =
+		"Word-timed local ASR over the fused voice engine (transcribeWav returns per-word timings).";
+
+	static async start(runtime: IAgentRuntime): Promise<TimedAsrService> {
+		return new TimedAsrService(runtime);
+	}
+
+	async stop(): Promise<void> {}
+
+	isAvailable(): boolean {
+		return localInferenceEngine.voice() !== null;
+	}
+
+	async transcribeWav(wav: Uint8Array, signal?: AbortSignal) {
+		const audio = decodeMonoPcm16Wav(wav);
+		return localInferenceEngine.transcribePcmTimed(audio, signal);
+	}
+}
+
+async function registerTimedAsrService(runtime: AgentRuntime): Promise<void> {
+	if (typeof runtime.registerService !== "function") return;
+	await runtime.registerService(TimedAsrService);
 }
 
 /**
@@ -1518,7 +1531,7 @@ export async function ensureLocalInferenceHandler(
 	// event — capturing our own handlers below plus anything else that
 	// registers during the rest of boot. Idempotent per-runtime.
 	handlerRegistry.installOn(runtime);
-	registerTimedAsrService(runtime);
+	await registerTimedAsrService(runtime);
 
 	// Loader precedence:
 	//   1. AOSP native FFI loader when running inside the AOSP agent process
