@@ -1,7 +1,8 @@
 /**
  * Resolves a requested view and asks the active shell to navigate to it.
- * The callback owns the one visible acknowledgement; the returned action
- * receipt remains available to the planner without becoming a second row.
+ * The callback owns the one visible acknowledgement and is voiced from the
+ * verified navigation outcome; the planner receipt stays internal so it cannot
+ * become a duplicate row.
  */
 
 import type {
@@ -593,18 +594,21 @@ export async function runViewsShow({
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}${result.subview ? ` subview=${result.subview}` : ""}`,
 	);
 	await callback?.({ text: result.text });
+	const callbackOwnsReply = result.ok && callback !== undefined;
 	return {
 		success: result.ok,
 		text: result.text,
 		...(result.ok
 			? {
-					// The typed callback above owns the visible completion. Keeping the
-					// terminal receipt internal prevents a second assistant row while
-					// preserving its verified text for non-transcript consumers.
+					// The typed callback above owns the visible completion. It remains
+					// paraphrasable so the delivery boundary can speak in character from
+					// the verified result instead of echoing a canned receipt.
 					transcriptVisibility: "internal" as const,
 					userFacingText: result.text,
-					verifiedUserFacing: true,
-					turnComplete: true,
+					verifiedUserFacing: !callbackOwnsReply,
+					...(callbackOwnsReply
+						? { continueChain: false }
+						: { turnComplete: true }),
 				}
 			: {}),
 		values: {
@@ -616,6 +620,10 @@ export async function runViewsShow({
 			...(result.navigationDelivered ? { navigationDelivered: true } : {}),
 			...(result.subview ? { subview: result.subview } : {}),
 		},
-		data: { view, ...(result.subview ? { subview: result.subview } : {}) },
+		data: {
+			view,
+			...(result.subview ? { subview: result.subview } : {}),
+			...(callbackOwnsReply ? { suppressPlannerReply: true } : {}),
+		},
 	};
 }

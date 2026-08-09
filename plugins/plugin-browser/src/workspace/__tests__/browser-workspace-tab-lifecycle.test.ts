@@ -80,6 +80,30 @@ describe("browser workspace tab lifecycle (web mode)", () => {
     ).rejects.toThrow(/valid id or index/i);
   });
 
+  it("closes the active tab when no id or index is supplied", async () => {
+    const first = await openBrowserWorkspaceTab(
+      { url: "about:blank", show: true },
+      webEnv,
+    );
+    const second = await openBrowserWorkspaceTab(
+      { url: "https://example.com", show: true },
+      webEnv,
+    );
+
+    const closed = await executeBrowserWorkspaceCommand(
+      { subaction: "tab", tabAction: "close" },
+      webEnv,
+    );
+
+    expect(closed.closed).toBe(true);
+    const remaining = await executeBrowserWorkspaceCommand(
+      { subaction: "tab", tabAction: "list" },
+      webEnv,
+    );
+    expect(remaining.tabs?.map((tab) => tab.id)).toEqual([first.id]);
+    expect(remaining.tabs?.map((tab) => tab.id)).not.toContain(second.id);
+  });
+
   it("reports state for an about:blank tab without throwing on opaque-origin storage", async () => {
     const tab = await openBrowserWorkspaceTab({ url: "about:blank" }, webEnv);
     const state = await executeBrowserWorkspaceCommand(

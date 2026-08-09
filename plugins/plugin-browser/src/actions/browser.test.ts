@@ -152,7 +152,7 @@ describe("BROWSER action", () => {
     );
   });
 
-  it("does not emit transient progress for an effect with a terminal receipt", async () => {
+  it("delivers one paraphrasable callback for a completed browser effect", async () => {
     const service = browserService({
       tab: { title: "Example", url: "https://example.com" },
     });
@@ -168,13 +168,68 @@ describe("BROWSER action", () => {
       },
     });
 
-    expect(callback).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith(
+      { text: "Opened example.com." },
+      "BROWSER",
+    );
     expect(result).toMatchObject({
       text: "Opened example.com.",
       userFacingText: "Opened example.com.",
-      verifiedUserFacing: true,
-      turnComplete: true,
+      verifiedUserFacing: false,
+      continueChain: false,
+      data: { suppressPlannerReply: true },
     });
+  });
+
+  it("normalizes close_tab into an active-tab close receipt", async () => {
+    const service = browserService({ closed: true });
+    const callback = vi.fn(async () => []);
+
+    const { result } = await runBrowserAction({
+      service,
+      callback,
+      messageText: "close that tab",
+      parameters: { action: "close_tab" },
+    });
+
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subaction: "tab",
+        tabAction: "close",
+      }),
+      undefined,
+    );
+    expect(callback).toHaveBeenCalledWith(
+      { text: "Closed the active browser tab." },
+      "BROWSER",
+    );
+    expect(result).toMatchObject({
+      success: true,
+      userFacingText: "Closed the active browser tab.",
+      verifiedUserFacing: false,
+      continueChain: false,
+      data: { suppressPlannerReply: true },
+    });
+  });
+
+  it("does not report success when the requested tab was not closed", async () => {
+    const service = browserService({ closed: false });
+    const callback = vi.fn(async () => []);
+
+    const { result } = await runBrowserAction({
+      service,
+      callback,
+      messageText: "close that tab",
+      parameters: { action: "close_tab" },
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      text: "Browser action failed: The requested browser tab was no longer open.",
+      values: { error: "BROWSER_FAILED" },
+    });
+    expect(callback).not.toHaveBeenCalled();
   });
 
   it("does not fail the browser action when compact progress delivery fails", async () => {
@@ -308,7 +363,7 @@ describe("BROWSER action", () => {
       }),
     ).resolves.toMatchObject({
       result: {
-        text: "Browser closed (workspace).",
+        text: "Closed the browser workspace.",
       },
     });
     await expect(

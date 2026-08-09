@@ -491,6 +491,15 @@ function inferMode(
 	) {
 		return "tile";
 	}
+	// A structured capability dispatch is more specific than a close verb in the
+	// user's sentence. This keeps `action=interact capability=agent-click` in the
+	// interaction lane, where Browser-specific scope can be corrected safely.
+	if (
+		normalizedExplicit === "interact" &&
+		readStringOption(options, "capability")
+	) {
+		return "interact";
+	}
 	if (isNonDestructiveCloseRequest(trimmed)) {
 		return "close";
 	}
@@ -808,6 +817,42 @@ const BROWSER_NAVIGATION_REQUEST =
 	/\b(?:browse|go(?:\s+to)?|head(?:\s+to)?|load|navigate(?:\s+to)?|open|take\s+me\s+to|visit)\b/i;
 const BROWSER_NON_NAVIGATION_REQUEST =
 	/\b(?:do\s+not|don't|without)\b.{0,32}\b(?:go|load|navigate|open|submit|visit)\b/i;
+
+/**
+ * A Browser view control can expose a broad "close all tabs" button while the
+ * user's words ask for one active tab. The semantic Browser action owns tab
+ * lifecycle; clicking that broad UI affordance would silently widen scope.
+ */
+function browserActiveTabCloseRequest(
+	viewId: string | null,
+	capability: string,
+	options: Record<string, unknown> | undefined,
+	messageText: string,
+): boolean {
+	if (viewId && viewId !== "browser") return false;
+	const request = viewRequestText(messageText);
+	if (!/\b(?:close|dismiss)\b/i.test(request) || !/\btab\b/i.test(request)) {
+		return false;
+	}
+	if (
+		/\b(?:all|every)\b.{0,32}\btabs?\b|\btabs?\b.{0,32}\b(?:all|every)\b/i.test(
+			request,
+		)
+	) {
+		return false;
+	}
+	const params = isCapabilityParamsRecord(options?.params)
+		? options.params
+		: undefined;
+	const controlId =
+		typeof params?.id === "string" ? normalizeCapabilityKey(params.id) : "";
+	const capabilityKey = normalizeCapabilityKey(capability);
+	return (
+		(capabilityKey === "agent click" && controlId === "close all tabs") ||
+		capabilityKey === "close tab" ||
+		capabilityKey === "close current tab"
+	);
+}
 
 /**
  * Recover the canonical Browser navigation when a planner decomposes a URL
@@ -2081,11 +2126,25 @@ async function runViewsClose({
 			"Requested closing all views.",
 		);
 		await callback?.({ text: result.text });
+		const callbackOwnsReply = result.ok && callback !== undefined;
 		return {
 			success: result.ok,
 			text: result.text,
+			...(result.ok
+				? {
+						userFacingText: result.text,
+						verifiedUserFacing: !callbackOwnsReply,
+						...(callbackOwnsReply
+							? { continueChain: false }
+							: { turnComplete: true }),
+					}
+				: {}),
 			values: { mode: "close", scope: "all" },
-			data: { viewId: "__all__", action: "close-all" },
+			data: {
+				viewId: "__all__",
+				action: "close-all",
+				...(callbackOwnsReply ? { suppressPlannerReply: true } : {}),
+			},
 		};
 	}
 
@@ -2142,16 +2201,31 @@ async function runViewsClose({
 		resolvedViewType === "gui" ? undefined : resolvedViewType,
 	);
 	await callback?.({ text: result.text });
+	const callbackOwnsReply = result.ok && callback !== undefined;
 	return {
 		success: result.ok,
 		text: result.text,
+		...(result.ok
+			? {
+					userFacingText: result.text,
+					verifiedUserFacing: !callbackOwnsReply,
+					...(callbackOwnsReply
+						? { continueChain: false }
+						: { turnComplete: true }),
+				}
+			: {}),
 		values: {
 			mode: "close",
 			viewId,
 			viewType: resolvedViewType ?? "gui",
 			label: label ?? viewId,
 		},
-		data: { viewId, viewType: resolvedViewType ?? "gui", action: "close" },
+		data: {
+			viewId,
+			viewType: resolvedViewType ?? "gui",
+			action: "close",
+			...(callbackOwnsReply ? { suppressPlannerReply: true } : {}),
+		},
 	};
 }
 
@@ -2994,6 +3068,18 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						let viewId = readCatalogViewTargetOption(actionOptions);
 						let capability = readStringOption(actionOptions, "capability");
 						let resolvedViewType = viewType;
+						const requestedActiveBrowserTabClose = browserActiveTabCloseRequest(
+							viewId,
+							capability ?? "",
+							actionOptions,
+							text,
+						);
+						if (requestedActiveBrowserTabClose && !viewId) {
+							// `close-all-tabs` is a Browser-owned control ID. When the user's
+							// singular wording narrows it to one tab, establish that view scope
+							// before consulting a process-global current-view report.
+							viewId = "browser";
+						}
 						const views = await getViews().catch(() => []);
 						if (!viewId && /\bcurrent\b/i.test(text)) {
 							const currentView = await getCurrentView();
@@ -3067,6 +3153,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							actionOptions,
 							text,
 						);
+						const closeActiveBrowserTab =
+							requestedActiveBrowserTabClose ||
+							browserActiveTabCloseRequest(
+								resolvedView?.id ?? viewId,
+								capability,
+								actionOptions,
+								text,
+							);
 						if (!resolvedCapability && resolvedView) {
 							const matches = (resolvedView.capabilities ?? []).filter(
 								(candidate) =>
@@ -3102,6 +3196,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						}
 						if (
 							addressNavigationUrl ||
+							closeActiveBrowserTab ||
 							(!resolvedCapability &&
 								!standardCapability &&
 								resolvedView?.id === "browser" &&
@@ -3138,18 +3233,26 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								runtime,
 								message,
 								_state,
-								addressNavigationUrl
+								closeActiveBrowserTab
 									? {
 											...options,
-											parameters: {
-												action: "navigate",
-												url: addressNavigationUrl,
-											},
+											parameters: { action: "close_tab" },
 										}
-									: {
-											...options,
-											parameters: { ...nestedParams, action: "navigate" },
-										},
+									: addressNavigationUrl
+										? {
+												...options,
+												parameters: {
+													action: "navigate",
+													url: addressNavigationUrl,
+												},
+											}
+										: {
+												...options,
+												parameters: {
+													...nestedParams,
+													action: "navigate",
+												},
+											},
 								callback,
 							)) ?? {
 								success: true,

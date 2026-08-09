@@ -40,6 +40,7 @@ describe("action callback voice rewriting", () => {
 			id: "message",
 			roomId: "room",
 			entityId: "user",
+			content: { text: "show me that task" },
 		} as unknown as Memory;
 
 		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
@@ -54,6 +55,38 @@ describe("action callback voice rewriting", () => {
 				}),
 			}),
 			"INSPECT_TASK",
+		);
+		expect(runtime.useModel).toHaveBeenCalledWith(
+			ModelType.TEXT_SMALL,
+			expect.objectContaining({
+				prompt: expect.stringContaining('User request: "show me that task"'),
+			}),
+		);
+	});
+
+	it("falls back to the truthful action receipt when voice generation fails", async () => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const runtime = createMockRuntime({
+			agentId: "agent",
+			character: { name: "Example" },
+			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+			useModel: vi.fn(async () => {
+				throw new Error("model unavailable");
+			}),
+		});
+		const message = {
+			id: "message",
+			roomId: "room",
+			entityId: "user",
+			content: { text: "close that tab" },
+		} as unknown as Memory;
+
+		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+		await wrapped?.({ text: "Closed the active browser tab." }, "BROWSER");
+
+		expect(callback).toHaveBeenCalledWith(
+			{ text: "Closed the active browser tab." },
+			"BROWSER",
 		);
 	});
 

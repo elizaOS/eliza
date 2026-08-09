@@ -10152,7 +10152,7 @@ export function wrapSingleTurnVisibleCallback(
 		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
 			getService?: IAgentRuntime["getService"];
 		},
-	message: Pick<Memory, "id" | "roomId" | "entityId">,
+	message: Pick<Memory, "id" | "roomId" | "entityId" | "content">,
 	callback?: HandlerCallback,
 	recordDeliveredVisibleText?: (text: string) => void,
 ): HandlerCallback | undefined {
@@ -10388,19 +10388,12 @@ function shouldRewriteActionCallback(
 
 async function rewriteActionCallbackInCharacter(args: {
 	runtime: IAgentRuntime;
-	message: Pick<Memory, "id" | "roomId" | "entityId">;
+	message: Pick<Memory, "id" | "roomId" | "entityId" | "content">;
 	response: Content;
 	actionName?: string;
 	text: string;
 }): Promise<string | null> {
-	const fallback = () => {
-		const action = args.actionName ?? "the action";
-		const error =
-			typeof args.response.error === "string" && args.response.error.trim()
-				? ` It reported: ${args.response.error.trim()}`
-				: "";
-		return `I ran ${action} and got a result, but I couldn't format the details cleanly here.${error}`;
-	};
+	const fallback = () => args.text;
 	if (typeof args.runtime.useModel !== "function") return fallback();
 	const character = args.runtime.character;
 	const characterVoice = {
@@ -10424,6 +10417,7 @@ async function rewriteActionCallbackInCharacter(args: {
 		"- Do not mention that you rewrote the message or used a model.",
 		"",
 		`Character: ${JSON.stringify(characterVoice)}`,
+		`User request: ${JSON.stringify(getUserMessageText(args.message) ?? "")}`,
 		`Action: ${JSON.stringify(args.actionName ?? "ACTION")}`,
 		`Room: ${String(args.message.roomId)}`,
 		`Original action payload: ${JSON.stringify(args.text)}`,

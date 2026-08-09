@@ -1139,14 +1139,16 @@ export async function executeBrowserWorkspaceCommand(
           tab: await showBrowserWorkspaceTab(target.id, env),
         };
       }
+      const indexedTarget =
+        typeof command.index === "number"
+          ? (await listBrowserWorkspaceTabs(env))[command.index]?.id
+          : undefined;
       const targetId =
         command.id?.trim() ||
-        (await listBrowserWorkspaceTabs(env))[command.index ?? -1]?.id;
-      if (!targetId) {
-        throw new Error(
-          "Eliza browser workspace tab close requires a valid id or index.",
-        );
-      }
+        indexedTarget ||
+        (isBrowserWorkspaceBridgeConfigured(env)
+          ? await resolveDesktopBrowserWorkspaceTargetTabId(command, env)
+          : findWebBrowserWorkspaceTargetTabId(command));
       return {
         mode: getBrowserWorkspaceMode(env),
         subaction: command.subaction,

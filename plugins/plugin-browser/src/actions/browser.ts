@@ -342,7 +342,9 @@ function formatBrowserSessionResult(
   }
 
   if (result.closed) {
-    return `Browser closed (${result.mode}).`;
+    return command.subaction === "tab" && command.tabAction === "close"
+      ? "Closed the active browser tab."
+      : "Closed the browser workspace.";
   }
 
   if (result.tab) {
@@ -790,6 +792,17 @@ export const browserAction: Action = {
       const result = browserService
         ? await browserService.execute(command, params?.target)
         : await executeBrowserWorkspaceCommand(command);
+      if (
+        (command.subaction === "close" ||
+          (command.subaction === "tab" && command.tabAction === "close")) &&
+        result.closed !== true
+      ) {
+        throw new Error(
+          command.subaction === "tab"
+            ? "The requested browser tab was no longer open."
+            : "The browser workspace was no longer open.",
+        );
+      }
       const ownsTerminalReply = browserCommandOwnsTerminalReply(command);
       if (!ownsTerminalReply) {
         await emitBrowserStepProgress(
@@ -802,11 +815,19 @@ export const browserAction: Action = {
       }
 
       const text = formatBrowserSessionResult(command, result);
+      const callbackOwnsReply = ownsTerminalReply && callback !== undefined;
+      if (callbackOwnsReply) {
+        await callback({ text }, "BROWSER");
+      }
       return {
         text,
         userFacingText: text,
-        verifiedUserFacing: true,
-        ...(ownsTerminalReply ? { turnComplete: true } : {}),
+        verifiedUserFacing: !callbackOwnsReply,
+        ...(callbackOwnsReply
+          ? { continueChain: false }
+          : ownsTerminalReply
+            ? { turnComplete: true }
+            : {}),
         success: true,
         values: {
           success: true,
@@ -817,6 +838,7 @@ export const browserAction: Action = {
           actionName: "BROWSER",
           command,
           result,
+          ...(callbackOwnsReply ? { suppressPlannerReply: true } : {}),
         },
       };
     } catch (error) {

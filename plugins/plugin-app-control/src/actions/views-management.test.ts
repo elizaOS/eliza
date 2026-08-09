@@ -663,6 +663,70 @@ describe("view management actions", () => {
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
+	it("delegates a singular Browser tab close instead of closing the shell view", async () => {
+		const { runtime } = createRuntime();
+		const browserHandler = vi.fn(async () => ({
+			success: true,
+			text: "Closed the active browser tab.",
+			userFacingText: "Closed the active browser tab.",
+			verifiedUserFacing: false,
+			continueChain: false,
+			data: { suppressPlannerReply: true },
+		}));
+		runtime.actions.push({
+			name: "BROWSER",
+			validate: vi.fn(async () => true),
+			handler: browserHandler,
+		} as never);
+		const getCurrentView = vi.fn(async () => ({
+			viewId: "notes",
+			viewLabel: "Notes",
+			viewPath: "/notes",
+			viewType: "gui" as const,
+		}));
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({ id: "browser", label: "Browser", path: "/browser" }),
+					view({ id: "notes", label: "Notes", path: "/notes" }),
+				]),
+				getCurrentView,
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		const callback = vi.fn();
+
+		const result = await action.handler(
+			runtime as never,
+			message("close that tab") as never,
+			undefined,
+			{
+				action: "interact",
+				capability: "agent-click",
+				params: { id: "close-all-tabs" },
+			},
+			callback,
+		);
+
+		expect(browserHandler).toHaveBeenCalledWith(
+			runtime,
+			expect.objectContaining({ content: { text: "close that tab" } }),
+			undefined,
+			expect.objectContaining({
+				parameters: { action: "close_tab" },
+			}),
+			callback,
+		);
+		expect(result).toMatchObject({
+			success: true,
+			userFacingText: "Closed the active browser tab.",
+			verifiedUserFacing: false,
+			continueChain: false,
+		});
+		expect(getCurrentView).not.toHaveBeenCalled();
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
 	it("keeps an explicitly non-navigating Browser address fill as a form interaction", async () => {
 		const { runtime } = createRuntime();
 		const browserHandler = vi.fn();
