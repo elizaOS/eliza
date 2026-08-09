@@ -49,7 +49,7 @@ describe("isReleaseAvailable", () => {
         tagName: "v2.0.0",
         downloads: [],
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   test("returns true for a release with multiple downloads", () => {

@@ -11,14 +11,15 @@ import type { ReleaseDataRelease } from "@/generated/release-data";
 
 /**
  * Returns true when the release carries at least one downloadable asset — the
- * marketing page renders normal download cards. Returns false when
- * `buildRelease(null)` (or an equivalent empty payload) feeds the render path,
- * in which case the component must show a distinct unavailable state instead
- * of active download links.
+ * marketing page renders normal download cards. Returns false when no usable
+ * downloads exist, regardless of tag name — this covers both
+ * `buildRelease(null)` (`{ tagName: "unavailable", downloads: [] }`) and any
+ * real-tagged release whose assets were stripped or are still pending. The
+ * component must show a distinct unavailable state instead of active download
+ * links in both cases.
  */
 export function isReleaseAvailable(
   release: Pick<ReleaseDataRelease, "tagName" | "downloads">,
 ): boolean {
-  if (release.downloads.length > 0) return true;
-  return release.tagName !== "unavailable";
+  return release.downloads.length > 0;
 }
