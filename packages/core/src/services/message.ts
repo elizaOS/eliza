@@ -1804,6 +1804,36 @@ function trackSettledPlannerToolResult(
 }
 
 /**
+ * The completed-result body of a sub-agent `task_complete` relay message, or
+ * undefined when the text is not such a relay or carries no body. The relay
+ * format is `[sub-agent: … — task_complete — …]\n<result body>` (see
+ * plugin-agent-orchestrator's sub-agent-router): the bracketed first segment
+ * is a planner-only directive and never user-facing; the body below it is the
+ * sub-agent's finished result, already composed for user delivery. Lets a
+ * failed relay turn deliver the completed result instead of discarding it for
+ * the generic failed-tool fallback (#18208). Capped so a runaway transcript
+ * cannot flood the channel.
+ */
+export function subAgentCompletionRelayBody(
+	text: string | undefined,
+): string | undefined {
+	if (!text) return undefined;
+	const trimmed = text.trimStart();
+	if (!trimmed.startsWith("[sub-agent:")) return undefined;
+	const headerEnd = trimmed.indexOf("]");
+	if (headerEnd < 0) return undefined;
+	if (!trimmed.slice(0, headerEnd + 1).includes("task_complete")) {
+		return undefined;
+	}
+	const body = trimmed.slice(headerEnd + 1).trim();
+	if (!body) return undefined;
+	const maxLength = 1500;
+	return body.length > maxLength
+		? `${body.slice(0, maxLength).trimEnd()}…`
+		: body;
+}
+
+/**
  * The most recent completed tool result whose `userFacingText` can still
  * rescue a turn after the planner loop dies: successful, non-terminal, and not
  * already delivered to the user through an action callback. Diagnostic
@@ -8447,7 +8477,32 @@ export async function runV5MessageRuntimeStage1(args: {
 					deliveredVisibleTexts,
 				);
 				if (!preservedToolResult) {
-					throw error;
+					// #18208: a task_complete relay turn carries the sub-agent's
+					// finished result in its own body — the last preserved source
+					// before conceding to the canned failure reply.
+					const relayBody = subAgentCompletionRelayBody(
+						args.message?.content?.text,
+					);
+					if (!relayBody) {
+						throw error;
+					}
+					// error-policy:J4 a completed sub-agent result is a designed
+					// degrade when the relay turn's planning fails; report the loop
+					// failure and deliver the result the sub-agent already produced.
+					endStatus = "errored";
+					args.runtime.reportError("MessageService.plannerLoop", error, {
+						roomId: args.message.roomId,
+					});
+					return {
+						kind: "direct_reply",
+						messageHandler,
+						result: createV5ReplyStrategyResult({
+							...args,
+							state: plannerState,
+							text: relayBody,
+							thought: messageHandler.thought,
+						}),
+					};
 				}
 				// error-policy:J4 a completed tool's user-facing result is a designed
 				// degrade when later planning/evaluation fails; report the loop
@@ -8655,6 +8710,24 @@ export async function runV5MessageRuntimeStage1(args: {
 						: "")
 				: preservedAnswerFallback;
 		let effectiveReplyText = plannedText || ackFallback;
+		// #18208: a failed sub-agent completion relay must not discard the
+		// finished result it carries. When the turn ended on the generic
+		// failed-tool fallback and the triggering message IS a task_complete
+		// relay — whose body is the sub-agent's completed result, composed for
+		// user delivery — deliver that body instead of the canned line. Every
+		// other failed turn keeps the canned fallback, and the replacement
+		// still flows through the egress/dedupe checks below.
+		if (effectiveReplyText === FAILED_TOOL_FALLBACK_MESSAGE) {
+			const relayBody = subAgentCompletionRelayBody(
+				args.message?.content?.text,
+			);
+			if (relayBody) {
+				logger.debug(
+					"[MessageService] failed relay turn degraded to preserved sub-agent result",
+				);
+				effectiveReplyText = relayBody;
+			}
+		}
 		const finalReplyEgressDecision = evaluatePlannedReplyEgress({
 			reply: effectiveReplyText,
 			actionResults,
