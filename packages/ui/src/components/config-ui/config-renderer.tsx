@@ -279,8 +279,7 @@ export const ConfigRenderer = forwardRef<
   }: ConfigRendererProps,
   ref,
 ) {
-  const fieldLayout: ConfigFieldLayout =
-    layout === "rows" ? "row" : "stacked";
+  const fieldLayout: ConfigFieldLayout = layout === "rows" ? "row" : "stacked";
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Map<string, string[]>>(
     new Map(),

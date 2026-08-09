@@ -407,13 +407,34 @@
       }
     },
     "configUiHints": {
-      "TWITTER_API_KEY": { "order": 1, "group": "connection" },
-      "TWITTER_API_SECRET_KEY": { "order": 2, "group": "connection" },
-      "TWITTER_ACCESS_TOKEN": { "order": 3, "group": "connection" },
-      "TWITTER_ACCESS_TOKEN_SECRET": { "order": 4, "group": "connection" },
-      "TWITTER_CLIENT_ID": { "order": 5, "group": "connection" },
-      "TWITTER_REDIRECT_URI": { "order": 6, "group": "connection" },
-      "TWITTER_ACCOUNTS": { "order": 7, "group": "connection" },
+      "TWITTER_API_KEY": {
+        "order": 1,
+        "group": "connection"
+      },
+      "TWITTER_API_SECRET_KEY": {
+        "order": 2,
+        "group": "connection"
+      },
+      "TWITTER_ACCESS_TOKEN": {
+        "order": 3,
+        "group": "connection"
+      },
+      "TWITTER_ACCESS_TOKEN_SECRET": {
+        "order": 4,
+        "group": "connection"
+      },
+      "TWITTER_CLIENT_ID": {
+        "order": 5,
+        "group": "connection"
+      },
+      "TWITTER_REDIRECT_URI": {
+        "order": 6,
+        "group": "connection"
+      },
+      "TWITTER_ACCOUNTS": {
+        "order": 7,
+        "group": "connection"
+      },
       "TWITTER_POLL_INTERVAL": {
         "label": "Timeline poll interval",
         "unit": "s",
