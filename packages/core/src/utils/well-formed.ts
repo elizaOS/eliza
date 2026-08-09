@@ -119,6 +119,12 @@ export function tailWellFormed(text: string, maxLength: number): string {
  * properties pass through by reference; nested values are routed through
  * {@link deepToWellFormedUnicode} for the same recursive treatment. Returns
  * the same reference when nothing needed sanitizing.
+ *
+ * Key-safety policy mirrors the plain-object branch: the clone is built on a
+ * null-prototype object with `Object.defineProperty` so an own `__proto__` key
+ * from a JSON-parsed input is preserved as a data member instead of mutating
+ * the clone's prototype chain, and a first-write-wins collision policy prevents
+ * two distinct keys from collapsing onto the same sanitized form (#18081 review).
  */
 function sanitizeObjectPreservingSymbols<T>(value: T): T {
 	if (value === null || typeof value !== "object") {
@@ -136,7 +142,7 @@ function sanitizeObjectPreservingSymbols<T>(value: T): T {
 		return (changed ? next : value) as T;
 	}
 	const source = value as Record<PropertyKey, unknown>;
-	const clone: Record<string, unknown> = {};
+	const clone = Object.create(null) as Record<PropertyKey, unknown>;
 	let changed = false;
 	for (const key of Object.keys(source)) {
 		const sanitizedKey = toWellFormedUnicode(key);
@@ -145,10 +151,24 @@ function sanitizeObjectPreservingSymbols<T>(value: T): T {
 		if (sanitizedKey !== key || sanitizedValue !== entry) {
 			changed = true;
 		}
-		clone[sanitizedKey] = sanitizedValue;
+		if (!(sanitizedKey in clone)) {
+			Object.defineProperty(clone, sanitizedKey, {
+				value: sanitizedValue,
+				writable: true,
+				enumerable: true,
+				configurable: true,
+			});
+		}
 	}
 	for (const sym of Object.getOwnPropertySymbols(source)) {
-		(clone as Record<symbol, unknown>)[sym] = source[sym];
+		clone[sym] = source[sym];
+	}
+	// Re-attach Object.prototype so downstream code that relies on
+	// hasOwnProperty/toString still works — but only if the original input
+	// didn't define an own `__proto__` key. See deepToWellFormedUnicode for
+	// the rationale on Object.hasOwn vs `in`.
+	if (!Object.hasOwn(source, "__proto__")) {
+		Object.setPrototypeOf(clone, Object.prototype);
 	}
 	return (changed ? clone : value) as T;
 }

@@ -283,6 +283,54 @@ describe("deepToWellFormedUnicode", () => {
 		const serialized = JSON.stringify(output);
 		expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
 	});
+
+	// #18081 review (2nd CHANGES_REQUESTED): the function/symbol-preserving
+	// copy-on-write branch must use the same safe key-insertion strategy as
+	// the plain-object branch — null-prototype object + defineProperty +
+	// first-write-wins collision guard. Without it, an own `__proto__` data
+	// key is silently lost (prototype mutation) and two keys that normalize
+	// to the same form are last-write-wins instead of first-write-wins.
+	it("preserves own __proto__ key as a data member on the function-preservation branch (#18081 review)", () => {
+		// An own __proto__ data key (from JSON.parse) + execute() to select
+		// the function/symbol-preserving copy-on-write branch.
+		const input = JSON.parse(
+			'{"execute":"placeholder","__proto__":{"marker":"kept"}}',
+		) as Record<string, unknown>;
+		// Replace the string with a real function to select the special branch.
+		input.execute = () => "ok";
+
+		const output = deepToWellFormedUnicode(input);
+
+		// The own __proto__ key must survive as an enumerable own property.
+		const desc = Object.getOwnPropertyDescriptor(output, "__proto__");
+		expect(desc).toBeDefined();
+		expect(desc?.enumerable).toBe(true);
+		expect((desc?.value as { marker: string } | undefined)?.marker).toBe(
+			"kept",
+		);
+		// JSON round-trip must contain __proto__ as a data key.
+		const serialized = JSON.stringify(output);
+		expect(serialized).toContain('"__proto__"');
+		expect(serialized).toContain('"marker":"kept"');
+	});
+
+	it("handles normalized-key collisions with first-write-wins on the function-preservation branch (#18081 review)", () => {
+		// execute() selects the function/symbol-preserving copy-on-write branch.
+		// Both keys contain a lone surrogate that normalizes to U+FFFD, so
+		// both sanitize to "a\uFFFDb".
+		const input = {
+			execute() {
+				return "ok";
+			},
+			"a\uD83Db": 1,
+			"a\uDC80b": 2,
+		} as Record<string, unknown>;
+		const output = deepToWellFormedUnicode(input) as Record<string, unknown>;
+		const keys = Object.keys(output);
+		// Both keys collapse to "a\uFFFDb" — the first one wins (value 1).
+		expect(keys).toEqual(["execute", "a\uFFFDb"]);
+		expect(output["a\uFFFDb"]).toBe(1);
+	});
 });
 
 describe("#18025 wire regression: the captured Cerebras failure shape", () => {
