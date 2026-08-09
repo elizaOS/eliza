@@ -238,7 +238,10 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       telegramId: "different-telegram-user",
     });
     const mismatch = await post(
-      { sessionId: continuation, platform: "web" },
+      {
+        sessionId: continuation,
+        platform: "telegram",
+      },
       "Bearer browser-session",
     );
     expect(mismatch.status).toBe(403);
@@ -254,10 +257,18 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       telegramId: "9913",
     });
     const matched = await post(
-      { sessionId: continuation, platform: "web" },
+      {
+        sessionId: continuation,
+        platform: "telegram",
+      },
       "Bearer browser-session",
     );
     expect(matched.status).toBe(200);
+    const matchedData = await dataOf(matched.clone());
+    expect(matchedData).toMatchObject({
+      requiresLogin: false,
+    });
+    expect(matchedData).not.toHaveProperty("continuationRedeemed");
     expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
       userId: "user-9",
       organizationId: "org-9",

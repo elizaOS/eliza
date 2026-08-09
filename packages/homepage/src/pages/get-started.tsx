@@ -50,6 +50,7 @@ import {
   type TelegramAuthData,
   useAuth,
 } from "@/lib/context/auth-context";
+import { getTelegramLinkDestination } from "@/lib/telegram-onboarding";
 
 const SOLANA_GRADIENT = "linear-gradient(135deg, #9945FF 0%, #14F195 100%)";
 
@@ -119,7 +120,7 @@ type OnboardingStep =
   | "PROVISIONING_CHAT";
 
 function getTelegramBotUsername(): string {
-  return import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "ElizaCloudBot";
+  return import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "Elizav2_Bot";
 }
 
 function getTelegramBotId(): string {
@@ -742,11 +743,27 @@ export default function GetStartedPage() {
       pendingTelegramData,
       fullPhone,
       existingToken,
+      onboardingSessionId,
     );
 
     if (result.success) {
       if (isLinkMode) {
-        navigate("/connected", { replace: true });
+        if (onboardingSessionId && !result.continuationRedeemed) {
+          setPhoneError(
+            t("homepage_eliza.getStarted.errTelegramContinuation", {
+              defaultValue:
+                "We couldn't finish linking this Telegram chat. Return to the bot and request a new link.",
+            }),
+          );
+          return;
+        }
+        clearRememberedReturnTo();
+        navigate(
+          getTelegramLinkDestination(result.continuationRedeemed === true),
+          {
+            replace: true,
+          },
+        );
       } else {
         setStep("PROVISIONING_CHAT");
       }
@@ -797,6 +814,7 @@ export default function GetStartedPage() {
     getFullPhoneNumber,
     loginWithTelegram,
     isLinkMode,
+    onboardingSessionId,
     navigate,
     t,
   ]);

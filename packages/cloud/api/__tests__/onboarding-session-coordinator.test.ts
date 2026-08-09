@@ -179,6 +179,38 @@ async function readResult(response: Response): Promise<OnboardingChatResult> {
   return (await response.json()) as OnboardingChatResult;
 }
 
+function telegramTurn(
+  coordinator: OnboardingSessionCoordinator,
+  sessionId: string,
+  authenticatedUser?: {
+    userId: string;
+    organizationId: string;
+    telegramId: string;
+  },
+): Promise<Response> {
+  const telegramId = "123456789";
+  return coordinator.fetch(
+    new Request("https://onboarding.test/turn", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        input: {
+          sessionId,
+          message: "/start",
+          platform: "telegram",
+          platformUserId: telegramId,
+          trustedPlatformIdentity: true,
+          idempotencyKey: authenticatedUser
+            ? "telegram:authenticated"
+            : "telegram:start",
+          authenticatedUser,
+        },
+      }),
+    }),
+  );
+}
+
 describe("OnboardingSessionCoordinator", () => {
   test("keeps a trusted platform session after a rejected account adoption", async () => {
     const harness = createCoordinatorHarness();
@@ -290,7 +322,9 @@ describe("OnboardingSessionCoordinator", () => {
       "discord:message-1",
     );
     const scope = `platform:${encodeURIComponent(harness.sessionId)}`;
-    const replayKey = `replay:${scope}:${encodeURIComponent("discord:message-1")}`;
+    const replayKey = `replay:${scope}:${encodeURIComponent(
+      "standard:no-telegram:discord:message-1",
+    )}`;
     const storage = harness.storageFor(harness.sessionId);
     const stored = await storage.get<{ expiresAt: number }>(replayKey);
     if (!stored) throw new Error("replay entry was not stored");
@@ -319,7 +353,9 @@ describe("OnboardingSessionCoordinator", () => {
       "discord:message-1",
     );
     const scope = `platform:${encodeURIComponent(harness.sessionId)}`;
-    const replayKey = `replay:${scope}:${encodeURIComponent("discord:message-1")}`;
+    const replayKey = `replay:${scope}:${encodeURIComponent(
+      "standard:no-telegram:discord:message-1",
+    )}`;
     const storage = harness.storageFor(harness.sessionId);
     const stored = await storage.get<{ expiresAt: number }>(replayKey);
     if (!stored) throw new Error("replay entry was not stored");
@@ -454,10 +490,14 @@ describe("OnboardingSessionCoordinator", () => {
       await storage.get<{ userId: string }>(`session:${accountBScope}`),
     ).toMatchObject({ userId: "user-b" });
     expect(
-      await storage.get(`replay:${accountAScope}:discord%3Amessage-1`),
+      await storage.get(
+        `replay:${accountAScope}:${encodeURIComponent("standard:no-telegram:discord:message-1")}`,
+      ),
     ).toBeDefined();
     expect(
-      await storage.get(`replay:${accountBScope}:discord%3Amessage-1`),
+      await storage.get(
+        `replay:${accountBScope}:${encodeURIComponent("standard:no-telegram:discord:message-1")}`,
+      ),
     ).toBeDefined();
 
     const replay = await readResult(
@@ -470,6 +510,273 @@ describe("OnboardingSessionCoordinator", () => {
       ),
     );
     expect(replay).toEqual(first);
+  });
+
+  test("inspects the exact session before and after account-scope migration", async () => {
+    const harness = createCoordinatorHarness();
+    const first = await readResult(
+      await turn(
+        harness.coordinator,
+        harness.sessionId,
+        "My name is Sam",
+        "discord:message-1",
+      ),
+    );
+
+    const inspect = () =>
+      harness.coordinator.fetch(
+        new Request("https://onboarding.test/inspect", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionId: harness.sessionId }),
+        }),
+      );
+
+    const before = await inspect();
+    expect(before.status).toBe(200);
+    expect((await before.json()) as unknown).toMatchObject({
+      id: harness.sessionId,
+      platform: "discord",
+      platformIdentityTrusted: true,
+    });
+
+    await turn(
+      harness.coordinator,
+      harness.sessionId,
+      "Continue",
+      "discord:message-2",
+      { userId: "user-a", organizationId: "org-a" },
+    );
+    const after = await inspect();
+    expect(after.status).toBe(200);
+    expect((await after.json()) as unknown).toMatchObject({
+      id: first.session.id,
+      userId: "user-a",
+      organizationId: "org-a",
+    });
+  });
+
+  test("claims a Telegram continuation before mutation and rejects a concurrent claimant", async () => {
+    const harness = createCoordinatorHarness();
+    const telegramSessionId = `platform:telegram:${harnessNumber}`;
+    const first = await readResult(
+      await telegramTurn(
+        harness.objectByName(telegramSessionId),
+        telegramSessionId,
+      ),
+    );
+    const token = first.session.continuationToken;
+    if (!token) throw new Error("Telegram continuation token missing");
+    const tokenObject = harness.objectByName(token);
+    const claim = (claimId: string) =>
+      tokenObject.fetch(
+        new Request("https://onboarding.test/claim", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            claimId,
+            telegramId: "123456789",
+            phoneNumber: "+14155550123",
+          }),
+        }),
+      );
+
+    const acquired = await claim("claim-a");
+    expect(acquired.status).toBe(200);
+    expect((await acquired.json()) as unknown).toMatchObject({
+      status: "acquired",
+      sessionId: telegramSessionId,
+    });
+    const concurrent = await claim("claim-b");
+    expect(concurrent.status).toBe(409);
+  });
+
+  test("an expired Telegram claim cannot be taken over by a stale competing request", async () => {
+    const harness = createCoordinatorHarness();
+    const telegramSessionId = `platform:telegram:lease-${harnessNumber}`;
+    const first = await readResult(
+      await telegramTurn(
+        harness.objectByName(telegramSessionId),
+        telegramSessionId,
+      ),
+    );
+    const token = first.session.continuationToken;
+    if (!token) throw new Error("Telegram continuation token missing");
+    const tokenObject = harness.objectByName(token);
+    const claim = (body: Record<string, unknown>) =>
+      tokenObject.fetch(
+        new Request("https://onboarding.test/claim", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            claimId: "claim-a",
+            telegramId: "123456789",
+            phoneNumber: "+14155550123",
+            userId: "user-a",
+            organizationId: "org-a",
+            ...body,
+          }),
+        }),
+      );
+    expect((await claim({})).status).toBe(200);
+    const storage = harness.storageFor(token);
+    const stored =
+      await storage.get<Record<string, unknown>>("continuation-claim");
+    if (!stored) throw new Error("continuation claim missing");
+    await storage.put("continuation-claim", {
+      ...stored,
+      expiresAt: Date.now() - 1,
+    });
+
+    expect(
+      (
+        await claim({
+          claimId: "claim-b",
+          phoneNumber: "+14155550124",
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await claim({
+          claimId: "claim-b",
+          userId: "user-b",
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await claim({
+          claimId: "claim-b",
+          userId: undefined,
+          organizationId: undefined,
+        })
+      ).status,
+    ).toBe(409);
+    expect((await claim({ claimId: "claim-b" })).status).toBe(409);
+    expect((await claim({ claimId: "claim-a" })).status).toBe(409);
+  });
+
+  test("completes a claimed continuation only after the canonical session is bound", async () => {
+    const harness = createCoordinatorHarness();
+    const telegramSessionId = `platform:telegram:complete-${harnessNumber}`;
+    const coordinator = harness.objectByName(telegramSessionId);
+    const first = await readResult(
+      await telegramTurn(coordinator, telegramSessionId),
+    );
+    const token = first.session.continuationToken;
+    if (!token) throw new Error("Telegram continuation token missing");
+    const tokenObject = harness.objectByName(token);
+    const claimBody = {
+      claimId: "claim-complete",
+      telegramId: "123456789",
+      phoneNumber: "+14155550123",
+      userId: "user-a",
+      organizationId: "org-a",
+    };
+    const acquired = await tokenObject.fetch(
+      new Request("https://onboarding.test/claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(claimBody),
+      }),
+    );
+    expect(acquired.status).toBe(200);
+    const beforeBinding = await tokenObject.fetch(
+      new Request("https://onboarding.test/complete-claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(claimBody),
+      }),
+    );
+    expect(beforeBinding.status).toBe(409);
+
+    await telegramTurn(coordinator, telegramSessionId, {
+      userId: "user-a",
+      organizationId: "org-a",
+      telegramId: "123456789",
+    });
+    const competingClaim = await tokenObject.fetch(
+      new Request("https://onboarding.test/claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...claimBody, claimId: "claim-competing" }),
+      }),
+    );
+    expect(competingClaim.status).toBe(409);
+    const wrongPhone = await tokenObject.fetch(
+      new Request("https://onboarding.test/complete-claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...claimBody,
+          phoneNumber: "+14155550124",
+        }),
+      }),
+    );
+    expect(wrongPhone.status).toBe(409);
+    const completed = await tokenObject.fetch(
+      new Request("https://onboarding.test/complete-claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(claimBody),
+      }),
+    );
+    expect(completed.status).toBe(200);
+    const replay = await tokenObject.fetch(
+      new Request("https://onboarding.test/claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...claimBody, claimId: "claim-replay" }),
+      }),
+    );
+    expect(replay.status).toBe(200);
+    expect((await replay.json()) as unknown).toMatchObject({
+      status: "completed",
+      userId: "user-a",
+      organizationId: "org-a",
+    });
+  });
+
+  test("treats an account-bound Telegram continuation as completed only for the same identity", async () => {
+    const harness = createCoordinatorHarness();
+    const telegramSessionId = `platform:telegram:bound-${harnessNumber}`;
+    const coordinator = harness.objectByName(telegramSessionId);
+    const first = await readResult(
+      await telegramTurn(coordinator, telegramSessionId),
+    );
+    const token = first.session.continuationToken;
+    if (!token) throw new Error("Telegram continuation token missing");
+    await telegramTurn(coordinator, telegramSessionId, {
+      userId: "user-a",
+      organizationId: "org-a",
+      telegramId: "123456789",
+    });
+    const tokenObject = harness.objectByName(token);
+    const claim = (telegramId: string, userId: string) =>
+      tokenObject.fetch(
+        new Request("https://onboarding.test/claim", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            claimId: "claim-bound",
+            telegramId,
+            phoneNumber: "+14155550123",
+            userId,
+            organizationId: "org-a",
+          }),
+        }),
+      );
+
+    const completed = await claim("123456789", "user-a");
+    expect(completed.status).toBe(200);
+    expect((await completed.json()) as unknown).toMatchObject({
+      status: "completed",
+      userId: "user-a",
+      organizationId: "org-a",
+    });
+    expect((await claim("999999999", "user-a")).status).toBe(403);
+    expect((await claim("123456789", "user-b")).status).toBe(403);
   });
 
   test("serializes concurrent turns and replays a delivery exactly once", async () => {

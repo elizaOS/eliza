@@ -28,6 +28,15 @@ interface ReplayEntry {
   expiresAt: number;
 }
 
+interface ContinuationClaim {
+  claimId: string;
+  telegramId: string;
+  phoneNumber: string;
+  userId?: string;
+  organizationId?: string;
+  expiresAt: number;
+}
+
 interface ReplayCleanupState {
   startAfter?: string;
   nextExpiry?: number;
@@ -47,6 +56,9 @@ const REPLAY_KEY_PREFIX = "replay:";
 const REPLAY_CLEANUP_STATE_KEY = "replay-cleanup-state";
 const LEGACY_LEDGER_KEY = "ledger";
 const REDIRECT_KEY = "continuation-session-id";
+const CONTINUATION_CLAIM_KEY = "continuation-claim";
+const CONTINUATION_CLAIM_TTL_MS = 60_000;
+const ONBOARDING_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const HISTORY_CHUNK_SIZE = 10;
 const REPLAY_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 // Durable Object storage batches are capped at 128 keys. Keep each alarm
@@ -72,8 +84,13 @@ function historyStorageKey(scope: string, index: number): string {
   return `${HISTORY_KEY_PREFIX}${scope}:${index}`;
 }
 
-function replayStorageKey(scope: string, idempotencyKey: string): string {
-  return `${REPLAY_KEY_PREFIX}${scope}:${storageComponent(idempotencyKey)}`;
+function replayStorageKey(
+  scope: string,
+  idempotencyKey: string,
+  input: OnboardingChatInput,
+): string {
+  const identity = `${input.continuationMode ?? "standard"}:${input.authenticatedUser?.telegramId ?? "no-telegram"}:${idempotencyKey}`;
+  return `${REPLAY_KEY_PREFIX}${scope}:${storageComponent(identity)}`;
 }
 
 async function loadStoredSession(
@@ -253,6 +270,153 @@ export class OnboardingSessionCoordinator {
     }
   }
 
+  private async inspectContinuationSession(): Promise<
+    OnboardingSession | undefined
+  > {
+    const sessionId = await this.state.storage.get<string>(REDIRECT_KEY);
+    const namespace = this.env.ONBOARDING_SESSIONS;
+    if (!sessionId || !namespace) return undefined;
+    const response = await namespace
+      .getByName(sessionId)
+      .fetch("https://onboarding.internal/inspect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+    return response.ok
+      ? ((await response.json()) as OnboardingSession)
+      : undefined;
+  }
+
+  private async claimContinuation(request: Request): Promise<Response> {
+    const body = (await request.json()) as Record<string, unknown>;
+    const claimId = typeof body.claimId === "string" ? body.claimId : "";
+    const telegramId =
+      typeof body.telegramId === "string" ? body.telegramId : "";
+    const phoneNumber =
+      typeof body.phoneNumber === "string" ? body.phoneNumber : "";
+    const userId = typeof body.userId === "string" ? body.userId : undefined;
+    const organizationId =
+      typeof body.organizationId === "string" ? body.organizationId : undefined;
+    if (
+      !claimId ||
+      claimId.length > 180 ||
+      !telegramId ||
+      telegramId.length > 64 ||
+      !phoneNumber ||
+      phoneNumber.length > 32 ||
+      Boolean(userId) !== Boolean(organizationId)
+    ) {
+      return Response.json(
+        { error: "Invalid continuation claim" },
+        { status: 400 },
+      );
+    }
+
+    const session = await this.inspectContinuationSession();
+    const createdAt = session ? Date.parse(session.createdAt) : Number.NaN;
+    const hasUserBinding = session?.userId !== undefined;
+    const hasOrganizationBinding = session?.organizationId !== undefined;
+    if (
+      session?.platform !== "telegram" ||
+      session.platformIdentityTrusted !== true ||
+      session.platformUserId !== telegramId ||
+      !Number.isFinite(createdAt) ||
+      createdAt > Date.now() + 5 * 60_000 ||
+      Date.now() - createdAt > ONBOARDING_SESSION_TTL_MS ||
+      hasUserBinding !== hasOrganizationBinding ||
+      (hasUserBinding &&
+        (session.userId !== userId ||
+          session.organizationId !== organizationId))
+    ) {
+      return Response.json(
+        { error: "Continuation claim rejected" },
+        { status: 403 },
+      );
+    }
+
+    const existing = await this.state.storage.get<ContinuationClaim>(
+      CONTINUATION_CLAIM_KEY,
+    );
+    if (hasUserBinding && userId && organizationId) {
+      if (existing) {
+        return Response.json(
+          { error: "Continuation claim in progress" },
+          { status: 409 },
+        );
+      }
+      return Response.json({
+        status: "completed",
+        sessionId: session.id,
+        userId,
+        organizationId,
+      });
+    }
+
+    const now = Date.now();
+    if (existing) {
+      const sameIdentity =
+        existing.telegramId === telegramId &&
+        existing.phoneNumber === phoneNumber &&
+        (!existing.userId || existing.userId === userId) &&
+        (!existing.organizationId ||
+          existing.organizationId === organizationId);
+      return Response.json(
+        {
+          error: sameIdentity
+            ? "Continuation claim in progress"
+            : "Continuation already claimed",
+        },
+        { status: 409 },
+      );
+    }
+
+    const claim: ContinuationClaim = {
+      claimId,
+      telegramId,
+      phoneNumber,
+      userId,
+      organizationId,
+      expiresAt: now + CONTINUATION_CLAIM_TTL_MS,
+    };
+    await this.state.storage.put(CONTINUATION_CLAIM_KEY, claim);
+    return Response.json({ status: "acquired", sessionId: session.id });
+  }
+
+  private async completeContinuationClaim(request: Request): Promise<Response> {
+    const body = (await request.json()) as Record<string, unknown>;
+    const claimId = typeof body.claimId === "string" ? body.claimId : "";
+    const telegramId =
+      typeof body.telegramId === "string" ? body.telegramId : "";
+    const phoneNumber =
+      typeof body.phoneNumber === "string" ? body.phoneNumber : "";
+    const userId = typeof body.userId === "string" ? body.userId : "";
+    const organizationId =
+      typeof body.organizationId === "string" ? body.organizationId : "";
+    const claim = await this.state.storage.get<ContinuationClaim>(
+      CONTINUATION_CLAIM_KEY,
+    );
+    const session = await this.inspectContinuationSession();
+    if (
+      !claim ||
+      claim.claimId !== claimId ||
+      claim.telegramId !== telegramId ||
+      claim.phoneNumber !== phoneNumber ||
+      (claim.userId && claim.userId !== userId) ||
+      (claim.organizationId && claim.organizationId !== organizationId) ||
+      session?.platformUserId !== telegramId ||
+      session.userId !== userId ||
+      session.organizationId !== organizationId
+    ) {
+      return Response.json(
+        { error: "Continuation completion rejected" },
+        { status: 409 },
+      );
+    }
+    await this.state.storage.delete(CONTINUATION_CLAIM_KEY);
+    return Response.json({ status: "completed" });
+  }
+
   private async mirrorSessionBestEffort(
     session: OnboardingSession,
   ): Promise<void> {
@@ -278,34 +442,19 @@ export class OnboardingSessionCoordinator {
     // The Worker entrypoint must remain free of global-scope service
     // initialization. Loading onboarding inside the request preserves the
     // bootstrap boundary used by the main Hono application.
-    const { loadCachedOnboardingSession, runOnboardingChatWithStore } =
-      await import("@/lib/services/eliza-app/onboarding-chat");
+    const {
+      assertTrustedTelegramContinuation,
+      loadCachedOnboardingSession,
+      runOnboardingChatWithStore,
+    } = await import("@/lib/services/eliza-app/onboarding-chat");
     const scope = scopeFor(request.input, request.sessionId);
     const platformScope = `platform:${storageComponent(request.sessionId)}`;
     const platformSessionKey = sessionStorageKey(platformScope);
     const legacy =
       await this.state.storage.get<LegacyCoordinatorLedger>(LEGACY_LEDGER_KEY);
-    const replayKey = request.input.idempotencyKey
-      ? replayStorageKey(scope, request.input.idempotencyKey)
-      : undefined;
-    if (replayKey) {
-      const replay = await this.state.storage.get<ReplayEntry>(replayKey);
-      if (replay) {
-        if (replay.expiresAt > Date.now()) {
-          const session = await loadStoredSession(this.state.storage, scope);
-          if (session) {
-            await this.bindContinuation(session);
-            await this.mirrorSessionBestEffort(session);
-            return replayResult(replay, session);
-          }
-        }
-        await this.state.storage.delete(replayKey);
-      }
-    }
 
-    // An authenticated continuation may be the first turn after a trusted
-    // platform conversation. Read that platform record once, then persist the
-    // resulting account-owned session under its tenant scope below.
+    // Load and validate trusted-continuation state before consulting replay.
+    // Replay is an optimization, never an authentication boundary.
     const scopedSession = await loadStoredSession(this.state.storage, scope);
     const platformSession =
       !scopedSession && scope !== platformScope
@@ -317,6 +466,28 @@ export class OnboardingSessionCoordinator {
       storedSession ??
       legacySession ??
       (await loadCachedOnboardingSession(request.sessionId));
+    if (request.input.continuationMode === "trusted-telegram") {
+      assertTrustedTelegramContinuation(nextSession, request.input);
+    }
+
+    const replayKey = request.input.idempotencyKey
+      ? replayStorageKey(scope, request.input.idempotencyKey, request.input)
+      : undefined;
+    if (replayKey) {
+      const replay = await this.state.storage.get<ReplayEntry>(replayKey);
+      if (replay) {
+        if (replay.expiresAt > Date.now() && nextSession) {
+          await this.bindContinuation(nextSession);
+          await this.mirrorSessionBestEffort(nextSession);
+          return replayResult(replay, nextSession);
+        }
+        await this.state.storage.delete(replayKey);
+      }
+    }
+
+    // An authenticated continuation may be the first turn after a trusted
+    // platform conversation. The resulting session is persisted below under
+    // its account-owned tenant scope.
     const result = await runOnboardingChatWithStore(
       request.input,
       request.sessionId,
@@ -333,7 +504,7 @@ export class OnboardingSessionCoordinator {
       ? storedReplay(request.input.idempotencyKey, result)
       : undefined;
     if (replay) {
-      writes[replayStorageKey(scope, replay.key)] = replay;
+      writes[replayStorageKey(scope, replay.key, request.input)] = replay;
     }
     const platformHistoryKeys =
       platformSession && result.session.id === request.sessionId
@@ -409,6 +580,12 @@ export class OnboardingSessionCoordinator {
         if (request.method !== "POST") {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
+        if (pathname === "/claim") {
+          return this.claimContinuation(request);
+        }
+        if (pathname === "/complete-claim") {
+          return this.completeContinuationClaim(request);
+        }
         if (pathname === "/resolve") {
           const sessionId = await this.state.storage.get<string>(REDIRECT_KEY);
           return sessionId
@@ -417,6 +594,49 @@ export class OnboardingSessionCoordinator {
                 { error: "Continuation not found" },
                 { status: 404 },
               );
+        }
+        if (pathname === "/inspect") {
+          const body: unknown = await request.json();
+          const sessionId =
+            body && typeof body === "object" && "sessionId" in body
+              ? (body as { sessionId?: unknown }).sessionId
+              : undefined;
+          if (
+            typeof sessionId !== "string" ||
+            !sessionId.startsWith("platform:") ||
+            sessionId.length > 180
+          ) {
+            return Response.json(
+              { error: "Invalid session lookup" },
+              { status: 400 },
+            );
+          }
+
+          const platformScope = `platform:${storageComponent(sessionId)}`;
+          const platformSession = await loadStoredSession(
+            this.state.storage,
+            platformScope,
+          );
+          if (platformSession) return Response.json(platformSession);
+
+          // Once a continuation is redeemed, runTurn moves the record from the
+          // platform scope into an account scope. Inspect only metadata records
+          // whose embedded id is this exact platform session; never return a
+          // different tenant's record from the same Durable Object.
+          const records = await this.state.storage.list<
+            StoredSession | OnboardingSession
+          >({
+            prefix: SESSION_KEY_PREFIX,
+          });
+          for (const stored of records.values()) {
+            if (stored.id !== sessionId) continue;
+            if ("historyChunkCount" in stored) {
+              const { historyChunkCount: _, ...session } = stored;
+              return Response.json({ ...session, history: [] });
+            }
+            return Response.json(stored);
+          }
+          return Response.json({ error: "Session not found" }, { status: 404 });
         }
         if (pathname === "/bind") {
           const body: unknown = await request.json();

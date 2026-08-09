@@ -76,7 +76,7 @@ mock.module("./user-service", () => ({
   },
 }));
 
-const { runOnboardingChat } = await import(
+const { runOnboardingChat, validateTelegramOnboardingContinuation } = await import(
   `./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`
 );
 
@@ -157,13 +157,210 @@ describe("runOnboardingChat", () => {
     });
 
     const loginUrl = new URL(result.loginUrl);
-    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.origin).toBe("https://eliza.app");
     expect(loginUrl.searchParams.get("method")).toBe("telegram");
     expect(loginUrl.searchParams.get("link")).toBe("true");
     expect(loginUrl.searchParams.get("onboardingSession")).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     expect(result.loginUrl).not.toContain("123456789");
+  });
+
+  test("preflights a bot-issued Telegram continuation before account mutation", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    const token = continuationToken(gatewayTurn);
+
+    await expect(
+      validateTelegramOnboardingContinuation({
+        continuationToken: token,
+        telegramId: "123456789",
+      }),
+    ).resolves.toEqual({
+      sessionId: "platform:telegram:123456789",
+      userId: undefined,
+      organizationId: undefined,
+    });
+    await expect(
+      validateTelegramOnboardingContinuation({
+        continuationToken: token,
+        telegramId: "different-telegram-user",
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+    });
+    await expect(
+      validateTelegramOnboardingContinuation({
+        continuationToken: "unknown-opaque-continuation",
+        telegramId: "123456789",
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+  });
+
+  test("strict Telegram redemption rejects an organization mismatch for the same user", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    ensureElizaAppProvisioning.mockResolvedValue({
+      status: "pending",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const token = continuationToken(gatewayTurn);
+
+    await runOnboardingChat({
+      sessionId: token,
+      platform: "telegram",
+      continuationMode: "trusted-telegram",
+      authenticatedUser: {
+        userId: "user-1",
+        organizationId: "org-1",
+        telegramId: "123456789",
+      },
+      idempotencyKey: "telegram-auth-continuation",
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: token,
+        platform: "telegram",
+        continuationMode: "trusted-telegram",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-2",
+          telegramId: "123456789",
+        },
+        idempotencyKey: "telegram-auth-continuation",
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+  });
+
+  test("strict Telegram replay revalidates the signed Telegram identity before cache lookup", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    ensureElizaAppProvisioning.mockResolvedValue({
+      status: "pending",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const token = continuationToken(gatewayTurn);
+    const input = {
+      sessionId: token,
+      platform: "telegram" as const,
+      continuationMode: "trusted-telegram" as const,
+      authenticatedUser: {
+        userId: "user-1",
+        organizationId: "org-1",
+        telegramId: "123456789",
+      },
+      idempotencyKey: "telegram-auth-continuation",
+    };
+    await runOnboardingChat(input);
+
+    await expect(
+      runOnboardingChat({
+        ...input,
+        authenticatedUser: {
+          ...input.authenticatedUser,
+          telegramId: "different-telegram-user",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+    });
+  });
+
+  test("rejects a partially bound Telegram continuation without mutating it", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    const storedKey = `eliza-app:onboarding:${gatewayTurn.session.id}`;
+    const stored = sessionCache.get(storedKey) as OnboardingSession;
+    const partial = { ...stored, userId: "user-1", organizationId: undefined };
+    sessionCache.set(storedKey, partial);
+
+    await expect(
+      validateTelegramOnboardingContinuation({
+        continuationToken: continuationToken(gatewayTurn),
+        telegramId: "123456789",
+        authenticatedAccount: { userId: "user-1", organizationId: "org-1" },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "telegram",
+        continuationMode: "trusted-telegram",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-1",
+          telegramId: "123456789",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+    expect(sessionCache.get(storedKey)).toEqual(partial);
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("strict Telegram redemption rejects an expired continuation", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    const storedKey = `eliza-app:onboarding:${gatewayTurn.session.id}`;
+    const stored = sessionCache.get(storedKey) as OnboardingSession;
+    sessionCache.set(storedKey, {
+      ...stored,
+      createdAt: "2020-01-01T00:00:00.000Z",
+      updatedAt: "2020-01-01T00:00:00.000Z",
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "telegram",
+        continuationMode: "trusted-telegram",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-1",
+          telegramId: "123456789",
+        },
+        idempotencyKey: "telegram-auth-continuation",
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
   });
 
   test("rejects an authenticated continuation without the gateway Telegram identity", async () => {
@@ -223,6 +420,125 @@ describe("runOnboardingChat", () => {
     });
   });
 
+  test("strict Telegram redemption rejects an unknown continuation", async () => {
+    await expect(
+      runOnboardingChat({
+        sessionId: "unknown-opaque-continuation",
+        platform: "telegram",
+        continuationMode: "trusted-telegram",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-1",
+          telegramId: "123456789",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("strict Telegram redemption rejects a continuation from another platform", async () => {
+    const discordTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "discord",
+      platformUserId: "discord-user-1",
+      sessionId: "platform:discord:discord-user-1",
+      trustedPlatformIdentity: true,
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(discordTurn),
+        platform: "telegram",
+        continuationMode: "trusted-telegram",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-1",
+          telegramId: "123456789",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+  });
+
+  test("strict Telegram redemption rejects missing or mismatched signed identity", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    const sessionId = continuationToken(gatewayTurn);
+
+    for (const telegramId of [undefined, "different-telegram-user"]) {
+      await expect(
+        runOnboardingChat({
+          sessionId,
+          platform: "telegram",
+          continuationMode: "trusted-telegram",
+          authenticatedUser: {
+            userId: "user-1",
+            organizationId: "org-1",
+            telegramId,
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+      });
+    }
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("strict Telegram redemption is idempotent for the same account", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    ensureElizaAppProvisioning.mockResolvedValue({
+      status: "pending",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const input = {
+      sessionId: continuationToken(gatewayTurn),
+      platform: "telegram" as const,
+      continuationMode: "trusted-telegram" as const,
+      authenticatedUser: {
+        userId: "user-1",
+        organizationId: "org-1",
+        telegramId: "123456789",
+      },
+      idempotencyKey: "telegram-auth-continuation",
+    };
+
+    const first = await runOnboardingChat(input);
+    const retry = await runOnboardingChat(input);
+
+    expect(first.session.userId).toBe("user-1");
+    expect(retry).toEqual(first);
+    expect(ensureElizaAppProvisioning).toHaveBeenCalledTimes(1);
+
+    await expect(
+      runOnboardingChat({
+        ...input,
+        authenticatedUser: {
+          userId: "user-2",
+          organizationId: "org-2",
+          telegramId: "123456789",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+  });
+
   test("discord login handoff carries a CTA and keeps the raw URL out of the text", async () => {
     const result = await runOnboardingChat({
       message: "call me Sam",
@@ -242,7 +558,7 @@ describe("runOnboardingChat", () => {
   });
 
   test("discord handoff falls back to the inline-URL copy when the login URL cannot be a button (http scheme)", async () => {
-    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "http://localhost:3000" };
+    cloudEnv = { ELIZA_ONBOARDING_LOGIN_APP_URL: "http://localhost:3000" };
     const result = await runOnboardingChat({
       message: "call me Sam",
       platform: "discord",
@@ -262,7 +578,7 @@ describe("runOnboardingChat", () => {
 
   test("discord handoff falls back to the inline-URL copy when the login URL exceeds Discord's 512-char button bound", async () => {
     cloudEnv = {
-      ELIZA_ONBOARDING_APP_URL: `https://example.com/${"a".repeat(520)}`,
+      ELIZA_ONBOARDING_LOGIN_APP_URL: `https://example.com/${"a".repeat(520)}`,
     };
     const result = await runOnboardingChat({
       message: "call me Sam",
@@ -315,7 +631,7 @@ describe("runOnboardingChat", () => {
   test("stays deterministic and model-free even when a Cerebras key is configured", async () => {
     cloudEnv = {
       CEREBRAS_API_KEY: "test-key",
-      ELIZA_ONBOARDING_APP_URL: "https://elizaos-homepage.pages.dev",
+      ELIZA_ONBOARDING_LOGIN_APP_URL: "https://elizaos-homepage.pages.dev",
     };
     const first = await runOnboardingChat({
       message: "My name is Sam",
