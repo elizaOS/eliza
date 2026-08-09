@@ -4651,6 +4651,11 @@ function failedStepCauseForPrompt(step: PlannerStep): string | undefined {
  *      explicitly disclaimed. Absent or `true` preserves the gate's
  *      original behavior (backward compat).
  *
+ * One deliberate exception to precondition 1: a SOLE failed tool that
+ * delivered its verified failure text and stamped `turnComplete:true` owns the
+ * turn the same way a verified success does — see
+ * {@link tryGateVerifiedFailure}.
+ *
  * On any single ambiguity the function returns `null` and the caller falls
  * through to the full evaluator path. Returning a synthesized `EvaluatorOutput`
  * preserves trajectory observability: `appendEvaluationEvent` still records
@@ -4672,7 +4677,10 @@ function failedStepCauseForPrompt(step: PlannerStep): string | undefined {
  */
 type GatedEvaluatorDecision = {
 	output: EvaluatorOutput;
-	reason: "explicit_terminal_reply" | "action_terminal_result";
+	reason:
+		| "explicit_terminal_reply"
+		| "action_terminal_result"
+		| "action_terminal_failure";
 };
 
 function tryGateEvaluator(args: {
@@ -4683,7 +4691,9 @@ function tryGateEvaluator(args: {
 }): GatedEvaluatorDecision | null {
 	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
 	const latestResult = latestStep?.result;
-	if (latestResult?.success !== true) return null;
+	if (latestResult?.success !== true) {
+		return tryGateVerifiedFailure(latestResult, args);
+	}
 	// #16983 allows a verified terminal action to skip the evaluator, but that
 	// success cannot complete an unrelated operation that remains failed.
 	if (latestUnresolvedFailedNonTerminalToolStep(args.trajectory)) return null;
@@ -4705,6 +4715,55 @@ function completedToolStepCount(trajectory: PlannerTrajectory): number {
 	return [...trajectory.archivedSteps, ...trajectory.steps].filter(
 		(step) => step.toolCall && step.result,
 	).length;
+}
+
+/**
+ * A verified action-owned FAILURE delivery may also own the turn's single
+ * user-facing message. Mirrors the success-side `action_terminal_result` gate:
+ * the sole executed tool failed, delivered its exact failure text through the
+ * callback, and stamped `turnComplete: true` + `verifiedUserFacing: true` to
+ * declare that text the complete honest outcome — so the evaluator's
+ * paraphrase-capable model call is skipped and the byte-equal finalMessage is
+ * suppressed at delivery as already sent (live incident: "calendar's acting
+ * up." followed by "I couldn't verify... want me to try again?" — two bubbles
+ * for one failed read).
+ *
+ * The gate stays narrow so recovery guidance survives everywhere it is still
+ * additive: actions that want an evaluator follow-up simply do not stamp
+ * `turnComplete` on failures, multi-step turns and planner-disclaimed turns
+ * (`completed:false`) fall through, and confirmation/awaiting-input pauses
+ * keep their own terminal authority.
+ */
+function tryGateVerifiedFailure(
+	latestResult: PlannerToolResult | undefined,
+	args: {
+		trajectory: PlannerTrajectory;
+		lastPlannerExplicitCompleted: boolean | undefined;
+	},
+): GatedEvaluatorDecision | null {
+	if (latestResult?.success !== false) return null;
+	if (latestResult.turnComplete !== true) return null;
+	if (latestResult.verifiedUserFacing !== true) return null;
+	if (
+		hasAwaitingUserInputMarker(latestResult) ||
+		hasRequiresConfirmationMarker(latestResult)
+	) {
+		return null;
+	}
+	const message = latestResult.userFacingText?.trim();
+	if (!message || isUnsafeUserVisibleText(message)) return null;
+	if (args.trajectory.plannedQueue.length > 0) return null;
+	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (completedToolStepCount(args.trajectory) !== 1) return null;
+	return {
+		reason: "action_terminal_failure",
+		output: {
+			success: false,
+			decision: "FINISH",
+			thought: ACTION_FAILURE_GATED_EVALUATOR_THOUGHT,
+			messageToUser: message,
+		},
+	};
 }
 
 function selectGatedEvaluatorReply(
@@ -4748,6 +4807,9 @@ export const GATED_EVALUATOR_THOUGHT =
 
 export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";
+
+export const ACTION_FAILURE_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: sole tool failed with a delivered verified failure text that owns the turn; evaluator LLM call skipped.";
 
 const TERMINAL_TOOL_CALL_FINISH_THOUGHT =
 	"Terminal FINISH: planner ended the loop with a terminal tool call; evaluator LLM call skipped.";

@@ -5695,6 +5695,117 @@ describe("verified read actions own the turn's single user-facing message", () =
 			expect(result.result.responseMessages).toEqual([]);
 		}
 	});
+
+	const CALENDAR_FAILURE = "calendar's acting up. couldn't pull your week.";
+
+	it("delivers a turnComplete verified FAILURE exactly once with no model paraphrase", async () => {
+		const runtime = makeRuntime(calendarPlannerResponses());
+		const calendarHandler = vi.fn(
+			async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({
+					text: CALENDAR_FAILURE,
+					source: "action",
+					action: "CALENDAR",
+				});
+				return {
+					success: false,
+					text: CALENDAR_FAILURE,
+					userFacingText: CALENDAR_FAILURE,
+					verifiedUserFacing: true,
+					turnComplete: true,
+				};
+			},
+		);
+		runtime.actions = [makeCalendarReadAction(calendarHandler)] as never;
+		const deliveredVisibleTexts = new Set<string>();
+		const delivered: string[] = [];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "whats on my calendar tomorrow" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			deliveredVisibleTexts,
+			callback: async (content) => {
+				if (content.text) {
+					delivered.push(content.text);
+					deliveredVisibleTexts.add(content.text.toLowerCase());
+				}
+				return [];
+			},
+		});
+
+		expect(calendarHandler).toHaveBeenCalledTimes(1);
+		// The action's delivered failure text is the turn's only user-facing
+		// message — no "I couldn't verify... want me to try again?" paraphrase
+		// bubble follows it (live incident on the failed-read path).
+		expect(delivered).toEqual([CALENDAR_FAILURE]);
+		// The verified-failure gate skips the paraphrase-capable evaluator call.
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseMessages).toEqual([]);
+		}
+	});
+
+	it("keeps the evaluator's additive follow-up for a failure without turnComplete", async () => {
+		const recovery = "That read failed — want me to reconnect your calendar?";
+		const runtime = makeRuntime([
+			...calendarPlannerResponses(),
+			JSON.stringify({
+				success: false,
+				decision: "FINISH",
+				thought: "Offer recovery.",
+				messageToUser: recovery,
+			}),
+		]);
+		const calendarHandler = vi.fn(
+			async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({
+					text: CALENDAR_FAILURE,
+					source: "action",
+					action: "CALENDAR",
+				});
+				return {
+					success: false,
+					text: CALENDAR_FAILURE,
+					userFacingText: CALENDAR_FAILURE,
+					verifiedUserFacing: true,
+				};
+			},
+		);
+		runtime.actions = [makeCalendarReadAction(calendarHandler)] as never;
+		const deliveredVisibleTexts = new Set<string>();
+		const delivered: string[] = [];
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "whats on my calendar tomorrow" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			deliveredVisibleTexts,
+			callback: async (content) => {
+				if (content.text) {
+					delivered.push(content.text);
+					deliveredVisibleTexts.add(content.text.toLowerCase());
+				}
+				return [];
+			},
+		});
+
+		// Without the turnComplete stamp the failure stays un-gated: the
+		// evaluator still runs, so a site that WANTS additive recovery guidance
+		// keeps it by simply not stamping its failure result.
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
 });
 
 // A sub-agent completion relay's envelope echoes the ORIGINAL task text

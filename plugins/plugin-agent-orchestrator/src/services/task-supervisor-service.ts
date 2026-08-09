@@ -358,14 +358,25 @@ export class TaskSupervisorService extends Service {
     return svc;
   }
 
+  /** Deployment lever, same resolution as the orchestrator task service's
+   * levers: runtime setting first, then process.env. `getSetting` alone never
+   * reads the environment, so a service-manager `EnvironmentFile` entry
+   * (`ELIZA_ORCHESTRATOR_SUPERVISOR=0`) silently failed to disable the
+   * supervisor — observed live when a disabled deployment kept escalating
+   * stalled tasks. */
+  private readSetting(key: string): string | undefined {
+    const raw = this.runtime.getSetting(key);
+    if (typeof raw === "string" && raw.length > 0) return raw;
+    const env = process.env[key];
+    return typeof env === "string" && env.length > 0 ? env : undefined;
+  }
+
   private enabled(): boolean {
-    return this.runtime.getSetting("ELIZA_ORCHESTRATOR_SUPERVISOR") !== "0";
+    return this.readSetting("ELIZA_ORCHESTRATOR_SUPERVISOR") !== "0";
   }
 
   private intervalMs(): number {
-    const raw = this.runtime.getSetting(
-      "ELIZA_ORCHESTRATOR_SUPERVISOR_INTERVAL_MS",
-    );
+    const raw = this.readSetting("ELIZA_ORCHESTRATOR_SUPERVISOR_INTERVAL_MS");
     const n = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
     return Number.isFinite(n) && n >= MIN_INTERVAL_MS ? n : DEFAULT_INTERVAL_MS;
   }

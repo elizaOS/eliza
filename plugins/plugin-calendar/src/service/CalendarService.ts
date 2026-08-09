@@ -340,6 +340,40 @@ function normalizeCalendarProvider(value: unknown): LifeOpsCalendarProvider {
   }
 }
 
+/**
+ * Diagnostic projection of a provider HTTP failure (GaxiosError and friends
+ * carry `status` / `response.data`). Feed-source failures degrade to a stale
+ * or unavailable source, so this context is the only place the provider's
+ * actual rejection body (e.g. a Google 400's error message) becomes visible
+ * to operators.
+ */
+function providerResponseErrorContext(
+  error: unknown,
+): Record<string, string | number> {
+  const context: Record<string, string | number> = {};
+  const shaped = error as {
+    status?: unknown;
+    response?: { status?: unknown; data?: unknown };
+  };
+  const status = shaped.status ?? shaped.response?.status;
+  if (typeof status === "number") {
+    context.providerStatus = status;
+  }
+  const body = shaped.response?.data;
+  if (typeof body === "string") {
+    context.providerBody = body.slice(0, 2000);
+  } else if (body !== undefined && body !== null) {
+    try {
+      context.providerBody = JSON.stringify(body).slice(0, 2000);
+    } catch {
+      // error-policy:J3 a non-serializable provider body degrades to its type
+      // tag; the raw error object still travels with the report.
+      context.providerBody = Object.prototype.toString.call(body);
+    }
+  }
+  return context;
+}
+
 function calendarSourceError(error: unknown): LifeOpsCalendarSourceError {
   if (error instanceof CalendarServiceError) {
     return {
@@ -4386,6 +4420,9 @@ export class CalendarService extends Service {
           if (sourceError.code !== CALENDAR_SOURCE_UNSUPPORTED) {
             this.runtime.reportError("calendar:feed-source", error, {
               source: calendarSourceKey(calendar),
+              timeMin,
+              timeMax,
+              ...providerResponseErrorContext(error),
             });
           }
           feed =
