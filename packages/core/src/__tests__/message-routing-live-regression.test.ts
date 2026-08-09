@@ -594,6 +594,60 @@ describe("live routing regressions", () => {
 		).toEqual(["WEB_SEARCH"]);
 	});
 
+	it("URL work orders with unlisted verbs reach TASKS through the real production path (issue #18108)", () => {
+		// This is the load-bearing regression for issue #18108: "review this PR …",
+		// "audit this repository …", and "investigate the failure here …" must each
+		// reach TASKS through the PRODUCTION routing boundary — the exported wrapper
+		// in services/message.ts that wires the REAL looksLikeCodingWorkRequest and
+		// findCodingDelegationActionName hooks. No injected mocks are used.
+		//
+		// Before the fix, two layers conspired to block these utterances:
+		//   1. looksLikeBareLinkShare returned true (verb absent from the old
+		//      closed English allowlist) → shunted to the web-read light path.
+		//   2. looksLikeCodingWorkRequest's verb list (build|create|…|verify) did
+		//      not include review|audit|investigate → even if the link-share veto
+		//      was lifted, the coding hook returned false → no TASKS candidate.
+		//
+		// The fix addresses BOTH layers: conservative link-share detection (only
+		// empty/conversational residue is passive) AND the production
+		// looksLikeCodingWorkRequest now recognizes review|audit|investigate as
+		// coding-work verbs when paired with a code/repo/PR artifact noun.
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+			{ name: "WEB_FETCH" },
+			{ name: "WEB_SEARCH" },
+		];
+		for (const text of [
+			"review this PR https://github.com/elizaOS/eliza/pull/18106",
+			"audit this repository https://github.com/elizaOS/eliza",
+			"investigate the failure here https://example.com/run",
+		]) {
+			const result = inferDirectCurrentRequestCandidateActions(actions, text);
+			expect(result).toEqual(["TASKS"]);
+			expect(result).not.toContain("WEB_FETCH");
+			expect(result).not.toContain("WEB_SEARCH");
+		}
+	});
+
+	it("passive shares still route to WEB_FETCH and never reach TASKS (control for #18108)", () => {
+		// The control: genuine passive link shares must still route to the
+		// web-read light path — the fix must not widen routing to let passive
+		// shares reach TASKS.
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+			{ name: "WEB_FETCH" },
+			{ name: "WEB_SEARCH" },
+		];
+		for (const text of [
+			"https://example.com/some/page",
+			"thoughts? https://example.com",
+		]) {
+			const result = inferDirectCurrentRequestCandidateActions(actions, text);
+			expect(result).toContain("WEB_FETCH");
+			expect(result).not.toContain("TASKS");
+		}
+	});
+
 	it("fast-paths a direct shell ask to TERMINAL_SHELL in a lean-chat runtime (follow-up to #12021)", () => {
 		// PR #12021 renamed the terminal action SHELL -> TERMINAL_SHELL. In a
 		// lean-chat deployment (no plugin-coding-tools) TERMINAL_SHELL is the only

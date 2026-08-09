@@ -235,18 +235,6 @@ describe("bare link share routes to the web-read light path, never coding", () =
 			);
 			expect(inference.kind).not.toBe("web");
 			expect(inference.names).not.toContain("WEB_FETCH");
-
-			// With a coding hook that recognizes the verb, it routes to TASKS.
-			const codingInference = inferDirectCurrentRequestCandidateInference(
-				actions,
-				text,
-				{
-					looksLikeCodingWorkRequest: () => true,
-					findCodingDelegationActionName: () => "TASKS",
-				},
-			);
-			expect(codingInference.kind).toBe("coding");
-			expect(codingInference.names).toEqual(["TASKS"]);
 		}
 	});
 
