@@ -320,10 +320,13 @@ describe("MESSAGE op=send owner-binding gate", () => {
 		accessGate: "open" | "owner_binding",
 		hasBinding: boolean,
 	): Promise<{ runtime: IAgentRuntime; sent: { called: boolean } }> {
-		const { ConnectorAccountManager } = await import(
-			"../../../connectors/account-manager.ts"
-		);
-		const manager = new ConnectorAccountManager();
+		const { ConnectorAccountManager, InMemoryConnectorAccountStorage } =
+			await import("../../../connectors/account-manager.ts");
+		// getStorage() returns the lazy-resolving facade since #18095, which
+		// carries only the ConnectorAccountStorage contract — seed bindings on an
+		// explicitly injected in-memory backend instead.
+		const storage = new InMemoryConnectorAccountStorage();
+		const manager = new ConnectorAccountManager(undefined, storage);
 		manager.registerProvider({
 			provider: "matrix",
 			listAccounts: () => [
@@ -343,11 +346,7 @@ describe("MESSAGE op=send owner-binding gate", () => {
 			],
 		});
 		if (hasBinding) {
-			(
-				manager.getStorage() as {
-					upsertOwnerBindingForTest(b: unknown): void;
-				}
-			).upsertOwnerBindingForTest({
+			storage.upsertOwnerBindingForTest({
 				id: "binding-1",
 				identityId: "00000000-0000-0000-0000-0000000000cc",
 				connector: "matrix",
