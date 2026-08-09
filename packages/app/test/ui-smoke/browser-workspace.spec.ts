@@ -312,6 +312,170 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
   await expect(chatOverlay).not.toHaveAttribute("data-open", "true");
 });
 
+test("browser tab switcher keeps fixed chrome reachable while the tab list scrolls in mobile landscape", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await resetBrowserWorkspaceTabs(request);
+  for (let index = 1; index <= 8; index += 1) {
+    const response = await request.post("/api/browser-workspace/tabs", {
+      data: {
+        url: "about:blank",
+        title: `Evidence tab ${index}`,
+        show: index === 1,
+        partition: "persist:eliza-browser",
+        kind: "standard",
+      },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+  }
+
+  await openAppPath(page, "/browser");
+  const browserWorkspaceView = page.getByTestId("browser-workspace-view");
+  await expect(browserWorkspaceView).toBeVisible({ timeout: 60_000 });
+  await expect(
+    browserWorkspaceView.getByTestId("browser-workspace-tab-count"),
+  ).toHaveText("8", { timeout: 120_000 });
+  await browserWorkspaceView
+    .getByTestId("browser-workspace-tab-fold-control")
+    .click();
+
+  const switcher = page.getByTestId("browser-workspace-tab-switcher");
+  const header = switcher.getByTestId("browser-workspace-tab-switcher-header");
+  const scroller = switcher.getByTestId(
+    "browser-workspace-tab-switcher-scroll",
+  );
+  const newTab = switcher.getByTestId("browser-workspace-tab-switcher-new-tab");
+  const dialogClose = switcher.getByRole("button", {
+    name: "Close",
+    exact: true,
+  });
+  await expect(switcher).toBeVisible();
+  await expect(header).toBeVisible();
+  await expect(scroller).toBeVisible();
+  await expect(newTab).toBeVisible();
+  await expect(dialogClose).toBeVisible();
+
+  const readGeometry = () =>
+    page.evaluate(() => {
+      const dialog = document.querySelector<HTMLElement>(
+        '[data-testid="browser-workspace-tab-switcher"]',
+      );
+      const fixedHeader = document.querySelector<HTMLElement>(
+        '[data-testid="browser-workspace-tab-switcher-header"]',
+      );
+      const tabScroller = document.querySelector<HTMLElement>(
+        '[data-testid="browser-workspace-tab-switcher-scroll"]',
+      );
+      const addTab = document.querySelector<HTMLElement>(
+        '[data-testid="browser-workspace-tab-switcher-new-tab"]',
+      );
+      const chat = document.querySelector<HTMLElement>(
+        '[data-testid="chat-sheet-surface"]',
+      );
+      const close = Array.from(
+        dialog?.querySelectorAll<HTMLElement>("button") ?? [],
+      ).find((element) => element.getAttribute("aria-label") === "Close");
+      if (!dialog || !fixedHeader || !tabScroller || !addTab || !chat || !close)
+        return null;
+
+      const rect = (element: HTMLElement) => {
+        const box = element.getBoundingClientRect();
+        return {
+          top: box.top,
+          right: box.right,
+          bottom: box.bottom,
+          left: box.left,
+          width: box.width,
+          height: box.height,
+        };
+      };
+      const dialogRect = rect(dialog);
+      const controls = Array.from(
+        new Set(
+          Array.from(
+            dialog.querySelectorAll<HTMLElement>("button, [role='tab']"),
+          ),
+        ),
+      ).map((control) => ({
+        label:
+          control.getAttribute("aria-label") ??
+          control.textContent?.replace(/\s+/g, " ").trim() ??
+          control.tagName,
+        ...rect(control),
+      }));
+      return {
+        dialog: dialogRect,
+        header: rect(fixedHeader),
+        scroller: {
+          ...rect(tabScroller),
+          clientHeight: tabScroller.clientHeight,
+          scrollHeight: tabScroller.scrollHeight,
+          scrollTop: tabScroller.scrollTop,
+          overflowY: getComputedStyle(tabScroller).overflowY,
+        },
+        newTab: rect(addTab),
+        close: rect(close),
+        chat: rect(chat),
+        undersizedControls: controls.filter(
+          (control) => control.width < 44 || control.height < 44,
+        ),
+        horizontalOverflow:
+          document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+
+  const beforeScroll = await readGeometry();
+  expect(beforeScroll).not.toBeNull();
+  expect(beforeScroll?.scroller.overflowY).toBe("auto");
+  expect(beforeScroll?.scroller.scrollHeight).toBeGreaterThan(
+    beforeScroll?.scroller.clientHeight ?? Number.POSITIVE_INFINITY,
+  );
+  expect(beforeScroll?.scroller.top).toBeGreaterThanOrEqual(
+    beforeScroll?.header.bottom ?? Number.POSITIVE_INFINITY,
+  );
+  expect(beforeScroll?.scroller.bottom).toBeLessThanOrEqual(
+    beforeScroll?.dialog.bottom ?? 0,
+  );
+  expect(beforeScroll?.dialog.bottom).toBeLessThanOrEqual(
+    beforeScroll?.chat.top ?? 0,
+  );
+  expect(beforeScroll?.newTab.top).toBeGreaterThanOrEqual(
+    beforeScroll?.dialog.top ?? Number.POSITIVE_INFINITY,
+  );
+  expect(beforeScroll?.close.top).toBeGreaterThanOrEqual(
+    beforeScroll?.dialog.top ?? Number.POSITIVE_INFINITY,
+  );
+  expect(beforeScroll?.undersizedControls).toEqual([]);
+  expect(beforeScroll?.horizontalOverflow).toBe(0);
+
+  await scroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect
+    .poll(async () => scroller.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await expect(
+    switcher.getByRole("tab", { name: "Evidence tab 8" }),
+  ).toBeVisible();
+
+  const afterScroll = await readGeometry();
+  expect(afterScroll).not.toBeNull();
+  expect(Math.round(afterScroll?.header.top ?? -1)).toBe(
+    Math.round(beforeScroll?.header.top ?? -2),
+  );
+  expect(Math.round(afterScroll?.newTab.top ?? -1)).toBe(
+    Math.round(beforeScroll?.newTab.top ?? -2),
+  );
+  expect(Math.round(afterScroll?.close.top ?? -1)).toBe(
+    Math.round(beforeScroll?.close.top ?? -2),
+  );
+  await expect(header).toBeVisible();
+  await expect(newTab).toBeVisible();
+  await expect(dialogClose).toBeVisible();
+});
+
 test("browser iframe focus handoff survives delayed autofocus without stealing deliberate clicks", async ({
   page,
   request,
