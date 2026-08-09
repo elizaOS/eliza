@@ -1190,6 +1190,9 @@ export class ElizaClient {
         message,
         code,
         retryAfter,
+        // Structured consumers (the /join credit-gate classifier) read fields
+        // the flattened message/code drop, e.g. `welcomeBonusWithheld`.
+        data: body,
       });
       // Structural agent-gone from a bound cloud agent host: drop the dead
       // binding at the request choke point so background callers (lifeops

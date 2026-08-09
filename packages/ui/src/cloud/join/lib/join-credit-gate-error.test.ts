@@ -73,6 +73,28 @@ describe("describeJoinCreditGateError", () => {
     });
   });
 
+  test("reads the withheld flag from an ApiError carrying the parsed 402 body", () => {
+    const error = new ApiError({
+      kind: "http",
+      path: "/api/cloud/compat/agents",
+      status: 402,
+      code: "insufficient_credits",
+      message: WITHHELD_MESSAGE,
+      data: {
+        success: false,
+        code: "insufficient_credits",
+        error: WITHHELD_MESSAGE,
+        welcomeBonusWithheld: true,
+        welcomeBonusWithheldReason: "ip_daily_cap",
+      },
+    });
+
+    expect(describeJoinCreditGateError(error)).toEqual({
+      message: WITHHELD_MESSAGE,
+      welcomeBonusWithheld: true,
+    });
+  });
+
   test("walks the cause chain of a wrapped selection error", () => {
     const wrapped = new Error("Failed to create cloud agent", {
       cause: directCloudError(402, {
