@@ -66,22 +66,11 @@ jobs:
         run: >-
           "$RUNNER_TEMP/workflow-linters/actionlint"
           -config-file .github/actionlint.yaml
+          .github/workflows/ci.yml
           .github/workflows/develop-pr.yml
-          .github/workflows/develop-pr-gate.yml
           .github/workflows/cloud-tests.yml
           .github/workflows/gitleaks.yml
-          .github/workflows/local-inference-matrix.yml
-          .github/workflows/stale-base-guard.yml
           .github/workflows/test.yml
-
-      - name: Run zizmor on base-trusted workflows
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          "$RUNNER_TEMP/workflow-linters/zizmor"
-          --offline
-          .github/workflows/develop-pr-gate.yml
-          .github/workflows/stale-base-guard.yml
 
   typecheck:
     runs-on: ubuntu-latest

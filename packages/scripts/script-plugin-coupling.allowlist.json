@@ -20,6 +20,22 @@
     "reason": "CUSTOM_PLUGIN_BUILD_ALLOW keys the documented custom-build.ts exceptions by build-file path (some nested build.ts have no own package.json), which cannot be expressed as per-package metadata"
   },
   {
+    "file": "packages/scripts/ci-path-gate.mjs",
+    "tokens": [
+      "plugins/plugin-app-control",
+      "plugins/plugin-capacitor-bridge",
+      "plugins/plugin-commands",
+      "plugins/plugin-computeruse",
+      "plugins/plugin-github",
+      "plugins/plugin-local-inference",
+      "plugins/plugin-native-filesystem",
+      "plugins/plugin-sql",
+      "plugins/plugin-vision",
+      "plugins/plugin-wallet"
+    ],
+    "reason": "CI lane classification must name the exact bundled and scenario-critical plugin roots whose changes require desktop, zero-key, Android, or scenario coverage"
+  },
+  {
     "file": "packages/scripts/check-lifeops-persona-catalog-coverage.mjs",
     "tokens": ["plugins/plugin-personal-assistant"],
     "reason": "validates LifeOps persona scenario-pack ledgers against the personal-assistant plugin's scenario suite"
