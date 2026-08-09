@@ -198,6 +198,79 @@ export interface SkillInstructions {
 }
 
 // ============================================================
+// REGISTRY TYPES (ClawHub Integration)
+// ============================================================
+
+/**
+ * Search result from ClawHub registry.
+ */
+export interface SkillSearchResult {
+	/** Relevance score (0-1) */
+	score: number;
+
+	/** Skill slug */
+	slug: string;
+
+	/** Display name */
+	displayName: string;
+
+	/** Short summary */
+	summary: string;
+
+	/** Latest version */
+	version: string;
+
+	/** Last update timestamp */
+	updatedAt: number;
+}
+
+/**
+ * Catalog entry from ClawHub registry.
+ */
+export interface SkillCatalogEntry {
+	/** Skill slug */
+	slug: string;
+
+	/** Display name */
+	displayName: string;
+
+	/** Short summary */
+	summary: string | null;
+
+	/** Latest version */
+	version: string;
+
+	/** Tags/categories */
+	tags: Record<string, string>;
+
+	/** Usage statistics */
+	stats: {
+		downloads: number;
+		stars: number;
+	};
+
+	/** Last update timestamp */
+	updatedAt: number;
+}
+
+/**
+ * Detailed skill information from ClawHub registry.
+ */
+export interface SkillDetails {
+	skill: {
+		slug: string;
+		displayName: string;
+		summary: string;
+		tags: Record<string, string>;
+		stats: { downloads: number; stars: number; versions: number };
+		createdAt: number;
+		updatedAt: number;
+	};
+	latestVersion: { version: string; createdAt: number; changelog?: string };
+	owner?: { handle: string; displayName: string; image?: string };
+}
+
+// ============================================================
 // VALIDATION TYPES
 // ============================================================
 
@@ -225,6 +298,17 @@ export interface SkillValidationWarning {
 // ============================================================
 // SERVICE TYPES
 // ============================================================
+
+/**
+ * Cache options for service methods.
+ */
+export interface CacheOptions {
+	/** Max age in milliseconds, undefined = use default TTL */
+	notOlderThan?: number;
+
+	/** Bypass cache entirely */
+	forceRefresh?: boolean;
+}
 
 /**
  * Skill loading options.
@@ -375,6 +459,12 @@ export interface SkillsServiceConfig {
 
 	/** Bundled skills directories (read-only) */
 	bundledSkillsDirs?: string[];
+
+	/** Registry API URL */
+	registryUrl?: string;
+
+	/** Sync the remote skill catalog during service initialization */
+	syncCatalogOnStart?: boolean;
 
 	/** Auto-load installed skills on init */
 	autoLoad?: boolean;

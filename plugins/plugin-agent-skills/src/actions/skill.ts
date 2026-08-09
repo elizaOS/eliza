@@ -1,8 +1,12 @@
 /**
- * Routes local skill-management requests through the stable SKILL parent
- * action. USE_SKILL remains the separate invocation contract.
+ * SKILL — parent action that consolidates the agent-skills management
+ * surface into one entry point.
+ *
+ * Note: USE_SKILL stays separate. It's the canonical, contractually-stable
+ * entry point for invoking a specific skill (see workspace CLAUDE.md). This
+ * action covers the management/lifecycle ops only: search, details, sync,
+ * toggle, install, uninstall.
  */
-
 import type {
 	Action,
 	ActionResult,
@@ -13,12 +17,29 @@ import type {
 	State,
 } from "@elizaos/core";
 import { unwrapUserMessageText } from "@elizaos/core";
+import { getSkillDetailsAction } from "./get-skill-details";
+import { installSkillAction } from "./install-skill";
+import { searchSkillsAction } from "./search-skills";
+import { syncCatalogAction } from "./sync-catalog";
 import { toggleSkillAction } from "./toggle-skill";
 import { uninstallSkillAction } from "./uninstall-skill";
 
-type SkillOp = "toggle" | "uninstall";
+type SkillOp =
+	| "search"
+	| "details"
+	| "sync"
+	| "toggle"
+	| "install"
+	| "uninstall";
 
-const ALL_OPS: readonly SkillOp[] = ["toggle", "uninstall"];
+const ALL_OPS: readonly SkillOp[] = [
+	"search",
+	"details",
+	"sync",
+	"toggle",
+	"install",
+	"uninstall",
+] as const;
 
 interface SkillRoute {
 	op: SkillOp;
@@ -33,9 +54,29 @@ const ROUTES: SkillRoute[] = [
 		match: /\b(uninstall|remove|delete)\b.*\bskill\b/i,
 	},
 	{
+		op: "install",
+		action: installSkillAction,
+		match: /\b(install|add)\b.*\bskill\b/i,
+	},
+	{
 		op: "toggle",
 		action: toggleSkillAction,
 		match: /\b(enable|disable|activate|deactivate|toggle|turn on|turn off)\b.*\bskill\b/i,
+	},
+	{
+		op: "sync",
+		action: syncCatalogAction,
+		match: /\b(sync|refresh|reload|update)\b.*\b(catalog|registry|skills?)\b/i,
+	},
+	{
+		op: "details",
+		action: getSkillDetailsAction,
+		match: /\b(detail|info|describe|show|what is)\b.*\bskill\b/i,
+	},
+	{
+		op: "search",
+		action: searchSkillsAction,
+		match: /\b(search|find|browse|list|available|catalog)\b.*\bskill\b|\bskills?\b.*\b(search|find|browse|list|available)\b/i,
 	},
 ];
 
@@ -56,8 +97,19 @@ function normalizeOp(value: unknown): SkillOp | null {
 	if ((ALL_OPS as readonly string[]).includes(trimmed)) {
 		return trimmed as SkillOp;
 	}
-	if (trimmed === "enable" || trimmed === "disable") return "toggle";
-	if (trimmed === "remove" || trimmed === "delete") return "uninstall";
+	// Common aliases
+	if (trimmed === "get" || trimmed === "info" || trimmed === "describe") {
+		return "details";
+	}
+	if (trimmed === "enable" || trimmed === "disable") {
+		return "toggle";
+	}
+	if (trimmed === "refresh" || trimmed === "update") {
+		return "sync";
+	}
+	if (trimmed === "list" || trimmed === "browse") {
+		return "search";
+	}
 	return null;
 }
 
@@ -65,10 +117,14 @@ function selectRoute(
 	message: Memory,
 	options?: HandlerOptions | Record<string, unknown>,
 ): SkillRoute | null {
-	const requested = normalizeOp(readOptions(options).action);
+	const opts = readOptions(options);
+	const requested = normalizeOp(opts.action);
 	if (requested) {
-		return ROUTES.find((candidate) => candidate.op === requested) ?? null;
+		const route = ROUTES.find((candidate) => candidate.op === requested);
+		if (route) return route;
 	}
+	// Route on the user's actual words, not the external-content security
+	// envelope hardenIncomingUserMessage wraps around untrusted messages.
 	const text = unwrapUserMessageText(message);
 	return ROUTES.find((route) => route.match.test(text)) ?? null;
 }
@@ -76,30 +132,36 @@ function selectRoute(
 export const skillAction: Action = {
 	name: "SKILL",
 	description:
-		"Manage installed skills. Ops: toggle and uninstall. Use USE_SKILL to invoke an enabled skill.",
-	descriptionCompressed: "Installed skills: toggle or uninstall.",
+		"Manage skill catalog. Ops: search, details, sync, toggle, install, uninstall. Use USE_SKILL to invoke enabled skill.",
+	descriptionCompressed:
+		"Skill catalog: search, details, sync, toggle, install, uninstall.",
 	contexts: ["automation", "knowledge", "settings", "connectors"],
 	contextGate: { anyOf: ["automation", "knowledge", "settings", "connectors"] },
 	similes: [
 		"MANAGE_SKILL",
 		"MANAGE_SKILLS",
+		"SKILL_CATALOG",
 		"SKILLS",
 		"AGENT_SKILL",
 		"AGENT_SKILLS",
+		"INSTALL_SKILL",
 		"UNINSTALL_SKILL",
+		"SEARCH_SKILLS",
+		"SYNC_SKILL_CATALOG",
 		"TOGGLE_SKILL",
 	],
 	roleGate: { minRole: "USER" },
 	parameters: [
 		{
 			name: "action",
-			description: "Operation: toggle or uninstall. Infer if omitted.",
+			description:
+				"Operation: search, details, sync, toggle, install, uninstall. Infer if omitted.",
 			required: false,
 			schema: { type: "string", enum: [...ALL_OPS] },
 		},
 		{
 			name: "slug",
-			description: "Installed skill slug.",
+			description: "Skill slug for details, install, toggle, or uninstall.",
 			required: false,
 			schema: { type: "string" },
 		},
@@ -110,8 +172,9 @@ export const skillAction: Action = {
 			schema: { type: "boolean" },
 		},
 	],
-	validate: async (runtime: IAgentRuntime) =>
-		Boolean(runtime.getService("AGENT_SKILLS_SERVICE")),
+	validate: async (runtime: IAgentRuntime) => {
+		return Boolean(runtime.getService("AGENT_SKILLS_SERVICE"));
+	},
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -121,13 +184,14 @@ export const skillAction: Action = {
 	): Promise<ActionResult> => {
 		const route = selectRoute(message, options);
 		if (!route) {
-			const text = `SKILL could not determine the operation. Specify one of: ${ALL_OPS.join(", ")}.`;
+			const ops = ALL_OPS.join(", ");
+			const text = `SKILL could not determine the operation. Specify one of: ${ops}.`;
 			await callback?.({ text, source: message.content.source });
 			return {
 				success: false,
 				text,
 				values: { error: "MISSING" },
-				data: { actionName: "SKILL", availableOps: [...ALL_OPS] },
+				data: { actionName: "SKILL", availableOps: ops },
 			};
 		}
 		const routedCallback: HandlerCallback | undefined = callback
@@ -141,7 +205,8 @@ export const skillAction: Action = {
 				state,
 				options,
 				routedCallback,
-			)) ?? ({ success: true } as ActionResult);
+			)) ??
+			({ success: true } as ActionResult);
 		return {
 			...result,
 			data: {
@@ -154,10 +219,31 @@ export const skillAction: Action = {
 	},
 	examples: [
 		[
+			{ name: "{{user1}}", content: { text: "Search skills for image generation" } },
+			{
+				name: "{{agentName}}",
+				content: { text: "Searching the skill catalog.", actions: ["SKILL"] },
+			},
+		],
+		[
+			{ name: "{{user1}}", content: { text: "Install the github skill" } },
+			{
+				name: "{{agentName}}",
+				content: { text: "Installing that skill.", actions: ["SKILL"] },
+			},
+		],
+		[
 			{ name: "{{user1}}", content: { text: "Disable the apple-notes skill" } },
 			{
 				name: "{{agentName}}",
 				content: { text: "Disabling that skill.", actions: ["SKILL"] },
+			},
+		],
+		[
+			{ name: "{{user1}}", content: { text: "Refresh the skill catalog" } },
+			{
+				name: "{{agentName}}",
+				content: { text: "Refreshing.", actions: ["SKILL"] },
 			},
 		],
 	],

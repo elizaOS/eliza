@@ -46,6 +46,7 @@
     "elizaos",
     "plugin",
     "agent-skills",
+    "clawhub",
     "otto",
     "skills",
     "agents",
@@ -92,6 +93,12 @@
         "description": "Automatically load installed skills on startup",
         "required": false,
         "example": "true"
+      },
+      "SKILLS_REGISTRY": {
+        "type": "string",
+        "description": "Skill registry URL (default: https://clawhub.ai)",
+        "required": false,
+        "example": "https://clawhub.ai"
       },
       "BUNDLED_SKILLS_DIRS": {
         "type": "string",

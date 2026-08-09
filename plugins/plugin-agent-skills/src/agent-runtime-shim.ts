@@ -24,6 +24,7 @@ export function createIntegrationTelemetrySpan(_meta: {
 	boundary:
 		| "cloud"
 		| "wallet"
+		| "marketplace"
 		| "mcp"
 		| "lifeops"
 		| "browser-bridge";

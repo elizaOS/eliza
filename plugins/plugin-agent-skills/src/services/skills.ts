@@ -34,6 +34,7 @@ import {
 	MemorySkillStore,
 } from "../storage";
 import type {
+	CacheOptions,
 	IneligibilityReason,
 	InstallSkillOptions,
 	LoadedSkillWithSource,
@@ -41,10 +42,13 @@ import type {
 	OttoInstallOption,
 	PromptJsonOptions,
 	Skill,
+	SkillCatalogEntry,
 	SkillConfigEntry,
+	SkillDetails,
 	SkillEligibility,
 	SkillInstructions,
 	SkillMetadataEntry,
+	SkillSearchResult,
 	SkillSource,
 } from "../types";
 import { SKILL_SOURCE_PRECEDENCE } from "../types";
@@ -52,6 +56,22 @@ import { SKILL_SOURCE_PRECEDENCE } from "../types";
 // ============================================================
 // CONSTANTS
 // ============================================================
+
+/** Default ClawHub API base URL */
+const CLAWHUB_API = "https://clawhub.ai";
+
+/** Cache TTL defaults (in milliseconds) */
+const CACHE_TTL = {
+	CATALOG: 1000 * 60 * 60, // 1 hour - list of all skills
+	SKILL_DETAILS: 1000 * 60 * 30, // 30 min - individual skill details
+	SEARCH: 1000 * 60 * 5, // 5 min - search results
+};
+
+/**
+ * Cooldown period after a catalog fetch error before retrying (5 minutes).
+ * Prevents hammering the API when it returns errors (e.g. 429 rate-limit).
+ */
+const FETCH_ERROR_COOLDOWN = 1000 * 60 * 5;
 
 /** Maximum package size for downloads */
 const MAX_PACKAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -61,6 +81,15 @@ const DEFAULT_AUTO_REFRESH_INTERVAL = 5000;
 
 /** Eligibility cache TTL (5 minutes) */
 const ELIGIBILITY_CACHE_TTL = 5 * 60 * 1000;
+
+// ============================================================
+// CACHE TYPES
+// ============================================================
+
+interface CacheEntry<T> {
+	data: T;
+	cachedAt: number;
+}
 
 // ============================================================
 // HELPER FUNCTIONS
@@ -86,6 +115,10 @@ export interface AgentSkillsServiceConfig {
 	storageType?: "memory" | "filesystem" | "auto";
 	/** Base path for skill storage (managed/installed skills) */
 	skillsDir?: string;
+	/** Registry API URL */
+	registryUrl?: string;
+	/** Sync the remote skill catalog during service initialization */
+	syncCatalogOnStart?: boolean;
 	/** Auto-load installed skills on init */
 	autoLoad?: boolean;
 	/** Custom storage instance (overrides storageType/skillsDir) */
@@ -129,11 +162,11 @@ export const AGENT_SKILLS_SERVICE_TYPE = "AGENT_SKILLS_SERVICE";
 /**
  * Agent Skills Service
  *
- * Manages skill discovery, loading, validation, and local installation.
+ * Manages skill discovery, loading, validation, and registry integration.
  * Works with both memory-based and filesystem-based storage.
  *
  * Supports two types of skill sources:
- * - **Managed skills**: Installed directly, stored in skillsDir, modifiable
+ * - **Managed skills**: Installed from registry, stored in skillsDir, modifiable
  * - **Bundled skills**: Read-only skills from bundledSkillsDirs, shipped with app
  */
 export class AgentSkillsService extends Service {
@@ -142,6 +175,8 @@ export class AgentSkillsService extends Service {
 		"Agent Skills - discover, load, and execute modular agent capabilities";
 
 	private storage: ISkillStorage;
+	private apiBase: string;
+	private syncCatalogOnStart: boolean;
 	private autoLoad: boolean;
 
 	// Bundled skills configuration
@@ -158,6 +193,9 @@ export class AgentSkillsService extends Service {
 
 	// In-memory caches - now tracks LoadedSkill with source info
 	private loadedSkills: Map<string, LoadedSkillWithSource> = new Map();
+	private catalogCache: CacheEntry<SkillCatalogEntry[]> | null = null;
+	private searchCache: Map<string, CacheEntry<SkillSearchResult[]>> = new Map();
+	private detailsCache: Map<string, CacheEntry<SkillDetails>> = new Map();
 
 	// Eligibility cache
 	private eligibilityCache: Map<string, SkillEligibility> = new Map();
@@ -181,6 +219,15 @@ export class AgentSkillsService extends Service {
 	private autoRefreshInterval: number = DEFAULT_AUTO_REFRESH_INTERVAL;
 	private watcherCleanup: (() => void) | null = null;
 
+	// Catalog cache for disk persistence (filesystem mode only)
+	private catalogCachePath: string | null = null;
+	private lockfilePath: string | null = null;
+
+	// Tracks the last catalog fetch failure timestamp for backoff.
+	private lastFetchErrorAt: number = 0;
+	// Duration of the current cooldown (may be overridden by Retry-After header on 429).
+	private fetchCooldownMs: number = FETCH_ERROR_COOLDOWN;
+
 	constructor(
 		protected runtime: IAgentRuntime,
 		config?: AgentSkillsServiceConfig,
@@ -188,7 +235,9 @@ export class AgentSkillsService extends Service {
 		super(runtime);
 
 		// Resolve configuration from runtime settings or config
-		const skillsDirSetting = runtime.getSetting("SKILLS_DIR");
+		const skillsDirSetting =
+			runtime.getSetting("SKILLS_DIR") ??
+			runtime.getSetting("CLAWHUB_SKILLS_DIR");
 		const skillsDir =
 			config?.skillsDir ||
 			(typeof skillsDirSetting === "string" ? skillsDirSetting : null) ||
@@ -202,8 +251,28 @@ export class AgentSkillsService extends Service {
 				: null) ||
 			"auto";
 
+		const registrySetting =
+			runtime.getSetting("SKILLS_REGISTRY") ??
+			runtime.getSetting("CLAWHUB_REGISTRY");
+		this.apiBase =
+			config?.registryUrl ||
+			(typeof registrySetting === "string" ? registrySetting : null) ||
+			CLAWHUB_API;
+
+		// Registry I/O is opt-in during startup. getSetting() may preserve the
+		// string or coerce it to a boolean, so accept both explicit true forms.
+		const syncCatalogOnStartSetting = runtime.getSetting(
+			"SKILLS_SYNC_CATALOG_ON_START",
+		);
+		this.syncCatalogOnStart =
+			config?.syncCatalogOnStart ??
+			(syncCatalogOnStartSetting === "true" ||
+				syncCatalogOnStartSetting === true);
+
 		this.autoLoad =
-			config?.autoLoad ?? runtime.getSetting("SKILLS_AUTO_LOAD") !== "false";
+			config?.autoLoad ??
+			(runtime.getSetting("SKILLS_AUTO_LOAD") !== "false" &&
+				runtime.getSetting("CLAWHUB_AUTO_LOAD") !== "false");
 
 		// Bundled skills directories from config or runtime settings
 		// Can be comma-separated string or array
@@ -286,6 +355,11 @@ export class AgentSkillsService extends Service {
 			config?.storage ||
 			createStorage({ type: storageType, basePath: skillsDir });
 
+		// Set up cache paths for filesystem mode
+		if (this.storage.type === "filesystem") {
+			this.catalogCachePath = `${skillsDir}/.cache/catalog.json`;
+			this.lockfilePath = `${skillsDir}/.cache/lock.json`;
+		}
 	}
 
 	/**
@@ -344,6 +418,9 @@ export class AgentSkillsService extends Service {
 
 		this.loadedSkills.clear();
 		this.eligibilityCache.clear();
+		this.catalogCache = null;
+		this.searchCache.clear();
+		this.detailsCache.clear();
 	}
 
 	async initialize(): Promise<void> {
@@ -372,6 +449,11 @@ export class AgentSkillsService extends Service {
 			await this.loadWorkspaceSkills();
 		}
 
+		// Load cached catalog from disk (filesystem mode only)
+		if (this.storage.type === "filesystem") {
+			await this.loadCatalogFromDisk();
+		}
+
 		// Start auto-refresh watcher if enabled
 		if (this.autoRefreshEnabled && this.storage.type === "filesystem") {
 			this.startAutoRefresh();
@@ -385,6 +467,22 @@ export class AgentSkillsService extends Service {
 				`bundled: ${counts.bundled}, plugin: ${counts.plugin}, extra: ${counts.extra})`,
 		);
 
+		if (this.syncCatalogOnStart) {
+			// Eagerly sync the skill catalog from the registry at startup.
+			// This runs inline (non-blocking failure) so the agent boots with a
+			// fresh catalog instead of waiting for the background timer.
+			try {
+				const result = await this.syncCatalog();
+				this.runtime.logger.info(
+					`AgentSkills: Catalog synced at startup - ${result.updated} skills available, ${result.added} new`,
+				);
+			} catch (error) {
+				// Non-fatal — the agent can still operate with the disk-cached catalog
+				this.runtime.logger.warn(
+					`AgentSkills: Startup catalog sync failed (will retry in background): ${error}`,
+				);
+			}
+		}
 	}
 
 	/**
@@ -611,7 +709,7 @@ export class AgentSkillsService extends Service {
 		}
 
 		// Auto-refresh watches workspace skills, the mutable source this service
-		// owns. Managed and bundled skills refresh through their normal load flows.
+		// owns. Managed, bundled, and catalog skills refresh through load/sync flows.
 		if (watchDirs.length === 0) {
 			this.runtime.logger.debug(
 				"AgentSkills: No directories to watch for auto-refresh",
@@ -1717,6 +1815,182 @@ export class AgentSkillsService extends Service {
 	}
 
 	// ============================================================
+	// REGISTRY OPERATIONS (ClawHub Integration)
+	// ============================================================
+
+	/**
+	 * Get the full skill catalog from ClawHub.
+	 */
+	async getCatalog(options: CacheOptions = {}): Promise<SkillCatalogEntry[]> {
+		const ttl = options.notOlderThan ?? CACHE_TTL.CATALOG;
+
+		// Check cache
+		if (!options.forceRefresh && this.catalogCache) {
+			const age = Date.now() - this.catalogCache.cachedAt;
+			if (age < ttl) {
+				return this.catalogCache.data;
+			}
+		}
+
+		// If a recent fetch failed, skip the network call and return whatever
+		// cached data we have.  This prevents hammering the API after errors
+		// (e.g. 429 rate-limit) — the periodic sync task will retry later.
+		const sinceLastError = Date.now() - this.lastFetchErrorAt;
+		if (this.lastFetchErrorAt > 0 && sinceLastError < this.fetchCooldownMs) {
+			return this.catalogCache?.data ?? [];
+		}
+
+		// Fetch from API
+		try {
+			const entries: SkillCatalogEntry[] = [];
+			let cursor: string | undefined;
+
+			do {
+				const url = `${this.apiBase}/api/v1/skills?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
+				const response = await fetch(url, {
+					headers: { Accept: "application/json" },
+				});
+
+				if (!response.ok) {
+					if (response.status === 429) {
+						// Rate-limited: honour Retry-After header when present, otherwise
+						// fall back to the default cooldown. Log at info (expected, not broken).
+						const retryAfterHeader = response.headers.get("retry-after");
+						const retrySecs = retryAfterHeader
+							? Number(retryAfterHeader)
+							: null;
+						const cooldownSecs =
+							retrySecs != null && Number.isFinite(retrySecs) && retrySecs > 0
+								? retrySecs
+								: FETCH_ERROR_COOLDOWN / 1000;
+						this.fetchCooldownMs = cooldownSecs * 1000;
+						this.lastFetchErrorAt = Date.now();
+						if (!this.catalogCache) {
+							this.catalogCache = { data: [], cachedAt: Date.now() };
+						}
+						this.runtime.logger.info(
+							`AgentSkills: Catalog rate limited (429); backing off for ${cooldownSecs}s`,
+						);
+						return this.catalogCache.data;
+					}
+					throw new Error(`Catalog fetch failed: ${response.status}`);
+				}
+
+				const data = (await response.json()) as {
+					items: SkillCatalogEntry[];
+					nextCursor?: string;
+				};
+				entries.push(...data.items);
+				cursor = data.nextCursor;
+			} while (cursor);
+
+			this.catalogCache = { data: entries, cachedAt: Date.now() };
+			this.lastFetchErrorAt = 0; // Clear error state on success
+			this.fetchCooldownMs = FETCH_ERROR_COOLDOWN; // Reset to default cooldown
+
+			// Save to disk in filesystem mode
+			if (this.storage.type === "filesystem") {
+				await this.saveCatalogToDisk();
+			}
+
+			return entries;
+		} catch (error) {
+			this.lastFetchErrorAt = Date.now();
+			this.runtime.logger.warn(
+				`AgentSkills: Catalog fetch failed (will retry after cooldown): ${error}`,
+			);
+
+			// Ensure a cache entry exists so subsequent calls (especially from
+			// providers using notOlderThan: Infinity) hit the cache instead of
+			// repeatedly attempting failed network requests.
+			if (!this.catalogCache) {
+				this.catalogCache = { data: [], cachedAt: Date.now() };
+			}
+			return this.catalogCache.data;
+		}
+	}
+
+	/**
+	 * Search ClawHub for skills.
+	 */
+	async search(
+		query: string,
+		limit = 10,
+		options: CacheOptions = {},
+	): Promise<SkillSearchResult[]> {
+		const cacheKey = `${query}:${limit}`;
+		const ttl = options.notOlderThan ?? CACHE_TTL.SEARCH;
+
+		// Check cache
+		if (!options.forceRefresh) {
+			const cached = this.searchCache.get(cacheKey);
+			if (cached && Date.now() - cached.cachedAt < ttl) {
+				return cached.data;
+			}
+		}
+
+		try {
+			const url = `${this.apiBase}/api/v1/search?q=${encodeURIComponent(query)}&limit=${limit}`;
+			const response = await fetch(url, {
+				headers: { Accept: "application/json" },
+			});
+
+			if (!response.ok) {
+				throw new Error(`Search failed: ${response.status}`);
+			}
+
+			const data = (await response.json()) as { results: SkillSearchResult[] };
+			const results = data.results || [];
+
+			this.searchCache.set(cacheKey, { data: results, cachedAt: Date.now() });
+
+			return results;
+		} catch (error) {
+			this.runtime.logger.error(`AgentSkills: Search error: ${error}`);
+			return this.searchCache.get(cacheKey)?.data || [];
+		}
+	}
+
+	/**
+	 * Get skill details from ClawHub.
+	 */
+	async getSkillDetails(
+		slug: string,
+		options: CacheOptions = {},
+	): Promise<SkillDetails | null> {
+		const safeSlug = sanitizeSlug(slug);
+		const ttl = options.notOlderThan ?? CACHE_TTL.SKILL_DETAILS;
+
+		// Check cache
+		if (!options.forceRefresh) {
+			const cached = this.detailsCache.get(safeSlug);
+			if (cached && Date.now() - cached.cachedAt < ttl) {
+				return cached.data;
+			}
+		}
+
+		try {
+			const url = `${this.apiBase}/api/v1/skills/${safeSlug}`;
+			const response = await fetch(url, {
+				headers: { Accept: "application/json" },
+			});
+
+			if (!response.ok) {
+				if (response.status === 404) return null;
+				throw new Error(`Details fetch failed: ${response.status}`);
+			}
+
+			const details = (await response.json()) as SkillDetails;
+			this.detailsCache.set(safeSlug, { data: details, cachedAt: Date.now() });
+
+			return details;
+		} catch (error) {
+			this.runtime.logger.error(`AgentSkills: Details fetch error: ${error}`);
+			return this.detailsCache.get(safeSlug)?.data || null;
+		}
+	}
+
+	// ============================================================
 	// SECURITY SCANNING
 	// ============================================================
 
@@ -1875,6 +2149,87 @@ export class AgentSkillsService extends Service {
 	// ============================================================
 	// INSTALLATION
 	// ============================================================
+
+	/**
+	 * Install a skill from ClawHub.
+	 *
+	 * In memory mode: Downloads and loads skill into memory.
+	 * In filesystem mode: Downloads, extracts to disk, and loads.
+	 */
+	async install(
+		slug: string,
+		options: InstallSkillOptions = {},
+	): Promise<boolean> {
+		try {
+			const safeSlug = sanitizeSlug(slug);
+			const version = options.version || "latest";
+
+			// Check if already installed (unless force)
+			if (!options.force && (await this.isInstalled(safeSlug))) {
+				this.runtime.logger.info(`AgentSkills: ${safeSlug} already installed`);
+				return true;
+			}
+
+			this.runtime.logger.info(
+				`AgentSkills: Installing ${safeSlug}@${version}...`,
+			);
+
+			// Get skill details
+			const details = await this.getSkillDetails(safeSlug);
+			if (!details) {
+				throw new Error(`Skill "${safeSlug}" not found`);
+			}
+
+			const resolvedVersion =
+				version === "latest" ? details.latestVersion.version : version;
+
+			// Download
+			const downloadUrl = `${this.apiBase}/api/v1/download?slug=${safeSlug}&version=${resolvedVersion}`;
+			const response = await fetch(downloadUrl);
+
+			if (!response.ok) {
+				throw new Error(`Download failed: ${response.status}`);
+			}
+
+			const zipBuffer = await response.arrayBuffer();
+			if (zipBuffer.byteLength > MAX_PACKAGE_SIZE) {
+				throw new Error(
+					`Package too large (max ${MAX_PACKAGE_SIZE / 1024 / 1024}MB)`,
+				);
+			}
+
+			// Extract and save based on storage type
+			if (this.storage instanceof MemorySkillStore) {
+				await (this.storage as MemorySkillStore).loadFromZip(
+					safeSlug,
+					new Uint8Array(zipBuffer),
+				);
+			} else if (this.storage instanceof FileSystemSkillStore) {
+				await (this.storage as FileSystemSkillStore).saveFromZip(
+					safeSlug,
+					new Uint8Array(zipBuffer),
+				);
+				// Update lockfile
+				await this.updateLockfile(safeSlug, resolvedVersion);
+			}
+
+			// Security scan — runs after save, before load
+			// Blocked skills are deleted and an error is thrown
+			const scanReport = await this.scanInstalledSkill(safeSlug);
+			await this.handleScanResult(safeSlug, scanReport);
+
+			// Load the skill
+			await this.loadSkill(safeSlug);
+
+			this.runtime.logger.info(
+				`AgentSkills: Installed ${safeSlug}@${resolvedVersion} (scan: ${scanReport.status})`,
+			);
+			return true;
+		} catch (error) {
+			this.runtime.logger.error(`AgentSkills: Install error: ${error}`);
+			return false;
+		}
+	}
 
 	/**
 	 * Install a skill from a GitHub repository.
@@ -2143,6 +2498,130 @@ export class AgentSkillsService extends Service {
 		return deleted;
 	}
 
+	// ============================================================
+	// SYNC OPERATIONS
+	// ============================================================
+
+	/**
+	 * Sync the skill catalog from ClawHub.
+	 */
+	async syncCatalog(): Promise<{ added: number; updated: number }> {
+		const oldCount = this.catalogCache?.data.length || 0;
+		await this.getCatalog({ forceRefresh: true });
+		const newCount = this.catalogCache?.data.length || 0;
+
+		return {
+			added: Math.max(0, newCount - oldCount),
+			updated: newCount,
+		};
+	}
+
+	/**
+	 * Get catalog stats for logging.
+	 */
+	getCatalogStats(): {
+		total: number;
+		installed: number;
+		loaded: number;
+		cachedAt: number | null;
+		storageType: "memory" | "filesystem";
+		categories: string[];
+	} {
+		const categories = new Set<string>();
+		if (this.catalogCache?.data) {
+			for (const skill of this.catalogCache.data) {
+				if (skill.tags) {
+					for (const tag of Object.keys(skill.tags)) {
+						if (tag !== "latest") categories.add(tag);
+					}
+				}
+			}
+		}
+		return {
+			total: this.catalogCache?.data.length || 0,
+			installed: this.loadedSkills.size, // For backward compat
+			loaded: this.loadedSkills.size,
+			cachedAt: this.catalogCache?.cachedAt || null,
+			storageType: this.storage.type,
+			categories: Array.from(categories).slice(0, 20),
+		};
+	}
+
+	private async updateLockfile(slug: string, version: string): Promise<void> {
+		if (!this.lockfilePath || this.storage.type !== "filesystem") return;
+
+		try {
+			const fs = await import("node:fs");
+			const path = await import("node:path");
+
+			const cacheDir = path.dirname(this.lockfilePath);
+			if (!fs.existsSync(cacheDir)) {
+				fs.mkdirSync(cacheDir, { recursive: true });
+			}
+
+			let lockfile: Record<string, { version: string; installedAt: string }> =
+				{};
+			if (fs.existsSync(this.lockfilePath)) {
+				try {
+					lockfile = JSON.parse(fs.readFileSync(this.lockfilePath, "utf-8"));
+				} catch {
+					// Reset corrupt lockfile
+				}
+			}
+
+			lockfile[slug] = { version, installedAt: new Date().toISOString() };
+			fs.writeFileSync(this.lockfilePath, JSON.stringify(lockfile, null, 2));
+		} catch {
+			// Non-critical error
+		}
+	}
+
+	private async loadCatalogFromDisk(): Promise<void> {
+		if (!this.catalogCachePath || this.storage.type !== "filesystem") return;
+
+		try {
+			const fs = await import("node:fs");
+			if (!fs.existsSync(this.catalogCachePath)) return;
+
+			const cached = JSON.parse(
+				fs.readFileSync(this.catalogCachePath, "utf-8"),
+			);
+			if (cached.data && cached.cachedAt) {
+				this.catalogCache = cached;
+				this.runtime.logger.debug(
+					`AgentSkills: Loaded catalog cache (${cached.data.length} skills)`,
+				);
+			}
+		} catch {
+			// Ignore
+		}
+	}
+
+	private async saveCatalogToDisk(): Promise<void> {
+		if (
+			!this.catalogCache ||
+			!this.catalogCachePath ||
+			this.storage.type !== "filesystem"
+		)
+			return;
+
+		try {
+			const fs = await import("node:fs");
+			const path = await import("node:path");
+
+			const cacheDir = path.dirname(this.catalogCachePath);
+			if (!fs.existsSync(cacheDir)) {
+				fs.mkdirSync(cacheDir, { recursive: true });
+			}
+
+			fs.writeFileSync(
+				this.catalogCachePath,
+				JSON.stringify(this.catalogCache, null, 2),
+			);
+		} catch {
+			// Non-critical error
+		}
+	}
 }
 
 // Re-export types for convenience (canonical definitions are in ../types)

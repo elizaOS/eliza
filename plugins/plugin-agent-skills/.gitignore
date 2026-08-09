@@ -15,6 +15,7 @@ node_modules/
 
 # Skills cache (downloaded skills)
 skills/
+.clawhub/
 
 # OS
 .DS_Store

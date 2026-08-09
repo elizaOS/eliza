@@ -1,5 +1,5 @@
 /**
- * Shared `validate` factory for local skill-management actions; gates each one
+ * Shared `validate` factory for the skill catalog actions — gates each action
  * on the AGENT_SKILLS_SERVICE being registered on the runtime.
  */
 

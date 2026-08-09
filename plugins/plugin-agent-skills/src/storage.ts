@@ -196,7 +196,7 @@ export class MemorySkillStore implements ISkillStorage {
 	}
 
 	/**
-	 * Load a skill from a zip buffer supplied by an explicit installer.
+	 * Load a skill from a zip buffer (for registry downloads).
 	 */
 	async loadFromZip(slug: string, zipBuffer: Uint8Array): Promise<void> {
 		const unzipped = unzipSync(zipBuffer);

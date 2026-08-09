@@ -112,9 +112,10 @@ export async function saveSkillAcknowledgments(
 /**
  * Load a .scan-results.json from the skill's directory on disk.
  *
- * Checks the workspace location and the runtime-managed skill path:
+ * Checks multiple locations because skills can be installed from different sources:
  * - Workspace skills: {workspace}/skills/{id}/
- * - Managed skills: {managed-dir}/{id}/ (default: ./skills/)
+ * - Marketplace skills: {workspace}/skills/.marketplace/{id}/
+ * - Catalog-installed (managed) skills: {managed-dir}/{id}/ (default: ./skills/)
  *
  * Also queries the AgentSkillsService for the skill's path when a runtime is available,
  * which covers all sources regardless of directory layout.
@@ -129,10 +130,17 @@ export async function loadScanReportFromDisk(
 
   const candidates = [
     pathMod.join(workspaceDir, "skills", skillId, ".scan-results.json"),
+    pathMod.join(
+      workspaceDir,
+      "skills",
+      ".marketplace",
+      skillId,
+      ".scan-results.json",
+    ),
   ];
 
-  // Also check the path reported by AgentSkillsService when its managed
-  // directory differs from the workspace directory.
+  // Also check the path reported by the AgentSkillsService (covers catalog-installed skills
+  // whose managed dir might differ from the workspace dir)
   if (runtime) {
     const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
       | { getLoadedSkills?: () => Array<{ slug: string; path: string }> }
@@ -353,6 +361,12 @@ export async function discoverSkills(
   const workspaceSkills = path.join(workspaceDir, "skills");
   if (fs.existsSync(workspaceSkills)) {
     skillsDirs.add(workspaceSkills);
+  }
+
+  // Marketplace-installed skills (stored under .marketplace, skipped by dot-prefix filter)
+  const marketplaceSkills = path.join(workspaceDir, "skills", ".marketplace");
+  if (fs.existsSync(marketplaceSkills)) {
+    skillsDirs.add(marketplaceSkills);
   }
 
   // Extra dirs from config
