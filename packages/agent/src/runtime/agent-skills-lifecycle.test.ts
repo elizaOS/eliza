@@ -29,6 +29,14 @@ class FixtureSkillsService extends Service {
     ] as ReturnType<AgentSkillsService["getLoadedSkills"]>;
   }
 
+  getCatalogStats(): ReturnType<AgentSkillsService["getCatalogStats"]> {
+    return {
+      loaded: 1,
+      total: 1,
+      storageType: "memory",
+    } as ReturnType<AgentSkillsService["getCatalogStats"]>;
+  }
+
   async stop(): Promise<void> {}
 }
 

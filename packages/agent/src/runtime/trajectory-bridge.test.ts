@@ -1140,7 +1140,11 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     expect(terminalWrite).not.toContain('"episodeLength":999');
   });
 
-  it("bounds bridge-owned action, model, and provider capture", async () => {
+  // ~20s of CPU-bound truncation/serialization on a dev machine; shared 4-core
+  // CI runners under parallel vitest batches have blown the 120s default.
+  it("bounds bridge-owned action, model, and provider capture", {
+    timeout: 300_000,
+  }, async () => {
     const { runtime, logger, execute } = makeRuntime();
     const persistedAt = Date.now();
     const parentRow = {

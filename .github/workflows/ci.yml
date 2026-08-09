@@ -49,6 +49,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # Deterministic contract: every lane command the workflows reference must
+      # keep its Windows coverage inventory in sync (pre-consolidation this ran
+      # from the Tests classify job).
+      - name: Validate Windows command coverage contract
+        run: node packages/scripts/ci-windows-command-coverage-contract.mjs
+
       - name: Classify affected test surfaces
         id: filter
         shell: bash
@@ -177,6 +183,12 @@ jobs:
       - name: Desktop startup smoke
         if: needs.changes.outputs.desktop == 'true'
         run: bun run test:dev-startup
+
+      # The zero-key e2e suite drives chromium (desktop + mobile projects) and
+      # webkit; without this the whole lane fails at browserType.launch.
+      - name: Install Playwright browsers
+        if: needs.changes.outputs.zero_key == 'true'
+        run: PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit
 
       - name: Deterministic end-to-end smoke
         if: needs.changes.outputs.zero_key == 'true'
