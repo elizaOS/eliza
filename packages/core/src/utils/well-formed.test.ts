@@ -174,6 +174,7 @@ describe("deepToWellFormedUnicode", () => {
 		expect(serialized).toContain('"marker":"kept"');
 		// The lone surrogate in the sibling value was sanitized.
 		expect((output as Record<string, unknown>).bad).toBe("�");
+		expect(Object.getPrototypeOf(output)).toBe(Object.prototype);
 	});
 
 	// #18081: Two distinct keys that sanitize to the same form should not
@@ -238,6 +239,35 @@ describe("deepToWellFormedUnicode", () => {
 		expect(output).toBe(input);
 	});
 
+	it("preserves non-enumerable callbacks and symbol descriptors when cloning", () => {
+		const callback = () => "execute";
+		const sdkMarker = Symbol("sdk-marker");
+		const input = { "bad\uD83D": "value" } as Record<PropertyKey, unknown>;
+		Object.defineProperty(input, "execute", {
+			value: callback,
+			writable: false,
+			enumerable: false,
+			configurable: false,
+		});
+		Object.defineProperty(input, sdkMarker, {
+			value: 42,
+			writable: false,
+			enumerable: false,
+			configurable: false,
+		});
+
+		const output = deepToWellFormedUnicode(input);
+
+		expect(output).not.toBe(input);
+		expect(Object.getOwnPropertyDescriptor(output, "execute")).toEqual(
+			Object.getOwnPropertyDescriptor(input, "execute"),
+		);
+		expect(Object.getOwnPropertyDescriptor(output, sdkMarker)).toEqual(
+			Object.getOwnPropertyDescriptor(input, sdkMarker),
+		);
+		expect(output.execute).toBe(callback);
+	});
+
 	it("sanitizes string values and keys copy-on-write on objects with function properties (#18081)", () => {
 		const callback = () => "execute";
 		const input = { description: "bad \uD83D", execute: callback } as Record<
@@ -294,7 +324,7 @@ describe("deepToWellFormedUnicode", () => {
 		// An own __proto__ data key (from JSON.parse) + execute() to select
 		// the function/symbol-preserving copy-on-write branch.
 		// A malformed sibling key ("bad\uD83D") forces `changed = true` so the
-		// clone path actually executes — without it, sanitizeObjectPreservingSymbols
+		// clone path actually executes — without it, sanitizeObjectPreservingDescriptors
 		// early-returns the original input and the assertions would merely observe
 		// the JSON.parse output, not the clone.
 		const input = JSON.parse(
@@ -318,6 +348,15 @@ describe("deepToWellFormedUnicode", () => {
 		const serialized = JSON.stringify(output);
 		expect(serialized).toContain('"__proto__"');
 		expect(serialized).toContain('"marker":"kept"');
+		expect(Object.getPrototypeOf(output)).toBe(Object.prototype);
+	});
+
+	it("preserves a null prototype while sanitizing", () => {
+		const input = Object.assign(Object.create(null), { value: "bad \uD83D" });
+		const output = deepToWellFormedUnicode(input);
+		expect(output).not.toBe(input);
+		expect(Object.getPrototypeOf(output)).toBeNull();
+		expect(output.value).toBe("bad �");
 	});
 
 	it("handles normalized-key collisions with first-write-wins on the function-preservation branch (#18081 review)", () => {

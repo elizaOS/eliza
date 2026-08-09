@@ -111,22 +111,23 @@ export function tailWellFormed(text: string, maxLength: number): string {
 
 /**
  * Copy-on-write sanitizer for objects that carry SDK-identifying symbols or
- * function-valued properties (AI SDK tool schemas, execute callbacks).
+ * function-valued or accessor properties (AI SDK tool schemas and execute
+ * callbacks).
  *
  * Unlike the plain-object path in {@link deepToWellFormedUnicode}, this builds
  * a NEW object so the caller's input is never mutated — even if frozen. String
- * keys AND values are sanitized; function-valued properties and symbol
- * properties pass through by reference; nested values are routed through
- * {@link deepToWellFormedUnicode} for the same recursive treatment. Returns
- * the same reference when nothing needed sanitizing.
+ * enumerable string keys AND values are sanitized; non-enumerable and symbol
+ * properties retain their original descriptors; nested enumerable values are
+ * routed through {@link deepToWellFormedUnicode} for the same recursive
+ * treatment. Returns the same reference when nothing needed sanitizing.
  *
  * Key-safety policy mirrors the plain-object branch: the clone is built on a
- * null-prototype object with `Object.defineProperty` so an own `__proto__` key
- * from a JSON-parsed input is preserved as a data member instead of mutating
- * the clone's prototype chain, and a first-write-wins collision policy prevents
- * two distinct keys from collapsing onto the same sanitized form (#18081 review).
+ * null-prototype staging object with `Object.defineProperty` so an own
+ * `__proto__` key is preserved as data. The source prototype is restored only
+ * after all keys are defined, and a first-write-wins collision policy prevents
+ * distinct keys from collapsing onto the same sanitized form.
  */
-function sanitizeObjectPreservingSymbols<T>(value: T): T {
+function sanitizeObjectPreservingDescriptors<T>(value: T): T {
 	if (value === null || typeof value !== "object") {
 		return value;
 	}
@@ -144,32 +145,44 @@ function sanitizeObjectPreservingSymbols<T>(value: T): T {
 	const source = value as Record<PropertyKey, unknown>;
 	const clone = Object.create(null) as Record<PropertyKey, unknown>;
 	let changed = false;
-	for (const key of Object.keys(source)) {
+	for (const key of Reflect.ownKeys(source)) {
+		const descriptor = Object.getOwnPropertyDescriptor(source, key);
+		if (!descriptor) {
+			continue;
+		}
+
+		// Symbols and non-enumerable string members do not enter a JSON body.
+		// Preserve them byte-for-byte because SDK identity markers, callbacks,
+		// and lazy metadata commonly live there.
+		if (typeof key === "symbol" || !descriptor.enumerable) {
+			Object.defineProperty(clone, key, descriptor);
+			continue;
+		}
+
 		const sanitizedKey = toWellFormedUnicode(key);
-		const entry = source[key];
+		const entry = "value" in descriptor ? descriptor.value : source[key];
 		const sanitizedValue = deepToWellFormedUnicode(entry);
 		if (sanitizedKey !== key || sanitizedValue !== entry) {
 			changed = true;
 		}
-		if (!(sanitizedKey in clone)) {
+		if (!Object.hasOwn(clone, sanitizedKey)) {
+			const sanitizedDescriptor: PropertyDescriptor =
+				"value" in descriptor
+					? { ...descriptor, value: sanitizedValue }
+					: sanitizedValue === entry
+						? descriptor
+						: {
+								value: sanitizedValue,
+								writable: true,
+								enumerable: descriptor.enumerable,
+								configurable: descriptor.configurable,
+							};
 			Object.defineProperty(clone, sanitizedKey, {
-				value: sanitizedValue,
-				writable: true,
-				enumerable: true,
-				configurable: true,
+				...sanitizedDescriptor,
 			});
 		}
 	}
-	for (const sym of Object.getOwnPropertySymbols(source)) {
-		clone[sym] = source[sym];
-	}
-	// Re-attach Object.prototype so downstream code that relies on
-	// hasOwnProperty/toString still works — but only if the original input
-	// didn't define an own `__proto__` key. See deepToWellFormedUnicode for
-	// the rationale on Object.hasOwn vs `in`.
-	if (!Object.hasOwn(source, "__proto__")) {
-		Object.setPrototypeOf(clone, Object.prototype);
-	}
+	Object.setPrototypeOf(clone, Object.getPrototypeOf(source));
 	return (changed ? clone : value) as T;
 }
 
@@ -209,17 +222,25 @@ export function deepToWellFormedUnicode<T>(value: T): T {
 		if (proto !== Object.prototype && proto !== null) {
 			return value;
 		}
-		// Objects that carry SDK-identifying symbols or function-valued
-		// properties (e.g. AI SDK jsonSchema wrappers, tool execute callbacks)
+		// Objects that carry SDK-identifying symbols, function-valued
+		// properties, or accessors (e.g. AI SDK jsonSchema wrappers and tool
+		// execute callbacks)
 		// must not be cloned onto a null-prototype object — cloning drops
 		// non-enumerable symbol properties and breaks SDK contract checks
 		// (asSchema throws "schema is not a function"). Sanitize their
 		// string-valued own properties in-place instead (#18081).
-		if (
-			Object.getOwnPropertySymbols(value).length > 0 ||
-			Object.values(value).some((v) => typeof v === "function")
-		) {
-			return sanitizeObjectPreservingSymbols(value);
+		const needsDescriptorPreservingClone = Reflect.ownKeys(value).some(
+			(key) => {
+				const descriptor = Object.getOwnPropertyDescriptor(value, key);
+				return (
+					typeof key === "symbol" ||
+					Boolean(descriptor && !("value" in descriptor)) ||
+					typeof descriptor?.value === "function"
+				);
+			},
+		);
+		if (needsDescriptorPreservingClone) {
+			return sanitizeObjectPreservingDescriptors(value);
 		}
 		let changed = false;
 		const next = Object.create(null) as Record<string, unknown>;
@@ -238,15 +259,10 @@ export function deepToWellFormedUnicode<T>(value: T): T {
 				});
 			}
 		}
-		// Re-attach Object.prototype so downstream code that relies on
-		// hasOwnProperty/toString still works — but only if the original
-		// input didn't define an own `__proto__` key. Note: `"__proto__" in
-		// value` is always true for Object.prototype-backed objects (the
-		// property is inherited), so use Object.hasOwn to detect a genuine
-		// own data key.
-		if (!Object.hasOwn(value, "__proto__")) {
-			Object.setPrototypeOf(next, Object.prototype);
-		}
+		// Restore the source prototype after defining every own key. Staging on
+		// a null prototype makes `__proto__` safe; restoring afterward preserves
+		// the caller's Object.prototype/null-prototype contract.
+		Object.setPrototypeOf(next, proto);
 		return (changed ? next : value) as T;
 	}
 	return value;
