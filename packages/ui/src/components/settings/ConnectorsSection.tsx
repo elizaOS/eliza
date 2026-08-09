@@ -4,7 +4,7 @@
  * surface — Connection / Support / General cards — not inline accordions.
  */
 
-import { ChevronRight, type LucideIcon, type LucideProps, Puzzle, Save } from "lucide-react";
+import { ChevronRight, type LucideIcon, type LucideProps, Puzzle } from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -253,14 +253,14 @@ function ConnectorConfigurationSurface({
   const handlePluginConfigSave = useAppSelector(
     (s) => s.handlePluginConfigSave,
   );
-  const pluginSaving = useAppSelector((s) => s.pluginSaving);
-  const pluginSaveSuccess = useAppSelector((s) => s.pluginSaveSuccess);
   const [pluginConfigs, setPluginConfigs] = useState<
     Record<string, Record<string, string>>
   >({});
-  // Detail is lens-independent: show every setup mode the connector declares.
+  // Only offer setup modes that belong to the active Delegate/Bot lens.
+  const channelMode = useConnectorChannelMode();
   const connectorMode = useConnectorMode(plugin.id, {
     elizaCloudConnected,
+    channelMode,
   });
   const setupPluginId = connectorMode.setupPluginId;
   const setupPanel =
@@ -282,91 +282,80 @@ function ConnectorConfigurationSurface({
     hasParameters: plugin.parameters.length > 0,
     setupTargetsPlugin: (setupPluginId ?? plugin.id) === plugin.id,
   });
-  const pendingConfig = pluginConfigs[plugin.id] ?? {};
-  const hasPendingConfig = Object.keys(pendingConfig).length > 0;
-  const isSaving = pluginSaving.has(plugin.id);
-  const didSave = pluginSaveSuccess.has(plugin.id);
-
+  // Row/dialog UX persists per field on dialog Save (or toggle) — no bulk
+  // "Save settings" footer. Keep a local draft map only so chips reflect the
+  // value immediately while the server write is in flight.
   const handleParamChange = useCallback(
     (pluginId: string, paramKey: string, value: string) => {
       setPluginConfigs((prev) => ({
         ...prev,
         [pluginId]: { ...prev[pluginId], [paramKey]: value },
       }));
+      void (async () => {
+        const saved = await handlePluginConfigSave(pluginId, {
+          [paramKey]: value,
+        });
+        if (!saved) return;
+        setPluginConfigs((prev) => {
+          const current = prev[pluginId];
+          if (!current || !(paramKey in current)) return prev;
+          const nextForPlugin = { ...current };
+          delete nextForPlugin[paramKey];
+          const next = { ...prev };
+          if (Object.keys(nextForPlugin).length === 0) {
+            delete next[pluginId];
+          } else {
+            next[pluginId] = nextForPlugin;
+          }
+          return next;
+        });
+      })();
     },
-    [],
+    [handlePluginConfigSave],
   );
-
-  const handleSave = useCallback(async () => {
-    const saved = await handlePluginConfigSave(plugin.id, pendingConfig);
-    if (!saved) return;
-    setPluginConfigs((prev) => {
-      const next = { ...prev };
-      delete next[plugin.id];
-      return next;
-    });
-  }, [handlePluginConfigSave, pendingConfig, plugin.id]);
 
   return (
     <div className="flex flex-col gap-3 [&>*]:mt-0">
       {connectorMode.modes.length > 1 ? (
-        <ConnectorModeSelector
-          connectorId={plugin.id}
-          selectedMode={connectorMode.selectedMode}
-          onModeChange={connectorMode.setSelectedMode}
-          elizaCloudConnected={elizaCloudConnected}
-        />
+        <div className="px-1">
+          <ConnectorModeSelector
+            connectorId={plugin.id}
+            selectedMode={connectorMode.selectedMode}
+            onModeChange={connectorMode.setSelectedMode}
+            elizaCloudConnected={elizaCloudConnected}
+            channelMode={channelMode}
+          />
+        </div>
       ) : null}
 
       {showPluginConfig ? (
-        <div className="space-y-3">
+        <>
           <PluginConfigForm
             plugin={plugin}
             pluginConfigs={pluginConfigs}
             onParamChange={handleParamChange}
+            layout="rows"
           />
           {setupPanel}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-            <div className="min-w-0 flex-1">
-              {configFormHint ? (
-                <span className="text-xs-tight text-muted">
-                  {configFormHint.key
-                    ? t(configFormHint.key, {
-                        defaultValue: configFormHint.fallback,
-                      })
-                    : configFormHint.fallback}
-                </span>
-              ) : null}
-            </div>
-            <Button
-              variant="default"
-              size="sm"
-              className="h-8 shrink-0 gap-1.5 self-end rounded-sm px-3 text-xs-tight font-semibold sm:self-start"
-              onClick={() => {
-                void handleSave();
-              }}
-              disabled={!hasPendingConfig || isSaving}
-            >
-              <Save className="h-3.5 w-3.5" aria-hidden="true" />
-              {isSaving
-                ? t("common.saving", { defaultValue: "Saving..." })
-                : didSave
-                  ? t("pluginsview.Saved", { defaultValue: "Saved" })
-                  : t("pluginsview.SaveSettings", {
-                      defaultValue: "Save settings",
-                    })}
-            </Button>
-          </div>
-        </div>
+          {configFormHint ? (
+            <p className="px-1 text-xs-tight text-muted">
+              {configFormHint.key
+                ? t(configFormHint.key, {
+                    defaultValue: configFormHint.fallback,
+                  })
+                : configFormHint.fallback}
+            </p>
+          ) : null}
+        </>
       ) : setupPanel ? (
         setupPanel
       ) : (
-        <div className="text-xs-tight text-muted">
+        <p className="px-1 text-xs-tight text-muted">
           {t("settings.sections.connectors.ownSetupSurface", {
             defaultValue: "{{name}} uses its own setup surface.",
             name: plugin.name,
           })}
-        </div>
+        </p>
       )}
     </div>
   );
@@ -471,24 +460,36 @@ function ConnectorDetailPage({
         </div>
       </div>
 
+      {/* Load/enable is the global gate — always first when present. */}
+      <SettingsCard>
+        <SettingsCardRow
+          title={t("settings.sections.connectors.enablePlugin", {
+            defaultValue: "Enable {{name}} connector",
+            name: plugin.name,
+          })}
+          description={t("settings.sections.connectors.enableHelp", {
+            defaultValue:
+              "Load the plugin so the agent can use this channel when configured.",
+          })}
+          action={
+            <ConnectorEnableSwitch
+              plugin={plugin}
+              busy={busy}
+              onToggle={(checked) => {
+                void onToggle(checked);
+              }}
+            />
+          }
+        />
+      </SettingsCard>
+
       <section className="space-y-2">
         <h3 className="text-xs font-medium text-muted">
           {t("connectors.detail.connection", { defaultValue: "Connection" })}
         </h3>
-        <SettingsCard>
-          <SettingsCardRow
-            title={t("connectors.detail.connectionTitle", {
-              defaultValue: "Connection",
-            })}
-            description={t("connectors.detail.connectionHelp", {
-              defaultValue: "Set up how Eliza talks to {{name}}.",
-              name: plugin.name,
-            })}
-          />
-          <div className="border-t border-border/50 px-4 py-3">
-            <ConnectorConfigurationSurface plugin={plugin} />
-          </div>
-        </SettingsCard>
+        {/* No outer SettingsCard here — row layout / setup panels bring their
+            own chrome. Nesting cards left a hollow gap above the old save bar. */}
+        <ConnectorConfigurationSurface plugin={plugin} />
       </section>
 
       {links.length > 0 ? (
@@ -530,36 +531,10 @@ function ConnectorDetailPage({
           </SettingsCard>
         </section>
       ) : null}
-
-      <section className="space-y-2">
-        <h3 className="text-xs font-medium text-muted">
-          {t("connectors.detail.general", { defaultValue: "General" })}
-        </h3>
-        <SettingsCard>
-          <SettingsCardRow
-            title={t("settings.sections.connectors.enablePlugin", {
-              defaultValue: "Enable {{name}} connector",
-              name: plugin.name,
-            })}
-            description={t("settings.sections.connectors.enableHelp", {
-              defaultValue:
-                "Load the plugin so the agent can use this channel when configured.",
-            })}
-            action={
-              <ConnectorEnableSwitch
-                plugin={plugin}
-                busy={busy}
-                onToggle={(checked) => {
-                  void onToggle(checked);
-                }}
-              />
-            }
-          />
-        </SettingsCard>
-      </section>
     </div>
   );
 }
+
 
 function ConnectorsIndex({
   connectors,

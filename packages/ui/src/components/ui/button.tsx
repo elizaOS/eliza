@@ -21,22 +21,29 @@ import * as React from "react";
 import { cn } from "../../lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-sm font-medium  transition-colors     disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  // Disabled states keep solid type color (no blanket opacity) so labels stay
+  // readable on accent fills — opacity-50 made orange CTAs look muddy/gray.
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-sm font-medium transition-colors disabled:pointer-events-none disabled:cursor-not-allowed cursor-pointer [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-accent text-accent-fg hover:bg-accent-hover",
-        surface: "bg-card text-muted-strong hover:bg-surface",
+        default:
+          "bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-accent/45 disabled:text-accent-fg",
+        surface:
+          "bg-card text-muted-strong hover:bg-surface disabled:text-muted",
         surfaceAccent:
-          "bg-accent-subtle text-txt-strong hover:bg-accent-subtle/70",
+          "bg-accent-subtle text-txt-strong hover:bg-accent-subtle/70 disabled:text-muted",
         surfaceDestructive:
-          "bg-destructive-subtle text-danger hover:bg-destructive-subtle/70",
+          "bg-destructive-subtle text-danger hover:bg-destructive-subtle/70 disabled:text-muted",
         destructive:
-          "bg-destructive text-destructive-fg hover:bg-destructive/85",
-        outline: "bg-card text-txt hover:bg-surface",
-        secondary: "bg-bg-accent text-txt hover:bg-surface",
-        ghost: "text-muted-strong hover:bg-surface hover:text-txt",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-destructive text-destructive-fg hover:bg-destructive/85 disabled:bg-destructive/45 disabled:text-destructive-fg",
+        outline:
+          "border border-border/70 bg-card text-txt-strong hover:bg-surface hover:text-txt-strong disabled:border-border/50 disabled:bg-card disabled:text-muted-strong",
+        secondary:
+          "bg-bg-accent text-txt hover:bg-surface disabled:text-muted",
+        ghost:
+          "text-muted-strong hover:bg-surface hover:text-txt disabled:text-muted",
+        link: "text-primary underline-offset-4 hover:underline disabled:text-muted",
       },
       size: {
         default:

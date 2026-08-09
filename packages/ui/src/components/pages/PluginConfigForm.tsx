@@ -62,10 +62,13 @@ export function PluginConfigForm({
   plugin,
   pluginConfigs,
   onParamChange,
+  layout = "grid",
 }: {
   plugin: PluginInfo;
   pluginConfigs: Record<string, Record<string, string>>;
   onParamChange: (pluginId: string, paramKey: string, value: string) => void;
+  /** Forwarded to ConfigRenderer — use `rows` for one setting per line. */
+  layout?: "grid" | "rows";
 }) {
   const params = plugin.parameters ?? [];
   const { schema, hints: autoHints } = useMemo(
@@ -241,6 +244,7 @@ export function PluginConfigForm({
         registry={defaultRegistry}
         pluginId={plugin.id}
         onChange={handleChange}
+        layout={layout}
       />
     </>
   );

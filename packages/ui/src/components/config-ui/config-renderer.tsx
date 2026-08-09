@@ -26,10 +26,11 @@ import {
   resolveFields,
   runValidation,
 } from "../../config/config-catalog";
+import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import type { ConfigUiHint, PluginUiTheme } from "../../types";
 import { Button } from "../ui/button";
-import { ConfigField } from "./config-field";
+import { ConfigField, type ConfigFieldLayout } from "./config-field";
 
 // ── Props ──────────────────────────────────────────────────────────────
 
@@ -59,6 +60,12 @@ export interface ConfigRendererProps {
   showValidationSummary?: boolean;
   /** Partial theme overrides for plugin UI tokens. */
   theme?: Partial<PluginUiTheme>;
+  /**
+   * `grid` (default) — multi-column field grid.
+   * `rows` — one full-width settings row per field (label/help left, control
+   * right), matching the Devin-style connector detail surface.
+   */
+  layout?: "grid" | "rows";
 }
 
 /** Handle exposed by ConfigRenderer via ref for parent-driven validation. */
@@ -268,9 +275,12 @@ export const ConfigRenderer = forwardRef<
     renderField: renderFieldOverride,
     showValidationSummary = true,
     theme,
+    layout = "grid",
   }: ConfigRendererProps,
   ref,
 ) {
+  const fieldLayout: ConfigFieldLayout =
+    layout === "rows" ? "row" : "stacked";
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Map<string, string[]>>(
     new Map(),
@@ -424,26 +434,38 @@ export const ConfigRenderer = forwardRef<
     (field: ResolvedField) => {
       const rp = buildRenderProps(field);
       const renderer = registry.resolveOrFallback(field.fieldType);
+      // Rows layout always spans the full track — never pair two settings on
+      // one horizontal line.
+      const spanClass =
+        layout === "rows" ? "col-span-6" : widthClass(field.width);
 
       if (renderFieldOverride) {
         return (
-          <div key={field.key} className={widthClass(field.width)}>
+          <div key={field.key} className={spanClass}>
             {renderFieldOverride(rp, renderer)}
           </div>
         );
       }
 
       return (
-        <div key={field.key} className={widthClass(field.width)}>
+        <div key={field.key} className={spanClass}>
           <ConfigField
             renderProps={rp}
             renderer={renderer}
             pluginId={pluginId}
+            layout={fieldLayout}
           />
         </div>
       );
     },
-    [buildRenderProps, registry, renderFieldOverride, pluginId],
+    [
+      buildRenderProps,
+      registry,
+      renderFieldOverride,
+      pluginId,
+      layout,
+      fieldLayout,
+    ],
   );
 
   // ── Resolve and partition fields ─────────────────────────────────────
@@ -599,15 +621,26 @@ export const ConfigRenderer = forwardRef<
       {[...groups.entries()].map(([group, fields], groupIndex) => (
         <div key={group} className={groupIndex > 0 ? "mt-5" : ""}>
           {showHeaders && (
-            <div className="flex items-center gap-2 mb-3">
+            <div
+              className={cn(
+                "mb-3 flex items-center gap-2",
+                layout === "rows" && "px-1",
+              )}
+            >
               <span className="text-base leading-none">{groupIcon(group)}</span>
               <span className="text-xs font-bold uppercase tracking-wider text-txt opacity-70">
                 {group}
               </span>
-              <span className="flex-1 h-px bg-border ml-1" />
+              <span className="ml-1 h-px flex-1 bg-border" />
             </div>
           )}
-          <div className="grid grid-cols-6 gap-x-5 gap-y-0">
+          <div
+            className={
+              layout === "rows"
+                ? "overflow-hidden rounded-lg border border-border/60 bg-card/30"
+                : "grid grid-cols-6 gap-x-5 gap-y-0"
+            }
+          >
             {fields.map((f) => renderField(f))}
           </div>
         </div>
@@ -621,7 +654,13 @@ export const ConfigRenderer = forwardRef<
             setAdvancedOpen={setAdvancedOpen}
           />
           {advancedOpen && (
-            <div className="grid grid-cols-6 gap-x-5 gap-y-0 pt-1 animate-[cr-slide_var(--duration-normal,200ms)_ease]">
+            <div
+              className={
+                layout === "rows"
+                  ? "mt-1 overflow-hidden rounded-lg border border-border/60 bg-card/30 animate-[cr-slide_var(--duration-normal,200ms)_ease]"
+                  : "grid grid-cols-6 gap-x-5 gap-y-0 pt-1 animate-[cr-slide_var(--duration-normal,200ms)_ease]"
+              }
+            >
               {advanced.map((f) => renderField(f))}
             </div>
           )}
