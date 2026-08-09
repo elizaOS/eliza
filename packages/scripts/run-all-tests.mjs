@@ -186,13 +186,11 @@ try {
   failUsage(error.message);
 }
 
-// `--min-tasks=<n>` / MIN_TEST_TASKS is the numeric ancestor of
-// `--require-work` and remains a supported surface: callers that KNOW how many
-// tasks their filter selected (the develop-pr changed-plugin gate passes its
-// exact selection count) get a floor the boolean cannot express. n > 0 implies
-// every `--require-work` guard plus the lane-wide `>= n` collection floor;
-// n = 0 is off. Dropping the flag broke those callers loudly at argv parse
-// (exit 2 before any test ran), which is the wrong kind of loud.
+// `--min-tasks=<n>` / MIN_TEST_TASKS is a task-selection floor: callers that
+// know how many tasks their filter selected (the develop-pr changed-plugin gate
+// passes its exact selection count) can fail when the glob collapses. It is
+// intentionally separate from `--require-work`, whose evidence reconciliation
+// rejects wrapper scripts that do not expose structured test reports.
 const minTasksRaw = minTasksFlag ?? process.env.MIN_TEST_TASKS ?? "0";
 const minTasks =
   typeof minTasksRaw === "string" && /^\d+$/.test(minTasksRaw)
@@ -203,7 +201,7 @@ if (!Number.isSafeInteger(minTasks)) {
     `--min-tasks/MIN_TEST_TASKS must be a non-negative integer, got "${minTasksRaw}"`,
   );
 }
-const requireWork = requireWorkFlag || minTasks > 0;
+const requireWork = requireWorkFlag;
 
 // A named root lane (`--lane server`) resolves the anchored package filter it
 // used to hardcode as a `TEST_PACKAGE_FILTER` regex in the root package.json:

@@ -376,4 +376,20 @@ describe("run-all-tests plan mode", () => {
     expect(result.stderr).toContain("lane matched 1 task(s) < required 2");
     expect(result.stdout).not.toContain("[eliza-test] PLAN");
   });
+
+  test("--min-tasks does not imply the structured evidence guard", () => {
+    const result = runPlan([
+      "--plan=json",
+      "--only=test",
+      "--min-tasks=1",
+      "--filter=^@elizaos/core \\(packages/core\\)#test$",
+    ]);
+
+    expect(result.status).toBe(0);
+    const plan = JSON.parse(result.stdout);
+    expect(plan.summary).toMatchObject({
+      taskCount: 1,
+      requireWork: false,
+    });
+  });
 });
