@@ -101,14 +101,15 @@ export async function completeLifeOpsEffect(
     userFacingText: text,
     verifiedUserFacing: true,
     // The callback below is this turn's single visible delivery of the exact
-    // canonical text, so a successful settlement also declares the turn
-    // complete (unless the action explicitly disclaimed it). That opts into
-    // the planner's gated-evaluator skip, which keeps the model from shipping
-    // a second paraphrase of an answer the user already has. Failures stay
-    // un-gated: the evaluator may still add recovery guidance there.
-    ...(result.success === true
-      ? { turnComplete: result.turnComplete ?? true }
-      : {}),
+    // canonical text, so settlement also declares the turn complete (unless
+    // the action explicitly disclaimed it with `turnComplete: false`). That
+    // opts into the planner's gated-evaluator skip, which keeps the model from
+    // shipping a second paraphrase of an answer the user already has. This
+    // covers failures too: a verified failure text IS the turn's answer, and
+    // the live alternative was two bubbles ("calendar's acting up" plus a
+    // model paraphrase). Sites that want the evaluator to add a genuinely
+    // additive follow-up disclaim explicitly.
+    turnComplete: result.turnComplete ?? true,
     effectReceipts: [receipt],
     userFacingEffectReceiptIds: [receipt.receiptId],
   };

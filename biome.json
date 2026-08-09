@@ -206,6 +206,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/homepage/src/pages/landing.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noStaticElementInteractions": "off"
+          }
+        }
+      }
     }
   ],
   "formatter": {

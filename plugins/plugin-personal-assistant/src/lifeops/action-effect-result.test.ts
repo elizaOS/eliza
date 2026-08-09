@@ -726,14 +726,31 @@ describe("completeLifeOpsEffect turn completion", () => {
     expect(result.turnComplete).toBe(false);
   });
 
-  it("leaves failed settlements un-gated for evaluator recovery guidance", async () => {
+  it("declares a verified failure settlement turn-complete too", async () => {
     const result = await completeLifeOpsEffect(
       undefined,
       { success: false, text: "The calendar provider is unavailable." },
       receipt(),
     );
 
+    // The delivered failure text is the turn's complete honest outcome; the
+    // stamp keeps the evaluator from appending a paraphrase bubble (live
+    // incident: "calendar's acting up" plus "I couldn't verify...").
     expect(result.verifiedUserFacing).toBe(true);
-    expect(result.turnComplete).toBeUndefined();
+    expect(result.turnComplete).toBe(true);
+  });
+
+  it("preserves an explicit turnComplete: false disclaimer on failures", async () => {
+    const result = await completeLifeOpsEffect(
+      undefined,
+      {
+        success: false,
+        text: "The calendar provider is unavailable.",
+        turnComplete: false,
+      },
+      receipt(),
+    );
+
+    expect(result.turnComplete).toBe(false);
   });
 });
