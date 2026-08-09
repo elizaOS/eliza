@@ -5,7 +5,8 @@
  *
  * Boots an embedded PGlite instance with pgvector and exposes it on a
  * Postgres-compatible TCP socket so the wrangler/Miniflare API and any other
- * `pg`-style consumer can connect with no Docker. One process per workspace.
+ * `pg`-style consumer can connect with no Docker. Managed harnesses can require
+ * an ownership marker before accepting the socket as their own.
  *
  *   bun run pglite:server                              # default :5432, .eliza/.pgdata
  *   PGLITE_PORT=55432 bun run pglite:server
@@ -13,7 +14,13 @@
  *   PGLITE_IN_MEMORY=1 bun run pglite:server
  */
 
-import { mkdirSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -30,6 +37,18 @@ const DATA_DIR =
         process.cwd(),
         process.env.PGLITE_DATA_DIR ?? ".eliza/.pgdata",
       );
+const READY_FILE = process.env.PGLITE_READY_FILE?.trim();
+const OWNER_TOKEN = process.env.PGLITE_OWNER_TOKEN?.trim();
+const RUN_ID = process.env.PGLITE_RUN_ID?.trim();
+
+if (
+  new Set([Boolean(READY_FILE), Boolean(OWNER_TOKEN), Boolean(RUN_ID)]).size !==
+  1
+) {
+  throw new Error(
+    "PGLITE_READY_FILE, PGLITE_OWNER_TOKEN, and PGLITE_RUN_ID must be configured together",
+  );
+}
 
 const tag = "[pglite]";
 
@@ -60,6 +79,25 @@ const server = new PGLiteSocketServer({
 
 await server.start();
 
+if (READY_FILE && OWNER_TOKEN && RUN_ID) {
+  const readyPath = path.resolve(READY_FILE);
+  const temporaryReadyPath = `${readyPath}.${process.pid}.${OWNER_TOKEN}.tmp`;
+  mkdirSync(path.dirname(readyPath), { recursive: true });
+  writeFileSync(
+    temporaryReadyPath,
+    `${JSON.stringify({
+      ownerToken: OWNER_TOKEN,
+      runId: RUN_ID,
+      pid: process.pid,
+      host: HOST,
+      port: PORT,
+      dataDir: DATA_DIR ?? null,
+    })}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  renameSync(temporaryReadyPath, readyPath);
+}
+
 console.log(
   `${tag} listening on ${HOST}:${PORT} (${DATA_DIR ? `data: ${DATA_DIR}` : "in-memory"})`,
 );
@@ -73,6 +111,24 @@ async function shutdown(signal: string) {
   // error-policy:J6 best-effort teardown on shutdown signal; process exits regardless
   await server.stop().catch(() => {});
   await db.close().catch(() => {});
+  if (READY_FILE && OWNER_TOKEN) {
+    try {
+      const readyPath = path.resolve(READY_FILE);
+      const marker = JSON.parse(readFileSync(readyPath, "utf8"));
+      if (marker.ownerToken === OWNER_TOKEN && marker.pid === process.pid) {
+        rmSync(readyPath);
+      }
+    } catch (error) {
+      // error-policy:J6 A stale/replaced readiness marker must not block shutdown.
+      if (
+        !(error instanceof Error && "code" in error && error.code === "ENOENT")
+      ) {
+        console.warn(
+          `${tag} could not remove owned readiness marker: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
   process.exit(0);
 }
 
