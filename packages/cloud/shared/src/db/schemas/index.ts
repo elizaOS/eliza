@@ -16,6 +16,7 @@ export * from "./admin-users";
 export * from "./affiliate-payout-outbox";
 export * from "./affiliates";
 export * from "./agent-budgets";
+export * from "./agent-connector-bindings";
 export * from "./agent-events";
 export * from "./agent-identities";
 export * from "./agent-pairing-tokens";

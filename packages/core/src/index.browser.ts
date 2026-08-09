@@ -28,6 +28,7 @@ export * from "./character";
 export * from "./cloud-routing";
 export * from "./connectors";
 export * from "./connectors/account-manager";
+export * from "./connectors/agent-binding";
 export * from "./connectors/connector-config";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";

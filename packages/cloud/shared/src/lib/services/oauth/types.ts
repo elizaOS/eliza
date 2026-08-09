@@ -143,6 +143,18 @@ export interface InitiateAuthParams {
   scopes?: string[];
   /** Logical Agent-side role for the connection */
   connectionRole?: OAuthConnectionRole;
+  /** Server-validated request to bind the resulting credential to one agent. */
+  agentBinding?: OAuthAgentBindingRequest;
+}
+
+export interface OAuthAgentBindingRequest {
+  agentId: string;
+  role: OAuthStandardConnectionRole;
+  selectedProducts: string[];
+  allowedCapabilities: string[];
+  oauthMode: "eliza_managed" | "bring_your_own";
+  executionTarget: "cloud_broker" | "agent_host";
+  isDefault?: boolean;
 }
 
 /**

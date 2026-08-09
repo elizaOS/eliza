@@ -10,6 +10,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import * as realDbClient from "../../../../db/client";
 import * as realDbHelpers from "../../../../db/helpers";
+import * as realAgentConnectorBindingRepository from "../../../../db/repositories/agent-connector-bindings";
 import * as realCacheClient from "../../../cache/client";
 import * as realCloudBindings from "../../../runtime/cloud-bindings";
 import * as realSecrets from "../../secrets";
@@ -29,9 +30,13 @@ const realProviderRegistryExports = { ...realProviderRegistry };
 const realSecretsExports = { ...realSecrets };
 const realDbClientExports = { ...realDbClient };
 const realDbHelpersExports = { ...realDbHelpers };
+const realAgentConnectorBindingRepositoryExports = {
+  ...realAgentConnectorBindingRepository,
+};
 
 const secretsCreateCalls: unknown[] = [];
 const insertReturning = mock(async () => [{ id: "conn-1" }]);
+const bindConnector = mock(async () => ({ id: "binding-1" }));
 
 let stateData: Record<string, unknown> | null;
 let userInfoBody: Record<string, unknown>;
@@ -92,6 +97,10 @@ mock.module("../../../../db/helpers", () => ({
     }),
 }));
 
+mock.module("../../../../db/repositories/agent-connector-bindings", () => ({
+  bindAgentConnectorWithTransaction: bindConnector,
+}));
+
 afterAll(() => {
   mock.module("../../../cache/client", () => realCacheClientExports);
   mock.module("../../../runtime/cloud-bindings", () => realCloudBindingsExports);
@@ -99,6 +108,10 @@ afterAll(() => {
   mock.module("../../secrets", () => realSecretsExports);
   mock.module("../../../../db/client", () => realDbClientExports);
   mock.module("../../../../db/helpers", () => realDbHelpersExports);
+  mock.module(
+    "../../../../db/repositories/agent-connector-bindings",
+    () => realAgentConnectorBindingRepositoryExports,
+  );
 });
 
 function jsonResponse(body: unknown) {
@@ -124,6 +137,7 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
   beforeEach(() => {
     secretsCreateCalls.length = 0;
     insertReturning.mockClear();
+    bindConnector.mockClear();
     stateData = {
       organizationId: "org-1",
       userId: "user-1",
@@ -180,5 +194,42 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
     expect(result.connectionId).toBe("conn-1");
     // The real id flowed through storage untouched (never coerced to "unknown").
     expect(insertReturning).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates the server-validated agent binding after storing the credential", async () => {
+    const { handleOAuth2Callback } = await import("./oauth2");
+    userInfoBody = { id: "real-user-42" };
+    stateData = {
+      ...stateData,
+      agentBinding: {
+        agentId: "agent-1",
+        role: "OWNER",
+        selectedProducts: ["gmail"],
+        allowedCapabilities: ["gmail.read"],
+        oauthMode: "eliza_managed",
+        executionTarget: "cloud_broker",
+        isDefault: true,
+      },
+    };
+
+    const result = await handleOAuth2Callback(provider, "auth-code", "state-token");
+
+    expect(result.connectorBindingId).toBe("binding-1");
+    expect(bindConnector).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: "org-1",
+      agentId: "agent-1",
+      platformCredentialId: "conn-1",
+      provider: "testprov",
+      role: "OWNER",
+      purposes: ["automation"],
+      accessGate: "owner_binding",
+      oauthMode: "eliza_managed",
+      executionTarget: "cloud_broker",
+      selectedProducts: ["gmail"],
+      allowedCapabilities: ["gmail.read"],
+      isDefault: true,
+      authorizedByUserId: "user-1",
+      requireVerifiedOwner: true,
+    });
   });
 });

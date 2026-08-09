@@ -47,7 +47,7 @@ src/
   markdown/  media/     markdown IR/chunking; media fetch + mime/type detection
   testing/              Test harness exports (live-provider, integration-runtime, http, mocks) — `@elizaos/core/testing`
   capabilities/         Runtime capability index
-  connectors/           Connector abstractions (account-manager, connector-config, oauth-role, privacy)
+  connectors/           Connector accounts, credential-free agent binding projection, OAuth roles, privacy
   plugins/              Plugin-related helpers
   registries/           Registry utilities
   sessions/             Session management
@@ -156,6 +156,7 @@ visible.
 - **Add an action/provider/evaluator/service to the built-in bundle:** implement against the `Action`/`Provider`/`Evaluator`/`Service` types in `types/`, then add it to the relevant array in `src/features/basic-capabilities/index.ts` (`basicActions`, `basicProviders`, `basicEvaluators`, `basicServices`). Most new capabilities should live in their own plugin package instead of here.
 - **Add a runtime type/contract:** define it under `src/types/<area>.ts` or the owning `src/contracts/` domain and export it through the narrowest stable subpath. Cross-host contracts that do not belong to the runtime live under `@elizaos/shared/contracts`.
 - **Add a DB table:** extend the schema in `src/schemas/` and wire it into `buildBaseTables` (`schemas/index.ts`); adapters in plugin-sql/localdb materialize it.
+- **Connector authorization:** `ConnectorAccount` is the local durable record; `projectAgentConnectorBinding` is its credential-free cross-host view. OAuth app ownership and execution location are separate fields, and action policy can require every named capability.
 - **Touching the message loop:** the order is provider → model → action → evaluator. Logic lives in `src/runtime/` (`message-handler.ts`, `planner-loop.ts`, `turn-controller.ts`) and `runtime.ts`. Validated model output goes through `runtime/validated-model-call.ts`.
 - **Browser/edge surface:** if your code is Node-only (fs, process, native deps), export it from `index.node.ts` only — never add it to `index.browser.ts` / `index.edge.ts`.
 

@@ -71,6 +71,21 @@ describe("action catalog cache (F2: memoization + self-invalidation)", () => {
 		expect(hasAction(after, "KEEP_A")).toBe(true);
 	});
 
+	it("invalidates when a dynamic action is replaced under the same name", () => {
+		const original = mkAction("GOOGLE_CALENDAR_LIST_EVENTS");
+		const before = getCachedActionCatalog([original]);
+		const replacement = {
+			...mkAction("GOOGLE_CALENDAR_LIST_EVENTS"),
+			description: "Replacement schema discovered from the live connector.",
+		};
+		const after = getCachedActionCatalog([replacement]);
+
+		expect(after).not.toBe(before);
+		expect(after.parents[0]?.description).toBe(
+			"Replacement schema discovered from the live connector.",
+		);
+	});
+
 	it("does not cache when a localized-example resolver is active", () => {
 		// The resolver depends on the recent message, so the catalog is
 		// message-specific and must be rebuilt every turn (never cached).

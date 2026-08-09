@@ -7,6 +7,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { dbRead } from "../../../db/client";
+import { agentConnectorBindingsRepository } from "../../../db/repositories/agent-connector-bindings";
 import { platformCredentials } from "../../../db/schemas/platform-credentials";
 import { cache } from "../../cache/client";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
@@ -155,7 +156,8 @@ class OAuthService {
 
   /** Initiate OAuth flow for a platform */
   async initiateAuth(params: InitiateAuthParams): Promise<InitiateAuthResult> {
-    const { organizationId, userId, platform, redirectUrl, scopes, connectionRole } = params;
+    const { organizationId, userId, platform, redirectUrl, scopes, connectionRole, agentBinding } =
+      params;
     const role = normalizeOAuthConnectionRole(connectionRole);
 
     const provider = getProvider(platform);
@@ -178,6 +180,7 @@ class OAuthService {
         redirectUrl,
         scopes,
         connectionRole: role,
+        agentBinding,
       });
       return { authUrl: result.authUrl, state: result.state };
     }
@@ -302,6 +305,7 @@ class OAuthService {
     // Revoke FIRST, then bump version — prevents race where concurrent
     // getValidToken caches a still-active token under the new version key.
     await adapter.revoke(organizationId, connectionId);
+    await agentConnectorBindingsRepository.disableByCredential(organizationId, connectionId);
 
     const version = await incrementOAuthVersion(organizationId, adapter.platform);
     await tokenCache.invalidate(organizationId, connectionId, version);

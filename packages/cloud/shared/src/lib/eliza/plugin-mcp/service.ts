@@ -1,14 +1,21 @@
 // Wires hosted Eliza agent service behavior for cloud runtime services.
-import { type Action, type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import {
+  type Action,
+  fetchWithSsrfGuard,
+  type IAgentRuntime,
+  logger,
+  Service,
+} from "@elizaos/core";
+import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";
 import type {
   CallToolResult,
   Resource,
-  ResourceTemplate,
+  ResourceTemplateType,
   Tool,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "@modelcontextprotocol/client";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import type { JSONSchema7 } from "json-schema";
 
 import { getRequestContext } from "../../services/entity-settings/request-context";
 import { createMcpToolActions, type McpToolAction } from "./actions/dynamic-tool-actions";
@@ -33,10 +40,51 @@ import {
   type PingConfig,
   type StdioMcpServerConfig,
 } from "./types";
-import { toActionName } from "./utils/action-naming";
+import { normalizeActionName, toActionName } from "./utils/action-naming";
 import { buildMcpProviderData } from "./utils/mcp";
 
 const err = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+function cloudBaseUrl(): URL {
+  return new URL(process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000");
+}
+
+function isTrustedCloudUrl(url: URL): boolean {
+  try {
+    return url.origin === cloudBaseUrl().origin;
+  } catch {
+    return false;
+  }
+}
+
+async function guardedCloudMcpFetch(input: string | URL, init?: RequestInit): Promise<Response> {
+  const guarded = await fetchWithSsrfGuard({
+    url: input.toString(),
+    ...(init ? { init } : {}),
+  });
+  await guarded.release();
+  return guarded.response;
+}
+
+export async function validateCloudMcpHttpConfig(
+  name: string,
+  config: HttpMcpServerConfig,
+): Promise<void> {
+  if (!config.url) throw new Error(`Missing URL for server ${name}`);
+  const url = new URL(config.url);
+  if (isTrustedCloudUrl(url)) return;
+  const sensitiveHeaders = Object.keys(config.headers ?? {}).filter((header) =>
+    new Set(["authorization", "cookie", "proxy-authorization"]).has(header.toLowerCase()),
+  );
+  if (sensitiveHeaders.length > 0) {
+    throw new Error(`External MCP server ${name} may not receive serialized credentials`);
+  }
+  const rejection = await validateMcpServerConfig({
+    type: "streamable-http",
+    url: url.toString(),
+  });
+  if (rejection) throw new Error(`Unsafe MCP server ${name}: ${rejection}`);
+}
 
 export class McpService extends Service {
   static serviceType = MCP_SERVICE_NAME;
@@ -202,7 +250,14 @@ export class McpService extends Service {
     this.connectionStates.set(name, state);
 
     try {
-      const client = new Client({ name: "ElizaOS", version: "1.0.0" }, { capabilities: {} });
+      if (config.type !== "stdio") await validateCloudMcpHttpConfig(name, config);
+      const client = new Client(
+        { name: "elizaOS Cloud", version: "1.0.0" },
+        {
+          capabilities: {},
+          ...(config.type === "stdio" ? {} : { versionNegotiation: { mode: "auto" as const } }),
+        },
+      );
       const transport =
         config.type === "stdio"
           ? this.createStdioTransport(name, config)
@@ -216,12 +271,7 @@ export class McpService extends Service {
       this.connections.set(name, conn);
       this.setupTransportHandlers(name, conn, state, config.type === "stdio");
 
-      await Promise.race([
-        client.connect(transport),
-        new Promise<never>((_, rej) =>
-          setTimeout(() => rej(new Error("Connection timeout")), 60000),
-        ),
-      ]);
+      await client.connect(transport, { timeout: 60_000 });
 
       const caps = client.getServerCapabilities();
       const tools = await this.fetchTools(name);
@@ -307,10 +357,8 @@ export class McpService extends Service {
     const apiKey = this.runtime.getSetting("ELIZAOS_API_KEY");
     if (apiKey && typeof apiKey === "string" && !headers["X-API-Key"]) {
       // Only inject for same-origin to prevent leaking to external domains
-      const baseUrl =
-        process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
       try {
-        if (url.origin === new URL(baseUrl).origin) {
+        if (isTrustedCloudUrl(url)) {
           headers["X-API-Key"] = apiKey;
         }
       } catch {
@@ -323,7 +371,10 @@ export class McpService extends Service {
       this.connectionApiKeys.set(name, apiKey);
     }
 
-    const opts = Object.keys(headers).length > 0 ? { requestInit: { headers } } : undefined;
+    const opts = {
+      ...(Object.keys(headers).length > 0 ? { requestInit: { headers } } : {}),
+      ...(!isTrustedCloudUrl(url) ? { fetch: guardedCloudMcpFetch } : {}),
+    };
     return new StreamableHTTPClientTransport(url, opts);
   }
 
@@ -426,7 +477,7 @@ export class McpService extends Service {
         if (!toolCompatibility) return t;
         try {
           const inputSchema = toolCompatibility.transformToolSchema(
-            t.inputSchema,
+            t.inputSchema as unknown as JSONSchema7,
           ) as Tool["inputSchema"];
           return { ...t, inputSchema };
         } catch (e) {
@@ -452,7 +503,7 @@ export class McpService extends Service {
     }
   }
 
-  private async fetchResourceTemplates(name: string): Promise<ResourceTemplate[]> {
+  private async fetchResourceTemplates(name: string): Promise<ResourceTemplateType[]> {
     try {
       return (
         (await this.connections.get(name)?.client.listResourceTemplates())?.resourceTemplates || []
@@ -491,15 +542,30 @@ export class McpService extends Service {
     // Register Tier-1 crucial tools as runtime actions
     if (crucialTools.length > 0) {
       const existing = new Set([
-        ...this.runtime.actions.map((a) => a.name),
-        ...this.registeredActions.keys(),
+        ...this.runtime.actions.map((action) => normalizeActionName(action.name)),
+        ...[...this.registeredActions.keys()].map((name) => normalizeActionName(name)),
       ]);
       const actions = createMcpToolActions(serverName, crucialTools, existing);
 
       for (const action of actions) {
-        if (!this.registeredActions.has(String(action.name))) {
-          this.runtime.registerAction(action as Action);
-          this.registeredActions.set(String(action.name), action);
+        const name = String(action.name);
+        const normalizedName = normalizeActionName(name);
+        if (this.registeredActions.has(name)) continue;
+        if (
+          this.runtime.actions.some(
+            (candidate) => normalizeActionName(candidate.name) === normalizedName,
+          )
+        ) {
+          logger.warn(`[MCP] Action name collision for ${name}; keeping incumbent`);
+          continue;
+        }
+        this.runtime.registerAction(action as Action);
+        if (
+          this.runtime.actions.find(
+            (candidate) => normalizeActionName(candidate.name) === normalizedName,
+          ) === action
+        ) {
+          this.registeredActions.set(name, action);
         }
       }
     }
@@ -520,14 +586,15 @@ export class McpService extends Service {
 
   private unregisterToolsAsActions(serverName: string): void {
     // Remove Tier-1 actions
-    const toRemove: string[] = [];
+    const toRemove: Array<[string, McpToolAction]> = [];
     for (const [name, action] of this.registeredActions) {
-      if (action._mcpMeta.serverName === serverName) toRemove.push(name);
+      if (action._mcpMeta.serverName === serverName) toRemove.push([name, action]);
     }
 
-    for (const name of toRemove) {
-      const idx = this.runtime.actions.findIndex((a) => a.name === name);
-      if (idx !== -1) this.runtime.actions.splice(idx, 1);
+    for (const [name, action] of toRemove) {
+      if (this.runtime.actions.some((candidate) => candidate === action)) {
+        this.runtime.unregisterAction(name);
+      }
       this.registeredActions.delete(name);
     }
 
@@ -669,9 +736,7 @@ export class McpService extends Service {
 
     const config = JSON.parse(conn.server.config);
     const timeout = config.timeoutInMillis || DEFAULT_MCP_TIMEOUT_MS;
-    const result = await conn.client.callTool({ name: toolName, arguments: args }, undefined, {
-      timeout,
-    });
+    const result = await conn.client.callTool({ name: toolName, arguments: args }, { timeout });
     if (!result.content) throw new Error("Invalid tool result");
     return result as CallToolResult;
   }

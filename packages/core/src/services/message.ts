@@ -2809,19 +2809,29 @@ function buildFullV5PlannerActionSurface(params: {
 
 // buildActionCatalog is a pure function of (actions, localizedExamples) but was
 // rebuilt from scratch on every message (~349 us/message). Cache it keyed by the
-// action-name list: adding/removing any action — including plugin/view actions —
-// changes the key, so the cache self-invalidates on the path that matters (newly
-// registered view actions appear in the next message's catalog) without any
-// manual register/unregister hook. Only cached when no localized-example
+// ordered action names and object identities: add/remove and same-name action
+// replacement both invalidate, which matters for dynamically materialized MCP
+// schemas. Only cached when no localized-example
 // resolver is active: that resolver depends on the recent message, so the
 // localized catalog is message-specific and must be rebuilt each turn.
 const actionCatalogCache = new Map<string, ActionCatalog>();
 const ACTION_CATALOG_CACHE_LIMIT = 8;
+const actionCatalogObjectIds = new WeakMap<Action, number>();
+let nextActionCatalogObjectId = 1;
+
+function actionCatalogObjectId(action: Action): number {
+	const existing = actionCatalogObjectIds.get(action);
+	if (existing !== undefined) return existing;
+	const created = nextActionCatalogObjectId;
+	nextActionCatalogObjectId += 1;
+	actionCatalogObjectIds.set(action, created);
+	return created;
+}
 
 function actionCatalogCacheKey(actions: readonly Action[]): string {
 	let key = "";
 	for (const action of actions) {
-		key += `${action.name}\u0000`;
+		key += `${action.name}\u0000${actionCatalogObjectId(action)}\u0000`;
 	}
 	return key;
 }

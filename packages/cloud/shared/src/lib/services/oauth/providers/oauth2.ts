@@ -5,9 +5,11 @@
  * Works with standard OAuth 2.0 and supports provider-specific variations via config.
  */
 
+import type { AgentConnectorBinding } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import { dbWrite } from "../../../../db/client";
 import { writeTransaction } from "../../../../db/helpers";
+import { bindAgentConnectorWithTransaction } from "../../../../db/repositories/agent-connector-bindings";
 import {
   platformCredentials,
   platformCredentialTypeEnum,
@@ -24,7 +26,11 @@ import {
   getNestedValue,
   resolveRequestedScopes,
 } from "../provider-registry";
-import type { OAuthConnectionRole, OAuthStandardConnectionRole } from "../types";
+import type {
+  OAuthAgentBindingRequest,
+  OAuthConnectionRole,
+  OAuthStandardConnectionRole,
+} from "../types";
 import { normalizeOAuthConnectionRole } from "../types";
 
 const STATE_TTL_SECONDS = 600; // 10 minutes
@@ -42,6 +48,7 @@ interface OAuth2State {
   connectionRole?: OAuthConnectionRole;
   createdAt: number;
   codeVerifier?: string;
+  agentBinding?: OAuthAgentBindingRequest;
 }
 
 /**
@@ -171,6 +178,7 @@ export interface OAuth2CallbackResult {
   email?: string;
   displayName?: string;
   redirectUrl: string;
+  connectorBindingId?: string;
 }
 
 /**
@@ -186,6 +194,7 @@ export async function initiateOAuth2(
     redirectUrl?: string;
     scopes?: string[];
     connectionRole?: OAuthConnectionRole;
+    agentBinding?: OAuthAgentBindingRequest;
   },
 ): Promise<InitiateOAuth2Result> {
   const clientId = getClientId(provider);
@@ -224,6 +233,7 @@ export async function initiateOAuth2(
     connectionRole: normalizeOAuthConnectionRole(params.connectionRole),
     createdAt: Date.now(),
     codeVerifier,
+    ...(params.agentBinding ? { agentBinding: params.agentBinding } : {}),
   };
 
   await cache.set(`oauth2:${provider.id}:${state}`, stateData, STATE_TTL_SECONDS);
@@ -334,7 +344,10 @@ export async function handleOAuth2Callback(
   }
 
   // Store connection
-  const connectionId = await storeConnection(
+  if (stateData.agentBinding && stateData.agentBinding.role !== connectionRole) {
+    throw new Error("OAuth agent binding role mismatch");
+  }
+  const stored = await storeConnection(
     provider,
     organizationId,
     userId,
@@ -342,7 +355,9 @@ export async function handleOAuth2Callback(
     tokens,
     userInfo,
     scopes,
+    stateData.agentBinding,
   );
+  const { connectionId, connectorBinding } = stored;
 
   logger.info(`[OAuth2] Callback completed for ${provider.id}`, {
     organizationId,
@@ -358,6 +373,7 @@ export async function handleOAuth2Callback(
     email: userInfo.email,
     displayName: userInfo.displayName,
     redirectUrl,
+    ...(connectorBinding ? { connectorBindingId: connectorBinding.id } : {}),
   };
 }
 
@@ -692,7 +708,8 @@ async function storeConnection(
   tokens: TokenResponse,
   userInfo: ExtractedUserInfo,
   scopes: string[],
-): Promise<string> {
+  agentBinding?: OAuthAgentBindingRequest,
+): Promise<{ connectionId: string; connectorBinding?: AgentConnectorBinding }> {
   const connectionUserId = connectionRole === "OWNER" ? userId : null;
   const audit = {
     actorType: "user" as const,
@@ -911,7 +928,7 @@ async function storeConnection(
   let insertBlocked = false;
 
   try {
-    const connectionId = await writeTransaction(async (tx) => {
+    const stored = await writeTransaction(async (tx) => {
       const result = await tx
         .insert(platformCredentials)
         .values({
@@ -971,10 +988,29 @@ async function storeConnection(
         throw new Error("OAUTH_ACCOUNT_ALREADY_LINKED");
       }
 
-      return result[0].id;
+      const connectionId = result[0].id;
+      const connectorBinding = agentBinding
+        ? await bindAgentConnectorWithTransaction(tx, {
+            organizationId,
+            agentId: agentBinding.agentId,
+            platformCredentialId: connectionId,
+            provider: provider.id,
+            role: agentBinding.role,
+            purposes: ["automation"],
+            accessGate: "owner_binding",
+            oauthMode: agentBinding.oauthMode,
+            executionTarget: agentBinding.executionTarget,
+            selectedProducts: agentBinding.selectedProducts,
+            allowedCapabilities: agentBinding.allowedCapabilities,
+            isDefault: agentBinding.isDefault ?? true,
+            authorizedByUserId: userId,
+            requireVerifiedOwner: agentBinding.role === "OWNER",
+          })
+        : undefined;
+      return { connectionId, ...(connectorBinding ? { connectorBinding } : {}) };
     });
 
-    return connectionId;
+    return stored;
   } catch (error) {
     if (insertBlocked) {
       await cleanupNewlyCreatedSecrets("Database insert blocked by existing connection");

@@ -6,16 +6,26 @@
  * Credential resolution defaults to `DefaultGoogleCredentialResolver` but can be
  * swapped (constructor option or `setCredentialResolver`) for tests.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger, Service } from "@elizaos/core";
+import type { ConnectorAccount, IAgentRuntime } from "@elizaos/core";
+import { getConnectorAccountManager, logger, Service } from "@elizaos/core";
+import {
+  createMcpResourceEngine,
+  type McpResourceEngine,
+} from "@elizaos/plugin-mcp/resource-engine";
 import { getGoogleOAuthProviderConfig, getGoogleOAuthProviderMetadata } from "./auth.js";
 import { GoogleCalendarClient } from "./calendar.js";
 import { GoogleApiClientFactory } from "./client-factory.js";
 import { DefaultGoogleCredentialResolver } from "./credential-resolver.js";
 import { GoogleDriveClient } from "./drive.js";
 import { GoogleGmailClient } from "./gmail.js";
+import { createGoogleMcpAccessTokenProvider } from "./mcp/access-token-provider.js";
+import { listCalendarEventsViaMcp } from "./mcp/calendar-read-adapter.js";
+import {
+  type GoogleMcpAccountConnectionReport,
+  GoogleMcpCapabilityHost,
+} from "./mcp/capability-host.js";
 import { GoogleMeetClient } from "./meet.js";
-import type { GoogleCapability } from "./scopes.js";
+import { type GoogleCapability, scopesForGoogleCapabilities } from "./scopes.js";
 import {
   GOOGLE_SERVICE_NAME,
   type GoogleAccountRef,
@@ -74,6 +84,7 @@ import {
 
 export interface GoogleWorkspaceServiceOptions {
   credentialResolver?: GoogleCredentialResolver;
+  mcpEngine?: McpResourceEngine;
 }
 
 export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceService {
@@ -83,34 +94,99 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     "Google Workspace service for Gmail, Calendar, Drive, and Meet using account-scoped OAuth";
 
   private readonly clientFactory: GoogleApiClientFactory;
+  private credentialResolver: GoogleCredentialResolver;
   private readonly gmailClient: GoogleGmailClient;
   private readonly calendarClient: GoogleCalendarClient;
   private readonly driveClient: GoogleDriveClient;
   private readonly meetClient: GoogleMeetClient;
+  private readonly mcpHost?: GoogleMcpCapabilityHost;
 
   constructor(runtime?: IAgentRuntime, options: GoogleWorkspaceServiceOptions = {}) {
     super(runtime);
-    this.clientFactory = new GoogleApiClientFactory(
-      options.credentialResolver ?? new DefaultGoogleCredentialResolver({ runtime })
-    );
+    this.credentialResolver =
+      options.credentialResolver ?? new DefaultGoogleCredentialResolver({ runtime });
+    this.clientFactory = new GoogleApiClientFactory(this.credentialResolver);
     this.gmailClient = new GoogleGmailClient(this.clientFactory);
     this.calendarClient = new GoogleCalendarClient(this.clientFactory);
     this.driveClient = new GoogleDriveClient(this.clientFactory);
     this.meetClient = new GoogleMeetClient(this.clientFactory);
+    if (runtime) {
+      this.mcpHost = new GoogleMcpCapabilityHost(runtime, {
+        engine: options.mcpEngine ?? createMcpResourceEngine(),
+        accessTokenProviderFor: (account, product) =>
+          createGoogleMcpAccessTokenProvider({
+            accountId: account.id,
+            product,
+            resolveAuthClient: async (request) =>
+              this.credentialResolver.getAuthClient({
+                provider: GOOGLE_SERVICE_NAME,
+                accountId: request.accountId,
+                capabilities: [request.capability],
+                scopes: scopesForGoogleCapabilities([request.capability]),
+                reason: request.reason,
+              }),
+          }),
+        authorizeAccount: async (accountId, requiredCapability) => {
+          const evaluation = await getConnectorAccountManager(runtime).evaluatePolicy(
+            {
+              provider: GOOGLE_SERVICE_NAME,
+              statuses: ["connected"],
+              roles: ["OWNER", "AGENT", "TEAM"],
+              accessGates: ["open", "owner_binding"],
+              requiredCapabilities: [requiredCapability],
+            },
+            { accountId }
+          );
+          return evaluation.allowed;
+        },
+      });
+    }
   }
 
   static async start(runtime: IAgentRuntime): Promise<GoogleWorkspaceService> {
     const service = new GoogleWorkspaceService(runtime);
     logger.info("Starting Google Workspace plugin");
+    await service.restoreMcpAccounts();
     return service;
   }
 
   setCredentialResolver(credentialResolver: GoogleCredentialResolver): void {
+    this.credentialResolver = credentialResolver;
     this.clientFactory.setCredentialResolver(credentialResolver);
   }
 
   async stop(): Promise<void> {
+    await this.mcpHost?.stop();
     logger.info("Stopping Google Workspace plugin");
+  }
+
+  async connectMcpAccount(
+    account: ConnectorAccount
+  ): Promise<GoogleMcpAccountConnectionReport | null> {
+    if (account.status !== "connected") {
+      await this.mcpHost?.disconnectAccount(account.id);
+      return null;
+    }
+    if (!this.mcpHost || (account.executionTarget ?? "agent_host") !== "agent_host") {
+      await this.mcpHost?.disconnectAccount(account.id);
+      return null;
+    }
+    return this.mcpHost.connectAccount(account);
+  }
+
+  async disconnectMcpAccount(accountId: string): Promise<void> {
+    await this.mcpHost?.disconnectAccount(accountId);
+  }
+
+  private async restoreMcpAccounts(): Promise<void> {
+    if (!this.runtime || !this.mcpHost) return;
+    const accounts = await getConnectorAccountManager(this.runtime).listAccounts(
+      GOOGLE_SERVICE_NAME
+    );
+    for (const account of accounts) {
+      if (account.status !== "connected" || !account.selectedProducts?.length) continue;
+      await this.connectMcpAccount(account);
+    }
   }
 
   getOAuthProviderMetadata(): GoogleOAuthProviderMetadata {
@@ -261,6 +337,39 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
       timeZone?: string;
     }
   ): Promise<GoogleCalendarEvent[]> {
+    return this.listEventsWithFallback(params);
+  }
+
+  private async listEventsWithFallback(
+    params: GoogleAccountRef & {
+      calendarId?: string;
+      timeMin?: string;
+      timeMax?: string;
+      limit?: number;
+      timeZone?: string;
+    }
+  ): Promise<GoogleCalendarEvent[]> {
+    if (this.mcpHost) {
+      try {
+        const events = await listCalendarEventsViaMcp(this.mcpHost, params);
+        if (events) return events;
+      } catch (error) {
+        // error-policy:J4 A preview MCP read failure is surfaced to diagnostics
+        // and visibly degrades to the stable direct Calendar read adapter.
+        this.runtime?.reportError?.("google-mcp-calendar-read", error, {
+          accountId: params.accountId,
+          calendarId: params.calendarId ?? "primary",
+        });
+        logger.warn(
+          {
+            src: "plugin:google:mcp",
+            accountId: params.accountId,
+            err: error instanceof Error ? error.message : String(error),
+          },
+          "[GoogleWorkspaceService] Calendar MCP read failed; using direct API fallback"
+        );
+      }
+    }
     return this.calendarClient.listEvents(params);
   }
 

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import {
   AgentGoogleConnectorError,
   getGoogleAccessToken,
+  initiateManagedGoogleConnection,
   managedGoogleConnectorDeps,
 } from "./shared";
 
@@ -121,5 +122,42 @@ describe("getGoogleAccessToken error policy", () => {
     });
 
     expect(result).toEqual({ accessToken: "ya29.real-token", connectionId: "conn-9" });
+  });
+});
+
+describe("managed Google agent binding intent", () => {
+  it("stores the canonical agent request in OAuth state without exporting credentials", async () => {
+    let initiation:
+      | Parameters<typeof managedGoogleConnectorDeps.oauthService.initiateAuth>[0]
+      | null = null;
+    stubOauth({
+      initiateAuth: (async (input) => {
+        initiation = input;
+        return { authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=opaque" };
+      }) as typeof managedGoogleConnectorDeps.oauthService.initiateAuth,
+    });
+
+    const result = await initiateManagedGoogleConnection({
+      organizationId: "org-1",
+      userId: "user-1",
+      side: "owner",
+      agentId: "agent-1",
+      capabilities: ["google.gmail.triage", "google.calendar.read"],
+    });
+
+    expect(initiation).toMatchObject({
+      platform: "google",
+      connectionRole: "OWNER",
+      agentBinding: {
+        agentId: "agent-1",
+        role: "OWNER",
+        selectedProducts: ["gmail", "calendar"],
+        allowedCapabilities: ["gmail.read", "calendar.read"],
+        oauthMode: "eliza_managed",
+        executionTarget: "cloud_broker",
+      },
+    });
+    expect(result).toMatchObject({ selectedProducts: ["gmail", "calendar"] });
+    expect(JSON.stringify(result)).not.toContain("credential");
   });
 });

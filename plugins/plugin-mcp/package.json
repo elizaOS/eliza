@@ -30,6 +30,23 @@
       "require": "./dist/cjs/index.cjs",
       "default": "./dist/node/index.js"
     },
+    "./resource-engine": {
+      "types": "./dist/node/resource-engine.d.ts",
+      "eliza-source": {
+        "types": "./src/resource-engine.ts",
+        "import": "./src/resource-engine.ts",
+        "default": "./src/resource-engine.ts"
+      },
+      "node": {
+        "types": "./dist/node/resource-engine.d.ts",
+        "import": "./dist/node/resource-engine.js",
+        "require": "./dist/cjs/resource-engine.cjs",
+        "default": "./dist/node/resource-engine.js"
+      },
+      "import": "./dist/node/resource-engine.js",
+      "require": "./dist/cjs/resource-engine.cjs",
+      "default": "./dist/node/resource-engine.js"
+    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",
@@ -58,6 +75,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@modelcontextprotocol/client": "2.0.0",
     "@modelcontextprotocol/sdk": "^1.7.0",
     "ajv": "^8.17.1",
     "json5": "^2.2.3"
