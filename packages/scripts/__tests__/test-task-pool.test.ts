@@ -373,9 +373,7 @@ describe("run-all-tests plan mode", () => {
     ]);
 
     expect(result.status).toBe(3);
-    expect(result.stderr).toContain(
-      "lane matched 1 runnable task(s), below --min-tasks=2",
-    );
+    expect(result.stderr).toContain("lane matched 1 task(s) < required 2");
     expect(result.stdout).not.toContain("[eliza-test] PLAN");
   });
 });
