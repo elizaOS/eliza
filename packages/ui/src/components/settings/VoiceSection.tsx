@@ -191,6 +191,34 @@ export function VoiceSection({
       status: wakeWordEnabled ? "active" : "inactive",
       onActivate: () => onWakeWordToggle?.(!wakeWordEnabled),
     });
+  const { ref: intentVoiceRef, agentProps: intentVoiceAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "voice-section-intent-autostart-voice",
+      role: "toggle",
+      label: t("voicesection.intentAutoStartVoice", {
+        defaultValue: "Allow voice shortcuts to start the microphone",
+      }),
+      group: "voice-section",
+      status: prefs.osIntentAutoStartVoice ? "active" : "inactive",
+      onActivate: () =>
+        updatePrefs({ osIntentAutoStartVoice: !prefs.osIntentAutoStartVoice }),
+    });
+  const {
+    ref: intentTranscriptionRef,
+    agentProps: intentTranscriptionAgentProps,
+  } = useAgentElement<HTMLInputElement>({
+    id: "voice-section-intent-autostart-transcription",
+    role: "toggle",
+    label: t("voicesection.intentAutoStartTranscription", {
+      defaultValue: "Allow transcription shortcuts to start the microphone",
+    }),
+    group: "voice-section",
+    status: prefs.osIntentAutoStartTranscription ? "active" : "inactive",
+    onActivate: () =>
+      updatePrefs({
+        osIntentAutoStartTranscription: !prefs.osIntentAutoStartTranscription,
+      }),
+  });
   return (
     <section data-testid="voice-section" className={cn(className)}>
       <SettingsStack>
@@ -270,6 +298,7 @@ export function VoiceSection({
                 className="inline-flex min-h-11 cursor-pointer items-center gap-2"
               >
                 <Input
+                  ref={intentVoiceRef}
                   id="voice-section-intent-autostart-voice"
                   type="checkbox"
                   checked={prefs.osIntentAutoStartVoice}
@@ -280,6 +309,7 @@ export function VoiceSection({
                   }
                   className="h-5 w-5 rounded-sm border-border p-0 accent-accent"
                   data-testid="voice-section-intent-autostart-voice"
+                  {...intentVoiceAgentProps}
                 />
                 {t("voicesection.intentAutoStartVoice", {
                   defaultValue: "Allow voice shortcuts to start the microphone",
@@ -290,6 +320,7 @@ export function VoiceSection({
                 className="inline-flex min-h-11 cursor-pointer items-center gap-2"
               >
                 <Input
+                  ref={intentTranscriptionRef}
                   id="voice-section-intent-autostart-transcription"
                   type="checkbox"
                   checked={prefs.osIntentAutoStartTranscription}
@@ -300,6 +331,7 @@ export function VoiceSection({
                   }
                   className="h-5 w-5 rounded-sm border-border p-0 accent-accent"
                   data-testid="voice-section-intent-autostart-transcription"
+                  {...intentTranscriptionAgentProps}
                 />
                 {t("voicesection.intentAutoStartTranscription", {
                   defaultValue:

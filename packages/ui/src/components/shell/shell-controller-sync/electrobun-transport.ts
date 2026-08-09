@@ -195,5 +195,12 @@ export function createElectrobunShellAuthorityTransport(
   onError: (error: unknown) => void,
 ): ShellAuthorityTransport | null {
   const rpc = getElectrobunRendererRpc();
-  return rpc ? buildElectrobunShellAuthorityTransport(rpc, onError) : null;
+  // A bridge without the shell-authority endpoints (older host, embedded or
+  // test bridges that only expose permissions RPC) cannot coordinate windows;
+  // treat it as no transport so the window runs as a lone owner instead of a
+  // permanent snapshot-less follower with no chat surface at all.
+  if (!rpc || typeof rpc.request?.shellControllerConnect !== "function") {
+    return null;
+  }
+  return buildElectrobunShellAuthorityTransport(rpc, onError);
 }
