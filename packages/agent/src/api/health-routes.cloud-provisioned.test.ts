@@ -1,12 +1,19 @@
 /**
- * Runtime-boundary coverage for GET /api/status `cloud.cloudProvisioned`.
- * Proves the managed hosting marker + credential contract reaches the status
- * payload the UI reads, and that a user-owned/self-hosted process without the
- * marker reports false. Uses the real isCloudProvisionedContainer detector via
- * plugin-elizacloud (no mock of the system under test).
+ * Hermetic integration for managed hosting detection through the real
+ * runtime boundary the UI reads:
+ *
+ *   prepareManagedElizaBaseEnvironment()
+ *     → container process env (producer map applied)
+ *     → isCloudProvisionedContainer() (shared detector used by elizacloud)
+ *     → handleHealthRoutes GET /api/status → cloud.cloudProvisioned
+ *
+ * Also covers self-hosted (no managed env) and bare-marker-without-credential
+ * controls. Snapshots and restores every process.env key this suite mutates.
  */
 
+import { mock } from "bun:test";
 import type { AgentRuntime } from "@elizaos/core";
+import { isCloudProvisionedContainer } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import {
@@ -14,15 +21,63 @@ import {
   handleHealthRoutes,
 } from "./health-routes.ts";
 
-const CLOUD_ENV_KEYS = [
-  "ELIZA_CLOUD_PROVISIONED",
-  "ELIZA_API_TOKEN",
-  "ELIZAOS_CLOUD_API_KEY",
-  "ELIZAOS_CLOUD_ENABLED",
-  "STEWARD_AGENT_TOKEN",
-] as const;
+// Mock the Cloud control-plane API-key mint used by the managed env producer so
+// the agent package can call prepareManagedElizaBaseEnvironment without a DB.
+mock.module(
+  new URL("../../../cloud/shared/src/lib/services/api-keys.ts", import.meta.url)
+    .href,
+  () => ({
+    apiKeysService: {
+      createForAgent: async () => ({ plainKey: "agent-api-key" }),
+    },
+  }),
+);
 
-function makeStatusContext(): {
+const { prepareManagedElizaBaseEnvironment } = await import(
+  new URL(
+    "../../../cloud/shared/src/lib/services/managed-eliza-config.ts",
+    import.meta.url,
+  ).href
+);
+
+function snapshotEnv(): Record<string, string | undefined> {
+  return { ...process.env };
+}
+
+function restoreEnv(snapshot: Record<string, string | undefined>): void {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in snapshot)) {
+      delete process.env[key];
+    }
+  }
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
+
+function applyProducerEnv(environmentVars: Record<string, string>): void {
+  for (const [key, value] of Object.entries(environmentVars)) {
+    process.env[key] = value;
+  }
+}
+
+function clearManagedDetectionKeys(): void {
+  for (const key of [
+    "ELIZA_CLOUD_PROVISIONED",
+    "ELIZA_API_TOKEN",
+    "ELIZAOS_CLOUD_API_KEY",
+    "ELIZAOS_CLOUD_ENABLED",
+    "STEWARD_AGENT_TOKEN",
+  ]) {
+    delete process.env[key];
+  }
+}
+
+function makeStatusContext(agentName: string): {
   ctx: HealthRouteContext;
   responses: Array<{ data: unknown; status: number }>;
 } {
@@ -35,7 +90,7 @@ function makeStatusContext(): {
     runtime,
     config: { connectors: {} } as ElizaConfig,
     agentState: "running",
-    agentName: "managed-test-agent",
+    agentName,
     model: undefined,
     startedAt: Date.now(),
     startup: { phase: "ready", attempt: 1 },
@@ -62,54 +117,60 @@ function makeStatusContext(): {
   };
 }
 
-describe("GET /api/status cloud.cloudProvisioned (managed vs user-owned)", () => {
-  const savedEnv = Object.fromEntries(
-    CLOUD_ENV_KEYS.map((key) => [key, process.env[key]]),
-  );
+describe("producer → detector → GET /api/status cloudProvisioned", () => {
+  let envSnapshot: Record<string, string | undefined>;
 
   beforeEach(() => {
-    for (const key of CLOUD_ENV_KEYS) {
-      delete process.env[key];
-    }
+    envSnapshot = snapshotEnv();
+    clearManagedDetectionKeys();
   });
 
   afterEach(() => {
-    for (const [key, value] of Object.entries(savedEnv)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
+    restoreEnv(envSnapshot);
   });
 
-  it("reports cloudProvisioned true when the managed marker and a credential are present", async () => {
-    // Mirrors prepareManagedElizaBaseEnvironment + control-plane injection:
-    // flag is forced on, and a platform token is always present.
-    process.env.ELIZA_CLOUD_PROVISIONED = "1";
-    process.env.ELIZA_API_TOKEN = "agent_test_token_not_a_secret";
+  it("managed producer map yields cloud.cloudProvisioned true on /api/status", async () => {
+    const produced = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-boundary-1",
+      userId: "user-boundary-1",
+      agentSandboxId: "managed-boundary-agent",
+      existingEnv: {
+        // Caller tries to clear the marker; producer must still force it on.
+        ELIZA_CLOUD_PROVISIONED: "0",
+      },
+    });
 
-    const { ctx, responses } = makeStatusContext();
+    expect(produced.environmentVars.ELIZA_CLOUD_PROVISIONED).toBe("1");
+    expect(produced.environmentVars.ELIZA_API_TOKEN?.length).toBeGreaterThan(0);
+
+    // Control-plane container create injects the producer map as process env.
+    applyProducerEnv(produced.environmentVars);
+
+    // Real shared detector (same contract plugin-elizacloud / status use).
+    expect(isCloudProvisionedContainer()).toBe(true);
+
+    const { ctx, responses } = makeStatusContext("managed-boundary-agent");
     await expect(handleHealthRoutes(ctx)).resolves.toBe(true);
 
     expect(responses).toHaveLength(1);
     expect(responses[0].status).toBe(200);
     expect(responses[0].data).toMatchObject({
       state: "running",
-      agentName: "managed-test-agent",
+      agentName: "managed-boundary-agent",
       cloud: {
         cloudProvisioned: true,
         connectionStatus: "connected",
-        activeAgentId: "managed-test-agent",
+        activeAgentId: "managed-boundary-agent",
       },
     });
   });
 
-  it("reports cloudProvisioned false for a user-owned/self-hosted process", async () => {
-    // No ELIZA_CLOUD_PROVISIONED and no cloud credentials — the default local
-    // install shape. Flag alone without a credential must also stay false, but
-    // the self-hosted path is the complete absence of managed env.
-    const { ctx, responses } = makeStatusContext();
+  it("user-owned/self-hosted process without producer env reports false", async () => {
+    expect(isCloudProvisionedContainer()).toBe(false);
+
+    const { ctx, responses } = makeStatusContext("local-agent");
     await expect(handleHealthRoutes(ctx)).resolves.toBe(true);
 
-    expect(responses).toHaveLength(1);
     expect(responses[0].status).toBe(200);
     expect(responses[0].data).toMatchObject({
       cloud: {
@@ -121,11 +182,13 @@ describe("GET /api/status cloud.cloudProvisioned (managed vs user-owned)", () =>
     });
   });
 
-  it("does not treat a bare managed marker without credentials as provisioned", async () => {
+  it("bare managed marker without credentials stays unprovisioned", async () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     // No ELIZA_API_TOKEN / STEWARD_AGENT_TOKEN / cloud API key.
 
-    const { ctx, responses } = makeStatusContext();
+    expect(isCloudProvisionedContainer()).toBe(false);
+
+    const { ctx, responses } = makeStatusContext("bare-marker-agent");
     await expect(handleHealthRoutes(ctx)).resolves.toBe(true);
 
     expect(responses[0].data).toMatchObject({
