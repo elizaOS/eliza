@@ -89,6 +89,18 @@ function Probe(props: {
   return null;
 }
 
+// App-mode host detection reads window.location.hostname; jsdom's default
+// (localhost) is neither an app host nor a per-agent host, so the pairing
+// hand-off cases below pin it explicitly.
+const realLocation = window.location;
+
+function setHostname(hostname: string): void {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { ...realLocation, hostname },
+  });
+}
+
 function cloudServer(agentId: string) {
   return {
     kind: "cloud" as const,
@@ -101,6 +113,10 @@ function cloudServer(agentId: string) {
 afterEach(() => {
   cleanup();
   delete (globalThis as { Capacitor?: unknown }).Capacitor;
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: realLocation,
+  });
   vi.clearAllMocks();
   // Restore the default "no cookie" behavior after clearAllMocks wipes it.
   mockEnsureCloudSession.mockImplementation(async () => Promise.resolve(null));
@@ -180,6 +196,60 @@ describe("useAgentSessionRecovery", () => {
         isRecoveryTargetCurrent: expect.any(Function),
         commitPairedInProcess: expect.any(Function),
       }),
+    );
+  });
+
+  it("uses in-process pairing on the Eliza app hosts so entry never leaves the origin", async () => {
+    // Regression pin for the app-staging pairing dead-end. The chat floor
+    // (app-mode.ts) stopped ENTRY from redirecting into the per-agent /pair,
+    // but recovery still did: a cold-starting agent cannot redeem the 60s
+    // one-time token, the relay answered 403, and the browser rendered
+    // "Sign-in link expired" — bouncing the user back through a second full
+    // sign-in. On an app host recovery must redeem in-process instead.
+    setHostname("app-staging.elizacloud.ai");
+    mockCloudToken.mockReturnValue("steward.jwt.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockReturnValue(new Promise(() => {}));
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(s) => statuses.push(s)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(statuses).toContain("recovering");
+    });
+    expect(mockRunRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({ consumeRedirectInProcess: true }),
+    );
+  });
+
+  it("keeps the browser navigation hand-off on non-app hosts", async () => {
+    // The dedicated per-agent host still has no same-origin chat app to fall
+    // back to, so its /pair relay hand-off must stay untouched.
+    setHostname("agent-1.elizacloud.ai");
+    mockCloudToken.mockReturnValue("steward.jwt.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockReturnValue(new Promise(() => {}));
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(s) => statuses.push(s)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(statuses).toContain("recovering");
+    });
+    expect(mockRunRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({ consumeRedirectInProcess: false }),
     );
   });
 
