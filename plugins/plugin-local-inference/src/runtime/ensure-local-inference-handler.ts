@@ -34,7 +34,6 @@ import {
 	ModelType,
 	renderMessageHandlerStablePrefix,
 	resolveBackgroundInferenceBudget,
-	Service,
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
@@ -57,13 +56,19 @@ import {
 	extractPromptCacheKey,
 	resolveLocalCacheKey,
 } from "../services/cache-bridge";
-import { deviceBridge } from "../services/device-bridge";
+import { registerDeviceBridgeLoader } from "../services/device-bridge";
 import { localInferenceEngine } from "../services/engine";
 import { handlerRegistry } from "../services/handler-registry";
 import { probeHardware } from "../services/hardware";
 import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { listInstalledModels } from "../services/registry";
 import { installRouterHandler } from "../services/router-handler";
+import {
+	LOCAL_INFERENCE_LOADER_SERVICE_TYPE,
+	registerLocalInferenceLoaderService,
+	registerTimedAsrService,
+	TIMED_ASR_SERVICE_TYPE,
+} from "../services/runtime-services";
 import {
 	type ElizaHarnessSchema,
 	elizaHarnessSchemaFromSkeleton,
@@ -1233,69 +1238,6 @@ function makeBionicImageDescriptionHandler(): ImageDescriptionHandler {
 }
 
 /**
- * Register the device-bridge loader on the runtime. Accepts load/generate
- * calls whether or not a mobile device is currently connected — parked
- * calls resolve on reconnect (up to a timeout). Cheaper than waiting for
- * the first device register to register the service: ordering is already
- * handled inside `DeviceBridge.generate`.
- */
-function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
-	const withRegistration = runtime as AgentRuntime & {
-		registerService?: (name: string, impl: unknown) => unknown;
-	};
-	if (typeof withRegistration.registerService !== "function") return;
-	const loader: LocalInferenceLoader = {
-		loadModel: (args) => deviceBridge.loadModel(args),
-		unloadModel: () => deviceBridge.unloadModel(),
-		currentModelPath: () => deviceBridge.currentModelPath(),
-		generate: (args) => deviceBridge.generate(args),
-		embed: (args) => deviceBridge.embed(args),
-	};
-	// Expose the process-wide MemoryArbiter through the registered
-	// `localInferenceLoader` service so provider.ts can route
-	// IMAGE_DESCRIPTION (WS2) and IMAGE (WS3) requests to the arbiter.
-	// Without this accessor the IMAGE handler unconditionally surfaces
-	// `capability_unavailable` because the registered service has no
-	// arbiter accessor — the singleton `localInferenceService` is not
-	// the same object that gets registered with the runtime.
-	const loaderWithArbiter = Object.assign(loader, {
-		getMemoryArbiter: () => tryGetMemoryArbiter(),
-	});
-	withRegistration.registerService("localInferenceLoader", loaderWithArbiter);
-}
-
-/**
- * Expose fused v12 word timings as an additive runtime service. Consumers such
- * as plugin-meetings can discover this structural seam without importing this
- * plugin or widening the string-only TRANSCRIPTION model contract.
- */
-class TimedAsrService extends Service {
-	static serviceType = "timedAsr";
-	capabilityDescription =
-		"Word-timed local ASR over the fused voice engine (transcribeWav returns per-word timings).";
-
-	static async start(runtime: IAgentRuntime): Promise<TimedAsrService> {
-		return new TimedAsrService(runtime);
-	}
-
-	async stop(): Promise<void> {}
-
-	isAvailable(): boolean {
-		return localInferenceEngine.voice() !== null;
-	}
-
-	async transcribeWav(wav: Uint8Array, signal?: AbortSignal) {
-		const audio = decodeMonoPcm16Wav(wav);
-		return localInferenceEngine.transcribePcmTimed(audio, signal);
-	}
-}
-
-async function registerTimedAsrService(runtime: AgentRuntime): Promise<void> {
-	if (typeof runtime.registerService !== "function") return;
-	await runtime.registerService(TimedAsrService);
-}
-
-/**
  * AOSP / generic-FFI path: load the fused `libelizainference.so` into the bun
  * process via `bun:ffi` (the AOSP plugin's loader; libllama is retired). The
  * loader stays inactive at runtime when neither `ELIZA_LOCAL_LLAMA === "1"`
@@ -1353,18 +1295,17 @@ export function bionicInferenceSocketName(
  * AOSP / Capacitor / device-bridge loaders: the whole point is that the GPU is
  * out of reach for the in-process FFI path on this (musl) process.
  */
-function tryRegisterBionicHostLoader(runtime: AgentRuntime): boolean {
+async function tryRegisterBionicHostLoader(
+	runtime: AgentRuntime,
+): Promise<boolean> {
 	const socketName = bionicInferenceSocketName();
 	if (!socketName) return false;
-	const withRegistration = runtime as AgentRuntime & {
-		registerService?: (name: string, impl: unknown) => unknown;
-	};
-	if (typeof withRegistration.registerService !== "function") return false;
 	const loader: LocalInferenceLoader = new BionicHostLoader(socketName);
 	const loaderWithArbiter = Object.assign(loader, {
 		getMemoryArbiter: () => tryGetMemoryArbiter(),
 	});
-	withRegistration.registerService("localInferenceLoader", loaderWithArbiter);
+	await registerLocalInferenceLoaderService(runtime, loaderWithArbiter);
+	await runtime.getServiceLoadPromise(LOCAL_INFERENCE_LOADER_SERVICE_TYPE);
 	logger.info(
 		`[local-inference] Registered bionic-host loader; text generation delegates to the in-process GPU host over UDS "${socketName}"`,
 	);
@@ -1388,8 +1329,11 @@ async function tryRegisterAospLlamaLoader(
 			);
 			return false;
 		}
-		const result = await mod.registerAospLlamaLoader(runtime);
-		return Boolean(result);
+		const registered = Boolean(await mod.registerAospLlamaLoader(runtime));
+		if (registered) {
+			await runtime.getServiceLoadPromise(LOCAL_INFERENCE_LOADER_SERVICE_TYPE);
+		}
+		return registered;
 	} catch (err) {
 		logger.error(
 			"[local-inference] AOSP llama adapter unavailable while ELIZA_LOCAL_LLAMA=1:",
@@ -1412,9 +1356,9 @@ async function tryRegisterCapacitorLoader(
 		const { registerCapacitorLlamaLoader } = await import(
 			"@elizaos/capacitor-llama"
 		);
-		const capacitorRuntime: Parameters<typeof registerCapacitorLlamaLoader>[0] =
-			Object.create(runtime);
-		registerCapacitorLlamaLoader(capacitorRuntime);
+		const registered = await registerCapacitorLlamaLoader(runtime);
+		if (!registered) return false;
+		await runtime.getServiceLoadPromise(LOCAL_INFERENCE_LOADER_SERVICE_TYPE);
 		logger.info(
 			"[local-inference] Registered capacitor-llama loader for mobile on-device inference",
 		);
@@ -1532,6 +1476,7 @@ export async function ensureLocalInferenceHandler(
 	// registers during the rest of boot. Idempotent per-runtime.
 	handlerRegistry.installOn(runtime);
 	await registerTimedAsrService(runtime);
+	await runtime.getServiceLoadPromise(TIMED_ASR_SERVICE_TYPE);
 
 	// Loader precedence:
 	//   1. AOSP native FFI loader when running inside the AOSP agent process
@@ -1543,16 +1488,14 @@ export async function ensureLocalInferenceHandler(
 	//      opted in via ELIZA_DEVICE_BRIDGE_ENABLED=1.
 	//   4. Standalone node-llama-cpp engine for desktop / server.
 	//
-	// All four satisfy the same `localInferenceLoader` service contract.
-	// A later registration overrides an earlier one, so we register in
-	// LOWEST-priority order first; the AOSP loader runs last so it wins on
-	// AOSP builds. Each `try*Loader` is idempotent and gated on its own env
-	// signal, so they're safe to chain.
+	// All four satisfy the same `localInferenceLoader` service contract. Select
+	// exactly one: duplicate service classes make `getService()` ambiguous and
+	// transfer teardown ownership away from the backend that actually won.
 	// Bionic-host delegation wins over every other loader: when set, the GPU is
 	// only reachable from the in-process app host, so the musl agent must NOT try
 	// the in-process FFI / device-bridge paths (the app shell already suppressed
 	// ELIZA_LOCAL_LLAMA in this case).
-	const bionicHostRegistered = tryRegisterBionicHostLoader(runtime);
+	const bionicHostRegistered = await tryRegisterBionicHostLoader(runtime);
 	const aospRegistered =
 		!bionicHostRegistered && (await tryRegisterAospLlamaLoader(runtime));
 	const capacitorRegistered =
@@ -1563,7 +1506,8 @@ export async function ensureLocalInferenceHandler(
 		!bionicHostRegistered &&
 		process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 	if (!aospRegistered && !capacitorRegistered && deviceBridgeEnabled) {
-		registerDeviceBridgeLoader(runtime);
+		await registerDeviceBridgeLoader(runtime);
+		await runtime.getServiceLoadPromise(LOCAL_INFERENCE_LOADER_SERVICE_TYPE);
 		logger.info(
 			"[local-inference] Registered device-bridge loader; inference routes to paired mobile device when connected",
 		);

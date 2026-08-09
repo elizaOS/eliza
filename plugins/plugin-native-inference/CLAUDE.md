@@ -20,9 +20,11 @@ changing its ABI, model selection, or memory policy.
   always disables the path.
 - The library is expected at `<agent-root>/<abi>/libelizainference.so`, where
   `<abi>` is `arm64-v8a`, `x86_64`, or `riscv64`.
-- `registerAospLlamaLoader()` exposes the fused loader as
-  `localInferenceLoader`; `ensureAospLocalInferenceHandlers()` registers model
-  handlers only after the capability probes succeed.
+- `registerAospLlamaLoader()` registers the fused loader's
+  `localInferenceLoader` service class without crossing the runtime
+  initialization barrier. Post-initialize consumers await service readiness;
+  runtime stop unloads the fused loader. `ensureAospLocalInferenceHandlers()`
+  registers model handlers only after the capability probes succeed.
 - Text, MTP, KV-cache quantization, TTS, and ASR share one fused inference
   context. Do not add a parallel local model process or direct `libllama` FFI
   adapter.

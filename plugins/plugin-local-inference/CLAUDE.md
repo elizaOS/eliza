@@ -25,6 +25,8 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 `TEXT_EMBEDDING` is **not** registered on the static plugin object — it is wired at boot by `ensureLocalInferenceHandler()` in the runtime subpath to avoid claiming the embedding slot before a backend is active.
 
 ### Registered elizaOS services
+- `LocalInferenceLoaderRuntimeService` (`src/services/runtime-services.ts`) — runtime-owned adapter for the one selected AOSP, Capacitor, bionic-host, or device-bridge loader. Registration is safe before `AgentRuntime.initialize()`; the boot hook waits for startup only after initialization, and runtime stop releases the selected backend.
+- `TimedAsrService` (`src/services/runtime-services.ts`) — additive `timedAsr` seam for fused per-word timings. Meeting transcription discovers it without importing this plugin or widening the string-only `TRANSCRIPTION` model contract.
 - `LocalPiiRecognizerService` (`src/pii/service.ts`) — registers under core's `PII_ENTITY_RECOGNIZER_SERVICE`; supplies the `LlmEntityRecognizer` (`src/pii/llm-recognizer.ts`) that the runtime's PII pseudonymization layer composes with its regex recognizer when `ELIZA_PII_SWAP_ENABLED` is on. Detection runs as a JSON-extraction prompt on the resident local backend through the inference priority gate; only values found verbatim in the source text are emitted, and `getRecognizer()` returns `null` (regex-only degrade) while no generation-capable local backend is active.
 
 ### Services (consumed, not registered as elizaOS services)
@@ -101,6 +103,7 @@ src/
   services/
     index.ts                      Re-exports all service surfaces
     service.ts                    LocalInferenceService singleton (download, active-model, catalog, routing)
+    runtime-services.ts           AgentRuntime service classes for the selected loader and timed ASR
     engine.ts                     LocalInferenceEngine — llama.cpp FFI, one model at a time
     memory-arbiter.ts             MemoryArbiter — cross-plugin model handle arbiter (WS1)
     active-model.ts               ActiveModelCoordinator, load-args resolution, manifest validation

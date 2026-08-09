@@ -1,20 +1,21 @@
 /**
- * Unit tests for the pure bootstrap helpers — load-arg building, generate
- * token-budget resolution, embedding gating, bundled-model resolution, and
- * memory-eviction thresholds. No native library or model is loaded; the
- * helpers run against real filesystem tempdirs and env overrides, so the
- * assertions cover the deterministic JS logic rather than the FFI boundary.
+ * Covers AOSP bootstrap helpers and loader ownership. Pure helpers use real
+ * filesystem tempdirs and env overrides; service lifecycle uses a real
+ * AgentRuntime with a deterministic loader, never the native FFI boundary.
  */
 
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   firstSentenceEndIndex,
   resolveAospGenerateTokenBudget,
 } from "../src/aosp-llama-paths";
 import {
+  type AospLoader,
+  AospLoaderRuntimeService,
   aospAsrAssetsPresent,
   buildAospLoadModelArgs,
   buildGenerateArgsFromParams,
@@ -24,10 +25,57 @@ import {
   makeAospTextToSpeechHandler,
   parseMemAvailableMb,
   readAssignedBundledModels,
+  registerAospLoaderService,
   removeAospGeneratedStagingDir,
   shouldEvictChatForAvailMb,
   VOICE_COLOAD_KEEP_AVAIL_MB,
 } from "../src/aosp-local-inference-bootstrap";
+
+describe("AOSP loader runtime service", () => {
+  it("registers, starts, discovers, and stops through a real AgentRuntime", async () => {
+    const runtime = new AgentRuntime({ logLevel: "fatal" });
+    let currentPath: string | null = null;
+    let unloads = 0;
+    const loader: AospLoader = {
+      async loadModel(args) {
+        currentPath = args.modelPath;
+      },
+      async unloadModel() {
+        unloads += 1;
+        currentPath = null;
+      },
+      currentModelPath: () => currentPath,
+      generate: async ({ prompt }) => `aosp:${prompt}`,
+      embed: async () => ({ embedding: [0.25, 0.5], tokens: 1 }),
+    };
+
+    try {
+      // Public mobile bootstrap can register before initialize. Startup stays
+      // lazy so registration never waits on the runtime initialization barrier.
+      await registerAospLoaderService(runtime, loader);
+      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      expect(runtime.getService("localInferenceLoader")).toBeNull();
+
+      await runtime.getServiceLoadPromise("localInferenceLoader");
+      const service = runtime.getService<AospLoaderRuntimeService>(
+        "localInferenceLoader",
+      );
+      expect(service).toBeInstanceOf(AospLoaderRuntimeService);
+      if (!service) throw new Error("AOSP loader service did not start");
+
+      await service.loadModel({ modelPath: "/models/aosp.gguf" });
+      await expect(service.generate({ prompt: "hello" })).resolves.toBe(
+        "aosp:hello",
+      );
+      expect(service.currentModelPath()).toBe("/models/aosp.gguf");
+
+      await runtime.stop();
+      expect(unloads).toBe(1);
+    } finally {
+      await runtime.stop({ fast: true });
+    }
+  });
+});
 
 function withEnv<T>(
   overrides: Record<string, string | undefined>,
