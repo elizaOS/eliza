@@ -15,10 +15,12 @@ import type {
 	State,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
-import type { Skill } from "../types";
+import type { Skill, SkillCatalogEntry } from "../types";
 
 const MAX_SUMMARY_SKILLS = 50;
 const MAX_SCAN_NOTICES = 10;
+const MAX_CATALOG_CATEGORIES = 8;
+const MAX_CATALOG_SKILLS_PER_CATEGORY = 3;
 
 // ============================================================
 // LEVEL 1: SUMMARY PROVIDER
@@ -58,7 +60,7 @@ export const skillsSummaryProvider: Provider = {
 
 			if (skills.length === 0) {
 				return {
-					text: "**Skills:** None installed. Add a local skill or install one directly from GitHub.",
+					text: "**Skills:** None installed. Use SKILL op=search to browse the catalog and SKILL op=install to install one.",
 					values: { skillCount: 0 },
 					data: { skills: [] },
 				};
@@ -91,7 +93,7 @@ export const skillsSummaryProvider: Provider = {
 
 ${skillsJson}${scanSection}
 
-*Use SKILL op=toggle to enable/disable skills and SKILL op=uninstall to remove installed skills.*`;
+*Use SKILL op=toggle to enable/disable skills. Use SKILL op=install to add new skills. Use SKILL op=uninstall to remove installed skills.*`;
 
 			return {
 				text,
@@ -215,6 +217,75 @@ ${truncatedBody}`;
 };
 
 // ============================================================
+// CATALOG AWARENESS PROVIDER
+// Shows catalog when user asks about capabilities
+// ============================================================
+
+/**
+ * Catalog Awareness Provider
+ *
+ * Dynamically shows available skill categories when
+ * the user asks about capabilities.
+ */
+export const catalogAwarenessProvider: Provider = {
+	name: "agent_skills_catalog",
+	description: "Awareness of skills available on the registry",
+	descriptionCompressed: "Available skills on registry.",
+	position: 10,
+	registerByDefault: false,
+	dynamic: true,
+	contexts: ["agent_internal", "settings"],
+	contextGate: { anyOf: ["agent_internal", "settings"] },
+	cacheStable: false,
+	cacheScope: "turn",
+	private: true,
+
+	get: async (
+		runtime: IAgentRuntime,
+		_message: Memory,
+		_state: State,
+	): Promise<ProviderResult> => {
+		try {
+			const service = runtime.getService<AgentSkillsService>(
+				"AGENT_SKILLS_SERVICE",
+			);
+			if (!service) return { text: "" };
+
+			const catalog = await service.getCatalog({ notOlderThan: Infinity });
+			if (catalog.length === 0) return { text: "" };
+
+			const categories = groupByCategory(catalog);
+
+			let categoryText = "";
+			for (const [category, skills] of Object.entries(categories).slice(
+				0,
+				MAX_CATALOG_CATEGORIES,
+			)) {
+				const skillNames = skills
+					.slice(0, MAX_CATALOG_SKILLS_PER_CATEGORY)
+					.map((s) => s.name)
+					.join(", ");
+				const more =
+					skills.length > MAX_CATALOG_SKILLS_PER_CATEGORY
+						? ` +${skills.length - MAX_CATALOG_SKILLS_PER_CATEGORY} more`
+						: "";
+				categoryText += `- **${category}**: ${skillNames}${more}\n`;
+			}
+
+			return {
+				text: `## Available Skill Categories
+
+${categoryText}
+Use USE_SKILL to invoke an enabled skill, or SKILL op=search to find one.`,
+				data: { categories },
+			};
+		} catch {
+			return { text: "", values: {}, data: {} };
+		}
+	},
+};
+
+// ============================================================
 // HELPER FUNCTIONS
 // ============================================================
 
@@ -299,4 +370,60 @@ function calculateSkillRelevance(skill: Skill, context: string): number {
 	}
 
 	return score;
+}
+
+function groupByCategory(
+	skills: SkillCatalogEntry[],
+): Record<string, Array<{ slug: string; name: string }>> {
+	const categories: Record<string, Array<{ slug: string; name: string }>> = {};
+
+	const categoryKeywords: Record<string, string[]> = {
+		"AI & Models": [
+			"ai",
+			"llm",
+			"model",
+			"gpt",
+			"claude",
+			"openai",
+			"anthropic",
+		],
+		"Browser & Web": ["browser", "web", "scrape", "chrome", "selenium"],
+		"Code & Dev": ["code", "python", "javascript", "typescript", "git", "dev"],
+		"Data & Analytics": ["data", "analytics", "csv", "json", "database"],
+		"Finance & Trading": [
+			"trading",
+			"finance",
+			"crypto",
+			"market",
+			"prediction",
+		],
+		Communication: ["email", "slack", "discord", "telegram", "chat"],
+		Productivity: ["calendar", "task", "todo", "note", "document"],
+		Other: [],
+	};
+
+	for (const skill of skills) {
+		const text = `${skill.displayName} ${skill.summary || ""}`.toLowerCase();
+		let assigned = false;
+
+		for (const [category, keywords] of Object.entries(categoryKeywords)) {
+			if (category === "Other") continue;
+			if (keywords.some((kw) => text.includes(kw))) {
+				if (!categories[category]) categories[category] = [];
+				categories[category].push({
+					slug: skill.slug,
+					name: skill.displayName,
+				});
+				assigned = true;
+				break;
+			}
+		}
+
+		if (!assigned) {
+			if (!categories.Other) categories.Other = [];
+			categories.Other.push({ slug: skill.slug, name: skill.displayName });
+		}
+	}
+
+	return categories;
 }
