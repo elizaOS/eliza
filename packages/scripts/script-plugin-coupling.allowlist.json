@@ -25,6 +25,22 @@
     "reason": "validates LifeOps persona scenario-pack ledgers against the personal-assistant plugin's scenario suite"
   },
   {
+    "file": "packages/scripts/ci-path-gate.mjs",
+    "tokens": [
+      "plugins/plugin-app-control",
+      "plugins/plugin-capacitor-bridge",
+      "plugins/plugin-commands",
+      "plugins/plugin-computeruse",
+      "plugins/plugin-github",
+      "plugins/plugin-local-inference",
+      "plugins/plugin-native-filesystem",
+      "plugins/plugin-sql",
+      "plugins/plugin-vision",
+      "plugins/plugin-wallet"
+    ],
+    "reason": "systemic coupling: the CI path-gate lane configs enumerate the plugin surfaces whose diffs trigger specific lanes; lane membership is workflow routing policy decided centrally, not discoverable per-package metadata"
+  },
+  {
     "file": "packages/scripts/e2e-coverage/inventory.ts",
     "tokens": ["@elizaos/plugin-discord", "plugins/plugin-commands"],
     "reason": "discovers HTTP routes / connector registration from these route-wiring plugins for the e2e surface inventory"
