@@ -32,6 +32,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startTriggerEventBridge } from "./trigger-event-bridge.ts";
 
 const AGENT_ID = stringToUuid("trigger-bridge-test-agent");
+const LIFEOPS_PLUGIN = "@elizaos/plugin-personal-assistant";
 
 function makeDraft(
   overrides: Partial<NormalizedTriggerDraft>,
@@ -93,6 +94,10 @@ function makeRuntime(): BridgeRuntimeHandle {
     agentId: AGENT_ID,
     character: { name: "bridge-test" },
     getSetting: (key: string) => settings.get(key),
+    // Passive connector suppression is a LifeOps behavior: standalone agents
+    // now default to active replies, so the bridge fixture must model the
+    // personal-assistant plugin when exercising passive-source short-circuits.
+    plugins: [{ name: LIFEOPS_PLUGIN }],
     logger: {
       info: vi.fn(),
       warn: vi.fn(),
