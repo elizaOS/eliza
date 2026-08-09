@@ -527,6 +527,12 @@ async function _installPlugin(
       logger.warn(
         `[plugin-installer] local install failed for ${canonicalName}: ${localErr instanceof Error ? localErr.message : String(localErr)}`,
       );
+      await cleanupInstallTarget(targetDir);
+      await fs.mkdir(targetDir, { recursive: true });
+      await fs.writeFile(
+        targetPkgPath,
+        JSON.stringify({ private: true, dependencies: {} }, null, 2),
+      );
     }
   }
 
@@ -543,12 +549,16 @@ async function _installPlugin(
         targetDir,
         canonicalName,
         npmVersion,
+        plan.approvalBound
+          ? { packageName: canonicalName, version: npmVersion }
+          : undefined,
       );
       installSource = "npm";
       const npmLock = await readPackageManagerLockProvenance(
         targetDir,
         canonicalName,
         packageManager,
+        installedVersion,
       );
       provenance = {
         source: "npm",
@@ -564,6 +574,7 @@ async function _installPlugin(
       logger.warn(
         `[plugin-installer] npm failed for ${canonicalName}: ${npmErr instanceof Error ? npmErr.message : String(npmErr)}`,
       );
+      await cleanupInstallTarget(targetDir);
       if (plan.approvalBound) {
         const msg = `Approved npm install failed for ${canonicalName}@${npmVersion}; refusing local or Git fallback`;
         emit("error", msg);
@@ -595,6 +606,7 @@ async function _installPlugin(
         };
         installed = true;
       } catch (gitErr) {
+        await cleanupInstallTarget(targetDir);
         const msg = gitErr instanceof Error ? gitErr.message : String(gitErr);
         emit("error", `Installation failed: ${msg}`);
         return {
@@ -610,6 +622,7 @@ async function _installPlugin(
   }
 
   if (!installed || !provenance) {
+    await cleanupInstallTarget(targetDir);
     emit("error", "Installation failed");
     return {
       success: false,
@@ -626,6 +639,7 @@ async function _installPlugin(
   // Validate the plugin is importable
   const entryPoint = await resolveEntryPoint(targetDir, canonicalName);
   if (!entryPoint) {
+    await cleanupInstallTarget(targetDir);
     emit("error", "Plugin installed but entry point not found");
     return {
       success: false,
@@ -853,10 +867,31 @@ async function runInstallSpec(
   }
 }
 
+async function cleanupInstallTarget(targetDir: string): Promise<void> {
+  if (!isWithinPluginsDir(targetDir)) {
+    logger.error(
+      `[plugin-installer] Refusing to clean install target outside the plugins directory: ${targetDir}`,
+    );
+    return;
+  }
+
+  try {
+    await fs.rm(targetDir, { recursive: true, force: true });
+  } catch (err) {
+    // error-policy:J2 cleanup is best-effort after a failed install; the
+    // original failure remains the user-facing result while preserving the
+    // bounded target path guard above.
+    logger.error(
+      `[plugin-installer] Failed to clean partial install ${targetDir}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 async function readInstalledVersion(
   targetDir: string,
   packageName: string,
   fallbackVersion: string,
+  expectedIdentity?: PluginInstallExpectation,
 ): Promise<string> {
   const installedPkgPath = path.join(
     targetDir,
@@ -866,12 +901,30 @@ async function readInstalledVersion(
   );
   try {
     const pkg = JSON.parse(await fs.readFile(installedPkgPath, "utf-8")) as {
-      version?: string;
+      name?: unknown;
+      version?: unknown;
     };
+    if (expectedIdentity) {
+      if (
+        pkg.name !== expectedIdentity.packageName ||
+        pkg.version !== expectedIdentity.version
+      ) {
+        throw new Error(
+          `Installed package manifest identity mismatch: expected ${expectedIdentity.packageName}@${expectedIdentity.version}`,
+        );
+      }
+      return expectedIdentity.version;
+    }
     if (typeof pkg.version === "string" && pkg.version.length > 0) {
       return pkg.version;
     }
   } catch (err) {
+    if (expectedIdentity) {
+      throw new Error(
+        `Installed package manifest is missing, unreadable, or malformed for ${expectedIdentity.packageName}@${expectedIdentity.version}`,
+        { cause: err },
+      );
+    }
     logger.warn(
       `[plugin-installer] Failed to read installed version for ${packageName}: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -899,6 +952,7 @@ function validSubresourceIntegrity(value: unknown): string | null {
 export function extractNpmLockProvenance(
   lock: unknown,
   packageName: string,
+  expectedVersion?: string,
 ): PackageIntegrityProvenance | null {
   if (!isRecord(lock)) return null;
 
@@ -913,6 +967,13 @@ export function extractNpmLockProvenance(
       ? dependencies[packageName]
       : null);
   if (!candidate) return null;
+  if (
+    expectedVersion !== undefined &&
+    (typeof candidate.version !== "string" ||
+      candidate.version !== expectedVersion)
+  ) {
+    return null;
+  }
 
   return {
     resolved:
@@ -925,10 +986,23 @@ export function extractNpmLockProvenance(
 export function extractBunLockProvenance(
   lock: unknown,
   packageName: string,
+  expectedVersion?: string,
 ): PackageIntegrityProvenance | null {
   if (!isRecord(lock) || !isRecord(lock.packages)) return null;
   const candidate = lock.packages[packageName];
   if (!Array.isArray(candidate)) return null;
+  if (expectedVersion !== undefined) {
+    const packageSpecs = candidate.filter(
+      (value): value is string =>
+        typeof value === "string" && value.startsWith(`${packageName}@`),
+    );
+    if (
+      packageSpecs.length !== 1 ||
+      packageSpecs[0] !== `${packageName}@${expectedVersion}`
+    ) {
+      return null;
+    }
+  }
   let integrity: string | undefined;
   for (let index = candidate.length - 1; index >= 0; index -= 1) {
     const value: unknown = candidate[index];
@@ -945,6 +1019,7 @@ async function readPackageManagerLockProvenance(
   targetDir: string,
   packageName: string,
   packageManager: "bun" | "npm",
+  expectedVersion: string,
 ): Promise<PackageIntegrityProvenance | null> {
   const lockName = packageManager === "npm" ? "package-lock.json" : "bun.lock";
   try {
@@ -952,8 +1027,8 @@ async function readPackageManagerLockProvenance(
       await fs.readFile(path.join(targetDir, lockName), "utf8"),
     ) as unknown;
     return packageManager === "npm"
-      ? extractNpmLockProvenance(lock, packageName)
-      : extractBunLockProvenance(lock, packageName);
+      ? extractNpmLockProvenance(lock, packageName, expectedVersion)
+      : extractBunLockProvenance(lock, packageName, expectedVersion);
   } catch (err) {
     logger.debug(
       `[plugin-installer] ${packageManager} lock provenance unavailable for ${packageName}: ${err instanceof Error ? err.message : String(err)}`,

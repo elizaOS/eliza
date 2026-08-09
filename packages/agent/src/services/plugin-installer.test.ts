@@ -3,9 +3,13 @@
  * assertValidPackageName (#8801 / #9943). A malicious git URL or package name
  * fed to the installer is a remote-code-execution vector, so these pure,
  * deterministic checks must reject shell injection, SSH URLs, and path
- * traversal. No network or child process is touched.
+ * traversal. Service-path coverage below uses mocked child processes and
+ * temporary filesystem artifacts; it never reaches a real network.
  */
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertValidGitUrl,
@@ -15,12 +19,128 @@ import {
   installPlugin,
   resolvePluginInstallPlan,
 } from "./plugin-installer";
-import * as registryClient from "./registry-client.ts";
+import * as registryClient from "./registry-client.js";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
-afterEach(() => {
-  vi.restoreAllMocks();
+const execFileMock = vi.hoisted(() => vi.fn());
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return { ...actual, execFile: execFileMock };
 });
+
+const originalStateDir = process.env.ELIZA_STATE_DIR;
+const originalConfigPath = process.env.ELIZA_CONFIG_PATH;
+let testStateDir: string | undefined;
+
+afterEach(async () => {
+  vi.restoreAllMocks();
+  execFileMock.mockReset();
+  if (testStateDir) {
+    await fs.rm(testStateDir, { recursive: true, force: true });
+    testStateDir = undefined;
+  }
+  if (originalStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+  else process.env.ELIZA_STATE_DIR = originalStateDir;
+  if (originalConfigPath === undefined) delete process.env.ELIZA_CONFIG_PATH;
+  else process.env.ELIZA_CONFIG_PATH = originalConfigPath;
+});
+
+async function useIsolatedState(): Promise<string> {
+  testStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-plugin-test-"));
+  process.env.ELIZA_STATE_DIR = testStateDir;
+  process.env.ELIZA_CONFIG_PATH = path.join(testStateDir, "eliza.json");
+  return testStateDir;
+}
+
+type ExecCallback = (
+  error: Error | null,
+  result?: { stdout: string; stderr: string },
+) => void;
+
+function completeExec(
+  callback: ExecCallback | undefined,
+  error: Error | null = null,
+  stdout = "",
+): void {
+  callback?.(error, { stdout, stderr: "" });
+}
+
+function installPackageArtifact(
+  targetDir: string,
+  manifest: Record<string, unknown>,
+): void {
+  const packageDir = path.join(
+    targetDir,
+    "node_modules",
+    "@vendor",
+    "canonical-plugin",
+  );
+  fsSync.mkdirSync(packageDir, { recursive: true });
+  fsSync.writeFileSync(
+    path.join(packageDir, "package.json"),
+    JSON.stringify(manifest),
+  );
+  fsSync.writeFileSync(
+    path.join(packageDir, "index.js"),
+    "export default {};\n",
+  );
+  fsSync.writeFileSync(
+    path.join(targetDir, "bun.lock"),
+    JSON.stringify({
+      packages: {
+        "@vendor/canonical-plugin": [
+          "@vendor/canonical-plugin@2.4.1",
+          "",
+          {},
+          "sha512-YXBwcm92ZWQ=",
+        ],
+      },
+    }),
+  );
+}
+
+function mockBunPackageManagerInstall(
+  artifact: "valid" | "missing" | "malformed" | "name-drift" | "version-drift",
+): void {
+  execFileMock.mockImplementation(
+    (
+      command: string,
+      args: string[],
+      options: { cwd?: string } | ((error: Error | null) => void),
+      callback?: ExecCallback,
+    ) => {
+      const cb = typeof options === "function" ? options : callback;
+      const cwd = typeof options === "object" ? options.cwd : undefined;
+      if (command === "bun" && args?.[0] === "--version") {
+        completeExec(cb, null, "1.3.14\n");
+        return;
+      }
+      if (command === "bun" && args?.[0] === "add" && cwd) {
+        if (artifact === "missing") {
+          fsSync.writeFileSync(
+            path.join(cwd, "bun.lock"),
+            JSON.stringify({ packages: {} }),
+          );
+        } else {
+          const manifest =
+            artifact === "malformed"
+              ? { name: "@vendor/canonical-plugin", version: 2.4 }
+              : {
+                  name:
+                    artifact === "name-drift"
+                      ? "@attacker/replacement"
+                      : "@vendor/canonical-plugin",
+                  version: artifact === "version-drift" ? "2.4.2" : "2.4.1",
+                };
+          installPackageArtifact(cwd, manifest);
+        }
+        completeExec(cb);
+        return;
+      }
+      completeExec(cb, new Error(`unexpected command: ${command}`));
+    },
+  );
+}
 
 function registryInfo(
   overrides: Partial<RegistryPluginInfo> = {},
@@ -276,5 +396,265 @@ describe("package-manager lock provenance", () => {
         "@vendor/canonical-plugin",
       ),
     ).toEqual({ resolved: null, integrity: null });
+  });
+
+  it("rejects npm lock metadata for a stale package version", () => {
+    expect(
+      extractNpmLockProvenance(
+        {
+          packages: {
+            "node_modules/@vendor/canonical-plugin": {
+              version: "2.4.1",
+              resolved: "https://registry.npmjs.org/canonical-plugin.tgz",
+              integrity: "sha512-YXBwcm92ZWQ=",
+            },
+          },
+        },
+        "@vendor/canonical-plugin",
+        "2.4.2",
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects Bun lock metadata for a stale package version", () => {
+    expect(
+      extractBunLockProvenance(
+        {
+          packages: {
+            "@vendor/canonical-plugin": [
+              "@vendor/canonical-plugin@2.4.1",
+              "",
+              {},
+              "sha512-YXBwcm92ZWQ=",
+            ],
+          },
+        },
+        "@vendor/canonical-plugin",
+        "2.4.2",
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("installPlugin service-path artifacts", () => {
+  it("records an approval-bound npm install and its on-disk provenance", async () => {
+    const stateDir = await useIsolatedState();
+    mockBunPackageManagerInstall("valid");
+    vi.spyOn(registryClient, "getPluginInfo").mockResolvedValue(
+      registryInfo({ localPath: undefined }),
+    );
+
+    const result = await installPlugin("friendly-registry-alias", undefined, {
+      expected: {
+        packageName: "@vendor/canonical-plugin",
+        version: "2.4.1",
+      },
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      version: "2.4.1",
+      provenance: {
+        source: "npm",
+        packageName: "@vendor/canonical-plugin",
+        version: "2.4.1",
+        packageManager: "bun",
+        integrity: "sha512-YXBwcm92ZWQ=",
+      },
+    });
+    const targetPackagePath = path.join(
+      result.installPath,
+      "node_modules",
+      "@vendor",
+      "canonical-plugin",
+      "package.json",
+    );
+    expect(fsSync.existsSync(targetPackagePath)).toBe(true);
+    const config = JSON.parse(
+      fsSync.readFileSync(path.join(stateDir, "eliza.json"), "utf8"),
+    ) as { plugins?: { installs?: Record<string, { version?: string }> } };
+    expect(
+      config.plugins?.installs?.["@vendor/canonical-plugin"],
+    ).toMatchObject({
+      source: "npm",
+      version: "2.4.1",
+    });
+    expect(
+      execFileMock.mock.calls.some(
+        ([command, args]) =>
+          command === "bun" &&
+          Array.isArray(args) &&
+          args[0] === "add" &&
+          args.includes("@vendor/canonical-plugin@2.4.1"),
+      ),
+    ).toBe(true);
+  });
+
+  it.each(["missing", "malformed", "name-drift", "version-drift"] as const)(
+    "fails closed and cleans partial output when installed manifest is %s",
+    async (artifact) => {
+      await useIsolatedState();
+      mockBunPackageManagerInstall(artifact);
+      vi.spyOn(registryClient, "getPluginInfo").mockResolvedValue(
+        registryInfo({ localPath: undefined }),
+      );
+
+      const result = await installPlugin("friendly-registry-alias", undefined, {
+        expected: {
+          packageName: "@vendor/canonical-plugin",
+          version: "2.4.1",
+        },
+      });
+
+      expect(result).toMatchObject({ success: false });
+      expect(result.error).toMatch(/Approved npm install failed/);
+      expect(fsSync.existsSync(result.installPath)).toBe(false);
+      expect(fsSync.existsSync(process.env.ELIZA_CONFIG_PATH ?? "")).toBe(
+        false,
+      );
+    },
+  );
+
+  it("records a local workspace install with its real source artifact", async () => {
+    const stateDir = await useIsolatedState();
+    const localSource = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-plugin-source-"),
+    );
+    await fs.writeFile(
+      path.join(localSource, "package.json"),
+      JSON.stringify({ name: "@vendor/canonical-plugin", version: "2.4.1" }),
+    );
+    execFileMock.mockImplementation(
+      (
+        command: string,
+        args: string[],
+        options: { cwd?: string } | ((error: Error | null) => void),
+        callback?: ExecCallback,
+      ) => {
+        const cb = typeof options === "function" ? options : callback;
+        const cwd = typeof options === "object" ? options.cwd : undefined;
+        if (command === "bun" && args?.[0] === "--version") {
+          completeExec(cb, null, "1.3.14\n");
+          return;
+        }
+        if (command === "bun" && args?.[0] === "add" && cwd) {
+          installPackageArtifact(cwd, {
+            name: "@vendor/canonical-plugin",
+            version: "2.4.1",
+          });
+          completeExec(cb);
+          return;
+        }
+        completeExec(cb, new Error(`unexpected command: ${command}`));
+      },
+    );
+    vi.spyOn(registryClient, "getPluginInfo").mockResolvedValue(
+      registryInfo({ localPath: localSource }),
+    );
+
+    const result = await installPlugin("friendly-registry-alias");
+
+    expect(result).toMatchObject({
+      success: true,
+      provenance: {
+        source: "local",
+        localPath: path.resolve(localSource),
+        packageName: "@vendor/canonical-plugin",
+        version: "2.4.1",
+      },
+    });
+    expect(
+      fsSync.existsSync(path.join(result.installPath, "package.json")),
+    ).toBe(true);
+    const config = JSON.parse(
+      fsSync.readFileSync(path.join(stateDir, "eliza.json"), "utf8"),
+    ) as { plugins?: { installs?: Record<string, { source?: string }> } };
+    expect(config.plugins?.installs?.["@vendor/canonical-plugin"]?.source).toBe(
+      "path",
+    );
+    await fs.rm(localSource, { recursive: true, force: true });
+  });
+
+  it("uses the Git fallback path and persists commit/config artifacts", async () => {
+    const stateDir = await useIsolatedState();
+    execFileMock.mockImplementation(
+      (
+        command: string,
+        args: string[],
+        options: { cwd?: string } | ((error: Error | null) => void),
+        callback?: ExecCallback,
+      ) => {
+        const cb = typeof options === "function" ? options : callback;
+        const cwd = typeof options === "object" ? options.cwd : undefined;
+        if (command === "bun" && args?.[0] === "--version") {
+          completeExec(cb, null, "1.3.14\n");
+          return;
+        }
+        if (command === "bun" && args?.[0] === "add") {
+          completeExec(cb, new Error("registry unavailable"));
+          return;
+        }
+        if (command === "npm" && args?.[0] === "install") {
+          completeExec(cb, new Error("registry unavailable"));
+          return;
+        }
+        if (command === "git" && args?.includes("ls-remote")) {
+          completeExec(
+            cb,
+            null,
+            "0123456789abcdef0123456789abcdef01234567 refs/heads/main\n",
+          );
+          return;
+        }
+        if (command === "git" && args?.includes("clone")) {
+          const cloneDir = args.at(-1);
+          if (cloneDir) {
+            fsSync.mkdirSync(cloneDir, { recursive: true });
+            fsSync.writeFileSync(
+              path.join(cloneDir, "package.json"),
+              JSON.stringify({
+                name: "@vendor/canonical-plugin",
+                version: "2.4.1",
+              }),
+            );
+            fsSync.writeFileSync(
+              path.join(cloneDir, "index.js"),
+              "export {};\n",
+            );
+          }
+          completeExec(cb);
+          return;
+        }
+        if (command === "git" && args?.[0] === "-C") {
+          completeExec(cb, null, "0123456789abcdef0123456789abcdef01234567\n");
+          return;
+        }
+        if (command === "bun" && args?.[0] === "install" && cwd) {
+          completeExec(cb);
+          return;
+        }
+        completeExec(cb, new Error(`unexpected command: ${command}`));
+      },
+    );
+    vi.spyOn(registryClient, "getPluginInfo").mockResolvedValue(
+      registryInfo({ localPath: undefined }),
+    );
+
+    const result = await installPlugin("friendly-registry-alias");
+
+    expect(result).toMatchObject({
+      success: true,
+      provenance: {
+        source: "git",
+        packageName: "@vendor/canonical-plugin",
+        version: "2.4.1",
+        branch: "main",
+        commit: "0123456789abcdef0123456789abcdef01234567",
+      },
+    });
+    expect(
+      fsSync.existsSync(path.join(result.installPath, "package.json")),
+    ).toBe(true);
+    expect(fsSync.existsSync(path.join(stateDir, "eliza.json"))).toBe(true);
   });
 });
