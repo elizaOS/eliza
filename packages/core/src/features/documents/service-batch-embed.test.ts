@@ -1,36 +1,26 @@
 /**
- * Unit tests for `DocumentService`'s batched fragment-embedding path
- * (`TEXT_EMBEDDING_BATCH`): one batch call embeds every fragment in order, and an
- * absent batch model or a wrong-shaped batch result falls back to the serial
- * per-fragment embed with no fragment left unembedded. Drives `createMockRuntime`
- * with a deterministic text-derived fake embedding (a vector traces back to the
- * exact fragment text) — no live model or DB.
+ * Exercises batched document embeddings through a real AgentRuntime model
+ * registry and in-memory persistence, including both serial fallback paths.
  */
 import { describe, expect, test } from "vitest";
-import { createMockRuntime } from "../../testing/mock-runtime";
-import type { Memory, UUID } from "../../types";
+import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { AgentRuntime } from "../../runtime";
+import type { Character, JsonValue, Memory, UUID } from "../../types";
 import { ModelType } from "../../types";
 import { DocumentService } from "./service.ts";
 
+const AGENT_ID = "00000000-0000-0000-0000-00000000b47c" as UUID;
+const ITEM_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" as UUID;
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 
-/**
- * Deterministic, text-derived "embedding": distinct per distinct text so a
- * vector can be traced back to the exact text it was generated from. This lets
- * the tests prove (1) the right vector landed on the right fragment (ordering)
- * and (2) the batch path embeds the SAME text the serial path embeds.
- */
 function vecOf(text: string): number[] {
-	let h = 0;
-	for (let i = 0; i < text.length; i++) {
-		h = (h * 31 + text.charCodeAt(i)) >>> 0;
+	let hash = 0;
+	for (let index = 0; index < text.length; index++) {
+		hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
 	}
-	return [h % 100000, text.length];
+	return [hash % 100_000, text.length];
 }
 
-// Six distinct ~70-char paragraphs. With the small split target below each
-// paragraph becomes its own fragment (two never fit in one chunk), so every
-// run produces several fragments with distinct text → distinct vectors.
 const DOC_TEXT = [
 	"Alpha paragraph: the quick brown fox reviews the refund policy details.",
 	"Bravo paragraph: service level agreements and uptime commitments listed.",
@@ -40,10 +30,11 @@ const DOC_TEXT = [
 	"Foxtrot paragraph: security posture, encryption at rest and in transit.",
 ].join("\n\n");
 
-// Force several small fragments regardless of the default 1500-token target.
-const SPLIT_OPTS = { targetTokens: 24, overlap: 2, modelContextSize: 4096 };
-
-const ITEM_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" as UUID;
+const SPLIT_OPTIONS = {
+	targetTokens: 24,
+	overlap: 2,
+	modelContextSize: 4096,
+};
 
 function makeItem() {
 	return {
@@ -53,167 +44,209 @@ function makeItem() {
 	};
 }
 
-interface Captured {
-	fragments: Memory[];
-	documents: Memory[];
+type ModelParams = Record<string, JsonValue | object>;
+
+function requireText(params: ModelParams): string {
+	const text = params.text;
+	if (typeof text !== "string") {
+		throw new Error("Single embedding request must contain text");
+	}
+	return text;
 }
 
-/** Snapshot persisted memories per table, copying the embedding at call time. */
-function captureCreateMemory(captured: Captured) {
-	return async (memory: Memory, table: string): Promise<UUID> => {
-		const snapshot: Memory = {
-			...memory,
-			embedding: memory.embedding ? [...memory.embedding] : undefined,
-		};
-		if (table === DOCUMENT_FRAGMENTS_TABLE) {
-			captured.fragments.push(snapshot);
-		} else {
-			captured.documents.push(snapshot);
+function requireTexts(params: ModelParams): string[] {
+	const texts = params.texts;
+	if (!Array.isArray(texts)) {
+		throw new Error("Batch embedding request must contain texts");
+	}
+	const validated: string[] = [];
+	for (const text of texts) {
+		if (typeof text !== "string") {
+			throw new Error("Batch embedding texts must all be strings");
 		}
-		return memory.id as UUID;
-	};
+		validated.push(text);
+	}
+	return validated;
 }
 
-describe("DocumentService — batched fragment embedding (TEXT_EMBEDDING_BATCH)", () => {
-	test("batch model registered → ONE batch call embeds all fragments in order and persists them", async () => {
-		let batchCalls = 0;
-		let singleEmbedCalls = 0;
-		let serialEmbedCalls = 0;
-		let batchTexts: string[] = [];
-		const captured: Captured = { fragments: [], documents: [] };
+interface HarnessOptions {
+	single: (text: string) => number[] | Promise<number[]>;
+	batch?: (texts: string[]) => number[][] | Promise<number[][]>;
+}
 
-		const runtime = createMockRuntime({
-			getMemoryById: async () => null,
-			updateMemory: async () => true,
-			createMemory: captureCreateMemory(captured),
-			// Presence (truthiness) of a batch handler is all the service checks.
-			getModel: (type: string) =>
-				type === ModelType.TEXT_EMBEDDING_BATCH
-					? async () => [] // never invoked; useModel is used instead
-					: undefined,
-			useModel: (type: string, params: { text?: string; texts?: string[] }) => {
-				if (type === ModelType.TEXT_EMBEDDING_BATCH) {
-					batchCalls++;
-					batchTexts = params.texts ?? [];
-					return Promise.resolve(batchTexts.map(vecOf));
-				}
-				if (type === ModelType.TEXT_EMBEDDING) {
-					singleEmbedCalls++;
-					return Promise.resolve(vecOf(params.text ?? ""));
-				}
-				throw new Error(`unexpected model ${type}`);
+async function makeHarness(options: HarnessOptions): Promise<{
+	runtime: AgentRuntime;
+	service: DocumentService;
+}> {
+	const adapter = new InMemoryDatabaseAdapter();
+	await adapter.initialize();
+	const runtime = new AgentRuntime({
+		agentId: AGENT_ID,
+		character: {
+			name: "DocumentBatchEmbeddingTestAgent",
+			bio: "Exercises document embedding storage semantics.",
+			settings: {},
+		} as Character,
+		adapter,
+		logLevel: "fatal",
+	});
+	runtime.registerModel(
+		ModelType.TEXT_EMBEDDING,
+		async (_runtime, params) => options.single(requireText(params)),
+		"document-batch-test-single",
+		100,
+	);
+	const batch = options.batch;
+	if (batch) {
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING_BATCH,
+			async (_runtime, params) => batch(requireTexts(params)),
+			"document-batch-test-batch",
+			100,
+		);
+	}
+	return { runtime, service: new DocumentService(runtime) };
+}
+
+function fragmentPosition(fragment: Memory): number {
+	const position = fragment.metadata?.position;
+	if (typeof position !== "number") {
+		throw new Error(`Fragment ${fragment.id} has no numeric position`);
+	}
+	return position;
+}
+
+async function getStoredFragments(runtime: AgentRuntime): Promise<Memory[]> {
+	const memories = await runtime.getMemories({
+		tableName: DOCUMENT_FRAGMENTS_TABLE,
+		agentId: AGENT_ID,
+		roomId: AGENT_ID,
+		count: 20,
+	});
+	return memories
+		.filter((memory) => memory.metadata?.documentId === ITEM_ID)
+		.sort((left, right) => fragmentPosition(left) - fragmentPosition(right));
+}
+
+function expectTextDerivedEmbeddings(fragments: Memory[]): void {
+	for (const fragment of fragments) {
+		const text = fragment.content.text;
+		if (typeof text !== "string") {
+			throw new Error(`Fragment ${fragment.id} has no text`);
+		}
+		expect(fragment.embedding).toEqual(vecOf(text));
+	}
+}
+
+describe("DocumentService batched fragment embedding", () => {
+	test("uses one batch call and persists every ordered vector", async () => {
+		const batches: string[][] = [];
+		let singleCalls = 0;
+		const { runtime, service } = await makeHarness({
+			single: (text) => {
+				singleCalls++;
+				return vecOf(text);
 			},
-			addEmbeddingToMemory: async (memory: Memory) => {
-				serialEmbedCalls++;
-				memory.embedding = vecOf(memory.content.text ?? "");
-				return memory;
+			batch: (texts) => {
+				batches.push([...texts]);
+				return texts.map(vecOf);
 			},
 		});
 
-		const service = new DocumentService(runtime);
-		await service._internalAddDocument(makeItem(), SPLIT_OPTS);
+		await service._internalAddDocument(makeItem(), SPLIT_OPTIONS);
 
-		// Multiple fragments → batching is meaningful.
-		expect(captured.fragments.length).toBeGreaterThanOrEqual(2);
-		// Exactly ONE batch round-trip (not N), and the serial path untouched.
+		const fragments = await getStoredFragments(runtime);
+		expect(fragments).toHaveLength(6);
+		expect(batches).toHaveLength(1);
+		expect(singleCalls).toBe(0);
+		expect(batches[0]).toEqual(
+			fragments.map((fragment) => fragment.content.text),
+		);
+		expectTextDerivedEmbeddings(fragments);
+		await expect(runtime.getMemoryById(ITEM_ID)).resolves.toMatchObject({
+			id: ITEM_ID,
+			metadata: { documentId: ITEM_ID },
+		});
+	});
+
+	test("uses the real single-model path when no batch model is registered", async () => {
+		const singleTexts: string[] = [];
+		const { runtime, service } = await makeHarness({
+			single: (text) => {
+				singleTexts.push(text);
+				return vecOf(text);
+			},
+		});
+
+		expect(runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH)).toBeUndefined();
+		await service._internalAddDocument(makeItem(), SPLIT_OPTIONS);
+
+		const fragments = await getStoredFragments(runtime);
+		expect(fragments).toHaveLength(6);
+		expect(singleTexts).toEqual(
+			fragments.map((fragment) => fragment.content.text),
+		);
+		expectTextDerivedEmbeddings(fragments);
+	});
+
+	test("rejects a one-of-six batch result and serially embeds every fragment", async () => {
+		let batchCalls = 0;
+		const singleTexts: string[] = [];
+		const { runtime, service } = await makeHarness({
+			single: (text) => {
+				singleTexts.push(text);
+				return vecOf(text);
+			},
+			batch: () => {
+				batchCalls++;
+				return [[0, 0]];
+			},
+		});
+
+		await service._internalAddDocument(makeItem(), SPLIT_OPTIONS);
+
+		const fragments = await getStoredFragments(runtime);
+		expect(fragments).toHaveLength(6);
 		expect(batchCalls).toBe(1);
-		expect(singleEmbedCalls).toBe(0);
-		expect(serialEmbedCalls).toBe(0);
-		// The batch embedded exactly the fragment texts (count match).
-		expect(batchTexts.length).toBe(captured.fragments.length);
-		// Every fragment was persisted WITH its embedding, and that embedding is
-		// the vector for ITS OWN text — proving the right vector landed on the
-		// right fragment (ordering) and that the embedded text matches what the
-		// serial addEmbeddingToMemory path would have embedded (content.text).
-		for (const fragment of captured.fragments) {
-			expect(fragment.embedding).toEqual(vecOf(fragment.content.text ?? ""));
-		}
-		// Batch texts are exactly the fragment texts, in fragment order.
-		expect(batchTexts).toEqual(
-			captured.fragments.map((f) => f.content.text ?? ""),
+		expect(singleTexts).toEqual(
+			fragments.map((fragment) => fragment.content.text),
+		);
+		expectTextDerivedEmbeddings(fragments);
+		expect(runtime.getRecentReportedErrors()).toContainEqual(
+			expect.objectContaining({
+				scope: "DocumentService.batchFragmentEmbedding",
+				message: "TEXT_EMBEDDING_BATCH returned 1 vectors for 6 fragments",
+				context: expect.objectContaining({ fragmentCount: 6 }),
+			}),
 		);
 	});
 
-	test("no batch model → falls back to the serial per-fragment path and embeds + persists all N", async () => {
-		let batchCalls = 0;
-		let serialEmbedCalls = 0;
-		const captured: Captured = { fragments: [], documents: [] };
-
-		const runtime = createMockRuntime({
-			getMemoryById: async () => null,
-			updateMemory: async () => true,
-			createMemory: captureCreateMemory(captured),
-			// A single-text model is registered, but no batch model.
-			getModel: (type: string) =>
-				type === ModelType.TEXT_EMBEDDING ? async () => [] : undefined,
-			useModel: (type: string) => {
-				if (type === ModelType.TEXT_EMBEDDING_BATCH) {
-					batchCalls++;
-				}
-				return Promise.resolve([]);
+	test("reports a batch provider error and persists serially generated vectors", async () => {
+		const singleTexts: string[] = [];
+		const { runtime, service } = await makeHarness({
+			single: (text) => {
+				singleTexts.push(text);
+				return vecOf(text);
 			},
-			addEmbeddingToMemory: async (memory: Memory) => {
-				serialEmbedCalls++;
-				memory.embedding = vecOf(memory.content.text ?? "");
-				return memory;
+			batch: () => {
+				throw new Error("batch embedding endpoint unavailable");
 			},
 		});
 
-		const service = new DocumentService(runtime);
-		await service._internalAddDocument(makeItem(), SPLIT_OPTS);
+		await service._internalAddDocument(makeItem(), SPLIT_OPTIONS);
 
-		expect(captured.fragments.length).toBeGreaterThanOrEqual(2);
-		// Batch model absent → batch is never attempted.
-		expect(batchCalls).toBe(0);
-		// One embed per fragment via the serial path.
-		expect(serialEmbedCalls).toBe(captured.fragments.length);
-		for (const fragment of captured.fragments) {
-			expect(fragment.embedding).toEqual(vecOf(fragment.content.text ?? ""));
-		}
-	});
-
-	test("batch returns the wrong vector count → falls back to serial (no fragment left unembedded)", async () => {
-		let batchCalls = 0;
-		let serialEmbedCalls = 0;
-		const reportedErrors: unknown[] = [];
-		const captured: Captured = { fragments: [], documents: [] };
-
-		const runtime = createMockRuntime({
-			getMemoryById: async () => null,
-			updateMemory: async () => true,
-			createMemory: captureCreateMemory(captured),
-			getModel: (type: string) =>
-				type === ModelType.TEXT_EMBEDDING_BATCH ? async () => [] : undefined,
-			useModel: (type: string) => {
-				if (type === ModelType.TEXT_EMBEDDING_BATCH) {
-					batchCalls++;
-					// WRONG shape: one vector for N (>= 2) texts → must trigger fallback.
-					return Promise.resolve([[0, 0]]);
-				}
-				throw new Error(`unexpected model ${type}`);
-			},
-			addEmbeddingToMemory: async (memory: Memory) => {
-				serialEmbedCalls++;
-				memory.embedding = vecOf(memory.content.text ?? "");
-				return memory;
-			},
-			reportError: (_scope, error) => {
-				reportedErrors.push(error);
-			},
-		});
-
-		const service = new DocumentService(runtime);
-		await service._internalAddDocument(makeItem(), SPLIT_OPTS);
-
-		expect(captured.fragments.length).toBeGreaterThanOrEqual(2);
-		// Batch was attempted exactly once, then abandoned for the serial path.
-		expect(batchCalls).toBe(1);
-		expect(serialEmbedCalls).toBe(captured.fragments.length);
-		expect(reportedErrors).toHaveLength(1);
-		// No fragment left unembedded; each carries the vector for its own text.
-		for (const fragment of captured.fragments) {
-			expect(fragment.embedding).toBeDefined();
-			expect(fragment.embedding).toEqual(vecOf(fragment.content.text ?? ""));
-		}
+		const fragments = await getStoredFragments(runtime);
+		expect(fragments).toHaveLength(6);
+		expect(singleTexts).toEqual(
+			fragments.map((fragment) => fragment.content.text),
+		);
+		expectTextDerivedEmbeddings(fragments);
+		expect(runtime.getRecentReportedErrors()).toContainEqual(
+			expect.objectContaining({
+				scope: "DocumentService.batchFragmentEmbedding",
+				message: "batch embedding endpoint unavailable",
+				context: expect.objectContaining({ fragmentCount: 6 }),
+			}),
+		);
 	});
 });
