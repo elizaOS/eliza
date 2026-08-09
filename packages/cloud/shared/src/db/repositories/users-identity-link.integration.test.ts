@@ -90,9 +90,11 @@ describe("UsersRepository.linkTelegramAndPhoneIdentity", () => {
       phone_number: "+14155550123",
     });
 
-    expect(linked?.telegram_id).toBe("123456789");
-    expect(linked?.phone_number).toBe("+14155550123");
-    expect(linked?.phone_verified).toBe(true);
+    expect(linked.status).toBe("linked");
+    const linkedUser = linked.status === "linked" ? linked.user : undefined;
+    expect(linkedUser?.telegram_id).toBe("123456789");
+    expect(linkedUser?.phone_number).toBe("+14155550123");
+    expect(linkedUser?.phone_verified).toBe(true);
 
     const byTelegram = await usersRepository.findByTelegramIdWithOrganization("123456789");
     const byPhone = await usersRepository.findByPhoneNumberWithOrganization("+14155550123");
@@ -146,10 +148,11 @@ describe("UsersRepository.linkTelegramAndPhoneIdentity", () => {
   test("creates a missing projection instead of relying on fallback reads", async () => {
     await seedUser(USER_C, "steward-user-c", false);
 
-    await usersRepository.linkTelegramAndPhoneIdentity(USER_C, {
+    const linked = await usersRepository.linkTelegramAndPhoneIdentity(USER_C, {
       telegram_id: "555555555",
       phone_number: "+14155550555",
     });
+    expect(linked.status).toBe("linked");
 
     const [projection] = await dbWrite
       .select()

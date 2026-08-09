@@ -129,7 +129,10 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
   });
 
   test("delegates the Telegram and phone identity pair to the atomic repository boundary", async () => {
-    linkTelegramAndPhoneIdentity.mockResolvedValue({ id: "user-1" });
+    linkTelegramAndPhoneIdentity.mockResolvedValue({
+      status: "linked",
+      user: { id: "user-1" },
+    });
 
     const result = await elizaAppUserService.linkTelegramAndPhoneToUser(
       "user-1",
@@ -176,5 +179,43 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
     expect(result.error).toContain("already linked");
     expect(linkTelegramAndPhoneIdentity).toHaveBeenCalledTimes(1);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  test("refuses to overwrite a different verified phone number", async () => {
+    linkTelegramAndPhoneIdentity.mockResolvedValue({
+      status: "phone_mismatch",
+      existingPhone: "+14155550999",
+    });
+
+    const result = await elizaAppUserService.linkTelegramAndPhoneToUser(
+      "user-1",
+      {
+        id: 123456789,
+        first_name: "Sam",
+        auth_date: 1_786_224_000,
+        hash: "a".repeat(64),
+      },
+      "+14155550123",
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("different verified phone number");
+  });
+
+  test("reports a vanished account as a failed link", async () => {
+    linkTelegramAndPhoneIdentity.mockResolvedValue({ status: "user_not_found" });
+
+    const result = await elizaAppUserService.linkTelegramAndPhoneToUser(
+      "user-1",
+      {
+        id: 123456789,
+        first_name: "Sam",
+        auth_date: 1_786_224_000,
+        hash: "a".repeat(64),
+      },
+      "+14155550123",
+    );
+
+    expect(result).toEqual({ success: false, error: "The account no longer exists" });
   });
 });

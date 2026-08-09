@@ -1,5 +1,5 @@
 // Persists users records for cloud services through the shared DB boundary.
-import { and, desc, eq, ne, type SQL, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type Organization } from "../schemas/organizations";
@@ -35,6 +35,11 @@ export function providerForPlatform(platform: string | undefined): IdentityProvi
       return undefined;
   }
 }
+
+export type LinkTelegramAndPhoneResult =
+  | { status: "linked"; user: User }
+  | { status: "user_not_found" }
+  | { status: "phone_mismatch"; existingPhone: string };
 
 export interface ResolvedIdentity {
   user: User;
@@ -391,11 +396,17 @@ export class UsersRepository {
   /**
    * Links Telegram and phone on the canonical row and its lookup projection in
    * one transaction. A uniqueness failure in either table rolls back both.
+   *
+   * The phone guard lives in the UPDATE predicate (not check-then-write): a
+   * user whose row already carries a different verified phone number is
+   * refused with `phone_mismatch` rather than silently overwritten.
+   * Re-linking the same phone is idempotent, and an unverified placeholder
+   * phone may be replaced.
    */
   async linkTelegramAndPhoneIdentity(
     userId: string,
     identity: TelegramPhoneIdentityLink,
-  ): Promise<User | undefined> {
+  ): Promise<LinkTelegramAndPhoneResult> {
     return dbWrite.transaction(async (tx) => {
       const updatedAt = new Date();
       const [updated] = await tx
@@ -405,11 +416,30 @@ export class UsersRepository {
           phone_verified: true,
           updated_at: updatedAt,
         })
-        .where(eq(users.id, userId))
+        .where(
+          and(
+            eq(users.id, userId),
+            or(
+              isNull(users.phone_number),
+              eq(users.phone_number, identity.phone_number),
+              sql`${users.phone_verified} IS NOT TRUE`,
+            ),
+          ),
+        )
         .returning();
 
       if (!updated) {
-        return undefined;
+        const [existing] = await tx
+          .select({ phone_number: users.phone_number })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+        if (!existing || !existing.phone_number) {
+          // A present row with a NULL phone would have matched the UPDATE
+          // predicate, so a phoneless miss means the user row is gone.
+          return { status: "user_not_found" };
+        }
+        return { status: "phone_mismatch", existingPhone: existing.phone_number };
       }
 
       await tx
@@ -445,7 +475,7 @@ export class UsersRepository {
           },
         });
 
-      return updated;
+      return { status: "linked", user: updated };
     });
   }
 
