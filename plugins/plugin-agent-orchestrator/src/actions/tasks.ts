@@ -23,6 +23,7 @@ import {
   ChannelType,
   logger as coreLogger,
   ElizaError,
+  looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
   unwrapUserMessageText,
@@ -221,6 +222,44 @@ function readOp(params: Record<string, unknown>): TaskOp | null {
 function requestText(message: Memory): string {
   if (typeof message.content === "string") return message.content;
   return unwrapUserMessageText(message);
+}
+
+/**
+ * Pre-spawn intent gate — fails fast BEFORE any ACP session exists. A coding
+ * sub-agent must only be spawned on an explicit instruction. Refuses:
+ *
+ * 1. An empty/whitespace task prompt: a session spawned with nothing to do
+ *    dead-ends its planner and surfaces an opaque "runtime step failed" to the
+ *    user (observed live: spawn args with body/instruction/input all empty).
+ * 2. A task derived ONLY from a shared link (bare URL, optionally with the
+ *    connector's embed preview text, and no explicit work imperative in the
+ *    user's own words): a shared link is content to read and react to, not a
+ *    work order. The refusal text points the planner at the web-read light
+ *    path instead.
+ *
+ * Sub-agent re-spawn turns (router-synthesized inbounds) skip the link check —
+ * their root turn was already gated and their task comes from stored metadata.
+ * Refusal text is planner-facing; the model phrases the user-visible reply.
+ */
+function guardSpawnTaskIntent(args: {
+  task: string;
+  originatingText: string;
+  isSubAgentRespawn: boolean;
+}): ActionResult | undefined {
+  if (!args.task.trim()) {
+    return errorResult(
+      "EMPTY_TASK_PROMPT",
+      "Refused to spawn a coding sub-agent: the task prompt is empty, so there is nothing to delegate. No session was created. Ask the user what they actually want built, fixed, or investigated before delegating.",
+    );
+  }
+  if (args.isSubAgentRespawn) return undefined;
+  if (looksLikeBareLinkShare(args.originatingText)) {
+    return errorResult(
+      "LINK_SHARE_NOT_A_TASK",
+      "Refused to spawn a coding sub-agent: the user's message is a shared link with no explicit build/fix/code instruction — the candidate task text was derived from the link's embed preview, not from the user. No session was created. Instead, read the page (WEB_FETCH) and respond about its actual content; if it is not fetchable (private or auth-walled), react using the embed title/description already present in the message and ask whether the user wants anything specific done with it.",
+    );
+  }
+  return undefined;
 }
 
 function taskParts(
@@ -1269,6 +1308,25 @@ async function runCreate(
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
+  // Fail fast on empty/derived-only tasks BEFORE any planner or ACP work; this
+  // single gate covers the lane-planner path and every runCreateLegacy fallback.
+  // A missing ACP service still wins (SERVICE_UNAVAILABLE) — capability absence
+  // outranks input validation, and the legacy path owns that refusal.
+  if (getAcpService(runtime)) {
+    const guardFallbackText = requestText(message);
+    const createGuard = guardSpawnTaskIntent({
+      task:
+        taskParts(params, content, guardFallbackText)
+          .find((part) => part.trim())
+          ?.trim() ?? "",
+      originatingText:
+        (await resolveOriginatingRequestText(runtime, message, state)) ||
+        guardFallbackText,
+      isSubAgentRespawn: content.source === MESSAGE_SOURCE_SUB_AGENT,
+    });
+    if (createGuard) return createGuard;
+  }
+
   if (!shouldUseLanePlanner(runtime)) {
     return runCreateLegacy(runtime, message, state, params, content, callback);
   }
@@ -1685,6 +1743,14 @@ async function runSpawnAgent(
       message,
       state,
     );
+    // Fail fast on empty/derived-only tasks BEFORE resolving backends or
+    // creating any ACP session (see guardSpawnTaskIntent).
+    const spawnGuard = guardSpawnTaskIntent({
+      task,
+      originatingText: routingRequest || text,
+      isSubAgentRespawn: content.source === MESSAGE_SOURCE_SUB_AGENT,
+    });
+    if (spawnGuard) return spawnGuard;
     // Backend routing (see resolveCodingBackend): an explicit user ask wins,
     // then declared `character.routing.coding` policy, then the operator pin
     // (ELIZA_ACP_DEFAULT_AGENT), then the planner's heuristic `agentType` guess.

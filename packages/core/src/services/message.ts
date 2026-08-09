@@ -334,6 +334,7 @@ import {
 	inferWebSearchQueryFromMessageText,
 	isShellDirectActionName,
 	LEGACY_CODING_DELEGATION_ACTION_NAMES,
+	looksLikeBareLinkShare,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
 	normalizeActionIdentifier,
@@ -9476,6 +9477,13 @@ function looksLikeDelegationExcludedAsk(text: string): boolean {
 			normalized,
 		)
 	) {
+		return true;
+	}
+	// A shared link with no explicit work imperative is content to react to,
+	// not a work order — even when the model itself proposed a spawn candidate
+	// off the embed preview text (observed live: bare URL + embed title →
+	// TASKS_SPAWN_AGENT with an empty derived task → doomed sub-agent).
+	if (looksLikeBareLinkShare(normalized)) {
 		return true;
 	}
 	if (looksLikeActionExplanationRequest(normalized)) {

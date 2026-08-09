@@ -352,6 +352,7 @@ export {
 	findCodingDelegationActionName,
 	hasActionTags,
 	LEGACY_CODING_DELEGATION_ACTION_NAMES,
+	looksLikeBareLinkShare,
 	normalizeActionIdentifier,
 } from "./services/message/direct-action-heuristics";
 export { sanitizeOutboundText } from "./services/message/outbound-sanitize";

@@ -123,6 +123,52 @@ export function looksLikeLocalShellRequest(text: string): boolean {
 	);
 }
 
+const URL_TOKEN_PATTERN = /\bhttps?:\/\/[^\s<>()]+/giu;
+
+/** Connector-appended link-preview blocks (Discord renders shared-link embeds
+ * into the processed text as "Embed #N:\n  Title:…\n  Description:…"). Preview
+ * text is DERIVED from the linked page — it is never a user instruction, so
+ * intent detection must not read it as one. */
+const LINK_EMBED_BLOCK_PATTERN =
+	/(?:^|\n)\s*Embed #\d+:\s*(?:\n[ \t]+[^\n]*)*/giu;
+
+/** Explicit work imperatives in the user's OWN words (outside URLs and embed
+ * previews) that turn a link share into a genuine request. */
+const LINK_SHARE_WORK_IMPERATIVE_PATTERN =
+	/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify|deploy|refactor|debug|patch|code|install|run|execute|spawn|delegate)\b/iu;
+
+/**
+ * True when a message is essentially just a shared link: one or more URLs,
+ * optionally with connector-derived embed preview text, and at most a short
+ * remainder that carries no explicit work imperative aimed at the agent.
+ *
+ * A shared link is content, not a work order (observed live: a bare URL whose
+ * embed title happened to contain workflow-ish words spawned a coding
+ * sub-agent with an empty derived task). Link shares route to the web-read
+ * light path — fetch and react to the page, or acknowledge from the embed
+ * metadata when the page is not readable — never to coding delegation.
+ */
+export function looksLikeBareLinkShare(text: string): boolean {
+	const trimmed = text.trim();
+	if (!trimmed) return false;
+	const withoutEmbeds = trimmed.replace(LINK_EMBED_BLOCK_PATTERN, " ");
+	const urls = withoutEmbeds.match(URL_TOKEN_PATTERN);
+	if (!urls || urls.length === 0) return false;
+	let residue = withoutEmbeds;
+	for (const url of urls) {
+		residue = residue.replace(url, " ");
+	}
+	residue = residue
+		.replace(/[|<>*_~`"'()[\]{}.,:;!?@#-]+/gu, " ")
+		.replace(/\s+/gu, " ")
+		.trim();
+	// A substantial remainder means the user actually said something; ordinary
+	// routing applies.
+	if (residue.length > 120) return false;
+	if (residue.length === 0) return true;
+	return !LINK_SHARE_WORK_IMPERATIVE_PATTERN.test(residue);
+}
+
 export function looksLikeWebSearchRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (!normalized.trim()) {
@@ -494,6 +540,14 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (hooks.looksLikeCodingWorkRequest?.(messageText)) {
 		const codingAction = hooks.findCodingDelegationActionName?.(actions);
 		if (codingAction) return { names: [codingAction], kind: "coding" };
+	}
+	// A bare link share routes to the web-read light path before any view/verb
+	// token in the DERIVED embed preview text can hijack the turn: read the
+	// page and react to it (degrading to the embed metadata already present in
+	// the message when the page is not publicly fetchable) — never spawn work.
+	if (looksLikeBareLinkShare(messageText)) {
+		const lookupActions = findWebLookupActionNames(actions);
+		if (lookupActions.length > 0) return { names: lookupActions, kind: "web" };
 	}
 	if (looksLikeVoiceSettingsWriteRequest(messageText)) {
 		const settingsAction = findSettingsWriteActionName(actions);
