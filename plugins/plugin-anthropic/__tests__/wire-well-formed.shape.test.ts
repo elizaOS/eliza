@@ -24,15 +24,20 @@ function startCaptureServer(): Promise<string> {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
-      captured.push(Buffer.concat(chunks));
+      const raw = Buffer.concat(chunks).toString("utf8");
+      captured.push(Buffer.from(raw, "utf8"));
       response.writeHead(200, { "content-type": "application/json" });
+      // When the request includes a structured output schema, the Anthropic
+      // native output parser parses the response as JSON; return valid JSON.
+      const hasStructuredOutput = /response_format|responseSchema|"schema"/.test(raw);
+      const text = hasStructuredOutput ? JSON.stringify({ goodField: "value" }) : "ok";
       response.end(
         JSON.stringify({
           id: "msg-test",
           type: "message",
           role: "assistant",
           model: "claude-test",
-          content: [{ type: "text", text: "ok" }],
+          content: [{ type: "text", text }],
           stop_reason: "end_turn",
           stop_sequence: null,
           usage: { input_tokens: 1, output_tokens: 1 },
@@ -141,7 +146,29 @@ describe("#18025: Anthropic request bodies are well-formed strict JSON", () => {
     const body = new TextDecoder("utf-8", { fatal: true }).decode(captured[0]);
     expect((body as unknown as { isWellFormed: () => boolean }).isWellFormed()).toBe(true);
     const serialized = JSON.stringify(JSON.parse(body));
-    expect(serialized).toContain("bad tool �");
+    expect(serialized).toContain("bad tool \uFFFD");
     expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
+  });
+
+  // #18081 review: structured-output schemas must also be sanitized. The plain
+  // schema is sanitized before being wrapped in the native output shape, so
+  // schema keys AND values carrying lone surrogates never reach the wire.
+  it("sanitizes a lone surrogate in a response schema key and description (#18081 review)", async () => {
+    await handleTextSmall(buildRuntime(), {
+      prompt: "return structured data",
+      responseSchema: {
+        type: "object",
+        description: `schema desc \uD83D`,
+        properties: {
+          goodField: { type: "string", description: "clean" },
+          [`bad${"\uD83D"}`]: { type: "string", description: `also \uD83D` },
+        },
+      },
+    } as never);
+    expect(captured).toHaveLength(1);
+    const raw = captured[0].toString("utf8");
+    expect(LONE_SURROGATE_ESCAPE.test(raw)).toBe(false);
+    const body = new TextDecoder("utf-8", { fatal: true }).decode(captured[0]);
+    expect((body as unknown as { isWellFormed: () => boolean }).isWellFormed()).toBe(true);
   });
 });

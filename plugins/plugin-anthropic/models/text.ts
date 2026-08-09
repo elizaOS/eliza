@@ -1339,8 +1339,15 @@ async function generateTextWithModel(
   const sanitizedToolChoice = paramsWithAttachments.toolChoice
     ? deepToWellFormedUnicode(paramsWithAttachments.toolChoice)
     : undefined;
-  const sanitizedOutput = paramsWithAttachments.responseSchema
-    ? deepToWellFormedUnicode(buildStructuredOutput(paramsWithAttachments.responseSchema))
+  // Sanitize the plain response schema BEFORE it is wrapped in the native
+  // output shape. Once wrapped, responseFormat is a Promise that defeats the
+  // deepToWellFormedUnicode walk, so schema keys/values carrying lone
+  // surrogates would reach the provider wire untouched (#18081 review).
+  const sanitizedResponseSchema = paramsWithAttachments.responseSchema
+    ? deepToWellFormedUnicode(paramsWithAttachments.responseSchema)
+    : undefined;
+  const sanitizedOutput = sanitizedResponseSchema
+    ? buildStructuredOutput(sanitizedResponseSchema)
     : undefined;
   const sanitizedProviderOptions = anthropicProviderOptions
     ? (deepToWellFormedUnicode(anthropicProviderOptions) as NativeProviderOptions)

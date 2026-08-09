@@ -2048,9 +2048,16 @@ async function generateTextByModelType(
           "type" in callerResponseFormat
         ? (callerResponseFormat as { type: string }).type
         : undefined;
+  // Sanitize the plain response schema BEFORE it is wrapped in jsonSchema /
+  // Output.object. Once wrapped, responseFormat is a Promise that defeats the
+  // deepToWellFormedUnicode walk, so schema keys/values carrying lone
+  // surrogates would reach the provider wire untouched (#18081 review).
+  const sanitizedResponseSchema = paramsWithAttachments.responseSchema
+    ? deepToWellFormedUnicode(paramsWithAttachments.responseSchema)
+    : undefined;
   const preparedOutput =
-    paramsWithAttachments.responseSchema && !cerebrasMode
-      ? buildStructuredOutput(paramsWithAttachments.responseSchema, modelType)
+    sanitizedResponseSchema && !cerebrasMode
+      ? buildStructuredOutput(sanitizedResponseSchema, modelType)
       : undefined;
   const requestedOutput: NativeOutput | undefined =
     preparedOutput?.output ?? (responseFormatType === "json_object" ? Output.json() : undefined);

@@ -110,37 +110,47 @@ export function tailWellFormed(text: string, maxLength: number): string {
 }
 
 /**
- * Sanitizes string-valued own properties of an object **in-place**, recursing
- * into nested plain objects and arrays. Used for objects that carry behavior
- * (function-valued properties such as AI SDK tool schemas or execute callbacks)
- * and must not be cloned onto a null-prototype object. Returns the same
- * reference.
+ * Copy-on-write sanitizer for objects that carry SDK-identifying symbols or
+ * function-valued properties (AI SDK tool schemas, execute callbacks).
+ *
+ * Unlike the plain-object path in {@link deepToWellFormedUnicode}, this builds
+ * a NEW object so the caller's input is never mutated — even if frozen. String
+ * keys AND values are sanitized; function-valued properties and symbol
+ * properties pass through by reference; nested values are routed through
+ * {@link deepToWellFormedUnicode} for the same recursive treatment. Returns
+ * the same reference when nothing needed sanitizing.
  */
-function sanitizeStringsInPlace<T>(value: T): T {
+function sanitizeObjectPreservingSymbols<T>(value: T): T {
 	if (value === null || typeof value !== "object") {
 		return value;
 	}
 	if (Array.isArray(value)) {
-		for (let i = 0; i < value.length; i++) {
-			const item = value[i];
-			if (typeof item === "string") {
-				value[i] = toWellFormedUnicode(item) as typeof item;
-			} else {
-				sanitizeStringsInPlace(item);
+		let changed = false;
+		const next = value.map((item) => {
+			const sanitized = deepToWellFormedUnicode(item);
+			if (sanitized !== item) {
+				changed = true;
 			}
-		}
-		return value;
+			return sanitized;
+		});
+		return (changed ? next : value) as T;
 	}
-	const obj = value as Record<string, unknown>;
-	for (const key of Object.keys(obj)) {
-		const entry = obj[key];
-		if (typeof entry === "string") {
-			obj[key] = toWellFormedUnicode(entry);
-		} else {
-			sanitizeStringsInPlace(entry);
+	const source = value as Record<PropertyKey, unknown>;
+	const clone: Record<string, unknown> = {};
+	let changed = false;
+	for (const key of Object.keys(source)) {
+		const sanitizedKey = toWellFormedUnicode(key);
+		const entry = source[key];
+		const sanitizedValue = deepToWellFormedUnicode(entry);
+		if (sanitizedKey !== key || sanitizedValue !== entry) {
+			changed = true;
 		}
+		clone[sanitizedKey] = sanitizedValue;
 	}
-	return value;
+	for (const sym of Object.getOwnPropertySymbols(source)) {
+		(clone as Record<symbol, unknown>)[sym] = source[sym];
+	}
+	return (changed ? clone : value) as T;
 }
 
 /**
@@ -189,7 +199,7 @@ export function deepToWellFormedUnicode<T>(value: T): T {
 			Object.getOwnPropertySymbols(value).length > 0 ||
 			Object.values(value).some((v) => typeof v === "function")
 		) {
-			return sanitizeStringsInPlace(value);
+			return sanitizeObjectPreservingSymbols(value);
 		}
 		let changed = false;
 		const next = Object.create(null) as Record<string, unknown>;

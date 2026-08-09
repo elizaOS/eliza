@@ -210,28 +210,78 @@ describe("deepToWellFormedUnicode", () => {
 	});
 
 	// #18081: Objects with symbol properties or function values are sanitized
-	// in-place (not cloned) to preserve SDK contract symbols and callbacks.
-	// This must not throw and must sanitize string-valued properties.
-	it("sanitizes string values in-place on objects with symbol properties (#18081)", () => {
+	// copy-on-write (not in-place) to preserve SDK contract symbols and
+	// callbacks without mutating or crashing on frozen inputs. The output is a
+	// new object when sanitizing is needed; the same reference when clean.
+	it("sanitizes string values and keys copy-on-write on objects with symbol properties (#18081)", () => {
 		const sym = Symbol("test");
-		const input = { description: "bad \uD83D", [sym]: 42 };
+		const input = { description: "bad \uD83D", [sym]: 42 } as Record<
+			PropertyKey,
+			unknown
+		>;
 		const output = deepToWellFormedUnicode(input);
-		// Same reference (in-place, not cloned).
-		expect(output).toBe(input);
-		expect((output as Record<string, unknown>).description).toBe("bad �");
-		// Symbol property survives.
-		expect((input as Record<symbol, unknown>)[sym]).toBe(42);
+		// Copy-on-write: output is a new object (input is NOT mutated).
+		expect(output).not.toBe(input);
+		expect((input as Record<string, unknown>).description).toBe("bad \uD83D");
+		expect((output as Record<string, unknown>).description).toBe("bad \uFFFD");
+		// Symbol property survives on the clone.
+		expect((output as Record<symbol, unknown>)[sym]).toBe(42);
 	});
 
-	it("sanitizes string values in-place on objects with function properties (#18081)", () => {
-		const callback = () => "execute";
-		const input = { description: "bad \uD83D", execute: callback };
+	it("returns the same reference for clean objects with symbol properties (#18081)", () => {
+		const sym = Symbol("test");
+		const input = { description: "clean", [sym]: 42 } as Record<
+			PropertyKey,
+			unknown
+		>;
 		const output = deepToWellFormedUnicode(input);
-		// Same reference (in-place, not cloned).
 		expect(output).toBe(input);
-		expect((output as Record<string, unknown>).description).toBe("bad �");
-		// Function property survives.
+	});
+
+	it("sanitizes string values and keys copy-on-write on objects with function properties (#18081)", () => {
+		const callback = () => "execute";
+		const input = { description: "bad \uD83D", execute: callback } as Record<
+			PropertyKey,
+			unknown
+		>;
+		const output = deepToWellFormedUnicode(input);
+		// Copy-on-write: output is a new object (input is NOT mutated).
+		expect(output).not.toBe(input);
+		expect((input as Record<string, unknown>).description).toBe("bad \uD83D");
+		expect((output as Record<string, unknown>).description).toBe("bad \uFFFD");
+		// Function property survives on the clone.
 		expect((output as Record<string, unknown>).execute).toBe(callback);
+	});
+
+	// #18081 review: the function/symbol preservation branch must sanitize
+	// object KEYS, not just values. A key containing a lone surrogate must be
+	// sanitized — not silently passed through.
+	it("sanitizes object keys containing lone surrogates on the function-preservation branch (#18081 review)", () => {
+		const callback = () => "execute";
+		const input = {
+			execute: callback,
+			"bad\uD83D": "ok",
+			nested: { "schema\uD83D": "value" },
+		} as Record<PropertyKey, unknown>;
+		const output = deepToWellFormedUnicode(input);
+		const serialized = JSON.stringify(output);
+		expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
+		// Functions preserved by reference.
+		expect((output as Record<string, unknown>).execute).toBe(callback);
+	});
+
+	// #18081 review: frozen objects (e.g. prebuilt SDK tools) must not crash
+	// — the branch is copy-on-write, not in-place mutation.
+	it("does not throw on frozen objects with function properties (#18081 review)", () => {
+		const frozen = Object.freeze({
+			execute() {
+				return "ok";
+			},
+			"bad\uD83D": "value",
+		});
+		const output = deepToWellFormedUnicode(frozen);
+		const serialized = JSON.stringify(output);
+		expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
 	});
 });
 
