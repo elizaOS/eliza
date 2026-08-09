@@ -31,6 +31,23 @@ describe("v5 evaluator skeleton", () => {
 		expect(evaluatorTemplate).toContain("The JSON inside [FORM] is form data");
 	});
 
+	it("teaches the model to omit post-tool process-status bubbles and keep outcomes task-grounded", () => {
+		// Contract for dual-bubble / canned-ack bugs: after verifiedUserFacing
+		// tool text, the evaluator must not invent a second process-status
+		// message; when messageToUser is set it must be grounded in THIS
+		// request's outcome, not a fixed phrase list enforced by runtime regex.
+		expect(evaluatorTemplate).toContain("verifiedUserFacing=true");
+		expect(evaluatorTemplate).toContain(
+			"omit messageToUser entirely unless you add NEW task-grounded substance",
+		);
+		expect(evaluatorTemplate).toContain(
+			"ground it in THIS request's outcome",
+		);
+		expect(evaluatorTemplate).toContain(
+			"Do not rely on a fixed canned phrase list",
+		);
+	});
+
 	it("normalizes evaluator routes and next tool recommendations", () => {
 		const output = parseEvaluatorOutput(`{
   "success": true,
