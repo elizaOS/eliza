@@ -10,16 +10,21 @@
 import type { ReleaseDataRelease } from "@/generated/release-data";
 
 /**
- * Returns true when the release carries at least one downloadable asset — the
- * marketing page renders normal download cards. Returns false when no usable
- * downloads exist, regardless of tag name — this covers both
- * `buildRelease(null)` (`{ tagName: "unavailable", downloads: [] }`) and any
- * real-tagged release whose assets were stripped or are still pending. The
- * component must show a distinct unavailable state instead of active download
- * links in both cases.
+ * Returns true only for a non-sentinel release carrying the complete required
+ * installer set. The generator and CI checker enforce the same five IDs; this
+ * final UI-boundary check keeps a stale or contradictory generated payload
+ * from exposing partial or misleading download cards.
  */
 export function isReleaseAvailable(
   release: Pick<ReleaseDataRelease, "tagName" | "downloads">,
 ): boolean {
-  return release.downloads.length > 0;
+  if (release.tagName === "unavailable") return false;
+  const ids = new Set(release.downloads.map((download) => download.id));
+  return [
+    "macos-arm64",
+    "macos-x64",
+    "windows-x64",
+    "linux-x64",
+    "android-apk",
+  ].every((id) => ids.has(id));
 }

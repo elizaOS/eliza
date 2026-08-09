@@ -13,7 +13,25 @@ import { describe, expect, test } from "bun:test";
 import { isReleaseAvailable } from "../src/lib/release-availability";
 
 describe("isReleaseAvailable", () => {
-  test("returns true for a release with at least one download", () => {
+  const completeDownloads = [
+    "macos-arm64",
+    "macos-x64",
+    "windows-x64",
+    "linux-x64",
+    "android-apk",
+  ].map((id) => ({
+    id,
+    label: id,
+    fileName: `${id}.artifact`,
+    url: `https://example.com/${id}.artifact`,
+    sizeLabel: "100 MB",
+    note: "Stable",
+    releaseTagName: "v1.0.0",
+    releaseUrl: "https://github.com/elizaos/eliza/releases/tag/v1.0.0",
+    releasePublishedAtLabel: "Aug 8, 2026",
+  }));
+
+  test("returns false for a release with only one required download", () => {
     expect(
       isReleaseAvailable({
         tagName: "v1.0.0",
@@ -31,7 +49,7 @@ describe("isReleaseAvailable", () => {
           },
         ],
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   test("returns false for buildRelease(null) shape (tagName unavailable, empty downloads)", () => {
@@ -52,34 +70,20 @@ describe("isReleaseAvailable", () => {
     ).toBe(false);
   });
 
-  test("returns true for a release with multiple downloads", () => {
+  test("returns false for the unavailable sentinel even if downloads are injected", () => {
+    expect(
+      isReleaseAvailable({
+        tagName: "unavailable",
+        downloads: completeDownloads,
+      }),
+    ).toBe(false);
+  });
+
+  test("returns true for a real release with every required download", () => {
     expect(
       isReleaseAvailable({
         tagName: "v1.2.3",
-        downloads: [
-          {
-            id: "macos-arm64",
-            label: "macOS (Apple Silicon)",
-            fileName: "test.dmg",
-            url: "https://example.com/test.dmg",
-            sizeLabel: "90 MB",
-            note: "Stable",
-            releaseTagName: "v1.2.3",
-            releaseUrl: "https://example.com",
-            releasePublishedAtLabel: "Aug 8, 2026",
-          },
-          {
-            id: "windows-x64",
-            label: "Windows",
-            fileName: "test.exe",
-            url: "https://example.com/test.exe",
-            sizeLabel: "80 MB",
-            note: "Stable",
-            releaseTagName: "v1.2.3",
-            releaseUrl: "https://example.com",
-            releasePublishedAtLabel: "Aug 8, 2026",
-          },
-        ],
+        downloads: completeDownloads,
       }),
     ).toBe(true);
   });

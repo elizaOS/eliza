@@ -10,7 +10,6 @@
 import { describe, expect, it } from "vitest";
 import {
   hasDownloadableRelease,
-  hasInstallerAsset,
   isInternalRelease,
   pickRelease,
   pickStableRelease,
@@ -79,6 +78,25 @@ describe("isInternalRelease", () => {
     ).toBe(true);
   });
 
+  it("detects whitespace-prefixed [internal] names and the exact reserved tag", () => {
+    expect(
+      isInternalRelease(
+        makeRelease({ tag_name: "pr-evidence", name: "Evidence partition" }),
+      ),
+    ).toBe(true);
+    expect(
+      isInternalRelease(
+        makeRelease({ tag_name: "other", name: "  [internal] Build output" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not reject an unrelated tag that merely shares the prefix", () => {
+    expect(
+      isInternalRelease(makeRelease({ tag_name: "pr-evidencebased-demo" })),
+    ).toBe(false);
+  });
+
   it("does not flag a normal product release", () => {
     expect(
       isInternalRelease(
@@ -90,37 +108,6 @@ describe("isInternalRelease", () => {
   it("handles null/undefined", () => {
     expect(isInternalRelease(null)).toBe(false);
     expect(isInternalRelease(undefined)).toBe(false);
-  });
-});
-
-describe("hasInstallerAsset", () => {
-  it("detects real installer assets", () => {
-    const release = makeRelease({
-      tag_name: "v1.0.0",
-      assets: installerAssets,
-    });
-    expect(hasInstallerAsset(release)).toBe(true);
-  });
-
-  it("rejects releases with only CI evidence files", () => {
-    const release = makeRelease({
-      tag_name: "pr-evidence-4",
-      assets: evidenceAssets,
-    });
-    expect(hasInstallerAsset(release)).toBe(false);
-  });
-
-  it("rejects releases with arbitrary non-installer assets", () => {
-    const release = makeRelease({
-      tag_name: "v1.0.0",
-      assets: [makeAsset("changelog.txt"), makeAsset("README.md")],
-    });
-    expect(hasInstallerAsset(release)).toBe(false);
-  });
-
-  it("handles null/undefined", () => {
-    expect(hasInstallerAsset(null)).toBe(false);
-    expect(hasInstallerAsset(undefined)).toBe(false);
   });
 });
 
@@ -200,6 +187,14 @@ describe("pickStableRelease — internal release exclusion", () => {
     expect(picked).not.toBeNull();
     expect(picked?.tag_name).toBe("v2.0.0");
   });
+
+  it("returns null for a partial stable release so a complete canary can be considered", () => {
+    const partialStable = makeRelease({
+      tag_name: "v2.0.0",
+      assets: [makeAsset("ElizaOSApp-Setup-2.0.0.exe")],
+    });
+    expect(pickStableRelease([partialStable])).toBeNull();
+  });
 });
 
 describe("pickRelease — general exclusion", () => {
@@ -242,13 +237,12 @@ describe("hasDownloadableRelease — buildRelease integration", () => {
   });
 
   it("returns false for a release with only a loosely-named .dmg that buildRelease rejects", () => {
-    // This is the RP round 2 shadowing scenario: only-one.dmg passes
-    // hasInstallerAsset but produces 0 downloads from buildRelease.
+    // This is the RP round 2 shadowing scenario: only-one.dmg looks like an
+    // installer by extension but produces 0 downloads from buildRelease.
     const release = makeRelease({
       tag_name: "v2.0.0",
       assets: [makeAsset("only-one.dmg")],
     });
-    expect(hasInstallerAsset(release)).toBe(true);
     expect(hasDownloadableRelease(release)).toBe(false);
   });
 
@@ -258,9 +252,31 @@ describe("hasDownloadableRelease — buildRelease integration", () => {
   });
 });
 
+describe("stable-to-canary fallback", () => {
+  it("allows the general selector to choose a complete canary when stable is partial", () => {
+    const partialStable = makeRelease({
+      tag_name: "v2.0.0",
+      prerelease: false,
+      published_at: "2026-08-05T00:00:00Z",
+      assets: [makeAsset("ElizaOSApp-Setup-2.0.0.exe")],
+    });
+    const completeCanary = makeRelease({
+      tag_name: "v2.1.0-beta.1",
+      prerelease: true,
+      published_at: "2026-08-04T00:00:00Z",
+      assets: installerAssets,
+    });
+
+    expect(pickStableRelease([partialStable, completeCanary])).toBeNull();
+    expect(pickRelease([partialStable, completeCanary])?.tag_name).toBe(
+      "v2.1.0-beta.1",
+    );
+  });
+});
+
 describe("pickStableRelease — shadowing edge case (RP round 2)", () => {
   it("skips a newer release with loose installer-like asset, selects older release with real downloads", () => {
-    // newer v2 has only-one.dmg (passes hasInstallerAsset, but buildRelease
+    // Newer v2 has only-one.dmg (installer-like by extension, but buildRelease
     // produces 0 downloads). Older v1 has correctly named installers.
     const releases = [
       makeRelease({

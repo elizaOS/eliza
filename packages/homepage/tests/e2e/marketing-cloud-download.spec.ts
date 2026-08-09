@@ -10,6 +10,7 @@ import {
   test,
 } from "playwright/test";
 import { releaseData } from "../../src/generated/release-data";
+import { isReleaseAvailable } from "../../src/lib/release-availability";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -107,41 +108,40 @@ test("downloads page centers Eliza App downloads and product CTAs", async ({
     page.getByRole("heading", { name: /^Install the app\.$/ }),
   ).toBeVisible();
 
-  await expect(
-    page.getByRole("link", { name: /macOS \(Apple Silicon\)/i }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /macOS \(Intel\)/i }),
-  ).toBeVisible();
-  await expect(page.getByRole("link", { name: /^Windows/i })).toBeVisible();
-  await expect(page.getByRole("link", { name: /^Linux/i })).toBeVisible();
-  await expect(page.getByRole("link", { name: /^Android APK/i })).toBeVisible();
+  const releaseAvailable = isReleaseAvailable(releaseData.release);
+  await expect(page.getByTestId("release-panel")).toHaveAttribute(
+    "data-release-state",
+    releaseAvailable ? "available" : "unavailable",
+  );
+  await expect(page.getByTestId("download-grid")).toHaveAttribute(
+    "data-release-state",
+    releaseAvailable ? "available" : "unavailable",
+  );
 
-  const effectiveRelease =
-    releaseData.release.downloads.length > 0
-      ? releaseData.release
-      : (releaseData.canaryRelease ?? releaseData.release);
-  const effectiveDownloads = effectiveRelease.downloads;
-
-  await expect(
-    page.getByText(
-      new RegExp(`From ${escapeRegExp(effectiveRelease.tagName)}`),
-    ),
-  ).toHaveCount(effectiveDownloads.length);
-
-  if (effectiveDownloads.length === 0) {
-    const primaryDownloadCards = page.locator(".app-download-grid a");
-    await expect(page.getByText("Opens release page")).toHaveCount(
-      await primaryDownloadCards.count(),
-    );
+  if (releaseAvailable) {
     await expect(
-      page.getByRole("link", {
-        name: /macOS Apple Silicon|macOS \(Apple Silicon\)/i,
-      }),
-    ).toHaveAttribute(
-      "href",
-      /^https:\/\/github\.com\/elizaOS\/eliza\/releases$/,
-    );
+      page.getByRole("link", { name: /macOS \(Apple Silicon\)/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /macOS \(Intel\)/i }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Windows/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Linux/i })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /^Android APK/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        new RegExp(`From ${escapeRegExp(releaseData.release.tagName)}`),
+      ),
+    ).toHaveCount(releaseData.release.downloads.length);
+  } else {
+    await expect(page.getByTestId("release-unavailable")).toBeVisible();
+    await expect(page.getByTestId("download-unavailable")).toBeVisible();
+    await expect(page.locator(".app-download-card")).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: /^View all releases$/ }),
+    ).toHaveAttribute("href", "https://github.com/elizaOS/eliza/releases");
   }
 
   // The primary app-download-grid must not contain disabled cards. The
@@ -219,14 +219,9 @@ test("downloads page live links resolve for cloud, os, release, and downloads", 
   expect(new URL(cloudLinks[0]).pathname).toMatch(/^\/login\/?$/);
   expect(new URL(cloudLinks[0]).searchParams.get("intent")).toBe("launch");
 
-  const effectiveRelease =
-    releaseData.release.downloads.length > 0
-      ? releaseData.release
-      : (releaseData.canaryRelease ?? releaseData.release);
-  const downloadTargets =
-    effectiveRelease.downloads.length > 0
-      ? effectiveRelease.downloads.map((download) => download.url)
-      : ["https://github.com/elizaOS/eliza/releases"];
+  const downloadTargets = isReleaseAvailable(releaseData.release)
+    ? releaseData.release.downloads.map((download) => download.url)
+    : ["https://github.com/elizaOS/eliza/releases"];
   // osArtifacts with a downloadUrl render as anchor tags too, so include them.
   const osArtifactUrls = releaseData.osArtifacts
     .map((artifact) => artifact.downloadUrl)

@@ -9,6 +9,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { unavailableReleaseFinding } from "./lib/homepage-release-validation.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");
@@ -62,6 +63,10 @@ if (!release || release.tagName === "unavailable") {
   // is acceptable here.
   if (!release) {
     fail("payload is malformed: release property is missing");
+  }
+  const finding = unavailableReleaseFinding(release);
+  if (finding) {
+    fail(finding.message, finding.details);
   }
   // An explicit "unavailable" state is valid when no public product release
   // with installer assets exists. This prevents internal/evidence tags from
