@@ -777,11 +777,27 @@ async function runDragSuite(p, pointer, tag) {
     await p.waitForTimeout(SETTLE);
   }
   assert((await variant(p)) === "closed", `[${pointer}] flick-down returns to COLLAPSED`);
-  // Let the collapse spring fully settle before measuring the resting thread.
-  await p.waitForTimeout(SETTLE);
+  // Wait for the collapse spring to actually finish rather than a fixed sleep:
+  // `variant` flips to closed at release while the thread height is still
+  // animating toward 0, and on a loaded CI runner the tail can outlast a fixed
+  // SETTLE (observed: closed with thread at 477px). Poll the real height into
+  // the tolerance band; the assert below still owns the contract.
+  const collapseTol = pointer === "mouse" ? 30 : 48;
+  await p
+    .waitForFunction(
+      (tol) => {
+        const b = document
+          .querySelector('[data-testid="chat-thread"]')
+          ?.getBoundingClientRect();
+        return (b?.height ?? 0) <= tol;
+      },
+      collapseTol,
+      { timeout: 5000, polling: 100 },
+    )
+    .catch(() => {}); // the assert below reports the real height on failure
   // thread ≈ 0; allow a small band for the spring tail (touch dispatch wider).
   assert(
-    near(await sheetHeight(p), 0, pointer === "mouse" ? 30 : 48),
+    near(await sheetHeight(p), 0, collapseTol),
     `[${pointer}] back COLLAPSED, thread ≈ 0px (got ${Math.round(await sheetHeight(p))})`,
   );
   await snap(p, `${tag}-back-to-collapsed`);
