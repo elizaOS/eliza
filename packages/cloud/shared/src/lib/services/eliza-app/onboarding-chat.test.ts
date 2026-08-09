@@ -1045,6 +1045,7 @@ describe("runOnboardingChat", () => {
         sessionId: continuationToken(gatewayTurn),
         platform: "web",
         authenticatedUser: { userId: "steward-user", organizationId: "steward-org" },
+        confirmPlatformLink: true,
       });
 
       expect(continued.session.platform).toBe("discord");
@@ -1077,7 +1078,22 @@ describe("runOnboardingChat", () => {
       expect(linkDiscordToUser).not.toHaveBeenCalled();
     });
 
-    test("a tenant-safety decline (identity owned by another account) does not fail the turn", async () => {
+    test("requires explicit confirmation before linking a trusted Discord identity", async () => {
+      const gatewayTurn = await runTrustedDiscordTurn("My name is Sam");
+      await expect(
+        runOnboardingChat({
+          sessionId: continuationToken(gatewayTurn),
+          platform: "web",
+          authenticatedUser: { userId: "victim-user", organizationId: "victim-org" },
+        }),
+      ).rejects.toMatchObject({
+        code: "ONBOARDING_PLATFORM_LINK_CONFIRMATION_REQUIRED",
+      });
+      expect(linkDiscordToUser).not.toHaveBeenCalled();
+      expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+    });
+
+    test("a tenant-safety decline (identity owned by another account) fails the turn", async () => {
       ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
       getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
       linkDiscordToUser.mockResolvedValue({
@@ -1086,17 +1102,15 @@ describe("runOnboardingChat", () => {
       });
 
       const gatewayTurn = await runTrustedDiscordTurn("My name is Sam");
-      const continued = await runOnboardingChat({
-        sessionId: continuationToken(gatewayTurn),
-        platform: "web",
-        authenticatedUser: { userId: "second-user", organizationId: "second-org" },
-      });
-
-      expect(continued.session.userId).toBe("second-user");
-      expect(loggerWarn).toHaveBeenCalledWith(
-        "[eliza-app onboarding] discord link declined",
-        expect.objectContaining({ userId: "second-user" }),
-      );
+      await expect(
+        runOnboardingChat({
+          sessionId: continuationToken(gatewayTurn),
+          platform: "web",
+          authenticatedUser: { userId: "second-user", organizationId: "second-org" },
+          confirmPlatformLink: true,
+        }),
+      ).rejects.toMatchObject({ code: "ONBOARDING_PLATFORM_IDENTITY_CONFLICT" });
+      expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     });
 
     test("a linkDiscordToUser infra failure propagates (fail closed, self-heals next turn)", async () => {
@@ -1108,6 +1122,7 @@ describe("runOnboardingChat", () => {
           sessionId: continuationToken(gatewayTurn),
           platform: "web",
           authenticatedUser: { userId: "steward-user", organizationId: "steward-org" },
+          confirmPlatformLink: true,
         }),
       ).rejects.toThrow("db down");
     });
@@ -1128,6 +1143,7 @@ describe("runOnboardingChat", () => {
         sessionId: continuationToken(gatewayTurn),
         platform: "web",
         authenticatedUser: { userId: "steward-user", organizationId: "steward-org" },
+        confirmPlatformLink: true,
       });
 
       expect(linkDiscordToUser).toHaveBeenCalledWith("steward-user", {

@@ -1,7 +1,13 @@
 /** Regression coverage for one-shot messaging onboarding continuation redemption. */
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -25,6 +31,11 @@ vi.mock("./lib/onboarding-continuation", async (importOriginal) => {
     await importOriginal<typeof import("./lib/onboarding-continuation")>();
   return {
     ...actual,
+    previewPendingOnboardingContinuation: vi.fn(async () => ({
+      platform: "discord" as const,
+      platformUserId: "1234567890",
+      platformDisplayName: "attested-discord-user",
+    })),
     completePendingOnboardingContinuation: vi.fn(async () => {
       actual.clearPendingOnboardingSession();
     }),
@@ -55,6 +66,9 @@ describe("GetStartedPage", () => {
       </MemoryRouter>,
     );
 
+    expect(await screen.findByText("attested-discord-user")).toBeTruthy();
+    expect(screen.queryByText("You're connected")).toBeNull();
+    fireEvent.click(screen.getByText("Connect this Discord account"));
     expect(await screen.findByText("You're connected")).toBeTruthy();
     await waitFor(() => {
       expect(peekPendingOnboardingSession()).toBeNull();

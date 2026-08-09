@@ -129,11 +129,34 @@ export function clearPendingOnboardingSession(): void {
 /** The transport seam, injectable for tests. */
 export interface OnboardingContinuationTransport {
   post(path: string, body: Record<string, unknown>): Promise<unknown>;
+  get?(path: string): Promise<unknown>;
 }
 
 const defaultTransport: OnboardingContinuationTransport = {
   post: (path, body) => api(path, { method: "POST", json: body }),
+  get: (path) => api(path),
 };
+
+export interface DiscordContinuationPreview {
+  platform: "discord";
+  platformUserId: string;
+  platformDisplayName: string;
+}
+
+export async function previewPendingOnboardingContinuation(
+  token: string,
+  transport: OnboardingContinuationTransport = defaultTransport,
+): Promise<DiscordContinuationPreview> {
+  const sanitized = sanitizeOnboardingSessionToken(token);
+  if (!sanitized || !transport.get)
+    throw new Error("Invalid onboarding connection link");
+  const response = (await transport.get(
+    `/api/eliza-app/onboarding/chat?sessionId=${encodeURIComponent(sanitized)}`,
+  )) as { data?: DiscordContinuationPreview };
+  if (!response?.data)
+    throw new Error("Could not verify the Discord account to connect");
+  return response.data;
+}
 
 /**
  * Redeem the continuation server-side with the caller's Steward session: the
@@ -151,6 +174,7 @@ export async function completePendingOnboardingContinuation(
   await transport.post("/api/eliza-app/onboarding/chat", {
     sessionId: sanitized,
     platform: "web",
+    confirmPlatformLink: true,
   });
   clearPendingOnboardingSession();
 }

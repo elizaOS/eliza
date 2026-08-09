@@ -12,6 +12,7 @@ const update = mock();
 const linkVerifiedPhone = mock();
 const linkTelegramAndPhoneIdentity = mock();
 const refreshDiscordProjectionForWrite = mock();
+const linkDiscordIdentity = mock();
 
 mock.module("../../../db/repositories/users", () => ({
   usersRepository: {
@@ -26,6 +27,7 @@ mock.module("../../../db/repositories/users", () => ({
     linkVerifiedPhone,
     linkTelegramAndPhoneIdentity,
     refreshDiscordProjectionForWrite,
+    linkDiscordIdentity,
     create: mock(),
   },
 }));
@@ -270,65 +272,40 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
 
 describe("ElizaAppUserService.linkDiscordToUser", () => {
   beforeEach(() => {
-    findByDiscordIdWithOrganization.mockReset();
-    update.mockReset();
-    refreshDiscordProjectionForWrite.mockReset();
-    refreshDiscordProjectionForWrite.mockResolvedValue(undefined);
+    linkDiscordIdentity.mockReset();
   });
 
-  test("projects the canonical Discord write into the routing identity row", async () => {
-    findByDiscordIdWithOrganization.mockResolvedValue(undefined);
-    update.mockResolvedValue({ id: "user-1" });
-
+  test("uses the atomic canonical-plus-projection repository boundary", async () => {
+    linkDiscordIdentity.mockResolvedValue({ id: "user-1" });
     const result = await elizaAppUserService.linkDiscordToUser("user-1", {
       discordId: "d-100",
       username: "sam",
     });
-
     expect(result).toEqual({ success: true });
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(refreshDiscordProjectionForWrite).toHaveBeenCalledWith("user-1");
+    expect(linkDiscordIdentity).toHaveBeenCalledWith("user-1", {
+      discord_id: "d-100",
+      discord_username: "sam",
+      discord_global_name: null,
+      discord_avatar_url: null,
+    });
   });
 
-  test("idempotent re-link still converges the projection (heals canonical-only links)", async () => {
-    findByDiscordIdWithOrganization.mockResolvedValue({
-      id: "user-1",
-      organization: { id: "org-1" },
-    });
-
-    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
-      discordId: "d-100",
-      username: "sam",
-    });
-
-    expect(result).toEqual({ success: true });
-    expect(update).not.toHaveBeenCalled();
-    expect(refreshDiscordProjectionForWrite).toHaveBeenCalledWith("user-1");
-  });
-
-  test("declines when the Discord id belongs to another account, without touching the projection", async () => {
-    findByDiscordIdWithOrganization.mockResolvedValue({
-      id: "other-user",
-      organization: { id: "other-org" },
-    });
-
-    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
-      discordId: "d-100",
-      username: "sam",
-    });
-
-    expect(result.success).toBe(false);
-    expect(update).not.toHaveBeenCalled();
-    expect(refreshDiscordProjectionForWrite).not.toHaveBeenCalled();
-  });
-
-  test("propagates a projection-refresh failure (fail closed — routing convergence is not cosmetic)", async () => {
-    findByDiscordIdWithOrganization.mockResolvedValue(undefined);
-    update.mockResolvedValue({ id: "user-1" });
-    refreshDiscordProjectionForWrite.mockRejectedValue(
-      new Error("connection terminated unexpectedly"),
+  test("reports a concurrent uniqueness conflict as a real decline", async () => {
+    linkDiscordIdentity.mockRejectedValue(
+      Object.assign(new Error("duplicate key"), { code: "23505" }),
     );
+    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
+      discordId: "d-100",
+      username: "sam",
+    });
+    expect(result).toEqual({
+      success: false,
+      error: "This Discord account is already linked to another account",
+    });
+  });
 
+  test("propagates atomic transaction infrastructure failures", async () => {
+    linkDiscordIdentity.mockRejectedValue(new Error("connection terminated unexpectedly"));
     await expect(
       elizaAppUserService.linkDiscordToUser("user-1", {
         discordId: "d-100",

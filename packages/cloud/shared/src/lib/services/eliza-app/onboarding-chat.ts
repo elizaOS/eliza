@@ -79,6 +79,14 @@ export interface OnboardingChatInput {
   continuationMode?: "trusted-telegram";
   /** Stable transport delivery id. Replays return the original result. */
   idempotencyKey?: string;
+  /** Explicit, informed browser confirmation of a trusted platform link. */
+  confirmPlatformLink?: boolean;
+}
+
+export interface DiscordOnboardingContinuationPreview {
+  platform: "discord";
+  platformUserId: string;
+  platformDisplayName: string;
 }
 
 export interface OnboardingChatCta {
@@ -280,6 +288,36 @@ async function loadOnboardingSessionForValidation(
     }
   }
   return loadCachedOnboardingSession(sessionId);
+}
+
+/** Resolve an opaque Discord continuation without mutating or binding it. */
+export async function inspectDiscordOnboardingContinuation(
+  continuationToken: string,
+  authenticatedAccount: { userId: string; organizationId: string },
+): Promise<DiscordOnboardingContinuationPreview> {
+  const sessionId = await resolveContinuationToken(continuationToken);
+  const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
+  if (
+    !session ||
+    session.platform !== "discord" ||
+    session.platformIdentityTrusted !== true ||
+    !session.platformUserId ||
+    !isFreshOnboardingSession(session) ||
+    (session.userId !== undefined && session.userId !== authenticatedAccount.userId) ||
+    (session.organizationId !== undefined &&
+      session.organizationId !== authenticatedAccount.organizationId)
+  ) {
+    throw new ElizaError("Invalid Discord onboarding continuation", {
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+      context: { platform: "discord", sessionFound: Boolean(session) },
+      severity: "ephemeral",
+    });
+  }
+  return {
+    platform: "discord",
+    platformUserId: session.platformUserId,
+    platformDisplayName: session.platformDisplayName?.trim() || session.platformUserId,
+  };
 }
 
 function isFreshOnboardingSession(session: OnboardingSession): boolean {
@@ -618,6 +656,13 @@ async function maybeLinkAuthenticatedPlatformIdentity(
     session.platformUserId &&
     input.trustedPlatformIdentity !== true
   ) {
+    if (input.confirmPlatformLink !== true) {
+      throw new ElizaError("Discord identity linking requires explicit confirmation", {
+        code: "ONBOARDING_PLATFORM_LINK_CONFIRMATION_REQUIRED",
+        context: { platform: "discord" },
+        severity: "ephemeral",
+      });
+    }
     // Same error policy as the phone link below: success:false is the designed
     // tenant-safety decline (identity owned by another account) and onboarding
     // continues; a genuine infra failure throws and propagates — it reruns on
@@ -630,11 +675,10 @@ async function maybeLinkAuthenticatedPlatformIdentity(
       },
     );
     if (!discordLink.success) {
-      // error-policy:J4 expected tenant-safety decline (discord identity owned
-      // by another account); onboarding continues without binding it.
-      logger.warn("[eliza-app onboarding] discord link declined", {
-        userId: input.authenticatedUser.userId,
-        error: discordLink.error,
+      throw new ElizaError(discordLink.error || "Discord identity could not be linked", {
+        code: "ONBOARDING_PLATFORM_IDENTITY_CONFLICT",
+        context: { platform: "discord" },
+        severity: "ephemeral",
       });
     }
     return session;

@@ -1034,38 +1034,14 @@ class ElizaAppUserService {
   ): Promise<{ success: boolean; error?: string }> {
     const { discordId, username, globalName, avatarUrl } = discordData;
 
-    // Check if this Discord ID is already linked to a different user
-    const existingDiscordUser = await usersRepository.findByDiscordIdWithOrganization(discordId);
-
-    if (existingDiscordUser && existingDiscordUser.id !== userId) {
-      logger.warn("[ElizaAppUserService] Discord already linked to another user", {
-        userId,
-        existingUserId: existingDiscordUser.id,
-        discordId,
-      });
-      return {
-        success: false,
-        error: "This Discord account is already linked to another account",
-      };
-    }
-
-    // If already linked to the same user, treat as idempotent success. The
-    // projection refresh still runs so a canonical-only link (users row written
-    // before this refresh existed) converges into user_identities — that
-    // projection row is what routeDiscordMessage resolves DMs by.
-    if (existingDiscordUser && existingDiscordUser.id === userId) {
-      await usersRepository.refreshDiscordProjectionForWrite(userId);
-      return { success: true };
-    }
-
     try {
-      await usersRepository.update(userId, {
+      const linked = await usersRepository.linkDiscordIdentity(userId, {
         discord_id: discordId,
         discord_username: username,
-        discord_global_name: globalName || undefined,
-        discord_avatar_url: avatarUrl || undefined,
-        updated_at: new Date(),
+        discord_global_name: globalName ?? null,
+        discord_avatar_url: avatarUrl ?? null,
       });
+      if (!linked) return { success: false, error: "User account was not found" };
     } catch (error) {
       // Handle race condition: another request linked this Discord account first
       if (isUniqueConstraintError(error)) {
@@ -1080,11 +1056,6 @@ class ElizaAppUserService {
       }
       throw error;
     }
-
-    // Project the canonical write into user_identities — the row the Discord
-    // gateway router resolves DM senders by. Without this refresh an
-    // email-login user stays invisible to routeDiscordMessage forever.
-    await usersRepository.refreshDiscordProjectionForWrite(userId);
 
     logger.info("[ElizaAppUserService] Linked Discord to user", {
       userId,

@@ -65,11 +65,12 @@ mock.module("@/lib/services/eliza-app/eliza-managed-launch", () => ({
   })),
 }));
 
+const linkDiscordToUser = mock(async () => ({ success: true }));
 mock.module("@/lib/services/eliza-app/user-service", () => ({
   elizaAppUserService: {
     findOrCreateByPhone: mock(async () => null),
     linkPhoneToUser: mock(async () => ({ success: true })),
-    linkDiscordToUser: mock(async () => ({ success: true })),
+    linkDiscordToUser,
   },
 }));
 
@@ -118,6 +119,17 @@ async function post(
   );
 }
 
+async function get(
+  sessionId: string,
+  authorization: string,
+): Promise<Response> {
+  return await route.request(
+    `/?sessionId=${encodeURIComponent(sessionId)}`,
+    { method: "GET", headers: { authorization } },
+    { INTERNAL_SECRET },
+  );
+}
+
 async function dataOf(response: Response): Promise<Record<string, unknown>> {
   const body = (await response.json()) as { data: Record<string, unknown> };
   return body.data;
@@ -146,6 +158,7 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     resolveIdentity.mockClear();
     getCurrentUser.mockReset();
     getCurrentUser.mockResolvedValue(null);
+    linkDiscordToUser.mockClear();
   });
 
   test("provisions for the account that owns the attested platform identity", async () => {
@@ -405,6 +418,47 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     // Full browser payload — a steward caller is a browser, not a gateway.
     expect(data).toHaveProperty("loginUrl");
     expect(data).toHaveProperty("messages");
+  });
+
+  test("previews the gateway-attested Discord identity and requires explicit confirmation", async () => {
+    resolveIdentity.mockResolvedValue(null);
+    const gatewayData = await dataOf(
+      await post({
+        sessionId: "platform:discord:1234567890",
+        message: "My name is Ada",
+        platform: "discord",
+        platformUserId: "1234567890",
+        platformDisplayName: "attested-discord-user",
+      }),
+    );
+    const storedSession = sessionCache.get(
+      "eliza-app:onboarding:platform:discord:1234567890",
+    ) as { continuationToken?: string };
+    const continuation = storedSession.continuationToken;
+    expect(continuation).toBeTruthy();
+    getCurrentUser.mockResolvedValue(activeStewardUser());
+
+    const preview = await get(continuation as string, STEWARD_JWT);
+    expect(preview.status).toBe(200);
+    expect(await dataOf(preview)).toEqual({
+      platform: "discord",
+      platformUserId: "1234567890",
+      platformDisplayName: "attested-discord-user",
+    });
+    expect(linkDiscordToUser).not.toHaveBeenCalled();
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+
+    const unconfirmed = await post(
+      { sessionId: continuation as string, platform: "web" },
+      STEWARD_JWT,
+    );
+    expect(unconfirmed.status).toBe(409);
+    expect(await unconfirmed.json()).toMatchObject({
+      success: false,
+      code: "session_not_ready",
+    });
+    expect(linkDiscordToUser).not.toHaveBeenCalled();
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
   test("a Steward caller can never mint a platform-scoped session or act as a trusted transport", async () => {

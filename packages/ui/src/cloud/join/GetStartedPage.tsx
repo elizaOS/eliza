@@ -24,12 +24,13 @@ import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   completePendingOnboardingContinuation,
   peekPendingOnboardingSession,
+  previewPendingOnboardingContinuation,
   sanitizeOnboardingSessionToken,
   storePendingOnboardingSession,
 } from "./lib/onboarding-continuation";
 import { useJoinSessionAuth } from "./lib/use-join-session";
 
-type GetStartedPhase = "linking" | "done" | "error";
+type GetStartedPhase = "checking" | "confirm" | "linking" | "done" | "error";
 
 function describeContinuationError(err: unknown): string {
   if (err instanceof Error && err.message.trim()) return err.message;
@@ -40,8 +41,12 @@ export default function GetStartedPage(): React.JSX.Element {
   const t = useCloudT();
   const session = useJoinSessionAuth();
   const [searchParams] = useSearchParams();
-  const [phase, setPhase] = useState<GetStartedPhase>("linking");
+  const [phase, setPhase] = useState<GetStartedPhase>("checking");
   const [error, setError] = useState<string | null>(null);
+  const [discordIdentity, setDiscordIdentity] = useState<{
+    platformUserId: string;
+    platformDisplayName: string;
+  } | null>(null);
   // StrictMode double-mount guard: the redemption POST must run once.
   const startedRef = useRef(false);
 
@@ -88,8 +93,16 @@ export default function GetStartedPage(): React.JSX.Element {
     const token = peekPendingOnboardingSession();
     if (!token) return;
     startedRef.current = true;
-    void redeem(token);
-  }, [session.ready, session.authenticated, redeem]);
+    void previewPendingOnboardingContinuation(token)
+      .then((preview) => {
+        setDiscordIdentity(preview);
+        setPhase("confirm");
+      })
+      .catch((err) => {
+        setError(describeContinuationError(err));
+        setPhase("error");
+      });
+  }, [session.ready, session.authenticated]);
 
   if (session.ready && !session.authenticated) {
     // The token is already persisted in storage; the URL param never needs to
@@ -115,7 +128,30 @@ export default function GetStartedPage(): React.JSX.Element {
           draggable={false}
         />
 
-        {phase === "done" ? (
+        {phase === "confirm" && discordIdentity ? (
+          <div className="flex flex-col items-center gap-4">
+            <h1 className="font-poppins text-lg font-semibold text-white">
+              Connect your Discord account?
+            </h1>
+            <p className="text-sm text-white/70">
+              Continue with{" "}
+              <strong>{discordIdentity.platformDisplayName}</strong>
+              <span className="block text-xs text-white/50">
+                Discord ID {discordIdentity.platformUserId}
+              </span>
+            </p>
+            <Button
+              type="button"
+              onClick={() => {
+                const token = peekPendingOnboardingSession();
+                if (token) void redeem(token);
+              }}
+              className="bg-txt px-6 py-2.5 font-semibold text-bg"
+            >
+              Connect this Discord account
+            </Button>
+          </div>
+        ) : phase === "done" ? (
           <div className="flex flex-col items-center gap-4">
             <h1 className="font-poppins text-lg font-semibold text-white">
               {t("cloud.getStarted.linkedTitle", {
@@ -168,7 +204,10 @@ export default function GetStartedPage(): React.JSX.Element {
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/80 border-t-transparent" />
             <p className="text-sm text-white/72">
               {t("cloud.getStarted.linking", {
-                defaultValue: "Connecting your account...",
+                defaultValue:
+                  phase === "checking"
+                    ? "Checking your connection..."
+                    : "Connecting your account...",
               })}
             </p>
           </div>
