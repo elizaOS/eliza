@@ -15,22 +15,19 @@
  * OWNS the agent, then swap the cloud token for the agent's `ELIZA_API_TOKEN`
  * before proxying over the tailnet.
  *
- * SECURITY — the token swap (which grants container access) happens ONLY after a
- * validated owner of a running dedicated agent. Every other path is proxied
- * UNCHANGED, so the container's own `ELIZA_API_TOKEN` auth stays the backstop
- * (an attacker never holds that per-agent secret):
- *   - no / invalid cloud token  → pass through (web UI assets, the pairing
- *     exchange, the agent's own token all keep working);
- *   - valid token but NOT the owner (or shared / not found) → pass through;
- *   - any unexpected error during validation → pass through (fail-closed: we
- *     never inject on an error path).
- * We only ever narrow access here, never widen it.
+ * SECURITY — Cloud credentials terminate at this boundary. Parent-domain Cloud
+ * cookies are stripped from every origin request. A rejected credential may be
+ * an agent-local token and passes through to the container's own auth, but a
+ * validated Cloud principal is either swapped to the owned agent credential or
+ * rejected at the edge. This prevents a different tenant's container from
+ * harvesting a visitor's Cloud session, API key, or bearer.
  *
  * Lazy-imported from `index.ts` only on a UUID-subdomain request, so the Worker
  * entrypoint stays thin (Cloudflare startup-CPU budget).
  */
 
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
@@ -50,6 +47,23 @@ const RETRY_AFTER_SECONDS = 5;
 const DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS = 30_000;
 const WORKFLOW_GENERATION_HEADERS_TIMEOUT_MS = 5 * 60_000;
 const WORKFLOW_RUN_HEADERS_TIMEOUT_MS = 10 * 60_000;
+const CLOUD_ONLY_CREDENTIAL_HEADERS = [
+  "cookie",
+  "proxy-authorization",
+  "x-bootstrap-secret",
+  "x-cron-secret",
+  "x-eliza-service-token",
+  "x-internal-token",
+  "x-service-key",
+  "x-service-token",
+  "x-timestamp",
+  "x-wallet-address",
+  "x-wallet-signature",
+] as const;
+const CLOUD_ONLY_CREDENTIAL_HEADER_PREFIXES = [
+  "cf-access-",
+  "x-steward-",
+] as const;
 
 // Tests override every route's headers budget so the timeout paths complete in
 // milliseconds without weakening production's path-specific limits.
@@ -103,11 +117,27 @@ function resolveOriginHost(env: Bindings): string {
   return raw && raw.length > 0 ? raw : DEFAULT_AGENT_ROUTER_ORIGIN_HOST;
 }
 
+function stripCloudOnlyCredentials(headers: Headers): void {
+  for (const name of CLOUD_ONLY_CREDENTIAL_HEADERS) {
+    headers.delete(name);
+  }
+  for (const name of Array.from(headers.keys())) {
+    if (
+      CLOUD_ONLY_CREDENTIAL_HEADER_PREFIXES.some((prefix) =>
+        name.startsWith(prefix),
+      )
+    ) {
+      headers.delete(name);
+    }
+  }
+}
+
 /**
  * Forward the request to the agent-router origin (the CP), preserving
  * path / method / body. When `injectBearer` is provided, the inbound auth is
  * REPLACED with the agent's own `ELIZA_API_TOKEN` (so the container accepts it);
- * otherwise headers pass through unchanged and the container's own auth applies.
+ * otherwise agent-local auth headers pass through and the container's own auth
+ * applies. Browser cookies never cross the Cloud-to-container trust boundary.
  */
 async function proxyToOrigin(
   request: Request,
@@ -120,6 +150,7 @@ async function proxyToOrigin(
   targetUrl.hostname = resolveOriginHost(env);
   const headers = new Headers(request.headers);
   headers.delete("host");
+  stripCloudOnlyCredentials(headers);
   headers.set("x-forwarded-host", url.host);
   headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
   if (injectBearer) {
@@ -316,6 +347,27 @@ function extractQueryToken(request: Request, url: URL): string | null {
   return url.searchParams.get("token")?.trim() || null;
 }
 
+function isCloudCredentialShape(value: string | null): boolean {
+  if (!value) return false;
+  if (value.startsWith("eliza_")) return true;
+  const jwtParts = value.split(".");
+  return jwtParts.length === 3 && jwtParts.every((part) => part.length > 0);
+}
+
+function hasCloudCredentialShape(
+  request: Request,
+  queryToken: string | null,
+): boolean {
+  const apiKey = request.headers.get("x-api-key")?.trim() ?? null;
+  const authorization = request.headers.get("authorization")?.trim() ?? "";
+  const bearerMatch = /^Bearer\s+(.+)$/i.exec(authorization);
+  return (
+    isCloudCredentialShape(apiKey) ||
+    isCloudCredentialShape(bearerMatch?.[1]?.trim() ?? null) ||
+    isCloudCredentialShape(queryToken)
+  );
+}
+
 /**
  * CORS headers for a browser-visible proxy response. The CP (nginx → agent-router)
  * forwards verbatim and injects nothing, so its CORS-less 404/503 — and our own
@@ -389,39 +441,83 @@ async function proxyDedicatedAgent(
   url: URL,
   agentId: string,
 ): Promise<Response> {
+  const queryToken = extractQueryToken(request, url);
+  const authRequest = queryToken
+    ? new Request(request.url, {
+        headers: { authorization: `Bearer ${queryToken}` },
+      })
+    : request;
+
+  let orgId: string;
+  let userId: string;
   try {
-    // 1. Validate the CLOUD token. It rides in the Authorization header for
-    //    HTTP, or as `?token=` for the WebSocket upgrade. No valid token →
-    //    pass through unchanged (web UI assets, the pairing exchange, the
-    //    agent's own token); the container's auth is the backstop.
-    const queryToken = extractQueryToken(request, url);
-    // Header/cookie auth validates the ORIGINAL request (preserves every
-    // existing auth method); a query-only (WS) token validates through a
-    // synthetic header request so it takes the exact same path.
-    const authRequest = queryToken
-      ? new Request(request.url, {
-          headers: { authorization: `Bearer ${queryToken}` },
-        })
-      : request;
-    let orgId: string;
-    let userId: string;
-    try {
-      const { user } = await requireAuthOrApiKeyWithOrg(authRequest);
-      orgId = user.organization_id;
-      userId = user.id;
-    } catch {
+    const { user } = await requireAuthOrApiKeyWithOrg(authRequest);
+    orgId = user.organization_id;
+    userId = user.id;
+  } catch (error) {
+    // error-policy:J1 only agent-local credential shapes pass through an
+    // expected Cloud-auth rejection. Cloud API keys and Steward JWTs have stable
+    // wire formats; retaining them after a failed user/JIT lookup could leak a
+    // still-live credential to the container. Managed agent credentials use the
+    // distinct `agent_` namespace; Cloud-shaped custom tokens are deliberately
+    // reserved so this boundary remains unambiguous.
+    if (error instanceof AuthenticationError) {
+      if (hasCloudCredentialShape(request, queryToken)) {
+        return Response.json(
+          {
+            success: false,
+            code: "cloud_auth_rejected",
+            error: "Cloud authentication failed",
+          },
+          { status: 401 },
+        );
+      }
       return proxyToOrigin(request, env, url);
     }
 
+    if (error instanceof ForbiddenError) {
+      return Response.json(
+        {
+          success: false,
+          code: "agent_access_denied",
+          error: "Agent access denied",
+        },
+        { status: 403 },
+      );
+    }
+
+    logger.error("[dedicated-proxy] cloud credential validation failed", {
+      agentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return Response.json(
+      {
+        success: false,
+        code: "cloud_auth_unavailable",
+        error: "Cloud authentication is temporarily unavailable",
+      },
+      { status: 503 },
+    );
+  }
+
+  let agentToken: string;
+  try {
     // 2. Ownership — the caller's org MUST own this dedicated agent. Not
-    //    owned / not found / shared → pass through unchanged (never widen
-    //    access here; the container's own token auth rejects non-owners).
+    //    owned / not found / shared fails here. Forwarding a known-valid Cloud
+    //    credential would hand it to a different tenant's container.
     const sandbox = await agentSandboxesRepository.findByIdAndOrg(
       agentId,
       orgId,
     );
     if (!sandbox || sandbox.execution_tier === "shared") {
-      return proxyToOrigin(request, env, url);
+      return Response.json(
+        {
+          success: false,
+          code: "agent_access_denied",
+          error: "Agent access denied",
+        },
+        { status: 403 },
+      );
     }
 
     // 3. Lifecycle — a non-running agent isn't reachable; resume + 202.
@@ -460,25 +556,41 @@ async function proxyDedicatedAgent(
     //    own ELIZA_API_TOKEN so the container accepts the request. For a WS
     //    upgrade the token rode in `?token=`, so rewrite that too.
     const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
-    const agentToken = envVars.ELIZA_API_TOKEN?.trim();
-    // No managed token (older / not-yet-provisioned agent) → pass through.
-    return proxyToOrigin(
-      request,
-      env,
-      url,
-      agentToken || undefined,
-      queryToken !== null,
-    );
-  } catch (error) {
-    // Fail-closed: any unexpected error → pass through WITHOUT injecting, so
-    // the container's own auth still gates access.
-    logger.error(
-      "[dedicated-proxy] unexpected error; passing through unauthenticated",
-      {
+    const resolvedAgentToken = envVars.ELIZA_API_TOKEN?.trim();
+    if (!resolvedAgentToken) {
+      logger.error("[dedicated-proxy] agent credential unavailable", {
         agentId,
-        error: error instanceof Error ? error.message : String(error),
+        orgId,
+      });
+      return Response.json(
+        {
+          success: false,
+          code: "agent_credential_unavailable",
+          error: "Agent authentication is temporarily unavailable",
+        },
+        { status: 503 },
+      );
+    }
+    agentToken = resolvedAgentToken;
+  } catch (error) {
+    // error-policy:J1 a validated Cloud credential never crosses into the
+    // container when ownership or credential resolution fails.
+    logger.error("[dedicated-proxy] owner credential resolution failed", {
+      agentId,
+      orgId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return Response.json(
+      {
+        success: false,
+        code: "agent_auth_unavailable",
+        error: "Agent authentication is temporarily unavailable",
       },
+      { status: 503 },
     );
-    return proxyToOrigin(request, env, url);
   }
+
+  // Keep the origin fetch outside the resolution boundary so transport errors
+  // preserve proxy semantics instead of being mistaken for auth failures.
+  return proxyToOrigin(request, env, url, agentToken, queryToken !== null);
 }
