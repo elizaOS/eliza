@@ -50,6 +50,7 @@ import {
 import { copyTextToClipboard } from "../utils";
 import { dispatchConversationResync } from "./AppContext.hooks";
 import {
+  activeServerIdForAgentProfile,
   getActiveProfile,
   loadAgentProfileRegistry,
   setActiveProfileId,
@@ -1533,6 +1534,7 @@ function AppProviderInner({
 
       const server = createPersistedActiveServer({
         kind: profile.kind,
+        id: activeServerIdForAgentProfile(profile),
         apiBase: profile.apiBase,
         accessToken: profile.accessToken,
         label: profile.label,

@@ -187,6 +187,9 @@ export function upsertAndActivateAgentProfile(
     ...registry.profiles[existingIdx],
     label: profile.label || registry.profiles[existingIdx].label,
     ...(profile.apiBase !== undefined ? { apiBase: profile.apiBase } : {}),
+    ...(profile.cloudAgentId !== undefined
+      ? { cloudAgentId: profile.cloudAgentId }
+      : {}),
     // A fresh token supersedes a stale one; an absent token leaves the prior in
     // place (a re-activate that carries no new token must not blank it out).
     ...(profile.accessToken ? { accessToken: profile.accessToken } : {}),
@@ -195,6 +198,13 @@ export function upsertAndActivateAgentProfile(
   registry.activeProfileId = merged.id;
   saveAgentProfileRegistry(registry);
   return merged;
+}
+
+/** Preserve a cloud agent's platform identity when a profile becomes active. */
+export function activeServerIdForAgentProfile(profile: AgentProfile): string {
+  return profile.kind === "cloud" && profile.cloudAgentId
+    ? `cloud:${profile.cloudAgentId}`
+    : profile.id;
 }
 
 export function removeAgentProfile(id: string): void {

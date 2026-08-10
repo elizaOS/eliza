@@ -1,11 +1,8 @@
-/** Verifies switchRuntimeNonDestructive through the package's configured test harness. */
-// @vitest-environment jsdom
 /**
- * Non-destructive runtime switching (`switch-runtime`): repointing the client
- * base URL / token, updating the active agent profile, and clearing composer
- * drafts on switch. jsdom with the API client, profile registry, and platform
- * probes mocked — no live agent.
+ * Exercises non-destructive runtime switching across the client, active
+ * profile, restorable server, and composer-draft boundaries with jsdom storage.
  */
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentProfile } from "./agent-profile-types";
@@ -16,6 +13,11 @@ const mocks = vi.hoisted(() => ({
   setToken: vi.fn(),
   loadAgentProfileRegistry: vi.fn(),
   setActiveProfileId: vi.fn(),
+  activeServerIdForAgentProfile: vi.fn((profile: AgentProfile) =>
+    profile.kind === "cloud" && profile.cloudAgentId
+      ? `cloud:${profile.cloudAgentId}`
+      : profile.id,
+  ),
   createPersistedActiveServer: vi.fn((args: Record<string, unknown>) => ({
     ...args,
   })),
@@ -38,6 +40,7 @@ vi.mock("../api", () => ({
   },
 }));
 vi.mock("./agent-profiles", () => ({
+  activeServerIdForAgentProfile: mocks.activeServerIdForAgentProfile,
   loadAgentProfileRegistry: mocks.loadAgentProfileRegistry,
   setActiveProfileId: mocks.setActiveProfileId,
 }));
@@ -79,6 +82,15 @@ const CLOUD: AgentProfile = {
   apiBase: "https://x.agent.elizacloud.ai",
   accessToken: "tok-cloud",
   createdAt: "2026-06-02T00:00:00.000Z",
+};
+const LOCAL_DOCKER_CLOUD: AgentProfile = {
+  id: "profile-local-docker",
+  label: "Local Docker agent",
+  kind: "cloud",
+  cloudAgentId: "55555555-5555-4555-8555-555555555555",
+  apiBase: "http://127.0.0.1:43123",
+  accessToken: "tok-local-agent",
+  createdAt: "2026-08-10T00:00:00.000Z",
 };
 const REMOTE: AgentProfile = {
   id: "vps-1",
@@ -131,6 +143,21 @@ describe("switchRuntimeNonDestructive", () => {
       "https://x.agent.elizacloud.ai",
     );
     expect(mocks.setBaseUrl).not.toHaveBeenCalled();
+  });
+
+  it("persists a local-Docker Cloud profile with its platform agent identity", () => {
+    withRegistry([LOCAL, LOCAL_DOCKER_CLOUD]);
+
+    switchRuntimeNonDestructive(LOCAL_DOCKER_CLOUD.id);
+
+    expect(mocks.createPersistedActiveServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "cloud",
+        id: "cloud:55555555-5555-4555-8555-555555555555",
+        apiBase: "http://127.0.0.1:43123",
+        accessToken: "tok-local-agent",
+      }),
+    );
   });
 
   it("switches to a local runtime: persists + activates + re-points same-origin + clears the stale token", () => {

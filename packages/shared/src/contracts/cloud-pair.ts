@@ -5,6 +5,8 @@
 
 export const CLOUD_PAIR_LEGACY_STORAGE_KEY = "eliza:cloud-pair:api-token";
 export const CLOUD_PAIR_SCOPED_STORAGE_PREFIX = `${CLOUD_PAIR_LEGACY_STORAGE_KEY}:`;
+export const CLOUD_PAIR_LOCAL_OWNER_HINT_KEY =
+  "eliza:cloud-pair:local-owner-agent-id";
 
 const CLOUD_AGENT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -36,6 +38,26 @@ export function cloudPairTokenKeyForAgent(agentId: string): string {
   return `${CLOUD_PAIR_SCOPED_STORAGE_PREFIX}${agentId}`;
 }
 
+/** True only for HTTP origins whose host is bound to the local machine. */
+export function isCloudPairLoopbackOrigin(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (hostname === "localhost" || hostname === "::1") return true;
+    const parts = hostname.split(".");
+    return (
+      parts.length === 4 &&
+      parts[0] === "127" &&
+      parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+    );
+  } catch {
+    // error-policy:J3 malformed origins are untrusted input, not loopback.
+    return false;
+  }
+}
+
 /** Resolve the platform-owned agent identity injected into a local relay. */
 export function resolveCloudPairAgentIdFromEnv(
   env: Readonly<Record<string, string | undefined>>,
@@ -57,8 +79,12 @@ export function renderCloudPairHandoffHtml(
   agentId: string,
 ): string {
   const safeKey = JSON.stringify(apiKey).replace(/</g, "\\u003c");
+  const safeAgentId = JSON.stringify(agentId).replace(/</g, "\\u003c");
   const safeStorageKey = JSON.stringify(
     cloudPairTokenKeyForAgent(agentId),
+  ).replace(/</g, "\\u003c");
+  const safeOwnerHintKey = JSON.stringify(
+    CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   ).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="en">
@@ -77,19 +103,35 @@ export function renderCloudPairHandoffHtml(
     (function () {
       try {
         var key = ${safeKey};
+        var agentId = ${safeAgentId};
         var storageKey = ${safeStorageKey};
-        function persist(storage) {
+        var ownerHintKey = ${safeOwnerHintKey};
+        function persist(storage, name, value) {
           try {
-            storage.setItem(storageKey, key);
+            storage.setItem(name, value);
             return true;
           } catch (_storageError) {
             return false;
           }
         }
-        var storedInSession = persist(window.sessionStorage);
-        var storedDurably = persist(window.localStorage);
+        var storedInSession = persist(window.sessionStorage, storageKey, key);
+        var storedDurably = persist(window.localStorage, storageKey, key);
         if (!(storedInSession || storedDurably)) {
           throw new Error("No browser storage accepted the paired token.");
+        }
+        var protocol = window.location.protocol;
+        var hostname = window.location.hostname.toLowerCase();
+        if (hostname.charAt(0) === "[" && hostname.charAt(hostname.length - 1) === "]") {
+          hostname = hostname.slice(1, -1);
+        }
+        var loopback = (protocol === "http:" || protocol === "https:") &&
+          (hostname === "localhost" || hostname === "::1" || /^127(?:\\.\\d{1,3}){3}$/.test(hostname));
+        if (loopback) {
+          var ownerInSession = persist(window.sessionStorage, ownerHintKey, agentId);
+          var ownerStoredDurably = persist(window.localStorage, ownerHintKey, agentId);
+          if (!(ownerInSession || ownerStoredDurably)) {
+            throw new Error("No browser storage accepted the paired owner.");
+          }
         }
         var slot = Symbol.for("elizaos.app.boot-config");
         var previous = window.__ELIZAOS_APP_BOOT_CONFIG__ ||

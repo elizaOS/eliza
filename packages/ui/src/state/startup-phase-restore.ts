@@ -1,11 +1,11 @@
 /**
- * startup-phase-restore.ts
- *
- * Side-effect logic for the "restoring-session" startup phase.
- * Probes for an existing install/connection and dispatches the result.
+ * Restores a persisted runtime target and its credential before startup probes
+ * begin. Cloud control-plane sessions and agent-local paired sessions remain
+ * separate even when both are represented by a cloud runtime profile.
  */
 
 import { logger } from "@elizaos/logger";
+import { isCloudPairLoopbackOrigin } from "@elizaos/shared/contracts";
 import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,
@@ -499,13 +499,19 @@ export async function applyRestoredConnection(args: {
     // refresh it BEFORE handing it to the client so a returning user never
     // boots into a permanently-401ing session (see resolveRestoredStewardToken).
     const stewardToken = await stewardTokenPromise;
-    // Dedicated agent subdomains use an agent-local paired token for `/api/*`.
-    // Prefer a persisted paired token there, but keep the Steward fallback so
-    // older stale installs still reach the startup re-pair recovery path.
+    // Dedicated agent subdomains and explicit local-Docker pair targets use an
+    // agent-local bearer for `/api/*`. The edge-owned dedicated path can keep
+    // its Steward recovery fallback; a loopback process must never receive a
+    // Cloud control-plane credential when its paired bearer is absent.
+    const usesLocalDockerCredential = isCloudPairLoopbackOrigin(
+      resolved.apiBase,
+    );
     clientRef.setToken(
-      isDedicatedCloudAgentBase(resolved.apiBase)
-        ? resolved.accessToken || stewardToken || null
-        : stewardToken || resolved.accessToken || null,
+      usesLocalDockerCredential
+        ? resolved.accessToken || null
+        : isDedicatedCloudAgentBase(resolved.apiBase)
+          ? resolved.accessToken || stewardToken || null
+          : stewardToken || resolved.accessToken || null,
     );
     void tierRepairPromise.then((repaired) => {
       if (!repaired || repaired.apiBase === resolved.apiBase) return;

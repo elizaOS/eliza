@@ -5,6 +5,7 @@ import { Socket } from "node:net";
 import { runInNewContext } from "node:vm";
 import {
   CLOUD_PAIR_LEGACY_STORAGE_KEY,
+  CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
 } from "@elizaos/shared/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -66,7 +67,7 @@ function executeHandoffHtml(html: string) {
   const windowObject: Record<PropertyKey, unknown> = {
     sessionStorage: storage(sessionValues),
     localStorage: storage(localValues),
-    location: { replace },
+    location: { hostname: "127.0.0.1", protocol: "http:", replace },
   };
   runInNewContext(script, {
     window: windowObject,
@@ -206,6 +207,12 @@ describe("handleStandaloneCloudPairRoute", () => {
       false,
     );
     expect(handoff.localValues.has(CLOUD_PAIR_LEGACY_STORAGE_KEY)).toBe(false);
+    expect(handoff.sessionValues.get(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY)).toBe(
+      AGENT_ID,
+    );
+    expect(handoff.localValues.get(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY)).toBe(
+      AGENT_ID,
+    );
     expect(handoff.windowObject.__ELIZAOS_APP_BOOT_CONFIG__).toEqual({
       apiToken: "agent_secret_value",
     });

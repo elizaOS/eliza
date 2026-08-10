@@ -1,13 +1,11 @@
-/** Verifies Agent profile token scrub through the package's configured test harness. */
-// @vitest-environment jsdom
-
 /**
- * The agent-profile registry (`agent-profiles`): token scrub on sign-out,
- * add/upsert/activate, and query resolution over jsdom `localStorage`. Pure
- * store logic — no live model or network.
+ * Exercises agent-profile token scrubbing, add/upsert/activate behavior, and
+ * query resolution against real jsdom storage without a live agent or network.
  */
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  activeServerIdForAgentProfile,
   addAgentProfile,
   loadAgentProfileRegistry,
   resolveAgentProfileByQuery,
@@ -150,6 +148,47 @@ describe("upsertAndActivateAgentProfile — cross-surface registry sync", () => 
       (x) => x.id === p.id,
     );
     expect(remote?.accessToken).toBe("keep-me");
+  });
+
+  it("backfills the explicit Cloud owner when a loopback profile is re-paired", () => {
+    const profile = upsertAndActivateAgentProfile({
+      kind: "cloud",
+      label: "Local Docker agent",
+      apiBase: "http://127.0.0.1:43123",
+      accessToken: "old-token",
+    });
+
+    upsertAndActivateAgentProfile({
+      kind: "cloud",
+      label: "Local Docker agent",
+      cloudAgentId: "55555555-5555-4555-8555-555555555555",
+      apiBase: "http://127.0.0.1:43123",
+      accessToken: "fresh-token",
+    });
+
+    expect(
+      loadAgentProfileRegistry().profiles.find(
+        (item) => item.id === profile.id,
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        cloudAgentId: "55555555-5555-4555-8555-555555555555",
+        accessToken: "fresh-token",
+      }),
+    );
+  });
+
+  it("maps a Cloud profile owner to the restorable active-server identity", () => {
+    expect(
+      activeServerIdForAgentProfile({
+        id: "profile-row-id",
+        label: "Local Docker agent",
+        kind: "cloud",
+        cloudAgentId: "55555555-5555-4555-8555-555555555555",
+        apiBase: "http://127.0.0.1:43123",
+        createdAt: "2026-08-10T00:00:00.000Z",
+      }),
+    ).toBe("cloud:55555555-5555-4555-8555-555555555555");
   });
 });
 
