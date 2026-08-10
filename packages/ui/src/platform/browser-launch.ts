@@ -115,7 +115,7 @@ function stripLaunchParams(): void {
 async function exchangeCloudLaunchSession(
   cloudBaseUrl: string,
   sessionId: string,
-): Promise<{ apiBase: string; token: string }> {
+): Promise<{ agentId: string; apiBase: string; token: string }> {
   const sessionPath = encodeURIComponent(sessionId);
   const launchSessionUrls = [
     `${cloudBaseUrl}/api/v1/eliza/launch-sessions/${sessionPath}`,
@@ -149,6 +149,7 @@ async function exchangeCloudLaunchSession(
     const payload = (await response.json()) as {
       success?: boolean;
       data?: {
+        agentId?: string;
         connection?: { apiBase?: string; token?: string };
       };
       error?: string;
@@ -162,8 +163,13 @@ async function exchangeCloudLaunchSession(
     if (!token) {
       throw new Error("Launch session did not include an access token");
     }
+    const agentId = payload.data.agentId?.trim();
+    if (!agentId) {
+      throw new Error("Launch session did not include an agent id");
+    }
 
     return {
+      agentId,
       apiBase: normalizeLaunchApiBase(payload.data.connection.apiBase, {
         kind: "cloud",
       }),
@@ -178,17 +184,21 @@ export function applyLaunchConnection(args: {
   apiBase: string;
   token?: string | null;
   kind?: "cloud" | "remote";
+  cloudAgentId?: string | null;
 }): { apiBase: string; token: string | null } {
   const kind = args.kind ?? "remote";
   const normalizedApiBase = normalizeLaunchApiBase(args.apiBase, {
     kind,
   });
   const token = args.token?.trim() || null;
+  const cloudAgentId =
+    kind === "cloud" ? args.cloudAgentId?.trim() || null : null;
 
   client.setBaseUrl(normalizedApiBase);
   client.setToken(token);
   const persisted = createPersistedActiveServer({
     kind,
+    ...(cloudAgentId ? { id: `cloud:${cloudAgentId}` } : {}),
     apiBase: normalizedApiBase,
     ...(token ? { accessToken: token } : {}),
   });
@@ -200,6 +210,7 @@ export function applyLaunchConnection(args: {
   upsertAndActivateAgentProfile({
     kind,
     label: persisted.label,
+    ...(cloudAgentId ? { cloudAgentId } : {}),
     ...(persisted.apiBase !== undefined ? { apiBase: persisted.apiBase } : {}),
     ...(token ? { accessToken: token } : {}),
   });
@@ -221,6 +232,7 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
     );
     applyLaunchConnection({
       kind: "cloud",
+      cloudAgentId: connection.agentId,
       apiBase: connection.apiBase,
       token: connection.token,
     });

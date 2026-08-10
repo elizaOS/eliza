@@ -166,26 +166,49 @@ function sameApiBase(a: string | undefined, b: string | undefined): boolean {
 }
 
 /**
+ * Explicit Cloud owner ids outrank transport addresses: one managed adapter
+ * URL must never collapse two owners into a single credential-bearing row.
+ * Legacy rows without an owner keep the historical base match so the next
+ * authoritative upsert can enrich them instead of creating a duplicate.
+ */
+function sameProfileIdentity(
+  stored: AgentProfile,
+  incoming: Omit<AgentProfile, "id" | "createdAt">,
+): boolean {
+  if (stored.kind !== incoming.kind) return false;
+  if (stored.kind === "cloud" && incoming.kind === "cloud") {
+    if (stored.cloudAgentId && incoming.cloudAgentId) {
+      return stored.cloudAgentId === incoming.cloudAgentId;
+    }
+    if (stored.cloudAgentId && !incoming.cloudAgentId) {
+      return false;
+    }
+  }
+  return sameApiBase(stored.apiBase, incoming.apiBase);
+}
+
+/**
  * Idempotently record + activate a connection in the profile registry so every
- * runtime-switch surface ("My Runtimes", Settings) stays truthful. If a profile
- * for the same (kind, apiBase) already exists it is re-activated and its
- * token/label refreshed — reconnecting to the same host never creates a
- * duplicate. Otherwise a new profile is added (and activated). This is the
- * single seam the shared launch path (remote connect, cloud launch-session,
- * cloud-agent bind) routes through so a connection made anywhere shows up
- * everywhere with the correct Active badge.
+ * runtime-switch surface ("My Runtimes", Settings) stays truthful. Explicitly
+ * bound Cloud profiles match by owner id; every other profile retains the
+ * legacy (kind, apiBase) match so an authoritative Cloud reconnect can enrich
+ * an older unbound row. Matching profiles are re-activated and refreshed;
+ * otherwise a new profile is added. This is the single seam the shared launch
+ * path routes through so a connection made anywhere shows up everywhere with
+ * the correct Active badge.
  */
 export function upsertAndActivateAgentProfile(
   profile: Omit<AgentProfile, "id" | "createdAt">,
 ): AgentProfile {
   const registry = loadAgentProfileRegistry();
-  const existingIdx = registry.profiles.findIndex(
-    (p) => p.kind === profile.kind && sameApiBase(p.apiBase, profile.apiBase),
+  const existingIdx = registry.profiles.findIndex((stored) =>
+    sameProfileIdentity(stored, profile),
   );
   if (existingIdx === -1) return addAgentProfile(profile);
   const merged: AgentProfile = {
     ...registry.profiles[existingIdx],
     label: profile.label || registry.profiles[existingIdx].label,
+    ...(profile.cloudAgentId ? { cloudAgentId: profile.cloudAgentId } : {}),
     ...(profile.apiBase !== undefined ? { apiBase: profile.apiBase } : {}),
     // A fresh token supersedes a stale one; an absent token leaves the prior in
     // place (a re-activate that carries no new token must not blank it out).

@@ -29,11 +29,11 @@ import {
   listOrAutoProvisionCloudAgent,
 } from "./first-run-finish";
 
-const SHARED_AGENT_BASE =
-  "https://staging.elizacloud.ai/api/v1/eliza/agents/cad3c071";
+const SHARED_AGENT_ID = "23766030-c096-4a14-932a-a4e43c562432";
+const SHARED_AGENT_BASE = `https://staging.elizacloud.ai/api/v1/eliza/agents/${SHARED_AGENT_ID}`;
 
 const RUNNING_AGENT = {
-  agent_id: "cad3c071",
+  agent_id: SHARED_AGENT_ID,
   agent_name: "Eliza",
   status: "running",
   created_at: "2026-07-01T00:00:00Z",
@@ -62,6 +62,9 @@ const savePersistedFirstRunCompleteStub = vi.hoisted(() => vi.fn());
 const silentlyRepointToDedicatedStub = vi.hoisted(() => vi.fn());
 const runAgentSessionRecoveryStub = vi.hoisted(() => vi.fn());
 const removeAgentProfileStub = vi.hoisted(() => vi.fn());
+const addAgentProfileStub = vi.hoisted(() =>
+  vi.fn(() => ({ id: "profile-1" })),
+);
 const loadPersistedActiveServerStub = vi.hoisted(() =>
   vi.fn<() => { kind: string; id?: string } | null>(() => null),
 );
@@ -92,7 +95,7 @@ vi.mock("../config/boot-config", () => ({
 }));
 
 vi.mock("../state", () => ({
-  addAgentProfile: vi.fn(() => ({ id: "profile-1" })),
+  addAgentProfile: addAgentProfileStub,
   createPersistedActiveServer: vi.fn((v) => ({ label: "Eliza Cloud", ...v })),
   loadPersistedActiveServer: loadPersistedActiveServerStub,
   removeAgentProfile: removeAgentProfileStub,
@@ -141,10 +144,10 @@ function storeStewardToken(token = "steward-jwt"): void {
 
 function stubSelection(): void {
   clientStub.selectOrProvisionCloudAgent.mockResolvedValue({
-    agentId: "cad3c071",
+    agentId: SHARED_AGENT_ID,
     agentName: "Eliza",
     apiBase: SHARED_AGENT_BASE,
-    bridgeUrl: "https://cad3c071.elizacloud.ai",
+    bridgeUrl: `https://${SHARED_AGENT_ID}.elizacloud.ai`,
     requiresAgentPairing: false,
     created: false,
   });
@@ -221,6 +224,25 @@ describe("listOrAutoProvisionCloudAgent — no serial status probe before the ag
 });
 
 describe("bindCloudAgent — agent-base warm-up", () => {
+  it("persists the authoritative Cloud agent owner with its profile credential", async () => {
+    const outcome = await bindCloudAgent(
+      draft(),
+      "steward-token",
+      {},
+      ports().ports,
+    );
+
+    expect(outcome.kind).toBe("done");
+    expect(addAgentProfileStub).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "cloud",
+        cloudAgentId: SHARED_AGENT_ID,
+        apiBase: SHARED_AGENT_BASE,
+        accessToken: "steward-token",
+      }),
+    );
+  });
+
   it("fires a fire-and-forget conversations fetch on the just-bound base so the post-ready hydrate hits a warm container", async () => {
     const outcome = await bindCloudAgent(
       draft(),
