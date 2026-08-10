@@ -245,6 +245,34 @@ function callRuntimeBridge(
 
 const actionRegistry = new Map<string, LoadedAction>();
 
+/**
+ * Checks whether a module export is a valid plugin shape, mirroring the
+ * relaxed acceptance used by core's `isValidPluginShape`. A plugin needs
+ * a `name` and at least one recognised surface (`init`, `services`,
+ * `providers`, `actions`, `evaluators`, `routes`, or `description`).
+ * Apps that only contribute providers, routes, or services — and therefore
+ * have no `actions` array — are valid plugins and must not produce a
+ * "no plugin export found in module" boot error.
+ */
+function isValidPluginExport(c: unknown): c is {
+	name: unknown;
+	actions?: LoadedAction[];
+	init?: unknown;
+} {
+	if (!c || typeof c !== "object" || Array.isArray(c)) return false;
+	const obj = c as Record<string, unknown>;
+	if (typeof obj.name !== "string" || obj.name.length === 0) return false;
+	return !!(
+		obj.init ||
+		obj.services ||
+		obj.providers ||
+		obj.actions ||
+		obj.evaluators ||
+		obj.routes ||
+		obj.description
+	);
+}
+
 async function loadPlugin(entryPath: string): Promise<{
 	loaded: number;
 	error?: string;
@@ -270,20 +298,22 @@ async function loadPlugin(entryPath: string): Promise<{
 			mod.appPlugin,
 			mod.sandboxPlugin,
 		];
-		let plugin: { actions?: LoadedAction[] } | null = null;
+		let plugin: {
+			name: unknown;
+			actions?: LoadedAction[];
+			init?: unknown;
+		} | null = null;
 		for (const c of candidates) {
-			if (
-				c &&
-				typeof c === "object" &&
-				Array.isArray((c as { actions?: unknown }).actions)
-			) {
-				plugin = c as { actions: LoadedAction[] };
+			if (isValidPluginExport(c)) {
+				plugin = c;
 				break;
 			}
 		}
 		if (!plugin) {
 			return { loaded: 0, error: "no plugin export found in module" };
 		}
+		// Plugins without actions (e.g. providers-only, routes-only) are
+		// valid — they boot successfully with zero registered actions.
 		const actions = plugin.actions ?? [];
 		for (const action of actions) {
 			if (

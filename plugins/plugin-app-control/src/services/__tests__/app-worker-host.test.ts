@@ -32,6 +32,10 @@ const FIXTURE_PLUGIN_PATH = path.resolve(
 	path.dirname(__filename),
 	"../../../test/fixtures/sandbox-plugin/plugin.ts",
 );
+const NO_ACTIONS_PLUGIN_PATH = path.resolve(
+	path.dirname(__filename),
+	"../../../test/fixtures/no-actions-plugin/plugin.ts",
+);
 
 describe("AppWorkerHostService worker bridge", () => {
 	let service: AppWorkerHostService;
@@ -261,6 +265,27 @@ describe("AppWorkerHostService worker bridge", () => {
 			expect(service.list().some((w) => w.slug === "fixture-bad-plugin")).toBe(
 				false,
 			);
+		});
+
+		it("accepts a valid plugin with no actions (providers/routes only)", async () => {
+			// Regression for #18240: apps that export a valid Plugin shape without
+			// an `actions` array were rejected with "no plugin export found in module".
+			// The fix relaxes the gate to accept any isValidPluginShape-compliant export.
+			const snapshot = await service.spawn({
+				slug: "fixture-no-actions",
+				isolation: "worker",
+				pluginEntryPath: NO_ACTIONS_PLUGIN_PATH,
+			});
+			expect(snapshot.slug).toBe("fixture-no-actions");
+			expect(snapshot.readyMs).not.toBeNull();
+			const reply = await service.invoke<{
+				pong: boolean;
+				actions: string[];
+			}>("fixture-no-actions", "ping");
+			expect(reply.ok).toBe(true);
+			if (!reply.ok) return;
+			expect(reply.result.pong).toBe(true);
+			expect(reply.result.actions).toEqual([]);
 		});
 	});
 
