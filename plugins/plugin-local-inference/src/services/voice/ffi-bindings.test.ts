@@ -259,6 +259,60 @@ function bunOnPath(): string | null {
 	return null;
 }
 
+const NATIVE_SUBMODULE_DIR = path.resolve(
+	__dirname,
+	"..",
+	"..",
+	"..",
+	"native",
+	"llama.cpp",
+);
+
+/**
+ * True when the on-disk llama.cpp checkout does not match the superproject's
+ * recorded gitlink — i.e. a leftover checkout on a persistent runner whose
+ * checkout step ran with `submodules: false`. The pin test must not treat a
+ * stale header as an ABI regression.
+ */
+function nativeSubmoduleIsStale(): boolean {
+	const head = spawnSync(
+		"git",
+		["-C", NATIVE_SUBMODULE_DIR, "rev-parse", "HEAD"],
+		{
+			encoding: "utf8",
+		},
+	);
+	if (head.status !== 0) return true;
+	const superRoot = spawnSync(
+		"git",
+		[
+			"-C",
+			NATIVE_SUBMODULE_DIR,
+			"rev-parse",
+			"--show-superproject-working-tree",
+		],
+		{ encoding: "utf8" },
+	);
+	if (superRoot.status !== 0 || superRoot.stdout.trim().length === 0) {
+		// No superproject context (e.g. exported tarball): trust the header.
+		return false;
+	}
+	const gitlink = spawnSync(
+		"git",
+		[
+			"-C",
+			superRoot.stdout.trim(),
+			"ls-tree",
+			"HEAD",
+			"--object-only",
+			path.relative(superRoot.stdout.trim(), NATIVE_SUBMODULE_DIR),
+		],
+		{ encoding: "utf8" },
+	);
+	if (gitlink.status !== 0 || gitlink.stdout.trim().length === 0) return true;
+	return gitlink.stdout.trim() !== head.stdout.trim();
+}
+
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
 	it("ELIZA_INFERENCE_ABI_VERSION is 15 (exact-size Kokoro PCM allocation)", () => {
 		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(15);
@@ -267,8 +321,11 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
 	// The native header lives inside the llama.cpp submodule, which most CI
 	// lanes and dev checkouts leave uninitialized. Skip (rather than fail) when
 	// the submodule is absent; the voice lanes with submodules:recursive still
-	// enforce the pin.
-	it.skipIf(!existsSync(NATIVE_FFI_HEADER))(
+	// enforce the pin. Persistent self-hosted runners check out with
+	// `submodules: false`, which leaves a STALE previous submodule checkout on
+	// disk — an old header there is not evidence against the pin, so we also
+	// skip when the submodule HEAD does not match the superproject gitlink.
+	it.skipIf(!existsSync(NATIVE_FFI_HEADER) || nativeSubmoduleIsStale())(
 		"keeps the TypeScript ABI version aligned with the pinned native header",
 		() => {
 			const header = readFileSync(NATIVE_FFI_HEADER, "utf8");
