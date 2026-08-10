@@ -18,6 +18,21 @@ export interface PairingToken {
   createdAt: number;
 }
 
+export interface BrowserPairingBinding {
+  agentId: string;
+  expectedOrigin: string;
+}
+
+export type BrowserPairingClaim =
+  | {
+      status: "claimed";
+      pairingToken: PairingToken;
+      apiKey: string;
+      agentName: string | null;
+    }
+  | { status: "invalid" }
+  | { status: "sandbox-credential-unavailable" };
+
 export interface AuthenticatedNativePairingBinding {
   userId: string;
   orgId: string;
@@ -152,6 +167,42 @@ class PairingTokenService {
     }
 
     return toPairingToken(row);
+  }
+
+  /**
+   * Atomically claim a browser pairing token for the agent selected by the
+   * public Worker hostname. Rebrand aliases may substitute only the origin;
+   * every database attempt retains the same URL-bound agent identity.
+   */
+  async claimBrowserToken(
+    token: string,
+    binding: BrowserPairingBinding,
+  ): Promise<BrowserPairingClaim> {
+    const normalizedOrigin = normalizeHttpOrigin(binding.expectedOrigin);
+    if (!normalizedOrigin) {
+      return { status: "invalid" };
+    }
+
+    const tokenHash = await hashToken(token);
+    const candidateOrigins = [normalizedOrigin, ...getAlternateDomainOrigins(normalizedOrigin)];
+
+    for (const expectedOrigin of candidateOrigins) {
+      const claim = await agentPairingTokensRepository.consumeValidBrowserToken(tokenHash, {
+        agentId: binding.agentId,
+        expectedOrigin,
+      });
+      if (claim.status === "invalid") continue;
+      if (claim.status === "sandbox-credential-unavailable") return claim;
+
+      return {
+        status: "claimed",
+        pairingToken: toPairingToken(claim.token),
+        apiKey: claim.apiKey,
+        agentName: claim.agentName,
+      };
+    }
+
+    return { status: "invalid" };
   }
 
   /**
