@@ -464,7 +464,9 @@ export class App {
   }
 
   async run(): Promise<void> {
-    await useStore.getState().loadSessionState();
+    if (!useStore.getState().sessionLoaded) {
+      await useStore.getState().loadSessionState();
+    }
 
     this.initializeManagers();
 
