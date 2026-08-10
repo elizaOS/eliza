@@ -84,9 +84,12 @@ const VIEW_BUNDLE_WARNING_BYTES = 1024 * 1024;
  * view against a directory that isn't this plugin at all.
  */
 export function pluginPackageNameCandidates(pluginName: string): string[] {
-  return pluginName.startsWith("@")
-    ? [pluginName]
-    : [`@elizaos/plugin-${pluginName}`, pluginName];
+  if (pluginName.startsWith("@")) return [pluginName];
+
+  const shortName = pluginName.startsWith("plugin-")
+    ? pluginName.slice("plugin-".length)
+    : pluginName;
+  return [`@elizaos/plugin-${shortName}`, pluginName];
 }
 
 /**
