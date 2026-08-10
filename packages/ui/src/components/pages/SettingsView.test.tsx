@@ -125,6 +125,24 @@ vi.mock("../settings/settings-sections", async () => {
     security: "Security",
   };
   const groupOrder = ["agent", "system", "security"];
+  const parseSettingsHash = (rawHash: string) => {
+    const segments = rawHash
+      .replace(/^#/, "")
+      .split("/")
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    if (segments[0] === "settings") segments.shift();
+    const sectionId = segments[0];
+    if (!sectionId) return { kind: "hub" };
+    if (sectionId === "connectors" && segments[1]) {
+      return {
+        kind: "connector-detail",
+        sectionId,
+        connectorId: segments[1],
+      };
+    }
+    return { kind: "section", sectionId };
+  };
   return {
     ...settingsRoute,
     SECTION_TONE_ICON_CLASS: {
@@ -163,8 +181,13 @@ vi.mock("../settings/settings-sections", async () => {
         .sort((a, b) => a.order - b.order)
         .map(({ group, label, items }) => ({ group, label, items }));
     },
+    backFromConnectorDetail: vi.fn(),
+    openConnectorsIndexHash: vi.fn(),
+    parseSettingsHash,
+    readSettingsHashRoute: () => parseSettingsHash(window.location.hash),
     readSettingsHashSection: () =>
       window.location.hash.length > 1 ? window.location.hash.slice(1) : null,
+    replaceConnectorDetailHash: vi.fn(),
     replaceSettingsHash: vi.fn(),
     settingsSectionLabel: (section: { defaultLabel: string }) =>
       section.defaultLabel,
