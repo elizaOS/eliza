@@ -36,6 +36,13 @@ import { logger } from "@elizaos/core";
 import { writeJsonAtomicSync } from "@elizaos/core/atomic-json";
 import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Every suite here drives the real on-disk credential store; each storage-lock
+// acquisition performs multiple fsyncs, which stretch from milliseconds to
+// seconds apiece on saturated CI disks. Budget the whole file for that, not
+// just the sweep-heavy blocks.
+vi.setConfig({ testTimeout: 240_000, hookTimeout: 240_000 });
+
 import {
   __resetDefaultAccountPoolForTests,
   getDefaultAccountPool,
