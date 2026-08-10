@@ -23,10 +23,6 @@ mock.module("hono/http-exception", () => ({
   },
 }));
 
-mock.module("zod", () => ({
-  ZodError: class ZodError extends Error {},
-}));
-
 let validateBehavior: () => Promise<unknown> = async () => {
   throw new Error("database unavailable");
 };
@@ -64,6 +60,7 @@ mock.module("../services/admin", () => ({
 }));
 
 mock.module("./steward-client", () => ({
+  isStagingSessionTokenCandidate: () => false,
   verifyStewardTokenCached,
 }));
 
