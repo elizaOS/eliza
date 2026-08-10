@@ -3618,6 +3618,48 @@ function parseLabels(input: unknown): string[] {
   return [];
 }
 
+/**
+ * Create an issue with labels applied as a SEPARATE best-effort step. Labels
+ * on GitHub's create call require push/triage access, so a read-tier token
+ * fails the ENTIRE creation over a decoration (live incident 2026-08-10: a
+ * good issue died on "You do not have permission to create labels"). Title
+ * and body always land; a label failure degrades to a short note.
+ */
+export async function createIssueWithBestEffortLabels(
+  service: CodingWorkspaceService,
+  repo: string,
+  options: { title: string; body: string; labels: string[] },
+): Promise<{ issue: IssueInfo; labelNote: string }> {
+  const issue = await service.createIssue(repo, {
+    title: options.title,
+    body: options.body,
+  });
+  if (options.labels.length === 0) return { issue, labelNote: "" };
+  try {
+    await service.addLabels(repo, issue.number, options.labels);
+    return { issue, labelNote: "" };
+  } catch {
+    // error-policy:J4 labels are decoration; the created issue is the
+    // deliverable and a label-permission failure must not fail the turn.
+    return { issue, labelNote: " (labels skipped — no permission)" };
+  }
+}
+
+/**
+ * One in-voice line for a failed issue operation. The raw provider error
+ * stays in the returned `error` field for the planner and in logs — chat
+ * gets a human sentence, never API JSON and docs links.
+ */
+export function issueFailureReply(repo: string, errorMessage: string): string {
+  if (/permission|unauthorized|forbidden|403/i.test(errorMessage)) {
+    return `couldn't do that on ${repo} — the connected github account doesn't have permission for it.`;
+  }
+  if (/not found|404/i.test(errorMessage)) {
+    return `couldn't find that on ${repo} — the repo or issue doesn't exist (or isn't visible to the connected account).`;
+  }
+  return `couldn't finish that github operation on ${repo}. logged the details.`;
+}
+
 async function handleIssueAction(
   service: CodingWorkspaceService,
   repo: string,
@@ -3639,12 +3681,15 @@ async function handleIssueAction(
           if (items.length > 0) {
             const labels = parseLabels(params.labels);
             const created: IssueInfo[] = [];
+            let bulkLabelNote = "";
             for (const item of items.slice(0, ISSUE_RESULT_LIMIT)) {
-              const issue = await service.createIssue(repo, {
-                title: item.title,
-                body: item.body ?? "",
-                labels: labels.length > 0 ? labels : undefined,
-              });
+              const { issue, labelNote } =
+                await createIssueWithBestEffortLabels(service, repo, {
+                  title: item.title,
+                  body: item.body ?? "",
+                  labels,
+                });
+              if (labelNote) bulkLabelNote = labelNote;
               created.push(issue);
             }
             // Create/list/get answers are the complete answer to the turn:
@@ -3654,7 +3699,7 @@ async function handleIssueAction(
             const summary = created
               .map((i) => `#${i.number}: ${i.title}\n  ${i.url}`)
               .join("\n");
-            const bulkText = `Created ${created.length} issues:\n${summary}`;
+            const bulkText = `Created ${created.length} issues${bulkLabelNote}:\n${summary}`;
             if (callback) await callback({ text: bulkText });
             return {
               success: true,
@@ -3674,12 +3719,12 @@ async function handleIssueAction(
         }
 
         const labels = parseLabels(params.labels);
-        const issue = await service.createIssue(repo, {
-          title,
-          body: body ?? "",
-          labels: labels.length > 0 ? labels : undefined,
-        });
-        const createdText = `Created issue #${issue.number}: ${issue.title}\n${issue.url}`;
+        const { issue, labelNote } = await createIssueWithBestEffortLabels(
+          service,
+          repo,
+          { title, body: body ?? "", labels },
+        );
+        const createdText = `Created issue #${issue.number}${labelNote}: ${issue.title}\n${issue.url}`;
         if (callback) await callback({ text: createdText });
         return {
           success: true,
@@ -3842,10 +3887,13 @@ async function handleIssueAction(
         return { success: false, error: "UNKNOWN_OPERATION" };
     }
   } catch (error) {
-    // error-policy:J1 issue-operation boundary → user-facing error + structured failure.
+    // error-policy:J1 issue-operation boundary → in-voice user line +
+    // structured failure. The raw provider message stays planner/log-facing
+    // only: shipping API JSON and docs links to chat was the 2026-08-10
+    // incident's second half.
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (callback)
-      await callback({ text: `Issue operation failed: ${errorMessage}` });
+      await callback({ text: issueFailureReply(repo, errorMessage) });
     return { success: false, error: errorMessage };
   }
 }
