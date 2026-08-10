@@ -6,6 +6,9 @@
     "declaration": false,
     "declarationMap": false,
     "paths": {
+      "@elizaos/scenario-runner/gmail-mcp-fixtures": [
+        "../../scenario-runner/src/gmail-mcp-fixtures.ts"
+      ],
       "@elizaos/scenario-runner/scenario-assertions": [
         "../../scenario-runner/src/scenario-assertions.ts"
       ],

@@ -67,16 +67,29 @@ interface UseOAuthConnectionsResult {
   refetch: () => Promise<void>;
 }
 
-function errorBodyMessage(error: unknown, fallback: string): string {
+/**
+ * Extracts the most specific human-readable message from a failed API call:
+ * the response body's `message` or `error` string when the failure is an
+ * {@link ApiError}, otherwise the thrown error's own message, otherwise the
+ * caller-supplied fallback.
+ */
+export function errorBodyMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
     const body = error.body;
-    if (body && typeof body === "object" && "error" in body) {
-      const apiError = (body as { error?: unknown }).error;
-      if (typeof apiError === "string" && apiError) return apiError;
+    if (body !== null && typeof body === "object") {
+      if (
+        "message" in body &&
+        typeof body.message === "string" &&
+        body.message
+      ) {
+        return body.message;
+      }
+      if ("error" in body && typeof body.error === "string" && body.error) {
+        return body.error;
+      }
     }
-    return error.message || fallback;
   }
-  return fallback;
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 export function useOAuthConnections(

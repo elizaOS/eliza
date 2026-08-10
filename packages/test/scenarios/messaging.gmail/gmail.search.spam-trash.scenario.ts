@@ -1,7 +1,7 @@
 /** Scenario fixture for gmail search spam trash; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { gmailScenario } from "./_factory.ts";
 import {
   GMAIL_MCP_WRITE_TOOLS,
   GMAIL_SCENARIO_MESSAGES,
@@ -9,34 +9,18 @@ import {
   gmailThreadFixture,
 } from "./_gmail-mcp-fixtures.ts";
 
-export default scenario({
-  lane: "live-only",
+export default gmailScenario({
   id: "gmail.search.spam-trash",
   title: "Search Gmail spam and trash without modifying messages",
-  domain: "messaging.gmail",
   tags: ["messaging", "gmail", "search", "spam", "read-only"],
-  isolation: "per-scenario",
-  requires: {
-    credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
-  rooms: [
-    {
-      id: "main",
-      source: "dashboard",
-      channelType: "DM",
-      title: "Gmail Spam Search",
-    },
-  ],
+  roomTitle: "Gmail Spam Search",
   seed: [
-    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.spam]),
+    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.spam], { repeat: true }),
     gmailThreadFixture([GMAIL_SCENARIO_MESSAGES.spam]),
   ],
   turns: [
     {
-      kind: "message",
       name: "read spam notice",
-      room: "main",
       text: "Look in Gmail spam or trash for the suspicious account notice and read it. Do not report it, delete it, archive it, or mark it read.",
       responseJudge: {
         minimumScore: 0.75,

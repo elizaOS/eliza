@@ -35,6 +35,7 @@ import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import { ConnectorAccountPrivacySelector } from "./ConnectorAccountPrivacySelector";
 import { ConnectorAccountPurposeSelector } from "./ConnectorAccountPurposeSelector";
+import { GoogleProductBadgeList } from "./GoogleProductBadges";
 
 export interface ConnectorAccountCardProps {
   account: ConnectorAccountRecord;
@@ -339,15 +340,11 @@ export function ConnectorAccountCard({
       {showProductBadges &&
       account.selectedProducts &&
       account.selectedProducts.length > 0 ? (
-        <ul className="flex flex-wrap gap-1.5" aria-label="Connected products">
-          {account.selectedProducts.map((product) => (
-            <li key={product}>
-              <Badge variant="outline" className="text-[10px] capitalize">
-                {product === "universalSearch" ? "Workspace search" : product}
-              </Badge>
-            </li>
-          ))}
-        </ul>
+        <GoogleProductBadgeList
+          products={account.selectedProducts}
+          ariaLabel="Connected products"
+          variant="outline"
+        />
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">

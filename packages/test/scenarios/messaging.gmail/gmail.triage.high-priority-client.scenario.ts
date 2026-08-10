@@ -1,38 +1,22 @@
 /** Scenario fixture for gmail triage high priority client; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { gmailScenario } from "./_factory.ts";
 import {
   GMAIL_MCP_WRITE_TOOLS,
   GMAIL_SCENARIO_MESSAGES,
   gmailSearchFixture,
 } from "./_gmail-mcp-fixtures.ts";
 
-export default scenario({
-  lane: "live-only",
+export default gmailScenario({
   id: "gmail.triage.high-priority-client",
   title: "Triage flags high-priority client email",
-  domain: "messaging.gmail",
   tags: ["messaging", "gmail", "triage", "parameter-extraction"],
-  isolation: "per-scenario",
-  requires: {
-    credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
-  rooms: [
-    {
-      id: "main",
-      source: "dashboard",
-      channelType: "DM",
-      title: "Gmail Triage High-Priority",
-    },
-  ],
-  seed: [gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.sarah])],
+  roomTitle: "Gmail Triage High-Priority",
+  seed: [gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.sarah], { repeat: true })],
   turns: [
     {
-      kind: "message",
       name: "triage high priority",
-      room: "main",
       text: "Triage my inbox — anything I need to respond to right now?",
       responseJudge: {
         minimumScore: 0.7,

@@ -1,37 +1,23 @@
 /** Scenario fixture for gmail bulk archive newsletters; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { gmailScenario } from "./_factory.ts";
 import {
   GMAIL_SCENARIO_MESSAGES,
-  gmailFixture,
+  gmailMcpFixture,
   gmailSearchFixture,
   gmailThreadFixture,
 } from "./_gmail-mcp-fixtures.ts";
 
-export default scenario({
-  lane: "live-only",
+export default gmailScenario({
   id: "gmail.bulk.archive-newsletters",
   title: "Bulk archive selected Gmail newsletter",
-  domain: "messaging.gmail",
   tags: ["messaging", "gmail", "bulk", "archive", "inbox-zero"],
-  isolation: "per-scenario",
-  requires: {
-    credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
-  rooms: [
-    {
-      id: "main",
-      source: "dashboard",
-      channelType: "DM",
-      title: "Gmail Archive Newsletter",
-    },
-  ],
+  roomTitle: "Gmail Archive Newsletter",
   seed: [
-    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.newsletter]),
+    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.newsletter], { repeat: true }),
     gmailThreadFixture([GMAIL_SCENARIO_MESSAGES.newsletter]),
-    gmailFixture({
+    gmailMcpFixture({
       tool: "unlabel_thread",
       arguments: { threadId: "thr-news", labelIds: ["INBOX"] },
       structuredContent: {
@@ -42,9 +28,7 @@ export default scenario({
   ],
   turns: [
     {
-      kind: "message",
       name: "locate newsletter",
-      room: "main",
       text: "Find the Weekly Digest newsletter in Gmail and verify it is the automated digest, not a person or invoice.",
       responseJudge: {
         minimumScore: 0.7,
@@ -53,9 +37,7 @@ export default scenario({
       },
     },
     {
-      kind: "message",
       name: "archive newsletter",
-      room: "main",
       text: "Archive that newsletter now, and only that newsletter.",
       responseJudge: {
         minimumScore: 0.75,

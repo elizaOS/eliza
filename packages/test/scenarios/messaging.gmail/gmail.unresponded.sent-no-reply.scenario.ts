@@ -1,7 +1,7 @@
 /** Scenario fixture for gmail unresponded sent no reply; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { gmailScenario } from "./_factory.ts";
 import {
   GMAIL_MCP_WRITE_TOOLS,
   GMAIL_SCENARIO_MESSAGES,
@@ -9,30 +9,19 @@ import {
   gmailThreadFixture,
 } from "./_gmail-mcp-fixtures.ts";
 
-export default scenario({
-  lane: "live-only",
+export default gmailScenario({
   id: "gmail.unresponded.sent-no-reply",
   title: "Find sent Gmail threads with no later human reply",
-  domain: "messaging.gmail",
   tags: ["messaging", "gmail", "unresponded", "followup", "read-only"],
-  isolation: "per-scenario",
-  requires: {
-    credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
-  rooms: [
-    {
-      id: "main",
-      source: "dashboard",
-      channelType: "DM",
-      title: "Gmail Unresponded Threads",
-    },
-  ],
+  roomTitle: "Gmail Unresponded Threads",
   seed: [
-    gmailSearchFixture([
-      GMAIL_SCENARIO_MESSAGES.unrespondedInbound,
-      GMAIL_SCENARIO_MESSAGES.unrespondedSent,
-    ]),
+    gmailSearchFixture(
+      [
+        GMAIL_SCENARIO_MESSAGES.unrespondedInbound,
+        GMAIL_SCENARIO_MESSAGES.unrespondedSent,
+      ],
+      { repeat: true },
+    ),
     gmailThreadFixture([
       GMAIL_SCENARIO_MESSAGES.unrespondedInbound,
       GMAIL_SCENARIO_MESSAGES.unrespondedSent,
@@ -40,9 +29,7 @@ export default scenario({
   ],
   turns: [
     {
-      kind: "message",
       name: "find unresponded sent threads",
-      room: "main",
       text: "Who have I emailed from Gmail and not heard back from in the last two weeks? Do not draft or send anything yet.",
       responseJudge: {
         minimumScore: 0.75,

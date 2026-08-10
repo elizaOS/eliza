@@ -1,12 +1,17 @@
 /**
- * Product-facing catalog for personal Google Workspace MCP access. It maps a
- * user's product selection to the capability IDs used by the local connector
- * and the least-privilege OAuth scopes used by the Cloud connection flow.
+ * Product-facing catalog for personal Google Workspace MCP access. Product
+ * ids, labels, capabilities, and least-privilege OAuth request scopes derive
+ * from the shared Google Workspace MCP contract so this catalog cannot drift
+ * from it; only the user-facing product descriptions are UI-owned.
  */
 
-import type {
-  GoogleWorkspaceMcpCapability,
-  GoogleWorkspaceMcpProduct,
+import {
+  GOOGLE_WORKSPACE_MCP_CAPABILITY_REQUEST_SCOPES,
+  GOOGLE_WORKSPACE_MCP_PRODUCT_LABELS,
+  GOOGLE_WORKSPACE_MCP_PRODUCTS,
+  type GoogleWorkspaceMcpCapability,
+  type GoogleWorkspaceMcpProduct,
+  googleMcpProductCapabilities,
 } from "@elizaos/shared/contracts";
 
 export interface PersonalGoogleMcpProductOption {
@@ -22,105 +27,38 @@ const IDENTITY_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.profile",
 ] as const;
 
+const PRODUCT_DESCRIPTIONS: Record<GoogleWorkspaceMcpProduct, string> = {
+  gmail:
+    "Read and organize mail, and create drafts. Email sending is not available.",
+  calendar:
+    "Read calendar events. Writes stay unavailable until Google MCP exposes atomic version checks.",
+  drive: "Search and read files, and create or copy files.",
+  docs: "Read and update Google Docs.",
+  sheets: "Read and update Google Sheets.",
+  slides: "Read and update Google Slides presentations.",
+  chat: "Read personal Chat conversations and send Chat messages.",
+  people: "Search contacts and directory profiles.",
+  universalSearch: "Search across the connected Workspace products.",
+};
+
 export const PERSONAL_GOOGLE_MCP_PRODUCTS: readonly PersonalGoogleMcpProductOption[] =
-  [
-    {
-      id: "gmail",
-      label: "Gmail",
-      description:
-        "Read and organize mail, and create drafts. Email sending is not available.",
-      capabilities: ["gmail.read", "gmail.draft", "gmail.manage"],
+  GOOGLE_WORKSPACE_MCP_PRODUCTS.map((id) => {
+    const capabilities = googleMcpProductCapabilities(id);
+    return {
+      id,
+      label: GOOGLE_WORKSPACE_MCP_PRODUCT_LABELS[id],
+      description: PRODUCT_DESCRIPTIONS[id],
+      capabilities,
       oauthScopes: [
-        "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/gmail.compose",
-        "https://www.googleapis.com/auth/gmail.modify",
+        ...new Set(
+          capabilities.flatMap(
+            (capability) =>
+              GOOGLE_WORKSPACE_MCP_CAPABILITY_REQUEST_SCOPES[capability],
+          ),
+        ),
       ],
-    },
-    {
-      id: "calendar",
-      label: "Calendar",
-      description:
-        "Read calendar events. Writes stay unavailable until Google MCP exposes atomic version checks.",
-      capabilities: ["calendar.read"],
-      oauthScopes: ["https://www.googleapis.com/auth/calendar.readonly"],
-    },
-    {
-      id: "drive",
-      label: "Drive",
-      description: "Search and read files, and create or copy files.",
-      capabilities: ["drive.read", "drive.write"],
-      oauthScopes: [
-        "https://www.googleapis.com/auth/drive.readonly",
-        "https://www.googleapis.com/auth/drive.file",
-      ],
-    },
-    {
-      id: "docs",
-      label: "Docs",
-      description: "Read and update Google Docs.",
-      capabilities: ["docs.read", "docs.write"],
-      oauthScopes: [
-        "https://www.googleapis.com/auth/documents.readonly",
-        "https://www.googleapis.com/auth/documents",
-      ],
-    },
-    {
-      id: "sheets",
-      label: "Sheets",
-      description: "Read and update Google Sheets.",
-      capabilities: ["sheets.read", "sheets.write"],
-      oauthScopes: [
-        "https://www.googleapis.com/auth/spreadsheets.readonly",
-        "https://www.googleapis.com/auth/spreadsheets",
-      ],
-    },
-    {
-      id: "slides",
-      label: "Slides",
-      description: "Read and update Google Slides presentations.",
-      capabilities: ["slides.read", "slides.write"],
-      oauthScopes: [
-        "https://www.googleapis.com/auth/presentations.readonly",
-        "https://www.googleapis.com/auth/presentations",
-      ],
-    },
-    {
-      id: "chat",
-      label: "Google Chat",
-      description: "Read personal Chat conversations and send Chat messages.",
-      capabilities: ["chat.read", "chat.send"],
-      oauthScopes: [
-        "https://www.googleapis.com/auth/chat.messages.readonly",
-        "https://www.googleapis.com/auth/chat.messages.create",
-        "https://www.googleapis.com/auth/chat.spaces.readonly",
-        "https://www.googleapis.com/auth/chat.memberships.readonly",
-        "https://www.googleapis.com/auth/chat.users.readstate.readonly",
-      ],
-    },
-    {
-      id: "people",
-      label: "People",
-      description: "Search contacts and directory profiles.",
-      capabilities: ["people.read"],
-      oauthScopes: [
-        "https://www.googleapis.com/auth/contacts.readonly",
-        "https://www.googleapis.com/auth/directory.readonly",
-        "https://www.googleapis.com/auth/userinfo.profile",
-      ],
-    },
-    {
-      id: "universalSearch",
-      label: "Workspace search",
-      description: "Search across the connected Workspace products.",
-      capabilities: ["workspace.search"],
-      oauthScopes: [
-        "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/calendar.readonly",
-        "https://www.googleapis.com/auth/drive.readonly",
-        "https://www.googleapis.com/auth/chat.messages.readonly",
-      ],
-    },
-  ] as const;
+    };
+  });
 
 export const DEFAULT_PERSONAL_GOOGLE_MCP_PRODUCTS: readonly GoogleWorkspaceMcpProduct[] =
   ["gmail", "calendar"];

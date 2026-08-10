@@ -1,46 +1,33 @@
 /** Scenario fixture for gmail recommend inbox zero plan; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { gmailScenario } from "./_factory.ts";
 import {
   GMAIL_MCP_WRITE_TOOLS,
   GMAIL_SCENARIO_MESSAGES,
   gmailSearchFixture,
 } from "./_gmail-mcp-fixtures.ts";
 
-export default scenario({
-  lane: "live-only",
+export default gmailScenario({
   id: "gmail.recommend.inbox-zero-plan",
   title: "Recommend Gmail inbox-zero actions without writing",
-  domain: "messaging.gmail",
   tags: ["messaging", "gmail", "recommendations", "inbox-zero", "read-only"],
-  isolation: "per-scenario",
-  requires: {
-    credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
-  rooms: [
-    {
-      id: "main",
-      source: "dashboard",
-      channelType: "DM",
-      title: "Gmail Inbox-Zero Recommendations",
-    },
-  ],
+  roomTitle: "Gmail Inbox-Zero Recommendations",
   seed: [
-    gmailSearchFixture([
-      GMAIL_SCENARIO_MESSAGES.finance,
-      GMAIL_SCENARIO_MESSAGES.sarah,
-      GMAIL_SCENARIO_MESSAGES.julia,
-      GMAIL_SCENARIO_MESSAGES.newsletter,
-      GMAIL_SCENARIO_MESSAGES.spam,
-    ]),
+    gmailSearchFixture(
+      [
+        GMAIL_SCENARIO_MESSAGES.finance,
+        GMAIL_SCENARIO_MESSAGES.sarah,
+        GMAIL_SCENARIO_MESSAGES.julia,
+        GMAIL_SCENARIO_MESSAGES.newsletter,
+        GMAIL_SCENARIO_MESSAGES.spam,
+      ],
+      { repeat: true },
+    ),
   ],
   turns: [
     {
-      kind: "message",
       name: "recommend inbox-zero actions",
-      room: "main",
       text: "Review my Gmail inbox and recommend what I should reply to, archive, mark read, or flag as spam. Do not change anything yet.",
       responseJudge: {
         minimumScore: 0.75,

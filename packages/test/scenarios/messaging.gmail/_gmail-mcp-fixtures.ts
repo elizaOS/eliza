@@ -1,23 +1,21 @@
 /**
- * Supplies deterministic Gmail data for cross-cutting scenarios at the
- * official MCP tool boundary. These records contain no transport, OAuth, or
- * REST assumptions and intentionally expose no send, spam, trash, delete, or
- * batch-mutation operation.
+ * Message dataset for the messaging.gmail corpus over the shared official
+ * Gmail MCP fixture builders from `@elizaos/scenario-runner/gmail-mcp-fixtures`.
+ * Only this suite's deterministic message records live here; the curated tool
+ * union, write-tool list, and seed-step builders are re-exported from the
+ * shared module so the corpus cannot drift from the contract catalog.
  */
 
-import type { ScenarioSeedStep } from "@elizaos/scenario-runner/schema";
+import type { GmailMcpMessage } from "@elizaos/scenario-runner/gmail-mcp-fixtures";
 
-export type GmailScenarioMessage = {
-  id: string;
-  threadId: string;
-  subject: string;
-  sender: string;
-  toRecipients: string[];
-  snippet: string;
-  date: string;
-  labelIds: string[];
-  plaintextBody: string;
-};
+export {
+  GMAIL_MCP_WRITE_TOOLS,
+  type GmailMcpMessage,
+  gmailCreateDraftFixture,
+  gmailMcpFixture,
+  gmailSearchFixture,
+  gmailThreadFixture,
+} from "@elizaos/scenario-runner/gmail-mcp-fixtures";
 
 export const GMAIL_SCENARIO_MESSAGES = {
   finance: {
@@ -104,90 +102,4 @@ export const GMAIL_SCENARIO_MESSAGES = {
     plaintextBody:
       "Following up on the signed packet. Can you confirm receipt?",
   },
-} satisfies Record<string, GmailScenarioMessage>;
-
-type CuratedGmailTool =
-  | "create_draft"
-  | "list_drafts"
-  | "get_thread"
-  | "get_message"
-  | "search_threads"
-  | "label_thread"
-  | "unlabel_thread"
-  | "list_labels"
-  | "label_message"
-  | "unlabel_message";
-
-export function gmailFixture(args: {
-  tool: CuratedGmailTool;
-  arguments?: Record<string, unknown>;
-  structuredContent: Record<string, unknown>;
-  repeat?: boolean;
-}): ScenarioSeedStep {
-  return {
-    type: "mcpFixture",
-    provider: "google",
-    resource: "gmail",
-    tool: args.tool,
-    ...(args.arguments ? { arguments: args.arguments } : {}),
-    result: { structuredContent: args.structuredContent },
-    ...(args.repeat ? { repeat: true } : {}),
-  };
-}
-
-export function gmailSearchFixture(
-  messages: GmailScenarioMessage[],
-  query?: string,
-): ScenarioSeedStep {
-  const threads = new Map<
-    string,
-    { id: string; messages: GmailScenarioMessage[] }
-  >();
-  for (const message of messages) {
-    const thread = threads.get(message.threadId) ?? {
-      id: message.threadId,
-      messages: [],
-    };
-    thread.messages.push(message);
-    threads.set(message.threadId, thread);
-  }
-  return gmailFixture({
-    tool: "search_threads",
-    ...(query ? { arguments: { query } } : {}),
-    structuredContent: { threads: [...threads.values()] },
-    repeat: true,
-  });
-}
-
-export function gmailThreadFixture(
-  messages: GmailScenarioMessage[],
-): ScenarioSeedStep {
-  const threadId = messages[0]?.threadId;
-  if (!threadId || messages.some((message) => message.threadId !== threadId)) {
-    throw new Error("Gmail thread fixtures require one non-empty thread");
-  }
-  return gmailFixture({
-    tool: "get_thread",
-    arguments: { threadId },
-    structuredContent: { thread: { id: threadId, messages } },
-    repeat: true,
-  });
-}
-
-export function gmailDraftFixture(
-  threadId: string,
-  draftId: string,
-): ScenarioSeedStep {
-  return gmailFixture({
-    tool: "create_draft",
-    structuredContent: { draft: { id: draftId, threadId } },
-  });
-}
-
-export const GMAIL_MCP_WRITE_TOOLS: string[] = [
-  "create_draft",
-  "label_thread",
-  "unlabel_thread",
-  "label_message",
-  "unlabel_message",
-];
+} satisfies Record<string, GmailMcpMessage>;

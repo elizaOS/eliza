@@ -1,49 +1,39 @@
 /** Scenario fixture for gmail draft followup 14 days; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { gmailScenario } from "./_factory.ts";
 import {
   GMAIL_SCENARIO_MESSAGES,
-  gmailDraftFixture,
+  gmailCreateDraftFixture,
   gmailSearchFixture,
   gmailThreadFixture,
 } from "./_gmail-mcp-fixtures.ts";
 
-export default scenario({
-  lane: "live-only",
+export default gmailScenario({
   id: "gmail.draft.followup-14-days",
   title: "Identify 14-day-old email without a reply for follow-up",
-  domain: "messaging.gmail",
   tags: ["messaging", "gmail", "followup", "parameter-extraction"],
-  isolation: "per-scenario",
-  requires: {
-    credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
-  rooms: [
-    {
-      id: "main",
-      source: "dashboard",
-      channelType: "DM",
-      title: "Gmail Follow-up Tracker",
-    },
-  ],
+  roomTitle: "Gmail Follow-up Tracker",
   seed: [
-    gmailSearchFixture([
-      GMAIL_SCENARIO_MESSAGES.unrespondedInbound,
-      GMAIL_SCENARIO_MESSAGES.unrespondedSent,
-    ]),
+    gmailSearchFixture(
+      [
+        GMAIL_SCENARIO_MESSAGES.unrespondedInbound,
+        GMAIL_SCENARIO_MESSAGES.unrespondedSent,
+      ],
+      { repeat: true },
+    ),
     gmailThreadFixture([
       GMAIL_SCENARIO_MESSAGES.unrespondedInbound,
       GMAIL_SCENARIO_MESSAGES.unrespondedSent,
     ]),
-    gmailDraftFixture("thr-unresponded", "draft-followup"),
+    gmailCreateDraftFixture({
+      threadId: "thr-unresponded",
+      draftId: "draft-followup",
+    }),
   ],
   turns: [
     {
-      kind: "message",
       name: "find followups",
-      room: "main",
       text: "Who haven't I followed up with?",
       responseJudge: {
         minimumScore: 0.7,
@@ -52,9 +42,7 @@ export default scenario({
       },
     },
     {
-      kind: "message",
       name: "draft followup",
-      room: "main",
       text: "Draft a short follow-up to that selected stale Gmail thread, but do not send it.",
       responseJudge: {
         minimumScore: 0.72,

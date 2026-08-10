@@ -7,10 +7,12 @@
 "use client";
 
 import type { GoogleWorkspaceMcpProduct } from "@elizaos/shared/contracts";
+import type { LucideIcon } from "lucide-react";
 import { ExternalLink, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { GoogleMcpProductSelector } from "../../../components/connectors/GoogleMcpProductSelector";
+import { GoogleProductBadgeList } from "../../../components/connectors/GoogleProductBadges";
 import {
   DEFAULT_PERSONAL_GOOGLE_MCP_PRODUCTS,
   oauthScopesForPersonalGoogleProducts,
@@ -26,23 +28,18 @@ import {
   revokeAgentConnectorBinding,
 } from "../../connectors/agent-connector-bindings";
 import {
+  errorBodyMessage,
   type OAuthConnection,
   useOAuthConnections,
 } from "../../connectors/oauth-connection";
-import { ApiError } from "../../lib/api-client";
 import { useT } from "../lib/i18n";
 
-function errorMessage(error: unknown, fallback: string): string {
-  if (
-    error instanceof ApiError &&
-    error.body &&
-    typeof error.body === "object"
-  ) {
-    const body = error.body as { error?: unknown; message?: unknown };
-    if (typeof body.message === "string" && body.message) return body.message;
-    if (typeof body.error === "string" && body.error) return body.error;
-  }
-  return error instanceof Error && error.message ? error.message : fallback;
+function BusyIcon({ busy, icon: Icon }: { busy: boolean; icon: LucideIcon }) {
+  return busy ? (
+    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  ) : (
+    <Icon className="mr-2 h-4 w-4" />
+  );
 }
 
 function connectionLabel(connection: OAuthConnection): string {
@@ -87,7 +84,7 @@ export function ElizaAgentConnectorsSection({ agentId }: { agentId: string }) {
       } catch (error) {
         if (signal?.aborted) return;
         setBindingsError(
-          errorMessage(error, "Failed to load connector access."),
+          errorBodyMessage(error, "Failed to load connector access."),
         );
       } finally {
         if (!signal?.aborted) setBindingsLoading(false);
@@ -142,7 +139,7 @@ export function ElizaAgentConnectorsSection({ agentId }: { agentId: string }) {
       );
       await refreshBindings();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to grant Google access."));
+      toast.error(errorBodyMessage(error, "Failed to grant Google access."));
     } finally {
       setSavingConnectionId(null);
     }
@@ -172,7 +169,7 @@ export function ElizaAgentConnectorsSection({ agentId }: { agentId: string }) {
       toast.success("Google access removed from this agent");
       await refreshBindings();
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to remove Google access."));
+      toast.error(errorBodyMessage(error, "Failed to remove Google access."));
     } finally {
       setSavingConnectionId(null);
     }
@@ -254,23 +251,11 @@ export function ElizaAgentConnectorsSection({ agentId }: { agentId: string }) {
                     </Badge>
                   </div>
                   {binding ? (
-                    <ul
-                      className="flex flex-wrap gap-1.5"
-                      aria-label="Allowed Google products"
-                    >
-                      {binding.selectedProducts.map((product) => (
-                        <li key={product}>
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px] capitalize"
-                          >
-                            {product === "universalSearch"
-                              ? "Workspace search"
-                              : product}
-                          </Badge>
-                        </li>
-                      ))}
-                    </ul>
+                    <GoogleProductBadgeList
+                      products={binding.selectedProducts}
+                      ariaLabel="Allowed Google products"
+                      variant="secondary"
+                    />
                   ) : (
                     <p className="text-xs text-muted">
                       Existing Google connection found. Grant or rebind it to
@@ -278,21 +263,19 @@ export function ElizaAgentConnectorsSection({ agentId }: { agentId: string }) {
                     </p>
                   )}
                 </div>
-                {binding ? (
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={busy || selectedProducts.length === 0}
-                      onClick={() => void bindExisting(connection, binding)}
-                    >
-                      {busy ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <ShieldCheck className="mr-2 h-4 w-4" />
-                      )}
-                      Apply selected products
-                    </Button>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={busy || selectedProducts.length === 0}
+                    onClick={() => void bindExisting(connection, binding)}
+                  >
+                    <BusyIcon busy={busy} icon={ShieldCheck} />
+                    {binding
+                      ? "Apply selected products"
+                      : "Grant or rebind selected access"}
+                  </Button>
+                  {binding ? (
                     <Button
                       type="button"
                       variant="outline"
@@ -304,23 +287,8 @@ export function ElizaAgentConnectorsSection({ agentId }: { agentId: string }) {
                       <Trash2 className="mr-2 h-4 w-4" />
                       Remove agent access
                     </Button>
-                  </div>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={busy || selectedProducts.length === 0}
-                    onClick={() => void bindExisting(connection)}
-                    className="shrink-0"
-                  >
-                    {busy ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <ShieldCheck className="mr-2 h-4 w-4" />
-                    )}
-                    Grant or rebind selected access
-                  </Button>
-                )}
+                  ) : null}
+                </div>
               </div>
             );
           })}
@@ -348,11 +316,10 @@ export function ElizaAgentConnectorsSection({ agentId }: { agentId: string }) {
                 onClick={() => setRevokeTarget(binding)}
                 className="shrink-0 text-destructive"
               >
-                {savingConnectionId === binding.id ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="mr-2 h-4 w-4" />
-                )}
+                <BusyIcon
+                  busy={savingConnectionId === binding.id}
+                  icon={Trash2}
+                />
                 Remove stale access
               </Button>
             </div>
@@ -364,11 +331,7 @@ export function ElizaAgentConnectorsSection({ agentId }: { agentId: string }) {
             disabled={isConnecting || selectedProducts.length === 0}
             className="w-full"
           >
-            {isConnecting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <ExternalLink className="mr-2 h-4 w-4" />
-            )}
+            <BusyIcon busy={isConnecting} icon={ExternalLink} />
             {activeConnections.length > 0
               ? "Connect another Google account and grant access"
               : "Connect Google account and grant access"}

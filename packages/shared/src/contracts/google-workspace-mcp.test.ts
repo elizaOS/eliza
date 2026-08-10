@@ -4,11 +4,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  canonicalGoogleMcpProduct,
   GOOGLE_WORKSPACE_MCP_CAPABILITY_REQUEST_SCOPES,
   GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES,
   GOOGLE_WORKSPACE_MCP_ENDPOINTS,
   GOOGLE_WORKSPACE_MCP_RESOURCES,
-  canonicalGoogleMcpProduct,
   googleMcpToolScopes,
 } from "./google-workspace-mcp.js";
 

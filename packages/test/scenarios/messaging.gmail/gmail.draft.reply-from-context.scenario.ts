@@ -1,43 +1,30 @@
 /** Scenario fixture for gmail draft reply from context; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { gmailScenario } from "./_factory.ts";
 import {
   GMAIL_SCENARIO_MESSAGES,
-  gmailDraftFixture,
+  gmailCreateDraftFixture,
   gmailSearchFixture,
   gmailThreadFixture,
 } from "./_gmail-mcp-fixtures.ts";
 
-export default scenario({
-  lane: "live-only",
+export default gmailScenario({
   id: "gmail.draft.reply-from-context",
   title: "Draft Gmail reply using recent email context",
-  domain: "messaging.gmail",
   tags: ["messaging", "gmail", "draft", "happy-path"],
-  isolation: "per-scenario",
-  requires: {
-    credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
-  rooms: [
-    {
-      id: "main",
-      source: "dashboard",
-      channelType: "DM",
-      title: "Gmail Draft Reply",
-    },
-  ],
+  roomTitle: "Gmail Draft Reply",
   seed: [
-    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.sarah]),
+    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.sarah], { repeat: true }),
     gmailThreadFixture([GMAIL_SCENARIO_MESSAGES.sarah]),
-    gmailDraftFixture("thr-sarah", "draft-sarah-friday"),
+    gmailCreateDraftFixture({
+      threadId: "thr-sarah",
+      draftId: "draft-sarah-friday",
+    }),
   ],
   turns: [
     {
-      kind: "message",
       name: "draft reply to sarah",
-      room: "main",
       text: "Draft a reply to Sarah's latest email saying I can review it Friday afternoon, but don't send it yet.",
       responseJudge: {
         minimumScore: 0.7,
