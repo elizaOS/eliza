@@ -59,7 +59,7 @@ describe("connector-aware Cloud MCP config", () => {
             connectorBindingId: "binding-1",
             connectorAgentId: "agent-1",
             connectorOrganizationId: "org-1",
-            allowedTools: ["get_thread", "search_threads"],
+            allowedTools: ["get_thread", "get_message", "search_threads"],
           },
           "google-calendar-binding-1": {
             type: "streamable-http",
