@@ -16,8 +16,7 @@ export async function runIosBridgeCli(argv?: string[]): Promise<void> {
 	await runIosBridgeCli(argv);
 }
 
-import type { Plugin } from "@elizaos/core";
-import { CapacitorMobileDeviceBridgeService } from "./mobile-device-bridge-bootstrap.js";
+import { mobileDeviceBridgePlugin } from "./mobile-device-bridge-bootstrap.js";
 
 export {
 	attachMobileDeviceBridgeToServer,
@@ -27,19 +26,9 @@ export {
 	loadMobileDeviceBridgeModel,
 	type MobileDeviceBridgeStatus,
 	mobileDeviceBridge,
+	mobileDeviceBridgePlugin,
 	unloadMobileDeviceBridgeModel,
 } from "./mobile-device-bridge-bootstrap.js";
-
-/**
- * Mobile-host plugin: registers the device bridge as a runtime service so
- * consumers resolve it via `runtime.getService(ServiceType.MOBILE_DEVICE_BRIDGE)`.
- */
-export const mobileDeviceBridgePlugin: Plugin = {
-	name: "capacitor-bridge",
-	description:
-		"Registers the mobile device inference bridge as a runtime service.",
-	services: [CapacitorMobileDeviceBridgeService],
-};
 
 export default mobileDeviceBridgePlugin;
 export {
