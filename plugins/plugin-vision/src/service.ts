@@ -711,6 +711,10 @@ export class VisionService extends Service {
         logger.info("[VisionService] Batch audio capture initialized");
       }
     } catch (error) {
+      // error-policy:J4 user-facing degrade — audio is optional; reset the
+      // fields so capability checks honestly report audio as unavailable.
+      this.audioCapture = null;
+      this.streamingAudioCapture = null;
       logger.error(
         { error },
         "[VisionService] Failed to initialize audio capture:",
@@ -1040,10 +1044,12 @@ export class VisionService extends Service {
         // Reuse last detection results if not updating
         detectedObjects = this.lastSceneDescription.objects;
         people = this.lastSceneDescription.people;
+        objectDetectionSource = this.lastSceneDescription.objectDetectionSource;
       } else {
         // Fall back to motion-based detection
         detectedObjects = await this.detectMotionObjects(frame);
         people = await this.detectPeopleFromMotion(frame, detectedObjects);
+        objectDetectionSource = "motion";
       }
 
       // Face recognition and entity tracking
@@ -2049,7 +2055,7 @@ export class VisionService extends Service {
   public getCapabilities(): VisionCapabilities {
     const caps: VisionCapabilities = {
       objectDetection: this.hasObjectDetection,
-      ocr: this.visionConfig.ocrEnabled ?? false,
+      ocr: this.visionConfig.ocrEnabled ? this.ocrService.isInitialized() : false,
       faceRecognition: this.hasFaceRecognition,
       screenCapture: this.screenProcessingInterval !== null,
       camera: this.camera !== null,
@@ -2084,8 +2090,7 @@ export class VisionService extends Service {
     }
 
     if (!caps.camera) {
-      reasons.camera =
-        this.camera === null ? "No camera connected" : "Camera not active";
+      reasons.camera = "No camera connected";
     }
 
     if (!caps.audio) {
@@ -2131,6 +2136,7 @@ export class VisionService extends Service {
         this.hasFaceRecognition = true;
         this.faceRecognitionUnavailableReason = null;
       } catch (error) {
+        // error-policy:J2 wrap+rethrow with unavailable reason for capability surface
         this.faceRecognitionUnavailableReason =
           error instanceof Error ? error.message : String(error);
         throw error;

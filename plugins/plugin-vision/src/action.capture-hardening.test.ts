@@ -41,6 +41,14 @@ function makeRuntime(captureImage: () => Promise<Buffer | null>) {
     isActive: () => true,
     captureImage,
     getCameraInfo: () => ({ id: "cam-1", name: "Camera", connected: true }),
+    getCapabilities: () => ({
+      objectDetection: false,
+      ocr: false,
+      faceRecognition: false,
+      screenCapture: false,
+      camera: true,
+      audio: false,
+    }),
   };
   const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
     agentId: "agent",

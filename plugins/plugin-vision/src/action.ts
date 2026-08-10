@@ -252,9 +252,14 @@ async function runDescribe(
   const visionService = runtime.getService<VisionService>("VISION");
 
   if (!visionService?.isActive()) {
-    const thought =
-      "Vision service is not available or no camera is connected.";
-    const text = "I cannot see anything right now. No camera is available.";
+    const caps = visionService?.getCapabilities();
+    const hasAnyVisionInput = caps?.camera || caps?.screenCapture;
+    const thought = hasAnyVisionInput
+      ? "Vision service is not fully initialized yet."
+      : "Vision service is not available — no camera or screen capture is connected.";
+    const text = hasAnyVisionInput
+      ? "I'm still initializing my vision. Please try again in a moment."
+      : "I cannot see anything right now. No vision input is available.";
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
       await callback({ thought, text, actions: ["VISION"] });
@@ -451,10 +456,16 @@ async function runCapture(
 ): Promise<ActionResult> {
   const visionService = runtime.getService<VisionService>("VISION");
 
-  if (!visionService?.isActive()) {
-    const thought =
-      "Vision service is not available or no camera is connected.";
-    const text = "I cannot capture an image right now. No camera is available.";
+  // Capture requires a camera. Check capability honestly — SCREEN mode with
+  // no camera should fail closed here, not pass isActive() and fail later.
+  const caps = visionService?.getCapabilities();
+  if (!visionService?.isActive() || !caps?.camera) {
+    const thought = caps?.camera
+      ? "Vision service is not fully initialized yet."
+      : "No camera is connected.";
+    const text = caps?.camera
+      ? "I'm still initializing my vision. Please try again in a moment."
+      : "I cannot capture an image right now. No camera is available.";
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
       await callback({ thought, text, actions: ["VISION"] });

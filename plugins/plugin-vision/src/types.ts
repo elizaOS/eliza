@@ -273,7 +273,7 @@ export interface WorldState {
 /**
  * Honest capability readiness snapshot. Each field reports whether the real
  * backend is initialized — never true when the backend failed to load or is
- * absent. The provider and routes surface this so callers can distinguish
+ * absent. The provider surface this so callers can distinguish
  * "unavailable" from "ready but empty".
  */
 export interface VisionCapabilities {
@@ -295,8 +295,3 @@ export interface VisionCapabilities {
 
 /** Provenance of a detection result, so callers can tell YOLO apart from heuristics. */
 export type DetectionSource = "yolo" | "motion" | "vlm";
-
-export interface DetectedObjectWithSource extends DetectedObject {
-  /** Which backend produced this detection. */
-  source: DetectionSource;
-}
