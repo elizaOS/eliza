@@ -2,6 +2,7 @@
  * Verifies dedicated-agent proxy ownership, token isolation, runtime recovery,
  * and headers-phase timeout behavior with deterministic Worker fixtures.
  */
+
 import {
   afterAll,
   afterEach,
@@ -11,10 +12,12 @@ import {
   mock,
   test,
 } from "bun:test";
+import { runInNewContext } from "node:vm";
 import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
 import * as authActual from "@/lib/auth";
 import * as cloudBindingsActual from "@/lib/runtime/cloud-bindings";
 import * as billingGateActual from "@/lib/services/agent-billing-gate";
+import * as pairingTokenActual from "@/lib/services/pairing-token";
 import * as provisioningJobsActual from "@/lib/services/provisioning-jobs";
 import * as workerHealthActual from "@/lib/services/provisioning-worker-health";
 import * as loggerActual from "@/lib/utils/logger";
@@ -27,6 +30,21 @@ let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
   balance: 100,
 };
 let enqueueCalls = 0;
+type BrowserClaim =
+  | {
+      status: "claimed";
+      apiKey: string;
+      agentName: string | null;
+      pairingToken: { agentId: string };
+    }
+  | { status: "invalid" }
+  | { status: "sandbox-credential-unavailable" };
+let browserClaimResult: BrowserClaim = { status: "invalid" };
+let browserClaimError: Error | null = null;
+const browserClaimCalls: Array<{
+  token: string;
+  binding: { agentId: string; expectedOrigin: string };
+}> = [];
 
 mock.module("@/lib/runtime/cloud-bindings", () => ({
   ...cloudBindingsActual,
@@ -67,6 +85,19 @@ mock.module("@/lib/services/agent-billing-gate", () => ({
   ...billingGateActual,
   checkAgentCreditGate: async () => creditGateResult,
 }));
+mock.module("@/lib/services/pairing-token", () => ({
+  ...pairingTokenActual,
+  getPairingTokenService: () => ({
+    claimBrowserToken: async (
+      token: string,
+      binding: { agentId: string; expectedOrigin: string },
+    ) => {
+      browserClaimCalls.push({ token, binding });
+      if (browserClaimError) throw browserClaimError;
+      return browserClaimResult;
+    },
+  }),
+}));
 mock.module("@/lib/utils/logger", () => ({
   ...loggerActual,
   logger: {
@@ -94,6 +125,7 @@ afterAll(() => {
   mock.module("@/lib/auth", () => authActual);
   mock.module("@/db/repositories/agent-sandboxes", () => agentSandboxesActual);
   mock.module("@/lib/services/agent-billing-gate", () => billingGateActual);
+  mock.module("@/lib/services/pairing-token", () => pairingTokenActual);
   mock.module("@/lib/services/provisioning-jobs", () => provisioningJobsActual);
   mock.module(
     "@/lib/services/provisioning-worker-health",
@@ -109,7 +141,20 @@ const {
 } = await import("../src/dedicated-agent-proxy");
 
 const AGENT = "11111111-1111-1111-1111-111111111111";
-const ENV = { AGENT_ROUTER_ORIGIN_HOST: "cp.example.test" } as never;
+const PAIR_TOKEN = "A".repeat(43);
+let rateLimitResult = { success: true };
+let rateLimitError: Error | null = null;
+const rateLimitKeys: string[] = [];
+const ENV = {
+  AGENT_ROUTER_ORIGIN_HOST: "cp.example.test",
+  GLOBAL_RATE_LIMITER: {
+    limit: async ({ key }: { key: string }) => {
+      rateLimitKeys.push(key);
+      if (rateLimitError) throw rateLimitError;
+      return rateLimitResult;
+    },
+  },
+} as never;
 
 function makeRequest(cloudToken?: string, origin?: string): Request {
   const headers = new Headers();
@@ -139,6 +184,231 @@ beforeEach(() => {
   sandboxResult = null;
   creditGateResult = { allowed: true, balance: 100 };
   enqueueCalls = 0;
+  browserClaimResult = { status: "invalid" };
+  browserClaimError = null;
+  browserClaimCalls.length = 0;
+  rateLimitResult = { success: true };
+  rateLimitError = null;
+  rateLimitKeys.length = 0;
+});
+
+function executePairHandoff(html: string): {
+  localValues: Map<string, string>;
+  replaceCalls: string[];
+  sessionValues: Map<string, string>;
+  windowObject: Record<PropertyKey, unknown>;
+} {
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  if (!script)
+    throw new Error("Managed pairing handoff script was not rendered.");
+
+  const localValues = new Map<string, string>();
+  const sessionValues = new Map<string, string>();
+  const replaceCalls: string[] = [];
+  const storage = (values: Map<string, string>) => ({
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+  });
+  const windowObject: Record<PropertyKey, unknown> = {
+    localStorage: storage(localValues),
+    sessionStorage: storage(sessionValues),
+    location: { replace: (value: string) => replaceCalls.push(value) },
+  };
+  runInNewContext(script, {
+    window: windowObject,
+    document: { querySelector: () => ({ textContent: "" }) },
+    console: { error() {} },
+  });
+  return { localValues, replaceCalls, sessionValues, windowObject };
+}
+
+describe("dedicated-agent-proxy — edge-owned managed pairing", () => {
+  test("claims the production URL identity at the edge and installs only the scoped browser handoff", async () => {
+    const apiKey = `agent_a"</script><script>alert(1)</script>`;
+    browserClaimResult = {
+      status: "claimed",
+      apiKey,
+      agentName: "Nova",
+      pairingToken: { agentId: AGENT },
+    };
+    const request = new Request(
+      `https://${AGENT}.elizacloud.ai/pair?token=${PAIR_TOKEN}`,
+      { headers: { "cf-connecting-ip": "203.0.113.15" } },
+    );
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    expect(response.headers.get("content-security-policy")).toContain(
+      "frame-ancestors 'none'",
+    );
+    expect(response.headers.get("cross-origin-resource-policy")).toBe(
+      "same-origin",
+    );
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
+    expect(captured).toBeNull();
+    expect(rateLimitKeys).toEqual(["managed-pair:203.0.113.15"]);
+    expect(browserClaimCalls).toEqual([
+      {
+        token: PAIR_TOKEN,
+        binding: {
+          agentId: AGENT,
+          expectedOrigin: `https://${AGENT}.elizacloud.ai`,
+        },
+      },
+    ]);
+
+    const html = await response.text();
+    expect(html.match(/<\/script>/g)).toHaveLength(1);
+    const handoff = executePairHandoff(html);
+    const scopedKey = `eliza:cloud-pair:api-token:${AGENT}`;
+    expect(handoff.localValues.get(scopedKey)).toBe(apiKey);
+    expect(handoff.sessionValues.get(scopedKey)).toBe(apiKey);
+    expect(handoff.localValues.has("eliza:cloud-pair:api-token")).toBe(false);
+    expect(handoff.replaceCalls).toEqual(["/"]);
+    expect(
+      (
+        handoff.windowObject.__ELIZAOS_APP_BOOT_CONFIG__ as {
+          apiToken?: string;
+        }
+      ).apiToken,
+    ).toBe(apiKey);
+  });
+
+  test("binds staging claims to the staging agent origin and never proxies invalid claims", async () => {
+    browserClaimResult = { status: "invalid" };
+    const request = new Request(
+      `https://${AGENT}.staging.elizacloud.ai/pair?token=${PAIR_TOKEN}`,
+      { headers: { "cf-connecting-ip": "198.51.100.8" } },
+    );
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).toContain("Sign-in link expired");
+    expect(browserClaimCalls[0]?.binding).toEqual({
+      agentId: AGENT,
+      expectedOrigin: `https://${AGENT}.staging.elizacloud.ai`,
+    });
+    expect(captured).toBeNull();
+  });
+
+  test("rejects malformed tokens and non-GET requests before any claim or proxy", async () => {
+    const malformed = new Request(
+      `https://${AGENT}.elizacloud.ai/pair?token=short`,
+    );
+    const malformedResponse = await handleDedicatedAgentProxy(
+      malformed,
+      ENV,
+      urlOf(malformed),
+      AGENT,
+    );
+    expect(malformedResponse.status).toBe(400);
+
+    const post = new Request(
+      `https://${AGENT}.elizacloud.ai/pair?token=${PAIR_TOKEN}`,
+      { method: "POST" },
+    );
+    const postResponse = await handleDedicatedAgentProxy(
+      post,
+      ENV,
+      urlOf(post),
+      AGENT,
+    );
+    expect(postResponse.status).toBe(405);
+    expect(postResponse.headers.get("allow")).toBe("GET");
+
+    const options = new Request(
+      `https://${AGENT}.elizacloud.ai/pair?token=${PAIR_TOKEN}`,
+      { method: "OPTIONS", headers: { origin: "https://attacker.example" } },
+    );
+    const optionsResponse = await handleDedicatedAgentProxy(
+      options,
+      ENV,
+      urlOf(options),
+      AGENT,
+    );
+    expect(optionsResponse.status).toBe(405);
+    expect(
+      optionsResponse.headers.get("access-control-allow-origin"),
+    ).toBeNull();
+    expect(browserClaimCalls).toHaveLength(0);
+    expect(captured).toBeNull();
+  });
+
+  test("fails closed when the native rate limiter denies, throws, or is absent", async () => {
+    const request = new Request(
+      `https://${AGENT}.elizacloud.ai/pair?token=${PAIR_TOKEN}`,
+    );
+
+    rateLimitResult = { success: false };
+    const denied = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(denied.status).toBe(429);
+    expect(denied.headers.get("retry-after")).toBe("60");
+
+    rateLimitResult = { success: true };
+    rateLimitError = new Error("binding unavailable");
+    const failed = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(failed.status).toBe(503);
+
+    const missing = await handleDedicatedAgentProxy(
+      request,
+      { AGENT_ROUTER_ORIGIN_HOST: "cp.example.test" } as never,
+      urlOf(request),
+      AGENT,
+    );
+    expect(missing.status).toBe(503);
+    expect(browserClaimCalls).toHaveLength(0);
+    expect(captured).toBeNull();
+  });
+
+  test("surfaces credential and storage failures without forwarding the one-time token", async () => {
+    const request = new Request(
+      `https://${AGENT}.elizacloud.ai/pair?token=${PAIR_TOKEN}`,
+    );
+
+    browserClaimResult = { status: "sandbox-credential-unavailable" };
+    const missingCredential = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(missingCredential.status).toBe(503);
+
+    browserClaimError = new Error("database unavailable");
+    const storageFailure = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(storageFailure.status).toBe(500);
+    expect(captured).toBeNull();
+  });
 });
 
 describe("dedicated-agent-proxy — unified auth", () => {

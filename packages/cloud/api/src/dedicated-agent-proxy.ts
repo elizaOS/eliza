@@ -1,40 +1,21 @@
 /**
- * Unified cloud-token auth + proxy for DEDICATED (container) agents reached at
- * `https://<agentId>.elizacloud.ai/*`.
+ * Authentication and proxy boundary for dedicated-agent subdomains.
  *
- * A dedicated agent's container runs a full agent-server with its OWN auth: it
- * requires that agent's per-container `ELIZA_API_TOKEN` as a Bearer (the cloud
- * provisions that token; `ELIZA_DISABLE_AUTO_API_TOKEN=1`). The mobile/desktop
- * app, however, only holds the user's CLOUD session/API key. Forwarding the
- * cloud token verbatim → the container 401s → the agent's "sign in with your
- * password" screen.
- *
- * This unifies auth so a dedicated agent is reachable with the SAME cloud token
- * as a shared agent (zero dedicated-specific app code, since the app already
- * prefers `web_ui_url`): we validate the cloud token, confirm the caller's org
- * OWNS the agent, then swap the cloud token for the agent's `ELIZA_API_TOKEN`
- * before proxying over the tailnet.
- *
- * SECURITY — the token swap (which grants container access) happens ONLY after a
- * validated owner of a running dedicated agent. Every other path is proxied
- * UNCHANGED, so the container's own `ELIZA_API_TOKEN` auth stays the backstop
- * (an attacker never holds that per-agent secret):
- *   - no / invalid cloud token  → pass through (web UI assets, the pairing
- *     exchange, the agent's own token all keep working);
- *   - valid token but NOT the owner (or shared / not found) → pass through;
- *   - any unexpected error during validation → pass through (fail-closed: we
- *     never inject on an error path).
- * We only ever narrow access here, never widen it.
- *
- * Lazy-imported from `index.ts` only on a UUID-subdomain request, so the Worker
- * entrypoint stays thin (Cloudflare startup-CPU budget).
+ * Managed browser pairing terminates here and atomically binds the one-time
+ * token to the URL agent and origin. Ordinary requests swap a validated Cloud
+ * owner's credential for the container credential; every unauthenticated,
+ * non-owner, or failed-validation path reaches the container without an
+ * injected secret, leaving its own auth as the backstop. The module stays lazy
+ * so non-agent Worker requests do not pay its startup cost.
  */
 
+import { renderCloudPairHandoffHtml } from "@elizaos/shared/contracts";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
+import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { checkProvisioningWorkerHealth } from "@/lib/services/provisioning-worker-health";
 import { logger } from "@/lib/utils/logger";
@@ -50,6 +31,8 @@ const RETRY_AFTER_SECONDS = 5;
 const DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS = 30_000;
 const WORKFLOW_GENERATION_HEADERS_TIMEOUT_MS = 5 * 60_000;
 const WORKFLOW_RUN_HEADERS_TIMEOUT_MS = 10 * 60_000;
+const MANAGED_PAIR_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const MANAGED_PAIR_RATE_LIMIT_RETRY_SECONDS = 60;
 
 // Tests override every route's headers budget so the timeout paths complete in
 // milliseconds without weakening production's path-specific limits.
@@ -101,6 +84,189 @@ export const __dedicatedProxyTestHooks = {
 function resolveOriginHost(env: Bindings): string {
   const raw = env.AGENT_ROUTER_ORIGIN_HOST?.trim().toLowerCase();
   return raw && raw.length > 0 ? raw : DEFAULT_AGENT_ROUTER_ORIGIN_HOST;
+}
+
+function managedPairHeaders(extra?: HeadersInit): Headers {
+  const headers = new Headers(extra);
+  headers.set("cache-control", "no-store, no-cache, must-revalidate");
+  headers.set(
+    "content-security-policy",
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  );
+  headers.set("content-type", "text/html; charset=utf-8");
+  headers.set("cross-origin-resource-policy", "same-origin");
+  headers.set("referrer-policy", "no-referrer");
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("x-frame-options", "DENY");
+  return headers;
+}
+
+function escapeManagedPairHtml(value: string): string {
+  return value.replace(/[<>&]/g, (character) =>
+    character === "<" ? "&lt;" : character === ">" ? "&gt;" : "&amp;",
+  );
+}
+
+function managedPairDashboardUrl(url: URL): string {
+  return url.hostname.endsWith(".staging.elizacloud.ai")
+    ? "https://staging.elizacloud.ai/dashboard/agents"
+    : "https://elizacloud.ai/dashboard/agents";
+}
+
+function renderManagedPairError(
+  url: URL,
+  title: string,
+  message: string,
+): string {
+  const safeTitle = escapeManagedPairHtml(title);
+  const safeMessage = escapeManagedPairHtml(message);
+  const dashboardUrl = managedPairDashboardUrl(url);
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
+  <title>${safeTitle}</title>
+  <style>
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0a0a;color:#e5e5e5}
+    .card{max-width:28rem;padding:2rem;border-radius:.75rem;background:rgba(255,255,255,.04);text-align:center}
+    h1{font-size:1.1rem;margin:0 0 .75rem;font-weight:600}
+    p{margin:0 0 1.25rem;opacity:.8;font-size:.9rem;line-height:1.5}
+    a{color:#e5e5e5;text-decoration:none;font-size:.85rem;opacity:.7}
+    a:hover{opacity:1}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>${safeTitle}</h1>
+    <p>${safeMessage}</p>
+    <a href="${dashboardUrl}" rel="noopener">Back to Eliza Cloud</a>
+  </div>
+</body>
+</html>`;
+}
+
+function managedPairErrorResponse(
+  url: URL,
+  status: number,
+  title: string,
+  message: string,
+  extraHeaders?: HeadersInit,
+): Response {
+  return new Response(renderManagedPairError(url, title, message), {
+    status,
+    headers: managedPairHeaders(extraHeaders),
+  });
+}
+
+async function handleManagedPairAtEdge(
+  request: Request,
+  env: Bindings,
+  url: URL,
+  agentId: string,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return managedPairErrorResponse(
+      url,
+      405,
+      "Unsupported request",
+      "Open the agent from Eliza Cloud to start a fresh sign-in.",
+      { allow: "GET" },
+    );
+  }
+
+  const rateLimiter = env.GLOBAL_RATE_LIMITER;
+  if (!rateLimiter) {
+    logger.error("[dedicated-proxy] managed pairing rate limiter unavailable", {
+      agentId,
+    });
+    return managedPairErrorResponse(
+      url,
+      503,
+      "Agent sign-in is unavailable",
+      "Eliza Cloud could not validate this sign-in safely. Try again shortly.",
+    );
+  }
+
+  try {
+    const clientIp =
+      request.headers.get("cf-connecting-ip")?.trim() || "unknown";
+    const rateLimit = await rateLimiter.limit({
+      key: `managed-pair:${clientIp}`,
+    });
+    if (!rateLimit.success) {
+      return managedPairErrorResponse(
+        url,
+        429,
+        "Too many sign-in attempts",
+        "Wait a minute and open your agent again from Eliza Cloud.",
+        { "retry-after": String(MANAGED_PAIR_RATE_LIMIT_RETRY_SECONDS) },
+      );
+    }
+  } catch (error) {
+    // error-policy:J1 the edge boundary fails closed when its platform rate
+    // limiter is unavailable, rather than redeeming an unmetered bearer.
+    logger.error("[dedicated-proxy] managed pairing rate limiter failed", {
+      agentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return managedPairErrorResponse(
+      url,
+      503,
+      "Agent sign-in is unavailable",
+      "Eliza Cloud could not validate this sign-in safely. Try again shortly.",
+    );
+  }
+
+  const token = url.searchParams.get("token")?.trim();
+  if (!token || !MANAGED_PAIR_TOKEN_PATTERN.test(token)) {
+    return managedPairErrorResponse(
+      url,
+      400,
+      "Invalid pairing link",
+      "Open the agent from Eliza Cloud so a fresh sign-in link is generated.",
+    );
+  }
+
+  try {
+    const claim = await getPairingTokenService().claimBrowserToken(token, {
+      agentId,
+      expectedOrigin: url.origin,
+    });
+    if (claim.status === "invalid") {
+      return managedPairErrorResponse(
+        url,
+        403,
+        "Sign-in link expired",
+        "Pairing links are single-use and valid for one minute. Open your agent again from Eliza Cloud.",
+      );
+    }
+    if (claim.status === "sandbox-credential-unavailable") {
+      return managedPairErrorResponse(
+        url,
+        503,
+        "Agent sign-in is unavailable",
+        "The agent is running without a usable sign-in credential. Try again shortly.",
+      );
+    }
+    return new Response(renderCloudPairHandoffHtml(claim.apiKey, agentId), {
+      status: 200,
+      headers: managedPairHeaders(),
+    });
+  } catch (error) {
+    // error-policy:J1 the public request boundary translates storage failures
+    // into a visible error without forwarding the token to an untrusted hop.
+    logger.error("[dedicated-proxy] managed pairing claim failed", {
+      agentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return managedPairErrorResponse(
+      url,
+      500,
+      "Agent sign-in failed",
+      "Eliza Cloud could not complete this sign-in. Open the agent again from the dashboard.",
+    );
+  }
 }
 
 /**
@@ -372,6 +538,11 @@ export function handleDedicatedAgentProxy(
   url: URL,
   agentId: string,
 ): Promise<Response> {
+  if (url.pathname.replace(/\/+$/, "") === "/pair") {
+    return runWithCloudBindingsAsync(env, () =>
+      handleManagedPairAtEdge(request, env, url, agentId),
+    );
+  }
   if (request.method === "OPTIONS") {
     return Promise.resolve(
       new Response(null, { status: 204, headers: corsHeadersFor(request) }),
@@ -392,8 +563,9 @@ async function proxyDedicatedAgent(
   try {
     // 1. Validate the CLOUD token. It rides in the Authorization header for
     //    HTTP, or as `?token=` for the WebSocket upgrade. No valid token →
-    //    pass through unchanged (web UI assets, the pairing exchange, the
-    //    agent's own token); the container's auth is the backstop.
+    //    pass through unchanged (web UI assets and the agent's own token);
+    //    the container's auth is the backstop. Managed pairing never reaches
+    //    this function because it terminates at the edge above.
     const queryToken = extractQueryToken(request, url);
     // Header/cookie auth validates the ORIGINAL request (preserves every
     // existing auth method); a query-only (WS) token validates through a
