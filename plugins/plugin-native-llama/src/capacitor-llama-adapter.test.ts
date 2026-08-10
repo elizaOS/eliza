@@ -150,6 +150,33 @@ function installMockPlugin(opts: MockOptions = {}): MockPluginState {
 }
 
 describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
+  it("registers one service class and releases both role contexts on stop", async () => {
+    vi.resetModules();
+    const state = installMockPlugin();
+    const { CapacitorLlamaLoaderRuntimeService, registerCapacitorLlamaLoader } =
+      await import("./capacitor-llama-adapter");
+    const registerService = vi.fn(async () => undefined);
+
+    await expect(
+      registerCapacitorLlamaLoader({ registerService }),
+    ).resolves.toBe(true);
+    expect(registerService).toHaveBeenCalledWith(
+      CapacitorLlamaLoaderRuntimeService,
+    );
+    expect(registerService.mock.calls[0]).toHaveLength(1);
+
+    const service = await CapacitorLlamaLoaderRuntimeService.start({});
+    await service.loadModel({ modelPath: "/tmp/llama.gguf" });
+    await service.loadModel({ modelPath: "/tmp/bge-small.gguf" });
+    expect(state.initContextCalls).toHaveLength(2);
+
+    await service.stop();
+    expect(state.releaseCalls).toHaveLength(2);
+    expect(new Set(state.releaseCalls.map((call) => call.contextId)).size).toBe(
+      2,
+    );
+  });
+
   it("allocates distinct context ids for two separate adapter instances", async () => {
     vi.resetModules();
     const state = installMockPlugin();
