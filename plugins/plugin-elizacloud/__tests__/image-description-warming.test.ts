@@ -29,9 +29,7 @@ vi.mock("../src/utils/config", async (orig) => {
   };
 });
 
-const { handleImageDescription, handleImageGeneration } = await import(
-  "../src/models/image"
-);
+const { handleImageDescription, handleImageGeneration } = await import("../src/models/image");
 
 function runtime(): IAgentRuntime {
   return { getSetting: () => "", emitEvent: () => {} } as unknown as IAgentRuntime;
@@ -52,19 +50,17 @@ function warming503(): Response {
 }
 
 function ok(description: string): Response {
-  return new Response(
-    JSON.stringify({ choices: [{ message: { content: description } }] }),
-    { status: 200, headers: { "Content-Type": "application/json" } }
-  );
+  return new Response(JSON.stringify({ choices: [{ message: { content: description } }] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 describe("handleImageDescription warming-503 retry", () => {
   afterEach(() => postRaw.mockReset());
 
   it("rides through a cold-cache warming 503 and returns the description", async () => {
-    postRaw
-      .mockResolvedValueOnce(warming503())
-      .mockResolvedValueOnce(ok("A red square."));
+    postRaw.mockResolvedValueOnce(warming503()).mockResolvedValueOnce(ok("A red square."));
     const result = await handleImageDescription(runtime(), {
       imageUrl: "https://example.com/red.png",
       prompt: "describe",
@@ -105,9 +101,7 @@ describe("handleImageGeneration warming retry", () => {
 
   it("rides through a generative cold-cache warming throw and returns the image", async () => {
     generateImage
-      .mockRejectedValueOnce(
-        new Error("Generative admission cache is warming; retry shortly")
-      )
+      .mockRejectedValueOnce(new Error("Generative admission cache is warming; retry shortly"))
       .mockResolvedValueOnce({ images: [{ url: "https://cdn/x.png" }] });
     const result = await handleImageGeneration(runtime(), {
       prompt: "a red circle",
@@ -118,9 +112,9 @@ describe("handleImageGeneration warming retry", () => {
 
   it("fails fast on a non-warming generation error", async () => {
     generateImage.mockRejectedValue(new Error("Unsupported image model"));
-    await expect(
-      handleImageGeneration(runtime(), { prompt: "a red circle" })
-    ).rejects.toThrow("Unsupported image model");
+    await expect(handleImageGeneration(runtime(), { prompt: "a red circle" })).rejects.toThrow(
+      "Unsupported image model"
+    );
     expect(generateImage).toHaveBeenCalledTimes(1);
   });
 });
