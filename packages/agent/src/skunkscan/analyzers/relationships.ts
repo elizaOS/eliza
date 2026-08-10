@@ -66,14 +66,28 @@ function recordTransactionEvidence(
   }
 }
 
+function isInvestigatedAddress(
+  address: string | undefined,
+  investigatedAddresses: readonly string[],
+): boolean {
+  return address !== undefined && investigatedAddresses.includes(address);
+}
+
 export function analyzeWalletRelationships(
   funding: WalletFundingSummary,
-  investigatedAddress: string,
+  // Accepts a single address (every existing caller) or a readonly array
+  // (Bitcoin xpub wallets - a transfer can involve any of several derived
+  // addresses, not just one). Single-string behavior is unchanged. See
+  // analyzers/exposure.ts/funding.ts for the same treatment.
+  investigatedAddress: string | readonly string[],
   parsedTransactions: ParsedWalletTransaction[],
   chain: SupportedChain,
 ): WalletRelationshipSummary {
-  const normalizedInvestigatedAddress =
-    investigatedAddress.trim();
+  const normalizedInvestigatedAddresses = (
+    typeof investigatedAddress === "string"
+      ? [investigatedAddress]
+      : investigatedAddress
+  ).map((address) => address.trim());
 
   const counterpartyMap =
     new Map<string, RelationshipAccumulator>();
@@ -90,9 +104,9 @@ export function analyzeWalletRelationships(
       const amountNative = transfer.amountNative ?? 0;
 
       if (
-        fromAddress === normalizedInvestigatedAddress &&
+        isInvestigatedAddress(fromAddress, normalizedInvestigatedAddresses) &&
         toAddress &&
-        toAddress !== normalizedInvestigatedAddress
+        !isInvestigatedAddress(toAddress, normalizedInvestigatedAddresses)
       ) {
         const relationship = getOrCreateRelationship(
           counterpartyMap,
@@ -110,9 +124,9 @@ export function analyzeWalletRelationships(
       }
 
       if (
-        toAddress === normalizedInvestigatedAddress &&
+        isInvestigatedAddress(toAddress, normalizedInvestigatedAddresses) &&
         fromAddress &&
-        fromAddress !== normalizedInvestigatedAddress
+        !isInvestigatedAddress(fromAddress, normalizedInvestigatedAddresses)
       ) {
         const relationship = getOrCreateRelationship(
           counterpartyMap,
@@ -136,9 +150,9 @@ export function analyzeWalletRelationships(
       const toAddress = transfer.to?.trim();
 
       if (
-        fromAddress === normalizedInvestigatedAddress &&
+        isInvestigatedAddress(fromAddress, normalizedInvestigatedAddresses) &&
         toAddress &&
-        toAddress !== normalizedInvestigatedAddress
+        !isInvestigatedAddress(toAddress, normalizedInvestigatedAddresses)
       ) {
         const relationship = getOrCreateRelationship(
           counterpartyMap,
@@ -155,9 +169,9 @@ export function analyzeWalletRelationships(
       }
 
       if (
-        toAddress === normalizedInvestigatedAddress &&
+        isInvestigatedAddress(toAddress, normalizedInvestigatedAddresses) &&
         fromAddress &&
-        fromAddress !== normalizedInvestigatedAddress
+        !isInvestigatedAddress(fromAddress, normalizedInvestigatedAddresses)
       ) {
         const relationship = getOrCreateRelationship(
           counterpartyMap,

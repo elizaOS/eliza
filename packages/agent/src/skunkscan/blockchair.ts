@@ -312,6 +312,99 @@ export async function getBitcoinTransaction(
   };
 }
 
+export type BlockchairTransactionParty = {
+  recipient?: string;
+  value?: number;
+};
+
+export type BlockchairTransactionDetail = {
+  hash: string;
+  block_id?: number;
+  time?: string;
+  inputs: BlockchairTransactionParty[];
+  outputs: BlockchairTransactionParty[];
+};
+
+type BlockchairTransactionDetailDashboardEntry = {
+  transaction?: {
+    block_id?: number;
+    hash?: string;
+    time?: string;
+  };
+  inputs?: BlockchairTransactionParty[];
+  outputs?: BlockchairTransactionParty[];
+};
+
+// Blockchair caps this endpoint at 10 hashes per call ("The maximum number
+// of values is 10" - live-confirmed: 20 real hashes got that exact 400,
+// 10 succeeded), at a flat request_cost of 1 regardless of how many of the
+// 10 slots are filled. Chunks internally so callers can pass any number of
+// hashes; one chunk's failure doesn't fail the others - a hash that
+// couldn't be fetched is just absent from the returned map rather than
+// aborting the whole batch, matching the same per-chunk-failure tolerance
+// getEthereumTokenPrices (moralis.ts) uses for its own 100-per-call cap.
+export async function getBitcoinTransactionsDetailed(
+  transactionHashes: string[],
+): Promise<Record<string, BlockchairTransactionDetail>> {
+  const uniqueHashes = Array.from(
+    new Set(
+      transactionHashes.map((hash) => hash.trim()).filter(Boolean),
+    ),
+  );
+
+  if (uniqueHashes.length === 0) {
+    return {};
+  }
+
+  const detailByHash: Record<string, BlockchairTransactionDetail> = {};
+  const hashChunks = chunkArray(uniqueHashes, 10);
+
+  for (const hashChunk of hashChunks) {
+    let data: Record<string, BlockchairTransactionDetailDashboardEntry>;
+
+    try {
+      data = await callBlockchairRest<
+        Record<string, BlockchairTransactionDetailDashboardEntry>
+      >(`/dashboards/transactions/${hashChunk.join(",")}`);
+    } catch {
+      // This chunk's hashes are simply absent from the result - callers
+      // already treat "no detail available" as an honest gap (see
+      // wallet.ts's Bitcoin branch), not a fatal error for the whole
+      // investigation.
+      continue;
+    }
+
+    for (const hash of hashChunk) {
+      const entry = data[hash];
+      const transaction = entry?.transaction;
+
+      if (!transaction || !transaction.hash) {
+        continue;
+      }
+
+      detailByHash[hash] = {
+        hash: transaction.hash,
+        block_id: transaction.block_id,
+        time: transaction.time,
+        inputs: Array.isArray(entry.inputs) ? entry.inputs : [],
+        outputs: Array.isArray(entry.outputs) ? entry.outputs : [],
+      };
+    }
+  }
+
+  return detailByHash;
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+
+  return chunks;
+}
+
 // The current BTC/USD rate is Blockchair's own market_price_usd field,
 // which is present in the *context* block of every response this file
 // makes (address/xpub dashboards already carry it, live-confirmed), but
@@ -327,6 +420,22 @@ export async function getBitcoinMarketPriceUsd(): Promise<number | null> {
   return typeof context?.market_price_usd === "number"
     ? context.market_price_usd
     : null;
+}
+
+// Blockchair's "time" field is "YYYY-MM-DD HH:MM:SS" UTC (every timestamp
+// this file returns, on every endpoint) - not epoch seconds. Returns null
+// rather than throwing on an unexpected shape, since a bad timestamp
+// shouldn't fail the whole transaction record. Single source of truth -
+// chains/bitcoin.ts and parsers/bitcoinTransaction.ts both import this
+// rather than each having their own copy.
+export function parseBlockchairTimestamp(time: string | undefined): number | null {
+  if (!time) {
+    return null;
+  }
+
+  const parsedMs = Date.parse(`${time.replace(" ", "T")}Z`);
+
+  return Number.isFinite(parsedMs) ? Math.floor(parsedMs / 1000) : null;
 }
 
 // Format detection only - no network call. Distinguishes "this string is a

@@ -13,18 +13,18 @@ import { requireBlockchainConnector } from "./chains/registry";
 // it needs the concrete class, not the generic connector returned by
 // requireBlockchainConnector().
 import { bitcoinBlockchainConnector } from "./chains/bitcoin";
+import { getBitcoinTransactionsDetailed } from "./blockchair";
 import { WRAPPED_NATIVE_ASSET_ID } from "./providers/priceProvider";
 import { getTokenPriceProvider } from "./providers/pricing/registry";
 import { createWalletInvestigation } from "./investigations/walletIntegration";
 import { runWalletPipeline } from "./pipeline/walletPipeline";
-import { analyzeWalletExposure } from "./analyzers/exposure";
 import {
   parseSolanaTransaction,
   ParsedWalletTransaction,
 } from "./parsers/transaction";
 import { parseEthereumTransaction } from "./parsers/ethereumTransaction";
+import { parseBitcoinTransaction } from "./parsers/bitcoinTransaction";
 import {
-  UniversalTransaction,
   SupportedChain,
   UniversalNftHolding,
   WalletBalance,
@@ -1406,6 +1406,16 @@ warnings: investigationWarnings,
           );
         }
 
+        // The full derived-address set - needed both for real transaction
+        // parsing below (change-output detection: any output landing on
+        // one of our OWN other addresses is definitively not an external
+        // transfer, not a heuristic - see parsers/bitcoinTransaction.ts)
+        // and for the multi-address funding/relationships/exposure match
+        // (passed as addressSet to runWalletPipeline further down).
+        const derivedAddresses =
+          await bitcoinBlockchainConnector.deriveAddresses(walletAddress);
+        const ownedAddresses = new Set(derivedAddresses);
+
         // Unlike Ethereum/Solana, calling connector.getTransactions()
         // directly here (rather than bypassing it for a raw provider call)
         // is deliberate, not an inconsistency: those chains bypass their
@@ -1442,20 +1452,6 @@ warnings: investigationWarnings,
               transaction.status === "failed" ? "failed" : "success",
           }));
 
-        // Bitcoin transactions aren't parsed into real transfers yet (see
-        // chains/bitcoin.ts's capabilities.transactionParsing: false) - this
-        // is a thin reshape into the chain-neutral shape, same role as
-        // parseEthereumTransaction/parseSolanaTransaction, just with empty
-        // transfers since there's nothing decoded to put in them yet.
-        const normalizedRecentParsedTransactions: ParsedWalletTransaction[] =
-          transactionsResult.data.transactions.map((transaction) => ({
-            signature: transaction.transactionId,
-            timestamp: transaction.timestamp ?? null,
-            nativeTransfers: [],
-            tokenTransfers: [],
-            programOrContractIds: [],
-          }));
-
         const oldestTransactionResult =
           await connector.getOldestTransaction?.(walletAddress);
 
@@ -1473,18 +1469,41 @@ warnings: investigationWarnings,
 
         const oldestTransaction = oldestTransactionResult.data;
 
-        const parseOptionalUniversalTransaction = (
-          transaction: UniversalTransaction | null,
-        ): ParsedWalletTransaction => ({
-          signature: transaction?.transactionId ?? null,
-          timestamp: transaction?.timestamp ?? null,
-          nativeTransfers: [],
-          tokenTransfers: [],
-          programOrContractIds: [],
-        });
+        // Real transaction parsing: batch-fetch full inputs/outputs (10
+        // hashes per call, flat cost - see blockchair.ts's
+        // getBitcoinTransactionsDetailed) for every transaction in the
+        // sample, plus the oldest transaction if it isn't already in that
+        // sample (deduped automatically - getBitcoinTransactionsDetailed
+        // takes a plain array, not a special "extra" parameter). Bare
+        // hash/timestamp-only records (chains/bitcoin.ts's
+        // capabilities.transactionParsing: false) are gone - this is the
+        // real thing now.
+        const sampleTransactionHashes =
+          transactionsResult.data.transactions.map(
+            (transaction) => transaction.transactionId,
+          );
 
-        const firstParsedTransaction = parseOptionalUniversalTransaction(
-          oldestTransaction.transaction,
+        const transactionDetailByHash = await getBitcoinTransactionsDetailed([
+          ...sampleTransactionHashes,
+          ...(oldestTransaction.transactionId
+            ? [oldestTransaction.transactionId]
+            : []),
+        ]);
+
+        const normalizedRecentParsedTransactions: ParsedWalletTransaction[] =
+          transactionsResult.data.transactions.map((transaction) =>
+            parseBitcoinTransaction(
+              transactionDetailByHash[transaction.transactionId] ?? null,
+              ownedAddresses,
+            ),
+          );
+
+        const firstParsedTransaction = parseBitcoinTransaction(
+          oldestTransaction.transactionId
+            ? (transactionDetailByHash[oldestTransaction.transactionId] ??
+                null)
+            : null,
+          ownedAddresses,
         );
 
         const tokenBalancesResult =
@@ -1533,13 +1552,13 @@ warnings: investigationWarnings,
         const pipeline = await runWalletPipeline({
           chain,
           // The raw user input (a single address, or the xpub/ypub/zpub
-          // string itself) - used as the "primary" address identifier by
-          // every analyzer in the pipeline that isn't part of the
-          // multi-address merge below. For xpub input this isn't a real,
-          // spendable on-chain address, but every consumer here only does
-          // string comparisons/registry lookups against it, which safely
-          // no-op rather than crash on a non-address string.
+          // string itself) - kept for display/evidence-record text.
+          // Funding/relationships/exposure matching uses addressSet below
+          // instead (the real derived-address set), not this string - an
+          // xpub string would never match a real address in parsed
+          // transfer data.
           address: walletAddress,
+          addressSet: derivedAddresses,
           balance: walletBalance,
           tokenHoldings,
           recentTransactions,
@@ -1562,6 +1581,7 @@ warnings: investigationWarnings,
           protocolIntelligence,
           behavior,
           relationships,
+          exposure,
           custodyProfile,
           intelligenceSources,
           trust,
@@ -1585,53 +1605,6 @@ warnings: investigationWarnings,
           complianceScreening,
         } = pipeline;
 
-        // Multi-address exposure merge (the one piece the connector's
-        // already-merged data can't cover on its own): exposure's self and
-        // reverse-index checks are keyed to individual addresses, so a
-        // wallet with several derived addresses needs each one checked
-        // separately, worst-case rolled up (if ANY derived address is
-        // itself flagged, or has ever transacted with a flagged
-        // counterparty via the reverse index, the whole wallet is flagged -
-        // unweighted, same principle exposure.ts already applies within a
-        // single address across its four match sources). Uses the same
-        // analyzeWalletExposure() the other four chains call unchanged -
-        // its first parameter now accepts an address array for exactly
-        // this case (see analyzers/exposure.ts), with zero behavior change
-        // for single-string callers.
-        const derivedAddresses =
-          await bitcoinBlockchainConnector.deriveAddresses(walletAddress);
-
-        // relationships is intentionally [] here, not pipeline.relationships:
-        // counterparty-via-relationships is exposure's 4th match source, and
-        // it depends on decoded transfer data (see
-        // analyzeWalletRelationships), which doesn't exist yet for Bitcoin -
-        // pipeline.relationships is already empty for the same reason
-        // normalizedRecentParsedTransactions has empty transfers above.
-        // This source will start contributing real matches once Bitcoin
-        // transaction parsing exists, with no further change needed here.
-        const bitcoinExposure = analyzeWalletExposure(
-          derivedAddresses,
-          funding,
-          chain,
-          [],
-        );
-
-        const exposure = bitcoinExposure;
-
-        // Age and funding both already reflect the full derived-address
-        // set - the connector's getOldestTransaction() call above already
-        // returns the earliest transaction across every derived address for
-        // xpub input (Blockchair's own xpub dashboard aggregates this
-        // server-side), and funding.ts was fed that same oldest transaction
-        // via firstParsedTransaction, so no extra merge step is needed for
-        // either signal here. funding.fundingWallet will not be populated
-        // for Bitcoin yet regardless (nativeTransfers is empty pending
-        // transaction parsing, same root cause as the exposure relationship
-        // source above) - the externality check funding.ts would need
-        // (widened from "not this one address" to "not any address in this
-        // wallet's derived set") isn't implemented yet because there's no
-        // transfer data yet for it to have any effect on.
-
         const addressesInSample =
           derivedAddresses.length > 1 ? derivedAddresses.length : undefined;
 
@@ -1645,8 +1618,26 @@ warnings: investigationWarnings,
           );
         }
 
+        // Incoming transfers (who funded this wallet) are unambiguous
+        // regardless of address count - an input's sender is always real,
+        // no heuristic involved. Outgoing transfers (who this wallet paid,
+        // used for counterparty/relationship exposure) are a different
+        // story: Bitcoin has no field marking which output is "change"
+        // back to the sender vs. a real second recipient. For an xpub
+        // wallet this is fully resolved (any output landing on one of this
+        // wallet's own other derived addresses is definitively excluded,
+        // not a guess); for a single tracked address, an unfamiliar output
+        // can't be told apart from unrecognized change - a known, unsolved
+        // limitation of Bitcoin's UTXO model itself, not specific to this
+        // tool.
         investigationWarnings.push(
-          "Bitcoin: transactions are listed but not yet parsed into real transfers, so funding source attribution and counterparty-based exposure detection are not yet available for this chain (self-match and reverse-index exposure checks, which don't need parsed transfers, are already active). Address coverage for xpub/ypub/zpub input is whatever Blockchair's gap-limit scan found - addresses outside that scan window are not included. Fields derived from exposure elsewhere in this report (e.g. compliance screening) reflect the single primary address view, not yet this merged multi-address result.",
+          derivedAddresses.length > 1
+            ? "Bitcoin (xpub): incoming-transfer funding detection is fully unambiguous. Outgoing-transfer/counterparty exposure is also reliable here, since any output landing on one of this wallet's own other derived addresses is correctly excluded as change, not treated as a real transfer. Multi-input transactions attribute the funding/counterparty amount to the single largest contributing address, not a full multi-party breakdown."
+            : "Bitcoin (single address): incoming-transfer funding detection is unambiguous. Outgoing-transfer/counterparty exposure is not reliable for a single tracked address - an unfamiliar output address can't be distinguished from unrecognized change belonging to this same wallet, a known limitation of Bitcoin's UTXO model (not something a wallet-wide xpub view would have this problem with). Multi-input transactions attribute the funding amount to the single largest contributing address, not a full multi-party breakdown.",
+        );
+
+        investigationWarnings.push(
+          "Address coverage for xpub/ypub/zpub input is whatever Blockchair's gap-limit scan found - addresses outside that scan window are not included.",
         );
 
         return {

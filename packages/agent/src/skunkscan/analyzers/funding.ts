@@ -5,12 +5,28 @@ import {
   buildConfidenceAnalysis,
 } from "../confidence/framework";
 
+function isOwnedAddress(
+  address: string | null,
+  ownedAddresses: readonly string[],
+): boolean {
+  return address !== null && ownedAddresses.includes(address);
+}
+
 export function analyzeWalletFunding(
   chain: SupportedChain,
-  walletAddress: string,
+  // Accepts a single address (every existing caller) or a readonly array
+  // (Bitcoin xpub wallets - a transfer can land on any of several derived
+  // addresses, not just one). Single-string behavior is unchanged -
+  // normalized to an array immediately below, so a one-element array and a
+  // bare string produce identical results. See analyzers/exposure.ts for
+  // the same treatment, applied first.
+  walletAddress: string | readonly string[],
   firstTransaction: ParsedWalletTransaction | null,
   nativeSymbol: string,
 ): WalletFundingSummary {
+  const walletAddresses =
+    typeof walletAddress === "string" ? [walletAddress] : walletAddress;
+
   if (!firstTransaction) {
     const confidenceAnalysis = buildConfidenceAnalysis([]);
 
@@ -40,8 +56,8 @@ export function analyzeWalletFunding(
 
   const incomingNativeFundingTransfer = firstTransaction.nativeTransfers.find(
     (transfer) =>
-      transfer.to === walletAddress &&
-      transfer.from !== walletAddress &&
+      isOwnedAddress(transfer.to, walletAddresses) &&
+      !isOwnedAddress(transfer.from, walletAddresses) &&
       transfer.amountNative !== null &&
       transfer.amountNative > 0,
   );
@@ -125,8 +141,8 @@ export function analyzeWalletFunding(
 
   const incomingTokenFundingTransfer = firstTransaction.tokenTransfers.find(
     (transfer) =>
-      transfer.to === walletAddress &&
-      transfer.from !== walletAddress &&
+      isOwnedAddress(transfer.to, walletAddresses) &&
+      !isOwnedAddress(transfer.from, walletAddresses) &&
       transfer.amount !== null &&
       transfer.amount > 0,
   );

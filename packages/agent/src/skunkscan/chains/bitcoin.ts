@@ -18,6 +18,7 @@ import {
   getBitcoinXpubDashboard,
   isBitcoinAddress,
   isBitcoinXpub,
+  parseBlockchairTimestamp,
 } from "../blockchair";
 
 import {
@@ -119,18 +120,6 @@ function createErrorResult<T>(
   };
 }
 
-// Blockchair's "time" field is "YYYY-MM-DD HH:MM:SS" UTC (see blockchair.ts)
-// - not epoch seconds. Returns null rather than throwing on an unexpected
-// shape, since a bad timestamp shouldn't fail the whole transaction record.
-function parseBlockchairTimestamp(time: string | undefined): number | null {
-  if (!time) {
-    return null;
-  }
-
-  const parsedMs = Date.parse(`${time.replace(" ", "T")}Z`);
-
-  return Number.isFinite(parsedMs) ? Math.floor(parsedMs / 1000) : null;
-}
 
 function createUniversalTransaction(
   transaction: BlockchairTransactionSummary,
