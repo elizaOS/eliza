@@ -1,7 +1,32 @@
 import { InvestorExplanation } from "./explainability/types";
 import { InvestorEvidenceCollection } from "./explainability/evidenceCollection";
 
-export type SupportedChain = "solana" | "ethereum" | "base" | "bnb" | "bitcoin";
+// Single source of truth for "what chains does investigateWallet accept" -
+// SupportedChain (the type) is derived FROM this array, not hand-written
+// separately, specifically so nothing else in the codebase can define its
+// own separate hardcoded chain list that silently drifts out of sync (real
+// bug, not hypothetical: the /api/skunkscan/wallet route handler had its
+// own hardcoded ["solana", "ethereum", "base", "bnb"] validation array,
+// written before Bitcoin existed, that nobody updated when Bitcoin was
+// wired into investigateWallet - live-confirmed the deployed API rejected
+// every real "bitcoin" request with a 400 "Unsupported chain" while
+// investigateWallet("bitcoin", ...) itself worked correctly). Add a new
+// chain here once, in this one place, and every consumer (isSupportedChain
+// below, the route handler, anything else that validates against this
+// list) picks it up automatically - no second array to remember to update.
+export const SUPPORTED_CHAINS = [
+  "solana",
+  "ethereum",
+  "base",
+  "bnb",
+  "bitcoin",
+] as const;
+
+export type SupportedChain = (typeof SUPPORTED_CHAINS)[number];
+
+export function isSupportedChain(chain: string): chain is SupportedChain {
+  return (SUPPORTED_CHAINS as readonly string[]).includes(chain);
+}
 
 // Every EVM-family chain uses the same checksummed-hex addressing (no
 // alternate valid casing to normalize, unlike Solana's case-sensitive
