@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Disable the repo-local `eliza/` workspace for CI runs that have
- * `ELIZA_SKIP_LOCAL_UPSTREAMS=1` set (Docker CI Smoke, Release
- * Workflow Contract, packaged build jobs, etc.).
+ * Disable the repo-local `eliza/` workspace for Docker CI smoke runs that have
+ * `ELIZA_SKIP_LOCAL_UPSTREAMS=1` set.
  *
  * Three things have to happen for Bun to produce a clean lockfile when
  * `eliza/` is absent:
@@ -28,14 +27,13 @@
  *      for the workspace:* callers AND a separate registry-resolved
  *      `@elizaos/core` for cloud-agent-template, emitting two
  *      top-level `"@elizaos/core"` entries in bun.lock's packages
- *      section. The next `bun pm pack --dry-run` (invoked from
- *      `scripts/release-check.ts`) then fails with:
+ *      section. Any subsequent `bun pm pack --dry-run` then fails with:
  *
  *        error: Duplicate package path
  *            at bun.lock:XXXX:5
  *        error: failed to parse lockfile: InvalidPackageKey
  *
- *      blocking the Release Workflow Contract job.
+ *      blocking package validation in the Docker smoke.
  *
  * We patch every affected file in place (no commit, CI-only). All
  * edits are idempotent and gated on `GITHUB_ACTIONS=true` +
@@ -334,7 +332,7 @@ export function disableLocalElizaWorkspace(
   // a partly-extracted unpacked package. The patch is Android-only — the
   // server Docker image never compiles Android sources — so we can safely drop
   // the patch entry from patchedDependencies when running in
-  // ELIZA_SKIP_LOCAL_UPSTREAMS mode (Docker CI Smoke, packaged build jobs).
+  // ELIZA_SKIP_LOCAL_UPSTREAMS mode (Docker CI smoke).
   // The runtime patch-deps.mjs script still applies the equivalent Gradle /
   // JNI fixes for mobile builds via collectInstalledPackageDirs() + targeted
   // rewrites, so dropping the static patch only loses redundancy here.
