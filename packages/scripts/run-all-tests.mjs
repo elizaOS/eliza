@@ -803,6 +803,34 @@ function isSingleBunTestCommand(command) {
   return /^bun\s+test\b/.test(commandWithoutEnv);
 }
 
+function unwrapKnownBunTestSupervisors(command) {
+  let current = stripLeadingEnvAssignments(command);
+  for (let depth = 0; depth < 3; depth += 1) {
+    const flakeRetry = current.match(
+      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-flake-retry\.mjs\s+(?:'[^']*'|"[^"]*"|\S+)\s+--\s+(.+)$/,
+    );
+    if (flakeRetry) {
+      current = flakeRetry[1];
+      continue;
+    }
+    const deadline = current.match(
+      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-deadline\.mjs\s+[1-9]\d*\s+--\s+(.+)$/,
+    );
+    if (deadline) {
+      current = deadline[1];
+      continue;
+    }
+    break;
+  }
+  return current;
+}
+
+function isSingleIsolatedBunTestWrapperCommand(command) {
+  return /^node\s+scripts\/run-isolated-tests\.mjs$/.test(
+    unwrapKnownBunTestSupervisors(command),
+  );
+}
+
 function structuredEvidenceKind(scriptName, scripts) {
   const command =
     resolveScriptCommand(scriptName, scripts) ||
@@ -814,7 +842,12 @@ function structuredEvidenceKind(scriptName, scripts) {
   ) {
     return null;
   }
-  if (isSingleBunTestCommand(command)) return "bun";
+  if (
+    isSingleBunTestCommand(command) ||
+    isSingleIsolatedBunTestWrapperCommand(command)
+  ) {
+    return "bun";
+  }
   if (
     isSingleVitestRunCommand(command) ||
     isSingleVitestWrapperCommand(command)

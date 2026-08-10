@@ -130,6 +130,12 @@ const scheduledTaskOutputSchema = z.object({
   ]),
   target: z.string().min(1).optional(),
   persistAs: z.enum(["task_metadata", "external_only"]).optional(),
+  fallback: z
+    .object({
+      body: z.string().trim().min(1).max(2_000),
+      title: z.string().trim().min(1).max(200).optional(),
+    })
+    .optional(),
 });
 
 const scheduledTaskRefSchema: z.ZodType<unknown> = z.lazy(() =>

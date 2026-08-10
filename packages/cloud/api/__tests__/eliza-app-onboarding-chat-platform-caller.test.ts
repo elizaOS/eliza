@@ -364,4 +364,113 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     expect(response.status).toBe(400);
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
+
+  describe("statusOnly poll — #18078 route-level contract", () => {
+    /**
+     * Exercises the Hono chatSchema parse + route forwarding of the statusOnly
+     * flag. The route parses the request body, extracts statusOnly from the
+     * schema, and forwards it to runOnboardingChat. Repeated status-only
+     * requests for one session must leave the transcript unchanged — no
+     * poll-generated duplicate assistant entries.
+     */
+    test("repeated status-only polls leave the returned transcript unchanged", async () => {
+      spyOn(elizaAppSessionService, "validateAuthHeader").mockResolvedValue({
+        userId: "user-9",
+        organizationId: "org-9",
+      });
+
+      // First turn: a real user message so the session has content.
+      const first = await post(
+        { message: "My name is Alice", platform: "web" },
+        "Bearer browser-session",
+      );
+      expect(first.status).toBe(200);
+      const firstData = await dataOf(first.clone());
+      const firstMessages =
+        (firstData.messages as Array<{ role: string; content: string }>) ?? [];
+
+      // Repeated status-only polls through the Hono route.
+      for (let i = 0; i < 5; i++) {
+        const poll = await post(
+          {
+            sessionId: firstData.sessionId as string,
+            statusOnly: true,
+            platform: "web",
+          },
+          "Bearer browser-session",
+        );
+        expect(poll.status).toBe(200);
+        const pollData = await dataOf(poll.clone());
+        const pollMessages =
+          (pollData.messages as Array<{ role: string; content: string }>) ?? [];
+
+        // Each poll must return the same number of messages — no growth.
+        expect(pollMessages.length).toBe(firstMessages.length);
+      }
+
+      // After 5 status-only polls, the final transcript must still match the
+      // initial state exactly.
+      const final = await post(
+        {
+          sessionId: firstData.sessionId as string,
+          statusOnly: true,
+          platform: "web",
+        },
+        "Bearer browser-session",
+      );
+      const finalData = await dataOf(final.clone());
+      const finalMessages =
+        (finalData.messages as Array<{ role: string; content: string }>) ?? [];
+
+      expect(finalMessages.length).toBe(firstMessages.length);
+
+      // The transcript must contain exactly the expected content, proving no
+      // duplicate "Eliza onboarding:" assistant entries were appended.
+      const assistantContents = finalMessages
+        .filter((m) => m.role === "assistant")
+        .map((m) => m.content);
+      const firstAssistantContents = firstMessages
+        .filter((m) => m.role === "assistant")
+        .map((m) => m.content);
+      expect(assistantContents).toEqual(firstAssistantContents);
+    });
+
+    test("statusOnly flag is parsed by chatSchema and forwarded to runOnboardingChat", async () => {
+      spyOn(elizaAppSessionService, "validateAuthHeader").mockResolvedValue({
+        userId: "user-9",
+        organizationId: "org-9",
+      });
+
+      // Start a real session first.
+      const first = await post(
+        { message: "My name is Bob", platform: "web" },
+        "Bearer browser-session",
+      );
+      expect(first.status).toBe(200);
+      const firstData = await dataOf(first.clone());
+
+      // Send a status-only poll with a message attached — the route must
+      // parse statusOnly from the body and forward it so the service skips
+      // message processing entirely.
+      const poll = await post(
+        {
+          sessionId: firstData.sessionId as string,
+          statusOnly: true,
+          message: "This should be ignored",
+          platform: "web",
+        },
+        "Bearer browser-session",
+      );
+      expect(poll.status).toBe(200);
+      const pollData = await dataOf(poll.clone());
+      const pollMessages =
+        (pollData.messages as Array<{ role: string; content: string }>) ?? [];
+
+      // The message "This should be ignored" must NOT appear as a user turn.
+      const userContents = pollMessages
+        .filter((m) => m.role === "user")
+        .map((m) => m.content);
+      expect(userContents).not.toContain("This should be ignored");
+    });
+  });
 });

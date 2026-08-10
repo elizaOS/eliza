@@ -83,7 +83,11 @@ export type OptimizedPromptTask =
 	| "morning_brief"
 	| "health_checkin"
 	| "screentime_recap"
-	| "creative_draft";
+	| "creative_draft"
+	| "scheduled_task_dispatch"
+	| "scheduled_task_title"
+	| "checkin_followup"
+	| "approval_notice";
 
 function nodeErrorCode(error: unknown): string | undefined {
 	if (typeof error !== "object" || error === null) return undefined;
@@ -115,6 +119,10 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"health_checkin",
 	"screentime_recap",
 	"creative_draft",
+	"scheduled_task_dispatch",
+	"scheduled_task_title",
+	"checkin_followup",
+	"approval_notice",
 ] as const;
 
 /**

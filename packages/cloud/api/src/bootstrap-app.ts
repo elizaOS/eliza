@@ -26,6 +26,7 @@ import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { runWithRequestContext } from "@/lib/runtime/request-context";
 import { configureAppsDeprovisionTrigger } from "@/lib/services/app-db-deprovision-job-service";
 import { configureAppsDeployTrigger } from "@/lib/services/app-deploy-job-service";
+import { getProviderEnvDiagnostics } from "@/lib/services/oauth/provider-registry";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
@@ -179,6 +180,35 @@ function countryFromHeaders(headers: Headers): string | null {
   return null;
 }
 
+/**
+ * Log missing OAuth provider env vars on the first request in an isolate, the
+ * earliest point where Worker bindings exist. Required providers are errors;
+ * optional integrations are one verbose summary. No values are logged.
+ */
+function logProviderEnvDiagnostics(): void {
+  const unconfigured = getProviderEnvDiagnostics().filter(
+    (provider) => !provider.configured,
+  );
+  const required = unconfigured.filter(
+    (provider) => provider.requiredForDeployment,
+  );
+  const optional = unconfigured.filter(
+    (provider) => !provider.requiredForDeployment,
+  );
+  for (const provider of required) {
+    logger.error("[bootstrap-app] Required OAuth provider is not configured", {
+      providerId: provider.id,
+      missingEnvVars: provider.missingEnvVars,
+    });
+  }
+  if (optional.length > 0) {
+    logger.info("[bootstrap-app] Optional OAuth providers are not configured", {
+      count: optional.length,
+      providerIds: optional.map((provider) => provider.id),
+    });
+  }
+}
+
 export function createApp(): Hono<AppEnv> {
   // Initialise the global audit dispatcher (auth_events sink + optional
   // console sink) before any route handlers run. Idempotent — safe to
@@ -206,15 +236,25 @@ export function createApp(): Hono<AppEnv> {
 
   const app = new Hono<AppEnv>({ strict: false });
 
+  // Once-per-isolate guard for missing OAuth provider env vars. Must run
+  // inside the request middleware so `getCloudAwareEnv()` sees the Worker
+  // bindings — at `createApp()` time only `process.env` is available, which
+  // would produce false warnings on deployed Workers.
+  let providerEnvVarsLogged = false;
+
   app.use("*", async (c, next) => {
     setRuntimeR2Bucket(c.env.BLOB);
     await runWithCloudBindingsAsync(
       c.env as Record<string, unknown>,
-      async () =>
+      async () => {
+        if (!providerEnvVarsLogged) {
+          logProviderEnvDiagnostics();
+          providerEnvVarsLogged = true;
+        }
         // Expose the client IP + a stable per-request idempotency key to shared
         // library code (anti-sybil grant checks; idempotent money settlement,
         // #10423) without threading them through every call site.
-        runWithRequestContext(
+        return runWithRequestContext(
           {
             clientIp: getRequestIp(c),
             idempotencyKey:
@@ -223,7 +263,8 @@ export function createApp(): Hono<AppEnv> {
               crypto.randomUUID(),
           },
           async () => runWithDbCacheAsync(async () => next()),
-        ),
+        );
+      },
     );
   });
 

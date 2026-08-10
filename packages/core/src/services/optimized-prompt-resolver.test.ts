@@ -183,6 +183,16 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 		{ task: "health_checkin", optimizedPrompt: "OPT_HEALTH_CHECKIN" },
 		{ task: "screentime_recap", optimizedPrompt: "OPT_SCREENTIME_RECAP" },
 		{ task: "creative_draft", optimizedPrompt: "OPT_CREATIVE_DRAFT" },
+		{
+			task: "scheduled_task_dispatch",
+			optimizedPrompt: "OPT_SCHEDULED_TASK_DISPATCH",
+		},
+		{
+			task: "scheduled_task_title",
+			optimizedPrompt: "OPT_SCHEDULED_TASK_TITLE",
+		},
+		{ task: "checkin_followup", optimizedPrompt: "OPT_CHECKIN_FOLLOWUP" },
+		{ task: "approval_notice", optimizedPrompt: "OPT_APPROVAL_NOTICE" },
 	];
 
 	test("covers every OPTIMIZED_PROMPT_TASKS entry", () => {

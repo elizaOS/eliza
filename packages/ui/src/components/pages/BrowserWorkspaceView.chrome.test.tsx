@@ -1,12 +1,12 @@
 /**
- * Verifies the Browser view's fullscreen chrome contract: with the builtin
- * registry declaring `header: "fullscreen"`, the view owns its whole surface
- * and embedded page loads cannot take focus from the control that opened it.
- * Renders the real component in jsdom with deterministic workspace API data.
+ * Verifies the Browser view's fullscreen chrome, focus handoff, and workspace
+ * refresh precedence. The real component renders in jsdom with deterministic
+ * API responses so background polls cannot impersonate foreground failures.
  */
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -96,6 +96,31 @@ const APPLE_WORKSPACE = {
     },
   ],
 };
+
+const EXAMPLE_WORKSPACE = {
+  mode: "web" as const,
+  tabs: [
+    {
+      ...APPLE_WORKSPACE.tabs[0],
+      title: "Example",
+      url: "https://example.com/",
+    },
+  ],
+};
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
 beforeEach(() => {
   vi.mocked(client.getBrowserWorkspace).mockResolvedValue({
@@ -296,5 +321,164 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         }),
       ),
     );
+  });
+
+  it("keeps transient background refresh timeouts off a healthy page and retries single-flight", async () => {
+    vi.useFakeTimers();
+    const pendingRefresh = deferred<typeof GOOGLE_WORKSPACE>();
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockResolvedValueOnce(GOOGLE_WORKSPACE)
+      .mockImplementationOnce(() => pendingRefresh.promise)
+      .mockResolvedValueOnce(APPLE_WORKSPACE);
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByTitle("Google")).not.toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_500);
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(7_500);
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        pendingRefresh.reject(new Error("Request timed out after 10000ms"));
+        await Promise.resolve();
+      });
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByTitle("Google")).not.toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_500);
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(3);
+      expect(screen.getByTitle("Apple")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an explicit action refresh failure observable", async () => {
+    vi.mocked(client.getBrowserWorkspace)
+      .mockResolvedValueOnce(APPLE_WORKSPACE)
+      .mockRejectedValueOnce(new Error("Explicit refresh failed"));
+    vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({
+      tab: GOOGLE_WORKSPACE.tabs[0],
+    });
+
+    render(<BrowserWorkspaceView />);
+    expect(await screen.findByTitle("Apple")).not.toBeNull();
+    fireEvent.click(screen.getByTestId("browser-workspace-nav-new-tab"));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Explicit refresh failed",
+    );
+  });
+
+  it("shows an initial load failure until a later background retry succeeds", async () => {
+    vi.useFakeTimers();
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockRejectedValueOnce(new Error("Initial workspace load failed"))
+      .mockResolvedValueOnce(APPLE_WORKSPACE);
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Initial workspace load failed",
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_500);
+      });
+      expect(screen.getByTitle("Apple")).not.toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the StrictMode initial load single-flight and loading until it settles", async () => {
+    const pendingInitialLoad = deferred<typeof APPLE_WORKSPACE>();
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockImplementation(() => pendingInitialLoad.promise);
+
+    render(<BrowserWorkspaceView />, { reactStrictMode: true });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Loading browser workspace")).not.toBeNull();
+    expect(screen.queryByText("No page open")).toBeNull();
+
+    await act(async () => {
+      pendingInitialLoad.resolve(APPLE_WORKSPACE);
+      await Promise.resolve();
+    });
+    expect(screen.getByTitle("Apple")).not.toBeNull();
+    expect(screen.queryByText("Loading browser workspace")).toBeNull();
+  });
+
+  it("does not let a stale background response overwrite a newer navigation", async () => {
+    vi.useFakeTimers();
+    const pendingRefresh = deferred<typeof GOOGLE_WORKSPACE>();
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockResolvedValueOnce(APPLE_WORKSPACE)
+      .mockImplementationOnce(() => pendingRefresh.promise)
+      .mockResolvedValueOnce(EXAMPLE_WORKSPACE);
+    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
+      tab: EXAMPLE_WORKSPACE.tabs[0],
+    });
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByTitle("Apple")).not.toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_500);
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
+
+      const address = screen.getByTestId("browser-workspace-address-input");
+      await act(async () => {
+        fireEvent.change(address, {
+          target: { value: "https://example.com/" },
+        });
+        fireEvent.keyDown(address, { key: "Enter" });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(3);
+      expect(screen.getByTitle("Example")).not.toBeNull();
+
+      await act(async () => {
+        pendingRefresh.resolve(GOOGLE_WORKSPACE);
+        await Promise.resolve();
+      });
+      expect(screen.getByTitle("Example")).not.toBeNull();
+      expect(screen.queryByTitle("Google")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

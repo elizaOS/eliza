@@ -1551,9 +1551,14 @@ export class ProvisioningJobService {
         }
         // A pending row is either unclaimed or was made retryable only after its
         // prior execution acknowledged quiescence.
+        const cancelledAt = new Date();
         const cancelled = await tx
           .update(jobs)
-          .set({ status: "cancelled", updated_at: new Date() })
+          .set({
+            status: "cancelled",
+            completed_at: cancelledAt,
+            updated_at: cancelledAt,
+          })
           .where(
             and(
               eq(jobs.organization_id, params.organizationId),

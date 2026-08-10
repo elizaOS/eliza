@@ -920,13 +920,20 @@ describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => 
 describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM close)", () => {
 	const STRANGER_PLATFORM_ID = "555000111";
 	const KNOWN_PLATFORM_ID = "555000222";
+	const REQUESTER_ENTITY_ID = "00000000-0000-0000-0000-0000000000cc";
+	const THIRD_PARTY_ENTITY_ID = "00000000-0000-0000-0000-00000000decaf";
 
 	function harness(options: {
 		known: boolean;
 		roomEntities?: Array<{ id: string; names: string[] }>;
+		relationship?: "forward" | "reverse" | "unrelated" | "none";
 	}) {
 		const sends: Array<{ target: Record<string, unknown> }> = [];
 		const cache = new Map<string, unknown>();
+		const relationshipQueries: Array<{
+			sourceEntityId: string;
+			targetEntityId: string;
+		}> = [];
 		const platformId = options.known ? KNOWN_PLATFORM_ID : STRANGER_PLATFORM_ID;
 		const runtime = createMockRuntime({
 			agentId: "00000000-0000-0000-0000-000000000001",
@@ -955,10 +962,43 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 				options.known
 					? { id, names: ["Known Friend"] }
 					: null) as IAgentRuntime["getEntityById"],
-			getRelationships: (async () =>
-				options.known
-					? [{ sourceEntityId: "a", targetEntityId: "b" }]
-					: []) as IAgentRuntime["getRelationships"],
+			getRelationships: async () => {
+				throw new Error(
+					"recipient gate must not use a broad relationship query",
+				);
+			},
+			getRelationshipsByPairs: (async (pairs) => {
+				relationshipQueries.push(...pairs);
+				const recipientId = pairs.find(
+					(pair) => pair.sourceEntityId === REQUESTER_ENTITY_ID,
+				)?.targetEntityId;
+				const relationship =
+					options.relationship ?? (options.known ? "forward" : "none");
+				const storedEdge =
+					relationship === "forward" && recipientId
+						? {
+								sourceEntityId: REQUESTER_ENTITY_ID,
+								targetEntityId: recipientId,
+							}
+						: relationship === "reverse" && recipientId
+							? {
+									sourceEntityId: recipientId,
+									targetEntityId: REQUESTER_ENTITY_ID,
+								}
+							: relationship === "unrelated" && recipientId
+								? {
+										sourceEntityId: recipientId,
+										targetEntityId: THIRD_PARTY_ENTITY_ID,
+									}
+								: null;
+				return pairs.map((pair) =>
+					storedEdge &&
+					storedEdge.sourceEntityId === pair.sourceEntityId &&
+					storedEdge.targetEntityId === pair.targetEntityId
+						? storedEdge
+						: null,
+				);
+			}) as IAgentRuntime["getRelationshipsByPairs"],
 			getCache: (async (key: string) =>
 				cache.get(key)) as IAgentRuntime["getCache"],
 			setCache: (async (key: string, value: unknown) => {
@@ -976,7 +1016,7 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 			},
 			reportError: () => undefined,
 		});
-		return { runtime, sends };
+		return { relationshipQueries, runtime, sends };
 	}
 
 	async function send(
@@ -1040,6 +1080,47 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 	it("a relationship-backed recipient still DMs directly (saved-contact path unchanged)", async () => {
 		const { runtime, sends } = harness({ known: true });
 		const result = await send(runtime, "message my friend saying hey");
+
+		expect(result.success).toBe(true);
+		expect(result.data).not.toMatchObject({ confirmationRequired: true });
+		expect(sends).toHaveLength(1);
+		expect(sends[0].target).toMatchObject({ entityId: KNOWN_PLATFORM_ID });
+	});
+
+	it("an unrelated third-party relationship does NOT bypass confirmation (#18107)", async () => {
+		const { relationshipQueries, runtime, sends } = harness({
+			known: true,
+			relationship: "unrelated",
+		});
+		const result = await send(runtime, "message fuzzymatch saying hey");
+
+		expect(result.success).toBe(true);
+		expect(result.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
+		expect(sends).toHaveLength(0);
+		const recipientId = relationshipQueries[0]?.targetEntityId;
+		if (!recipientId)
+			throw new Error("exact relationship pair was not queried");
+		expect(relationshipQueries).toEqual([
+			{
+				sourceEntityId: REQUESTER_ENTITY_ID,
+				targetEntityId: recipientId,
+			},
+			{
+				sourceEntityId: recipientId,
+				targetEntityId: REQUESTER_ENTITY_ID,
+			},
+		]);
+	});
+
+	it("a reciprocal relationship (target→requester) still DMs directly (#18107)", async () => {
+		const { runtime, sends } = harness({
+			known: true,
+			relationship: "reverse",
+		});
+		const result = await send(runtime, "message fuzzymatch saying hey");
 
 		expect(result.success).toBe(true);
 		expect(result.data).not.toMatchObject({ confirmationRequired: true });

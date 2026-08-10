@@ -7,28 +7,78 @@ import { z } from "zod";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
-const BLOOIO_API_BASE = "https://backend.blooio.com/v2/api";
+const BLOOIO_API_BASE = "https://api.blooio.com/v2/api";
 
-const BlooioWebhookEventSchema = z.object({
+const BlooioAttachmentSchema = z.union([
+  z.string(),
+  z.object({ url: z.string().url(), name: z.string().nullish() }).passthrough(),
+]);
+
+const BlooioV2WebhookEventSchema = z.object({
   event: z.string().min(1),
   message_id: z.string().trim().min(1).nullish(),
   external_id: z.string().nullish(),
   internal_id: z.string().nullish(),
   sender: z.string().trim().min(1).nullish(),
   text: z.string().nullish(),
-  attachments: z
-    .array(
-      z.union([
-        z.string(),
-        z.object({ url: z.string().url(), name: z.string().nullish() }),
-      ]),
-    )
-    .nullish(),
+  attachments: z.array(BlooioAttachmentSchema).nullish(),
   protocol: z.string().nullish(),
   is_group: z.boolean().nullish(),
   received_at: z.number().nullish(),
   timestamp: z.number().nullish(),
 });
+
+const BlooioV4MessageSchema = z
+  .object({
+    id: z.string().trim().min(1).nullish(),
+    message_id: z.string().trim().min(1).nullish(),
+    chat_id: z.string().nullish(),
+    sender: z.string().trim().min(1).nullish(),
+    recipient: z.string().nullish(),
+    channel_address: z.string().nullish(),
+    contact: z
+      .object({ identifier: z.string().trim().min(1).nullish() })
+      .nullish(),
+    text: z.string().nullish(),
+    attachments: z.array(BlooioAttachmentSchema).nullish(),
+    protocol: z.string().nullish(),
+    is_group: z.boolean().nullish(),
+    group: z.unknown().nullish(),
+  })
+  .passthrough();
+
+const BlooioV4WebhookEnvelopeSchema = z.object({
+  id: z.string().trim().min(1),
+  type: z.string().min(1),
+  created_at: z.number(),
+  data: BlooioV4MessageSchema,
+});
+
+type BlooioWebhookEvent = z.infer<typeof BlooioV2WebhookEventSchema>;
+
+function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
+  const v2 = BlooioV2WebhookEventSchema.safeParse(data);
+  if (v2.success) return v2.data;
+
+  const v4 = BlooioV4WebhookEnvelopeSchema.safeParse(data);
+  if (!v4.success) return null;
+
+  const message = v4.data.data;
+  const sender = message.sender ?? message.contact?.identifier ?? null;
+  return {
+    event: v4.data.type,
+    message_id: message.message_id ?? message.id,
+    external_id: sender,
+    internal_id: message.recipient ?? message.channel_address,
+    sender,
+    text: message.text,
+    attachments: message.attachments,
+    protocol: message.protocol,
+    is_group: message.is_group ?? message.group != null,
+    received_at: v4.data.created_at,
+    timestamp: v4.data.created_at,
+  };
+}
 
 const ALLOWED_MEDIA_DOMAINS = [
   "blooio.com",
@@ -151,15 +201,11 @@ export const blooioAdapter: PlatformAdapter = {
       return null;
     }
 
-    const parsed = BlooioWebhookEventSchema.safeParse(data);
-    if (!parsed.success) {
-      logger.warn("Invalid Blooio webhook payload", {
-        errors: parsed.error.format(),
-      });
+    const event = parseWebhookEvent(data);
+    if (!event) {
+      logger.warn("Invalid Blooio webhook payload");
       return null;
     }
-
-    const event = parsed.data;
 
     if (event.event !== "message.received") return null;
     if (event.is_group) return null;

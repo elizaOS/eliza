@@ -295,9 +295,16 @@ async function scheduleDeadlineTask(
   };
   const task = await scope.runner.schedule({
     kind: "watcher",
-    promptInstructions: `Document "${doc.title}" deadline reached. Verify status of DocumentRequest ${doc.id} and escalate if still ${doc.status}.`,
+    promptInstructions: `Tell the owner that the deadline for "${doc.title}" has arrived and ask them to check its status. Keep the message concise. Never expose internal record identifiers.`,
     trigger,
     priority: "medium",
+    output: {
+      destination: "in_app_card",
+      fallback: {
+        title: "Document deadline",
+        body: `The deadline for "${doc.title}" is here. Please check its status.`,
+      },
+    },
     subject: { kind: "document", id: doc.id },
     metadata: {
       documentRequestId: doc.id,

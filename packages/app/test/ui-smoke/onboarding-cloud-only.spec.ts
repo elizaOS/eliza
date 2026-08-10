@@ -3,8 +3,9 @@
  *
  * Unlike the onboarding-to-home lanes (which opt in to the dev-only runtime
  * chooser via injectFullCapabilityHost), these specs boot the app exactly as a
- * shipped build does: no chooser override, so onboarding is the single
- * "Sign in to Eliza Cloud" step. Covered: the sign-in-only greeting (no
+ * shipped build does: an explicit `"0"` override reproduces the production
+ * default while the Playwright Vite server intentionally defaults development
+ * to the chooser. Covered: the sign-in-only greeting (no
  * local/remote options), the tap-driven flow to a real completion at
  * provisioning success (no tutorial gate), session injection (a stored steward
  * session skips the sign-in ask — zero interactions to the onboarded home),
@@ -67,7 +68,10 @@ test.describe("cloud-only onboarding (production default)", () => {
     // Zero existing cloud agents: the bind is a silent auto-provision, so the
     // whole flow is greeting → one tap → onboarded home.
     await installCloudRoutes(page, { agentCount: 0 });
-    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+    await seedAppStorage(page, {
+      "eliza:first-run-complete": "",
+      "eliza:enable-runtime-chooser": "0",
+    });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
@@ -89,7 +93,10 @@ test.describe("cloud-only onboarding (production default)", () => {
     await injectCloudAuthToken(page);
     const state = await installHomeRoutes(page);
     await installCloudRoutes(page, { agentCount: 0 });
-    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+    await seedAppStorage(page, {
+      "eliza:first-run-complete": "",
+      "eliza:enable-runtime-chooser": "0",
+    });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
@@ -108,7 +115,10 @@ test.describe("cloud-only onboarding (production default)", () => {
     await injectCloudAuthToken(page);
     const state = await installHomeRoutes(page);
     await installCloudRoutes(page);
-    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+    await seedAppStorage(page, {
+      "eliza:first-run-complete": "",
+      "eliza:enable-runtime-chooser": "0",
+    });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
 

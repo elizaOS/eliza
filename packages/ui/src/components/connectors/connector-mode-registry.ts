@@ -489,6 +489,19 @@ registerConnectorModes("whatsapp", [
 
 registerConnectorModes("imessage", [
   {
+    id: "blooio",
+    label: "Blooio (Cloud)",
+    labelKey: "connectormode.imessage.blooio.label",
+    description:
+      "Hosted iMessage/SMS transport. No Mac or local relay is required.",
+    descriptionKey: "connectormode.imessage.blooio.description",
+    managementMode: "cloud-managed",
+    setupPluginId: "blooio",
+    channelMode: "bot",
+    cloudOnly: true,
+    defaultPriority: 0,
+  },
+  {
     id: "cloud-bluebubbles",
     label: "iPhone Cloud Gateway",
     description:
@@ -498,7 +511,7 @@ registerConnectorModes("imessage", [
     channelMode: "delegate",
     cloudOnly: true,
     cloudGatewaySetup: "phone-registration",
-    defaultPriority: 0,
+    defaultPriority: 1,
   },
   {
     id: "direct",
@@ -510,7 +523,7 @@ registerConnectorModes("imessage", [
     managementMode: "local-setup",
     setupPluginId: "imessage",
     channelMode: "delegate",
-    defaultPriority: 1,
+    defaultPriority: 2,
   },
   {
     id: "bluebubbles",
@@ -522,18 +535,6 @@ registerConnectorModes("imessage", [
     managementMode: "local-config",
     setupPluginId: "bluebubbles",
     channelMode: "delegate",
-  },
-  {
-    id: "blooio",
-    label: "Blooio (Cloud)",
-    labelKey: "connectormode.imessage.blooio.label",
-    description:
-      "Cloud-based iMessage/SMS gateway. No Mac needed on the server.",
-    descriptionKey: "connectormode.imessage.blooio.description",
-    managementMode: "cloud-managed",
-    setupPluginId: "blooio",
-    channelMode: "bot",
-    cloudOnly: true,
   },
 ]);
 
