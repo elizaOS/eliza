@@ -134,7 +134,7 @@ describe("eliza agent pairing token route", () => {
     publicBaseDomain = "elizacloud.ai";
   });
 
-  test("redirects custom-image agents with managed tokens through the pairing page", async () => {
+  test("routes production token pairing through the canonical hostname instead of its public direct IP", async () => {
     findByIdAndOrg.mockResolvedValue(runningSandbox("custom"));
 
     const response = await postPairingToken();
@@ -144,13 +144,21 @@ describe("eliza agent pairing token route", () => {
       success: true,
       data: {
         token: "pair-token",
-        redirectUrl: "http://168.119.244.189:19028/pair?token=pair-token",
+        redirectUrl:
+          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/pair?token=pair-token",
         expiresIn: 60,
       },
     });
+    expect(generateToken).toHaveBeenLastCalledWith(
+      "user-1",
+      "org-1",
+      "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+      "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai",
+    );
   });
 
-  test("redirects managed runtimes through the pairing page", async () => {
+  test("routes staging token pairing through the staging agent hostname", async () => {
+    publicBaseDomain = "staging.elizacloud.ai";
     findByIdAndOrg.mockResolvedValue(runningSandbox("dedicated-lazy"));
 
     const response = await postPairingToken();
@@ -160,10 +168,62 @@ describe("eliza agent pairing token route", () => {
       success: true,
       data: {
         token: "pair-token",
-        redirectUrl: "http://168.119.244.189:19028/pair?token=pair-token",
+        redirectUrl:
+          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.staging.elizacloud.ai/pair?token=pair-token",
         expiresIn: 60,
       },
     });
+  });
+
+  test("allows token pairing to use an explicit local-Docker loopback origin", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      ...runningSandbox("dedicated-lazy"),
+      bridge_url: "http://127.0.0.1:31000",
+      web_ui_port: 31001,
+    });
+
+    const response = await postPairingToken();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: {
+        token: "pair-token",
+        redirectUrl: "http://127.0.0.1:31001/pair?token=pair-token",
+        expiresIn: 60,
+      },
+    });
+  });
+
+  test("does not treat a public hostname beginning with 127 as loopback", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      ...runningSandbox("dedicated-lazy"),
+      bridge_url: "http://127.attacker.example:19027",
+    });
+
+    const response = await postPairingToken();
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: {
+        redirectUrl:
+          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/pair?token=pair-token",
+      },
+    });
+  });
+
+  test("fails closed when token pairing has only a public direct IP and no canonical hostname", async () => {
+    publicBaseDomain = undefined;
+    findByIdAndOrg.mockResolvedValue(runningSandbox("dedicated-lazy"));
+
+    const response = await postPairingToken();
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "AGENT_WEB_UI_NOT_READY",
+    });
+    expect(generateToken).not.toHaveBeenCalled();
   });
 
   test("skips a browser-unreachable tailnet headscale URL and falls back to the public managed hostname", async () => {
