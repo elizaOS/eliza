@@ -79,6 +79,13 @@ export interface OnboardingChatInput {
   continuationMode?: "trusted-telegram";
   /** Stable transport delivery id. Replays return the original result. */
   idempotencyKey?: string;
+  /**
+   * Read-only status poll. When true the call returns the current provisioning
+   * state and a deterministic reply but never appends to session history, even
+   * on a brand-new session. Browser polling uses this so repeated 5 s polls
+   * cannot grow the durable transcript with duplicate status copy.
+   */
+  statusOnly?: boolean;
 }
 
 export interface OnboardingChatCta {
@@ -1006,7 +1013,12 @@ export async function runOnboardingChatWithStore(
 
   session = await maybeLinkAuthenticatedPlatformIdentity(session, input);
 
-  const userMessage = input.message?.trim().slice(0, MAX_MESSAGE_LENGTH);
+  // statusOnly is a read-only poll: skip all user-message processing so it
+  // can never mutate session history, name, or preferred-name state, even if
+  // a caller accidentally includes a message field.
+  const userMessage = input.statusOnly
+    ? undefined
+    : input.message?.trim().slice(0, MAX_MESSAGE_LENGTH);
   let preferredNameProvidedThisTurn = false;
   if (userMessage) {
     session = appendMessage(session, "user", userMessage);
@@ -1073,6 +1085,19 @@ export async function runOnboardingChatWithStore(
     requiresLogin && hasPreferredName(session) && rendersLoginAsButton(session.platform)
       ? buildLoginCta(loginUrl)
       : null;
+  // A turn with no user message produces a proactive welcome only the FIRST
+  // time — the initial mount/poll that has no user content yet. Every
+  // subsequent message-less turn (status-only polls every 5 s, continuation
+  // polls) returns the current provisioning state and a deterministic reply
+  // but leaves session.history untouched. Without this guard the durable
+  // transcript grows one assistant-only entry per poll; those duplicates are
+  // then returned to the UI and copied into managed-agent memory.
+  //
+  // The explicit statusOnly flag (sent by browser polling) is belt-and-
+  // suspenders: even if a poll arrives against a fresh session, statusOnly
+  // suppresses the welcome append — the initial mount POST already produced it.
+  const isFirstWelcome = !userMessage && session.history.length === 0 && !input.statusOnly;
+  const shouldAppendReply = userMessage || isFirstWelcome;
   const reply = generateOnboardingReply({
     session,
     provisioning,
@@ -1082,7 +1107,9 @@ export async function runOnboardingChatWithStore(
     cta,
   });
 
-  session = appendMessage(session, "assistant", reply);
+  if (shouldAppendReply) {
+    session = appendMessage(session, "assistant", reply);
+  }
   await store.save(session);
 
   return {

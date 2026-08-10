@@ -48,6 +48,13 @@ const gmDefinition: ReminderTaskDefinition = {
     offsetMinutes: 0,
   },
   priority: "low",
+  output: {
+    destination: "in_app_card",
+    fallback: {
+      title: "Good morning",
+      body: "Good morning — I hope your day is off to a gentle start.",
+    },
+  },
   // Default low-priority ladder applies (no retry).
   respectsGlobalPause: true,
   source: "default_pack",
@@ -73,6 +80,13 @@ const gnDefinition: ReminderTaskDefinition = {
     offsetMinutes: 0,
   },
   priority: "low",
+  output: {
+    destination: "in_app_card",
+    fallback: {
+      title: "Good night",
+      body: "Good night — I hope you get some good rest.",
+    },
+  },
   respectsGlobalPause: true,
   source: "default_pack",
   createdBy: DAILY_RHYTHM_PACK_KEY,
@@ -100,6 +114,13 @@ const checkinFollowupDefinition: FollowUpTaskDefinition = {
   // The parent's `pipeline.onSkip` fires this 30 minutes after the parent skips.
   trigger: { kind: "manual" },
   priority: "low",
+  output: {
+    destination: "in_app_card",
+    fallback: {
+      title: "Still here",
+      body: "No rush if you're busy — I'm here whenever you want to check in.",
+    },
+  },
   respectsGlobalPause: true,
   source: "default_pack",
   createdBy: DAILY_RHYTHM_PACK_KEY,
@@ -129,6 +150,13 @@ const checkinDefinition: CheckInTaskDefinition = {
     offsetMinutes: 30,
   },
   priority: "medium",
+  output: {
+    destination: "in_app_card",
+    fallback: {
+      title: "Morning check-in",
+      body: "Your morning check-in is ready whenever you are.",
+    },
+  },
   completionCheck: {
     kind: "user_replied_within",
     params: { lookbackMinutes: 60 },

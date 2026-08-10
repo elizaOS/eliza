@@ -1,6 +1,7 @@
-# This workflow is the sole pull-request and branch-health validation entry
-# point. It keeps one stable required status while path classification limits
-# expensive tests to the surfaces changed by a pull request.
+# This workflow is the canonical required pull-request and branch-health
+# validation entry point. Specialized branch-scoped and path-scoped workflows
+# run alongside it for specific surfaces, but none replaces the stable
+# `CI / Required` status it publishes.
 name: CI
 
 on:

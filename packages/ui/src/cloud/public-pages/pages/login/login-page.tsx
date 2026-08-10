@@ -13,18 +13,17 @@ import { Button } from "../../../../components/primitives";
 import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
+import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
 
+// Chunk-load fallback with the SAME geometry as the section's own
+// provider-discovery skeleton and the final option stack, so the card holds
+// one height from first paint through hydration to interactive (#18256).
 function StewardLoginSectionFallback() {
   return (
-    <div className="space-y-4" aria-busy="true" aria-hidden="true">
-      <div className="h-touch w-full rounded-md bg-bg-muted" />
-      <div className="flex gap-2">
-        <div className="h-touch flex-1 rounded-md bg-bg-muted" />
-        <div className="h-touch flex-1 rounded-md bg-bg-muted" />
-      </div>
-      <div className="mx-auto h-3 w-3/4 rounded-full bg-bg-muted" />
+    <div aria-busy="true" aria-hidden="true">
+      <LoginOptionsSkeleton />
     </div>
   );
 }

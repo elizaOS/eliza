@@ -42,6 +42,7 @@ const chatSchema = z.object({
   platform: platformSchema.optional(),
   platformUserId: z.string().trim().max(256).optional(),
   platformDisplayName: z.string().trim().max(120).optional(),
+  statusOnly: z.boolean().optional(),
 });
 
 /**
@@ -145,6 +146,7 @@ app.post("/", async (c) => {
       authenticatedUser: caller.authenticatedUser,
       trustedPlatformIdentity: caller.trustedPlatformIdentity,
       idempotencyKey: idempotencyKey || undefined,
+      statusOnly: parsed.data.statusOnly ?? false,
     });
 
     // A platform gateway relays a reply back over the connector; it reads

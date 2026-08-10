@@ -3051,8 +3051,15 @@ describe("planner turn-scope channel (#17034)", () => {
 			type: "string",
 			enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
 		});
-		// Required stays untouched — the scope arg is always optional.
-		expect(injected?.[0]?.parameters?.required).toEqual(["action"]);
+		// The scope arg is REQUIRED: optional args are exactly what small
+		// planner models omit, and an omitted scope let a lookup end the turn
+		// before the asked-for write ran (live 2026-08-10). Absent values
+		// still parse as "unspecified", so non-compliant models degrade to
+		// prior behavior instead of failing.
+		expect(injected?.[0]?.parameters?.required).toEqual([
+			"action",
+			TURN_SCOPE_ARG,
+		]);
 		expect(tools[0]?.parameters?.properties?.[TURN_SCOPE_ARG]).toBeUndefined();
 		expect(injected?.[1]).toBe(tools[1]);
 		expect(injected?.[2]).toBe(tools[2]);

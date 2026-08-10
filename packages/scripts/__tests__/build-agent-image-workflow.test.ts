@@ -304,23 +304,17 @@ describe("build-agent-image workflow", () => {
       "Verify demo image is anonymously pullable",
     );
     expect(publicProbe).toContain(
-      "https://ghcr.io/token?scope=repository%3Aelizaos%2Feliza-demo%3Apull",
+      "node packages/scripts/verify-ghcr-anonymous-manifest.mjs",
     );
-    expect(publicProbe).toContain(
-      "https://ghcr.io/v2/elizaos/eliza-demo/manifests/$EXPECTED_DIGEST",
-    );
-    expect(publicProbe).toContain(
-      'if [ "$remote_digest" != "$EXPECTED_DIGEST" ]',
-    );
-    expect(publicProbe).toContain(
-      'if [ "$remote_image_id" != "$EXPECTED_IMAGE_ID" ]',
-    );
+    expect(publicProbe).toContain('--repository "$GHCR_REPOSITORY"');
+    expect(publicProbe).toContain('--digest "$EXPECTED_DIGEST"');
+    expect(publicProbe).toContain('--image-id "$EXPECTED_IMAGE_ID"');
 
     expect(workflowText).toContain(
       `if: ${githubExpression("steps.image.outputs.publication_target == 'canonical'")}`,
     );
-    expect(workflowText).toContain(
-      `https://api.github.com/user/packages/container/${githubExpression("env.IMAGE_NAME")}/visibility`,
+    expect(workflowText).not.toContain(
+      "api.github.com/user/packages/container",
     );
     expect(workflowText).not.toContain(
       "api.github.com/orgs/elizaOS/packages/container/eliza-demo/visibility",
@@ -423,6 +417,43 @@ describe("build-agent-image workflow", () => {
     expect(runBlock).not.toContain("docker info || true");
     expect(runBlock).not.toContain("chmod 666");
     expect(runBlock).not.toContain("chmod 777");
+  });
+
+  test("proves canonical and demo publication through one anonymous verifier", () => {
+    const canonicalBlock = extractStepRunBlock(
+      "Verify canonical image is anonymously pullable",
+    );
+    const demoBlock = extractStepRunBlock(
+      "Verify demo image is anonymously pullable",
+    );
+
+    expect(canonicalBlock).toContain(
+      "node packages/scripts/verify-ghcr-anonymous-manifest.mjs",
+    );
+    expect(demoBlock).toBe(canonicalBlock);
+    expect(workflowText).toContain("GHCR_REPOSITORY: elizaos/eliza\n");
+    expect(workflowText).toContain("GHCR_REPOSITORY: elizaos/eliza-demo\n");
+    expect(workflowText).toContain(
+      `EXPECTED_DIGEST: ${githubExpression("steps.push.outputs.digest")}`,
+    );
+    expect(workflowText).toContain(
+      `EXPECTED_DIGEST: ${githubExpression("steps.promote-demo.outputs.digest")}`,
+    );
+    expect(workflowText).toContain(
+      `EXPECTED_IMAGE_ID: ${githubExpression("steps.push.outputs.image_id")}`,
+    );
+  });
+
+  test("does not retain the unsupported package-visibility mutation", () => {
+    const verificationBlocks = [
+      extractStepRunBlock("Verify canonical image is anonymously pullable"),
+      extractStepRunBlock("Verify demo image is anonymously pullable"),
+    ].join("\n");
+    expect(workflowText).not.toContain("/user/packages/");
+    expect(workflowText).not.toContain("/visibility");
+    expect(verificationBlocks).not.toContain("secrets.GITHUB_TOKEN");
+    expect(verificationBlocks).not.toContain("Authorization:");
+    expect(workflowStepNames()).not.toContain("Make Docker image public");
   });
 
   test("keeps Node ESM dist rewrite after the Turbo build", () => {

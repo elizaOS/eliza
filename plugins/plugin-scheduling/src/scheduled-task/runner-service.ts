@@ -219,9 +219,9 @@ function createDefaultScheduledTaskDispatcher(
   return {
     async dispatch(record): Promise<DispatchResult> {
       // `promptInstructions` is a model prompt, never user-facing copy: the
-      // notification body must be the model's rendering of it. A render
-      // failure is a typed, retryable dispatch failure — never fall back to
-      // delivering the raw instruction text.
+      // notification body must be the model's rendering of it. A model-free
+      // runtime receives a neutral deterministic fallback; a present-but-failed
+      // model call is a typed, retryable dispatch failure.
       let body: string;
       let title: string;
       try {

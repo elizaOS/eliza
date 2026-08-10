@@ -17,6 +17,7 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
+import { getProviderEnvDiagnostics } from "@/lib/services/oauth/provider-registry";
 import { isStewardPlatformConfigured } from "@/lib/services/steward-platform-users";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -66,10 +67,26 @@ app.get("/", (c) => {
         : "CRON_SECRET not set — scheduled jobs (container-billing, process-redemptions) cannot authenticate",
     };
 
+    const oauthProviders = getProviderEnvDiagnostics();
+    const requiredOAuthProviders = oauthProviders.filter(
+      (provider) => provider.requiredForDeployment,
+    );
+    const missingRequiredOAuthProviders = requiredOAuthProviders.filter(
+      (provider) => !provider.configured,
+    );
+    const oauthProvidersCheck: CheckResult = {
+      configured: missingRequiredOAuthProviders.length === 0,
+      message:
+        missingRequiredOAuthProviders.length === 0
+          ? `All ${requiredOAuthProviders.length} deployment-required OAuth providers configured`
+          : `Missing deployment-required OAuth providers: ${missingRequiredOAuthProviders.map((provider) => provider.id).join(", ")}`,
+    };
+
     const allOk =
       steward.configured &&
       (evmConfigured || solanaConfigured) &&
-      crons.configured;
+      crons.configured &&
+      oauthProvidersCheck.configured;
 
     return c.json(
       {
@@ -80,12 +97,15 @@ app.get("/", (c) => {
           steward_platform: steward,
           payouts,
           crons,
+          oauth_providers: oauthProvidersCheck,
         },
+        oauth_providers: oauthProviders,
       },
       200,
       { "Cache-Control": "no-store, max-age=0" },
     );
   } catch (error) {
+    // error-policy:J1 translate an operational-health boundary failure into the shared API error shape.
     return failureResponse(c, error);
   }
 });

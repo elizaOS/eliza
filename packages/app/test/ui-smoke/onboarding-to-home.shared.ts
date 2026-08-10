@@ -255,10 +255,10 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
     win.__ELIZAOS_API_BASE__ = origin;
     win.__electrobunWindowId = 1;
-    // The runtime chooser (local/remote onboarding paths) is OFF by default
-    // (#13377, cloud-only onboarding). A full-capability host is exactly the
-    // environment where the Local runtime is testable, so these lanes opt in;
-    // the cloud-only default is covered by onboarding-cloud-only.spec.ts.
+    // Production remains cloud-only by default (#13377). These helpers also run
+    // against packaged builds where Vite's development default is absent, so
+    // opt in explicitly; the production default is covered by
+    // onboarding-cloud-only.spec.ts with the inverse override.
     window.localStorage.setItem("eliza:enable-runtime-chooser", "1");
   });
 }
@@ -1006,8 +1006,8 @@ export async function completeCloudOnboardingToHome(
 
 // ── Cloud-only onboarding (#13377) — the production default ─────────────────
 //
-// With the runtime chooser OFF (no eliza:enable-runtime-chooser override, no
-// VITE_ELIZA_ENABLE_RUNTIME_CHOOSER build flag) onboarding is a single
+// With the runtime chooser OFF (explicit override, or a production build with
+// no VITE_ELIZA_ENABLE_RUNTIME_CHOOSER build flag) onboarding is a single
 // "Sign in to Eliza Cloud" step: the greeting seeds ONE choice button, a
 // usable stored session skips the ask entirely, and provisioning success
 // completes first-run for real — no tutorial/accent completion gate.

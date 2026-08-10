@@ -3,6 +3,7 @@
  */
 
 import { expect, type Page, test } from "playwright/test";
+import { ELIZA_PHONE_FORMATTED } from "../../src/lib/contact";
 import { waitForLandingIntro } from "./landing-readiness";
 
 const TEST_TOKEN = "homepage-e2e-token";
@@ -267,7 +268,11 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await page.getByRole("button", { name: "Link Phone" }).click();
   await expect(page.getByLabel("Phone number", { exact: true })).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: /iMessage \+1 \(415\) 961-1510/ }),
+    page.getByRole("button", {
+      name: new RegExp(
+        `iMessage ${ELIZA_PHONE_FORMATTED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+      ),
+    }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Connect Discord" }).click();
@@ -289,6 +294,48 @@ test("landing page renders its animated shell and primary entrypoint", async ({
     timeout: 20_000,
   });
   await waitForLandingIntro(page);
+});
+
+test("landing swipe keeps pointer direction and surface-scoped drag prevention", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const surface = page.locator("div.theme-app").first();
+  const imessage = page.getByRole("button", { name: "iMessage" });
+  const telegram = page.getByRole("button", { name: "Telegram" });
+  await expect(surface).toBeVisible();
+  await expect(imessage).toHaveAttribute("aria-pressed", "true");
+
+  const drag = async (fromRatio: number, toRatio: number) => {
+    const box = await surface.boundingBox();
+    if (!box) throw new Error("Landing swipe surface has no bounds");
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + box.width * fromRatio, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * toRatio, y, { steps: 2 });
+    await page.mouse.up();
+  };
+
+  await drag(0.7, 0.3);
+  await expect(telegram).toHaveAttribute("aria-pressed", "true");
+  await drag(0.3, 0.7);
+  await expect(imessage).toHaveAttribute("aria-pressed", "true");
+
+  const dragGuard = await surface.evaluate((root) => {
+    const target = root.querySelector("img, a");
+    if (!(target instanceof HTMLElement)) {
+      return { foundTarget: false, defaultPrevented: false };
+    }
+    const event = new DragEvent("dragstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    target.dispatchEvent(event);
+    return { foundTarget: true, defaultPrevented: event.defaultPrevented };
+  });
+  expect(dragGuard).toEqual({ foundTarget: true, defaultPrevented: true });
 });
 
 test("landing composer is inert while hidden and stays in-viewport when active", async ({

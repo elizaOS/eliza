@@ -37,6 +37,8 @@ export interface SceneDescription {
   describePaused?: boolean;
   describePauseReason?: Exclude<DescribePauseReason, null>;
   audioTranscription?: string;
+  /** Backend that produced the objects array. */
+  objectDetectionSource?: DetectionSource;
 }
 
 export interface DetectedObject {
@@ -163,6 +165,7 @@ export interface VisionConfig {
   updateInterval?: number;
   enablePoseDetection?: boolean;
   enableObjectDetection?: boolean;
+  enableFaceRecognition?: boolean;
   tfUpdateInterval?: number;
   vlmUpdateInterval?: number;
   tfChangeThreshold?: number;
@@ -267,3 +270,50 @@ export interface WorldState {
     lastPosition: BoundingBox;
   }>;
 }
+
+/**
+ * Honest capability readiness snapshot. Each field reports whether the real
+ * backend is initialized — never true when the backend failed to load or is
+ * absent. The provider surfaces this so callers can distinguish
+ * "unavailable" from "ready but empty".
+ */
+export interface VisionCapabilities {
+  /** True when a ggml YOLOv8 detector loaded and has valid weights. */
+  objectDetection: boolean;
+  /** True when a native OCR backend initialized. */
+  ocr: boolean;
+  /** True when face recognition backend loaded. */
+  faceRecognition: boolean;
+  /** True when screen capture pipeline initialized. */
+  screenCapture: boolean;
+  /** True when camera capture initialized. */
+  camera: boolean;
+  /** True when audio capture initialized. */
+  audio: boolean;
+  /** Human-readable reasons for unavailable capabilities, keyed by field. */
+  unavailableReasons?: Partial<
+    Record<keyof Omit<VisionCapabilities, "unavailableReasons">, string>
+  >;
+}
+
+/** Whether the currently selected mode has at least one completed input. */
+export function hasReadyInputForMode(
+  capabilities: VisionCapabilities | undefined,
+  mode: VisionMode | undefined,
+): boolean {
+  if (!capabilities || !mode) return false;
+  switch (mode) {
+    case VisionMode.CAMERA:
+      return capabilities.camera;
+    case VisionMode.SCREEN:
+      return capabilities.screenCapture;
+    case VisionMode.BOTH:
+      return capabilities.camera || capabilities.screenCapture;
+    case VisionMode.OFF:
+      return false;
+  }
+  return false;
+}
+
+/** Provenance of a detection result, so callers can tell YOLO apart from heuristics. */
+export type DetectionSource = "yolo" | "motion";
