@@ -173,9 +173,9 @@ export interface ShellController {
   visionCapturing: boolean;
   /** Toggle continuous ("open voice") capture. Used by a quick tap on the mic. */
   toggleRecording: () => void;
-  /** Begin capture unconditionally. Used by push-to-talk press. `"dictate"`
-   *  routes the final transcript to the dictation sink (composer draft) and does
-   *  not send; `"converse"` (default) sends a VOICE_DM so the reply is spoken. */
+  /** Begin voice input unconditionally. `"converse"` (default) starts the
+   *  configured realtime session; `"dictate"` routes the final transcript to
+   *  the composer draft without sending. */
   startRecording: (intent?: CaptureIntent) => void;
   /** End capture unconditionally. Used by push-to-talk release. */
   stopRecording: () => void;
@@ -1106,6 +1106,7 @@ export function useShellController(): ShellController {
         realtimeVoiceEnabled &&
         (intent === undefined || intent === "converse")
       ) {
+        startRealtimeVoiceRef.current();
         return;
       }
       // Voice capture is independent of agent-respond readiness. A converse
