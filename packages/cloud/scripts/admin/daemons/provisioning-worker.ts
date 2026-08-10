@@ -953,15 +953,14 @@ export interface FleetUpgradeSummary {
   detail?: string;
 }
 
-const MAX_INFLIGHT_UPGRADES = 3;
-
 /**
  * Detect when the registry-side digest of the configured agent tag has moved
  * (e.g. a new `:develop` image was pushed) and enqueue blue/green
  * `agent_upgrade` jobs for every running agent still on the old digest.
  *
- * Rate-limited to at most `MAX_INFLIGHT_UPGRADES` upgrade jobs in flight at
- * any time so the fleet is never fully disrupted at once. The actual swap is
+ * Rate-limited to at most `MAX_INFLIGHT_UPGRADES` (default 3) upgrade jobs in
+ * flight at any time so the fleet is never fully disrupted at once. Set the
+ * env var to 0 to pause rollouts during an operational canary. The actual swap is
  * zero-downtime (a new container is provisioned on a different node, traffic
  * is atomically swapped, then the old container gets a 30s SIGTERM drain
  * before removal), so the rate limit is about resource pressure on
@@ -996,7 +995,7 @@ export async function processFleetUpgradeCycle(): Promise<FleetUpgradeSummary> {
     "agent_upgrade",
     "agent_admin_canary_image",
   ]);
-  const slack = MAX_INFLIGHT_UPGRADES - inFlight;
+  const slack = containersEnv.maxInflightUpgrades() - inFlight;
   if (slack <= 0) {
     return {
       action: "skip_capacity",

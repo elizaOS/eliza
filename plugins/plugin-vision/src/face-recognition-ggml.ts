@@ -390,6 +390,8 @@ export interface DetectedFace {
 export class FaceRecognition {
   private readonly detector = new BlazeFaceGgmlDetector();
   private readonly embedder = new FaceEmbedGgmlRecognizer();
+  private initialized = false;
+  private initPromise: Promise<void> | null = null;
   private detectorAvailable: boolean | null = null;
   private readonly faceLibrary: FaceLibrary = {
     faces: new Map(),
@@ -400,6 +402,40 @@ export class FaceRecognition {
   private readonly FACE_MATCH_THRESHOLD = 0.6;
   // Minimum face size in pixels.
   private readonly MIN_FACE_SIZE = 50;
+
+  /** Load both native models before this pipeline is reported as ready. */
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+    if (this.initPromise) return this.initPromise;
+    this.initPromise = (async () => {
+      try {
+        await this.detector.initialize();
+        await this.embedder.initialize();
+        this.initialized = true;
+      } catch (error) {
+        // error-policy:J6 best-effort teardown must preserve the init failure.
+        const cleanup = await Promise.allSettled([
+          this.detector.dispose(),
+          this.embedder.dispose(),
+        ]);
+        for (const result of cleanup) {
+          if (result.status === "rejected") {
+            logger.warn(
+              `${FACE_REC_TAG} partial-init cleanup failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+            );
+          }
+        }
+        throw error;
+      } finally {
+        this.initPromise = null;
+      }
+    })();
+    return this.initPromise;
+  }
+
+  isInitialized(): boolean {
+    return this.initialized;
+  }
 
   /**
    * Detect faces in a raw RGBA frame and compute an embedding for each.
@@ -424,6 +460,8 @@ export class FaceRecognition {
       );
       return [];
     }
+
+    if (!this.initialized) await this.initialize();
 
     if (this.detectorAvailable === null) {
       this.detectorAvailable = await BlazeFaceGgmlDetector.isAvailable();
@@ -557,8 +595,20 @@ export class FaceRecognition {
   }
 
   async dispose(): Promise<void> {
-    await this.detector.dispose();
-    await this.embedder.dispose();
+    const cleanup = await Promise.allSettled([
+      this.detector.dispose(),
+      this.embedder.dispose(),
+    ]);
+    // error-policy:J6 best-effort teardown releases both native models.
+    for (const result of cleanup) {
+      if (result.status === "rejected") {
+        logger.warn(
+          `${FACE_REC_TAG} dispose failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+        );
+      }
+    }
+    this.initialized = false;
+    this.initPromise = null;
   }
 }
 

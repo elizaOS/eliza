@@ -27,6 +27,8 @@ import {
 import {
 	decideReplyGate,
 	enforceVerbosity,
+	type ReplyGateMode,
+	resolveEffectiveReplyGate,
 } from "../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
 import {
@@ -139,6 +141,7 @@ import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
 	FAILED_TOOL_FALLBACK_MESSAGE,
+	isTerminalPlannerToolName,
 	type PlannerLoopParams,
 	type PlannerRuntime,
 	type PlannerToolCall,
@@ -516,6 +519,27 @@ function messageExplicitlyAddressesAgent(
 			runtime.character?.username,
 		])
 	);
+}
+
+/**
+ * Resolves the sender's effective personality `reply_gate` mode (user slot →
+ * global slot) for the post-Stage-1 engagement addressing gate. An explicit
+ * `"always"` is the deliberate opt-out that keeps intentionally-chatty agents
+ * replying even to turns addressed to another participant; every other mode —
+ * including the default unset state — leaves that gate armed.
+ */
+function resolveStage1ReplyGateMode(
+	runtime: IAgentRuntime,
+	message: Memory,
+): ReplyGateMode | null {
+	const store = getPersonalityStore(runtime);
+	if (!store || message.entityId === runtime.agentId) {
+		return null;
+	}
+	return resolveEffectiveReplyGate(
+		store.getSlot(message.entityId),
+		store.getSlot("global"),
+	).mode;
 }
 
 function getPlannerActionObjectName(action: Record<string, unknown>): string {
@@ -1760,6 +1784,83 @@ function deliveredTextsCoverReply(
 		}
 	}
 	return false;
+}
+
+/**
+ * Records a settled planner tool result on the turn-scoped list the
+ * planner-loop failure catch reads, returning the result unchanged so the
+ * capture composes inline with the executor call.
+ */
+function trackSettledPlannerToolResult(
+	settled: Array<{ name: string; result: PlannerToolResult }>,
+	name: string,
+	result: PlannerToolResult,
+): PlannerToolResult {
+	settled.push({ name, result });
+	return result;
+}
+
+/**
+ * The completed-result body of a sub-agent `task_complete` relay message, or
+ * undefined when the text is not such a relay or carries no body. The relay
+ * format is `[sub-agent: … — task_complete — …]\n<result body>` (see
+ * plugin-agent-orchestrator's sub-agent-router): the bracketed first segment
+ * is a planner-only directive and never user-facing; the body below it is the
+ * sub-agent's finished result, already composed for user delivery. Lets a
+ * failed relay turn deliver the completed result instead of discarding it for
+ * the generic failed-tool fallback (#18208). Capped so a runaway transcript
+ * cannot flood the channel.
+ */
+export function subAgentCompletionRelayBody(
+	text: string | undefined,
+): string | undefined {
+	if (!text) return undefined;
+	const trimmed = text.trimStart();
+	if (!trimmed.startsWith("[sub-agent:")) return undefined;
+	const headerEnd = trimmed.indexOf("]");
+	if (headerEnd < 0) return undefined;
+	if (!trimmed.slice(0, headerEnd + 1).includes("task_complete")) {
+		return undefined;
+	}
+	const body = trimmed.slice(headerEnd + 1).trim();
+	if (!body) return undefined;
+	const maxLength = 1500;
+	return body.length > maxLength
+		? `${body.slice(0, maxLength).trimEnd()}…`
+		: body;
+}
+
+/**
+ * The most recent completed tool result whose `userFacingText` can still
+ * rescue a turn after the planner loop dies: successful, non-terminal, and not
+ * already delivered to the user through an action callback. Diagnostic
+ * `text` is never a candidate — the wire contract says it must not render as
+ * assistant prose — so a turn whose tools produced only diagnostics still
+ * falls through to the caller's failure handling.
+ */
+export function preservedSettledToolResult(
+	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
+	deliveredVisibleTexts: ReadonlySet<string>,
+): (PlannerToolResult & { userFacingText: string }) | undefined {
+	for (let index = settled.length - 1; index >= 0; index--) {
+		const entry = settled[index];
+		if (!entry || entry.result.success !== true) continue;
+		if (isTerminalPlannerToolName(entry.name)) continue;
+		const candidate = entry.result.userFacingText?.trim();
+		if (!candidate) continue;
+		// A text the user already saw via an action callback must not be
+		// re-sent; keep scanning for an undelivered result.
+		if (
+			deliveredTextsCoverReply(
+				deliveredVisibleTexts,
+				normalizeVisibleTextForDuplicateCheck(candidate),
+			)
+		) {
+			continue;
+		}
+		return { ...entry.result, userFacingText: candidate };
+	}
+	return undefined;
 }
 
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
@@ -4969,11 +5070,15 @@ export function messageHandlerFromFieldResult(
 	// required-tool enforcement — stand on deterministic text inference alone
 	// (coding backstop, ack inference, or direct inference). Record that so
 	// the planner loop can accept a firmly repeated terminal answer early
-	// instead of burning the full miss budget on a heuristic's guess.
+	// instead of burning the full miss budget on a heuristic's guess. Coding
+	// work is deliberately excluded: that inference is structurally anchored
+	// to an operation plus a code artifact, and relaxing it lets a planner ship
+	// a repeated progress/fallback answer without ever executing delegation.
 	if (
 		shouldPlan &&
 		planCandidateActions.length > 0 &&
-		rawCandidateActions.length === 0
+		rawCandidateActions.length === 0 &&
+		directCurrentInference.kind !== "coding"
 	) {
 		plan.requiredToolEvidence = "inferred";
 	}
@@ -5224,11 +5329,13 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 			...(viewOverlapMissBudget !== undefined
 				? { requiredToolMissBudget: viewOverlapMissBudget }
 				: {}),
-			// Same provenance stamp as the structured path: when Stage 1's own
-			// candidate list was empty, this escalation stands on deterministic
-			// text inference alone.
+			// Same relaxable-inference stamp as the structured path. Strong coding
+			// work orders keep the full corrective budget so a repeated terminal
+			// fallback cannot impersonate completed delegation.
 			...(getMessageHandlerCandidateActions(messageHandler).length === 0
-				? { requiredToolEvidence: "inferred" as const }
+				? directCurrentInference.kind !== "coding"
+					? { requiredToolEvidence: "inferred" as const }
+					: {}
 				: {}),
 		},
 	};
@@ -6965,6 +7072,13 @@ export async function runV5MessageRuntimeStage1(args: {
 	onResponseHandlerEarlyReply?: (
 		event: ResponseHandlerEarlyReplyEvent,
 	) => Promise<boolean> | Promise<void> | boolean | undefined;
+	/**
+	 * Fires once Stage 1 routing commits this turn to a response (final reply
+	 * or planning). Lets the caller distinguish "runtime died after the model
+	 * chose to answer" from "died before any respond decision existed" in its
+	 * failure-reply gate.
+	 */
+	onStage1RespondDecision?: () => void;
 }): Promise<V5MessageRuntimeStage1Result> {
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
@@ -7676,23 +7790,29 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.contexts,
 			availableContexts,
 		);
-		// #9874 item 1: skip the simple→requiresTool promotion when this turn is
-		// explicitly addressed to another participant (not us) — the agent is
-		// overhearing, not being asked to act, so forcing a tool fabricates a
-		// phantom task. Uniform addressing gate, NOT bot-specific: it fires the
-		// same for human and bot addressees (bot-ness is surfaced to the model as
-		// transcript context, not handled here). Cheap-gated: only resolve
-		// addressees when a promotion could actually fire (requiresTool /
-		// candidateActions) and the message carries explicit addressees.
-		const mayPromoteToTool =
-			messageHandler.plan.requiresTool === true ||
-			(messageHandler.plan.candidateActions?.length ?? 0) > 0;
-		// Fail SAFE on any resolution error (DB hiccup in getEntitiesForRoom): a
-		// transient failure must NOT convert a normal turn into the generic
-		// failure reply — it just means "don't suppress", matching the
-		// conservative contract and the fire-and-forget addressee handling above.
-		const suppressToolPromotion =
-			mayPromoteToTool && addressedTo.length > 0
+		// Full engagement addressing gate (extends #9874 item 1 from tool
+		// promotion to reply + planner + early-ack routing): when Stage 1 tagged
+		// this turn as explicitly addressed to ANOTHER participant (not us), the
+		// agent is overhearing — it must not reply, enter the planner, or
+		// fabricate a tool task. Uniform, NOT bot-specific: it fires the same
+		// for human and bot addressees (bot-ness is surfaced to the model as
+		// transcript context, not handled here). Undirected banter
+		// (addressedTo: []) never gates, so chatty agents still interject per
+		// their character. Eligibility is bounded by the canonical `ambientTurn`
+		// classifier: only positively identified unaddressed text-group traffic
+		// can be suppressed. Direct/API/self turns, client chat, autonomous and
+		// sub-agent traffic, explicit mentions/replies/names, and unknown channel
+		// types all fail open. The sender's effective personality reply_gate also
+		// provides a deliberate opt-out when it is explicitly "always".
+		//
+		// Fail OPEN on any resolution error (DB hiccup in getEntitiesForRoom): a
+		// transient failure must NOT convert a normal turn into silence — it
+		// just means "don't suppress", matching the conservative contract and
+		// the fire-and-forget addressee handling above.
+		const addressedToOtherParticipant =
+			ambientTurn &&
+			addressedTo.length > 0 &&
+			resolveStage1ReplyGateMode(args.runtime, args.message) !== "always"
 				? await messageAddressedToOtherParticipant({
 						runtime: args.runtime,
 						message: args.message,
@@ -7710,8 +7830,18 @@ export async function runV5MessageRuntimeStage1(args: {
 						return false;
 					})
 				: false;
+		if (addressedToOtherParticipant) {
+			args.runtime.logger?.debug?.(
+				{
+					src: "service:message",
+					roomId: args.message.roomId,
+					addressedToCount: addressedTo.length,
+				},
+				"[message] Turn addressed to another participant — engagement gate ignores it",
+			);
+		}
 		const route = routeMessageHandlerOutput(messageHandler, {
-			suppressToolPromotion,
+			addressedToOtherParticipant,
 		});
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
@@ -7721,6 +7851,13 @@ export async function runV5MessageRuntimeStage1(args: {
 				state: args.state,
 			};
 		}
+
+		// Past this point the Stage-1 model has committed this turn to a
+		// response (final reply or planning). Surface the per-message decision
+		// so a later runtime failure can qualify for a visible failure reply
+		// instead of the unaddressed-turn suppression — evaluator-demoted
+		// IGNOREs and the injection-gate return above never reach this.
+		args.onStage1RespondDecision?.();
 
 		if (route.type === "final_reply") {
 			// The simple-context reply IS the answer: Stage 1 emits `replyText` (→
@@ -7854,7 +7991,13 @@ export async function runV5MessageRuntimeStage1(args: {
 				earlyReplyText = "";
 			}
 		}
+		// The addressing gate above already terminal-routes addressed-to-other
+		// turns to ignored, so a gated turn cannot normally reach this planning
+		// path — but the early ack ships user-visible text BEFORE the planner,
+		// so it is re-checked here as defense in depth: no ack may leak from a
+		// gated turn regardless of how routing evolves upstream.
 		const earlyReplyEligible =
+			!addressedToOtherParticipant &&
 			messageHandler.processMessage === "RESPOND" &&
 			earlyReplyText.length > 0 &&
 			typeof onResponseHandlerEarlyReply === "function";
@@ -8093,9 +8236,20 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannerTools.map((tool) => normalizeActionIdentifier(tool.name)),
 		);
 		const stageOneActionLookup = buildRuntimeActionLookup(args.runtime);
+		const plannerToolActions = plannerTools.flatMap(
+			(tool) => resolveRuntimeAction(stageOneActionLookup, tool.name) ?? [],
+		);
 		const candidateResolvesToPlannerTool = (name: string): boolean => {
 			const normalized = normalizeActionIdentifier(name);
 			if (plannerToolNames.has(normalized)) return true;
+			// Retrieval can replace an umbrella candidate (TASKS) with the precise
+			// promoted child exposed this turn (TASKS_SPAWN_AGENT). Promoted children
+			// deliberately carry the parent name as a simile, so resolve against the
+			// ACTUAL planner surface before consulting the full runtime. Otherwise the
+			// runtime lookup finds the exact parent, which is absent from plannerTools,
+			// and incorrectly disables hard-tool enforcement even though its child is
+			// exposed and runnable.
+			if (exposedActionMatches(plannerToolActions, normalized)) return true;
 			const resolved = resolveRuntimeAction(stageOneActionLookup, name);
 			return (
 				resolved !== undefined &&
@@ -8200,6 +8354,17 @@ export async function runV5MessageRuntimeStage1(args: {
 				}
 			: undefined;
 
+		// Settled planner tool results, in execution order, captured OUTSIDE the
+		// loop so they survive a planner/evaluator crash. When the loop dies
+		// after a tool already completed, the catch below can still deliver that
+		// tool's user-facing text instead of the canned transient-failure reply
+		// (observed live 2026-08-07/08: intermittent provider 400s on the
+		// post-tool evaluator canned 26 turns whose tool had already succeeded).
+		const settledPlannerToolResults: Array<{
+			name: string;
+			result: PlannerToolResult;
+		}> = [];
+
 		const invokePlannerLoop = (
 			loopContext: typeof plannerContextAfterEarlyReply,
 		) =>
@@ -8260,45 +8425,49 @@ export async function runV5MessageRuntimeStage1(args: {
 					executeToolCall: (toolCall, ctx) =>
 						timeInferenceSpan(
 							"actions:planner-tool",
-							() =>
-								executeV5PlannedToolCall({
-									runtime: args.runtime,
-									toolCall,
-									plannerContext: loopContext,
-									executorCtx: buildV5ExecutorContext({
-										message: args.message,
-										state: plannerState,
-										selectedContexts,
-										senderRole,
-										previousResults: collectPreviousActionResults(
-											ctx.trajectory,
-											exposedPlannerActions,
-										),
-										// A pending batch has not earned transcript prose, but its
-										// media and interactive payloads still belong to the user.
-										...(recordingCallback
-											? {
-													callback:
-														ctx.plannerCompleted === false
-															? intermediateCallback
-															: recordingCallback,
-												}
-											: {}),
+							async () =>
+								trackSettledPlannerToolResult(
+									settledPlannerToolResults,
+									toolCall.name,
+									await executeV5PlannedToolCall({
+										runtime: args.runtime,
+										toolCall,
+										plannerContext: loopContext,
+										executorCtx: buildV5ExecutorContext({
+											message: args.message,
+											state: plannerState,
+											selectedContexts,
+											senderRole,
+											previousResults: collectPreviousActionResults(
+												ctx.trajectory,
+												exposedPlannerActions,
+											),
+											// A pending batch has not earned transcript prose, but its
+											// media and interactive payloads still belong to the user.
+											...(recordingCallback
+												? {
+														callback:
+															ctx.plannerCompleted === false
+																? intermediateCallback
+																: recordingCallback,
+													}
+												: {}),
+										}),
+										plannerRuntime,
+										executorOptions: {
+											actions: exposedPlannerActions,
+											...(args.onSettledActionResult
+												? {
+														onSettledResult: args.onSettledActionResult,
+													}
+												: {}),
+										},
+										evaluatorEffects,
+										recorder,
+										trajectoryId,
+										plannerLoopConfig: args.plannerLoopConfig,
 									}),
-									plannerRuntime,
-									executorOptions: {
-										actions: exposedPlannerActions,
-										...(args.onSettledActionResult
-											? {
-													onSettledResult: args.onSettledActionResult,
-												}
-											: {}),
-									},
-									evaluatorEffects,
-									recorder,
-									trajectoryId,
-									plannerLoopConfig: args.plannerLoopConfig,
-								}),
+								),
 							{ tool: toolCall.name },
 						),
 					evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
@@ -8326,7 +8495,73 @@ export async function runV5MessageRuntimeStage1(args: {
 				!preservedAnswer ||
 				PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
 			) {
-				throw error;
+				// No answer-shaped Stage-1 text to rescue with — but a tool that
+				// already completed this turn may still own the user-facing result
+				// (observed live: the post-tool evaluator died on an intermittent
+				// provider 400 and the canned transient-failure reply replaced a
+				// result the turn had already produced). Deliver the preserved tool
+				// result; the canned line remains only when there is genuinely
+				// nothing user-facing to deliver.
+				const preservedToolResult = preservedSettledToolResult(
+					settledPlannerToolResults,
+					deliveredVisibleTexts,
+				);
+				if (!preservedToolResult) {
+					// #18208: a task_complete relay turn carries the sub-agent's
+					// finished result in its own body — the last preserved source
+					// before conceding to the canned failure reply.
+					const relayBody = subAgentCompletionRelayBody(
+						args.message?.content?.text,
+					);
+					if (!relayBody) {
+						throw error;
+					}
+					// error-policy:J4 a completed sub-agent result is a designed
+					// degrade when the relay turn's planning fails; report the loop
+					// failure and deliver the result the sub-agent already produced.
+					endStatus = "errored";
+					args.runtime.reportError("MessageService.plannerLoop", error, {
+						roomId: args.message.roomId,
+					});
+					return {
+						kind: "direct_reply",
+						messageHandler,
+						result: createV5ReplyStrategyResult({
+							...args,
+							state: plannerState,
+							text: relayBody,
+							thought: messageHandler.thought,
+						}),
+					};
+				}
+				// error-policy:J4 a completed tool's user-facing result is a designed
+				// degrade when later planning/evaluation fails; report the loop
+				// failure and deliver the tool's known-good text.
+				endStatus = "errored";
+				args.runtime.reportError("MessageService.plannerLoop", error, {
+					roomId: args.message.roomId,
+				});
+				return {
+					kind: "direct_reply",
+					messageHandler,
+					result: createV5ReplyStrategyResult({
+						...args,
+						state: plannerState,
+						text: preservedToolResult.userFacingText,
+						thought: messageHandler.thought,
+						// Only byte-exact canonical action text may skip the voice
+						// gate; ordinary tool output stays eligible for re-voicing.
+						...(preservedToolResult.verifiedUserFacing === true
+							? { agentVoiced: true }
+							: {}),
+						...(preservedToolResult.userFacingEffectReceiptIds?.length
+							? {
+									effectReceiptIds:
+										preservedToolResult.userFacingEffectReceiptIds,
+								}
+							: {}),
+					}),
+				};
 			}
 			// error-policy:J4 A completed Stage-1 answer is a designed degrade when
 			// later planning fails; report the planner failure and deliver known-good text.
@@ -8505,6 +8740,24 @@ export async function runV5MessageRuntimeStage1(args: {
 						: "")
 				: preservedAnswerFallback;
 		let effectiveReplyText = plannedText || ackFallback;
+		// #18208: a failed sub-agent completion relay must not discard the
+		// finished result it carries. When the turn ended on the generic
+		// failed-tool fallback and the triggering message IS a task_complete
+		// relay — whose body is the sub-agent's completed result, composed for
+		// user delivery — deliver that body instead of the canned line. Every
+		// other failed turn keeps the canned fallback, and the replacement
+		// still flows through the egress/dedupe checks below.
+		if (effectiveReplyText === FAILED_TOOL_FALLBACK_MESSAGE) {
+			const relayBody = subAgentCompletionRelayBody(
+				args.message?.content?.text,
+			);
+			if (relayBody) {
+				logger.debug(
+					"[MessageService] failed relay turn degraded to preserved sub-agent result",
+				);
+				effectiveReplyText = relayBody;
+			}
+		}
 		const finalReplyEgressDecision = evaluatePlannedReplyEgress({
 			reply: effectiveReplyText,
 			actionResults,
@@ -9495,6 +9748,49 @@ function looksLikeDelegationExcludedAsk(text: string): boolean {
 	);
 }
 
+const LEGACY_CODING_WORK_VERB_PATTERN =
+	/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/giu;
+const LEGACY_CODING_ARTIFACT_PATTERN =
+	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/giu;
+const CODING_OPERATION_VERB_PATTERN =
+	/\b(?:refactor|debug|deploy|patch|optimize|migrate|profile)\b/giu;
+const REVIEW_WORK_VERB_PATTERN =
+	/\b(?:review|audit|investigate|analyze|inspect|test|trace|diagnose)\b/giu;
+const STRONG_CODE_ARTIFACT_PATTERN =
+	/\b(?:code|cli|script|backend|frontend|repo|repository|bug|pr|pull request|commit|branch|stack trace|pipeline|ci)\b/giu;
+const EXPANDED_WORK_ARTIFACT_PATTERN =
+	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|repository|feature|bug|url|pr|pull request|issue|commit|branch|build|test|error|stack trace|failure|log|docs|documentation|run|pipeline|ci)\b/giu;
+const HTTP_URL_PATTERN = /\bhttps?:\/\/[^\s<>()]+/iu;
+
+interface TextSpan {
+	start: number;
+	end: number;
+}
+
+function collectTextSpans(text: string, pattern: RegExp): TextSpan[] {
+	return Array.from(text.matchAll(pattern), (match) => ({
+		start: match.index,
+		end: match.index + match[0].length,
+	}));
+}
+
+function hasNearbyTerms(
+	text: string,
+	leftPattern: RegExp,
+	rightPattern: RegExp,
+	maxGap: number,
+): boolean {
+	const leftSpans = collectTextSpans(text, leftPattern);
+	const rightSpans = collectTextSpans(text, rightPattern);
+	return leftSpans.some((left) =>
+		rightSpans.some((right) => {
+			if (left.end <= right.start) return right.start - left.end <= maxGap;
+			if (right.end <= left.start) return left.start - right.end <= maxGap;
+			return true;
+		}),
+	);
+}
+
 function looksLikeCodingWorkRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (!normalized.trim()) {
@@ -9510,12 +9806,39 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 		return false;
 	}
 	const asksCodingWork =
-		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b[\s\S]{0,160}\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
+		// Preserve the pre-#18108 construction/edit contract exactly.
+		hasNearbyTerms(
 			normalized,
+			LEGACY_CODING_WORK_VERB_PATTERN,
+			LEGACY_CODING_ARTIFACT_PATTERN,
+			160,
 		) ||
-		/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/iu.test(
+		// Coding-native operations can safely use the expanded artifact set.
+		hasNearbyTerms(
 			normalized,
-		);
+			CODING_OPERATION_VERB_PATTERN,
+			EXPANDED_WORK_ARTIFACT_PATTERN,
+			160,
+		) ||
+		// Review-family verbs are common in health, finance, and personal work.
+		// Promote them without a URL only when paired with a code-specific noun.
+		hasNearbyTerms(
+			normalized,
+			REVIEW_WORK_VERB_PATTERN,
+			STRONG_CODE_ARTIFACT_PATTERN,
+			160,
+		) ||
+		// A URL plus a nearby review-family verb and work artifact is the
+		// deterministic work-order shape reported in #18108. Without the URL,
+		// generic nouns such as issue, test, log, or documentation remain planner
+		// decisions instead of being mislabeled as coding jobs.
+		(HTTP_URL_PATTERN.test(normalized) &&
+			hasNearbyTerms(
+				normalized,
+				REVIEW_WORK_VERB_PATTERN,
+				EXPANDED_WORK_ARTIFACT_PATTERN,
+				160,
+			));
 	return asksDelegation || asksCodingWork;
 }
 
@@ -10393,15 +10716,27 @@ async function rewriteActionCallbackInCharacter(args: {
 	actionName?: string;
 	text: string;
 }): Promise<string | null> {
-	const fallback = () => {
-		const action = args.actionName ?? "the action";
-		const error =
-			typeof args.response.error === "string" && args.response.error.trim()
-				? ` It reported: ${args.response.error.trim()}`
-				: "";
-		return `I ran ${action} and got a result, but I couldn't format the details cleanly here.${error}`;
+	// Failure contract: a failed rewrite must never fabricate wire text — no
+	// meta-narration about formatting ever ships (observed live: a settings
+	// action succeeded and the user received an internal formatting apology).
+	// Returning null keeps the raw callback text as the delivery: it was
+	// already user-destined before the re-voicing attempt. An action-owned
+	// error string is diagnostics for runtime.reportError, not chat content.
+	const fail = (reason: string): null => {
+		const actionError =
+			typeof args.response.error === "string" ? args.response.error.trim() : "";
+		if (actionError) {
+			args.runtime.reportError(
+				"MessageService.rewriteActionCallback",
+				new Error(actionError),
+				{ actionName: args.actionName, roomId: args.message.roomId, reason },
+			);
+		}
+		return null;
 	};
-	if (typeof args.runtime.useModel !== "function") return fallback();
+	if (typeof args.runtime.useModel !== "function") {
+		return fail("model_unavailable");
+	}
 	const character = args.runtime.character;
 	const characterVoice = {
 		name: character?.name,
@@ -10448,12 +10783,17 @@ async function rewriteActionCallbackInCharacter(args: {
 		} | null;
 		const response =
 			typeof parsed?.response === "string" ? parsed.response.trim() : "";
-		if (!response || response === args.text) return fallback();
-		if (parseJSONObjectFromText(response)) return fallback();
-		return response.replace(/^["'`]+|["'`]+$/g, "").trim() || fallback();
+		if (!response || response === args.text) {
+			return fail("unusable_model_response");
+		}
+		if (parseJSONObjectFromText(response)) return fail("json_shaped_response");
+		return (
+			response.replace(/^["'`]+|["'`]+$/g, "").trim() ||
+			fail("unusable_model_response")
+		);
 	} catch (error) {
 		// error-policy:J4 Voice rewriting is an optional presentation layer; the
-		// original action result remains the explicit degraded response.
+		// raw action callback text remains the delivered degraded response.
 		args.runtime.logger.debug(
 			{
 				src: "service:message",
@@ -10466,7 +10806,7 @@ async function rewriteActionCallbackInCharacter(args: {
 			actionName: args.actionName,
 			roomId: args.message.roomId,
 		});
-		return fallback();
+		return fail("rewrite_error");
 	}
 }
 
@@ -11755,6 +12095,7 @@ export class DefaultMessageService implements IMessageService {
 		let routedDecision: ContextRoutingDecision | null = null;
 		let strategyResult: StrategyResult | null = null;
 		let _usedV5Runtime = false;
+		let stage1DecidedRespond = false;
 		let stage1RiskGateApplied = false;
 		const earlyReplyMessages: Memory[] = [];
 		const persistedEarlyReplyIds = new Set<string>();
@@ -11955,6 +12296,9 @@ export class DefaultMessageService implements IMessageService {
 									}
 								: {}),
 							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
+							onStage1RespondDecision: () => {
+								stage1DecidedRespond = true;
+							},
 						}),
 					),
 					timeInferenceSpan("message:ingress:parallel-respond-hooks", () =>
@@ -12062,7 +12406,11 @@ export class DefaultMessageService implements IMessageService {
 					isAutonomous,
 					hasDeliveredEarlyReply: earlyReplyMessages.length > 0,
 				});
-				if (failureGate.addressed) {
+				// Stage 1 already made the per-message RESPOND decision for this
+				// turn before the runtime died — that is the model evaluation the
+				// deterministic gate defers to, so the anti-spam suppression
+				// (which exists for pre-decision throws) does not apply.
+				if (failureGate.addressed || stage1DecidedRespond) {
 					shouldRespondToMessage = true;
 					terminalDecision = null;
 					strategyResult = await this.buildStructuredFailureReply(

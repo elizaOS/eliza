@@ -6,19 +6,46 @@ runners, environments, and a concise job graph.
 
 ## Required validation
 
-`ci.yml` is the only pull-request workflow. It classifies changed paths, runs
-repository quality checks, affected tests, deterministic smoke tests, a
-path-scoped Android release AAB audit, and a diff-scoped secret scan. Branch
-rules require only the stable `CI / Required` job. Individual jobs remain
-visible for diagnosis but are not separately wired into branch protection.
+`ci.yml` is the canonical required pull-request workflow for both `develop` and
+`main`. It classifies changed paths, runs repository quality checks, affected
+tests, deterministic smoke tests, a path-scoped Android release AAB audit, and a
+diff-scoped secret scan. The stable `CI / Required` job is the only status
+intended for branch protection. Individual jobs remain visible for diagnosis
+but are not separately wired into protection rules.
 
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.
 
+## Specialized pull-request checks
+
+Several branch-scoped and path-scoped workflows run alongside the canonical CI
+gate for specific surfaces. This list is non-exhaustive; other specialized
+gates such as `gitleaks.yml`, `cloud-tests.yml`, `chat-shell-gestures.yml`, and
+the `pr.yaml` title check cover narrower contracts. None replaces the
+`CI / Required` status. Representative examples:
+
+- `develop-pr.yml` runs lint, typecheck, build, and changed-plugin tests for
+  `develop`-targeted PRs. `actionlint` reaches merge-critical workflows through
+  the pinned installer in `install-workflow-linters.sh`.
+- `quality.yml` supplies the extended homepage build and workspace format gate
+  for `main`-targeted PRs and post-merge pushes.
+- `scenario-pr.yml` supplies the opt-in scenario-runner and browser matrix for
+  `main`-targeted PRs carrying the `ci:full` label.
+- `ui-e2e-gate.yml` and `ui-fixture-e2e.yml` run the packages/ui Chromium and
+  WebKit fixture gates when `packages/ui/src/**` changes.
+
 ## Manual operations
 
-- `live-smoke.yml` is the only credential-backed integration-test entry point.
-- `release.yaml` is the only package/tag/GitHub Release entry point.
+- `live-smoke.yml` is the general credential-backed dispatcher. Its input
+  selects `app`, `scenarios`, `cloud`, `voice`, or `all`. Specialized app and
+  voice evidence also flows through `app-live-e2e.yml` and
+  `voice-live-e2e.yml`, which run on schedule or dispatch.
+- `release.yaml` is the npm, canonical Git tag, and GitHub Release authority.
+  It creates the release as the final step of its npm/version transaction.
+  The stable tag then triggers `release-electrobun.yml`, which resolves and
+  checks out the peeled tag commit, verifies the existing release is bound to
+  that commit, and uploads signed desktop assets without creating or replacing
+  the release. `snap-publish.yml` owns Snap Store publication.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
 - `voice-code-bench.yml` retains the bounded real-ASR benchmark.
 

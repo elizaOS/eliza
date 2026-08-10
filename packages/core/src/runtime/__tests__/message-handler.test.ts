@@ -1,8 +1,9 @@
 /**
  * Covers Stage-1 routing: routeMessageHandlerOutput's simple-reply vs planning vs
  * ignore/stop decisions (including requiresTool / candidateActions promotion and
- * its suppression), and parseMessageHandlerOutput's flat-envelope plus extract
- * parsing. Deterministic — routes fixed output objects, no model.
+ * the addressed-to-other engagement gate), and parseMessageHandlerOutput's
+ * flat-envelope plus extract parsing. Deterministic — routes fixed output
+ * objects, no model.
  */
 import { describe, expect, it } from "vitest";
 import { HANDLE_RESPONSE_SCHEMA } from "../../actions/to-tool";
@@ -106,60 +107,92 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
-	it("suppresses the simple→requiresTool promotion for bot-to-bot crosstalk (#9874)", () => {
-		// The inbound is addressed to another bot, not us; the caller resolved
-		// that and passes suppressToolPromotion. requiresTool would normally
-		// promote a simple-only turn to planning against general — here it must
-		// stay on the simple reply so we do not fabricate a phantom tool task.
+	it("ignores an addressed-to-other simple turn instead of shipping the reply (engagement gate)", () => {
+		// Live incident: in a busy group channel Stage 1 tagged turns as
+		// addressed to another participant yet the simple-path replyText still
+		// shipped ungated — 27 posts in 20 minutes. An overheard turn must
+		// terminal-route to ignored, not reply.
+		const output = {
+			processMessage: "RESPOND" as const,
+			thought: "Overheard turn.",
+			plan: { contexts: [SIMPLE_CONTEXT_ID], reply: "Hello." },
+		};
+
+		expect(routeMessageHandlerOutput(output).type).toBe("final_reply");
+		expect(
+			routeMessageHandlerOutput(output, {
+				addressedToOtherParticipant: true,
+			}),
+		).toEqual({ type: "ignored", output });
+	});
+
+	it("ignores an addressed-to-other mixed-context turn so the planner is never entered (engagement gate)", () => {
+		// The mixed-context planning_needed branch was completely ungated: an
+		// overheard turn must not enter the planner or execute tools either.
+		const output = {
+			processMessage: "RESPOND" as const,
+			thought: "Overheard turn with tool hints.",
+			plan: {
+				contexts: [SIMPLE_CONTEXT_ID, "calendar"],
+				candidateActions: ["CALENDAR"],
+				reply: "on it",
+			},
+		};
+
+		expect(routeMessageHandlerOutput(output).type).toBe("planning_needed");
+		expect(
+			routeMessageHandlerOutput(output, {
+				addressedToOtherParticipant: true,
+			}).type,
+		).toBe("ignored");
+	});
+
+	it("subsumes the #9874 tool-promotion suppression: an addressed-to-other promotion-shaped turn is ignored, not replied", () => {
+		// Previously suppressToolPromotion blocked only the simple→tool
+		// promotion while still shipping the Stage-1 reply to a turn meant for
+		// someone else. The gate is a superset: the whole turn is ignored.
 		const output = {
 			processMessage: "RESPOND" as const,
 			thought: "Overheard crosstalk.",
 			plan: {
 				contexts: ["simple"],
 				requiresTool: true,
+				candidateActions: ["BASH"],
 				reply: "got it",
 			},
 		};
 
-		const promoted = routeMessageHandlerOutput(output);
-		expect(promoted.type).toBe("planning_needed");
-
-		const suppressed = routeMessageHandlerOutput(output, {
-			suppressToolPromotion: true,
-		});
-		expect(suppressed.type).toBe("final_reply");
-		if (suppressed.type === "final_reply") {
-			expect(suppressed.reply).toBe("got it");
-		}
+		expect(routeMessageHandlerOutput(output).type).toBe("planning_needed");
+		expect(
+			routeMessageHandlerOutput(output, {
+				addressedToOtherParticipant: true,
+			}).type,
+		).toBe("ignored");
 	});
 
-	it("suppression also blocks the candidateActions promotion, but leaves explicit non-simple planning intact (#9874)", () => {
-		const candidatePromotion = {
+	it("leaves every route unchanged when the turn is not addressed to another participant", () => {
+		// Non-nanny regression: addressedTo:[] (undirected banter) and turns
+		// naming the agent resolve to addressedToOtherParticipant=false — the
+		// gate must be a strict no-op there.
+		const simple = {
 			processMessage: "RESPOND" as const,
-			thought: "candidate hint.",
-			plan: {
-				contexts: ["simple"],
-				requiresTool: true,
-				candidateActions: ["BASH"],
-				reply: "on it",
-			},
+			thought: "Undirected banter.",
+			plan: { contexts: [SIMPLE_CONTEXT_ID], reply: "Hello." },
 		};
 		expect(
-			routeMessageHandlerOutput(candidatePromotion, {
-				suppressToolPromotion: true,
-			}).type,
-		).toBe("final_reply");
+			routeMessageHandlerOutput(simple, {
+				addressedToOtherParticipant: false,
+			}),
+		).toEqual({ type: "final_reply", reply: "Hello.", output: simple });
 
-		// Suppression only blocks the simple-path promotion; a turn that already
-		// selected a real non-simple context still plans against it.
-		const explicitPlanning = {
+		const planning = {
 			processMessage: "RESPOND" as const,
 			thought: "real context.",
 			plan: { contexts: ["general"], requiresTool: true },
 		};
 		expect(
-			routeMessageHandlerOutput(explicitPlanning, {
-				suppressToolPromotion: true,
+			routeMessageHandlerOutput(planning, {
+				addressedToOtherParticipant: false,
 			}).type,
 		).toBe("planning_needed");
 	});

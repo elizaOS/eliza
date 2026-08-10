@@ -121,13 +121,15 @@ describe("TASKS effect receipts", () => {
     );
 
     expect(callback).not.toHaveBeenCalled();
-    expect(result?.userFacingText).toBe(result?.text);
-    expect(result?.verifiedUserFacing).toBe(true);
+    // list_agents is a planner-only read (#18315): its text is planner
+    // observation, never a verbatim user reply, so no user-facing projection
+    // or do-not-paraphrase license is attached.
+    expect(result?.text?.trim()).toBeTruthy();
+    expect(result?.userFacingText).toBeUndefined();
+    expect(result?.verifiedUserFacing).toBeUndefined();
     expect(result?.effectReceipts).toEqual([
       expect.objectContaining({ outcome: "noop" }),
     ]);
-    expect(result?.userFacingEffectReceiptIds).toEqual([
-      result?.effectReceipts?.[0]?.receiptId,
-    ]);
+    expect(result?.userFacingEffectReceiptIds).toBeUndefined();
   });
 });

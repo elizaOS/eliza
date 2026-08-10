@@ -245,6 +245,9 @@ export interface Bindings {
   STEWARD_SESSION_SECRET?: string;
   /** Optional dedicated secret for OAuth success-page HMAC proofs; falls back to STEWARD_SESSION_SECRET. */
   OAUTH_SUCCESS_PROOF_SECRET?: string;
+  /** Required managed Google OAuth application credentials. */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   STEWARD_JWT_SECRET?: string;
   /** Steward vault encryption master password. Required for wallet/key operations. */
   STEWARD_MASTER_PASSWORD?: string;

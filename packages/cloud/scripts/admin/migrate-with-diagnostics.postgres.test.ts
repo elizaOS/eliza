@@ -104,7 +104,13 @@ async function seedAppliedPrefix(
 ): Promise<void> {
   await client.query(`
     CREATE TABLE jobs (
-      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY
+      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      status text NOT NULL DEFAULT 'pending',
+      execution_quiesced_at timestamp with time zone,
+      started_at timestamp with time zone,
+      completed_at timestamp with time zone,
+      created_at timestamp with time zone NOT NULL DEFAULT now(),
+      updated_at timestamp with time zone NOT NULL DEFAULT now()
     );
     CREATE TABLE agent_sandboxes (
       container_name text,
@@ -245,21 +251,39 @@ describe.skipIf(!ENABLED)(
     test("applies the append-only fix-forward once and passes the reusable catalog preflight", async () => {
       const database = await createDatabase();
       await seedAppliedPrefix(database.client, 184);
-      await database.client.query("INSERT INTO jobs DEFAULT VALUES");
+      await database.client.query(`
+        INSERT INTO jobs (
+          status,
+          execution_quiesced_at,
+          started_at,
+          created_at,
+          updated_at
+        ) VALUES (
+          'failed',
+          '2026-01-02T00:00:00Z',
+          '2026-01-01T12:00:00Z',
+          '2026-01-01T00:00:00Z',
+          '2026-01-03T00:00:00Z'
+        )
+      `);
 
       const first = await runScript(MIGRATOR, database.url);
       expect(first.exitCode, first.output).toBe(0);
-      expect(first.output).toContain("pending migrations: 10");
+      expect(first.output).toContain("pending migrations: 11");
 
       const catalog = await database.client.query<{
         data_type: string;
         is_nullable: string;
         column_default: string;
         zeros: string;
+        terminal_backfills: string;
       }>(`
       SELECT catalog_column.data_type, catalog_column.is_nullable,
         catalog_column.column_default,
-        (SELECT count(*)::text FROM jobs WHERE execution_interruptions = 0) AS zeros
+        (SELECT count(*)::text FROM jobs WHERE execution_interruptions = 0) AS zeros,
+        (SELECT count(*)::text FROM jobs
+          WHERE status = 'failed'
+            AND completed_at = execution_quiesced_at) AS terminal_backfills
       FROM information_schema.columns AS catalog_column
       WHERE catalog_column.table_schema = 'public'
         AND catalog_column.table_name = 'jobs'
@@ -270,6 +294,7 @@ describe.skipIf(!ENABLED)(
         is_nullable: "NO",
         column_default: "0",
         zeros: "1",
+        terminal_backfills: "1",
       });
 
       const second = await runScript(MIGRATOR, database.url);
@@ -292,7 +317,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 10");
+      expect(migrated.output).toContain("pending migrations: 11");
 
       await database.client.query(
         "UPDATE drizzle.__drizzle_migrations SET hash = 'checkpoint-drift' WHERE created_at = $1",
@@ -338,7 +363,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 10");
+      expect(migrated.output).toContain("pending migrations: 11");
       await database.client.end();
     }, 120_000);
 
@@ -348,7 +373,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 10");
+      expect(migrated.output).toContain("pending migrations: 11");
       await database.client.end();
     }, 120_000);
 
@@ -380,7 +405,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 10");
+      expect(migrated.output).toContain("pending migrations: 11");
       await database.client.end();
     }, 120_000);
 
@@ -400,7 +425,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 10");
+      expect(migrated.output).toContain("pending migrations: 11");
 
       const remaining = await database.client.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = ANY($1::bigint[])",

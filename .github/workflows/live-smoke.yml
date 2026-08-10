@@ -1,6 +1,8 @@
-# This manual workflow is the single credential-backed product smoke entry
-# point. Live integrations do not run on pull requests or on an unattended
-# schedule, so missing credentials cannot make normal repository health red.
+# This manual workflow is the general credential-backed product smoke
+# dispatcher. Specialized app and voice live-evidence flows
+# (`app-live-e2e.yml`, `voice-live-e2e.yml`) also run on schedule or dispatch.
+# Live integrations do not run on pull requests, so missing credentials cannot
+# make normal repository health red.
 name: Live Smoke
 
 on:

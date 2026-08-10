@@ -44,6 +44,13 @@ const morningBriefDefinition: RecapTaskDefinition = {
     offsetMinutes: 0,
   },
   priority: "medium",
+  output: {
+    destination: "in_app_card",
+    fallback: {
+      title: "Morning brief",
+      body: "Your morning brief is ready.",
+    },
+  },
   respectsGlobalPause: true,
   source: "default_pack",
   createdBy: MORNING_BRIEF_PACK_KEY,

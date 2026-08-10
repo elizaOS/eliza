@@ -162,7 +162,7 @@ function failUsage(message) {
 }
 
 const noCloud = parseFlag("--no-cloud");
-const requireWork = parseFlag("--require-work");
+const requireWorkFlag = parseFlag("--require-work");
 const helpFlag = parseFlag("--help") || parseFlag("-h");
 const barePlanFlag = parseFlag("--plan");
 let filterFlag;
@@ -172,6 +172,7 @@ let laneFilterFlag;
 let excludeFlags;
 let concurrencyFlag;
 let planFlag;
+let minTasksFlag;
 try {
   filterFlag = parseFlagValue("--filter");
   patternFlag = parseFlagValue("--pattern");
@@ -180,9 +181,29 @@ try {
   excludeFlags = parseRepeatedFlagValue("--exclude");
   concurrencyFlag = parseFlagValue("--concurrency");
   planFlag = parseFlagValue("--plan");
+  minTasksFlag = parseFlagValue("--min-tasks");
 } catch (error) {
   failUsage(error.message);
 }
+
+// `--min-tasks=<n>` / MIN_TEST_TASKS is the numeric ancestor of
+// `--require-work` and remains a supported surface: callers that KNOW how many
+// tasks their filter selected (the develop-pr changed-plugin gate passes its
+// exact selection count) get a floor the boolean cannot express. n > 0 implies
+// every `--require-work` guard plus the lane-wide `>= n` collection floor;
+// n = 0 is off. Dropping the flag broke those callers loudly at argv parse
+// (exit 2 before any test ran), which is the wrong kind of loud.
+const minTasksRaw = minTasksFlag ?? process.env.MIN_TEST_TASKS ?? "0";
+const minTasks =
+  typeof minTasksRaw === "string" && /^\d+$/.test(minTasksRaw)
+    ? Number(minTasksRaw)
+    : Number.NaN;
+if (!Number.isSafeInteger(minTasks)) {
+  failUsage(
+    `--min-tasks/MIN_TEST_TASKS must be a non-negative integer, got "${minTasksRaw}"`,
+  );
+}
+const requireWork = requireWorkFlag || minTasks > 0;
 
 // A named root lane (`--lane server`) resolves the anchored package filter it
 // used to hardcode as a `TEST_PACKAGE_FILTER` regex in the root package.json:
@@ -221,6 +242,8 @@ if (helpFlag) {
       "  --plan[=text|json]   Print the discovered test plan without running it.",
       "  --require-work       Fail (exit 3) when no runnable task is selected,",
       "                       a shard owns no task, or no reconciled testcase runs.",
+      "  --min-tasks=<n>      --require-work plus a lane-wide floor: fail (exit 3)",
+      "                       when fewer than n tasks are collected. 0 = off.",
       "",
       "Env vars:",
       "  TEST_LANE=pr|post-merge        Lane select (default: pr).",
@@ -229,6 +252,7 @@ if (helpFlag) {
       "  TEST_PACKAGE_FILTER=<regex>     Equivalent to --filter (legacy).",
       "  TEST_SCRIPT_FILTER=<regex>      Filter by script name.",
       "  TEST_START_AT=<substring>       Skip until first matching label.",
+      "  MIN_TEST_TASKS=<n>              Same as --min-tasks (default 0 = off).",
       "",
       "See `.env.test.example` for deterministic PR and live lane env setup.",
       "",
@@ -779,6 +803,34 @@ function isSingleBunTestCommand(command) {
   return /^bun\s+test\b/.test(commandWithoutEnv);
 }
 
+function unwrapKnownBunTestSupervisors(command) {
+  let current = stripLeadingEnvAssignments(command);
+  for (let depth = 0; depth < 3; depth += 1) {
+    const flakeRetry = current.match(
+      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-flake-retry\.mjs\s+(?:'[^']*'|"[^"]*"|\S+)\s+--\s+(.+)$/,
+    );
+    if (flakeRetry) {
+      current = flakeRetry[1];
+      continue;
+    }
+    const deadline = current.match(
+      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-deadline\.mjs\s+[1-9]\d*\s+--\s+(.+)$/,
+    );
+    if (deadline) {
+      current = deadline[1];
+      continue;
+    }
+    break;
+  }
+  return current;
+}
+
+function isSingleIsolatedBunTestWrapperCommand(command) {
+  return /^node\s+scripts\/run-isolated-tests\.mjs$/.test(
+    unwrapKnownBunTestSupervisors(command),
+  );
+}
+
 function structuredEvidenceKind(scriptName, scripts) {
   const command =
     resolveScriptCommand(scriptName, scripts) ||
@@ -790,7 +842,12 @@ function structuredEvidenceKind(scriptName, scripts) {
   ) {
     return null;
   }
-  if (isSingleBunTestCommand(command)) return "bun";
+  if (
+    isSingleBunTestCommand(command) ||
+    isSingleIsolatedBunTestWrapperCommand(command)
+  ) {
+    return "bun";
+  }
   if (
     isSingleVitestRunCommand(command) ||
     isSingleVitestWrapperCommand(command)
@@ -1305,6 +1362,16 @@ if (requireWork && laneMatchedTaskCount === 0) {
   console.error(
     "[eliza-test] VACUOUS-GREEN GUARD lane matched 0 runnable tasks. " +
       "A filter or source contract collapsed this required lane.",
+  );
+  process.exit(3);
+}
+// Lane-wide, not per-shard: TEST_SHARD intentionally splits a healthy lane
+// into M parts, so a shard owning 1/M of the work is not a collapsed glob.
+if (minTasks > 0 && laneMatchedTaskCount < minTasks) {
+  console.error(
+    `[eliza-test] VACUOUS-GREEN GUARD lane matched ${laneMatchedTaskCount} task(s) < required ${minTasks}` +
+      (shardConfig ? ` (this shard: ${tasks.length})` : "") +
+      ". A filter/shard/glob collapsed this lane below its declared selection.",
   );
   process.exit(3);
 }

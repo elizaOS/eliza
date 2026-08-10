@@ -264,4 +264,28 @@ describe("handleMcpRoutes", () => {
 
     expect(ctx.response).toEqual({ status: 200, body: { ok: true, servers: [] } });
   });
+
+  it("resolves the service by its registered lowercase key and reports its servers", async () => {
+    const getService = vi.fn((name: string) =>
+      name === "mcp"
+        ? {
+            getServers: () => [
+              { name: "remote", status: "connected", tools: [{}, {}], resources: [] },
+            ],
+          }
+        : null
+    );
+    const ctx = makeCtx("GET", "/api/mcp/status", { runtime: { getService } });
+
+    await expect(handleMcpRoutes(ctx)).resolves.toBe(true);
+
+    expect(getService).toHaveBeenCalledWith("mcp");
+    expect(ctx.response).toEqual({
+      status: 200,
+      body: {
+        ok: true,
+        servers: [{ name: "remote", status: "connected", toolCount: 2, resourceCount: 0 }],
+      },
+    });
+  });
 });

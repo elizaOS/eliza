@@ -52,7 +52,9 @@ interface MockRuntimeHandle {
     context?: Record<string, unknown>;
   }>;
   setDispatchResult: (
-    result: { ok: true; executionId?: string } | { ok: false; error: string },
+    result:
+      | { ok: true; executionId?: string }
+      | { ok: false; error: string; code?: string },
   ) => void;
   setWorkflowServicePresent: (present: boolean) => void;
   setNotifyError: (error: Error | null) => void;
@@ -96,6 +98,7 @@ function makeRuntime(): MockRuntimeHandle {
     ok: boolean;
     executionId?: string;
     error?: string;
+    code?: string;
   } = { ok: true, executionId: "exec-1" };
   let workflowServicePresent = true;
 
@@ -550,6 +553,43 @@ describe("executeTriggerTask", () => {
     expect(result.error).toBe("boom");
     // The run still records and persists (error is observable, not swallowed).
     expect(handle.updatedTasks).toHaveLength(1);
+  });
+
+  it("disables the trigger with one final notification when the workflow no longer exists", async () => {
+    handle.setDispatchResult({
+      ok: false,
+      error: "Workflow not found: wf-gone",
+      code: "workflow_not_found",
+    });
+    const task = makeTriggerTask({
+      triggerType: "interval",
+      displayName: "Device health check",
+    });
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.taskDeleted).toBe(true);
+    expect(handle.runtime.deleteTask).toHaveBeenCalledWith(task.id);
+    expect(handle.notifyCalls).toHaveLength(1);
+    const notif = handle.notifyCalls[0];
+    expect(notif.title).toBe('Automation "Device health check" disabled');
+    expect(notif.body).toContain("no longer exists");
+  });
+
+  it("keeps retrying an uncoded transient dispatch failure (task stays)", async () => {
+    handle.setDispatchResult({ ok: false, error: "engine busy" });
+    const task = makeTriggerTask({ triggerType: "interval" });
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.taskDeleted).toBe(false);
+    expect(handle.runtime.deleteTask).not.toHaveBeenCalled();
   });
 
   it("reports an error when the WORKFLOW_DISPATCH service never registers (bounded wait)", async () => {

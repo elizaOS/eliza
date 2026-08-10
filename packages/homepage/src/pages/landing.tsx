@@ -205,21 +205,6 @@ export default function Leaderboard() {
     config: { mass: 1, tension: 120, friction: 8 },
   }));
 
-  // Capture-phase native guard: the platform switcher is a horizontal drag
-  // surface whose path crosses images and links, and a native HTML drag both
-  // breaks the gesture and wedges pointer input (Chromium never acks further
-  // mouse events mid-DnD). The React onDragStart on the root div misses drags
-  // originating in subtrees where synthetic delivery lapses, so cancel at the
-  // window in the capture phase for the landing page's lifetime.
-  useEffect(() => {
-    const cancelNativeDrag = (event: DragEvent) => event.preventDefault();
-    window.addEventListener("dragstart", cancelNativeDrag, { capture: true });
-    return () =>
-      window.removeEventListener("dragstart", cancelNativeDrag, {
-        capture: true,
-      });
-  }, []);
-
   useEffect(() => {
     if (!measured) return;
     lScaleApi.start({
@@ -743,6 +728,8 @@ export default function Leaderboard() {
     config: { mass: 1, tension: 340, friction: 20 },
   });
 
+  const pageRef = useRef<HTMLDivElement>(null);
+
   const switchPlatform = useCallback(
     (dir: -1 | 1) => {
       const idx = platforms.indexOf(platform);
@@ -753,10 +740,12 @@ export default function Leaderboard() {
     [platform, changePlatform],
   );
 
-  const bind = useDrag(
+  // Bind through use-gesture's imperative target API so the static page
+  // surface keeps its honest semantics while retaining the recognizer's
+  // pointer capture, touch cancellation, multi-input, and swipe behavior.
+  useDrag(
     ({ swipe: [sx], movement: [mx], last }) => {
-      if (switcherOpen) return;
-      if (!last) return;
+      if (switcherOpenRef.current || !last) return;
       if (sx !== 0) {
         switchPlatform(sx as -1 | 1);
       } else if (Math.abs(mx) > 50) {
@@ -764,19 +753,31 @@ export default function Leaderboard() {
       }
     },
     {
+      target: pageRef,
       axis: "x",
       swipe: { velocity: 0.3, distance: 30 },
       filterTaps: true,
     },
   );
 
+  // Native image/link dragging can take ownership before pointer-up and wedge
+  // Chromium's gesture stream. Capture it on this surface, not the window, so
+  // unrelated controls outside the landing interaction keep native behavior.
+  useEffect(() => {
+    const surface = pageRef.current;
+    if (!surface) return;
+    const cancelNativeDrag = (event: DragEvent) => event.preventDefault();
+    surface.addEventListener("dragstart", cancelNativeDrag, { capture: true });
+    return () => {
+      surface.removeEventListener("dragstart", cancelNativeDrag, {
+        capture: true,
+      });
+    };
+  }, []);
+
   return (
     <div
-      {...bind()}
-      // Horizontal swipes cross the QR image and Get Started link; without
-      // this, a mouse drag starts native HTML drag-and-drop instead of the
-      // platform-switch gesture (and wedges pointer input mid-drag).
-      onDragStart={(event) => event.preventDefault()}
+      ref={pageRef}
       className="theme-app min-h-screen"
       style={{
         touchAction: "pan-y",

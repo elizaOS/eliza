@@ -481,7 +481,10 @@ async function observeClickOutcome(
 ): Promise<SemanticResult> {
   let after = await snapshotControl(page, control, apiRequestCount());
   let delta = semanticDelta(before, after);
-  for (const delayMs of [100, 250, 500]) {
+  // The ladder ends well above one second: on a loaded CI runner a state
+  // commit + re-render (e.g. sidebar collapse) can land after the first few
+  // probes even though the interaction is perfectly healthy.
+  for (const delayMs of [100, 250, 500, 1000, 2000]) {
     if (delta) {
       return {
         kind: "observed",
@@ -634,6 +637,11 @@ async function installInteractionAuditRoutes(page: Page): Promise<void> {
 }
 
 test.describe("every-view interaction coverage", () => {
+  // Copy-address controls call the async Clipboard API; headless CI Chromium
+  // denies clipboard-write by default, which turns each copy click into an
+  // unhandled-rejection pageerror instead of a "Copied" outcome.
+  test.use({ permissions: ["clipboard-read", "clipboard-write"] });
+
   for (const view of VIEW_ROUTES) {
     test(`${view.id} — exercise every control with semantic outcomes`, async ({
       page,

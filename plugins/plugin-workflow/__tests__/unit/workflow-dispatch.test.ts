@@ -8,6 +8,7 @@ import {
   registerWorkflowDispatchService,
   WORKFLOW_DISPATCH_SERVICE_TYPE,
 } from '../../src/services/workflow-dispatch';
+import { WorkflowApiError } from '../../src/types/index';
 
 // `mock.module` replaces the module globally for the rest of the bun-test run,
 // so preserve every real `@elizaos/core` export and swap in a complete spy
@@ -155,6 +156,32 @@ describe('workflow dispatch service', () => {
       { src: 'plugin:workflow:dispatch' },
       'Workflow execution failed for wf-1: engine offline'
     );
+  });
+
+  it('classes a 404 as workflow_not_found so schedulers can disable the trigger', async () => {
+    const embedded = makeEmbeddedService();
+    embedded.executeWorkflow.mockImplementation(async () => {
+      throw new WorkflowApiError('Workflow not found: wf-gone', 404);
+    });
+    const dispatch = createWorkflowDispatchService(makeRuntime(embedded) as never);
+
+    await expect(dispatch.execute('wf-gone')).resolves.toEqual({
+      ok: false,
+      error: 'Workflow not found: wf-gone',
+      code: 'workflow_not_found',
+    });
+  });
+
+  it('leaves non-404 WorkflowApiErrors uncoded (transient failures keep retrying)', async () => {
+    const embedded = makeEmbeddedService();
+    embedded.executeWorkflow.mockImplementation(async () => {
+      throw new WorkflowApiError('engine busy', 503);
+    });
+    const dispatch = createWorkflowDispatchService(makeRuntime(embedded) as never);
+
+    const result = await dispatch.execute('wf-1');
+    expect(result.ok).toBe(false);
+    expect(result.code).toBeUndefined();
   });
 
   it('registers a stoppable service entry in the runtime services map', async () => {

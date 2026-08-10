@@ -117,11 +117,14 @@ test("unavailable auth probe shows startup failure instead of password sign-in",
 
   await openAppPath(page, "/chat");
 
+  // The auth probe deliberately retries a 503 ten times at 1s intervals before
+  // publishing `server_unavailable` (useAuthStatus SERVER_UNAVAILABLE_RETRIES),
+  // so the failure surface legitimately takes >10s to appear on a slow runner.
   await expect(
     page.getByRole("heading", {
       name: /Can(?:'|’)t connect/i,
     }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 45_000 });
   await page.getByText("Technical details").click();
   await expect(
     page.getByText(/auth probe could not reach \/api\/auth\/me/i),

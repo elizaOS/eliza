@@ -323,7 +323,7 @@ function stripRouterAnnotations(text: string): string {
     .trim();
 }
 
-function completionHasVerificationFailure(text: string): boolean {
+export function completionHasVerificationFailure(text: string): boolean {
   return (
     text.includes("[verification:") ||
     text.includes("NOT reachable") ||
@@ -386,7 +386,7 @@ function deadUrlKeysFromCompletionText(text: string): Set<string> {
 // into subAgentVerifiedUrls (the router verifies the loopback page live, then
 // expands it to all route aliases). The annotation's dead list is the ground
 // truth for what actually probed dead, so drop those before relaying.
-function verifiedUrlsExcludingDead(
+export function verifiedUrlsExcludingDead(
   message: Memory,
   completionText: string,
 ): string[] {

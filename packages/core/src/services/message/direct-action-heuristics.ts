@@ -135,21 +135,30 @@ const URL_TOKEN_PATTERN = /\bhttps?:\/\/[^\s<>()]+/giu;
 const LINK_EMBED_BLOCK_PATTERN =
 	/(?:^|\n)[ \t]*Embed #\d+:[ \t]*(?:\n[ \t]+[^\n]*)*/giu;
 
-/** Explicit work imperatives in the user's OWN words (outside URLs and embed
- * previews) that turn a link share into a genuine request. */
-const LINK_SHARE_WORK_IMPERATIVE_PATTERN =
-	/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify|deploy|refactor|debug|patch|code|install|run|execute|spawn|delegate)\b/iu;
+/** Explicitly conversational or reactive residue patterns — short commentary
+ * that does NOT carry a work directive aimed at the agent. These are the ONLY
+ * non-empty residue shapes that are passive link shares; any other non-empty
+ * residue is treated as a potential work order. The set is deliberately narrow
+ * and must not be extended with imperatives like "review" or "audit". */
+const LINK_SHARE_CONVERSATIONAL_RESIDUE_PATTERN =
+	/^(?:lol|lmao|nice|cool|wow|neat|huh|hmm|whoa|ok|okay|k|ty|thx|thanks|interesting|wowza|dope|sick|amazing|crazy|insane|funny|wild|fire|check this out|check it out|check this|look at this|look at this|look at that|thoughts|thoughts\?|any thoughts|any thoughts\?|thoughts on this|what do you think|wdyt|wdyt\?|see this|seen this|anyone seen this|thoughts on this one|fwd|fyi|tbh|imo|nvm|rip|omg|oh no|oof|rip|wtf|smh|gg|ngl)\s*[.!?]*$/iu;
 
 /**
  * True when a message is essentially just a shared link: one or more URLs,
  * optionally with connector-derived embed preview text, and at most a short
- * remainder that carries no explicit work imperative aimed at the agent.
+ * remainder that is empty or explicitly conversational/reactive (no work
+ * directive aimed at the agent).
  *
  * A shared link is content, not a work order (observed live: a bare URL whose
  * embed title happened to contain workflow-ish words spawned a coding
  * sub-agent with an empty derived task). Link shares route to the web-read
  * light path — fetch and react to the page, or acknowledge from the embed
  * metadata when the page is not readable — never to coding delegation.
+ *
+ * Detection is intentionally conservative: only empty or explicitly
+ * conversational residue is a bare share. Any other non-empty residue —
+ * including imperatives absent from any English allowlist (review, audit,
+ * investigate) and non-English work orders — is left to ordinary routing.
  */
 export function looksLikeBareLinkShare(text: string): boolean {
 	const trimmed = text.trim();
@@ -162,14 +171,17 @@ export function looksLikeBareLinkShare(text: string): boolean {
 		residue = residue.replace(url, " ");
 	}
 	residue = residue
-		.replace(/[|<>*_~`"'()[\]{}.,:;!?@#-]+/gu, " ")
+		.replace(/[|<>*_~`"()'[\]{}.,:;!?@#-]+/gu, " ")
 		.replace(/\s+/gu, " ")
 		.trim();
 	// A substantial remainder means the user actually said something; ordinary
 	// routing applies.
 	if (residue.length > 120) return false;
+	// Empty residue after removing URLs and embed previews: a bare link share.
 	if (residue.length === 0) return true;
-	return !LINK_SHARE_WORK_IMPERATIVE_PATTERN.test(residue);
+	// Short residue that is explicitly conversational/reactive (no directive
+	// aimed at the agent): still a bare share.
+	return LINK_SHARE_CONVERSATIONAL_RESIDUE_PATTERN.test(residue);
 }
 
 /**

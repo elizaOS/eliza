@@ -10,6 +10,14 @@ import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig } from "vite";
 
+const homepageBuildRevision = (
+  process.env.GITHUB_SHA ??
+  process.env.CF_PAGES_COMMIT_SHA ??
+  "local"
+)
+  .slice(0, 12)
+  .replaceAll(/[^a-zA-Z0-9_-]/g, "-");
+
 export default defineConfig({
   plugins: [
     react(),
@@ -105,5 +113,14 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        // A deployment revision prevents a browser-cached failed module
+        // response from pinning a later production build to the same URL.
+        entryFileNames: `assets/[name]-[hash]-${homepageBuildRevision}.js`,
+        chunkFileNames: `assets/[name]-[hash]-${homepageBuildRevision}.js`,
+        assetFileNames: `assets/[name]-[hash]-${homepageBuildRevision}[extname]`,
+      },
+    },
   },
 });

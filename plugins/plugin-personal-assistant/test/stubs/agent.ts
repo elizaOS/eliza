@@ -269,7 +269,14 @@ export function getAgentEventService(runtime?: {
 
 export const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 
-export function resolveOwnerEntityId(runtime?: { agentId?: string }): string {
+export function resolveOwnerEntityId(runtime?: {
+  agentId?: string;
+  getSetting?: (key: string) => unknown;
+}): string {
+  const configured = runtime?.getSetting?.("ELIZA_ADMIN_ENTITY_ID");
+  if (typeof configured === "string" && configured.trim().length > 0) {
+    return configured.trim();
+  }
   return runtime?.agentId ?? "owner-1";
 }
 

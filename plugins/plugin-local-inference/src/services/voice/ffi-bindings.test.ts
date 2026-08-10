@@ -266,9 +266,30 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
 
 	// The native header lives inside the llama.cpp submodule, which most CI
 	// lanes and dev checkouts leave uninitialized. Skip (rather than fail) when
-	// the submodule is absent; the voice lanes with submodules:recursive still
-	// enforce the pin.
-	it.skipIf(!existsSync(NATIVE_FFI_HEADER))(
+	// the submodule is absent, and also when a persistent runner workdir left
+	// the submodule materialized at a commit other than the repo's pinned
+	// gitlink (actions/checkout does not sync submodules, so a stale checkout
+	// from an earlier run would make this test read the wrong header). The
+	// voice lanes with submodules:recursive still enforce the pin.
+	const submoduleAtPinnedCommit = (): boolean => {
+		const submoduleDir = path.dirname(
+			path.dirname(path.dirname(NATIVE_FFI_HEADER)),
+		);
+		const pluginDir = path.resolve(submoduleDir, "..", "..");
+		const pinned = spawnSync(
+			"git",
+			["-C", pluginDir, "ls-tree", "HEAD", "--", "native/llama.cpp"],
+			{ encoding: "utf8" },
+		);
+		const actual = spawnSync("git", ["-C", submoduleDir, "rev-parse", "HEAD"], {
+			encoding: "utf8",
+		});
+		if (pinned.status !== 0 || actual.status !== 0) return false;
+		const pinnedSha = pinned.stdout.match(/\b([0-9a-f]{40})\b/)?.[1];
+		return pinnedSha !== undefined && pinnedSha === actual.stdout.trim();
+	};
+
+	it.skipIf(!existsSync(NATIVE_FFI_HEADER) || !submoduleAtPinnedCommit())(
 		"keeps the TypeScript ABI version aligned with the pinned native header",
 		() => {
 			const header = readFileSync(NATIVE_FFI_HEADER, "utf8");
