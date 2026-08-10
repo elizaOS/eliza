@@ -122,7 +122,10 @@ afterEach(() => {
 // This validates the DB-backed durability contract — not an in-memory
 // ephemeral cache.
 
-describe("1. Cross-restart validation", () => {
+// Each test opens and closes the SQLite-backed cache several times; on a
+// saturated CI runner (observed suite running 2-3x slower than normal) the
+// open/WAL-checkpoint/close cycles can exceed the 5s default test timeout.
+describe("1. Cross-restart validation", { timeout: 30_000 }, () => {
 	it("cache entries persist after explicit close (simulated process restart)", () => {
 		const keys = [
 			makeKey({ normalizedText: "got it" }),

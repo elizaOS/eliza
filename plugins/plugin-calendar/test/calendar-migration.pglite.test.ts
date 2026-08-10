@@ -12,6 +12,9 @@ import {
 
 let pg: PGlite;
 
+// PGlite WASM boot + schema DDL takes well over the default 10s hook timeout on
+// loaded CI runners (observed: whole file at 12.8s while sibling suites ran 2-3x
+// slower than normal). Size the hook for a saturated runner.
 beforeAll(async () => {
   pg = new PGlite();
   await pg.exec(`
@@ -47,11 +50,11 @@ beforeAll(async () => {
       'legacy-sync', 'agent-1', 'google', 'owner', 'primary', 'account-a', NULL
     );
   `);
-});
+}, 60_000);
 
 afterAll(async () => {
   await pg.close();
-});
+}, 30_000);
 
 describe("calendar source identity migration", () => {
   it("backfills grant identity, adds sync cursors, and permits identical provider ids across accounts", async () => {
@@ -101,5 +104,5 @@ describe("calendar source identity migration", () => {
     );
     expect(eventCount.rows[0]?.count).toBe("2");
     expect(syncCount.rows[0]?.count).toBe("2");
-  });
+  }, 30_000);
 });
