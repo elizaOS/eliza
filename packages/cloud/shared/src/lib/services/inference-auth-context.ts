@@ -286,9 +286,7 @@ export function extractApiKeyCredential(req: Request): string | null {
  * settled). On deadline the slot clears so the next request starts a fresh
  * attempt, and the miss counts toward the authoritative-escape threshold.
  */
-const HYDRATION_DEADLINE_MS = Number(
-  process.env.INFERENCE_AUTH_HYDRATION_DEADLINE_MS ?? "10000",
-);
+const HYDRATION_DEADLINE_MS = Number(process.env.INFERENCE_AUTH_HYDRATION_DEADLINE_MS ?? "10000");
 
 /**
  * After this many consecutive failed or timed-out hydrations for one key,
@@ -302,17 +300,11 @@ const HYDRATION_FAILURE_ESCAPE_THRESHOLD = 3;
 const apiKeyHydrationFailures = new Map<string, number>();
 
 function noteHydrationFailure(keyHash: string): void {
-  apiKeyHydrationFailures.set(
-    keyHash,
-    (apiKeyHydrationFailures.get(keyHash) ?? 0) + 1,
-  );
+  apiKeyHydrationFailures.set(keyHash, (apiKeyHydrationFailures.get(keyHash) ?? 0) + 1);
 }
 
 function hydrationEscapeActive(keyHash: string): boolean {
-  return (
-    (apiKeyHydrationFailures.get(keyHash) ?? 0) >=
-    HYDRATION_FAILURE_ESCAPE_THRESHOLD
-  );
+  return (apiKeyHydrationFailures.get(keyHash) ?? 0) >= HYDRATION_FAILURE_ESCAPE_THRESHOLD;
 }
 
 function getOrCreateApiKeyHydration(
