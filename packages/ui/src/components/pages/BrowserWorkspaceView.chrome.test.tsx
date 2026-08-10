@@ -15,11 +15,25 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const walletStateHarness = vi.hoisted(() => ({
+  connected: false,
+  pendingApprovals: 0,
+}));
+
 vi.mock("../../state", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../state")>();
   const state = {
-    getStewardPending: () => null,
-    getStewardStatus: () => null,
+    getStewardPending: async () =>
+      Array.from(
+        { length: walletStateHarness.pendingApprovals },
+        (_, index) => ({
+          queueId: `pending-${index}`,
+        }),
+      ),
+    getStewardStatus: async () =>
+      walletStateHarness.connected
+        ? { available: true, configured: true, connected: true }
+        : null,
     setActionNotice: vi.fn(),
     t: (
       _key: string,
@@ -130,6 +144,8 @@ function deferred<T>(): {
 }
 
 beforeEach(() => {
+  walletStateHarness.connected = false;
+  walletStateHarness.pendingApprovals = 0;
   vi.mocked(client.getBrowserWorkspace).mockResolvedValue({
     mode: "web",
     tabs: [],
@@ -590,5 +606,83 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
 
     closedSnapshot.resolve({ mode: "web", tabs: [] });
     expect(await screen.findByText("No page open")).not.toBeNull();
+  });
+
+  it("preserves wallet readiness when Go resolves to the already-loaded URL", async () => {
+    vi.useFakeTimers();
+    walletStateHarness.connected = true;
+    walletStateHarness.pendingApprovals = 1;
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
+    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
+      tab: APPLE_WORKSPACE.tabs[0],
+    });
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      const iframe = screen.getByTitle("Apple") as HTMLIFrameElement;
+      const postMessage = vi
+        .spyOn(iframe.contentWindow as Window, "postMessage")
+        .mockImplementation(() => undefined);
+      const readyCalls = () =>
+        postMessage.mock.calls.filter(
+          ([message]) =>
+            (message as { type?: unknown }).type === BROWSER_WALLET_READY_TYPE,
+        );
+
+      await act(async () => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: {
+              type: BROWSER_WALLET_REQUEST_TYPE,
+              requestId: "prove-loaded-origin",
+              method: "getState",
+            },
+            origin: "https://www.apple.com",
+            source: iframe.contentWindow,
+          }),
+        );
+        await Promise.resolve();
+      });
+      expect(readyCalls()).toHaveLength(1);
+      expect(readyCalls().at(-1)).toEqual([
+        {
+          type: BROWSER_WALLET_READY_TYPE,
+          state: expect.objectContaining({ pendingApprovals: 1 }),
+        },
+        "https://www.apple.com",
+      ]);
+
+      const address = screen.getByTestId("browser-workspace-address-input");
+      await act(async () => {
+        fireEvent.keyDown(address, { key: "Enter" });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
+        "tab-apple",
+        APPLE_WORKSPACE.tabs[0].url,
+      );
+      expect(iframe.src).toBe(APPLE_WORKSPACE.tabs[0].url);
+
+      walletStateHarness.pendingApprovals = 2;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+        await Promise.resolve();
+      });
+      expect(readyCalls()).toHaveLength(2);
+      expect(readyCalls().at(-1)).toEqual([
+        {
+          type: BROWSER_WALLET_READY_TYPE,
+          state: expect.objectContaining({ pendingApprovals: 2 }),
+        },
+        "https://www.apple.com",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
