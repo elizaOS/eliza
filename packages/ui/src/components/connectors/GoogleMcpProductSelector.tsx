@@ -5,11 +5,13 @@
  */
 
 import type { GoogleWorkspaceMcpProduct } from "@elizaos/shared/contracts";
+import { cn } from "../../lib/utils";
 import { Checkbox } from "../ui/checkbox";
 import { PERSONAL_GOOGLE_MCP_PRODUCTS } from "./google-mcp-products";
 
 export interface GoogleMcpProductSelectorProps {
   selectedProducts: readonly GoogleWorkspaceMcpProduct[];
+  lockedProducts?: readonly GoogleWorkspaceMcpProduct[];
   onChange: (products: GoogleWorkspaceMcpProduct[]) => void;
   disabled?: boolean;
   idPrefix?: string;
@@ -17,14 +19,17 @@ export interface GoogleMcpProductSelectorProps {
 
 export function GoogleMcpProductSelector({
   selectedProducts,
+  lockedProducts = [],
   onChange,
   disabled = false,
   idPrefix = "google-mcp-product",
 }: GoogleMcpProductSelectorProps) {
   const selected = new Set(selectedProducts);
+  const locked = new Set(lockedProducts);
 
   const update = (product: GoogleWorkspaceMcpProduct, checked: boolean) => {
-    const next = new Set(selected);
+    if (locked.has(product)) return;
+    const next = new Set([...selected, ...locked]);
     if (checked) next.add(product);
     else next.delete(product);
     onChange(
@@ -42,15 +47,22 @@ export function GoogleMcpProductSelector({
       <div className="grid gap-2 sm:grid-cols-2">
         {PERSONAL_GOOGLE_MCP_PRODUCTS.map((product) => {
           const id = `${idPrefix}-${product.id}`;
+          const isLocked = locked.has(product.id);
           return (
             <label
               key={product.id}
               htmlFor={id}
-              className="flex min-h-touch cursor-pointer items-start gap-3 rounded-sm border border-border/50 bg-card/35 p-3 transition-colors hover:border-accent/45 hover:bg-bg-hover"
+              className={cn(
+                "flex min-h-touch items-start gap-3 rounded-sm border p-3 transition-colors",
+                isLocked
+                  ? "cursor-not-allowed border-border/50 bg-card/35"
+                  : "cursor-pointer border-border/50 bg-card/35 hover:border-accent/45 hover:bg-bg-hover",
+              )}
             >
               <Checkbox
                 id={id}
-                checked={selected.has(product.id)}
+                checked={selected.has(product.id) || isLocked}
+                disabled={isLocked}
                 onCheckedChange={(checked) =>
                   update(product.id, checked === true)
                 }
@@ -68,7 +80,7 @@ export function GoogleMcpProductSelector({
           );
         })}
       </div>
-      {selectedProducts.length === 0 ? (
+      {selectedProducts.length === 0 && lockedProducts.length === 0 ? (
         <p role="alert" className="text-xs text-warn">
           Select at least one Google product.
         </p>

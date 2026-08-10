@@ -42,7 +42,10 @@ const coreMocks = vi.hoisted(() => {
   };
   type TestProvider = {
     provider: string;
-    startOAuth?: (request: { flow: TestFlow }) => Promise<{ authUrl: string }>;
+    startOAuth?: (request: {
+      flow: TestFlow;
+      redirectUri?: string;
+    }) => Promise<{ authUrl: string }>;
     completeOAuth?: (request: {
       flow: TestFlow;
       code?: string;
@@ -184,7 +187,10 @@ const coreMocks = vi.hoisted(() => {
 
     async startOAuth(
       provider: string,
-      input?: { metadata?: Record<string, unknown> },
+      input?: {
+        redirectUri?: string;
+        metadata?: Record<string, unknown>;
+      },
     ) {
       const normalized = provider.toLowerCase();
       const registered = this.providers.get(normalized);
@@ -195,12 +201,16 @@ const coreMocks = vi.hoisted(() => {
         provider: normalized,
         state: `state_${now}`,
         status: "pending",
+        redirectUri: input?.redirectUri,
         createdAt: now,
         updatedAt: now,
         metadata: input?.metadata,
       };
       await this.storage.createOAuthFlow(flow);
-      const started = await registered.startOAuth({ flow });
+      const started = await registered.startOAuth({
+        flow,
+        redirectUri: input?.redirectUri,
+      });
       return (
         (await this.storage.updateOAuthFlow(normalized, flow.id, {
           authUrl: started.authUrl,
@@ -344,6 +354,7 @@ function createConnectorAccountHarness(options: {
   method: string;
   pathname: string;
   body?: Record<string, unknown>;
+  headers?: Record<string, string>;
   storage?: TestStorage;
   adapter?: unknown;
   authorize?: ConnectorAccountRouteContext["authorize"] | null;
@@ -354,11 +365,13 @@ function createConnectorAccountHarness(options: {
   runtime.adapter = options.adapter;
   const req = {
     url: options.pathname,
+    headers: { host: "localhost:31337", ...options.headers },
     on: vi.fn(),
   } as unknown as IncomingMessage;
   const res = {
     statusCode: 200,
     setHeader: vi.fn(),
+    writeHead: vi.fn(),
     write: vi.fn(),
     end: vi.fn(),
   } as unknown as ServerResponse;
@@ -437,6 +450,42 @@ describe("connector account routes", () => {
       cloneWithoutBlockedObjectKeys: (value) => value,
     });
     expect(configHandled).toBe(false);
+  });
+
+  it("serializes the provider identity instead of an internal Google account id", async () => {
+    const { ctx, captured, storage } = createConnectorAccountHarness({
+      method: "GET",
+      pathname: "/api/connectors/google/accounts",
+    });
+    await storage.upsertAccount({
+      id: "account-internal-id",
+      provider: "google",
+      label: "account-internal-id",
+      role: "OWNER",
+      purpose: ["reading"],
+      accessGate: "open",
+      status: "connected",
+      metadata: {
+        name: "Ada Lovelace",
+        email: "ada@example.test",
+        picture: "https://example.test/ada.png",
+      },
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.body).toMatchObject({
+      accounts: [
+        expect.objectContaining({
+          id: "account-internal-id",
+          label: "Ada Lovelace",
+          handle: "ada@example.test",
+          avatarUrl: "https://example.test/ada.png",
+        }),
+      ],
+    });
   });
 
   it("honors route authorization before connector account reads", async () => {
@@ -537,6 +586,83 @@ describe("connector account routes", () => {
     });
   });
 
+  it("redirects a successful browser OAuth callback to a provider-owned local path", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "GET",
+      pathname: "/api/connectors/google/oauth/callback?state=state-1&code=ok",
+      authorize: null,
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    manager.registerProvider({
+      provider: "google",
+      completeOAuth: () => ({
+        account: {
+          id: "acct_google",
+          provider: "google",
+          role: "OWNER",
+          purpose: ["reading"],
+          accessGate: "open",
+          status: "connected",
+        },
+        redirectUrl: "/settings#connectors/google",
+      }),
+    });
+    await storage.createOAuthFlow({
+      id: "flow-1",
+      provider: "google",
+      state: "state-1",
+      status: "pending",
+      createdAt: 1,
+      updatedAt: 1,
+      expiresAt: Date.now() + 60_000,
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.body).toBeNull();
+    expect(ctx.res.writeHead).toHaveBeenCalledWith(303, {
+      Location: "/settings#connectors/google",
+    });
+    expect(ctx.res.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not redirect an OAuth callback through a backslash-normalized external URL", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "GET",
+      pathname: "/api/connectors/google/oauth/callback?state=state-1&code=ok",
+      authorize: null,
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    manager.registerProvider({
+      provider: "google",
+      completeOAuth: () => ({
+        account: {
+          id: "acct_google",
+          provider: "google",
+          role: "OWNER",
+          purpose: ["reading"],
+          accessGate: "open",
+          status: "connected",
+        },
+        redirectUrl: "/\\attacker.example",
+      }),
+    });
+    await storage.createOAuthFlow({
+      id: "flow-1",
+      provider: "google",
+      state: "state-1",
+      status: "pending",
+      createdAt: 1,
+      updatedAt: 1,
+      expiresAt: Date.now() + 60_000,
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(ctx.res.writeHead).not.toHaveBeenCalled();
+    expect(captured.body).toMatchObject({ ok: true, accountId: "acct_google" });
+  });
+
   it("persists OAuth start state through the connector account storage contract", async () => {
     const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
       method: "POST",
@@ -596,6 +722,43 @@ describe("connector account routes", () => {
         status: "pending",
       },
     });
+  });
+
+  it("derives the local OAuth callback from the request host", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/google/oauth/start",
+      body: { scopes: ["calendar.read"] },
+      headers: {
+        "x-forwarded-host": "attacker.example",
+        "x-forwarded-proto": "https",
+      },
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    manager.registerProvider({
+      provider: "google",
+      startOAuth: async ({ redirectUri }) => ({
+        authUrl: `https://accounts.google.test/auth?redirect_uri=${encodeURIComponent(
+          redirectUri ?? "missing",
+        )}`,
+      }),
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(201);
+    expect(captured.body).toMatchObject({
+      flow: {
+        redirectUri:
+          "http://localhost:31337/api/connectors/google/oauth/callback",
+      },
+    });
+    const authUrl = new URL(
+      (captured.body as { flow: { authUrl: string } }).flow.authUrl,
+    );
+    expect(authUrl.searchParams.get("redirect_uri")).toBe(
+      "http://localhost:31337/api/connectors/google/oauth/callback",
+    );
   });
 
   it("keeps role separate from connector purpose and supports account actions", async () => {

@@ -1,7 +1,6 @@
-// Exercises provider registry behavior with deterministic cloud-shared lib fixtures.
-import { afterEach, describe, expect, test, vi } from "vitest";
+/** Exercises provider registry behavior with deterministic cloud-shared lib fixtures. */
+import { afterEach, describe, expect, test } from "vitest";
 import {
-  GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME,
   getAllowedScopes,
   getAllProviderIds,
   getCallbackUrl,
@@ -99,95 +98,22 @@ describe("getCallbackUrl / getNestedValue", () => {
   });
 });
 
-describe("Google OAuth client credential vault", () => {
-  test("requires and prefers the organization-vault client secret", async () => {
+describe("managed Google OAuth application credentials", () => {
+  test("uses deployment-managed credentials with PKCE", async () => {
     process.env.GOOGLE_CLIENT_ID = "google-client-id";
     process.env.GOOGLE_CLIENT_SECRET = "env-client-secret";
     const google = getProvider("google");
     if (!google) throw new Error("google provider must exist");
-    const create = vi.fn();
-    const secretStore = {
-      get: vi.fn(async () => "vault-client-secret"),
-      create,
-    };
-
     await expect(
-      resolveOAuthClientCredentials(
-        google,
-        {
-          organizationId: "org-1",
-          actorId: "user-1",
-          source: "test",
-        },
-        secretStore,
-      ),
-    ).resolves.toEqual({
-      clientId: "google-client-id",
-      clientSecret: "vault-client-secret",
-    });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  test("fails closed when only the legacy env secret exists and migration is disabled", async () => {
-    process.env.GOOGLE_CLIENT_ID = "google-client-id";
-    process.env.GOOGLE_CLIENT_SECRET = "env-client-secret";
-    const google = getProvider("google");
-    if (!google) throw new Error("google provider must exist");
-    const secretStore = {
-      get: vi.fn(async () => null),
-      create: vi.fn(),
-    };
-
-    await expect(
-      resolveOAuthClientCredentials(
-        google,
-        {
-          organizationId: "org-1",
-          actorId: "user-1",
-          source: "test",
-        },
-        secretStore,
-      ),
-    ).rejects.toThrow(GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME);
-    expect(secretStore.create).not.toHaveBeenCalled();
-  });
-
-  test("migrates the legacy env secret only when explicitly enabled and readable from vault", async () => {
-    process.env.GOOGLE_CLIENT_ID = "google-client-id";
-    process.env.GOOGLE_CLIENT_SECRET = "env-client-secret";
-    const google = getProvider("google");
-    if (!google) throw new Error("google provider must exist");
-    let vaultValue: string | null = null;
-    const secretStore = {
-      get: vi.fn(async () => vaultValue),
-      create: vi.fn(async (input: { value: string }) => {
-        vaultValue = input.value;
-        return { id: "secret-1" };
+      resolveOAuthClientCredentials(google, {
+        organizationId: "org-1",
+        actorId: "user-1",
+        source: "test",
       }),
-    };
-
-    await expect(
-      resolveOAuthClientCredentials(
-        google,
-        {
-          organizationId: "org-1",
-          actorId: "user-1",
-          source: "test",
-          allowGoogleEnvMigration: true,
-        },
-        secretStore,
-      ),
     ).resolves.toEqual({
       clientId: "google-client-id",
       clientSecret: "env-client-secret",
     });
-    expect(secretStore.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME,
-        value: "env-client-secret",
-      }),
-      expect.anything(),
-    );
-    expect(secretStore.get).toHaveBeenCalledTimes(2);
+    expect(google.pkce).toBe(true);
   });
 });

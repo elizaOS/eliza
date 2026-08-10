@@ -63,7 +63,7 @@ The canonical endpoint/tool/scope manifest lives in `packages/shared/src/contrac
 
 ## Security invariants
 
-- Refresh tokens and OAuth client secrets are durable vault/secret-manager values. Database rows and public DTOs contain opaque refs and non-secret metadata only.
+- User refresh tokens are durable connector-vault values. OAuth application credentials identify the elizaOS product: desktop builds receive a registered public client ID, while hosted deployments keep their confidential client secret in deployment secret storage. Database rows and public DTOs contain only opaque user-token refs and non-secret metadata.
 - The MCP engine receives only a short-lived access token from a runtime callback. Never serialize raw authorization headers into character or MCP settings.
 - Every call rechecks the live account or binding; disconnect/revoke must remove actions and deny planned calls.
 - Remote resources pass core MCP config validation and the SSRF-guarded fetch path. Do not add arbitrary remote endpoints or bypass redirect credential stripping.
@@ -74,8 +74,11 @@ The canonical endpoint/tool/scope manifest lives in `packages/shared/src/contrac
 
 ## Configuration
 
-`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are resolved from the runtime secrets service. The callback URI is derived by the control-plane OAuth start route and preserved on the flow; it is never an environment prerequisite. Any environment value is compatibility input that must be explicitly migrated into the vault rather than copied into account metadata.
-Set `GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV=1` only for that one-time compatibility migration; normal operation fails closed when the vault entry is absent.
+Released desktop builds inject `ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID`, a registered Google desktop/public client ID, and use authorization-code + S256 PKCE without a client secret. Hosted deployments resolve `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from trusted deployment secret bindings. These are product configuration, never fields users enter in Connect or values copied into connector-account metadata.
+
+The callback URI is derived by the control-plane OAuth start route and preserved on the flow. User access and refresh tokens are stored through connector credential refs in the runtime vault. A source build without either managed registration fails closed as a build/deployment configuration error.
+
+The credential resolver may read a legacy global-vault `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` pair so existing refresh tokens survive upgrades. New OAuth flows never write application credentials to that vault, and connector-account rows never contain them.
 
 The separate Chat connector resolves `GOOGLE_CHAT_SERVICE_ACCOUNT`, `GOOGLE_CHAT_SERVICE_ACCOUNT_FILE`, or `GOOGLE_APPLICATION_CREDENTIALS`, plus its webhook audience and space settings. Keep that path isolated from personal OAuth.
 

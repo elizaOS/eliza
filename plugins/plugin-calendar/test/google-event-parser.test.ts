@@ -256,4 +256,13 @@ describe("lifeOpsCalendarSummaryFromGoogle (calendar list contract)", () => {
     });
     expect(summary.includeInFeed).toBe(false);
   });
+
+  it("recognizes the account-address calendar as primary when MCP omits the flag", () => {
+    const summary = lifeOpsCalendarSummaryFromGoogle({
+      entry: { ...listEntry, primary: false },
+      grant: ownerGrant,
+    });
+
+    expect(summary.primary).toBe(true);
+  });
 });

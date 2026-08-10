@@ -186,7 +186,9 @@ function resultText(result: Awaited<ReturnType<McpResourceEngine["callTool"]>>):
 
 export class GoogleMcpCapabilityHost {
   private readonly active = new Map<string, ActiveGoogleMcpProduct>();
+  private readonly connecting = new Map<string, Promise<GoogleMcpProductConnectionReport>>();
   private readonly ownedActions = new Map<string, Action>();
+  private readonly stopController = new AbortController();
 
   constructor(
     private readonly runtime: IAgentRuntime,
@@ -196,57 +198,117 @@ export class GoogleMcpCapabilityHost {
   async connectAccount(account: ConnectorAccount): Promise<GoogleMcpAccountConnectionReport> {
     await this.disconnectAccount(account.id);
     const report: GoogleMcpAccountConnectionReport = { accountId: account.id, products: {} };
-    for (const product of selectedProducts(account)) {
-      const resource = GOOGLE_WORKSPACE_MCP_RESOURCES[product];
-      const allowedCapabilities = new Set(account.capabilities ?? []);
-      const expectedTools = Object.entries(resource.tools)
-        .filter(([, capability]) => allowedCapabilities.has(capability))
-        .filter(([toolName, capability]) =>
-          accountCanUseTool(account, product, toolName, capability)
-        );
-      if (expectedTools.length === 0) {
-        report.products[product] = { status: "skipped", discoveredTools: [], promotedActions: [] };
-        continue;
-      }
-      let ref: McpAttachmentRef | undefined;
-      try {
-        ref = await this.options.engine.attach({
-          key: `google:${String(this.runtime.agentId)}:${account.id}:${product}`,
-          endpoint: resource.endpoint,
-          auth: this.options.accessTokenProviderFor(account, product),
-        });
-        const discovery = await this.options.engine.discover(ref);
-        const tools = new Map(discovery.tools.map((tool) => [tool.name, tool]));
-        const capabilities = new Map<string, string>();
-        for (const [toolName, capability] of expectedTools) {
-          if (tools.has(toolName)) capabilities.set(toolName, capability);
-        }
-        this.active.set(this.activeKey(account.id, product), {
-          account,
-          product,
-          ref,
-          tools,
-          capabilities,
-        });
-        report.products[product] = {
-          status: "connected",
-          discoveredTools: [...tools.keys()],
-          promotedActions: [...capabilities]
-            .filter(([toolName]) => dynamicallyExposed(product, toolName))
-            .map(([toolName]) => actionName(product, toolName)),
-        };
-      } catch (error) {
-        if (ref) await this.detachBestEffort(ref, account.id, product);
-        report.products[product] = {
-          status: "error",
-          discoveredTools: [],
-          promotedActions: [],
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
+    const products = selectedProducts(account);
+    const productReports = await Promise.all(
+      products.map(
+        async (product) => [product, await this.connectProduct(account, product)] as const
+      )
+    );
+    for (const [product, productReport] of productReports) {
+      report.products[product] = productReport;
     }
     this.reconcileActions();
     return report;
+  }
+
+  async connectProduct(
+    account: ConnectorAccount,
+    product: GoogleMcpProduct
+  ): Promise<GoogleMcpProductConnectionReport> {
+    if (this.stopController.signal.aborted) {
+      return {
+        status: "error",
+        discoveredTools: [],
+        promotedActions: [],
+        error: "Google MCP capability host is stopped",
+      };
+    }
+    const key = this.activeKey(account.id, product);
+    const active = this.active.get(key);
+    if (active) {
+      return {
+        status: "connected",
+        discoveredTools: [...active.tools.keys()],
+        promotedActions: [...active.capabilities]
+          .filter(([toolName]) => dynamicallyExposed(product, toolName))
+          .map(([toolName]) => actionName(product, toolName)),
+      };
+    }
+    const pending = this.connecting.get(key);
+    if (pending) return pending;
+
+    const connection = this.connectProductOnce(account, product);
+    this.connecting.set(key, connection);
+    try {
+      return await connection;
+    } finally {
+      if (this.connecting.get(key) === connection) this.connecting.delete(key);
+    }
+  }
+
+  private async connectProductOnce(
+    account: ConnectorAccount,
+    product: GoogleMcpProduct
+  ): Promise<GoogleMcpProductConnectionReport> {
+    if (!selectedProducts(account).includes(product)) {
+      return { status: "skipped", discoveredTools: [], promotedActions: [] };
+    }
+    const resource = GOOGLE_WORKSPACE_MCP_RESOURCES[product];
+    const allowedCapabilities = new Set(account.capabilities ?? []);
+    const expectedTools = Object.entries(resource.tools)
+      .filter(([, capability]) => allowedCapabilities.has(capability))
+      .filter(([toolName, capability]) =>
+        accountCanUseTool(account, product, toolName, capability)
+      );
+    if (expectedTools.length === 0) {
+      return { status: "skipped", discoveredTools: [], promotedActions: [] };
+    }
+
+    let ref: McpAttachmentRef | undefined;
+    try {
+      ref = await this.options.engine.attach({
+        key: `google:${String(this.runtime.agentId)}:${account.id}:${product}`,
+        endpoint: resource.endpoint,
+        auth: this.options.accessTokenProviderFor(account, product),
+      });
+      const discovery = await this.options.engine.discover(ref, {
+        signal: this.stopController.signal,
+      });
+      if (this.stopController.signal.aborted) {
+        throw new ElizaError("Google MCP capability host stopped during discovery", {
+          code: "GOOGLE_MCP_HOST_STOPPED",
+          context: { accountId: account.id, product },
+        });
+      }
+      const tools = new Map(discovery.tools.map((tool) => [tool.name, tool]));
+      const capabilities = new Map<string, string>();
+      for (const [toolName, capability] of expectedTools) {
+        if (tools.has(toolName)) capabilities.set(toolName, capability);
+      }
+      this.active.set(this.activeKey(account.id, product), {
+        account,
+        product,
+        ref,
+        tools,
+        capabilities,
+      });
+      this.reconcileActions();
+      return {
+        status: "connected",
+        discoveredTools: [...tools.keys()],
+        promotedActions: [...capabilities]
+          .filter(([toolName]) => dynamicallyExposed(product, toolName))
+          .map(([toolName]) => actionName(product, toolName)),
+      };
+    } catch (error) {
+      if (ref) await this.detachBestEffort(ref, account.id, product);
+      return {
+        status: "error",
+        discoveredTools: [],
+        promotedActions: [],
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   async disconnectAccount(accountId: string): Promise<void> {
@@ -263,6 +325,7 @@ export class GoogleMcpCapabilityHost {
   }
 
   async stop(): Promise<void> {
+    this.stopController.abort();
     const accountIds = new Set([...this.active.values()].map((active) => active.account.id));
     for (const accountId of accountIds) await this.disconnectAccount(accountId);
   }

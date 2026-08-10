@@ -3,8 +3,7 @@
  *
  * Config-driven OAuth provider system. Adding a new OAuth provider requires:
  * 1. Add provider config to OAUTH_PROVIDERS
- * 2. Configure its client credentials (Google's secret is organization-vault
- *    backed; legacy providers still use deployment secret bindings)
+ * 2. Configure its product-owned client credentials in deployment secrets
  * 3. Done - generic routes handle the rest
  *
  * Supports:
@@ -15,7 +14,6 @@
 
 import { GOOGLE_WORKSPACE_MCP_RESOURCES } from "@elizaos/shared/contracts";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
-import { secretsService } from "../secrets";
 import { Errors } from "./errors";
 import type { OAuthProviderType } from "./types";
 
@@ -224,111 +222,30 @@ export interface OAuthProviderConfig {
   useGenericRoutes?: boolean;
 }
 
-export const GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME = "GOOGLE_OAUTH_CLIENT_SECRET";
-
-interface OAuthClientCredentialSecretStore {
-  get(
-    organizationId: string,
-    name: string,
-    projectId?: string,
-    environment?: undefined,
-    audit?: {
-      actorType: "user" | "system";
-      actorId: string;
-      source: string;
-    },
-  ): Promise<string | null>;
-  create(
-    params: {
-      organizationId: string;
-      name: string;
-      value: string;
-      scope: "organization";
-      description: string;
-      createdBy: string;
-    },
-    audit: {
-      actorType: "user" | "system";
-      actorId: string;
-      source: string;
-    },
-  ): Promise<{ id: string }>;
-}
-
 export interface ResolveOAuthClientCredentialsParams {
   organizationId: string;
   actorId: string;
   actorType?: "user" | "system";
   source: string;
-  allowGoogleEnvMigration?: boolean;
 }
 
 /**
- * Resolve provider application credentials. Google's client secret is an
- * organization-vault value; the deployment environment is accepted only as
- * an explicitly enabled one-time migration source and is never returned until
- * the value can be read back from the vault.
+ * Resolve the deployment-owned OAuth application registration. These values
+ * identify the elizaOS product, not an end user's Google account, so they come
+ * from the trusted Cloud deployment secret environment. Per-user access and
+ * refresh tokens remain in the organization-scoped encrypted credential store.
  */
 export async function resolveOAuthClientCredentials(
   provider: OAuthProviderConfig,
-  params: ResolveOAuthClientCredentialsParams,
-  secretStore: OAuthClientCredentialSecretStore = secretsService,
+  _params: ResolveOAuthClientCredentialsParams,
 ): Promise<{ clientId: string; clientSecret: string }> {
   const clientId = getClientId(provider);
   if (!clientId) {
     throw new Error(`OAuth not configured: missing client ID for ${provider.id}`);
   }
-  if (provider.id !== "google") {
-    const clientSecret = getClientSecret(provider);
-    if (!clientSecret) {
-      throw new Error(`OAuth not configured: missing client secret for ${provider.id}`);
-    }
-    return { clientId, clientSecret };
-  }
-
-  const audit = {
-    actorType: params.actorType ?? ("user" as const),
-    actorId: params.actorId,
-    source: params.source,
-  };
-  const readVaultSecret = () =>
-    secretStore.get(
-      params.organizationId,
-      GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME,
-      undefined,
-      undefined,
-      audit,
-    );
-  let clientSecret = await readVaultSecret();
-  if (clientSecret) return { clientId, clientSecret };
-
-  const envSecret = getClientSecret(provider);
-  if (!params.allowGoogleEnvMigration || !envSecret) {
-    throw new Error(
-      `Google OAuth client secret is missing from the organization vault (${GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME})`,
-    );
-  }
-  try {
-    await secretStore.create(
-      {
-        organizationId: params.organizationId,
-        name: GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME,
-        value: envSecret,
-        scope: "organization",
-        description: "Google OAuth application client secret",
-        createdBy: params.actorId,
-      },
-      audit,
-    );
-  } catch (error) {
-    // error-policy:J4 Concurrent first-use migrations may race on the unique
-    // name; only a successfully readable vault value is accepted below.
-    const message = error instanceof Error ? error.message : String(error);
-    if (!/already exists|duplicate|unique constraint/i.test(message)) throw error;
-  }
-  clientSecret = await readVaultSecret();
+  const clientSecret = getClientSecret(provider);
   if (!clientSecret) {
-    throw new Error("Google OAuth client secret migration did not persist a readable vault value");
+    throw new Error(`OAuth not configured: missing client secret for ${provider.id}`);
   }
   return { clientId, clientSecret };
 }
@@ -387,6 +304,7 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       prompt: "consent",
     },
     storage: "platform_credentials",
+    pkce: true,
     useGenericRoutes: true,
   },
 

@@ -164,6 +164,54 @@ async function connectedService() {
 }
 
 describe("GoogleWorkspaceService MCP adapters", () => {
+  it("registers before background MCP account restoration finishes", async () => {
+    let finishRestore: (() => void) | undefined;
+    const restoration = new Promise<void>((resolve) => {
+      finishRestore = resolve;
+    });
+    const prototype = GoogleWorkspaceService.prototype as unknown as {
+      restoreMcpAccounts(): Promise<void>;
+    };
+    const restore = vi.spyOn(prototype, "restoreMcpAccounts").mockReturnValue(restoration);
+
+    const service = await GoogleWorkspaceService.start(runtimeHarness());
+
+    expect(service).toBeInstanceOf(GoogleWorkspaceService);
+    expect(restore).toHaveBeenCalledTimes(1);
+    finishRestore?.();
+    await restoration;
+    restore.mockRestore();
+  });
+
+  it("discovers a requested product on demand before its first tool call", async () => {
+    const runtime = runtimeHarness();
+    await getConnectorAccountManager(runtime).upsertAccount("google", ACCOUNT);
+    const { engine, callTool } = engineHarness();
+    const service = new GoogleWorkspaceService(runtime, {
+      mcpEngine: engine,
+      credentialResolver: {
+        getAuthClient: async () =>
+          ({
+            credentials: { access_token: "short-lived" },
+            getAccessToken: async () => ({ token: "short-lived" }),
+            setCredentials: () => undefined,
+          }) as never,
+      },
+    });
+
+    await service.listEventPage({
+      accountId: ACCOUNT.id,
+      timeMin: "2026-08-12T08:00:00Z",
+      timeMax: "2026-08-12T12:00:00Z",
+    });
+
+    expect(engine.discover).toHaveBeenCalledTimes(1);
+    expect(callTool).toHaveBeenCalledWith(
+      expect.objectContaining({ key: expect.stringMatching(/:calendar$/) }),
+      expect.objectContaining({ name: "list_events" })
+    );
+  });
+
   it("creates a Gmail draft and never turns it into a delivery receipt", async () => {
     const { service, callTool } = await connectedService();
 

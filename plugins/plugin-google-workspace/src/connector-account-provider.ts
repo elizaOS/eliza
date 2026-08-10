@@ -27,6 +27,7 @@ import {
   ElizaError,
   type IAgentRuntime,
   logger,
+  resolveSetting,
 } from "@elizaos/core";
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
 import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
@@ -111,12 +112,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
-  return nonEmptyString(runtime.getSetting?.(key));
+  return nonEmptyString(resolveSetting(runtime, key));
 }
 
 interface GoogleSecretsService {
   getGlobal(key: string): Promise<string | null>;
-  setGlobal?(key: string, value: string): Promise<boolean>;
 }
 
 function googleSecretsService(runtime: IAgentRuntime): GoogleSecretsService | null {
@@ -128,30 +128,30 @@ function googleSecretsService(runtime: IAgentRuntime): GoogleSecretsService | nu
 
 async function readClientRegistration(runtime: IAgentRuntime): Promise<{
   clientId: string;
-  clientSecret: string;
+  clientSecret?: string;
 }> {
-  const secrets = googleSecretsService(runtime);
-  let clientId = nonEmptyString(await secrets?.getGlobal("GOOGLE_CLIENT_ID"));
-  let clientSecret = nonEmptyString(await secrets?.getGlobal("GOOGLE_CLIENT_SECRET"));
-  if (!clientId || !clientSecret) {
-    const configuredClientId = readSetting(runtime, "GOOGLE_CLIENT_ID");
-    const configuredSecret = readSetting(runtime, "GOOGLE_CLIENT_SECRET");
-    const allowMigration = readSetting(runtime, "GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV") === "1";
-    if (allowMigration && secrets?.setGlobal) {
-      if (!clientId && configuredClientId) {
-        await secrets.setGlobal("GOOGLE_CLIENT_ID", configuredClientId);
-        clientId = nonEmptyString(await secrets.getGlobal("GOOGLE_CLIENT_ID"));
-      }
-      if (!clientSecret && configuredSecret) {
-        await secrets.setGlobal("GOOGLE_CLIENT_SECRET", configuredSecret);
-        clientSecret = nonEmptyString(await secrets.getGlobal("GOOGLE_CLIENT_SECRET"));
-      }
-    }
+  const managedDesktopClientId = readSetting(runtime, "ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID");
+  if (managedDesktopClientId) {
+    return { clientId: managedDesktopClientId };
   }
+
+  const configuredClientId = readSetting(runtime, "GOOGLE_CLIENT_ID");
+  const configuredSecret = readSetting(runtime, "GOOGLE_CLIENT_SECRET");
+  if (configuredClientId && configuredSecret) {
+    return { clientId: configuredClientId, clientSecret: configuredSecret };
+  }
+
+  // Read-only compatibility for installations that stored the application
+  // registration before it became deployment-owned. New flows never write
+  // product credentials into a user's secrets vault.
+  const secrets = googleSecretsService(runtime);
+  const clientId = nonEmptyString(await secrets?.getGlobal("GOOGLE_CLIENT_ID"));
+  const clientSecret = nonEmptyString(await secrets?.getGlobal("GOOGLE_CLIENT_SECRET"));
   if (!clientId || !clientSecret) {
-    throw new Error(
-      "Google OAuth requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the vault."
-    );
+    throw new ElizaError("This elizaOS build has no managed Google OAuth client registration.", {
+      code: "GOOGLE_OAUTH_REGISTRATION_MISSING",
+      severity: "fatal",
+    });
   }
   return { clientId, clientSecret };
 }
@@ -338,29 +338,38 @@ async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleIdentity>
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!response.ok) {
-    throw new Error(`Google userinfo request failed with ${response.status}`);
+    throw new ElizaError("Google userinfo request failed.", {
+      code: "GOOGLE_OAUTH_USERINFO_FAILED",
+      context: { status: response.status },
+      severity: "fatal",
+    });
   }
   const parsed = (await response.json()) as GoogleIdentity;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Google userinfo returned an invalid payload.");
+    throw new ElizaError("Google userinfo returned an invalid payload.", {
+      code: "GOOGLE_OAUTH_USERINFO_INVALID",
+      severity: "fatal",
+    });
   }
   return parsed;
 }
 
 async function exchangeAuthorizationCode(args: {
   clientId: string;
-  clientSecret: string;
+  clientSecret?: string;
   redirectUri: string;
   code: string;
   codeVerifier?: string;
 }): Promise<GoogleTokenResponse> {
   const params = new URLSearchParams({
     client_id: args.clientId,
-    client_secret: args.clientSecret,
     redirect_uri: args.redirectUri,
     grant_type: "authorization_code",
     code: args.code,
   });
+  if (args.clientSecret) {
+    params.set("client_secret", args.clientSecret);
+  }
   if (args.codeVerifier) {
     params.set("code_verifier", args.codeVerifier);
   }
@@ -371,12 +380,18 @@ async function exchangeAuthorizationCode(args: {
     body: params.toString(),
   });
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Google token exchange failed with ${response.status}: ${body}`);
+    throw new ElizaError("Google token exchange failed.", {
+      code: "GOOGLE_OAUTH_TOKEN_EXCHANGE_FAILED",
+      context: { status: response.status },
+      severity: "fatal",
+    });
   }
   const parsed = (await response.json()) as GoogleTokenResponse;
   if (!parsed.access_token || !Number.isFinite(parsed.expires_in)) {
-    throw new Error("Google token exchange returned an invalid payload.");
+    throw new ElizaError("Google token exchange returned an invalid payload.", {
+      code: "GOOGLE_OAUTH_TOKEN_RESPONSE_INVALID",
+      severity: "fatal",
+    });
   }
   return parsed;
 }
@@ -477,7 +492,10 @@ export function createGoogleConnectorAccountProvider(
       const config = await readClientRegistration(runtime);
       const redirectUri = nonEmptyString(request.redirectUri);
       if (!redirectUri) {
-        throw new Error("Google OAuth start requires a request-derived callback URI.");
+        throw new ElizaError("Google OAuth start requires a request-derived callback URI.", {
+          code: "GOOGLE_OAUTH_REDIRECT_URI_MISSING",
+          severity: "fatal",
+        });
       }
       const capabilities = normalizeRequestedCapabilities(request.scopes);
       const oauthScopes = scopesForGoogleCapabilities(capabilities);
@@ -515,7 +533,10 @@ export function createGoogleConnectorAccountProvider(
     ): Promise<ConnectorOAuthCallbackResult> => {
       const code = nonEmptyString(request.code);
       if (!code) {
-        throw new Error("Google OAuth callback is missing an authorization code.");
+        throw new ElizaError("Google OAuth callback is missing an authorization code.", {
+          code: "GOOGLE_OAUTH_CODE_MISSING",
+          severity: "fatal",
+        });
       }
 
       const config = await readClientRegistration(runtime);
@@ -523,7 +544,10 @@ export function createGoogleConnectorAccountProvider(
         nonEmptyString(request.flow.redirectUri) ??
         nonEmptyString((request.flow.metadata as Record<string, unknown> | undefined)?.redirectUri);
       if (!redirectUri) {
-        throw new Error("Google OAuth callback is missing its original redirect URI.");
+        throw new ElizaError("Google OAuth callback is missing its original redirect URI.", {
+          code: "GOOGLE_OAUTH_REDIRECT_URI_MISSING",
+          severity: "fatal",
+        });
       }
 
       const tokens = await exchangeAuthorizationCode({
@@ -577,7 +601,6 @@ export function createGoogleConnectorAccountProvider(
           }
         );
       }
-      const purposes = purposesForCapabilities(selectedCapabilities);
       const effectiveGrantedScopes =
         grantedScopes.length > 0 ? grantedScopes : scopesForGoogleCapabilities(grantedCapabilities);
 
@@ -588,7 +611,41 @@ export function createGoogleConnectorAccountProvider(
 
       const externalId = nonEmptyString(identity.sub) ?? nonEmptyString(identity.email);
       if (!externalId) {
-        throw new Error("Google identity payload did not include sub or email.");
+        throw new ElizaError("Google identity payload did not include sub or email.", {
+          code: "GOOGLE_OAUTH_IDENTITY_MISSING",
+          severity: "fatal",
+        });
+      }
+      const existingAccount = request.flow.accountId
+        ? await manager.getAccount(GOOGLE_SERVICE_NAME, request.flow.accountId)
+        : (await manager.listAccounts(GOOGLE_SERVICE_NAME)).find(
+            (account) => account.externalId === externalId
+          );
+      const retainedCapabilities = (existingAccount?.capabilities ?? [])
+        .filter(isGoogleCapability)
+        .filter((capability) => grantedCapabilities.includes(capability));
+      const accountCapabilities = [...new Set([...retainedCapabilities, ...selectedCapabilities])];
+      const purposes = purposesForCapabilities(accountCapabilities);
+      let refreshToken = tokens.refresh_token;
+      if (!refreshToken && existingAccount) {
+        const existingAuthClient = await new DefaultGoogleCredentialResolver({
+          runtime,
+          accountManager: manager,
+        }).getAuthClient({
+          provider: GOOGLE_SERVICE_NAME,
+          accountId: existingAccount.id,
+          scopes: existingAccount.scopes ?? [],
+          capabilities: (existingAccount.capabilities ?? []).filter(isGoogleCapability),
+          reason: "preserve refresh token during incremental Google OAuth",
+        });
+        refreshToken = existingAuthClient.credentials.refresh_token ?? undefined;
+      }
+      if (!refreshToken) {
+        throw new ElizaError("Google OAuth completed without a refresh token.", {
+          code: "GOOGLE_OAUTH_REFRESH_TOKEN_MISSING",
+          context: { hasExistingAccount: Boolean(existingAccount) },
+          severity: "fatal",
+        });
       }
       const expiresAt = Date.now() + tokens.expires_in * 1000;
       const oauthCredentialVersion = String(Date.now());
@@ -599,36 +656,36 @@ export function createGoogleConnectorAccountProvider(
         picture: identity.picture ?? null,
         locale: identity.locale ?? null,
         grantedCapabilities,
-        selectedCapabilities,
+        selectedCapabilities: accountCapabilities,
         grantedScopes: effectiveGrantedScopes,
         identityScopes: [...GOOGLE_IDENTITY_SCOPES],
         tokenType: tokens.token_type ?? "Bearer",
-        hasRefreshToken: Boolean(tokens.refresh_token),
+        hasRefreshToken: true,
         expiresAt,
         oauthCredentialVersion,
       };
-      const pendingAccount = await manager.upsertAccount(
-        GOOGLE_SERVICE_NAME,
-        {
-          provider: GOOGLE_SERVICE_NAME,
-          role: "OWNER",
-          purpose: purposes,
-          accessGate: "open",
-          status: "pending",
-          scopes: effectiveGrantedScopes,
-          capabilities: selectedCapabilities,
-          selectedProducts: productsForCapabilities(selectedCapabilities),
-          isDefault: isDefaultFromMetadata(request.flow.metadata),
-          externalId,
-          displayHandle: nonEmptyString(identity.email) ?? nonEmptyString(identity.name),
-          label:
-            nonEmptyString(identity.name) ??
-            nonEmptyString(identity.email) ??
-            GOOGLE_OAUTH_PROVIDER_METADATA.label,
-          metadata: accountMetadata,
-        },
-        request.flow.accountId
-      );
+      const existingAccountId = existingAccount?.id;
+      const pendingAccountInput: ConnectorAccountPatch & { provider: string } = {
+        provider: GOOGLE_SERVICE_NAME,
+        role: "OWNER",
+        purpose: purposes,
+        accessGate: "open",
+        status: "pending",
+        scopes: effectiveGrantedScopes,
+        capabilities: accountCapabilities,
+        selectedProducts: productsForCapabilities(accountCapabilities),
+        isDefault: isDefaultFromMetadata(request.flow.metadata),
+        externalId,
+        displayHandle: nonEmptyString(identity.email) ?? nonEmptyString(identity.name),
+        label:
+          nonEmptyString(identity.name) ??
+          nonEmptyString(identity.email) ??
+          GOOGLE_OAUTH_PROVIDER_METADATA.label,
+        metadata: accountMetadata,
+      };
+      const pendingAccount = existingAccountId
+        ? await manager.upsertAccount(GOOGLE_SERVICE_NAME, pendingAccountInput, existingAccountId)
+        : await manager.createAccount(GOOGLE_SERVICE_NAME, pendingAccountInput);
       await persistConnectorCredentialRefs({
         runtime,
         manager,
@@ -641,7 +698,7 @@ export function createGoogleConnectorAccountProvider(
             credentialType: "oauth.tokens",
             value: JSON.stringify({
               access_token: tokens.access_token,
-              ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
+              refresh_token: refreshToken,
               ...(tokens.id_token ? { id_token: tokens.id_token } : {}),
               token_type: tokens.token_type ?? "Bearer",
               scope:
@@ -653,7 +710,7 @@ export function createGoogleConnectorAccountProvider(
             expiresAt,
             metadata: {
               provider: GOOGLE_SERVICE_NAME,
-              hasRefreshToken: Boolean(tokens.refresh_token),
+              hasRefreshToken: true,
             },
           },
         ],
@@ -677,7 +734,7 @@ export function createGoogleConnectorAccountProvider(
           src: "plugin:google:connector",
           externalId,
           grantedCapabilities,
-          selectedCapabilities,
+          selectedCapabilities: accountCapabilities,
         },
         "Google OAuth completed"
       );
@@ -685,6 +742,7 @@ export function createGoogleConnectorAccountProvider(
       return {
         account: accountPatch,
         flow: { status: "completed" },
+        redirectUrl: "/settings#connectors/google",
       };
     },
 

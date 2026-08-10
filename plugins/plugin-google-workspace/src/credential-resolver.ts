@@ -16,6 +16,7 @@ import {
   type ConnectorAccountStorage,
   getConnectorAccountManager,
   type IAgentRuntime,
+  resolveSetting,
 } from "@elizaos/core";
 import { type Credentials, OAuth2Client } from "google-auth-library";
 
@@ -33,6 +34,7 @@ import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 const GOOGLE_CLIENT_ID_SETTING = "GOOGLE_CLIENT_ID";
 const GOOGLE_CLIENT_SECRET_SETTING = "GOOGLE_CLIENT_SECRET";
+const ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID_SETTING = "ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID";
 
 // Read-side store resolution mirrors the write side exactly
 // (connector-credential-refs.ts): same service names, same precedence. A
@@ -173,12 +175,9 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
     }
 
     const material = await this.resolveCredentialMaterial(account, request, records, version);
-    if (
-      material.credentials.refresh_token &&
-      (!clientConfig.clientId || !clientConfig.clientSecret)
-    ) {
+    if (material.credentials.refresh_token && !clientConfig.clientId) {
       throw new Error(
-        "Google OAuth refresh_token is available, but the OAuth client registration is not stored in the vault."
+        "Google OAuth refresh_token is available, but this elizaOS build has no managed Google OAuth client registration."
       );
     }
     const client = new OAuth2Client(
@@ -436,34 +435,34 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
     clientSecret?: string;
     redirectUri?: string;
   }> {
+    const managedDesktopClientId = readSetting(
+      this.runtime,
+      ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID_SETTING
+    );
+    if (managedDesktopClientId) {
+      return {
+        clientId: this.clientId ?? managedDesktopClientId,
+        redirectUri: this.redirectUri,
+      };
+    }
+
+    const configuredClientId = readSetting(this.runtime, GOOGLE_CLIENT_ID_SETTING);
+    const configuredSecret = readSetting(this.runtime, GOOGLE_CLIENT_SECRET_SETTING);
+    if (configuredClientId && configuredSecret) {
+      return {
+        clientId: this.clientId ?? configuredClientId,
+        clientSecret: configuredSecret,
+        redirectUri: this.redirectUri,
+      };
+    }
+
     const secrets = (
       this.runtime ? safelyGetService(this.runtime, CORE_SECRETS_SERVICE_TYPE) : null
     ) as {
       getGlobal?: (key: string) => Promise<string | null>;
-      setGlobal?: (key: string, value: string) => Promise<boolean>;
     } | null;
-    let clientId = nonEmptyString(await secrets?.getGlobal?.(GOOGLE_CLIENT_ID_SETTING));
-    let clientSecret = nonEmptyString(await secrets?.getGlobal?.(GOOGLE_CLIENT_SECRET_SETTING));
-    if (!clientId || !clientSecret) {
-      const configuredClientId = readSetting(this.runtime, GOOGLE_CLIENT_ID_SETTING);
-      const configuredSecret = readSetting(this.runtime, GOOGLE_CLIENT_SECRET_SETTING);
-      const allowMigration =
-        readSetting(this.runtime, "GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV") === "1";
-      if (allowMigration && secrets?.setGlobal) {
-        if (!clientId && configuredClientId) {
-          const stored = await secrets.setGlobal(GOOGLE_CLIENT_ID_SETTING, configuredClientId);
-          if (stored) {
-            clientId = nonEmptyString(await secrets.getGlobal?.(GOOGLE_CLIENT_ID_SETTING));
-          }
-        }
-        if (!clientSecret && configuredSecret) {
-          const stored = await secrets.setGlobal(GOOGLE_CLIENT_SECRET_SETTING, configuredSecret);
-          if (stored) {
-            clientSecret = nonEmptyString(await secrets.getGlobal?.(GOOGLE_CLIENT_SECRET_SETTING));
-          }
-        }
-      }
-    }
+    const clientId = nonEmptyString(await secrets?.getGlobal?.(GOOGLE_CLIENT_ID_SETTING));
+    const clientSecret = nonEmptyString(await secrets?.getGlobal?.(GOOGLE_CLIENT_SECRET_SETTING));
     return {
       clientId: this.clientId ?? clientId,
       clientSecret,
@@ -519,8 +518,7 @@ function safelyGetService(runtime: IAgentRuntime, serviceType: string): unknown 
 }
 
 function readSetting(runtime: IAgentRuntime | null | undefined, key: string): string | undefined {
-  const value = runtime?.getSetting?.(key);
-  return nonEmptyString(value);
+  return nonEmptyString(resolveSetting(runtime, key));
 }
 
 function nonEmptyString(value: unknown): string | undefined {

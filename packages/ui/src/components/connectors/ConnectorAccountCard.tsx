@@ -45,6 +45,10 @@ export interface ConnectorAccountCardProps {
   refreshBusy?: boolean;
   /** Whether to expose generic role/privacy controls for this connector. */
   showPolicyControls?: boolean;
+  /** Whether this connector has a meaningful sync timestamp and refresh action. */
+  showSyncControls?: boolean;
+  /** Whether to render the account's connected-product badge list. */
+  showProductBadges?: boolean;
   onSelect?: () => void;
   onUpdate: (body: ConnectorAccountUpdateInput) => Promise<void>;
   onTest: () => Promise<void>;
@@ -153,6 +157,8 @@ export function ConnectorAccountCard({
   testBusy = false,
   refreshBusy = false,
   showPolicyControls = true,
+  showSyncControls = true,
+  showProductBadges = true,
   onSelect,
   onUpdate,
   onTest,
@@ -165,6 +171,7 @@ export function ConnectorAccountCard({
   const deleteBusy = deleteModal.state.status === "submitting";
   const confirmingDelete = deleteModal.state.status !== "closed";
   const [defaultBusy, setDefaultBusy] = useState(false);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const status = deriveStatus(account.status, t);
   const displayHandle = account.handle ?? account.externalId ?? null;
   const enabled = account.enabled !== false;
@@ -192,11 +199,12 @@ export function ConnectorAccountCard({
     >
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border/50 bg-bg-accent text-xs font-semibold text-muted">
-          {account.avatarUrl ? (
+          {account.avatarUrl && account.avatarUrl !== failedAvatarUrl ? (
             <img
               src={account.avatarUrl}
               alt=""
               className="h-full w-full object-cover"
+              onError={() => setFailedAvatarUrl(account.avatarUrl ?? null)}
             />
           ) : (
             initials(account.label)
@@ -224,7 +232,9 @@ export function ConnectorAccountCard({
             {displayHandle ? (
               <span className="max-w-[220px] truncate">{displayHandle}</span>
             ) : null}
-            <span>{formatRelativeTime(account.lastSyncedAt, t)}</span>
+            {showSyncControls ? (
+              <span>{formatRelativeTime(account.lastSyncedAt, t)}</span>
+            ) : null}
             {account.statusDetail ? (
               <span className="max-w-[260px] truncate text-warn">
                 {account.statusDetail}
@@ -285,26 +295,28 @@ export function ConnectorAccountCard({
               t("connectoraccount.test", { defaultValue: "Test" })
             )}
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={saving || refreshBusy}
-            onClick={() => void onRefresh()}
-            aria-label={t("connectoraccount.refresh", {
-              defaultValue: "Refresh connector account",
-            })}
-            title={t("connectoraccount.refresh", {
-              defaultValue: "Refresh connector account",
-            })}
-            className="h-7 w-7 p-0"
-          >
-            {refreshBusy ? (
-              <Spinner className="h-3 w-3" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-            )}
-          </Button>
+          {showSyncControls ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={saving || refreshBusy}
+              onClick={() => void onRefresh()}
+              aria-label={t("connectoraccount.refresh", {
+                defaultValue: "Refresh connector account",
+              })}
+              title={t("connectoraccount.refresh", {
+                defaultValue: "Refresh connector account",
+              })}
+              className="h-7 w-7 p-0"
+            >
+              {refreshBusy ? (
+                <Spinner className="h-3 w-3" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              )}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
@@ -324,7 +336,9 @@ export function ConnectorAccountCard({
         </div>
       </div>
 
-      {account.selectedProducts && account.selectedProducts.length > 0 ? (
+      {showProductBadges &&
+      account.selectedProducts &&
+      account.selectedProducts.length > 0 ? (
         <ul className="flex flex-wrap gap-1.5" aria-label="Connected products">
           {account.selectedProducts.map((product) => (
             <li key={product}>

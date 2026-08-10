@@ -51,6 +51,12 @@ export interface ConnectorAccountListProps {
   showAddAccount?: boolean;
   /** Hide role/privacy controls for identity-neutral account surfaces. */
   showPolicyControls?: boolean;
+  /** Hide generic sync text/actions for live-query connectors such as Google MCP. */
+  showSyncControls?: boolean;
+  /** Hide connected-product badges when a parent renders the product grant. */
+  showProductBadges?: boolean;
+  /** Remove list chrome and redundant selection UI for a single compact account. */
+  compactSingleAccount?: boolean;
   /**
    * When set, this list represents accounts for a single connector role:
    * `OWNER` shows only the user's own account(s); `AGENT` shows only the
@@ -130,6 +136,9 @@ export function ConnectorAccountList({
   onAddAccount,
   showAddAccount = true,
   showPolicyControls = true,
+  showSyncControls = true,
+  showProductBadges = true,
+  compactSingleAccount = false,
   accountRole,
   externalAccounts,
 }: ConnectorAccountListProps) {
@@ -171,6 +180,7 @@ export function ConnectorAccountList({
   // mis-roled accounts, not to create new ones under an unknown role.
   const canAddAccount =
     showAddAccount && accountRole !== CONNECTOR_UNKNOWN_ROLE_BUCKET;
+  const compact = compactSingleAccount && sortedAccounts.length === 1;
 
   const handleSelect = (accountId: string) => {
     setConnectorSelectedAccountId(accountId);
@@ -208,28 +218,32 @@ export function ConnectorAccountList({
         className,
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
-          {effectiveTitle} ({sortedAccounts.length})
-        </h3>
-        {canAddAccount ? (
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            disabled={addBusy}
-            onClick={() => void handleAdd()}
-            className="h-8 gap-1 px-2.5 text-xs"
-          >
-            {addBusy ? (
-              <Spinner className="h-3 w-3" />
-            ) : (
-              <Plus className="h-3.5 w-3.5" aria-hidden />
-            )}
-            Add account
-          </Button>
-        ) : null}
-      </div>
+      {!compact || canAddAccount ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {!compact ? (
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
+              {effectiveTitle} ({sortedAccounts.length})
+            </h3>
+          ) : null}
+          {canAddAccount ? (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={addBusy}
+              onClick={() => void handleAdd()}
+              className="h-8 gap-1 px-2.5 text-xs"
+            >
+              {addBusy ? (
+                <Spinner className="h-3 w-3" />
+              ) : (
+                <Plus className="h-3.5 w-3.5" aria-hidden />
+              )}
+              Add account
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {connectorAccounts.loading && !connectorAccounts.data ? (
         <div className="flex items-center gap-2 text-xs text-muted">
@@ -272,7 +286,9 @@ export function ConnectorAccountList({
                   `refresh:${account.id}`,
                 )}
                 showPolicyControls={showPolicyControls}
-                onSelect={() => handleSelect(account.id)}
+                showSyncControls={showSyncControls}
+                showProductBadges={showProductBadges}
+                onSelect={compact ? undefined : () => handleSelect(account.id)}
                 onUpdate={async (body) => {
                   await connectorAccounts.update(account.id, body);
                 }}

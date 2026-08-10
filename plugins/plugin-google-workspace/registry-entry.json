@@ -20,24 +20,7 @@
     "chat",
     "messaging"
   ],
-  "config": {
-    "GOOGLE_CLIENT_ID": {
-      "type": "secret",
-      "required": false,
-      "sensitive": true,
-      "label": "OAuth Client ID",
-      "help": "OAuth client ID stored with the app registration in the vault.",
-      "advanced": true
-    },
-    "GOOGLE_CLIENT_SECRET": {
-      "type": "secret",
-      "required": false,
-      "sensitive": true,
-      "label": "OAuth Client Secret",
-      "help": "Bootstrap value imported into the secrets vault before OAuth use. It is never stored on a connector account.",
-      "advanced": true
-    }
-  },
+  "config": {},
   "render": {
     "visible": true,
     "pinTo": [],
@@ -57,19 +40,13 @@
   "subtype": "email",
   "auth": {
     "kind": "oauth",
-    "credentialKeys": [
-      "GOOGLE_CLIENT_ID",
-      "GOOGLE_CLIENT_SECRET"
-    ]
+    "credentialKeys": []
   },
   "accounts": {
     "owner": {
       "supported": true,
       "authKind": "oauth",
-      "credentialKeys": [
-        "GOOGLE_CLIENT_ID",
-        "GOOGLE_CLIENT_SECRET"
-      ],
+      "credentialKeys": [],
       "notes": "One direct OAuth connection to the user's personal Google account. Agent access is controlled by bindings and selected MCP products."
     },
     "agent": {

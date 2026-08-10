@@ -279,7 +279,11 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
   static async start(runtime: IAgentRuntime): Promise<GoogleWorkspaceService> {
     const service = new GoogleWorkspaceService(runtime);
     logger.info("[GoogleWorkspaceService] Starting MCP-only personal Google connector");
-    await service.restoreMcpAccounts();
+    // error-policy:J7 account restoration is warmup work; individual product
+    // calls await their own deduplicated discovery and surface failures there.
+    void service.restoreMcpAccounts().catch((error) => {
+      runtime.reportError("google.mcp.restore", error);
+    });
     return service;
   }
 
@@ -324,13 +328,36 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     toolName: string,
     arguments_: Readonly<Record<string, unknown>> = {}
   ): Promise<Record<string, unknown>> {
-    if (!this.mcpHost) {
+    const host = this.mcpHost;
+    if (!host) {
       throw new ElizaError("Google MCP execution requires a running agent runtime", {
         code: "GOOGLE_MCP_HOST_UNAVAILABLE",
       });
     }
+    const account = await getConnectorAccountManager(this.runtime).getAccount(
+      GOOGLE_SERVICE_NAME,
+      accountId
+    );
+    if (account?.status !== "connected") {
+      throw new ElizaError("Google MCP execution requires a connected account", {
+        code: "GOOGLE_MCP_ACCOUNT_NOT_CONNECTED",
+        context: { accountId, product },
+      });
+    }
+    const productConnection = await host.connectProduct(account, product);
+    if (productConnection.status !== "connected") {
+      throw new ElizaError(`Google MCP ${product} resource is unavailable`, {
+        code: "GOOGLE_MCP_PRODUCT_UNAVAILABLE",
+        context: {
+          accountId,
+          product,
+          status: productConnection.status,
+          error: productConnection.error,
+        },
+      });
+    }
     return toolPayload(
-      await this.mcpHost.callTool({ accountId, product, toolName, arguments: arguments_ })
+      await host.callTool({ accountId, product, toolName, arguments: arguments_ })
     );
   }
 

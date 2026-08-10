@@ -33,7 +33,8 @@ The service-account Google Chat bot connector remains in `src/chat/` as a separa
 ```text
 Connect Google
   -> direct OAuth authorization-code + PKCE
-  -> refresh token and client secret in vault/secret manager
+  -> elizaOS-managed app registration (no user credential setup)
+  -> user refresh token in the connector vault
   -> account bound to selected agent/products
   -> one attachment per official Google MCP product resource
   -> tools/list checked against the reviewed manifest
@@ -48,23 +49,31 @@ The official endpoint and capability manifest is shared with Cloud in `packages/
 ## Configuration
 
 A Google Cloud OAuth client registration is required because Google's MCP
-resources do not support dynamic client registration. Both registration values
-are stored in the runtime vault; no Google OAuth environment variables are
-required during normal operation. Connector accounts store only secret
-references.
+resources do not support dynamic client registration. elizaOS owns that product
+registration; people connecting Google do not create an OAuth app or paste
+credentials into their vault.
 
 ```text
-GOOGLE_CLIENT_ID       # vault/secret-manager value
-GOOGLE_CLIENT_SECRET   # vault/secret-manager value
+ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID  # release/build-owned public desktop client
+GOOGLE_CLIENT_ID                     # hosted deployment registration
+GOOGLE_CLIENT_SECRET                 # hosted deployment secret binding
 ```
+
+Desktop builds use authorization-code + S256 PKCE and omit `client_secret` at
+the token endpoint. Hosted deployments use the same PKCE flow with their
+confidential application secret held by the deployment. In both cases, only
+the user's access and refresh tokens are written to connector-vault refs.
 
 The local control plane derives the callback from the OAuth start request. For
 the standard development server, register
 `http://localhost:31337/api/connectors/google/oauth/callback` with Google.
 
-For a one-time migration from an existing environment value, set
-`GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV=1`. Without that explicit flag, a missing
-vault entry fails closed.
+Source/development builds must receive one of the product registrations above.
+If neither is present, Connect reports that managed Google connection is
+unavailable in that build; it never asks the user to add app credentials.
+Existing installations may continue reading a legacy global-vault client pair
+for refresh compatibility, but new connections never write application
+credentials into user or organization connector vaults.
 
 Enable the Workspace APIs and MCP service APIs for the products you expose, configure the OAuth consent screen, and register the redirect URI.
 

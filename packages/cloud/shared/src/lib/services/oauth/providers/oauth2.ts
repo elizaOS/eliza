@@ -230,7 +230,6 @@ export async function initiateOAuth2(
     organizationId: params.organizationId,
     actorId: params.userId,
     source: `oauth2-${provider.id}-initiate-client-credentials`,
-    allowGoogleEnvMigration: getCloudAwareEnv().GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV === "1",
   });
 
   if (!provider.endpoints?.authorization) {
@@ -499,7 +498,6 @@ async function exchangeCodeForTokens(
     organizationId,
     actorId,
     source: `oauth2-${provider.id}-callback-client-credentials`,
-    allowGoogleEnvMigration: getCloudAwareEnv().GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV === "1",
   });
 
   if (!provider.endpoints?.token) {

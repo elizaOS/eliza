@@ -520,6 +520,7 @@ export function lifeOpsCalendarSummaryFromGoogle(args: {
   includeInFeed?: boolean;
 }): LifeOpsCalendarSummary {
   const { entry, grant } = args;
+  const accountEmail = grant.identityEmail?.trim().toLowerCase();
   return {
     provider: "google",
     side: grant.side,
@@ -529,7 +530,11 @@ export function lifeOpsCalendarSummaryFromGoogle(args: {
     calendarId: entry.calendarId,
     summary: entry.summary,
     description: entry.description,
-    primary: entry.primary,
+    primary:
+      entry.primary ||
+      Boolean(
+        accountEmail && entry.calendarId.trim().toLowerCase() === accountEmail,
+      ),
     accessRole: entry.accessRole,
     backgroundColor: entry.backgroundColor,
     foregroundColor: entry.foregroundColor,

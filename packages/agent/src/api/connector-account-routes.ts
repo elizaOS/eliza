@@ -19,6 +19,7 @@ import {
   type ConnectorAccountStatus,
   type ConnectorOAuthFlow,
   DEFAULT_PRIVACY_LEVEL,
+  ElizaError,
   getConnectorAccountManager,
   isPrivacyLevel,
   type Metadata,
@@ -409,17 +410,34 @@ function accountPatchFromBody(
 
 function serializeAccount(account: ConnectorAccount): Record<string, unknown> {
   const metadata = account.metadata ?? {};
+  const identityName =
+    typeof metadata.name === "string" && metadata.name.trim()
+      ? metadata.name.trim()
+      : undefined;
+  const identityEmail =
+    typeof metadata.email === "string" && metadata.email.trim()
+      ? metadata.email.trim()
+      : undefined;
+  const identityPicture =
+    typeof metadata.picture === "string" && metadata.picture.trim()
+      ? metadata.picture.trim()
+      : undefined;
+  const storedLabel = account.label?.trim();
   const handle =
     account.displayHandle ??
-    (typeof metadata.handle === "string" ? metadata.handle : undefined);
+    (typeof metadata.handle === "string" ? metadata.handle : undefined) ??
+    identityEmail;
   return {
     id: account.id,
     provider: account.provider,
     label:
-      account.label ??
-      account.displayHandle ??
-      account.externalId ??
-      account.id,
+      storedLabel && storedLabel !== account.id
+        ? storedLabel
+        : (identityName ??
+          identityEmail ??
+          account.displayHandle ??
+          account.externalId ??
+          account.id),
     role: normalizeConnectorAccountRoleValue(account.role) ?? "OWNER",
     purpose: account.purpose,
     privacy: isPrivacyLevel(metadata.privacy)
@@ -429,6 +447,7 @@ function serializeAccount(account: ConnectorAccount): Record<string, unknown> {
     status: normalizeConnectorAccountStatus(account.status),
     externalId: account.externalId,
     handle,
+    avatarUrl: identityPicture,
     displayHandle: account.displayHandle,
     ownerBindingId: account.ownerBindingId,
     ownerIdentityId: account.ownerIdentityId,
@@ -486,6 +505,66 @@ function queryRecord(req: http.IncomingMessage): Record<string, string> {
     record[key] = value;
   }
   return record;
+}
+
+function firstHeaderValue(
+  value: string | string[] | undefined,
+): string | undefined {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return candidate?.split(",")[0]?.trim() || undefined;
+}
+
+function deriveConnectorOAuthCallbackUri(
+  req: http.IncomingMessage,
+  provider: string,
+): string {
+  const protocol =
+    req.socket && "encrypted" in req.socket && req.socket.encrypted
+      ? "https"
+      : "http";
+  const host = firstHeaderValue(req.headers.host);
+  if (!host) {
+    throw new ElizaError(
+      "Connector OAuth request is missing its callback host.",
+      {
+        code: "CONNECTOR_OAUTH_CALLBACK_HOST_MISSING",
+        severity: "fatal",
+      },
+    );
+  }
+  const origin = new URL(`${protocol}://${host}`);
+  const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+  if (
+    origin.username ||
+    origin.password ||
+    origin.pathname !== "/" ||
+    !loopbackHosts.has(origin.hostname)
+  ) {
+    throw new ElizaError(
+      "Connector OAuth requires an explicit callback URI outside the local loopback server.",
+      {
+        code: "CONNECTOR_OAUTH_CALLBACK_HOST_INVALID",
+        context: { hostname: origin.hostname },
+        severity: "fatal",
+      },
+    );
+  }
+  return new URL(
+    `/api/connectors/${encodeURIComponent(provider)}/oauth/callback`,
+    origin,
+  ).toString();
+}
+
+function isSafeLocalOAuthRedirect(value: string): boolean {
+  if (
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\") ||
+    /[\r\n]/.test(value)
+  ) {
+    return false;
+  }
+  return new URL(value, "http://eliza.local").origin === "http://eliza.local";
 }
 
 interface ConnectorAccountAuditEventLike {
@@ -920,8 +999,12 @@ export async function handleConnectorAccountRoutes(
         return true;
       }
       try {
+        const redirectUri =
+          parsed.data.redirectUri ??
+          deriveConnectorOAuthCallbackUri(req, provider);
         const flow = await manager.startOAuth(provider, {
           ...parsed.data,
+          redirectUri,
           metadata: cleanMetadata(parsed.data.metadata),
         });
         json(res, { provider, flow: serializeFlow(flow) }, 201);
@@ -975,6 +1058,15 @@ export async function handleConnectorAccountRoutes(
           query,
           body: body ?? undefined,
         });
+        if (
+          method === "GET" &&
+          result.redirectUrl &&
+          isSafeLocalOAuthRedirect(result.redirectUrl)
+        ) {
+          res.writeHead(303, { Location: result.redirectUrl });
+          res.end();
+          return true;
+        }
         const serializedFlow = serializeFlow(result.flow);
         json(res, {
           provider,

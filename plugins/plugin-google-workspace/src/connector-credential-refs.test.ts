@@ -161,12 +161,13 @@ function createAppSecretsVault() {
 
 function createRuntime(
   storage: ReturnType<typeof createStorage>,
-  services: Record<string, unknown>
+  services: Record<string, unknown>,
+  settings: Record<string, string> = {}
 ): IAgentRuntime {
   return {
     agentId: AGENT_ID,
     getService: (name: string) => services[name] ?? null,
-    getSetting: () => undefined,
+    getSetting: (key: string) => settings[key],
     adapter: storage,
   } as unknown as IAgentRuntime;
 }
@@ -211,6 +212,33 @@ async function resolveAfterRestart(
 }
 
 describe("connector credential persist → restart → resolve round-trip", () => {
+  it("resolves refreshable user tokens with the managed desktop client ID and no app secret in the user vault", async () => {
+    const state = newDurableState();
+    state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
+    const storage = createStorage(state);
+    const vaultRef = `connector.${AGENT_ID}.google.${ACCOUNT_ID}.oauth_tokens`;
+    state.credentialRefs.set(`${ACCOUNT_ID}:oauth.tokens`, {
+      credentialType: "oauth.tokens",
+      vaultRef,
+    });
+    state.vaultEntries.set(vaultRef, TOKENS_JSON);
+    const runtime = createRuntime(
+      storage,
+      { connector_credential_store: createDurableStoreService(state.vaultEntries) },
+      { ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID: "eliza-desktop-client-id" }
+    );
+
+    const client = await new DefaultGoogleCredentialResolver({ runtime, storage }).getAuthClient({
+      provider: "google",
+      accountId: ACCOUNT_ID,
+      scopes: [],
+      capabilities: [],
+      reason: "managed desktop restart",
+    });
+
+    expect(client.credentials.refresh_token).toBe("test-refresh-token");
+  });
+
   it("persists through the durable connector_credential_store ahead of SECRETS and survives a restart", async () => {
     const state = newDurableState();
     state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
