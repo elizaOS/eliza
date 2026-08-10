@@ -199,7 +199,9 @@ describe("FormRequest — every input + submit", () => {
       ],
     };
     render(<FormRequest form={withSelect} onSubmit={onSubmit} />);
-    fireEvent.click(screen.getByLabelText("Provider"));
+    const select = screen.getByLabelText("Provider");
+    expect(select.className).toContain("pointer-coarse:text-base");
+    fireEvent.click(select);
     // the option list is open; both options are present (radix also keeps a
     // hidden native option, so there may be more than one node per label)
     expect(screen.getAllByText("GitHub").length).toBeGreaterThan(0);
@@ -418,7 +420,9 @@ describe("ChoiceWidget — put their own in (allowCustom)", () => {
     );
     // reveal the input, type a custom answer, send it
     fireEvent.click(screen.getByTestId("choice-custom-open"));
-    fireEvent.change(screen.getByTestId("choice-custom-input"), {
+    const customInput = screen.getByTestId("choice-custom-input");
+    expect(customInput.className).toContain("pointer-coarse:text-base");
+    fireEvent.change(customInput, {
       target: { value: "my own plan" },
     });
     fireEvent.click(screen.getByTestId("choice-custom-send"));

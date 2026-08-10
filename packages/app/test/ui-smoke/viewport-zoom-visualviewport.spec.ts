@@ -1,5 +1,10 @@
 /** Exercises 200% zoom on the real hosted shell with a locked-meta control. */
 import { expect, type Page, test } from "@playwright/test";
+import {
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
 
 async function pageScale(page: Page) {
   return page.evaluate(() => ({
@@ -34,6 +39,37 @@ async function evaluateAcrossNavigation<T>(
 }
 
 test.describe("WCAG 2.2 SC 1.4.4 browser zoom", () => {
+  test("coarse-pointer chat text controls compute to Safari's 16px focus threshold", async ({
+    page,
+  }) => {
+    await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
+    await installDefaultAppRoutes(page);
+    await openAppPath(page, "/chat");
+
+    expect(
+      await page.evaluate(() => matchMedia("(pointer: coarse)").matches),
+    ).toBe(true);
+
+    const composer = page.getByTestId("chat-composer-textarea");
+    await expect(composer).toBeVisible({ timeout: 20_000 });
+    expect(
+      await composer.evaluate((node) => getComputedStyle(node).fontSize),
+    ).toBe("16px");
+
+    // Exercise Tailwind's emitted cascade with the smallest in-transcript base
+    // density. Component tests pin this same override onto custom choice,
+    // form/select, search, sensitive-request, and inline-edit controls.
+    const probeFontSize = await page.evaluate(() => {
+      const probe = document.createElement("input");
+      probe.className = "text-xs pointer-coarse:text-base";
+      document.body.append(probe);
+      const fontSize = getComputedStyle(probe).fontSize;
+      probe.remove();
+      return fontSize;
+    });
+    expect(probeFontSize).toBe("16px");
+  });
+
   test("the served web shell allows 2× zoom", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const viewportMeta = await evaluateAcrossNavigation(page, () => {

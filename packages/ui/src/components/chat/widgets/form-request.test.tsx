@@ -46,6 +46,11 @@ describe("FormRequest temporal fields", () => {
     expect((screen.getByLabelText("When") as HTMLInputElement).type).toBe(
       "datetime-local",
     );
+    for (const label of ["Day", "At", "When"]) {
+      expect(screen.getByLabelText(label).className).toContain(
+        "pointer-coarse:text-base",
+      );
+    }
   });
 
   it("submits the picked values verbatim keyed by field name", () => {

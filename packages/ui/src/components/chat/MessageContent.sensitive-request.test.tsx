@@ -317,6 +317,7 @@ describe("MessageContent sensitive requests", () => {
 
     const input = screen.getByLabelText("OPENAI_API_KEY") as HTMLInputElement;
     expect(input.type).toBe("password");
+    expect(input.className).toContain("pointer-coarse:text-base");
     expect(screen.getByRole("button", { name: "Save secret" })).toBeTruthy();
     // Trust-signage copy lives only on the OAuth panel where the user is
     // navigating to a third-party origin. For a password field, the

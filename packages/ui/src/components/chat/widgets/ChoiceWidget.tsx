@@ -249,7 +249,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
                 data-testid="choice-custom-input"
                 value={customText}
                 placeholder="Type your answer…"
-                className="h-7 min-w-40 rounded-md border-border bg-transparent px-2 text-xs"
+                className="h-7 min-w-40 rounded-md border-border bg-transparent px-2 text-xs pointer-coarse:text-base"
                 onChange={(e) => setCustomText(e.currentTarget.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {

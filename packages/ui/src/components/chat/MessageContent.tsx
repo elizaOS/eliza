@@ -1047,7 +1047,7 @@ export function SensitiveRequestBlock({
                     id={inputId}
                     aria-label={label}
                     data-testid={`sensitive-request-file-${field.name}`}
-                    className="border-border bg-bg px-2 py-1.5 text-sm"
+                    className="border-border bg-bg px-2 py-1.5 text-sm pointer-coarse:text-base"
                     type="file"
                     accept={accept}
                     // Mobile: prefer the rear camera for image capture (2FA QR/seed).
@@ -1100,7 +1100,7 @@ export function SensitiveRequestBlock({
                 <Input
                   id={inputId}
                   aria-label={label}
-                  className="border-border bg-bg px-2 py-1.5 text-sm"
+                  className="border-border bg-bg px-2 py-1.5 text-sm pointer-coarse:text-base"
                   type={field.input === "secret" ? "password" : "text"}
                   value={values[field.name] ?? ""}
                   onChange={(event) => {

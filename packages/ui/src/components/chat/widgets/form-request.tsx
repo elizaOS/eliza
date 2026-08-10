@@ -236,7 +236,8 @@ export const FormRequest = memo(function FormRequest({
                     className={getConfigInputClassName({
                       density: "compact",
                       hasError: !!fieldErrors?.length,
-                      className: "text-txt placeholder:text-txt/70",
+                      className:
+                        "text-txt placeholder:text-txt/70 pointer-coarse:text-base",
                     })}
                     aria-label={label}
                   >
@@ -270,7 +271,8 @@ export const FormRequest = memo(function FormRequest({
                 className={getConfigInputClassName({
                   density: "compact",
                   hasError: !!fieldErrors?.length,
-                  className: "text-txt placeholder:text-txt/70",
+                  className:
+                    "text-txt placeholder:text-txt/70 pointer-coarse:text-base",
                 })}
                 type={htmlInputTypeForField(field.type)}
                 name={field.name}
