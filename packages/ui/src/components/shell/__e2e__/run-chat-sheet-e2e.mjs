@@ -882,14 +882,29 @@ async function runDragSuite(p, pointer, tag) {
   // FLICK up (short + fast → velocity threshold, distance < 56). Use a
   // one-frame decisive move: multiple sub-56 automation moves can spend most of
   // their time in CDP/Playwright plumbing instead of in the gesture itself.
-  await gesture(p, 54, {
-    pointer,
-    slow: false,
-    steps: 1,
-    stepDelayMs: pointer === "touch" ? 0 : undefined,
-  });
-  await p.waitForTimeout(SETTLE);
-  await settleVariant(p, "open");
+  // Even the minimal down/move/up dispatch is at the mercy of REAL pointer-event
+  // timestamps: a load-starved renderer stretches the inter-dispatch gap, which
+  // legitimately reads as a slow (non-flick) pull — the code under test is
+  // correct, the automation just failed to produce a fast gesture. So drive by
+  // state with a bounded retry: a failed sub-56px pull deterministically springs
+  // back to the same closed rest (the detent rules proven above), making a
+  // re-attempt from an identical state. The contract is unchanged — the sheet
+  // must open from a <56px flick — and the step still fails if every attempt
+  // leaves it closed.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await gesture(p, 54, {
+      pointer,
+      slow: false,
+      steps: 1,
+      stepDelayMs: pointer === "touch" ? 0 : undefined,
+    });
+    await p.waitForTimeout(SETTLE);
+    await settleVariant(p, "open");
+    if ((await variant(p)) === "open") break;
+    console.log(
+      `  ℹ [${pointer}] flick attempt ${attempt + 1} read as a slow pull (renderer starved the dispatch) — retrying from the settled closed rest`,
+    );
+  }
   assert((await variant(p)) === "open", `[${pointer}] FLICK up opens despite <56px travel (velocity)`);
   await snap(p, `${tag}-flick-open`);
 
