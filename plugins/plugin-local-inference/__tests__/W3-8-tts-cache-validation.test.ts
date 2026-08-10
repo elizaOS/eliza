@@ -122,7 +122,10 @@ afterEach(() => {
 // This validates the DB-backed durability contract — not an in-memory
 // ephemeral cache.
 
-describe("1. Cross-restart validation", () => {
+// Each test opens and closes the SQLite-backed cache several times; on a
+// saturated CI runner (observed suite running 2-3x slower than normal) the
+// open/WAL-checkpoint/close cycles can exceed the 5s default test timeout.
+describe("1. Cross-restart validation", { timeout: 30_000 }, () => {
 	it("cache entries persist after explicit close (simulated process restart)", () => {
 		const keys = [
 			makeKey({ normalizedText: "got it" }),
@@ -166,7 +169,9 @@ describe("1. Cross-restart validation", () => {
 			expect(hit?.hitCount).toBe(expectedHits);
 			c.close();
 		}
-	});
+		// 6 SQLite open/close cycles starve past the 5s default on loaded CI
+		// hosts; the explicit budget keeps the assertion, not the disk, the gate.
+	}, 30_000);
 
 	it("LRU metadata (last_accessed_at_ms) is updated across restart", async () => {
 		const key = makeKey();
