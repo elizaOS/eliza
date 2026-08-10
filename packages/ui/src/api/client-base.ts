@@ -863,6 +863,16 @@ export class ElizaClient {
   }
 
   setToken(token: string | null): void {
+    this.installToken(token, true);
+  }
+
+  /**
+   * Update credential state without exposing an intermediate cross-target
+   * event. Atomic base swaps use the silent form, reconnect synchronously, and
+   * publish the established token-sync signal only after the new target owns
+   * the credential.
+   */
+  private installToken(token: string | null, notify: boolean): void {
     this._token = token?.trim() || null;
     // Boot config is the canonical source. fetchWithCsrf and authBase read here.
     const config = getBootConfig();
@@ -872,7 +882,7 @@ export class ElizaClient {
     // Apps tab — without a remount. `steward-token-sync` is the established
     // "re-read your token" signal that use-session-auth already listens for.
     // (#12046 Nit 2)
-    if (typeof window !== "undefined") {
+    if (notify && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("steward-token-sync"));
     }
   }
@@ -951,7 +961,7 @@ export class ElizaClient {
    * The "invisible" wins (no `disconnected` flap, no `StartupScreen`, no draft
    * clear) hold independent of whether a socket is involved.
    */
-  repointBaseUrl(baseUrl: string): void {
+  repointBaseUrl(baseUrl: string, token?: string | null): void {
     const normalized = normalizeBaseUrl(baseUrl);
     if (!normalized) return;
     // Quietly drop the old socket. We intentionally do NOT call disconnectWs():
@@ -980,6 +990,8 @@ export class ElizaClient {
     this.wsSendQueue = [];
     this.wsEventBacklog.clear();
 
+    const installsToken = token !== undefined;
+    if (installsToken) this.installToken(token ?? null, false);
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
     this.persistBaseUrl(normalized);
@@ -992,6 +1004,9 @@ export class ElizaClient {
     this.reconnectAttempt = 0;
     this.disconnectedAt = null;
     this.connectWs();
+    if (installsToken && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+    }
   }
 
   /** True when we have a usable HTTP(S) API endpoint. */

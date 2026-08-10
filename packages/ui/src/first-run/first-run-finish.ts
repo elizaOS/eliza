@@ -605,6 +605,7 @@ export async function bindCloudAgent(
   const sharedAgentProfile = addAgentProfile({
     kind: "cloud",
     label: activeServer.label,
+    cloudAgentId: selectedAgent.agentId,
     ...(activeServer.apiBase ? { apiBase: activeServer.apiBase } : {}),
     ...(activeServer.accessToken
       ? { accessToken: activeServer.accessToken }

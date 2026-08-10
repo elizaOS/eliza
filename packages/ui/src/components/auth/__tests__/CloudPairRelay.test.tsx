@@ -4,13 +4,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_BOOT_CONFIG,
@@ -44,6 +38,9 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "content-type": "application/json" },
   });
 }
+
+const PAIR_AGENT_ID = "23766030-c096-4a14-932a-a4e43c562432";
+const OTHER_AGENT_ID = "11111111-1111-4111-8111-111111111111";
 
 describe("CloudPairRelay", () => {
   beforeEach(() => {
@@ -129,14 +126,16 @@ describe("CloudPairRelay", () => {
   });
 
   it("exchanges the pairing token with Cloud and returns the agent API key", async () => {
-    const fetchFn = vi.fn(async () => jsonResponse({ apiKey: "agent-key" }));
+    const fetchFn = vi.fn(async () =>
+      jsonResponse({ apiKey: "agent-key", agentId: PAIR_AGENT_ID }),
+    );
 
     await expect(
       exchangeCloudPairToken("pair-token", {
         fetchFn: fetchFn as unknown as typeof fetch,
         cloudApiBase: "https://api.elizacloud.ai/api/v1",
       }),
-    ).resolves.toBe("agent-key");
+    ).resolves.toEqual({ apiKey: "agent-key", agentId: PAIR_AGENT_ID });
 
     expect(fetchFn).toHaveBeenCalledWith(
       "https://api.elizacloud.ai/api/auth/pair",
@@ -149,18 +148,20 @@ describe("CloudPairRelay", () => {
   });
 
   it("uses the authenticated identity-bound endpoint only for native pairing", async () => {
-    const fetchFn = vi.fn(async () => jsonResponse({ apiKey: "native-key" }));
+    const fetchFn = vi.fn(async () =>
+      jsonResponse({ apiKey: "native-key", agentId: PAIR_AGENT_ID }),
+    );
 
     await expect(
       exchangeAuthenticatedNativeCloudPairToken("pair-token", {
         cloudToken: "steward.jwt.token",
-        agentId: "23766030-c096-4a14-932a-a4e43c562432",
+        agentId: PAIR_AGENT_ID,
         expectedOrigin:
           "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
         fetchFn: fetchFn as unknown as typeof fetch,
         cloudApiBase: "https://api.elizacloud.ai/api/v1",
       }),
-    ).resolves.toBe("native-key");
+    ).resolves.toEqual({ apiKey: "native-key", agentId: PAIR_AGENT_ID });
 
     expect(fetchFn).toHaveBeenCalledWith(
       "https://api.elizacloud.ai/api/auth/pair/native",
@@ -287,21 +288,17 @@ describe("CloudPairRelay", () => {
     );
   });
 
-  it("falls back to a visible session-only install when no owning agent resolves", async () => {
-    // The jsdom default origin is NOT a dedicated agent base and no boot
-    // apiBase overrides it, so the relay cannot resolve an owner. The one-time
-    // pair token is already spent, so the exchanged bearer must be installed
-    // for the live session (in-memory only — never a durable unscoped write)
-    // and the user must see a visibly distinct session-only state, never a
-    // plain success.
+  it("persists the authoritative response owner on a non-dedicated origin", async () => {
     const onPaired = vi.fn();
     const persistFn = vi.fn();
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     render(
       <CloudPairRelay
         token="pair-token"
-        exchangeFn={vi.fn(async () => "agent-key")}
+        exchangeFn={vi.fn(async () => ({
+          apiKey: "agent-key",
+          agentId: PAIR_AGENT_ID,
+        }))}
         persistFn={persistFn}
         onPaired={onPaired}
       />,
@@ -311,42 +308,22 @@ describe("CloudPairRelay", () => {
     expect(screen.queryByText("Display name")).toBeNull();
     expect(screen.queryByText("Password")).toBeNull();
 
-    await screen.findByText("Signed in for this session only");
-    // The durable writer must never run without a proven owner, and the relay
-    // must not auto-redirect as if pairing fully succeeded.
-    expect(persistFn).not.toHaveBeenCalled();
-    expect(onPaired).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalled();
-
-    // The bearer is live for THIS page session…
-    expect(getElizaApiToken()).toBe("agent-key");
-    expect(getBootConfig().apiToken).toBe("agent-key");
-    // …but nothing was stamped into storage.
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
-
-    // The user continues explicitly, not via a silent success redirect.
-    fireEvent.click(
-      screen.getByRole("button", { name: "Continue to your agent" }),
-    );
-    expect(onPaired).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onPaired).toHaveBeenCalledOnce());
+    expect(persistFn).toHaveBeenCalledWith("agent-key", PAIR_AGENT_ID);
   });
 
-  it("resolves the owning agent from the boot apiBase when served from a non-dedicated origin, and persists for real (default persistFn)", async () => {
-    // The writer must mirror the boot adopter's resolution (main.tsx): an app
-    // served from a non-dedicated origin that targets a dedicated agent via the
-    // boot apiBase still persists the token under the per-agent key (#17579).
+  it("uses the authoritative response owner instead of an unrelated boot target", async () => {
     const onPaired = vi.fn();
     setBootConfig({
       ...DEFAULT_BOOT_CONFIG,
-      apiBase: "https://agent-123.elizacloud.ai",
+      apiBase: `https://${OTHER_AGENT_ID}.elizacloud.ai`,
     });
 
     expect(
-      window.localStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
+      window.localStorage.getItem(cloudPairTokenKeyForAgent(PAIR_AGENT_ID)),
     ).toBeNull();
     expect(
-      window.sessionStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
+      window.sessionStorage.getItem(cloudPairTokenKeyForAgent(PAIR_AGENT_ID)),
     ).toBeNull();
 
     // Render with the DEFAULT persistFn so this exercises the real storage path
@@ -354,16 +331,22 @@ describe("CloudPairRelay", () => {
     render(
       <CloudPairRelay
         token="pair-token"
-        exchangeFn={vi.fn(async () => "agent-key")}
+        exchangeFn={vi.fn(async () => ({
+          apiKey: "agent-key",
+          agentId: PAIR_AGENT_ID,
+        }))}
         onPaired={onPaired}
       />,
     );
 
     await waitFor(() => expect(onPaired).toHaveBeenCalledOnce());
 
-    const scoped = cloudPairTokenKeyForAgent("agent-123");
+    const scoped = cloudPairTokenKeyForAgent(PAIR_AGENT_ID);
     expect(window.localStorage.getItem(scoped)).toBe("agent-key");
     expect(window.sessionStorage.getItem(scoped)).toBe("agent-key");
+    expect(
+      window.localStorage.getItem(cloudPairTokenKeyForAgent(OTHER_AGENT_ID)),
+    ).toBeNull();
     // Legacy global key is superseded and removed once the scoped write lands.
     expect(
       window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY),

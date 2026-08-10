@@ -19,6 +19,7 @@
  * owner-password boundary.
  */
 
+import type { CloudPairRelaySession } from "@elizaos/shared/contracts";
 import {
   CloudPairExchangeError,
   exchangeAuthenticatedNativeCloudPairToken,
@@ -83,7 +84,7 @@ export interface RunAgentSessionRecoveryDeps {
       expectedOrigin: string;
       signal?: AbortSignal;
     },
-  ) => Promise<string>;
+  ) => Promise<CloudPairRelaySession>;
   /** Injected API-key persistence (tests). Defaults to CloudPairRelay's persistence. */
   persistPairApiToken?: (apiToken: string, agentId: string) => void;
   /**
@@ -182,6 +183,7 @@ function classifyNativePairExchangeError(
   if (
     error.code === "sandbox_credential_unavailable" ||
     error.code === "access_denied" ||
+    error.code === "pairing_agent_mismatch" ||
     (!error.code && error.status === 403)
   ) {
     return { ok: false, reason: "manage-required", message };
@@ -342,12 +344,20 @@ export async function runAgentSessionRecovery(
           };
         }
         try {
-          const apiToken = await exchangePairToken(pairToken, {
+          const pairedSession = await exchangePairToken(pairToken, {
             cloudToken,
             agentId,
             expectedOrigin: new URL(redirectUrl).origin,
             ...(signal ? { signal } : {}),
           });
+          if (pairedSession.agentId.toLowerCase() !== agentId.toLowerCase()) {
+            throw new CloudPairExchangeError(
+              "Cloud paired a different agent than the requested recovery target.",
+              403,
+              "pairing_agent_mismatch",
+            );
+          }
+          const apiToken = pairedSession.apiKey;
           if (signal?.aborted || isRecoveryTargetCurrent?.() === false) {
             return cancelledResult();
           }

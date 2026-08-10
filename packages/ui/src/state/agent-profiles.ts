@@ -5,9 +5,13 @@
  * localStorage so users can manage and switch between multiple agents.
  */
 
+import { logger } from "@elizaos/logger";
 import { shellLocalStorage } from "../surface-realm-channel";
 import type { AgentProfile, AgentProfileRegistry } from "./agent-profile-types";
-import type { PersistedActiveServer } from "./persistence";
+import {
+  type PersistedActiveServer,
+  savePersistedActiveServer,
+} from "./persistence";
 
 export type { AgentProfile, AgentProfileRegistry } from "./agent-profile-types";
 
@@ -20,8 +24,14 @@ function tryLocalStorage<T>(fn: () => T, fallback: T): T {
   try {
     return fn();
   } catch {
+    // error-policy:J3 inaccessible or malformed browser storage is an invalid
+    // persisted state, so readers return their explicit bootstrap fallback.
     return fallback;
   }
+}
+
+function describePersistenceError(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function generateId(): string {
@@ -88,10 +98,20 @@ export function loadAgentProfileRegistry(): AgentProfileRegistry {
   }, emptyRegistry());
 }
 
-export function saveAgentProfileRegistry(registry: AgentProfileRegistry): void {
-  tryLocalStorage(() => {
+export function saveAgentProfileRegistry(
+  registry: AgentProfileRegistry,
+): boolean {
+  try {
     shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
-  }, undefined);
+    return true;
+  } catch (cause) {
+    // error-policy:J1 localStorage boundary returns a visible failure signal to
+    // connection-switch callers instead of fabricating a successful write.
+    logger.warn(
+      `[agent-profiles] failed to save registry: ${describePersistenceError(cause)}`,
+    );
+    return false;
+  }
 }
 
 /**
@@ -137,15 +157,47 @@ export function getActiveProfile(): AgentProfile | null {
   );
 }
 
-export function setActiveProfileId(id: string): void {
+export function setActiveProfileId(id: string): boolean {
   const registry = loadAgentProfileRegistry();
-  if (!registry.profiles.some((p) => p.id === id)) return;
+  if (!registry.profiles.some((p) => p.id === id)) return false;
   registry.activeProfileId = id;
-  saveAgentProfileRegistry(registry);
+  return saveAgentProfileRegistry(registry);
+}
+
+/**
+ * Persist both records that define a runtime selection before the live client
+ * moves. The profile registry is written first because the active-server record
+ * is the boot authority; if that second write fails, the unchanged server still
+ * controls reload and the registry rollback keeps the runtime picker aligned
+ * whenever storage accepts the compensating write.
+ */
+export function persistAgentProfileSelection(
+  profileId: string,
+  server: PersistedActiveServer,
+): boolean {
+  const registry = loadAgentProfileRegistry();
+  if (!registry.profiles.some((profile) => profile.id === profileId)) {
+    return false;
+  }
+
+  const nextRegistry: AgentProfileRegistry = {
+    ...registry,
+    activeProfileId: profileId,
+  };
+  if (!saveAgentProfileRegistry(nextRegistry)) return false;
+  if (savePersistedActiveServer(server)) return true;
+
+  if (!saveAgentProfileRegistry(registry)) {
+    logger.error(
+      "[agent-profiles] failed to roll back active profile after active-server persistence failed",
+    );
+  }
+  return false;
 }
 
 export function addAgentProfile(
   profile: Omit<AgentProfile, "id" | "createdAt">,
+  options: { activate?: boolean } = {},
 ): AgentProfile {
   const registry = loadAgentProfileRegistry();
   const full: AgentProfile = {
@@ -154,7 +206,7 @@ export function addAgentProfile(
     createdAt: new Date().toISOString(),
   };
   registry.profiles.push(full);
-  registry.activeProfileId = full.id;
+  if (options.activate !== false) registry.activeProfileId = full.id;
   saveAgentProfileRegistry(registry);
   return full;
 }
@@ -166,30 +218,45 @@ function sameApiBase(a: string | undefined, b: string | undefined): boolean {
 }
 
 /**
+ * Explicit Cloud owner ids outrank transport addresses: one managed adapter
+ * URL must never collapse two owners into a single credential-bearing row.
+ * An older unbound row may match an incoming bound profile so the
+ * authoritative upsert enriches it; a bound row never accepts unbound input.
+ */
+function sameProfileIdentity(
+  stored: AgentProfile,
+  incoming: Omit<AgentProfile, "id" | "createdAt">,
+): boolean {
+  if (stored.kind !== incoming.kind) return false;
+  if (stored.kind === "cloud" && incoming.kind === "cloud") {
+    if (stored.cloudAgentId && incoming.cloudAgentId) {
+      return stored.cloudAgentId === incoming.cloudAgentId;
+    }
+    if (stored.cloudAgentId && !incoming.cloudAgentId) return false;
+  }
+  return sameApiBase(stored.apiBase, incoming.apiBase);
+}
+
+/**
  * Idempotently record + activate a connection in the profile registry so every
- * runtime-switch surface ("My Runtimes", Settings) stays truthful. If a profile
- * for the same (kind, apiBase) already exists it is re-activated and its
- * token/label refreshed — reconnecting to the same host never creates a
- * duplicate. Otherwise a new profile is added (and activated). This is the
- * single seam the shared launch path (remote connect, cloud launch-session,
- * cloud-agent bind) routes through so a connection made anywhere shows up
- * everywhere with the correct Active badge.
+ * runtime-switch surface ("My Runtimes", Settings) stays truthful. Bound Cloud
+ * profiles match by owner; other profiles retain the kind/base match so an
+ * authoritative Cloud reconnect can enrich an older unbound row. Matching
+ * profiles are re-activated and refreshed; otherwise a new profile is added.
  */
 export function upsertAndActivateAgentProfile(
   profile: Omit<AgentProfile, "id" | "createdAt">,
 ): AgentProfile {
   const registry = loadAgentProfileRegistry();
-  const existingIdx = registry.profiles.findIndex(
-    (p) => p.kind === profile.kind && sameApiBase(p.apiBase, profile.apiBase),
+  const existingIdx = registry.profiles.findIndex((stored) =>
+    sameProfileIdentity(stored, profile),
   );
   if (existingIdx === -1) return addAgentProfile(profile);
   const merged: AgentProfile = {
     ...registry.profiles[existingIdx],
     label: profile.label || registry.profiles[existingIdx].label,
+    ...(profile.cloudAgentId ? { cloudAgentId: profile.cloudAgentId } : {}),
     ...(profile.apiBase !== undefined ? { apiBase: profile.apiBase } : {}),
-    ...(profile.cloudAgentId !== undefined
-      ? { cloudAgentId: profile.cloudAgentId }
-      : {}),
     // A fresh token supersedes a stale one; an absent token leaves the prior in
     // place (a re-activate that carries no new token must not blank it out).
     ...(profile.accessToken ? { accessToken: profile.accessToken } : {}),

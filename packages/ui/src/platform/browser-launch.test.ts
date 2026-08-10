@@ -48,6 +48,8 @@ vi.mock("../state/agent-profiles", () => ({
 }));
 
 describe("browser launch connection handling", () => {
+  const managedAgentId = "23766030-c096-4a14-932a-a4e43c562432";
+
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -198,8 +200,9 @@ describe("browser launch connection handling", () => {
       Response.json({
         success: true,
         data: {
+          agentId: managedAgentId,
           connection: {
-            apiBase: "https://agent-1.elizacloud.ai",
+            apiBase: `https://${managedAgentId}.elizacloud.ai`,
             token: "runtime-token",
           },
         },
@@ -223,17 +226,114 @@ describe("browser launch connection handling", () => {
       }),
     );
     expect(mocks.setBaseUrl).toHaveBeenCalledWith(
-      "https://agent-1.elizacloud.ai",
+      `https://${managedAgentId}.elizacloud.ai`,
     );
     expect(mocks.setToken).toHaveBeenCalledWith("runtime-token");
     expect(mocks.savePersistedActiveServer).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: `cloud:${managedAgentId}`,
         accessToken: "runtime-token",
-        apiBase: "https://agent-1.elizacloud.ai",
+        apiBase: `https://${managedAgentId}.elizacloud.ai`,
         kind: "cloud",
       }),
     );
+    expect(mocks.upsertAndActivateAgentProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "cloud",
+        cloudAgentId: managedAgentId,
+        apiBase: `https://${managedAgentId}.elizacloud.ai`,
+        accessToken: "runtime-token",
+      }),
+    );
     expect(window.location.href).toBe("http://localhost/");
+  });
+
+  it("rejects a managed launch payload with no authoritative agent owner", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          success: true,
+          data: {
+            connection: {
+              apiBase: `https://${managedAgentId}.elizacloud.ai`,
+              token: "runtime-token",
+            },
+          },
+        }),
+      ),
+    );
+    window.history.replaceState(
+      null,
+      "",
+      "http://localhost/?cloudLaunchSession=launch-1&cloudLaunchBase=https%3A%2F%2Fapi.elizacloud.ai",
+    );
+
+    await expect(applyLaunchConnectionFromUrl()).rejects.toThrow(
+      "Launch session did not include a valid agent id",
+    );
+    expect(mocks.setBaseUrl).not.toHaveBeenCalled();
+    expect(mocks.savePersistedActiveServer).not.toHaveBeenCalled();
+    expect(mocks.upsertAndActivateAgentProfile).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed managed launch owner before persisting credentials", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          success: true,
+          data: {
+            agentId: "not-an-agent",
+            connection: {
+              apiBase: `https://${managedAgentId}.elizacloud.ai`,
+              token: "runtime-token",
+            },
+          },
+        }),
+      ),
+    );
+    window.history.replaceState(
+      null,
+      "",
+      "http://localhost/?cloudLaunchSession=launch-1&cloudLaunchBase=https%3A%2F%2Fapi.elizacloud.ai",
+    );
+
+    await expect(applyLaunchConnectionFromUrl()).rejects.toThrow(
+      "Launch session did not include a valid agent id",
+    );
+    expect(mocks.setBaseUrl).not.toHaveBeenCalled();
+    expect(mocks.savePersistedActiveServer).not.toHaveBeenCalled();
+  });
+
+  it("rejects a managed launch whose owner and canonical agent base disagree", async () => {
+    const otherAgentId = "11111111-1111-4111-8111-111111111111";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          success: true,
+          data: {
+            agentId: managedAgentId,
+            connection: {
+              apiBase: `https://${otherAgentId}.elizacloud.ai`,
+              token: "runtime-token",
+            },
+          },
+        }),
+      ),
+    );
+    window.history.replaceState(
+      null,
+      "",
+      "http://localhost/?cloudLaunchSession=launch-1&cloudLaunchBase=https%3A%2F%2Fapi.elizacloud.ai",
+    );
+
+    await expect(applyLaunchConnectionFromUrl()).rejects.toThrow(
+      "Launch session agent owner does not match its API base",
+    );
+    expect(mocks.setToken).not.toHaveBeenCalled();
+    expect(mocks.savePersistedActiveServer).not.toHaveBeenCalled();
   });
 
   it("rejects managed cloud launch sessions that return a non-cloud public runtime URL", async () => {
@@ -241,6 +341,7 @@ describe("browser launch connection handling", () => {
       Response.json({
         success: true,
         data: {
+          agentId: managedAgentId,
           connection: {
             apiBase: "https://agent.attacker.example",
             token: "runtime-token",

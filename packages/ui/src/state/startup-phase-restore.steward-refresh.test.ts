@@ -11,6 +11,8 @@ import { applyRestoredConnection } from "./startup-phase-restore";
 
 const STEWARD_TOKEN_KEY = "steward_session_token";
 const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
+const CLOUD_AGENT_ID = "11111111-1111-4111-8111-111111111111";
+const CLOUD_AGENT_API_BASE = `https://api.elizacloud.ai/api/v1/eliza/agents/${CLOUD_AGENT_ID}`;
 
 /** Build a minimal (unsigned) JWT whose payload carries the given `exp`. */
 function makeJwt(expSecondsFromNow: number | null): string {
@@ -34,10 +36,10 @@ function cloudServer(
   overrides: Partial<PersistedActiveServer> = {},
 ): PersistedActiveServer {
   return {
-    id: "cloud:agent-123",
+    id: `cloud:${CLOUD_AGENT_ID}`,
     kind: "cloud",
     label: "Eliza Cloud",
-    apiBase: "https://agent-123.example.com",
+    apiBase: CLOUD_AGENT_API_BASE,
     ...overrides,
   };
 }
@@ -117,9 +119,7 @@ describe("applyRestoredConnection — cloud Steward token refresh at restore", (
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(client.setBaseUrl).toHaveBeenCalledWith(
-      "https://agent-123.example.com",
-    );
+    expect(client.setBaseUrl).toHaveBeenCalledWith(CLOUD_AGENT_API_BASE);
     expect(client.setToken).toHaveBeenCalledWith(valid);
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(valid);
   });

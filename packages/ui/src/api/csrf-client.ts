@@ -8,14 +8,15 @@
  *   - Bearer (machine token / self-hosted bootstrap): if `getBootConfig()`
  *     exposes an apiToken, attaches `Authorization: Bearer ...`.
  *
- * Both modes can coexist on a single request — the server picks whichever
- * one validates first. Use this in place of bare `fetch` for any call that
- * targets the dashboard API.
+ * Both modes can coexist for control-plane requests. Dedicated-agent origins
+ * are bearer-only: parent-domain browser cookies and their CSRF mirror are
+ * omitted at the client before the Worker enforces the same boundary.
  */
 
 import { getBootConfig } from "../config/boot-config";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { resolveApiUrl } from "../utils/asset-url";
+import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
@@ -59,8 +60,9 @@ export async function fetchWithCsrf(
   }
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
+  const isDedicatedAgentRequest = isDedicatedCloudAgentBase(url);
 
-  if (STATE_CHANGING_METHODS.has(method)) {
+  if (!isDedicatedAgentRequest && STATE_CHANGING_METHODS.has(method)) {
     const csrfToken = readCsrfTokenFromCookie();
     if (csrfToken) {
       headers.set(CSRF_HEADER_NAME, csrfToken);
@@ -77,7 +79,7 @@ export async function fetchWithCsrf(
 
   const requestInit: RequestInit = {
     ...init,
-    credentials: "include",
+    credentials: isDedicatedAgentRequest ? "omit" : "include",
     headers,
   };
   return requestViaAgentTransport(url, requestInit, context);

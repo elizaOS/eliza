@@ -127,6 +127,25 @@ describe("fetchWithCsrf", () => {
     expect(getHeaders.has("x-eliza-csrf")).toBe(false);
   });
 
+  it("never sends browser cookies or their CSRF mirror to a dedicated agent", async () => {
+    setCookie("eliza_csrf=cloud-control-plane-csrf");
+    bootConfigMock.getBootConfig.mockReturnValue({
+      apiToken: "paired-agent-token",
+    });
+
+    await fetchWithCsrf(
+      "https://11111111-1111-1111-1111-111111111111.staging.elizacloud.ai/api/auth/me",
+      { method: "POST" },
+    );
+
+    const [, init] =
+      fetchTransportMock.fetchAgentTransport.request.mock.calls[0] ?? [];
+    const headers = init?.headers as Headers;
+    expect(init?.credentials).toBe("omit");
+    expect(headers.get("authorization")).toBe("Bearer paired-agent-token");
+    expect(headers.get("x-eliza-csrf")).toBeNull();
+  });
+
   it("attaches a trimmed boot bearer without replacing an explicit Authorization header", async () => {
     bootConfigMock.getBootConfig.mockReturnValue({
       apiToken: "  boot-token  ",

@@ -1369,9 +1369,11 @@ export function loadPersistedActiveServer(): PersistedActiveServer | null {
   }, null);
 }
 
-export function savePersistedActiveServer(server: PersistedActiveServer): void {
+export function savePersistedActiveServer(
+  server: PersistedActiveServer,
+): boolean {
   if (typeof localStorage === "undefined") {
-    return;
+    return false;
   }
 
   // The active-server record carries the sign-in state (kind/apiBase/token) and
@@ -1385,12 +1387,14 @@ export function savePersistedActiveServer(server: PersistedActiveServer): void {
       ACTIVE_SERVER_STORAGE_KEY,
       JSON.stringify(server),
     );
+    return true;
   } catch (err) {
-    // error-policy:J4 documented above — no-throw persistence write with the
-    // failure surfaced at warn instead of swallowed.
+    // error-policy:J1 localStorage boundary translates an unavailable durable
+    // store into an explicit failure that switching callers can surface.
     logger.warn(
       `[persistence] failed to save active server: ${describePersistenceError(err)}`,
     );
+    return false;
   }
 }
 
