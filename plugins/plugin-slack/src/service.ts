@@ -17,7 +17,9 @@
  * as the user, AGENT-role accounts (the default) post as the bot (`xoxb-`).
  * Each account compiles its persisted Slack authorization policy before Bolt
  * starts. Public/private channels, direct messages, App Home, MPIMs, threads,
- * and app mentions all pass through that account-scoped resolver.
+ * and app mentions all pass through that account-scoped resolver, then claim
+ * their stable persisted memory before emission or agent processing so Slack
+ * retries cannot execute one event twice.
  */
 import {
   ChannelType,
@@ -38,6 +40,7 @@ import {
   type MessageConnectorQueryContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
+  type MessageMetadata,
   type MessagePayload,
   type Room,
   resolveAttachmentBytes,
@@ -331,6 +334,56 @@ interface SlackReactionEventType {
   item: { type: "message"; channel: string; ts: string };
   item_user?: string;
   event_ts: string;
+}
+
+type SlackInboundClaim = {
+  accountId: string;
+  teamId: string;
+  enterpriseId?: string;
+  eventId: string;
+  recordId: string;
+  token: string;
+};
+
+function extractSlackDeliveryEventId(body: unknown, fallback: string): string {
+  if (body && typeof body === "object") {
+    const eventId = (body as Record<string, unknown>).event_id;
+    if (typeof eventId === "string") {
+      const normalized = eventId.trim();
+      if (normalized.length > 0 && normalized.length <= 255) {
+        return normalized;
+      }
+    }
+  }
+  return fallback;
+}
+
+function readSlackInboundClaim(
+  memory: Memory | null,
+): SlackInboundClaim | null {
+  const claim = (memory?.metadata as MessageMetadata | undefined)
+    ?.slackInboundClaim;
+  if (!claim || typeof claim !== "object") return null;
+  const record = claim as Record<string, unknown>;
+  if (
+    typeof record.accountId !== "string" ||
+    typeof record.teamId !== "string" ||
+    typeof record.eventId !== "string" ||
+    typeof record.recordId !== "string" ||
+    typeof record.token !== "string"
+  ) {
+    return null;
+  }
+  return {
+    accountId: record.accountId,
+    teamId: record.teamId,
+    ...(typeof record.enterpriseId === "string"
+      ? { enterpriseId: record.enterpriseId }
+      : {}),
+    eventId: record.eventId,
+    recordId: record.recordId,
+    token: record.token,
+  };
 }
 
 // Helper to get message service from runtime
@@ -1367,8 +1420,15 @@ export class SlackService extends Service implements ISlackService {
       });
     }
 
-    // Store the memory
-    await this.runtime.createMemory(memory, "messages");
+    const claimedMemory = await this.claimInboundMemory(
+      memory,
+      "message",
+      message.ts,
+      accountId,
+      workspace,
+      body,
+    );
+    if (!claimedMemory) return;
 
     // Emit event
     await this.runtime.emitEvent(
@@ -1378,7 +1438,7 @@ export class SlackService extends Service implements ISlackService {
 
     // Process the message through the agent
     await this.processAgentMessage(
-      memory,
+      claimedMemory,
       room,
       message.channel,
       message.thread_ts || message.ts,
@@ -1469,8 +1529,15 @@ export class SlackService extends Service implements ISlackService {
       });
     }
 
-    // Store the memory
-    await this.runtime.createMemory(memory, "messages");
+    const claimedMemory = await this.claimInboundMemory(
+      memory,
+      "app_mention",
+      event.ts,
+      accountId,
+      workspace,
+      body,
+    );
+    if (!claimedMemory) return;
 
     // Emit event
     await this.runtime.emitEvent(
@@ -1480,12 +1547,76 @@ export class SlackService extends Service implements ISlackService {
 
     // Process the message
     await this.processAgentMessage(
-      memory,
+      claimedMemory,
       room,
       event.channel,
       event.thread_ts || event.ts,
       accountId,
     );
+  }
+
+  private async claimInboundMemory(
+    memory: Memory,
+    eventFamily: "message" | "app_mention",
+    recordId: string,
+    accountId: string,
+    workspace: { teamId?: string; enterpriseId?: string },
+    body: unknown,
+  ): Promise<Memory | null> {
+    if (!memory.id || !workspace.teamId) {
+      throw new ElizaError("Slack inbound claim identity is incomplete", {
+        code: "SLACK_INBOUND_CLAIM_IDENTITY_MISSING",
+        context: {
+          accountId,
+          eventFamily,
+          hasMemoryId: Boolean(memory.id),
+          hasTeamId: Boolean(workspace.teamId),
+        },
+      });
+    }
+
+    const claim: SlackInboundClaim = {
+      accountId,
+      teamId: workspace.teamId,
+      ...(workspace.enterpriseId
+        ? { enterpriseId: workspace.enterpriseId }
+        : {}),
+      eventId: extractSlackDeliveryEventId(body, `${eventFamily}:${recordId}`),
+      recordId,
+      token: globalThis.crypto.randomUUID(),
+    };
+    const claimedMemory: Memory = {
+      ...memory,
+      metadata: {
+        ...(memory.metadata as MessageMetadata | undefined),
+        type: "message",
+        slackInboundClaim: claim,
+      } satisfies MessageMetadata,
+    };
+
+    // The stable memory primary key is the durable admission lock. SQL uses
+    // INSERT ... ON CONFLICT DO NOTHING; reading back the per-attempt token
+    // makes the created-versus-existing result explicit without a racy
+    // preflight read. A retry observes the winner's token and fails closed.
+    await this.runtime.createMemory(claimedMemory, "messages");
+    const persisted = await this.runtime.getMemoryById(memory.id);
+    const persistedClaim = readSlackInboundClaim(persisted);
+    if (persistedClaim?.token !== claim.token) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
+          accountId,
+          teamId: workspace.teamId,
+          eventId: claim.eventId,
+          recordId,
+          eventFamily,
+        },
+        "Ignoring duplicate Slack inbound delivery",
+      );
+      return null;
+    }
+    return claimedMemory;
   }
 
   private async handleReaction(
