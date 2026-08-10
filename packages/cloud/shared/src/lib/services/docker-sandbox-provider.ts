@@ -67,6 +67,7 @@ import { classifyDockerSshProbeError, DockerSSHClient } from "./docker-ssh";
 import { headscaleClient } from "./headscale-client";
 import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
+import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import type {
   SandboxCreateConfig,
   SandboxDeletionStopOutcome,
@@ -954,14 +955,21 @@ export class DockerSandboxProvider implements SandboxProvider {
   async create(config: SandboxCreateConfig): Promise<SandboxHandle> {
     const MAX_ATTEMPTS = 3;
     let lastError: Error | undefined;
+    // This is the last caller-visible boundary before remote placement. Stored
+    // rows, warm claims, and image replays may carry historical values, but no
+    // remote create attempt may opt back into the container-owned pair relay.
+    const createConfig: SandboxCreateConfig = {
+      ...config,
+      environmentVars: applyRemoteDockerRuntimeMode(config.environmentVars),
+    };
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
-        return await this._createOnce(config);
+        return await this._createOnce(createConfig);
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         if (
-          config.onReplacementCreateIntent ||
+          createConfig.onReplacementCreateIntent ||
           lastError instanceof SandboxReplacementCleanupUnresolvedError
         ) {
           throw lastError;
@@ -1352,7 +1360,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         stewardAuthToken: stewardJwt || stewardAgentToken,
       });
 
-      const allEnv: Record<string, string> = {
+      const allEnv: Record<string, string> = applyRemoteDockerRuntimeMode({
         ...baseEnv,
         STEWARD_AGENT_TOKEN: stewardAgentToken,
         ...(stewardJwt
@@ -1404,7 +1412,7 @@ export class DockerSandboxProvider implements SandboxProvider {
               SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
             }
           : {}),
-      };
+      });
 
       // Validate env keys/values before they are interpolated into remote shell commands.
       // Internal env vars must also remain UPPER_SNAKE_CASE so validation stays

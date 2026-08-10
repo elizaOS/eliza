@@ -34,6 +34,8 @@
  * agent_name), in which case the caller skips the push entirely.
  */
 
+import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
+
 /**
  * Boot-coupled env keys: values the RUNNING pool container was started with
  * that MUST follow the container onto the claimed user row, or every
@@ -48,7 +50,9 @@
  *     container booted with.
  *
  * Everything else on the user's row (their BYO secrets, managed cloud keys)
- * is preserved untouched.
+ * is preserved except the platform pairing mode, which is forced back to the
+ * remote value after the merge so a historical user row cannot contradict the
+ * already-running pool container.
  */
 const WARM_CLAIM_BOOT_COUPLED_ENV_KEYS = [
   "ELIZA_API_TOKEN",
@@ -73,7 +77,7 @@ export function mergeWarmClaimEnvironmentVars(
       merged[key] = value;
     }
   }
-  return merged;
+  return applyRemoteDockerRuntimeMode(merged);
 }
 
 const NAME_MAX = 100;
