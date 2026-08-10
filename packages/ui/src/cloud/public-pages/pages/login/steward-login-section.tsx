@@ -82,6 +82,10 @@ import {
   syncStewardSessionCookie,
 } from "../../lib/steward-session";
 import {
+  LoginOptionsSkeleton,
+  ReservedLoginFrame,
+} from "./login-section-skeleton";
+import {
   resolveWebPasskeyCapability,
   type WebPasskeyCapability,
 } from "./passkey-capability";
@@ -843,30 +847,36 @@ export default function StewardLoginSection() {
   // "completing sign-in" state (never the provider options) until the exchange
   // resolves into a redirect or an error — so the callback can't flash back to
   // the sign-in options. A callback failure clears this and surfaces
-  // `callbackError` below.
+  // `callbackError` below. The reserved frame keeps the card at the option
+  // stack's footprint so a failure resolves in place instead of jumping
+  // (#18256).
   if (completingCallback && !callbackError) {
     return (
-      <div className="flex flex-col items-center gap-4 py-8" role="status">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
-        <p className="text-sm text-muted">
-          {t("cloud.login.completingSignIn", {
-            defaultValue: "Completing sign-in…",
-          })}
-        </p>
-      </div>
+      <ReservedLoginFrame>
+        <div className="flex flex-col items-center gap-4" role="status">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+          <p className="text-sm text-muted">
+            {t("cloud.login.completingSignIn", {
+              defaultValue: "Completing sign-in…",
+            })}
+          </p>
+        </div>
+      </ReservedLoginFrame>
     );
   }
 
   if (step === "success") {
     return (
-      <div className="flex flex-col items-center gap-4 py-8" role="status">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
-        <p className="text-sm text-muted">
-          {t("cloud.login.redirecting", {
-            defaultValue: "Redirecting to dashboard...",
-          })}
-        </p>
-      </div>
+      <ReservedLoginFrame>
+        <div className="flex flex-col items-center gap-4" role="status">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+          <p className="text-sm text-muted">
+            {t("cloud.login.redirecting", {
+              defaultValue: "Redirecting to dashboard...",
+            })}
+          </p>
+        </div>
+      </ReservedLoginFrame>
     );
   }
 
@@ -1105,22 +1115,24 @@ export default function StewardLoginSection() {
     );
   }
 
+  // Provider discovery in flight: a pulsing skeleton with the final option
+  // stack's exact geometry, so the real options materialize in place with no
+  // card resize (#18256) instead of replacing a short spinner block.
   if (!providersLoaded) {
     return (
       <div
-        className="flex flex-col items-center gap-4 py-8"
         role="status"
         aria-busy="true"
         aria-label={t("cloud.login.loadingOptions.aria", {
           defaultValue: "Loading sign-in options",
         })}
       >
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
-        <p className="text-sm text-muted">
+        <LoginOptionsSkeleton />
+        <span className="sr-only">
           {t("cloud.login.loadingOptions", {
             defaultValue: "Loading sign-in options...",
           })}
-        </p>
+        </span>
       </div>
     );
   }
