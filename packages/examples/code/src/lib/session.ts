@@ -13,8 +13,10 @@ import type {
   SubAgentType,
   TaskPaneVisibility,
 } from "../types.js";
+import { getCwd } from "./cwd.js";
 import {
   ensureSessionIdentity,
+  getMainRoomElizaId,
   isUuidString,
   type SessionIdentity,
 } from "./identity.js";
@@ -190,6 +192,30 @@ export interface SessionState {
   taskPaneVisibility?: TaskPaneVisibility;
   taskPaneWidthFraction?: number;
   showFinishedTasks?: boolean;
+}
+
+/**
+ * Fresh single-room session for a first run or an unreadable session file.
+ * Shared by the TUI and CLI entries so both bootstrap the same owner identity.
+ */
+export function createDefaultSessionState(): SessionState {
+  const identity = ensureSessionIdentity();
+  const room: ChatRoom = {
+    id: "default-main-room",
+    name: "Main",
+    messages: [],
+    createdAt: new Date(),
+    taskIds: [],
+    elizaRoomId: getMainRoomElizaId(identity),
+  };
+
+  return {
+    rooms: [room],
+    currentRoomId: room.id,
+    currentTaskId: null,
+    cwd: getCwd(),
+    identity,
+  };
 }
 
 /**
