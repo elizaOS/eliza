@@ -27,6 +27,7 @@ import {
   validateEnvKey,
   validateEnvValue,
 } from "./docker-sandbox-utils";
+import { applyLocalDockerRuntimeMode } from "./local-docker-runtime-mode";
 import type {
   SandboxCreateConfig,
   SandboxDeletionStopOutcome,
@@ -265,12 +266,11 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    const allEnv: Record<string, string> = {
+    const allEnv = applyLocalDockerRuntimeMode({
       ...llmPassthrough,
       ...rewrittenEnv,
       AGENT_NAME: agentName,
       AGENT_ID: agentId,
-      ELIZA_CLOUD_PROVISIONED: "1",
       ELIZA_PORT: agentPort,
       PORT: agentPort,
       BRIDGE_PORT: agentBridgePort,
@@ -289,7 +289,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       SECRET_SALT:
         rewrittenEnv.SECRET_SALT ||
         nodeCrypto.createHash("sha256").update(`local-docker-secret-salt:${agentId}`).digest("hex"),
-    };
+    });
 
     for (const [key, value] of Object.entries(allEnv)) {
       validateEnvKey(key);

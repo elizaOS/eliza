@@ -109,7 +109,7 @@ function resolveDirectWebUiUrlFromHealthUrl(
  */
 function isBrowserUnreachableHost(hostname: string): boolean {
   const h = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (h === "localhost" || h === "::1" || h.startsWith("127.")) return false;
+  if (isLoopbackHost(h)) return false;
   const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (m) {
     const a = Number(m[1]);
@@ -124,6 +124,17 @@ function isBrowserUnreachableHost(hostname: string): boolean {
   return /^f[cd]/.test(h) || h.startsWith("fe80");
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (normalized === "localhost" || normalized === "::1") return true;
+  const ipv4 = normalized.split(".");
+  return (
+    ipv4.length === 4 &&
+    ipv4[0] === "127" &&
+    ipv4.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+  );
+}
+
 function browserReachableOrigin(origin: string | null): string | null {
   if (!origin) return null;
   try {
@@ -133,16 +144,41 @@ function browserReachableOrigin(origin: string | null): string | null {
   }
 }
 
-function resolveManagedWebUiUrl(sandbox: PairingSandbox): string | null {
+function isLoopbackOrigin(origin: string | null): origin is string {
+  if (!origin) return false;
+  try {
+    return isLoopbackHost(new URL(origin).hostname);
+  } catch {
+    // error-policy:J3 persisted sandbox URLs are untrusted input.
+    return false;
+  }
+}
+
+function resolveManagedWebUiUrl(
+  sandbox: PairingSandbox,
+  supportsUiTokenPairing: boolean,
+): string | null {
   if (sandbox.execution_tier === "shared") return null;
 
+  const directOrigins = [
+    browserReachableOrigin(resolveDirectWebUiUrlFromBridgeHost(sandbox)),
+    browserReachableOrigin(resolveDirectWebUiUrlFromHealthUrl(sandbox)),
+    browserReachableOrigin(getElizaAgentDirectWebUiUrl(sandbox)),
+  ];
+  const canonicalOrigin = getElizaAgentPublicWebUiUrl(sandbox, {
+    baseDomain: containersEnv.publicBaseDomain(),
+  });
+
+  if (supportsUiTokenPairing) {
+    // Managed token exchange belongs to the Worker-owned hostname. A remote
+    // direct host would bypass that boundary; loopback is reserved for the
+    // local Docker provider whose ports bind only to 127.0.0.1.
+    return directOrigins.find(isLoopbackOrigin) ?? canonicalOrigin;
+  }
+
   return (
-    browserReachableOrigin(resolveDirectWebUiUrlFromBridgeHost(sandbox)) ??
-    browserReachableOrigin(resolveDirectWebUiUrlFromHealthUrl(sandbox)) ??
-    browserReachableOrigin(getElizaAgentDirectWebUiUrl(sandbox)) ??
-    getElizaAgentPublicWebUiUrl(sandbox, {
-      baseDomain: containersEnv.publicBaseDomain(),
-    })
+    directOrigins.find((origin): origin is string => origin !== null) ??
+    canonicalOrigin
   );
 }
 
@@ -308,14 +344,14 @@ async function __hono_POST(
       return response;
     }
 
-    const webUiUrl = resolveManagedWebUiUrl(sandbox);
+    const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
+    const supportsUiTokenPairing = Boolean(envVars.ELIZA_API_TOKEN?.trim());
+    const webUiUrl = resolveManagedWebUiUrl(sandbox, supportsUiTokenPairing);
     if (!webUiUrl) {
       return agentWebUiNotReadyResponse();
     }
 
     const tokenService = getPairingTokenService();
-    const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
-    const supportsUiTokenPairing = Boolean(envVars.ELIZA_API_TOKEN?.trim());
     const pairingToken = await tokenService.generateToken(
       user.id,
       user.organization_id,
