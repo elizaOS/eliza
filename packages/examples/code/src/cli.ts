@@ -19,10 +19,14 @@ import type { AgentRuntime } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { getAgentClient } from "./lib/agent-client.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
-import { ensureSessionIdentity, getMainRoomElizaId } from "./lib/identity.js";
 import { loadEnv } from "./lib/load-env.js";
 import { resolveModelProvider } from "./lib/model-provider.js";
-import { loadSession, type SessionState, saveSession } from "./lib/session.js";
+import {
+  createDefaultSessionState,
+  loadSession,
+  type SessionState,
+  saveSession,
+} from "./lib/session.js";
 import type { ChatRoom, Message, MessageRole } from "./types.js";
 
 // ============================================================================
@@ -243,26 +247,6 @@ async function getMessage(options: CLIOptions): Promise<string | null> {
   }
 
   return null;
-}
-
-function createDefaultSessionState(): SessionState {
-  const identity = ensureSessionIdentity();
-  const room: ChatRoom = {
-    id: "default-main-room",
-    name: "Main",
-    messages: [],
-    createdAt: new Date(),
-    taskIds: [],
-    elizaRoomId: getMainRoomElizaId(identity),
-  };
-
-  return {
-    rooms: [room],
-    currentRoomId: room.id,
-    currentTaskId: null,
-    cwd: getCwd(),
-    identity,
-  };
 }
 
 function getCurrentRoomFromSession(session: SessionState): ChatRoom {
