@@ -11,7 +11,7 @@ const CLOUD_AGENT_ID_PATTERN =
 
 export interface CloudPairExchangeResponse {
   message: string;
-  apiKey: string | null;
+  apiKey: string;
   agentName: string;
   agentId: string;
 }
@@ -34,6 +34,83 @@ export function isCloudPairAgentId(value: unknown): value is string {
  */
 export function cloudPairTokenKeyForAgent(agentId: string): string {
   return `${CLOUD_PAIR_SCOPED_STORAGE_PREFIX}${agentId}`;
+}
+
+/** Resolve the platform-owned agent identity injected into a local relay. */
+export function resolveCloudPairAgentIdFromEnv(
+  env: Readonly<Record<string, string | undefined>>,
+): string | null {
+  const candidate =
+    env.ELIZA_CLOUD_AGENT_ID?.trim() ||
+    env.WAIFU_ELIZA_CLOUD_AGENT_ID?.trim() ||
+    "";
+  return isCloudPairAgentId(candidate) ? candidate : null;
+}
+
+/**
+ * Render the executable browser handoff shared by Cloud edge and local relay
+ * boundaries. JSON string encoding plus the explicit `<` escape keeps opaque
+ * bearer bytes inert inside the script element.
+ */
+export function renderCloudPairHandoffHtml(
+  apiKey: string,
+  agentId: string,
+): string {
+  const safeKey = JSON.stringify(apiKey).replace(/</g, "\\u003c");
+  const safeStorageKey = JSON.stringify(
+    cloudPairTokenKeyForAgent(agentId),
+  ).replace(/</g, "\\u003c");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
+  <title>Signing in...</title>
+  <style>
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0a0a;color:#e5e5e5}
+    p{margin:0;font-size:.9rem;opacity:.8}
+  </style>
+</head>
+<body>
+  <p>Signing in to your agent...</p>
+  <script>
+    (function () {
+      try {
+        var key = ${safeKey};
+        var storageKey = ${safeStorageKey};
+        function persist(storage) {
+          try {
+            storage.setItem(storageKey, key);
+            return true;
+          } catch (_storageError) {
+            return false;
+          }
+        }
+        var storedInSession = persist(window.sessionStorage);
+        var storedDurably = persist(window.localStorage);
+        if (!(storedInSession || storedDurably)) {
+          throw new Error("No browser storage accepted the paired token.");
+        }
+        var slot = Symbol.for("elizaos.app.boot-config");
+        var previous = window.__ELIZAOS_APP_BOOT_CONFIG__ ||
+          window.__ELIZA_APP_BOOT_CONFIG__ ||
+          (window[slot] && window[slot].current) ||
+          {};
+        var next = Object.assign({}, previous, { apiToken: key });
+        window.__ELIZAOS_APP_BOOT_CONFIG__ = next;
+        window.__ELIZA_APP_BOOT_CONFIG__ = next;
+        window[slot] = { current: next };
+      } catch (error) {
+        console.error("[cloud-pair] failed to persist the paired token", error);
+        var paragraph = document.querySelector("p");
+        if (paragraph) paragraph.textContent = "Pairing failed. Close this window and try signing in again.";
+        return;
+      }
+      window.location.replace("/");
+    })();
+  </script>
+</body>
+</html>`;
 }
 
 /** Validate the successful dependency payload before a relay writes a bearer. */

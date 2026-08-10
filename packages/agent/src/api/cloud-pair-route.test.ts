@@ -29,6 +29,27 @@ interface FakeRes {
 }
 
 const AGENT_ID = "55555555-5555-4555-8555-555555555555";
+const MANAGED_ENV_KEYS = [
+  "ELIZA_CLOUD_PROVISIONED",
+  "ELIZA_CLOUD_PAIR_DIRECT_RELAY",
+  "ELIZA_CLOUD_AGENT_ID",
+  "WAIFU_ELIZA_CLOUD_AGENT_ID",
+] as const;
+const originalManagedEnv = Object.fromEntries(
+  MANAGED_ENV_KEYS.map((key) => [key, process.env[key]]),
+);
+
+function clearManagedEnv(): void {
+  for (const key of MANAGED_ENV_KEYS) delete process.env[key];
+}
+
+function restoreManagedEnv(): void {
+  for (const key of MANAGED_ENV_KEYS) {
+    const value = originalManagedEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
 
 function executeHandoffHtml(html: string) {
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
@@ -98,7 +119,7 @@ function fakeReq(opts: {
   req.method = "GET";
   req.url = `${opts.pathname}${opts.search ?? ""}`;
   req.headers = {
-    host: opts.host ?? "agent-123.elizacloud.ai",
+    host: opts.host ?? "127.0.0.1:43123",
     ...(opts.proto ? { "x-forwarded-proto": opts.proto } : {}),
   };
   Object.defineProperty(req.socket, "remoteAddress", {
@@ -112,11 +133,16 @@ const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   __resetCloudPairRateLimitForTests();
+  clearManagedEnv();
+  process.env.ELIZA_CLOUD_PROVISIONED = "1";
+  process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY = "1";
+  process.env.ELIZA_CLOUD_AGENT_ID = AGENT_ID;
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   vi.unstubAllGlobals();
+  restoreManagedEnv();
 });
 
 describe("handleStandaloneCloudPairRoute", () => {
@@ -148,8 +174,8 @@ describe("handleStandaloneCloudPairRoute", () => {
       fakeReq({
         pathname: "/pair",
         search: "?token=pair-token",
-        host: "agent-123.elizacloud.ai",
-        proto: "https",
+        host: "127.0.0.1:43123",
+        proto: "http",
       }),
       harness.res,
     );
@@ -158,15 +184,18 @@ describe("handleStandaloneCloudPairRoute", () => {
     expect(harness.status()).toBe(200);
     expect(harness.headers()["cache-control"]).toContain("no-store");
     expect(harness.headers()["x-frame-options"]).toBe("DENY");
+    expect(harness.headers()["content-security-policy"]).toContain(
+      "default-src 'none'",
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.elizacloud.ai/api/auth/pair",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
           "content-type": "application/json",
-          origin: "https://agent-123.elizacloud.ai",
+          origin: "http://127.0.0.1:43123",
         }),
-        body: JSON.stringify({ token: "pair-token" }),
+        body: JSON.stringify({ token: "pair-token", agentId: AGENT_ID }),
       }),
     );
     const handoff = executeHandoffHtml(harness.body());
@@ -191,6 +220,88 @@ describe("handleStandaloneCloudPairRoute", () => {
       current: { apiToken: "agent_secret_value" },
     });
     expect(handoff.replace).toHaveBeenCalledWith("/");
+  });
+
+  it("never exchanges managed requests that reach the container directly", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const req = fakeReq({
+      pathname: "/pair",
+      search: "?token=pair-token",
+      host: "eliza-staging-1.elizacloud.ai",
+      proto: "https",
+    });
+    req.headers["x-forwarded-host"] = "attacker.example";
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(req, harness.res);
+
+    expect(harness.status()).toBe(421);
+    expect(harness.body()).toContain("Open this agent from Eliza Cloud");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows the explicit local-provider relay only for a loopback origin", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          apiKey: "agent_secret_value",
+          agentId: AGENT_ID,
+          agentName: "Local",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const loopbackHarness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({
+        pathname: "/pair",
+        search: "?token=pair-token",
+        host: "127.0.0.1:43123",
+        proto: "http",
+      }),
+      loopbackHarness.res,
+    );
+    expect(loopbackHarness.status()).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.elizacloud.ai/api/auth/pair",
+      expect.objectContaining({
+        headers: expect.objectContaining({ origin: "http://127.0.0.1:43123" }),
+        body: JSON.stringify({ token: "pair-token", agentId: AGENT_ID }),
+      }),
+    );
+
+    fetchMock.mockClear();
+    const publicHarness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({
+        pathname: "/pair",
+        search: "?token=pair-token",
+        host: "agent.example",
+        proto: "https",
+      }),
+      publicHarness.res,
+    );
+    expect(publicHarness.status()).toBe(421);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails before exchange when the local platform identity is missing", async () => {
+    delete process.env.ELIZA_CLOUD_AGENT_ID;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+      harness.res,
+    );
+
+    expect(harness.status()).toBe(503);
+    expect(harness.body()).toContain("Agent identity unavailable");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("fails visibly when the Cloud response omits or corrupts agent ownership", async () => {

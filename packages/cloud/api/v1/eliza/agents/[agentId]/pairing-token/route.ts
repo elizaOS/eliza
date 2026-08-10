@@ -1,4 +1,8 @@
-// Handles v1 cloud API v1 eliza agents agentid pairing token route traffic with route-local auth expectations.
+/**
+ * Mints a one-time browser pairing token for an owned dedicated agent.
+ * Token-capable remote agents always use the Worker-bound canonical hostname;
+ * only the explicit local Docker provider may return a loopback relay URL.
+ */
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
@@ -157,6 +161,7 @@ function isLoopbackOrigin(origin: string | null): origin is string {
 function resolveManagedWebUiUrl(
   sandbox: PairingSandbox,
   supportsUiTokenPairing: boolean,
+  canonicalAgentBaseDomain: string | undefined,
 ): string | null {
   if (sandbox.execution_tier === "shared") return null;
 
@@ -166,7 +171,9 @@ function resolveManagedWebUiUrl(
     browserReachableOrigin(getElizaAgentDirectWebUiUrl(sandbox)),
   ];
   const canonicalOrigin = getElizaAgentPublicWebUiUrl(sandbox, {
-    baseDomain: containersEnv.publicBaseDomain(),
+    baseDomain: supportsUiTokenPairing
+      ? canonicalAgentBaseDomain
+      : containersEnv.publicBaseDomain(),
   });
 
   if (supportsUiTokenPairing) {
@@ -204,7 +211,13 @@ function resolveManagedWebUiUrl(
  */
 async function __hono_POST(
   request: Request,
-  { params }: { params: Promise<{ agentId: string }> },
+  {
+    params,
+    canonicalAgentBaseDomain,
+  }: {
+    params: Promise<{ agentId: string }>;
+    canonicalAgentBaseDomain: string | undefined;
+  },
 ) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
@@ -346,7 +359,11 @@ async function __hono_POST(
 
     const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
     const supportsUiTokenPairing = Boolean(envVars.ELIZA_API_TOKEN?.trim());
-    const webUiUrl = resolveManagedWebUiUrl(sandbox, supportsUiTokenPairing);
+    const webUiUrl = resolveManagedWebUiUrl(
+      sandbox,
+      supportsUiTokenPairing,
+      canonicalAgentBaseDomain,
+    );
     if (!webUiUrl) {
       return agentWebUiNotReadyResponse();
     }
@@ -391,6 +408,7 @@ __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
   __hono_POST(c.req.raw, {
     params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+    canonicalAgentBaseDomain: c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
   }),
 );
 export default __hono_app;

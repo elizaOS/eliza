@@ -1,32 +1,19 @@
 /**
- * GET /pair — server-side relay for the Eliza Cloud SSO popup.
+ * Loopback-only `/pair` relay for the app host.
  *
- * Flow:
- *   1. Cloud dashboard mints a 60s pairing token via
- *      POST /api/v1/eliza/agents/<id>/pairing-token and navigates a popup to
- *      `<agent>/pair?token=<X>`.
- *   2. This handler reads the token, calls cloud-api `POST /api/auth/pair`
- *      server-side (origin header = the agent's own origin, so cloud-api's
- *      origin gate matches what was baked into the token).
- *   3. Cloud-api validates + consumes the token, returns
- *      `{ apiKey: <ELIZA_API_TOKEN>, agentId: <validated owner> }`.
- *   4. This handler serves an HTML page with an inline script that stores the
- *      apiKey under the owner-scoped key in localStorage + sessionStorage and
- *      the typed boot-config singleton, then redirects to `/`. The SPA consumes
- *      the durable handoff on boot.
- *
- * Why server-side relay: the agent web UI runs on the docker node's public
- * IP, which is not in cloud-api's CORS allowlist. A direct browser fetch to
- * `api.elizacloud.ai` would fail preflight. Doing the exchange from the
- * agent's Node process sidesteps CORS entirely.
+ * Remote managed pairing terminates at the trusted Cloud edge. The explicit
+ * local-Docker mode exchanges its one-time token server-side, validates the
+ * returned owner, installs the scoped browser handoff, and fails visibly when
+ * storage or the Cloud dependency is unavailable.
  */
 
 import type http from "node:http";
 import { logger } from "@elizaos/core";
 import {
   type CloudPairRelaySession,
-  cloudPairTokenKeyForAgent,
   parseCloudPairRelaySession,
+  renderCloudPairHandoffHtml,
+  resolveCloudPairAgentIdFromEnv,
 } from "@elizaos/shared/contracts";
 import { getSensitiveLimiter } from "./auth/sensitive-rate-limit";
 
@@ -50,10 +37,8 @@ function resolveCloudAuthRoot(): string {
 }
 
 function resolveRequestOrigin(req: http.IncomingMessage): string {
-  // Honor the proxy headers a control-plane front (Cloudflared, nginx) adds,
-  // then fall back to the Host header. The cloud-api side uses this origin
-  // verbatim to look up the pairing-token row (which was baked with the same
-  // shape at generate time).
+  // Self-hosted and explicit local relays need their proxy-aware request
+  // origin. Remote managed pairing terminates at the Cloud edge instead.
   const proto =
     (req.headers["x-forwarded-proto"] as string | undefined) ||
     (req.socket && "encrypted" in req.socket && req.socket.encrypted
@@ -64,81 +49,27 @@ function resolveRequestOrigin(req: http.IncomingMessage): string {
   return host ? `${proto}://${host}` : "";
 }
 
-function renderRedirectHtml(apiKey: string, agentId: string): string {
-  // JSON.stringify gives us a JS-string literal that safely escapes quotes,
-  // but it does NOT escape `</script>` — which would break us out of the
-  // inline script tag. Replace `<` with the `<` escape so any
-  // `</script>` payload in a malicious key becomes inert literal text.
-  const safeKey = JSON.stringify(apiKey).replace(/</g, "\\u003c");
-  const safeStorageKey = JSON.stringify(
-    cloudPairTokenKeyForAgent(agentId),
-  ).replace(/</g, "\\u003c");
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="referrer" content="no-referrer">
-  <title>Signing in…</title>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #0a0a0a;
-      color: #e5e5e5;
-    }
-    p { margin: 0; font-size: 0.9rem; opacity: 0.8 }
-  </style>
-</head>
-<body>
-  <p>Signing in to your agent…</p>
-  <script>
-    (function () {
-      try {
-        var key = ${safeKey};
-        var storageKey = ${safeStorageKey};
-        function persist(storage) {
-          try {
-            storage.setItem(storageKey, key);
-            return true;
-          } catch (_storageError) {
-            return false;
-          }
-        }
-        var storedInSession = persist(window.sessionStorage);
-        var storedDurably = persist(window.localStorage);
-        if (!(storedInSession || storedDurably)) {
-          throw new Error("No browser storage accepted the paired token.");
-        }
-        var slot = Symbol.for("elizaos.app.boot-config");
-        var previous = window.__ELIZAOS_APP_BOOT_CONFIG__ ||
-          window.__ELIZA_APP_BOOT_CONFIG__ ||
-          (window[slot] && window[slot].current) ||
-          {};
-        var next = Object.assign({}, previous, { apiToken: key });
-        window.__ELIZAOS_APP_BOOT_CONFIG__ = next;
-        window.__ELIZA_APP_BOOT_CONFIG__ = next;
-        window[slot] = { current: next };
-      } catch (e) {
-        // A failed handoff must NOT silently redirect to "/" unpaired — the
-        // user would land signed-out with no clue why. Surface it: log to the
-        // browser console and show a visible failure instead of redirecting.
-        console.error("[cloud-pair] failed to persist the paired token", e);
-        var p = document.querySelector("p");
-        if (p) {
-          p.textContent =
-            "Pairing failed. Close this window and try signing in again.";
-        }
-        return;
-      }
-      window.location.replace("/");
-    })();
-  </script>
-</body>
-</html>`;
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const hostname = new URL(origin).hostname
+      .toLowerCase()
+      .replace(/^\[|\]$/g, "");
+    return (
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      /^127(?:\.\d{1,3}){3}$/.test(hostname)
+    );
+  } catch {
+    // error-policy:J3 malformed request origins are never trusted as loopback.
+    return false;
+  }
+}
+
+function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
+  return (
+    process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY === "1" &&
+    isLoopbackOrigin(resolveRequestOrigin(req))
+  );
 }
 
 function renderErrorHtml(title: string, message: string): string {
@@ -203,6 +134,9 @@ function sendHtml(
   res.writeHead(status, {
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    "content-security-policy":
+      "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    "cross-origin-resource-policy": "same-origin",
     pragma: "no-cache",
     expires: "0",
     "x-frame-options": "DENY",
@@ -220,6 +154,18 @@ export async function handleCloudPairRoute(
   const url = new URL(req.url ?? "/", "http://localhost");
   if (method !== "GET" || url.pathname !== "/pair") {
     return false;
+  }
+
+  if (!canUseManagedDirectRelay(req)) {
+    sendHtml(
+      res,
+      421,
+      renderErrorHtml(
+        "Open this agent from Eliza Cloud",
+        "Managed sign-in is completed at the agent's Eliza Cloud address. Return to the dashboard and open the agent again.",
+      ),
+    );
+    return true;
   }
 
   const ip = req.socket.remoteAddress ?? null;
@@ -261,6 +207,19 @@ export async function handleCloudPairRoute(
     return true;
   }
 
+  const agentId = resolveCloudPairAgentIdFromEnv(process.env);
+  if (!agentId) {
+    sendHtml(
+      res,
+      503,
+      renderErrorHtml(
+        "Agent identity unavailable",
+        "This local agent is missing its platform identity. Restart it from Eliza Cloud and try again.",
+      ),
+    );
+    return true;
+  }
+
   const exchangeUrl = `${resolveCloudAuthRoot()}/api/auth/pair`;
   let exchanged: CloudPairRelaySession | null = null;
   let status = 0;
@@ -273,7 +232,7 @@ export async function handleCloudPairRoute(
         "content-type": "application/json",
         origin,
       },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, agentId }),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
@@ -343,6 +302,10 @@ export async function handleCloudPairRoute(
   logger.info(
     `[cloud-pair] exchange ok agent=${exchanged.agentName ?? "agent"}`,
   );
-  sendHtml(res, 200, renderRedirectHtml(exchanged.apiKey, exchanged.agentId));
+  sendHtml(
+    res,
+    200,
+    renderCloudPairHandoffHtml(exchanged.apiKey, exchanged.agentId),
+  );
   return true;
 }
