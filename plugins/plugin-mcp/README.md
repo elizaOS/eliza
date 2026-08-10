@@ -40,7 +40,14 @@ Add the plugin and declare servers in your character file:
 }
 ```
 
-Config lives entirely in `settings.mcp`, not in environment variables. The host `PATH` is forwarded to stdio child processes automatically. Malformed settings and rejected server configs fail service initialization instead of silently disabling or partially starting MCP. Every server config is validated by `@elizaos/core/security/mcp-server-config` (`validateMcpServerConfig`) before connect/spawn. Remote transports route every request through core's DNS-pinned SSRF guard, including redirects.
+Servers can also be declared without persisting credential-bearing URLs in character settings:
+
+```bash
+MCP_SERVER_PRIVATE_URL="https://token@example.com/mcp"
+MCP_SERVER_PRIVATE_TYPE="http" # optional: http or sse; defaults to streamable-http
+```
+
+Environment-declared servers are lowercased, merge on top of `settings.mcp.servers`, and pass the same security validation. The host `PATH` is forwarded to stdio child processes automatically. Malformed settings and rejected server configs fail service initialization instead of silently disabling or partially starting MCP. Every server config is validated by `@elizaos/core/security/mcp-server-config` (`validateMcpServerConfig`) before connect/spawn. Remote transports route every request through core's DNS-pinned SSRF guard, including redirects.
 
 ## Configuration
 
@@ -48,6 +55,8 @@ Config lives entirely in `settings.mcp`, not in environment variables. The host 
 |---|---|---|---|
 | `mcp.servers` | `Record<string, McpServerConfig>` | — | Map of server name → transport config |
 | `mcp.maxRetries` | `number` | `2` | Max reconnect attempts per server |
+
+Per-server environment variables use `MCP_SERVER_<NAME>_URL` and an optional matching `MCP_SERVER_<NAME>_TYPE`. The type accepts `http` or `sse`; any other or missing value selects `streamable-http`.
 
 Transport config (see `src/types.ts`):
 
