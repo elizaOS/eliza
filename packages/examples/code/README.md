@@ -91,10 +91,11 @@ eliza-code/
 ```
 
 > **Do not remove `scripts/write-dist-tsconfig.mjs` from the `build` script.** Bun applies the
-> nearest tsconfig's `compilerOptions.paths` **at runtime**, and this package's tsconfig maps the
-> externalized `@elizaos/plugin-*` to their types-only `.d.ts`. Without the emitted paths-free
-> `dist/tsconfig.json`, `bun dist/index.js` loads a `.d.ts` and throws `ReferenceError` on first
-> plugin import. The cockpit's PTY terminal (`@elizaos/plugin-pty`) spawns exactly this
+> nearest tsconfig's `compilerOptions.paths` **at runtime**. Source typechecking resolves built
+> workspace package declarations through `node_modules`, while the built package resolves the
+> corresponding runtime exports there. The emitted paths-free `dist/tsconfig.json` keeps the
+> built entry independent of caller-provided aliases. The cockpit's PTY terminal
+> (`@elizaos/plugin-pty`) spawns exactly this
 > `dist/index.js` via `ELIZA_CODE_BIN`, so dropping the step silently re-breaks every cockpit
 > terminal spawn (#11043).
 
