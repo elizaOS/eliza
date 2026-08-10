@@ -380,14 +380,14 @@ async function runPlannerLoopIterations(
 	// Rejected terminal ANSWER text from the IMMEDIATELY PREVIOUS
 	// required-tool miss (reassigned every miss, like lastMissWidgetText, so
 	// the identity check below demands CONSECUTIVE re-emission). Used only
-	// when the tool requirement stands on heuristic text inference
-	// (params.requiredToolEvidence === "inferred", i.e. Stage 1's model
-	// emitted no candidate of its own): a planner that re-commits to the
+	// when the tool requirement stands on relaxable heuristic text inference
+	// (params.requiredToolEvidence === "inferred"): a planner that re-commits to the
 	// IDENTICAL answer after one corrective retry is deterministically
 	// committed — accept it instead of burning the remaining budget on the
 	// heuristic's guess (observed live: 4 identical REPLYs, ~36s, for a
 	// pure-opinion ask force-planned by an inferred web candidate). Model-
-	// emitted requirements keep the full corrective budget.
+	// emitted requirements and strong deterministic coding-work inferences keep
+	// the full corrective budget.
 	let lastMissAnswerText: string | undefined;
 	const heuristicRequiredToolEvidence =
 		params.requiredToolEvidence === "inferred";

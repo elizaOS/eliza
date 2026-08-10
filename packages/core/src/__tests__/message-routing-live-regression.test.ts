@@ -302,6 +302,7 @@ describe("plain-text backstop — complete-direct-reply valve (2026-07-01)", () 
 		// an ack fails looksLikeCompleteDirectReply → live-info still fetches.
 		expect(out.plan.requiresTool).toBe(true);
 		expect(out.plan.candidateActions?.length ?? 0).toBeGreaterThan(0);
+		expect(out.plan.requiredToolEvidence).toBe("inferred");
 	});
 
 	it("forces the fetch even when the model HALLUCINATES a complete answer to a fresh ask", () => {
@@ -335,6 +336,10 @@ describe("plain-text backstop — complete-direct-reply valve (2026-07-01)", () 
 		);
 		// coding work must not be short-circuited by the complete-reply valve.
 		expect(out.plan.requiresTool).toBe(true);
+		// Coding inference is structurally strong. It must not get the weak
+		// evidence marker that lets the planner accept a repeated terminal answer
+		// without executing TASKS.
+		expect(out.plan.requiredToolEvidence).toBeUndefined();
 	});
 });
 
@@ -645,6 +650,42 @@ describe("live routing regressions", () => {
 			const result = inferDirectCurrentRequestCandidateActions(actions, text);
 			expect(result).toContain("WEB_FETCH");
 			expect(result).not.toContain("TASKS");
+		}
+	});
+
+	it("ambiguous personal-work nouns do not become coding tasks without URL or code context", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+			{ name: "WEB_FETCH" },
+			{ name: "WEB_SEARCH" },
+		];
+		for (const text of [
+			"review this issue with my health insurance",
+			"analyze the error in my blood test results",
+			"audit my exercise log",
+			"review my documentation for the tax return",
+			"trace my run and diagnose my fitness test",
+			"review this page in my lease",
+			"analyze this feature of my health plan",
+		]) {
+			const result = inferDirectCurrentRequestCandidateActions(actions, text);
+			expect(result).not.toContain("TASKS");
+		}
+	});
+
+	it("strong code artifacts still reach TASKS without requiring a URL", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+		];
+		for (const text of [
+			"review this PR",
+			"audit the repository",
+			"diagnose this stack trace",
+			"inspect the failing pipeline",
+		]) {
+			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
+				"TASKS",
+			]);
 		}
 	});
 
@@ -1192,6 +1233,27 @@ describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
 
 		expect(routed.plan.requiresTool).toBe(true);
 		expect(routed.plan.requiredToolEvidence).toBe("inferred");
+	});
+
+	it("keeps inferred coding work on the full required-tool budget", () => {
+		const tasksAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "TASKS",
+			similes: ["TASKS_SPAWN_AGENT"],
+			tags: ["domain:coding", "coding-delegation"],
+		};
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("On it."),
+			undefined,
+			{
+				actions: [replyAction, tasksAction],
+				messageText:
+					"review this PR https://github.com/elizaOS/eliza/pull/18106",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("TASKS");
+		expect(routed.plan.requiredToolEvidence).toBeUndefined();
 	});
 
 	it("a field-run preempt pins the turn to a direct simple reply regardless of routed contexts", () => {
