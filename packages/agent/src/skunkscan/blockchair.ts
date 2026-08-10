@@ -151,9 +151,27 @@ export type BlockchairAddressStats = {
   transaction_count?: number;
 };
 
+// Only populated when the dashboard call passes transaction_details=true
+// (always, below) - without it Blockchair returns bare tx-hash strings with
+// no timestamp, which isn't enough to build a real transaction record.
+// "time" is a "YYYY-MM-DD HH:MM:SS" UTC string (live-confirmed by parsing
+// it as UTC and cross-checking the resulting date against a transaction
+// known to have happened "today" relative to when this was verified) -
+// not epoch seconds, callers must parse it themselves.
+export type BlockchairTransactionSummary = {
+  hash: string;
+  block_id?: number;
+  time?: string;
+  balance_change?: number;
+  // xpub dashboard only - which derived address this transaction touched.
+  // Absent on the single-address dashboard (redundant there - it's always
+  // the address you queried).
+  address?: string;
+};
+
 export type BlockchairAddressDashboard = {
   address: BlockchairAddressStats;
-  transactions: string[];
+  transactions: BlockchairTransactionSummary[];
 };
 
 export async function getBitcoinAddressDashboard(
@@ -167,7 +185,10 @@ export async function getBitcoinAddressDashboard(
 
   const data = await callBlockchairRest<
     Record<string, BlockchairAddressDashboard>
-  >(`/dashboards/address/${trimmedAddress}`, { limit: "100" });
+  >(`/dashboards/address/${trimmedAddress}`, {
+    limit: "100",
+    transaction_details: "true",
+  });
 
   const entry = data[trimmedAddress];
 
@@ -205,7 +226,7 @@ export type BlockchairXpubDerivedAddress = BlockchairAddressStats & {
 export type BlockchairXpubDashboard = {
   xpub: BlockchairXpubStats;
   addresses: Record<string, BlockchairXpubDerivedAddress>;
-  transactions: string[];
+  transactions: BlockchairTransactionSummary[];
 };
 
 export async function getBitcoinXpubDashboard(
@@ -219,7 +240,10 @@ export async function getBitcoinXpubDashboard(
 
   const data = await callBlockchairRest<
     Record<string, BlockchairXpubDashboard>
-  >(`/dashboards/xpub/${trimmedXpub}`, { limit: "100,0" });
+  >(`/dashboards/xpub/${trimmedXpub}`, {
+    limit: "100,0",
+    transaction_details: "true",
+  });
 
   const entry = data[trimmedXpub];
 
@@ -233,6 +257,48 @@ export async function getBitcoinXpubDashboard(
     xpub: entry.xpub ?? {},
     addresses: entry.addresses ?? {},
     transactions: Array.isArray(entry.transactions) ? entry.transactions : [],
+  };
+}
+
+type BlockchairTransactionDashboardEntry = {
+  transaction?: {
+    block_id?: number;
+    hash?: string;
+    time?: string;
+  };
+};
+
+// Blockchair's single-transaction endpoint also returns full inputs[]/
+// outputs[] (live-confirmed - recipient addresses, values, spent status),
+// but only block_id/hash/time are surfaced here. Decoding inputs/outputs
+// into real transfers is transaction PARSING, which chains/bitcoin.ts's
+// capabilities deliberately mark false for this MVP, same "listed, not
+// parsed" honest-partial state Ethereum's connector shipped with initially
+// (see chains/ethereum.ts's descriptor limitations).
+export async function getBitcoinTransaction(
+  transactionHash: string,
+): Promise<BlockchairTransactionSummary | null> {
+  if (!transactionHash || transactionHash.trim().length === 0) {
+    throw new Error("Bitcoin transaction hash is required");
+  }
+
+  const trimmedHash = transactionHash.trim();
+
+  const data = await callBlockchairRest<
+    Record<string, BlockchairTransactionDashboardEntry>
+  >(`/dashboards/transaction/${trimmedHash}`);
+
+  const entry = data[trimmedHash];
+  const transaction = entry?.transaction;
+
+  if (!transaction || !transaction.hash) {
+    return null;
+  }
+
+  return {
+    hash: transaction.hash,
+    block_id: transaction.block_id,
+    time: transaction.time,
   };
 }
 
