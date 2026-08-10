@@ -103,6 +103,52 @@ export function isBunHelperBinary(target, appPath) {
   return rel === `Contents/MacOS/${basename}`;
 }
 
+/**
+ * Returns the explicit signing identifier for a Mach-O permission host.
+ * Nested helpers keep their own identities; only the top-level Bun process
+ * requests macOS permissions on behalf of the application bundle.
+ */
+export function signingIdentifierForMacho(target, appPath, appIdentifier) {
+  return isBunHelperBinary(target, appPath) ? appIdentifier : undefined;
+}
+
+/** Builds the verification requirement for the permission-host identity. */
+export function identifierVerificationRequirement(identifier) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(identifier)) {
+    throw new Error(`Invalid macOS application identifier: ${identifier}`);
+  }
+  return `=identifier "${identifier}"`;
+}
+
+function readAppBundleIdentifier(appPath) {
+  const infoPlist = path.join(appPath, "Contents", "Info.plist");
+  if (!existsSync(infoPlist)) {
+    throw new Error(`App Info.plist is missing: ${infoPlist}`);
+  }
+  const result = spawnSync(
+    "/usr/bin/plutil",
+    [
+      "-extract",
+      "CFBundleIdentifier",
+      "raw",
+      "-expect",
+      "string",
+      "-o",
+      "-",
+      infoPlist,
+    ],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `Unable to read CFBundleIdentifier from ${infoPlist}: ${(result.stderr ?? "").trim()}`,
+    );
+  }
+  const identifier = (result.stdout ?? "").trim();
+  identifierVerificationRequirement(identifier);
+  return identifier;
+}
+
 function parentAppExecutablePath(appPath) {
   const infoPlist = path.join(appPath, "Contents", "Info.plist");
   if (!existsSync(infoPlist)) return null;
@@ -311,7 +357,8 @@ function assertSignedEntitlements(
   });
 }
 
-function sign(target, entitlements, identity, dryRun) {
+function sign(target, entitlements, identity, dryRun, identifier) {
+  const identifierArgs = identifier ? ["--identifier", identifier] : [];
   runOrPrint(
     "codesign",
     [
@@ -323,6 +370,7 @@ function sign(target, entitlements, identity, dryRun) {
       entitlements,
       "--sign",
       identity,
+      ...identifierArgs,
       target,
     ],
     dryRun,
@@ -401,12 +449,27 @@ function main() {
   if (dryRun) console.log("  mode: DRY RUN — no commands will execute");
 
   const { machos, bundles } = findSigningUnits(appPath);
+  const appIdentifier = readAppBundleIdentifier(appPath);
+  const bunPermissionHosts = machos.filter((target) =>
+    isBunHelperBinary(target, appPath),
+  );
+  if (bunPermissionHosts.length !== 1) {
+    throw new Error(
+      `Expected exactly one top-level Bun permission host, found ${bunPermissionHosts.length}`,
+    );
+  }
 
   // 1. Sign all loose Mach-O binaries with the narrowest matching
   // entitlements (deepest first).
   console.log(`\nSigning ${machos.length} Mach-O binaries:`);
   for (const target of machos) {
-    sign(target, entitlementsForMacho(target, appPath), identity, dryRun);
+    sign(
+      target,
+      entitlementsForMacho(target, appPath),
+      identity,
+      dryRun,
+      signingIdentifierForMacho(target, appPath, appIdentifier),
+    );
   }
 
   // 2. Sign nested bundles (frameworks, helper apps, xpc, .bundle) deepest-first.
@@ -426,6 +489,18 @@ function main() {
   runOrPrint(
     "codesign",
     ["--verify", "--deep", "--strict", "--verbose=2", appPath],
+    dryRun,
+  );
+  runOrPrint(
+    "codesign",
+    [
+      "--verify",
+      "--strict",
+      "--verbose=2",
+      "--test-requirement",
+      identifierVerificationRequirement(appIdentifier),
+      bunPermissionHosts[0],
+    ],
     dryRun,
   );
 

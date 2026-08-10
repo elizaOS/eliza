@@ -1,3 +1,9 @@
+/**
+ * Implements the native macOS window, permission, and display bridge used by
+ * the Electrobun host process. Permission requests report configuration errors
+ * separately from user decisions so the renderer never presents a false denial.
+ */
+
 #import <Cocoa/Cocoa.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <AVFoundation/AVFoundation.h>
@@ -7,6 +13,7 @@
 #import <CoreLocation/CoreLocation.h>
 #import <EventKit/EventKit.h>
 #import <UserNotifications/UserNotifications.h>
+#include <atomic>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -693,36 +700,56 @@ static int elizaNotificationAuthorizationStatusToInt(
 	return 3;
 }
 
+// UNUserNotificationCenter reports configuration/signing failures only through
+// its asynchronous completion handler. Retain that failure separately so a
+// later status poll cannot mislabel a broken app identity as a user denial.
+static std::atomic<int> elizaNotificationRequestFailure(0);
+static constexpr int kElizaNotificationQueryPending = -2;
+static std::atomic<int> elizaNotificationQueryResult(
+	kElizaNotificationQueryPending);
+static std::atomic<bool> elizaNotificationQueryInFlight(false);
+
 /**
  * Check notification authorization without prompting.
  * Returns: 0=not-determined, 1=denied, 2=granted, 3=restricted
  */
 extern "C" int checkNotificationPermission(void) {
 	if (@available(macOS 10.14, *)) {
-		__block int result = 0;
-		dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-		[[UNUserNotificationCenter currentNotificationCenter]
-			getNotificationSettingsWithCompletionHandler:
-				^(UNNotificationSettings *settings) {
-					result = elizaNotificationAuthorizationStatusToInt(
-						[settings authorizationStatus]);
-					dispatch_semaphore_signal(semaphore);
-				}];
-		dispatch_semaphore_wait(
-			semaphore,
-			dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)));
-		return result;
+		if (elizaNotificationRequestFailure.load() != 0) {
+			return -1;
+		}
+
+		int completed = elizaNotificationQueryResult.exchange(
+			kElizaNotificationQueryPending);
+		if (completed != kElizaNotificationQueryPending) {
+			return completed;
+		}
+
+		bool expected = false;
+		if (elizaNotificationQueryInFlight.compare_exchange_strong(expected,
+														  true)) {
+			[[UNUserNotificationCenter currentNotificationCenter]
+				getNotificationSettingsWithCompletionHandler:
+					^(UNNotificationSettings *settings) {
+						elizaNotificationQueryResult.store(
+							elizaNotificationAuthorizationStatusToInt(
+								[settings authorizationStatus]));
+						elizaNotificationQueryInFlight.store(false);
+					}];
+		}
+		return kElizaNotificationQueryPending;
 	}
 	return 2;
 }
 
 /**
- * Request notification authorization, then return the resulting status.
+ * Start notification authorization without blocking Bun's event loop.
+ * Callers poll checkNotificationPermission() for the eventual user decision.
  */
 extern "C" int requestNotificationPermission(void) {
 	if (@available(macOS 10.14, *)) {
-		__block int result = 0;
-		dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+		elizaNotificationRequestFailure.store(0);
+		elizaNotificationQueryResult.store(kElizaNotificationQueryPending);
 		UNAuthorizationOptions options =
 			UNAuthorizationOptionAlert | UNAuthorizationOptionSound |
 			UNAuthorizationOptionBadge;
@@ -730,27 +757,14 @@ extern "C" int requestNotificationPermission(void) {
 			requestAuthorizationWithOptions:options
 						  completionHandler:^(BOOL granted, NSError *error) {
 			if (error != nil) {
-				result = 1;
-				dispatch_semaphore_signal(semaphore);
+				NSLog(@"[ElizaPermissions] Notification authorization failed: %@",
+					  [error localizedDescription]);
+				elizaNotificationRequestFailure.store(-1);
 				return;
 			}
-			if (!granted) {
-				result = 1;
-				dispatch_semaphore_signal(semaphore);
-				return;
-			}
-			[[UNUserNotificationCenter currentNotificationCenter]
-				getNotificationSettingsWithCompletionHandler:
-					^(UNNotificationSettings *settings) {
-						result = elizaNotificationAuthorizationStatusToInt(
-							[settings authorizationStatus]);
-						dispatch_semaphore_signal(semaphore);
-					}];
+			(void)granted;
 		}];
-		dispatch_semaphore_wait(
-			semaphore,
-			dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10 * NSEC_PER_SEC)));
-		return result;
+		return 0;
 	}
 	return 2;
 }
