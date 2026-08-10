@@ -197,6 +197,12 @@ jobs:
 
       - name: Deterministic end-to-end smoke
         if: needs.changes.outputs.zero_key == 'true'
+        env:
+          # Homepage owns Linux visual baselines in its deploy workflow. The
+          # root zero-key smoke protects runtime/app/plugin behavior; including
+          # homepage here makes unrelated core PRs fail on marketing screenshot
+          # drift after spending the full two-hour smoke budget.
+          TEST_PACKAGE_FILTER: '^(?!.*\(packages/homepage\)#).*'
         run: bun run test:e2e
 
       - name: Cloud tests
