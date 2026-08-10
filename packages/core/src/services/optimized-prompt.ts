@@ -84,13 +84,10 @@ export type OptimizedPromptTask =
 	| "health_checkin"
 	| "screentime_recap"
 	| "creative_draft"
-	// Scheduled-task dispatch voicing (#14874): the spine's default
-	// notification dispatcher model-renders instruction-voice
-	// `promptInstructions` into owner-facing copy before every delivery
-	// surface. Each named slot identifies one dispatch surface so the
-	// optimizer can tune voices independently.
 	| "scheduled_task_dispatch"
-	| "scheduled_task_title";
+	| "scheduled_task_title"
+	| "checkin_followup"
+	| "approval_notice";
 
 function nodeErrorCode(error: unknown): string | undefined {
 	if (typeof error !== "object" || error === null) return undefined;
@@ -122,9 +119,10 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"health_checkin",
 	"screentime_recap",
 	"creative_draft",
-	// Scheduled-task dispatch voicing tasks (#14874).
 	"scheduled_task_dispatch",
 	"scheduled_task_title",
+	"checkin_followup",
+	"approval_notice",
 ] as const;
 
 /**

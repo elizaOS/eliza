@@ -172,6 +172,68 @@ export interface ScheduledTaskOutput {
   destination: ScheduledTaskOutputDestination;
   target?: string;
   persistAs?: "task_metadata" | "external_only";
+  /**
+   * Authored owner-facing copy for runtimes without a model surface. This is
+   * deliberately separate from `promptInstructions`: the latter is model
+   * input and must never be guessed into user copy by inspecting prose.
+   */
+  fallback?: {
+    body: string;
+    title?: string;
+  };
+}
+
+/** Context material resolved from a task's structural `contextRequest`. */
+export interface ScheduledTaskResolvedContext {
+  ownerFacts?: Partial<
+    Pick<
+      OwnerFactsView,
+      | "preferredName"
+      | "timezone"
+      | "locale"
+      | "morningWindow"
+      | "eveningWindow"
+    >
+  >;
+  entities?: Array<{
+    entityId: string;
+    preferredName?: string;
+    type?: string;
+    identities?: Array<{
+      platform: string;
+      handle: string;
+      displayName?: string;
+      verified: boolean;
+    }>;
+    lastInteractionPlatform?: string;
+  }>;
+  relationships?: Array<{
+    relationshipId: string;
+    fromEntityId: string;
+    toEntityId: string;
+    type: string;
+    state: {
+      lastInteractionAt?: string;
+      interactionCount?: number;
+      sentimentTrend?: "positive" | "neutral" | "negative";
+    };
+  }>;
+  recentTaskStates?: {
+    summary: string;
+    streaks: Array<{
+      kind: ScheduledTaskKind;
+      outcome: TerminalState;
+      consecutive: number;
+    }>;
+    notable: Array<{ taskId: string; observation: string }>;
+  };
+  eventPayload?: unknown;
+  activityPacing?: {
+    state: "active" | "quiet" | "sleeping";
+    minutesSinceLastSeen?: number;
+    lastSeenPlatform?: string;
+  };
+  recentConversation?: string[];
 }
 
 export type ScheduledTaskMetadata = Record<string, unknown>;

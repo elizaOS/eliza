@@ -46,6 +46,7 @@ import {
   createTaskGateRegistry,
   getAnchorRegistry,
   getScheduledTaskRunner,
+  hasScheduledDispatchModel,
   installScheduledTaskEventBridge,
   registerAnchorRegistry,
   registerAppLifeOpsAnchors,
@@ -87,6 +88,7 @@ import {
   readScheduledTaskChatDeliveryBinding,
   revalidateScheduledTaskChatDeliveryBinding,
 } from "./delivery-binding.js";
+import { resolveScheduledTaskDispatchContext } from "./dispatch-context.js";
 import { registerModelMomentCheckGate } from "./moment-judge.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
@@ -321,7 +323,13 @@ async function composeOwnerFacingScheduledTaskText(
     }
   }
 
-  return renderScheduledDispatchMessage(runtime, record);
+  const resolvedContext = hasScheduledDispatchModel(runtime)
+    ? await resolveScheduledTaskDispatchContext(runtime, record)
+    : undefined;
+  return renderScheduledDispatchMessage(runtime, {
+    ...record,
+    ...(resolvedContext ? { resolvedContext } : {}),
+  });
 }
 
 const LOCAL_AGENT_BACKUP_OPERATION = "agent.localBackup";

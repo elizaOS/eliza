@@ -135,6 +135,13 @@ async function scheduleApprovalTask(
     escalation: {
       steps: approvalEscalationSteps(runtime, input.channel),
     },
+    output: {
+      destination: "in_app_card",
+      fallback: {
+        title: "Approval needed",
+        body: `${input.reason} Reply "approve ${input.requestId}" or "reject ${input.requestId}".`,
+      },
+    },
     subject: { kind: "self", id: input.subjectUserId },
     idempotencyKey: `approval:${input.requestId}`,
     respectsGlobalPause: false,

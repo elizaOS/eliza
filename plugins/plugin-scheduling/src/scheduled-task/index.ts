@@ -42,10 +42,13 @@ export {
   buildDeterministicDispatchTitle,
   buildScheduledDispatchRenderPrompt,
   buildScheduledDispatchTitlePrompt,
+  hasScheduledDispatchModel,
   RENDER_FAILURE_RETRY_MINUTES,
   renderFailureDispatchResult,
+  renderOwnerNotificationTitle,
   renderScheduledDispatchMessage,
   renderScheduledDispatchTitle,
+  scheduledDispatchPromptTask,
 } from "./dispatch-render.js";
 export {
   expectedReplyKindForTask,
@@ -176,6 +179,7 @@ export type {
   ScheduledTaskPipeline,
   ScheduledTaskPriority,
   ScheduledTaskRef,
+  ScheduledTaskResolvedContext,
   ScheduledTaskRunner,
   ScheduledTaskShouldFire,
   ScheduledTaskSource,

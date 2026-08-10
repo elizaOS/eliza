@@ -70,11 +70,13 @@ function makeRuntime(opts: {
 function inAppRecord(overrides: Record<string, unknown> = {}) {
   return {
     taskId: "st_render_test",
+    kind: "reminder" as const,
     firedAtIso: "2026-07-05T09:00:00.000Z",
     channelKey: "in_app",
     intensity: "normal" as const,
     promptInstructions: INSTRUCTION,
     contextRequest: undefined,
+    ownerVisible: true,
     output: undefined,
     metadata: undefined,
     ...overrides,
@@ -209,7 +211,13 @@ describe("scheduled dispatch renders promptInstructions through the model", () =
     });
     const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
 
-    const result = await dispatcher.dispatch(inAppRecord());
+    const result = await dispatcher.dispatch(
+      inAppRecord({
+        contextRequest: {
+          includeEntities: { entityIds: ["unavailable-on-model-free-host"] },
+        },
+      }),
+    );
 
     expect(result).toMatchObject({ ok: true });
     // The events should contain the deterministic fallback, not the raw instruction
@@ -308,24 +316,30 @@ describe("buildScheduledDispatchRenderPrompt", () => {
   it("embeds the instruction as opaque payload with delivery framing", () => {
     const { runtime } = makeRuntime({});
     const prompt = buildScheduledDispatchRenderPrompt(runtime, {
+      kind: "reminder",
+      channelKey: "in_app",
       promptInstructions: INSTRUCTION,
       intensity: "normal",
       firedAtIso: "2026-07-05T09:00:00.000Z",
     });
     expect(prompt).toContain(INSTRUCTION);
     expect(prompt).toContain("not the message itself");
-    expect(prompt).toContain("Fired at: 2026-07-05T09:00:00.000Z");
+    expect(prompt).toContain('"firedAtIso":"2026-07-05T09:00:00.000Z"');
   });
 
   it("keys urgency framing on the structural intensity field", () => {
     const { runtime } = makeRuntime({});
     const urgent = buildScheduledDispatchRenderPrompt(runtime, {
+      kind: "reminder",
+      channelKey: "in_app",
       promptInstructions: INSTRUCTION,
       intensity: "urgent",
       firedAtIso: "2026-07-05T09:00:00.000Z",
     });
     expect(urgent).toContain("urgent");
     const soft = buildScheduledDispatchRenderPrompt(runtime, {
+      kind: "reminder",
+      channelKey: "in_app",
       promptInstructions: INSTRUCTION,
       intensity: "soft",
       firedAtIso: "2026-07-05T09:00:00.000Z",
