@@ -25,7 +25,7 @@ import { Button } from "@elizaos/ui/components";
 import { type ActivityEvent, useActivityEvents } from "@elizaos/ui/hooks";
 import type { InventoryChainFilters } from "@elizaos/ui/state";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
-import { cn } from "@elizaos/ui/utils";
+import { cn, copyTextToClipboard } from "@elizaos/ui/utils";
 import {
   Activity,
   AlertTriangle,
@@ -1124,10 +1124,17 @@ function WalletRailAddress({
 
   const handleCopy = useCallback(() => {
     if (!address) return;
-    void navigator.clipboard.writeText(address).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    });
+    void copyTextToClipboard(address).then(
+      () => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1200);
+      },
+      () => {
+        // error-policy:J4 clipboard denial (permissions policy, headless
+        // harness) is an expected per-call failure: the control stays in its
+        // visible un-copied state instead of flashing a false "Copied".
+      },
+    );
   }, [address]);
 
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({

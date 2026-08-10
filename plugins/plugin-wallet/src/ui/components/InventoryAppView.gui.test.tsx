@@ -73,6 +73,11 @@ vi.mock("@elizaos/ui", () => ({
   Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement("button", { type: "button", ...props }),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
+  // The real copyTextToClipboard prefers the desktop bridge before the async
+  // Clipboard API; in jsdom there is no bridge, so the mock delegates straight
+  // to navigator.clipboard.writeText, which the copy tests spy on.
+  copyTextToClipboard: (text: string) =>
+    globalThis.navigator.clipboard.writeText(text),
   useActivityEvents: () => appHooks.activityEvents,
   useApp: appHooks.useApp,
   useAppSelector: (selector: (s: Record<string, unknown>) => unknown) =>
