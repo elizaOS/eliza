@@ -9,11 +9,11 @@
  *      server-side (origin header = the agent's own origin, so cloud-api's
  *      origin gate matches what was baked into the token).
  *   3. Cloud-api validates + consumes the token, returns
- *      `{ apiKey: <ELIZA_API_TOKEN> }`.
+ *      `{ apiKey: <ELIZA_API_TOKEN>, agentId: <validated owner> }`.
  *   4. This handler serves an HTML page with an inline script that stores the
- *      apiKey in localStorage + sessionStorage and the typed boot-config
- *      singleton, then redirects to `/`. The SPA consumes the durable handoff
- *      on boot, with sessionStorage retained for same-tab compatibility.
+ *      apiKey under the owner-scoped key in localStorage + sessionStorage and
+ *      the typed boot-config singleton, then redirects to `/`. The SPA consumes
+ *      the durable handoff on boot.
  *
  * Why server-side relay: the agent web UI runs on the docker node's public
  * IP, which is not in cloud-api's CORS allowlist. A direct browser fetch to
@@ -23,6 +23,11 @@
 
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import {
+  type CloudPairRelaySession,
+  cloudPairTokenKeyForAgent,
+  parseCloudPairRelaySession,
+} from "@elizaos/shared/contracts";
 import { getSensitiveLimiter } from "./auth/sensitive-rate-limit";
 
 const RELAY_TIMEOUT_MS = 15_000;
@@ -59,18 +64,15 @@ function resolveRequestOrigin(req: http.IncomingMessage): string {
   return host ? `${proto}://${host}` : "";
 }
 
-interface PairResponse {
-  apiKey?: string | null;
-  agentName?: string;
-  error?: string;
-}
-
-function renderRedirectHtml(apiKey: string): string {
+function renderRedirectHtml(apiKey: string, agentId: string): string {
   // JSON.stringify gives us a JS-string literal that safely escapes quotes,
   // but it does NOT escape `</script>` — which would break us out of the
   // inline script tag. Replace `<` with the `<` escape so any
   // `</script>` payload in a malicious key becomes inert literal text.
   const safeKey = JSON.stringify(apiKey).replace(/</g, "\\u003c");
+  const safeStorageKey = JSON.stringify(
+    cloudPairTokenKeyForAgent(agentId),
+  ).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -97,9 +99,10 @@ function renderRedirectHtml(apiKey: string): string {
     (function () {
       try {
         var key = ${safeKey};
+        var storageKey = ${safeStorageKey};
         function persist(storage) {
           try {
-            storage.setItem("eliza:cloud-pair:api-token", key);
+            storage.setItem(storageKey, key);
             return true;
           } catch (_storageError) {
             return false;
@@ -259,7 +262,7 @@ export async function handleCloudPairRoute(
   }
 
   const exchangeUrl = `${resolveCloudAuthRoot()}/api/auth/pair`;
-  let exchanged: PairResponse | null = null;
+  let exchanged: CloudPairRelaySession | null = null;
   let status = 0;
   try {
     const controller = new AbortController();
@@ -278,7 +281,8 @@ export async function handleCloudPairRoute(
     if (resp.ok) {
       // error-policy:J3 a 2xx with a non-JSON body → null, surfaced as a failed
       // exchange by the null-check that follows.
-      exchanged = (await resp.json().catch(() => null)) as PairResponse | null;
+      const body: unknown = await resp.json().catch(() => null);
+      exchanged = parseCloudPairRelaySession(body);
     } else {
       logger.warn(
         `[cloud-pair] exchange returned non-2xx status=${status} url=${exchangeUrl}`,
@@ -324,13 +328,13 @@ export async function handleCloudPairRoute(
     return true;
   }
 
-  if (!exchanged || typeof exchanged.apiKey !== "string" || !exchanged.apiKey) {
+  if (!exchanged) {
     sendHtml(
       res,
       502,
       renderErrorHtml(
         "Sign-in failed",
-        "Eliza Cloud accepted the link but did not return a key. Try again from the dashboard.",
+        "Eliza Cloud accepted the link but did not return a valid agent session. Try again from the dashboard.",
       ),
     );
     return true;
@@ -339,6 +343,6 @@ export async function handleCloudPairRoute(
   logger.info(
     `[cloud-pair] exchange ok agent=${exchanged.agentName ?? "agent"}`,
   );
-  sendHtml(res, 200, renderRedirectHtml(exchanged.apiKey));
+  sendHtml(res, 200, renderRedirectHtml(exchanged.apiKey, exchanged.agentId));
   return true;
 }
