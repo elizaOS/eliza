@@ -1266,10 +1266,12 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
     const existing = plugins.get(pluginId);
     if (existing) {
       existing.isActive = true;
-      if (
-        existing.enabled !== true &&
-        configEntries[pluginId]?.enabled == null
-      ) {
+      const persistedEnabled = readPluginEntryEnabled(
+        pluginId,
+        existing.npmName ?? pluginName,
+        configEntries,
+      );
+      if (existing.enabled !== true && persistedEnabled === undefined) {
         existing.enabled = true;
       }
       if (!existing.version) {
@@ -1287,9 +1289,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
         "Loaded runtime plugin discovered without manifest metadata.",
       tags: [],
       enabled:
-        typeof configEntries[pluginId]?.enabled === "boolean"
-          ? Boolean(configEntries[pluginId]?.enabled)
-          : true,
+        readPluginEntryEnabled(pluginId, pluginName, configEntries) ?? true,
       configured: true,
       envKey: null,
       category: "feature",

@@ -355,6 +355,43 @@ describe("app plugin compatibility routes", () => {
     expect(drift.plugins[0]?.drift_flags).not.toContain("entries_vs_allowlist");
   });
 
+  it("keeps a canonical disabled entry disabled when the runtime plugin is loaded", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: [],
+        entries: {
+          "google-workspace": { enabled: false },
+        },
+      },
+    };
+    const googleEntry = {
+      id: "google",
+      name: "Google Workspace",
+      npmName: "@elizaos/plugin-google-workspace",
+      description: "",
+      tags: [],
+      kind: "connector",
+      subtype: "email",
+      config: {},
+      render: {},
+      resources: {},
+      version: "1.0.0",
+    };
+    mocks.loadRegistry.mockReturnValue({
+      all: [googleEntry],
+      byId: new Map([["google", googleEntry]]),
+    });
+
+    const response = buildPluginListResponse({
+      plugins: [{ name: "google" }],
+    } as never);
+
+    expect(response.plugins.find((plugin) => plugin.id === "google")).toEqual(
+      expect.objectContaining({ enabled: false, isActive: true }),
+    );
+  });
+
   it("replaces a stale compatibility alias with the canonical package on enable", () => {
     currentConfig = {
       env: {},
