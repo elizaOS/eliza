@@ -388,6 +388,54 @@ describe("app plugin compatibility routes", () => {
     });
   });
 
+  it("canonicalizes legacy app-package identities in both directions", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["log-viewer", "@elizaos/plugin-openai"],
+        entries: {
+          "log-viewer": { enabled: false },
+        },
+      },
+    };
+    const logViewer = makePlugin({
+      id: "log-viewer",
+      name: "Log Viewer",
+      category: "app",
+      npmName: "@elizaos/app-log-viewer",
+      enabled: false,
+    });
+
+    const enabledResult = persistCompatPluginMutation(
+      "log-viewer",
+      { enabled: true },
+      logViewer,
+    );
+
+    expect(enabledResult.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai", "@elizaos/app-log-viewer"],
+      entries: {
+        "app-log-viewer": { enabled: true },
+      },
+    });
+
+    currentConfig = savedConfig ?? {};
+    const disabledResult = persistCompatPluginMutation(
+      "log-viewer",
+      { enabled: false },
+      logViewer,
+    );
+
+    expect(disabledResult.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai"],
+      entries: {
+        "app-log-viewer": { enabled: false },
+      },
+    });
+  });
+
   it("does not mark a plugin active from unrelated loaded-name substrings", () => {
     const discordEntry = {
       id: "discord",

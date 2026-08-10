@@ -104,6 +104,16 @@ async function resolvePluginPackageDir(
   const req = createRequire(import.meta.url);
   const packageNames = pluginPackageNameCandidates(pluginName);
 
+  // In a source checkout, the workspace is authoritative. Bun can otherwise
+  // resolve a scoped package from its global install cache even when that
+  // package is not a dependency of this workspace, serving a stale published
+  // view instead of the bundle under review. Packaged installs have no nearby
+  // workspace root and naturally fall through to normal package resolution.
+  for (const packageName of packageNames) {
+    const workspaceDir = await resolveWorkspacePluginPackageDir(packageName);
+    if (workspaceDir) return workspaceDir;
+  }
+
   for (const packageName of packageNames) {
     // Preferred: resolve the package's own package.json directly. Requires the
     // package to expose "./package.json" in its exports map.
@@ -130,11 +140,6 @@ async function resolvePluginPackageDir(
     } catch {
       // Package is not reachable from this module under this name.
     }
-  }
-
-  for (const packageName of packageNames) {
-    const workspaceDir = await resolveWorkspacePluginPackageDir(packageName);
-    if (workspaceDir) return workspaceDir;
   }
 
   logger.warn(
