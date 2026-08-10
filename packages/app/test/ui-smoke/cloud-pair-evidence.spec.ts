@@ -519,15 +519,13 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
     console.log(`Evidence written to ${OUT_DIR}`);
   });
 
-  test("session-only pairing fallback renders a distinct non-success state", async ({
+  test("an invalid pairing owner fails closed without persisting a bearer", async ({
     page,
     baseURL,
   }) => {
-    // When the pairing exchange succeeds but no owning agent can be resolved
-    // (non-dedicated origin, no dedicated boot apiBase — exactly this bare
-    // localhost shell), the REAL CloudPairRelay must install the bearer for
-    // the live session only and render the visibly distinct session-only
-    // state instead of silently redirecting as a success.
+    // The Cloud exchange owns agent identity. A response that cannot prove an
+    // owner must stay on the relay and surface a visible failure rather than
+    // installing an unscoped bearer for even one page lifetime.
     expect(baseURL, "baseURL required").toBeTruthy();
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).process = {
@@ -563,11 +561,21 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
       root.render(
         react.createElement(relay.CloudPairRelay, {
           token: "pair-token",
-          // Delayed resolve keeps the unchanged pairing resting state visible
+          // Delayed rejection keeps the unchanged pairing resting state visible
           // long enough to capture it as the before-state.
           exchangeFn: () =>
-            new Promise((resolvePair) =>
-              setTimeout(() => resolvePair("agent-key"), 1500),
+            new Promise((_resolvePair, rejectPair) =>
+              setTimeout(
+                () =>
+                  rejectPair(
+                    new relay.CloudPairExchangeError(
+                      "Cloud did not return an agent session.",
+                      502,
+                      "invalid_pairing_response",
+                    ),
+                  ),
+                1500,
+              ),
             ),
           onPaired: () => {
             globals.__evidencePaired = true;
@@ -585,12 +593,10 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
       fullPage: true,
     });
 
-    // After: the distinct session-only state.
-    await expect(
-      page.getByText("Signed in for this session only"),
-    ).toBeVisible();
+    // After: dependency failure is visible and no credential was adopted.
+    await expect(page.getByText("Could not sign in")).toBeVisible();
     await page.screenshot({
-      path: join(OUT_DIR, "5-session-only-fallback.png"),
+      path: join(OUT_DIR, "5-invalid-owner-error.png"),
       fullPage: true,
     });
 
@@ -601,27 +607,16 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
         | undefined;
       return {
         pairedBeforeContinue: globals.__evidencePaired === true,
-        sessionBearerInstalled: bootConfig?.apiToken === "agent-key",
+        sessionBearerInstalled: typeof bootConfig?.apiToken === "string",
         localStorageLength: window.localStorage.length,
         sessionStorageLength: window.sessionStorage.length,
       };
     });
 
-    // Bearer live in-memory, nothing persisted, no silent auto-redirect.
+    // No bearer exists in memory or storage, and no silent redirect occurred.
     expect(state.pairedBeforeContinue).toBe(false);
-    expect(state.sessionBearerInstalled).toBe(true);
+    expect(state.sessionBearerInstalled).toBe(false);
     expect(state.localStorageLength).toBe(0);
     expect(state.sessionStorageLength).toBe(0);
-
-    // The explicit continue hands off to onPaired.
-    await page.getByRole("button", { name: "Continue to your agent" }).click();
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            (globalThis as Record<string, unknown>).__evidencePaired === true,
-        ),
-      )
-      .toBe(true);
   });
 });
