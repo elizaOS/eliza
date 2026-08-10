@@ -1,16 +1,20 @@
 /**
- * Permission Manager for Electrobun
- *
- * Permission checking across macOS, Windows, and Linux.
- * Shared implementation ported forward to Electrobun; no runtime-specific APIs required.
+ * Owns desktop permission checks, requests, caching, and operating-system
+ * Settings handoffs for the Electrobun shell. Native permission probers supply
+ * authoritative OS state while Bun process launches bridge recovery actions.
  */
 
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { ElizaError } from "@elizaos/core";
 import { getMacPermissionDeepLink } from "@elizaos/shared";
 import type { SendToWebview } from "../types.js";
 import { resolveRuntimeDistPath } from "./agent";
+import {
+  checkNotificationPermission as checkNativeNotificationPermission,
+  requestNotificationPermission as requestNativeNotificationPermission,
+} from "./mac-window-effects";
 import type {
   AllPermissionsState,
   PermissionState,
@@ -23,6 +27,8 @@ import {
 
 const platform = process.platform as "darwin" | "win32" | "linux";
 const DEFAULT_CACHE_TIMEOUT_MS = 30000;
+const NOTIFICATION_AUTHORIZATION_POLL_INTERVAL_MS = 250;
+const NATIVE_NOTIFICATION_QUERY_PENDING = -2;
 
 interface DesktopPermissionProber {
   id: SystemPermissionId;
@@ -137,25 +143,131 @@ function buildPermissionState(
   };
 }
 
-async function spawnDetached(argv: string[]): Promise<void> {
-  try {
-    const proc = Bun.spawn(argv, {
-      stdout: "ignore",
-      stderr: "ignore",
+function nativeNotificationBridgeUnavailable(): ElizaError {
+  return new ElizaError("macOS notification permission bridge is unavailable", {
+    code: "NOTIFICATION_NATIVE_BRIDGE_UNAVAILABLE",
+    severity: "fatal",
+  });
+}
+
+function notificationStateFromNativeStatus(
+  status: number | null,
+  lastRequested?: number,
+): PermissionState {
+  if (status === null) throw nativeNotificationBridgeUnavailable();
+  if (status < 0) {
+    throw new ElizaError(
+      "macOS rejected the notification authorization request",
+      {
+        code: "NOTIFICATION_AUTHORIZATION_FAILED",
+        context: { nativeStatus: status },
+        severity: "fatal",
+      },
+    );
+  }
+  const mapped =
+    status === 2
+      ? "granted"
+      : status === 1
+        ? "denied"
+        : status === 3
+          ? "restricted"
+          : "not-determined";
+  return buildPermissionState("notifications", mapped, {
+    canRequest: mapped === "not-determined",
+    lastRequested,
+    restrictedReason: mapped === "restricted" ? "os_policy" : undefined,
+  });
+}
+
+async function checkMacNotificationPermission(): Promise<PermissionState> {
+  let status = checkNativeNotificationPermission();
+  if (status === null) throw nativeNotificationBridgeUnavailable();
+  while (status === NATIVE_NOTIFICATION_QUERY_PENDING) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, NOTIFICATION_AUTHORIZATION_POLL_INTERVAL_MS),
+    );
+    status = checkNativeNotificationPermission();
+    if (status === null) throw nativeNotificationBridgeUnavailable();
+  }
+  return notificationStateFromNativeStatus(status);
+}
+
+async function requestMacNotificationPermission(): Promise<PermissionState> {
+  const lastRequested = Date.now();
+  let status = requestNativeNotificationPermission();
+  if (status === null) throw nativeNotificationBridgeUnavailable();
+  while (status === 0 || status === NATIVE_NOTIFICATION_QUERY_PENDING) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, NOTIFICATION_AUTHORIZATION_POLL_INTERVAL_MS),
+    );
+    status = checkNativeNotificationPermission();
+    if (status === null) throw nativeNotificationBridgeUnavailable();
+  }
+  return notificationStateFromNativeStatus(status, lastRequested);
+}
+
+const LEGACY_MAC_NOTIFICATIONS_DEEP_LINK =
+  "x-apple.systempreferences:com.apple.preference.notifications";
+
+interface SettingsCommandProcess {
+  exited: Promise<number>;
+  stderr: ReadableStream<Uint8Array>;
+}
+
+type SettingsCommandSpawner = (
+  argv: string[],
+  options: { stdout: "ignore"; stderr: "pipe" },
+) => SettingsCommandProcess;
+
+function spawnSettingsCommand(
+  command: string[],
+  options: { stdout: "ignore"; stderr: "pipe" },
+): SettingsCommandProcess {
+  const proc = Bun.spawn(command, options);
+  if (proc.stderr === undefined || typeof proc.stderr === "number") {
+    throw new ElizaError("Settings command stderr pipe was not created", {
+      code: "PERMISSION_SETTINGS_PROCESS_INVALID",
+      context: { argv: command },
+      severity: "fatal",
     });
-    if (typeof proc.unref === "function") proc.unref();
-  } catch {
-    // Opening settings is best-effort.
+  }
+  return { exited: proc.exited, stderr: proc.stderr };
+}
+
+export async function runSettingsCommand(
+  argv: string[],
+  spawnCommand: SettingsCommandSpawner = spawnSettingsCommand,
+): Promise<void> {
+  const proc = spawnCommand(argv, {
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  const [exitCode, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stderr).text(),
+  ]);
+  if (exitCode !== 0) {
+    const detail = stderr.trim().slice(0, 512);
+    throw new ElizaError(
+      `Settings command exited ${exitCode}${detail ? `: ${detail}` : ""}`,
+      {
+        code: "PERMISSION_SETTINGS_COMMAND_FAILED",
+        context: { argv, exitCode, stderr: detail },
+        severity: "ephemeral",
+      },
+    );
   }
 }
 
-async function openPermissionSettings(id: SystemPermissionId): Promise<void> {
-  if (platform === "darwin") {
-    await spawnDetached(["open", getMacPermissionDeepLink(id)]);
-    return;
+export function buildPermissionSettingsCommand(
+  id: SystemPermissionId,
+  targetPlatform: typeof platform = platform,
+): string[] | null {
+  if (targetPlatform === "darwin") {
+    return ["open", getMacPermissionDeepLink(id)];
   }
-
-  if (platform === "win32") {
+  if (targetPlatform === "win32") {
     const settingsMap: Partial<Record<SystemPermissionId, string>> = {
       microphone: "ms-settings:privacy-microphone",
       camera: "ms-settings:privacy-webcam",
@@ -163,21 +275,56 @@ async function openPermissionSettings(id: SystemPermissionId): Promise<void> {
       notifications: "ms-settings:notifications",
     };
     const uri = settingsMap[id];
-    if (uri) await spawnDetached(["cmd", "/c", "start", "", uri]);
+    return uri ? ["cmd", "/c", "start", "", uri] : null;
+  }
+
+  const settingsMap: Partial<Record<SystemPermissionId, string>> = {
+    microphone: "privacy",
+    camera: "privacy",
+    location: "privacy",
+    notifications: "notifications",
+  };
+  const panel = settingsMap[id];
+  if (!panel) return null;
+  // gnome-control-center stays foreground for the lifetime of its window. A
+  // short-lived shell performs the launch handoff so the desktop RPC resolves
+  // once Settings starts rather than when the user eventually closes it.
+  return [
+    "sh",
+    "-lc",
+    'command -v gnome-control-center >/dev/null || exit 127; nohup gnome-control-center "$1" >/dev/null 2>&1 &',
+    "eliza-settings",
+    panel,
+  ];
+}
+
+async function openPermissionSettings(id: SystemPermissionId): Promise<void> {
+  if (platform === "darwin") {
+    try {
+      const command = buildPermissionSettingsCommand(id, platform);
+      if (command) await runSettingsCommand(command);
+    } catch (cause) {
+      // error-policy:J4 older macOS releases retain the legacy Notifications
+      // pane, so failure of the current pane URI has one explicit fallback.
+      if (id !== "notifications") throw cause;
+      try {
+        await runSettingsCommand(["open", LEGACY_MAC_NOTIFICATIONS_DEEP_LINK]);
+      } catch (fallbackCause) {
+        // error-policy:J4 the desktop RPC surfaces both failed OS handoffs to
+        // the recovery UI instead of presenting a successful no-op.
+        throw new ElizaError("Could not open macOS notification settings.", {
+          code: "PERMISSION_SETTINGS_OPEN_FAILED",
+          cause: new AggregateError([cause, fallbackCause]),
+          context: { permissionId: id },
+          severity: "ephemeral",
+        });
+      }
+    }
     return;
   }
 
-  if (platform === "linux") {
-    const settingsMap: Partial<Record<SystemPermissionId, string>> = {
-      microphone: "privacy",
-      camera: "privacy",
-      location: "privacy",
-      notifications: "notifications",
-    };
-    const panel = settingsMap[id];
-    if (panel)
-      await spawnDetached(["sh", "-lc", `gnome-control-center ${panel}`]);
-  }
+  const command = buildPermissionSettingsCommand(id, platform);
+  if (command) await runSettingsCommand(command);
 }
 
 export class PermissionManager {
@@ -237,6 +384,12 @@ export class PermissionManager {
       if (cached) return cached;
     }
 
+    if (id === "notifications" && platform === "darwin") {
+      const state = await checkMacNotificationPermission();
+      this.cache.set(id, state);
+      return state;
+    }
+
     const prober = (await getProbersById()).get(id);
     const state =
       prober !== undefined
@@ -280,6 +433,13 @@ export class PermissionManager {
         },
       );
       this.cache.set(id, state);
+      return state;
+    }
+
+    if (id === "notifications" && platform === "darwin") {
+      const state = await requestMacNotificationPermission();
+      this.cache.set(id, state);
+      this.sendToWebview?.("permissionsChanged", { id });
       return state;
     }
 
