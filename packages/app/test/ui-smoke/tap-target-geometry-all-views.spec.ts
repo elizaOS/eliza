@@ -72,10 +72,20 @@ const DOCUMENTED_EXCEPTIONS: Record<
   ReadonlyArray<{ match: RegExp; reason: string }>
 > = {};
 
-const DOCUMENTED_ZERO_CONTROL_VIEWS: Record<string, string> = {
-  "pendant-transcript":
-    "Designed disconnected pendant transcript state has no standalone controls when no pendant session is paired.",
-};
+async function isAllowedZeroControlState(
+  page: Page,
+  view: string,
+): Promise<boolean> {
+  if (view !== "pendant-transcript") return false;
+  // The pendant transcript route is a passive realtime feed. On CI hosts with
+  // no Web Bluetooth/native BLE bridge it intentionally hides Connect, leaving
+  // only static unsupported-state copy; the tap-target gate should not turn
+  // that platform fact into a fake geometry failure.
+  return page
+    .getByText("Bluetooth pendant is not available in this environment.")
+    .isVisible()
+    .catch(() => false);
+}
 
 /**
  * Collect, classify, and (in-page) exception-filter every interactive control
@@ -462,27 +472,30 @@ test.describe("tap-target rendered-geometry + role/DOM coherence gate", () => {
       // chunks. Poll the rendered controls so the gate measures the mounted
       // view instead of treating its transient loading frame as an empty page.
       let records: ControlRecord[] = [];
+      let allowZeroControls = false;
       await expect
         .poll(
           async () => {
             records = await collectControls(page, view.id);
-            return records.length;
+            if (records.length > 0) return records.length;
+            allowZeroControls = await isAllowedZeroControlState(page, view.id);
+            return allowZeroControls ? 1 : 0;
           },
           {
             message: `${view.id}: wait for an interactive control before measuring tap geometry`,
             timeout: 60_000,
           },
         )
-        .toBeGreaterThan(DOCUMENTED_ZERO_CONTROL_VIEWS[view.id] ? -1 : 0);
-      allRecords.push(...records);
-
-      if (DOCUMENTED_ZERO_CONTROL_VIEWS[view.id] && records.length === 0) {
+        .toBeGreaterThan(0);
+      if (records.length === 0 && allowZeroControls) {
         test.info().annotations.push({
-          type: "documented-zero-control-view",
-          description: DOCUMENTED_ZERO_CONTROL_VIEWS[view.id],
+          type: "tap-target-zero-control",
+          description:
+            "Bluetooth unsupported pendant transcript state has no standalone controls to measure.",
         });
         return;
       }
+      allRecords.push(...records);
 
       expect(
         records.length,
