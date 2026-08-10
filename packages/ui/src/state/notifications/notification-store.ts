@@ -68,9 +68,20 @@ const listeners = new Set<() => void>();
 const ephemeralNotificationIds = new Set<string>();
 let initialized = false;
 const HYDRATION_MAX_ATTEMPTS = 5;
+/**
+ * Separate, larger retry budget for the server's explicit
+ * `NOTIFICATION_SERVICE_NOT_READY` readiness signal (#18328). A slow agent cold
+ * start can keep the notification service warming for 10–20s; the generic
+ * 5-attempt budget (~8s) exhausts before the service is ready and renders a
+ * false "Notifications unavailable" failure. Readiness retries honor the
+ * server's `Retry-After` hint (1s) so 30 attempts ≈ 30s of cold-start tolerance
+ * — bounded, not indefinite.
+ */
+const HYDRATION_READINESS_MAX_ATTEMPTS = 30;
 const HYDRATION_BASE_DELAY_MS = 500;
 const HYDRATION_MAX_DELAY_MS = 30_000;
 const HYDRATION_JITTER_RATIO = 0.2;
+const NOTIFICATION_SERVICE_NOT_READY_CODE = "NOTIFICATION_SERVICE_NOT_READY";
 let hydrationInFlight: Promise<void> | null = null;
 let hydrationRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let hydrationGeneration = 0;
@@ -368,6 +379,33 @@ function isRetryableHydrationError(error: unknown): boolean {
   );
 }
 
+/**
+ * The server's explicit, transient "service still starting" signal (#18328).
+ * Unlike a generic 5xx, this is the notification route's designed cold-start
+ * boundary (`503` + `Retry-After`), not a terminal backend outage. It deserves a
+ * larger retry budget so a slow agent cold start doesn't exhaust hydration and
+ * surface a false "Notifications unavailable".
+ */
+function isNotificationServiceNotReady(error: unknown): boolean {
+  return (
+    isApiError(error) &&
+    error.kind === "http" &&
+    error.status === 503 &&
+    error.code === NOTIFICATION_SERVICE_NOT_READY_CODE
+  );
+}
+
+/**
+ * Cap for a given error: the readiness signal gets the larger cold-start
+ * budget; every other retryable error keeps the generic 5-attempt ceiling so
+ * genuine transport/auth/parse failures still surface observably.
+ */
+function hydrationMaxAttempts(error: unknown): number {
+  return isNotificationServiceNotReady(error)
+    ? HYDRATION_READINESS_MAX_ATTEMPTS
+    : HYDRATION_MAX_ATTEMPTS;
+}
+
 function hydrationRetryDelayMs(error: unknown, attempt: number): number {
   const exponential = Math.min(
     HYDRATION_MAX_DELAY_MS,
@@ -427,8 +465,8 @@ async function runHydrationAttempt(generation: number): Promise<void> {
     // live subscription active while surfacing terminal failure in store state.
     if (generation !== hydrationGeneration) return;
     const message = hydrationErrorMessage(err);
-    const retryable =
-      isRetryableHydrationError(err) && attempt < HYDRATION_MAX_ATTEMPTS;
+    const maxAttempts = hydrationMaxAttempts(err);
+    const retryable = isRetryableHydrationError(err) && attempt < maxAttempts;
     if (!retryable) {
       logger.error(
         { err, attempt, retryable: isRetryableHydrationError(err) },

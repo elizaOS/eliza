@@ -62,6 +62,7 @@ import {
   markNotificationRead,
   removeNotification,
   removeNotifications,
+  retryNotificationHydration,
   seedDevNotificationsIfEmpty,
 } from "./notification-store";
 
@@ -356,6 +357,146 @@ describe("notification-store", () => {
       hydrationStatus: "ready",
       hydrationAttempts: 1,
       hydrationError: null,
+    });
+  });
+
+  it("survives a long NOTIFICATION_SERVICE_NOT_READY cold start past the generic budget (#18328)", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const readinessError = new ApiError({
+      kind: "http",
+      path: "/api/notifications",
+      status: 503,
+      code: "NOTIFICATION_SERVICE_NOT_READY",
+      retryAfter: 1,
+      message: "Notification service is still starting",
+    });
+    // Server stays not-ready longer than the generic 5-attempt budget.
+    listNotifications.mockRejectedValueOnce(readinessError);
+    listNotifications.mockRejectedValueOnce(readinessError);
+    listNotifications.mockRejectedValueOnce(readinessError);
+    listNotifications.mockRejectedValueOnce(readinessError);
+    listNotifications.mockRejectedValueOnce(readinessError);
+    listNotifications.mockRejectedValueOnce(readinessError);
+    // The 7th attempt — well past the generic ceiling — finally succeeds.
+    listNotifications.mockResolvedValueOnce({
+      notifications: [makeNotification({ id: "cold-start" })],
+      unreadCount: 1,
+      serviceStatus: "ready",
+    });
+
+    initNotifications();
+    await flushDelivery();
+    // Drain 6 not-ready attempts (the generic budget would have failed here).
+    for (let attempt = 1; attempt < 7; attempt += 1) {
+      await vi.runOnlyPendingTimersAsync();
+      await flushDelivery();
+    }
+
+    const recovered = __getStateForTests();
+    expect(recovered.hydrationStatus).toBe("ready");
+    expect(recovered.hydrationError).toBeNull();
+    expect(recovered.notifications.map((n) => n.id)).toEqual(["cold-start"]);
+    expect(listNotifications).toHaveBeenCalledTimes(7);
+  });
+
+  it("enters terminal failure only after the readiness budget is exhausted (#18328)", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    listNotifications.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/notifications",
+        status: 503,
+        code: "NOTIFICATION_SERVICE_NOT_READY",
+        retryAfter: 1,
+        message: "Notification service is still starting",
+      }),
+    );
+
+    initNotifications();
+    await flushDelivery();
+    // Exhaust the 30-attempt readiness budget.
+    for (let attempt = 1; attempt < 30; attempt += 1) {
+      await vi.runOnlyPendingTimersAsync();
+      await flushDelivery();
+    }
+
+    expect(listNotifications).toHaveBeenCalledTimes(30);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: false,
+      hydrationStatus: "failed",
+      hydrationAttempts: 30,
+    });
+  });
+
+  it("manual Retry resets the readiness recovery budget after terminal failure (#18328)", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    listNotifications.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/notifications",
+        status: 503,
+        code: "NOTIFICATION_SERVICE_NOT_READY",
+        retryAfter: 1,
+        message: "Notification service is still starting",
+      }),
+    );
+
+    initNotifications();
+    await flushDelivery();
+    for (let attempt = 1; attempt < 30; attempt += 1) {
+      await vi.runOnlyPendingTimersAsync();
+      await flushDelivery();
+    }
+    expect(__getStateForTests().hydrationStatus).toBe("failed");
+    expect(listNotifications).toHaveBeenCalledTimes(30);
+
+    // Manual Retry — the service is now ready and the budget is reset.
+    listNotifications.mockResolvedValueOnce({
+      notifications: [makeNotification({ id: "after-retry" })],
+      unreadCount: 1,
+      serviceStatus: "ready",
+    });
+    await retryNotificationHydration();
+    await flushDelivery();
+
+    const recovered = __getStateForTests();
+    expect(recovered.hydrationStatus).toBe("ready");
+    expect(recovered.hydrationAttempts).toBe(1);
+    expect(recovered.notifications.map((n) => n.id)).toEqual(["after-retry"]);
+  });
+
+  it("non-readiness 5xx still enters terminal failure at the generic budget (#18328)", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    // A generic 503 (no readiness code) is NOT the cold-start signal and must
+    // fail at the generic 5-attempt ceiling, not the enlarged readiness budget.
+    listNotifications.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/notifications",
+        status: 503,
+        code: "NOTIFICATION_SERVICE_FAILED",
+        retryAfter: 1,
+        message: "Notification inbox is temporarily unavailable",
+      }),
+    );
+
+    initNotifications();
+    await flushDelivery();
+    for (let attempt = 1; attempt < 5; attempt += 1) {
+      await vi.runOnlyPendingTimersAsync();
+      await flushDelivery();
+    }
+
+    expect(listNotifications).toHaveBeenCalledTimes(5);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: false,
+      hydrationStatus: "failed",
+      hydrationAttempts: 5,
     });
   });
 
