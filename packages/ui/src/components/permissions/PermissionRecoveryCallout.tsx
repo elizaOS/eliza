@@ -1,9 +1,9 @@
 /**
- * Alert callout shown when a permission is denied — offers Retry (`onRetry`) and
- * an "Open Settings" affordance that deep-links to the OS permission screen.
- * Routes to the native mobile deep-link on Capacitor (non-Electrobun) and the
- * shared web/desktop deep-link elsewhere. Consumed by the permission-priming
- * modal and permission settings rows.
+ * Presents recoverable permission denials, request failures, and refresh
+ * failures with Retry and an OS Settings handoff.
+ * A caller-supplied opener takes precedence so desktop controllers can cross
+ * their native RPC boundary; otherwise Capacitor uses its native plugin and
+ * web-flavored surfaces use the shared platform deep-link.
  */
 import { Capacitor } from "@capacitor/core";
 import type { PermissionId } from "@elizaos/shared/contracts/permissions";
@@ -20,6 +20,7 @@ export interface PermissionRecoveryCalloutProps {
   description: string;
   retryLabel?: string;
   settingsLabel?: string;
+  onOpenSettings?: () => void | Promise<void>;
   onRetry?: () => void | Promise<void>;
   className?: string;
   testId?: string;
@@ -41,21 +42,30 @@ export function PermissionRecoveryCallout({
   description,
   retryLabel = "Try again",
   settingsLabel = "Open Settings",
+  onOpenSettings,
   onRetry,
   className,
   testId = "permission-recovery-callout",
 }: PermissionRecoveryCalloutProps): React.JSX.Element {
   const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
   const handleOpenSettings = async () => {
     setOpening(true);
+    setOpenError(false);
     try {
-      if (isNativeMobileRuntime()) {
+      if (onOpenSettings) {
+        await onOpenSettings();
+      } else if (isNativeMobileRuntime()) {
         await openMobilePermissionSettings(permission);
       } else {
         await openPermissionSettings(permission);
       }
+    } catch {
+      // error-policy:J4 a failed OS handoff stays visible so recovery never
+      // looks successful when System Settings did not open.
+      setOpenError(true);
     } finally {
       setOpening(false);
     }
@@ -82,6 +92,15 @@ export function PermissionRecoveryCallout({
     >
       <div className="text-sm font-semibold text-txt-strong">{title}</div>
       <p className="mt-1 text-sm leading-snug text-txt">{description}</p>
+      {openError ? (
+        <p
+          className="mt-2 text-sm leading-snug text-danger"
+          data-testid={`${testId}-settings-error`}
+        >
+          Couldn&apos;t open Settings. Open System Settings manually, then
+          re-check.
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           type="button"

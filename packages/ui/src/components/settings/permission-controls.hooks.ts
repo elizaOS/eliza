@@ -20,6 +20,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "../../bridge";
+import { isRendererPermissionAuthoritative } from "../../platform/desktop-permissions-client";
 import { SETTINGS_REFRESH_DELAYS_MS } from "./permission-types";
 
 // ---------------------------------------------------------------------------
@@ -229,9 +230,10 @@ export interface DesktopPermissionsSnapshot {
   permissions: AllPermissionsState;
   platform: string;
   shellEnabled: boolean;
+  nativeBridgeAvailable: boolean;
 }
 
-async function reconcileRendererMediaPermissions(
+export async function reconcileRendererMediaPermissions(
   snapshot: DesktopPermissionsSnapshot,
 ): Promise<DesktopPermissionsSnapshot> {
   let nextPermissions = snapshot.permissions;
@@ -240,6 +242,15 @@ async function reconcileRendererMediaPermissions(
   for (const id of RENDERER_PERMISSION_IDS) {
     const current = snapshot.permissions[id];
     if (!current || current.status === "restricted") {
+      continue;
+    }
+    if (
+      !isRendererPermissionAuthoritative(
+        id,
+        current.platform,
+        snapshot.nativeBridgeAvailable,
+      )
+    ) {
       continue;
     }
 
@@ -376,6 +387,10 @@ export function useDesktopPermissionsState() {
         permissions,
         platform: bridgedPlatform ?? "unknown",
         shellEnabled,
+        nativeBridgeAvailable:
+          bridgedPermissions !== null ||
+          bridgedShellEnabled !== null ||
+          bridgedPlatform !== null,
       };
       const runtimeMergedSnapshot =
         await mergeRuntimePermissionsIntoSnapshot(snapshot);
@@ -515,7 +530,15 @@ export function useDesktopPermissionsState() {
           ipcChannel: "permissions:request",
           params: { id },
         });
-        if (isRendererPermissionId(id)) {
+        if (
+          isRendererPermissionId(id) &&
+          isRendererPermissionAuthoritative(
+            id,
+            bridged?.platform ??
+              (platform as PermissionState["platform"] | undefined),
+            bridged !== null,
+          )
+        ) {
           const rendererStatus = await requestRendererPermission(id);
           if (!rendererStatus && bridged === null) {
             await client.requestPermission(id);
@@ -537,7 +560,7 @@ export function useDesktopPermissionsState() {
         );
       }
     },
-    [replaceSnapshot, scheduleSettingsRefreshes],
+    [platform, replaceSnapshot, scheduleSettingsRefreshes],
   );
 
   const handleOpenSettings = useCallback(

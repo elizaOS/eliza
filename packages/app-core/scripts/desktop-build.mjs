@@ -1639,8 +1639,12 @@ function packageDesktopBuild() {
 
   if (
     process.platform === "darwin" &&
-    packageEnv.ELECTROBUN_SKIP_CODESIGN === "1"
+    packageEnv.ELECTROBUN_SKIP_CODESIGN === "1" &&
+    (buildEnv || "dev") !== "dev"
   ) {
+    // Dev bundles are signed by Electrobun's postPackage hook before the app
+    // launches. Keep this outer repair only for unsigned release-style builds
+    // whose hook deliberately declines the dev-only identity.
     const appBundlePath = findLatestMacAppBundle();
     runBun(["scripts/local-adhoc-sign-macos.ts", appBundlePath], {
       cwd: ELECTROBUN_DIR,
