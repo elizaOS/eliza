@@ -26,7 +26,6 @@ import {
   type GroupedSettingsSections,
   getAllSettingsSections,
   groupSettingsSections,
-  openConnectorsIndexHash,
   parseSettingsHash,
   readSettingsHashRoute,
   readSettingsHashSection,
@@ -284,9 +283,12 @@ export function SettingsView({
         connectorId: connectorId === "twitter" ? "x" : connectorId,
       });
     } else {
+      // Index case: the path alone identifies the section — writing
+      // `#connectors` here would leave `/connectors#connectors` in the URL bar
+      // and break canonical-URL expectations. React state carries the section.
       setActiveSection("connectors");
-      openConnectorsIndexHash();
       setSettingsRoute({ kind: "section", sectionId: "connectors" });
+      return;
     }
     window.dispatchEvent(new Event("popstate"));
   }, []);

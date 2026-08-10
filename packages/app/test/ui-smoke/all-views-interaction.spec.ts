@@ -481,7 +481,10 @@ async function observeClickOutcome(
 ): Promise<SemanticResult> {
   let after = await snapshotControl(page, control, apiRequestCount());
   let delta = semanticDelta(before, after);
-  for (const delayMs of [100, 250, 500]) {
+  // The ladder ends well above one second: on a loaded CI runner a state
+  // commit + re-render (e.g. sidebar collapse) can land after the first few
+  // probes even though the interaction is perfectly healthy.
+  for (const delayMs of [100, 250, 500, 1000, 2000]) {
     if (delta) {
       return {
         kind: "observed",

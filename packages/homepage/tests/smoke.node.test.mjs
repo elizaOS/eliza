@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = resolve(__dirname, "../package.json");
+const indexHtmlPath = resolve(__dirname, "../index.html");
 const pruneAssetsPath = resolve(
   __dirname,
   "../scripts/prune-unused-static-assets.mjs",
@@ -108,6 +109,31 @@ test("large visual assets receive a durable browser cache policy", () => {
       ),
     );
   }
+});
+
+test("preloaded image declares the MIME type of the referenced asset", () => {
+  const indexHtml = readFileSync(indexHtmlPath, "utf8");
+  const preloadTag = indexHtml.match(/<link(?=[^>]*rel="preload")[^>]*>/)?.[0];
+
+  assert.ok(preloadTag, "expected an image preload tag");
+  assert.match(preloadTag, /href="\/eliza-logo\.webp"/);
+  assert.match(preloadTag, /type="image\/webp"/);
+  assert.doesNotMatch(preloadTag, /favicon\.svg/);
+});
+
+test("built asset URLs include a deployment-specific cache revision", () => {
+  const viteConfig = readFileSync(viteConfigPath, "utf8");
+
+  assert.match(viteConfig, /process\.env\.GITHUB_SHA/);
+  assert.match(viteConfig, /process\.env\.CF_PAGES_COMMIT_SHA/);
+  assert.match(
+    viteConfig,
+    /entryFileNames: `assets\/\[name\]-\[hash\]-\$\{homepageBuildRevision\}\.js`/,
+  );
+  assert.match(
+    viteConfig,
+    /chunkFileNames: `assets\/\[name\]-\[hash\]-\$\{homepageBuildRevision\}\.js`/,
+  );
 });
 
 test("reduced-motion keeps functional loading indicators animated", () => {

@@ -291,6 +291,28 @@ describe("ElizaClient websocket connection policy", () => {
     expect(client.getConnectionState().state).toBe("connected");
   });
 
+  it("treats a control-plane host base as connected without opening a websocket (#18172)", () => {
+    const instances = stubWebSocketWithInstances();
+    // staging console — the alias Worker routes only /api*//steward* and
+    // strips Connection/Upgrade, so /ws can never upgrade; dialing it burned
+    // 15 reconnects and raised the fatal overlay over a working REST backend.
+    const client = new ElizaClient(
+      "https://staging.elizacloud.ai",
+      "cloud-token",
+    );
+    client.connectWs();
+    expect(instances).toHaveLength(0);
+    expect(client.getConnectionState().state).toBe("connected");
+  });
+
+  it("covers production control-plane hosts too, not just staging", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://app.elizacloud.ai", "cloud-token");
+    client.connectWs();
+    expect(instances).toHaveLength(0);
+    expect(client.getConnectionState().state).toBe("connected");
+  });
+
   it("still goes failed for a non-cloud agent base after WS exhaustion (overlay preserved)", () => {
     vi.useFakeTimers();
     try {

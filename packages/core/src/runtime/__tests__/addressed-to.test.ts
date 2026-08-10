@@ -184,4 +184,23 @@ describe("messageAddressedToOtherParticipant (#9874 — uniform addressing gate)
 			}),
 		).toBe(false);
 	});
+
+	it("propagates a room-lookup failure so the caller's fail-open catch owns it (J4 contract)", async () => {
+		// The helper itself does NOT swallow resolution errors: the message
+		// service wraps the call in a fail-open catch (a DB hiccup means "don't
+		// suppress", never a silenced turn). Keeping the rejection visible here
+		// is what makes that caller-side contract testable.
+		const runtime = makeRuntime({
+			getEntitiesForRoom: vi.fn(async () => {
+				throw new Error("room lookup down");
+			}),
+		} as unknown as Partial<IAgentRuntime>);
+		await expect(
+			messageAddressedToOtherParticipant({
+				runtime,
+				message: makeMessage(),
+				addressedTo: ["Alice"],
+			}),
+		).rejects.toThrow("room lookup down");
+	});
 });

@@ -1,5 +1,6 @@
 // Persists api keys records for cloud services through the shared DB boundary.
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys, type NewApiKey } from "../schemas/api-keys";
 
@@ -10,6 +11,17 @@ export type { ApiKey, NewApiKey };
  *
  * Read operations → dbRead (read-intent connection)
  * Write operations → dbWrite (primary)
+ *
+ * The agent-provisioning writes (`create`, `deleteByName`) additionally accept
+ * the caller's open `DbTransaction`. A caller that already holds a primary
+ * connection MUST pass it: reaching for the global `dbWrite` pool from inside
+ * an open transaction asks for a SECOND connection while the first is still
+ * checked out. In the Cloudflare Worker runtime the pool is sized `max: 1`
+ * (`db/client.ts` `createPgPool`), so that second checkout can never be
+ * satisfied — the request deadlocks against itself and fails at
+ * `connectionTimeoutMillis`, every time, with no concurrency involved.
+ * Passing the transaction also makes the write part of the caller's atomic
+ * unit rather than an independently committed side effect.
  */
 export class ApiKeysRepository {
   // ============================================================================
@@ -114,10 +126,11 @@ export class ApiKeysRepository {
   // ============================================================================
 
   /**
-   * Creates a new API key.
+   * Creates a new API key. Runs on `tx` when the caller already holds a
+   * primary connection.
    */
-  async create(data: NewApiKey): Promise<ApiKey> {
-    const [apiKey] = await dbWrite.insert(apiKeys).values(data).returning();
+  async create(data: NewApiKey, tx?: DbTransaction): Promise<ApiKey> {
+    const [apiKey] = await (tx ?? dbWrite).insert(apiKeys).values(data).returning();
     return apiKey;
   }
 
@@ -169,8 +182,68 @@ export class ApiKeysRepository {
       .where(and(eq(apiKeys.user_id, userId), eq(apiKeys.name, name), eq(apiKeys.is_active, true)));
   }
 
-  async deleteByName(name: string): Promise<ApiKey[]> {
-    return await dbWrite.delete(apiKeys).where(eq(apiKeys.name, name)).returning();
+  /**
+   * Deletes every key carrying `name` and returns the removed rows. Runs on
+   * `tx` when the caller already holds a primary connection.
+   */
+  async deleteByName(name: string, tx?: DbTransaction): Promise<ApiKey[]> {
+    return await (tx ?? dbWrite).delete(apiKeys).where(eq(apiKeys.name, name)).returning();
+  }
+
+  /**
+   * Deactivates every key carrying `name` — already-inactive rows included —
+   * and returns them all. The agent-rotation revoke path uses this instead of
+   * a DELETE so the row itself is the durable record of a hash whose cache
+   * invalidation has not yet been confirmed: an inactive row cannot
+   * authenticate from the database, and a later rotation re-collects it by
+   * name and re-offers its hash for confirmed invalidation. Runs on `tx` when
+   * the caller already holds a primary connection.
+   */
+  async deactivateByNameReturningAll(name: string, tx?: DbTransaction): Promise<ApiKey[]> {
+    return await (tx ?? dbWrite)
+      .update(apiKeys)
+      .set({ is_active: false, updated_at: new Date() })
+      .where(eq(apiKeys.name, name))
+      .returning();
+  }
+
+  /**
+   * Rows previously parked inactive by {@link deactivateByNameReturningAll}
+   * whose cache invalidation was never confirmed. Read post-commit by the
+   * launch boundaries so every attempt — including one that re-uses a
+   * persisted key and never re-mints — rediscovers outstanding carriers.
+   */
+  async findInactiveByName(name: string): Promise<ApiKey[]> {
+    return await dbRead.query.apiKeys.findMany({
+      where: and(eq(apiKeys.name, name), eq(apiKeys.is_active, false)),
+    });
+  }
+
+  /**
+   * Hard-deletes parked carriers whose cache invalidation has since been
+   * CONFIRMED — and ONLY those. Scoping by exact hash (not just name) matters
+   * under overlapping rotations: the lifecycle advisory lock releases at
+   * COMMIT, so one attempt's delayed purge must never reap a carrier a newer
+   * attempt has parked but not yet confirmed. `is_active = false` in the
+   * predicate keeps an active replacement key untouchable even on collision.
+   */
+  async deleteInactiveByHashes(
+    name: string,
+    keyHashes: readonly string[],
+    tx?: DbTransaction,
+  ): Promise<number> {
+    if (keyHashes.length === 0) return 0;
+    const deleted = await (tx ?? dbWrite)
+      .delete(apiKeys)
+      .where(
+        and(
+          eq(apiKeys.name, name),
+          eq(apiKeys.is_active, false),
+          inArray(apiKeys.key_hash, [...keyHashes]),
+        ),
+      )
+      .returning({ id: apiKeys.id });
+    return deleted.length;
   }
 
   /**

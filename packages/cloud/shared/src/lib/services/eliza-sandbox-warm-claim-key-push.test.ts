@@ -42,19 +42,31 @@ const REMINTED_KEY = "eliza_" + "remintedsecretmusntleak000";
 const POOL_BOOT_KEY = "eliza_" + "poolorgsecretmusntleak0000";
 
 const createForAgent = mock(
-  async (_p: { organizationId: string; userId: string; agentSandboxId: string }) => ({
+  async (_p: { organizationId: string; userId: string; agentSandboxId: string; tx?: unknown }) => ({
     apiKey: { id: "key-1", key_prefix: MINTED_KEY.slice(0, 12) },
     plainKey: MINTED_KEY,
+    revokedKeyHashes: [] as string[],
   }),
 );
-const revokeForAgent = mock(async (_agentSandboxId: string) => undefined);
+const revokeForAgent = mock(async (_agentSandboxId: string) => [] as string[]);
+const confirmRevocationAfterCommit = mock(async (_hashes: readonly string[]) => undefined);
+const purgeConfirmedRevokedAgentKeys = mock(
+  async (_agentSandboxId: string, _confirmedKeyHashes: readonly string[]) => undefined,
+);
+const collectOutstandingRevokedKeyHashes = mock(async (_agentSandboxId: string) => [] as string[]);
 const update = mock(async (_id: string, _data: Record<string, unknown>) => undefined);
 
 // Mock ONLY the api-keys service (mint + revoke boundary). The agent-sandboxes
 // repository is imported for many named exports by eliza-sandbox, so instead
 // of mocking the whole module we override `update` on the real singleton below.
 mock.module("./api-keys", () => ({
-  apiKeysService: { createForAgent, revokeForAgent },
+  apiKeysService: {
+    createForAgent,
+    revokeForAgent,
+    confirmRevocationAfterCommit,
+    purgeConfirmedRevokedAgentKeys,
+    collectOutstandingRevokedKeyHashes,
+  },
 }));
 
 const { agentSandboxesRepository } = await import("../../db/repositories/agent-sandboxes");
@@ -218,9 +230,15 @@ beforeEach(() => {
   createForAgent.mockResolvedValue({
     apiKey: { id: "key-1", key_prefix: MINTED_KEY.slice(0, 12) },
     plainKey: MINTED_KEY,
+    revokedKeyHashes: [],
   });
   revokeForAgent.mockReset();
-  revokeForAgent.mockResolvedValue(undefined);
+  revokeForAgent.mockResolvedValue([]);
+  confirmRevocationAfterCommit.mockClear();
+  confirmRevocationAfterCommit.mockResolvedValue(undefined);
+  purgeConfirmedRevokedAgentKeys.mockClear();
+  collectOutstandingRevokedKeyHashes.mockClear();
+  collectOutstandingRevokedKeyHashes.mockResolvedValue([]);
   update.mockClear();
   transaction.mockClear();
   databaseRow = buildInitialDbRow();
@@ -366,6 +384,95 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     expect(logged).not.toContain(POOL_BOOT_KEY);
   });
 
+  test("re-keys on the handoff transaction, not a second pooled connection", async () => {
+    await svc().pushClaimedWarmContainerInferenceKey(claimedRow());
+
+    // Same defect class as the managed-launch path (#18190): this handoff runs
+    // its re-key inside `dbWrite.transaction`, so minting on the global pool
+    // asks for a second connection while the first is held — and it re-keys
+    // inside CAS-guarded UPDATEs, where an independently committed rotation is
+    // worse than a wasted connection.
+    expect(createForAgent).toHaveBeenCalled();
+    for (const [params] of createForAgent.mock.calls) {
+      expect(params.tx).toBeDefined();
+    }
+  });
+
+  test("carried hashes reach the post-commit confirmation, then the carriers are purged", async () => {
+    createForAgent.mockResolvedValue({
+      apiKey: { id: "key-1", key_prefix: MINTED_KEY.slice(0, 12) },
+      plainKey: MINTED_KEY,
+      revokedKeyHashes: ["carried-from-failed-earlier-rotation", "current-pool-key-hash"],
+    });
+
+    await svc().pushClaimedWarmContainerInferenceKey(claimedRow());
+
+    // The retry invariant at this boundary: EVERY hash the rotation revoked —
+    // including one carried from an earlier rotation whose confirmation
+    // failed — is re-offered post-commit, and purge runs only afterwards,
+    // scoped to exactly the hashes this attempt confirmed.
+    expect(confirmRevocationAfterCommit).toHaveBeenCalledWith([
+      "carried-from-failed-earlier-rotation",
+      "current-pool-key-hash",
+    ]);
+    expect(purgeConfirmedRevokedAgentKeys).toHaveBeenCalledWith(expect.any(String), [
+      "carried-from-failed-earlier-rotation",
+      "current-pool-key-hash",
+    ]);
+  });
+
+  test("an unconfirmed post-commit revocation fails the handoff and leaves the carriers unpurged", async () => {
+    createForAgent.mockResolvedValue({
+      apiKey: { id: "key-1", key_prefix: MINTED_KEY.slice(0, 12) },
+      plainKey: MINTED_KEY,
+      revokedKeyHashes: ["still-cached-hash"],
+    });
+    confirmRevocationAfterCommit.mockRejectedValueOnce(new Error("cache brownout"));
+
+    await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toMatchObject({
+      code: "WARM_CLAIM_REVOCATION_UNCONFIRMED",
+    });
+    // No purge: the inactive rows must survive as the durable carry.
+    expect(purgeConfirmedRevokedAgentKeys).not.toHaveBeenCalled();
+  });
+
+  test("post-commit brownout, then REAL recovery: the carrier is re-offered by the non-minting branch (round-4 P1#1)", async () => {
+    // Attempt #1: mint succeeds and the transaction persists key+fingerprint,
+    // then the post-commit confirmation browns out. The handoff fails BEFORE
+    // any container push, with hash-A parked as a durable carrier.
+    createForAgent.mockResolvedValue({
+      apiKey: { id: "key-1", key_prefix: MINTED_KEY.slice(0, 12) },
+      plainKey: MINTED_KEY,
+      revokedKeyHashes: ["hash-A"],
+    });
+    confirmRevocationAfterCommit.mockRejectedValueOnce(new Error("cache brownout"));
+
+    await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toMatchObject({
+      code: "WARM_CLAIM_REVOCATION_UNCONFIRMED",
+    });
+    expect(purgeConfirmedRevokedAgentKeys).not.toHaveBeenCalled();
+    expect(capturedRequests).toHaveLength(0);
+
+    // Attempt #2: the REAL recovery entry point. The persisted fingerprint now
+    // matches, so this is the branch that returns the persisted key WITHOUT
+    // calling createForAgent — request-local hashes are empty, and before the
+    // uniform sweep the confirmation block was skipped entirely. The carrier
+    // must arrive via the durable collection instead.
+    createForAgent.mockClear();
+    collectOutstandingRevokedKeyHashes.mockResolvedValue(["hash-A"]);
+
+    await expect(
+      svc().recoverPendingWarmClaimInferenceKey(AGENT_ID, USER_ORG_ID),
+    ).resolves.toMatchObject({ pushed: true });
+    expect(createForAgent).not.toHaveBeenCalled();
+    expect(confirmRevocationAfterCommit).toHaveBeenLastCalledWith(["hash-A"]);
+    expect(purgeConfirmedRevokedAgentKeys).toHaveBeenCalledWith(expect.any(String), ["hash-A"]);
+    expect(databaseRow).toMatchObject({
+      status: "running",
+      warm_claim_credential_state: "ready",
+    });
+  });
+
   test("keeps the durable claim fence pending until live fingerprint attestation", async () => {
     const fetchEntered = Promise.withResolvers<void>();
     const releaseFetch = Promise.withResolvers<void>();
@@ -478,10 +585,12 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
       .mockResolvedValueOnce({
         apiKey: { id: "key-1", key_prefix: MINTED_KEY.slice(0, 12) },
         plainKey: MINTED_KEY,
+        revokedKeyHashes: [],
       })
       .mockResolvedValueOnce({
         apiKey: { id: "key-2", key_prefix: REMINTED_KEY.slice(0, 12) },
         plainKey: REMINTED_KEY,
+        revokedKeyHashes: [],
       });
     globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -552,6 +661,7 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     createForAgent.mockResolvedValue({
       apiKey: { id: "key-2", key_prefix: REMINTED_KEY.slice(0, 12) },
       plainKey: REMINTED_KEY,
+      revokedKeyHashes: [],
     });
     globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
       const body = typeof init?.body === "string" ? init.body : "";
@@ -600,6 +710,7 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     createForAgent.mockResolvedValueOnce({
       apiKey: { id: "key-1", key_prefix: "" },
       plainKey: "",
+      revokedKeyHashes: [],
     });
 
     await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toThrow(

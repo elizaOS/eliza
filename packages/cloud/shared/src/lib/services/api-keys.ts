@@ -6,7 +6,7 @@
 
 import crypto from "crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { dbWrite } from "../../db/client";
+import { type DbTransaction, dbWrite } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories";
 import { apiKeys } from "../../db/schemas/api-keys";
@@ -236,12 +236,13 @@ export class ApiKeysService {
       | "key_kms_key_id"
       | "key_kms_key_version"
     >,
+    tx?: DbTransaction,
   ): Promise<{
     apiKey: ApiKey;
     plainKey: string;
   }> {
     const { apiKey, plainKey } = await this.buildApiKeyInsert(data);
-    const created = await apiKeysRepository.create(apiKey);
+    const created = await apiKeysRepository.create(apiKey, tx);
 
     return {
       apiKey: created,
@@ -408,50 +409,184 @@ export class ApiKeysService {
     return `agent-sandbox:${agentSandboxId}`;
   }
 
+  /**
+   * Rotates the sandbox-scoped key: revoke whatever was bound to the sandbox,
+   * then mint its replacement.
+   *
+   * `tx` is REQUIRED when the caller already holds an open primary
+   * transaction (the managed-launch lifecycle path does). Both halves then run
+   * on that connection instead of checking a second one out of the global
+   * pool. On Workers that pool is sized `max: 1`, so a nested checkout waits
+   * on a connection the request is itself holding and dies at
+   * `connectionTimeoutMillis`. Sharing the connection also makes the rotation
+   * part of the caller's atomic unit, so a rollback restores the previous key
+   * instead of leaving the agent with a revoked one.
+   *
+   * Returns `revokedKeyHashes` so a transactional caller can re-invalidate
+   * AFTER it commits. Under `tx` the pre-delete invalidation happens while the
+   * old row is still visible to other connections, so a concurrent request can
+   * re-cache it positively; only a post-commit pass can clear that. See
+   * {@link revokeForAgent}.
+   */
   async createForAgent(params: {
     organizationId: string;
     userId: string;
     agentSandboxId: string;
-  }): Promise<{ apiKey: ApiKey; plainKey: string }> {
+    tx?: DbTransaction;
+  }): Promise<{ apiKey: ApiKey; plainKey: string; revokedKeyHashes: string[] }> {
     const name = ApiKeysService.agentApiKeyName(params.agentSandboxId);
 
     // Idempotency: a re-run of the provisioner must not strand an old key
     // active. Revoke whatever was previously bound to this sandbox before
     // minting a fresh one.
-    await this.revokeForAgent(params.agentSandboxId);
+    const revokedKeyHashes = await this.revokeForAgent(params.agentSandboxId, params.tx);
 
-    return await this.create({
-      name,
-      description: `Auto-generated sandbox key for agent ${params.agentSandboxId}`,
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      rate_limit: 1000,
-      is_active: true,
-      expires_at: null,
-    });
+    const created = await this.create(
+      {
+        name,
+        description: `Auto-generated sandbox key for agent ${params.agentSandboxId}`,
+        organization_id: params.organizationId,
+        user_id: params.userId,
+        rate_limit: 1000,
+        is_active: true,
+        expires_at: null,
+      },
+      params.tx,
+    );
+    return { ...created, revokedKeyHashes };
   }
 
-  async revokeForAgent(agentSandboxId: string): Promise<void> {
+  /**
+   * Revokes the sandbox-scoped keys and returns the hashes it removed.
+   *
+   * A transactional caller MUST feed those hashes back through
+   * {@link confirmRevocationAfterCommit} after it commits, then purge with
+   * {@link purgeConfirmedRevokedAgentKeys}. Without `tx` this method runs the
+   * authoritative invalidation itself and hard-deletes only the rows whose
+   * invalidation was confirmed.
+   */
+  async revokeForAgent(agentSandboxId: string, tx?: DbTransaction): Promise<string[]> {
     const name = ApiKeysService.agentApiKeyName(agentSandboxId);
-    // Unlike update/delete (which invalidate BEFORE the DB mutation and so can
-    // safely fail closed by throwing), this path deletes the rows FIRST — the
-    // credential is already DB-revoked. A cache-invalidation failure here must
-    // NOT abort agent (re)provisioning: the stale entry is TTL-bounded and the
-    // authoritative row is gone. So invalidation is best-effort — but the
-    // failure is surfaced observably (error-policy:J5), never swallowed silently.
-    for (const key of await apiKeysRepository.deleteByName(name)) {
+    // The revoke DEACTIVATES rather than deletes, and collects every row
+    // bearing the sandbox name — including rows already parked inactive by an
+    // earlier rotation whose post-commit invalidation was never confirmed.
+    // That inactive row is the durable carry: it cannot authenticate from the
+    // database, but its hash may still be POSITIVELY cached (a request can
+    // re-cache the row while a transactional delete is not yet committed), so
+    // every retry must re-offer it for confirmed invalidation until one
+    // succeeds. A DELETE here would discard the hash forever and cap nothing.
+    const revoked = await apiKeysRepository.deactivateByNameReturningAll(name, tx);
+    const revokedKeyHashes = revoked.map((key) => key.key_hash);
+
+    // Inline invalidation pass. Under `tx` it is merely the best-effort
+    // pre-commit pass (the boundary re-confirms after COMMIT); without `tx`
+    // the deactivation is already durable, so this pass is authoritative and
+    // a confirmed row can be hard-deleted immediately.
+    for (const key of revoked) {
       try {
         await this.invalidateCache(key.key_hash);
+        if (!tx) {
+          await apiKeysRepository.delete(key.id);
+        }
       } catch (error) {
+        // error-policy:J5 the failure is observable here and the inactive row
+        // remains as the durable carry — the next rotation (or the boundary's
+        // post-commit confirmation) re-attempts this hash.
         logger.error(
-          "[ApiKeys] revokeForAgent: cache invalidation not confirmed for a DB-revoked key; " +
-            "stale entry bounded by TTL, provisioning continues",
+          "[ApiKeys] revokeForAgent: cache invalidation not confirmed for a revoked key; " +
+            "row parked inactive so a later pass re-offers its hash",
           {
             agentSandboxId,
+            shortHash: key.key_hash.substring(0, 16),
             error: error instanceof Error ? error.message : String(error),
           },
         );
       }
+    }
+    return revokedKeyHashes;
+  }
+
+  /**
+   * Hashes of carriers parked by earlier rotations whose confirmation never
+   * landed. Launch boundaries call this AFTER their transaction commits so
+   * every attempt re-offers outstanding carriers — including attempts that
+   * re-use a persisted key and never re-mint (codex round-4 P1#1). Read
+   * failure degrades to an empty list: the attempt then confirms at least its
+   * own request-local hashes, and the carriers stay parked for the next pass.
+   */
+  async collectOutstandingRevokedKeyHashes(agentSandboxId: string): Promise<string[]> {
+    const name = ApiKeysService.agentApiKeyName(agentSandboxId);
+    try {
+      const rows = await apiKeysRepository.findInactiveByName(name);
+      return rows.map((row) => row.key_hash);
+    } catch (error) {
+      // error-policy:J7 diagnostics-must-not-kill-the-loop: the carriers are
+      // durable rows; missing one collection pass loses nothing permanently.
+      logger.error("[ApiKeys] outstanding-carrier collection failed; proceeding without", {
+        agentSandboxId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Best-effort cleanup of rows parked inactive by {@link revokeForAgent},
+   * called at a launch boundary ONLY after {@link confirmRevocationAfterCommit}
+   * resolved — and scoped to EXACTLY the hashes that attempt confirmed
+   * (codex round-4 P1#2): the advisory lock releases at COMMIT, so a delayed
+   * purge must never reap a carrier a concurrent rotation parked but has not
+   * yet confirmed. A failure here is harmless — rows stay inactive and the
+   * next rotation re-collects them — so it never propagates.
+   */
+  async purgeConfirmedRevokedAgentKeys(
+    agentSandboxId: string,
+    confirmedKeyHashes: readonly string[],
+  ): Promise<void> {
+    const name = ApiKeysService.agentApiKeyName(agentSandboxId);
+    try {
+      await apiKeysRepository.deleteInactiveByHashes(name, confirmedKeyHashes);
+    } catch (error) {
+      // error-policy:J6 teardown-only: the credentials are already inactive
+      // and their caches confirmed clear; the residue is re-swept later.
+      logger.warn("[ApiKeys] purge of confirmed-revoked agent keys failed; rows stay inactive", {
+        agentSandboxId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Confirmed post-commit invalidation for keys a transaction has just removed.
+   *
+   * Fails closed: unlike the pre-commit pass inside {@link revokeForAgent},
+   * there is no later opportunity to clear a positive entry re-cached while the
+   * old row was still visible, so an unconfirmed delete here MUST reach the
+   * caller (error-policy:J1). By this point the rotation is committed, so the
+   * caller is reporting a partially-applied launch, not a clean failure.
+   */
+  async confirmRevocationAfterCommit(keyHashes: readonly string[]): Promise<void> {
+    // Every hash is attempted before anything throws. Failing fast on the first
+    // one would leave the remaining credentials never even offered for
+    // invalidation, so a single cache brownout could strand more keys than it
+    // reported.
+    const unconfirmed: string[] = [];
+    for (const keyHash of keyHashes) {
+      try {
+        await this.invalidateCache(keyHash);
+      } catch (error) {
+        unconfirmed.push(keyHash);
+        logger.error("[ApiKeys] post-commit revocation invalidation not confirmed", {
+          shortHash: keyHash.substring(0, 16),
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (unconfirmed.length > 0) {
+      throw new Error(
+        `Post-commit revocation not confirmed for ${unconfirmed.length}/${keyHashes.length} key(s); ` +
+          "the superseded credential may authenticate from cache until its TTL",
+      );
     }
   }
 }
