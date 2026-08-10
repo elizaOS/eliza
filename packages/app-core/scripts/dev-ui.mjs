@@ -252,7 +252,7 @@ const skipSourceWatch = process.env.ELIZA_DEV_NO_WATCH === "1";
 const HOT_RELOAD_BULK_CHANGE_LIMIT =
   Number(process.env.ELIZA_DEV_HOT_RELOAD_BULK_LIMIT) || 4;
 const DEV_TEST_MOCK_ENV_KEYS = [
-  "ELIZA_MOCK_GOOGLE_BASE",
+  "ELIZA_MOCK_GOOGLE_FIT_BASE",
   "ELIZA_MOCK_TWILIO_BASE",
   "ELIZA_MOCK_WHATSAPP_BASE",
   "ELIZA_MOCK_X_BASE",
@@ -274,11 +274,8 @@ function createDevChildEnv(baseEnv) {
   }
   if (!warnedAboutStrippedDevMocks && strippedKeys.length > 0) {
     warnedAboutStrippedDevMocks = true;
-    const cleanupHint = strippedKeys.includes("ELIZA_MOCK_GOOGLE_BASE")
-      ? " If cached mock Google events already landed in LifeOps, disconnect and reconnect Google once in the app to resync real data."
-      : "";
     console.warn(
-      `${logPrefix} Ignoring test-only mock env vars for dev: ${strippedKeys.join(", ")}.${cleanupHint}`,
+      `${logPrefix} Ignoring test-only mock env vars for dev: ${strippedKeys.join(", ")}.`,
     );
   }
   return nextEnv;

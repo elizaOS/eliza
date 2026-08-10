@@ -69,7 +69,6 @@ WITH "sole_agents" AS (
 		"credential".*,
 		array_remove(ARRAY[
 			CASE WHEN "effective_scopes" ?| ARRAY[
-				'https://www.googleapis.com/auth/gmail.metadata',
 				'https://www.googleapis.com/auth/gmail.readonly',
 				'https://www.googleapis.com/auth/gmail.modify',
 				'https://www.googleapis.com/auth/gmail.compose',
@@ -84,7 +83,6 @@ WITH "sole_agents" AS (
 		], NULL) AS "selected_products",
 		array_remove(ARRAY[
 			CASE WHEN "effective_scopes" ?| ARRAY[
-				'https://www.googleapis.com/auth/gmail.metadata',
 				'https://www.googleapis.com/auth/gmail.readonly',
 				'https://www.googleapis.com/auth/gmail.modify',
 				'https://mail.google.com/'
@@ -92,7 +90,7 @@ WITH "sole_agents" AS (
 			CASE WHEN "effective_scopes" ?| ARRAY[
 				'https://www.googleapis.com/auth/gmail.modify',
 				'https://mail.google.com/'
-			] THEN 'gmail.modify' END,
+			] THEN 'gmail.manage' END,
 			CASE WHEN "effective_scopes" ?| ARRAY[
 				'https://www.googleapis.com/auth/gmail.compose',
 				'https://www.googleapis.com/auth/gmail.modify',

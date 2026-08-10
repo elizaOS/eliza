@@ -44,7 +44,6 @@ export default scenario({
   tags: ["lifeops", "travel-buffer", "maps", "needs-richer-fixtures"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
-  mockoon: ["calendar"],
   rooms: [
     {
       id: "main",

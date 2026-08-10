@@ -13,7 +13,6 @@ at those local URLs via env vars instead of hitting real services.
 | `environments/whatsapp.json`          | WhatsApp Business Cloud (Meta Graph) | `ELIZA_MOCK_WHATSAPP_BASE`                              |
 | `environments/calendly.json`          | Calendly v2                          | `ELIZA_MOCK_CALENDLY_BASE`                              |
 | `environments/x-twitter.json`         | X (Twitter) v2                       | `ELIZA_MOCK_X_BASE`                                     |
-| `environments/google.json`            | Gmail / Calendar / OAuth token       | `ELIZA_MOCK_GOOGLE_BASE`                                |
 | `environments/cloud-managed.json`     | Eliza Cloud Google OAuth/binding inventory | `ELIZA_CLOUD_BASE_URL`                              |
 | `environments/signal.json`            | signal-cli HTTP receive/send         | `SIGNAL_HTTP_URL`                                        |
 | `environments/browser-workspace.json` | Desktop browser workspace bridge     | `ELIZA_BROWSER_WORKSPACE_URL` / `ELIZA_BROWSER_WORKSPACE_TOKEN` / `ELIZA_DISABLE_DISCORD_DESKTOP_CDP` |
@@ -30,44 +29,31 @@ at those local URLs via env vars instead of hitting real services.
 | `environments/vision.json`            | Hosted vision analysis API           | `ELIZA_MOCK_VISION_BASE`                                 |
 
 Each LifeOps client reads its env var on import and falls back to the real URL
-when unset. These env vars are test-only: the normal `bun run dev` launcher now
+when unset. These env vars are test-only: the normal `bun run dev` launcher
 strips inherited `ELIZA_MOCK_*` values so local development keeps using real
-Google/Twilio/etc. unless you opt back in explicitly. See the patched files in
+services unless you opt back in explicitly. See the patched files in
 `eliza/plugins/plugin-personal-assistant/src/lifeops/`:
 
 - `twilio.ts`, `whatsapp-client.ts`, `calendly-client.ts`
 - `x-poster.ts`, `x-reader.ts`
-- `google-fetch.ts` (rewrites all `*.googleapis.com` + `accounts.google.com`)
-- `google-oauth.ts` (token + userinfo go through the same rewrite helper)
+
+Personal Gmail and Google Calendar are intentionally absent from this fleet.
+Their supported integration path is the cloud-managed Google Workspace MCP;
+`environments/cloud-managed.json` retains only the OAuth-connection and agent-
+binding fixtures needed to exercise that boundary. Google Chat service-account
+delivery, Maps/GenAI, and Google Fit are separate integrations and are not part
+of the removed personal Workspace REST fixture.
 
 ## Run mocks in tests
 
 ```ts
 import { startMocks } from "./scripts/start-mocks.ts";
 
-const mocks = await startMocks({ envs: ["google", "twilio"] });
-process.env.ELIZA_MOCK_GOOGLE_BASE = mocks.baseUrls.google;
+const mocks = await startMocks({ envs: ["cloud-managed", "twilio"] });
+process.env.ELIZA_CLOUD_BASE_URL = mocks.baseUrls["cloud-managed"];
 process.env.ELIZA_MOCK_TWILIO_BASE = mocks.baseUrls.twilio;
 await mocks.stop();
 ```
-
-Use the dedicated test helpers or test commands for this. Do not export
-`ELIZA_MOCK_GOOGLE_BASE` in your regular shell before running `bun run dev`
-unless you are intentionally debugging the mock path.
-
-## Clean up a polluted dev profile
-
-If the chat sidebar already shows old synthetic Google Calendar rows from a
-past mock run:
-
-1. Start the app normally with `bun run dev` so the dev launcher strips any
-   leaked `ELIZA_MOCK_*` vars.
-2. In the app, disconnect the Google LifeOps connector once.
-3. Reconnect Google so LifeOps clears the cached mock rows and resyncs from the
-   real account.
-
-The Google disconnect flow already clears cached calendar events, Gmail cache,
-and sync state for the disconnected connector.
 
 Ports are auto-assigned on `127.0.0.1`. The fixture runner supports the subset
 of Mockoon templating used by these files: `{{body 'field'}}`,
@@ -85,7 +71,6 @@ bunx @mockoon/cli start \
   --data test/mocks/environments/whatsapp.json \
   --data test/mocks/environments/calendly.json \
   --data test/mocks/environments/x-twitter.json \
-  --data test/mocks/environments/google.json \
   --data test/mocks/environments/cloud-managed.json \
   --data test/mocks/environments/signal.json \
   --data test/mocks/environments/browser-workspace.json \
@@ -102,7 +87,6 @@ export ELIZA_MOCK_TWILIO_BASE=http://127.0.0.1:3001
 export ELIZA_MOCK_WHATSAPP_BASE=http://127.0.0.1:3002
 export ELIZA_MOCK_CALENDLY_BASE=http://127.0.0.1:3003
 export ELIZA_MOCK_X_BASE=http://127.0.0.1:3004
-export ELIZA_MOCK_GOOGLE_BASE=http://127.0.0.1:3005
 export SIGNAL_HTTP_URL=http://127.0.0.1:3006
 export SIGNAL_ACCOUNT_NUMBER=+15550000000
 export ELIZA_BROWSER_WORKSPACE_URL=http://127.0.0.1:3007
@@ -134,29 +118,6 @@ bun run --cwd packages/scenario-runner test -- test/mocks/__tests__/
 
 LifeOps runtime seeds and simulator helpers live under
 `plugins/plugin-personal-assistant/test/support`.
-
-## Google / Gmail mock coverage
-
-`environments/google.json` is the local Gmail/Google fixture used by
-`ELIZA_MOCK_GOOGLE_BASE`. The in-process runner also adds Gmail-specific
-dynamic routes for surfaces LifeOps needs for read, send, and inbox-zero
-development:
-
-- message list/get/send/modify plus batch modify/delete
-- message attachment metadata and download
-- message trash, untrash, and delete
-- label list, including system labels and the `eliza-e2e` user label
-- draft create/list/get/send/delete
-- thread list/get/modify/trash/untrash
-- watch and history list
-- settings filter creation for unsubscribe/archive flows
-
-This fixture is intentionally deterministic and synthetic. It is not a full
-Gmail search engine: the in-process runner matches method plus path, while query
-parameters, auth scopes, request-body validation, pagination, and rate-limit
-variants need a stateful Gmail fixture service or a richer runner layer. Keep
-real mailbox captures out of this directory unless they have gone through a
-redaction and fixture-validation pipeline.
 
 ## Non-Google dynamic mock coverage
 
@@ -214,7 +175,7 @@ downtime, ambiguous recipients, too-broad bulk email requests, and rate limits.
 The standalone Mockoon file is stateless; full task progression is provided by
 the in-process `startMocks` runner. Provider API examples are static contract
 checks against the provider mocks above, so complex tests can combine the
-scenario catalog with Gmail, GitHub, Signal, BlueBubbles, and browser-workspace
+scenario catalog with GitHub, Signal, BlueBubbles, and browser-workspace
 requests.
 
 ## Provider coverage and remaining gaps
@@ -226,8 +187,6 @@ falls out of sync.
 
 | Provider id                  | Covered surfaces                                                                                                                                                                                                                                                                     | Remaining gaps                                                                                                                                                                                                   |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `google-calendar`            | OAuth token and userinfo rewrite; calendar list; event list/get/search; event create/patch/update/move/delete; request ledger metadata                                                                                                                                               | No recurring-event expansion beyond single synthetic events<br>No freebusy, ACL, attachment, or conference-data surfaces<br>No Google rate-limit or partial-failure variants                                     |
-| `gmail`                      | work/home account fixture data; message list/get/search/send/modify/delete; thread list/get/modify/trash/untrash; draft create/list/get/send/delete; attachment metadata and download; labels, history, watch, filters; priority, vague, multi-search, and cross-account query fixtures; write request ledger metadata | Search is deterministic fixture matching, not the full Gmail query grammar<br>No attachment upload or full multipart MIME fidelity<br>No delegated mailbox, push-notification, quota, or rate-limit variants |
 | `github`                     | REST pull request list/review; issue creation and assignment fixtures; issue/PR search; notification list; Octokit-shaped unit-test fixture; request ledger metadata                                                                                                                 | No GraphQL API coverage<br>No checks, statuses, contents, branch protection, or workflow endpoints<br>No webhook delivery simulation                                                                             |
 | `x`                          | home timeline; mentions; recent search; DM list; tweet create; DM send; request ledger metadata                                                                                                                                                                                      | No streaming API, OAuth handshake, media upload, or delete/like/repost surfaces<br>No rate-limit, partial response, or protected-account variants                                                                |
 | `whatsapp`                   | text message send; inbound webhook ingestion; Cloud API webhook metadata and contact mapping in simulator seed; test-only inbound buffer route; request ledger metadata                                                                                                             | No media upload/download, templates, reactions, or message status lifecycle<br>No webhook signature validation or delivery retry simulation                                                                      |

@@ -6,8 +6,8 @@
  * user is in another city.  PRD §Suite A — Time Defense And Scheduling
  * (`ea.schedule.bundle-meetings-while-traveling`).
  *
- * Gate: ELIZA_LIVE_TEST=1 + at least one provider key present.
- * All external APIs (Google Calendar) are backed by the central mock server.
+ * Gate: ELIZA_LIVE_TEST=1 + at least one provider key present. Calendar context
+ * is seeded in the durable read-only cache used by the Google MCP adapter.
  */
 
 import crypto from "node:crypto";
@@ -15,6 +15,7 @@ import { ChannelType, createMessageMemory, type UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider.ts";
 import { withTimeout } from "../../../packages/app-core/test/helpers/test-utils.ts";
+import { seedDurableGoogleCalendar } from "./support/helpers/durable-google-calendar.ts";
 import type { MockedTestRuntime } from "./support/helpers/mock-runtime.ts";
 import { createMockedTestRuntime } from "./support/helpers/mock-runtime.ts";
 
@@ -45,54 +46,42 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
     });
 
     it("consolidates adjacent NYC meetings into one trip window and proposes approval", async () => {
-      // Seed 3 calendar events on Tue/Wed in NYC via the Google mock
-      const calendarBase = mocked.mocks.baseUrls.google;
+      const tripStart = Date.now() + 48 * 60 * 60_000;
       const nycEvents = [
         {
-          summary: "VC Pitch — NYC",
-          start: {
-            dateTime: "2026-05-12T14:00:00-04:00",
-            timeZone: "America/New_York",
-          },
-          end: {
-            dateTime: "2026-05-12T15:00:00-04:00",
-            timeZone: "America/New_York",
-          },
+          id: "journey-4-vc-pitch",
+          title: "VC Pitch — NYC",
+          startAt: new Date(tripStart).toISOString(),
+          endAt: new Date(tripStart + 60 * 60_000).toISOString(),
+          location: "New York, NY",
         },
         {
-          summary: "Press Interview — NYC",
-          start: {
-            dateTime: "2026-05-13T10:00:00-04:00",
-            timeZone: "America/New_York",
-          },
-          end: {
-            dateTime: "2026-05-13T11:00:00-04:00",
-            timeZone: "America/New_York",
-          },
+          id: "journey-4-press-interview",
+          title: "Press Interview — NYC",
+          startAt: new Date(tripStart + 20 * 60 * 60_000).toISOString(),
+          endAt: new Date(tripStart + 21 * 60 * 60_000).toISOString(),
+          location: "New York, NY",
         },
         {
-          summary: "Customer Dinner — NYC",
-          start: {
-            dateTime: "2026-05-13T18:00:00-04:00",
-            timeZone: "America/New_York",
-          },
-          end: {
-            dateTime: "2026-05-13T20:00:00-04:00",
-            timeZone: "America/New_York",
-          },
+          id: "journey-4-customer-dinner",
+          title: "Customer Dinner — NYC",
+          startAt: new Date(tripStart + 28 * 60 * 60_000).toISOString(),
+          endAt: new Date(tripStart + 30 * 60 * 60_000).toISOString(),
+          location: "New York, NY",
         },
       ];
-      for (const event of nycEvents) {
-        await fetch(`${calendarBase}/calendar/v3/calendars/primary/events`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer mock-token",
-            "X-Eliza-Test-Run": "journey-4",
-          },
-          body: JSON.stringify(event),
-        });
-      }
+      const repository = await seedDurableGoogleCalendar({
+        runtime: mocked.runtime,
+        grantId: "journey-4-google-calendar",
+        events: nycEvents,
+      });
+      const before = await repository.listCalendarEvents(
+        String(mocked.runtime.agentId),
+        "google",
+        undefined,
+        undefined,
+        "owner",
+      );
 
       mocked.mocks.clearRequestLedger();
 
@@ -131,16 +120,16 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
 
       expect(reply).not.toMatch(/something (?:went wrong|flaked)|try again/i);
 
-      // The journey is approval-gated: the assistant should not silently
-      // mutate the calendar while only being asked to bundle a trip window.
-      const ledger = mocked.mocks.requestLedger();
-      const unexpectedCalendarWrites = ledger.filter(
-        (entry) =>
-          entry.environment === "google" &&
-          entry.calendar !== undefined &&
-          entry.method !== "GET",
+      // Google Calendar is read-only: a planning request must leave its
+      // durable provider snapshot unchanged.
+      const after = await repository.listCalendarEvents(
+        String(mocked.runtime.agentId),
+        "google",
+        undefined,
+        undefined,
+        "owner",
       );
-      expect(unexpectedCalendarWrites).toHaveLength(0);
+      expect(after).toEqual(before);
     }, 120_000);
   },
 );

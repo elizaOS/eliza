@@ -145,7 +145,7 @@ export function seedCalendarCache(args: {
     }
 
     await seedGoogleConnectorGrant(runtime, {
-      capabilities: ["google.calendar.read", "google.calendar.write"],
+      capabilities: ["google.calendar.read"],
     });
 
     const repository = new LifeOpsRepository(runtime);

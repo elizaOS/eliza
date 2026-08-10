@@ -38,7 +38,6 @@ export default scenario({
   tags: ["lifeops", "travel-buffer", "context-sensitive"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
-  mockoon: ["calendar"],
   rooms: [
     {
       id: "main",

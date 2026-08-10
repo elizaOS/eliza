@@ -151,7 +151,7 @@ describe("loadScenarioFile strict validation", () => {
         '  title: "Good",',
         '  domain: "fixture",',
         '  turns: [{ kind: "message", name: "ask", text: "hello" }],',
-        '  finalChecks: [{ type: "gmailNoRealWrite", name: "no writes" }],',
+        '  finalChecks: [{ type: "mcpToolCall", tool: "create_draft", expected: false }],',
         "};",
         "",
       ].join("\n"),
@@ -160,6 +160,120 @@ describe("loadScenarioFile strict validation", () => {
     await expect(loadScenarioFile(file)).resolves.toMatchObject({
       scenario: { id: "fixture.good" },
     });
+  });
+});
+
+describe("MCP fixture ledger checks", () => {
+  const runtime = {} as IAgentRuntime;
+  const ctx = {
+    actionsCalled: [],
+    mcpToolCalls: [
+      {
+        provider: "google",
+        resource: "gmail",
+        tool: "search_threads",
+        accountId: "google-personal",
+        requiredCapability: "gmail.read",
+        authorization: "authorized" as const,
+        arguments: {
+          query: "is:unread",
+          pageSize: 20,
+          view: "THREAD_VIEW_MINIMAL",
+        },
+        result: {
+          content: [],
+          structuredContent: { threads: [{ id: "thread-1" }] },
+        },
+        calledAt: "2026-08-10T12:00:00.000Z",
+      },
+      {
+        provider: "google",
+        resource: "gmail",
+        tool: "get_message",
+        accountId: "google-personal",
+        requiredCapability: "gmail.read",
+        authorization: "authorized" as const,
+        arguments: { messageId: "msg-1", messageFormat: "FULL_CONTENT" },
+        result: {
+          content: [],
+          structuredContent: { message: { id: "msg-1" } },
+        },
+        calledAt: "2026-08-10T12:00:01.000Z",
+      },
+    ],
+  };
+
+  it("matches canonical call arguments, result, account, and capability", async () => {
+    await expect(
+      runFinalCheck(
+        {
+          type: "mcpToolCall",
+          provider: "google",
+          resource: "gmail",
+          tool: "search_threads",
+          accountId: "google-personal",
+          requiredCapability: "gmail.read",
+          arguments: { query: "is:unread" },
+          result: { "structuredContent.threads": [{ id: "thread-1" }] },
+        },
+        { runtime, ctx },
+      ),
+    ).resolves.toMatchObject({ status: "passed" });
+  });
+
+  it("checks ordered and exact call sequences", async () => {
+    await expect(
+      runFinalCheck(
+        {
+          type: "mcpToolCalls",
+          provider: "google",
+          resource: "gmail",
+          exact: true,
+          calls: [
+            { tool: "search_threads", arguments: { query: "is:unread" } },
+            { tool: "get_message", arguments: { messageId: "msg-1" } },
+          ],
+        },
+        { runtime, ctx },
+      ),
+    ).resolves.toMatchObject({ status: "passed" });
+  });
+
+  it("rejects the removed REST-shaped Gmail request check", () => {
+    expect(() =>
+      scenario({
+        id: "fixture.removed.gmail-rest-check",
+        title: "Removed Gmail REST check",
+        domain: "fixture",
+        turns: [],
+        finalChecks: [
+          {
+            type: "gmailMockRequest",
+            method: "GET",
+            path: "/gmail/v1/users/me/messages",
+          },
+        ] as unknown as ScenarioFinalCheck[],
+      }),
+    ).toThrow(/unknown type "gmailMockRequest"/);
+  });
+
+  it.each([
+    "gmailDraftCreated",
+    "gmailDraftDeleted",
+    "gmailMessageSent",
+    "gmailBatchModify",
+    "gmailApproval",
+    "gmailNoRealWrite",
+  ])("rejects removed Gmail compatibility check %s", (type) => {
+    expect(() =>
+      scenario({
+        id: `fixture.removed.${type}`,
+        title: "Removed Gmail compatibility check",
+        domain: "fixture",
+        turns: [],
+        finalChecks: [{ type }] as unknown as ScenarioFinalCheck[],
+      }),
+    ).toThrow(`unknown type "${type}"`);
   });
 });
 
@@ -275,7 +389,7 @@ describe("provider-qualified data boundary", () => {
       rooms: [{ id: "forged-owner", account: "admin" }],
       mockoon: ["google"],
       seed: [{ type: "advanceClock", by: "PT1H" }],
-      cleanup: [{ type: "gmailDeleteDrafts" }],
+      cleanup: [{ type: "selfControlClearBlocks", profile: "fixture" }],
       turns: [
         {
           kind: "api",

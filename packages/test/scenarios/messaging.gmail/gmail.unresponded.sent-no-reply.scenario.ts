@@ -1,6 +1,13 @@
 /** Scenario fixture for gmail unresponded sent no reply; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_WRITE_TOOLS,
+  GMAIL_SCENARIO_MESSAGES,
+  gmailSearchFixture,
+  gmailThreadFixture,
+} from "./_gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -22,11 +29,14 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "followup-14-days-ago.eml",
-    },
+    gmailSearchFixture([
+      GMAIL_SCENARIO_MESSAGES.unrespondedInbound,
+      GMAIL_SCENARIO_MESSAGES.unrespondedSent,
+    ]),
+    gmailThreadFixture([
+      GMAIL_SCENARIO_MESSAGES.unrespondedInbound,
+      GMAIL_SCENARIO_MESSAGES.unrespondedSent,
+    ]),
   ],
   turns: [
     {
@@ -48,27 +58,17 @@ export default scenario({
       subaction: "unresponded",
     },
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
-      minCount: 1,
+      type: "mcpToolCalls",
+      provider: "google",
+      resource: "gmail",
+      calls: [{ tool: "search_threads" }, { tool: "get_thread" }],
     },
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: "/gmail/v1/users/me/threads",
-      minCount: 1,
-    },
-    {
-      type: "gmailDraftCreated",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
-    },
-    {
-      type: "gmailMessageSent",
-      expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-unresponded-thread-rubric",
@@ -76,12 +76,5 @@ export default scenario({
       description:
         "End-to-end: the assistant used thread chronology to find a true unresponded Gmail thread and did not turn the read-only check into a draft or send.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

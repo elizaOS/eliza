@@ -1,7 +1,7 @@
 /**
- * After proposing slots, the user confirms one — the agent must transition
- * from "proposing" to "creating" the event. The CALENDAR action's
- * parameters/result must reflect a write, not just another read.
+ * After proposing slots, the user confirms one. Personal Google Calendar is
+ * read-only, so the agent must preserve the selected slot but disclose that it
+ * cannot create the event and must not claim success.
  */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
@@ -14,34 +14,36 @@ import {
   seedMeetingPreferences,
 } from "../../../scenario-support/lifeops-seeds.ts";
 
-function checkEventCreated(ctx: ScenarioContext): string | undefined {
+function checkEventCreationRefused(ctx: ScenarioContext): string | undefined {
   const calls = ctx.actionsCalled.filter((a) => a.actionName === "CALENDAR");
   if (calls.length === 0) return "expected CALENDAR action";
   const reply = String(ctx.turns?.[1]?.responseText ?? "").toLowerCase();
-  const createSignals = [
-    "scheduled",
-    "booked",
-    "confirmed",
-    "created",
-    "added",
-    "on the calendar",
-    "all set",
-  ];
-  if (!createSignals.some((s) => reply.includes(s))) {
-    return `Agent didn't confirm an event was created after the user picked a time. Reply: ${reply.slice(0, 300)}`;
+  if (
+    !["read-only", "view-only", "can't", "cannot", "unsupported"].some((s) =>
+      reply.includes(s),
+    )
+  ) {
+    return `Agent did not disclose that personal Google Calendar creation is unavailable. Reply: ${reply.slice(0, 300)}`;
+  }
+  if (
+    /\b(successfully (scheduled|booked|created|added)|(was|has been) (scheduled|booked|created|added)|all set)\b/.test(
+      reply,
+    )
+  ) {
+    return `Agent falsely claimed an event was created. Reply: ${reply.slice(0, 300)}`;
   }
   return undefined;
 }
 
 export default scenario({
   lane: "live-only",
-  id: "scheduling.confirm-time-creates-event",
-  title: "User confirms a proposed slot — agent creates the event",
+  id: "scheduling.confirm-time-read-only-refusal",
+  title:
+    "Confirmed slot is preserved but Google Calendar creation fails closed",
   domain: "lifeops.scheduling",
   tags: ["lifeops", "scheduling", "confirmation"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
-  mockoon: ["calendar"],
   rooms: [
     {
       id: "main",
@@ -87,13 +89,13 @@ export default scenario({
     { type: "actionCalled", actionName: "CALENDAR", minCount: 1 },
     {
       type: "custom",
-      name: "event-created-after-confirm",
-      predicate: checkEventCreated,
+      name: "event-creation-refused-after-confirm",
+      predicate: checkEventCreationRefused,
     },
     judgeRubric({
-      name: "scheduling-confirm-then-create-rubric",
+      name: "scheduling-confirm-read-only-rubric",
       threshold: 0.6,
-      description: `Two turns: propose three slots, then user said "book the second one". Correct: agent confirms an event was created at that slot. Incorrect: agent says "ok" without confirming creation, or proposes a new set of slots.`,
+      description: `Two turns: propose three slots, then the user selects the second. Correct: agent preserves the selected slot, explains that personal Google Calendar is read-only, and states that no event was created. Incorrect: agent claims the event was booked, scheduled, created, or added.`,
     }),
   ],
 });

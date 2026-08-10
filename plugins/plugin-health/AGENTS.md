@@ -148,7 +148,7 @@ bun run --cwd plugins/plugin-health test:scenarios  # scenarios test lane
 | `ELIZA_HEALTHKIT_CLI_PATH` | `health-bridge/health-bridge.ts` | Path to the HealthKit native CLI helper (darwin). |
 | `ELIZA_GOOGLE_FIT_ACCESS_TOKEN` | `health-bridge/health-bridge.ts` | Access token for the Google Fit REST fallback. |
 | `ELIZA_TEST_HEALTH_BACKEND` | `health-bridge/health-bridge.ts` | Force a specific backend (test override). |
-| `ELIZA_MOCK_GOOGLE_BASE` | `health-bridge/health-bridge.ts` | Loopback-only mock API base for Google Fit tests. |
+| `ELIZA_MOCK_GOOGLE_FIT_BASE` | `health-bridge/health-bridge.ts` | Loopback-only mock API base for the separate Google Fit health connector. Personal Google Workspace never reads this setting. |
 | `ELIZA_MOCK_HEALTH_BASE` / `ELIZA_MOCK_<PROVIDER>_BASE` | `health-bridge/health-connectors.ts` | Loopback-only mock API bases for tests (`<PROVIDER>` upper-cased); `ELIZA_MOCK_HEALTH_BASE` is the fallback when no provider-specific override is set. |
 
 The OAuth-dir root is resolved via `resolveOAuthDir` from `@elizaos/core`, so its own env knobs are owned upstream, not here.

@@ -1,6 +1,13 @@
 /** Scenario fixture for gmail draft reply from context; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_SCENARIO_MESSAGES,
+  gmailDraftFixture,
+  gmailSearchFixture,
+  gmailThreadFixture,
+} from "./_gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -22,11 +29,9 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "sarah-product-brief.eml",
-    },
+    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.sarah]),
+    gmailThreadFixture([GMAIL_SCENARIO_MESSAGES.sarah]),
+    gmailDraftFixture("thr-sarah", "draft-sarah-friday"),
   ],
   turns: [
     {
@@ -48,26 +53,19 @@ export default scenario({
       subaction: "draft_reply",
     },
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
-      minCount: 1,
-    },
-    {
-      type: "gmailDraftCreated",
-    },
-    {
-      type: "gmailMockRequest",
-      method: "POST",
-      path: "/gmail/v1/users/me/drafts",
-      minCount: 1,
-    },
-    {
-      type: "gmailMessageSent",
-      expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
+      type: "mcpToolCalls",
+      provider: "google",
+      resource: "gmail",
+      calls: [
+        { tool: "search_threads" },
+        {
+          tool: "create_draft",
+          arguments: {
+            to: ["sarah@example.com"],
+            replyToMessageId: "msg-sarah",
+          },
+        },
+      ],
     },
     judgeRubric({
       name: "gmail-draft-reply-from-context-rubric",
@@ -75,12 +73,5 @@ export default scenario({
       description:
         "End-to-end: the assistant drafted the Gmail reply from recent context and kept it as a draft instead of claiming it was sent.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

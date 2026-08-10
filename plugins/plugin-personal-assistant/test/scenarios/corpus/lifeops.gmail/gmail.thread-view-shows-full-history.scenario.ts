@@ -12,6 +12,23 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  GMAIL_MCP_WRITE_TOOLS,
+  gmailMcpFixture,
+  gmailSearchFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
+
+const JULIA_THREAD_MESSAGES = [
+  {
+    ...GMAIL_MCP_MESSAGES.juliaAttachment,
+    id: "msg-julia-opening",
+    snippet: "Can you send the updated launch packet?",
+    plaintextBody: "Can you send the updated launch packet?",
+    date: "2026-08-09T15:00:00.000Z",
+  },
+  GMAIL_MCP_MESSAGES.juliaAttachment,
+];
 
 export default scenario({
   lane: "live-only",
@@ -33,11 +50,18 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-    },
+    gmailSearchFixture(JULIA_THREAD_MESSAGES),
+    gmailMcpFixture({
+      tool: "get_thread",
+      arguments: { threadId: GMAIL_MCP_MESSAGES.juliaAttachment.threadId },
+      structuredContent: {
+        thread: {
+          id: GMAIL_MCP_MESSAGES.juliaAttachment.threadId,
+          messages: JULIA_THREAD_MESSAGES,
+        },
+      },
+      clearLedger: false,
+    }),
   ],
   turns: [
     {
@@ -54,23 +78,27 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: ["/gmail/v1/users/me/messages", "/gmail/v1/users/me/threads"],
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "get_thread",
+      arguments: {
+        threadId: GMAIL_MCP_MESSAGES.juliaAttachment.threadId,
+      },
       minCount: 1,
     },
     {
-      type: "gmailMessageSent",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-thread-history-rubric",
       threshold: 0.7,
       description:
-        "Agent fetched the full Julia thread via the mock and summarized messages in order, not just the latest.",
+        "Agent fetched the full Julia thread through get_thread and summarized messages in order, not just the latest.",
     }),
   ],
 });

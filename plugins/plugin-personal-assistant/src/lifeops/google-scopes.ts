@@ -7,8 +7,6 @@ import {
 export const GOOGLE_OPENID_SCOPES = ["openid", "email", "profile"] as const;
 export const GOOGLE_CALENDAR_READ_SCOPE =
   "https://www.googleapis.com/auth/calendar.readonly";
-export const GOOGLE_GMAIL_METADATA_SCOPE =
-  "https://www.googleapis.com/auth/gmail.metadata";
 export const GOOGLE_GMAIL_READ_SCOPE =
   "https://www.googleapis.com/auth/gmail.readonly";
 export const GOOGLE_GMAIL_COMPOSE_SCOPE =
@@ -111,9 +109,8 @@ export function googleScopesToCapabilities(
   }
 
   const hasGmailTriage =
-    granted.has(GOOGLE_GMAIL_METADATA_SCOPE) ||
     granted.has(GOOGLE_GMAIL_READ_SCOPE) ||
-    granted.has(GOOGLE_GMAIL_COMPOSE_SCOPE);
+    granted.has(GOOGLE_GMAIL_MODIFY_SCOPE);
   if (hasGmailTriage) {
     capabilities.push("google.gmail.triage");
   }

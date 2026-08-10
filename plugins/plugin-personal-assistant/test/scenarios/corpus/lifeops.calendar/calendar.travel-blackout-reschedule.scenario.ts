@@ -34,7 +34,6 @@ export default scenario({
   tags: ["lifeops", "calendar", "travel", "bulk-reschedule"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
-  mockoon: ["calendar"],
   rooms: [
     {
       id: "main",
@@ -51,7 +50,7 @@ export default scenario({
         const runtime = ctx.runtime as AgentRuntime | undefined;
         if (!runtime) return "scenario runtime unavailable";
         await seedGoogleConnectorGrant(runtime, {
-          capabilities: ["google.calendar.read", "google.calendar.write"],
+          capabilities: ["google.calendar.read"],
         });
         const repo = new LifeOpsRepository(runtime);
         const agentId = String(runtime.agentId);

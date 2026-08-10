@@ -584,10 +584,6 @@
       "destination": "/tracks/agent/connect-channels"
     },
     {
-      "source": "/connectors/gmail-watch",
-      "destination": "/tracks/agent/connect-channels"
-    },
-    {
       "source": "/connectors/instagram",
       "destination": "/tracks/agent/connect-channels"
     },

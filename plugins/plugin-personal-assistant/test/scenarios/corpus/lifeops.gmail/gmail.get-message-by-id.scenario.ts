@@ -1,23 +1,28 @@
 /**
- * Gmail get message by id — agent fetches a specific message via the mock
- * `/gmail/v1/users/me/messages/{id}` endpoint when given an explicit ID.
+ * Gmail get message by id — agent fetches a specific message through the
+ * curated `get_message` MCP tool when given an explicit ID.
  *
  * Failure modes guarded:
  *   - calling list then filtering (wasteful, fragile)
- *   - fabricating the body without hitting the mock
+ *   - fabricating the body without calling the MCP tool
  *
  * Cited: 03-coverage-gap-matrix.md — single-message fetch by id.
  */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  GMAIL_MCP_WRITE_TOOLS,
+  gmailGetMessageFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 const MESSAGE_ID = "msg-julia";
 
 export default scenario({
   lane: "live-only",
   id: "gmail.get-message-by-id",
-  title: "Get a specific Gmail message by ID via mock get endpoint",
+  title: "Get a specific Gmail message by ID through curated MCP",
   domain: "lifeops.gmail",
   tags: ["lifeops", "gmail", "get", "lookup"],
   isolation: "per-scenario",
@@ -33,14 +38,7 @@ export default scenario({
       title: "Gmail Get By ID",
     },
   ],
-  seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-      requiredMessageIds: [MESSAGE_ID],
-    },
-  ],
+  seed: [gmailGetMessageFixture(GMAIL_MCP_MESSAGES.juliaAttachment)],
   turns: [
     {
       kind: "message",
@@ -50,32 +48,31 @@ export default scenario({
       responseJudge: {
         minimumScore: 0.7,
         rubric:
-          "Reply must describe message contents fetched from the mock, not invent content. Reply must reference the actual message.",
+          "Reply must describe message contents fetched through get_message, not invent content. Reply must reference the actual message.",
       },
     },
   ],
   finalChecks: [
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: [
-        "/gmail/v1/users/me/messages",
-        `/gmail/v1/users/me/messages/${MESSAGE_ID}`,
-      ],
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "get_message",
+      arguments: { messageId: MESSAGE_ID },
       minCount: 1,
     },
     {
-      type: "gmailMessageSent",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-get-by-id-rubric",
       threshold: 0.7,
       description:
-        "Agent fetched the specific Gmail message ID via the mock and described its actual contents without fabricating.",
+        "Agent fetched the specific Gmail message ID through get_message and described its actual contents without fabricating.",
     }),
   ],
 });

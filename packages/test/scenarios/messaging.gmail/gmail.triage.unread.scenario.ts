@@ -1,6 +1,12 @@
 /** Scenario fixture for gmail triage unread; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_WRITE_TOOLS,
+  GMAIL_SCENARIO_MESSAGES,
+  gmailSearchFixture,
+} from "./_gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -22,11 +28,11 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "unread-inbox.eml",
-    },
+    gmailSearchFixture([
+      GMAIL_SCENARIO_MESSAGES.finance,
+      GMAIL_SCENARIO_MESSAGES.sarah,
+      GMAIL_SCENARIO_MESSAGES.newsletter,
+    ]),
   ],
   turns: [
     {
@@ -48,13 +54,18 @@ export default scenario({
       subaction: "triage",
     },
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "search_threads",
       minCount: 1,
     },
     {
-      type: "gmailNoRealWrite",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
+      expected: false,
     },
     judgeRubric({
       name: "gmail-unread-triage-rubric",
@@ -62,12 +73,5 @@ export default scenario({
       description:
         "End-to-end: the assistant used Gmail triage to summarize unread mail without modifying or sending Gmail messages.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

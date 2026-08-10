@@ -1,25 +1,22 @@
 /**
  * Tests `applyScenarioSeedStep` (seeds.ts) against a runtime stub, covering the
- * todo / contact / memory / LifeOps / Gmail-inbox seed types. Gmail seeding is
- * exercised through a real local HTTP server so the loopback-URL gate is hit.
+ * todo / contact / memory / LifeOps / MCP fixture seed types. The MCP harness
+ * uses a structural Google-service seam and never opens a network listener.
  */
-import http from "node:http";
-import type { AddressInfo } from "node:net";
-import type { AgentRuntime, UUID } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import type { AgentRuntime, ConnectorAccount, UUID } from "@elizaos/core";
+import { getConnectorAccountManager, stringToUuid } from "@elizaos/core";
 import { createRealTestRuntime } from "@elizaos/core/testing";
+import type {
+  McpAttachmentRef,
+  McpResourceEngine,
+} from "@elizaos/plugin-mcp/resource-engine";
 import type {
   ScenarioContext,
   ScenarioSeedStep,
 } from "@elizaos/scenario-runner/schema";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { GOOGLE_WORKSPACE_MCP_RESOURCES } from "@elizaos/shared/contracts";
+import { describe, expect, it, vi } from "vitest";
 import { applyScenarioSeedStep } from "./seeds";
-
-type MockRequest = {
-  method: string;
-  path: string;
-  body: Record<string, unknown>;
-};
 
 type LifeOpsScheduledTaskForTest = {
   taskId: string;
@@ -60,86 +57,78 @@ type LifeOpsBrowserSessionForTest = {
   metadata: Record<string, unknown>;
 };
 
-let activeServer: http.Server | null = null;
-const originalGoogleBase = process.env.ELIZA_MOCK_GOOGLE_BASE;
-
-afterEach(async () => {
-  process.env.ELIZA_MOCK_GOOGLE_BASE = originalGoogleBase;
-  if (!activeServer) return;
-  await new Promise<void>((resolve, reject) => {
-    activeServer?.close((error) => (error ? reject(error) : resolve()));
-  });
-  activeServer = null;
-});
-
-async function readRequestBody(
-  req: http.IncomingMessage,
-): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const raw = Buffer.concat(chunks).toString("utf8");
-  return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-}
-
-async function startGmailSeedMock(): Promise<{
-  baseUrl: string;
-  requests: MockRequest[];
+async function createMcpFixtureHarness(seedAccount = true): Promise<{
+  ctx: ScenarioContext;
+  engine: () => McpResourceEngine;
+  ref: () => McpAttachmentRef;
+  runtime: AgentRuntime;
 }> {
-  const requests: MockRequest[] = [];
-  const fixtureIds = new Set(["msg-finance", "msg-sarah", "msg-newsletter"]);
-
-  activeServer = http.createServer(async (req, res) => {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    const method = (req.method ?? "GET").toUpperCase();
-    const body = await readRequestBody(req);
-    requests.push({ method, path: url.pathname, body });
-
-    if (method === "DELETE" && url.pathname === "/__mock/google/gmail/fault") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
-      return;
-    }
-    if (method === "DELETE" && url.pathname === "/__mock/requests") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
-      return;
-    }
-    if (method === "POST" && url.pathname === "/__mock/google/gmail/fault") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true, fault: body }));
-      return;
-    }
-    const messageId = url.pathname.match(
-      /^\/gmail\/v1\/users\/me\/messages\/([^/]+)$/,
-    )?.[1];
-    if (method === "GET" && messageId && fixtureIds.has(messageId)) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ id: messageId, threadId: messageId }));
-      return;
-    }
-
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "not_found" }));
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    activeServer?.once("error", reject);
-    activeServer?.listen(0, "127.0.0.1", () => resolve());
-  });
-
-  const address = activeServer.address();
-  if (!address || typeof address === "string") {
-    throw new Error("Gmail seed mock did not bind a TCP port");
+  let activeEngine: McpResourceEngine | undefined;
+  let activeRef: McpAttachmentRef | undefined;
+  const host = {
+    options: {
+      engine: {
+        attach: vi.fn(),
+        detach: vi.fn(),
+        discover: vi.fn(),
+        callTool: vi.fn(),
+      } as unknown as McpResourceEngine,
+    },
+  };
+  const service = {
+    mcpHost: host,
+    disconnectMcpAccount: vi.fn(async () => {
+      if (activeEngine && activeRef) await activeEngine.detach(activeRef);
+      activeRef = undefined;
+    }),
+    connectMcpAccount: vi.fn(async (account: ConnectorAccount) => {
+      activeEngine = host.options.engine;
+      activeRef = await activeEngine.attach({
+        key: `google:scenario-agent:${account.id}:gmail`,
+        endpoint: GOOGLE_WORKSPACE_MCP_RESOURCES.gmail.endpoint,
+      });
+      await activeEngine.discover(activeRef);
+      return { products: { gmail: { status: "connected" } } };
+    }),
+  };
+  const runtime = {
+    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+    getService: vi.fn((name: string) => (name === "google" ? service : null)),
+  } as unknown as AgentRuntime;
+  const manager = getConnectorAccountManager(runtime);
+  manager.registerProvider({ provider: "google", label: "Google" });
+  if (seedAccount) {
+    await manager.upsertAccount("google", {
+      id: "google-personal",
+      provider: "google",
+      role: "OWNER",
+      purpose: ["reading", "messaging"],
+      accessGate: "open",
+      status: "connected",
+      capabilities: ["gmail.read", "gmail.draft", "gmail.manage"],
+      scopes: [
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.compose",
+        "https://www.googleapis.com/auth/gmail.modify",
+      ],
+      selectedProducts: ["gmail"],
+      createdAt: 1,
+      updatedAt: 1,
+    });
   }
   return {
-    baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}`,
-    requests,
+    ctx: { runtime, actionsCalled: [], mcpFixtures: [], mcpToolCalls: [] },
+    runtime,
+    engine: () => {
+      if (!activeEngine) throw new Error("fixture engine was not connected");
+      return activeEngine;
+    },
+    ref: () => {
+      if (!activeRef) throw new Error("fixture attachment was not connected");
+      return activeRef;
+    },
   };
 }
-
-const gmailSeedContext: ScenarioContext = { actionsCalled: [] };
 
 type ConnectorContributionForTest = {
   kind: string;
@@ -1368,82 +1357,141 @@ describe("scenario memory seeds", () => {
   });
 });
 
-describe("scenario gmail seeds", () => {
-  it("forwards bounded gmailInbox faultInjection to the loopback Google mock", async () => {
-    const { baseUrl, requests } = await startGmailSeedMock();
-    process.env.ELIZA_MOCK_GOOGLE_BASE = baseUrl;
-
-    const result = await applyScenarioSeedStep(gmailSeedContext, {
-      type: "gmailInbox",
-      fixture: "default",
-      faultInjection: { mode: "server_error", method: "GET", limit: 0 },
+describe("scenario MCP fixtures", () => {
+  it("creates a credentialless synthetic owner binding when none exists", async () => {
+    const harness = await createMcpFixtureHarness(false);
+    const result = await applyScenarioSeedStep(harness.ctx, {
+      type: "mcpFixture",
+      provider: "google",
+      resource: "gmail",
+      tool: "search_threads",
+      arguments: { query: "is:unread" },
+      result: { structuredContent: { threads: [] } },
     } satisfies ScenarioSeedStep);
 
     expect(result).toBeUndefined();
-    expect(
-      requests.map((request) => `${request.method} ${request.path}`),
-    ).toEqual([
-      "DELETE /__mock/google/gmail/fault",
-      // seedGmailInbox reads the mock's fixture manifest to resolve message ids
-      // dynamically (gmailFixtureMessageIds), so this GET precedes the per-message
-      // fetches; it falls back to the hardcoded ids only if the manifest is absent.
-      "GET /__mock/google/gmail/fixtures",
-      "GET /gmail/v1/users/me/messages/msg-finance",
-      "GET /gmail/v1/users/me/messages/msg-sarah",
-      "GET /gmail/v1/users/me/messages/msg-newsletter",
-      "DELETE /__mock/requests",
-      "POST /__mock/google/gmail/fault",
+    const accounts = await getConnectorAccountManager(
+      harness.runtime,
+    ).listAccounts("google");
+    expect(accounts).toEqual([
+      expect.objectContaining({
+        id: "scenario-google-owner",
+        role: "OWNER",
+        status: "connected",
+        capabilities: ["gmail.read"],
+        selectedProducts: ["gmail"],
+        metadata: { synthetic: true, fixtureOnly: true },
+      }),
     ]);
-    expect(requests.at(-1)?.body).toEqual({
-      mode: "server_error",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
-      remaining: 0,
-    });
+    expect(JSON.stringify(accounts)).not.toMatch(/token|credentialRefs/);
   });
 
-  it("defaults partial_failure gmailInbox faults to batchModify", async () => {
-    const { baseUrl, requests } = await startGmailSeedMock();
-    process.env.ELIZA_MOCK_GOOGLE_BASE = baseUrl;
+  it("serves sequential canonical Gmail responses and records bound authorization context", async () => {
+    const harness = await createMcpFixtureHarness();
+    const query = "is:unread";
+    for (const threadId of ["thread-page-1", "thread-page-2"]) {
+      const result = await applyScenarioSeedStep(harness.ctx, {
+        type: "mcpFixture",
+        provider: "google",
+        resource: "gmail",
+        tool: "search_threads",
+        arguments: { query, pageSize: 20, view: "THREAD_VIEW_MINIMAL" },
+        result: { structuredContent: { threads: [{ id: threadId }] } },
+      } satisfies ScenarioSeedStep);
+      expect(result).toBeUndefined();
+    }
 
-    const result = await applyScenarioSeedStep(gmailSeedContext, {
-      type: "gmailInbox",
-      fixture: "default",
-      faultInjection: { mode: "partial_failure" },
-    } satisfies ScenarioSeedStep);
-
-    expect(result).toBeUndefined();
-    expect(
-      requests.map((request) => `${request.method} ${request.path}`),
-    ).toEqual([
-      "DELETE /__mock/google/gmail/fault",
-      // seedGmailInbox reads the mock's fixture manifest to resolve message ids
-      // dynamically (gmailFixtureMessageIds), so this GET precedes the per-message
-      // fetches; it falls back to the hardcoded ids only if the manifest is absent.
-      "GET /__mock/google/gmail/fixtures",
-      "GET /gmail/v1/users/me/messages/msg-finance",
-      "GET /gmail/v1/users/me/messages/msg-sarah",
-      "GET /gmail/v1/users/me/messages/msg-newsletter",
-      "DELETE /__mock/requests",
-      "POST /__mock/google/gmail/fault",
-    ]);
-    expect(requests.at(-1)?.body).toEqual({
-      mode: "partial_failure",
-      method: "POST",
-      path: "/gmail/v1/users/me/messages/batchModify",
+    const call = {
+      name: "search_threads",
+      arguments: { query, pageSize: 20, view: "THREAD_VIEW_MINIMAL" },
+    };
+    await expect(
+      harness.engine().callTool(harness.ref(), call),
+    ).resolves.toMatchObject({
+      structuredContent: { threads: [{ id: "thread-page-1" }] },
     });
+    await expect(
+      harness.engine().callTool(harness.ref(), call),
+    ).resolves.toMatchObject({
+      structuredContent: { threads: [{ id: "thread-page-2" }] },
+    });
+    expect(harness.ctx.mcpToolCalls).toEqual([
+      expect.objectContaining({
+        provider: "google",
+        resource: "gmail",
+        tool: "search_threads",
+        accountId: "google-personal",
+        requiredCapability: "gmail.read",
+        authorization: "authorized",
+        arguments: call.arguments,
+      }),
+      expect.objectContaining({
+        provider: "google",
+        resource: "gmail",
+        tool: "search_threads",
+        accountId: "google-personal",
+        requiredCapability: "gmail.read",
+        authorization: "authorized",
+        arguments: call.arguments,
+      }),
+    ]);
+    expect(JSON.stringify(harness.ctx.mcpToolCalls)).not.toContain("token");
   });
 
-  it("rejects invalid gmailInbox faultInjection limits", async () => {
-    const { baseUrl } = await startGmailSeedMock();
-    process.env.ELIZA_MOCK_GOOGLE_BASE = baseUrl;
+  it("uses exactly the curated Gmail names and rejects unsupported send", async () => {
+    expect(Object.keys(GOOGLE_WORKSPACE_MCP_RESOURCES.gmail.tools)).toEqual([
+      "create_draft",
+      "list_drafts",
+      "get_thread",
+      "get_message",
+      "search_threads",
+      "label_thread",
+      "unlabel_thread",
+      "list_labels",
+      "label_message",
+      "unlabel_message",
+    ]);
+    expect(GOOGLE_WORKSPACE_MCP_RESOURCES.gmail.tools).not.toHaveProperty(
+      "send_email",
+    );
 
-    const result = await applyScenarioSeedStep(gmailSeedContext, {
-      type: "gmailInbox",
-      faultInjection: { mode: "server_error", limit: -1 },
+    const harness = await createMcpFixtureHarness();
+    const rejected = await applyScenarioSeedStep(harness.ctx, {
+      type: "mcpFixture",
+      provider: "google",
+      resource: "gmail",
+      tool: "send_email",
+      arguments: { to: ["person@example.com"] },
+      result: { structuredContent: { id: "fabricated-send" } },
+    } as unknown as ScenarioSeedStep);
+    expect(rejected).toMatch(/not in the curated MCP catalog/);
+
+    await applyScenarioSeedStep(harness.ctx, {
+      type: "mcpFixture",
+      provider: "google",
+      resource: "gmail",
+      tool: "list_labels",
+      result: { structuredContent: { labels: [] } },
     } satisfies ScenarioSeedStep);
+    await expect(
+      harness.engine().callTool(harness.ref(), {
+        name: "send_email",
+        arguments: {},
+      }),
+    ).rejects.toThrow(/rejected unsupported google\/gmail tool send_email/);
+  });
 
-    expect(result).toContain("faultInjection.limit");
+  it("rejects REST-shaped arguments at the reviewed MCP fixture boundary", async () => {
+    const harness = await createMcpFixtureHarness();
+    const result = await applyScenarioSeedStep(harness.ctx, {
+      type: "mcpFixture",
+      provider: "google",
+      resource: "gmail",
+      tool: "get_message",
+      arguments: { path: "/gmail/v1/users/me/messages/msg-1" },
+      result: { structuredContent: { message: { id: "msg-1" } } },
+    } as unknown as ScenarioSeedStep);
+    expect(result).toMatch(/unsupported field\(s\): path/);
   });
 });
 

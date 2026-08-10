@@ -43,7 +43,6 @@ export default scenario({
   tags: ["lifeops", "scheduling", "calendly"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
-  mockoon: ["calendar"],
   rooms: [
     {
       id: "main",

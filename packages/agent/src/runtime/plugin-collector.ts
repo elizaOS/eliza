@@ -386,11 +386,13 @@ function shouldLoadGoogleWorkspace(
     return true;
   }
 
-  // Match readClientConfig(): OAuth cannot start without redirect URI either.
+  // The secret normally lives only in the runtime vault, which this
+  // synchronous collector cannot inspect. The connector provider validates it
+  // before authorization, so the non-secret app identifiers are the narrow
+  // truthful load signal here.
   const clientId = env.GOOGLE_CLIENT_ID?.trim();
-  const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
   const redirectUri = env.GOOGLE_REDIRECT_URI?.trim();
-  return Boolean(clientId && clientSecret && redirectUri);
+  return Boolean(clientId && redirectUri);
 }
 
 /**
@@ -848,8 +850,9 @@ export function collectPluginNames(
   //
   // Do NOT infer Google Workspace from Calendar alone — Calendar also covers
   // Apple/Microsoft/ICS. Load google-workspace only on an explicit Google
-  // signal (entries enable, googlechat connector, or full GOOGLE_CLIENT_* trio),
-  // and never when entries["google-workspace"].enabled === false.
+  // signal (entries enable, googlechat connector, or the non-secret Google
+  // OAuth client ID + redirect URI), and never when
+  // entries["google-workspace"].enabled === false.
   //
   // Run BEFORE the mobile allow-list so Node-only Workspace cannot be re-added
   // after mobile filtering (APK has no google-workspace bundle).

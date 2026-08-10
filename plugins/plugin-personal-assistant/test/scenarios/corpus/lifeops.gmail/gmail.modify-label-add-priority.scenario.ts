@@ -1,5 +1,5 @@
 /**
- * Apply a label to a single Gmail message via batchModify mock.
+ * Apply a label to a single Gmail message through label_message.
  *
  * Failure modes guarded:
  *   - skipping the modify call entirely
@@ -11,6 +11,11 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  gmailGetMessageFixture,
+  gmailMcpFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 const TARGET = "msg-julia";
 
@@ -34,12 +39,16 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-      requiredMessageIds: [TARGET],
-    },
+    gmailGetMessageFixture(GMAIL_MCP_MESSAGES.juliaAttachment),
+    gmailMcpFixture({
+      tool: "label_message",
+      arguments: { messageId: TARGET, labelIds: ["Priority"] },
+      structuredContent: {
+        messageId: TARGET,
+        addedLabelIds: ["Priority"],
+      },
+      clearLedger: false,
+    }),
   ],
   turns: [
     {
@@ -66,27 +75,17 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "gmailBatchModify",
-      body: {
-        addLabelIds: "Priority",
-      },
-    },
-    {
-      type: "gmailMessageSent",
-      expected: false,
-    },
-    {
-      type: "gmailDraftCreated",
-      expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "label_message",
+      arguments: { messageId: TARGET, labelIds: ["Priority"] },
     },
     judgeRubric({
       name: "gmail-modify-label-rubric",
       threshold: 0.7,
       description:
-        "Agent applied Priority label to the identified message via batchModify mock without sending or drafting.",
+        "Agent applied Priority to the identified message through label_message without drafting.",
     }),
   ],
 });

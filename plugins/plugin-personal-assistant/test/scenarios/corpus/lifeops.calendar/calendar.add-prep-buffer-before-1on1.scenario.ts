@@ -46,7 +46,6 @@ export default scenario({
   tags: ["lifeops", "calendar", "prep-buffer"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
-  mockoon: ["calendar"],
   rooms: [
     {
       id: "main",

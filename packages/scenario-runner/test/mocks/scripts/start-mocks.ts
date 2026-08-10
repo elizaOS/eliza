@@ -25,16 +25,6 @@ import {
   GITHUB_FIXTURE_PULLS,
   GITHUB_FIXTURE_SEARCH_ITEMS,
 } from "../helpers/github-octokit-fixture.ts";
-import type { GoogleCalendarRequestLedgerMetadata } from "./google-calendar-state.ts";
-import {
-  createGoogleMockState,
-  type GmailRequestLedgerMetadata,
-  type GoogleGmailFaultInjection,
-  type GoogleGmailFaultMode,
-  type GoogleMockState,
-  googleDynamicFixture,
-  setGoogleGmailFaultInjection,
-} from "./google-gmail-state.ts";
 import { MockHttpError } from "./mock-http-error.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,7 +33,6 @@ const MOCK_BROWSER_WORKSPACE_TOKEN = "mock-browser-workspace-token";
 const MOCK_BLUEBUBBLES_PASSWORD = "mock-bluebubbles-password";
 
 export const MOCK_PROVIDER_ENVIRONMENTS = [
-  "google",
   "twilio",
   "whatsapp",
   "x-twitter",
@@ -131,8 +120,6 @@ export interface MockRequestLedgerEntry {
   body: RequestBody;
   createdAt: string;
   runId?: string;
-  gmail?: GmailRequestLedgerMetadata;
-  calendar?: GoogleCalendarRequestLedgerMetadata;
   x?: XRequestLedgerMetadata;
   whatsapp?: WhatsAppRequestLedgerMetadata;
   signal?: SignalRequestLedgerMetadata;
@@ -229,10 +216,6 @@ function envVarsFor(
   baseUrls: Record<MockEnvironmentName, string>,
 ): Record<string, string> {
   const out: Record<string, string> = {};
-  if (envs.includes("google")) {
-    out.ELIZA_MOCK_GOOGLE_BASE = baseUrls.google;
-    out.ELIZA_BLOCK_REAL_GMAIL_WRITES = "1";
-  }
   if (envs.includes("twilio")) {
     out.ELIZA_MOCK_TWILIO_BASE = baseUrls.twilio;
   }
@@ -3851,7 +3834,6 @@ function openaiDynamicFixture(
 }
 
 type DynamicProviderState =
-  | { kind: "google"; state: GoogleMockState }
   | { kind: "x-twitter"; state: XMockState }
   | { kind: "whatsapp"; state: WhatsAppMockState }
   | { kind: "signal"; state: SignalMockState }
@@ -3873,14 +3855,6 @@ async function createDynamicProviderState(
   environmentName: string | undefined,
   opts?: MockFixtureOptions,
 ): Promise<DynamicProviderState> {
-  if (environmentName === "Google APIs") {
-    return {
-      kind: "google",
-      state: createGoogleMockState({
-        simulator: opts?.simulator,
-      }),
-    };
-  }
   if (environmentName === "X (Twitter)") {
     return { kind: "x-twitter", state: createXMockState() };
   }
@@ -3932,80 +3906,6 @@ async function createDynamicProviderState(
   return null;
 }
 
-function readGoogleGmailFaultMode(value: unknown): GoogleGmailFaultMode | null {
-  if (
-    value === "auth_expired" ||
-    value === "rate_limit" ||
-    value === "server_error" ||
-    value === "partial_failure"
-  ) {
-    return value;
-  }
-  return null;
-}
-
-function normalizeGoogleGmailFaultPath(value: unknown): string | undefined {
-  if (typeof value !== "string" || !value.trim()) return undefined;
-  const pathValue = value.trim();
-  return pathValue.startsWith("/") ? pathValue : `/${pathValue}`;
-}
-
-function readGoogleGmailFaultInjection(
-  requestBody: RequestBody,
-): GoogleGmailFaultInjection {
-  const mode = readGoogleGmailFaultMode(requestBody.mode);
-  if (!mode) {
-    throw new MockHttpError(
-      400,
-      "mode must be auth_expired, rate_limit, server_error, or partial_failure",
-    );
-  }
-  const method =
-    typeof requestBody.method === "string" && requestBody.method.trim()
-      ? requestBody.method.trim().toUpperCase()
-      : undefined;
-  const pathValue = normalizeGoogleGmailFaultPath(requestBody.path);
-  const remaining =
-    typeof requestBody.remaining === "number" &&
-    Number.isFinite(requestBody.remaining)
-      ? Math.max(0, Math.floor(requestBody.remaining))
-      : undefined;
-
-  return {
-    mode,
-    ...(method ? { method } : {}),
-    ...(pathValue ? { path: pathValue } : {}),
-    ...(remaining !== undefined ? { remaining } : {}),
-  };
-}
-
-function handleGoogleGmailFaultControl(
-  provider: DynamicProviderState,
-  method: string,
-  pathname: string,
-  requestBody: RequestBody,
-): DynamicFixtureResponse | null {
-  if (
-    provider?.kind !== "google" ||
-    pathname !== "/__mock/google/gmail/fault"
-  ) {
-    return null;
-  }
-
-  if (method === "DELETE") {
-    setGoogleGmailFaultInjection(provider.state, null);
-    return { statusCode: 200, body: { ok: true } };
-  }
-
-  if (method === "POST") {
-    const fault = readGoogleGmailFaultInjection(requestBody);
-    setGoogleGmailFaultInjection(provider.state, fault);
-    return { statusCode: 200, body: { ok: true, fault } };
-  }
-
-  throw new MockHttpError(405, "Unsupported Gmail fault control method");
-}
-
 async function dynamicProviderFixture(args: {
   provider: DynamicProviderState;
   method: string;
@@ -4017,16 +3917,6 @@ async function dynamicProviderFixture(args: {
 }): Promise<DynamicFixtureResponse | null> {
   if (!args.provider) return null;
   switch (args.provider.kind) {
-    case "google":
-      return googleDynamicFixture(
-        args.provider.state,
-        args.method,
-        args.pathname,
-        args.searchParams,
-        args.requestBody,
-        args.headers,
-        args.ledgerEntry,
-      );
     case "x-twitter":
       return xDynamicFixture(
         args.provider.state,
@@ -4266,20 +4156,6 @@ async function startFixtureServer(
         requests.splice(0, requests.length);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
-        return;
-      }
-      const googleGmailFaultControl = handleGoogleGmailFaultControl(
-        dynamicProvider,
-        method,
-        requestUrl.pathname,
-        requestBody,
-      );
-      if (googleGmailFaultControl) {
-        res.writeHead(googleGmailFaultControl.statusCode, {
-          "Content-Type": "application/json",
-          ...(googleGmailFaultControl.headers ?? {}),
-        });
-        res.end(JSON.stringify(googleGmailFaultControl.body));
         return;
       }
       const ledgerEntry: MockRequestLedgerEntry = {

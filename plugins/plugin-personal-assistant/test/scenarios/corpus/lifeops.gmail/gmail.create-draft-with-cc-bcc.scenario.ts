@@ -1,6 +1,6 @@
 /**
  * Draft with CC and BCC — the agent must include both recipient sets in the
- * draft mock request body, and must NOT confuse cc/bcc/to roles.
+ * curated `create_draft` arguments and must not confuse cc/bcc/to roles.
  *
  * Failure modes guarded:
  *   - CC'ing the BCC recipient
@@ -12,6 +12,10 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  gmailCreateDraftFixture,
+  gmailDefaultSearchFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -33,11 +37,8 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-    },
+    gmailDefaultSearchFixture(),
+    gmailCreateDraftFixture({ clearLedger: false }),
   ],
   turns: [
     {
@@ -54,17 +55,16 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "gmailDraftCreated",
-    },
-    {
-      type: "gmailMockRequest",
-      method: "POST",
-      path: "/gmail/v1/users/me/drafts",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "create_draft",
+      arguments: {
+        to: ["alice@example.com"],
+        cc: ["bob@example.com"],
+        bcc: ["counsel@legal.example"],
+      },
       minCount: 1,
-    },
-    {
-      type: "gmailMessageSent",
-      expected: false,
     },
     judgeRubric({
       name: "gmail-draft-cc-bcc-rubric",
@@ -72,12 +72,5 @@ export default scenario({
       description:
         "Agent drafted with distinct TO (alice), CC (bob), BCC (counsel@legal.example) fields and did not send.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

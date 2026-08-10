@@ -1,6 +1,6 @@
 /**
- * Bulk-cleanup marketing emails — agent classifies and batch-archives
- * promotional/marketing mail without sending or drafting.
+ * Bulk-cleanup marketing emails — agent may classify mail through search, but
+ * must refuse the unavailable bulk archive operation without MCP writes.
  *
  * Failure modes guarded:
  *   - archiving real-person mail
@@ -11,11 +11,15 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_WRITE_TOOLS,
+  gmailDefaultSearchFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
   id: "gmail.bulk-cleanup-marketing-emails",
-  title: "Bulk archive marketing emails without touching person mail",
+  title: "Bulk marketing cleanup is classified then refused without writes",
   domain: "lifeops.gmail",
   tags: ["lifeops", "gmail", "cleanup", "marketing", "bulk"],
   isolation: "per-scenario",
@@ -31,13 +35,7 @@ export default scenario({
       title: "Gmail Bulk Marketing Cleanup",
     },
   ],
-  seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-    },
-  ],
+  seed: [gmailDefaultSearchFixture({ repeat: true })],
   turns: [
     {
       kind: "message",
@@ -58,33 +56,23 @@ export default scenario({
       responseJudge: {
         minimumScore: 0.75,
         rubric:
-          "Reply must confirm archive is bound to the marketing batch identified earlier, not person mail. Must not send or draft.",
+          "Reply must explain that the curated Gmail MCP cannot apply one bulk archive mutation, must not claim mail was changed, and may offer a narrower/manual next step.",
       },
     },
   ],
   finalChecks: [
     {
-      type: "gmailBatchModify",
-      body: {
-        removeLabelIds: "INBOX",
-      },
-    },
-    {
-      type: "gmailMessageSent",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
-    },
-    {
-      type: "gmailDraftCreated",
-      expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-bulk-marketing-cleanup-rubric",
       threshold: 0.7,
       description:
-        "Agent classified marketing vs person mail and archived only marketing via batchModify; did not send or touch person mail.",
+        "Agent classified marketing vs person mail, refused the unavailable bulk mutation, and changed no Gmail state.",
     }),
   ],
 });

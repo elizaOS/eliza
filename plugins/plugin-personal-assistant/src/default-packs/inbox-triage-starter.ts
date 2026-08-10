@@ -2,7 +2,7 @@
  * Default pack: `inbox-triage-starter`.
  *
  * Opt-in starter. If a Gmail-capable connector is registered (capability
- * `google.gmail.read`), schedules a daily 9am triage `ScheduledTask`.
+ * `google.gmail.triage`), schedules a daily 9am triage `ScheduledTask`.
  * Otherwise the pack is offered at customize time but its record is NOT seeded.
  */
 
@@ -41,13 +41,13 @@ const dailyTriageDefinition: RecapTaskDefinition = {
   metadata: {
     packKey: INBOX_TRIAGE_STARTER_PACK_KEY,
     recordKey: "daily-9am",
-    requiredCapability: "google.gmail.read",
+    requiredCapability: "google.gmail.triage",
   },
 };
 
 const dailyTriageRecord = compileTaskDefinition(dailyTriageDefinition);
 
-export const INBOX_TRIAGE_REQUIRED_CAPABILITIES = ["google.gmail.read"];
+export const INBOX_TRIAGE_REQUIRED_CAPABILITIES = ["google.gmail.triage"];
 
 export const inboxTriageStarterPack: DefaultPack = {
   key: INBOX_TRIAGE_STARTER_PACK_KEY,
@@ -77,6 +77,6 @@ export function isInboxTriageEligible(
   registry: ConnectorRegistryContract | undefined | null,
 ): boolean {
   if (!registry) return false;
-  const candidates = registry.byCapability("google.gmail.read");
+  const candidates = registry.byCapability("google.gmail.triage");
   return candidates.length > 0;
 }

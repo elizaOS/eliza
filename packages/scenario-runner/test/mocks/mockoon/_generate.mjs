@@ -3,7 +3,7 @@
 // realistic happy-path bodies + the standard 3 fault rules per route.
 // Run: node packages/scenario-runner/test/mocks/mockoon/_generate.mjs
 //
-// gmail.json is hand-authored. Everything else is emitted from this file.
+// Every environment in this directory is emitted from this file.
 
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -18,7 +18,7 @@ const u = () => {
   return `bbbb1111-aaaa-4000-8000-${hex}`;
 };
 
-const FAULT_RULES = (label, fault) => [
+const FAULT_RULES = (fault) => [
   {
     target: "header",
     modifier: "X-Mockoon-Fault",
@@ -72,7 +72,7 @@ function faultResponse(label, statusCode, body, extraHeaders = []) {
     filePath: "",
     databucketID: "",
     sendFileAsBody: false,
-    rules: FAULT_RULES(label, label),
+    rules: FAULT_RULES(label),
     rulesOperator: "OR",
     disableTemplating: false,
     fallbackTo404: false,
@@ -321,147 +321,6 @@ const PEOPLE = [
   },
   { name: "Diego Alvarez", email: "diego@cinder.coop", phone: "+13105550199" },
 ];
-
-// ---------- calendar -----------------------------------------------------
-
-const calendar = envelope({
-  name: "lifeops-calendar-mock",
-  port: 18802,
-  routes: [
-    route(
-      "get",
-      "calendar/v3/users/me/calendarList",
-      {
-        kind: "calendar#calendarList",
-        etag: '"3829471"',
-        nextPageToken: null,
-        items: [
-          {
-            kind: "calendar#calendarListEntry",
-            id: "primary",
-            summary: "shaw@eliza.dev",
-            primary: true,
-            accessRole: "owner",
-            timeZone: "America/Los_Angeles",
-          },
-          {
-            kind: "calendar#calendarListEntry",
-            id: "team-eliza@group.calendar.google.com",
-            summary: "Eliza team",
-            accessRole: "writer",
-            timeZone: "America/Los_Angeles",
-          },
-        ],
-      },
-      "google",
-    ),
-    route(
-      "get",
-      "calendar/v3/calendars/:calendarId/events",
-      {
-        kind: "calendar#events",
-        etag: '"3829499"',
-        timeZone: "America/Los_Angeles",
-        nextPageToken: null,
-        items: [
-          {
-            id: "ev_193a200a44b0bb02",
-            status: "confirmed",
-            summary: "Standup",
-            description: "Daily standup — what blocked you yesterday?",
-            start: {
-              dateTime: "2026-05-09T16:30:00-07:00",
-              timeZone: "America/Los_Angeles",
-            },
-            end: {
-              dateTime: "2026-05-09T17:00:00-07:00",
-              timeZone: "America/Los_Angeles",
-            },
-            attendees: [
-              { email: "shaw@eliza.dev", responseStatus: "accepted" },
-              { email: PEOPLE[0].email, responseStatus: "accepted" },
-              { email: PEOPLE[1].email, responseStatus: "tentative" },
-            ],
-            conferenceData: {
-              conferenceId: "abc-defg-hij",
-              entryPoints: [
-                {
-                  entryPointType: "video",
-                  uri: "https://meet.google.com/abc-defg-hij",
-                },
-              ],
-            },
-            organizer: { email: PEOPLE[0].email, displayName: PEOPLE[0].name },
-          },
-          {
-            id: "ev_193a1ed8c0aa1f01",
-            status: "confirmed",
-            summary: "Q3 OKR review",
-            start: { dateTime: "2026-05-12T11:00:00-07:00" },
-            end: { dateTime: "2026-05-12T12:00:00-07:00" },
-            attendees: [
-              { email: "shaw@eliza.dev", responseStatus: "needsAction" },
-              { email: PEOPLE[2].email, responseStatus: "accepted" },
-            ],
-          },
-        ],
-      },
-      "google",
-    ),
-    route(
-      "get",
-      "calendar/v3/calendars/:calendarId/events/:eventId",
-      {
-        id: "ev_193a200a44b0bb02",
-        status: "confirmed",
-        summary: "Standup",
-        start: { dateTime: "2026-05-09T16:30:00-07:00" },
-        end: { dateTime: "2026-05-09T17:00:00-07:00" },
-        attendees: [{ email: "shaw@eliza.dev", responseStatus: "accepted" }],
-      },
-      "google",
-    ),
-    route(
-      "post",
-      "calendar/v3/calendars/:calendarId/events",
-      {
-        id: "ev_new_193b000000000001",
-        status: "confirmed",
-        htmlLink:
-          "https://calendar.google.com/event?eid=ev_new_193b000000000001",
-        created: "2026-05-09T18:00:00.000Z",
-        updated: "2026-05-09T18:00:00.000Z",
-        summary: "Lifeops scheduled call",
-        start: { dateTime: "2026-05-10T15:00:00-07:00" },
-        end: { dateTime: "2026-05-10T15:30:00-07:00" },
-      },
-      "google",
-    ),
-    route(
-      "patch",
-      "calendar/v3/calendars/:calendarId/events/:eventId",
-      {
-        id: "{{urlParam 'eventId'}}",
-        status: "confirmed",
-        updated: "2026-05-09T18:05:12.000Z",
-        summary: "Standup (rescheduled)",
-      },
-      "google",
-    ),
-    {
-      uuid: u(),
-      type: "http",
-      documentation: "calendar events.delete",
-      method: "delete",
-      endpoint: "calendar/v3/calendars/:calendarId/events/:eventId",
-      responses: [
-        { ...happyResponse("", 204), headers: [] },
-        ...defaultFaults("google"),
-      ],
-      responseMode: null,
-    },
-  ],
-});
 
 // ---------- slack --------------------------------------------------------
 
@@ -1681,7 +1540,6 @@ const signal = envelope({
 // ---------- write all ----------------------------------------------------
 
 const ENVS = {
-  "calendar.json": calendar,
   "slack.json": slack,
   "discord.json": discord,
   "telegram.json": telegram,

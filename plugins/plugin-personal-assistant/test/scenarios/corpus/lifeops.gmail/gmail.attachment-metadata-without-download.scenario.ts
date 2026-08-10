@@ -1,6 +1,6 @@
 /**
- * Attachment metadata — the agent must surface attachment filename/size from
- * the message metadata WITHOUT downloading the attachment bytes (no
+ * Attachment metadata — the agent must surface the attachment filename from
+ * message metadata WITHOUT downloading the attachment bytes (no
  * `attachments/get` call required if the user only asked "what's attached").
  *
  * Failure modes guarded:
@@ -12,6 +12,12 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  GMAIL_MCP_WRITE_TOOLS,
+  gmailGetMessageFixture,
+  gmailSearchFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -33,11 +39,10 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-    },
+    gmailSearchFixture([GMAIL_MCP_MESSAGES.juliaAttachment]),
+    gmailGetMessageFixture(GMAIL_MCP_MESSAGES.juliaAttachment, {
+      clearLedger: false,
+    }),
   ],
   turns: [
     {
@@ -54,24 +59,25 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: ["/gmail/v1/users/me/messages", "/gmail/v1/users/me/messages/"],
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "get_message",
+      arguments: { messageId: GMAIL_MCP_MESSAGES.juliaAttachment.id },
       minCount: 1,
     },
     {
-      type: "gmailMessageSent",
-      expected: false,
-    },
-    {
-      type: "gmailDraftCreated",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
     },
     judgeRubric({
       name: "gmail-attachment-metadata-rubric",
       threshold: 0.7,
       description:
-        "Agent reported attachment metadata from the message fetch without downloading bytes or fabricating filenames.",
+        "Agent reported attachment metadata from get_message without downloading bytes or fabricating filenames.",
     }),
   ],
 });

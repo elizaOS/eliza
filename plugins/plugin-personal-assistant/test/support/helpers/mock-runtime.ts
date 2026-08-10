@@ -23,10 +23,7 @@ import {
   seedLifeOpsSimulatorRuntime,
 } from "./lifeops-simulator.ts";
 import { seedBenchmarkLifeOpsFixtures } from "./seed-benchmark-fixtures.ts";
-import {
-  seedGoogleConnectorGrant,
-  seedXConnectorGrant,
-} from "./seed-grants.ts";
+import { seedXConnectorGrant } from "./seed-grants.ts";
 import { seedTestUserProfile } from "./seed-test-user-profile.ts";
 
 export interface MockedTestRuntime {
@@ -54,11 +51,6 @@ interface MockRuntimeStateEnvironment {
 export interface MockedTestRuntimeOptions {
   /** Subset of mocks to enable. Defaults to all. */
   envs?: readonly MockEnvironmentName[];
-  /**
-   * Whether to seed a fake Google connector grant. Defaults to true when the
-   * `google` environment is enabled.
-   */
-  seedGoogle?: boolean;
   /**
    * Whether to seed a fake X connector grant. Defaults to true when the
    * `x-twitter` environment is enabled.
@@ -374,15 +366,10 @@ export async function createMockedTestRuntime(
     throw err;
   }
 
-  const shouldSeedGoogle =
-    (opts?.seedGoogle ?? true) && envs.includes("google");
   const shouldSeedX = (opts?.seedX ?? true) && envs.includes("x-twitter");
   const shouldSeedBenchmarkFixtures = opts?.seedBenchmarkFixtures ?? true;
-  if (shouldSeedGoogle || shouldSeedX || shouldSeedBenchmarkFixtures) {
+  if (shouldSeedX || shouldSeedBenchmarkFixtures) {
     try {
-      if (shouldSeedGoogle) {
-        await seedGoogleConnectorGrant(real.runtime);
-      }
       if (shouldSeedX) {
         await seedXConnectorGrant(real.runtime, { side: "owner" });
         await seedXConnectorGrant(real.runtime, {

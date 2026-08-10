@@ -1,15 +1,19 @@
 /**
  * Live-model email-reply-draft outcome for the LifeOps email capability: seeds a
  * real inbound email, asks the agent to DRAFT a reply, and asserts the result
- * against the loopback Gmail mock — a draft was actually created
- * (gmailDraftCreated/draftExists), its body carries the right recipient and the
- * requested Friday-afternoon availability (gmailActionArguments + mock request
- * body), and nothing was SENT (gmailMessageSent:false, gmailNoRealWrite). The
- * MESSAGE `draft_reply` subaction is the path under test.
+ * against the official Gmail MCP boundary — a draft was actually created, its
+ * body carries the right recipient and requested Friday-afternoon availability,
+ * and nothing was delivered. The MESSAGE `draft_reply` subaction is the path
+ * under test; the curated Gmail surface has no send tool.
  */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  gmailCreateDraftFixture,
+  gmailSearchFixture,
+} from "../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -31,11 +35,8 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "sarah-product-brief.eml",
-    },
+    gmailSearchFixture([GMAIL_MCP_MESSAGES.sarahProductBrief]),
+    gmailCreateDraftFixture({ clearLedger: false }),
   ],
   turns: [
     {
@@ -69,59 +70,34 @@ export default scenario({
     },
   ],
   finalChecks: [
-    // OUTCOME: a draft exists on the gmail channel (action result carried a
-    // gmailDraft payload, or data.draft===true on the gmail channel).
+    // OUTCOME: a draft exists on the Gmail channel independent of the MCP
+    // ledger assertion below.
     {
       type: "draftExists",
       name: "gmail reply draft exists",
       channel: "gmail",
       expected: true,
     },
-    // OUTCOME: the draft_reply subaction was called with the correct, structured
-    // arguments — targeting Sarah and carrying the Friday-afternoon availability
-    // in the draft body the owner dictated.
+    // OUTCOME: the curated create_draft tool materialized an unsent draft for
+    // Sarah. The response/judge assertions cover the requested body semantics.
     {
-      type: "gmailActionArguments",
-      name: "draft_reply called with Sarah + Friday body",
-      actionName: ["MESSAGE", "GMAIL_ACTION", "INBOX"],
-      subaction: "draft_reply",
-    },
-    // OUTCOME: a real draft-create request hit the Gmail mock ledger.
-    {
-      type: "gmailDraftCreated",
-      name: "gmail draft create request observed",
-      expected: true,
-    },
-    // OUTCOME (wire body): the draft POST went to the drafts endpoint at least
-    // once — proves a draft, not a send, was materialized server-side.
-    {
-      type: "gmailMockRequest",
-      name: "draft POST hit /drafts",
-      method: "POST",
-      path: "/gmail/v1/users/me/drafts",
+      type: "mcpToolCall",
+      name: "official Gmail create_draft call observed",
+      provider: "google",
+      resource: "gmail",
+      tool: "create_draft",
+      arguments: { to: ["sarah@example.com"] },
       minCount: 1,
     },
     // OUTCOME: the agent had to read the source email to draft a contextual
     // reply — confirms the reply was grounded in the seeded message.
     {
-      type: "gmailMockRequest",
-      name: "source email was fetched for context",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
+      type: "mcpToolCall",
+      name: "source email was fetched through official Gmail MCP",
+      provider: "google",
+      resource: "gmail",
+      tool: "search_threads",
       minCount: 1,
-    },
-    // NEGATIVE OUTCOME: nothing was actually sent (no /messages/send or
-    // /drafts/send in the ledger).
-    {
-      type: "gmailMessageSent",
-      name: "no email was sent",
-      expected: false,
-    },
-    // NEGATIVE OUTCOME: every Gmail write is constrained to the loopback mock;
-    // real Gmail writes are provably excluded.
-    {
-      type: "gmailNoRealWrite",
-      name: "no real gmail write occurred",
     },
     // OUTCOME (LLM judge over the full trajectory): end-to-end the assistant
     // drafted the reply from the seeded context and kept it as a draft.
@@ -131,12 +107,5 @@ export default scenario({
       description:
         "End-to-end: the assistant drafted a Gmail reply to Sarah from the seeded inbound email, included the Friday-afternoon review availability in the draft, and kept it as an unsent draft instead of sending it.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

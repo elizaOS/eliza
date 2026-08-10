@@ -1,6 +1,6 @@
 /**
- * Gmail search-by-sender — agent issues a Gmail search with `from:` operator
- * to the mock when the user asks "what did Sarah send me?".
+ * Gmail search-by-sender — agent issues a curated Gmail MCP search with a
+ * `from:` operator when the user asks "what did Sarah send me?".
  *
  * Failure modes guarded:
  *   - full-inbox scan instead of targeted search
@@ -12,6 +12,11 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  GMAIL_MCP_WRITE_TOOLS,
+  gmailSearchFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -32,13 +37,7 @@ export default scenario({
       title: "Gmail Search By Sender",
     },
   ],
-  seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "sarah-product-brief.eml",
-    },
-  ],
+  seed: [gmailSearchFixture([GMAIL_MCP_MESSAGES.sarahProductBrief])],
   turns: [
     {
       kind: "message",
@@ -54,17 +53,19 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "search_threads",
+      arguments: { query: "from:sarah" },
       minCount: 1,
     },
     {
-      type: "gmailMessageSent",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-search-by-sender-rubric",

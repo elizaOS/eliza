@@ -125,6 +125,22 @@ function parseAddress(value: unknown): { email: string; name?: string } | undefi
     : { email: raw };
 }
 
+function gmailAttachments(value: unknown): GoogleMessageSummary["attachments"] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    const id = optionalString(entry.id);
+    if (!id) return [];
+    return [
+      {
+        id,
+        mimeType: optionalString(entry.mimeType) ?? null,
+        filename: optionalString(entry.filename) ?? null,
+      },
+    ];
+  });
+}
+
 function gmailMessage(value: unknown): GoogleMessageSummary {
   if (!isRecord(value)) {
     throw new ElizaError("Gmail MCP returned a non-object message", {
@@ -149,6 +165,7 @@ function gmailMessage(value: unknown): GoogleMessageSummary {
     labelIds: stringArray(value.labelIds),
     bodyText: optionalString(value.plaintextBody),
     bodyHtml: optionalString(value.htmlBody),
+    attachments: gmailAttachments(value.attachments),
   };
 }
 
@@ -177,7 +194,10 @@ function gmailTriage(message: GoogleMessageSummary): GoogleGmailMessageSummary {
         : "Recent Gmail message.",
     labels,
     htmlLink: null,
-    metadata: { source: "google-workspace-mcp" },
+    metadata: {
+      source: "google-workspace-mcp",
+      attachments: message.attachments ?? [],
+    },
   };
 }
 

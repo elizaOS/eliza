@@ -94,6 +94,40 @@ export type CapturedArtifact = {
   createdAt?: string;
 };
 
+export type ScenarioMcpContent =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string }
+  | { type: "audio"; data: string; mimeType: string };
+
+export type ScenarioMcpToolResult = {
+  content?: ScenarioMcpContent[];
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+};
+
+export type ScenarioMcpFixture = {
+  provider: string;
+  resource: string;
+  tool: string;
+  arguments?: Record<string, unknown>;
+  result: ScenarioMcpToolResult;
+  /** Reuse this response after it is selected once. Defaults to false. */
+  repeat?: boolean;
+};
+
+export type CapturedMcpToolCall = {
+  provider: string;
+  resource: string;
+  tool: string;
+  accountId: string;
+  requiredCapability: string;
+  authorization: "authorized";
+  arguments: Record<string, unknown>;
+  result?: ScenarioMcpToolResult;
+  error?: string;
+  calledAt: string;
+};
+
 export type ScenarioContext = {
   runtime?: unknown;
   apiBaseUrl?: string;
@@ -115,6 +149,8 @@ export type ScenarioContext = {
   memoryWrites?: CapturedMemoryWrite[];
   stateTransitions?: CapturedStateTransition[];
   artifacts?: CapturedArtifact[];
+  mcpFixtures?: ScenarioMcpFixture[];
+  mcpToolCalls?: CapturedMcpToolCall[];
 };
 
 /**
@@ -163,16 +199,11 @@ export type ScenarioSeedStep =
       name?: string;
       content?: Record<string, unknown>;
     }
-  | {
-      type: "gmailInbox";
+  | ({
+      type: "mcpFixture";
       name?: string;
-      account?: string;
-      fixture?: string;
-      fixtures?: string[];
-      requiredMessageIds?: string[];
       clearLedger?: boolean;
-      faultInjection?: Record<string, unknown>;
-    }
+    } & ScenarioMcpFixture)
   | {
       type: "connectorStatus" | "connectorAuthSession" | "transportFault";
       name?: string;
@@ -185,10 +216,6 @@ export type ScenarioSeedStep =
     };
 
 export type ScenarioCleanupStep =
-  | {
-      type: "gmailDeleteDrafts";
-      name?: string;
-    }
   | {
       type: "selfControlClearBlocks";
       name?: string;
@@ -417,30 +444,34 @@ export type ScenarioFinalCheck =
       fields?: Record<string, unknown>;
       minCount?: number;
     })
-  | (CheckBase<"gmailMockRequest"> & {
-      method?: StringMatcher;
-      path?: StringMatcher;
-      body?: Record<string, unknown>;
+  | (CheckBase<"mcpToolCall"> & {
+      provider?: StringMatcher;
+      resource?: StringMatcher;
+      tool?: StringMatcher;
+      accountId?: StringMatcher;
+      requiredCapability?: StringMatcher;
+      arguments?: Record<string, unknown>;
+      result?: Record<string, unknown>;
       expected?: boolean;
       minCount?: number;
     })
-  | (CheckBase<"gmailDraftCreated"> & {
-      expected?: boolean;
+  | (CheckBase<"mcpToolCalls"> & {
+      provider?: StringMatcher;
+      resource?: StringMatcher;
+      calls: Array<{
+        provider?: StringMatcher;
+        resource?: StringMatcher;
+        tool: StringMatcher;
+        accountId?: StringMatcher;
+        requiredCapability?: StringMatcher;
+        arguments?: Record<string, unknown>;
+        result?: Record<string, unknown>;
+      }>;
+      /** Require the declared calls to appear in ledger order. Defaults to true. */
+      ordered?: boolean;
+      /** Require no additional calls in the selected provider/resource ledger. */
+      exact?: boolean;
     })
-  | (CheckBase<"gmailDraftDeleted"> & {
-      expected?: boolean;
-    })
-  | (CheckBase<"gmailMessageSent"> & {
-      expected?: boolean;
-    })
-  | (CheckBase<"gmailBatchModify"> & {
-      expected?: boolean;
-      body?: Record<string, unknown>;
-    })
-  | (CheckBase<"gmailApproval"> & {
-      state: "pending" | "confirmed" | "canceled" | "cancelled";
-    })
-  | CheckBase<"gmailNoRealWrite">
   | (CheckBase<"workflowDispatchOccurred"> & {
       workflowId?: string;
       expected?: boolean;

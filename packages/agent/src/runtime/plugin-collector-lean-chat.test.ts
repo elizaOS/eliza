@@ -77,10 +77,9 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     }
   });
 
-  it("loads google-workspace on lean-chat only with an explicit Google signal", () => {
+  it("loads google-workspace from non-secret OAuth config with a vault-only secret", () => {
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
     process.env.GOOGLE_CLIENT_ID = "client";
-    process.env.GOOGLE_CLIENT_SECRET = "secret";
     process.env.GOOGLE_REDIRECT_URI = "https://example.com/oauth/callback";
     const names = collectPluginNames(emptyConfig);
     expect(names.has("@elizaos/plugin-calendar")).toBe(true);

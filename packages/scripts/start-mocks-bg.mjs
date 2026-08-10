@@ -34,7 +34,6 @@ const envFile = path.join(tmpDir, "mocks.env");
 const dotenvFile = path.join(repoRoot, ".env.mocks");
 
 const ENV_LIST = [
-  "google",
   "twilio",
   "whatsapp",
   "calendly",

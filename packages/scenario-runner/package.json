@@ -101,6 +101,7 @@
     "@elizaos/plugin-video": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "ws": "^8.19.0",
     "@elizaos/auth": "workspace:*"
   },

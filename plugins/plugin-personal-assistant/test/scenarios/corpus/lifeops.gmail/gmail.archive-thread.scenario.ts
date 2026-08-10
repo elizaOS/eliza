@@ -1,7 +1,6 @@
 /**
  * Archive a Gmail THREAD (not a single message) — the archive must apply to
- * every message in the thread, exercised via the threads/modify mock or
- * batchModify across thread messages.
+ * every message in the thread through the official unlabel_thread tool.
  *
  * Failure modes guarded:
  *   - archiving only the latest message in the thread
@@ -12,6 +11,11 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  gmailMcpFixture,
+  gmailSearchFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -33,12 +37,19 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-      requiredMessageIds: ["msg-newsletter"],
-    },
+    gmailSearchFixture([GMAIL_MCP_MESSAGES.newsletter]),
+    gmailMcpFixture({
+      tool: "unlabel_thread",
+      arguments: {
+        threadId: GMAIL_MCP_MESSAGES.newsletter.threadId,
+        labelIds: ["INBOX"],
+      },
+      structuredContent: {
+        threadId: GMAIL_MCP_MESSAGES.newsletter.threadId,
+        removedLabelIds: ["INBOX"],
+      },
+      clearLedger: false,
+    }),
   ],
   turns: [
     {
@@ -55,27 +66,20 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "gmailBatchModify",
-      body: {
-        removeLabelIds: "INBOX",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "unlabel_thread",
+      arguments: {
+        threadId: GMAIL_MCP_MESSAGES.newsletter.threadId,
+        labelIds: ["INBOX"],
       },
-    },
-    {
-      type: "gmailMessageSent",
-      expected: false,
-    },
-    {
-      type: "gmailDraftCreated",
-      expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-archive-thread-rubric",
       threshold: 0.7,
       description:
-        "Agent archived the entire thread via batchModify (removing INBOX label across thread messages) without sending or drafting.",
+        "Agent archived the entire thread through unlabel_thread by removing the INBOX label, without drafting anything.",
     }),
   ],
 });

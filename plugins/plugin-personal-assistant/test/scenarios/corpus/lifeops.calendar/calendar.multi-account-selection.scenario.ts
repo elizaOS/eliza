@@ -36,7 +36,6 @@ export default scenario({
   tags: ["lifeops", "calendar", "multi-account", "clarification"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
-  mockoon: ["calendar"],
   rooms: [
     {
       id: "main",
@@ -53,12 +52,12 @@ export default scenario({
         const runtime = ctx.runtime as AgentRuntime | undefined;
         if (!runtime) return "scenario runtime unavailable";
         await seedGoogleConnectorGrant(runtime, {
-          capabilities: ["google.calendar.read", "google.calendar.write"],
+          capabilities: ["google.calendar.read"],
           email: "personal@example.test",
           grantId: "personal-grant-1",
         });
         await seedGoogleConnectorGrant(runtime, {
-          capabilities: ["google.calendar.read", "google.calendar.write"],
+          capabilities: ["google.calendar.read"],
           email: "work@company.test",
           grantId: "work-grant-1",
         });

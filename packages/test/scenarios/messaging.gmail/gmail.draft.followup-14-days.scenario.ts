@@ -1,6 +1,13 @@
 /** Scenario fixture for gmail draft followup 14 days; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_SCENARIO_MESSAGES,
+  gmailDraftFixture,
+  gmailSearchFixture,
+  gmailThreadFixture,
+} from "./_gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -22,11 +29,15 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "followup-14-days-ago.eml",
-    },
+    gmailSearchFixture([
+      GMAIL_SCENARIO_MESSAGES.unrespondedInbound,
+      GMAIL_SCENARIO_MESSAGES.unrespondedSent,
+    ]),
+    gmailThreadFixture([
+      GMAIL_SCENARIO_MESSAGES.unrespondedInbound,
+      GMAIL_SCENARIO_MESSAGES.unrespondedSent,
+    ]),
+    gmailDraftFixture("thr-unresponded", "draft-followup"),
   ],
   turns: [
     {
@@ -64,20 +75,16 @@ export default scenario({
       subaction: "draft_reply",
     },
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: "/gmail/v1/users/me/threads",
-      minCount: 1,
-    },
-    {
-      type: "gmailDraftCreated",
-    },
-    {
-      type: "gmailMessageSent",
-      expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
+      type: "mcpToolCalls",
+      provider: "google",
+      resource: "gmail",
+      calls: [
+        { tool: "search_threads" },
+        {
+          tool: "create_draft",
+          arguments: { to: ["vendor@example.com"] },
+        },
+      ],
     },
     judgeRubric({
       name: "gmail-followup-tracker-rubric",
@@ -85,12 +92,5 @@ export default scenario({
       description:
         "End-to-end: the assistant identified the stale email follow-up, selected that thread, and produced an unsent Gmail draft instead of a generic summary or silent send.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

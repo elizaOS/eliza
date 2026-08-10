@@ -2,8 +2,10 @@
  * Mockoon redirect helper.
  *
  * When `LIFEOPS_USE_MOCKOON=1` is set in the environment, this module rewrites
- * every connector base URL the lifeops plugin reads to point at the matching
- * Mockoon environment on `http://localhost:<port>`.
+ * supported non-Google connector base URLs that lifeops reads to matching
+ * Mockoon environments on `http://localhost:<port>`. Personal Google is
+ * intentionally excluded because it executes only against official MCP
+ * resources and has no loopback REST override.
  *
  * Port assignments are documented in
  * `packages/scenario-runner/test/mocks/mockoon/INVENTORY.md` and must stay in sync with the
@@ -21,8 +23,6 @@
  */
 
 const PORTS = {
-  gmail: 18801,
-  calendar: 18802,
   slack: 18803,
   discord: 18804,
   telegram: 18805,
@@ -69,14 +69,6 @@ export function applyMockoonEnvOverrides(
   if (!isMockoonEnabled(env)) return [];
 
   const applied: MockoonConnector[] = [];
-
-  // Gmail + Calendar share `googleapis.com` and one env var hook in
-  // `@elizaos/plugin-google-workspace`. Use the gmail port; if a test wants to isolate
-  // calendar traffic it can override afterwards.
-  if (!env.ELIZA_MOCK_GOOGLE_BASE) {
-    env.ELIZA_MOCK_GOOGLE_BASE = `${getMockoonBaseUrl("gmail")}/`;
-    applied.push("gmail", "calendar");
-  }
 
   if (!env.ELIZA_MOCK_TWILIO_BASE) {
     env.ELIZA_MOCK_TWILIO_BASE = getMockoonBaseUrl("twilio");

@@ -16,7 +16,7 @@ const schedulingScenarioDir = resolve(
 const EXPECTED_SCHEDULING_SCENARIO_IDS = [
   "scheduling.attendee-counter-proposes",
   "scheduling.calendly-link-generation",
-  "scheduling.confirm-time-creates-event",
+  "scheduling.confirm-time-read-only-refusal",
   "scheduling.find-mutual-slots-across-attendees",
   "scheduling.preference-storage-survives-restart",
   "scheduling.propose-3-options-for-1hr",

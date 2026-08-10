@@ -30,10 +30,13 @@ function hasNonEmptyEnv(
  * Enable Google Workspace only on an explicit Google signal:
  * - a configured `googlechat` connector block (not empty `{}`)
  * - plugins.entries["google-workspace"].enabled === true
- * - GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET + GOOGLE_REDIRECT_URI configured
+ * - GOOGLE_CLIENT_ID + GOOGLE_REDIRECT_URI configured
  *
  * Do not enable merely because Calendar is present — Calendar also covers
  * Apple, Microsoft, and ICS feeds without Google.
+ * The client secret is intentionally not inspected here: normal operation
+ * keeps it in the runtime secrets service, which this pure predicate cannot
+ * access. OAuth fails closed later if that vault entry is absent.
  * `plugins.entries["google-workspace"].enabled === false` is an unconditional veto.
  */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
@@ -62,11 +65,10 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
     return true;
   }
 
-  // Full local OAuth trio — matches readClientConfig() so we never enable a
-  // provider that cannot start authorization.
+  // Non-secret app identifiers are the narrow observable OAuth signal here.
+  // The connector provider resolves and validates the secret from the vault.
   if (
     hasNonEmptyEnv(ctx.env, "GOOGLE_CLIENT_ID") &&
-    hasNonEmptyEnv(ctx.env, "GOOGLE_CLIENT_SECRET") &&
     hasNonEmptyEnv(ctx.env, "GOOGLE_REDIRECT_URI")
   ) {
     return true;

@@ -53,7 +53,7 @@ export const GOOGLE_WORKSPACE_MCP_RESOURCES = {
   gmail: {
     endpoint: GOOGLE_WORKSPACE_MCP_ENDPOINTS.gmail,
     acceptedScopes: GMAIL_SCOPES,
-    promotedTools: ["create_draft", "get_thread", "search_threads"],
+    promotedTools: ["create_draft", "get_message", "get_thread", "search_threads"],
     tools: {
       create_draft: "gmail.draft",
       list_drafts: "gmail.read",

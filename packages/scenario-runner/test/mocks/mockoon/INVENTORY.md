@@ -4,6 +4,12 @@ Goal: every external HTTP call lifeops makes is reproducible against a Mockoon
 environment so the planner can be tested + trained against realistic data
 without hitting real APIs.
 
+Personal Gmail and Google Calendar are excluded: the supported integration is
+the cloud-managed Google Workspace MCP, whose OAuth/binding fixtures remain in
+the in-process `cloud-managed` environment. Google Chat service-account
+delivery, Maps/GenAI, and Google Fit remain separate integrations outside this
+retired personal Workspace REST fleet.
+
 This document maps each connector's:
 
 - Source files in the workspace
@@ -28,8 +34,6 @@ a new connector.
 
 | Port  | Connector       | Mockoon env file                    |
 | ----- | --------------- | ----------------------------------- |
-| 18801 | gmail           | `gmail.json`                        |
-| 18802 | calendar        | `calendar.json`                     |
 | 18803 | slack           | `slack.json`                        |
 | 18804 | discord         | `discord.json`                      |
 | 18805 | telegram        | `telegram.json`                     |
@@ -61,43 +65,6 @@ variants accessible by sending one of these toggles on the request:
 Mockoon "rules" select the response. The default response is the happy path.
 
 ## Connector inventory
-
-### 1. gmail (port 18801, file `gmail.json`)
-
-- Source: lifeops talks to Gmail via `@elizaos/plugin-google-workspace` (resolved through
-  `service-mixin-gmail.ts`, `service-mixin-email-unsubscribe.ts`,
-  `email-classifier.ts`). The plugin's `GoogleApiClientFactory` already honours
-  `ELIZA_MOCK_GOOGLE_BASE` at
-  `eliza/plugins/plugin-google-workspace/src/client-factory.ts:20`, so the redirect
-  helper sets that env var.
-- Base URL (real): `https://gmail.googleapis.com`
-- Mockoon URL: `http://localhost:18801` (set as `ELIZA_MOCK_GOOGLE_BASE`)
-- Endpoints exercised by lifeops:
-  - `GET /gmail/v1/users/{userId}/messages?q=...&maxResults=...`
-  - `GET /gmail/v1/users/{userId}/messages/{id}?format=...`
-  - `GET /gmail/v1/users/{userId}/threads?q=...`
-  - `GET /gmail/v1/users/{userId}/threads/{id}`
-  - `POST /gmail/v1/users/{userId}/drafts`
-  - `POST /gmail/v1/users/{userId}/drafts/send`
-  - `GET /gmail/v1/users/{userId}/labels`
-  - `POST /gmail/v1/users/{userId}/messages/{id}/modify` (label add/remove)
-
-### 2. calendar (port 18802, file `calendar.json`)
-
-- Source: same plugin, `service-mixin-calendar.ts`,
-  `service-normalize-calendar.ts`, the schedule sync writers.
-- Same env var as Gmail — `ELIZA_MOCK_GOOGLE_BASE`. The Mockoon environment
-  serves both prefixes (`/gmail/v1/...` and `/calendar/v3/...`) so a single
-  port can stand in for the whole googleapis.com root, but we keep this as a
-  separate environment for tests that want to point at calendar-only behaviour
-  on a different port.
-- Endpoints exercised:
-  - `GET /calendar/v3/users/me/calendarList`
-  - `GET /calendar/v3/calendars/{calendarId}/events?timeMin=...&timeMax=...`
-  - `GET /calendar/v3/calendars/{calendarId}/events/{eventId}`
-  - `POST /calendar/v3/calendars/{calendarId}/events`
-  - `PATCH /calendar/v3/calendars/{calendarId}/events/{eventId}`
-  - `DELETE /calendar/v3/calendars/{calendarId}/events/{eventId}`
 
 ### 3. slack (port 18803, file `slack.json`)
 
@@ -287,41 +254,6 @@ Mockoon "rules" select the response. The default response is the happy path.
   - `GET /v1/receive/{account}`
   - `POST /v2/send`
 
-## Smoke test (verified)
-
-These are the exact commands run on 2026-05-09 against the freshly-generated
-environments. All four scenarios passed for both gmail (port 18801) and
-calendar (port 18802):
-
-```bash
-# Direct binary path is fastest — `npm exec` / bunx adds 30+ seconds of
-# resolution overhead before the port binds.
-MOCKOON=/Users/$USER/.npm/_npx/dcd5374e2bba9184/node_modules/.bin/mockoon-cli
-$MOCKOON start \
-  --data eliza/test/mocks/mockoon/gmail.json --port 18801 \
-  --disable-log-to-file &
-
-# Happy path:
-curl -s "http://localhost:18801/gmail/v1/users/me/messages?q=is:unread"
-# -> { "messages": [ { "id": "193a1ed8c0aa1f01", ... }, ... ],
-#      "resultSizeEstimate": 4, "nextPageToken": null }
-
-# Fault toggles (header or query):
-curl -s -o /dev/null -w "%{http_code}\n" \
-  -H "X-Mockoon-Fault: rate_limit" \
-  "http://localhost:18801/gmail/v1/users/me/messages?q=is:unread"
-# -> 429
-
-curl -s -o /dev/null -w "%{http_code}\n" \
-  "http://localhost:18801/gmail/v1/users/me/messages?q=is:unread&_fault=auth_expired"
-# -> 401
-
-curl -s -o /dev/null -w "%{http_code}\n" \
-  -H "X-Mockoon-Fault: server_error" \
-  "http://localhost:18801/gmail/v1/users/me/messages?q=is:unread"
-# -> 500
-```
-
 To start them all in parallel use the orchestrator script:
 
 ```bash
@@ -366,7 +298,6 @@ update the port table.
 exports a single `applyMockoonEnvOverrides()` function. The lifeops plugin
 calls it at module load when `LIFEOPS_USE_MOCKOON=1`. The function sets:
 
-- `ELIZA_MOCK_GOOGLE_BASE=http://localhost:18801` (gmail+calendar share root)
 - `ELIZA_MOCK_TWILIO_BASE=http://localhost:18808`
 - `NTFY_BASE_URL=http://localhost:18812`
 - `ELIZAOS_CLOUD_BASE_URL=http://localhost:18816`

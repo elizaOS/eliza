@@ -23,6 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider.ts";
 import { withTimeout } from "../../../packages/app-core/test/helpers/test-utils.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
+import { seedDurableGoogleCalendar } from "./support/helpers/durable-google-calendar.ts";
 import type { MockedTestRuntime } from "./support/helpers/mock-runtime.ts";
 import { createMockedTestRuntime } from "./support/helpers/mock-runtime.ts";
 
@@ -52,24 +53,21 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
       ownerId = crypto.randomUUID() as UUID;
       roomId = crypto.randomUUID() as UUID;
 
-      // Seed an upcoming meeting that requires a signed NDA
-      const calendarBase = mocked.mocks.baseUrls.google;
       const in48h = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
       const in49h = new Date(Date.now() + 49 * 60 * 60 * 1000).toISOString();
-      await fetch(`${calendarBase}/calendar/v3/calendars/primary/events`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer mock-token",
-          "X-Eliza-Test-Run": "journey-15",
-        },
-        body: JSON.stringify({
-          summary: "Partnership kick-off — NDA required",
-          start: { dateTime: in48h },
-          end: { dateTime: in49h },
-          description:
-            "Requires signed NDA before meeting.  DocuSign link: https://docusign.example/nda-123",
-        }),
+      await seedDurableGoogleCalendar({
+        runtime: mocked.runtime,
+        grantId: "journey-15-google-calendar",
+        events: [
+          {
+            id: "journey-15-partnership-kickoff",
+            title: "Partnership kick-off — NDA required",
+            startAt: in48h,
+            endAt: in49h,
+            description:
+              "Requires signed NDA before meeting.  DocuSign link: https://docusign.example/nda-123",
+          },
+        ],
       });
 
       mocked.mocks.clearRequestLedger();

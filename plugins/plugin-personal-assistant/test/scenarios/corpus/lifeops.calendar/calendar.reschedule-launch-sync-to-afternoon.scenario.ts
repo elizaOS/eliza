@@ -1,8 +1,8 @@
 /**
  * Single-event reschedule — "move my launch sync to the afternoon".
  *
- * The agent must (a) identify the launch sync event by title, (b) move it
- * to an afternoon slot the same day, (c) not invent a different event.
+ * The agent must identify the launch sync, explain that personal Google
+ * Calendar is read-only, and avoid claiming the event moved.
  */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
@@ -12,7 +12,7 @@ import {
 } from "@elizaos/scenario-runner/schema";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
-function checkLaunchSyncMovedToAfternoon(
+function checkLaunchSyncWasNotMutated(
   ctx: ScenarioContext,
 ): string | undefined {
   const calls = ctx.actionsCalled.filter((a) => a.actionName === "CALENDAR");
@@ -27,18 +27,32 @@ function checkLaunchSyncMovedToAfternoon(
   if (!blob.includes("launch")) {
     return `Action payload didn't reference the launch event. Payload: ${blob.slice(0, 400)}`;
   }
+  const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
+  if (
+    !["read-only", "view-only", "can't", "cannot", "unsupported"].some((s) =>
+      reply.includes(s),
+    )
+  ) {
+    return `Agent did not disclose the read-only Google Calendar boundary. Reply: ${reply.slice(0, 300)}`;
+  }
+  if (
+    /\b(successfully (moved|rescheduled|updated)|(was|has been) (moved|rescheduled|updated))\b/.test(
+      reply,
+    )
+  ) {
+    return `Agent falsely claimed the launch sync changed. Reply: ${reply.slice(0, 300)}`;
+  }
   return undefined;
 }
 
 export default scenario({
   lane: "live-only",
   id: "calendar.reschedule-launch-sync-to-afternoon",
-  title: "Move the morning launch sync to an afternoon slot",
+  title: "Launch reschedule fails closed on read-only Google Calendar",
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "reschedule"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
-  mockoon: ["calendar"],
   rooms: [
     {
       id: "main",
@@ -77,13 +91,13 @@ export default scenario({
     { type: "actionCalled", actionName: "CALENDAR", minCount: 1 },
     {
       type: "custom",
-      name: "moved-launch-event",
-      predicate: checkLaunchSyncMovedToAfternoon,
+      name: "launch-event-not-mutated",
+      predicate: checkLaunchSyncWasNotMutated,
     },
     judgeRubric({
-      name: "calendar-launch-afternoon-rubric",
+      name: "calendar-launch-read-only-rubric",
       threshold: 0.6,
-      description: `User asked to move the launch sync to the afternoon (≥14:00). Correct: agent identifies the seeded "Launch sync" event and reschedules to ≥14:00 tomorrow. Incorrect: agent moves a different event, fabricates an event name, or proposes a non-afternoon slot.`,
+      description: `User asked to move the seeded "Launch sync" event on personal Google Calendar. Correct: agent identifies it, explains that the connection is read-only, and says nothing changed. Incorrect: agent claims it moved, rescheduled, or updated the event.`,
     }),
   ],
 });

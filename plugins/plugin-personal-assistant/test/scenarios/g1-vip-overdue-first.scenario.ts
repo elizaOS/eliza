@@ -6,6 +6,11 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  GMAIL_MCP_WRITE_TOOLS,
+  gmailSearchFixture,
+} from "../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -26,13 +31,7 @@ export default scenario({
       title: "G1 Overdue Backlog Ranking",
     },
   ],
-  seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "followup-14-days-ago.eml",
-    },
-  ],
+  seed: [gmailSearchFixture([GMAIL_MCP_MESSAGES.overdueFollowup])],
   turns: [
     {
       kind: "message",
@@ -50,20 +49,20 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "gmailMockRequest",
-      name: "gmail messages fetched for backlog ranking",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
+      type: "mcpToolCall",
+      name: "gmail threads searched for backlog ranking",
+      provider: "google",
+      resource: "gmail",
+      tool: "search_threads",
       minCount: 1,
     },
     {
-      type: "gmailMessageSent",
-      name: "no email was sent by backlog ranking",
+      type: "mcpToolCall",
+      name: "no Gmail MCP write was made by backlog ranking",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
-      name: "no real gmail write occurred",
     },
     judgeRubric({
       name: "g1-vip-overdue-first-rubric",

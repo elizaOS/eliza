@@ -18,6 +18,7 @@ import {
   type CalendarHostGate,
   CalendarRepository,
   CalendarService,
+  CalendarServiceError,
 } from "@elizaos/plugin-calendar";
 import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -40,7 +41,7 @@ let runtimeResult: RealTestRuntimeResult | null = null;
 let runtime: AgentRuntime;
 let calendar: CalendarService;
 
-function writableGrant(agentId: string): LifeOpsConnectorGrant {
+function readOnlyGrant(agentId: string): LifeOpsConnectorGrant {
   return {
     id: "connector-account:calendar-receipt-owner",
     agentId,
@@ -49,8 +50,8 @@ function writableGrant(agentId: string): LifeOpsConnectorGrant {
     side: "owner",
     identity: { email: "owner@example.test" },
     identityEmail: "owner@example.test",
-    grantedScopes: ["https://www.googleapis.com/auth/calendar.events"],
-    capabilities: ["google.calendar.read", "google.calendar.write"],
+    grantedScopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+    capabilities: ["google.calendar.read"],
     tokenRef: null,
     mode: "local",
     executionTarget: "local",
@@ -65,12 +66,18 @@ function writableGrant(agentId: string): LifeOpsConnectorGrant {
 }
 
 function gate(agentId: string): CalendarHostGate {
-  const grant = writableGrant(agentId);
+  const grant = readOnlyGrant(agentId);
   return {
     getGoogleConnectorAccounts: async () => [],
     resolveGuestAvailabilityGrants: async () => [],
     requireGoogleCalendarGrant: async () => grant,
-    requireGoogleCalendarWriteGrant: async () => grant,
+    requireGoogleCalendarWriteGrant: async () => {
+      throw new CalendarServiceError(
+        409,
+        "Personal Google Calendar is view-only because its MCP server does not expose atomic provider versions.",
+        "GOOGLE_MCP_SAFE_CALENDAR_WRITE_UNSUPPORTED",
+      );
+    },
     createReminderPlan: async () => {},
     updateReminderPlan: async () => {},
     deleteReminderPlan: async () => {},
@@ -359,7 +366,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     });
   });
 
-  it("atomically distinguishes first approval, concurrent replay, and later replay", async () => {
+  it("rejects Google Calendar creation without approval or a persisted event", async () => {
     await new CalendarRepository(runtime).upsertCalendarSyncState({
       id: `${runtime.agentId}:google:owner:grant:connector-account:calendar-receipt-owner:calendar:primary`,
       agentId: String(runtime.agentId),
@@ -390,43 +397,50 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         timeZone: "UTC",
       },
     };
-    const concurrent = await Promise.all([
-      invoke(actor, params),
-      invoke(actor, params),
-    ]);
-    expect(
-      concurrent
-        .map(({ result }) => result.effectReceipts?.[0]?.outcome)
-        .sort(),
-      JSON.stringify(concurrent.map(({ result }) => result)),
-    ).toEqual(["applied", "noop"]);
-    const requestIds = concurrent.map(
-      ({ result }) =>
-        (result.data as { approvalRequestId?: string } | undefined)
-          ?.approvalRequestId,
-    );
-    expect(new Set(requestIds).size).toBe(1);
-    const requestId = requestIds[0];
-    if (!requestId) throw new Error("approval request id was not returned");
-    // Reads are subject-fenced: the calendar action enqueues under the
-    // actor's entityId, which this harness sets to the agent.
-    const persisted = await createApprovalQueue(runtime, {
+    const approvals = createApprovalQueue(runtime, {
       agentId: runtime.agentId,
-    }).byId(requestId, String(runtime.agentId));
-    if (!persisted) throw new Error("approval request was not persisted");
-    for (const { result } of concurrent) {
-      expect(result.effectReceipts?.[0]).toMatchObject({
-        observedAt: persisted.createdAt.toISOString(),
-        resource: { id: persisted.id },
-        idempotency: { key: persisted.idempotencyKey },
-      });
-    }
-
-    const replay = (await invoke(actor, params)).result;
-    expect(replay.effectReceipts?.[0]).toMatchObject({
-      outcome: "noop",
-      idempotency: { replayed: true },
-      resource: { id: persisted.id },
     });
+    const pendingBefore = await approvals.list({
+      subjectUserId: String(runtime.agentId),
+      state: "pending",
+      limit: 100,
+    });
+    const repository = new CalendarRepository(runtime);
+    const eventsBefore = await repository.listCalendarEvents(
+      String(runtime.agentId),
+      "google",
+      "2026-07-30T00:00:00.000Z",
+      "2026-07-31T00:00:00.000Z",
+      "owner",
+    );
+
+    const result = (await invoke(actor, params)).result;
+    expect(result.success).toBe(false);
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      operation: "calendar.create_event",
+      outcome: "failed",
+      failure: {
+        code: "GOOGLE_MCP_SAFE_CALENDAR_WRITE_UNSUPPORTED",
+      },
+    });
+
+    const pendingAfter = await approvals.list({
+      subjectUserId: String(runtime.agentId),
+      state: "pending",
+      limit: 100,
+    });
+    expect(pendingAfter.map((request) => request.id)).toEqual(
+      pendingBefore.map((request) => request.id),
+    );
+    const eventsAfter = await repository.listCalendarEvents(
+      String(runtime.agentId),
+      "google",
+      "2026-07-30T00:00:00.000Z",
+      "2026-07-31T00:00:00.000Z",
+      "owner",
+    );
+    expect(eventsAfter.map((event) => event.id)).toEqual(
+      eventsBefore.map((event) => event.id),
+    );
   });
 });

@@ -44,7 +44,6 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
         preferredProvider: provider?.name,
         // Ensure browser-workspace mock is included
         envs: [
-          "google",
           "twilio",
           "whatsapp",
           "x-twitter",

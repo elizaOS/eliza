@@ -1,8 +1,7 @@
 /**
- * Bulk reschedule with mid-batch failure — when the agent is moving N
- * events as a transaction and one update fails, the others should be
- * rolled back (or at least the user told which succeeded and which
- * failed; never silent partial success).
+ * Bulk reschedule request against personal Google Calendar. The official MCP
+ * resource is read-only, so the agent must identify the events but refuse the
+ * mutation without claiming partial or complete success.
  */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
@@ -12,25 +11,26 @@ import {
 } from "@elizaos/scenario-runner/schema";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
-function checkAgentReportsPartialState(
+function checkAgentReportsReadOnlyState(
   ctx: ScenarioContext,
 ): string | undefined {
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
-  // Agent must surface SOMETHING about per-event status — not just "done".
-  const transparencySignals = [
-    "succeeded",
-    "failed",
-    "partial",
-    "couldn't",
-    "could not",
-    "rolled back",
-    "rollback",
-    "two of three",
-    "one of three",
-    "all three",
+  const unavailableSignals = [
+    "read-only",
+    "view-only",
+    "can't",
+    "cannot",
+    "unsupported",
   ];
-  if (!transparencySignals.some((s) => reply.includes(s))) {
-    return `Agent didn't report per-event status of a bulk reschedule. Reply: ${reply.slice(0, 300)}`;
+  if (!unavailableSignals.some((signal) => reply.includes(signal))) {
+    return `Agent did not disclose that personal Google Calendar mutations are unavailable. Reply: ${reply.slice(0, 300)}`;
+  }
+  if (
+    /\b(successfully (moved|rescheduled|updated)|(were|have been) (moved|rescheduled|updated)|succeeded)\b/.test(
+      reply,
+    )
+  ) {
+    return `Agent falsely claimed a Google Calendar mutation succeeded. Reply: ${reply.slice(0, 300)}`;
   }
   return undefined;
 }
@@ -38,12 +38,11 @@ function checkAgentReportsPartialState(
 export default scenario({
   lane: "live-only",
   id: "calendar.bulk-reschedule-rollback-on-error",
-  title: "Bulk reschedule reports partial success/failure transparently",
+  title: "Bulk reschedule fails closed on read-only personal Google Calendar",
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "bulk", "robustness"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
-  mockoon: ["calendar"],
   rooms: [
     {
       id: "main",
@@ -85,7 +84,7 @@ export default scenario({
       kind: "message",
       name: "bulk-move-all-three",
       room: "main",
-      text: "Move all three of tomorrow's meetings (sales sync, product review, customer interview) to Friday at the same times. Report which ones succeeded.",
+      text: "Move all three of tomorrow's meetings (sales sync, product review, customer interview) to Friday at the same times.",
       expectedActions: ["CALENDAR"],
       timeoutMs: 120_000,
     },
@@ -94,13 +93,13 @@ export default scenario({
     { type: "actionCalled", actionName: "CALENDAR", minCount: 1 },
     {
       type: "custom",
-      name: "per-event-status-reported",
-      predicate: checkAgentReportsPartialState,
+      name: "read-only-state-reported",
+      predicate: checkAgentReportsReadOnlyState,
     },
     judgeRubric({
-      name: "calendar-bulk-rollback-rubric",
+      name: "calendar-bulk-read-only-rubric",
       threshold: 0.6,
-      description: `User asked to move three meetings in bulk and explicitly asked which succeeded. Correct: agent reports per-event status. Incorrect: agent says only "done" or "moved" without enumerating each event.`,
+      description: `User asked to move three personal Google Calendar events. Correct: agent identifies the request, explains that the connected personal Google Calendar is read-only, and states that nothing changed. Incorrect: agent claims any event was moved, updated, or partially succeeded.`,
     }),
   ],
 });

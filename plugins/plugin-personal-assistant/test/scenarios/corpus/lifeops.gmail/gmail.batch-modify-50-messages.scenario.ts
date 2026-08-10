@@ -1,6 +1,6 @@
 /**
- * Batch modify of ~50 messages — agent must use a single batchModify call
- * (or efficient pagination), NOT one call per message.
+ * The curated Gmail MCP has no bulk REST mutation. A request to archive about
+ * 50 messages in one operation must be refused without N individual writes.
  *
  * Failure modes guarded:
  *   - one modify call per message (50x quota usage)
@@ -10,35 +10,16 @@
  */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/scenario-runner/schema";
-
-function checkBatchedNotIndividual(ctx: ScenarioContext): string | undefined {
-  // Walk Gmail mock requests if exposed via ctx — fall back to action count.
-  const modifyActions = ctx.actionsCalled.filter((a) => {
-    const blob = JSON.stringify({
-      n: a.actionName,
-      p: a.parameters,
-    }).toLowerCase();
-    return (
-      blob.includes("archive") ||
-      blob.includes("modify") ||
-      blob.includes("batch")
-    );
-  });
-  if (modifyActions.length > 10) {
-    return `Agent fired ${modifyActions.length} archive/modify actions instead of batching. Expected <=10 calls.`;
-  }
-  return undefined;
-}
+  GMAIL_MCP_WRITE_TOOLS,
+  gmailDefaultSearchFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
   id: "gmail.batch-modify-50-messages",
-  title:
-    "Bulk archive of ~50 messages goes through batchModify, not per-message",
+  title: "Unsupported bulk Gmail archive is refused without per-message writes",
   domain: "lifeops.gmail",
   tags: ["lifeops", "gmail", "batch", "scale", "quota"],
   isolation: "per-scenario",
@@ -54,13 +35,7 @@ export default scenario({
       title: "Gmail Batch Modify Scale",
     },
   ],
-  seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-    },
-  ],
+  seed: [gmailDefaultSearchFixture()],
   turns: [
     {
       kind: "message",
@@ -70,35 +45,23 @@ export default scenario({
       responseJudge: {
         minimumScore: 0.7,
         rubric:
-          "Reply must confirm bulk archive of newsletters/promos/notifications efficiently. Must not claim individual per-message archives.",
+          "Reply must explain that one-operation bulk archive is unavailable through the curated Gmail MCP, must not claim success, and must not fan out into individual writes.",
       },
     },
   ],
   finalChecks: [
     {
-      type: "custom",
-      name: "batched-not-per-message",
-      predicate: checkBatchedNotIndividual,
-    },
-    {
-      type: "gmailBatchModify",
-      body: {
-        removeLabelIds: "INBOX",
-      },
-    },
-    {
-      type: "gmailMessageSent",
-      expected: false,
-    },
-    {
-      type: "gmailDraftCreated",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
     },
     judgeRubric({
       name: "gmail-batch-50-rubric",
       threshold: 0.7,
       description:
-        "Agent used efficient batchModify to archive ~50 messages instead of N individual calls.",
+        "Agent refused the unavailable bulk REST mutation and made no individual Gmail MCP writes.",
     }),
   ],
 });
