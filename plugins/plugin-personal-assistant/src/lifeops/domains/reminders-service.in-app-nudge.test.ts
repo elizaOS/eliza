@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { type RemindersDeps, RemindersDomain } from "./reminders-service.js";
 
 class TestRemindersDomain extends RemindersDomain {
-  emitTestNudge(
+  async emitTestNudge(
     args: Parameters<RemindersDomain["emitInAppReminderNudge"]>[0],
   ) {
-    this.emitInAppReminderNudge(args);
+    await this.emitInAppReminderNudge(args);
   }
 }
 
@@ -20,13 +20,16 @@ function makeDeps(): RemindersDeps {
 }
 
 describe("RemindersDomain.emitInAppReminderNudge", () => {
-  it("emits a chat-visible reminder with choice chips while keeping the interrupt notification deep-linked to chat", () => {
+  it("voices the notification title while keeping the interrupt deep-linked to chat", async () => {
     const emitAssistantEvent = vi.fn();
     const notify = vi.fn().mockResolvedValue(undefined);
     const domain = new TestRemindersDomain(
       {
         emitAssistantEvent,
         runtime: {
+          agentId: "agent-test",
+          useModel: vi.fn(async () => "Medication time"),
+          reportError: vi.fn(),
           getService(serviceType: unknown) {
             return serviceType === ServiceType.NOTIFICATION ? { notify } : null;
           },
@@ -35,7 +38,7 @@ describe("RemindersDomain.emitInAppReminderNudge", () => {
       makeDeps(),
     );
 
-    domain.emitTestNudge({
+    await domain.emitTestNudge({
       text: "Take your meds.",
       ownerType: "occurrence",
       ownerId: "occurrence-1",
@@ -62,7 +65,7 @@ describe("RemindersDomain.emitInAppReminderNudge", () => {
 
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: "Reminder",
+        title: "Medication time",
         body: "Take your meds.",
         category: "reminder",
         source: "lifeops",

@@ -33,6 +33,13 @@ const dailyTriageDefinition: RecapTaskDefinition = {
     tz: "owner_local",
   },
   priority: "medium",
+  output: {
+    destination: "in_app_card",
+    fallback: {
+      title: "Inbox triage",
+      body: "Your inbox triage is ready, but I couldn't summarize it on this device.",
+    },
+  },
   respectsGlobalPause: true,
   source: "default_pack",
   createdBy: INBOX_TRIAGE_STARTER_PACK_KEY,
