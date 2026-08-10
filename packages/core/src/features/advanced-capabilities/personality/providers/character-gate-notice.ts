@@ -117,8 +117,10 @@ const DISENGAGEMENT_AUDIENCE = String.raw`(?:(?:to|with|at)\s+)?(?:me|us|him|her
 const DISENGAGEMENT_EXTENT = String.raw`(?:again|anymore|any\s+more|ever|at\s+all|so\s+(?:much|often)|all\s+the\s+time|constantly|nonstop|non-stop|first|unprompted|unsolicited|here|in\s+here|in\s+(?:this|the)\s+(?:chat|channel|conversation|group|room|server|thread)|right\s+now|for\s+now|please|kindly|from\s+now\s+on|going\s+forward|permanently|forever|by\s+default|every\s+time)`;
 const DISENGAGEMENT_TAIL = String.raw`(?:[\s,]+(?:${DISENGAGEMENT_AUDIENCE}|${DISENGAGEMENT_EXTENT}))*[\s,]*$`;
 const CESSATION_PREFIX = String.raw`(?:never|stop|quit|cease|don['’]t|do\s+not|no\s+longer)`;
-const COMMUNICATION_CESSATION_VERB = String.raw`(?:answer(?:ing)?|respond(?:ing)?|repl(?:y|ying)|speak(?:ing)?|talk(?:ing)?|messag(?:e|ing)|text(?:ing)?|ping(?:ing)?|dm(?:['’]?ing)?)`;
-const QUIETING_PREDICATE = String.raw`(?:(?:be|stay|remain|keep)\s+(?:quiet|silent)|shut\s+up|pipe\s+down)`;
+const COMMUNICATION_CESSATION_VERB =
+	"(?:answer(?:ing)?|respond(?:ing)?|repl(?:y|ying)|speak(?:ing)?|talk(?:ing)?|messag(?:e|ing)|text(?:ing)?|ping(?:ing)?|dm(?:['’]?ing)?)";
+const QUIETING_PREDICATE =
+	"(?:(?:be|stay|remain|keep)\\s+(?:quiet|silent)|shut\\s+up|pipe\\s+down)";
 const DISENGAGEMENT_DIRECTIVE = new RegExp(
 	String.raw`^(?:(?:please|kindly|just)\s+)*(?:${CESSATION_PREFIX}\s+(?:ever\s+)?${COMMUNICATION_CESSATION_VERB}\b${DISENGAGEMENT_TAIL}|(?:(?:always|never|just|please)\s+)*${QUIETING_PREDICATE}\b${DISENGAGEMENT_TAIL})`,
 	"iu",
