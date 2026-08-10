@@ -4736,7 +4736,10 @@ export const tasksAction: Action & {
     "CREATE_PR",
     "SUBMIT_CHANGES",
     "FINISH_WORKSPACE",
-    // manage_issues
+    // manage_issues — includes the GITHUB_-prefixed and ADD_-shaped names
+    // Stage-1 actually guesses (live 2026-08-10: "add a comment to that
+    // issue" nominated GITHUB_ADD_COMMENT/GITHUB_ADD_LABEL, matched nothing,
+    // and the planner declined a capability it has).
     "MANAGE_ISSUES",
     "CREATE_ISSUE",
     "LIST_ISSUES",
@@ -4744,6 +4747,14 @@ export const tasksAction: Action & {
     "COMMENT_ISSUE",
     "UPDATE_ISSUE",
     "GET_ISSUE",
+    "GITHUB_ISSUE",
+    "GITHUB_CREATE_ISSUE",
+    "GITHUB_ADD_COMMENT",
+    "GITHUB_COMMENT_ISSUE",
+    "ADD_COMMENT",
+    "GITHUB_ADD_LABEL",
+    "ADD_LABEL",
+    "LABEL_ISSUE",
     // archive / reopen
     "ARCHIVE_CODING_TASK",
     "CLOSE_CODING_TASK",
