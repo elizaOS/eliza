@@ -1024,11 +1024,14 @@ describe("runOnboardingChat", () => {
       expect(first.session.history).toHaveLength(1);
       expect(first.session.history[0]?.role).toBe("assistant");
 
+      // A second message-less turn (status poll, continuation poll) must NOT
+      // grow history — the proactive welcome fires only once per session.
+      // Regression for #18078: repeated polls were appending duplicate
+      // assistant-only entries.
       const second = await runTrustedPhoneTurn("   \n\t  ");
-      expect(second.session.history).toHaveLength(2);
-      expect(
-        second.session.history.every((m: OnboardingChatMessage) => m.role === "assistant"),
-      ).toBe(true);
+      expect(second.session.history).toHaveLength(1);
+      expect(typeof second.reply).toBe("string");
+      expect(second.reply.length).toBeGreaterThan(0);
     });
 
     test("emoji-only messages never capture a name and the reply stays ASCII", async () => {
@@ -1396,6 +1399,175 @@ describe("runOnboardingChat", () => {
             error: "body stream broke",
           }),
         );
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  describe("provisioning poll duplicates (#18078)", () => {
+    test("repeated message-less status polls do not grow session history", async () => {
+      const first = await runTrustedPhoneTurn("");
+      expect(first.session.history).toHaveLength(1);
+      expect(first.session.history[0]?.role).toBe("assistant");
+
+      // Simulate 5s-interval browser polling: no message, no statusOnly flag
+      // (the backend guard handles this independently of the frontend flag).
+      for (let i = 0; i < 5; i++) {
+        const poll = await runTrustedPhoneTurn("");
+        expect(poll.session.history).toHaveLength(1);
+        expect(typeof poll.reply).toBe("string");
+        expect(poll.reply.length).toBeGreaterThan(0);
+      }
+
+      // After all polls, history still has exactly one entry.
+      const final = getCachedSession(PLATFORM_SESSION);
+      expect(final.history).toHaveLength(1);
+    });
+
+    test("statusOnly flag suppresses the proactive welcome even on a fresh session", async () => {
+      const result = await runOnboardingChat({
+        platform: "blooio",
+        platformUserId: PHONE,
+        sessionId: PLATFORM_SESSION,
+        trustedPlatformIdentity: true,
+        statusOnly: true,
+      });
+
+      expect(result.session.history).toHaveLength(0);
+      expect(typeof result.reply).toBe("string");
+      expect(result.reply.length).toBeGreaterThan(0);
+    });
+
+    test("statusOnly with a message still does not mutate history or capture a name", async () => {
+      const result = await runOnboardingChat({
+        message: "My name is Eve",
+        platform: "blooio",
+        platformUserId: PHONE,
+        sessionId: PLATFORM_SESSION,
+        trustedPlatformIdentity: true,
+        statusOnly: true,
+      });
+
+      // statusOnly must override message processing entirely.
+      expect(result.session.history).toHaveLength(0);
+      expect(result.session.name).toBeUndefined();
+      expect(typeof result.reply).toBe("string");
+      expect(result.reply.length).toBeGreaterThan(0);
+    });
+
+    test("real user messages continue to create user/assistant turns", async () => {
+      const first = await runTrustedPhoneTurn("My name is Alice");
+      expect(first.session.history).toHaveLength(2); // user + assistant
+      expect(first.session.history[0]?.role).toBe("user");
+      expect(first.session.history[0]?.content).toBe("My name is Alice");
+      expect(first.session.history[1]?.role).toBe("assistant");
+
+      // A status poll between real messages does not grow history.
+      const poll = await runTrustedPhoneTurn("");
+      expect(poll.session.history).toHaveLength(2);
+
+      // Another real message adds a new turn.
+      const second = await runTrustedPhoneTurn("hello again");
+      expect(second.session.history).toHaveLength(4); // 2 prior + user + assistant
+      expect(second.session.history[2]?.role).toBe("user");
+      expect(second.session.history[2]?.content).toBe("hello again");
+      expect(second.session.history[3]?.role).toBe("assistant");
+    });
+
+    test("handoff transcript contains no poll-generated duplicates", async () => {
+      const originalFetch = globalThis.fetch;
+      const rememberRequests: Array<{ body: unknown }> = [];
+      globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        rememberRequests.push({
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        return new Response("{}", { status: 200 });
+      }) as typeof fetch;
+
+      try {
+        findOrCreateByPhone.mockResolvedValue({
+          user: { id: "user-1", name: null },
+          organization: { id: "org-1" },
+          isNew: true,
+        });
+        // Start with provisioning pending — no handoff yet.
+        ensureElizaAppProvisioning.mockResolvedValue({
+          status: "provisioning",
+          agentId: "agent-1",
+          bridgeUrl: null,
+          sandbox: null,
+        });
+        launchManagedElizaAgent.mockResolvedValue({
+          appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
+          connection: {
+            apiBase: "https://agent-1.example/",
+            token: "agent-token",
+          },
+        });
+
+        // Start with a real user message so the transcript has real content.
+        const named = await runOnboardingChat({
+          message: "My name is Sam",
+          platform: "blooio",
+          platformUserId: PHONE,
+          sessionId: PLATFORM_SESSION,
+          trustedPlatformIdentity: true,
+          authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        });
+
+        // No handoff while provisioning is pending.
+        expect(rememberRequests).toHaveLength(0);
+
+        // Simulate several status polls while provisioning is still pending.
+        for (let i = 0; i < 3; i++) {
+          await runOnboardingChat({
+            platform: "blooio",
+            sessionId: continuationToken(named),
+            authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+            statusOnly: true,
+          });
+        }
+
+        // Still no handoff — polls never triggered one.
+        expect(rememberRequests).toHaveLength(0);
+
+        // Provisioning reaches running — the next turn fires the handoff.
+        ensureElizaAppProvisioning.mockResolvedValue({
+          status: "running",
+          agentId: "agent-1",
+          bridgeUrl: "https://agent-1.example",
+          sandbox: {
+            id: "agent-1",
+            status: "running",
+            bridge_url: "https://agent-1.example",
+          },
+        });
+
+        await runOnboardingChat({
+          platform: "blooio",
+          sessionId: continuationToken(named),
+          authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+          statusOnly: true,
+        });
+
+        // Exactly one remember call with a transcript containing no duplicates.
+        expect(rememberRequests).toHaveLength(1);
+        const firstRequest = rememberRequests[0];
+        if (!firstRequest) throw new Error("Expected at least one remember request");
+        const transcript = String((firstRequest.body as { text: string }).text);
+
+        // Count both user lines AND assistant lines to catch any
+        // poll-generated duplicate "Eliza onboarding:" entries that a
+        // user-only assertion would miss.
+        const userLines = transcript.match(/^User: /gm) ?? [];
+        expect(userLines).toHaveLength(1);
+        expect(transcript).toContain("User: My name is Sam");
+
+        // The assistant reply fires exactly once. Poll-generated duplicates
+        // serialize as "Eliza onboarding: ..." — assert there is at most one.
+        const onboardingLines = transcript.match(/^Eliza onboarding:/gm) ?? [];
+        expect(onboardingLines.length).toBeLessThanOrEqual(1);
       } finally {
         globalThis.fetch = originalFetch;
       }
