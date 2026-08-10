@@ -42,6 +42,7 @@ import {
   scopesForGoogleCapabilities,
 } from "./scopes.js";
 import { GOOGLE_SERVICE_NAME } from "./types.js";
+import { isRecord, optionalString as nonEmptyString } from "./values.js";
 
 const GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo";
 
@@ -101,16 +102,6 @@ function createCodeChallenge(codeVerifier: string): string {
   return createHash("sha256").update(codeVerifier).digest("base64url");
 }
 
-function nonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
   return nonEmptyString(resolveSetting(runtime, key));
 }
@@ -156,57 +147,22 @@ async function readClientRegistration(runtime: IAgentRuntime): Promise<{
   return { clientId, clientSecret };
 }
 
-function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): GoogleCapability[] {
-  if (!scopes || scopes.length === 0) {
-    return [...GOOGLE_CAPABILITIES];
-  }
-  // The caller passes either capability identifiers (e.g. "gmail.read") OR raw
-  // OAuth scope URLs. Both shapes are accepted so the manager's startOAuth API
-  // surface stays uniform with other providers (which use raw scopes).
-  const requested = new Set<GoogleCapability>();
+/**
+ * Sorts values into recognized capabilities and unknown scopes. Each value may
+ * be a capability identifier (e.g. "gmail.read") or a raw OAuth scope URL, so
+ * the manager's startOAuth surface stays uniform with other providers;
+ * identity scopes are recognized but map to no capability. Callers decide
+ * whether unknown scopes are fatal or merely reported.
+ */
+function classifyScopes(scopes: readonly string[]): {
+  capabilities: GoogleCapability[];
+  unknownScopes: string[];
+} {
+  const capabilities = new Set<GoogleCapability>();
+  const unknownScopes: string[] = [];
   const identityScopes = new Set<string>(
     GOOGLE_IDENTITY_SCOPES.map((scope) => scope.toLowerCase())
   );
-  for (const value of scopes) {
-    if (isGoogleCapability(value)) {
-      requested.add(value);
-      continue;
-    }
-    const matched = capabilitiesFromScope(value);
-    if (matched.length > 0) {
-      for (const capability of matched) requested.add(capability);
-      continue;
-    }
-    if (identityScopes.has(value.trim().toLowerCase())) {
-      continue;
-    }
-    throw new ElizaError(`Google OAuth capability or scope is not recognized: ${value}`, {
-      code: "GOOGLE_OAUTH_SCOPE_UNRECOGNIZED",
-      context: { scope: value },
-      severity: "fatal",
-    });
-  }
-  if (requested.size === 0) {
-    throw new ElizaError("Google OAuth requires at least one supported Workspace MCP capability.", {
-      code: "GOOGLE_OAUTH_CAPABILITY_REQUIRED",
-      context: { scopes: [...scopes] },
-      severity: "fatal",
-    });
-  }
-  return [...requested];
-}
-
-function normalizeGrantedCapabilities(scopes: readonly string[]): {
-  capabilities: GoogleCapability[];
-  ignoredScopes: string[];
-} {
-  const capabilities = new Set<GoogleCapability>();
-  const ignoredScopes: string[] = [];
-  const identityScopes = new Set(GOOGLE_IDENTITY_SCOPES.map((scope) => scope.toLowerCase()));
-
-  // error-policy:J3 Provider-returned scopes are untrusted external input. Keep
-  // exact recognized capabilities, retain unknown scopes as metadata, and make
-  // an empty connector grant an explicit failure instead of inventing access.
   for (const scope of scopes) {
     const normalized = scope.trim();
     if (!normalized) continue;
@@ -220,11 +176,46 @@ function normalizeGrantedCapabilities(scopes: readonly string[]): {
       continue;
     }
     if (!identityScopes.has(normalized.toLowerCase())) {
-      ignoredScopes.push(normalized);
+      unknownScopes.push(normalized);
     }
   }
+  return { capabilities: [...capabilities], unknownScopes };
+}
 
-  return { capabilities: [...capabilities], ignoredScopes };
+function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): GoogleCapability[] {
+  if (!scopes || scopes.length === 0) {
+    return [...GOOGLE_CAPABILITIES];
+  }
+  const { capabilities, unknownScopes } = classifyScopes(scopes);
+  if (unknownScopes.length > 0) {
+    throw new ElizaError(
+      `Google OAuth capability or scope is not recognized: ${unknownScopes[0]}`,
+      {
+        code: "GOOGLE_OAUTH_SCOPE_UNRECOGNIZED",
+        context: { scope: unknownScopes[0] },
+        severity: "fatal",
+      }
+    );
+  }
+  if (capabilities.length === 0) {
+    throw new ElizaError("Google OAuth requires at least one supported Workspace MCP capability.", {
+      code: "GOOGLE_OAUTH_CAPABILITY_REQUIRED",
+      context: { scopes: [...scopes] },
+      severity: "fatal",
+    });
+  }
+  return capabilities;
+}
+
+function normalizeGrantedCapabilities(scopes: readonly string[]): {
+  capabilities: GoogleCapability[];
+  ignoredScopes: string[];
+} {
+  // error-policy:J3 Provider-returned scopes are untrusted external input. Keep
+  // exact recognized capabilities, retain unknown scopes as metadata, and make
+  // an empty connector grant an explicit failure instead of inventing access.
+  const { capabilities, unknownScopes } = classifyScopes(scopes);
+  return { capabilities, ignoredScopes: unknownScopes };
 }
 
 function capabilitiesFromScope(scope: string): GoogleCapability[] {

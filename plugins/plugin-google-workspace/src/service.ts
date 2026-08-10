@@ -12,10 +12,7 @@ import {
 import { getGoogleOAuthProviderConfig, getGoogleOAuthProviderMetadata } from "./auth.js";
 import { DefaultGoogleCredentialResolver } from "./credential-resolver.js";
 import { createGoogleMcpAccessTokenProvider } from "./mcp/access-token-provider.js";
-import {
-  googleCalendarEventFromMcp,
-  listCalendarEventsViaMcp,
-} from "./mcp/calendar-read-adapter.js";
+import { googleCalendarEventFromMcp } from "./mcp/calendar-read-adapter.js";
 import {
   type GoogleMcpAccountConnectionReport,
   type GoogleMcpCapabilityCall,
@@ -56,18 +53,11 @@ import {
   type GoogleSheetUpdateResult,
   type IGoogleWorkspaceService,
 } from "./types.js";
+import { isRecord, mcpResultText, optionalString } from "./values.js";
 
 export interface GoogleWorkspaceServiceOptions {
   credentialResolver?: GoogleCredentialResolver;
   mcpEngine?: McpResourceEngine;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function stringArray(value: unknown): string[] {
@@ -86,14 +76,7 @@ function toolPayload(execution: GoogleMcpCapabilityCall): Record<string, unknown
   if (isRecord(execution.result.structuredContent)) {
     return execution.result.structuredContent;
   }
-  const text = execution.result.content
-    .filter(
-      (content): content is Extract<(typeof execution.result.content)[number], { type: "text" }> =>
-        content.type === "text"
-    )
-    .map((content) => content.text)
-    .join("\n")
-    .trim();
+  const text = mcpResultText(execution.result);
   if (text) {
     try {
       const parsed: unknown = JSON.parse(text);
@@ -581,13 +564,32 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
       timeZone?: string;
     }
   ): Promise<GoogleCalendarEvent[]> {
-    if (!this.mcpHost) throw new Error("Google MCP host unavailable");
-    return (
-      (await listCalendarEventsViaMcp(this.mcpHost, params)) ??
-      (() => {
-        throw new Error("Google Calendar MCP list_events is unavailable");
-      })()
-    );
+    const events: GoogleCalendarEvent[] = [];
+    const seenPageTokens = new Set<string>();
+    let pageToken: string | undefined;
+    do {
+      const page = await this.listEventPage({
+        accountId: params.accountId,
+        ...(params.calendarId ? { calendarId: params.calendarId } : {}),
+        ...(params.timeMin ? { timeMin: params.timeMin } : {}),
+        ...(params.timeMax ? { timeMax: params.timeMax } : {}),
+        ...(params.limit !== undefined ? { maxResults: params.limit } : {}),
+        ...(params.timeZone ? { timeZone: params.timeZone } : {}),
+        ...(pageToken ? { pageToken } : {}),
+      });
+      events.push(...page.events);
+      const nextPageToken = page.nextPageToken ?? undefined;
+      if (!nextPageToken) break;
+      if (seenPageTokens.has(nextPageToken)) {
+        throw new ElizaError("Google Calendar MCP repeated a pagination token", {
+          code: "GOOGLE_MCP_CALENDAR_PAGINATION_LOOP",
+          context: { accountId: params.accountId, calendarId: params.calendarId ?? "primary" },
+        });
+      }
+      seenPageTokens.add(nextPageToken);
+      pageToken = nextPageToken;
+    } while (pageToken);
+    return events;
   }
 
   async listEventPage(
@@ -653,56 +655,43 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     return googleCalendarEventFromMcp(nestedRecord(payload, "event"), calendarId, params.timeZone);
   }
 
-  async createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent> {
+  private rejectCalendarWrite(
+    kind: "writes" | "responses",
+    operation: string,
+    context: Record<string, unknown>
+  ): never {
     throw new ElizaError(
-      "Google Calendar MCP writes are unavailable because event reads do not expose an atomic provider version",
+      `Google Calendar MCP ${kind} are unavailable because event reads do not expose an atomic provider version`,
       {
         code: "GOOGLE_MCP_SAFE_CALENDAR_WRITE_UNSUPPORTED",
-        context: { accountId: params.accountId, operation: "create_event" },
+        context: { ...context, operation },
       }
     );
+  }
+
+  async createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent> {
+    this.rejectCalendarWrite("writes", "create_event", { accountId: params.accountId });
   }
 
   async updateEvent(params: GoogleCalendarEventPatchInput): Promise<GoogleCalendarEvent> {
-    throw new ElizaError(
-      "Google Calendar MCP writes are unavailable because event reads do not expose an atomic provider version",
-      {
-        code: "GOOGLE_MCP_SAFE_CALENDAR_WRITE_UNSUPPORTED",
-        context: {
-          accountId: params.accountId,
-          eventId: params.eventId,
-          operation: "update_event",
-        },
-      }
-    );
+    this.rejectCalendarWrite("writes", "update_event", {
+      accountId: params.accountId,
+      eventId: params.eventId,
+    });
   }
 
   async deleteEvent(params: GoogleCalendarEventDeleteInput): Promise<void> {
-    throw new ElizaError(
-      "Google Calendar MCP writes are unavailable because event reads do not expose an atomic provider version",
-      {
-        code: "GOOGLE_MCP_SAFE_CALENDAR_WRITE_UNSUPPORTED",
-        context: {
-          accountId: params.accountId,
-          eventId: params.eventId,
-          operation: "delete_event",
-        },
-      }
-    );
+    this.rejectCalendarWrite("writes", "delete_event", {
+      accountId: params.accountId,
+      eventId: params.eventId,
+    });
   }
 
   async respondToEvent(params: GoogleCalendarEventResponseInput): Promise<GoogleCalendarEvent> {
-    throw new ElizaError(
-      "Google Calendar MCP responses are unavailable because event reads do not expose an atomic provider version",
-      {
-        code: "GOOGLE_MCP_SAFE_CALENDAR_WRITE_UNSUPPORTED",
-        context: {
-          accountId: params.accountId,
-          eventId: params.eventId,
-          operation: "respond_to_event",
-        },
-      }
-    );
+    this.rejectCalendarWrite("responses", "respond_to_event", {
+      accountId: params.accountId,
+      eventId: params.eventId,
+    });
   }
 
   async searchFiles(

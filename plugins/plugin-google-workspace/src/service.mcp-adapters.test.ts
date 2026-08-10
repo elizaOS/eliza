@@ -3,15 +3,13 @@
  * calls. The MCP transport is fake; account policy, discovery curation, and
  * facade-to-tool argument mapping use the production implementation.
  */
-import {
-  type Action,
-  type ConnectorAccount,
-  getConnectorAccountManager,
-  type IAgentRuntime,
-  type UUID,
-} from "@elizaos/core";
-import type { McpResourceEngine } from "@elizaos/plugin-mcp/resource-engine";
+import { type ConnectorAccount, getConnectorAccountManager } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import {
+  engineHarness,
+  runtimeHarness,
+  stubCredentialResolver,
+} from "./mcp/__tests__/test-support.js";
 import { GoogleWorkspaceService } from "./service.js";
 
 const ACCOUNT: ConnectorAccount = {
@@ -43,121 +41,88 @@ const ACCOUNT: ConnectorAccount = {
   updatedAt: 1,
 };
 
-function runtimeHarness(): IAgentRuntime & { actions: Action[] } {
-  const actions: Action[] = [];
-  return {
-    agentId: "10000000-0000-0000-0000-000000000001" as UUID,
-    actions,
-    getService: () => undefined,
-    registerAction(action: Action) {
-      actions.push(action);
-    },
-    unregisterAction(name: string) {
-      const index = actions.findIndex((action) => action.name === name);
-      if (index < 0) return false;
-      actions.splice(index, 1);
-      return true;
-    },
-  } as IAgentRuntime & { actions: Action[] };
-}
-
-function engineHarness() {
-  const callTool = vi.fn(async (_ref, call: { name: string }) => {
-    if (call.name === "create_draft") {
-      return { content: [], structuredContent: { id: "draft-1", threadId: "thread-1" } };
-    }
-    if (call.name === "get_message") {
-      return {
-        content: [],
-        structuredContent: {
-          id: "message-1",
-          threadId: "thread-1",
-          subject: "Launch packet",
-          sender: "julia@example.com",
-          attachments: [
-            {
-              id: "attachment-1",
-              mimeType: "application/pdf",
-              filename: "launch-packet.pdf",
-            },
-          ],
-        },
-      };
-    }
-    if (call.name === "list_events") {
-      return {
-        content: [],
-        structuredContent: {
-          events: [
-            {
-              id: "busy",
-              start: { dateTime: "2026-08-12T09:00:00Z" },
-              end: { dateTime: "2026-08-12T10:00:00Z" },
-            },
-            {
-              id: "free",
-              availability: "AVAILABILITY_FREE",
-              start: { dateTime: "2026-08-12T10:00:00Z" },
-              end: { dateTime: "2026-08-12T11:00:00Z" },
-            },
-          ],
-        },
-      };
-    }
-    if (call.name === "get_file_metadata") {
-      return {
-        content: [],
-        structuredContent: {
-          id: "file-1",
-          name: "Report",
-          fileSize: "42",
-          parentId: "folder-1",
-          viewUrl: "https://drive.google.com/file-1",
-        },
-      };
-    }
-    if (call.name === "read_doc") {
-      return { content: [], structuredContent: { content: "Reviewed document text" } };
-    }
-    throw new Error(`unexpected MCP tool ${call.name}`);
-  });
-  const engine: McpResourceEngine = {
-    attach: vi.fn(async (resource) => ({ key: resource.key, generation: "generation-1" })),
-    detach: vi.fn(async () => true),
-    discover: vi.fn(async (ref) => ({
-      server: { capabilities: { tools: {} } },
-      tools: ref.key.endsWith(":gmail")
+function workspaceEngineHarness() {
+  return engineHarness({
+    toolsFor: (key) =>
+      key.endsWith(":gmail")
         ? [
             { name: "create_draft", inputSchema: { type: "object" } },
             { name: "get_message", inputSchema: { type: "object" } },
           ]
-        : ref.key.endsWith(":calendar")
+        : key.endsWith(":calendar")
           ? [{ name: "list_events", inputSchema: { type: "object" } }]
-          : ref.key.endsWith(":drive")
+          : key.endsWith(":drive")
             ? [{ name: "get_file_metadata", inputSchema: { type: "object" } }]
             : [{ name: "read_doc", inputSchema: { type: "object" } }],
-      resources: [],
-      resourceTemplates: [],
-    })),
-    callTool,
-  };
-  return { engine, callTool };
+    callTool: (call) => {
+      if (call.name === "create_draft") {
+        return { content: [], structuredContent: { id: "draft-1", threadId: "thread-1" } };
+      }
+      if (call.name === "get_message") {
+        return {
+          content: [],
+          structuredContent: {
+            id: "message-1",
+            threadId: "thread-1",
+            subject: "Launch packet",
+            sender: "julia@example.com",
+            attachments: [
+              {
+                id: "attachment-1",
+                mimeType: "application/pdf",
+                filename: "launch-packet.pdf",
+              },
+            ],
+          },
+        };
+      }
+      if (call.name === "list_events") {
+        return {
+          content: [],
+          structuredContent: {
+            events: [
+              {
+                id: "busy",
+                start: { dateTime: "2026-08-12T09:00:00Z" },
+                end: { dateTime: "2026-08-12T10:00:00Z" },
+              },
+              {
+                id: "free",
+                availability: "AVAILABILITY_FREE",
+                start: { dateTime: "2026-08-12T10:00:00Z" },
+                end: { dateTime: "2026-08-12T11:00:00Z" },
+              },
+            ],
+          },
+        };
+      }
+      if (call.name === "get_file_metadata") {
+        return {
+          content: [],
+          structuredContent: {
+            id: "file-1",
+            name: "Report",
+            fileSize: "42",
+            parentId: "folder-1",
+            viewUrl: "https://drive.google.com/file-1",
+          },
+        };
+      }
+      if (call.name === "read_doc") {
+        return { content: [], structuredContent: { content: "Reviewed document text" } };
+      }
+      throw new Error(`unexpected MCP tool ${call.name}`);
+    },
+  });
 }
 
 async function connectedService() {
   const runtime = runtimeHarness();
   await getConnectorAccountManager(runtime).upsertAccount("google", ACCOUNT);
-  const { engine, callTool } = engineHarness();
+  const { engine, callTool } = workspaceEngineHarness();
   const service = new GoogleWorkspaceService(runtime, {
     mcpEngine: engine,
-    credentialResolver: {
-      getAuthClient: async () =>
-        ({
-          credentials: { access_token: "short-lived" },
-          getAccessToken: async () => ({ token: "short-lived" }),
-          setCredentials: () => undefined,
-        }) as never,
-    },
+    credentialResolver: stubCredentialResolver(),
   });
   await service.connectMcpAccount(ACCOUNT);
   return { service, callTool };
@@ -186,17 +151,10 @@ describe("GoogleWorkspaceService MCP adapters", () => {
   it("discovers a requested product on demand before its first tool call", async () => {
     const runtime = runtimeHarness();
     await getConnectorAccountManager(runtime).upsertAccount("google", ACCOUNT);
-    const { engine, callTool } = engineHarness();
+    const { engine, callTool, discover } = workspaceEngineHarness();
     const service = new GoogleWorkspaceService(runtime, {
       mcpEngine: engine,
-      credentialResolver: {
-        getAuthClient: async () =>
-          ({
-            credentials: { access_token: "short-lived" },
-            getAccessToken: async () => ({ token: "short-lived" }),
-            setCredentials: () => undefined,
-          }) as never,
-      },
+      credentialResolver: stubCredentialResolver(),
     });
 
     await service.listEventPage({
@@ -205,7 +163,7 @@ describe("GoogleWorkspaceService MCP adapters", () => {
       timeMax: "2026-08-12T12:00:00Z",
     });
 
-    expect(engine.discover).toHaveBeenCalledTimes(1);
+    expect(discover).toHaveBeenCalledTimes(1);
     expect(callTool).toHaveBeenCalledWith(
       expect.objectContaining({ key: expect.stringMatching(/:calendar$/) }),
       expect.objectContaining({ name: "list_events" })

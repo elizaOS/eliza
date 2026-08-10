@@ -1,35 +1,17 @@
 /**
- * Typed Calendar read adapter over the curated official Google MCP capability.
- * It validates preview output before projecting it into the stable
- * `GoogleCalendarEvent` facade. Invalid or unavailable MCP results fail closed;
- * there is no personal-Google REST fallback.
+ * Projects a raw official Google Calendar MCP event payload into the stable
+ * `GoogleCalendarEvent` facade. Invalid preview output fails closed; there is
+ * no personal-Google REST fallback.
  */
 import { ElizaError } from "@elizaos/core";
 import type { GoogleCalendarAttendee, GoogleCalendarEvent } from "../types.js";
-import type { GoogleMcpCapabilityHost } from "./capability-host.js";
-
-interface GoogleMcpListEventsInput {
-  accountId: string;
-  calendarId?: string;
-  timeMin?: string;
-  timeMax?: string;
-  limit?: number;
-  timeZone?: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
-}
+import { isRecord, optionalRawString } from "../values.js";
 
 function eventInstant(value: unknown): { value?: string; isAllDay?: boolean; timeZone?: string } {
   if (!isRecord(value)) return {};
-  const dateTime = optionalString(value.dateTime);
-  const date = optionalString(value.date);
-  const timeZone = optionalString(value.timeZone);
+  const dateTime = optionalRawString(value.dateTime);
+  const date = optionalRawString(value.date);
+  const timeZone = optionalRawString(value.timeZone);
   return {
     ...(dateTime || date ? { value: dateTime ?? date } : {}),
     ...(date ? { isAllDay: true } : dateTime ? { isAllDay: false } : {}),
@@ -57,12 +39,12 @@ function mapAttendees(value: unknown): GoogleCalendarAttendee[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const attendees = value.flatMap((candidate) => {
     if (!isRecord(candidate)) return [];
-    const email = optionalString(candidate.email);
+    const email = optionalRawString(candidate.email);
     if (!email) return [];
     return [
       {
         email,
-        name: optionalString(candidate.displayName),
+        name: optionalRawString(candidate.displayName),
         responseStatus: attendeeResponseStatus(candidate.responseStatus),
         self: candidate.self === true,
         organizer: candidate.organizer === true,
@@ -83,7 +65,7 @@ export function googleCalendarEventFromMcp(
       code: "GOOGLE_MCP_CALENDAR_RESPONSE_INVALID",
     });
   }
-  const id = optionalString(value.id);
+  const id = optionalRawString(value.id);
   if (!id) {
     throw new ElizaError("Google Calendar MCP returned an event without an id", {
       code: "GOOGLE_MCP_CALENDAR_RESPONSE_INVALID",
@@ -93,37 +75,37 @@ export function googleCalendarEventFromMcp(
   const start = eventInstant(value.start);
   const end = eventInstant(value.end);
   const organizer = isRecord(value.organizer) ? value.organizer : undefined;
-  const organizerEmail = organizer ? optionalString(organizer.email) : undefined;
+  const organizerEmail = organizer ? optionalRawString(organizer.email) : undefined;
   const recurrence = Array.isArray(value.recurrence)
     ? value.recurrence.filter((entry): entry is string => typeof entry === "string")
     : undefined;
-  const availability = optionalString(value.availability);
-  const visibility = optionalString(value.visibility);
+  const availability = optionalRawString(value.availability);
+  const visibility = optionalRawString(value.visibility);
   return {
     id,
     calendarId,
-    title: optionalString(value.summary),
-    status: optionalString(value.status),
+    title: optionalRawString(value.summary),
+    status: optionalRawString(value.status),
     start: start.value,
     end: end.value,
     isAllDay: start.isAllDay,
     timeZone: start.timeZone ?? end.timeZone ?? fallbackTimeZone ?? null,
-    htmlLink: optionalString(value.htmlLink),
-    meetLink: optionalString(value.conferenceUrl),
+    htmlLink: optionalRawString(value.htmlLink),
+    meetLink: optionalRawString(value.conferenceUrl),
     attendees: mapAttendees(value.attendees),
-    location: optionalString(value.location),
-    description: optionalString(value.description),
+    location: optionalRawString(value.location),
+    description: optionalRawString(value.description),
     ...(organizerEmail
       ? {
           organizer: {
             email: organizerEmail,
-            name: optionalString(organizer?.displayName),
+            name: optionalRawString(organizer?.displayName),
             self: organizer?.self === true,
           },
         }
       : {}),
     recurrence: recurrence ?? null,
-    recurringEventId: optionalString(value.recurringEventId) ?? null,
+    recurringEventId: optionalRawString(value.recurringEventId) ?? null,
     transparency:
       availability === "AVAILABILITY_FREE" ? "transparent" : availability ? "opaque" : undefined,
     visibility:
@@ -135,67 +117,9 @@ export function googleCalendarEventFromMcp(
         : undefined,
     metadata: {
       source: "google-workspace-mcp",
-      createdAt: optionalString(value.created) ?? null,
-      updatedAt: optionalString(value.updated) ?? null,
-      eventType: optionalString(value.eventType) ?? null,
+      createdAt: optionalRawString(value.created) ?? null,
+      updatedAt: optionalRawString(value.updated) ?? null,
+      eventType: optionalRawString(value.eventType) ?? null,
     },
   };
-}
-
-function structuredPayload(value: unknown): Record<string, unknown> {
-  if (isRecord(value)) return value;
-  throw new ElizaError("Google Calendar MCP returned no structured event payload", {
-    code: "GOOGLE_MCP_CALENDAR_RESPONSE_INVALID",
-  });
-}
-
-export async function listCalendarEventsViaMcp(
-  host: GoogleMcpCapabilityHost,
-  input: GoogleMcpListEventsInput
-): Promise<GoogleCalendarEvent[] | null> {
-  const events: GoogleCalendarEvent[] = [];
-  const seenPageTokens = new Set<string>();
-  let pageToken: string | undefined;
-  do {
-    const execution = await host.callCapability("GOOGLE_CALENDAR_LIST_EVENTS", input.accountId, {
-      ...(input.calendarId ? { calendarId: input.calendarId } : {}),
-      ...(input.timeMin ? { startTime: input.timeMin } : {}),
-      ...(input.timeMax ? { endTime: input.timeMax } : {}),
-      ...(input.limit !== undefined ? { pageSize: Math.min(input.limit, 250) } : {}),
-      ...(input.timeZone ? { timeZone: input.timeZone } : {}),
-      ...(pageToken ? { pageToken } : {}),
-      orderBy: "startTime",
-    });
-    if (!execution) return null;
-    if (execution.result.isError) {
-      throw new ElizaError("Google Calendar MCP list_events returned a tool error", {
-        code: "GOOGLE_MCP_CALENDAR_TOOL_ERROR",
-        context: { accountId: input.accountId },
-      });
-    }
-    const payload = structuredPayload(execution.result.structuredContent);
-    if (!Array.isArray(payload.events)) {
-      throw new ElizaError("Google Calendar MCP list_events omitted its events array", {
-        code: "GOOGLE_MCP_CALENDAR_RESPONSE_INVALID",
-        context: { accountId: input.accountId },
-      });
-    }
-    const calendarId = input.calendarId ?? "primary";
-    events.push(
-      ...payload.events.map((event) =>
-        googleCalendarEventFromMcp(event, calendarId, input.timeZone)
-      )
-    );
-    const nextPageToken = optionalString(payload.nextPageToken);
-    if (!nextPageToken) break;
-    if (seenPageTokens.has(nextPageToken)) {
-      throw new ElizaError("Google Calendar MCP repeated a pagination token", {
-        code: "GOOGLE_MCP_CALENDAR_PAGINATION_LOOP",
-        context: { accountId: input.accountId, calendarId },
-      });
-    }
-    seenPageTokens.add(nextPageToken);
-    pageToken = nextPageToken;
-  } while (pageToken);
-  return events;
 }

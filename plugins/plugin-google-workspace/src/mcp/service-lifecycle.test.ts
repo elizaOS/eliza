@@ -3,34 +3,10 @@
  * The runtime registry and MCP transport are deterministic fakes; credential
  * resolution uses the service's real access-token bridge.
  */
-import {
-  type Action,
-  type ConnectorAccount,
-  getConnectorAccountManager,
-  type IAgentRuntime,
-  type UUID,
-} from "@elizaos/core";
-import type { McpRemoteResource, McpResourceEngine } from "@elizaos/plugin-mcp/resource-engine";
-import { describe, expect, it, vi } from "vitest";
+import { type ConnectorAccount, getConnectorAccountManager } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { GoogleWorkspaceService } from "../service";
-
-function runtimeHarness(): IAgentRuntime & { actions: Action[] } {
-  const actions: Action[] = [];
-  return {
-    agentId: "10000000-0000-0000-0000-000000000001" as UUID,
-    actions,
-    registerAction(action: Action) {
-      if (!actions.some((candidate) => candidate.name === action.name)) actions.push(action);
-    },
-    unregisterAction(name: string) {
-      const index = actions.findIndex((candidate) => candidate.name === name);
-      if (index < 0) return false;
-      actions.splice(index, 1);
-      return true;
-    },
-    getService: () => undefined,
-  } as IAgentRuntime & { actions: Action[] };
-}
+import { engineHarness, runtimeHarness, stubCredentialResolver } from "./__tests__/test-support.js";
 
 function googleAccount(): ConnectorAccount {
   return {
@@ -51,55 +27,40 @@ function googleAccount(): ConnectorAccount {
 describe("GoogleWorkspaceService MCP lifecycle", () => {
   it("hosts local selected products with short-lived access and removes actions on stop", async () => {
     const runtime = runtimeHarness();
-    let attachedResource: McpRemoteResource | undefined;
-    const engine: McpResourceEngine = {
-      attach: vi.fn(async (resource) => {
-        attachedResource = resource;
-        return { key: resource.key, generation: "generation-1" };
-      }),
-      detach: vi.fn(async () => true),
-      discover: vi.fn(async () => ({
-        server: { capabilities: { tools: {} } },
-        tools: [
-          {
-            name: "search_threads",
-            inputSchema: {
-              type: "object",
-              properties: { query: { type: "string" } },
-            },
+    const { engine, detach, attachedResources } = engineHarness({
+      toolsFor: () => [
+        {
+          name: "search_threads",
+          inputSchema: {
+            type: "object",
+            properties: { query: { type: "string" } },
           },
-        ],
-        resources: [],
-        resourceTemplates: [],
-      })),
-      callTool: vi.fn(async () => ({ content: [] })),
-    };
-    const authClient = {
-      credentials: { access_token: "short-lived", expiry_date: 10_000 },
-      getAccessToken: vi.fn(async () => ({ token: "short-lived" })),
-      setCredentials: vi.fn(),
-    };
-    const credentialResolver = {
-      getAuthClient: vi.fn(async () => authClient),
-    };
-    const service = new GoogleWorkspaceService(runtime, { credentialResolver, mcpEngine: engine });
+        },
+      ],
+      callTool: () => ({ content: [] }),
+    });
+    const service = new GoogleWorkspaceService(runtime, {
+      credentialResolver: stubCredentialResolver(),
+      mcpEngine: engine,
+    });
 
     await expect(service.connectMcpAccount(googleAccount())).resolves.toMatchObject({
       products: { gmail: { status: "connected" } },
     });
     expect(runtime.actions.map((action) => action.name)).toEqual(["GOOGLE_GMAIL_SEARCH_THREADS"]);
+    const attachedResource = attachedResources[0];
     await expect(
       attachedResource?.auth?.getAccessToken({
         key: attachedResource.key,
         endpoint: new URL(String(attachedResource.endpoint)),
         purpose: "call-tool",
       })
-    ).resolves.toEqual({ accessToken: "short-lived", expiresAt: 10_000 });
+    ).resolves.toEqual({ accessToken: "short-lived" });
 
     await service.stop();
 
     expect(runtime.actions).toEqual([]);
-    expect(engine.detach).toHaveBeenCalledOnce();
+    expect(detach).toHaveBeenCalledOnce();
   });
 
   it("uses the curated Calendar MCP read behind the typed service seam", async () => {
@@ -112,43 +73,35 @@ describe("GoogleWorkspaceService MCP lifecycle", () => {
       selectedProducts: ["calendar"],
     };
     await getConnectorAccountManager(runtime).upsertAccount("google", connectedAccount);
-    const callTool = vi.fn(async () => ({
-      content: [],
-      structuredContent: {
-        events: [
-          {
-            id: "event-1",
-            summary: "Architecture review",
-            start: { dateTime: "2026-08-11T09:00:00+05:30", timeZone: "Asia/Kolkata" },
-            end: { dateTime: "2026-08-11T10:00:00+05:30", timeZone: "Asia/Kolkata" },
-            htmlLink: "https://calendar.google.com/event?eid=event-1",
-          },
-        ],
-      },
-    }));
-    const engine: McpResourceEngine = {
-      attach: vi.fn(async (resource) => ({ key: resource.key, generation: "generation-1" })),
-      detach: vi.fn(async () => true),
-      discover: vi.fn(async () => ({
-        server: { capabilities: { tools: {} } },
-        tools: [
-          {
-            name: "list_events",
-            inputSchema: {
-              type: "object",
-              properties: {
-                calendarId: { type: "string" },
-                startTime: { type: "string" },
-                endTime: { type: "string" },
-              },
+    const { engine, callTool } = engineHarness({
+      toolsFor: () => [
+        {
+          name: "list_events",
+          inputSchema: {
+            type: "object",
+            properties: {
+              calendarId: { type: "string" },
+              startTime: { type: "string" },
+              endTime: { type: "string" },
             },
           },
-        ],
-        resources: [],
-        resourceTemplates: [],
-      })),
-      callTool,
-    };
+        },
+      ],
+      callTool: () => ({
+        content: [],
+        structuredContent: {
+          events: [
+            {
+              id: "event-1",
+              summary: "Architecture review",
+              start: { dateTime: "2026-08-11T09:00:00+05:30", timeZone: "Asia/Kolkata" },
+              end: { dateTime: "2026-08-11T10:00:00+05:30", timeZone: "Asia/Kolkata" },
+              htmlLink: "https://calendar.google.com/event?eid=event-1",
+            },
+          ],
+        },
+      }),
+    });
     const service = new GoogleWorkspaceService(runtime, { mcpEngine: engine });
     await service.connectMcpAccount(connectedAccount);
 

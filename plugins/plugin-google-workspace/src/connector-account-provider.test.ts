@@ -15,10 +15,10 @@ import {
   selectRequestedGrantedCapabilities,
 } from "./connector-account-provider.js";
 
-function oauthRuntime(): IAgentRuntime {
+function oauthRuntime(clientId = "google-client-id"): IAgentRuntime {
   const vault = new Map([
-    ["GOOGLE_CLIENT_ID", "google-client-id"],
-    ["GOOGLE_CLIENT_SECRET", "google-client-secret"],
+    ["GOOGLE_CLIENT_ID", clientId],
+    ["GOOGLE_CLIENT_SECRET", `${clientId}-secret`],
   ]);
   return {
     getSetting: () => undefined,
@@ -51,18 +51,6 @@ function managedDesktopOAuthRuntime(): IAgentRuntime & {
         : null,
     tokenVault,
   } as unknown as IAgentRuntime & { tokenVault: Map<string, string> };
-}
-
-function vaultOnlyOAuthRuntime(): IAgentRuntime {
-  const vault = new Map([
-    ["GOOGLE_CLIENT_ID", "vault-google-client-id"],
-    ["GOOGLE_CLIENT_SECRET", "vault-google-client-secret"],
-  ]);
-  return {
-    getSetting: () => undefined,
-    getService: (name: string) =>
-      name === "SECRETS" ? { getGlobal: async (key: string) => vault.get(key) ?? null } : null,
-  } as unknown as IAgentRuntime;
 }
 
 function pendingFlow() {
@@ -121,7 +109,7 @@ describe("Google connector OAuth selection", () => {
   );
 
   it("starts OAuth from vault credentials and the request-derived callback", async () => {
-    const provider = createGoogleConnectorAccountProvider(vaultOnlyOAuthRuntime());
+    const provider = createGoogleConnectorAccountProvider(oauthRuntime("vault-google-client-id"));
     const started = await provider.startOAuth?.(
       {
         provider: "google",

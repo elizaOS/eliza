@@ -24,6 +24,7 @@ import {
   GOOGLE_WORKSPACE_MCP_RESOURCES,
   type GoogleWorkspaceMcpResourceProduct,
 } from "@elizaos/shared/contracts";
+import { isRecord, mcpResultText } from "../values.js";
 
 type Tool = McpDiscovery["tools"][number];
 
@@ -85,10 +86,6 @@ const ACCOUNT_PARAMETER: ActionParameter = {
   required: false,
   schema: { type: "string", minLength: 1 },
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 function selectedProducts(account: ConnectorAccount): GoogleMcpProduct[] {
   const selected = new Set(
@@ -170,18 +167,33 @@ function parametersFromOptions(options: unknown): Record<string, unknown> {
 }
 
 function resultText(result: Awaited<ReturnType<McpResourceEngine["callTool"]>>): string {
-  const text = result.content
-    .filter(
-      (content): content is Extract<(typeof result.content)[number], { type: "text" }> =>
-        content.type === "text"
-    )
-    .map((content) => content.text)
-    .join("\n")
-    .trim();
+  const text = mcpResultText(result);
   if (text) return text;
   return result.structuredContent
     ? JSON.stringify(result.structuredContent)
     : "Google MCP returned no content.";
+}
+
+function byDefaultAccountThenId(
+  left: ActiveGoogleMcpProduct,
+  right: ActiveGoogleMcpProduct
+): number {
+  return (
+    Number(Boolean(right.account.isDefault)) - Number(Boolean(left.account.isDefault)) ||
+    left.account.id.localeCompare(right.account.id)
+  );
+}
+
+function connectedReport(
+  active: Pick<ActiveGoogleMcpProduct, "product" | "tools" | "capabilities">
+): GoogleMcpProductConnectionReport {
+  return {
+    status: "connected",
+    discoveredTools: [...active.tools.keys()],
+    promotedActions: [...active.capabilities]
+      .filter(([toolName]) => dynamicallyExposed(active.product, toolName))
+      .map(([toolName]) => actionName(active.product, toolName)),
+  };
 }
 
 export class GoogleMcpCapabilityHost {
@@ -225,15 +237,7 @@ export class GoogleMcpCapabilityHost {
     }
     const key = this.activeKey(account.id, product);
     const active = this.active.get(key);
-    if (active) {
-      return {
-        status: "connected",
-        discoveredTools: [...active.tools.keys()],
-        promotedActions: [...active.capabilities]
-          .filter(([toolName]) => dynamicallyExposed(product, toolName))
-          .map(([toolName]) => actionName(product, toolName)),
-      };
-    }
+    if (active) return connectedReport(active);
     const pending = this.connecting.get(key);
     if (pending) return pending;
 
@@ -285,21 +289,10 @@ export class GoogleMcpCapabilityHost {
       for (const [toolName, capability] of expectedTools) {
         if (tools.has(toolName)) capabilities.set(toolName, capability);
       }
-      this.active.set(this.activeKey(account.id, product), {
-        account,
-        product,
-        ref,
-        tools,
-        capabilities,
-      });
+      const connected: ActiveGoogleMcpProduct = { account, product, ref, tools, capabilities };
+      this.active.set(this.activeKey(account.id, product), connected);
       this.reconcileActions();
-      return {
-        status: "connected",
-        discoveredTools: [...tools.keys()],
-        promotedActions: [...capabilities]
-          .filter(([toolName]) => dynamicallyExposed(product, toolName))
-          .map(([toolName]) => actionName(product, toolName)),
-      };
+      return connectedReport(connected);
     } catch (error) {
       if (ref) await this.detachBestEffort(ref, account.id, product);
       return {
@@ -360,25 +353,6 @@ export class GoogleMcpCapabilityHost {
     };
   }
 
-  async callCapability(
-    requestedActionName: string,
-    accountId: string,
-    arguments_: Readonly<Record<string, unknown>>
-  ): Promise<GoogleMcpCapabilityCall | null> {
-    const materialized = this.materializedTools().find(
-      (candidate) =>
-        normalizeActionName(candidate.actionName) === normalizeActionName(requestedActionName)
-    );
-    return materialized
-      ? this.callTool({
-          accountId,
-          product: materialized.product,
-          toolName: materialized.toolName,
-          arguments: arguments_,
-        })
-      : null;
-  }
-
   private activeKey(accountId: string, product: GoogleMcpProduct): string {
     return `${accountId}:${product}`;
   }
@@ -386,11 +360,7 @@ export class GoogleMcpCapabilityHost {
   private materializedTools(): MaterializedTool[] {
     const materialized: MaterializedTool[] = [];
     const seen = new Set<string>();
-    const resources = [...this.active.values()].sort(
-      (left, right) =>
-        Number(Boolean(right.account.isDefault)) - Number(Boolean(left.account.isDefault)) ||
-        left.account.id.localeCompare(right.account.id)
-    );
+    const resources = [...this.active.values()].sort(byDefaultAccountThenId);
     for (const active of resources) {
       for (const [toolName, requiredCapability] of active.capabilities) {
         if (!dynamicallyExposed(active.product, toolName)) continue;
@@ -509,11 +479,7 @@ export class GoogleMcpCapabilityHost {
             !requestedAccountId.trim() ||
             active.account.id === requestedAccountId.trim())
       )
-      .sort(
-        (left, right) =>
-          Number(Boolean(right.account.isDefault)) - Number(Boolean(left.account.isDefault)) ||
-          left.account.id.localeCompare(right.account.id)
-      )[0];
+      .sort(byDefaultAccountThenId)[0];
   }
 
   private async detachBestEffort(

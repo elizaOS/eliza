@@ -33,7 +33,7 @@ export interface McpAccessTokenProvider {
     endpoint: URL;
     purpose: McpResourceOperationPurpose;
     signal?: AbortSignal;
-  }): Promise<{ accessToken: string; expiresAt?: number }>;
+  }): Promise<{ accessToken: string }>;
   invalidateAccessToken?(context: {
     key: string;
     endpoint: URL;
@@ -111,6 +111,29 @@ function detachedError(ref: McpAttachmentRef): ElizaError {
   });
 }
 
+async function drainPaginated<T>(
+  label: string,
+  fetchPage: (cursor: string | undefined) => Promise<{ items: readonly T[]; nextCursor?: string }>
+): Promise<T[]> {
+  const items: T[] = [];
+  let cursor: string | undefined;
+  const seen = new Set<string>();
+  do {
+    const page = await fetchPage(cursor);
+    items.push(...page.items);
+    cursor = page.nextCursor;
+    if (cursor) {
+      if (seen.has(cursor)) {
+        throw new ElizaError(`MCP ${label} repeated a pagination cursor`, {
+          code: "MCP_RESOURCE_PAGINATION_LOOP",
+        });
+      }
+      seen.add(cursor);
+    }
+  } while (cursor);
+  return items;
+}
+
 async function guardedResourceFetch(input: string | URL, init?: RequestInit): Promise<Response> {
   const guarded = await fetchWithSsrfGuard({
     url: input.toString(),
@@ -156,63 +179,31 @@ async function openDefaultOperation(request: {
   return {
     discover: async () => {
       const capabilities = client.getServerCapabilities() ?? {};
-      const tools: Tool[] = [];
-      const resources: Resource[] = [];
-      const resourceTemplates: ResourceTemplateType[] = [];
       const options = {
         signal: request.signal,
         timeout: request.requestTimeoutMs,
       };
-      if (capabilities.tools) {
-        let cursor: string | undefined;
-        const seen = new Set<string>();
-        do {
-          const page = await client.listTools(cursor ? { cursor } : undefined, options);
-          tools.push(...page.tools);
-          cursor = page.nextCursor;
-          if (cursor && seen.has(cursor)) {
-            throw new ElizaError("MCP tools/list repeated a pagination cursor", {
-              code: "MCP_RESOURCE_PAGINATION_LOOP",
-            });
-          }
-          if (cursor) seen.add(cursor);
-        } while (cursor);
-      }
-      if (capabilities.resources) {
-        let resourceCursor: string | undefined;
-        const seenResources = new Set<string>();
-        do {
-          const page = await client.listResources(
-            resourceCursor ? { cursor: resourceCursor } : undefined,
-            options
-          );
-          resources.push(...page.resources);
-          resourceCursor = page.nextCursor;
-          if (resourceCursor && seenResources.has(resourceCursor)) {
-            throw new ElizaError("MCP resources/list repeated a pagination cursor", {
-              code: "MCP_RESOURCE_PAGINATION_LOOP",
-            });
-          }
-          if (resourceCursor) seenResources.add(resourceCursor);
-        } while (resourceCursor);
-
-        let templateCursor: string | undefined;
-        const seenTemplates = new Set<string>();
-        do {
-          const page = await client.listResourceTemplates(
-            templateCursor ? { cursor: templateCursor } : undefined,
-            options
-          );
-          resourceTemplates.push(...page.resourceTemplates);
-          templateCursor = page.nextCursor;
-          if (templateCursor && seenTemplates.has(templateCursor)) {
-            throw new ElizaError("MCP resources/templates/list repeated a pagination cursor", {
-              code: "MCP_RESOURCE_PAGINATION_LOOP",
-            });
-          }
-          if (templateCursor) seenTemplates.add(templateCursor);
-        } while (templateCursor);
-      }
+      const tools: Tool[] = capabilities.tools
+        ? await drainPaginated("tools/list", async (cursor) => {
+            const page = await client.listTools(cursor ? { cursor } : undefined, options);
+            return { items: page.tools, nextCursor: page.nextCursor };
+          })
+        : [];
+      const resources: Resource[] = capabilities.resources
+        ? await drainPaginated("resources/list", async (cursor) => {
+            const page = await client.listResources(cursor ? { cursor } : undefined, options);
+            return { items: page.resources, nextCursor: page.nextCursor };
+          })
+        : [];
+      const resourceTemplates: ResourceTemplateType[] = capabilities.resources
+        ? await drainPaginated("resources/templates/list", async (cursor) => {
+            const page = await client.listResourceTemplates(
+              cursor ? { cursor } : undefined,
+              options
+            );
+            return { items: page.resourceTemplates, nextCursor: page.nextCursor };
+          })
+        : [];
       return {
         server: {
           info: client.getServerVersion(),
@@ -253,13 +244,6 @@ class DefaultMcpResourceEngine implements McpResourceEngine {
         code: "MCP_RESOURCE_KEY_INVALID",
       });
     }
-    if (this.attachments.has(key)) {
-      throw new ElizaError(`MCP resource "${key}" is already attached`, {
-        code: "MCP_RESOURCE_ALREADY_ATTACHED",
-        context: { key },
-      });
-    }
-
     let endpoint: URL;
     try {
       endpoint = new URL(resource.endpoint);
@@ -287,6 +271,8 @@ class DefaultMcpResourceEngine implements McpResourceEngine {
         context: { key, requestTimeoutMs },
       });
     }
+    // Checked after the async endpoint validation so a concurrent attach that
+    // completed during the await cannot be silently overwritten.
     if (this.attachments.has(key)) {
       throw new ElizaError(`MCP resource "${key}" is already attached`, {
         code: "MCP_RESOURCE_ALREADY_ATTACHED",

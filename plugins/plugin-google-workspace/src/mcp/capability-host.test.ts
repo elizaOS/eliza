@@ -4,12 +4,9 @@
  * fakes; exact tool routing and connect/disconnect behavior are real.
  */
 import type { Action, ConnectorAccount, IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import type {
-  McpAttachmentRef,
-  McpDiscovery,
-  McpResourceEngine,
-} from "@elizaos/plugin-mcp/resource-engine";
-import { describe, expect, it, vi } from "vitest";
+import type { McpDiscovery, McpResourceEngine } from "@elizaos/plugin-mcp/resource-engine";
+import { describe, expect, it } from "vitest";
+import { engineHarness, runtimeHarness } from "./__tests__/test-support.js";
 import { GoogleMcpCapabilityHost } from "./capability-host";
 
 function discovery(tools: McpDiscovery["tools"]): McpDiscovery {
@@ -42,86 +39,60 @@ function account(): ConnectorAccount {
   };
 }
 
-function runtimeHarness(): IAgentRuntime & { actions: Action[] } {
-  const actions: Action[] = [];
-  return {
-    agentId: "10000000-0000-0000-0000-000000000001" as UUID,
-    actions,
-    registerAction(action: Action) {
-      if (!actions.some((candidate) => candidate.name === action.name)) actions.push(action);
-    },
-    unregisterAction(name: string) {
-      const index = actions.findIndex((candidate) => candidate.name === name);
-      if (index < 0) return false;
-      actions.splice(index, 1);
-      return true;
-    },
-    getService: () => undefined,
-  } as IAgentRuntime & { actions: Action[] };
+function googleEngineHarness() {
+  return engineHarness({
+    toolsFor: (key) =>
+      key.endsWith(":gmail")
+        ? [
+            {
+              name: "search_threads",
+              description: "Search Gmail threads",
+              inputSchema: {
+                type: "object",
+                properties: { query: { type: "string" }, pageSize: { type: "integer" } },
+              },
+            },
+            {
+              name: "unexpected_preview_tool",
+              inputSchema: { type: "object" },
+            },
+          ]
+        : [
+            {
+              name: "list_events",
+              description: "List calendar events",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  calendarId: { type: "string" },
+                  startTime: { type: "string" },
+                  endTime: { type: "string" },
+                },
+              },
+            },
+          ],
+    callTool: () => ({
+      content: [{ type: "text" as const, text: "result" }],
+      structuredContent: { threads: [{ id: "thread-1" }] },
+    }),
+  });
 }
 
-function engineHarness(): McpResourceEngine & {
-  callTool: ReturnType<typeof vi.fn>;
-  detach: ReturnType<typeof vi.fn>;
-} {
-  let generation = 0;
-  const refs = new Map<string, McpAttachmentRef>();
-  const attach = vi.fn(async ({ key }: { key: string }) => {
-    const ref = { key, generation: String(++generation) };
-    refs.set(key, ref);
-    return ref;
+function hostFor(runtime: IAgentRuntime, engine: McpResourceEngine): GoogleMcpCapabilityHost {
+  return new GoogleMcpCapabilityHost(runtime, {
+    engine,
+    accessTokenProviderFor: () => ({
+      getAccessToken: async () => ({ accessToken: "access-token" }),
+    }),
+    authorizeAccount: async () => true,
   });
-  const discover = vi.fn(async (ref: McpAttachmentRef) => {
-    if (ref.key.endsWith(":gmail")) {
-      return discovery([
-        {
-          name: "search_threads",
-          description: "Search Gmail threads",
-          inputSchema: {
-            type: "object",
-            properties: { query: { type: "string" }, pageSize: { type: "integer" } },
-          },
-        },
-        {
-          name: "unexpected_preview_tool",
-          inputSchema: { type: "object" },
-        },
-      ]);
-    }
-    return discovery([
-      {
-        name: "list_events",
-        description: "List calendar events",
-        inputSchema: {
-          type: "object",
-          properties: {
-            calendarId: { type: "string" },
-            startTime: { type: "string" },
-            endTime: { type: "string" },
-          },
-        },
-      },
-    ]);
-  });
-  const callTool = vi.fn(async () => ({
-    content: [{ type: "text" as const, text: "result" }],
-    structuredContent: { threads: [{ id: "thread-1" }] },
-  }));
-  const detach = vi.fn(async (ref: McpAttachmentRef) => refs.delete(ref.key));
-  return { attach, discover, callTool, detach };
 }
 
 describe("GoogleMcpCapabilityHost", () => {
   it("materializes only curated discovered actions and removes them on disconnect", async () => {
     const runtime = runtimeHarness();
-    const engine = engineHarness();
-    const host = new GoogleMcpCapabilityHost(runtime, {
-      engine,
-      accessTokenProviderFor: () => ({
-        getAccessToken: async () => ({ accessToken: "access-token" }),
-      }),
-      authorizeAccount: async () => true,
-    });
+    const engine = googleEngineHarness();
+    const host = hostFor(runtime, engine.engine);
 
     const report = await host.connectAccount(account());
 
@@ -166,8 +137,8 @@ describe("GoogleMcpCapabilityHost", () => {
 
   it("keeps a successful product active when a sibling product discovery fails", async () => {
     const runtime = runtimeHarness();
-    const engine = engineHarness();
-    vi.mocked(engine.discover).mockImplementation(async (ref) => {
+    const engine = googleEngineHarness();
+    engine.discover.mockImplementation(async (ref) => {
       if (ref.key.endsWith(":calendar")) throw new Error("calendar preview unavailable");
       return discovery([
         {
@@ -179,13 +150,7 @@ describe("GoogleMcpCapabilityHost", () => {
         },
       ]);
     });
-    const host = new GoogleMcpCapabilityHost(runtime, {
-      engine,
-      accessTokenProviderFor: () => ({
-        getAccessToken: async () => ({ accessToken: "access-token" }),
-      }),
-      authorizeAccount: async () => true,
-    });
+    const host = hostFor(runtime, engine.engine);
 
     const report = await host.connectAccount(account());
 
@@ -200,14 +165,8 @@ describe("GoogleMcpCapabilityHost", () => {
 
   it("detaches products removed by a narrower reconnect", async () => {
     const runtime = runtimeHarness();
-    const engine = engineHarness();
-    const host = new GoogleMcpCapabilityHost(runtime, {
-      engine,
-      accessTokenProviderFor: () => ({
-        getAccessToken: async () => ({ accessToken: "access-token" }),
-      }),
-      authorizeAccount: async () => true,
-    });
+    const engine = googleEngineHarness();
+    const host = hostFor(runtime, engine.engine);
 
     await host.connectAccount(account());
     await host.connectAccount({
@@ -236,14 +195,8 @@ describe("GoogleMcpCapabilityHost", () => {
       handler: async () => ({ success: true }),
     };
     runtime.actions.push(incumbent);
-    const engine = engineHarness();
-    const host = new GoogleMcpCapabilityHost(runtime, {
-      engine,
-      accessTokenProviderFor: () => ({
-        getAccessToken: async () => ({ accessToken: "access-token" }),
-      }),
-      authorizeAccount: async () => true,
-    });
+    const engine = googleEngineHarness();
+    const host = hostFor(runtime, engine.engine);
 
     await host.connectAccount({
       ...account(),

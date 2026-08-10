@@ -31,7 +31,7 @@ describe("createGoogleMcpAccessTokenProvider", () => {
         endpoint: new URL("https://gmailmcp.googleapis.com/mcp/v1"),
         purpose: "discover",
       })
-    ).resolves.toEqual({ accessToken: "short-lived-access", expiresAt: 123_456 });
+    ).resolves.toEqual({ accessToken: "short-lived-access" });
 
     await provider.invalidateAccessToken?.({
       key: "google:agent:acct-google-1:gmail",
