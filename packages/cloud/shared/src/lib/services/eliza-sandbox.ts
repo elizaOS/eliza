@@ -42,6 +42,7 @@ import { jobs } from "../../db/schemas/jobs";
 import { imageRepo } from "../../db/utils/docker-image-ref";
 import { ApiError } from "../api/cloud-worker-errors";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
+import { buildRedisClient, hasRedisConfig } from "../cache/redis-factory";
 import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -518,6 +519,11 @@ const RECONCILE_SSH_CMD_TIMEOUT_MS = 15_000;
 // still fires — an unreachable paid agent must never look "running" forever.
 const IP_RECONCILE_MAX_UNRESOLVED_CYCLES = 3;
 const DB_LIVENESS_RESTART_MARKER = "[db-liveness-restart]";
+// TTL for the server-side routing key fallback written during heartbeat.
+// Matches the SandboxRegistry container-side default (90s); the ~30s
+// heartbeat cycle refreshes it well within the window so one missed tick
+// does not expire a healthy agent's routing entry.
+const ROUTING_KEY_FALLBACK_TTL_SECONDS = 90;
 const DB_LIVENESS_RESTART_BUDGET = 3;
 const DB_LIVENESS_RESTART_COOLDOWN_MS = 10 * 60_000;
 const DB_LIVENESS_RESTART_BUDGET_WINDOW_MS = 60 * 60_000;
@@ -989,6 +995,24 @@ class ManagedLaunchOwnershipLost extends Error {
     super("Managed launch lost its agent ownership CAS");
     this.name = "ManagedLaunchOwnershipLost";
   }
+}
+
+/**
+ * Atomically SET multiple keys with a shared TTL using a Redis pipeline.
+ * Used by the server-side routing key fallback so both keys (server:url and
+ * agent:server) land together — a partial write would let the gateway resolve
+ * one half but not the other.
+ */
+async function pipelineSet(
+  redis: NonNullable<ReturnType<typeof buildRedisClient>>,
+  entries: Array<[key: string, value: string]>,
+  ttlSeconds: number,
+): Promise<void> {
+  const pipe = redis.pipeline();
+  for (const [key, value] of entries) {
+    pipe.setex(key, ttlSeconds, value);
+  }
+  await pipe.exec();
 }
 
 export class ElizaSandboxService {
@@ -6461,6 +6485,60 @@ export class ElizaSandboxService {
     });
   }
 
+  /**
+   * Server-side fallback for the gateway routing registry. A booted container
+   * self-registers by writing `agent:<id>:server` + `server:<name>:url` keys to
+   * the shared Redis via `SandboxRegistry` (built from `SANDBOX_REGISTRY_*` env
+   * vars injected by the Docker provisioner). When those env vars are absent or
+   * the container fails to self-register, no routing key ever appears and the
+   * webhook gateway resolves `unregistered` forever — re-onboarding the user on
+   * every message even though the agent is alive and heartbeating (#18277).
+   *
+   * This method writes the keys from the control-plane side when the heartbeat
+   * confirms the container is reachable. It only writes when the keys are
+   * absent, so it never clobbers the container's own registration (which may
+   * carry a different bridge URL or server name). Best-effort: failures are
+   * logged and swallowed so a Redis outage does not abort the heartbeat cycle.
+   */
+  private async ensureRoutingRegistryKeys(
+    rec: Pick<AgentSandbox, "id" | "bridge_url">,
+  ): Promise<void> {
+    if (!rec.bridge_url) return;
+    if (!hasRedisConfig()) return;
+
+    try {
+      const redis = buildRedisClient();
+      if (!redis) return;
+
+      const agentServerKey = `agent:${rec.id}:server`;
+      const serverName = `sandbox-${rec.id}`;
+      const serverUrlKey = `server:${serverName}:url`;
+
+      // Only write when the container hasn't self-registered. A GET-first
+      // check avoids clobbering keys the container owns (it may use a
+      // different server name or a public-proxy URL that differs from the
+      // internal bridge URL).
+      const existing = await redis.get<string>(agentServerKey);
+      if (existing) return;
+
+      await pipelineSet(
+        redis,
+        [
+          [serverUrlKey, rec.bridge_url],
+          [agentServerKey, serverName],
+        ],
+        ROUTING_KEY_FALLBACK_TTL_SECONDS,
+      );
+      logger.info(
+        `[agent-sandbox] Wrote routing registry fallback for agent ${rec.id} -> ${rec.bridge_url}`,
+      );
+    } catch (err) {
+      logger.warn(
+        `[agent-sandbox] Routing registry fallback failed for agent ${rec.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   async heartbeat(agentId: string, orgId: string): Promise<boolean> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec?.bridge_url) return false;
@@ -6547,6 +6625,13 @@ export class ElizaSandboxService {
       // the last healthy beat, not a stale prior error_count from an old episode.
       error_count: 0,
     });
+    // Write the routing registry fallback after a successful heartbeat so the
+    // gateway can route inbound platform messages to this sandbox even when
+    // the container did not self-register (#18277). Best-effort, non-blocking
+    // on the heartbeat result.
+    if (updated) {
+      await this.ensureRoutingRegistryKeys(rec);
+    }
     return Boolean(updated);
   }
 

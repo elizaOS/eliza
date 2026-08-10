@@ -2892,6 +2892,117 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       getClientSpy.mockRestore();
     }
   }, 30_000);
+
+  test("successful heartbeat writes routing registry fallback keys when none exist (#18277)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, updates) => ({ ...sandbox, ...updates }) as AgentSandbox,
+    );
+
+    globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
+
+    // Mock redis-factory so ensureRoutingRegistryKeys has a Redis to write to
+    const redisStore = new Map<string, string>();
+    const mockPipeline = {
+      setex: jest.fn().mockReturnThis(),
+      exec: jest.fn(async () => {
+        // Simulate the pipeline executing the SETEX calls
+        return [];
+      }),
+    };
+    const mockRedis = {
+      get: jest.fn(async (key: string) => redisStore.get(key) ?? null),
+      pipeline: jest.fn(() => {
+        // Wire setex to actually store in our mock map
+        mockPipeline.setex.mockImplementation(
+          (key: string, _ttl: number, value: string) => {
+            redisStore.set(key, value);
+            return mockPipeline;
+          },
+        );
+        return mockPipeline;
+      }),
+    };
+    const redisFactory = await import("../cache/redis-factory");
+    const buildSpy = spyOn(redisFactory, "buildRedisClient").mockReturnValue(
+      mockRedis as never,
+    );
+    const hasRedisSpy = spyOn(redisFactory, "hasRedisConfig").mockReturnValue(true);
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(
+        sandbox.id,
+        sandbox.organization_id,
+      );
+      expect(ok).toBe(true);
+
+      // The agent:server key should now exist
+      const agentServerKey = `agent:${sandbox.id}:server`;
+      const serverUrlKey = `server:sandbox-${sandbox.id}:url`;
+      expect(mockRedis.get).toHaveBeenCalledWith(agentServerKey);
+      expect(redisStore.has(agentServerKey)).toBe(true);
+      expect(redisStore.get(agentServerKey)).toBe(`sandbox-${sandbox.id}`);
+      expect(redisStore.get(serverUrlKey)).toBe(sandbox.bridge_url);
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      buildSpy.mockRestore();
+      hasRedisSpy.mockRestore();
+    }
+  });
+
+  test("successful heartbeat does NOT overwrite routing keys when container already self-registered (#18277)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, updates) => ({ ...sandbox, ...updates }) as AgentSandbox,
+    );
+
+    globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
+
+    // Pre-populate the routing key as if the container self-registered
+    const selfRegisteredServer = "container-own-server-name";
+    const redisStore = new Map<string, string>([
+      [`agent:${sandbox.id}:server`, selfRegisteredServer],
+    ]);
+    const mockPipeline = {
+      setex: jest.fn().mockReturnThis(),
+      exec: jest.fn(async () => []),
+    };
+    const mockRedis = {
+      get: jest.fn(async (key: string) => redisStore.get(key) ?? null),
+      pipeline: jest.fn(() => mockPipeline),
+    };
+    const redisFactory = await import("../cache/redis-factory");
+    const buildSpy = spyOn(redisFactory, "buildRedisClient").mockReturnValue(
+      mockRedis as never,
+    );
+    const hasRedisSpy = spyOn(redisFactory, "hasRedisConfig").mockReturnValue(true);
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(
+        sandbox.id,
+        sandbox.organization_id,
+      );
+      expect(ok).toBe(true);
+
+      // Should have checked the key, seen it exists, and NOT called pipeline
+      expect(mockRedis.get).toHaveBeenCalledWith(`agent:${sandbox.id}:server`);
+      expect(mockPipeline.setex).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      buildSpy.mockRestore();
+      hasRedisSpy.mockRestore();
+    }
+  });
 });
 
 // The daemon handler for the `agent_resume` job. Covers the branch logic the
