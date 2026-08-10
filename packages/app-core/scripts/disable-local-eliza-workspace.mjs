@@ -28,14 +28,14 @@
  *      for the workspace:* callers AND a separate registry-resolved
  *      `@elizaos/core` for cloud-agent-template, emitting two
  *      top-level `"@elizaos/core"` entries in bun.lock's packages
- *      section. The next `bun pm pack --dry-run` (invoked from
- *      `scripts/release-check.ts`) then fails with:
+ *      section. The next `bun pm pack --dry-run` then fails with:
  *
  *        error: Duplicate package path
  *            at bun.lock:XXXX:5
  *        error: failed to parse lockfile: InvalidPackageKey
  *
- *      blocking the Release Workflow Contract job.
+ *      blocking any Docker CI smoke / packaged build job that regenerates
+ *      the lockfile under ELIZA_SKIP_LOCAL_UPSTREAMS=1.
  *
  * We patch every affected file in place (no commit, CI-only). All
  * edits are idempotent and gated on `GITHUB_ACTIONS=true` +

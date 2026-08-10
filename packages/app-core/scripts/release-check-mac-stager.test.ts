@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import {
   containsContiguousBlock,
   requiredMacStaplerFailureBlock,
-} from "./release-check";
+} from "./lib/mac-stager-contract";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const stagerPath = path.join(
