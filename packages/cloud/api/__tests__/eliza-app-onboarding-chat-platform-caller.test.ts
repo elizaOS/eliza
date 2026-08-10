@@ -530,7 +530,7 @@ describe("onboarding chat — trusted platform gateway caller", () => {
 
   test("previews the gateway-attested Discord identity and requires explicit confirmation", async () => {
     resolveIdentity.mockResolvedValue(null);
-    const gatewayData = await dataOf(
+    await dataOf(
       await post({
         sessionId: "platform:discord:1234567890",
         message: "My name is Ada",

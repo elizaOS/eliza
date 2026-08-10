@@ -9,10 +9,12 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearPendingOnboardingSession,
+  completePendingOnboardingContinuation,
   peekPendingOnboardingSession,
+  previewPendingOnboardingContinuation,
 } from "./lib/onboarding-continuation";
 
 const TOKEN = "aaaaaaaa-test-test-test-tokentoken01";
@@ -43,6 +45,21 @@ vi.mock("./lib/onboarding-continuation", async (importOriginal) => {
 });
 
 const { default: GetStartedPage } = await import("./GetStartedPage");
+
+beforeEach(() => {
+  vi.mocked(previewPendingOnboardingContinuation).mockReset();
+  vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
+    platform: "discord",
+    platformUserId: "1234567890",
+    platformDisplayName: "attested-discord-user",
+  });
+  vi.mocked(completePendingOnboardingContinuation).mockReset();
+  vi.mocked(completePendingOnboardingContinuation).mockImplementation(
+    async () => {
+      clearPendingOnboardingSession();
+    },
+  );
+});
 
 afterEach(() => {
   cleanup();
@@ -76,5 +93,30 @@ describe("GetStartedPage", () => {
       expect(window.localStorage.length).toBe(0);
     });
     expect(window.location.search).not.toContain("onboardingSession");
+  });
+
+  it("retries a failed preview without silently confirming the identity link", async () => {
+    vi.mocked(previewPendingOnboardingContinuation).mockRejectedValueOnce(
+      new Error("preview temporarily unavailable"),
+    );
+    const entry = `/get-started?onboardingSession=${TOKEN}`;
+    window.history.replaceState(null, "", entry);
+
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/get-started" element={<GetStartedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("preview temporarily unavailable"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByText("Try again"));
+
+    expect(await screen.findByText("attested-discord-user")).toBeTruthy();
+    expect(completePendingOnboardingContinuation).not.toHaveBeenCalled();
+    expect(previewPendingOnboardingContinuation).toHaveBeenCalledTimes(2);
   });
 });

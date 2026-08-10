@@ -1093,6 +1093,46 @@ describe("runOnboardingChat", () => {
       expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     });
 
+    test("refuses confirmPlatformLink for a forged opaque session without a trusted Discord preview", async () => {
+      await expect(
+        runOnboardingChat({
+          sessionId: "forged-opaque-session-token",
+          platform: "web",
+          authenticatedUser: { userId: "attacker-user", organizationId: "attacker-org" },
+          confirmPlatformLink: true,
+        }),
+      ).rejects.toMatchObject({ code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID" });
+      expect(linkDiscordToUser).not.toHaveBeenCalled();
+      expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+    });
+
+    test("refuses a continuation rebound to another account after preview", async () => {
+      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
+      getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
+      const gatewayTurn = await runTrustedDiscordTurn("My name is Sam");
+      const token = continuationToken(gatewayTurn);
+
+      await runOnboardingChat({
+        sessionId: token,
+        platform: "web",
+        authenticatedUser: { userId: "first-user", organizationId: "first-org" },
+        confirmPlatformLink: true,
+      });
+      linkDiscordToUser.mockClear();
+      ensureElizaAppProvisioning.mockClear();
+
+      await expect(
+        runOnboardingChat({
+          sessionId: token,
+          platform: "web",
+          authenticatedUser: { userId: "second-user", organizationId: "second-org" },
+          confirmPlatformLink: true,
+        }),
+      ).rejects.toMatchObject({ code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID" });
+      expect(linkDiscordToUser).not.toHaveBeenCalled();
+      expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+    });
+
     test("a tenant-safety decline (identity owned by another account) fails the turn", async () => {
       ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
       getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());

@@ -87,22 +87,32 @@ export default function GetStartedPage(): React.JSX.Element {
     }
   }, []);
 
+  // Preview failures must retry the read-only preview, never jump directly to
+  // the mutating redemption with confirmPlatformLink=true. Otherwise a
+  // transient preview failure would turn the generic Retry button into an
+  // uninformed identity-link confirmation (the confused-deputy path this page
+  // exists to prevent).
+  const preview = useCallback(async (token: string) => {
+    setPhase("checking");
+    setError(null);
+    try {
+      const identity = await previewPendingOnboardingContinuation(token);
+      setDiscordIdentity(identity);
+      setPhase("confirm");
+    } catch (err) {
+      setError(describeContinuationError(err));
+      setPhase("error");
+    }
+  }, []);
+
   useEffect(() => {
     if (!session.ready || !session.authenticated) return;
     if (startedRef.current) return;
     const token = peekPendingOnboardingSession();
     if (!token) return;
     startedRef.current = true;
-    void previewPendingOnboardingContinuation(token)
-      .then((preview) => {
-        setDiscordIdentity(preview);
-        setPhase("confirm");
-      })
-      .catch((err) => {
-        setError(describeContinuationError(err));
-        setPhase("error");
-      });
-  }, [session.ready, session.authenticated]);
+    void preview(token);
+  }, [session.ready, session.authenticated, preview]);
 
   if (session.ready && !session.authenticated) {
     // The token is already persisted in storage; the URL param never needs to
@@ -188,7 +198,9 @@ export default function GetStartedPage(): React.JSX.Element {
               type="button"
               onClick={() => {
                 const token = peekPendingOnboardingSession();
-                if (token) void redeem(token);
+                if (!token) return;
+                if (discordIdentity) void redeem(token);
+                else void preview(token);
               }}
               className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
             >

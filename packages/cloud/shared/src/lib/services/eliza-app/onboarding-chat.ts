@@ -297,6 +297,33 @@ async function loadOnboardingSessionForValidation(
   return loadCachedOnboardingSession(sessionId);
 }
 
+function trustedDiscordContinuationError(session: OnboardingSession | null): ElizaError {
+  return new ElizaError("Invalid Discord onboarding continuation", {
+    code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    context: { platform: "discord", sessionFound: Boolean(session) },
+    severity: "ephemeral",
+  });
+}
+
+function isDiscordContinuationForAccount(
+  session: OnboardingSession | null,
+  authenticatedAccount: { userId: string; organizationId: string },
+): session is OnboardingSession & { platform: "discord"; platformUserId: string } {
+  const hasUserBinding = session?.userId !== undefined;
+  const hasOrganizationBinding = session?.organizationId !== undefined;
+  return Boolean(
+    session &&
+      session.platform === "discord" &&
+      session.platformIdentityTrusted === true &&
+      session.platformUserId &&
+      isFreshOnboardingSession(session) &&
+      hasUserBinding === hasOrganizationBinding &&
+      (session.userId === undefined || session.userId === authenticatedAccount.userId) &&
+      (session.organizationId === undefined ||
+        session.organizationId === authenticatedAccount.organizationId),
+  );
+}
+
 /** Resolve an opaque Discord continuation without mutating or binding it. */
 export async function inspectDiscordOnboardingContinuation(
   continuationToken: string,
@@ -304,27 +331,33 @@ export async function inspectDiscordOnboardingContinuation(
 ): Promise<DiscordOnboardingContinuationPreview> {
   const sessionId = await resolveContinuationToken(continuationToken);
   const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
-  if (
-    !session ||
-    session.platform !== "discord" ||
-    session.platformIdentityTrusted !== true ||
-    !session.platformUserId ||
-    !isFreshOnboardingSession(session) ||
-    (session.userId !== undefined && session.userId !== authenticatedAccount.userId) ||
-    (session.organizationId !== undefined &&
-      session.organizationId !== authenticatedAccount.organizationId)
-  ) {
-    throw new ElizaError("Invalid Discord onboarding continuation", {
-      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
-      context: { platform: "discord", sessionFound: Boolean(session) },
-      severity: "ephemeral",
-    });
+  if (!isDiscordContinuationForAccount(session, authenticatedAccount)) {
+    throw trustedDiscordContinuationError(session);
   }
   return {
     platform: "discord",
     platformUserId: session.platformUserId,
     platformDisplayName: session.platformDisplayName?.trim() || session.platformUserId,
   };
+}
+
+/**
+ * A mutating Discord confirmation must still resolve the exact trusted session
+ * previewed by this account. This closes expiry/binding TOCTOU windows between
+ * GET preview and POST confirmation and refuses direct forged confirmations.
+ */
+function assertConfirmedDiscordContinuation(
+  session: OnboardingSession | null,
+  input: OnboardingChatInput,
+): void {
+  if (input.confirmPlatformLink !== true) return;
+  if (
+    !input.authenticatedUser ||
+    input.trustedPlatformIdentity === true ||
+    !isDiscordContinuationForAccount(session, input.authenticatedUser)
+  ) {
+    throw trustedDiscordContinuationError(session);
+  }
 }
 
 function isFreshOnboardingSession(session: OnboardingSession): boolean {
@@ -1028,6 +1061,7 @@ export async function runOnboardingChatWithStore(
   // an existing trusted session and match its signed Telegram identity before
   // any new session, account binding, or provisioning work can occur.
   assertTrustedTelegramContinuation(session, input);
+  assertConfirmedDiscordContinuation(session, input);
 
   // An untrusted caller must never create a platform-scoped session. Opaque
   // browser credentials resolve to an existing platform session above.
