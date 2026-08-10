@@ -6837,9 +6837,16 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     }
   });
 
-  test("(h1) preserved live VPN node: create gets reclaimStaleVpnNode=false, node deleted BY ID only after the swap (#16565)", async () => {
+  test("(h1) upgrade forces a stored direct-relay opt-in off while preserving the live VPN node (#16565)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const agent = liveAgentRow();
+    const liveAgent = liveAgentRow();
+    const agent = {
+      ...liveAgent,
+      environment_vars: {
+        ...(liveAgent.environment_vars as Record<string, string>),
+        ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+      },
+    };
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, create, stopOnSpecificNode } = await makeDockerProvider({
@@ -6884,9 +6891,13 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(res.success).toBe(true);
       // Blue was provisioned in preserve mode.
       const createConfig = create.mock.calls[0]?.[0] as
-        | { reclaimStaleVpnNode?: boolean }
+        | {
+            reclaimStaleVpnNode?: boolean;
+            environmentVars?: Record<string, string>;
+          }
         | undefined;
       expect(createConfig?.reclaimStaleVpnNode).toBe(false);
+      expect(createConfig?.environmentVars?.ELIZA_CLOUD_PAIR_DIRECT_RELAY).toBe("0");
       expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
       expect(stopOnSpecificNode).toHaveBeenCalledWith(
         "node-old",
@@ -8112,9 +8123,17 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     });
   }
 
-  test("happy path with empty persisted image ref → restores pre-upgrade snapshot then swaps back onto PREV_DIGEST", async () => {
+  test("rollback forces a stored direct-relay opt-in off while restoring the pre-upgrade snapshot", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const agent: AgentSandbox = { ...upgradedAgentRow(), previous_docker_image: "" };
+    const upgradedAgent = upgradedAgentRow();
+    const agent: AgentSandbox = {
+      ...upgradedAgent,
+      previous_docker_image: "",
+      environment_vars: {
+        ...(upgradedAgent.environment_vars as Record<string, string>),
+        ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+      },
+    };
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(curNode());
     // The pre-upgrade restore point + its reconstruction.
@@ -8181,6 +8200,9 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       expect(params).toContain(PREV_DIGEST); // image_digest := previous
       expect(create.mock.calls[0]?.[0]).toMatchObject({
         dockerImage: `ghcr.io/elizaos/eliza-agent@${PREV_DIGEST}`,
+        environmentVars: {
+          ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
+        },
       });
       expect(create).toHaveBeenCalledTimes(1);
       expect(checkHealth).toHaveBeenCalledTimes(1);
