@@ -489,6 +489,48 @@ describe("Notes capabilities", () => {
     });
   });
 
+  it("resolves exact title selectors for read, update, and delete", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      {
+        content: "Overnight QA disposable note\nCreated by launch QA.",
+        color: "yellow",
+      },
+      service,
+    );
+
+    await expect(
+      interact("get-note", { title: "Overnight QA disposable note" }, service),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { note: { title: "Overnight QA disposable note" } },
+    });
+
+    await expect(
+      interact(
+        "update-note",
+        {
+          title: "Overnight QA disposable note",
+          content: "Overnight QA disposable note\nSafe to delete.",
+        },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { note: { body: "Safe to delete." } },
+    });
+
+    await expect(
+      interact(
+        "delete-note",
+        { title: "Overnight QA disposable note" },
+        service,
+      ),
+    ).resolves.toMatchObject({ success: true });
+    expect(service.listNotes()).toEqual([]);
+  });
+
   it("fails closed when a title lookup is missing or ambiguous", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
