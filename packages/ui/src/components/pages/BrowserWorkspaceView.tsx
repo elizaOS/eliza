@@ -14,6 +14,11 @@
  */
 import { Capacitor } from "@capacitor/core";
 import {
+  BrowserAddressInputError,
+  DEFAULT_BROWSER_SEARCH_HOME_URL,
+  resolveBrowserAddressInput,
+} from "@elizaos/shared";
+import {
   ExternalLink,
   FolderOpen,
   Globe,
@@ -86,7 +91,7 @@ const BROWSER_WORKSPACE_DEFAULT_PARTITION = "persist:eliza-browser";
 // Default URL when the user opens a fresh tab via "+". Plain web hosts must use
 // a page that explicitly permits iframe embedding; native shells render the
 // same URL in their isolated WebView instead.
-const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://www.google.com/webhp?igu=1";
+const BROWSER_WORKSPACE_DEFAULT_HOME_URL = DEFAULT_BROWSER_SEARCH_HOME_URL;
 // Cross-origin pages can apply autofocus after their `load` event. Keep one
 // bounded handoff alive long enough to catch that deferred focus without
 // turning later, deliberate page interaction into a permanent focus trap.
@@ -308,32 +313,25 @@ function normalizeBrowserWorkspaceInputUrl(
   rawUrl: string,
   t: TranslateFn,
 ): string | null {
-  const trimmed = rawUrl.trim();
-  if (!trimmed) return null;
-  if (trimmed === "about:blank") return trimmed;
-
-  const candidate = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
-
-  let parsed: URL;
   try {
-    parsed = new URL(candidate);
-  } catch {
+    return resolveBrowserAddressInput(rawUrl);
+  } catch (error) {
+    if (
+      error instanceof BrowserAddressInputError &&
+      error.code === "unsupported_protocol"
+    ) {
+      throw new Error(
+        t("browserworkspace.UnsupportedProtocol", {
+          defaultValue: "Only http and https URLs are supported.",
+        }),
+      );
+    }
     throw new Error(
       t("browserworkspace.InvalidUrl", {
-        defaultValue: "Enter a valid http or https URL.",
+        defaultValue: "Enter a valid web address or search query.",
       }),
     );
   }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(
-      t("browserworkspace.UnsupportedProtocol", {
-        defaultValue: "Only http and https URLs are supported.",
-      }),
-    );
-  }
-  return parsed.toString();
 }
 
 function readBrowserWorkspaceQueryParam(name: string): string | null {
@@ -2685,7 +2683,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         agentLabel={t("browserworkspace.AddressPlaceholder", {
           defaultValue: selectedTabIsInternal
             ? "Internal tab URL is managed by the app"
-            : "Enter a URL",
+            : "Search Google or enter a URL",
         })}
         agentDescription="The browser address bar for the active tab"
         getValue={() => locationInput}
@@ -2709,7 +2707,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         placeholder={t("browserworkspace.AddressPlaceholder", {
           defaultValue: selectedTabIsInternal
             ? "Internal tab URL is managed by the app"
-            : "Enter a URL",
+            : "Search Google or enter a URL",
         })}
         data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}

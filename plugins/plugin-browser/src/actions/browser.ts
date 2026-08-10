@@ -12,6 +12,10 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+  buildBrowserSearchUrl,
+  resolveBrowserAddressInput,
+} from "@elizaos/shared";
+import {
   BROWSER_SERVICE_TYPE,
   type BrowserService,
 } from "../browser-service.js";
@@ -120,6 +124,8 @@ type BrowserActionParameters = {
   pattern?: string;
   /** For action=wait_for_url: poll cadence in ms (default ~2000). */
   pollIntervalMs?: number;
+  /** Free-text query to open in the interactive browser's Google results. */
+  query?: string;
   /** Registrable hostname for `action: "autofill_login"`. */
   domain?: string;
   /** Saved login username for autofill-login (optional). */
@@ -206,7 +212,11 @@ function inferBrowserSubaction(
     return watchMode ? "realistic-click" : "click";
   }
 
-  if (params?.url?.trim() || extractFirstUrl(messageText)) {
+  if (
+    params?.query?.trim() ||
+    params?.url?.trim() ||
+    extractFirstUrl(messageText)
+  ) {
     return params?.id ? "navigate" : "open";
   }
 
@@ -720,11 +730,11 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
+    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. Pass query for an interactive Google search when the user did not provide a direct URL. action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
   descriptionCompressed:
-    "Browser open|navigate|click|type|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
+    "Browser open|navigate|search(query)|click|type|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
   routingHint:
-    "drive an INTERACTIVE web browser session — navigate/click/type across pages, log into a site, or autofill saved credentials on a real browser target -> BROWSER; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
+    "drive an INTERACTIVE web browser session — visibly search with query, navigate/click/type across pages, log into a site, or autofill saved credentials on a real browser target -> BROWSER; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question without driving the visible Browser -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
   // Browser effects acknowledge the verified browser receipt. A speculative
   // Stage-1 phrase such as "navigating now" would race that outcome and become
   // a redundant text/voice utterance.
@@ -743,6 +753,18 @@ export const browserAction: Action = {
     const messageText = getMessageText(message);
     const subaction = inferBrowserSubaction(params, messageText);
 
+    if (params?.query?.trim() && params?.url?.trim()) {
+      return {
+        text: "Browser search accepts either query or url, not both.",
+        success: false,
+        values: {
+          success: false,
+          error: "BROWSER_DESTINATION_CONFLICT",
+        },
+        data: { actionName: "BROWSER", subaction },
+      };
+    }
+
     if (subaction === "autofill-login") {
       const { executeBrowserAutofillLogin } = await import(
         "./browser-autofill-login.js"
@@ -754,7 +776,8 @@ export const browserAction: Action = {
       return executeBrowserWaitForUrl(runtime, params, messageText, callback);
     }
 
-    const url =
+    const query = params?.query?.trim();
+    const rawUrl =
       params?.url?.trim() || extractFirstUrl(messageText) || undefined;
 
     const command: BrowserWorkspaceCommand = {
@@ -772,7 +795,7 @@ export const browserAction: Action = {
       text: params?.text,
       value: params?.text,
       timeoutMs: params?.timeoutMs,
-      url,
+      url: undefined,
       cursorDurationMs: params?.cursorDurationMs,
       perCharDelayMs: params?.perCharDelayMs,
       replace: params?.replace,
@@ -784,6 +807,11 @@ export const browserAction: Action = {
       runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
 
     try {
+      command.url = query
+        ? buildBrowserSearchUrl(query)
+        : rawUrl
+          ? (resolveBrowserAddressInput(rawUrl) ?? undefined)
+          : undefined;
       logger.info(
         `[BROWSER] ${command.subaction} via target=${params?.target ?? "auto"} (workspace mode=${getBrowserWorkspaceMode(process.env)})`,
       );
@@ -905,6 +933,13 @@ export const browserAction: Action = {
           "wait_for_url",
         ],
       },
+    },
+    {
+      name: "query",
+      description:
+        "Free-text query to open in Google results when the user asks to search or browse without providing a direct URL.",
+      required: false,
+      schema: { type: "string" as const },
     },
     {
       name: "pattern",
@@ -1034,6 +1069,21 @@ export const browserAction: Action = {
     },
   ],
   examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Search for the latest elizaOS releases in the Browser.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Opened Google results for the latest elizaOS releases.",
+          actions: ["BROWSER"],
+        },
+      },
+    ],
     [
       {
         name: "{{name1}}",

@@ -307,7 +307,7 @@
   "avatarselector.SelectVrmFile": ".vrm 파일을 선택해 주세요.",
   "avatarselector.UploadCustomVrm": "사용자 정의 .vrm 업로드(클릭 또는 드래그)",
   "browserworkspace.ActionFailed": "브라우저 동작에 실패했어요.",
-  "browserworkspace.AddressPlaceholder": "URL을 입력하세요",
+  "browserworkspace.AddressPlaceholder": "Google 검색 또는 URL 입력",
   "browserworkspace.AgentActive": "에이전트가 이 탭에 있어요",
   "browserworkspace.AgentTabs": "에이전트 탭",
   "browserworkspace.AppTabs": "앱 탭",

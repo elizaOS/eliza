@@ -307,7 +307,7 @@
   "avatarselector.SelectVrmFile": "Pumili ng .vrm file.",
   "avatarselector.UploadCustomVrm": "Mag-upload ng custom .vrm (i-click o i-drag)",
   "browserworkspace.ActionFailed": "Hindi gumana ang browser action.",
-  "browserworkspace.AddressPlaceholder": "Maglagay ng URL",
+  "browserworkspace.AddressPlaceholder": "Maghanap sa Google o maglagay ng URL",
   "browserworkspace.AgentActive": "Nasa tab na ito ang agent",
   "browserworkspace.AgentTabs": "Mga Agent Tab",
   "browserworkspace.AppTabs": "Mga App Tab",

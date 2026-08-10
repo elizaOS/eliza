@@ -18,6 +18,7 @@
 
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
+import { DEFAULT_BROWSER_SEARCH_HOME_URL } from "@elizaos/shared";
 
 export type {
   AcquireBrowserWorkspaceConnectorSessionRequest,
@@ -498,7 +499,7 @@ export async function openBrowserWorkspaceTab(
  * native shells continue to load it in their isolated WebViews (#13596).
  */
 export const BROWSER_WORKSPACE_DEFAULT_SEARCH_URL =
-  "https://www.google.com/webhp?igu=1";
+  DEFAULT_BROWSER_SEARCH_HOME_URL;
 
 /**
  * Resolve the startup search URL, honoring the `ELIZA_BROWSER_DEFAULT_SEARCH_URL`

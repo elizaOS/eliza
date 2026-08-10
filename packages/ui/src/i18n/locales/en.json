@@ -391,7 +391,7 @@
   "avatarselector.SelectVrmFile": "Please pick a .vrm file.",
   "avatarselector.UploadCustomVrm": "Upload custom .vrm (click or drag)",
   "browserworkspace.ActionFailed": "Browser action failed.",
-  "browserworkspace.AddressPlaceholder": "Enter a URL",
+  "browserworkspace.AddressPlaceholder": "Search Google or enter a URL",
   "browserworkspace.AgentActive": "Agent is on this tab",
   "browserworkspace.AgentTabs": "Agent Tabs",
   "browserworkspace.AppTabs": "App Tabs",

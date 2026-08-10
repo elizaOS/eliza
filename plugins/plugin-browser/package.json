@@ -42,6 +42,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@elizaos/vault": "workspace:*",
     "drizzle-orm": "0.45.2"
   },
