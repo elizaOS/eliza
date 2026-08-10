@@ -13,7 +13,6 @@
 
 import type { Context } from "hono";
 import { z } from "zod";
-import { userCharactersRepository } from "@/db/repositories/characters";
 import {
   failureResponse,
   ApiError as WorkerApiError,
@@ -26,7 +25,7 @@ import {
   isSafeRelativeRedirectPath,
   LOOPBACK_REDIRECT_ORIGINS,
 } from "@/lib/security/redirect-validation";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { resolveCanonicalAgentId } from "@/lib/services/canonical-agent-id";
 import { OAuthError } from "@/lib/services/oauth";
 import {
   getProvider,
@@ -52,27 +51,6 @@ const initiateRequestSchema = z.object({
     })
     .optional(),
 });
-
-async function canonicalAgentId(
-  routeAgentId: string,
-  organizationId: string,
-): Promise<string | null> {
-  const direct = await userCharactersRepository.findByIdInOrganization(
-    routeAgentId,
-    organizationId,
-  );
-  if (direct) return direct.id;
-  const sandbox = await elizaSandboxService.getAgent(
-    routeAgentId,
-    organizationId,
-  );
-  if (!sandbox?.character_id) return null;
-  const character = await userCharactersRepository.findByIdInOrganization(
-    sandbox.character_id,
-    organizationId,
-  );
-  return character?.id ?? null;
-}
 
 export async function handleGenericOAuthInitiate(
   c: Context<AppEnv>,
@@ -197,7 +175,7 @@ export async function handleGenericOAuthInitiate(
       );
     }
     if (body.agentBinding) {
-      const agentId = await canonicalAgentId(
+      const agentId = await resolveCanonicalAgentId(
         body.agentBinding.agentId,
         user.organization_id,
       );

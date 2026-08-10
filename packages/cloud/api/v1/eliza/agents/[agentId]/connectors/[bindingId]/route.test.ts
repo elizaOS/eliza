@@ -4,6 +4,7 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 
 const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "00000000-0000-4000-8000-000000000001",
@@ -13,16 +14,6 @@ const findByIdInOrganization = mock();
 const getAgent = mock();
 const revoke = mock();
 const bumpMcpVersion = mock(async () => 1);
-
-class TestBindingError extends Error {
-  constructor(
-    public readonly status: 400 | 403 | 404 | 409,
-    public readonly code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
@@ -34,7 +25,6 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: { getAgent },
 }));
 mock.module("@/lib/services/agent-connector-bindings", () => ({
-  AgentConnectorBindingError: TestBindingError,
   agentConnectorBindingsService: { revoke },
 }));
 mock.module("@/lib/cache/edge-runtime-cache", () => ({
@@ -84,7 +74,7 @@ describe("per-agent connector revocation route", () => {
   test("does not invalidate runtime config when the scoped binding is absent", async () => {
     findByIdInOrganization.mockResolvedValue({ id: AGENT_ID });
     revoke.mockRejectedValue(
-      new TestBindingError(
+      new ApiError(
         404,
         "CONNECTOR_BINDING_NOT_FOUND",
         "Connector binding not found.",
@@ -99,6 +89,7 @@ describe("per-agent connector revocation route", () => {
     expect(response.status).toBe(404);
     const payload: unknown = await response.json();
     expect(payload).toEqual({
+      success: false,
       error: "Connector binding not found.",
       code: "CONNECTOR_BINDING_NOT_FOUND",
     });

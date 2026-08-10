@@ -25,7 +25,6 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: { getAgent },
 }));
 mock.module("@/lib/services/agent-connector-bindings", () => ({
-  AgentConnectorBindingError: class extends Error {},
   agentConnectorBindingsService: { bind, list },
 }));
 mock.module("@/lib/cache/edge-runtime-cache", () => ({

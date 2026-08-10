@@ -25,20 +25,27 @@ export type ApiErrorCode =
   | "service_unavailable"
   | "internal_error";
 
+/**
+ * Domain services may extend the canonical code vocabulary with their own
+ * stable UPPER_SNAKE codes (e.g. "OWNER_NOT_VERIFIED"); the `string & {}`
+ * member keeps ApiErrorCode autocomplete without closing the set.
+ */
+export type ApiErrorCodeValue = ApiErrorCode | (string & {});
+
 export interface ApiErrorOptions {
-  code: ApiErrorCode;
+  code: ApiErrorCodeValue;
   message: string;
   status: number;
   details?: Record<string, unknown>;
 }
 
 export class ApiError extends HTTPException {
-  public readonly code: ApiErrorCode;
+  public readonly code: ApiErrorCodeValue;
   public readonly details?: Record<string, unknown>;
 
   constructor(
     statusOrOptions: number | ApiErrorOptions,
-    code?: ApiErrorCode,
+    code?: ApiErrorCodeValue,
     message?: string,
     details?: Record<string, unknown>,
   ) {

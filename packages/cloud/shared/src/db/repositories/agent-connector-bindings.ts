@@ -5,8 +5,9 @@
  */
 import type { AgentConnectorBinding } from "@elizaos/core";
 import {
+  canonicalGoogleMcpProduct,
   GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES,
-  GOOGLE_WORKSPACE_MCP_RESOURCES,
+  googleMcpProductCapabilities,
 } from "@elizaos/shared/contracts";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { type DbTransaction, dbRead } from "../client";
@@ -67,21 +68,20 @@ function uniqueStrings(values: readonly string[]): string[] {
 function canonicalSelectedProducts(provider: string, values: readonly string[]): string[] {
   const unique = uniqueStrings(values);
   if (provider !== "google") return unique;
-  const catalog = new Map(
-    Object.keys(GOOGLE_WORKSPACE_MCP_RESOURCES).map((product) => [product.toLowerCase(), product]),
-  );
-  return unique.map((product) => {
-    const normalized =
-      product.toLowerCase() === "workspace" ? "universalsearch" : product.toLowerCase();
-    const canonical = catalog.get(normalized);
-    if (!canonical) {
-      throw new AgentConnectorBindingRepositoryError(
-        "UNSUPPORTED_PRODUCT",
-        `Unsupported Google MCP product: ${product}.`,
-      );
-    }
-    return canonical;
-  });
+  return [
+    ...new Set(
+      unique.map((product) => {
+        const canonical = canonicalGoogleMcpProduct(product);
+        if (!canonical) {
+          throw new AgentConnectorBindingRepositoryError(
+            "UNSUPPORTED_PRODUCT",
+            `Unsupported Google MCP product: ${product}.`,
+          );
+        }
+        return canonical;
+      }),
+    ),
+  ];
 }
 
 function deriveAllowedCapabilities(
@@ -91,16 +91,11 @@ function deriveAllowedCapabilities(
   const scopes = new Set(grantedScopes);
   const capabilities = new Set<string>();
   for (const selected of selectedProducts) {
-    const resource = Object.entries(GOOGLE_WORKSPACE_MCP_RESOURCES).find(
-      ([product]) => product.toLowerCase() === selected.toLowerCase(),
-    )?.[1];
-    if (!resource) continue;
-    for (const capability of Object.values(resource.tools)) {
-      const accepted =
-        GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES[
-          capability as keyof typeof GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES
-        ];
-      if (accepted?.some((scope) => scopes.has(scope))) capabilities.add(capability);
+    const product = canonicalGoogleMcpProduct(selected);
+    if (!product) continue;
+    for (const capability of googleMcpProductCapabilities(product)) {
+      const accepted = GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES[capability];
+      if (accepted.some((scope) => scopes.has(scope))) capabilities.add(capability);
     }
   }
   return [...capabilities];

@@ -222,13 +222,6 @@ export interface OAuthProviderConfig {
   useGenericRoutes?: boolean;
 }
 
-export interface ResolveOAuthClientCredentialsParams {
-  organizationId: string;
-  actorId: string;
-  actorType?: "user" | "system";
-  source: string;
-}
-
 /**
  * Resolve the deployment-owned OAuth application registration. These values
  * identify the elizaOS product, not an end user's Google account, so they come
@@ -237,7 +230,6 @@ export interface ResolveOAuthClientCredentialsParams {
  */
 export async function resolveOAuthClientCredentials(
   provider: OAuthProviderConfig,
-  _params: ResolveOAuthClientCredentialsParams,
 ): Promise<{ clientId: string; clientSecret: string }> {
   const clientId = getClientId(provider);
   if (!clientId) {

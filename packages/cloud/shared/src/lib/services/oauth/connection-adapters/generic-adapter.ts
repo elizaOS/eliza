@@ -183,7 +183,7 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
           );
 
           // Refresh the token using the generic flow
-          const refreshResult = await refreshOAuth2Token(provider, refreshToken, organizationId);
+          const refreshResult = await refreshOAuth2Token(provider, refreshToken);
 
           // Store the new access token
           const audit = {

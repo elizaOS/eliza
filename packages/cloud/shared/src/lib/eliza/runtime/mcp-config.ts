@@ -1,8 +1,10 @@
 // Wires hosted Eliza agent mcp config behavior for cloud runtime services.
 import { elizaLogger } from "@elizaos/core";
 import {
-  GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES,
+  canonicalGoogleMcpProduct,
   GOOGLE_WORKSPACE_MCP_RESOURCES,
+  type GoogleWorkspaceMcpCapability,
+  googleMcpToolScopes,
 } from "@elizaos/shared/contracts";
 import { getRequestContext } from "../../services/entity-settings/request-context";
 import type { UserContext } from "../user-context";
@@ -70,32 +72,24 @@ function googleBindingServers(context: UserContext): Record<string, RuntimeMcpSe
       continue;
     }
     for (const product of binding.selectedProducts) {
-      const productKey =
-        product.trim().toLowerCase() === "workspace" ? "universalSearch" : product.trim();
-      const resourceEntry = Object.entries(GOOGLE_WORKSPACE_MCP_RESOURCES).find(
-        ([candidate]) => candidate.toLowerCase() === productKey.toLowerCase(),
-      );
-      if (!resourceEntry) continue;
-      const [normalizedProduct, resource] = resourceEntry;
-      const promotedTools = new Set(resource.promotedTools as readonly string[]);
+      const canonicalProduct = canonicalGoogleMcpProduct(product);
+      if (!canonicalProduct) continue;
+      const resource = GOOGLE_WORKSPACE_MCP_RESOURCES[canonicalProduct];
+      const tools: Record<string, GoogleWorkspaceMcpCapability> = resource.tools;
+      const promotedTools: ReadonlySet<string> = new Set<string>(resource.promotedTools);
       const grantedScopes = new Set(binding.grantedScopes);
-      const allowedTools = Object.entries(resource.tools)
+      const allowedTools = Object.entries(tools)
         .filter(
           ([tool, capability]) =>
             promotedTools.has(tool) &&
             binding.allowedCapabilities.includes(capability) &&
-            (
-              ("toolScopes" in resource
-                ? (resource.toolScopes as Partial<Record<string, readonly string[]>>)[tool]
-                : undefined) ??
-              (GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES[
-                capability as keyof typeof GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES
-              ] as readonly string[])
-            ).some((scope) => grantedScopes.has(scope)),
+            (googleMcpToolScopes(canonicalProduct, tool) ?? []).some((scope) =>
+              grantedScopes.has(scope),
+            ),
         )
         .map(([tool]) => tool);
       if (allowedTools.length === 0) continue;
-      const serverName = `google-${normalizedProduct}-${binding.id}`;
+      const serverName = `google-${canonicalProduct}-${binding.id}`;
       servers[serverName] = {
         type: "streamable-http",
         url: resource.endpoint,

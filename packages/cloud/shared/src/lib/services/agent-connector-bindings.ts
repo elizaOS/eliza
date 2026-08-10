@@ -4,7 +4,6 @@
  * atomic repository operation.
  */
 import type { AgentConnectorBinding } from "@elizaos/core";
-import { GOOGLE_WORKSPACE_MCP_RESOURCES } from "@elizaos/shared/contracts";
 import {
   AgentConnectorBindingRepositoryError,
   AgentConnectorBindingsRepository,
@@ -12,8 +11,8 @@ import {
   agentConnectorBindingsRepository,
   type BindAgentConnectorInput,
 } from "../../db/repositories/agent-connector-bindings";
+import { ApiError } from "../api/cloud-worker-errors";
 
-const VALID_ROLES = new Set(["OWNER", "AGENT", "TEAM"]);
 export interface CreateAgentConnectorBindingInput {
   organizationId: string;
   agentId: string;
@@ -28,17 +27,6 @@ export interface CreateAgentConnectorBindingInput {
   ownerBindingId?: string;
   ownerIdentityId?: string;
   metadata?: Record<string, unknown>;
-}
-
-export class AgentConnectorBindingError extends Error {
-  constructor(
-    public readonly status: 400 | 403 | 404 | 409,
-    public readonly code: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = "AgentConnectorBindingError";
-  }
 }
 
 export interface AgentConnectorBindingsService {
@@ -63,35 +51,32 @@ interface AgentConnectorBindingsServiceDeps {
 function nonempty(value: string, name: string): string {
   const normalized = value.trim();
   if (!normalized) {
-    throw new AgentConnectorBindingError(400, "CONNECTOR_BINDING_INVALID", `${name} is required.`);
+    throw new ApiError(400, "CONNECTOR_BINDING_INVALID", `${name} is required.`);
   }
   return normalized;
 }
 
 function stringList(values: readonly string[], name: string): string[] {
   if (!Array.isArray(values)) {
-    throw new AgentConnectorBindingError(
-      400,
-      "CONNECTOR_BINDING_INVALID",
-      `${name} must be an array.`,
-    );
+    throw new ApiError(400, "CONNECTOR_BINDING_INVALID", `${name} must be an array.`);
   }
   return [...new Set(values.map((value) => nonempty(value, `${name} entry`)))];
 }
 
+const REPOSITORY_ERROR_STATUS: Record<
+  AgentConnectorBindingRepositoryError["code"],
+  400 | 403 | 404 | 409
+> = {
+  AGENT_NOT_FOUND: 404,
+  CREDENTIAL_NOT_FOUND: 404,
+  PROVIDER_MISMATCH: 409,
+  OWNER_NOT_VERIFIED: 403,
+  UNSUPPORTED_PRODUCT: 400,
+};
+
 function translateRepositoryError(error: unknown): never {
   if (!(error instanceof AgentConnectorBindingRepositoryError)) throw error;
-  switch (error.code) {
-    case "AGENT_NOT_FOUND":
-    case "CREDENTIAL_NOT_FOUND":
-      throw new AgentConnectorBindingError(404, error.code, error.message);
-    case "PROVIDER_MISMATCH":
-      throw new AgentConnectorBindingError(409, error.code, error.message);
-    case "OWNER_NOT_VERIFIED":
-      throw new AgentConnectorBindingError(403, error.code, error.message);
-    case "UNSUPPORTED_PRODUCT":
-      throw new AgentConnectorBindingError(400, error.code, error.message);
-  }
+  throw new ApiError(REPOSITORY_ERROR_STATUS[error.code], error.code, error.message);
 }
 
 export function createAgentConnectorBindingsService(
@@ -99,31 +84,11 @@ export function createAgentConnectorBindingsService(
 ): AgentConnectorBindingsService {
   return {
     async bind(input) {
-      if (!VALID_ROLES.has(input.role)) {
-        throw new AgentConnectorBindingError(400, "CONNECTOR_BINDING_INVALID", "Invalid role.");
-      }
+      // Role is validated by the route schema, the TS union, and the DB CHECK
+      // constraint; product canonicalization and validation live in the
+      // repository so direct repository callers (OAuth storeConnection) share
+      // the same UNSUPPORTED_PRODUCT enforcement.
       const provider = nonempty(input.provider, "provider").toLowerCase();
-      const selectedProducts = [
-        ...new Set(
-          stringList(input.selectedProducts, "selectedProducts").map((product) =>
-            product.toLowerCase() === "workspace" ? "universalSearch" : product,
-          ),
-        ),
-      ];
-      const knownProducts = new Set(
-        Object.keys(GOOGLE_WORKSPACE_MCP_RESOURCES).map((product) => product.toLowerCase()),
-      );
-      const unknownProducts =
-        provider === "google"
-          ? selectedProducts.filter((product) => !knownProducts.has(product.toLowerCase()))
-          : [];
-      if (unknownProducts.length > 0) {
-        throw new AgentConnectorBindingError(
-          400,
-          "CONNECTOR_BINDING_INVALID",
-          `Unsupported Google MCP products: ${unknownProducts.join(", ")}.`,
-        );
-      }
       const repositoryInput: BindAgentConnectorInput = {
         organizationId: nonempty(input.organizationId, "organizationId"),
         agentId: nonempty(input.agentId, "agentId"),
@@ -132,7 +97,7 @@ export function createAgentConnectorBindingsService(
         role: input.role,
         purposes: stringList(input.purposes ?? ["automation"], "purposes"),
         accessGate: nonempty(input.accessGate ?? "owner_binding", "accessGate"),
-        selectedProducts,
+        selectedProducts: stringList(input.selectedProducts, "selectedProducts"),
         isDefault: input.isDefault ?? false,
         authorizedByUserId: nonempty(input.authorizedByUserId, "authorizedByUserId"),
         ...(input.ownerBindingId ? { ownerBindingId: input.ownerBindingId } : {}),
@@ -164,11 +129,7 @@ export function createAgentConnectorBindingsService(
         ...(args.provider ? { provider: args.provider.toLowerCase() } : {}),
       });
       if (!binding) {
-        throw new AgentConnectorBindingError(
-          404,
-          "CONNECTOR_BINDING_NOT_FOUND",
-          "Connector binding not found.",
-        );
+        throw new ApiError(404, "CONNECTOR_BINDING_NOT_FOUND", "Connector binding not found.");
       }
       return binding;
     },
@@ -180,11 +141,7 @@ export function createAgentConnectorBindingsService(
         bindingId: nonempty(args.bindingId, "bindingId"),
       });
       if (!revoked) {
-        throw new AgentConnectorBindingError(
-          404,
-          "CONNECTOR_BINDING_NOT_FOUND",
-          "Connector binding not found.",
-        );
+        throw new ApiError(404, "CONNECTOR_BINDING_NOT_FOUND", "Connector binding not found.");
       }
     },
   };

@@ -36,7 +36,6 @@ export {
   isValidProvider,
   OAUTH_PROVIDERS,
   type OAuthProviderConfig,
-  type ResolveOAuthClientCredentialsParams,
   resolveOAuthClientCredentials,
 } from "./provider-registry";
 

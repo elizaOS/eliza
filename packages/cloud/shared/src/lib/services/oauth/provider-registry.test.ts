@@ -104,13 +104,7 @@ describe("managed Google OAuth application credentials", () => {
     process.env.GOOGLE_CLIENT_SECRET = "env-client-secret";
     const google = getProvider("google");
     if (!google) throw new Error("google provider must exist");
-    await expect(
-      resolveOAuthClientCredentials(google, {
-        organizationId: "org-1",
-        actorId: "user-1",
-        source: "test",
-      }),
-    ).resolves.toEqual({
+    await expect(resolveOAuthClientCredentials(google)).resolves.toEqual({
       clientId: "google-client-id",
       clientSecret: "env-client-secret",
     });

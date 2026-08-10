@@ -119,7 +119,7 @@ describe("agent connector binding service", () => {
     ).rejects.toMatchObject({ status: 403, code: "OWNER_NOT_VERIFIED" });
   });
 
-  test("normalizes workspace capability bindings to the universal search product key", async () => {
+  test("defers product canonicalization to the repository boundary", async () => {
     const repository = new FakeRepository();
     const service = createAgentConnectorBindingsService({ repository });
 
@@ -129,10 +129,13 @@ describe("agent connector binding service", () => {
       platformCredentialId: "credential-private-1",
       provider: "google",
       role: "OWNER",
-      selectedProducts: ["workspace"],
+      selectedProducts: [" workspace "],
       authorizedByUserId: "user-1",
     });
 
-    expect(repository.bindCalls[0]?.selectedProducts).toEqual(["universalSearch"]);
+    // The repository owns "workspace" → "universalSearch" canonicalization so
+    // direct repository callers (OAuth storeConnection) share it; the service
+    // only trims and de-duplicates.
+    expect(repository.bindCalls[0]?.selectedProducts).toEqual(["workspace"]);
   });
 });

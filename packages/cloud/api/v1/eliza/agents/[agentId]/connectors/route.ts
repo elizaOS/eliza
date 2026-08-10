@@ -5,15 +5,11 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import { userCharactersRepository } from "@/db/repositories/characters";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { edgeRuntimeCache } from "@/lib/cache/edge-runtime-cache";
-import {
-  AgentConnectorBindingError,
-  agentConnectorBindingsService,
-} from "@/lib/services/agent-connector-bindings";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { agentConnectorBindingsService } from "@/lib/services/agent-connector-bindings";
+import { resolveCanonicalAgentId } from "@/lib/services/canonical-agent-id";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -31,49 +27,23 @@ const bindSchema = z.object({
   ownerIdentityId: z.string().trim().min(1).max(200).optional(),
 });
 
-async function canonicalAgentId(
-  routeAgentId: string,
-  organizationId: string,
-): Promise<string | null> {
-  const direct = await userCharactersRepository.findByIdInOrganization(
-    routeAgentId,
-    organizationId,
-  );
-  if (direct) return direct.id;
-  const sandbox = await elizaSandboxService.getAgent(
-    routeAgentId,
-    organizationId,
-  );
-  if (!sandbox?.character_id) return null;
-  const character = await userCharactersRepository.findByIdInOrganization(
-    sandbox.character_id,
-    organizationId,
-  );
-  return character?.id ?? null;
-}
-
-function bindingFailure(
-  c: Parameters<typeof failureResponse>[0],
-  error: unknown,
-) {
-  if (error instanceof AgentConnectorBindingError) {
-    return c.json({ error: error.message, code: error.code }, error.status);
-  }
-  return failureResponse(c, error);
-}
-
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const routeAgentId = c.req.param("agentId");
     if (!routeAgentId) return c.json({ error: "Agent not found." }, 404);
-    const agentId = await canonicalAgentId(routeAgentId, user.organization_id);
+    const agentId = await resolveCanonicalAgentId(
+      routeAgentId,
+      user.organization_id,
+    );
     if (!agentId) return c.json({ error: "Agent not found." }, 404);
     return c.json(
       await agentConnectorBindingsService.list(user.organization_id, agentId),
     );
   } catch (error) {
-    return bindingFailure(c, error);
+    // error-policy:J1 service/repository failures are ApiError-shaped and
+    // rendered into the canonical JSON envelope at this route boundary.
+    return failureResponse(c, error);
   }
 });
 
@@ -93,7 +63,10 @@ app.post("/", async (c) => {
     }
     const routeAgentId = c.req.param("agentId");
     if (!routeAgentId) return c.json({ error: "Agent not found." }, 404);
-    const agentId = await canonicalAgentId(routeAgentId, user.organization_id);
+    const agentId = await resolveCanonicalAgentId(
+      routeAgentId,
+      user.organization_id,
+    );
     if (!agentId) return c.json({ error: "Agent not found." }, 404);
     const binding = await agentConnectorBindingsService.bind({
       organizationId: user.organization_id,
@@ -112,7 +85,9 @@ app.post("/", async (c) => {
     await edgeRuntimeCache.bumpMcpVersion(user.organization_id);
     return c.json(binding, 201);
   } catch (error) {
-    return bindingFailure(c, error);
+    // error-policy:J1 service/repository failures are ApiError-shaped and
+    // rendered into the canonical JSON envelope at this route boundary.
+    return failureResponse(c, error);
   }
 });
 

@@ -226,11 +226,7 @@ export async function initiateOAuth2(
     agentBinding?: OAuthAgentBindingRequest;
   },
 ): Promise<InitiateOAuth2Result> {
-  const { clientId } = await resolveOAuthClientCredentials(provider, {
-    organizationId: params.organizationId,
-    actorId: params.userId,
-    source: `oauth2-${provider.id}-initiate-client-credentials`,
-  });
+  const { clientId } = await resolveOAuthClientCredentials(provider);
 
   if (!provider.endpoints?.authorization) {
     throw new Error(`OAuth not configured: missing authorization endpoint for ${provider.id}`);
@@ -403,13 +399,7 @@ export async function handleOAuth2Callback(
     const connectionRole = credentialConnectionRole(provider, stateData.connectionRole);
 
     // Exchange code for tokens
-    const tokens = await exchangeCodeForTokens(
-      provider,
-      code,
-      organizationId,
-      userId,
-      codeVerifier,
-    );
+    const tokens = await exchangeCodeForTokens(provider, code, codeVerifier);
 
     // For providers with a user/bot token split (Slack), the OWNER flow
     // must resolve the *authorizing user's* identity via the user token
@@ -490,15 +480,9 @@ export async function handleOAuth2Callback(
 async function exchangeCodeForTokens(
   provider: OAuthProviderConfig,
   code: string,
-  organizationId: string,
-  actorId: string,
   codeVerifier?: string,
 ): Promise<TokenResponse> {
-  const { clientId, clientSecret } = await resolveOAuthClientCredentials(provider, {
-    organizationId,
-    actorId,
-    source: `oauth2-${provider.id}-callback-client-credentials`,
-  });
+  const { clientId, clientSecret } = await resolveOAuthClientCredentials(provider);
 
   if (!provider.endpoints?.token) {
     throw new Error(`OAuth not configured: missing token endpoint for ${provider.id}`);
@@ -1133,18 +1117,12 @@ async function storeConnection(
 export async function refreshOAuth2Token(
   provider: OAuthProviderConfig,
   refreshToken: string,
-  organizationId: string,
 ): Promise<{
   accessToken: string;
   expiresIn?: number;
   newRefreshToken?: string;
 }> {
-  const { clientId, clientSecret } = await resolveOAuthClientCredentials(provider, {
-    organizationId,
-    actorId: "oauth-token-refresh",
-    actorType: "system",
-    source: `oauth2-${provider.id}-refresh-client-credentials`,
-  });
+  const { clientId, clientSecret } = await resolveOAuthClientCredentials(provider);
 
   if (!provider.endpoints?.token) {
     throw new Error(`OAuth not configured: missing token endpoint for ${provider.id}`);

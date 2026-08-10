@@ -9,8 +9,12 @@ import {
 } from "@elizaos/core";
 import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";
 import {
-  GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES,
+  canonicalGoogleMcpProduct,
+  GOOGLE_WORKSPACE_MCP_PRODUCTS,
   GOOGLE_WORKSPACE_MCP_RESOURCES,
+  type GoogleWorkspaceMcpCapability,
+  type GoogleWorkspaceMcpProduct,
+  googleMcpToolScopes,
 } from "@elizaos/shared/contracts";
 import type {
   CallToolResult,
@@ -160,45 +164,39 @@ const directConnectorFetchDependencies: DirectConnectorFetchDependencies = {
   fetch: guardedCloudMcpFetch,
 };
 
-function canonicalGoogleProduct(value: string): string {
-  const normalized = value.trim().toLowerCase();
-  return normalized === "workspace" ? "universalsearch" : normalized;
-}
-
-function googleResourceForUrl(requestUrl: URL) {
-  return Object.entries(GOOGLE_WORKSPACE_MCP_RESOURCES).find(
-    ([, resource]) => resource.endpoint === requestUrl.toString(),
+function googleProductForUrl(requestUrl: URL): GoogleWorkspaceMcpProduct | undefined {
+  const url = requestUrl.toString();
+  return GOOGLE_WORKSPACE_MCP_PRODUCTS.find(
+    (product) => GOOGLE_WORKSPACE_MCP_RESOURCES[product].endpoint === url,
   );
 }
 
-function toolScopes(
-  resource: (typeof GOOGLE_WORKSPACE_MCP_RESOURCES)[keyof typeof GOOGLE_WORKSPACE_MCP_RESOURCES],
-  toolName: string,
-  capability: string,
-): readonly string[] {
-  const scoped =
-    "toolScopes" in resource
-      ? (resource.toolScopes as Partial<Record<string, readonly string[]>>)[toolName]
-      : undefined;
-  return (
-    scoped ??
-    (GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES[
-      capability as keyof typeof GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES
-    ] as readonly string[])
-  );
+/**
+ * Single tool-allowlist guard shared by schema listing, action-time calls, and
+ * the connector transport. A server without an allowlist allows every tool;
+ * connector-bound configs are guaranteed a non-empty allowlist by
+ * validateCloudMcpHttpConfig before any transport is opened.
+ */
+function isToolAllowed(config: McpServerConfig, toolName: string): boolean {
+  if (config.type === "stdio") return true;
+  return !config.allowedTools || config.allowedTools.includes(toolName);
 }
 
 function bindingAuthorizesTool(
   execution: GoogleExecutionBinding,
-  resource: (typeof GOOGLE_WORKSPACE_MCP_RESOURCES)[keyof typeof GOOGLE_WORKSPACE_MCP_RESOURCES],
+  product: GoogleWorkspaceMcpProduct,
   toolName: string,
 ): boolean {
-  const capability = (resource.tools as Record<string, string>)[toolName];
+  const tools: Record<string, GoogleWorkspaceMcpCapability | undefined> =
+    GOOGLE_WORKSPACE_MCP_RESOURCES[product].tools;
+  const capability = tools[toolName];
   if (!capability || !execution.binding.allowedCapabilities.includes(capability)) {
     return false;
   }
+  const acceptedScopes = googleMcpToolScopes(product, toolName);
+  if (!acceptedScopes) return false;
   const grantedScopes = new Set(execution.binding.grantedScopes);
-  return toolScopes(resource, toolName, capability).some((scope) => grantedScopes.has(scope));
+  return acceptedScopes.some((scope) => grantedScopes.has(scope));
 }
 
 export function assertCurrentGoogleBindingAuthorization(args: {
@@ -207,32 +205,30 @@ export function assertCurrentGoogleBindingAuthorization(args: {
   requestUrl: URL;
   toolName: string | null;
 }): void {
-  const resourceEntry = googleResourceForUrl(args.requestUrl);
-  if (!resourceEntry) {
+  const product = googleProductForUrl(args.requestUrl);
+  if (!product) {
     throw connectorAuthorizationError(
       "Connector-bound MCP transport attempted an unapproved resource URL",
     );
   }
-  const [product, resource] = resourceEntry;
   const selectedProducts = new Set(
-    args.execution.binding.selectedProducts.map(canonicalGoogleProduct),
+    args.execution.binding.selectedProducts.map((selected) => canonicalGoogleMcpProduct(selected)),
   );
-  if (!selectedProducts.has(product.toLowerCase())) {
+  if (!selectedProducts.has(product)) {
     throw connectorAuthorizationError(
       `Google MCP product ${product} is no longer selected for this binding`,
       { product },
     );
   }
 
-  const configuredTools = args.config.allowedTools ?? [];
-  if (args.toolName && !configuredTools.includes(args.toolName)) {
+  if (args.toolName && !isToolAllowed(args.config, args.toolName)) {
     throw connectorAuthorizationError(
       `MCP tool ${args.toolName} is outside the connector binding allowlist`,
       { product, toolName: args.toolName },
     );
   }
-  const candidates = args.toolName ? [args.toolName] : configuredTools;
-  if (!candidates.some((toolName) => bindingAuthorizesTool(args.execution, resource, toolName))) {
+  const candidates = args.toolName ? [args.toolName] : (args.config.allowedTools ?? []);
+  if (!candidates.some((toolName) => bindingAuthorizesTool(args.execution, product, toolName))) {
     throw connectorAuthorizationError(
       `Google MCP product ${product} has no currently authorized tool for this request`,
       { product, toolName: args.toolName },
@@ -712,12 +708,8 @@ export class McpService extends Service {
     try {
       const res = await conn.client.listTools();
       const config = JSON.parse(conn.server.config) as McpServerConfig;
-      const allowed =
-        config.type === "streamable-http" && config.allowedTools
-          ? new Set(config.allowedTools)
-          : null;
       return (res?.tools || [])
-        .filter((tool) => !allowed || allowed.has(tool.name))
+        .filter((tool) => isToolAllowed(config, tool.name))
         .map((t) => {
           if (!t.inputSchema) return t;
           const toolCompatibility =
@@ -809,13 +801,7 @@ export class McpService extends Service {
           continue;
         }
         this.runtime.registerAction(action as Action);
-        if (
-          this.runtime.actions.find(
-            (candidate) => normalizeActionName(candidate.name) === normalizedName,
-          ) === action
-        ) {
-          this.registeredActions.set(name, action);
-        }
+        this.registeredActions.set(name, action);
       }
     }
 
@@ -984,11 +970,7 @@ export class McpService extends Service {
     if (conn.server.disabled) throw new Error(`Server disabled: ${serverName}`);
 
     const config = JSON.parse(conn.server.config) as McpServerConfig;
-    if (
-      config.type === "streamable-http" &&
-      config.allowedTools &&
-      !config.allowedTools.includes(toolName)
-    ) {
+    if (!isToolAllowed(config, toolName)) {
       throw new Error(`MCP tool ${toolName} is outside the connector binding allowlist`);
     }
     const timeout =
