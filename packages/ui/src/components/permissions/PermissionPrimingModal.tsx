@@ -109,6 +109,7 @@ function PermissionPrimingModalView({
     done,
     request,
     skip,
+    openSettings,
     recheck,
     skipAll,
   } = controller;
@@ -180,10 +181,13 @@ function PermissionPrimingModalView({
             status={active.status}
             canRequest={active.canRequest}
             requesting={active.requesting}
+            requestError={active.requestError}
+            recheckError={active.recheckError}
             currentStep={currentStep}
             totalSteps={totalSteps}
             onEnable={() => void request(active.id)}
             onSkip={() => skip(active.id)}
+            onOpenSettings={() => openSettings(active.id)}
             onRecheck={() => void recheck(active.id)}
             onSkipAll={skipAll}
           />
@@ -205,10 +209,13 @@ interface PrimingCardProps {
   status: PermissionPrimingController["items"][number]["status"];
   canRequest: boolean;
   requesting: boolean;
+  requestError: boolean;
+  recheckError: boolean;
   currentStep: number;
   totalSteps: number;
   onEnable: () => void;
   onSkip: () => void;
+  onOpenSettings: () => void | Promise<void>;
   onRecheck: () => void;
   onSkipAll: () => void;
 }
@@ -218,10 +225,13 @@ function PrimingCard({
   status,
   canRequest,
   requesting,
+  requestError,
+  recheckError,
   currentStep,
   totalSteps,
   onEnable,
   onSkip,
+  onOpenSettings,
   onRecheck,
   onSkipAll,
 }: PrimingCardProps): React.JSX.Element {
@@ -244,6 +254,7 @@ function PrimingCard({
       });
 
   const denied = status === "denied";
+  const needsRecovery = denied || requestError || recheckError;
 
   return (
     <div className="flex flex-col gap-4" data-testid={`priming-card-${id}`}>
@@ -257,31 +268,56 @@ function PrimingCard({
         </div>
       </div>
 
-      {denied ? (
+      {needsRecovery ? (
         <PermissionRecoveryCallout
           permission={id}
-          title={t("permissionpriming.deniedTitle", {
-            defaultValue: "Permission was declined",
-          })}
+          title={
+            requestError
+              ? t("permissionpriming.requestFailedTitle", {
+                  defaultValue: "Couldn’t request permission",
+                })
+              : recheckError
+                ? t("permissionpriming.recheckFailedTitle", {
+                    defaultValue: "Couldn’t verify permission",
+                  })
+                : t("permissionpriming.deniedTitle", {
+                    defaultValue: "Permission was declined",
+                  })
+          }
           description={
-            canRequest
-              ? t("permissionpriming.deniedRetry", {
+            requestError
+              ? t("permissionpriming.requestFailedDescription", {
                   defaultValue:
-                    "You can try again, or turn it on later in Settings.",
+                    "The system request failed. Try again, or open Settings and re-check.",
                 })
-              : t("permissionpriming.deniedSettings", {
-                  defaultValue:
-                    "To enable it, open Settings and allow access, then re-check.",
-                })
+              : recheckError
+                ? t("permissionpriming.recheckFailedDescription", {
+                    defaultValue:
+                      "Eliza couldn’t re-check the system setting. Try again, or open Settings and confirm it is enabled.",
+                  })
+                : canRequest
+                  ? t("permissionpriming.deniedRetry", {
+                      defaultValue:
+                        "You can try again, or turn it on later in Settings.",
+                    })
+                  : t("permissionpriming.deniedSettings", {
+                      defaultValue:
+                        "To enable it, open Settings and allow access, then re-check.",
+                    })
           }
           retryLabel={
-            canRequest
+            requestError || (canRequest && !recheckError)
               ? t("permissionpriming.tryAgain", { defaultValue: "Try again" })
-              : t("permissionpriming.iveEnabledIt", {
-                  defaultValue: "I've enabled it",
-                })
+              : recheckError
+                ? t("permissionpriming.recheck", { defaultValue: "Re-check" })
+                : t("permissionpriming.iveEnabledIt", {
+                    defaultValue: "I've enabled it",
+                  })
           }
-          onRetry={canRequest ? onEnable : onRecheck}
+          onOpenSettings={onOpenSettings}
+          onRetry={
+            requestError || (canRequest && !recheckError) ? onEnable : onRecheck
+          }
           testId={`priming-recovery-${id}`}
         />
       ) : null}
@@ -295,7 +331,7 @@ function PrimingCard({
           })}
         </span>
         <div className="flex items-center gap-2">
-          {denied ? (
+          {needsRecovery ? (
             <Button
               type="button"
               size="sm"

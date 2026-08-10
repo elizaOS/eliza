@@ -58,6 +58,13 @@ export function parseCodesignIdentifier(output: string): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
+export function createAdhocDesignatedRequirement(identifier: string): string {
+  if (!/^[A-Za-z0-9.-]+$/.test(identifier)) {
+    throw new Error(`[local-sign] invalid code-sign identifier: ${identifier}`);
+  }
+  return `=designated => identifier "${identifier}"`;
+}
+
 export function shouldApplyLocalAdhocSigning(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
@@ -87,10 +94,13 @@ function readCodesignOutput(
 
 function runCodesign(
   targetPath: string,
-  entitlementsPath: string,
+  entitlementsPath: string | null,
   expectedIdentifier: string,
   execFile: ExecFileSyncFn,
 ): void {
+  const entitlementsArgs = entitlementsPath
+    ? ["--entitlements", entitlementsPath]
+    : [];
   execFile(
     "codesign",
     [
@@ -99,16 +109,72 @@ function runCodesign(
       "-",
       "--identifier",
       expectedIdentifier,
+      "--requirements",
+      createAdhocDesignatedRequirement(expectedIdentifier),
       "--options",
       "runtime",
-      "--entitlements",
-      entitlementsPath,
+      ...entitlementsArgs,
       targetPath,
     ],
     {
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+}
+
+function isLocalAppPermissionHost(
+  appBundlePath: string,
+  targetPath: string,
+): boolean {
+  const relative = path
+    .relative(appBundlePath, targetPath)
+    .split(path.sep)
+    .join("/");
+  return (
+    relative === "" ||
+    relative === "Contents/MacOS/launcher" ||
+    relative === "Contents/MacOS/bun"
+  );
+}
+
+export function localCodeSignIdentifier(
+  appBundlePath: string,
+  targetPath: string,
+  appIdentifier: string,
+): string {
+  if (isLocalAppPermissionHost(appBundlePath, targetPath)) {
+    return appIdentifier;
+  }
+  const relative = path
+    .relative(appBundlePath, targetPath)
+    .split(path.sep)
+    .join("-")
+    .replace(/[^A-Za-z0-9.-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  if (!relative) {
+    throw new Error(
+      `[local-sign] cannot derive helper identity: ${targetPath}`,
+    );
+  }
+  return `${appIdentifier}.helper.${relative}`;
+}
+
+function readCodesignRequirement(
+  targetPath: string,
+  spawnFile: SpawnSyncFn,
+): string {
+  const result = spawnFile("codesign", ["-dr", "-", targetPath], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      `[local-sign] failed to inspect designated requirement for ${targetPath}: ${result.stderr || result.stdout || "unknown codesign error"}`,
+    );
+  }
+  return `${result.stdout}${result.stderr}`;
 }
 
 export function collectMacCodeSignTargets(appBundlePath: string): string[] {
@@ -170,18 +236,45 @@ export function signLocalAppBundle(args: {
     );
 
     for (const target of signTargets) {
-      runCodesign(target, entitlementsPath, args.expectedIdentifier, execFile);
+      const identifier = localCodeSignIdentifier(
+        appBundlePath,
+        target,
+        args.expectedIdentifier,
+      );
+      runCodesign(
+        target,
+        isLocalAppPermissionHost(appBundlePath, target)
+          ? entitlementsPath
+          : null,
+        identifier,
+        execFile,
+      );
     }
 
     for (const target of signTargets) {
+      const expectedTargetIdentifier = localCodeSignIdentifier(
+        appBundlePath,
+        target,
+        args.expectedIdentifier,
+      );
       const codesignOutput = readCodesignOutput(target, spawnFile);
       const identifier = parseCodesignIdentifier(codesignOutput);
-      if (identifier !== args.expectedIdentifier) {
+      if (identifier !== expectedTargetIdentifier) {
         throw new Error(
-          `[local-sign] expected ${target} identifier ${args.expectedIdentifier}, got ${identifier ?? "unknown"}`,
+          `[local-sign] expected ${target} identifier ${expectedTargetIdentifier}, got ${identifier ?? "unknown"}`,
+        );
+      }
+      const requirement = readCodesignRequirement(target, spawnFile);
+      if (!requirement.includes(`identifier "${expectedTargetIdentifier}"`)) {
+        throw new Error(
+          `[local-sign] ${target} lacks the stable designated requirement for ${expectedTargetIdentifier}`,
         );
       }
     }
+
+    execFile("codesign", ["--verify", "--deep", "--strict", appBundlePath], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
   } finally {
     fs.rmSync(entitlementsPath, { force: true });
   }
