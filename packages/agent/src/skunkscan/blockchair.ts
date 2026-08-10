@@ -79,6 +79,7 @@ type BlockchairContext = {
   error?: string;
   code?: number;
   request_cost?: number;
+  market_price_usd?: number;
 };
 
 type BlockchairEnvelope<T> = {
@@ -86,10 +87,10 @@ type BlockchairEnvelope<T> = {
   context?: BlockchairContext;
 };
 
-async function callBlockchairRest<T>(
+async function callBlockchairRestWithContext<T>(
   path: string,
   searchParams: Record<string, string> = {},
-): Promise<T> {
+): Promise<{ data: T; context: BlockchairContext | undefined }> {
   const apiKey = getBlockchairApiKey();
 
   const url = new URL(`${BLOCKCHAIR_BASE_URL}${path}`);
@@ -133,7 +134,16 @@ async function callBlockchairRest<T>(
     );
   }
 
-  return envelope.data;
+  return { data: envelope.data, context: envelope.context };
+}
+
+async function callBlockchairRest<T>(
+  path: string,
+  searchParams: Record<string, string> = {},
+): Promise<T> {
+  const { data } = await callBlockchairRestWithContext<T>(path, searchParams);
+
+  return data;
 }
 
 export type BlockchairAddressStats = {
@@ -300,6 +310,23 @@ export async function getBitcoinTransaction(
     block_id: transaction.block_id,
     time: transaction.time,
   };
+}
+
+// The current BTC/USD rate is Blockchair's own market_price_usd field,
+// which is present in the *context* block of every response this file
+// makes (address/xpub dashboards already carry it, live-confirmed), but
+// only exposed here as its own call, via /stats - a tiny, dedicated
+// endpoint (live-confirmed request_cost: 1, cheapest call this file
+// makes) with no wallet-specific data, so it fits the TokenPriceProvider
+// interface's context-free getTokenPrices(tokenIds) shape (see
+// providers/pricing/bitcoin.ts) without needing to thread an
+// already-fetched price value through the wallet investigation pipeline.
+export async function getBitcoinMarketPriceUsd(): Promise<number | null> {
+  const { context } = await callBlockchairRestWithContext<unknown>("/stats");
+
+  return typeof context?.market_price_usd === "number"
+    ? context.market_price_usd
+    : null;
 }
 
 // Format detection only - no network call. Distinguishes "this string is a
