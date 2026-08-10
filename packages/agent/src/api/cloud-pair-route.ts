@@ -9,16 +9,15 @@
 
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import {
+  type CloudPairRelaySession,
+  cloudPairTokenKeyForAgent,
+  parseCloudPairRelaySession,
+} from "@elizaos/shared/contracts";
 
 const RELAY_TIMEOUT_MS = 15_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 20;
-
-interface PairResponse {
-  apiKey?: string | null;
-  agentName?: string;
-  error?: string;
-}
 
 interface RateBucket {
   count: number;
@@ -76,8 +75,11 @@ function escapeHtml(value: string): string {
   );
 }
 
-function renderRedirectHtml(apiKey: string): string {
+function renderRedirectHtml(apiKey: string, agentId: string): string {
   const safeKey = JSON.stringify(apiKey).replace(/</g, "\\u003c");
+  const safeStorageKey = JSON.stringify(
+    cloudPairTokenKeyForAgent(agentId),
+  ).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -95,9 +97,10 @@ function renderRedirectHtml(apiKey: string): string {
     (function () {
       try {
         var key = ${safeKey};
+        var storageKey = ${safeStorageKey};
         function persist(storage) {
           try {
-            storage.setItem("eliza:cloud-pair:api-token", key);
+            storage.setItem(storageKey, key);
             return true;
           } catch (_storageError) {
             return false;
@@ -223,7 +226,7 @@ export async function handleStandaloneCloudPairRoute(
   }
 
   const exchangeUrl = `${resolveCloudAuthRoot()}/api/auth/pair`;
-  let exchanged: PairResponse | null = null;
+  let exchanged: CloudPairRelaySession | null = null;
   let status = 0;
   try {
     const controller = new AbortController();
@@ -240,9 +243,10 @@ export async function handleStandaloneCloudPairRoute(
     clearTimeout(timeoutId);
     status = response.status;
     if (response.ok) {
-      exchanged = (await response
-        .json()
-        .catch(() => null)) as PairResponse | null;
+      // error-policy:J3 a successful dependency response is still untrusted;
+      // malformed JSON or missing bearer ownership becomes an explicit 502.
+      const body: unknown = await response.json().catch(() => null);
+      exchanged = parseCloudPairRelaySession(body);
     } else {
       logger.warn(
         `[cloud-pair] exchange returned non-2xx status=${status} url=${exchangeUrl}`,
@@ -289,13 +293,13 @@ export async function handleStandaloneCloudPairRoute(
     return true;
   }
 
-  if (!exchanged || typeof exchanged.apiKey !== "string" || !exchanged.apiKey) {
+  if (!exchanged) {
     sendHtml(
       res,
       502,
       renderErrorHtml(
         "Sign-in failed",
-        "Eliza Cloud accepted the link but did not return a key. Try again from the dashboard.",
+        "Eliza Cloud accepted the link but did not return a valid agent session. Try again from the dashboard.",
       ),
     );
     return true;
@@ -304,6 +308,6 @@ export async function handleStandaloneCloudPairRoute(
   logger.info(
     `[cloud-pair] exchange ok agent=${exchanged.agentName ?? "agent"}`,
   );
-  sendHtml(res, 200, renderRedirectHtml(exchanged.apiKey));
+  sendHtml(res, 200, renderRedirectHtml(exchanged.apiKey, exchanged.agentId));
   return true;
 }
