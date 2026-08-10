@@ -82,16 +82,22 @@ interface BridgeRuntimeHandle {
   setSetting: (key: string, value: unknown) => void;
 }
 
-function makeRuntime(): BridgeRuntimeHandle {
+function makeRuntime(
+  options: { lifeOpsPluginLoaded?: boolean } = {},
+): BridgeRuntimeHandle {
   const handlers = new Map<
     string,
     Set<(payload: EventPayload) => Promise<void>>
   >();
   const settings = new Map<string, unknown>();
+  const plugins = options.lifeOpsPluginLoaded
+    ? [{ name: "@elizaos/plugin-personal-assistant" }]
+    : [];
 
   const runtime = {
     agentId: AGENT_ID,
     character: { name: "bridge-test" },
+    plugins,
     getSetting: (key: string) => settings.get(key),
     logger: {
       info: vi.fn(),
@@ -231,6 +237,7 @@ describe("startTriggerEventBridge", () => {
   });
 
   it("suppresses passive connector events using connector source metadata aliases", async () => {
+    handle = makeRuntime({ lifeOpsPluginLoaded: true });
     const task = makeEventTriggerTask({ eventKind: "MESSAGE_RECEIVED" });
     startTriggerEventBridge(handle.runtime, {
       listTriggers: async () => [task],
@@ -259,6 +266,7 @@ describe("startTriggerEventBridge", () => {
   });
 
   it("suppresses custom connector events registered as passive metadata", async () => {
+    handle = makeRuntime({ lifeOpsPluginLoaded: true });
     registerConnectorSourceMetadata("custom-passive", {
       aliases: ["custom-passive-alias"],
       isPassive: true,
