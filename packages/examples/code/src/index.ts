@@ -137,16 +137,30 @@ async function runInteractive(): Promise<void> {
     process.exit(1);
   }
 
-  const [{ App }, { initializeAgent }] = await Promise.all([
-    import("./App.js"),
-    import("./lib/agent.js"),
-  ]);
+  const [{ App }, { initializeAgent }, { loadSession, createDefaultSessionState }] =
+    await Promise.all([
+      import("./App.js"),
+      import("./lib/agent.js"),
+      import("./lib/session.js"),
+    ]);
 
   let runtime: AgentRuntime | undefined;
   let app: InstanceType<typeof App> | undefined;
 
+  // Same owner/tooling bootstrap as the ACP server and the one-shot CLI
+  // (acp.ts / cli.ts): without it the TUI user resolves to GUEST and every
+  // OWNER/ADMIN-gated coding tool is withheld from the planner — the agent
+  // chats but can never act (live 2026-08-10 TUI session: "ship something"
+  // looped "I handled the available step.").
+  const session = (await loadSession()) ?? createDefaultSessionState();
+  process.env.ELIZA_ADMIN_ENTITY_ID ??= session.identity.userId;
+  process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE ??= "1";
+
   // Initialize the agent
   runtime = await initializeAgent({ codingOnly: shouldRunCodingOnly() });
+  (
+    runtime as unknown as { setSetting?: (k: string, v: unknown) => void }
+  ).setSetting?.("ELIZA_ADMIN_ENTITY_ID", session.identity.userId);
 
   // Handle SIGINT (Ctrl+C) and SIGTERM
   const handleSignal = () => {
@@ -170,8 +184,15 @@ async function runInteractive(): Promise<void> {
   await app.run();
   activeApp = undefined;
 
-  // App exited normally (e.g., Ctrl+Q)
-  await cleanup(runtime);
+  // App exited normally (e.g., Ctrl+Q / double Ctrl+C). Cleanup is bounded and
+  // the process exits explicitly: leaked runtime handles (DB, timers) must
+  // never hold the user's terminal hostage after a quit (live 2026-08-10:
+  // quit ran but the prompt never returned).
+  await Promise.race([
+    cleanup(runtime),
+    new Promise<void>((resolve) => setTimeout(resolve, 5_000)),
+  ]);
+  process.exit(0);
 }
 
 // ============================================================================
