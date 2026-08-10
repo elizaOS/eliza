@@ -122,9 +122,7 @@ describe("root test lane require-work wiring (#13620)", () => {
 
   test("workflow invocations only pass flags the runner still accepts (#18185)", () => {
     // The runner fails closed (exit 2) on unknown arguments, so a workflow
-    // still passing a retired flag kills its job before a single test runs —
-    // exactly what --min-tasks did to the plugin-tests gate after the flag
-    // became --require-work.
+    // still passing a retired flag kills its job before a single test runs.
     const workflowDir = join(repoRoot, ".github", "workflows");
     for (const file of readdirSync(workflowDir)) {
       if (!file.endsWith(".yml") && !file.endsWith(".yaml")) continue;
@@ -132,15 +130,16 @@ describe("root test lane require-work wiring (#13620)", () => {
       if (!source.includes("run-all-tests.mjs")) continue;
       expect(
         source,
-        `${file} passes the retired --min-tasks flag`,
-      ).not.toContain("--min-tasks");
-      expect(
-        source,
         `${file} sets the retired MIN_TEST_TASKS env`,
       ).not.toContain("MIN_TEST_TASKS");
     }
     const developPr = readFileSync(join(workflowDir, "develop-pr.yml"), "utf8");
     expect(developPr).toContain(
+      'node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --min-tasks="' +
+        "$" +
+        '{{ steps.changed.outputs.count }}"',
+    );
+    expect(developPr).not.toContain(
       "node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --require-work",
     );
   });
@@ -315,7 +314,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
   );
 
   test(
-    "--min-tasks > 0 arms the zero-task require-work guard",
+    "--min-tasks > 0 fails a zero-task lane with its numeric floor",
     () => {
       const result = run([
         "--no-cloud",
@@ -324,7 +323,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
       ]);
       expect(result.status).toBe(3);
       expect(`${result.stdout}${result.stderr}`).toContain(
-        ZERO_TASK_DIAGNOSTIC,
+        "lane matched 0 task(s) < required 1",
       );
     },
     SPAWN_TIMEOUT_MS,

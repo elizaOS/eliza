@@ -276,8 +276,8 @@ jobs:
           bun run build:core
           bun run build:views
           # This step only runs when at least one changed plugin was selected,
-          # so --require-work (fail when the lane matches zero runnable tasks)
-          # carries the retired minimum-task vacuous-green guard under the
-          # runner's surviving flag surface; unknown flags exit 2 before any
-          # test runs.
-          node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --require-work
+          # so keep the guard tied to the exact changed-plugin selection count.
+          # Do not use --require-work here: several package-owned wrappers do
+          # not expose structured JUnit/Vitest evidence even when they run
+          # real tests, and the broad root test lane owns that evidence guard.
+          node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --min-tasks="${{ steps.changed.outputs.count }}"
