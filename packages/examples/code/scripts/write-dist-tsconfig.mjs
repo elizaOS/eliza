@@ -2,14 +2,11 @@
  * Emit a paths-free tsconfig.json next to the built entry.
  *
  * Bun applies the nearest tsconfig's `compilerOptions.paths` to module
- * resolution AT RUNTIME. This package's tsconfig extends the repo's
- * `tsconfig.dist-paths.json`, which maps the externalized workspace packages
- * (`@elizaos/core`, `@elizaos/plugin-*`) to their `dist/*.d.ts` — correct for
- * typechecking, fatal for `bun dist/index.js`: Bun loads the .d.ts, strips the
- * types, and a value re-export like plugin-openai's `export default
- * openaiPlugin;` becomes a ReferenceError. The empty tsconfig here shadows the
- * package one for anything run from inside dist/, so Bun falls back to normal
- * node_modules resolution and loads the real runtime entries.
+ * resolution AT RUNTIME. Source typechecking resolves built workspace package
+ * declarations through node_modules, and `bun dist/index.js` must resolve the
+ * corresponding runtime exports there. The empty tsconfig here shadows the
+ * package one for anything run from inside dist/, keeping the built entry
+ * independent of caller-provided workspace aliases.
  */
 import { writeFileSync } from "node:fs";
 import path from "node:path";

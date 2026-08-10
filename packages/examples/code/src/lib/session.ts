@@ -21,6 +21,30 @@ import {
   type SessionIdentity,
 } from "./identity.js";
 
+/**
+ * Create the canonical first-run session shared by the interactive and
+ * non-interactive entry points.
+ */
+export function createDefaultSessionState(): SessionState {
+  const identity = ensureSessionIdentity();
+  const room: ChatRoom = {
+    id: "default-main-room",
+    name: "Main",
+    messages: [],
+    createdAt: new Date(),
+    taskIds: [],
+    elizaRoomId: getMainRoomElizaId(identity),
+  };
+
+  return {
+    rooms: [room],
+    currentRoomId: room.id,
+    currentTaskId: null,
+    cwd: process.cwd(),
+    identity,
+  };
+}
+
 const SESSION_DIR = ".eliza-code";
 const SESSION_FILE = "session.json";
 
