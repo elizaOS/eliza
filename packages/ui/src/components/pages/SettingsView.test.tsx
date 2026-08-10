@@ -100,6 +100,10 @@ vi.mock("../settings/settings-sections", async () => {
   const settingsRoute = await vi.importActual<
     typeof import("../settings/settings-route")
   >("../settings/settings-route");
+  const replaceSettingsHashRoute = vi.fn(
+    (route: Parameters<typeof settingsRoute.replaceSettingsHashRoute>[0]) =>
+      settingsRoute.replaceSettingsHashRoute(route),
+  );
   const sections = stubSections.map((section) => ({
     ...section,
     icon: Settings,
@@ -163,9 +167,31 @@ vi.mock("../settings/settings-sections", async () => {
         .sort((a, b) => a.order - b.order)
         .map(({ group, label, items }) => ({ group, label, items }));
     },
-    readSettingsHashSection: () =>
-      window.location.hash.length > 1 ? window.location.hash.slice(1) : null,
-    replaceSettingsHash: vi.fn(),
+    backFromConnectorDetail: vi.fn(() => {
+      window.history.replaceState(null, "", "#connectors");
+      window.dispatchEvent(new Event("popstate"));
+    }),
+    openConnectorsIndexHash: vi.fn(() =>
+      replaceSettingsHashRoute({ kind: "section", sectionId: "connectors" }),
+    ),
+    parseSettingsHash: settingsRoute.parseSettingsHash,
+    readSettingsHashRoute: () =>
+      settingsRoute.parseSettingsHash(window.location.hash),
+    readSettingsHashSection: () => {
+      const route = settingsRoute.parseSettingsHash(window.location.hash);
+      return route.kind === "hub" ? null : route.sectionId;
+    },
+    replaceConnectorDetailHash: vi.fn((connectorId: string) =>
+      replaceSettingsHashRoute({
+        kind: "connector-detail",
+        sectionId: "connectors",
+        connectorId,
+      }),
+    ),
+    replaceSettingsHash: vi.fn((sectionId: string) =>
+      replaceSettingsHashRoute({ kind: "section", sectionId }),
+    ),
+    replaceSettingsHashRoute,
     settingsSectionLabel: (section: { defaultLabel: string }) =>
       section.defaultLabel,
     settingsSectionTitle: (section: { defaultTitle: string }) =>
