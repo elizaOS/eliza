@@ -498,6 +498,7 @@ describe("onboarding chat — trusted platform gateway caller", () => {
         .map((m) => m.content);
       expect(userContents).not.toContain("This should be ignored");
     });
+  });
 
   const STEWARD_JWT = "Bearer aGVhZGVy.cGF5bG9hZA.c2ln";
   const activeStewardUser = () => ({
