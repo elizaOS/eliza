@@ -976,6 +976,20 @@ export function isPermanentlyLostSnapshot(error: unknown): boolean {
   return match !== null && PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
 }
 
+/**
+ * Rollback signal for `prepareManagedLaunchEnvironment`: the guarded
+ * environment write matched no row, so another lifecycle owner won the race.
+ * Thrown purely to unwind the transaction that also carries the credential
+ * rotation, and converted back to `undefined` by the method that raised it —
+ * it never escapes to a caller.
+ */
+class ManagedLaunchOwnershipLost extends Error {
+  constructor() {
+    super("Managed launch lost its agent ownership CAS");
+    this.name = "ManagedLaunchOwnershipLost";
+  }
+}
+
 export class ElizaSandboxService {
   private _provider?: SandboxProvider;
   private _providerPromise?: Promise<SandboxProvider>;
@@ -1598,8 +1612,18 @@ export class ElizaSandboxService {
    * Rotate the generic managed-launch credential and persist its environment
    * under the same per-agent lifecycle lock used by delete/restart/upgrade.
    * Key minting stays inside that ownership window so a delete cannot revoke
-   * and then lose to a late mint. A transaction/commit failure compensates by
-   * revoking the newly minted sandbox-scoped key.
+   * and then lose to a late mint.
+   *
+   * The rotation runs on the launch transaction's own connection. It used to
+   * reach for the global write pool instead, which made every launch hold one
+   * connection while asking for a second. The Worker pool is sized `max: 1`
+   * (`db/client.ts` `createPgPool`), so the request waited on the connection it
+   * was itself holding: a guaranteed self-deadlock, resolved only by
+   * `connectionTimeoutMillis` (30s) and returned as a 500. No concurrency was
+   * required — every managed launch hit it. Sharing the connection also makes
+   * the rotation atomic with the environment write, so an unwind restores the
+   * previous key rather than needing a compensating revoke that could itself
+   * fail.
    */
   async prepareManagedLaunchEnvironment(params: {
     agentId: string;
@@ -1612,9 +1636,11 @@ export class ElizaSandboxService {
       }
     | undefined
   > {
-    let credentialMinted = false;
+    let committed:
+      | { sandbox: AgentSandbox; environment: ManagedElizaEnvironmentResult }
+      | undefined;
     try {
-      const result = await dbWrite.transaction(async (tx) => {
+      committed = await dbWrite.transaction(async (tx) => {
         await this.lockLifecycle(tx, params.agentId, params.organizationId);
         const rec = await this.getAgentForLifecycleMutation(
           tx,
@@ -1629,8 +1655,8 @@ export class ElizaSandboxService {
           organizationId: params.organizationId,
           userId: params.userId,
           agentSandboxId: rec.id,
+          tx,
         });
-        credentialMinted = true;
         if (!environment.changed) {
           return { sandbox: rec, environment };
         }
@@ -1653,39 +1679,66 @@ export class ElizaSandboxService {
             ),
           )
           .returning();
-        return updated ? { sandbox: updated, environment } : undefined;
+        // Losing the ownership CAS must unwind the credential rotation with it.
+        // Returning here would COMMIT a key swap the stored environment never
+        // references, leaving the agent booting with a deleted key; throwing
+        // rolls both back together.
+        if (!updated) throw new ManagedLaunchOwnershipLost();
+        return { sandbox: updated, environment };
       });
-
-      if (!result && credentialMinted) {
-        await apiKeysService.revokeForAgent(params.agentId);
-      }
-      return result;
     } catch (error) {
-      // error-policy:J6 compensating teardown — a minted credential is revoked
-      // before the original managed-launch failure is rethrown.
-      if (credentialMinted) {
-        try {
-          await apiKeysService.revokeForAgent(params.agentId);
-        } catch (cleanupError) {
-          // error-policy:J2 context-adding rethrow — failed credential cleanup is
-          // fatal and retains both the cleanup cause and original launch failure.
-          throw new ElizaError(
-            "Managed launch environment failed and its replacement credential could not be revoked",
-            {
-              code: "MANAGED_LAUNCH_CREDENTIAL_CLEANUP_FAILED",
-              cause: cleanupError,
-              context: {
-                agentId: params.agentId,
-                organizationId: params.organizationId,
-                originalError: error instanceof Error ? error.message : String(error),
-              },
-              severity: "fatal",
-            },
-          );
-        }
-      }
+      // error-policy:J4 user-facing degrade — only this path's own CAS-loss
+      // signal becomes the documented "not prepared" result; the transaction
+      // has already rolled the rotation back. Every other failure propagates.
+      if (error instanceof ManagedLaunchOwnershipLost) return undefined;
       throw error;
     }
+
+    // The rotation is durable only now. The invalidation inside the
+    // transaction ran while the revoked rows were still visible to other
+    // connections, so a request from the still-running container could have
+    // re-cached one POSITIVELY for the full validation TTL. Repeat it here,
+    // confirmed, before the caller shuts the container down or returns the
+    // replacement credential — and sweep in every OUTSTANDING carrier parked
+    // by an earlier attempt whose confirmation failed, so no code path can
+    // finish while a superseded hash silently keeps authorizing.
+    if (committed) {
+      const toConfirm = [
+        ...new Set([
+          ...committed.environment.revokedKeyHashes,
+          ...(await apiKeysService.collectOutstandingRevokedKeyHashes(params.agentId)),
+        ]),
+      ];
+      if (toConfirm.length === 0) return committed;
+      try {
+        await apiKeysService.confirmRevocationAfterCommit(toConfirm);
+        // Confirmed clear everywhere — reap EXACTLY the carriers this attempt
+        // confirmed; a concurrent rotation's unconfirmed carrier stays parked.
+        await apiKeysService.purgeConfirmedRevokedAgentKeys(params.agentId, toConfirm);
+      } catch (cause) {
+        // error-policy:J2 context-adding rethrow — there is no later pass that
+        // could clear a re-cached entry, so an unconfirmed invalidation must
+        // stop the launch rather than hand back a rotated credential while the
+        // revoked one may still authenticate. The DB rotation is already
+        // committed; the caller is being told the launch is PARTIALLY applied
+        // and a retry re-rotates from the new state.
+        throw new ElizaError(
+          "Managed launch rotated the agent credential but could not confirm revocation of the previous one",
+          {
+            code: "MANAGED_LAUNCH_REVOCATION_UNCONFIRMED",
+            cause,
+            context: {
+              agentId: params.agentId,
+              organizationId: params.organizationId,
+              revokedKeyCount: toConfirm.length,
+              committed: true,
+            },
+            severity: "fatal",
+          },
+        );
+      }
+    }
+    return committed;
   }
 
   /**
@@ -4249,6 +4302,11 @@ export class ElizaSandboxService {
     organizationId: string,
     expectedSourcePoolId?: string,
   ): Promise<{ pushed: boolean; keyPrefix?: string }> {
+    // Every re-key below runs on `tx` for the same reason the managed-launch
+    // path does, and the hashes it revokes are collected here so the
+    // invalidation can be repeated once the rotation is durable. Only ever
+    // read after the transaction resolves.
+    const rotatedKeyHashes: string[] = [];
     const prepared = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, organizationId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
@@ -4305,11 +4363,13 @@ export class ElizaSandboxService {
           if (!rearmed) {
             throw new Error("Warm-claim re-attestation lost its state CAS");
           }
-          const { plainKey } = await apiKeysService.createForAgent({
+          const { plainKey, revokedKeyHashes } = await apiKeysService.createForAgent({
             organizationId,
             userId: rearmed.user_id,
             agentSandboxId: rearmed.id,
+            tx,
           });
+          rotatedKeyHashes.push(...revokedKeyHashes);
           const fingerprint = await warmClaimKeyFingerprint(plainKey);
           const encryptedPatch = await encryptAgentEnvVarsForStorage(organizationId, {
             ELIZAOS_CLOUD_API_KEY: plainKey,
@@ -4380,11 +4440,13 @@ export class ElizaSandboxService {
           if (!rearmed) {
             throw new Error("Warm-claim pending credential re-arm lost its state CAS");
           }
-          const { plainKey } = await apiKeysService.createForAgent({
+          const { plainKey, revokedKeyHashes } = await apiKeysService.createForAgent({
             organizationId,
             userId: rearmed.user_id,
             agentSandboxId: rearmed.id,
+            tx,
           });
+          rotatedKeyHashes.push(...revokedKeyHashes);
           const fingerprint = await warmClaimKeyFingerprint(plainKey);
           const encryptedPatch = await encryptAgentEnvVarsForStorage(organizationId, {
             ELIZAOS_CLOUD_API_KEY: plainKey,
@@ -4422,11 +4484,13 @@ export class ElizaSandboxService {
         };
       }
 
-      const { plainKey } = await apiKeysService.createForAgent({
+      const { plainKey, revokedKeyHashes } = await apiKeysService.createForAgent({
         organizationId,
         userId: current.user_id,
         agentSandboxId: current.id,
+        tx,
       });
+      rotatedKeyHashes.push(...revokedKeyHashes);
       const fingerprint = await warmClaimKeyFingerprint(plainKey);
       const encryptedPatch = await encryptAgentEnvVarsForStorage(organizationId, {
         ELIZAOS_CLOUD_API_KEY: plainKey,
@@ -4456,6 +4520,46 @@ export class ElizaSandboxService {
       }
       return { current: updated, plainKey, fingerprint };
     });
+
+    // Durable now. Repeat the invalidation the transaction ran while the
+    // revoked rows were still visible, so a request that re-cached one in that
+    // gap cannot keep authenticating on it. Outstanding carriers are swept in
+    // UNCONDITIONALLY: the attested/pending re-use branches above return a
+    // persisted key without re-minting, so `rotatedKeyHashes` alone would be
+    // empty there and a carrier from a failed earlier attempt would never be
+    // re-offered (codex round-4 P1#1).
+    {
+      const outstandingCarrierHashes = [
+        ...new Set([
+          ...rotatedKeyHashes,
+          ...(await apiKeysService.collectOutstandingRevokedKeyHashes(agentId)),
+        ]),
+      ];
+      if (outstandingCarrierHashes.length > 0) {
+        try {
+          await apiKeysService.confirmRevocationAfterCommit(outstandingCarrierHashes);
+          // Reap EXACTLY what this attempt confirmed — nothing broader.
+          await apiKeysService.purgeConfirmedRevokedAgentKeys(agentId, outstandingCarrierHashes);
+        } catch (cause) {
+          // error-policy:J2 context-adding rethrow — the re-key is committed, so
+          // an unconfirmed invalidation leaves a superseded credential possibly
+          // live in cache. Surface it rather than report a clean handoff.
+          throw new ElizaError(
+            "Warm-claim credential handoff could not confirm revocation of the superseded credential",
+            {
+              code: "WARM_CLAIM_REVOCATION_UNCONFIRMED",
+              cause,
+              context: {
+                agentId,
+                organizationId,
+                revokedKeyCount: outstandingCarrierHashes.length,
+              },
+              severity: "fatal",
+            },
+          );
+        }
+      }
+    }
 
     if (
       prepared.current.warm_claim_credential_state === "ready" &&
