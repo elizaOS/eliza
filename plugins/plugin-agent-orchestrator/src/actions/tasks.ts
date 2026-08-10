@@ -3791,13 +3791,12 @@ async function handleIssueAction(
                     `#${i.number} [${i.state}] ${i.title}${i.labels.length > 0 ? ` (${i.labels.join(", ")})` : ""}`,
                 )
                 .join("\n")}`;
-        if (callback) await callback({ text: listText });
+        // Reads remain planner-visible because this lookup may feed a later
+        // issue mutation. The final boundary synthesizes a standalone read
+        // answer when the trajectory has no follow-up work.
         return {
           success: true,
           text: listText,
-          userFacingText: listText,
-          verifiedUserFacing: true,
-          turnComplete: true,
           data: { issues },
         };
       }
@@ -3813,13 +3812,9 @@ async function handleIssueAction(
         }
         const issue = await service.getIssue(repo, issueNumber);
         const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issue.body.slice(0, ISSUE_BODY_MAX_CHARS)}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
-        if (callback) await callback({ text: issueText });
         return {
           success: true,
           text: issueText,
-          userFacingText: issueText,
-          verifiedUserFacing: true,
-          turnComplete: true,
           data: { issue },
         };
       }
@@ -4227,6 +4222,16 @@ function issueOperation(
   ).toLowerCase();
 }
 
+function isIssueReadOperation(
+  operation: TaskOp,
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+): boolean {
+  if (operation !== "manage_issues") return false;
+  const issueAction = issueOperation(params, content);
+  return issueAction === "list" || issueAction === "get";
+}
+
 function tasksNoopReason(
   operation: TaskOp,
   params: Record<string, unknown>,
@@ -4237,12 +4242,7 @@ function tasksNoopReason(
     return "The operation only read orchestrator state.";
   }
   const data = objectValue(result.data) ?? {};
-  if (
-    operation === "manage_issues" &&
-    result.success &&
-    (issueOperation(params, content) === "list" ||
-      issueOperation(params, content) === "get")
-  ) {
+  if (result.success && isIssueReadOperation(operation, params, content)) {
     return "The operation only read provider issue state.";
   }
   if (
@@ -4531,14 +4531,29 @@ async function settleTasksOperation(args: {
   capturedCallbacks: CapturedCallback[];
   callback?: HandlerCallback;
 }): Promise<ActionResult> {
+  const plannerOnlyIssueRead = isIssueReadOperation(
+    args.operation,
+    args.params,
+    args.content,
+  );
   const { receipt, outcomeUnknown } = tasksEffectReceipt(args);
-  let result = args.result;
-  const helperEmittedCallback = args.capturedCallbacks.length > 0;
-  let canonical = args.capturedCallbacks.at(-1);
-  if (!canonical && effectString(result.text)) {
+  const {
+    userFacingText: _readUserFacingText,
+    verifiedUserFacing: _readVerifiedUserFacing,
+    turnComplete: _readTurnComplete,
+    ...plannerOnlyResult
+  } = args.result;
+  let result = plannerOnlyIssueRead ? plannerOnlyResult : args.result;
+  const helperEmittedCallback =
+    !plannerOnlyIssueRead && args.capturedCallbacks.length > 0;
+  let canonical = helperEmittedCallback
+    ? args.capturedCallbacks.at(-1)
+    : undefined;
+  if (!plannerOnlyIssueRead && !canonical && effectString(result.text)) {
     canonical = { response: { text: effectString(result.text) } };
   }
   if (
+    !plannerOnlyIssueRead &&
     args.capturedCallbacks.length > 1 &&
     effectString(result.text) !== undefined
   ) {
