@@ -38,21 +38,31 @@ export type BrowserTarget = string;
 
 type BrowserWorkspaceSubaction =
   | "back"
+  | "check"
   | "click"
   | "close"
+  | "dblclick"
+  | "fill"
+  | "focus"
   | "forward"
   | "get"
   | "hide"
+  | "hover"
+  | "inspect"
   | "navigate"
   | "open"
   | "press"
   | "reload"
   | "screenshot"
+  | "scroll"
+  | "scrollinto"
+  | "select"
   | "show"
   | "snapshot"
   | "state"
   | "tab"
   | "type"
+  | "uncheck"
   | "wait"
   | "realistic-click"
   | "realistic-fill"
@@ -63,6 +73,8 @@ type BrowserWorkspaceSubaction =
 
 type BrowserWorkspaceAction =
   | BrowserWorkspaceSubaction
+  | "double_click"
+  | "scroll_into_view"
   | "realistic_click"
   | "realistic_fill"
   | "realistic_type"
@@ -101,6 +113,21 @@ type BrowserActionParameters = {
   id?: string;
   key?: string;
   pixels?: number;
+  direction?: "down" | "left" | "right" | "up";
+  getMode?:
+    | "attr"
+    | "box"
+    | "checked"
+    | "count"
+    | "enabled"
+    | "html"
+    | "styles"
+    | "text"
+    | "title"
+    | "url"
+    | "value"
+    | "visible";
+  attribute?: string;
   script?: string;
   selector?: string;
   /**
@@ -161,6 +188,42 @@ function extractFirstUrl(value: string): string | null {
   return match?.[0] ?? null;
 }
 
+function normalizeBrowserTarget(
+  target: BrowserTarget | undefined,
+): BrowserTarget | undefined {
+  const trimmed = target?.trim();
+  if (!trimmed) return undefined;
+  switch (trimmed.toLowerCase().replace(/[\s-]+/g, "_")) {
+    case "auto":
+    case "browser":
+    case "default":
+    case "real_browser":
+      return undefined;
+    case "app":
+    case "browser_workspace":
+    case "internal":
+      return "workspace";
+    default:
+      return trimmed;
+  }
+}
+
+function normalizeBrowserTabId(id: string | undefined): string | undefined {
+  const trimmed = id?.trim();
+  if (!trimmed) return undefined;
+  switch (trimmed.toLowerCase().replace(/[\s-]+/g, "_")) {
+    case "active":
+    case "active_tab":
+    case "browser":
+    case "current":
+    case "current_tab":
+    case "tab":
+      return undefined;
+    default:
+      return trimmed;
+  }
+}
+
 function inferBrowserSubaction(
   params: BrowserActionParameters | undefined,
   messageText: string,
@@ -217,6 +280,10 @@ function normalizeBrowserAction(
   action: BrowserActionParameters["action"] | undefined,
 ): NormalizedBrowserAction | undefined {
   switch (action) {
+    case "double_click":
+      return "dblclick";
+    case "scroll_into_view":
+      return "scrollinto";
     case "realistic_click":
       return "realistic-click";
     case "realistic_fill":
@@ -270,21 +337,31 @@ function isWorkspaceSubaction(
 ): action is BrowserWorkspaceCommand["subaction"] {
   return (
     action === "back" ||
+    action === "check" ||
     action === "click" ||
     action === "close" ||
+    action === "dblclick" ||
+    action === "fill" ||
+    action === "focus" ||
     action === "forward" ||
     action === "get" ||
     action === "hide" ||
+    action === "hover" ||
+    action === "inspect" ||
     action === "navigate" ||
     action === "open" ||
     action === "press" ||
     action === "reload" ||
     action === "screenshot" ||
+    action === "scroll" ||
+    action === "scrollinto" ||
+    action === "select" ||
     action === "show" ||
     action === "snapshot" ||
     action === "state" ||
     action === "tab" ||
     action === "type" ||
+    action === "uncheck" ||
     action === "wait" ||
     action === "realistic-click" ||
     action === "realistic-fill" ||
@@ -354,6 +431,37 @@ function formatBrowserSessionResult(
     return `${command.subaction} completed in ${result.mode} mode.\n${result.tab.title}\n${result.tab.url}`;
   }
 
+  switch (command.subaction) {
+    case "check":
+      return "Checked the requested page control.";
+    case "click":
+    case "realistic-click":
+      return "Clicked the requested page control.";
+    case "dblclick":
+      return "Double-clicked the requested page control.";
+    case "fill":
+    case "realistic-fill":
+      return "Filled the requested page field.";
+    case "focus":
+      return "Focused the requested page control.";
+    case "hover":
+      return "Hovered over the requested page control.";
+    case "press":
+    case "realistic-press":
+      return `Pressed ${command.key ?? "Enter"}.`;
+    case "scroll":
+      return `Scrolled ${command.direction ?? "down"}${command.pixels ? ` ${Math.abs(command.pixels)} pixels` : ""}.`;
+    case "scrollinto":
+      return "Scrolled the requested page control into view.";
+    case "select":
+      return "Selected the requested page option.";
+    case "type":
+    case "realistic-type":
+      return "Typed into the requested page field.";
+    case "uncheck":
+      return "Unchecked the requested page control.";
+  }
+
   if (result.value !== undefined) {
     if (
       command.subaction === "cursor-move" &&
@@ -391,13 +499,29 @@ function browserCommandOwnsTerminalReply(
 ): boolean {
   switch (command.subaction) {
     case "back":
+    case "check":
+    case "click":
     case "close":
+    case "dblclick":
+    case "fill":
+    case "focus":
     case "forward":
     case "hide":
+    case "hover":
     case "navigate":
     case "open":
+    case "press":
     case "reload":
+    case "scroll":
+    case "scrollinto":
+    case "select":
     case "show":
+    case "type":
+    case "uncheck":
+    case "realistic-click":
+    case "realistic-fill":
+    case "realistic-press":
+    case "realistic-type":
       return true;
     case "tab":
       return command.tabAction !== undefined && command.tabAction !== "list";
@@ -419,11 +543,13 @@ function browserProgressRationale(
     case "navigate":
       return command.url ? `open ${command.url}` : "open requested page";
     case "click":
+    case "dblclick":
     case "realistic-click":
       return command.selector
         ? `click ${command.selector}`
         : "click requested target";
     case "type":
+    case "fill":
     case "realistic-fill":
     case "realistic-type":
       return command.selector
@@ -432,6 +558,20 @@ function browserProgressRationale(
     case "press":
     case "realistic-press":
       return command.key ? `press ${command.key}` : "press requested key";
+    case "scroll":
+      return `scroll ${command.direction ?? "down"}${command.pixels ? ` ${command.pixels}px` : ""}`;
+    case "scrollinto":
+      return command.selector
+        ? `scroll ${command.selector} into view`
+        : "scroll requested target into view";
+    case "hover":
+    case "focus":
+    case "check":
+    case "uncheck":
+    case "select":
+      return command.selector
+        ? `${command.subaction} ${command.selector}`
+        : `${command.subaction} requested target`;
     case "tab":
       return command.tabAction
         ? `${command.tabAction} browser tab`
@@ -722,11 +862,11 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
+    "BROWSER action. Control a real registered browser target: navigate and manage tabs; inspect pages; click, double-click, fill, type, press, hover, focus, scroll, scroll elements into view, select options, and check controls; capture state/screenshots; autofill vault-gated credentials; or wait for a URL. BrowserService picks the app workspace, paired Chrome/Safari companion, computer-use Chromium, or Stagehand target when omitted.",
   descriptionCompressed:
-    "Browser open|navigate|click|type|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
+    "Real browser: open/navigate/tabs, inspect, click/fill/type, hover/focus, scroll, select/check, screenshot/state, autofill_login, wait_for_url",
   routingHint:
-    "drive an INTERACTIVE web browser session — navigate/click/type across pages, log into a site, or autofill saved credentials on a real browser target -> BROWSER; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
+    "drive an INTERACTIVE web browser session — navigate, click, type, scroll, hover, operate forms/tabs, log into a site, or autofill saved credentials on a real browser target -> BROWSER; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
   // Browser effects acknowledge the verified browser receipt. A speculative
   // Stage-1 phrase such as "navigating now" would race that outcome and become
   // a redundant text/voice utterance.
@@ -760,9 +900,12 @@ export const browserAction: Action = {
       params?.url?.trim() || extractFirstUrl(messageText) || undefined;
 
     const command: BrowserWorkspaceCommand = {
-      id: params?.id?.trim(),
+      id: normalizeBrowserTabId(params?.id),
       key: params?.key?.trim(),
       pixels: params?.pixels,
+      direction: params?.direction,
+      getMode: params?.getMode,
+      attribute: params?.attribute?.trim(),
       script: params?.script,
       selector: params?.selector?.trim(),
       // “Open” is a user-facing navigation request, so its receipt must name
@@ -784,13 +927,14 @@ export const browserAction: Action = {
 
     const browserService =
       runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
+    const target = normalizeBrowserTarget(params?.target);
 
     try {
       logger.info(
-        `[BROWSER] ${command.subaction} via target=${params?.target ?? "auto"} (workspace mode=${getBrowserWorkspaceMode(process.env)})`,
+        `[BROWSER] ${command.subaction} via target=${target ?? "auto"} (workspace mode=${getBrowserWorkspaceMode(process.env)})`,
       );
       const result = browserService
-        ? await browserService.execute(command, params?.target)
+        ? await browserService.execute(command, target)
         : await executeBrowserWorkspaceCommand(command);
       if (
         (command.subaction === "close" ||
@@ -868,7 +1012,7 @@ export const browserAction: Action = {
     {
       name: "target",
       description:
-        "Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
+        "Optional backend override. Omit for the normal browser or automatic routing; pin only a known id such as workspace, bridge, computeruse, or stagehand.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -894,14 +1038,20 @@ export const browserAction: Action = {
         type: "string" as const,
         enum: [
           "back",
+          "check",
           "click",
           "close",
           "context",
+          "double_click",
+          "fill",
+          "focus",
           "forward",
           "get",
           "get_context",
           "hide",
+          "hover",
           "info",
+          "inspect",
           "list_tabs",
           "navigate",
           "open",
@@ -909,11 +1059,15 @@ export const browserAction: Action = {
           "press",
           "reload",
           "screenshot",
+          "scroll",
+          "scroll_into_view",
+          "select",
           "show",
           "snapshot",
           "state",
           "tab",
           "type",
+          "uncheck",
           "wait",
           "close_tab",
           "switch_tab",
@@ -971,7 +1125,8 @@ export const browserAction: Action = {
     },
     {
       name: "id",
-      description: "Session or tab id to target",
+      description:
+        "Exact tab id returned by list_tabs. Omit to target the currently visible browser tab.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -983,13 +1138,14 @@ export const browserAction: Action = {
     },
     {
       name: "selector",
-      description: "Selector for click, type, or wait",
+      description:
+        "CSS selector or @e reference for click/fill/type/hover/focus/scroll_into_view/select/check/uncheck/get/wait",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "text",
-      description: "Text for type",
+      description: "Text for fill/type, or option value for select",
       required: false,
       schema: { type: "string" as const },
     },
@@ -1001,9 +1157,46 @@ export const browserAction: Action = {
     },
     {
       name: "pixels",
-      description: "Scroll distance in pixels",
+      description: "For scroll: positive distance in pixels. Default 600.",
       required: false,
       schema: { type: "number" as const },
+    },
+    {
+      name: "direction",
+      description: "For scroll: direction. Default down.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["down", "left", "right", "up"],
+      },
+    },
+    {
+      name: "getMode",
+      description: "For get: page or element property to return.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: [
+          "attr",
+          "box",
+          "checked",
+          "count",
+          "enabled",
+          "html",
+          "styles",
+          "text",
+          "title",
+          "url",
+          "value",
+          "visible",
+        ],
+      },
+    },
+    {
+      name: "attribute",
+      description: "For getMode=attr: attribute name to return.",
+      required: false,
+      schema: { type: "string" as const },
     },
     {
       name: "timeoutMs",
@@ -1067,6 +1260,20 @@ export const browserAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Opened elizaos.ai.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Scroll down so I can see the rest of this page.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Scrolled down.",
         },
       },
     ],

@@ -80,6 +80,141 @@ describe("BROWSER action", () => {
     );
   });
 
+  it("exposes and dispatches the complete human interaction controls", async () => {
+    const cases = [
+      {
+        action: "double_click",
+        expected: "dblclick",
+        parameters: { selector: "#double" },
+      },
+      {
+        action: "fill",
+        expected: "fill",
+        parameters: { selector: "#name", text: "Eliza" },
+      },
+      {
+        action: "focus",
+        expected: "focus",
+        parameters: { selector: "#name" },
+      },
+      {
+        action: "hover",
+        expected: "hover",
+        parameters: { selector: "#menu" },
+      },
+      {
+        action: "scroll",
+        expected: "scroll",
+        parameters: { direction: "down", pixels: 640 },
+      },
+      {
+        action: "scroll_into_view",
+        expected: "scrollinto",
+        parameters: { selector: "#footer" },
+      },
+      {
+        action: "select",
+        expected: "select",
+        parameters: { selector: "#choice", text: "second" },
+      },
+      {
+        action: "check",
+        expected: "check",
+        parameters: { selector: "#enabled" },
+      },
+      {
+        action: "uncheck",
+        expected: "uncheck",
+        parameters: { selector: "#enabled" },
+      },
+      {
+        action: "inspect",
+        expected: "inspect",
+        parameters: {},
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const service = browserService({ value: { ok: true } });
+      const { result } = await runBrowserAction({
+        service,
+        parameters: {
+          action: testCase.action,
+          ...testCase.parameters,
+        },
+      });
+      expect(service.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subaction: testCase.expected,
+          ...testCase.parameters,
+        }),
+        undefined,
+      );
+      expect(result?.success).toBe(true);
+    }
+  });
+
+  it("publishes scroll as a promoted model-facing browser action", () => {
+    const actionParameter = browserAction.parameters?.find(
+      (parameter) => parameter.name === "action",
+    );
+    const values = (actionParameter?.schema as { enum?: string[] } | undefined)
+      ?.enum;
+    expect(values).toContain("scroll");
+    expect(browserAction.descriptionCompressed).toContain("scroll");
+    expect(browserAction.routingHint).toContain("scroll");
+  });
+
+  it("treats generic browser target and tab words as automatic routing", async () => {
+    for (const target of ["browser", "auto", "default", "real-browser"]) {
+      const service = browserService({ value: { ok: true } });
+      await runBrowserAction({
+        service,
+        parameters: {
+          action: "scroll",
+          direction: "down",
+          id: "active-tab",
+          target,
+        },
+      });
+      expect(service.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ id: undefined, subaction: "scroll" }),
+        undefined,
+      );
+    }
+  });
+
+  it("acknowledges a verified scroll immediately without a planner replay", async () => {
+    const callback = vi.fn(async () => []);
+    const service = browserService({
+      value: {
+        direction: "down",
+        pixels: 700,
+        position: { x: 0, y: 700 },
+      },
+    });
+    const { result } = await runBrowserAction({
+      callback,
+      service,
+      parameters: {
+        action: "scroll",
+        direction: "down",
+        pixels: 700,
+      },
+    });
+
+    expect(callback).toHaveBeenCalledWith(
+      { text: "Scrolled down 700 pixels." },
+      "BROWSER",
+    );
+    expect(result).toMatchObject({
+      continueChain: false,
+      success: true,
+      text: "Scrolled down 700 pixels.",
+      data: { suppressPlannerReply: true },
+    });
+  });
+
   it("infers open from URLs in message text", async () => {
     const service = browserService({
       tab: { title: "Example", url: "https://example.com/path" },

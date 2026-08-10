@@ -490,6 +490,37 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		}
 	});
 
+	it("routes page scrolling to the browser verb ahead of the Browser view shell", () => {
+		const browserViewAction: Pick<Action, "name" | "similes" | "tags"> = {
+			...viewsAction,
+			similes: [...(viewsAction.similes ?? []), "OPEN_BROWSER"],
+			tags: [...(viewsAction.tags ?? []), "browser"],
+		};
+		const scrollAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "BROWSER_SCROLL",
+			similes: ["BROWSER", "SCROLL"],
+			tags: [],
+		};
+		for (const message of [
+			"Can you scroll down?",
+			"scroll the browser",
+			"Please scroll the page up 500 pixels",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[browserViewAction, scrollAction],
+					message,
+				),
+			).toEqual({ names: ["BROWSER_SCROLL"], kind: "browser" });
+		}
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[browserViewAction, scrollAction],
+				"Don't scroll down",
+			),
+		).toEqual({ names: [], kind: null });
+	});
+
 	it("does not turn voice-setting navigation, explanations, or negations into writes", () => {
 		const settingsAction: Pick<Action, "name" | "similes" | "tags"> = {
 			name: "SETTINGS",

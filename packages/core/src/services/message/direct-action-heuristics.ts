@@ -341,6 +341,8 @@ export function isShellDirectActionName(
  * candidate:
  * - "shell" / "coding" / "settings-write" / "web": explicit intent phrasing
  *   in the message.
+ * - "browser": an explicit page interaction whose promoted browser verb is
+ *   registered (for example, "scroll down").
  * - "owner-goals": concrete owner goal create/save/confirm phrasing.
  * - "view-surface": an operation verb PLUS an explicit UI-surface noun
  *   (view/window/panel/app/screen/ui) — strong navigation evidence.
@@ -356,6 +358,7 @@ export type DirectCurrentRequestCandidateKind =
 	| "shell"
 	| "coding"
 	| "settings-write"
+	| "browser"
 	| "owner-goals"
 	| "view-surface"
 	| "view-navigation"
@@ -391,6 +394,30 @@ const SETTINGS_WRITE_ACTION_NAMES = [
 	"SETTINGS_WRITE",
 	"VOICE_SETTINGS",
 ] as const;
+
+function findDirectBrowserInteractionActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	messageText: string,
+): string | undefined {
+	const normalized = messageText.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return undefined;
+	}
+	if (
+		/\b(?:do not|don't|dont|never|stop)\s+(?:trying\s+to\s+)?scroll\b/iu.test(
+			normalized,
+		)
+	) {
+		return undefined;
+	}
+	const asksToScroll =
+		/\bscroll\s+(?:up|down|left|right|to|by|\d)/iu.test(normalized) ||
+		/\bscroll\s+(?:the\s+)?(?:browser|page|tab|site|website|window)\b/iu.test(
+			normalized,
+		);
+	if (!asksToScroll) return undefined;
+	return findAvailableActionName(actions, ["BROWSER_SCROLL"]);
+}
 
 /**
  * Detects explicit mutations of the app's voice preferences. This is a narrow
@@ -574,6 +601,13 @@ export function inferDirectCurrentRequestCandidateInference(
 		if (settingsAction) {
 			return { names: [settingsAction], kind: "settings-write" };
 		}
+	}
+	const browserInteractionAction = findDirectBrowserInteractionActionName(
+		actions,
+		messageText,
+	);
+	if (browserInteractionAction) {
+		return { names: [browserInteractionAction], kind: "browser" };
 	}
 	const viewShellAction = findViewShellActionName(actions, messageText);
 	if (viewShellAction) {

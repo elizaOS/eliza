@@ -27,9 +27,19 @@ beforeAll(async () => {
   server = createServer((_request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end(`<!doctype html>
-      <html><body>
+      <html><body style="min-height: 3200px">
         <label>Name <input id="name" /></label>
         <button id="save" onclick="document.body.dataset.saved = document.querySelector('#name').value">Save</button>
+        <button id="double" ondblclick="document.body.dataset.doubleClicked = 'yes'">Double</button>
+        <button id="hover" onmouseenter="document.body.dataset.hovered = 'yes'">Hover</button>
+        <label><input id="enabled" type="checkbox" /> Enabled</label>
+        <label>Choice
+          <select id="choice">
+            <option value="first">First</option>
+            <option value="second">Second</option>
+          </select>
+        </label>
+        <div id="bottom" style="margin-top: 2600px">Bottom target</div>
       </body></html>`);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -186,6 +196,123 @@ describe("Chromium Browser workspace", () => {
       height: expect.any(Number),
       width: expect.any(Number),
     });
+    await expect(closeChromiumBrowserWorkspaceTab(tab.id)).resolves.toBe(true);
+  });
+
+  it("executes the complete model-facing interaction controls in real Chromium", async () => {
+    const tab = await openChromiumBrowserWorkspaceTab({
+      url: origin,
+      show: true,
+      width: 800,
+      height: 500,
+    });
+
+    const inspected = await executeChromiumBrowserWorkspaceCommand({
+      subaction: "inspect",
+      id: tab.id,
+    });
+    expect(
+      inspected.elements?.some((element) => element.selector === "#name"),
+    ).toBe(true);
+
+    await executeChromiumBrowserWorkspaceCommand({
+      subaction: "focus",
+      id: tab.id,
+      selector: "#name",
+    });
+    await expect(
+      evaluateChromiumBrowserWorkspaceTab(tab.id, "document.activeElement?.id"),
+    ).resolves.toBe("name");
+
+    await executeChromiumBrowserWorkspaceCommand({
+      subaction: "hover",
+      id: tab.id,
+      selector: "#hover",
+    });
+    await expect(
+      evaluateChromiumBrowserWorkspaceTab(
+        tab.id,
+        "document.body.dataset.hovered",
+      ),
+    ).resolves.toBe("yes");
+
+    await executeChromiumBrowserWorkspaceCommand({
+      subaction: "dblclick",
+      id: tab.id,
+      selector: "#double",
+    });
+    await expect(
+      evaluateChromiumBrowserWorkspaceTab(
+        tab.id,
+        "document.body.dataset.doubleClicked",
+      ),
+    ).resolves.toBe("yes");
+
+    await executeChromiumBrowserWorkspaceCommand({
+      subaction: "check",
+      id: tab.id,
+      selector: "#enabled",
+    });
+    await expect(
+      evaluateChromiumBrowserWorkspaceTab(
+        tab.id,
+        "document.querySelector('#enabled').checked",
+      ),
+    ).resolves.toBe(true);
+    await executeChromiumBrowserWorkspaceCommand({
+      subaction: "uncheck",
+      id: tab.id,
+      selector: "#enabled",
+    });
+    await expect(
+      evaluateChromiumBrowserWorkspaceTab(
+        tab.id,
+        "document.querySelector('#enabled').checked",
+      ),
+    ).resolves.toBe(false);
+
+    await executeChromiumBrowserWorkspaceCommand({
+      subaction: "select",
+      id: tab.id,
+      selector: "#choice",
+      value: "second",
+    });
+    await expect(
+      evaluateChromiumBrowserWorkspaceTab(
+        tab.id,
+        "document.querySelector('#choice').value",
+      ),
+    ).resolves.toBe("second");
+
+    const scrolled = await executeChromiumBrowserWorkspaceCommand({
+      subaction: "scroll",
+      direction: "down",
+      id: tab.id,
+      pixels: 700,
+    });
+    expect(scrolled.value).toEqual(
+      expect.objectContaining({
+        direction: "down",
+        pixels: 700,
+        position: expect.objectContaining({ y: expect.any(Number) }),
+      }),
+    );
+    await expect(
+      evaluateChromiumBrowserWorkspaceTab(tab.id, "window.scrollY"),
+    ).resolves.toBeGreaterThan(0);
+
+    await executeChromiumBrowserWorkspaceCommand({
+      subaction: "scrollinto",
+      id: tab.id,
+      selector: "#bottom",
+    });
+    const targetY = await evaluateChromiumBrowserWorkspaceTab(
+      tab.id,
+      "document.querySelector('#bottom').getBoundingClientRect().y",
+    );
+    expect(targetY).toBeGreaterThanOrEqual(0);
+    expect(targetY).toBeLessThan(500);
+
     await expect(closeChromiumBrowserWorkspaceTab(tab.id)).resolves.toBe(true);
   });
 });

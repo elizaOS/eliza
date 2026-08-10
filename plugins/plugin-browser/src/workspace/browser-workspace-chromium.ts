@@ -1123,8 +1123,62 @@ class ChromiumBrowserWorkspace {
         }
         await page.focus(selector);
         return result({ value: { focused: true } });
+      case "check":
+      case "uncheck": {
+        if (!selector) {
+          throw new ElizaError("Browser checkbox control requires selector.", {
+            code: "BROWSER_SELECTOR_REQUIRED",
+            context: { subaction: command.subaction },
+          });
+        }
+        const desired = command.subaction === "check";
+        const checked = await page.$eval(
+          selector,
+          (element, shouldBeChecked) => {
+            if (
+              !(element instanceof HTMLInputElement) ||
+              (element.type !== "checkbox" && element.type !== "radio")
+            ) {
+              throw new Error(
+                "Browser check/uncheck target must be a checkbox or radio input.",
+              );
+            }
+            if (element.checked !== shouldBeChecked) element.click();
+            return element.checked;
+          },
+          desired,
+        );
+        return result({ value: { checked } });
+      }
+      case "select": {
+        if (!selector) {
+          throw new ElizaError("Browser select requires selector.", {
+            code: "BROWSER_SELECTOR_REQUIRED",
+            context: { subaction: command.subaction },
+          });
+        }
+        const selected = await page.select(
+          selector,
+          command.value ?? command.text ?? "",
+        );
+        return result({ value: { selected } });
+      }
+      case "scrollinto": {
+        if (!selector) {
+          throw new ElizaError("Browser scroll into view requires selector.", {
+            code: "BROWSER_SELECTOR_REQUIRED",
+            context: { subaction: command.subaction },
+          });
+        }
+        const position = await page.$eval(selector, (element) => {
+          element.scrollIntoView({ block: "center", inline: "nearest" });
+          const rect = element.getBoundingClientRect();
+          return { x: rect.x, y: rect.y };
+        });
+        return result({ value: { scrolled: true, position } });
+      }
       case "scroll": {
-        const pixels = command.pixels ?? 600;
+        const pixels = Math.max(1, Math.abs(command.pixels ?? 600));
         const vertical = command.direction === "up" ? -pixels : pixels;
         const horizontal =
           command.direction === "left"
@@ -1132,11 +1186,46 @@ class ChromiumBrowserWorkspace {
             : command.direction === "right"
               ? pixels
               : 0;
-        await page.mouse.wheel({
-          deltaX: horizontal,
-          deltaY: horizontal === 0 ? vertical : 0,
+        const deltaX = horizontal;
+        const deltaY = horizontal === 0 ? vertical : 0;
+        if (selector) {
+          const position = await page.$eval(
+            selector,
+            (element, delta) => {
+              element.scrollBy(delta.x, delta.y);
+              return {
+                x: element.scrollLeft,
+                y: element.scrollTop,
+              };
+            },
+            { x: deltaX, y: deltaY },
+          );
+          return result({
+            value: {
+              direction: command.direction ?? "down",
+              pixels,
+              position,
+            },
+          });
+        }
+        await page.mouse.wheel({ deltaX, deltaY });
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            ),
+        );
+        const position = await page.evaluate(() => ({
+          x: window.scrollX,
+          y: window.scrollY,
+        }));
+        return result({
+          value: {
+            direction: command.direction ?? "down",
+            pixels,
+            position,
+          },
         });
-        return result({ value: { pixels } });
       }
       case "wait":
         if (selector) {
