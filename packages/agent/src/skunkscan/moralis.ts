@@ -82,6 +82,23 @@ export class MoralisRequestError extends Error {
   }
 }
 
+async function handleMoralisResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    let moralisMessage: string | null = null;
+
+    try {
+      const body = (await response.json()) as { message?: string };
+      moralisMessage = typeof body.message === "string" ? body.message : null;
+    } catch {
+      // Body wasn't JSON (or was empty) - fall back to status-only.
+    }
+
+    throw new MoralisRequestError(response.status, moralisMessage);
+  }
+
+  return (await response.json()) as T;
+}
+
 async function callMoralisRest<T>(
   path: string,
   searchParams: Record<string, string> = {},
@@ -102,20 +119,36 @@ async function callMoralisRest<T>(
     },
   });
 
-  if (!response.ok) {
-    let moralisMessage: string | null = null;
+  return handleMoralisResponse<T>(response);
+}
 
-    try {
-      const body = (await response.json()) as { message?: string };
-      moralisMessage = typeof body.message === "string" ? body.message : null;
-    } catch {
-      // Body wasn't JSON (or was empty) - fall back to status-only.
-    }
+// POST variant, only needed for the batch token-price endpoint so far
+// (every other Moralis call this file makes is a GET) - shares the same
+// error handling as callMoralisRest via handleMoralisResponse.
+async function callMoralisRestPost<T>(
+  path: string,
+  body: unknown,
+  searchParams: Record<string, string> = {},
+): Promise<T> {
+  const apiKey = getMoralisApiKey();
 
-    throw new MoralisRequestError(response.status, moralisMessage);
+  const url = new URL(`${MORALIS_BASE_URL}${path}`);
+
+  for (const [key, value] of Object.entries(searchParams)) {
+    url.searchParams.set(key, value);
   }
 
-  return (await response.json()) as T;
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-API-Key": apiKey,
+    },
+    body: JSON.stringify(body),
+  });
+
+  return handleMoralisResponse<T>(response);
 }
 
 const TOO_MANY_TOKEN_BALANCES_PATTERN = /too many erc20 token balances/i;
@@ -581,4 +614,94 @@ export async function getEthereumTransaction(
   );
 
   return toEthereumTransaction(data);
+}
+
+export type MoralisTokenPriceResult = {
+  tokenAddress?: string;
+  usdPrice?: number;
+};
+
+// Moralis hard-caps this endpoint at 100 tokens per call ("tokens must
+// contain not more than 100 elements", confirmed live: a 464-token request
+// against a real, heavily-active wallet - PancakeSwap V2 Router - and a
+// 433-token request against a real Base wallet both got a 400 at this
+// exact message with 101+ tokens, succeeded at 100). This is NOT a rare
+// edge case - both real test wallets already used elsewhere in this
+// project exceed 100 distinct token holdings, so chunking is required for
+// this function to work at all on realistic wallets, not just an
+// optimization for unusually large ones.
+const MAX_TOKENS_PER_PRICE_REQUEST = 100;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+
+  return chunks;
+}
+
+// Batch endpoint, not one call per token (see providers/pricing/evm.ts) -
+// live-confirmed flat 100 CU per call regardless of count up to the 100-
+// token cap above (tested at 2, 5, 30, and 50 tokens in one call, all
+// exactly 100 CU - a single-token call via the non-batch
+// /erc20/{address}/price endpoint alone costs 50 CU, so batching even two
+// tokens together is already cheaper per-token). Each result item carries
+// its own tokenAddress (lowercased by Moralis) rather than relying on
+// response-array order matching request-array order, so callers must match
+// by address, not index. One chunk's failure doesn't fail the others - a
+// wallet with 400+ tokens still gets prices for the chunks that succeeded
+// rather than an all-or-nothing result.
+export async function getEthereumTokenPrices(
+  tokenAddresses: string[],
+  chain: MoralisEvmChain,
+): Promise<Record<string, number | null>> {
+  const uniqueAddresses = Array.from(
+    new Set(
+      tokenAddresses
+        .map((address) => address.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+
+  if (uniqueAddresses.length === 0) {
+    return {};
+  }
+
+  const pricesByAddress: Record<string, number | null> = {};
+
+  for (const address of uniqueAddresses) {
+    pricesByAddress[address] = null;
+  }
+
+  const addressChunks = chunk(uniqueAddresses, MAX_TOKENS_PER_PRICE_REQUEST);
+
+  for (const addressChunk of addressChunks) {
+    let results: MoralisTokenPriceResult[];
+
+    try {
+      results = await callMoralisRestPost<MoralisTokenPriceResult[]>(
+        "/erc20/prices",
+        {
+          tokens: addressChunk.map((address) => ({ token_address: address })),
+        },
+        { chain },
+      );
+    } catch {
+      // This chunk's addresses stay null (already defaulted above) -
+      // other chunks still get a chance to succeed.
+      continue;
+    }
+
+    for (const result of results) {
+      const address = result.tokenAddress?.toLowerCase();
+
+      if (address && typeof result.usdPrice === "number") {
+        pricesByAddress[address] = result.usdPrice;
+      }
+    }
+  }
+
+  return pricesByAddress;
 }

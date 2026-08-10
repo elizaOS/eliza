@@ -7,6 +7,11 @@ import {
 
 import { solanaTokenPriceProvider } from "./solana";
 import { bitcoinTokenPriceProvider } from "./bitcoin";
+import {
+  baseTokenPriceProvider,
+  bnbTokenPriceProvider,
+  ethereumTokenPriceProvider,
+} from "./evm";
 
 export class DefaultTokenPriceProviderRegistry
   implements TokenPriceProviderRegistry
@@ -51,6 +56,18 @@ tokenPriceProviderRegistry.register(
 
 tokenPriceProviderRegistry.register(
   bitcoinTokenPriceProvider,
+);
+
+tokenPriceProviderRegistry.register(
+  ethereumTokenPriceProvider,
+);
+
+tokenPriceProviderRegistry.register(
+  bnbTokenPriceProvider,
+);
+
+tokenPriceProviderRegistry.register(
+  baseTokenPriceProvider,
 );
 
 export function getTokenPriceProvider(

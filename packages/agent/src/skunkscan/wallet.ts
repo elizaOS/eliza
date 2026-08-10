@@ -650,9 +650,6 @@ warnings: investigationWarnings,
         const nftHoldings: UniversalNftHolding[] =
           nftHoldingsResult?.data?.holdings ?? [];
 
-        // Neither WRAPPED_NATIVE_ASSET_ID nor the pricing registry has an
-        // Ethereum entry yet (PR 6+) - both already degrade to "no prices"
-        // rather than throwing.
         const nativeAssetId = WRAPPED_NATIVE_ASSET_ID[chain];
         const priceProvider = getTokenPriceProvider(chain);
         const tokenPrices = priceProvider
@@ -943,9 +940,6 @@ warnings: investigationWarnings,
         const nftHoldings: UniversalNftHolding[] =
           nftHoldingsResult?.data?.holdings ?? [];
 
-        // Neither WRAPPED_NATIVE_ASSET_ID nor the pricing registry has a
-        // BNB entry yet - both already degrade to "no prices" rather than
-        // throwing, same as Ethereum before its pricing entry existed.
         const nativeAssetId = WRAPPED_NATIVE_ASSET_ID[chain];
         const priceProvider = getTokenPriceProvider(chain);
         const tokenPrices = priceProvider
@@ -1234,10 +1228,6 @@ warnings: investigationWarnings,
         const nftHoldings: UniversalNftHolding[] =
           nftHoldingsResult?.data?.holdings ?? [];
 
-        // Neither WRAPPED_NATIVE_ASSET_ID nor the pricing registry has a
-        // Base entry yet - both already degrade to "no prices" rather than
-        // throwing, same as Ethereum/BNB before their pricing entries
-        // existed.
         const nativeAssetId = WRAPPED_NATIVE_ASSET_ID[chain];
         const priceProvider = getTokenPriceProvider(chain);
         const tokenPrices = priceProvider
