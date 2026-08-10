@@ -53,11 +53,38 @@ function readEnv(): Record<string, unknown> {
  * `import.meta.env.DEV` to `false`, so this is a no-op in shipped bundles.
  */
 function readDevMode(): boolean {
-  return readEnv().DEV === true;
+  const env = readEnv();
+  // Vitest also sets DEV=true, but MODE="test". Requiring both values keeps
+  // the developer convenience scoped to the actual default Vite dev server.
+  return env.DEV === true && env.MODE === "development";
 }
 
 function readBuildDefault(): boolean {
   return readEnv().VITE_ELIZA_ENABLE_RUNTIME_CHOOSER === "1";
+}
+
+/** Inputs to the environment-independent runtime-chooser policy. */
+export interface RuntimeChooserGateInputs {
+  isCloudLockedAndroid: boolean;
+  override: boolean | null;
+  isViteDev: boolean;
+  isBuildEnabled: boolean;
+}
+
+/**
+ * Resolve chooser availability without depending on Vite's compile-time env.
+ * The cloud-locked Android invariant is absolute, then an explicit runtime
+ * override wins over the development and build defaults.
+ */
+export function resolveRuntimeChooserEnabled({
+  isCloudLockedAndroid,
+  override,
+  isViteDev,
+  isBuildEnabled,
+}: RuntimeChooserGateInputs): boolean {
+  if (isCloudLockedAndroid) return false;
+  if (override !== null) return override;
+  return isViteDev || isBuildEnabled;
 }
 
 /**
@@ -71,13 +98,10 @@ function readBuildDefault(): boolean {
  * production default.
  */
 export function isRuntimeChooserEnabled(): boolean {
-  if (isAndroidCloudBuild()) return false;
-  const override = readOverride();
-  if (override !== null) return override;
-  // In Vite dev mode (`bun run dev`), default the chooser to ON so developers
-  // can pick local without manual configuration. This applies to web/desktop
-  // dev builds only — Android and other non-Vite platforms fall through to the
-  // build-flag default.
-  if (readDevMode()) return true;
-  return readBuildDefault();
+  return resolveRuntimeChooserEnabled({
+    isCloudLockedAndroid: isAndroidCloudBuild(),
+    override: readOverride(),
+    isViteDev: readDevMode(),
+    isBuildEnabled: readBuildDefault(),
+  });
 }
