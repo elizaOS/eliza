@@ -1,7 +1,7 @@
 import { InvestorExplanation } from "./explainability/types";
 import { InvestorEvidenceCollection } from "./explainability/evidenceCollection";
 
-export type SupportedChain = "solana" | "ethereum" | "base" | "bnb";
+export type SupportedChain = "solana" | "ethereum" | "base" | "bnb" | "bitcoin";
 
 // Every EVM-family chain uses the same checksummed-hex addressing (no
 // alternate valid casing to normalize, unlike Solana's case-sensitive
@@ -957,6 +957,15 @@ export type WalletActivitySummary = {
   failedTransactionCount: number;
   lastActiveAt?: number | null;
   activityLevel: "none" | "low" | "medium" | "high";
+  // Only set for multi-address wallets (currently: Bitcoin xpub input).
+  // activityLevel's thresholds were calibrated for one address - the same
+  // raw transaction count means something different when it's spread
+  // across N addresses (routine HD-wallet address rotation, not unusually
+  // high activity). Rather than invent an unvalidated per-address scaling
+  // formula, this is surfaced so activityLevel can be read in context
+  // instead of taken at face value. Undefined means single-address, not
+  // "unknown."
+  addressesInSample?: number;
 };
 
 export type WalletAgeSummary = {

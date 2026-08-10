@@ -14,11 +14,21 @@ import {
 } from "../confidence/framework";
 
 export function analyzeWalletExposure(
-  walletAddress: string,
+  // Accepts a single address (every existing caller - Ethereum/Solana/BSC/
+  // Base each investigate exactly one address) or a readonly array (Bitcoin
+  // xpub wallets - a worst-case rollup across every derived address, same
+  // as this function's own existing single-address dedup-by-flagged-address
+  // logic, just widened to check N addresses instead of 1). Single-string
+  // behavior is 100% unchanged - normalizing to an array immediately below
+  // means a one-element array and a bare string produce identical matches.
+  walletAddress: string | readonly string[],
   funding: WalletFundingSummary,
   chain: SupportedChain,
   relationships: WalletRelationship[] = [],
 ): WalletExposureSummary {
+  const walletAddresses =
+    typeof walletAddress === "string" ? [walletAddress] : walletAddress;
+
   const matches: WalletExposureSummary["matches"] = [];
 
   // Dedup key: which flagged registry addresses have already produced a
@@ -28,15 +38,17 @@ export function analyzeWalletExposure(
   // spread), so this is the right key across all four sources.
   const matchedFlaggedAddresses = new Set<string>();
 
-  const selfMatch = lookupStaticExposure(chain, walletAddress);
+  for (const address of walletAddresses) {
+    const selfMatch = lookupStaticExposure(chain, address);
 
-  if (selfMatch) {
-    matches.push({
-      ...selfMatch,
-      relationship: "self",
-      contributesToScore: true,
-    });
-    matchedFlaggedAddresses.add(selfMatch.address);
+    if (selfMatch && !matchedFlaggedAddresses.has(selfMatch.address)) {
+      matches.push({
+        ...selfMatch,
+        relationship: "self",
+        contributesToScore: true,
+      });
+      matchedFlaggedAddresses.add(selfMatch.address);
+    }
   }
 
   if (funding.fundingWallet) {
@@ -64,9 +76,13 @@ export function analyzeWalletExposure(
   // doesn't depend on `relationships` at all.
   const partiallyScannedMatchLabels: string[] = [];
 
-  const reverseIndexEntry = lookupReverseExposureIndex(chain, walletAddress);
+  for (const address of walletAddresses) {
+    const reverseIndexEntry = lookupReverseExposureIndex(chain, address);
 
-  if (reverseIndexEntry) {
+    if (!reverseIndexEntry) {
+      continue;
+    }
+
     for (const reverseMatch of reverseIndexEntry.matches) {
       if (matchedFlaggedAddresses.has(reverseMatch.flaggedAddress)) {
         continue;
@@ -185,7 +201,7 @@ export function analyzeWalletExposure(
 
   const confidenceAnalysis = createConfidenceResponse([
     {
-      condition: Boolean(walletAddress),
+      condition: walletAddresses.length > 0,
       score: 30,
       reason: "Investigated wallet address was available.",
     },

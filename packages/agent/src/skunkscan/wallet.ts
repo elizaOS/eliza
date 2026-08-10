@@ -8,13 +8,23 @@ import {
   isLikelySpamNftTransaction,
 } from "./moralis";
 import { requireBlockchainConnector } from "./chains/registry";
+// deriveAddresses isn't part of the shared BlockchainConnector interface
+// (see chains/bitcoin.ts) - it's an extra, Bitcoin-specific capability, so
+// it needs the concrete class, not the generic connector returned by
+// requireBlockchainConnector().
+import { bitcoinBlockchainConnector } from "./chains/bitcoin";
 import { WRAPPED_NATIVE_ASSET_ID } from "./providers/priceProvider";
 import { getTokenPriceProvider } from "./providers/pricing/registry";
 import { createWalletInvestigation } from "./investigations/walletIntegration";
 import { runWalletPipeline } from "./pipeline/walletPipeline";
-import { parseSolanaTransaction } from "./parsers/transaction";
+import { analyzeWalletExposure } from "./analyzers/exposure";
+import {
+  parseSolanaTransaction,
+  ParsedWalletTransaction,
+} from "./parsers/transaction";
 import { parseEthereumTransaction } from "./parsers/ethereumTransaction";
 import {
+  UniversalTransaction,
   SupportedChain,
   UniversalNftHolding,
   WalletBalance,
@@ -1355,6 +1365,344 @@ warnings: investigationWarnings,
           summary: `Wallet found. Current balance: ${ethBalance.toFixed(
             6,
           )} ETH. Recent transaction sample: ${nonSpamRecentTransactions.length}.`,
+          warnings: investigationWarnings,
+        };
+      } catch (error) {
+        return {
+          chain,
+          address: walletAddress,
+          status: "error",
+          summary: "Unable to investigate this wallet.",
+          warnings: [
+            error instanceof Error
+              ? error.message
+              : "Unknown investigation error.",
+          ],
+        };
+      }
+    }
+
+    case "bitcoin": {
+      try {
+        const connector = requireBlockchainConnector(chain);
+
+        // Accepts either a single Bitcoin address or an xpub/ypub/zpub -
+        // the connector handles which one internally (see chains/bitcoin.ts)
+        // and every call below returns already-merged, multi-address-aware
+        // data for xpub input, the same shape a single address would
+        // produce. No xpub-vs-address branching needed here.
+        const nativeBalanceResult =
+          await connector.getNativeBalance(walletAddress);
+
+        if (
+          nativeBalanceResult.status === "error" ||
+          nativeBalanceResult.status === "unsupported" ||
+          !nativeBalanceResult.data
+        ) {
+          throw new Error(
+            nativeBalanceResult.error?.message ??
+              "Unable to retrieve the wallet native balance.",
+          );
+        }
+
+        const rawSatoshis = Number(nativeBalanceResult.data.rawAmount);
+        const btcBalance = Number(
+          nativeBalanceResult.data.decimalAmount ?? "0",
+        );
+
+        if (!Number.isFinite(rawSatoshis) || !Number.isFinite(btcBalance)) {
+          throw new Error(
+            "The Bitcoin connector returned an invalid balance.",
+          );
+        }
+
+        // Unlike Ethereum/Solana, calling connector.getTransactions()
+        // directly here (rather than bypassing it for a raw provider call)
+        // is deliberate, not an inconsistency: those chains bypass their
+        // connector because Moralis/Helius return richer per-transaction
+        // data than the connector's own createUniversalTransaction keeps -
+        // going through the connector first would be a wasted round trip.
+        // Bitcoin has no such richer data being discarded (blockchair.ts
+        // doesn't decode transaction inputs/outputs either - see
+        // chains/bitcoin.ts's capabilities), and going through the
+        // connector here correctly reuses its xpub-vs-address merge logic
+        // instead of duplicating it.
+        const transactionsResult = await connector.getTransactions(
+          walletAddress,
+          { limit: 100 },
+        );
+
+        if (
+          transactionsResult.status === "error" ||
+          transactionsResult.status === "unsupported" ||
+          !transactionsResult.data
+        ) {
+          throw new Error(
+            transactionsResult.error?.message ??
+              "Unable to retrieve the wallet transactions.",
+          );
+        }
+
+        const recentTransactions: WalletRecentTransaction[] =
+          transactionsResult.data.transactions.map((transaction) => ({
+            transactionId: transaction.transactionId,
+            blockHeight: transaction.blockHeight ?? undefined,
+            blockTime: transaction.timestamp ?? undefined,
+            status:
+              transaction.status === "failed" ? "failed" : "success",
+          }));
+
+        // Bitcoin transactions aren't parsed into real transfers yet (see
+        // chains/bitcoin.ts's capabilities.transactionParsing: false) - this
+        // is a thin reshape into the chain-neutral shape, same role as
+        // parseEthereumTransaction/parseSolanaTransaction, just with empty
+        // transfers since there's nothing decoded to put in them yet.
+        const normalizedRecentParsedTransactions: ParsedWalletTransaction[] =
+          transactionsResult.data.transactions.map((transaction) => ({
+            signature: transaction.transactionId,
+            timestamp: transaction.timestamp ?? null,
+            nativeTransfers: [],
+            tokenTransfers: [],
+            programOrContractIds: [],
+          }));
+
+        const oldestTransactionResult =
+          await connector.getOldestTransaction?.(walletAddress);
+
+        if (
+          !oldestTransactionResult ||
+          oldestTransactionResult.status === "error" ||
+          oldestTransactionResult.status === "unsupported" ||
+          !oldestTransactionResult.data
+        ) {
+          throw new Error(
+            oldestTransactionResult?.error?.message ??
+              "Unable to retrieve the wallet's oldest transaction.",
+          );
+        }
+
+        const oldestTransaction = oldestTransactionResult.data;
+
+        const parseOptionalUniversalTransaction = (
+          transaction: UniversalTransaction | null,
+        ): ParsedWalletTransaction => ({
+          signature: transaction?.transactionId ?? null,
+          timestamp: transaction?.timestamp ?? null,
+          nativeTransfers: [],
+          tokenTransfers: [],
+          programOrContractIds: [],
+        });
+
+        const firstParsedTransaction = parseOptionalUniversalTransaction(
+          oldestTransaction.transaction,
+        );
+
+        const tokenBalancesResult =
+          await connector.getTokenBalances(walletAddress);
+
+        const investigationWarnings: string[] =
+          tokenBalancesResult.warnings.map((warning) => warning.message);
+
+        investigationWarnings.push(
+          ...oldestTransactionResult.warnings.map((warning) => warning.message),
+        );
+
+        const tokenHoldings: WalletTokenHolding[] =
+          (tokenBalancesResult.data?.balances ?? []).map((tokenBalance) => ({
+            tokenId: tokenBalance.asset.contractAddress ?? "",
+            amount: 0,
+            decimals: tokenBalance.asset.decimals ?? 0,
+            rawAmount: tokenBalance.rawAmount,
+          }));
+
+        // NFT holdings: same tolerance as every other chain - Bitcoin's
+        // connector doesn't implement getNftHoldings at all (no native NFT
+        // standard - see chains/bitcoin.ts), so this degrades to an empty
+        // list rather than a chain-name check.
+        const nftHoldingsResult =
+          await connector.getNftHoldings?.(walletAddress);
+
+        const nftHoldings: UniversalNftHolding[] =
+          nftHoldingsResult?.data?.holdings ?? [];
+
+        const nativeAssetId = WRAPPED_NATIVE_ASSET_ID[chain];
+        const priceProvider = getTokenPriceProvider(chain);
+        const tokenPrices = priceProvider
+          ? await priceProvider.getTokenPrices([
+              ...tokenHoldings.map((token) => token.tokenId),
+              ...(nativeAssetId ? [nativeAssetId] : []),
+            ])
+          : {};
+
+        const walletBalance: WalletBalance = {
+          nativeAmount: btcBalance,
+          nativeSymbol: "BTC",
+          rawAmount: rawSatoshis,
+        };
+
+        const pipeline = await runWalletPipeline({
+          chain,
+          // The raw user input (a single address, or the xpub/ypub/zpub
+          // string itself) - used as the "primary" address identifier by
+          // every analyzer in the pipeline that isn't part of the
+          // multi-address merge below. For xpub input this isn't a real,
+          // spendable on-chain address, but every consumer here only does
+          // string comparisons/registry lookups against it, which safely
+          // no-op rather than crash on a non-address string.
+          address: walletAddress,
+          balance: walletBalance,
+          tokenHoldings,
+          recentTransactions,
+          oldestTransactionId: oldestTransaction.transactionId ?? undefined,
+          oldestTransactionTimestamp:
+            oldestTransaction.timestamp ?? undefined,
+          firstParsedTransaction,
+          normalizedRecentParsedTransactions,
+          tokenPrices,
+        });
+
+        const {
+          activity,
+          age,
+          funding,
+          portfolio,
+          whale,
+          defi,
+          protocols,
+          protocolIntelligence,
+          behavior,
+          relationships,
+          custodyProfile,
+          intelligenceSources,
+          trust,
+          display,
+          transactionRisk,
+          smartMoney,
+          strategy,
+          conviction,
+          alpha,
+          investmentStyle,
+          profitability,
+          reputation,
+          skunkScore,
+          investigationReplay,
+          evidenceRecords,
+          assessment,
+          intelligenceBrief,
+          evidence,
+          executiveVerdict,
+          risk,
+          complianceScreening,
+        } = pipeline;
+
+        // Multi-address exposure merge (the one piece the connector's
+        // already-merged data can't cover on its own): exposure's self and
+        // reverse-index checks are keyed to individual addresses, so a
+        // wallet with several derived addresses needs each one checked
+        // separately, worst-case rolled up (if ANY derived address is
+        // itself flagged, or has ever transacted with a flagged
+        // counterparty via the reverse index, the whole wallet is flagged -
+        // unweighted, same principle exposure.ts already applies within a
+        // single address across its four match sources). Uses the same
+        // analyzeWalletExposure() the other four chains call unchanged -
+        // its first parameter now accepts an address array for exactly
+        // this case (see analyzers/exposure.ts), with zero behavior change
+        // for single-string callers.
+        const derivedAddresses =
+          await bitcoinBlockchainConnector.deriveAddresses(walletAddress);
+
+        // relationships is intentionally [] here, not pipeline.relationships:
+        // counterparty-via-relationships is exposure's 4th match source, and
+        // it depends on decoded transfer data (see
+        // analyzeWalletRelationships), which doesn't exist yet for Bitcoin -
+        // pipeline.relationships is already empty for the same reason
+        // normalizedRecentParsedTransactions has empty transfers above.
+        // This source will start contributing real matches once Bitcoin
+        // transaction parsing exists, with no further change needed here.
+        const bitcoinExposure = analyzeWalletExposure(
+          derivedAddresses,
+          funding,
+          chain,
+          [],
+        );
+
+        const exposure = bitcoinExposure;
+
+        // Age and funding both already reflect the full derived-address
+        // set - the connector's getOldestTransaction() call above already
+        // returns the earliest transaction across every derived address for
+        // xpub input (Blockchair's own xpub dashboard aggregates this
+        // server-side), and funding.ts was fed that same oldest transaction
+        // via firstParsedTransaction, so no extra merge step is needed for
+        // either signal here. funding.fundingWallet will not be populated
+        // for Bitcoin yet regardless (nativeTransfers is empty pending
+        // transaction parsing, same root cause as the exposure relationship
+        // source above) - the externality check funding.ts would need
+        // (widened from "not this one address" to "not any address in this
+        // wallet's derived set") isn't implemented yet because there's no
+        // transfer data yet for it to have any effect on.
+
+        const addressesInSample =
+          derivedAddresses.length > 1 ? derivedAddresses.length : undefined;
+
+        const activityWithAddressContext = addressesInSample
+          ? { ...activity, addressesInSample }
+          : activity;
+
+        if (addressesInSample) {
+          investigationWarnings.push(
+            `This is an HD wallet with ${addressesInSample} derived address(es) found in the sample (via Blockchair's gap-limit address scan) - activityLevel reflects combined transaction volume across all of them, not one address, so it is not directly comparable to a single-address wallet's activityLevel at the same raw count.`,
+          );
+        }
+
+        investigationWarnings.push(
+          "Bitcoin: transactions are listed but not yet parsed into real transfers, so funding source attribution and counterparty-based exposure detection are not yet available for this chain (self-match and reverse-index exposure checks, which don't need parsed transfers, are already active). Address coverage for xpub/ypub/zpub input is whatever Blockchair's gap-limit scan found - addresses outside that scan window are not included. Fields derived from exposure elsewhere in this report (e.g. compliance screening) reflect the single primary address view, not yet this merged multi-address result.",
+        );
+
+        return {
+          chain,
+          address: walletAddress,
+          status: "supported",
+          balance: walletBalance,
+          tokenHoldings,
+          portfolio,
+          nftHoldings,
+          whale,
+          defi,
+          protocols,
+          protocolIntelligence,
+          behavior,
+          exposure,
+          relationships,
+          display,
+          assessment,
+          intelligenceBrief,
+          custodyProfile,
+          complianceScreening,
+          intelligenceSources,
+          trust,
+          investigationReplay,
+          evidence,
+          evidenceRecords,
+          recentTransactions,
+          transactionCountSample: recentTransactions.length,
+          activity: activityWithAddressContext,
+          age,
+          funding,
+          risk,
+          transactionRisk,
+          smartMoney,
+          strategy,
+          conviction,
+          alpha,
+          investmentStyle,
+          profitability,
+          reputation,
+          skunkScore,
+          executiveVerdict,
+          summary: `Wallet found. Current balance: ${btcBalance.toFixed(
+            8,
+          )} BTC. Recent transaction sample: ${recentTransactions.length}.`,
           warnings: investigationWarnings,
         };
       } catch (error) {
