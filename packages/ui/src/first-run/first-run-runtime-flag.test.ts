@@ -1,14 +1,10 @@
-/** Verifies isRuntimeChooserEnabled through the package's configured test harness. */
-// @vitest-environment jsdom
-
 /**
- * The runtime-chooser gate (#13377/#15527): cloud-only onboarding is the
- * default on production builds; the localStorage override flips it without a
- * rebuild; Vite dev mode (`bun run dev`) defaults it to ON so developers can
- * pick local without manual configuration; the Play-Store cloud-locked Android
- * build can never re-enable it; and Android local sideload/system builds follow
- * the same cloud-only default unless a developer/test lane opts into the chooser.
+ * Verifies the runtime-chooser gate through the package's jsdom harness.
+ * Cloud-only onboarding is the production default; Vite development and
+ * explicit overrides expose local and remote choices, while the Play-Store
+ * cloud-locked Android invariant remains absolute.
  */
+// @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
