@@ -83,11 +83,13 @@ export function redactBrowserWorkspaceIframeWalletState(
   state: BrowserWorkspaceWalletState,
 ): BrowserWorkspaceWalletState {
   return {
-    ...state,
     address: null,
     connected: false,
     evmAddress: null,
     evmConnected: false,
+    mode: state.mode,
+    pendingApprovals: state.pendingApprovals,
+    reason: IFRAME_WALLET_CONNECTION_DISABLED_ERROR,
     messageSigningAvailable: false,
     transactionSigningAvailable: false,
     chainSwitchingAvailable: false,
@@ -96,7 +98,6 @@ export function redactBrowserWorkspaceIframeWalletState(
     solanaConnected: false,
     solanaMessageSigningAvailable: false,
     solanaTransactionSigningAvailable: false,
-    reason: IFRAME_WALLET_CONNECTION_DISABLED_ERROR,
   };
 }
 
@@ -281,9 +282,7 @@ export function useBrowserWorkspaceWalletBridge({
   const pendingTargetUrlByTabRef = useRef(new Map<string, string>());
   const revokedTabIdsRef = useRef(new Set<string>());
   const committedOriginByTabRef = useRef(new Map<string, string>());
-  const lastReadyStateByTabRef = useRef(
-    new Map<string, BrowserWorkspaceWalletState>(),
-  );
+  const lastReadyStateFingerprintByTabRef = useRef(new Map<string, string>());
   walletStateRef.current = walletState;
   workspaceTabsRef.current = workspaceTabs;
 
@@ -295,19 +294,28 @@ export function useBrowserWorkspaceWalletBridge({
       if (
         !iframeWindow ||
         !targetOrigin ||
-        committedOriginByTabRef.current.get(tab.id) !== targetOrigin ||
-        lastReadyStateByTabRef.current.get(tab.id) === state
+        committedOriginByTabRef.current.get(tab.id) !== targetOrigin
+      ) {
+        return;
+      }
+      const redactedState = redactBrowserWorkspaceIframeWalletState(state);
+      // The redactor emits a fixed-key primitive payload, so its serialized
+      // form is stable across the fresh object references produced by polling.
+      const stateFingerprint = JSON.stringify(redactedState);
+      if (
+        lastReadyStateFingerprintByTabRef.current.get(tab.id) ===
+        stateFingerprint
       ) {
         return;
       }
       iframeWindow.postMessage(
         {
           type: BROWSER_WALLET_READY_TYPE,
-          state: redactBrowserWorkspaceIframeWalletState(state),
+          state: redactedState,
         },
         targetOrigin,
       );
-      lastReadyStateByTabRef.current.set(tab.id, state);
+      lastReadyStateFingerprintByTabRef.current.set(tab.id, stateFingerprint);
     },
     [iframeRefs],
   );
@@ -318,7 +326,7 @@ export function useBrowserWorkspaceWalletBridge({
       pendingTargetUrlByTabRef.current.set(tabId, url);
       targetUrlByTabRef.current.set(tabId, url);
       committedOriginByTabRef.current.delete(tabId);
-      lastReadyStateByTabRef.current.delete(tabId);
+      lastReadyStateFingerprintByTabRef.current.delete(tabId);
     },
     [],
   );
@@ -328,7 +336,7 @@ export function useBrowserWorkspaceWalletBridge({
     pendingTargetUrlByTabRef.current.delete(tabId);
     targetUrlByTabRef.current.delete(tabId);
     committedOriginByTabRef.current.delete(tabId);
-    lastReadyStateByTabRef.current.delete(tabId);
+    lastReadyStateFingerprintByTabRef.current.delete(tabId);
     chainIdByTabRef.current.delete(tabId);
   }, []);
 
@@ -342,7 +350,7 @@ export function useBrowserWorkspaceWalletBridge({
       if (targetUrlByTabRef.current.get(tabId) === url) return;
       targetUrlByTabRef.current.set(tabId, url);
       committedOriginByTabRef.current.delete(tabId);
-      lastReadyStateByTabRef.current.delete(tabId);
+      lastReadyStateFingerprintByTabRef.current.delete(tabId);
     },
     [],
   );
@@ -366,7 +374,7 @@ export function useBrowserWorkspaceWalletBridge({
       ) {
         targetUrlByTabRef.current.delete(tabId);
         committedOriginByTabRef.current.delete(tabId);
-        lastReadyStateByTabRef.current.delete(tabId);
+        lastReadyStateFingerprintByTabRef.current.delete(tabId);
       }
     }
     for (const tabId of revokedTabIdsRef.current) {
@@ -419,7 +427,7 @@ export function useBrowserWorkspaceWalletBridge({
         committedOriginByTabRef.current.get(sourceTab.id) !== targetOrigin
       ) {
         committedOriginByTabRef.current.set(sourceTab.id, targetOrigin);
-        lastReadyStateByTabRef.current.delete(sourceTab.id);
+        lastReadyStateFingerprintByTabRef.current.delete(sourceTab.id);
         postBrowserWalletReady(sourceTab, walletStateRef.current);
       }
 
