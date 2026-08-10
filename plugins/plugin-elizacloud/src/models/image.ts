@@ -118,7 +118,8 @@ export async function handleImageDescription(
     // the caller fail fast.
     let response: Response | null = null;
     let attemptedRetry = false;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    let warmingRetries = 0;
+    for (let attempt = 0; attempt < 4; attempt++) {
       const attemptResponse = await client.routes.postApiV1ChatCompletionsRaw({
         json: requestBody,
         timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_IMAGE_TIMEOUT_MS", 120_000),
@@ -127,6 +128,50 @@ export async function handleImageDescription(
         continue;
       }
       response = attemptResponse;
+      if (attemptResponse.ok) break;
+
+      // Transient cold-cache warming: this box runs text on Cerebras, so the
+      // cloud's per-model billing/auth admission cache for the vision model
+      // goes cold between rare image calls. The first image then hits a 503
+      // whose body carries `billing_cache_warming`/`auth_cache_warming`
+      // (type `service_unavailable`, retryable) that clears within ~1s — the
+      // client-side companion to the server escape in #18249. Riding through
+      // it here restores vision without waiting on the prod-cloud promote
+      // (verified live: 200 on the first retry). The 429 branch below stays a
+      // single retry; warming gets a few because a cold cache can need two.
+      if (attemptResponse.status === 503 && warmingRetries < 2) {
+        let warming = false;
+        let warmingWait = 1;
+        try {
+          const peek = (await attemptResponse.clone().json()) as {
+            error?: { code?: unknown; type?: unknown; retryAfter?: unknown };
+            code?: unknown;
+            type?: unknown;
+            retryAfter?: unknown;
+          };
+          const code = String(peek?.error?.code ?? peek?.code ?? "");
+          const type = String(peek?.error?.type ?? peek?.type ?? "");
+          warming =
+            code === "billing_cache_warming" ||
+            code === "auth_cache_warming" ||
+            type === "service_unavailable";
+          const ra = peek?.error?.retryAfter ?? peek?.retryAfter;
+          if (typeof ra === "number" && Number.isFinite(ra) && ra > 0) {
+            warmingWait = Math.min(ra, 3);
+          }
+        } catch {
+          // Body wasn't JSON — treat a bare 503 as non-warming, fail fast.
+        }
+        if (warming) {
+          warmingRetries++;
+          logger.warn(
+            `[ELIZAOS_CLOUD] Image analysis cold-cache warming (503), retry ${warmingRetries}/2 after ${warmingWait}s...`
+          );
+          await new Promise((r) => setTimeout(r, warmingWait * 1000));
+          continue;
+        }
+      }
+
       if (attemptResponse.status !== 429 || attemptedRetry) break;
 
       // `Number(null) === 0`, so guard against a missing header before
@@ -216,19 +261,20 @@ export async function handleImageDescription(
     }
 
     if (!content) {
-      return {
-        title: "Failed to analyze image",
-        description: "No response from API",
-      };
+      throw new Error(
+        "ElizaOS Cloud image description returned an empty completion"
+      );
     }
 
     return parseImageDescriptionResponse(content);
   } catch (error) {
+    // Fail closed: never fabricate a `{ description: "Error: ..." }` object.
+    // The caller (describeImageCached) catches this and returns null, so the
+    // agent honestly reports the image as undescribed instead of caching the
+    // error string under the image hash and leaking it into LLM context —
+    // the same contract plugin-openai / plugin-google-genai already uphold.
     const message = error instanceof Error ? error.message : String(error);
-    logger.error(`Error analyzing image: ${message}`);
-    return {
-      title: "Failed to analyze image",
-      description: `Error: ${message}`,
-    };
+    logger.warn(`Error analyzing image (failing closed): ${message}`);
+    throw error instanceof Error ? error : new Error(message);
   }
 }
