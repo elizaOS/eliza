@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { investigateWallet } from "../skunkscan/wallet";
+import { isSupportedChain, SUPPORTED_CHAINS } from "../skunkscan/types";
 
 type JsonHelper = (
   res: http.ServerResponse,
@@ -44,12 +45,12 @@ export async function handleSkunkScanRoute(
   const chain = typeof body.chain === "string" ? body.chain : "solana";
   const address = typeof body.address === "string" ? body.address : "";
 
-  if (chain !== "solana" && chain !== "ethereum" && chain !== "base" && chain !== "bnb") {
+  if (!isSupportedChain(chain)) {
     helpers.json(
       res,
       {
         error: "Unsupported chain",
-        supportedChains: ["solana", "ethereum", "base", "bnb"],
+        supportedChains: SUPPORTED_CHAINS,
       },
       400,
     );
