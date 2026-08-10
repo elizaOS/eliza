@@ -1574,8 +1574,9 @@ const TURN_SCOPE_ARG_SCHEMA: JSONSchema = {
 	description:
 		`"${TURN_SCOPE_FINAL}" when this batch of tool calls is everything the ` +
 		`user's request needs this turn; "${TURN_SCOPE_MORE_WORK_PENDING}" when ` +
-		"further tool calls will follow after these results. Stripped before " +
-		"the tool runs.",
+		"further tool calls will follow after these results — including any " +
+		"list/get/search call made to find an id or target for a later write " +
+		"(read-then-act). Stripped before the tool runs.",
 };
 
 /**
@@ -1600,6 +1601,16 @@ export function withTurnScopeToolArg(
 		}
 		const properties = parameters.properties ?? {};
 		if (properties[TURN_SCOPE_ARG] !== undefined) return tool;
+		// Required, not optional: small planner models reliably fill required
+		// enum args but reliably omit optional ones. An omitted scope let a
+		// lookup (`list` to find an issue) end the turn before the write the
+		// user asked for ran (live 2026-08-10); schema-forcing the declaration
+		// makes precondition 6 of the evaluator gate actually load-bearing.
+		// Absent values still parse as "unspecified" downstream, so models
+		// that ignore the requirement degrade to today's behavior.
+		const required = Array.isArray(parameters.required)
+			? parameters.required
+			: [];
 		return {
 			...tool,
 			parameters: {
@@ -1608,6 +1619,9 @@ export function withTurnScopeToolArg(
 					...properties,
 					[TURN_SCOPE_ARG]: TURN_SCOPE_ARG_SCHEMA,
 				},
+				required: required.includes(TURN_SCOPE_ARG)
+					? required
+					: [...required, TURN_SCOPE_ARG],
 			},
 		};
 	});
