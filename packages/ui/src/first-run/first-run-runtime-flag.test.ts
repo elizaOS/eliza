@@ -3,10 +3,11 @@
 
 /**
  * The runtime-chooser gate (#13377/#15527): cloud-only onboarding is the
- * default on web/desktop builds; the localStorage override flips it without a
- * rebuild; the Play-Store cloud-locked Android build can never re-enable it;
- * and Android local sideload/system builds follow the same cloud-only default
- * unless a developer/test lane opts into the chooser.
+ * default on production builds; the localStorage override flips it without a
+ * rebuild; Vite dev mode (`bun run dev`) defaults it to ON so developers can
+ * pick local without manual configuration; the Play-Store cloud-locked Android
+ * build can never re-enable it; and Android local sideload/system builds follow
+ * the same cloud-only default unless a developer/test lane opts into the chooser.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,23 +38,23 @@ afterEach(() => {
 });
 
 describe("isRuntimeChooserEnabled", () => {
-  it("defaults to OFF — cloud-only onboarding is the production default", () => {
-    expect(isRuntimeChooserEnabled()).toBe(false);
-  });
-
-  it("the localStorage override enables the chooser without a rebuild", () => {
-    localStorage.setItem(RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY, "1");
+  it("defaults to ON in Vite dev mode so developers can choose local", () => {
     expect(isRuntimeChooserEnabled()).toBe(true);
   });
 
-  it("an explicit '0' override keeps the chooser off", () => {
+  it("the localStorage '0' override disables the chooser even in dev mode", () => {
     localStorage.setItem(RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY, "0");
     expect(isRuntimeChooserEnabled()).toBe(false);
   });
 
-  it("garbage override values fall back to the build default (off)", () => {
+  it("the localStorage '1' override enables the chooser without a rebuild", () => {
+    localStorage.setItem(RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY, "1");
+    expect(isRuntimeChooserEnabled()).toBe(true);
+  });
+
+  it("garbage override values fall back to the build default (dev=on)", () => {
     localStorage.setItem(RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY, "yes please");
-    expect(isRuntimeChooserEnabled()).toBe(false);
+    expect(isRuntimeChooserEnabled()).toBe(true);
   });
 
   it("the cloud-locked Android build can never re-enable the chooser", () => {
@@ -62,8 +63,12 @@ describe("isRuntimeChooserEnabled", () => {
     expect(isRuntimeChooserEnabled()).toBe(false);
   });
 
-  it("the Android local sideload build still defaults the chooser OFF", () => {
+  it("the Android local sideload build still respects an explicit '0' override", () => {
+    // In vitest import.meta.env.DEV is statically replaced with true, so we
+    // can't simulate a production Android build here. Instead verify the
+    // explicit '0' override keeps the chooser off on the sideload build.
     mocks.isAndroidLocalSideloadBuild.mockReturnValue(true);
+    localStorage.setItem(RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY, "0");
     expect(isRuntimeChooserEnabled()).toBe(false);
   });
 
