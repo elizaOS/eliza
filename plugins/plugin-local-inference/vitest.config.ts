@@ -100,6 +100,12 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: "node",
+		// CI plugin shards run many packages concurrently on shared runners;
+		// under that starvation the vitest 5s default fails healthy suites
+		// (tts-cache N×N sweeps, GGUF fuzz passes). Explicit generous budget —
+		// real hangs still fail, just later.
+		testTimeout: 120_000,
+		hookTimeout: 120_000,
 		// I7/I8/I9 tests live next to their sources under `src/` (voice-budget,
 		// device-tier, active-model co-locate `.test.ts` siblings). Keep the
 		// `__tests__/**` glob for legacy suites and ALSO pick up co-located
