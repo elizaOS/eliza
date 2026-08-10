@@ -3792,12 +3792,18 @@ async function handleIssueAction(
                 )
                 .join("\n")}`;
         if (callback) await callback({ text: listText });
+        // Read ops keep verifiedUserFacing (so the callback is the sole
+        // delivery and the evaluator's reply uses the verified text, not a
+        // paraphrase) but do NOT stamp turnComplete: a read is inherently
+        // usable as a lookup substep in a larger plan (e.g. "list, then
+        // comment on #3"), and turnComplete + a sole-tool gate would
+        // terminate the turn before the planner can queue the write step
+        // (#18244).
         return {
           success: true,
           text: listText,
           userFacingText: listText,
           verifiedUserFacing: true,
-          turnComplete: true,
           data: { issues },
         };
       }
@@ -3814,12 +3820,13 @@ async function handleIssueAction(
         const issue = await service.getIssue(repo, issueNumber);
         const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issue.body.slice(0, ISSUE_BODY_MAX_CHARS)}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
         if (callback) await callback({ text: issueText });
+        // Same as list: verifiedUserFacing for clean delivery, no turnComplete
+        // so a get-by-number lookup does not preempt a read-then-write plan.
         return {
           success: true,
           text: issueText,
           userFacingText: issueText,
           verifiedUserFacing: true,
-          turnComplete: true,
           data: { issue },
         };
       }
