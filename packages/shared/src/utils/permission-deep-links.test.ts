@@ -44,7 +44,7 @@ describe("getMacPermissionDeepLink", () => {
       `${PRIVACY_PREFIX}_LocationServices`,
     );
     expect(getMacPermissionDeepLink("notifications")).toBe(
-      "x-apple.systempreferences:com.apple.preference.notifications",
+      "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
     );
     expect(getMacPermissionDeepLink("full-disk")).toBe(
       `${PRIVACY_PREFIX}_AllFiles`,
