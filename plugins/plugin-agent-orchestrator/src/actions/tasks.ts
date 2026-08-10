@@ -3699,15 +3699,20 @@ async function handleIssueAction(
             const summary = created
               .map((i) => `#${i.number}: ${i.title}\n  ${i.url}`)
               .join("\n");
-            const bulkText = `Created ${created.length} issues${bulkLabelNote}:\n${summary}`;
+            // The chat confirmation stays clean; a label degrade is recorded
+            // planner-side (`text` + data) so the model can answer honestly
+            // if asked, without machinery notes in the user's message.
+            const bulkText = `Created ${created.length} issues:\n${summary}`;
             if (callback) await callback({ text: bulkText });
             return {
               success: true,
-              text: bulkText,
+              text: bulkLabelNote
+                ? `${bulkText}\n(requested labels not applied: no label permission on ${repo})`
+                : bulkText,
               userFacingText: bulkText,
               verifiedUserFacing: true,
               turnComplete: true,
-              data: { issues: created },
+              data: { issues: created, labelsApplied: !bulkLabelNote },
             };
           }
 
@@ -3724,15 +3729,19 @@ async function handleIssueAction(
           repo,
           { title, body: body ?? "", labels },
         );
-        const createdText = `Created issue #${issue.number}${labelNote}: ${issue.title}\n${issue.url}`;
+        // Clean human confirmation only; the label degrade stays
+        // planner-side (`text` + data) — no machinery notes in chat.
+        const createdText = `Created issue #${issue.number}: ${issue.title}\n${issue.url}`;
         if (callback) await callback({ text: createdText });
         return {
           success: true,
-          text: createdText,
+          text: labelNote
+            ? `${createdText}\n(requested labels not applied: no label permission on ${repo})`
+            : createdText,
           userFacingText: createdText,
           verifiedUserFacing: true,
           turnComplete: true,
-          data: { issue },
+          data: { issue, labelsApplied: !labelNote },
         };
       }
 
