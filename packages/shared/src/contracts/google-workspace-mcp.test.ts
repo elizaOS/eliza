@@ -4,9 +4,12 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  GOOGLE_WORKSPACE_MCP_CAPABILITY_REQUEST_SCOPES,
   GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES,
   GOOGLE_WORKSPACE_MCP_ENDPOINTS,
   GOOGLE_WORKSPACE_MCP_RESOURCES,
+  canonicalGoogleMcpProduct,
+  googleMcpToolScopes,
 } from "./google-workspace-mcp.js";
 
 describe("Google Workspace MCP manifest", () => {
@@ -100,5 +103,33 @@ describe("Google Workspace MCP manifest", () => {
         "https://www.googleapis.com/auth/calendar",
       ]),
     );
+  });
+
+  it("requests only scopes each capability also accepts", () => {
+    for (const [capability, requested] of Object.entries(
+      GOOGLE_WORKSPACE_MCP_CAPABILITY_REQUEST_SCOPES,
+    )) {
+      const accepted =
+        GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES[
+          capability as keyof typeof GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES
+        ];
+      expect(accepted).toEqual(expect.arrayContaining([...requested]));
+    }
+  });
+
+  it("resolves product aliases and per-tool scopes", () => {
+    expect(canonicalGoogleMcpProduct("workspace")).toBe("universalSearch");
+    expect(canonicalGoogleMcpProduct("UniversalSearch")).toBe(
+      "universalSearch",
+    );
+    expect(canonicalGoogleMcpProduct("Gmail")).toBe("gmail");
+    expect(canonicalGoogleMcpProduct("meet")).toBeUndefined();
+    expect(googleMcpToolScopes("calendar", "list_events")).toContain(
+      "https://www.googleapis.com/auth/calendar.events.readonly",
+    );
+    expect(googleMcpToolScopes("gmail", "create_draft")).toEqual(
+      GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES["gmail.draft"],
+    );
+    expect(googleMcpToolScopes("gmail", "send_email")).toBeUndefined();
   });
 });
