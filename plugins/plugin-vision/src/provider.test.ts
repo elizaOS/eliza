@@ -24,7 +24,8 @@ function makeRuntime(
     audio: false,
     unavailableReasons: {
       objectDetection: "Object detection not enabled",
-      faceRecognition: "Face recognition backend not initialized or not enabled",
+      faceRecognition:
+        "Face recognition backend not initialized or not enabled",
       screenCapture: "Screen mode not active",
       audio: "Audio capture not configured",
     },
@@ -126,7 +127,8 @@ describe("visionProvider", () => {
           unavailableReasons: {
             objectDetection: "native library failed to load",
             ocr: "OCR not enabled",
-            faceRecognition: "Face recognition backend not initialized or not enabled",
+            faceRecognition:
+              "Face recognition backend not initialized or not enabled",
             screenCapture: "Screen mode not active",
             audio: "Audio capture not configured",
           },
@@ -235,7 +237,8 @@ describe("visionProvider", () => {
             camera: "No camera connected",
             objectDetection: "Object detection not enabled",
             ocr: "OCR not enabled",
-            faceRecognition: "Face recognition backend not initialized or not enabled",
+            faceRecognition:
+              "Face recognition backend not initialized or not enabled",
             screenCapture: "Screen mode not active",
             audio: "Audio capture not configured",
           },

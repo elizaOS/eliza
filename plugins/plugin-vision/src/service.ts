@@ -237,7 +237,6 @@ export class VisionService extends Service {
   private isProcessingScreen = false;
   private objectDetector: YOLODetector | null = null;
   private hasObjectDetection = false;
-  // Reason why object detection is unavailable (null when available or not requested).
   private objectDetectionUnavailableReason: string | null = null;
   // Lazily constructed: the face backend is dynamically imported on first use
   // so plugin-vision's module graph never pulls native code at module-eval
@@ -251,7 +250,10 @@ export class VisionService extends Service {
 
   // Screen vision components
   private screenCapture: ScreenCaptureService;
+  private screenCaptureReady = false;
+  private screenCaptureUnavailableReason: string | null = null;
   private ocrService: OCRService;
+  private ocrUnavailableReason: string | null = null;
   private lastScreenCapture: ScreenCapture | null = null;
   private lastEnhancedScene: EnhancedSceneDescription | null = null;
 
@@ -290,6 +292,7 @@ export class VisionService extends Service {
     updateInterval: 100, // Process frames every 100ms
     enablePoseDetection: false,
     enableObjectDetection: false,
+    enableFaceRecognition: false,
     tfUpdateInterval: 1000, // TensorFlow update every 1 second
     vlmUpdateInterval: 10000, // VLM update every 10 seconds
     tfChangeThreshold: 10, // 10% change triggers TF update
@@ -380,6 +383,11 @@ export class VisionService extends Service {
       enablePoseDetection:
         runtime.getSetting("ENABLE_POSE_DETECTION") === "true" ||
         runtime.getSetting("VISION_ENABLE_POSE_DETECTION") === "true",
+      enableFaceRecognition: getBooleanSetting(
+        "ENABLE_FACE_RECOGNITION",
+        "VISION_ENABLE_FACE_RECOGNITION",
+        false,
+      ),
       tfUpdateInterval:
         Number(
           runtime.getSetting("TF_UPDATE_INTERVAL") ||
@@ -489,12 +497,21 @@ export class VisionService extends Service {
           this.objectDetector = null;
           this.hasObjectDetection = false;
           this.objectDetectionUnavailableReason =
-            yoloError instanceof Error
-              ? yoloError.message
-              : String(yoloError);
+            "YOLO backend failed to initialize; verify the native library and model weights";
           logger.warn(
             "[VisionService] ggml YOLOv8 detector unavailable, object detection disabled (using motion/heuristic + VLM fallback):",
-            this.objectDetectionUnavailableReason,
+            yoloError instanceof Error ? yoloError.message : String(yoloError),
+          );
+        }
+      }
+
+      if (this.visionConfig.enableFaceRecognition) {
+        try {
+          await this.getFaceRecognition();
+        } catch (faceError) {
+          logger.warn(
+            "[VisionService] Face recognition unavailable:",
+            faceError instanceof Error ? faceError.message : String(faceError),
           );
         }
       }
@@ -532,9 +549,9 @@ export class VisionService extends Service {
   }
 
   private async initializeScreenVision(): Promise<void> {
-    try {
-      logger.info("[VisionService] Initializing screen vision...");
+    logger.info("[VisionService] Initializing screen vision...");
 
+    try {
       // Check if we should use worker threads for high-FPS processing
       const useWorkers =
         this.visionConfig.targetScreenFPS &&
@@ -552,9 +569,19 @@ export class VisionService extends Service {
         // Initialize OCR if enabled
         if (this.visionConfig.ocrEnabled) {
           await this.ocrService.initialize();
+          this.ocrUnavailableReason = null;
         }
       }
+    } catch (error) {
+      this.ocrUnavailableReason =
+        "OCR backend failed to initialize; verify the platform provider or native model files";
+      logger.warn(
+        "[VisionService] OCR unavailable; screen capture will continue without OCR:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
 
+    try {
       // Get screen info
       const screenInfo = await this.screenCapture.getScreenInfo();
       if (screenInfo) {
@@ -565,7 +592,9 @@ export class VisionService extends Service {
 
       logger.info("[VisionService] Screen vision initialized");
     } catch (error) {
-      logger.error(
+      this.screenCaptureUnavailableReason =
+        "Screen capture backend failed to initialize for this platform";
+      logger.warn(
         { error },
         "[VisionService] Failed to initialize screen vision:",
       );
@@ -1055,21 +1084,9 @@ export class VisionService extends Service {
       // Face recognition and entity tracking
       const faceProfiles = new Map<string, string>();
       const recognizedFaces: RecognizedFace[] = [];
-      const getSettingString = (key: string): string | undefined => {
-        const value = this.runtime.getSetting(key);
-        return value === true || value === false
-          ? String(value)
-          : typeof value === "string"
-            ? value
-            : typeof value === "number"
-              ? String(value)
-              : undefined;
-      };
-      const enableFaceRecognition =
-        getSettingString("ENABLE_FACE_RECOGNITION") === "true";
 
       if (
-        enableFaceRecognition &&
+        this.visionConfig.enableFaceRecognition &&
         people.length > 0 &&
         frame.width > 0 &&
         frame.height > 0 &&
@@ -1802,11 +1819,22 @@ export class VisionService extends Service {
   }
 
   private async captureAndProcessScreen(): Promise<void> {
+    let capture: ScreenCapture;
     try {
-      // Capture screen
-      const capture = await this.screenCapture.captureScreen();
-      this.lastScreenCapture = capture;
+      capture = await this.screenCapture.captureScreen();
+    } catch (error) {
+      this.screenCaptureReady = false;
+      this.screenCaptureUnavailableReason =
+        "Screen capture failed; verify host support and screen-recording permission";
+      logger.error({ error }, "[VisionService] Error capturing screen:");
+      return;
+    }
 
+    this.lastScreenCapture = capture;
+    this.screenCaptureReady = true;
+    this.screenCaptureUnavailableReason = null;
+
+    try {
       // Process active tile
       const activeTile = this.screenCapture.getActiveTile();
       if (activeTile?.data) {
@@ -1817,7 +1845,7 @@ export class VisionService extends Service {
       // Update enhanced scene description
       await this.updateEnhancedSceneDescription();
     } catch (error) {
-      logger.error({ error }, "[VisionService] Error capturing screen:");
+      logger.error({ error }, "[VisionService] Error processing screen frame:");
     }
   }
 
@@ -1831,8 +1859,11 @@ export class VisionService extends Service {
       if (this.visionConfig.ocrEnabled && tile.data) {
         analysis.ocr = await this.ocrService.extractFromTile(tile);
         analysis.text = analysis.ocr.fullText;
+        this.ocrUnavailableReason = null;
       }
     } catch (error) {
+      this.ocrUnavailableReason =
+        "OCR backend failed while processing the latest screen frame";
       logger.error({ error }, "[VisionService] Error analyzing tile:");
     }
 
@@ -2015,6 +2046,8 @@ export class VisionService extends Service {
     if (this.screenProcessingInterval) {
       clearInterval(this.screenProcessingInterval);
       this.screenProcessingInterval = null;
+      this.screenCaptureReady = false;
+      this.screenCaptureUnavailableReason = "Screen processing is stopped";
     }
 
     if (this.arbiterUnsubscribe) {
@@ -2054,39 +2087,52 @@ export class VisionService extends Service {
    */
   public getCapabilities(): VisionCapabilities {
     const caps: VisionCapabilities = {
-      objectDetection: this.hasObjectDetection,
-      ocr: this.visionConfig.ocrEnabled ? this.ocrService.isInitialized() : false,
-      faceRecognition: this.hasFaceRecognition,
-      screenCapture: this.screenProcessingInterval !== null,
+      objectDetection: this.hasObjectDetection && this.objectDetector !== null,
+      ocr:
+        Boolean(this.visionConfig.ocrEnabled) &&
+        this.ocrService.isInitialized() &&
+        this.ocrUnavailableReason === null,
+      faceRecognition:
+        this.hasFaceRecognition &&
+        this.faceRecognition?.isInitialized() === true,
+      screenCapture: this.screenCaptureReady,
       camera: this.camera !== null,
       audio:
-        this.audioCapture !== null || this.streamingAudioCapture !== null,
+        this.audioCapture?.isActive() === true ||
+        this.streamingAudioCapture?.isActive() === true,
     };
 
     const reasons: NonNullable<VisionCapabilities["unavailableReasons"]> = {};
 
     if (!caps.objectDetection) {
-      reasons.objectDetection = this.objectDetectionUnavailableReason
-        ?? (this.visionConfig.enableObjectDetection
+      reasons.objectDetection =
+        this.objectDetectionUnavailableReason ??
+        (this.visionConfig.enableObjectDetection
           ? "YOLO backend not initialized"
           : "Object detection not enabled");
     }
 
     if (!caps.ocr) {
-      reasons.ocr = "OCR not enabled";
+      reasons.ocr = this.visionConfig.ocrEnabled
+        ? (this.ocrUnavailableReason ?? "OCR backend is not initialized")
+        : "OCR not enabled";
     }
 
     if (!caps.faceRecognition) {
-      reasons.faceRecognition = this.faceRecognitionUnavailableReason
-        ?? "Face recognition backend not initialized or not enabled";
+      reasons.faceRecognition =
+        this.faceRecognitionUnavailableReason ??
+        (this.visionConfig.enableFaceRecognition
+          ? "Face recognition backend is not initialized"
+          : "Face recognition not enabled");
     }
 
     if (!caps.screenCapture) {
-      const mode = this.visionConfig.visionMode;
       reasons.screenCapture =
-        mode === VisionMode.SCREEN || mode === VisionMode.BOTH
-          ? "Screen capture pipeline not started"
-          : "Screen mode not active";
+        this.screenCaptureUnavailableReason ??
+        (this.visionConfig.visionMode === VisionMode.SCREEN ||
+        this.visionConfig.visionMode === VisionMode.BOTH
+          ? "Screen capture is awaiting its first successful frame"
+          : "Screen mode not active");
     }
 
     if (!caps.camera) {
@@ -2094,7 +2140,10 @@ export class VisionService extends Service {
     }
 
     if (!caps.audio) {
-      reasons.audio = "Audio capture not configured";
+      reasons.audio =
+        this.audioCapture || this.streamingAudioCapture
+          ? "Audio capture backend is not active"
+          : "Audio capture not configured";
     }
 
     if (Object.keys(reasons).length > 0) {
@@ -2132,13 +2181,15 @@ export class VisionService extends Service {
     if (!this.faceRecognition) {
       try {
         const { FaceRecognition } = await import("./face-recognition-ggml");
-        this.faceRecognition = new FaceRecognition();
+        const candidate = new FaceRecognition();
+        await candidate.initialize();
+        this.faceRecognition = candidate;
         this.hasFaceRecognition = true;
         this.faceRecognitionUnavailableReason = null;
       } catch (error) {
-        // error-policy:J2 wrap+rethrow with unavailable reason for capability surface
+        // error-policy:J2 record stable context and rethrow the backend failure.
         this.faceRecognitionUnavailableReason =
-          error instanceof Error ? error.message : String(error);
+          "Face recognition backend failed to initialize; verify the native library and both model files";
         throw error;
       }
     }
@@ -2168,6 +2219,7 @@ export class VisionService extends Service {
     }
 
     if (this.faceRecognition) {
+      await this.faceRecognition.dispose();
       this.faceRecognition = null;
       this.hasFaceRecognition = false;
       this.faceRecognitionUnavailableReason = "Service stopped";
@@ -2182,6 +2234,8 @@ export class VisionService extends Service {
     this.lastFrame = null;
     this.lastSceneDescription = null;
     this.lastScreenCapture = null;
+    this.screenCaptureReady = false;
+    this.screenCaptureUnavailableReason = "Service stopped";
     this.lastEnhancedScene = null;
     this.dirtyTileDescriber = null;
     this.dirtyTileDescriberInit = false;
@@ -2190,6 +2244,7 @@ export class VisionService extends Service {
 
     // Dispose of models
     await this.ocrService.dispose();
+    this.ocrUnavailableReason = "Service stopped";
 
     logger.info("[VisionService] Stopped.");
   }

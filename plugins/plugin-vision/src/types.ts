@@ -165,6 +165,7 @@ export interface VisionConfig {
   updateInterval?: number;
   enablePoseDetection?: boolean;
   enableObjectDetection?: boolean;
+  enableFaceRecognition?: boolean;
   tfUpdateInterval?: number;
   vlmUpdateInterval?: number;
   tfChangeThreshold?: number;
@@ -273,7 +274,7 @@ export interface WorldState {
 /**
  * Honest capability readiness snapshot. Each field reports whether the real
  * backend is initialized — never true when the backend failed to load or is
- * absent. The provider surface this so callers can distinguish
+ * absent. The provider surfaces this so callers can distinguish
  * "unavailable" from "ready but empty".
  */
 export interface VisionCapabilities {
@@ -290,7 +291,9 @@ export interface VisionCapabilities {
   /** True when audio capture initialized. */
   audio: boolean;
   /** Human-readable reasons for unavailable capabilities, keyed by field. */
-  unavailableReasons?: Partial<Record<keyof Omit<VisionCapabilities, "unavailableReasons">, string>>;
+  unavailableReasons?: Partial<
+    Record<keyof Omit<VisionCapabilities, "unavailableReasons">, string>
+  >;
 }
 
 /** Provenance of a detection result, so callers can tell YOLO apart from heuristics. */

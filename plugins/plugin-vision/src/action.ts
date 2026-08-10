@@ -250,14 +250,15 @@ async function runDescribe(
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const visionService = runtime.getService<VisionService>("VISION");
+  const caps = visionService?.getCapabilities();
+  const hasReadyInput = Boolean(caps?.camera || caps?.screenCapture);
 
-  if (!visionService?.isActive()) {
-    const caps = visionService?.getCapabilities();
-    const hasAnyVisionInput = caps?.camera || caps?.screenCapture;
-    const thought = hasAnyVisionInput
+  if (!visionService?.isActive() || !hasReadyInput) {
+    const hasConfiguredInput = Boolean(visionService && caps);
+    const thought = hasConfiguredInput
       ? "Vision service is not fully initialized yet."
       : "Vision service is not available — no camera or screen capture is connected.";
-    const text = hasAnyVisionInput
+    const text = hasConfiguredInput
       ? "I'm still initializing my vision. Please try again in a moment."
       : "I cannot see anything right now. No vision input is available.";
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
@@ -282,14 +283,19 @@ async function runDescribe(
 
   try {
     const scene = await withVisionTimeout(
-      visionService.getSceneDescription(),
+      visionService.getEnhancedSceneDescription(),
       "vision scene description",
     );
     const cameraInfo = visionService.getCameraInfo();
+    const visionMode = visionService.getVisionMode();
 
     if (!scene) {
-      const thought = "Camera is connected but no scene has been analyzed yet.";
-      const text = `Camera "${cameraInfo?.name}" is connected, but I haven't analyzed any scenes yet. Please wait a moment.`;
+      const thought =
+        "A vision input is ready but no scene has been analyzed yet.";
+      const source = caps?.camera
+        ? `Camera "${cameraInfo?.name ?? "unknown"}"`
+        : "Screen capture";
+      const text = `${source} is ready, but I haven't analyzed any scenes yet. Please wait a moment.`;
       await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
       if (callback) {
         await callback({ thought, text, actions: ["VISION"] });
@@ -326,7 +332,12 @@ async function runDescribe(
     const detailLevel =
       options.detailLevel === "summary" ? "summary" : "detailed";
 
-    let description = `Looking through ${cameraInfo?.name || "the camera"}, `;
+    let description =
+      visionMode === VisionMode.SCREEN
+        ? "Looking at the screen, "
+        : visionMode === VisionMode.BOTH
+          ? "Using the camera and screen, "
+          : `Looking through ${cameraInfo?.name || "the camera"}, `;
     description += scene.description;
 
     if (detailLevel === "detailed" && peopleCount > 0) {

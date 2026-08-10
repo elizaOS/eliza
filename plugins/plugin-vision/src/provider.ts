@@ -16,7 +16,6 @@ import type {
   DetectionSource,
   EnhancedSceneDescription,
   EntityAttributes,
-  VisionCapabilities,
 } from "./types";
 
 const MAX_VISION_OBJECTS_IN_STATE = 50;
