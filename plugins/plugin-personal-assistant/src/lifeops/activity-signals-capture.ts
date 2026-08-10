@@ -271,19 +271,21 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
     });
   };
 
-  // Runtime not up yet (boot, restart), signed-out (401/403), and a stale binding
-  // to a deleted agent (structural agent-gone 404) are the designed
-  // stand-down states; only those plus transport loss and the 503 "runtime
-  // starting" shape count. Anything else coming out of the status probe
-  // (persistent 500s included) is a real defect and must surface, not read as
-  // "not ready" forever (#16504).
+  // Runtime not up yet (boot, restart), signed-out (401/403), a stale binding
+  // to a deleted agent (structural agent-gone 404), and a cloud-console base
+  // with no runtime status endpoint (raw 404) are the designed stand-down
+  // states; only those plus transport loss and the 503 "runtime starting"
+  // shape count. Anything else coming out of the status probe (persistent
+  // 500s included) is a real defect and must surface, not read as "not ready"
+  // forever (#16504).
   const isExpectedProbeFailure = (error: unknown): boolean =>
     isSessionUnavailableError(error) ||
     isCloudAgentGoneError(error) ||
     (isApiError(error) &&
       (error.kind === "network" ||
         error.kind === "timeout" ||
-        (error.kind === "http" && error.status === 503)));
+        (error.kind === "http" &&
+          (error.status === 503 || error.status === 404))));
 
   const refreshRuntimeReady = async (): Promise<boolean> => {
     try {
