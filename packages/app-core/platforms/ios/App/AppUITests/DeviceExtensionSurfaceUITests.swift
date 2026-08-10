@@ -38,7 +38,13 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
     }
 
     func testHomeScreenWidgetTapForegroundsApp() throws {
-        try installHomeScreenWidgetFromGallery()
+        let app = XCUIApplication()
+        let appDisplayName = app.label
+        XCTAssertFalse(
+            appDisplayName.isEmpty,
+            "The installed target application must expose a display label to the widget-gallery test."
+        )
+        try installHomeScreenWidgetFromGallery(appDisplayName: appDisplayName)
 
         let ask = springboard.staticTexts["Ask Eliza"].firstMatch
         XCTAssertTrue(
@@ -49,7 +55,6 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         attachScreenshot(named: "widget-assert-00-home-with-widget")
         ask.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
-        let app = XCUIApplication()
         XCTAssertTrue(
             app.wait(for: .runningForeground, timeout: 15),
             "Tapping the Ask quick action must foreground the container app via elizaos://assistant?source=ios-widget&action=ask."
@@ -105,7 +110,7 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
 
     // MARK: - Home/Lock Screen widget
 
-    private func installHomeScreenWidgetFromGallery() throws {
+    private func installHomeScreenWidgetFromGallery(appDisplayName: String) throws {
         goHome()
         attachScreenshot(named: "widget-assert-00-home-screen")
 
@@ -131,12 +136,15 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         let search = springboard.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 8), "Widget gallery must expose a search field")
         search.tap()
-        search.typeText("Eliza")
+        search.typeText(appDisplayName)
         Thread.sleep(forTimeInterval: 2.0)
-        attachScreenshot(named: "widget-assert-02-gallery-search-eliza")
+        attachScreenshot(named: "widget-assert-02-gallery-search-app")
 
-        let appRow = springboard.staticTexts["elizaOS"].firstMatch
-        XCTAssertTrue(appRow.waitForExistence(timeout: 8), "Widget gallery search must list elizaOS")
+        let appRow = springboard.staticTexts[appDisplayName].firstMatch
+        XCTAssertTrue(
+            appRow.waitForExistence(timeout: 8),
+            "Widget gallery search must list the installed app (\(appDisplayName))."
+        )
         appRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         Thread.sleep(forTimeInterval: 1.5)
         attachScreenshot(named: "widget-assert-03-detail")
