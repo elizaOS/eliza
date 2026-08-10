@@ -1101,3 +1101,134 @@ describe("bridge.markNeedsReauth verifies before evicting", () => {
     );
   });
 });
+
+describe("keep-alive parked-account throttling", () => {
+  function deadGrantFetchStub(calls: string[]): typeof fetch {
+    return vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return new Response(
+        JSON.stringify({
+          error: "invalid_grant",
+          error_description: "Refresh token expired",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+  }
+
+  function usageOkResponse(): Response {
+    return new Response(
+      JSON.stringify({
+        five_hour_utilization: 0.1,
+        seven_day_utilization: 0.2,
+        seven_day_resets_at: Date.now() + HOUR_MS,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  it("parks a dead-grant subscription account once and stops burning refreshes on it", async () => {
+    // A revoked/expired Max login: access token stale, refresh grant dead.
+    writeAccount("anthropic-subscription", "claude-work", {
+      access: "expired-access",
+      refresh: "rt-dead",
+      expires: Date.now() - HOUR_MS,
+    });
+    const tokenCalls: string[] = [];
+    vi.stubGlobal("fetch", deadGrantFetchStub(tokenCalls));
+
+    const pool = getDefaultAccountPool();
+    await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
+      checked: 1,
+      refreshed: 0,
+      failed: 1,
+    });
+    expect(pool.get("claude-work", "anthropic-subscription")?.health).toBe(
+      "needs-reauth",
+    );
+    const attemptsAfterFirstSweep = tokenCalls.length;
+    expect(attemptsAfterFirstSweep).toBeGreaterThan(0);
+
+    // The next sweeps must not re-burn the dead grant — pre-fix this
+    // re-attempted (and error-logged) every 5-minute sweep forever.
+    await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
+      checked: 1,
+      refreshed: 0,
+      failed: 0,
+    });
+    await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
+      checked: 1,
+      refreshed: 0,
+      failed: 0,
+    });
+    expect(tokenCalls.length).toBe(attemptsAfterFirstSweep);
+    expect(pool.get("claude-work", "anthropic-subscription")?.health).toBe(
+      "needs-reauth",
+    );
+  });
+
+  it("re-probes and re-admits a parked subscription account after a re-auth lands", async () => {
+    process.env.ELIZA_ACCOUNT_POOL_USAGE_PRIMING = "false";
+    writeAccount("anthropic-subscription", "claude-work", {
+      access: "expired-access",
+      refresh: "rt-dead",
+      expires: Date.now() - HOUR_MS,
+    });
+    vi.stubGlobal("fetch", deadGrantFetchStub([]));
+    const pool = getDefaultAccountPool();
+    await sweepAccountPoolKeepAlive();
+    expect(pool.get("claude-work", "anthropic-subscription")?.health).toBe(
+      "needs-reauth",
+    );
+
+    // Re-auth: a fresh credential lands under the same account id, stamping a
+    // newer updatedAt than the park's lastChecked. That must bypass the
+    // probe cooldown so the account returns within one sweep.
+    await new Promise((r) => setTimeout(r, 10));
+    writeAccount("anthropic-subscription", "claude-work", {
+      access: "fresh-access",
+      refresh: "rt-fresh",
+      expires: Date.now() + HOUR_MS,
+    });
+    const usageSpy = vi.fn(async () => usageOkResponse());
+    await expect(
+      sweepAccountPoolKeepAlive({
+        fetch: usageSpy as unknown as typeof fetch,
+        sleep: async () => {},
+      }),
+    ).resolves.toEqual({ checked: 1, refreshed: 1, failed: 0 });
+    expect(usageSpy).toHaveBeenCalled();
+    expect(pool.get("claude-work", "anthropic-subscription")?.health).toBe(
+      "ok",
+    );
+  });
+
+  it("keeps account health when the token refresh fails transiently", async () => {
+    writeAccount("anthropic-subscription", "claude-work", {
+      access: "expired-access",
+      refresh: "rt-live",
+      expires: Date.now() - HOUR_MS,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("fetch failed: ETIMEDOUT");
+      }),
+    );
+    const pool = getDefaultAccountPool();
+    expect(pool.get("claude-work", "anthropic-subscription")?.health).toBe(
+      "ok",
+    );
+
+    await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
+      checked: 1,
+      refreshed: 0,
+      failed: 1,
+    });
+    // Pre-fix a network blip parked the account as needs-reauth, evicting a
+    // perfectly healthy credential from rotation.
+    expect(pool.get("claude-work", "anthropic-subscription")?.health).toBe(
+      "ok",
+    );
+  });
+});
