@@ -14,6 +14,7 @@ function runWrapper(args: string[], timeoutMs = 30_000) {
 	return spawnSync(NODE_BIN, [WRAPPER, ...args], {
 		encoding: "utf8",
 		timeout: timeoutMs,
+		maxBuffer: 20 * 1024 * 1024,
 	});
 }
 
@@ -25,6 +26,28 @@ function flakyChild(counterFile: string, failureLine: string): string {
 		fs.appendFileSync(${JSON.stringify(counterFile)}, "x");
 		if (fs.readFileSync(${JSON.stringify(counterFile)}, "utf8").length === 1) {
 			console.error(${JSON.stringify(failureLine)});
+			process.exit(1);
+		}
+		process.exit(0);
+	`;
+}
+
+// Child that emits the flake signature EARLY, then floods stderr with more
+// output than the overlap window can retain, before exiting non-zero. The
+// flood pushes the signature out of any bounded tail so that only incremental
+// matching can catch it. Smaller chunks avoid pipe-buffer contention.
+function flakyChildWithFlood(counterFile: string, signatureLine: string, floodBytes: number): string {
+	return `
+		const fs = require("node:fs");
+		fs.appendFileSync(${JSON.stringify(counterFile)}, "x");
+		if (fs.readFileSync(${JSON.stringify(counterFile)}, "utf8").length === 1) {
+			console.error(${JSON.stringify(signatureLine)});
+			// Flood stderr with non-signature data to fill the overlap window.
+			// Written in smaller chunks to avoid pipe-buffer contention.
+			const chunk = "x".repeat(4096);
+			for (let i = 0; i < ${floodBytes}; i += chunk.length) {
+				console.error(chunk);
+			}
 			process.exit(1);
 		}
 		process.exit(0);
@@ -72,6 +95,33 @@ describe("run-with-flake-retry", () => {
 			"-e",
 			flakyChild(counter, "error: EEXIST: file already exists, epoll_ctl"),
 		]);
+		expect(result.status).toBe(0);
+		expect(readFileSync(counter, "utf8")).toBe("xx");
+		expect(result.stderr).toContain("matched flake signature");
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	test("retries when the signature is followed by more output than the old tail", () => {
+		const dir = mkdtempSync(path.join(tmpdir(), "flake-retry-"));
+		const counter = path.join(dir, "runs");
+		// Emit the flake line, then 1.25 MiB of follow-on output — past both the
+		// old 256 KiB tail AND the new 1 MiB overlap window, so ONLY incremental
+		// matching can catch the signature (it is gone from any bounded tail at
+		// exit).
+		const result = runWrapper(
+			[
+				"EEXIST[^\\n]*epoll_ctl|error: Failed to connect",
+				"--",
+				NODE_BIN,
+				"-e",
+				flakyChildWithFlood(
+					counter,
+					"error: EEXIST: file already exists, epoll_ctl",
+					1310720,
+				),
+			],
+			60_000,
+		);
 		expect(result.status).toBe(0);
 		expect(readFileSync(counter, "utf8")).toBe("xx");
 		expect(result.stderr).toContain("matched flake signature");

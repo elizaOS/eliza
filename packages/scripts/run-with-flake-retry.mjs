@@ -6,6 +6,13 @@
  * subprocess stdio wiring emitting `EEXIST … epoll_ctl` / `Failed to connect`
  * between tests) gets one bounded second chance. A failure that does not
  * match the signature is never retried.
+ *
+ * Signatures are matched incrementally as each stdout/stderr chunk arrives —
+ * not just from a retained tail after the child exits. This prevents the
+ * signature from being lost when a chatty suite emits more than the overlap
+ * window of output after the flake line. Cross-chunk matching is preserved via
+ * a bounded sliding overlap, so memory stays flat regardless of suite length.
+ *
  * Exit codes: the final attempt's own code, 127 when the command cannot
  * start, 2 on usage errors.
  *
@@ -30,15 +37,45 @@ try {
 }
 const [command, ...args] = argv.slice(2);
 
+/** Bounded overlap window for cross-chunk regex matching (1 MiB). */
+const OVERLAP_BYTES = 1048576;
+
+/**
+ * Incremental signature matcher: feeds every chunk through `signature.test`
+ * against a sliding overlap so a match that straddles chunk boundaries is
+ * still caught. Once matched, the flag stays set for the remainder of the run
+ * — a signature is never forgotten once seen, even if subsequent output
+ * pushes it out of the overlap window.
+ */
+function createSignatureTracker(signature) {
+  let matched = false;
+  let overlap = "";
+  return {
+    get matched() {
+      return matched;
+    },
+    feed(chunk) {
+      if (matched) return;
+      const text = overlap + chunk.toString();
+      if (signature.test(text)) {
+        matched = true;
+        overlap = "";
+        return;
+      }
+      // Keep only the tail for cross-chunk boundary matching. Memory is bounded
+      // regardless of total output volume.
+      overlap = text.slice(-OVERLAP_BYTES);
+    },
+  };
+}
+
 function runOnce() {
   return new Promise((resolve) => {
     const child = spawn(command, args, { stdio: ["inherit", "pipe", "pipe"] });
-    let tail = "";
+    const tracker = createSignatureTracker(signature);
     const capture = (chunk, sink) => {
       sink.write(chunk);
-      // Only the tail is needed for signature matching; unbounded capture of a
-      // chatty suite would hold the whole log in memory.
-      tail = (tail + chunk.toString()).slice(-262144);
+      tracker.feed(chunk);
     };
     child.stdout.on("data", (chunk) => capture(chunk, process.stdout));
     child.stderr.on("data", (chunk) => capture(chunk, process.stderr));
@@ -46,16 +83,16 @@ function runOnce() {
       console.error(
         `[run-with-flake-retry] failed to start "${command}": ${error.message}`,
       );
-      resolve({ code: 127, tail });
+      resolve({ code: 127, matched: tracker.matched });
     });
     child.on("close", (code, signal) => {
-      resolve({ code: code ?? (signal ? 1 : 0), tail });
+      resolve({ code: code ?? (signal ? 1 : 0), matched: tracker.matched });
     });
   });
 }
 
 const first = await runOnce();
-if (first.code === 0 || first.code === 127 || !signature.test(first.tail)) {
+if (first.code === 0 || first.code === 127 || !first.matched) {
   process.exit(first.code);
 }
 console.error(
