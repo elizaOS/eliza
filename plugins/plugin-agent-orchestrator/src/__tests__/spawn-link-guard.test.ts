@@ -200,6 +200,29 @@ describe("TASKS spawn gate: bare link shares never spawn", () => {
     expect(result.success).toBe(true);
     expect(spawnSession).toHaveBeenCalledTimes(1);
   });
+
+  it("a review/audit/investigate work order with a URL still spawns (issue #18108)", async () => {
+    // Before the fix, these short-residue messages were misclassified as bare
+    // link shares because the verb was absent from the closed English allowlist.
+    // They are genuine coding-intent work orders and must reach TASKS.
+    const { service, spawnSession } = makeFakeAcp();
+    const runtime = makeRuntime(service);
+
+    for (const text of [
+      "review this PR https://github.com/elizaOS/eliza/pull/12345",
+      "audit this repository https://github.com/elizaOS/eliza",
+      "investigate the failure here https://example.com/run",
+    ]) {
+      const result = await runOp(runtime, messageWithText(text), {
+        action: "spawn_agent",
+        agentType: "elizaos",
+        task: text.replace(/https?:\/\/\S+/, "").trim(),
+      });
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+    }
+    expect(spawnSession).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe("TASKS spawn gate: empty task prompts refuse pre-spawn", () => {

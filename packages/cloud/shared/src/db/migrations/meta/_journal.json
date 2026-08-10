@@ -1359,6 +1359,13 @@
       "when": 1786478400000,
       "tag": "0194_job_execution_interruptions_catalog_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1786564800000,
+      "tag": "0195_job_terminal_completed_at_backfill",
+      "breakpoints": true
     }
   ]
 }

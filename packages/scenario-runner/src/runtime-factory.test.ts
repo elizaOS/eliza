@@ -85,11 +85,11 @@ describe("scenario runtime deterministic model mode", () => {
     ].join("\n");
 
     expect(isScheduledDispatchRenderPrompt(prompt)).toBe(true);
-    // The deterministic render echoes the instruction with its "remind the
-    // owner to …" framing stripped — no decorative prefix, so scenarios can
-    // assert the delivered copy against the reminder text exactly.
+    // The deterministic render de-frames the instruction and prefixes it so
+    // the copy stays exactly assertable while never equaling the raw
+    // instruction (the renderer's instruction-echo guard rejects that).
     expect(deterministicScheduledDispatchRenderText(prompt)).toBe(
-      "stretch for five minutes.",
+      "Heads up: stretch for five minutes.",
     );
     expect(deterministicScheduledDispatchRenderText(prompt)).not.toContain(
       "Remind the owner",
@@ -120,7 +120,7 @@ describe("scenario runtime deterministic model mode", () => {
         params: { prompt },
         latestUserText: "",
       }),
-    ).toBe("take a short walk.");
+    ).toBe("Heads up: take a short walk.");
     expect(
       resolveScenarioDeterministicModelCall({
         modelType: ModelType.TEXT_LARGE,
@@ -131,14 +131,16 @@ describe("scenario runtime deterministic model mode", () => {
         },
         latestUserText: "",
       }),
-    ).toBe("take a short walk.");
+    ).toBe("Heads up: take a short walk.");
+    // The dispatch renderer voices through TEXT_SMALL; the resolver answers it
+    // the same way it answers legacy TEXT_LARGE callers.
     expect(
       resolveScenarioDeterministicModelCall({
         modelType: ModelType.TEXT_SMALL,
         params: { prompt },
         latestUserText: "",
       }),
-    ).toBeNull();
+    ).toBe("Heads up: take a short walk.");
   });
 });
 

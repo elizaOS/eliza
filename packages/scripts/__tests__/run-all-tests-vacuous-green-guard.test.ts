@@ -88,6 +88,11 @@ const SKIPPABLE_EMPTY_PACKAGE_DIR = join(
   "packages",
   "__run_all_tests_genuinely_no_tests__",
 );
+const ISOLATED_WRAPPER_PACKAGE_DIR = join(
+  repoRoot,
+  "packages",
+  "__run_all_tests_isolated_bun_wrapper__",
+);
 
 function rootScript(name) {
   const rootPackage = JSON.parse(
@@ -331,6 +336,68 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
       const result = run(["--no-cloud", "--min-tasks=abc", "--plan"]);
       expect(result.status).toBe(2);
       expect(result.stderr).toContain("--min-tasks/MIN_TEST_TASKS");
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  test(
+    "reconciles JUnit evidence from a supervised isolated Bun wrapper",
+    () => {
+      rmSync(ISOLATED_WRAPPER_PACKAGE_DIR, {
+        recursive: true,
+        force: true,
+      });
+      mkdirSync(join(ISOLATED_WRAPPER_PACKAGE_DIR, "scripts"), {
+        recursive: true,
+      });
+      try {
+        writeFileSync(
+          join(ISOLATED_WRAPPER_PACKAGE_DIR, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@elizaos/run-all-tests-isolated-bun-wrapper-fixture",
+              private: true,
+              type: "module",
+              scripts: {
+                test: "node ../../packages/scripts/run-with-flake-retry.mjs 'never-match' -- node ../../packages/scripts/run-with-deadline.mjs 5000 -- node scripts/run-isolated-tests.mjs",
+              },
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        writeFileSync(
+          join(
+            ISOLATED_WRAPPER_PACKAGE_DIR,
+            "scripts",
+            "run-isolated-tests.mjs",
+          ),
+          [
+            'import { writeFileSync } from "node:fs";',
+            "const args = process.argv.slice(2);",
+            'const output = args.find((arg) => arg.startsWith("--reporter-outfile="))?.slice("--reporter-outfile=".length);',
+            'if (!args.includes("--reporter=junit") || !output) throw new Error("missing forwarded JUnit arguments");',
+            'writeFileSync(output, `<testsuites tests="1" failures="0" errors="0" skipped="0"><testsuite name="isolated" tests="1" failures="0" errors="0" skipped="0"><testcase name="real isolated work" /></testsuite></testsuites>`);',
+            "",
+          ].join("\n"),
+        );
+
+        const result = run([
+          "--only=test",
+          "--no-cloud",
+          "--filter=@elizaos/run-all-tests-isolated-bun-wrapper-fixture",
+          "--require-work",
+        ]);
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain(
+          "EVIDENCE reports=1 tests=1 executed=1 skipped=0 unobserved-tasks=0",
+        );
+      } finally {
+        rmSync(ISOLATED_WRAPPER_PACKAGE_DIR, {
+          recursive: true,
+          force: true,
+        });
+      }
     },
     SPAWN_TIMEOUT_MS,
   );

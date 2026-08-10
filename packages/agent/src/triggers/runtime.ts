@@ -206,6 +206,7 @@ interface WorkflowDispatchServiceLike {
     error?: string;
     executionId?: string;
     dedup?: boolean;
+    code?: string;
   }>;
 }
 
@@ -260,7 +261,10 @@ async function dispatchWorkflow(
   task: Task,
   trigger: WorkflowTriggerConfig,
   event?: TriggerExecutionOptions["event"],
-): Promise<{ ok: true; executionId?: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; executionId?: string }
+  | { ok: false; error: string; code?: string }
+> {
   if (!trigger.workflowId) {
     return { ok: false, error: "workflow trigger missing workflowId" };
   }
@@ -292,7 +296,11 @@ async function dispatchWorkflow(
   });
   return result.ok
     ? { ok: true, executionId: result.executionId }
-    : { ok: false, error: result.error ?? "workflow execution failed" };
+    : {
+        ok: false,
+        error: result.error ?? "workflow execution failed",
+        ...(result.code ? { code: result.code } : {}),
+      };
 }
 
 interface AutonomyRoomService {
@@ -511,6 +519,7 @@ export async function executeTriggerTask(
   let status: TriggerExecutionResult["status"] = "success";
   let errorMessage = "";
   let workflowExecutionId: string | undefined;
+  let workflowGone = false;
 
   const result =
     trigger.kind === "workflow"
@@ -523,6 +532,11 @@ export async function executeTriggerTask(
   } else {
     status = "error";
     errorMessage = result.error;
+    // A workflow_not_found dispatch is permanent: the workflow row was
+    // deleted, so every future fire of this schedule fails identically. One
+    // final "disabled" notification and task deletion below replace the
+    // hourly failed-automation storm.
+    workflowGone = "code" in result && result.code === "workflow_not_found";
     runtime.logger.error(
       {
         src: "trigger-runtime",
@@ -533,16 +547,23 @@ export async function executeTriggerTask(
         workflowId:
           trigger.kind === "workflow" ? trigger.workflowId : undefined,
         error: errorMessage,
+        ...(workflowGone ? { permanentFailure: "workflow_not_found" } : {}),
       },
-      "Trigger dispatch failed",
+      workflowGone
+        ? "Trigger workflow no longer exists; disabling the schedule"
+        : "Trigger dispatch failed",
     );
     // Scheduled automations run without the user in the chat loop, so a
     // dispatch failure is otherwise invisible. Surface it on the notification
     // rail (fire-and-forget; never let a notify failure mask the trigger error).
     void getNotifier(runtime)
       ?.notify({
-        title: `Automation "${trigger.displayName}" failed`,
-        body: errorMessage.slice(0, 200),
+        title: workflowGone
+          ? `Automation "${trigger.displayName}" disabled`
+          : `Automation "${trigger.displayName}" failed`,
+        body: workflowGone
+          ? "Its workflow no longer exists, so the schedule was removed. Recreate the automation if you still need it."
+          : errorMessage.slice(0, 200),
         category: "workflow",
         priority: "high",
         source: "trigger",
@@ -625,6 +646,7 @@ export async function executeTriggerTask(
   };
 
   const shouldDeleteTask =
+    workflowGone ||
     updatedTrigger.triggerType === "once" ||
     (typeof updatedTrigger.maxRuns === "number" &&
       updatedTrigger.maxRuns > 0 &&

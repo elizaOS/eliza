@@ -232,11 +232,18 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
 
 export interface ScheduledTaskDispatchRecord {
   taskId: string;
+  /** Added additively; legacy host dispatchers may omit it. */
+  kind?: ScheduledTask["kind"];
   firedAtIso: string;
   channelKey: string;
   intensity?: "soft" | "normal" | "urgent";
   promptInstructions: string;
   contextRequest: ScheduledTask["contextRequest"];
+  subject?: ScheduledTask["subject"];
+  /** Added additively; omitted legacy records never receive owner context. */
+  ownerVisible?: boolean;
+  eventPayload?: unknown;
+  resolvedContext?: import("./types.js").ScheduledTaskResolvedContext;
   consolidationBatchId?: string;
   output?: ScheduledTask["output"];
   metadata?: ScheduledTask["metadata"];
@@ -365,6 +372,22 @@ function setEscalationCursor(
  * in an infinite retry loop.
  */
 const MAX_DISPATCH_RETRIES_PER_STEP = 3;
+const DISPATCH_EVENT_PAYLOAD_LIMIT = 16_000;
+
+function normalizeDispatchEventPayload(value: unknown): unknown {
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) return { unavailable: "not_serializable" };
+    if (serialized.length > DISPATCH_EVENT_PAYLOAD_LIMIT) {
+      return { unavailable: "payload_too_large" };
+    }
+    return JSON.parse(serialized) as unknown;
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — retries persist an explicit
+    // unavailable marker instead of retaining a non-serializable payload.
+    return { unavailable: "not_serializable" };
+  }
+}
 
 /**
  * Continuation marker for a dispatch that failed with a typed
@@ -377,6 +400,7 @@ const MAX_DISPATCH_RETRIES_PER_STEP = 3;
 interface PendingDispatch {
   stepIndex: number;
   attempt: number;
+  eventPayload?: unknown;
 }
 
 function readPendingDispatch(task: ScheduledTask): PendingDispatch | null {
@@ -395,6 +419,9 @@ function readPendingDispatch(task: ScheduledTask): PendingDispatch | null {
       typeof attempt === "number" && Number.isInteger(attempt) && attempt >= 0
         ? attempt
         : 0,
+    ...(Object.hasOwn(raw, "eventPayload")
+      ? { eventPayload: (raw as Record<string, unknown>).eventPayload }
+      : {}),
   };
 }
 
@@ -1295,7 +1322,11 @@ export function createScheduledTaskRunner(
     }
 
     await logger.log(task.taskId, "fire_attempt", {
-      detail: { eventPayload: args?.eventPayload ? "present" : "absent" },
+      detail: {
+        eventPayload: Object.hasOwn(args ?? {}, "eventPayload")
+          ? "present"
+          : "absent",
+      },
     });
 
     // Global-pause check.
@@ -1463,15 +1494,27 @@ export function createScheduledTaskRunner(
       });
     }
 
+    const hasDispatchEventPayload = Object.hasOwn(args ?? {}, "eventPayload")
+      ? true
+      : Boolean(pending && Object.hasOwn(pending, "eventPayload"));
+    const dispatchEventPayload = Object.hasOwn(args ?? {}, "eventPayload")
+      ? normalizeDispatchEventPayload(args?.eventPayload)
+      : pending?.eventPayload;
     let dispatchResult: DispatchResult | undefined;
     try {
       dispatchResult = await dispatcher.dispatch({
         taskId: claimed.taskId,
+        kind: claimed.kind,
         firedAtIso: fireAtIso,
         channelKey: dispatchChannelKey,
         intensity: pendingStep?.intensity ?? pickIntensity(claimed),
         promptInstructions: claimed.promptInstructions,
         contextRequest: claimed.contextRequest,
+        ...(claimed.subject ? { subject: claimed.subject } : {}),
+        ownerVisible: claimed.ownerVisible,
+        ...(hasDispatchEventPayload
+          ? { eventPayload: dispatchEventPayload }
+          : {}),
         output: claimed.output,
         metadata: claimed.metadata,
       });
@@ -1492,6 +1535,9 @@ export function createScheduledTaskRunner(
           pending,
           ladder,
           fireAtIso,
+          ...(hasDispatchEventPayload
+            ? { eventPayload: dispatchEventPayload }
+            : {}),
         });
       }
       const pendingPromptRoomId = claimed.completionCheck
@@ -1552,8 +1598,10 @@ export function createScheduledTaskRunner(
     pending: PendingDispatch | null;
     ladder: ReturnType<typeof resolveEffectiveLadder>;
     fireAtIso: string;
+    eventPayload?: unknown;
   }): Promise<ScheduledTaskFireResult> {
     const { task, failure, pending, ladder, fireAtIso } = args;
+    const hasEventPayload = Object.hasOwn(args, "eventPayload");
     // Policy step space: index 0 = the initial/default-channel attempt,
     // 1..n = ladder steps. `pending.stepIndex` is in ladder space (-1 =
     // initial attempt), hence the +1 shift.
@@ -1588,6 +1636,7 @@ export function createScheduledTaskRunner(
         setPendingDispatch(task, {
           stepIndex: ladderIndex,
           attempt: attempt + 1,
+          ...(hasEventPayload ? { eventPayload: args.eventPayload } : {}),
         });
         await persist(task);
         await logger.log(task.taskId, "dispatch_retried", {
@@ -1622,7 +1671,11 @@ export function createScheduledTaskRunner(
         task.state.status = "scheduled";
         task.state.firedAt = nextAttemptAtIso;
         task.state.lastDecisionLog = `dispatch advanced to ladder step ${nextLadderIndex} (${nextStep.channelKey}) after ${decision.reason}`;
-        setPendingDispatch(task, { stepIndex: nextLadderIndex, attempt: 0 });
+        setPendingDispatch(task, {
+          stepIndex: nextLadderIndex,
+          attempt: 0,
+          ...(hasEventPayload ? { eventPayload: args.eventPayload } : {}),
+        });
         if (decision.kind === "surface_degraded") {
           recordConnectorDegradation(task, decision, fireAtIso);
         }

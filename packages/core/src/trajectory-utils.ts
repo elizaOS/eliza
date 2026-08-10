@@ -1283,6 +1283,7 @@ export function logActiveTrajectoryLlmCall(
 	trajectoryLogger.logLlmCall({
 		stepId,
 		...details,
+		purpose: getTrajectoryContext()?.purpose ?? details.purpose,
 	});
 
 	// Mark the current model-call scope as provider-recorded. This is the

@@ -380,14 +380,14 @@ async function runPlannerLoopIterations(
 	// Rejected terminal ANSWER text from the IMMEDIATELY PREVIOUS
 	// required-tool miss (reassigned every miss, like lastMissWidgetText, so
 	// the identity check below demands CONSECUTIVE re-emission). Used only
-	// when the tool requirement stands on heuristic text inference
-	// (params.requiredToolEvidence === "inferred", i.e. Stage 1's model
-	// emitted no candidate of its own): a planner that re-commits to the
+	// when the tool requirement stands on relaxable heuristic text inference
+	// (params.requiredToolEvidence === "inferred"): a planner that re-commits to the
 	// IDENTICAL answer after one corrective retry is deterministically
 	// committed — accept it instead of burning the remaining budget on the
 	// heuristic's guess (observed live: 4 identical REPLYs, ~36s, for a
 	// pure-opinion ask force-planned by an inferred web candidate). Model-
-	// emitted requirements keep the full corrective budget.
+	// emitted requirements and strong deterministic coding-work inferences keep
+	// the full corrective budget.
 	let lastMissAnswerText: string | undefined;
 	const heuristicRequiredToolEvidence =
 		params.requiredToolEvidence === "inferred";
@@ -1574,8 +1574,9 @@ const TURN_SCOPE_ARG_SCHEMA: JSONSchema = {
 	description:
 		`"${TURN_SCOPE_FINAL}" when this batch of tool calls is everything the ` +
 		`user's request needs this turn; "${TURN_SCOPE_MORE_WORK_PENDING}" when ` +
-		"further tool calls will follow after these results. Stripped before " +
-		"the tool runs.",
+		"further tool calls will follow after these results — including any " +
+		"list/get/search call made to find an id or target for a later write " +
+		"(read-then-act). Stripped before the tool runs.",
 };
 
 /**
@@ -1600,6 +1601,16 @@ export function withTurnScopeToolArg(
 		}
 		const properties = parameters.properties ?? {};
 		if (properties[TURN_SCOPE_ARG] !== undefined) return tool;
+		// Required, not optional: small planner models reliably fill required
+		// enum args but reliably omit optional ones. An omitted scope let a
+		// lookup (`list` to find an issue) end the turn before the write the
+		// user asked for ran (live 2026-08-10); schema-forcing the declaration
+		// makes precondition 6 of the evaluator gate actually load-bearing.
+		// Absent values still parse as "unspecified" downstream, so models
+		// that ignore the requirement degrade to today's behavior.
+		const required = Array.isArray(parameters.required)
+			? parameters.required
+			: [];
 		return {
 			...tool,
 			parameters: {
@@ -1608,6 +1619,9 @@ export function withTurnScopeToolArg(
 					...properties,
 					[TURN_SCOPE_ARG]: TURN_SCOPE_ARG_SCHEMA,
 				},
+				required: required.includes(TURN_SCOPE_ARG)
+					? required
+					: [...required, TURN_SCOPE_ARG],
 			},
 		};
 	});
