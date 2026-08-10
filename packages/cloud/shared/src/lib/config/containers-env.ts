@@ -764,6 +764,21 @@ export const containersEnv = {
   // ── Warm pool ───────────────────────────────────────────────────────────
 
   /**
+   * Maximum ordinary/canary agent image upgrades allowed in flight together.
+   * Set to 0 to pause image churn during an operational canary such as a warm-
+   * pool refill without carrying a source hot patch that the next deploy wipes.
+   * Default: 3. Clamped to [0, 64].
+   */
+  maxInflightUpgrades(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.MAX_INFLIGHT_UPGRADES, env.CONTAINERS_MAX_INFLIGHT_UPGRADES);
+    const parsed = raw !== undefined ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed)
+      ? Math.min(64, Math.max(0, Math.floor(parsed)))
+      : 3;
+  },
+
+  /**
    * Whether the agent warm pool is enabled. When false, claim flow always
    * falls through to the cold-start async path; replenish/drain crons stay inactive.
    * Default: false (opt-in).
