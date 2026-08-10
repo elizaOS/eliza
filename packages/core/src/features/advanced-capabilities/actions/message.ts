@@ -2548,15 +2548,23 @@ async function recipientIsKnownEntity(
 		}
 	}
 
+	const requesterId = message.entityId;
+	if (!requesterId) return false;
+	const recipientIds: UUID[] = [];
 	for (const id of candidateIds) {
 		const entity = await runtime.getEntityById(id as UUID);
 		if (!entity?.id) continue;
-		const relationships = await runtime.getRelationships({
-			entityIds: [entity.id],
-		});
-		if (relationships.length > 0) return true;
+		recipientIds.push(entity.id);
 	}
-	return false;
+	if (recipientIds.length === 0) return false;
+
+	const relationships = await runtime.getRelationshipsByPairs(
+		recipientIds.flatMap((recipientId) => [
+			{ sourceEntityId: requesterId, targetEntityId: recipientId },
+			{ sourceEntityId: recipientId, targetEntityId: requesterId },
+		]),
+	);
+	return relationships.some((relationship) => relationship !== null);
 }
 
 async function handleSend(
