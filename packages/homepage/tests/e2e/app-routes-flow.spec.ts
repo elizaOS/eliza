@@ -296,6 +296,48 @@ test("landing page renders its animated shell and primary entrypoint", async ({
   await waitForLandingIntro(page);
 });
 
+test("landing swipe keeps pointer direction and surface-scoped drag prevention", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const surface = page.locator("div.theme-app").first();
+  const imessage = page.getByRole("button", { name: "iMessage" });
+  const telegram = page.getByRole("button", { name: "Telegram" });
+  await expect(surface).toBeVisible();
+  await expect(imessage).toHaveAttribute("aria-pressed", "true");
+
+  const drag = async (fromRatio: number, toRatio: number) => {
+    const box = await surface.boundingBox();
+    if (!box) throw new Error("Landing swipe surface has no bounds");
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + box.width * fromRatio, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * toRatio, y, { steps: 2 });
+    await page.mouse.up();
+  };
+
+  await drag(0.7, 0.3);
+  await expect(telegram).toHaveAttribute("aria-pressed", "true");
+  await drag(0.3, 0.7);
+  await expect(imessage).toHaveAttribute("aria-pressed", "true");
+
+  const dragGuard = await surface.evaluate((root) => {
+    const target = root.querySelector("img, a");
+    if (!(target instanceof HTMLElement)) {
+      return { foundTarget: false, defaultPrevented: false };
+    }
+    const event = new DragEvent("dragstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    target.dispatchEvent(event);
+    return { foundTarget: true, defaultPrevented: event.defaultPrevented };
+  });
+  expect(dragGuard).toEqual({ foundTarget: true, defaultPrevented: true });
+});
+
 test("landing composer is inert while hidden and stays in-viewport when active", async ({
   page,
 }) => {

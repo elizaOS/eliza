@@ -1167,7 +1167,11 @@ describe("keep-alive parked-account throttling", () => {
     expect(pool.get("claude-work", "anthropic-subscription")?.health).toBe(
       "needs-reauth",
     );
-  });
+    // 240s budget: each sweep crosses all 12 providers and every
+    // sweepExpired/listProviderAccounts cycle fsyncs the credential-storage
+    // lock (real disk I/O by design in this real-path harness). Three sweeps
+    // take ~7s idle but have blown the 120s default on saturated CI runners.
+  }, 240_000);
 
   it("re-probes and re-admits a parked subscription account after a re-auth lands", async () => {
     process.env.ELIZA_ACCOUNT_POOL_USAGE_PRIMING = "false";
@@ -1203,7 +1207,7 @@ describe("keep-alive parked-account throttling", () => {
     expect(pool.get("claude-work", "anthropic-subscription")?.health).toBe(
       "ok",
     );
-  });
+  }, 240_000);
 
   it("keeps account health when the token refresh fails transiently", async () => {
     writeAccount("anthropic-subscription", "claude-work", {
@@ -1232,5 +1236,5 @@ describe("keep-alive parked-account throttling", () => {
     expect(pool.get("claude-work", "anthropic-subscription")?.health).toBe(
       "ok",
     );
-  });
+  }, 240_000);
 });

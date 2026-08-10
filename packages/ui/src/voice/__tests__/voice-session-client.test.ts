@@ -1214,9 +1214,14 @@ describe("transport-loss recovery (stop-class hardening)", () => {
 
     first.emitClose(1006, "network change");
     // Attempts 2 and 3 wait the (tiny) growing backoff before re-minting.
-    await settleTimers(40);
-    expect(mint.calls).toHaveLength(4);
-    expect(ws.sockets).toHaveLength(2);
+    // A fixed sleep races timer starvation on loaded CI runners, so wait on
+    // the condition itself instead of a wall-clock guess.
+    await vi.waitFor(() => expect(mint.calls).toHaveLength(4), {
+      timeout: 5_000,
+    });
+    await vi.waitFor(() => expect(ws.sockets).toHaveLength(2), {
+      timeout: 5_000,
+    });
     expect(errors).toEqual([]);
     await client.stop();
   });

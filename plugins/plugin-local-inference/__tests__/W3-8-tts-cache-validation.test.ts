@@ -122,7 +122,10 @@ afterEach(() => {
 // This validates the DB-backed durability contract — not an in-memory
 // ephemeral cache.
 
-describe("1. Cross-restart validation", () => {
+// Each test opens and closes the SQLite-backed cache several times; on a
+// saturated CI runner (observed suite running 2-3x slower than normal) the
+// open/WAL-checkpoint/close cycles can exceed the 5s default test timeout.
+describe("1. Cross-restart validation", { timeout: 30_000 }, () => {
 	it("cache entries persist after explicit close (simulated process restart)", () => {
 		const keys = [
 			makeKey({ normalizedText: "got it" }),
@@ -274,7 +277,7 @@ function randomElement<T>(arr: ReadonlyArray<T>): T {
 	return arr[Math.floor(Math.random() * arr.length)] as T;
 }
 
-describe("2. Cache-key parity — property test", () => {
+describe("2. Cache-key parity — property test", { timeout: 30_000 }, () => {
 	it("hashCacheKey matches reference hash over 200 randomised inputs", () => {
 		const failures: string[] = [];
 		for (let i = 0; i < 200; i++) {
@@ -377,7 +380,7 @@ describe("2. Cache-key parity — property test", () => {
 // lookup with provider P2 / voice V2, even when all other key fields are
 // identical (same normalized text, settings, etc.).
 
-describe("3. Cross-voice safety", () => {
+describe("3. Cross-voice safety", { timeout: 30_000 }, () => {
 	const VOICE_CONTEXTS = [
 		{ provider: "kokoro", voiceId: "af_bella", voiceRevision: "ko-rev-1", sampleRate: 24000, codec: "opus" as const },
 		{ provider: "elevenlabs", voiceId: "EXAVITQu4vr4xnSDxMaL", voiceRevision: "el-rev-1", sampleRate: 44100, codec: "mp3" as const },
@@ -560,7 +563,7 @@ const PROVIDER_FIXTURES = [
 	},
 ];
 
-describe("4. Per-provider wiring", () => {
+describe("4. Per-provider wiring", { timeout: 30_000 }, () => {
 	for (const { label, ctx, text } of PROVIDER_FIXTURES) {
 		it(`[${label}] miss → populate → hit cycle`, async () => {
 			const cache = makeCache();
@@ -686,7 +689,7 @@ describe("4. Per-provider wiring", () => {
 // The test uses wrapWithFirstLineCache with a real FirstLineCache on tmpdir.
 // The inner handler is a synchronous stub returning fake bytes (no network).
 
-describe("5. Load test — 1k requests / 50 voices", () => {
+describe("5. Load test — 1k requests / 50 voices", { timeout: 30_000 }, () => {
 	// Realistic short outbound opener corpus (≤10 words, common agent acks).
 	const CORPUS = [
 		"Got it.",

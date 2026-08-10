@@ -637,6 +637,11 @@ async function installInteractionAuditRoutes(page: Page): Promise<void> {
 }
 
 test.describe("every-view interaction coverage", () => {
+  // Copy-address controls call the async Clipboard API; headless CI Chromium
+  // denies clipboard-write by default, which turns each copy click into an
+  // unhandled-rejection pageerror instead of a "Copied" outcome.
+  test.use({ permissions: ["clipboard-read", "clipboard-write"] });
+
   for (const view of VIEW_ROUTES) {
     test(`${view.id} — exercise every control with semantic outcomes`, async ({
       page,
