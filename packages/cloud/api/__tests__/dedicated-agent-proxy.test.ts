@@ -14,6 +14,7 @@ import {
 } from "bun:test";
 import { runInNewContext } from "node:vm";
 import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
+import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
 import * as authActual from "@/lib/auth";
 import * as cloudBindingsActual from "@/lib/runtime/cloud-bindings";
 import * as billingGateActual from "@/lib/services/agent-billing-gate";
@@ -22,8 +23,11 @@ import * as provisioningJobsActual from "@/lib/services/provisioning-jobs";
 import * as workerHealthActual from "@/lib/services/provisioning-worker-health";
 import * as loggerActual from "@/lib/utils/logger";
 
-let authResult: { user: { id: string; organization_id: string } } | "throw" =
-  "throw";
+let authResult:
+  | { user: { id: string; organization_id: string } }
+  | "throw"
+  | "forbidden"
+  | "unexpected" = "throw";
 let sandboxResult: Record<string, unknown> | null = null;
 let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
   allowed: true,
@@ -53,7 +57,9 @@ mock.module("@/lib/runtime/cloud-bindings", () => ({
 mock.module("@/lib/auth", () => ({
   ...authActual,
   requireAuthOrApiKeyWithOrg: async () => {
-    if (authResult === "throw") throw new Error("unauthorized");
+    if (authResult === "throw") throw new AuthenticationError("unauthorized");
+    if (authResult === "forbidden") throw new ForbiddenError("forbidden");
+    if (authResult === "unexpected") throw new Error("auth dependency failed");
     return authResult;
   },
 }));
@@ -156,11 +162,16 @@ const ENV = {
   },
 } as never;
 
-function makeRequest(cloudToken?: string, origin?: string): Request {
-  const headers = new Headers();
+function makeRequest(
+  cloudToken?: string,
+  origin?: string,
+  extraHeaders?: HeadersInit,
+  pathname = "/api/status",
+): Request {
+  const headers = new Headers(extraHeaders);
   if (cloudToken) headers.set("authorization", `Bearer ${cloudToken}`);
   if (origin) headers.set("origin", origin);
-  return new Request(`https://${AGENT}.elizacloud.ai/api/status`, { headers });
+  return new Request(`https://${AGENT}.elizacloud.ai${pathname}`, { headers });
 }
 const urlOf = (r: Request) => new URL(r.url);
 
@@ -429,6 +440,21 @@ describe("dedicated-agent-proxy — unified auth", () => {
     const r = makeRequest(
       "cloud-token-abc",
       "https://app-staging.elizacloud.ai",
+      {
+        cookie:
+          "steward-token=cloud-session; steward-refresh-token=cloud-refresh",
+        "cf-access-client-secret": "cloudflare-access-secret",
+        "x-api-key": "cloud-api-key",
+        "x-cron-secret": "cloud-cron-secret",
+        "x-eliza-service-token": "cloud-agent-service-token",
+        "x-internal-token": "cloud-internal-token",
+        "x-service-key": "cloud-service-key",
+        "x-service-token": "cloud-service-token",
+        "x-steward-signer-secret": "steward-signer-secret",
+        "x-timestamp": "1234567890",
+        "x-wallet-address": "0xcloud-wallet",
+        "x-wallet-signature": "cloud-wallet-signature",
+      },
     );
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
 
@@ -439,6 +465,17 @@ describe("dedicated-agent-proxy — unified auth", () => {
       "Bearer agent-secret-token",
     );
     expect(captured?.headers.get("x-api-key")).toBeNull();
+    expect(captured?.headers.get("cookie")).toBeNull();
+    expect(captured?.headers.get("cf-access-client-secret")).toBeNull();
+    expect(captured?.headers.get("x-cron-secret")).toBeNull();
+    expect(captured?.headers.get("x-eliza-service-token")).toBeNull();
+    expect(captured?.headers.get("x-internal-token")).toBeNull();
+    expect(captured?.headers.get("x-service-key")).toBeNull();
+    expect(captured?.headers.get("x-service-token")).toBeNull();
+    expect(captured?.headers.get("x-steward-signer-secret")).toBeNull();
+    expect(captured?.headers.get("x-timestamp")).toBeNull();
+    expect(captured?.headers.get("x-wallet-address")).toBeNull();
+    expect(captured?.headers.get("x-wallet-signature")).toBeNull();
     expect(new URL(captured?.url ?? "").hostname).toBe("cp.example.test");
     // withCors backfills the browser Origin even though the mocked upstream
     // ("ok") carried none, so the proxied response is never CORS-opaque (#15347).
@@ -447,33 +484,141 @@ describe("dedicated-agent-proxy — unified auth", () => {
     );
   });
 
-  test("NO cloud token → pass through unchanged (never injects the agent token)", async () => {
+  test("NO cloud token → passes through cookie-free (never injects the agent token)", async () => {
     authResult = "throw";
-    const r = makeRequest();
+    const r = makeRequest(undefined, undefined, {
+      cookie:
+        "steward-token=expired-session; steward-refresh-token=live-refresh",
+    });
     await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
     expect(captured?.headers.get("authorization")).toBeNull();
+    expect(captured?.headers.get("cookie")).toBeNull();
   });
 
-  test("authenticated NON-OWNER (findByIdAndOrg → null) → pass through, agent token NEVER injected", async () => {
-    authResult = { user: { id: "att", organization_id: "attacker-org" } };
-    sandboxResult = null; // attacker's org does not own this agent
-    const r = makeRequest("attacker-cloud-token");
+  test("rejected Cloud auth preserves an agent-local bearer but strips Cloud cookies", async () => {
+    authResult = "throw";
+    const r = makeRequest("agent_local_token", undefined, {
+      "cf-access-jwt-assertion": "cloudflare-access-jwt",
+      cookie: "steward-refresh-token=cloud-refresh",
+      "x-api-token": "agent_api_token",
+      "x-elizaos-token": "agent_elizaos_token",
+      "x-internal-token": "cloud-internal-token",
+      "x-service-key": "cloud-service-key",
+      "x-steward-key": "steward-key",
+      "x-timestamp": "1234567890",
+      "x-wallet-address": "0xcloud-wallet",
+      "x-wallet-signature": "cloud-wallet-signature",
+    });
     await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
-    // forwarded verbatim — the container's own auth rejects it; the secret leaks nowhere
     expect(captured?.headers.get("authorization")).toBe(
-      "Bearer attacker-cloud-token",
+      "Bearer agent_local_token",
+    );
+    expect(captured?.headers.get("cookie")).toBeNull();
+    expect(captured?.headers.get("cf-access-jwt-assertion")).toBeNull();
+    expect(captured?.headers.get("x-internal-token")).toBeNull();
+    expect(captured?.headers.get("x-service-key")).toBeNull();
+    expect(captured?.headers.get("x-steward-key")).toBeNull();
+    expect(captured?.headers.get("x-timestamp")).toBeNull();
+    expect(captured?.headers.get("x-wallet-address")).toBeNull();
+    expect(captured?.headers.get("x-wallet-signature")).toBeNull();
+    expect(captured?.headers.get("x-api-token")).toBe("agent_api_token");
+    expect(captured?.headers.get("x-elizaos-token")).toBe(
+      "agent_elizaos_token",
     );
   });
 
-  test("shared-tier agent → pass through, no injection", async () => {
+  test("rejected Cloud-shaped credentials fail at the edge instead of reaching the container", async () => {
+    authResult = "throw";
+    const cloudCredentialHeaders: HeadersInit[] = [
+      { authorization: "Bearer eliza_cloud_api_key" },
+      { authorization: "Bearer header.payload.signature" },
+      { "x-api-key": "eliza_cloud_api_key" },
+    ];
+    for (const headers of cloudCredentialHeaders) {
+      captured = null;
+      const r = makeRequest(undefined, undefined, headers);
+      const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+      expect(res.status).toBe(401);
+      expect(await res.json()).toMatchObject({ code: "cloud_auth_rejected" });
+      expect(captured).toBeNull();
+    }
+  });
+
+  test("authenticated NON-OWNER bearer → 403 at the edge and no credential reaches the container", async () => {
+    authResult = { user: { id: "att", organization_id: "attacker-org" } };
+    sandboxResult = null; // attacker's org does not own this agent
+    const r = makeRequest("attacker-cloud-token", undefined, {
+      cookie: "steward-refresh-token=attacker-refresh",
+    });
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: "agent_access_denied" });
+    expect(captured).toBeNull();
+  });
+
+  test("authenticated NON-OWNER API key → 403 at the edge and no key reaches the container", async () => {
+    authResult = { user: { id: "att", organization_id: "attacker-org" } };
+    sandboxResult = null;
+    const r = makeRequest(undefined, undefined, {
+      "x-api-key": "valid-cloud-api-key",
+    });
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(403);
+    expect(captured).toBeNull();
+  });
+
+  test("shared-tier row on a dedicated host → 403 at the edge, no injection", async () => {
     authResult = { user: { id: "u1", organization_id: "org1" } };
     sandboxResult = {
       ...runningDedicated,
       execution_tier: "shared",
     };
     const r = makeRequest("cloud-token");
-    await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
-    expect(captured?.headers.get("authorization")).toBe("Bearer cloud-token");
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(403);
+    expect(captured).toBeNull();
+  });
+
+  test("static asset pass-through strips parent-domain Cloud cookies", async () => {
+    authResult = "throw";
+    const r = makeRequest(
+      undefined,
+      undefined,
+      {
+        cookie:
+          "steward-token=expired-session; steward-refresh-token=live-refresh",
+      },
+      "/assets/index.js",
+    );
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(200);
+    expect(captured).not.toBeNull();
+    expect(new URL(captured?.url ?? "").pathname).toBe("/assets/index.js");
+    expect(captured?.headers.get("cookie")).toBeNull();
+  });
+
+  test("unexpected Cloud auth failure fails at the edge instead of forwarding a possibly valid credential", async () => {
+    authResult = "unexpected";
+    const r = makeRequest("possibly-valid-cloud-token");
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: "cloud_auth_unavailable" });
+    expect(captured).toBeNull();
+  });
+
+  test("validated owner with no agent credential fails at the edge", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = {
+      ...runningDedicated,
+      environment_vars: {},
+    };
+    const r = makeRequest("cloud-token");
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({
+      code: "agent_credential_unavailable",
+    });
+    expect(captured).toBeNull();
   });
 
   test("owner of a NON-RUNNING agent → 202 resume, does NOT proxy to the container", async () => {
@@ -549,16 +694,22 @@ describe("dedicated-agent-proxy — unified auth", () => {
     );
   });
 
-  test("WS ?token= from a NON-OWNER → pass through, ?token= NOT rewritten (agent token never leaks)", async () => {
+  test("rejected Cloud-shaped WS query token fails at the edge", async () => {
+    authResult = "throw";
+    const r = makeWsRequest("eliza_cloud_api_key");
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(401);
+    expect(captured).toBeNull();
+  });
+
+  test("WS ?token= from a NON-OWNER → 403 at the edge and token never reaches the container", async () => {
     authResult = { user: { id: "att", organization_id: "attacker-org" } };
     sandboxResult = null; // attacker's org does not own this agent
 
     const r = makeWsRequest("attacker-cloud-token");
-    await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
-
-    expect(new URL(captured?.url ?? "").searchParams.get("token")).toBe(
-      "attacker-cloud-token",
-    );
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(403);
+    expect(captured).toBeNull();
   });
 });
 
