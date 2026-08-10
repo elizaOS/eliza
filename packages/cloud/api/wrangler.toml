@@ -426,6 +426,23 @@ AGENT_ROUTER_ORIGIN_HOST = "eliza-staging-1.elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"
+# Onboarding dashboard/billing links. Production pins the Eliza *app* host
+# (app.elizacloud.ai), deliberately not the console apex, so this must pin the
+# app host's staging peer — app-staging.elizacloud.ai, the `eliza-app` Pages
+# domain owned by terraform/cloudflare/pages-domains and reclaimed from the prod
+# wildcard by the staging Worker route above. Unpinned, `getOnboardingAppUrl`
+# fell through to NEXT_PUBLIC_APP_URL and emitted the staging *console* apex:
+# right environment, wrong surface, and silently divergent from production.
+# Same environment-peer rule as STAGING_ELIZA_APP_ORIGIN in
+# packages/ui/src/utils/cloud-agent-base.ts (#15161).
+ELIZA_ONBOARDING_APP_URL = "https://app-staging.elizacloud.ai"
+# ELIZA_ONBOARDING_LOGIN_APP_URL is deliberately NOT pinned here. `/get-started`
+# is served by the homepage, and the homepage has exactly one deployment
+# (`eliza-app-home` -> eliza.app) whose bundle is compiled against the
+# production API. Pinning it would freeze a staging continuation token into a
+# production redemption endpoint that cannot resolve it. Staging keeps falling
+# through to the code default until a staging homepage exists; tracked as a
+# release blocker in #18197.
 NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
