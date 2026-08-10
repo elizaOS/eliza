@@ -405,4 +405,146 @@ describe("TrajectoriesService", () => {
 			context: { field: "llm_call_count" },
 		});
 	});
+
+	it("keeps the step envelope readable when payload exhausts the sanitization budget", async () => {
+		const trajectoryId = "00000000-0000-4000-8000-000000000040";
+		const stepId = "00000000-0000-4000-8000-000000000041";
+		const row = makeTrajectoryRow(trajectoryId, stepId);
+		const service = new TrajectoriesService(createRuntimeWithoutSql());
+		const serviceInternals = service as unknown as {
+			stepToTrajectory: Map<string, string>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+		};
+		serviceInternals.stepToTrajectory.set(stepId, trajectoryId);
+		serviceInternals.executeRawSql = async (sqlText: string) => {
+			if (sqlText.includes("SELECT * FROM trajectories")) {
+				return { rows: [row], columns: Object.keys(row) };
+			}
+			if (sqlText.includes("UPDATE trajectories SET")) {
+				const stepsJson = extractSqlStringAssignment(sqlText, "steps_json");
+				if (stepsJson) {
+					row.steps_json = stepsJson;
+				}
+			}
+			return { rows: [], columns: [] };
+		};
+
+		// Two planner-style calls whose tool schemas together cross the shared
+		// node budget at write time — the live incident shape (2026-08-10: the
+		// second call's tools broke out of the step object mid-walk and the
+		// dropped trailing keys made every subsequent read of the row throw).
+		const bigTools = Array.from({ length: 200 }, (_, i) => ({
+			name: `tool${i}`,
+			description: "d",
+			parameters: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10 },
+		}));
+		const baseCall = {
+			stepId,
+			model: "zai-glm-4.7",
+			modelType: "ACTION_PLANNER",
+			provider: "cerebras",
+			systemPrompt: "system",
+			userPrompt: "user",
+			response: "ok",
+			temperature: 0,
+			maxTokens: 1024,
+			purpose: "action",
+			actionType: "runtime.useModel",
+			latencyMs: 1,
+		};
+		service.logLlmCall({ ...baseCall, tools: bigTools });
+		await service.flushWriteQueue(trajectoryId);
+		service.logLlmCall({ ...baseCall, tools: bigTools });
+		await service.flushWriteQueue(trajectoryId);
+
+		const afterOverflow = JSON.parse(row.steps_json);
+		expect(afterOverflow[0].reward).toBe(0);
+		expect(afterOverflow[0].done).toBe(false);
+		expect(Array.isArray(afterOverflow[0].providerAccesses)).toBe(true);
+		expect(afterOverflow[0].metadata.truncatedLlmCalls).toBe(1);
+
+		// The row must still accept captures — pre-fix this write was lost to
+		// TRAJECTORY_ROW_INVALID and the trajectory could never terminalize.
+		service.logLlmCall(baseCall);
+		await service.flushWriteQueue(trajectoryId);
+
+		const persisted = JSON.parse(row.steps_json);
+		expect(persisted[0].llmCalls).toHaveLength(2);
+		expect(persisted[0].reward).toBe(0);
+		expect(persisted[0].done).toBe(false);
+		expect(persisted[0].metadata.truncatedLlmCalls).toBe(1);
+	});
+
+	it("reads legacy rows whose steps lost trailing keys to budget truncation", async () => {
+		const trajectoryId = "00000000-0000-4000-8000-000000000050";
+		const stepId = "00000000-0000-4000-8000-000000000051";
+		const row = makeTrajectoryRow(trajectoryId, stepId);
+		// The exact persisted shape recovered from the incident database: the
+		// envelope stops after environmentState — no providerAccesses, reward,
+		// or done — with one otherwise-valid llmCall.
+		row.steps_json = JSON.stringify([
+			{
+				stepId,
+				stepNumber: 0,
+				timestamp: 1,
+				environmentState: { timestamp: 1 },
+				observation: {},
+				llmCalls: [
+					{
+						callId: "00000000-0000-4000-8000-000000000052",
+						timestamp: 1,
+						model: "gemma-4-31b",
+						systemPrompt: "s",
+						userPrompt: "u",
+						response: "r",
+						purpose: "action",
+					},
+				],
+			},
+		]);
+		const service = new TrajectoriesService(createRuntimeWithoutSql());
+		const serviceInternals = service as unknown as {
+			stepToTrajectory: Map<string, string>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+		};
+		serviceInternals.stepToTrajectory.set(stepId, trajectoryId);
+		serviceInternals.executeRawSql = async (sqlText: string) => {
+			if (sqlText.includes("SELECT * FROM trajectories")) {
+				return { rows: [row], columns: Object.keys(row) };
+			}
+			if (sqlText.includes("UPDATE trajectories SET")) {
+				const stepsJson = extractSqlStringAssignment(sqlText, "steps_json");
+				if (stepsJson) {
+					row.steps_json = stepsJson;
+				}
+			}
+			return { rows: [], columns: [] };
+		};
+
+		service.logLlmCall({
+			stepId,
+			model: "gemma-4-31b",
+			modelType: "RESPONSE_HANDLER",
+			provider: "cerebras",
+			systemPrompt: "system",
+			userPrompt: "user",
+			response: "ok",
+			temperature: 0,
+			maxTokens: 64,
+			purpose: "action",
+			actionType: "runtime.useModel",
+			latencyMs: 1,
+		});
+		await service.flushWriteQueue(trajectoryId);
+
+		const persisted = JSON.parse(row.steps_json);
+		expect(persisted[0].llmCalls).toHaveLength(2);
+		expect(persisted[0].reward).toBe(0);
+		expect(persisted[0].done).toBe(false);
+		expect(persisted[0].providerAccesses).toEqual([]);
+	});
 });
