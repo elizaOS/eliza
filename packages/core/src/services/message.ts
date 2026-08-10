@@ -5070,11 +5070,15 @@ export function messageHandlerFromFieldResult(
 	// required-tool enforcement — stand on deterministic text inference alone
 	// (coding backstop, ack inference, or direct inference). Record that so
 	// the planner loop can accept a firmly repeated terminal answer early
-	// instead of burning the full miss budget on a heuristic's guess.
+	// instead of burning the full miss budget on a heuristic's guess. Coding
+	// work is deliberately excluded: that inference is structurally anchored
+	// to an operation plus a code artifact, and relaxing it lets a planner ship
+	// a repeated progress/fallback answer without ever executing delegation.
 	if (
 		shouldPlan &&
 		planCandidateActions.length > 0 &&
-		rawCandidateActions.length === 0
+		rawCandidateActions.length === 0 &&
+		directCurrentInference.kind !== "coding"
 	) {
 		plan.requiredToolEvidence = "inferred";
 	}
@@ -5325,11 +5329,13 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 			...(viewOverlapMissBudget !== undefined
 				? { requiredToolMissBudget: viewOverlapMissBudget }
 				: {}),
-			// Same provenance stamp as the structured path: when Stage 1's own
-			// candidate list was empty, this escalation stands on deterministic
-			// text inference alone.
+			// Same relaxable-inference stamp as the structured path. Strong coding
+			// work orders keep the full corrective budget so a repeated terminal
+			// fallback cannot impersonate completed delegation.
 			...(getMessageHandlerCandidateActions(messageHandler).length === 0
-				? { requiredToolEvidence: "inferred" as const }
+				? directCurrentInference.kind !== "coding"
+					? { requiredToolEvidence: "inferred" as const }
+					: {}
 				: {}),
 		},
 	};
@@ -8230,9 +8236,20 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannerTools.map((tool) => normalizeActionIdentifier(tool.name)),
 		);
 		const stageOneActionLookup = buildRuntimeActionLookup(args.runtime);
+		const plannerToolActions = plannerTools.flatMap(
+			(tool) => resolveRuntimeAction(stageOneActionLookup, tool.name) ?? [],
+		);
 		const candidateResolvesToPlannerTool = (name: string): boolean => {
 			const normalized = normalizeActionIdentifier(name);
 			if (plannerToolNames.has(normalized)) return true;
+			// Retrieval can replace an umbrella candidate (TASKS) with the precise
+			// promoted child exposed this turn (TASKS_SPAWN_AGENT). Promoted children
+			// deliberately carry the parent name as a simile, so resolve against the
+			// ACTUAL planner surface before consulting the full runtime. Otherwise the
+			// runtime lookup finds the exact parent, which is absent from plannerTools,
+			// and incorrectly disables hard-tool enforcement even though its child is
+			// exposed and runnable.
+			if (exposedActionMatches(plannerToolActions, normalized)) return true;
 			const resolved = resolveRuntimeAction(stageOneActionLookup, name);
 			return (
 				resolved !== undefined &&
@@ -9731,6 +9748,49 @@ function looksLikeDelegationExcludedAsk(text: string): boolean {
 	);
 }
 
+const LEGACY_CODING_WORK_VERB_PATTERN =
+	/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/giu;
+const LEGACY_CODING_ARTIFACT_PATTERN =
+	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/giu;
+const CODING_OPERATION_VERB_PATTERN =
+	/\b(?:refactor|debug|deploy|patch|optimize|migrate|profile)\b/giu;
+const REVIEW_WORK_VERB_PATTERN =
+	/\b(?:review|audit|investigate|analyze|inspect|test|trace|diagnose)\b/giu;
+const STRONG_CODE_ARTIFACT_PATTERN =
+	/\b(?:code|cli|script|backend|frontend|repo|repository|bug|pr|pull request|commit|branch|stack trace|pipeline|ci)\b/giu;
+const EXPANDED_WORK_ARTIFACT_PATTERN =
+	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|repository|feature|bug|url|pr|pull request|issue|commit|branch|build|test|error|stack trace|failure|log|docs|documentation|run|pipeline|ci)\b/giu;
+const HTTP_URL_PATTERN = /\bhttps?:\/\/[^\s<>()]+/iu;
+
+interface TextSpan {
+	start: number;
+	end: number;
+}
+
+function collectTextSpans(text: string, pattern: RegExp): TextSpan[] {
+	return Array.from(text.matchAll(pattern), (match) => ({
+		start: match.index,
+		end: match.index + match[0].length,
+	}));
+}
+
+function hasNearbyTerms(
+	text: string,
+	leftPattern: RegExp,
+	rightPattern: RegExp,
+	maxGap: number,
+): boolean {
+	const leftSpans = collectTextSpans(text, leftPattern);
+	const rightSpans = collectTextSpans(text, rightPattern);
+	return leftSpans.some((left) =>
+		rightSpans.some((right) => {
+			if (left.end <= right.start) return right.start - left.end <= maxGap;
+			if (right.end <= left.start) return left.start - right.end <= maxGap;
+			return true;
+		}),
+	);
+}
+
 function looksLikeCodingWorkRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (!normalized.trim()) {
@@ -9746,12 +9806,39 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 		return false;
 	}
 	const asksCodingWork =
-		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b[\s\S]{0,160}\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
+		// Preserve the pre-#18108 construction/edit contract exactly.
+		hasNearbyTerms(
 			normalized,
+			LEGACY_CODING_WORK_VERB_PATTERN,
+			LEGACY_CODING_ARTIFACT_PATTERN,
+			160,
 		) ||
-		/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/iu.test(
+		// Coding-native operations can safely use the expanded artifact set.
+		hasNearbyTerms(
 			normalized,
-		);
+			CODING_OPERATION_VERB_PATTERN,
+			EXPANDED_WORK_ARTIFACT_PATTERN,
+			160,
+		) ||
+		// Review-family verbs are common in health, finance, and personal work.
+		// Promote them without a URL only when paired with a code-specific noun.
+		hasNearbyTerms(
+			normalized,
+			REVIEW_WORK_VERB_PATTERN,
+			STRONG_CODE_ARTIFACT_PATTERN,
+			160,
+		) ||
+		// A URL plus a nearby review-family verb and work artifact is the
+		// deterministic work-order shape reported in #18108. Without the URL,
+		// generic nouns such as issue, test, log, or documentation remain planner
+		// decisions instead of being mislabeled as coding jobs.
+		(HTTP_URL_PATTERN.test(normalized) &&
+			hasNearbyTerms(
+				normalized,
+				REVIEW_WORK_VERB_PATTERN,
+				EXPANDED_WORK_ARTIFACT_PATTERN,
+				160,
+			));
 	return asksDelegation || asksCodingWork;
 }
 

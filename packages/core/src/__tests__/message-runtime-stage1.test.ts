@@ -9,6 +9,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { promoteSubactionsToActions } from "../actions/promote-subactions";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { ContextRegistry } from "../runtime/context-registry";
@@ -2078,6 +2079,92 @@ describe("runV5MessageRuntimeStage1", () => {
 					data: expect.objectContaining({ actionName: "TASKS" }),
 				}),
 			]);
+		}
+	});
+
+	it("hard-enforces an umbrella candidate when retrieval exposes only its promoted child", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "A repository review requires delegated coding work.",
+				contexts: ["general"],
+				candidateActionNames: ["TASKS"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "I can answer without acting.",
+				toolCalls: [
+					{
+						id: "premature-reply",
+						name: "REPLY",
+						args: { text: "I handled the available step." },
+					},
+				],
+			},
+			{
+				thought: "Delegate the review now.",
+				toolCalls: [
+					{
+						id: "spawn-reviewer",
+						name: "TASKS_SPAWN_AGENT",
+						args: { task: "Review PR 18106." },
+					},
+				],
+			},
+		]);
+		const parentHandler = vi.fn(async () => ({
+			success: true,
+			text: "Spawned the repository reviewer.",
+			continueChain: false,
+			data: { actionName: "TASKS" },
+		}));
+		const umbrella = {
+			name: "TASKS",
+			description: "Planner surface for coding task delegation.",
+			parameters: [
+				{
+					name: "action",
+					description: "Task operation",
+					required: false,
+					schema: { type: "string" as const, enum: ["spawn_agent"] },
+				},
+				{
+					name: "task",
+					description: "Coding task to perform",
+					required: false,
+					schema: { type: "string" as const },
+				},
+			],
+			examples: [],
+			validate: async () => true,
+			handler: parentHandler,
+		} as Action;
+		runtime.actions = [...promoteSubactionsToActions(umbrella)] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "review this PR https://github.com/elizaOS/eliza/pull/18106",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(parentHandler).toHaveBeenCalledTimes(1);
+		expect(
+			useModelCalls(runtime)
+				.slice(0, 3)
+				.map((call) => call[0]),
+		).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+		]);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).not.toBe(
+				"I handled the available step.",
+			);
 		}
 	});
 
