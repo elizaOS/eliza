@@ -46,6 +46,18 @@ import {
 export interface WalletPipelineInput {
   chain: SupportedChain;
   address: string;
+  // Only set for multi-address wallets (currently: Bitcoin xpub input) -
+  // the full derived-address set. When present, this is what funding/
+  // relationships/exposure match transfers against instead of `address`
+  // alone (all three accept string | readonly string[] - see
+  // analyzers/exposure.ts, funding.ts, relationships.ts), so a transfer
+  // landing on any derived address is correctly attributed to this
+  // wallet, not just the one primary address string. Every other
+  // consumer inside runWalletPipeline (display/evidence-record text, etc.)
+  // keeps using `address` alone - undefined here means single-address,
+  // not "unknown", same convention as WalletActivitySummary's
+  // addressesInSample.
+  addressSet?: readonly string[];
   balance: WalletBalance;
   tokenHoldings: WalletTokenHolding[];
   recentTransactions: WalletRecentTransaction[];

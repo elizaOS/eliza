@@ -42,6 +42,12 @@ import {
 export async function runWalletPipeline(
   input: WalletPipelineInput,
 ): WalletPipelineOutput {
+  // Used everywhere a transfer needs to be matched against "this wallet" -
+  // funding/relationships/exposure. Falls back to the single address for
+  // every chain except Bitcoin xpub input (see WalletPipelineInput's
+  // addressSet doc comment).
+  const matchAddresses = input.addressSet ?? input.address;
+
   const activity = analyzeWalletActivity(
     input.recentTransactions,
   );
@@ -53,7 +59,7 @@ export async function runWalletPipeline(
 
   const funding = analyzeWalletFunding(
     input.chain,
-    input.address,
+    matchAddresses,
     input.firstParsedTransaction,
     input.balance.nativeSymbol,
   );
@@ -104,13 +110,13 @@ export async function runWalletPipeline(
 
   const relationships = analyzeWalletRelationships(
     funding,
-    input.address,
+    matchAddresses,
     input.normalizedRecentParsedTransactions,
     input.chain,
   );
 
   const exposure = analyzeWalletExposure(
-    input.address,
+    matchAddresses,
     funding,
     input.chain,
     relationships.relationships,
