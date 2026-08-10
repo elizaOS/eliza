@@ -1335,12 +1335,12 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         url,
       );
       if (workspace.mode === "web") {
-        beginBrowserWalletFrameNavigation(selectedTabId, tab.url);
         // React won't re-navigate an existing iframe when only the src
         // attribute changes (same key = same DOM element). Set the src
         // directly via the ref in embedded web mode only.
         const iframe = iframeRefs.current.get(selectedTabId);
         if (iframe && iframe.src !== tab.url) {
+          beginBrowserWalletFrameNavigation(selectedTabId, tab.url);
           armBrowserWorkspaceIframeFocusReturn(iframe, {
             navigationUrl: tab.url,
           });
