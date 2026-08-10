@@ -189,6 +189,13 @@ app.post("/mint", async (c) => {
     if (!claims) {
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
     }
+    // QA sessions have their own versioned code namespace. Letting one enter
+    // the legacy `esso_` bridge would leave a pending code that an older
+    // deployment could consume with the ordinary Steward signer after a
+    // rollback, stripping the continuous source-binding checks.
+    if (claims.stagingSessionBinding) {
+      return c.json(errorBody("Invalid token", "invalid_token"), 401);
+    }
 
     if (await isBlockedBySsoBridgeLogout(claims.userId, claims.issuedAt)) {
       // The user explicitly logged out after this token was issued: minting

@@ -8,6 +8,7 @@
 import * as jose from "jose";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { STAGING_SESSION_TOKEN_TYP } from "./staging-session-binding";
 
 export interface ServiceJwtPayload {
   userId: string;
@@ -44,9 +45,19 @@ export async function verifyServiceJwt(
   if (!token) return null;
 
   try {
-    const { payload } = await jose.jwtVerify(token, secret, {
+    const { payload, protectedHeader } = await jose.jwtVerify(token, secret, {
       algorithms: ["HS256"],
     });
+
+    // A QA browser session must never acquire service-account authority, even
+    // if an operator accidentally configures both token classes with the same
+    // HMAC secret. Compat routes try this verifier before ordinary auth and
+    // service identities bypass user credit/quota checks, so the token class is
+    // an unconditional boundary in addition to the deployment-time key check.
+    if (protectedHeader.typ === STAGING_SESSION_TOKEN_TYP) {
+      logger.warn("[service-jwt] Rejected staging QA session token class");
+      return null;
+    }
 
     const userId = payload.userId as string | undefined;
     if (!userId) {

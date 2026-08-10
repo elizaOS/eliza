@@ -269,6 +269,18 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STEWARD_REQUEST_SIGNING_SECRET     HMAC secret for signed Steward mutating requests
 #   STEWARD_REQUEST_SIGNING_SECRETS    Comma-separated Steward HMAC secrets; first is used for signing
 #   STEWARD_REQUEST_SIGNING_KEY_ID     Optional Steward tenant signing-key id
+#   STAGING_SESSION_EXCHANGE_ENABLED   Staging-only QA session bridge kill switch
+#   STAGING_SESSION_EXCHANGE_VERSION   Exact bridge/runtime contract version (v1)
+#   STAGING_SESSION_EXCHANGE_SIGNING_SECRET
+#                                      Dedicated QA-token HS256 key (never a Steward key)
+#   STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID
+#                                      Dedicated protected-header kid (staging-qa-v1-*)
+#   STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS
+#                                      Exact allowlisted source API-key UUIDs
+#   STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS
+#                                      Exact allowlisted Cloud user UUIDs
+#   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS
+#                                      Exact allowlisted Cloud organization UUIDs
 #   STRIPE_SECRET_KEY                  Stripe billing
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing (main billing endpoint)
 #   STRIPE_CONNECT_WEBHOOK_SECRET      Stripe Connect endpoint webhook signing (payouts; distinct secret — the Connect payout webhook fail-closes without it)
