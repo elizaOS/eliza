@@ -3829,11 +3829,19 @@ async function handleIssueAction(
           };
         }
         const comment = await service.addComment(repo, issueNumber, body);
-        if (callback)
-          await callback({
-            text: `Added comment to issue #${issueNumber}: ${comment.url}`,
-          });
-        return { success: true, data: { comment } };
+        const commentedText = `Added comment to issue #${issueNumber}: ${comment.url}`;
+        if (callback) await callback({ text: commentedText });
+        // Settled like create/list/get: the callback is the sole delivery, so
+        // the planner does not append a second "done, commented" bubble
+        // (live double-message 2026-08-10, same class as the create paths).
+        return {
+          success: true,
+          text: commentedText,
+          userFacingText: commentedText,
+          verifiedUserFacing: true,
+          turnComplete: true,
+          data: { comment },
+        };
       }
 
       case "close": {
