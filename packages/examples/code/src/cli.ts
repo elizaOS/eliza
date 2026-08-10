@@ -335,13 +335,25 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
     const agentModule = await import("./lib/agent.js");
     shutdownAgent = agentModule.shutdownAgent;
     const { initializeAgent } = agentModule;
-    runtime = await initializeAgent();
-
-    const agentClient = getAgentClient();
-    agentClient.setRuntime(runtime);
 
     const session = (await loadSession()) ?? createDefaultSessionState();
     const room = getCurrentRoomFromSession(session);
+
+    // Same owner/tooling bootstrap the ACP server does (see acp.ts): without
+    // it the CLI user resolves to GUEST and every OWNER/ADMIN-gated coding
+    // tool (FILE, SHELL, …) is withheld from the planner — the agent chats
+    // fine but can never act (live 2026-08-10: "I handled the available
+    // step." loops). The env seeds boot-time reads; the runtime setting is
+    // what getConfiguredOwnerEntityIds actually resolves per turn.
+    process.env.ELIZA_ADMIN_ENTITY_ID ??= session.identity.userId;
+    process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE ??= "1";
+    runtime = await initializeAgent();
+    (
+      runtime as unknown as { setSetting?: (k: string, v: unknown) => void }
+    ).setSetting?.("ELIZA_ADMIN_ENTITY_ID", session.identity.userId);
+
+    const agentClient = getAgentClient();
+    agentClient.setRuntime(runtime);
 
     appendSessionMessage(session, room, "user", message);
 
