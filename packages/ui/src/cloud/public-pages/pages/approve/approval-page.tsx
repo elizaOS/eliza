@@ -13,7 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Button } from "../../../../components/ui/button";
 import { Textarea } from "../../../../components/ui/textarea";
 import { ApiError, api } from "../../../lib/api-client";
@@ -213,16 +213,27 @@ export default function ApprovalPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-bg text-txt">
-        <Loader2 className="h-6 w-6 animate-spin text-muted" />
-      </div>
+      <main
+        className="flex min-h-[100dvh] items-center justify-center bg-bg text-txt"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <div className="flex min-h-[10rem] items-center gap-3 text-muted">
+          <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+          <p>
+            {t("cloud.approval.loading", {
+              defaultValue: "Loading approval request…",
+            })}
+          </p>
+        </div>
+      </main>
     );
   }
 
   if (loadError || !request) {
     return (
-      <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col items-center justify-center gap-3 p-6 text-center text-txt">
-        <AlertCircle className="h-8 w-8 text-destructive" />
+      <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col items-center justify-center gap-3 p-6 text-center text-txt">
+        <AlertCircle className="h-8 w-8 text-destructive" aria-hidden="true" />
         <h1 className="text-lg font-semibold">
           {t("cloud.approval.couldNotLoad", {
             defaultValue: "Could not load approval request",
@@ -234,7 +245,15 @@ export default function ApprovalPage() {
               defaultValue: "Unknown error",
             })}
         </p>
-      </div>
+        <Link
+          className="mt-3 text-sm text-muted transition-colors hover:text-txt focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          to="/"
+        >
+          {t("cloud.approval.returnHome", {
+            defaultValue: "Return to Eliza Cloud",
+          })}
+        </Link>
+      </main>
     );
   }
 
@@ -243,7 +262,7 @@ export default function ApprovalPage() {
   const expiresAt = formatTimestamp(request.expiresAt);
 
   return (
-    <div className="mx-auto max-w-xl p-6 text-txt">
+    <main className="mx-auto max-w-xl p-6 text-txt">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-6 w-6 text-accent" />
         <h1 className="text-xl font-semibold">
@@ -381,6 +400,6 @@ export default function ApprovalPage() {
           </div>
         </div>
       ) : null}
-    </div>
+    </main>
   );
 }

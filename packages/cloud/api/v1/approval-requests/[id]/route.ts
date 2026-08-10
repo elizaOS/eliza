@@ -23,6 +23,7 @@ import {
 } from "@/lib/services/approval-requests";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parseApprovalRequestIdParam } from "../approval-request-id";
 
 let singleton: ApprovalRequestsService | null = null;
 function getApprovalRequestsService(): ApprovalRequestsService {
@@ -38,13 +39,11 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {
   try {
-    const id = c.req.param("id");
-    if (!id) {
-      return c.json(
-        { success: false, error: "Missing approval request id" },
-        400,
-      );
+    const parsedId = parseApprovalRequestIdParam(c.req.param("id"));
+    if (!parsedId.ok) {
+      return c.json({ success: false, error: parsedId.error }, 400);
     }
+    const { id } = parsedId;
 
     const isPublic = c.req.query("public") === "1";
     const service = getApprovalRequestsService();
@@ -74,8 +73,20 @@ app.get("/", async (c) => {
 
     return c.json({ success: true, approvalRequest: row });
   } catch (error) {
+    // Prefer message/code over `{ name: "Error" }` — Worker tails previously
+    // hid the Postgres column-missing cause behind an empty Error shell.
     logger.error("[ApprovalRequests API] Failed to get approval request", {
-      error,
+      error:
+        error instanceof Error
+          ? {
+              name: error.name,
+              message: error.message,
+              code:
+                "code" in error && typeof error.code === "string"
+                  ? error.code
+                  : undefined,
+            }
+          : { message: String(error) },
     });
     return failureResponse(c, error);
   }

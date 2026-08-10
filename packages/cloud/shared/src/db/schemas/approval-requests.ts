@@ -61,8 +61,13 @@ export interface ApprovalChallengePayload {
   context?: Record<string, unknown>;
 }
 
+/**
+ * Physical table names are `cloud_approval_*` so they never collide with
+ * plugin-sql's owner-approval queue, which already owns `approval_requests`
+ * in the shared production catalog (#18074).
+ */
 export const approvalRequests = pgTable(
-  "approval_requests",
+  "cloud_approval_requests",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     organization_id: uuid("organization_id")
@@ -93,31 +98,31 @@ export const approvalRequests = pgTable(
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   },
   (table) => ({
-    org_created_idx: index("idx_approval_requests_org_created").on(
+    org_created_idx: index("idx_cloud_approval_requests_org_created").on(
       table.organization_id,
       table.created_at,
     ),
-    status_expires_idx: index("idx_approval_requests_status_expires").on(
+    status_expires_idx: index("idx_cloud_approval_requests_status_expires").on(
       table.status,
       table.expires_at,
     ),
-    agent_idx: index("idx_approval_requests_agent").on(table.agent_id),
-    expected_signer_idx: index("idx_approval_requests_expected_signer").on(
+    agent_idx: index("idx_cloud_approval_requests_agent").on(table.agent_id),
+    expected_signer_idx: index("idx_cloud_approval_requests_expected_signer").on(
       table.expected_signer_identity_id,
     ),
     challenge_kind_check: check(
-      "approval_requests_challenge_kind_check",
+      "cloud_approval_requests_challenge_kind_check",
       sql`${table.challenge_kind} IN ('login','signature','generic')`,
     ),
     status_check: check(
-      "approval_requests_status_check",
+      "cloud_approval_requests_status_check",
       sql`${table.status} IN ('pending','delivered','approved','denied','expired','canceled')`,
     ),
   }),
 );
 
 export const approvalRequestEvents = pgTable(
-  "approval_request_events",
+  "cloud_approval_request_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     approval_request_id: uuid("approval_request_id")
@@ -131,12 +136,12 @@ export const approvalRequestEvents = pgTable(
     occurred_at: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    request_occurred_idx: index("idx_approval_request_events_request").on(
+    request_occurred_idx: index("idx_cloud_approval_request_events_request").on(
       table.approval_request_id,
       table.occurred_at,
     ),
     event_name_check: check(
-      "approval_request_events_event_name_check",
+      "cloud_approval_request_events_event_name_check",
       sql`${table.event_name} IN (
         'approval.created','approval.delivered','approval.viewed',
         'approval.approved','approval.denied','approval.canceled','approval.expired',

@@ -23,6 +23,7 @@ import {
 } from "@/lib/services/approval-requests";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parseApprovalRequestIdParam } from "../../approval-request-id";
 
 const CancelSchema = z.object({
   reason: z.string().max(500).optional(),
@@ -43,13 +44,11 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const id = c.req.param("id");
-    if (!id) {
-      return c.json(
-        { success: false, error: "Missing approval request id" },
-        400,
-      );
+    const parsedId = parseApprovalRequestIdParam(c.req.param("id"));
+    if (!parsedId.ok) {
+      return c.json({ success: false, error: parsedId.error }, 400);
     }
+    const { id } = parsedId;
 
     const body = await c.req.json().catch(() => ({}));
     const parsed = CancelSchema.safeParse(body ?? {});
