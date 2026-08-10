@@ -6,10 +6,7 @@
  * network.
  */
 import { describe, expect, it, vi } from "vitest";
-import {
-  createIssueWithBestEffortLabels,
-  issueFailureReply,
-} from "./tasks";
+import { createIssueWithBestEffortLabels, issueFailureReply } from "./tasks";
 
 const ISSUE = {
   number: 7,
