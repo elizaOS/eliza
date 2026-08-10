@@ -163,6 +163,7 @@ describe("Cloud pairing route", () => {
       message: "Paired successfully",
       apiKey: "agent-api-token",
       agentName: "Native agent",
+      agentId: AGENT_ID,
     });
   });
 

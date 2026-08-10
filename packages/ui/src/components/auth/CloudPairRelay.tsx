@@ -2,6 +2,10 @@
  * Exchanges one-time Cloud pairing links, persists the resulting agent
  * credential, and renders the browser/native recovery surfaces.
  */
+import {
+  CLOUD_PAIR_LEGACY_STORAGE_KEY,
+  cloudPairTokenKeyForAgent,
+} from "@elizaos/shared/contracts";
 import { useEffect, useState } from "react";
 import { getBootConfig, setBootConfig } from "../../config/boot-config";
 import {
@@ -10,18 +14,10 @@ import {
 } from "../../utils/cloud-agent-base";
 import { setElizaApiToken } from "../../utils/eliza-globals";
 
-export const CLOUD_PAIR_SESSION_STORAGE_KEY = "eliza:cloud-pair:api-token";
-export const CLOUD_PAIR_LOCAL_STORAGE_KEY = CLOUD_PAIR_SESSION_STORAGE_KEY;
+export { cloudPairTokenKeyForAgent };
 
-/**
- * Per-agent storage key for the durable cloud-pair credential (#17579). The
- * key embeds the owning agent id so a token persisted for agent A can never be
- * read, adopted, or mirrored by a boot targeting agent B — the boot adopter
- * only ever looks up the key for the agent it resolved from the origin.
- */
-export function cloudPairTokenKeyForAgent(agentId: string): string {
-  return `eliza:cloud-pair:api-token:${agentId}`;
-}
+export const CLOUD_PAIR_SESSION_STORAGE_KEY = CLOUD_PAIR_LEGACY_STORAGE_KEY;
+export const CLOUD_PAIR_LOCAL_STORAGE_KEY = CLOUD_PAIR_SESSION_STORAGE_KEY;
 
 interface PairExchangeResponse {
   apiKey?: unknown;

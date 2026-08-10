@@ -1,5 +1,12 @@
+/** Exercises the standalone Cloud-pair relay and its executable browser handoff. */
+
 import http from "node:http";
 import { Socket } from "node:net";
+import { runInNewContext } from "node:vm";
+import {
+  CLOUD_PAIR_LEGACY_STORAGE_KEY,
+  cloudPairTokenKeyForAgent,
+} from "@elizaos/shared/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetCloudPairRateLimitForTests,
@@ -19,6 +26,34 @@ interface FakeRes {
   body(): string;
   status(): number;
   headers(): Record<string, string>;
+}
+
+const AGENT_ID = "55555555-5555-4555-8555-555555555555";
+
+function executeHandoffHtml(html: string) {
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  if (!script) throw new Error("Cloud-pair handoff script was not rendered.");
+
+  const sessionValues = new Map<string, string>();
+  const localValues = new Map<string, string>();
+  const storage = (values: Map<string, string>) => ({
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+  });
+  const replace = vi.fn();
+  const windowObject: Record<PropertyKey, unknown> = {
+    sessionStorage: storage(sessionValues),
+    localStorage: storage(localValues),
+    location: { replace },
+  };
+  runInNewContext(script, {
+    window: windowObject,
+    document: { querySelector: () => ({ textContent: "" }) },
+    console: { error: vi.fn() },
+  });
+
+  return { localValues, replace, sessionValues, windowObject };
 }
 
 function fakeRes(): FakeRes {
@@ -96,14 +131,16 @@ describe("handleStandaloneCloudPairRoute", () => {
   });
 
   it("exchanges a one-time token and serves the session handoff HTML", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({ apiKey: "agent_secret_value", agentName: "Nova" }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          apiKey: "agent_secret_value",
+          agentId: AGENT_ID,
+          agentName: "Nova",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const harness = fakeRes();
@@ -132,13 +169,87 @@ describe("handleStandaloneCloudPairRoute", () => {
         body: JSON.stringify({ token: "pair-token" }),
       }),
     );
-    expect(harness.body()).toContain("persist(window.sessionStorage)");
-    expect(harness.body()).toContain("persist(window.localStorage)");
-    expect(harness.body()).toContain(
-      'throw new Error("No browser storage accepted the paired token.")',
+    const handoff = executeHandoffHtml(harness.body());
+    const scopedKey = cloudPairTokenKeyForAgent(AGENT_ID);
+    expect(handoff.sessionValues.get(scopedKey)).toBe("agent_secret_value");
+    expect(handoff.localValues.get(scopedKey)).toBe("agent_secret_value");
+    expect(handoff.sessionValues.has(CLOUD_PAIR_LEGACY_STORAGE_KEY)).toBe(
+      false,
     );
-    expect(harness.body()).toContain("apiToken: key");
-    expect(harness.body()).toContain('window.location.replace("/")');
+    expect(handoff.localValues.has(CLOUD_PAIR_LEGACY_STORAGE_KEY)).toBe(false);
+    expect(handoff.windowObject.__ELIZAOS_APP_BOOT_CONFIG__).toEqual({
+      apiToken: "agent_secret_value",
+    });
+    expect(handoff.windowObject.__ELIZA_APP_BOOT_CONFIG__).toEqual({
+      apiToken: "agent_secret_value",
+    });
+    const bootSlot = Object.getOwnPropertySymbols(handoff.windowObject).find(
+      (symbol) => symbol.description === "elizaos.app.boot-config",
+    );
+    expect(bootSlot).toBeDefined();
+    expect(bootSlot ? handoff.windowObject[bootSlot] : undefined).toEqual({
+      current: { apiToken: "agent_secret_value" },
+    });
+    expect(handoff.replace).toHaveBeenCalledWith("/");
+  });
+
+  it("fails visibly when the Cloud response omits or corrupts agent ownership", async () => {
+    for (const body of [
+      { apiKey: "agent_secret_value", agentName: "Nova" },
+      {
+        apiKey: "agent_secret_value",
+        agentId: "not-an-agent",
+        agentName: "Nova",
+      },
+    ]) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        ),
+      );
+
+      const harness = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+        harness.res,
+      );
+
+      expect(harness.status()).toBe(502);
+      expect(harness.body()).toContain("Sign-in failed");
+      expect(harness.body()).not.toContain('window.location.replace("/")');
+    }
+  });
+
+  it("escapes script-closing content while preserving the exact bearer", async () => {
+    const apiKey = `agent_a"</script><script>alert(1)</script>`;
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ apiKey, agentId: AGENT_ID, agentName: "Nova" }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        ),
+    );
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+      harness.res,
+    );
+
+    expect(harness.status()).toBe(200);
+    expect(harness.body().match(/<\/script>/g)).toHaveLength(1);
+    const handoff = executeHandoffHtml(harness.body());
+    expect(handoff.localValues.get(cloudPairTokenKeyForAgent(AGENT_ID))).toBe(
+      apiKey,
+    );
   });
 
   it("shows a no-store error page when the token is missing", async () => {

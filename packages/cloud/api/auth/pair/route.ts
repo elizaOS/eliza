@@ -6,6 +6,10 @@
  * the agent's API credential.
  */
 
+import {
+  type CloudPairExchangeResponse,
+  isCloudPairAgentId,
+} from "@elizaos/shared/contracts";
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { AuthenticationError, errorToResponse } from "@/lib/api/errors";
@@ -38,12 +42,6 @@ function nativePairingError(
 
 function isPlausiblePairingToken(token: string): boolean {
   return /^[A-Za-z0-9_-]{43}$/.test(token);
-}
-
-function isPlausibleAgentId(agentId: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    agentId,
-  );
 }
 
 function normalizeHttpOrigin(value: string): string | null {
@@ -101,15 +99,15 @@ app.post("/", async (c) => {
     const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
     const apiKey = envVars.ELIZA_API_TOKEN || null;
 
-    return c.json(
-      {
-        message: "Paired successfully",
-        apiKey,
-        agentName: sandbox.agent_name ?? "Agent",
-      },
-      200,
-      { "Cache-Control": "no-store, no-cache, must-revalidate" },
-    );
+    const response: CloudPairExchangeResponse = {
+      message: "Paired successfully",
+      apiKey,
+      agentName: sandbox.agent_name ?? "Agent",
+      agentId: pairingToken.agentId,
+    };
+    return c.json(response, 200, {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+    });
   } catch (err) {
     // error-policy:J1 public route boundary returns a generic failure while
     // retaining the dependency error in structured server logs.
@@ -184,7 +182,7 @@ app.post("/native", async (c) => {
 
     if (
       !isPlausiblePairingToken(token) ||
-      !isPlausibleAgentId(agentId) ||
+      !isCloudPairAgentId(agentId) ||
       !expectedOrigin
     ) {
       return c.json(

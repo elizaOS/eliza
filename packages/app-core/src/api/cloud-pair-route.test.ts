@@ -1,14 +1,18 @@
 /**
  * Exercises `handleCloudPairRoute` — the `/pair` HTTP handler that redeems a
- * cloud pairing token against the cloud API and returns an HTML handoff page
- * that stores the returned apiKey in durable localStorage plus sessionStorage.
- * Drives real
- * http.IncomingMessage/ServerResponse fakes and stubs `globalThis.fetch` to
+ * cloud pairing token against the cloud API and returns an executable HTML
+ * handoff page that stores the returned apiKey in agent-scoped browser storage.
+ * Drives real http.IncomingMessage/ServerResponse fakes and stubs `fetch` to
  * simulate the cloud API; covers the missing-token, expired, unreachable, no-key,
  * XSS-escaping, origin-forwarding, and per-IP rate-limit branches.
  */
 import * as http from "node:http";
 import { Socket } from "node:net";
+import { runInNewContext } from "node:vm";
+import {
+  CLOUD_PAIR_LEGACY_STORAGE_KEY,
+  cloudPairTokenKeyForAgent,
+} from "@elizaos/shared/contracts";
 import {
   afterEach,
   beforeAll,
@@ -35,11 +39,39 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 
 let handleCloudPairRoute: typeof import("./cloud-pair-route").handleCloudPairRoute;
 
+const AGENT_ID = "55555555-5555-4555-8555-555555555555";
+
 interface FakeRes {
   res: http.ServerResponse;
   body(): string;
   status(): number;
   headers(): Record<string, string>;
+}
+
+function executeHandoffHtml(html: string) {
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  if (!script) throw new Error("Cloud-pair handoff script was not rendered.");
+
+  const sessionValues = new Map<string, string>();
+  const localValues = new Map<string, string>();
+  const storage = (values: Map<string, string>) => ({
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+  });
+  const replace = vi.fn();
+  const windowObject: Record<PropertyKey, unknown> = {
+    sessionStorage: storage(sessionValues),
+    localStorage: storage(localValues),
+    location: { replace },
+  };
+  runInNewContext(script, {
+    window: windowObject,
+    document: { querySelector: () => ({ textContent: "" }) },
+    console: { error: vi.fn() },
+  });
+
+  return { localValues, replace, sessionValues, windowObject };
 }
 
 function fakeRes(): FakeRes {
@@ -176,19 +208,26 @@ describe("handleCloudPairRoute", () => {
     expect(harness.body()).toContain("Eliza Cloud is unreachable");
   });
 
-  it("renders 502 when cloud-api returns 2xx but no apiKey", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ apiKey: null }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    ) as unknown as typeof globalThis.fetch;
+  it("renders 502 when cloud-api omits the bearer or authoritative agent id", async () => {
+    for (const body of [
+      { apiKey: null, agentId: AGENT_ID },
+      { apiKey: "agent_secret_value" },
+      { apiKey: "agent_secret_value", agentId: "not-an-agent" },
+    ]) {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ) as unknown as typeof globalThis.fetch;
 
-    const harness = fakeRes();
-    const req = fakeReq({ pathname: "/pair", search: "?token=abc" });
-    await handleCloudPairRoute(req, harness.res);
-    expect(harness.status()).toBe(502);
-    expect(harness.body()).toContain("Sign-in failed");
+      const harness = fakeRes();
+      const req = fakeReq({ pathname: "/pair", search: "?token=abc" });
+      await handleCloudPairRoute(req, harness.res);
+      expect(harness.status()).toBe(502);
+      expect(harness.body()).toContain("Sign-in failed");
+      expect(harness.body()).not.toContain('window.location.replace("/")');
+    }
   });
 
   it("forwards origin to cloud-api derived from x-forwarded headers", async () => {
@@ -197,10 +236,17 @@ describe("handleCloudPairRoute", () => {
       seen.url = url;
       seen.init = init;
       return Promise.resolve(
-        new Response(JSON.stringify({ apiKey: "agent_abc", agentName: "n" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            apiKey: "agent_abc",
+            agentId: AGENT_ID,
+            agentName: "n",
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
       );
     }) as unknown as typeof globalThis.fetch;
 
@@ -218,44 +264,61 @@ describe("handleCloudPairRoute", () => {
   });
 
   it("renders happy-path HTML with the apiKey stored durably and pinned on window globals", async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({ apiKey: "agent_secret_value", agentName: "Nova" }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-      ) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          apiKey: "agent_secret_value",
+          agentId: AGENT_ID,
+          agentName: "Nova",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    ) as unknown as typeof globalThis.fetch;
 
     const harness = fakeRes();
     const req = fakeReq({ pathname: "/pair", search: "?token=abc" });
     await handleCloudPairRoute(req, harness.res);
     expect(harness.status()).toBe(200);
     const body = harness.body();
-    expect(body).toContain('"agent_secret_value"');
-    expect(body).toContain("persist(window.sessionStorage)");
-    expect(body).toContain("persist(window.localStorage)");
-    expect(body).toContain(
-      'throw new Error("No browser storage accepted the paired token.")',
+    const handoff = executeHandoffHtml(body);
+    const scopedKey = cloudPairTokenKeyForAgent(AGENT_ID);
+    expect(handoff.sessionValues.get(scopedKey)).toBe("agent_secret_value");
+    expect(handoff.localValues.get(scopedKey)).toBe("agent_secret_value");
+    expect(handoff.sessionValues.has(CLOUD_PAIR_LEGACY_STORAGE_KEY)).toBe(
+      false,
     );
-    expect(body).toContain('Symbol.for("elizaos.app.boot-config")');
-    expect(body).toContain("apiToken: key");
+    expect(handoff.localValues.has(CLOUD_PAIR_LEGACY_STORAGE_KEY)).toBe(false);
+    expect(handoff.windowObject.__ELIZAOS_APP_BOOT_CONFIG__).toEqual({
+      apiToken: "agent_secret_value",
+    });
+    expect(handoff.windowObject.__ELIZA_APP_BOOT_CONFIG__).toEqual({
+      apiToken: "agent_secret_value",
+    });
+    const bootSlot = Object.getOwnPropertySymbols(handoff.windowObject).find(
+      (symbol) => symbol.description === "elizaos.app.boot-config",
+    );
+    expect(bootSlot).toBeDefined();
+    expect(bootSlot ? handoff.windowObject[bootSlot] : undefined).toEqual({
+      current: { apiToken: "agent_secret_value" },
+    });
+    expect(handoff.replace).toHaveBeenCalledWith("/");
     expect(body).not.toContain("__ELIZAOS_API_TOKEN__");
     expect(body).not.toContain("__ELIZA_API_TOKEN__");
-    expect(body).toContain('window.location.replace("/")');
     expect(harness.headers()["cache-control"]).toContain("no-store");
     expect(harness.headers()["x-frame-options"]).toBe("DENY");
   });
 
   it("emits a fail-visible handoff branch (console.error + message, guarded redirect) rather than a silent redirect on failure", async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({ apiKey: "agent_secret_value", agentName: "Nova" }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-      ) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          apiKey: "agent_secret_value",
+          agentId: AGENT_ID,
+          agentName: "Nova",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    ) as unknown as typeof globalThis.fetch;
 
     const harness = fakeRes();
     const req = fakeReq({ pathname: "/pair", search: "?token=abc" });
@@ -279,10 +342,17 @@ describe("handleCloudPairRoute", () => {
   it("safely escapes an apiKey containing </script>", async () => {
     const evilToken = `agent_a"</script><script>alert(1)</script>`;
     globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ apiKey: evilToken, agentName: "x" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({
+          apiKey: evilToken,
+          agentId: AGENT_ID,
+          agentName: "x",
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
     ) as unknown as typeof globalThis.fetch;
 
     const harness = fakeRes();
@@ -299,6 +369,10 @@ describe("handleCloudPairRoute", () => {
     // outside of the single legitimate closer.
     const bodyWithoutCloser = body.replace(/<\/script>/, "");
     expect(bodyWithoutCloser).not.toMatch(/<\/script>/);
+    const handoff = executeHandoffHtml(body);
+    expect(handoff.localValues.get(cloudPairTokenKeyForAgent(AGENT_ID))).toBe(
+      evilToken,
+    );
   });
 
   it("rate-limits the same IP after the bucket fills", async () => {
@@ -307,10 +381,17 @@ describe("handleCloudPairRoute", () => {
     // would 502 because the parsed body is null.
     globalThis.fetch = vi.fn().mockImplementation(() =>
       Promise.resolve(
-        new Response(JSON.stringify({ apiKey: "agent_k", agentName: "n" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            apiKey: "agent_k",
+            agentId: AGENT_ID,
+            agentName: "n",
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
       ),
     ) as unknown as typeof globalThis.fetch;
 
