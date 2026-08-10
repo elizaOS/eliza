@@ -35,9 +35,8 @@ export interface GoogleOAuthProviderMetadata {
   authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth";
   tokenEndpoint: "https://oauth2.googleapis.com/token";
   revokeEndpoint: "https://oauth2.googleapis.com/revoke";
-  clientIdSetting: "GOOGLE_CLIENT_ID";
-  clientSecretSetting: "GOOGLE_CLIENT_SECRET";
-  redirectUriSetting: "GOOGLE_REDIRECT_URI";
+  clientIdVaultKey: "GOOGLE_CLIENT_ID";
+  clientSecretVaultKey: "GOOGLE_CLIENT_SECRET";
   responseType: "code";
   accessType: "offline";
   prompt: "consent";

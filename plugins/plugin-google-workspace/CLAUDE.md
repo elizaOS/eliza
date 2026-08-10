@@ -74,7 +74,7 @@ The canonical endpoint/tool/scope manifest lives in `packages/shared/src/contrac
 
 ## Configuration
 
-`GOOGLE_CLIENT_ID` and `GOOGLE_REDIRECT_URI` are non-secret OAuth app configuration. `GOOGLE_CLIENT_SECRET` is resolved from the runtime secrets service; any environment value is compatibility input that must be migrated into the vault rather than copied into account metadata.
+`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are resolved from the runtime secrets service. The callback URI is derived by the control-plane OAuth start route and preserved on the flow; it is never an environment prerequisite. Any environment value is compatibility input that must be explicitly migrated into the vault rather than copied into account metadata.
 Set `GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV=1` only for that one-time compatibility migration; normal operation fails closed when the vault entry is absent.
 
 The separate Chat connector resolves `GOOGLE_CHAT_SERVICE_ACCOUNT`, `GOOGLE_CHAT_SERVICE_ACCOUNT_FILE`, or `GOOGLE_APPLICATION_CREDENTIALS`, plus its webhook audience and space settings. Keep that path isolated from personal OAuth.

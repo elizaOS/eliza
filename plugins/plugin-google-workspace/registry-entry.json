@@ -22,11 +22,11 @@
   ],
   "config": {
     "GOOGLE_CLIENT_ID": {
-      "type": "string",
+      "type": "secret",
       "required": false,
-      "sensitive": false,
+      "sensitive": true,
       "label": "OAuth Client ID",
-      "help": "OAuth client ID for the direct Google authorization-code flow.",
+      "help": "OAuth client ID stored with the app registration in the vault.",
       "advanced": true
     },
     "GOOGLE_CLIENT_SECRET": {
@@ -35,14 +35,6 @@
       "sensitive": true,
       "label": "OAuth Client Secret",
       "help": "Bootstrap value imported into the secrets vault before OAuth use. It is never stored on a connector account.",
-      "advanced": true
-    },
-    "GOOGLE_REDIRECT_URI": {
-      "type": "url",
-      "required": false,
-      "sensitive": false,
-      "label": "Redirect URI",
-      "help": "OAuth2 callback URI registered with Google. A loopback URL is recommended for a local agent host.",
       "advanced": true
     }
   },
@@ -67,8 +59,7 @@
     "kind": "oauth",
     "credentialKeys": [
       "GOOGLE_CLIENT_ID",
-      "GOOGLE_CLIENT_SECRET",
-      "GOOGLE_REDIRECT_URI"
+      "GOOGLE_CLIENT_SECRET"
     ]
   },
   "accounts": {
@@ -77,8 +68,7 @@
       "authKind": "oauth",
       "credentialKeys": [
         "GOOGLE_CLIENT_ID",
-        "GOOGLE_CLIENT_SECRET",
-        "GOOGLE_REDIRECT_URI"
+        "GOOGLE_CLIENT_SECRET"
       ],
       "notes": "One direct OAuth connection to the user's personal Google account. Agent access is controlled by bindings and selected MCP products."
     },

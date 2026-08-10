@@ -12,14 +12,26 @@ import {
 } from "./connector-account-provider.js";
 
 function oauthRuntime(): IAgentRuntime {
-  const settings: Record<string, string> = {
-    GOOGLE_CLIENT_ID: "google-client-id",
-    GOOGLE_REDIRECT_URI: "https://example.test/oauth/google/callback",
-  };
+  const vault = new Map([
+    ["GOOGLE_CLIENT_ID", "google-client-id"],
+    ["GOOGLE_CLIENT_SECRET", "google-client-secret"],
+  ]);
   return {
-    getSetting: (key: string) => settings[key],
+    getSetting: () => undefined,
     getService: (name: string) =>
-      name === "SECRETS" ? { getGlobal: async () => "google-client-secret" } : null,
+      name === "SECRETS" ? { getGlobal: async (key: string) => vault.get(key) ?? null } : null,
+  } as unknown as IAgentRuntime;
+}
+
+function vaultOnlyOAuthRuntime(): IAgentRuntime {
+  const vault = new Map([
+    ["GOOGLE_CLIENT_ID", "vault-google-client-id"],
+    ["GOOGLE_CLIENT_SECRET", "vault-google-client-secret"],
+  ]);
+  return {
+    getSetting: () => undefined,
+    getService: (name: string) =>
+      name === "SECRETS" ? { getGlobal: async (key: string) => vault.get(key) ?? null } : null,
   } as unknown as IAgentRuntime;
 }
 
@@ -59,6 +71,7 @@ describe("Google connector OAuth selection", () => {
         {
           provider: "google",
           flow: pendingFlow(),
+          redirectUri: "https://example.test/oauth/google/callback",
           scopes: [legacyScope],
         },
         {} as ConnectorAccountManager
@@ -75,6 +88,25 @@ describe("Google connector OAuth selection", () => {
       expect(requestedScopes).not.toContain(legacyScope);
     }
   );
+
+  it("starts OAuth from vault credentials and the request-derived callback", async () => {
+    const provider = createGoogleConnectorAccountProvider(vaultOnlyOAuthRuntime());
+    const started = await provider.startOAuth?.(
+      {
+        provider: "google",
+        flow: pendingFlow(),
+        redirectUri: "http://localhost:31337/api/connectors/google/oauth/callback",
+        scopes: ["calendar.read"],
+      },
+      {} as ConnectorAccountManager
+    );
+    const url = new URL(started?.authUrl ?? "");
+
+    expect(url.searchParams.get("client_id")).toBe("vault-google-client-id");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "http://localhost:31337/api/connectors/google/oauth/callback"
+    );
+  });
 
   it("revokes with a form-encoded token and never places it in the URL", async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));

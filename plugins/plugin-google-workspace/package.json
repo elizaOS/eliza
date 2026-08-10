@@ -73,19 +73,13 @@
         "type": "string",
         "description": "Google OAuth client ID",
         "required": false,
-        "sensitive": false
+        "sensitive": true
       },
       "GOOGLE_CLIENT_SECRET": {
         "type": "string",
         "description": "Google OAuth client secret",
         "required": false,
         "sensitive": true
-      },
-      "GOOGLE_REDIRECT_URI": {
-        "type": "string",
-        "description": "Google OAuth redirect URI",
-        "required": false,
-        "sensitive": false
       },
       "GOOGLE_CHAT_SERVICE_ACCOUNT": {
         "type": "string",

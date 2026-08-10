@@ -33,7 +33,6 @@ import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 const GOOGLE_CLIENT_ID_SETTING = "GOOGLE_CLIENT_ID";
 const GOOGLE_CLIENT_SECRET_SETTING = "GOOGLE_CLIENT_SECRET";
-const GOOGLE_REDIRECT_URI_SETTING = "GOOGLE_REDIRECT_URI";
 
 // Read-side store resolution mirrors the write side exactly
 // (connector-credential-refs.ts): same service names, same precedence. A
@@ -179,7 +178,7 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
       (!clientConfig.clientId || !clientConfig.clientSecret)
     ) {
       throw new Error(
-        "Google OAuth refresh_token is available, but GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not configured for token refresh."
+        "Google OAuth refresh_token is available, but the OAuth client registration is not stored in the vault."
       );
     }
     const client = new OAuth2Client(
@@ -443,22 +442,32 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
       getGlobal?: (key: string) => Promise<string | null>;
       setGlobal?: (key: string, value: string) => Promise<boolean>;
     } | null;
+    let clientId = nonEmptyString(await secrets?.getGlobal?.(GOOGLE_CLIENT_ID_SETTING));
     let clientSecret = nonEmptyString(await secrets?.getGlobal?.(GOOGLE_CLIENT_SECRET_SETTING));
-    if (!clientSecret) {
-      const configured = readSetting(this.runtime, GOOGLE_CLIENT_SECRET_SETTING);
+    if (!clientId || !clientSecret) {
+      const configuredClientId = readSetting(this.runtime, GOOGLE_CLIENT_ID_SETTING);
+      const configuredSecret = readSetting(this.runtime, GOOGLE_CLIENT_SECRET_SETTING);
       const allowMigration =
         readSetting(this.runtime, "GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV") === "1";
-      if (configured && allowMigration && secrets?.setGlobal) {
-        const stored = await secrets.setGlobal(GOOGLE_CLIENT_SECRET_SETTING, configured);
-        if (stored) {
-          clientSecret = nonEmptyString(await secrets.getGlobal?.(GOOGLE_CLIENT_SECRET_SETTING));
+      if (allowMigration && secrets?.setGlobal) {
+        if (!clientId && configuredClientId) {
+          const stored = await secrets.setGlobal(GOOGLE_CLIENT_ID_SETTING, configuredClientId);
+          if (stored) {
+            clientId = nonEmptyString(await secrets.getGlobal?.(GOOGLE_CLIENT_ID_SETTING));
+          }
+        }
+        if (!clientSecret && configuredSecret) {
+          const stored = await secrets.setGlobal(GOOGLE_CLIENT_SECRET_SETTING, configuredSecret);
+          if (stored) {
+            clientSecret = nonEmptyString(await secrets.getGlobal?.(GOOGLE_CLIENT_SECRET_SETTING));
+          }
         }
       }
     }
     return {
-      clientId: this.clientId ?? readSetting(this.runtime, GOOGLE_CLIENT_ID_SETTING),
+      clientId: this.clientId ?? clientId,
       clientSecret,
-      redirectUri: this.redirectUri ?? readSetting(this.runtime, GOOGLE_REDIRECT_URI_SETTING),
+      redirectUri: this.redirectUri,
     };
   }
 

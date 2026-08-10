@@ -446,22 +446,20 @@ async function beginOAuthIntent(args: {
       },
     });
   } catch (cause) {
-    // error-policy:J1 Incomplete OAuth env (missing redirect URI, etc.) is an
-    // actionable configuration handoff — not a generic auth-start failure.
+    // error-policy:J1 A missing vaulted OAuth app registration is an actionable
+    // configuration handoff — not a generic auth-start failure.
     const causeMessage =
       cause instanceof Error ? cause.message : String(cause ?? "");
     const causeCode = cause instanceof ElizaError ? cause.code : undefined;
     if (
       args.provider === "google" &&
-      /GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_REDIRECT_URI/i.test(
-        causeMessage,
-      )
+      /GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|Google OAuth/i.test(causeMessage)
     ) {
       return configIntent({
         provider: "google",
         operation: args.operation,
         reason:
-          "Google OAuth is incomplete. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI, then connect again.",
+          "Google OAuth is incomplete. Store the Google OAuth client ID and client secret in the vault, then connect again.",
       });
     }
     if (
@@ -745,7 +743,7 @@ function connectionText(intent: CalendarSourceConnectionIntent): string {
         return "ICS/webcal subscription URLs are capability secrets and never pass through me. Add the subscription in Settings → Calendar sources; once it exists I can list, select, and reconnect it.";
       }
       if (intent.provider === "google") {
-        return "Google Calendar needs @elizaos/plugin-google-workspace enabled with GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI configured. Open the setup card, then connect again.\n\n[CONFIG:google-workspace]";
+        return "Google Calendar needs @elizaos/plugin-google-workspace enabled with its OAuth client ID and client secret stored in the vault. The callback URL is derived automatically. Open the setup card, then connect again.\n\n[CONFIG:google-workspace]";
       }
       if (intent.provider === "microsoft") {
         return "Microsoft Calendar needs MICROSOFT_CLIENT_ID and MICROSOFT_REDIRECT_URI configured on @elizaos/plugin-calendar. Open the setup card, then connect again.\n\n[CONFIG:calendar]";

@@ -24,9 +24,6 @@ const ENV_KEYS = [
   "ELIZA_CLOUD_PROVISIONED",
   "ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS",
   "ELIZAOS_CLOUD_USE_EMBEDDINGS",
-  "GOOGLE_CLIENT_ID",
-  "GOOGLE_CLIENT_SECRET",
-  "GOOGLE_REDIRECT_URI",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -65,11 +62,11 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-notes")).toBe(true);
     expect(names.has("@elizaos/plugin-commands")).toBe(true);
     expect(names.has("@elizaos/plugin-agent-skills")).toBe(true);
-    // Calendar tile (viewEveryPlatform) needs scheduling; Google Workspace is
-    // NOT inferred from Calendar alone (Apple/Microsoft/ICS also use Calendar).
+    // Calendar tile (viewEveryPlatform) needs scheduling. Personal Google is
+    // setup-visible on desktop even before its vault registration exists.
     expect(names.has("@elizaos/plugin-calendar")).toBe(true);
     expect(names.has("@elizaos/plugin-scheduling")).toBe(true);
-    expect(names.has("@elizaos/plugin-google-workspace")).toBe(false);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
 
     // ...and drops every heavy surface, including browser (off until ready).
     for (const heavy of HEAVY) {
@@ -77,21 +74,16 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     }
   });
 
-  it("loads google-workspace from non-secret OAuth config with a vault-only secret", () => {
+  it("loads google-workspace without OAuth environment configuration", () => {
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
-    process.env.GOOGLE_CLIENT_ID = "client";
-    process.env.GOOGLE_REDIRECT_URI = "https://example.com/oauth/callback";
     const names = collectPluginNames(emptyConfig);
     expect(names.has("@elizaos/plugin-calendar")).toBe(true);
     expect(names.has("@elizaos/plugin-scheduling")).toBe(true);
     expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
   });
 
-  it("honors an explicit google-workspace disable even when OAuth env is set", () => {
+  it("honors an explicit google-workspace disable", () => {
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
-    process.env.GOOGLE_CLIENT_ID = "client";
-    process.env.GOOGLE_CLIENT_SECRET = "secret";
-    process.env.GOOGLE_REDIRECT_URI = "https://example.com/oauth/callback";
     const config: ElizaConfig = {
       plugins: {
         entries: {
@@ -156,7 +148,7 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
   });
 
-  it("ignores accounts rows disabled with enabled=false", () => {
+  it("keeps personal Google setup when all Chat account rows are disabled", () => {
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
     const config: ElizaConfig = {
       connectors: {
@@ -166,7 +158,7 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
       },
     } as ElizaConfig;
     const names = collectPluginNames(config);
-    expect(names.has("@elizaos/plugin-google-workspace")).toBe(false);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
   });
 
   it("still loads google-workspace for a legacy serviceAccountKey string", () => {
@@ -178,21 +170,18 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
   });
 
-  it("does not load google-workspace for an empty googlechat block", () => {
+  it("keeps personal Google setup available for an empty googlechat block", () => {
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
     const config: ElizaConfig = {
       connectors: { googlechat: {} },
     } as ElizaConfig;
     const names = collectPluginNames(config);
-    expect(names.has("@elizaos/plugin-google-workspace")).toBe(false);
+    expect(names.has("@elizaos/plugin-google-workspace")).toBe(true);
   });
 
-  it("does not load google-workspace on mobile even with full OAuth env", () => {
+  it("does not load google-workspace on mobile", () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
-    process.env.GOOGLE_CLIENT_ID = "client";
-    process.env.GOOGLE_CLIENT_SECRET = "secret";
-    process.env.GOOGLE_REDIRECT_URI = "https://example.com/oauth/callback";
     const names = collectPluginNames(emptyConfig);
     expect(names.has("@elizaos/plugin-calendar")).toBe(true);
     expect(names.has("@elizaos/plugin-scheduling")).toBe(true);

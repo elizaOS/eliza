@@ -126,31 +126,34 @@ function googleSecretsService(runtime: IAgentRuntime): GoogleSecretsService | nu
     : null;
 }
 
-async function readClientConfig(runtime: IAgentRuntime): Promise<{
+async function readClientRegistration(runtime: IAgentRuntime): Promise<{
   clientId: string;
   clientSecret: string;
-  redirectUri: string;
 }> {
-  const clientId = readSetting(runtime, "GOOGLE_CLIENT_ID");
-  const redirectUri = readSetting(runtime, "GOOGLE_REDIRECT_URI");
   const secrets = googleSecretsService(runtime);
+  let clientId = nonEmptyString(await secrets?.getGlobal("GOOGLE_CLIENT_ID"));
   let clientSecret = nonEmptyString(await secrets?.getGlobal("GOOGLE_CLIENT_SECRET"));
-  if (!clientSecret) {
+  if (!clientId || !clientSecret) {
+    const configuredClientId = readSetting(runtime, "GOOGLE_CLIENT_ID");
     const configuredSecret = readSetting(runtime, "GOOGLE_CLIENT_SECRET");
     const allowMigration = readSetting(runtime, "GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV") === "1";
-    if (configuredSecret && allowMigration && secrets?.setGlobal) {
-      const stored = await secrets.setGlobal("GOOGLE_CLIENT_SECRET", configuredSecret);
-      if (stored) {
+    if (allowMigration && secrets?.setGlobal) {
+      if (!clientId && configuredClientId) {
+        await secrets.setGlobal("GOOGLE_CLIENT_ID", configuredClientId);
+        clientId = nonEmptyString(await secrets.getGlobal("GOOGLE_CLIENT_ID"));
+      }
+      if (!clientSecret && configuredSecret) {
+        await secrets.setGlobal("GOOGLE_CLIENT_SECRET", configuredSecret);
         clientSecret = nonEmptyString(await secrets.getGlobal("GOOGLE_CLIENT_SECRET"));
       }
     }
   }
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!clientId || !clientSecret) {
     throw new Error(
-      "Google OAuth requires GOOGLE_CLIENT_ID and GOOGLE_REDIRECT_URI settings plus GOOGLE_CLIENT_SECRET in the vault."
+      "Google OAuth requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the vault."
     );
   }
-  return { clientId, clientSecret, redirectUri };
+  return { clientId, clientSecret };
 }
 
 function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): GoogleCapability[] {
@@ -471,8 +474,11 @@ export function createGoogleConnectorAccountProvider(
       request: ConnectorOAuthStartRequest,
       _manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthStartResult> => {
-      const config = await readClientConfig(runtime);
-      const redirectUri = request.redirectUri ?? config.redirectUri;
+      const config = await readClientRegistration(runtime);
+      const redirectUri = nonEmptyString(request.redirectUri);
+      if (!redirectUri) {
+        throw new Error("Google OAuth start requires a request-derived callback URI.");
+      }
       const capabilities = normalizeRequestedCapabilities(request.scopes);
       const oauthScopes = scopesForGoogleCapabilities(capabilities);
       const codeVerifier = createCodeVerifier();
@@ -512,13 +518,13 @@ export function createGoogleConnectorAccountProvider(
         throw new Error("Google OAuth callback is missing an authorization code.");
       }
 
-      const config = await readClientConfig(runtime);
+      const config = await readClientRegistration(runtime);
       const redirectUri =
         nonEmptyString(request.flow.redirectUri) ??
-        nonEmptyString(
-          (request.flow.metadata as Record<string, unknown> | undefined)?.redirectUri
-        ) ??
-        config.redirectUri;
+        nonEmptyString((request.flow.metadata as Record<string, unknown> | undefined)?.redirectUri);
+      if (!redirectUri) {
+        throw new Error("Google OAuth callback is missing its original redirect URI.");
+      }
 
       const tokens = await exchangeAuthorizationCode({
         clientId: config.clientId,
