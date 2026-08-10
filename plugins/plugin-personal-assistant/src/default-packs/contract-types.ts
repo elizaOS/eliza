@@ -141,6 +141,7 @@ export interface ScheduledTask {
       | "memory";
     target?: string;
     persistAs?: "task_metadata" | "external_only";
+    fallback?: { body: string; title?: string };
   };
   pipeline?: {
     onComplete?: ScheduledTaskRef[];
