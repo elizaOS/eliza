@@ -31,13 +31,6 @@
         "../../plugins/plugin-workflow/src/index.ts"
       ],
       "@elizaos/plugin-workflow/*": ["../../plugins/plugin-workflow/src/*"],
-      "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": [
-        "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
-      ],
-      "react-dom": [
-        "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
-      ],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],
