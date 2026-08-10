@@ -132,8 +132,10 @@ function readMessageMetadata(message: Memory): IncomingMessageSecurityMetadata {
  * Security metadata is runtime-owned. A connector that forwards
  * client-supplied `content.metadata` must not pre-stamp a payload different
  * from the visible text, fabricate an injection result, or pre-populate an
- * adjudication cache entry. Same doctrine as the forged autonomy marker:
- * strip every internal security stamp before hardening recomputes its own.
+ * adjudication cache entry. Pipeline-skip fields are authority too, so an
+ * inbound message cannot use them to disable later runtime policy. Same
+ * doctrine as the forged autonomy marker: strip every internal security stamp
+ * before hardening recomputes its own.
  */
 function stripForgedSecurityStamps(message: Memory): void {
 	const metadata = message.content.metadata;
@@ -158,6 +160,17 @@ function stripForgedSecurityStamps(message: Memory): void {
 	}
 	if ("injectionRiskAdjudication" in record) {
 		delete record.injectionRiskAdjudication;
+	}
+	for (const key of [
+		"skipIncomingMessageHooks",
+		"skipComposeStateProviderHooks",
+		"skipPreShouldRespondHooks",
+		"skipParallelWithShouldRespondHooks",
+		"skipAfterMemoryPersistedHooks",
+	]) {
+		if (key in record) {
+			delete record[key];
+		}
 	}
 }
 

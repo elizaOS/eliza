@@ -2134,14 +2134,6 @@ export class AgentRuntime implements IAgentRuntime {
 					PipelineHookContext,
 					{ phase: "incoming_before_compose" }
 				>;
-				const md = c.message.content.metadata;
-				const meta =
-					typeof md === "object" && md !== null
-						? (md as Record<string, unknown>)
-						: null;
-				if (meta?.skipIncomingMessageHooks === true) {
-					return;
-				}
 				const messageId = c.message.id;
 				await this.invokePipelineHooks(
 					phase,

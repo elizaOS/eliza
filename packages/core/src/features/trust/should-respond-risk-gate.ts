@@ -187,11 +187,24 @@ export function extractRiskFactors(text: string): RiskFactors {
 const METADATA_KEY = "injectionRisk";
 const ADJUDICATION_METADATA_KEY = "injectionRiskAdjudication";
 
+/**
+ * Metadata is persisted and may originate at an external transport boundary,
+ * so it is diagnostic output rather than authority. WeakMaps bind reusable
+ * decisions to the exact in-process Memory object that produced them; a JSON
+ * payload cannot manufacture either provenance token.
+ */
+const trustedRiskFactors = new WeakMap<
+	Memory,
+	{ text: string; factors: RiskFactors }
+>();
+const trustedGateResults = new WeakMap<Memory, CachedInjectionGateResult>();
+
 function writeRiskFactors(
 	message: Memory,
 	factors: RiskFactors,
 	text: string,
 ): void {
+	trustedRiskFactors.set(message, { text, factors });
 	const existing =
 		typeof message.content.metadata === "object" &&
 		message.content.metadata !== null
@@ -210,35 +223,8 @@ function readRiskFactors(
 	message: Memory,
 	text: string,
 ): RiskFactors | undefined {
-	const metadata = message.content.metadata;
-	if (typeof metadata !== "object" || metadata === null) return undefined;
-	const raw = (metadata as Record<string, unknown>)[METADATA_KEY];
-	if (typeof raw !== "object" || raw === null) return undefined;
-	const candidate = raw as Partial<RiskFactors> & { text?: unknown };
-	if (
-		candidate.text !== text ||
-		typeof candidate.hiddenCharCount !== "number" ||
-		typeof candidate.nonAsciiCount !== "number" ||
-		typeof candidate.letterSplitHits !== "number" ||
-		typeof candidate.wordReversalHits !== "number" ||
-		typeof candidate.structuralInjectionHits !== "number" ||
-		!Array.isArray(candidate.socialEngineeringClasses) ||
-		!candidate.socialEngineeringClasses.every(
-			(value) => typeof value === "string",
-		) ||
-		typeof candidate.score !== "number"
-	) {
-		return undefined;
-	}
-	return {
-		hiddenCharCount: candidate.hiddenCharCount,
-		nonAsciiCount: candidate.nonAsciiCount,
-		letterSplitHits: candidate.letterSplitHits,
-		wordReversalHits: candidate.wordReversalHits,
-		structuralInjectionHits: candidate.structuralInjectionHits,
-		socialEngineeringClasses: candidate.socialEngineeringClasses,
-		score: candidate.score,
-	};
+	const cached = trustedRiskFactors.get(message);
+	return cached?.text === text ? cached.factors : undefined;
 }
 
 /** OWNER/ADMIN are trusted and never gated; everything else is untrusted. */
@@ -395,6 +381,7 @@ function writeCachedGateResult(
 	message: Memory,
 	result: CachedInjectionGateResult,
 ): void {
+	trustedGateResults.set(message, result);
 	const existing =
 		typeof message.content.metadata === "object" &&
 		message.content.metadata !== null
@@ -418,19 +405,9 @@ function readCachedGateResult(
 	text: string,
 	role: string,
 ): InjectionGateResult | undefined {
-	const metadata = message.content.metadata;
-	if (typeof metadata !== "object" || metadata === null) return undefined;
-	const raw = (metadata as Record<string, unknown>)[ADJUDICATION_METADATA_KEY];
-	if (typeof raw !== "object" || raw === null) return undefined;
-	const candidate = raw as Partial<CachedInjectionGateResult>;
-	if (
-		candidate.text !== text ||
-		candidate.role !== role ||
-		typeof candidate.blocked !== "boolean" ||
-		typeof candidate.verified !== "boolean" ||
-		typeof candidate.reason !== "string" ||
-		typeof candidate.score !== "number"
-	) {
+	const candidate = trustedGateResults.get(message);
+	if (!candidate) return undefined;
+	if (candidate.text !== text || candidate.role !== role) {
 		return undefined;
 	}
 	return {
