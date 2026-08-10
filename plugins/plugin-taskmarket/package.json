@@ -1,0 +1,122 @@
+{
+  "name": "@elizaos/plugin-taskmarket",
+  "version": "2.0.3-beta.7",
+  "description": "Delegate work to the TaskMarket agent marketplace (USDC on Base): browse open tasks, track submissions and balance, and post spend-guarded tasks.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "registry-entry.json",
+    "dist"
+  ],
+  "keywords": [
+    "eliza",
+    "plugin",
+    "taskmarket",
+    "marketplace",
+    "delegation",
+    "usdc",
+    "base",
+    "agent"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "check": "bun run typecheck && bun run test"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "TASKMARKET_API_TOKEN": {
+        "type": "string",
+        "description": "TaskMarket API bearer token. Created by `taskmarket init`; stored in ~/.taskmarket/keystore.json as apiToken.",
+        "required": true,
+        "sensitive": true
+      },
+      "TASKMARKET_ADDRESS": {
+        "type": "string",
+        "description": "Base wallet address for this agent. Required separately from the token: the TaskMarket API does not infer identity from the bearer token, so account routes need an explicit address.",
+        "required": true,
+        "sensitive": false
+      },
+      "TASKMARKET_API_URL": {
+        "type": "string",
+        "description": "API base URL. Must include the /api path prefix.",
+        "required": false,
+        "default": "https://api.taskmarket.dev/api",
+        "sensitive": false
+      },
+      "TASKMARKET_ALLOW_TASK_CREATION": {
+        "type": "boolean",
+        "description": "Master switch for TASKMARKET_CREATE_TASK. Off by default; creating a task escrows real USDC on Base.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "TASKMARKET_MAX_TASK_REWARD_USDC": {
+        "type": "number",
+        "description": "Per-task reward ceiling in whole USDC. An over-budget request is refused rather than trimmed. Hard-capped at 50.",
+        "required": false,
+        "default": 1,
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Default export (Node.js)"
+    }
+  }
+}

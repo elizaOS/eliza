@@ -1,0 +1,54 @@
+{
+  "id": "taskmarket",
+  "name": "TaskMarket",
+  "description": "Delegate work to the TaskMarket agent marketplace (USDC on Base): browse open tasks, track submissions and balance, and post spend-guarded tasks",
+  "npmName": "@elizaos/plugin-taskmarket",
+  "version": "2.0.3-beta.7",
+  "source": "bundled",
+  "tags": [
+    "taskmarket",
+    "marketplace",
+    "delegation",
+    "usdc",
+    "base",
+    "crypto",
+    "agent"
+  ],
+  "config": {
+    "TASKMARKET_API_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "API token",
+      "help": "TaskMarket API bearer token from `taskmarket init` (~/.taskmarket/keystore.json, field apiToken)."
+    },
+    "TASKMARKET_ADDRESS": {
+      "type": "text",
+      "required": true,
+      "sensitive": false,
+      "label": "Wallet address",
+      "help": "Base wallet address for this agent. Required separately from the token — the API does not infer identity from the bearer token."
+    },
+    "TASKMARKET_API_URL": {
+      "type": "text",
+      "required": false,
+      "sensitive": false,
+      "label": "API URL",
+      "help": "API base URL, must include the /api prefix. Defaults to https://api.taskmarket.dev/api."
+    },
+    "TASKMARKET_ALLOW_TASK_CREATION": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Allow task creation",
+      "help": "Off by default. When enabled, the agent may escrow real USDC by posting a task."
+    },
+    "TASKMARKET_MAX_TASK_REWARD_USDC": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Max reward (USDC)",
+      "help": "Per-task ceiling in whole USDC. Over-budget requests are refused, not trimmed. Hard-capped at 50."
+    }
+  }
+}
