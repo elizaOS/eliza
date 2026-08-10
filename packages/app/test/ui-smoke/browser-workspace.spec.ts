@@ -279,6 +279,94 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
     expect(collapsedGeometry?.toolbarHeight).toBeLessThanOrEqual(100);
   }
 
+  const stableBeforePull = await page.evaluate(() => {
+    const surface = document.querySelector<HTMLElement>(
+      '[data-testid="browser-workspace-surface-panel"]',
+    );
+    const stream = document.querySelector<HTMLElement>(
+      '[data-testid="browser-workspace-stream-surface"]',
+    );
+    const sheet = document.querySelector<HTMLElement>(
+      '[data-testid="chat-sheet"]',
+    );
+    if (!surface || !stream || !sheet) return null;
+    const surfaceRect = surface.getBoundingClientRect();
+    const streamRect = stream.getBoundingClientRect();
+    return {
+      clearance: getComputedStyle(document.documentElement)
+        .getPropertyValue("--eliza-chat-clearance")
+        .trim(),
+      sheetHeight: sheet.getBoundingClientRect().height,
+      streamHeight: streamRect.height,
+      streamWidth: streamRect.width,
+      surfaceBottom: surfaceRect.bottom,
+      surfaceHeight: surfaceRect.height,
+      surfaceWidth: surfaceRect.width,
+    };
+  });
+  expect(stableBeforePull).not.toBeNull();
+
+  const grabber = page.getByTestId("chat-sheet-grabber");
+  const grabberBox = await grabber.boundingBox();
+  if (!grabberBox) throw new Error("chat sheet grabber has no bounding box");
+  const grabberX = grabberBox.x + grabberBox.width / 2;
+  const grabberY = grabberBox.y + grabberBox.height / 2;
+  await page.mouse.move(grabberX, grabberY);
+  await page.mouse.down();
+  for (let step = 1; step <= 12; step += 1) {
+    await page.mouse.move(grabberX, grabberY - (160 * step) / 12);
+    await page.waitForTimeout(16);
+  }
+
+  const geometryDuringPull = await page.evaluate(() => {
+    const surface = document.querySelector<HTMLElement>(
+      '[data-testid="browser-workspace-surface-panel"]',
+    );
+    const stream = document.querySelector<HTMLElement>(
+      '[data-testid="browser-workspace-stream-surface"]',
+    );
+    const sheet = document.querySelector<HTMLElement>(
+      '[data-testid="chat-sheet"]',
+    );
+    if (!surface || !stream || !sheet) return null;
+    const surfaceRect = surface.getBoundingClientRect();
+    const streamRect = stream.getBoundingClientRect();
+    return {
+      clearance: getComputedStyle(document.documentElement)
+        .getPropertyValue("--eliza-chat-clearance")
+        .trim(),
+      sheetHeight: sheet.getBoundingClientRect().height,
+      streamHeight: streamRect.height,
+      streamWidth: streamRect.width,
+      surfaceBottom: surfaceRect.bottom,
+      surfaceHeight: surfaceRect.height,
+      surfaceWidth: surfaceRect.width,
+    };
+  });
+  expect(geometryDuringPull).not.toBeNull();
+  expect(geometryDuringPull?.sheetHeight ?? 0).toBeGreaterThan(
+    (stableBeforePull?.sheetHeight ?? 0) + 80,
+  );
+  expect(geometryDuringPull).toMatchObject({
+    clearance: stableBeforePull?.clearance,
+    streamHeight: stableBeforePull?.streamHeight,
+    streamWidth: stableBeforePull?.streamWidth,
+    surfaceBottom: stableBeforePull?.surfaceBottom,
+    surfaceHeight: stableBeforePull?.surfaceHeight,
+    surfaceWidth: stableBeforePull?.surfaceWidth,
+  });
+
+  await page.mouse.up();
+  const chatOverlay = page.getByTestId("chat-overlay");
+  await page.keyboard.press("Escape");
+  await expect(chatOverlay).not.toHaveAttribute("data-open", "true");
+  await expect
+    .poll(async () => {
+      const box = await pageSurface.boundingBox();
+      return box ? Math.round(box.height) : null;
+    })
+    .toBe(Math.round(stableBeforePull?.surfaceHeight ?? 0));
+
   const surfaceBeforeSafeArea = await pageSurface.boundingBox();
   const surfaceBeforeSafeAreaBottom =
     (surfaceBeforeSafeArea?.y ?? 0) + (surfaceBeforeSafeArea?.height ?? 0);
@@ -294,7 +382,6 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
 
   const composer = page.getByRole("combobox", { name: "message" });
   await composer.focus();
-  const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
   const expandedGeometry = await page.evaluate(() => {
     const surface = document.querySelector<HTMLElement>(

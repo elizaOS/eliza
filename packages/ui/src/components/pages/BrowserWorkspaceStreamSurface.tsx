@@ -4,7 +4,13 @@
  * relays explicit pointer, wheel, keyboard, paste, and viewport events.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   type BrowserWorkspaceFrame,
   type BrowserWorkspaceInput,
@@ -29,6 +35,7 @@ export function BrowserWorkspaceStreamSurface({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const frameRef = useRef<BrowserWorkspaceFrame | null>(null);
+  const viewportRef = useRef<{ height: number; width: number } | null>(null);
   const inputQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingMoveRef = useRef<BrowserWorkspaceInput | null>(null);
   const moveFrameRef = useRef<number | null>(null);
@@ -109,6 +116,14 @@ export function BrowserWorkspaceStreamSurface({
             tabId,
             (frame) => {
               if (disposed) return;
+              const viewport = viewportRef.current;
+              if (
+                viewport &&
+                (Math.abs(frame.width - viewport.width) > 1 ||
+                  Math.abs(frame.height - viewport.height) > 1)
+              ) {
+                return;
+              }
               frameRef.current = frame;
               if (imageRef.current) {
                 imageRef.current.src = `data:image/jpeg;base64,${frame.data}`;
@@ -163,17 +178,21 @@ export function BrowserWorkspaceStreamSurface({
     };
   }, [tabId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     let resizeFrame: number | null = null;
     const resize = (width: number, height: number): void => {
+      const roundedWidth = Math.round(width);
+      const roundedHeight = Math.round(height);
+      if (roundedWidth < 1 || roundedHeight < 1) return;
+      viewportRef.current = {
+        height: roundedHeight,
+        width: roundedWidth,
+      };
       if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
       resizeFrame = requestAnimationFrame(() => {
         resizeFrame = null;
-        const roundedWidth = Math.round(width);
-        const roundedHeight = Math.round(height);
-        if (roundedWidth < 1 || roundedHeight < 1) return;
         void client
           .resizeBrowserWorkspaceTab(tabId, {
             width: roundedWidth,
@@ -191,16 +210,17 @@ export function BrowserWorkspaceStreamSurface({
           });
       });
     };
+    const resizeFromBounds = (): void => {
+      const bounds = root.getBoundingClientRect();
+      resize(bounds.width, bounds.height);
+    };
+    resizeFromBounds();
     if (typeof ResizeObserver === "undefined") {
-      const resizeFromBounds = (): void => {
-        const bounds = root.getBoundingClientRect();
-        resize(bounds.width, bounds.height);
-      };
-      resizeFromBounds();
       window.addEventListener("resize", resizeFromBounds);
       return () => {
         window.removeEventListener("resize", resizeFromBounds);
         if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+        viewportRef.current = null;
       };
     }
     const observer = new ResizeObserver((entries) => {
@@ -211,6 +231,7 @@ export function BrowserWorkspaceStreamSurface({
     return () => {
       observer.disconnect();
       if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+      viewportRef.current = null;
     };
   }, [tabId]);
 

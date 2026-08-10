@@ -1843,8 +1843,10 @@ export function ChatOverlay({
   // space the collapsed composer occupies. Without this the var was never set —
   // every surface rode the 5.25rem fallback, which a multi-line draft or pending
   // attachments overgrow, letting the composer cover content. Only measured
-  // while collapsed: an expanded/full sheet covers the screen, so its height
-  // must NOT become the reserved clearance.
+  // while collapsed and truly at rest: an expanded sheet or a live pull covers
+  // the screen, so its transient height must NOT become reserved page space.
+  // Otherwise the Browser stream's ResizeObserver faithfully shrinks the
+  // remote Chromium viewport under the user's finger as the overlay grows.
   React.useEffect(() => {
     if (
       typeof window === "undefined" ||
@@ -1854,9 +1856,16 @@ export function ChatOverlay({
     }
     const panel = getPanelElement();
     const root = document.documentElement;
-    if (sheetOpen) return; // Keep the last resting value while the sheet is open.
+    if (sheetOpen || dragPreviewVisible) return;
     if (!panel) return;
     const publish = () => {
+      if (
+        draggingRef.current ||
+        dragPreviewVisibleRef.current ||
+        threadHeight.get() > 1
+      ) {
+        return;
+      }
       const h =
         panel.getBoundingClientRect().height + CHAT_CLEARANCE_REST_GAP_PX;
       // Cap it: a mid-collapse frame can report the open panel height, and
@@ -1871,7 +1880,7 @@ export function ChatOverlay({
     const ro = new ResizeObserver(publish);
     ro.observe(panel);
     return () => ro.disconnect();
-  }, [sheetOpen, getPanelElement]);
+  }, [dragPreviewVisible, getPanelElement, sheetOpen, threadHeight]);
   // The composer content (textarea + thread). Held so we can imperatively clear
   // its `inert` (set while pilled) the instant the pill is tapped open, before
   // React re-renders — iOS only raises the keyboard for a focus() that lands on

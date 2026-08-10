@@ -661,6 +661,85 @@ describe("ChatOverlay", () => {
     }
   });
 
+  it("keeps the resting page clearance frozen while an upward pull grows the overlay", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+    const observations: Array<{
+      callback: ResizeObserverCallback;
+      observer: ResizeObserver;
+      target: Element;
+    }> = [];
+    let panelHeight = 72;
+
+    class TestResizeObserver implements ResizeObserver {
+      readonly callback: ResizeObserverCallback;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+
+      disconnect = vi.fn();
+
+      observe = (target: Element): void => {
+        observations.push({
+          callback: this.callback,
+          observer: this,
+          target,
+        });
+      };
+
+      unobserve = vi.fn();
+    }
+
+    try {
+      vi.stubGlobal("ResizeObserver", TestResizeObserver);
+      rectSpy.mockImplementation(function (this: HTMLElement) {
+        const height =
+          this.getAttribute("data-testid") === "chat-sheet" ? panelHeight : 0;
+        return DOMRect.fromRect({ height, width: 360 });
+      });
+      document.documentElement.style.removeProperty("--eliza-chat-clearance");
+
+      render(<ChatOverlay controller={makeController()} />);
+      const sheet = screen.getByTestId("chat-sheet");
+      const clearanceObservation = observations.find(
+        ({ target }) => target === sheet,
+      );
+      expect(clearanceObservation).toBeDefined();
+      expect(
+        document.documentElement.style.getPropertyValue(
+          "--eliza-chat-clearance",
+        ),
+      ).toBe("80px");
+
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      await act(async () => {
+        fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+        fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
+      });
+      panelHeight = 212;
+      act(() => {
+        clearanceObservation?.callback([], clearanceObservation.observer);
+      });
+
+      expect(
+        document.documentElement.style.getPropertyValue(
+          "--eliza-chat-clearance",
+        ),
+      ).toBe("80px");
+      act(() => {
+        fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+      });
+    } finally {
+      rectSpy.mockRestore();
+      vi.stubGlobal("ResizeObserver", originalResizeObserver);
+      document.documentElement.style.removeProperty("--eliza-chat-clearance");
+    }
+  });
+
   it("recomputes the resting composer after portrait-landscape rotation", async () => {
     const originalInnerWidth = Object.getOwnPropertyDescriptor(
       window,
