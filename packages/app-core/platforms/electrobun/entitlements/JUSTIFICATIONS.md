@@ -57,7 +57,7 @@ sessions. The OS still gates each session behind an explicit per-app
 permission prompt visible in System Settings; the entitlement only declares
 intent and does not auto-grant access.
 
-### `com.apple.security.device.microphone`
+### `com.apple.security.device.audio-input`
 Permits the app to capture from the user's microphone after a system
 permission prompt. The agent supports voice input, dictation, and live
 transcription as alternatives to typing. As with the camera entitlement, the
