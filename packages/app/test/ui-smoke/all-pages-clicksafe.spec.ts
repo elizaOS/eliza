@@ -162,6 +162,9 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "connectors",
     path: "/connectors",
+    // The legacy top-level URL intentionally enters the canonical Settings
+    // connectors subview and preserves that state in the hash.
+    expectedUrl: /\/connectors#connectors$/,
     readyChecks: [{ selector: "#root" }],
   },
   {
