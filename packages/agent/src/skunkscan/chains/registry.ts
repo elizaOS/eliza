@@ -9,6 +9,7 @@ import { solanaBlockchainConnector } from "./solana";
 import { ethereumBlockchainConnector } from "./ethereum";
 import { bnbBlockchainConnector } from "./bnb";
 import { baseBlockchainConnector } from "./base";
+import { bitcoinBlockchainConnector } from "./bitcoin";
 
 export class DefaultBlockchainConnectorRegistry
   implements BlockchainConnectorRegistry
@@ -72,6 +73,16 @@ blockchainConnectorRegistry.register(
 // Same critical step as above - do not skip it for Base either.
 blockchainConnectorRegistry.register(
   baseBlockchainConnector,
+);
+
+// Same critical step as above, a third time now - do not skip it for
+// Bitcoin either. (Caught live during this connector's own verification:
+// the first end-to-end investigateWallet("bitcoin", ...) run failed with
+// exactly the "No blockchain connector is registered" error this comment
+// warns about, because this line was originally missing - fixed before
+// this file was committed, not after.)
+blockchainConnectorRegistry.register(
+  bitcoinBlockchainConnector,
 );
 
 export function getBlockchainConnector(
