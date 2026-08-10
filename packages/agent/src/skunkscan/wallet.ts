@@ -36,6 +36,14 @@ import {
 
 const MAX_RECENT_TOKEN_ACTIVITY_ITEMS = 10;
 
+// Bitcoin-specific: how many transactions to LIST (recentTransactions/
+// transactionCountSample/activityLevel) vs. actually PARSE with real
+// inputs/outputs (funding/relationships/exposure). Deliberately different
+// sizes - see the pagination design investigation and the comment at this
+// branch's connector.getTransactions() call.
+const TRANSACTION_LIST_LIMIT = 1000;
+const TRANSACTIONS_TO_PARSE_LIMIT = 100;
+
 // Fallback for when getTokenBalances can't enumerate a wallet's full
 // token list (see the ETHEREUM_TOKEN_BALANCE_COUNT_EXCEEDS_PROVIDER_LIMIT
 // warning) - derives "tokens seen in recent transfers" from the same
@@ -1427,9 +1435,23 @@ warnings: investigationWarnings,
         // chains/bitcoin.ts's capabilities), and going through the
         // connector here correctly reuses its xpub-vs-address merge logic
         // instead of duplicating it.
+        //
+        // TRANSACTION_LIST_LIMIT (coverage: recentTransactions,
+        // transactionCountSample, activityLevel) is deliberately much
+        // larger than TRANSACTIONS_TO_PARSE_LIMIT (coverage: funding/
+        // relationships/exposure, via real inputs/outputs parsing) - see
+        // the pagination design investigation. Blockchair's own
+        // request_cost for the list itself is flat regardless of size
+        // (live-confirmed at 100/1,000/10,000 alike), so listing more is
+        // free; PARSING each one costs a batch call per 10 (see
+        // getBitcoinTransactionsDetailed), so blindly parsing everything
+        // listed would multiply cost ~10x for no benefit funding/
+        // relationships/exposure would actually use - none of them
+        // benefit from parsing beyond a bounded recent window the same
+        // way activityLevel benefits from seeing the fuller list.
         const transactionsResult = await connector.getTransactions(
           walletAddress,
-          { limit: 100 },
+          { limit: TRANSACTION_LIST_LIMIT },
         );
 
         if (
@@ -1471,17 +1493,22 @@ warnings: investigationWarnings,
 
         // Real transaction parsing: batch-fetch full inputs/outputs (10
         // hashes per call, flat cost - see blockchair.ts's
-        // getBitcoinTransactionsDetailed) for every transaction in the
-        // sample, plus the oldest transaction if it isn't already in that
-        // sample (deduped automatically - getBitcoinTransactionsDetailed
+        // getBitcoinTransactionsDetailed) for the most recent
+        // TRANSACTIONS_TO_PARSE_LIMIT transactions in the (now much
+        // larger) list, plus the oldest transaction if it isn't already
+        // in that subset (deduped automatically - getBitcoinTransactionsDetailed
         // takes a plain array, not a special "extra" parameter). Bare
         // hash/timestamp-only records (chains/bitcoin.ts's
         // capabilities.transactionParsing: false) are gone - this is the
-        // real thing now.
-        const sampleTransactionHashes =
-          transactionsResult.data.transactions.map(
-            (transaction) => transaction.transactionId,
-          );
+        // real thing now, for this bounded subset.
+        const transactionsToParse = transactionsResult.data.transactions.slice(
+          0,
+          TRANSACTIONS_TO_PARSE_LIMIT,
+        );
+
+        const sampleTransactionHashes = transactionsToParse.map(
+          (transaction) => transaction.transactionId,
+        );
 
         const transactionDetailByHash = await getBitcoinTransactionsDetailed([
           ...sampleTransactionHashes,
@@ -1490,8 +1517,14 @@ warnings: investigationWarnings,
             : []),
         ]);
 
+        // Transactions beyond TRANSACTIONS_TO_PARSE_LIMIT still show up in
+        // recentTransactions/transactionCountSample/activityLevel above -
+        // they're just not represented here with real transfer data, so
+        // they can't contribute a funding/relationship/exposure match.
+        // Disclosed via the transparency note below, not silently implied
+        // to be fully covered.
         const normalizedRecentParsedTransactions: ParsedWalletTransaction[] =
-          transactionsResult.data.transactions.map((transaction) =>
+          transactionsToParse.map((transaction) =>
             parseBitcoinTransaction(
               transactionDetailByHash[transaction.transactionId] ?? null,
               ownedAddresses,
@@ -1639,6 +1672,21 @@ warnings: investigationWarnings,
         investigationWarnings.push(
           "Address coverage for xpub/ypub/zpub input is whatever Blockchair's gap-limit scan found - addresses outside that scan window are not included.",
         );
+
+        // The list (recentTransactions/transactionCountSample/
+        // activityLevel) and the parsed subset (funding/relationships/
+        // exposure) now cover meaningfully different windows - up to
+        // TRANSACTION_LIST_LIMIT for the former, only the most recent
+        // TRANSACTIONS_TO_PARSE_LIMIT of those (plus the oldest
+        // transaction) for the latter. Only worth disclosing when the
+        // list is actually bigger than what got parsed - a wallet with
+        // fewer than TRANSACTIONS_TO_PARSE_LIMIT transactions total has
+        // everything parsed already, nothing to caveat.
+        if (recentTransactions.length > TRANSACTIONS_TO_PARSE_LIMIT) {
+          investigationWarnings.push(
+            `This wallet's activity/transaction-count coverage extends to ${recentTransactions.length} transactions, but funding/relationship/counterparty-exposure analysis is based on real transfer data parsed from only the most recent ${TRANSACTIONS_TO_PARSE_LIMIT} of those (plus the oldest transaction, parsed separately for age/funding) - a deliberate cost/coverage tradeoff, not a silent gap. A real counterparty or funding event further back than that window would not be reflected in relationships/exposure yet.`,
+          );
+        }
 
         return {
           chain,

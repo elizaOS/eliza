@@ -184,19 +184,38 @@ export type BlockchairAddressDashboard = {
   transactions: BlockchairTransactionSummary[];
 };
 
+// Default and ceiling for the transaction-list limit. Live-confirmed the
+// address dashboard's own request_cost stays flat (1) at limit 100, 1,000,
+// and 10,000 alike - Blockchair's real documented cap is 10,000, but this
+// file clamps well below that (see chains/bitcoin.ts's own ceiling, which
+// is what callers actually hit) rather than exposing Blockchair's raw
+// maximum as this file's default.
+const DEFAULT_TRANSACTION_LIMIT = 100;
+const MAX_TRANSACTION_LIMIT = 10_000;
+
+function clampTransactionLimit(limit: number | undefined): number {
+  if (typeof limit !== "number" || !Number.isFinite(limit)) {
+    return DEFAULT_TRANSACTION_LIMIT;
+  }
+
+  return Math.max(1, Math.min(MAX_TRANSACTION_LIMIT, Math.trunc(limit)));
+}
+
 export async function getBitcoinAddressDashboard(
   address: string,
+  options: { limit?: number } = {},
 ): Promise<BlockchairAddressDashboard> {
   if (!address || address.trim().length === 0) {
     throw new Error("Bitcoin address is required");
   }
 
   const trimmedAddress = address.trim();
+  const limit = clampTransactionLimit(options.limit);
 
   const data = await callBlockchairRest<
     Record<string, BlockchairAddressDashboard>
   >(`/dashboards/address/${trimmedAddress}`, {
-    limit: "100",
+    limit: String(limit),
     transaction_details: "true",
   });
 
@@ -241,17 +260,24 @@ export type BlockchairXpubDashboard = {
 
 export async function getBitcoinXpubDashboard(
   xpub: string,
+  options: { limit?: number } = {},
 ): Promise<BlockchairXpubDashboard> {
   if (!xpub || xpub.trim().length === 0) {
     throw new Error("Bitcoin extended public key is required");
   }
 
   const trimmedXpub = xpub.trim();
+  const limit = clampTransactionLimit(options.limit);
 
   const data = await callBlockchairRest<
     Record<string, BlockchairXpubDashboard>
   >(`/dashboards/xpub/${trimmedXpub}`, {
-    limit: "100,0",
+    // "N,0" - transaction limit, UTXO limit (0 = don't fetch UTXOs, not
+    // used by this codebase). Confirmed live: raising the transaction
+    // limit here has no effect on address_count (the gap-limit address
+    // scan is independent of this parameter - see the transaction-
+    // pagination design investigation).
+    limit: `${limit},0`,
     transaction_details: "true",
   });
 
