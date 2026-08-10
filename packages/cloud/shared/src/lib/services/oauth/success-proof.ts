@@ -82,19 +82,37 @@ export interface OAuthSuccessProofTicket {
 
 /**
  * Pluggable ticket store so unit tests can hermetically exercise mint/consume
- * without a live Redis. Production uses {@link cache}.getAndDelete.
+ * without a live Redis. Production uses {@link cache}.
+ *
+ * Contract:
+ * - {@link put} MUST report whether the backend acknowledged the write. Callers
+ *   fail closed when `put` resolves `false`: no proof is signed/returned.
+ * - {@link take} MUST be an atomic get-and-delete (single one-time consume).
+ *   The default implementation refuses non-atomic backends (Cloudflare KV);
+ *   a production store behind KV must move tickets to a strongly consistent
+ *   primitive (Postgres `DELETE … RETURNING`, an atomic Redis backend, …).
  */
 export interface OAuthSuccessProofTicketStore {
-  put(nonce: string, ticket: OAuthSuccessProofTicket, ttlSeconds: number): Promise<void>;
+  /** Returns true only when the backend acknowledged a durable write. */
+  put(nonce: string, ticket: OAuthSuccessProofTicket, ttlSeconds: number): Promise<boolean>;
   /** Atomic get-and-delete. Returns null when missing or already consumed. */
   take(nonce: string): Promise<OAuthSuccessProofTicket | null>;
 }
 
 const defaultTicketStore: OAuthSuccessProofTicketStore = {
   async put(nonce, ticket, ttlSeconds) {
-    await cache.set(`${TICKET_KEY_PREFIX}${nonce}`, ticket, ttlSeconds);
+    // Use the outcome-bearing setter so an unavailable/error backend is NOT
+    // indistinguishable from a successful write. The legacy `cache.set` wrapper
+    // discards the outcome (#18114).
+    const outcome = await cache.setWithOutcome(`${TICKET_KEY_PREFIX}${nonce}`, ticket, ttlSeconds);
+    return outcome.kind === "written";
   },
   async take(nonce) {
+    // Cloudflare KV's getdel is a two-step read/delete and KV is eventually
+    // consistent, so two concurrent verifications can both receive the same
+    // ticket. Refuse the non-atomic backend rather than mint a replayable
+    // consume; production must select an atomic store for these tickets (#18114).
+    if (!cache.supportsAtomicOperations()) return null;
     return cache.getAndDelete<OAuthSuccessProofTicket>(`${TICKET_KEY_PREFIX}${nonce}`);
   },
 };
@@ -117,6 +135,7 @@ export function createMemoryOAuthSuccessProofTicketStore(): OAuthSuccessProofTic
         ticket,
         expiresAtMs: Date.now() + ttlSeconds * 1000,
       });
+      return true;
     },
     async take(nonce) {
       const entry = tickets.get(nonce);
@@ -209,12 +228,18 @@ export async function mintOAuthSuccessProof(args: {
     userId,
     exp,
   };
+  let written: boolean;
   try {
-    await ticketStore.put(nonce, ticket, ticketKeyTtlSeconds(exp));
+    written = await ticketStore.put(nonce, ticket, ticketKeyTtlSeconds(exp));
   } catch {
     // error-policy:J1 ticket registration failure — cannot mint a consumable proof.
     return null;
   }
+  // Fail closed: if the store did not acknowledge a durable write (backend
+  // unavailable, invalid value, or an error), do not sign/return a proof. The
+  // legacy `cache.set` wrapper discarded this outcome and minted an unconsumable
+  // proof (#18114).
+  if (!written) return null;
   const payloadB64 = b64url(JSON.stringify(payload));
   const signature = sign(secret, payloadB64);
   return `${payloadB64}.${signature}`;
