@@ -75,4 +75,40 @@ describe("VISION describe readiness", () => {
     expect(getEnhancedSceneDescription).toHaveBeenCalledOnce();
     expect(visionService.getSceneDescription).not.toHaveBeenCalled();
   });
+
+  it("reports an inactive service as unavailable instead of indefinitely initializing", async () => {
+    const callback = vi.fn(async () => undefined);
+    const visionService = {
+      isActive: () => false,
+      getCapabilities: () => ({
+        objectDetection: false,
+        ocr: false,
+        faceRecognition: false,
+        screenCapture: false,
+        camera: false,
+        audio: false,
+      }),
+    };
+    const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
+      agentId: UUID,
+      getService: vi.fn(() => visionService),
+      createMemory: vi.fn(async () => undefined),
+    });
+
+    const result = await visionAction.handler(
+      runtime,
+      makeMessage(),
+      undefined,
+      { action: "describe" },
+      callback,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.data?.error).toContain("inactive");
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("No vision input is available"),
+      }),
+    );
+  });
 });

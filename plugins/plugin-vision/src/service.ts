@@ -509,6 +509,7 @@ export class VisionService extends Service {
         try {
           await this.getFaceRecognition();
         } catch (faceError) {
+          // error-policy:J4 optional face inference remains explicitly unavailable.
           logger.warn(
             "[VisionService] Face recognition unavailable:",
             faceError instanceof Error ? faceError.message : String(faceError),
@@ -573,6 +574,7 @@ export class VisionService extends Service {
         }
       }
     } catch (error) {
+      // error-policy:J4 screen capture stays available while OCR is explicitly unavailable.
       this.ocrUnavailableReason =
         "OCR backend failed to initialize; verify the platform provider or native model files";
       logger.warn(
@@ -592,6 +594,7 @@ export class VisionService extends Service {
 
       logger.info("[VisionService] Screen vision initialized");
     } catch (error) {
+      // error-policy:J4 the provider failure remains visible until a real frame succeeds.
       this.screenCaptureUnavailableReason =
         "Screen capture backend failed to initialize for this platform";
       logger.warn(
@@ -1029,23 +1032,9 @@ export class VisionService extends Service {
         // Object detection via the ggml YOLOv8 detector. The detector
         // consumes an encoded image buffer (it reads metadata via sharp), so
         // we reuse the JPEG already produced above for the VLM path.
-        if (this.visionConfig.enableObjectDetection && this.objectDetector) {
-          try {
-            detectedObjects = await this.objectDetector.detect(jpegBuffer);
-            objectDetectionSource = "yolo";
-            logger.debug(
-              `[VisionService] YOLOv8 detected ${detectedObjects.length} objects`,
-            );
-          } catch (detectError) {
-            logger.warn(
-              "[VisionService] YOLOv8 object detection failed, falling back to motion-based:",
-              detectError instanceof Error
-                ? detectError.message
-                : String(detectError),
-            );
-            detectedObjects = await this.detectMotionObjects(frame);
-            objectDetectionSource = "motion";
-          }
+        if (this.visionConfig.enableObjectDetection) {
+          ({ objects: detectedObjects, source: objectDetectionSource } =
+            await this.detectObjectsWithFallback(frame, jpegBuffer));
         }
 
         // No ggml pose backend yet — when pose detection is requested, fall
@@ -1660,6 +1649,33 @@ export class VisionService extends Service {
     return filtered;
   }
 
+  /** Run the requested native detector, falling back honestly when unavailable. */
+  private async detectObjectsWithFallback(
+    frame: VisionFrame,
+    jpegBuffer: Buffer,
+  ): Promise<{ objects: DetectedObject[]; source: DetectionSource }> {
+    if (this.objectDetector) {
+      try {
+        const objects = await this.objectDetector.detect(jpegBuffer);
+        logger.debug(
+          `[VisionService] YOLOv8 detected ${objects.length} objects`,
+        );
+        return { objects, source: "yolo" };
+      } catch (error) {
+        // error-policy:J4 native failure degrades to distinctly labeled motion output.
+        logger.warn(
+          "[VisionService] YOLOv8 object detection failed, falling back to motion-based:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+
+    return {
+      objects: await this.detectMotionObjects(frame),
+      source: "motion",
+    };
+  }
+
   private mergeAdjacentObjects(objects: DetectedObject[]): DetectedObject[] {
     if (objects.length === 0) {
       return [];
@@ -1823,6 +1839,7 @@ export class VisionService extends Service {
     try {
       capture = await this.screenCapture.captureScreen();
     } catch (error) {
+      // error-policy:J4 a failed capture clears the public readiness state.
       this.screenCaptureReady = false;
       this.screenCaptureUnavailableReason =
         "Screen capture failed; verify host support and screen-recording permission";
@@ -1845,6 +1862,8 @@ export class VisionService extends Service {
       // Update enhanced scene description
       await this.updateEnhancedSceneDescription();
     } catch (error) {
+      // error-policy:J7 frame diagnostics must not kill the capture loop.
+      this.runtime.reportError("VisionService.screenFrame", error);
       logger.error({ error }, "[VisionService] Error processing screen frame:");
     }
   }
@@ -1862,6 +1881,7 @@ export class VisionService extends Service {
         this.ocrUnavailableReason = null;
       }
     } catch (error) {
+      // error-policy:J4 the OCR failure remains explicit until extraction recovers.
       this.ocrUnavailableReason =
         "OCR backend failed while processing the latest screen frame";
       logger.error({ error }, "[VisionService] Error analyzing tile:");
@@ -1939,7 +1959,9 @@ export class VisionService extends Service {
   }
 
   public async getScreenCapture(): Promise<ScreenCapture | null> {
-    return this.lastScreenCapture;
+    return (
+      this.workerManager?.getLatestScreenCapture() ?? this.lastScreenCapture
+    );
   }
 
   public getVisionMode(): VisionMode {
@@ -2086,16 +2108,19 @@ export class VisionService extends Service {
    * collected for surfaced diagnostics.
    */
   public getCapabilities(): VisionCapabilities {
+    const workerReadiness = this.workerManager?.getReadiness();
     const caps: VisionCapabilities = {
       objectDetection: this.hasObjectDetection && this.objectDetector !== null,
       ocr:
         Boolean(this.visionConfig.ocrEnabled) &&
-        this.ocrService.isInitialized() &&
-        this.ocrUnavailableReason === null,
+        ((this.ocrService.isInitialized() &&
+          this.ocrUnavailableReason === null) ||
+          workerReadiness?.ocr === true),
       faceRecognition:
         this.hasFaceRecognition &&
         this.faceRecognition?.isInitialized() === true,
-      screenCapture: this.screenCaptureReady,
+      screenCapture:
+        this.screenCaptureReady || workerReadiness?.screenCapture === true,
       camera: this.camera !== null,
       audio:
         this.audioCapture?.isActive() === true ||

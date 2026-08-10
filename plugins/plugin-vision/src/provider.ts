@@ -220,7 +220,6 @@ export const visionProvider: Provider = {
             const sourceLabel: Record<DetectionSource, string> = {
               yolo: "YOLO",
               motion: "motion heuristics",
-              vlm: "VLM",
             };
             const src = sceneDescription.objectDetectionSource
               ? ` (via ${sourceLabel[sceneDescription.objectDetectionSource]})`

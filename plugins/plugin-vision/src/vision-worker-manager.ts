@@ -225,6 +225,12 @@ export class VisionWorkerManager {
   getLatestScreenCapture(): ScreenCapture | null {
     const frameId = Atomics.load(this.screenAtomicState, this.FRAME_ID_INDEX);
 
+    // SharedArrayBuffer metadata starts zeroed; the worker increments the id
+    // only after committing its first complete frame.
+    if (frameId <= 0) {
+      return null;
+    }
+
     if (frameId <= this.lastProcessedFrameId) {
       return this.latestScreenCapture;
     }
@@ -258,6 +264,14 @@ export class VisionWorkerManager {
     }
 
     return this.latestScreenCapture;
+  }
+
+  /** Readiness is based on completed worker output, not allocated workers. */
+  getReadiness(): { screenCapture: boolean; ocr: boolean } {
+    return {
+      screenCapture: this.getLatestScreenCapture() !== null,
+      ocr: this.latestOCRResult !== null,
+    };
   }
 
   getLatestEnhancedScene(): EnhancedSceneDescription {

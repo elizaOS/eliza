@@ -37,7 +37,7 @@ export interface SceneDescription {
   describePaused?: boolean;
   describePauseReason?: Exclude<DescribePauseReason, null>;
   audioTranscription?: string;
-  /** Backend that produced the objects array — "yolo", "motion", or "vlm". */
+  /** Backend that produced the objects array. */
   objectDetectionSource?: DetectionSource;
 }
 
@@ -297,4 +297,4 @@ export interface VisionCapabilities {
 }
 
 /** Provenance of a detection result, so callers can tell YOLO apart from heuristics. */
-export type DetectionSource = "yolo" | "motion" | "vlm";
+export type DetectionSource = "yolo" | "motion";
