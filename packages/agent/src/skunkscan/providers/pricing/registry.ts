@@ -6,6 +6,7 @@ import {
 } from "./types";
 
 import { solanaTokenPriceProvider } from "./solana";
+import { bitcoinTokenPriceProvider } from "./bitcoin";
 
 export class DefaultTokenPriceProviderRegistry
   implements TokenPriceProviderRegistry
@@ -46,6 +47,10 @@ export const tokenPriceProviderRegistry =
 
 tokenPriceProviderRegistry.register(
   solanaTokenPriceProvider,
+);
+
+tokenPriceProviderRegistry.register(
+  bitcoinTokenPriceProvider,
 );
 
 export function getTokenPriceProvider(

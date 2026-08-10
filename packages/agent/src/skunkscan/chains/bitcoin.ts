@@ -40,6 +40,8 @@ const SATOSHIS_PER_BTC = 100_000_000;
 const BITCOIN_NATIVE_ASSET: UniversalAssetIdentifier = {
   chainId: BITCOIN_CHAIN_ID,
   assetType: "native",
+  // Must match priceProvider.ts's BITCOIN_NATIVE_ASSET_PRICE_ID exactly -
+  // it's the join key portfolio.ts uses to look up this asset's USD price.
   assetId: "bitcoin:native:BTC",
   symbol: "BTC",
   name: "Bitcoin",
