@@ -1,10 +1,57 @@
 import {
   evaluateOwnerExclusiveDisclosure,
   getTrustedDeliveryAudience,
+  MESSAGE_SOURCES,
   type IAgentRuntime,
   type Memory,
+  type MessageSourceSentinel,
 } from "@elizaos/core";
 import type { ScheduledTaskDispatchRecord } from "./index.js";
+
+/**
+ * Provenances that must never reach outbound connector dispatch.
+ *
+ * Enumerated deliberately rather than derived from `Object.values`. This is a
+ * fail-open boundary: a provenance the guard does not name is BOUND, so the
+ * cost of forgetting one is an internal turn rewritten into an unavailable
+ * connector send. Spelling every sentinel out means adding one to
+ * `@elizaos/core`'s `message-source.ts` leaves a missing key here and fails
+ * typecheck, forcing a decision instead of silently widening the guard.
+ *
+ * `api` is not a core sentinel — it is a first-party transport label — so it
+ * lives alongside the record rather than inside it.
+ *
+ * Used for both message provenance (`content.source` / `metadata.source`) and
+ * the room's connector label (`room.source`). Room sources are connector names
+ * in practice; classifying them with the same predicate is deliberate and
+ * matches the previous two-string denylist on both sites.
+ */
+const INTERNAL_MESSAGE_SOURCES: Record<MessageSourceSentinel, true> = {
+  [MESSAGE_SOURCES.CLIENT_CHAT]: true,
+  [MESSAGE_SOURCES.SUB_AGENT]: true,
+  [MESSAGE_SOURCES.CODING_AGENT]: true,
+  [MESSAGE_SOURCES.AGENT_GREETING]: true,
+  [MESSAGE_SOURCES.TRIGGER_PROMPT]: true,
+};
+
+const API_TRANSPORT_SOURCE = "api";
+
+/**
+ * Whether `source` names an internally-originated turn or first-party
+ * transport that must not bind to outbound connector dispatch (#17747).
+ *
+ * Returns a plain boolean (not a type predicate): a false result means
+ * "not internal", not "not a string".
+ */
+export function isInternalMessageSource(
+  source: string | undefined,
+): boolean {
+  if (!source) return false;
+  return (
+    source === API_TRANSPORT_SOURCE ||
+    Object.hasOwn(INTERNAL_MESSAGE_SOURCES, source)
+  );
+}
 
 export const SCHEDULED_TASK_DELIVERY_BINDING_KEY = "chatDeliveryBinding";
 
@@ -71,7 +118,7 @@ export async function bindScheduledTaskToInboundChat(
   const inboundSource =
     stringField(message.metadata?.source) ??
     stringField(message.content.source);
-  if (inboundSource === "api" || inboundSource === "client_chat") {
+  if (isInternalMessageSource(inboundSource)) {
     return null;
   }
 
@@ -81,7 +128,7 @@ export async function bindScheduledTaskToInboundChat(
   if (!room || !source || !channelId || room.id !== audience.roomId) {
     return null;
   }
-  if (source === "api" || source === "client_chat" || channelId === room.id) {
+  if (isInternalMessageSource(source) || channelId === room.id) {
     return null;
   }
 
