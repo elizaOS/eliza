@@ -1,3 +1,8 @@
+/**
+ * Exercises the app-core compatibility routes against persisted plugin state,
+ * including the invariants shared with the canonical core toggle surface.
+ */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -77,6 +82,7 @@ vi.mock("@elizaos/vault", () => ({
 }));
 
 import {
+  analyzePluginStateDrift,
   buildPluginListResponse,
   handlePluginsCompatRoutes,
   persistCompatPluginMutation,
@@ -219,6 +225,7 @@ describe("app plugin compatibility routes", () => {
 
     expect(result.status).toBe(200);
     expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-discord"],
       entries: {
         discord: {
           enabled: true,
@@ -228,6 +235,155 @@ describe("app plugin compatibility routes", () => {
     expect(savedConfig?.connectors).toEqual({
       discord: {
         enabled: true,
+      },
+    });
+  });
+
+  it("removes every plugin alias from the allowlist when disabling", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["discord", "@elizaos/plugin-discord", "@elizaos/plugin-openai"],
+        entries: {
+          discord: { enabled: true },
+        },
+      },
+    };
+
+    const result = persistCompatPluginMutation(
+      "discord",
+      { enabled: false },
+      makePlugin(),
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai"],
+      entries: {
+        discord: {
+          enabled: false,
+        },
+      },
+    });
+    expect(savedConfig?.connectors).toEqual({
+      discord: {
+        enabled: false,
+      },
+    });
+  });
+
+  it("keeps app plugin entries and the canonical allowlist aligned", () => {
+    const personalAssistant = makePlugin({
+      id: "personal-assistant",
+      name: "Personal Assistant",
+      category: "app",
+      npmName: "@elizaos/plugin-personal-assistant",
+    });
+    const result = persistCompatPluginMutation(
+      "personal-assistant",
+      { enabled: true },
+      personalAssistant,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-personal-assistant"],
+      entries: {
+        "personal-assistant": {
+          enabled: true,
+        },
+      },
+    });
+    expect(savedConfig?.connectors).toBeUndefined();
+
+    const drift = analyzePluginStateDrift(
+      [{ ...personalAssistant, enabled: true }],
+      savedConfig ?? {},
+      { "personal-assistant": { enabled: true } },
+      new Set(["@elizaos/plugin-personal-assistant"]),
+    );
+    expect(drift.plugins[0]?.drift_flags).not.toContain("entries_vs_allowlist");
+  });
+
+  it("canonicalizes mismatched runtime and package identities when disabling", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: [
+          "google",
+          "@elizaos/plugin-google-workspace",
+          "@elizaos/plugin-openai",
+        ],
+        entries: {
+          google: { enabled: true },
+          "google-workspace": { enabled: true },
+        },
+      },
+    };
+    const google = makePlugin({
+      id: "google",
+      name: "Google Workspace",
+      category: "feature",
+      npmName: "@elizaos/plugin-google-workspace",
+      enabled: false,
+    });
+
+    const result = persistCompatPluginMutation(
+      "google",
+      { enabled: false },
+      google,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai"],
+      entries: {
+        "google-workspace": { enabled: false },
+      },
+    });
+
+    const savedPlugins = savedConfig?.plugins as {
+      allow: string[];
+      entries: Record<string, { enabled?: unknown }>;
+    };
+    const drift = analyzePluginStateDrift(
+      [google],
+      {},
+      savedPlugins.entries,
+      new Set(savedPlugins.allow),
+    );
+    expect(drift.plugins[0]?.drift_flags).not.toContain("entries_vs_allowlist");
+  });
+
+  it("replaces a stale compatibility alias with the canonical package on enable", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["google", "@elizaos/plugin-openai"],
+        entries: {
+          google: { enabled: false },
+        },
+      },
+    };
+    const google = makePlugin({
+      id: "google",
+      name: "Google Workspace",
+      category: "feature",
+      npmName: "@elizaos/plugin-google-workspace",
+      enabled: true,
+    });
+
+    const result = persistCompatPluginMutation(
+      "google",
+      { enabled: true },
+      google,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai", "@elizaos/plugin-google-workspace"],
+      entries: {
+        "google-workspace": { enabled: true },
       },
     });
   });
