@@ -1,6 +1,13 @@
 /** Scenario fixture for gmail search spam trash; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_WRITE_TOOLS,
+  GMAIL_SCENARIO_MESSAGES,
+  gmailSearchFixture,
+  gmailThreadFixture,
+} from "./_gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -22,12 +29,8 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-      requiredMessageIds: ["msg-spam"],
-    },
+    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.spam]),
+    gmailThreadFixture([GMAIL_SCENARIO_MESSAGES.spam]),
   ],
   turns: [
     {
@@ -49,27 +52,17 @@ export default scenario({
       subaction: ["search", "read"],
     },
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
-      minCount: 1,
+      type: "mcpToolCalls",
+      provider: "google",
+      resource: "gmail",
+      calls: [{ tool: "search_threads" }, { tool: "get_thread" }],
     },
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
-      minCount: 1,
-    },
-    {
-      type: "gmailBatchModify",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
-    },
-    {
-      type: "gmailMessageSent",
-      expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-spam-search-readonly-rubric",
@@ -77,12 +70,5 @@ export default scenario({
       description:
         "End-to-end: the assistant looked in Gmail spam/trash and read the matching message without performing any Gmail write.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

@@ -3,13 +3,18 @@
  *
  * Failure modes guarded:
  *   - missing `subject:` filter (broad scan)
- *   - fabricated results without mock hit
+ *   - fabricated results without an MCP search call
  *
  * Cited: 03-coverage-gap-matrix.md — search-by-subject.
  */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  GMAIL_MCP_WRITE_TOOLS,
+  gmailSearchFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -30,13 +35,7 @@ export default scenario({
       title: "Gmail Search By Subject",
     },
   ],
-  seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-    },
-  ],
+  seed: [gmailSearchFixture([GMAIL_MCP_MESSAGES.financeAlert])],
   turns: [
     {
       kind: "message",
@@ -52,17 +51,19 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "search_threads",
+      arguments: { query: "subject:invoice" },
       minCount: 1,
     },
     {
-      type: "gmailMessageSent",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-search-by-subject-rubric",

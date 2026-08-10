@@ -36,7 +36,6 @@ afterEach(async () => {
 async function createRuntime(): Promise<IAgentRuntime> {
   const mocked = await createMockedTestRuntime({
     envs: [],
-    seedGoogle: false,
     seedX: false,
     seedBenchmarkFixtures: false,
     withLLM: false,

@@ -53,12 +53,13 @@ describe("Google Workspace MCP manifest", () => {
     expect(GOOGLE_WORKSPACE_MCP_ENDPOINTS).not.toHaveProperty("meet");
   });
 
-  it("promotes only the reviewed twelve-tool action catalog", () => {
+  it("promotes only the reviewed thirteen-tool action catalog", () => {
     const promoted = Object.values(GOOGLE_WORKSPACE_MCP_RESOURCES).flatMap(
       (resource) => resource.promotedTools,
     );
-    expect(promoted).toHaveLength(12);
+    expect(promoted).toHaveLength(13);
     expect(promoted).toContain("create_draft");
+    expect(promoted).toContain("get_message");
     expect(promoted).not.toContain("send_message");
     for (const resource of Object.values(GOOGLE_WORKSPACE_MCP_RESOURCES)) {
       expect(

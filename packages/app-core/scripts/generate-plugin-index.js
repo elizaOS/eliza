@@ -153,7 +153,6 @@ const SETUP_GUIDE_ANCHORS = {
   acp: "#acp-agent-communication-protocol",
   mcp: "#mcp-model-context-protocol",
   iq: "#iq-solana-on-chain",
-  "gmail-watch": "#gmail-watch",
   streaming: "#streaming",
 };
 

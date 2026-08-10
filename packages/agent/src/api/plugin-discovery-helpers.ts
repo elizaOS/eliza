@@ -1248,8 +1248,6 @@ const PLUGIN_DESCRIPTION_OVERRIDES: Record<string, string> = {
   blooio: "Blooio SMS connector for texting your agent",
   github:
     "GitHub connector for issues, pull requests, and repository automation",
-  "gmail-watch":
-    "Gmail watcher that turns new incoming emails into agent events",
   mcp: "Model Context Protocol connector for external tools and servers",
 };
 
@@ -1290,7 +1288,6 @@ const PLUGIN_SETUP_GUIDE_ANCHORS: Record<string, string> = {
   acp: "#acp-agent-communication-protocol",
   mcp: "#mcp-model-context-protocol",
   iq: "#iq-solana-on-chain",
-  "gmail-watch": "#gmail-watch",
   streaming: "#streaming",
 };
 

@@ -4,6 +4,13 @@
  */
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_SCENARIO_MESSAGES,
+  gmailDraftFixture,
+  gmailFixture,
+  gmailSearchFixture,
+  gmailThreadFixture,
+} from "./_gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -25,11 +32,16 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "sarah-product-brief.eml",
-    },
+    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.sarah]),
+    gmailThreadFixture([GMAIL_SCENARIO_MESSAGES.sarah]),
+    gmailDraftFixture("thr-sarah", "draft-sarah-confirmed"),
+    gmailFixture({
+      tool: "list_drafts",
+      structuredContent: {
+        drafts: [{ id: "draft-sarah-confirmed", threadId: "thr-sarah" }],
+      },
+      repeat: true,
+    }),
   ],
   turns: [
     {
@@ -56,20 +68,23 @@ export default scenario({
     },
   ],
   finalChecks: [
-    { type: "gmailDraftCreated" },
-    { type: "gmailMessageSent", expected: false },
+    {
+      type: "mcpToolCalls",
+      provider: "google",
+      resource: "gmail",
+      calls: [
+        { tool: "search_threads" },
+        {
+          tool: "create_draft",
+          arguments: { to: ["sarah@example.com"] },
+        },
+      ],
+    },
     judgeRubric({
       name: "gmail-draft-save-confirmation-rubric",
       threshold: 0.75,
       description:
         "The assistant saved the approved reply as a Gmail draft without claiming or attempting delivery.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

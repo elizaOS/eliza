@@ -1,6 +1,12 @@
 /** Scenario fixture for gmail triage high priority client; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_WRITE_TOOLS,
+  GMAIL_SCENARIO_MESSAGES,
+  gmailSearchFixture,
+} from "./_gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -21,13 +27,7 @@ export default scenario({
       title: "Gmail Triage High-Priority",
     },
   ],
-  seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "sarah-product-brief.eml",
-    },
-  ],
+  seed: [gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.sarah])],
   turns: [
     {
       kind: "message",
@@ -48,13 +48,18 @@ export default scenario({
       subaction: "triage",
     },
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "search_threads",
       minCount: 1,
     },
     {
-      type: "gmailNoRealWrite",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
+      expected: false,
     },
     judgeRubric({
       name: "gmail-high-priority-triage-rubric",
@@ -62,12 +67,5 @@ export default scenario({
       description:
         "End-to-end: the assistant prioritized the client email that needs an immediate response instead of flattening everything into a generic inbox summary.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

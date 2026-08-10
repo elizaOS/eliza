@@ -7,6 +7,11 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  gmailCreateDraftFixture,
+  gmailSearchFixture,
+} from "../scenario-support/gmail-mcp-fixtures.ts";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
@@ -29,11 +34,8 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "sarah-product-brief.eml",
-    },
+    gmailSearchFixture([GMAIL_MCP_MESSAGES.sarahProductBrief]),
+    gmailCreateDraftFixture({ clearLedger: false }),
   ],
   turns: [
     {
@@ -58,18 +60,12 @@ export default scenario({
       expected: true,
     },
     {
-      type: "gmailDraftCreated",
-      name: "gmail draft create request observed",
-      expected: true,
-    },
-    {
-      type: "gmailMessageSent",
-      name: "no email was sent before approval",
-      expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
-      name: "no real gmail write occurred",
+      type: "mcpToolCall",
+      name: "official Gmail draft creation observed",
+      provider: "google",
+      resource: "gmail",
+      tool: "create_draft",
+      minCount: 1,
     },
     {
       type: "custom",
@@ -82,12 +78,5 @@ export default scenario({
       description:
         "End-to-end: the assistant used the seeded Gmail thread to draft a concise overdue-reply apology, held it for owner approval, and did not send anything externally.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

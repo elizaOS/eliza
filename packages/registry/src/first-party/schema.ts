@@ -359,6 +359,7 @@ export const pluginEntrySchema = z.object({
 // ---------------------------------------------------------------------------
 
 const accountAuthKind = z.enum([
+  "oauth", // direct provider OAuth; execution topology is not part of identity
   "oauth-cloud", // "Log in with X" routed through Eliza Cloud
   "oauth-local", // local-only OAuth (e.g. per-homeserver Matrix)
   "qr", // QR-pairing (WhatsApp Baileys, Signal device-link)

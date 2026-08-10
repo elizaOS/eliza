@@ -65,7 +65,7 @@ beforeAll(async () => {
       ('${CREDENTIAL_B}', '${ORG}', '${USER}', 'slack', 'slack-b', 'active', '[]', now()),
       ('${LEGACY_CREDENTIAL}', '${LEGACY_ORG}', '${LEGACY_USER}', 'google',
        'google-user', 'active',
-       '["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/calendar.events"]',
+       '["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/calendar.events"]',
        now()),
       ('${MULTI_CREDENTIAL}', '${MULTI_ORG}', '${MULTI_USER}', 'google',
        'multi-google-user', 'active',
@@ -139,7 +139,7 @@ describe("0195 agent connector bindings migration", () => {
       {
         agent_id: LEGACY_AGENT,
         selected_products: ["gmail", "calendar"],
-        allowed_capabilities: ["gmail.read", "calendar.read"],
+        allowed_capabilities: ["gmail.read", "gmail.manage", "gmail.draft", "calendar.read"],
         is_default: true,
       },
     ]);

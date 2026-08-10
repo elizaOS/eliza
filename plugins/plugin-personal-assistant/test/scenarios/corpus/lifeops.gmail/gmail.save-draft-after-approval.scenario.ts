@@ -11,6 +11,11 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  gmailCreateDraftFixture,
+  gmailSearchFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -32,11 +37,8 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "sarah-product-brief.eml",
-    },
+    gmailSearchFixture([GMAIL_MCP_MESSAGES.sarahProductBrief]),
+    gmailCreateDraftFixture({ clearLedger: false }),
   ],
   turns: [
     {
@@ -64,7 +66,11 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "gmailDraftCreated",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "create_draft",
+      minCount: 1,
     },
     judgeRubric({
       name: "gmail-save-after-approval-rubric",
@@ -72,12 +78,5 @@ export default scenario({
       description:
         "Agent proposed a reply on turn 1, then saved a Gmail draft on turn 2 without claiming delivery.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

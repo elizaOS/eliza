@@ -16,6 +16,10 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_WRITE_TOOLS,
+  gmailMcpFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 function checkAgentSurfacesAuthFailure(
   ctx: ScenarioContext,
@@ -83,11 +87,17 @@ export default scenario({
     },
   ],
   seed: [
+    gmailMcpFixture({
+      tool: "search_threads",
+      contentText: "Gmail MCP authorization expired (401); reconnect required.",
+      isError: true,
+    }),
     {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-      faultInjection: { mode: "auth_expired", method: "GET" },
+      type: "connectorStatus",
+      connector: "gmail",
+      provider: "Google Workspace MCP",
+      state: "expired",
+      capabilities: ["gmail.read"],
     },
   ],
   turns: [
@@ -106,7 +116,17 @@ export default scenario({
       predicate: checkAgentSurfacesAuthFailure,
     },
     {
-      type: "gmailMessageSent",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "search_threads",
+      result: { isError: true },
+    },
+    {
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
     },
     judgeRubric({

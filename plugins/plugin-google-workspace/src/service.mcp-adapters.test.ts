@@ -22,6 +22,7 @@ const ACCOUNT: ConnectorAccount = {
   accessGate: "open",
   status: "connected",
   capabilities: [
+    "gmail.read",
     "gmail.draft",
     "gmail.manage",
     "calendar.read",
@@ -64,6 +65,24 @@ function engineHarness() {
   const callTool = vi.fn(async (_ref, call: { name: string }) => {
     if (call.name === "create_draft") {
       return { content: [], structuredContent: { id: "draft-1", threadId: "thread-1" } };
+    }
+    if (call.name === "get_message") {
+      return {
+        content: [],
+        structuredContent: {
+          id: "message-1",
+          threadId: "thread-1",
+          subject: "Launch packet",
+          sender: "julia@example.com",
+          attachments: [
+            {
+              id: "attachment-1",
+              mimeType: "application/pdf",
+              filename: "launch-packet.pdf",
+            },
+          ],
+        },
+      };
     }
     if (call.name === "list_events") {
       return {
@@ -108,7 +127,10 @@ function engineHarness() {
     discover: vi.fn(async (ref) => ({
       server: { capabilities: { tools: {} } },
       tools: ref.key.endsWith(":gmail")
-        ? [{ name: "create_draft", inputSchema: { type: "object" } }]
+        ? [
+            { name: "create_draft", inputSchema: { type: "object" } },
+            { name: "get_message", inputSchema: { type: "object" } },
+          ]
         : ref.key.endsWith(":calendar")
           ? [{ name: "list_events", inputSchema: { type: "object" } }]
           : ref.key.endsWith(":drive")
@@ -193,6 +215,33 @@ describe("GoogleWorkspaceService MCP adapters", () => {
     await expect(
       service.getDocContent({ accountId: ACCOUNT.id, documentId: "doc-1" })
     ).resolves.toEqual({ title: "Google Doc", plainText: "Reviewed document text" });
+  });
+
+  it("preserves official Gmail attachment metadata without downloading bytes", async () => {
+    const { service, callTool } = await connectedService();
+
+    await expect(
+      service.getGmailMessageDetail({
+        accountId: ACCOUNT.id,
+        messageId: "message-1",
+      })
+    ).resolves.toMatchObject({
+      message: {
+        metadata: {
+          attachments: [
+            {
+              id: "attachment-1",
+              mimeType: "application/pdf",
+              filename: "launch-packet.pdf",
+            },
+          ],
+        },
+      },
+    });
+    expect(callTool).toHaveBeenCalledWith(expect.any(Object), {
+      name: "get_message",
+      arguments: { messageId: "message-1", messageFormat: "FULL_CONTENT" },
+    });
   });
 
   it("fails closed for personal-Google operations absent from official MCP", async () => {

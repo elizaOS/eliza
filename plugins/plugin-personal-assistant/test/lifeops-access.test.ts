@@ -90,13 +90,13 @@ describe("hasLifeOpsAccess — owner gate", () => {
 });
 
 describe("getGoogleCapabilityStatus — OAuth grant/scope matrix", () => {
-  it("maps calendar write as also granting read", async () => {
+  it("ignores the retired Google Calendar write capability", async () => {
     const g = await getGoogleCapabilityStatus(
       serviceWith(true, ["google.calendar.write"]),
     );
     expect(g.connected).toBe(true);
-    expect(g.hasCalendarWrite).toBe(true);
-    expect(g.hasCalendarRead).toBe(true);
+    expect(g.hasCalendarWrite).toBe(false);
+    expect(g.hasCalendarRead).toBe(false);
   });
 
   it("grants read without write when only the read scope is present", async () => {
@@ -152,7 +152,7 @@ describe("unavailable-message helpers", () => {
     expect(calendarReadUnavailableMessage(disconnected)).toMatch(
       /not connected/i,
     );
-    expect(calendarWriteUnavailableMessage(connected)).toMatch(/not granted/i);
+    expect(calendarWriteUnavailableMessage(connected)).toMatch(/view-only/i);
     expect(calendarWriteUnavailableMessage(disconnected)).toMatch(
       /not connected/i,
     );

@@ -132,13 +132,12 @@ describe("plugin-google-workspace shouldEnable", () => {
     ).toBe(true);
   });
 
-  it("enables when the full GOOGLE_CLIENT_* + REDIRECT_URI trio is set", () => {
+  it("enables from non-secret OAuth config when the client secret is vault-only", () => {
     expect(
       shouldEnable(
         ctx({
           env: {
             GOOGLE_CLIENT_ID: "client",
-            GOOGLE_CLIENT_SECRET: "secret",
             GOOGLE_REDIRECT_URI: "https://example.com/oauth/callback",
           } as NodeJS.ProcessEnv,
         })
@@ -146,13 +145,12 @@ describe("plugin-google-workspace shouldEnable", () => {
     ).toBe(true);
   });
 
-  it("does not enable when redirect URI is missing from the OAuth trio", () => {
+  it("does not enable when redirect URI is missing from OAuth config", () => {
     expect(
       shouldEnable(
         ctx({
           env: {
             GOOGLE_CLIENT_ID: "client",
-            GOOGLE_CLIENT_SECRET: "secret",
           } as NodeJS.ProcessEnv,
         })
       )

@@ -23,7 +23,7 @@ const execFileAsync = promisify(execFile);
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 function rewriteGoogleUrlForMock(url: string): string {
-  const mockBase = process.env.ELIZA_MOCK_GOOGLE_BASE;
+  const mockBase = process.env.ELIZA_MOCK_GOOGLE_FIT_BASE;
   if (!mockBase) return url;
   const mockUrl = new URL(mockBase);
   if (!["127.0.0.1", "localhost", "::1", "[::1]"].includes(mockUrl.hostname)) {

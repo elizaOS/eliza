@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
+  type CapturedMcpToolCall,
   FINAL_CHECK_KEYS,
   type ScenarioContext,
   type ScenarioFinalCheck,
@@ -17,7 +18,7 @@ import type {
   ScenarioEvidenceObservation,
   ScenarioEvidenceReport,
 } from "../types.ts";
-import { isLoopbackUrl, toRecord } from "../utils.js";
+import { toRecord } from "../utils.js";
 
 export type FinalCheckRuntime = {
   getService?: (name: string) => unknown;
@@ -881,82 +882,30 @@ function definitionReceipt(record: DefinitionRecordLike): string {
   return parts.join(" ");
 }
 
-type GmailMockRequest = {
-  environment?: string;
-  method?: string;
-  path?: string;
-  query?: string;
-  body?: unknown;
-  createdAt?: string;
+type McpToolCallMatcher = {
+  provider?: string | string[];
+  resource?: string | string[];
+  tool?: string | string[];
+  accountId?: string | string[];
+  requiredCapability?: string | string[];
+  arguments?: Record<string, unknown>;
+  result?: Record<string, unknown>;
 };
 
-async function readGmailMockRequests(): Promise<GmailMockRequest[]> {
-  const base = process.env.ELIZA_MOCK_GOOGLE_BASE;
-  if (!isLoopbackUrl(base)) {
-    throw new Error(
-      "ELIZA_MOCK_GOOGLE_BASE must be a loopback URL for Gmail ledger checks",
-    );
-  }
-  const response = await fetch(`${base}/__mock/requests`);
-  if (!response.ok) {
-    throw new Error(
-      `Gmail mock request ledger returned HTTP ${response.status}`,
-    );
-  }
-  const body = (await response.json()) as { requests?: unknown };
-  return Array.isArray(body.requests)
-    ? body.requests.filter(
-        (entry): entry is GmailMockRequest =>
-          Boolean(entry) && typeof entry === "object",
-      )
-    : [];
-}
-
-function gmailRequestMatches(
-  entry: GmailMockRequest,
-  filters: {
-    method?: string | string[];
-    path?: string | string[];
-    body?: Record<string, unknown>;
-  },
+function mcpToolCallMatches(
+  entry: CapturedMcpToolCall,
+  matcher: McpToolCallMatcher,
 ): boolean {
-  if (
-    filters.method !== undefined &&
-    !toArray(filters.method).includes(String(entry.method ?? "").toUpperCase())
-  ) {
-    return false;
-  }
-  if (
-    filters.path !== undefined &&
-    !toArray(filters.path).includes(String(entry.path ?? ""))
-  ) {
-    return false;
-  }
-  return matchesExpectedFields(entry.body, filters.body);
-}
-
-function gmailSendLedgerPaths(): string[] {
-  return ["/gmail/v1/users/me/messages/send", "/gmail/v1/users/me/drafts/send"];
-}
-
-function hasGmailDraftData(
-  action: ScenarioContext["actionsCalled"][number],
-): boolean {
-  const data = actionResultData(action);
-  return Boolean(data?.gmailDraft);
-}
-
-function hasConfirmedGmailSendAction(
-  action: ScenarioContext["actionsCalled"][number],
-): boolean {
-  const acceptedNames = new Set(["MESSAGE", "GMAIL_ACTION", "INBOX"]);
-  if (!acceptedNames.has(action.actionName)) {
-    return false;
-  }
-  const params = actionParameters(action);
+  const matches = (value: string, accepted: string | string[] | undefined) =>
+    accepted === undefined || toArray(accepted).includes(value);
   return (
-    params?.confirmed === true ||
-    readPath(params, "details.confirmSend") === true
+    matches(entry.provider, matcher.provider) &&
+    matches(entry.resource, matcher.resource) &&
+    matches(entry.tool, matcher.tool) &&
+    matches(entry.accountId, matcher.accountId) &&
+    matches(entry.requiredCapability, matcher.requiredCapability) &&
+    matchesExpectedFields(entry.arguments, matcher.arguments) &&
+    matchesExpectedFields(entry.result, matcher.result)
   );
 }
 
@@ -2188,17 +2137,13 @@ registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
   };
 });
 
-registerFinalCheckHandler("gmailMockRequest", async (check) => {
-  const { method, path, body, expected, minCount } = check as {
-    method?: string | string[];
-    path?: string | string[];
-    body?: Record<string, unknown>;
+registerFinalCheckHandler("mcpToolCall", (check, { ctx }) => {
+  const { expected, minCount, ...matcher } = check as McpToolCallMatcher & {
     expected?: boolean;
     minCount?: number;
   };
-  const requests = await readGmailMockRequests();
-  const matched = requests.filter((entry) =>
-    gmailRequestMatches(entry, { method, path, body }),
+  const matched = (ctx.mcpToolCalls ?? []).filter((entry) =>
+    mcpToolCallMatches(entry, matcher),
   );
   const wantPresent = expected ?? true;
   const wantCount = typeof minCount === "number" ? minCount : 1;
@@ -2206,175 +2151,75 @@ registerFinalCheckHandler("gmailMockRequest", async (check) => {
     if (matched.length < wantCount) {
       return {
         status: "failed",
-        detail: `expected ${wantCount} Gmail mock request(s), saw ${matched.length} of ${requests.length}`,
+        detail: `expected ${wantCount} MCP tool call(s), saw ${matched.length} of ${ctx.mcpToolCalls?.length ?? 0}`,
       };
     }
     return {
       status: "passed",
-      detail: `${matched.length} Gmail mock request(s) matched`,
+      detail: `${matched.length} MCP tool call(s) matched`,
     };
   }
   if (matched.length > 0) {
     return {
       status: "failed",
-      detail: `expected no Gmail mock request match, saw ${matched.length}`,
+      detail: `expected no MCP tool call match, saw ${matched.length}`,
     };
   }
   return {
     status: "passed",
-    detail: "no matching Gmail mock request observed",
+    detail: "no matching MCP tool call observed",
   };
 });
 
-registerFinalCheckHandler("gmailDraftCreated", async (check, { ctx }) => {
-  const { expected } = check as { expected?: boolean };
-  const requests = await readGmailMockRequests();
-  const ledgerHit = requests.some((entry) =>
-    gmailRequestMatches(entry, {
-      method: "POST",
-      path: "/gmail/v1/users/me/drafts",
-    }),
+registerFinalCheckHandler("mcpToolCalls", (check, { ctx }) => {
+  const { provider, resource, calls, ordered, exact } = check as {
+    provider?: string | string[];
+    resource?: string | string[];
+    calls: McpToolCallMatcher[];
+    ordered?: boolean;
+    exact?: boolean;
+  };
+  const ledger = (ctx.mcpToolCalls ?? []).filter((entry) =>
+    mcpToolCallMatches(entry, { provider, resource }),
   );
-  const actionHit = ctx.actionsCalled.some((action) =>
-    hasGmailDraftData(action),
-  );
-  const any = ledgerHit || actionHit;
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `gmailDraftCreated=${want}` };
+  const matchers = calls.map((call) => ({ provider, resource, ...call }));
+  let matched = true;
+  if (ordered ?? true) {
+    let cursor = 0;
+    for (const matcher of matchers) {
+      const index = ledger.findIndex(
+        (entry, entryIndex) =>
+          entryIndex >= cursor && mcpToolCallMatches(entry, matcher),
+      );
+      if (index < 0) {
+        matched = false;
+        break;
+      }
+      cursor = index + 1;
+    }
+  } else {
+    const unmatched = [...ledger];
+    for (const matcher of matchers) {
+      const index = unmatched.findIndex((entry) =>
+        mcpToolCallMatches(entry, matcher),
+      );
+      if (index < 0) {
+        matched = false;
+        break;
+      }
+      unmatched.splice(index, 1);
+    }
   }
-  return {
-    status: "failed",
-    detail: `expected gmailDraftCreated=${want}, saw ${any}`,
-  };
-});
-
-registerFinalCheckHandler("gmailDraftDeleted", async (check) => {
-  const { expected } = check as { expected?: boolean };
-  const requests = await readGmailMockRequests();
-  const any = requests.some(
-    (entry) =>
-      String(entry.method ?? "").toUpperCase() === "DELETE" &&
-      /^\/gmail\/v1\/users\/me\/drafts\/[^/]+$/.test(String(entry.path ?? "")),
-  );
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `gmailDraftDeleted=${want}` };
-  }
-  return {
-    status: "failed",
-    detail: `expected gmailDraftDeleted=${want}, saw ${any}`,
-  };
-});
-
-registerFinalCheckHandler("gmailMessageSent", async (check) => {
-  const { expected } = check as { expected?: boolean };
-  const requests = await readGmailMockRequests();
-  const any = requests.some((entry) =>
-    gmailRequestMatches(entry, {
-      method: "POST",
-      path: gmailSendLedgerPaths(),
-    }),
-  );
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `gmailMessageSent=${want}` };
-  }
-  return {
-    status: "failed",
-    detail: `expected gmailMessageSent=${want}, saw ${any}`,
-  };
-});
-
-registerFinalCheckHandler("gmailBatchModify", async (check) => {
-  const { expected, body } = check as {
-    expected?: boolean;
-    body?: Record<string, unknown>;
-  };
-  const requests = await readGmailMockRequests();
-  const any = requests.some((entry) =>
-    gmailRequestMatches(entry, {
-      method: "POST",
-      path: "/gmail/v1/users/me/messages/batchModify",
-      body,
-    }),
-  );
-  const want = expected ?? true;
-  if (any === want) {
-    return { status: "passed", detail: `gmailBatchModify=${want}` };
-  }
-  return {
-    status: "failed",
-    detail: `expected gmailBatchModify=${want}, saw ${any}`,
-  };
-});
-
-registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
-  const { state } = check as {
-    state: "pending" | "confirmed" | "canceled" | "cancelled";
-  };
-  if (state === "pending") {
-    const any =
-      (ctx.approvalRequests ?? []).some(
-        (request) =>
-          matchesActionName(request.actionName, [
-            "MESSAGE",
-            "GMAIL_ACTION",
-            "send_email",
-          ]) && request.state === "pending",
-      ) ||
-      ctx.actionsCalled.some((action) => {
-        const data = actionResultData(action);
-        return (
-          data?.pendingApproval === true || data?.requiresConfirmation === true
-        );
-      });
-    return any
-      ? { status: "passed", detail: "pending Gmail approval observed" }
-      : { status: "failed", detail: "no pending Gmail approval observed" };
-  }
-  if (state === "confirmed") {
-    const requests = await readGmailMockRequests();
-    const sendHit = requests.some((entry) =>
-      gmailRequestMatches(entry, {
-        method: "POST",
-        path: gmailSendLedgerPaths(),
-      }),
-    );
-    const actionHit = ctx.actionsCalled.some((action) =>
-      hasConfirmedGmailSendAction(action),
-    );
-    return sendHit || actionHit
-      ? { status: "passed", detail: "confirmed Gmail send observed" }
-      : { status: "failed", detail: "no confirmed Gmail send observed" };
-  }
-  const canceled = ctx.actionsCalled.some((action) => {
-    const data = actionResultData(action);
-    return data?.noop === true && data?.cancelled === true;
-  });
-  return canceled
-    ? { status: "passed", detail: "canceled Gmail approval observed" }
-    : { status: "failed", detail: "no canceled Gmail approval observed" };
-});
-
-registerFinalCheckHandler("gmailNoRealWrite", () => {
-  if (!isLoopbackUrl(process.env.ELIZA_MOCK_GOOGLE_BASE)) {
-    return {
-      status: "failed",
-      detail:
-        "ELIZA_MOCK_GOOGLE_BASE is not loopback; Gmail write proof cannot exclude real writes",
-    };
-  }
-  if (process.env.ELIZA_ALLOW_REAL_GMAIL_WRITES === "1") {
-    return {
-      status: "failed",
-      detail: "ELIZA_ALLOW_REAL_GMAIL_WRITES=1 disables no-real-write proof",
-    };
-  }
-  return {
-    status: "passed",
-    detail: "Gmail writes are constrained to the loopback mock base",
-  };
+  if (exact && ledger.length !== matchers.length) matched = false;
+  return matched
+    ? {
+        status: "passed",
+        detail: `${matchers.length} declared MCP tool call(s) matched ${ledger.length} ledger entry/entries`,
+      }
+    : {
+        status: "failed",
+        detail: `declared MCP call sequence did not match ${ledger.length} ledger entry/entries`,
+      };
 });
 
 registerFinalCheckHandler("workflowDispatchOccurred", (check, { ctx }) => {

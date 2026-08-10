@@ -1,17 +1,20 @@
 /**
  * Live-model Gmail retry/refinement scenario (#9310): runs against the loopback
- * Gmail mock (seeded inbox) and asserts the WIRE outcome — the initial search, the
- * retry, and the unread refinement each actually hit the Gmail API (the mock's
- * request ledger must contain the list calls, gmailMockRequest), nothing is sent
- * (gmailMessageSent:false), and every write is provably constrained to the
- * loopback mock (gmailNoRealWrite).
+ * official Gmail MCP fixture and asserts the initial search, retry, and unread
+ * refinement each execute search_threads. The curated surface has no send tool,
+ * and the scenario forbids every available Gmail MCP write.
  */
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  GMAIL_MCP_WRITE_TOOLS,
+  gmailSearchFixture,
+} from "../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
   id: "gmail-retry-followup",
-  title: "Gmail retry and refinement actually re-query the Gmail API",
+  title: "Gmail retry and refinement re-run the curated MCP search",
   domain: "gmail",
   tags: ["lifeops", "gmail", "executive-assistant", "outcome"],
   isolation: "per-scenario",
@@ -27,11 +30,9 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "unread-inbox.eml",
-    },
+    gmailSearchFixture([GMAIL_MCP_MESSAGES.sarahProductBrief], {
+      repeat: true,
+    }),
   ],
   turns: [
     {
@@ -69,26 +70,22 @@ export default scenario({
     },
   ],
   finalChecks: [
-    // OUTCOME (wire): the search and the retry each hit the Gmail API — at
-    // least two list requests landed on the mock ledger. A planner that names
-    // gmail_action without executing it cannot satisfy this.
+    // OUTCOME: the search and retry each execute the curated MCP tool.
     {
-      type: "gmailMockRequest",
-      name: "search and retry both hit the Gmail list endpoint",
-      method: "GET",
-      path: "/gmail/v1/users/me/messages",
-      minCount: 2,
+      type: "mcpToolCall",
+      name: "initial search, retry, and refinement execute search_threads",
+      provider: "google",
+      resource: "gmail",
+      tool: "search_threads",
+      minCount: 3,
     },
-    // NEGATIVE OUTCOME: a read-only flow — nothing was sent.
     {
-      type: "gmailMessageSent",
-      name: "no email was sent by a search flow",
+      type: "mcpToolCall",
+      name: "search flow makes no Gmail MCP write",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
-    },
-    // NEGATIVE OUTCOME: writes are provably constrained to the loopback mock.
-    {
-      type: "gmailNoRealWrite",
-      name: "no real gmail write occurred",
     },
     {
       type: "memoryWriteOccurred",
@@ -100,7 +97,7 @@ export default scenario({
       name: "gmail-retry-end-to-end",
       minimumScore: 0.7,
       rubric:
-        "End-to-end: the assistant executed the Sarah inbox search, re-ran it on the retry request instead of claiming stale results or spawning agents, and narrowed to unread messages on the refinement — all through real Gmail API calls.",
+        "End-to-end: the assistant executed the Sarah inbox search, re-ran it on the retry request instead of claiming stale results or spawning agents, and narrowed to unread messages on the refinement — all through curated search_threads MCP calls.",
     },
   ],
 });

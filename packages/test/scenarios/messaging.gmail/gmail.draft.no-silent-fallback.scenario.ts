@@ -2,6 +2,11 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_SCENARIO_MESSAGES,
+  gmailSearchFixture,
+  gmailThreadFixture,
+} from "./_gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -23,11 +28,8 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "sarah-product-brief.eml",
-    },
+    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.sarah]),
+    gmailThreadFixture([GMAIL_SCENARIO_MESSAGES.sarah]),
   ],
   turns: [
     {
@@ -44,11 +46,11 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "gmailDraftCreated",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "create_draft",
       expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-no-silent-draft-fallback-rubric",
@@ -56,12 +58,5 @@ export default scenario({
       description:
         "End-to-end: the assistant did not invent reply content or create a fallback draft when the owner had not supplied the reply body.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

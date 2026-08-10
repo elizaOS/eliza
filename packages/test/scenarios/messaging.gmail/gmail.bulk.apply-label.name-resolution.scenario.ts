@@ -1,6 +1,12 @@
 /** Scenario fixture for gmail bulk apply label name resolution; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_SCENARIO_MESSAGES,
+  gmailFixture,
+  gmailSearchFixture,
+} from "./_gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -22,12 +28,22 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-      requiredMessageIds: ["msg-finance"],
-    },
+    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.finance]),
+    gmailFixture({
+      tool: "list_labels",
+      structuredContent: {
+        labels: [{ id: "Label_1", name: "eliza-e2e", type: "user" }],
+      },
+      repeat: true,
+    }),
+    gmailFixture({
+      tool: "label_message",
+      arguments: { messageId: "msg-finance", labelIds: ["Label_1"] },
+      structuredContent: {
+        messageId: "msg-finance",
+        appliedLabelIds: ["Label_1"],
+      },
+    }),
   ],
   turns: [
     {
@@ -61,12 +77,6 @@ export default scenario({
       minCount: 1,
     },
     {
-      type: "gmailMockRequest",
-      method: "GET",
-      path: "/gmail/v1/users/me/labels",
-      minCount: 1,
-    },
-    {
       type: "gmailActionArguments",
       actionName: ["MESSAGE", "MESSAGE"],
       subaction: "manage",
@@ -76,21 +86,27 @@ export default scenario({
       },
     },
     {
-      type: "gmailBatchModify",
-      body: {
-        addLabelIds: "Label_1",
-      },
+      type: "mcpToolCalls",
+      provider: "google",
+      resource: "gmail",
+      calls: [
+        { tool: "search_threads" },
+        { tool: "list_labels" },
+        {
+          tool: "label_message",
+          arguments: {
+            messageId: "msg-finance",
+            labelIds: ["Label_1"],
+          },
+        },
+      ],
     },
     {
-      type: "gmailDraftCreated",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "create_draft",
       expected: false,
-    },
-    {
-      type: "gmailMessageSent",
-      expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-label-name-resolution-rubric",
@@ -98,12 +114,5 @@ export default scenario({
       description:
         "End-to-end: the assistant selected the finance message first, resolved the existing Gmail label name to its Gmail label ID, and applied that label without drafting, sending, or guessing.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

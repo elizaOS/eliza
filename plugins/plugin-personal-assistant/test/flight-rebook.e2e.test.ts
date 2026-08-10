@@ -8,8 +8,8 @@
  * PRD §Suite D — Travel And Event Operations
  * (`ea.travel.flight-conflict-rebooking`).
  *
- * Setup: a flight on Wed 8 AM and a calendar event Wed 9 AM that the agent
- * detects as overlapping with a layover.
+ * Setup: a flight arrival and a calendar event one hour later that the agent
+ * detects as an unsafe connection after baggage and local travel.
  *
  * Gate: ELIZA_LIVE_TEST=1 + provider key.
  */
@@ -21,6 +21,7 @@ import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live
 import { withTimeout } from "../../../packages/app-core/test/helpers/test-utils.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import { judgeTextWithLlm } from "./helpers/lifeops-live-judge.ts";
+import { seedDurableGoogleCalendar } from "./support/helpers/durable-google-calendar.ts";
 import type { MockedTestRuntime } from "./support/helpers/mock-runtime.ts";
 import { createMockedTestRuntime } from "./support/helpers/mock-runtime.ts";
 
@@ -50,49 +51,28 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
       ownerId = crypto.randomUUID() as UUID;
       roomId = crypto.randomUUID() as UUID;
 
-      // Seed the conflicting flight and calendar event via Google mock
-      const calendarBase = mocked.mocks.baseUrls.google;
-      // Flight arrives Wed 8 AM (could be tight for a 9 AM meeting after baggage)
-      await fetch(`${calendarBase}/calendar/v3/calendars/primary/events`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer mock-token",
-          "X-Eliza-Test-Run": "journey-14",
-        },
-        body: JSON.stringify({
-          summary: "Flight SFO → JFK — arrival 8:00 AM",
-          start: {
-            dateTime: "2026-05-20T08:00:00-04:00",
-            timeZone: "America/New_York",
+      const flightStart = Date.now() + 72 * 60 * 60_000;
+      await seedDurableGoogleCalendar({
+        runtime: mocked.runtime,
+        grantId: "journey-14-google-calendar",
+        events: [
+          {
+            id: "journey-14-flight",
+            title: "Flight SFO → JFK — morning arrival",
+            startAt: new Date(flightStart).toISOString(),
+            endAt: new Date(flightStart + 30 * 60_000).toISOString(),
+            timezone: "America/New_York",
+            description:
+              "Flight arrives one hour before a board meeting; baggage claim and local travel make the connection unsafe",
           },
-          end: {
-            dateTime: "2026-05-20T08:30:00-04:00",
-            timeZone: "America/New_York",
+          {
+            id: "journey-14-board-meeting",
+            title: "Board Meeting — NYC office",
+            startAt: new Date(flightStart + 60 * 60_000).toISOString(),
+            endAt: new Date(flightStart + 3 * 60 * 60_000).toISOString(),
+            timezone: "America/New_York",
           },
-          description:
-            "Flight arrives 8 AM; tight connection to 9 AM board meeting",
-        }),
-      });
-      // Board meeting 9 AM same day
-      await fetch(`${calendarBase}/calendar/v3/calendars/primary/events`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer mock-token",
-          "X-Eliza-Test-Run": "journey-14",
-        },
-        body: JSON.stringify({
-          summary: "Board Meeting — NYC office",
-          start: {
-            dateTime: "2026-05-20T09:00:00-04:00",
-            timeZone: "America/New_York",
-          },
-          end: {
-            dateTime: "2026-05-20T11:00:00-04:00",
-            timeZone: "America/New_York",
-          },
-        }),
+        ],
       });
 
       mocked.mocks.clearRequestLedger();
@@ -109,7 +89,7 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
         roomId,
         metadata: { type: "user_message", entityName: "shaw" },
         content: {
-          text: "Can I make my Wednesday, May 20 board meeting given my morning flight to JFK that lands at 8 AM?",
+          text: "Can I make my upcoming board meeting given my morning flight to JFK that lands only one hour before it?",
           source: "telegram",
           channelType: ChannelType.DM,
         },
@@ -162,7 +142,7 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
       const judgement = await judgeTextWithLlm({
         label: "flight-rebook.detected-conflict-and-proposed",
         rubric:
-          "The reply must (1) acknowledge the timing conflict between the 8 AM JFK arrival and the 9 AM board meeting AND (2) either propose at least one specific alternative (e.g. an earlier flight, a calendar move, a remote-attend option) or describe a concrete rebooking plan. A reply that only restates the question, only says 'I'll check', or asks unrelated questions fails. The reply does NOT need to actually book anything — just propose.",
+          "The reply must (1) acknowledge the unsafe one-hour connection between the JFK arrival and the board meeting AND (2) either propose at least one specific alternative (e.g. an earlier flight, a calendar move, a remote-attend option) or describe a concrete rebooking plan. A reply that only restates the question, only says 'I'll check', or asks unrelated questions fails. The reply does NOT need to actually book anything — just propose.",
         text: reply,
         minimumScore: 0.7,
       });

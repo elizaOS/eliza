@@ -181,9 +181,6 @@ export function googleCapabilitiesForAccount(
     const mapped = mapCapability(value);
     if (mapped) normalized.add(mapped);
   }
-  if (normalized.has("google.gmail.draft.create")) {
-    normalized.add("google.gmail.triage");
-  }
   if (normalized.has("google.gmail.manage")) {
     normalized.add("google.gmail.triage");
   }

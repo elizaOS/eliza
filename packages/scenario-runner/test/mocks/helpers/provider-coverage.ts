@@ -20,8 +20,6 @@ export interface LifeOpsProviderMockCoverage {
 }
 
 export const REQUIRED_LIFEOPS_PROVIDER_IDS = [
-  "google-calendar",
-  "gmail",
   "github",
   "x",
   "whatsapp",
@@ -44,57 +42,6 @@ export const REQUIRED_LIFEOPS_PROVIDER_IDS = [
 ] as const;
 
 export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
-  {
-    id: "google-calendar",
-    label: "Google Calendar",
-    mode: "stateful-http",
-    environment: "google",
-    envVars: ["ELIZA_MOCK_GOOGLE_BASE"],
-    surfaces: [
-      "OAuth token and userinfo rewrite",
-      "calendar list",
-      "event list/get/search",
-      "event create/patch/update/move/delete",
-      "request ledger metadata",
-    ],
-    knownGaps: [
-      "No recurring-event expansion beyond single synthetic events",
-      "No freebusy, ACL, attachment, or conference-data surfaces",
-      "No Google rate-limit or partial-failure variants",
-    ],
-    validation: [
-      "test/mocks/__tests__/google-calendar-mock.test.ts",
-      "plugins/plugin-personal-assistant/test/lifeops-simulator.test.ts",
-      "plugins/plugin-personal-assistant/test/scenarios/calendar-llm-eval-mutations.scenario.ts",
-    ],
-  },
-  {
-    id: "gmail",
-    label: "Gmail",
-    mode: "stateful-http",
-    environment: "google",
-    envVars: ["ELIZA_MOCK_GOOGLE_BASE", "ELIZA_BLOCK_REAL_GMAIL_WRITES"],
-    surfaces: [
-      "work/home account fixture data",
-      "message list/get/search/send/modify/delete",
-      "thread list/get/modify/trash/untrash",
-      "draft create/list/get/send/delete",
-      "attachment metadata and download",
-      "labels, history, watch, filters",
-      "priority, vague, multi-search, and cross-account query fixtures",
-      "write request ledger metadata",
-    ],
-    knownGaps: [
-      "Search is deterministic fixture matching, not the full Gmail query grammar",
-      "No attachment upload or full multipart MIME fidelity",
-      "No delegated mailbox, push-notification, quota, or rate-limit variants",
-    ],
-    validation: [
-      "test/mocks/__tests__/google-gmail-fault.test.ts",
-      "plugins/plugin-personal-assistant/test/lifeops-simulator.test.ts",
-      "plugins/plugin-personal-assistant/test/scenarios/gmail-llm-eval-search-priority.scenario.ts",
-    ],
-  },
   {
     id: "github",
     label: "GitHub",

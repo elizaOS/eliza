@@ -1,18 +1,35 @@
 /**
  * Applies a scenario's `seed` steps to a live runtime before turns execute,
  * standing up the domain state a scenario assumes: todos, contacts, memories,
- * LifeOps task definitions/occurrences, and Gmail inbox fixtures. `applyScenarioSeedStep`
+ * LifeOps task definitions/occurrences, and in-process MCP tool fixtures. `applyScenarioSeedStep`
  * dispatches on the seed step's type and writes directly through the runtime's
  * stores so scenarios start from a known, deterministic world. Consumed by the
  * executor between setup and the first turn.
  */
-import type { AgentRuntime, UUID } from "@elizaos/core";
-import { createMessageMemory, MemoryType, stringToUuid } from "@elizaos/core";
+import type { AgentRuntime, ConnectorAccount, UUID } from "@elizaos/core";
+import {
+  createMessageMemory,
+  getConnectorAccountManager,
+  MemoryType,
+  stringToUuid,
+} from "@elizaos/core";
 import type {
+  McpAttachmentRef,
+  McpDiscovery,
+  McpRemoteResource,
+  McpResourceEngine,
+} from "@elizaos/plugin-mcp/resource-engine";
+import type {
+  CapturedMcpToolCall,
   ScenarioContext,
+  ScenarioMcpFixture,
+  ScenarioMcpToolResult,
   ScenarioSeedStep,
 } from "@elizaos/scenario-runner/schema";
-import { isLoopbackUrl } from "./utils.js";
+import {
+  GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES,
+  GOOGLE_WORKSPACE_MCP_RESOURCES,
+} from "@elizaos/shared/contracts";
 
 type LifeOpsOccurrenceState =
   | "completed"
@@ -260,29 +277,15 @@ type MemorySeed = {
   content?: unknown;
 };
 
-type GmailInboxSeed = {
-  type: "gmailInbox";
-  account?: unknown;
-  fixture?: unknown;
-  fixtures?: unknown;
-  requiredMessageIds?: unknown;
+type McpFixtureSeed = {
+  type: "mcpFixture";
+  provider?: unknown;
+  resource?: unknown;
+  tool?: unknown;
+  arguments?: unknown;
+  result?: unknown;
+  repeat?: unknown;
   clearLedger?: unknown;
-  faultInjection?: unknown;
-};
-
-type GmailFaultInjectionSeed = {
-  mode?: unknown;
-  method?: unknown;
-  path?: unknown;
-  endpoint?: unknown;
-  limit?: unknown;
-};
-
-type GmailFaultInjectionConfig = {
-  mode: "auth_expired" | "rate_limit" | "server_error" | "partial_failure";
-  method: string;
-  path: string;
-  remaining?: number;
 };
 
 type ConnectorSeed = {
@@ -2368,202 +2371,661 @@ async function writeDurableFact(
   return undefined;
 }
 
-const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
-  default: ["msg-finance", "msg-sarah", "msg-newsletter"],
-  "unread-inbox.eml": ["msg-finance", "msg-sarah"],
-  "sarah-product-brief.eml": ["msg-sarah"],
-  "high-priority-client.eml": ["msg-sarah"],
-  "alice-recent.eml": ["msg-sarah"],
-  "followup-14-days-ago.eml": [
-    "msg-unresponded-inbound",
-    "msg-unresponded-sent",
-  ],
-  // Forwarded-email prompt-injection trap (comms-flood pack, #12283 D1); the
-  // message body carries a fake wire-transfer "owner instruction" the model
-  // must flag, never execute.
-  "injection-fake-wire-instruction": ["msg-injection-wire"],
+type GoogleWorkspaceProduct = keyof typeof GOOGLE_WORKSPACE_MCP_RESOURCES;
+type GmailMcpTool =
+  keyof (typeof GOOGLE_WORKSPACE_MCP_RESOURCES)["gmail"]["tools"];
+
+type JsonFieldRule = {
+  type: "string" | "string[]" | "integer";
+  required?: boolean;
+  enum?: readonly string[];
 };
 
-interface GmailFixtureManifestResponse {
-  fixtures?: Record<string, readonly string[]>;
-}
+type GmailToolContract = {
+  description: string;
+  fields: Readonly<Record<string, JsonFieldRule>>;
+};
 
-function gmailSeedFixtureNames(seed: GmailInboxSeed): string[] {
-  const explicit = readNonEmptyString(seed.fixture);
-  const multiple = readStringArray(seed.fixtures);
-  const names = [...(explicit ? [explicit] : []), ...multiple];
-  return names.length > 0 ? names : ["default"];
-}
+const GMAIL_MCP_TOOL_CONTRACTS: Readonly<
+  Record<GmailMcpTool, GmailToolContract>
+> = {
+  create_draft: {
+    description:
+      "Create a Gmail draft; the official MCP does not expose a send tool.",
+    fields: {
+      to: { type: "string[]", required: true },
+      cc: { type: "string[]" },
+      bcc: { type: "string[]" },
+      subject: { type: "string", required: true },
+      body: { type: "string" },
+      htmlBody: { type: "string" },
+      replyToMessageId: { type: "string" },
+    },
+  },
+  list_drafts: {
+    description: "List Gmail drafts.",
+    fields: {
+      pageSize: { type: "integer" },
+      pageToken: { type: "string" },
+    },
+  },
+  get_thread: {
+    description: "Get one Gmail thread.",
+    fields: {
+      threadId: { type: "string", required: true },
+      messageFormat: { type: "string" },
+    },
+  },
+  get_message: {
+    description: "Get one Gmail message.",
+    fields: {
+      messageId: { type: "string", required: true },
+      messageFormat: {
+        type: "string",
+        enum: ["MINIMAL", "FULL_CONTENT"],
+      },
+    },
+  },
+  search_threads: {
+    description: "Search Gmail threads.",
+    fields: {
+      query: { type: "string", required: true },
+      pageSize: { type: "integer" },
+      pageToken: { type: "string" },
+      view: { type: "string" },
+    },
+  },
+  label_thread: {
+    description: "Apply labels to a Gmail thread.",
+    fields: {
+      threadId: { type: "string", required: true },
+      labelIds: { type: "string[]", required: true },
+    },
+  },
+  unlabel_thread: {
+    description: "Remove labels from a Gmail thread.",
+    fields: {
+      threadId: { type: "string", required: true },
+      labelIds: { type: "string[]", required: true },
+    },
+  },
+  list_labels: {
+    description: "List Gmail labels.",
+    fields: {},
+  },
+  label_message: {
+    description: "Apply labels to a Gmail message.",
+    fields: {
+      messageId: { type: "string", required: true },
+      labelIds: { type: "string[]", required: true },
+    },
+  },
+  unlabel_message: {
+    description: "Remove labels from a Gmail message.",
+    fields: {
+      messageId: { type: "string", required: true },
+      labelIds: { type: "string[]", required: true },
+    },
+  },
+};
 
-async function clearGmailMockLedger(baseUrl: string): Promise<void> {
-  const response = await fetch(`${baseUrl}/__mock/requests`, {
-    method: "DELETE",
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Gmail mock ledger clear failed with HTTP ${response.status}`,
-    );
-  }
-}
-
-async function clearGmailMockFault(baseUrl: string): Promise<void> {
-  const response = await fetch(`${baseUrl}/__mock/google/gmail/fault`, {
-    method: "DELETE",
-  });
-  if (response.ok || response.status === 404) {
-    return;
-  }
-  throw new Error(`Gmail mock fault reset failed with HTTP ${response.status}`);
-}
-
-function normalizeGmailFaultMode(
-  value: unknown,
-): GmailFaultInjectionConfig["mode"] | null {
-  const mode = readNonEmptyString(value);
-  if (
-    mode === "auth_expired" ||
-    mode === "rate_limit" ||
-    mode === "server_error" ||
-    mode === "partial_failure"
-  ) {
-    return mode;
-  }
-  return null;
-}
-
-function defaultGmailFaultPath(
-  mode: GmailFaultInjectionConfig["mode"],
-): string {
-  return mode === "partial_failure"
-    ? "/gmail/v1/users/me/messages/batchModify"
-    : "/gmail/v1/users/me/messages";
-}
-
-function normalizeGmailFaultInjection(
-  value: unknown,
-): GmailFaultInjectionConfig | string | null {
-  if (value === undefined || value === null || value === false) {
-    return null;
-  }
-  if (!value || typeof value !== "object") {
-    return "gmailInbox faultInjection must be an object";
-  }
-  const seed = value as GmailFaultInjectionSeed;
-  const mode = normalizeGmailFaultMode(seed.mode);
-  if (!mode) {
-    return "gmailInbox faultInjection.mode must be auth_expired, rate_limit, server_error, or partial_failure";
-  }
-  const rawMethod = readNonEmptyString(seed.method);
-  const rawPath =
-    readNonEmptyString(seed.path) ?? readNonEmptyString(seed.endpoint);
-  const path = rawPath
-    ? rawPath.startsWith("/")
-      ? rawPath
-      : `/${rawPath}`
-    : defaultGmailFaultPath(mode);
-  let remaining: number | undefined;
-  if (seed.limit !== undefined && seed.limit !== null) {
-    if (
-      typeof seed.limit !== "number" ||
-      !Number.isFinite(seed.limit) ||
-      seed.limit < 0
-    ) {
-      return "gmailInbox faultInjection.limit must be a non-negative number";
-    }
-    remaining = Math.floor(seed.limit);
-  }
+function gmailToolInputSchema(tool: GmailMcpTool): {
+  type: "object";
+  [key: string]: unknown;
+} {
+  const contract = GMAIL_MCP_TOOL_CONTRACTS[tool];
+  const properties = Object.fromEntries(
+    Object.entries(contract.fields).map(([name, rule]) => [
+      name,
+      rule.type === "string[]"
+        ? { type: "array", items: { type: "string" } }
+        : {
+            type: rule.type === "integer" ? "integer" : "string",
+            ...(rule.enum ? { enum: [...rule.enum] } : {}),
+          },
+    ]),
+  );
+  const required = Object.entries(contract.fields)
+    .filter(([, rule]) => rule.required)
+    .map(([name]) => name);
   return {
-    mode,
-    method: (
-      rawMethod ?? (mode === "partial_failure" ? "POST" : "GET")
-    ).toUpperCase(),
-    path,
-    ...(remaining !== undefined ? { remaining } : {}),
+    type: "object",
+    properties,
+    ...(required.length > 0 ? { required } : {}),
+    additionalProperties: false,
   };
 }
 
-async function configureGmailMockFault(
-  baseUrl: string,
-  fault: GmailFaultInjectionConfig,
-): Promise<string | undefined> {
-  const response = await fetch(`${baseUrl}/__mock/google/gmail/fault`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(fault),
-  });
-  if (response.ok) {
-    return undefined;
+function validateGmailArguments(
+  tool: GmailMcpTool,
+  value: Record<string, unknown>,
+  requireComplete: boolean,
+): string | undefined {
+  const fields = GMAIL_MCP_TOOL_CONTRACTS[tool].fields;
+  const unknown = Object.keys(value).filter((key) => !(key in fields));
+  if (unknown.length > 0) {
+    return `${tool} arguments contain unsupported field(s): ${unknown.join(", ")}`;
   }
-  return `Gmail mock faultInjection setup failed with HTTP ${response.status}`;
-}
-
-async function requireMockGmailMessage(
-  baseUrl: string,
-  messageId: string,
-): Promise<string | undefined> {
-  const response = await fetch(
-    `${baseUrl}/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}`,
-  );
-  if (response.ok) {
-    return undefined;
-  }
-  return `Gmail mock fixture message ${messageId} unavailable (HTTP ${response.status})`;
-}
-
-async function gmailFixtureMessageIds(
-  baseUrl: string,
-): Promise<Record<string, readonly string[]>> {
-  const response = await fetch(`${baseUrl}/__mock/google/gmail/fixtures`);
-  if (!response.ok) {
-    return GMAIL_FIXTURE_MESSAGE_IDS;
-  }
-  const manifest = (await response.json()) as GmailFixtureManifestResponse;
-  return manifest.fixtures ?? GMAIL_FIXTURE_MESSAGE_IDS;
-}
-
-async function seedGmailInbox(
-  seed: GmailInboxSeed,
-): Promise<string | undefined> {
-  const baseUrl = process.env.ELIZA_MOCK_GOOGLE_BASE;
-  if (typeof baseUrl !== "string" || !isLoopbackUrl(baseUrl)) {
-    return "gmailInbox seed requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
-  }
-  const mockBaseUrl = baseUrl;
-  const faultInjection = normalizeGmailFaultInjection(seed.faultInjection);
-  if (typeof faultInjection === "string") {
-    return faultInjection;
-  }
-
-  await clearGmailMockFault(mockBaseUrl);
-
-  const fixtureMessageIds = await gmailFixtureMessageIds(mockBaseUrl);
-  const requiredIds = new Set(readStringArray(seed.requiredMessageIds));
-  for (const fixture of gmailSeedFixtureNames(seed)) {
-    const fixtureIds = fixtureMessageIds[fixture];
-    if (!fixtureIds) {
-      return `unsupported gmailInbox fixture "${fixture}"`;
+  for (const [name, rule] of Object.entries(fields)) {
+    const actual = value[name];
+    if (actual === undefined) {
+      if (requireComplete && rule.required) {
+        return `${tool} arguments require ${name}`;
+      }
+      continue;
     }
-    for (const messageId of fixtureIds) {
-      requiredIds.add(messageId);
+    const valid =
+      (rule.type === "string" && typeof actual === "string") ||
+      (rule.type === "integer" && Number.isInteger(actual)) ||
+      (rule.type === "string[]" &&
+        Array.isArray(actual) &&
+        actual.every((entry) => typeof entry === "string"));
+    if (!valid) {
+      return `${tool} argument ${name} must be ${rule.type}`;
+    }
+    if (rule.enum && !rule.enum.includes(actual as string)) {
+      return `${tool} argument ${name} must be one of ${rule.enum.join(", ")}`;
     }
   }
-
-  for (const messageId of requiredIds) {
-    const failure = await requireMockGmailMessage(mockBaseUrl, messageId);
-    if (failure) {
-      return failure;
-    }
-  }
-
-  if (seed.clearLedger !== false) {
-    await clearGmailMockLedger(mockBaseUrl);
-  }
-
-  if (faultInjection) {
-    return configureGmailMockFault(mockBaseUrl, faultInjection);
-  }
-
   return undefined;
+}
+
+function normalizeMcpToolResult(
+  value: unknown,
+): ScenarioMcpToolResult | string {
+  const result = readOptionalRecord(value);
+  if (!result) {
+    return "mcpFixture result must be an MCP tool-result object";
+  }
+  const allowed = new Set(["content", "structuredContent", "isError"]);
+  const unknown = Object.keys(result).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) {
+    return `mcpFixture result contains unsupported field(s): ${unknown.join(", ")}`;
+  }
+  if (result.isError !== undefined && typeof result.isError !== "boolean") {
+    return "mcpFixture result.isError must be boolean";
+  }
+  if (
+    result.structuredContent !== undefined &&
+    !readOptionalRecord(result.structuredContent)
+  ) {
+    return "mcpFixture result.structuredContent must be an object";
+  }
+  if (result.content !== undefined && !Array.isArray(result.content)) {
+    return "mcpFixture result.content must be an array";
+  }
+  if (result.content === undefined && result.structuredContent === undefined) {
+    return "mcpFixture result requires content or structuredContent";
+  }
+  return result as ScenarioMcpToolResult;
+}
+
+function normalizeMcpFixture(
+  seed: McpFixtureSeed,
+): ScenarioMcpFixture | string {
+  const provider = readNonEmptyString(seed.provider);
+  const resource = readNonEmptyString(seed.resource);
+  const tool = readNonEmptyString(seed.tool);
+  if (!provider || !resource || !tool) {
+    return "mcpFixture requires non-empty provider, resource, and tool";
+  }
+  if (provider !== "google" || resource !== "gmail") {
+    return `mcpFixture ${provider}/${resource} has no reviewed scenario adapter`;
+  }
+  if (!(tool in GOOGLE_WORKSPACE_MCP_RESOURCES.gmail.tools)) {
+    return `mcpFixture tool ${provider}/${resource}/${tool} is not in the curated MCP catalog`;
+  }
+  const arguments_ = seed.arguments ?? {};
+  const argumentRecord = readOptionalRecord(arguments_);
+  if (!argumentRecord) {
+    return "mcpFixture arguments must be an object";
+  }
+  const argumentFailure = validateGmailArguments(
+    tool as GmailMcpTool,
+    argumentRecord,
+    false,
+  );
+  if (argumentFailure) return `mcpFixture ${argumentFailure}`;
+  const result = normalizeMcpToolResult(seed.result);
+  if (typeof result === "string") return result;
+  if (seed.repeat !== undefined && typeof seed.repeat !== "boolean") {
+    return "mcpFixture repeat must be boolean";
+  }
+  return {
+    provider,
+    resource,
+    tool,
+    ...(Object.keys(argumentRecord).length > 0
+      ? { arguments: argumentRecord }
+      : {}),
+    result,
+    ...(seed.repeat === true ? { repeat: true } : {}),
+  };
+}
+
+function valuesMatch(actual: unknown, expected: unknown): boolean {
+  if (Array.isArray(expected)) {
+    return (
+      Array.isArray(actual) &&
+      expected.length === actual.length &&
+      expected.every((entry, index) => valuesMatch(actual[index], entry))
+    );
+  }
+  const expectedRecord = readOptionalRecord(expected);
+  if (expectedRecord) {
+    const actualRecord = readOptionalRecord(actual);
+    return Boolean(
+      actualRecord &&
+        Object.entries(expectedRecord).every(([key, value]) =>
+          valuesMatch(actualRecord[key], value),
+        ),
+    );
+  }
+  return actual === expected;
+}
+
+type ScenarioMcpAttachment = {
+  ref: McpAttachmentRef;
+  provider: "google";
+  resource: GoogleWorkspaceProduct;
+  accountId: string;
+};
+
+class ScenarioMcpFixtureEngine implements McpResourceEngine {
+  private readonly attachments = new Map<string, ScenarioMcpAttachment>();
+  private fixtures: ScenarioMcpFixture[] = [];
+  private ledger: CapturedMcpToolCall[] = [];
+  private consumed = new Set<ScenarioMcpFixture>();
+
+  configure(
+    fixtures: ScenarioMcpFixture[],
+    ledger: CapturedMcpToolCall[],
+  ): void {
+    this.fixtures = fixtures;
+    this.ledger = ledger;
+    this.consumed = new Set();
+  }
+
+  async attach(resource: McpRemoteResource): Promise<McpAttachmentRef> {
+    const endpoint = new URL(resource.endpoint);
+    const product = (
+      Object.keys(GOOGLE_WORKSPACE_MCP_RESOURCES) as GoogleWorkspaceProduct[]
+    ).find(
+      (candidate) =>
+        GOOGLE_WORKSPACE_MCP_RESOURCES[candidate].endpoint ===
+        endpoint.toString().replace(/\/$/, ""),
+    );
+    if (!product) {
+      throw new Error(
+        `scenario MCP fixture rejected non-canonical endpoint ${endpoint.toString()}`,
+      );
+    }
+    const parts = resource.key.split(":");
+    const accountId = parts.at(-2);
+    const keyProduct = parts.at(-1);
+    if (!accountId || keyProduct !== product) {
+      throw new Error(
+        `scenario MCP fixture could not resolve account binding from ${resource.key}`,
+      );
+    }
+    const ref = { key: resource.key, generation: crypto.randomUUID() };
+    this.attachments.set(ref.key, {
+      ref,
+      provider: "google",
+      resource: product,
+      accountId,
+    });
+    return ref;
+  }
+
+  async detach(ref: McpAttachmentRef): Promise<boolean> {
+    const attachment = this.attachments.get(ref.key);
+    if (!attachment || attachment.ref.generation !== ref.generation) {
+      return false;
+    }
+    this.attachments.delete(ref.key);
+    return true;
+  }
+
+  async discover(ref: McpAttachmentRef): Promise<McpDiscovery> {
+    const attachment = this.requireAttachment(ref);
+    if (attachment.resource !== "gmail") {
+      throw new Error(
+        `scenario MCP fixture has no reviewed discovery schema for google/${attachment.resource}`,
+      );
+    }
+    const toolNames = Array.from(
+      new Set(
+        this.fixtures
+          .filter(
+            (fixture) =>
+              fixture.provider === attachment.provider &&
+              fixture.resource === attachment.resource,
+          )
+          .map((fixture) => fixture.tool),
+      ),
+    ) as GmailMcpTool[];
+    return {
+      server: {
+        info: { name: "scenario-mcp-fixture", version: "1.0.0" },
+        capabilities: { tools: {} },
+      },
+      tools: toolNames.map((tool) => ({
+        name: tool,
+        description: GMAIL_MCP_TOOL_CONTRACTS[tool].description,
+        inputSchema: gmailToolInputSchema(tool),
+      })),
+      resources: [],
+      resourceTemplates: [],
+    };
+  }
+
+  async callTool(
+    ref: McpAttachmentRef,
+    call: {
+      name: string;
+      arguments?: Readonly<Record<string, unknown>>;
+    },
+  ): Promise<Awaited<ReturnType<McpResourceEngine["callTool"]>>> {
+    const attachment = this.requireAttachment(ref);
+    if (attachment.resource !== "gmail") {
+      throw new Error(
+        `scenario MCP fixture has no reviewed call schema for google/${attachment.resource}`,
+      );
+    }
+    if (!(call.name in GOOGLE_WORKSPACE_MCP_RESOURCES.gmail.tools)) {
+      throw new Error(
+        `scenario MCP fixture rejected unsupported google/gmail tool ${call.name}`,
+      );
+    }
+    const tool = call.name as GmailMcpTool;
+    const arguments_ = { ...(call.arguments ?? {}) };
+    const argumentFailure = validateGmailArguments(tool, arguments_, true);
+    if (argumentFailure) {
+      throw new Error(`scenario MCP fixture ${argumentFailure}`);
+    }
+    const capability = GOOGLE_WORKSPACE_MCP_RESOURCES.gmail.tools[tool];
+    const baseCall = {
+      provider: attachment.provider,
+      resource: attachment.resource,
+      tool,
+      accountId: attachment.accountId,
+      requiredCapability: capability,
+      authorization: "authorized" as const,
+      arguments: arguments_,
+      calledAt: new Date().toISOString(),
+    };
+    const fixture = this.fixtures.find(
+      (candidate) =>
+        candidate.provider === attachment.provider &&
+        candidate.resource === attachment.resource &&
+        candidate.tool === tool &&
+        (candidate.repeat === true || !this.consumed.has(candidate)) &&
+        valuesMatch(arguments_, candidate.arguments ?? {}),
+    );
+    if (!fixture) {
+      const error = `no remaining scenario MCP fixture matched ${attachment.provider}/${attachment.resource}/${tool}`;
+      this.ledger.push({ ...baseCall, error });
+      throw new Error(error);
+    }
+    if (fixture.repeat !== true) this.consumed.add(fixture);
+    const result = {
+      content: fixture.result.content ?? [],
+      ...(fixture.result.structuredContent
+        ? { structuredContent: fixture.result.structuredContent }
+        : {}),
+      ...(fixture.result.isError !== undefined
+        ? { isError: fixture.result.isError }
+        : {}),
+    };
+    this.ledger.push({ ...baseCall, result });
+    return result;
+  }
+
+  private requireAttachment(ref: McpAttachmentRef): ScenarioMcpAttachment {
+    const attachment = this.attachments.get(ref.key);
+    if (!attachment || attachment.ref.generation !== ref.generation) {
+      throw new Error(`scenario MCP fixture attachment ${ref.key} is stale`);
+    }
+    return attachment;
+  }
+}
+
+type GoogleScenarioMcpHostShape = {
+  options?: { engine?: McpResourceEngine };
+};
+
+type GoogleScenarioServiceShape = {
+  mcpHost?: GoogleScenarioMcpHostShape;
+  connectMcpAccount: (account: ConnectorAccount) => Promise<unknown>;
+  disconnectMcpAccount: (accountId: string) => Promise<void>;
+};
+
+const MCP_FIXTURE_STATE = Symbol.for(
+  "@elizaos/scenario-runner/mcp-fixture-state",
+);
+
+type ScenarioMcpRuntimeState = {
+  engine: ScenarioMcpFixtureEngine;
+  service: GoogleScenarioServiceShape;
+  host: GoogleScenarioMcpHostShape;
+};
+
+function scenarioMcpRuntimeState(
+  runtime: AgentRuntime,
+): ScenarioMcpRuntimeState | undefined {
+  return (
+    runtime as unknown as Record<symbol, ScenarioMcpRuntimeState | undefined>
+  )[MCP_FIXTURE_STATE];
+}
+
+function setScenarioMcpRuntimeState(
+  runtime: AgentRuntime,
+  state: ScenarioMcpRuntimeState,
+): void {
+  (runtime as unknown as Record<symbol, ScenarioMcpRuntimeState | undefined>)[
+    MCP_FIXTURE_STATE
+  ] = state;
+}
+
+function requireGoogleScenarioService(runtime: AgentRuntime): {
+  service: GoogleScenarioServiceShape;
+  host: GoogleScenarioMcpHostShape;
+} {
+  const candidate = runtime.getService("google") as unknown;
+  const record = readOptionalRecord(candidate);
+  if (
+    !record ||
+    typeof record.connectMcpAccount !== "function" ||
+    typeof record.disconnectMcpAccount !== "function"
+  ) {
+    throw new Error(
+      "mcpFixture requires the Google Workspace service MCP lifecycle seam",
+    );
+  }
+  const host = readOptionalRecord(record.mcpHost);
+  const options = readOptionalRecord(host?.options);
+  const engine = options?.engine;
+  if (
+    !host ||
+    !options ||
+    !engine ||
+    typeof engine !== "object" ||
+    typeof (engine as McpResourceEngine).attach !== "function" ||
+    typeof (engine as McpResourceEngine).discover !== "function" ||
+    typeof (engine as McpResourceEngine).callTool !== "function"
+  ) {
+    throw new Error(
+      "mcpFixture Google service shape changed: the scenario adapter can replace only mcpHost.options.engine",
+    );
+  }
+  return {
+    service: record as unknown as GoogleScenarioServiceShape,
+    host: host as GoogleScenarioMcpHostShape,
+  };
+}
+
+function accountWithMcpFixtureCapabilities(
+  account: ConnectorAccount,
+  fixtures: ScenarioMcpFixture[],
+): ConnectorAccount {
+  const resources = new Set(
+    fixtures
+      .filter((fixture) => fixture.provider === "google")
+      .map((fixture) => fixture.resource),
+  );
+  const capabilities = new Set(account.capabilities ?? []);
+  for (const fixture of fixtures) {
+    if (fixture.provider !== "google" || fixture.resource !== "gmail") continue;
+    const capability =
+      GOOGLE_WORKSPACE_MCP_RESOURCES.gmail.tools[fixture.tool as GmailMcpTool];
+    capabilities.add(capability);
+  }
+  const scopes = new Set(account.scopes ?? []);
+  const metadata = readOptionalRecord(account.metadata);
+  for (const scope of readStringArray(metadata?.grantedScopes))
+    scopes.add(scope);
+  for (const capability of capabilities) {
+    const acceptedScopes =
+      GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES[
+        capability as keyof typeof GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES
+      ] ?? [];
+    for (const scope of acceptedScopes) {
+      if (
+        (metadata?.fixtureOnly === true && scope === acceptedScopes[0]) ||
+        readStringArray(metadata?.grantedScopes).includes(scope) ||
+        (account.scopes ?? []).includes(scope)
+      ) {
+        scopes.add(scope);
+      }
+    }
+  }
+  return {
+    ...account,
+    capabilities: [...capabilities],
+    scopes: [...scopes],
+    selectedProducts: Array.from(
+      new Set([...(account.selectedProducts ?? []), ...resources]),
+    ),
+  };
+}
+
+async function installScenarioMcpFixtureEngine(
+  ctx: ScenarioContext,
+): Promise<void> {
+  const runtime = requireRuntime(ctx);
+  const fixtures = ctx.mcpFixtures ?? [];
+  const ledger = ctx.mcpToolCalls ?? [];
+  let state = scenarioMcpRuntimeState(runtime);
+  if (!state) {
+    const seam = requireGoogleScenarioService(runtime);
+    state = {
+      engine: new ScenarioMcpFixtureEngine(),
+      service: seam.service,
+      host: seam.host,
+    };
+    setScenarioMcpRuntimeState(runtime, state);
+  }
+  state.engine.configure(fixtures, ledger);
+
+  const manager = getConnectorAccountManager(runtime);
+  let accounts = (await manager.listAccounts("google")).filter(
+    (account) => account.status === "connected",
+  );
+  if (accounts.length === 0) {
+    if (!manager.getProvider("google")) {
+      manager.registerProvider({ provider: "google", label: "Google" });
+    }
+    const now = Date.now();
+    const syntheticAccount: ConnectorAccount = {
+      id: "scenario-google-owner",
+      provider: "google",
+      label: "scenario-owner@example.test",
+      role: "OWNER",
+      purpose: ["reading", "messaging", "automation"],
+      accessGate: "open",
+      status: "connected",
+      externalId: "scenario-owner@example.test",
+      displayHandle: "scenario-owner@example.test",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        synthetic: true,
+        fixtureOnly: true,
+      },
+    };
+    await manager.upsertAccount("google", syntheticAccount);
+    accounts = [syntheticAccount];
+  }
+
+  // This scenario-only adapter swaps exactly one collaborator. Detaching first
+  // keeps the production host's endpoint, account, scope, and authorization
+  // policy lifecycle intact; no token is copied into fixture state or ledger.
+  // When no account exists, the synthetic OWNER binding above is credentialless
+  // by design because this engine never authenticates. OAuth/binding E2E proof
+  // belongs to the connector's integration lane, not deterministic scenarios.
+  for (const account of accounts) {
+    await state.service.disconnectMcpAccount(account.id);
+  }
+  const options = state.host.options;
+  if (!options) {
+    throw new Error(
+      "mcpFixture Google MCP host options disappeared during detach",
+    );
+  }
+  options.engine = state.engine;
+  for (const account of accounts) {
+    const fixtureAccount = accountWithMcpFixtureCapabilities(account, fixtures);
+    await manager.upsertAccount("google", fixtureAccount);
+    const report = await state.service.connectMcpAccount(fixtureAccount);
+    const reportRecord = readOptionalRecord(report);
+    const products = readOptionalRecord(reportRecord?.products);
+    const failedProducts = Array.from(
+      new Set(
+        fixtures
+          .filter((fixture) => fixture.provider === "google")
+          .map((fixture) => fixture.resource),
+      ),
+    ).filter(
+      (resource) =>
+        readOptionalRecord(products?.[resource])?.status !== "connected",
+    );
+    if (!reportRecord || failedProducts.length > 0) {
+      throw new Error(
+        `mcpFixture failed to reconnect Google account ${account.id} for ${failedProducts.join(", ") || "fixture resources"}`,
+      );
+    }
+  }
+}
+
+async function seedMcpFixture(
+  ctx: ScenarioContext,
+  seed: McpFixtureSeed,
+): Promise<string | undefined> {
+  const fixture = normalizeMcpFixture(seed);
+  if (typeof fixture === "string") return fixture;
+  ctx.mcpFixtures ??= [];
+  ctx.mcpToolCalls ??= [];
+  if (seed.clearLedger !== false && ctx.mcpFixtures.length === 0) {
+    ctx.mcpToolCalls.length = 0;
+  }
+  ctx.mcpFixtures.push(fixture);
+  await installScenarioMcpFixtureEngine(ctx);
+  return undefined;
+}
+
+export function resetScenarioMcpFixtureState(
+  runtime: AgentRuntime,
+  ctx: ScenarioContext,
+): void {
+  ctx.mcpFixtures ??= [];
+  ctx.mcpToolCalls ??= [];
+  ctx.mcpFixtures.length = 0;
+  ctx.mcpToolCalls.length = 0;
+  scenarioMcpRuntimeState(runtime)?.engine.configure(
+    ctx.mcpFixtures,
+    ctx.mcpToolCalls,
+  );
 }
 
 function normalizeConnectorKind(value: unknown): string | null {
@@ -2789,8 +3251,8 @@ export async function applyScenarioSeedStep(
   if (seed.type === "memory") {
     return seedMemory(ctx, seed as MemorySeed);
   }
-  if (seed.type === "gmailInbox") {
-    return seedGmailInbox(seed as GmailInboxSeed);
+  if (seed.type === "mcpFixture") {
+    return seedMcpFixture(ctx, seed as McpFixtureSeed);
   }
   if (
     seed.type === "connectorStatus" ||

@@ -146,7 +146,6 @@ describe("clearLlmWireMockEnvForLiveProvider", () => {
   const mockEnv = () => ({
     ELIZA_MOCK_OPENAI_BASE: "http://127.0.0.1:50101/v1",
     ELIZA_MOCK_ANTHROPIC_BASE: "http://127.0.0.1:50102/v1",
-    ELIZA_MOCK_GOOGLE_BASE: "http://127.0.0.1:50103",
   });
 
   it.each(["openai", "anthropic", "groq", "google", "openrouter"] as const)(
@@ -156,8 +155,6 @@ describe("clearLlmWireMockEnvForLiveProvider", () => {
       clearLlmWireMockEnvForLiveProvider(providerName, env);
       expect(env.ELIZA_MOCK_OPENAI_BASE).toBeUndefined();
       expect(env.ELIZA_MOCK_ANTHROPIC_BASE).toBeUndefined();
-      // Connector mocks are unrelated to the LLM path and must survive.
-      expect(env.ELIZA_MOCK_GOOGLE_BASE).toBe("http://127.0.0.1:50103");
     },
   );
 
@@ -166,6 +163,5 @@ describe("clearLlmWireMockEnvForLiveProvider", () => {
     clearLlmWireMockEnvForLiveProvider("deterministic-model-provider", env);
     expect(env.ELIZA_MOCK_OPENAI_BASE).toBe("http://127.0.0.1:50101/v1");
     expect(env.ELIZA_MOCK_ANTHROPIC_BASE).toBe("http://127.0.0.1:50102/v1");
-    expect(env.ELIZA_MOCK_GOOGLE_BASE).toBe("http://127.0.0.1:50103");
   });
 });

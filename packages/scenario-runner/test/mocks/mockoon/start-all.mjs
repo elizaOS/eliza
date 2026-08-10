@@ -35,13 +35,22 @@ const PID_DIR = join(HERE, ".mockoon-pids");
 const MOCKOON_BIN = process.env.MOCKOON_BIN ?? "mockoon-cli";
 const MOCKOON_NPX_PACKAGE =
   process.env.MOCKOON_NPX_PACKAGE ?? "@mockoon/cli@latest";
+const RETIRED_PERSONAL_GOOGLE_ENVIRONMENTS = new Set([
+  "gmail.json",
+  "calendar.json",
+]);
 
 mkdirSync(LOG_DIR, { recursive: true });
 mkdirSync(PID_DIR, { recursive: true });
 
 function listEnvs() {
   return readdirSync(HERE)
-    .filter((f) => f.endsWith(".json") && !f.startsWith("_"))
+    .filter(
+      (f) =>
+        f.endsWith(".json") &&
+        !f.startsWith("_") &&
+        !RETIRED_PERSONAL_GOOGLE_ENVIRONMENTS.has(f),
+    )
     .map((f) => join(HERE, f));
 }
 

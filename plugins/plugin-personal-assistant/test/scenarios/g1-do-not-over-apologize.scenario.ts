@@ -6,6 +6,11 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  gmailCreateDraftFixture,
+  gmailSearchFixture,
+} from "../scenario-support/gmail-mcp-fixtures.ts";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
@@ -28,11 +33,8 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "followup-14-days-ago.eml",
-    },
+    gmailSearchFixture([GMAIL_MCP_MESSAGES.overdueFollowup]),
+    gmailCreateDraftFixture({ clearLedger: false }),
   ],
   turns: [
     {
@@ -65,9 +67,12 @@ export default scenario({
       expected: true,
     },
     {
-      type: "gmailMessageSent",
-      name: "no overdue reply was sent",
-      expected: false,
+      type: "mcpToolCall",
+      name: "official Gmail draft creation observed",
+      provider: "google",
+      resource: "gmail",
+      tool: "create_draft",
+      minCount: 1,
     },
     {
       type: "custom",

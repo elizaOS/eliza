@@ -1,6 +1,13 @@
 /** Scenario fixture for gmail bulk archive newsletters; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_SCENARIO_MESSAGES,
+  gmailFixture,
+  gmailSearchFixture,
+  gmailThreadFixture,
+} from "./_gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -22,12 +29,16 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-      requiredMessageIds: ["msg-newsletter"],
-    },
+    gmailSearchFixture([GMAIL_SCENARIO_MESSAGES.newsletter]),
+    gmailThreadFixture([GMAIL_SCENARIO_MESSAGES.newsletter]),
+    gmailFixture({
+      tool: "unlabel_thread",
+      arguments: { threadId: "thr-news", labelIds: ["INBOX"] },
+      structuredContent: {
+        threadId: "thr-news",
+        removedLabelIds: ["INBOX"],
+      },
+    }),
   ],
   turns: [
     {
@@ -67,34 +78,29 @@ export default scenario({
       operation: "archive",
     },
     {
-      type: "gmailBatchModify",
-      body: {
-        removeLabelIds: "INBOX",
-      },
+      type: "mcpToolCalls",
+      provider: "google",
+      resource: "gmail",
+      calls: [
+        { tool: "search_threads" },
+        {
+          tool: "unlabel_thread",
+          arguments: { threadId: "thr-news", labelIds: ["INBOX"] },
+        },
+      ],
     },
     {
-      type: "gmailDraftCreated",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "create_draft",
       expected: false,
-    },
-    {
-      type: "gmailMessageSent",
-      expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-archive-newsletter-rubric",
       threshold: 0.75,
       description:
-        "End-to-end: the assistant resolved the newsletter target first and then archived only that Gmail message through the mock batchModify write.",
+        "End-to-end: the assistant resolved the newsletter target first and then archived only that Gmail thread through the official unlabel_thread tool.",
     }),
-  ],
-  cleanup: [
-    {
-      type: "gmailDeleteDrafts",
-      account: "test-owner",
-      tag: "eliza-e2e",
-    },
   ],
 });

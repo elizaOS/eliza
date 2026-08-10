@@ -17,7 +17,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../../../..");
 
 const LEGACY_MISSING_VALIDATION_PATHS = new Set([
-  "test/mocks/__tests__/google-calendar-mock.test.ts",
   "plugins/plugin-personal-assistant/test/lifeops-simulator.test.ts",
   "test/mocks/__tests__/non-google-provider-mocks.test.ts",
   "plugins/plugin-personal-assistant/src/actions/search-across-channels.test.ts",
@@ -49,6 +48,30 @@ function resolveValidationPath(entry: string): string | null {
 }
 
 describe("provider coverage contract", () => {
+  it("retires personal Google REST fixtures while retaining cloud-managed bindings", () => {
+    expect(MOCK_ENVIRONMENTS).not.toContain("google");
+
+    const removedPaths = [
+      "packages/scenario-runner/test/mocks/environments/google.json",
+      "packages/scenario-runner/test/mocks/mockoon/gmail.json",
+      "packages/scenario-runner/test/mocks/mockoon/calendar.json",
+      "packages/scenario-runner/test/mocks/scripts/google-gmail-state.ts",
+      "packages/scenario-runner/test/mocks/scripts/google-calendar-state.ts",
+    ];
+    for (const removedPath of removedPaths) {
+      expect(fs.existsSync(path.resolve(repoRoot, removedPath))).toBe(false);
+    }
+
+    expect(
+      fs.existsSync(
+        path.resolve(
+          repoRoot,
+          "packages/scenario-runner/test/mocks/environments/cloud-managed.json",
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it("lists exactly the required LifeOps provider ids once", () => {
     const actual = LIFEOPS_PROVIDER_MOCK_COVERAGE.map((entry) => entry.id);
     expect(new Set(actual).size).toBe(actual.length);

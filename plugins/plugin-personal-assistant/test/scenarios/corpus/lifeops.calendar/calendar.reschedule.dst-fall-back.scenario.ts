@@ -129,7 +129,7 @@ export default scenario({
         const runtime = ctx.runtime as AgentRuntime | undefined;
         if (!runtime) return "scenario runtime unavailable";
         await seedGoogleConnectorGrant(runtime, {
-          capabilities: ["google.calendar.read", "google.calendar.write"],
+          capabilities: ["google.calendar.read"],
         });
         const repository = new LifeOpsRepository(runtime);
         const agentId = String(runtime.agentId);

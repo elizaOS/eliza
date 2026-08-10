@@ -25,7 +25,7 @@ packages/scenario-runner/
     cerebras-judge.ts        # CerebrasJudge class — low-level Cerebras API transport + verdict parsing
     reporter.ts              # buildAggregate / writeReport / writeScenarioRunViewer
     native-export.ts         # exportScenarioNativeJsonl — converts trajectories to training corpus rows
-    seeds.ts                 # applyScenarioSeedStep — seed dispatch (todo / contact / memory / gmailInbox)
+    seeds.ts                 # applyScenarioSeedStep — seed dispatch (todo / contact / memory / mcpFixture)
     action-families.ts       # actionsAreScenarioEquivalent — fuzzy action-name matching
     types.ts                 # TurnReport / ScenarioReport / AggregateReport / RunnerContext
     utils.ts                 # toRecord / isLoopbackUrl — internal utility helpers
@@ -177,7 +177,7 @@ Loader discovers files recursively; entries starting with `_` are ignored. The `
 
 ## Final check types (from `schema/index.js`)
 
-`actionCalled`, `selectedAction`, `selectedActionArguments`, `judgeRubric`, `connectorDispatchOccurred`, `memoryWriteOccurred`, `approvalRequestExists`, `approvalStateTransition`, `browserTaskCompleted`, `browserTaskNeedsHuman`, `messageDelivered`, `draftExists`, `uploadedAssetExists`, `gmailActionArguments`, `gmailMockRequest`, `custom`, and others. The full list is in `schema/index.js` (`FINAL_CHECK_KEYS` map).
+`actionCalled`, `selectedAction`, `selectedActionArguments`, `judgeRubric`, `connectorDispatchOccurred`, `memoryWriteOccurred`, `approvalRequestExists`, `approvalStateTransition`, `browserTaskCompleted`, `browserTaskNeedsHuman`, `messageDelivered`, `draftExists`, `uploadedAssetExists`, `gmailActionArguments`, `mcpToolCall`, `mcpToolCalls`, `custom`, and others. The full list is in `schema/index.js` (`FINAL_CHECK_KEYS` map).
 
 ## How to add a scenario
 

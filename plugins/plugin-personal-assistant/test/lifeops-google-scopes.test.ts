@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   GOOGLE_CALENDAR_READ_SCOPE,
   GOOGLE_GMAIL_COMPOSE_SCOPE,
-  GOOGLE_GMAIL_METADATA_SCOPE,
   GOOGLE_GMAIL_MODIFY_SCOPE,
   GOOGLE_GMAIL_READ_SCOPE,
   googleCapabilitiesToScopes,
@@ -98,13 +97,21 @@ describe("googleScopesToCapabilities", () => {
     expect(caps).not.toContain("google.calendar.write");
   });
 
-  it("derives gmail triage from metadata OR readonly", () => {
-    expect(googleScopesToCapabilities([GOOGLE_GMAIL_METADATA_SCOPE])).toContain(
-      "google.gmail.triage",
-    );
+  it("derives Gmail triage only from scopes that can read message content", () => {
     expect(googleScopesToCapabilities([GOOGLE_GMAIL_READ_SCOPE])).toContain(
       "google.gmail.triage",
     );
+    expect(googleScopesToCapabilities([GOOGLE_GMAIL_MODIFY_SCOPE])).toContain(
+      "google.gmail.triage",
+    );
+    expect(
+      googleScopesToCapabilities([GOOGLE_GMAIL_COMPOSE_SCOPE]),
+    ).not.toContain("google.gmail.triage");
+    expect(
+      googleScopesToCapabilities([
+        "https://www.googleapis.com/auth/gmail.metadata",
+      ]),
+    ).not.toContain("google.gmail.triage");
   });
 
   it("derives gmail.manage from the modify scope", () => {

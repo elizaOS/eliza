@@ -1,9 +1,8 @@
 /**
  * Cancel a tentative event — "the launch checklist isn't happening anymore".
  *
- * Failure mode guarded: the agent confuses "cancel" with "decline" or
- * "delete locally", or marks the event as past/done instead of removing it.
- * The agent must call CALENDAR with a delete/cancel intent.
+ * Personal Google Calendar is read-only. The agent must identify the event,
+ * explain that cancellation is unavailable, and never claim it was removed.
  */
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
@@ -13,7 +12,7 @@ import {
 } from "@elizaos/scenario-runner/schema";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
-function checkCancelIntent(ctx: ScenarioContext): string | undefined {
+function checkReadOnlyCancellation(ctx: ScenarioContext): string | undefined {
   const calls = ctx.actionsCalled.filter((a) => a.actionName === "CALENDAR");
   if (calls.length === 0) return "expected CALENDAR action";
   const blob = JSON.stringify(
@@ -26,9 +25,20 @@ function checkCancelIntent(ctx: ScenarioContext): string | undefined {
   if (!blob.includes("launch checklist")) {
     return `Action payload didn't reference 'launch checklist'. Payload: ${blob.slice(0, 400)}`;
   }
-  const cancelSignals = ["cancel", "delete", "remove", "decline", "drop"];
-  if (!cancelSignals.some((s) => blob.includes(s))) {
-    return `Action payload didn't indicate cancel/delete intent.`;
+  const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
+  if (
+    !["read-only", "view-only", "can't", "cannot", "unsupported"].some((s) =>
+      reply.includes(s),
+    )
+  ) {
+    return `Agent did not disclose the read-only Google Calendar boundary. Reply: ${reply.slice(0, 300)}`;
+  }
+  if (
+    /\b(successfully (cancelled|canceled|deleted|removed)|(was|has been) (cancelled|canceled|deleted|removed))\b/.test(
+      reply,
+    )
+  ) {
+    return `Agent falsely claimed the event was changed. Reply: ${reply.slice(0, 300)}`;
   }
   return undefined;
 }
@@ -36,12 +46,12 @@ function checkCancelIntent(ctx: ScenarioContext): string | undefined {
 export default scenario({
   lane: "live-only",
   id: "calendar.cancel-tentative-launch-checklist",
-  title: "Cancel a tentative 'launch checklist' event cleanly",
+  title:
+    "Tentative-event cancellation fails closed on read-only Google Calendar",
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "cancel"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
-  mockoon: ["calendar"],
   rooms: [
     {
       id: "main",
@@ -81,13 +91,13 @@ export default scenario({
     { type: "actionCalled", actionName: "CALENDAR", minCount: 1 },
     {
       type: "custom",
-      name: "cancel-intent-present",
-      predicate: checkCancelIntent,
+      name: "read-only-cancellation-reported",
+      predicate: checkReadOnlyCancellation,
     },
     judgeRubric({
-      name: "calendar-cancel-tentative-rubric",
+      name: "calendar-cancel-read-only-rubric",
       threshold: 0.6,
-      description: `User asked to cancel 'launch checklist'. Correct: agent confirms cancellation and references the event by name. Incorrect: agent reschedules instead of cancels, fabricates a different event name, or fails to act.`,
+      description: `User asked to cancel the seeded 'Launch checklist' event on personal Google Calendar. Correct: agent references the event, explains that this connection is read-only, and states that nothing changed. Incorrect: agent claims the event was cancelled, deleted, removed, or rescheduled.`,
     }),
   ],
 });

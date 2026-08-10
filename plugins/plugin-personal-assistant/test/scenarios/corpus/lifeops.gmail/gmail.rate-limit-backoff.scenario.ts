@@ -14,6 +14,10 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_WRITE_TOOLS,
+  gmailMcpFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 function checkBackoffSurfaced(ctx: ScenarioContext): string | undefined {
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
@@ -58,12 +62,11 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-      faultInjection: { mode: "rate_limit", method: "GET" },
-    },
+    gmailMcpFixture({
+      tool: "search_threads",
+      contentText: "Gmail MCP rate limit exceeded (429); retry later.",
+      isError: true,
+    }),
   ],
   turns: [
     {
@@ -81,7 +84,17 @@ export default scenario({
       predicate: checkBackoffSurfaced,
     },
     {
-      type: "gmailMessageSent",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "search_threads",
+      result: { isError: true },
+    },
+    {
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: GMAIL_MCP_WRITE_TOOLS,
       expected: false,
     },
     judgeRubric({

@@ -1,6 +1,6 @@
 /**
- * Mark Gmail messages as read — exercises batchModify with `UNREAD` label
- * REMOVED.
+ * Mark a Gmail newsletter as read through unlabel_message with `UNREAD`
+ * removed.
  *
  * Failure modes guarded:
  *   - sending mark-read to wrong messages
@@ -11,6 +11,11 @@
 
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  GMAIL_MCP_MESSAGES,
+  gmailMcpFixture,
+  gmailSearchFixture,
+} from "../../../scenario-support/gmail-mcp-fixtures.ts";
 
 export default scenario({
   lane: "live-only",
@@ -32,18 +37,26 @@ export default scenario({
     },
   ],
   seed: [
-    {
-      type: "gmailInbox",
-      account: "test-owner",
-      fixture: "default",
-    },
+    gmailSearchFixture([GMAIL_MCP_MESSAGES.newsletter]),
+    gmailMcpFixture({
+      tool: "unlabel_message",
+      arguments: {
+        messageId: GMAIL_MCP_MESSAGES.newsletter.id,
+        labelIds: ["UNREAD"],
+      },
+      structuredContent: {
+        messageId: GMAIL_MCP_MESSAGES.newsletter.id,
+        removedLabelIds: ["UNREAD"],
+      },
+      clearLedger: false,
+    }),
   ],
   turns: [
     {
       kind: "message",
       name: "mark-newsletter-read",
       room: "main",
-      text: "Mark all the unread newsletters as read so they stop showing up at the top.",
+      text: "Mark the unread Weekly Digest newsletter as read so it stops showing up at the top.",
       responseJudge: {
         minimumScore: 0.7,
         rubric:
@@ -53,27 +66,20 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "gmailBatchModify",
-      body: {
-        removeLabelIds: "UNREAD",
+      type: "mcpToolCall",
+      provider: "google",
+      resource: "gmail",
+      tool: "unlabel_message",
+      arguments: {
+        messageId: GMAIL_MCP_MESSAGES.newsletter.id,
+        labelIds: ["UNREAD"],
       },
-    },
-    {
-      type: "gmailMessageSent",
-      expected: false,
-    },
-    {
-      type: "gmailDraftCreated",
-      expected: false,
-    },
-    {
-      type: "gmailNoRealWrite",
     },
     judgeRubric({
       name: "gmail-mark-as-read-rubric",
       threshold: 0.7,
       description:
-        "Agent removed the UNREAD label from newsletters via batchModify mock without other side effects.",
+        "Agent removed the UNREAD label from the named newsletter through unlabel_message without other side effects.",
     }),
   ],
 });

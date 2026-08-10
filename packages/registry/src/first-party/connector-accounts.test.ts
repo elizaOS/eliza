@@ -33,6 +33,16 @@ const baseConnector = {
 };
 
 describe("connectorEntrySchema accounts field", () => {
+  it("accepts topology-neutral direct OAuth", () => {
+    const parsed = connectorEntrySchema.parse({
+      ...baseConnector,
+      accounts: {
+        owner: { supported: true, authKind: "oauth" },
+      },
+    });
+    expect(parsed.accounts?.owner?.authKind).toBe("oauth");
+  });
+
   it("accepts an entry with no accounts block", () => {
     const parsed = connectorEntrySchema.parse(baseConnector);
     expect(parsed.accounts).toBeUndefined();

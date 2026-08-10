@@ -238,7 +238,7 @@ describe("W1-D default-pack registry — defaultEnabled gating", () => {
   it("inbox-triage-starter is gated by gmail capability", () => {
     expect(inboxTriageStarterPack.defaultEnabled).toBe(true);
     expect(inboxTriageStarterPack.requiredCapabilities).toEqual([
-      "google.gmail.read",
+      "google.gmail.triage",
     ]);
     // No registry → not auto-seeded
     expect(
@@ -258,8 +258,8 @@ describe("W1-D default-pack registry — defaultEnabled gating", () => {
       getDefaultEnabledPacks({
         connectorRegistry: {
           byCapability: (cap) =>
-            cap === "google.gmail.read"
-              ? [{ kind: "google", capabilities: ["google.gmail.read"] }]
+            cap === "google.gmail.triage"
+              ? [{ kind: "google", capabilities: ["google.gmail.triage"] }]
               : [],
           get: () => null,
         },
@@ -464,12 +464,12 @@ describe("W1-D inbox-triage capability gate", () => {
     ).toBe(false);
   });
 
-  it("isInboxTriageEligible returns true when google.gmail.read is registered", () => {
+  it("isInboxTriageEligible returns true when google.gmail.triage is registered", () => {
     expect(
       isInboxTriageEligible({
         byCapability: (cap) =>
-          cap === "google.gmail.read"
-            ? [{ kind: "google", capabilities: ["google.gmail.read"] }]
+          cap === "google.gmail.triage"
+            ? [{ kind: "google", capabilities: ["google.gmail.triage"] }]
             : [],
         get: () => null,
       }),
@@ -477,7 +477,7 @@ describe("W1-D inbox-triage capability gate", () => {
   });
 
   it("required capability list is stable", () => {
-    expect(INBOX_TRIAGE_REQUIRED_CAPABILITIES).toEqual(["google.gmail.read"]);
+    expect(INBOX_TRIAGE_REQUIRED_CAPABILITIES).toEqual(["google.gmail.triage"]);
   });
 });
 

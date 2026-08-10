@@ -88,6 +88,12 @@ export type GoogleCalendarTransparency = "opaque" | "transparent";
 
 export type GoogleCalendarVisibility = "default" | "public" | "private" | "confidential";
 
+export interface GoogleGmailAttachmentMetadata {
+  id: string;
+  mimeType: string | null;
+  filename: string | null;
+}
+
 export interface GoogleMessageSummary {
   id: string;
   threadId?: string;
@@ -102,6 +108,7 @@ export interface GoogleMessageSummary {
   bodyText?: string;
   bodyHtml?: string;
   headers?: Record<string, string>;
+  attachments?: GoogleGmailAttachmentMetadata[];
 }
 
 export interface GoogleCreateGmailDraftInput extends GoogleAccountRef {

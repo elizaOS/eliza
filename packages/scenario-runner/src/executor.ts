@@ -60,13 +60,16 @@ import {
   resolveRequiredPluginPackages,
 } from "./required-plugins.ts";
 import { waitForScenarioRequiredServices } from "./required-services.ts";
-import { applyScenarioSeedStep } from "./seeds.ts";
+import {
+  applyScenarioSeedStep,
+  resetScenarioMcpFixtureState,
+} from "./seeds.ts";
 import type {
   FinalCheckReport,
   RunnerContext,
   ScenarioReport,
 } from "./types.ts";
-import { isLoopbackUrl, toRecord } from "./utils.js";
+import { toRecord } from "./utils.js";
 import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
 
 export interface ExecutorOptions {
@@ -1434,36 +1437,6 @@ async function runCustomSeeds(
   return { now: currentNow };
 }
 
-async function deleteMockGmailDrafts(): Promise<string | undefined> {
-  const baseUrl = process.env.ELIZA_MOCK_GOOGLE_BASE;
-  if (!isLoopbackUrl(baseUrl)) {
-    return "gmailDeleteDrafts cleanup requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
-  }
-  const response = await fetch(`${baseUrl}/gmail/v1/users/me/drafts`);
-  if (!response.ok) {
-    return `gmailDeleteDrafts list failed with HTTP ${response.status}`;
-  }
-  const body = (await response.json()) as { drafts?: unknown };
-  const drafts = Array.isArray(body.drafts) ? body.drafts : [];
-  for (const draft of drafts) {
-    if (!draft || typeof draft !== "object") {
-      continue;
-    }
-    const id = (draft as { id?: unknown }).id;
-    if (typeof id !== "string" || id.length === 0) {
-      continue;
-    }
-    const deleteResponse = await fetch(
-      `${baseUrl}/gmail/v1/users/me/drafts/${encodeURIComponent(id)}`,
-      { method: "DELETE" },
-    );
-    if (!deleteResponse.ok) {
-      return `gmailDeleteDrafts delete ${id} failed with HTTP ${deleteResponse.status}`;
-    }
-  }
-  return undefined;
-}
-
 async function clearSelfControlBlocks(): Promise<string | undefined> {
   const { stopSelfControlBlock } = await import(
     "@elizaos/plugin-blocker/services/website-blocker/index"
@@ -1496,9 +1469,7 @@ async function runScenarioCleanups(
     };
     let result: string | undefined;
     try {
-      if (step.type === "gmailDeleteDrafts") {
-        result = await deleteMockGmailDrafts();
-      } else if (step.type === "selfControlClearBlocks") {
+      if (step.type === "selfControlClearBlocks") {
         result = await clearSelfControlBlocks();
       } else if (step.type === "custom" && typeof step.apply === "function") {
         const scenarioCtx: ScenarioContext = {
@@ -2252,6 +2223,8 @@ export async function runScenario(
     memoryWrites: [],
     stateTransitions: [],
     artifacts: [],
+    mcpFixtures: [],
+    mcpToolCalls: [],
   };
 
   const report: ScenarioReport = {
@@ -2371,6 +2344,7 @@ export async function runScenario(
   try {
     resetScenarioModelFixtures(runtime);
     await resetSharedSchedulingState(runtime);
+    resetScenarioMcpFixtureState(runtime, ctx);
 
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", primaryRoom.userId, false);
     (

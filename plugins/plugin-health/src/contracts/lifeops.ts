@@ -332,7 +332,6 @@ export type LifeOpsConnectorSourceOfTruth =
 export const LIFEOPS_GOOGLE_CAPABILITIES = [
   "google.basic_identity",
   "google.calendar.read",
-  "google.calendar.write",
   "google.gmail.triage",
   "google.gmail.draft.create",
   "google.gmail.manage",

@@ -309,7 +309,7 @@ describe("createProviderQualificationManifest", () => {
 
   it.each([
     ["seed", [{ type: "advanceClock", by: "1h" }]],
-    ["cleanup", [{ type: "gmailDeleteDrafts" }]],
+    ["cleanup", [{ type: "selfControlClearBlocks", profile: "fixture" }]],
     ["mockoon", ["calendar-mock"]],
   ] as const)("rejects harness-owned %s configuration", (field, value) => {
     const definition = scenario();

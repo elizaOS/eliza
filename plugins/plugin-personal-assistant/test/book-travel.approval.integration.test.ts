@@ -1,7 +1,8 @@
 /**
- * Integration coverage for BOOK_TRAVEL approval: the handler queues an approval, then books
- * and syncs the itinerary to calendar only after approval, and on rejection performs no
- * order/payment/calendar side effects. Real approval queue, stubbed connectors.
+ * Integration coverage for BOOK_TRAVEL approval over the real approval queue
+ * and a stubbed travel connector. Calendar-enabled execution fails closed at
+ * the read-only Google boundary; calendar-disabled execution can still book
+ * after approval, while rejection performs no external side effects.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -41,44 +42,15 @@ function ownerMessage(text: string): Memory {
   } as Memory;
 }
 
-async function seedGoogleWriteGrant(): Promise<void> {
+async function seedGoogleReadGrant(): Promise<void> {
   await seedGoogleConnectorGrant(runtime, {
-    capabilities: ["google.calendar.read", "google.calendar.write"],
+    capabilities: ["google.calendar.read"],
     email: "shaw@example.com",
     side: "owner",
   });
 }
 
-function stubGoogleCalendarCreate(): void {
-  const google = runtime.getService("google") as {
-    createEvent: (input: {
-      calendarId?: string;
-      title: string;
-      start: string;
-      end: string;
-      timeZone?: string;
-      description?: string;
-      location?: string;
-    }) => Promise<unknown>;
-  } | null;
-  if (!google) {
-    throw new Error("Expected the Google service in the travel test runtime");
-  }
-  vi.spyOn(google, "createEvent").mockImplementation(async (input) => ({
-    id: "google_evt_travel_1",
-    calendarId: input.calendarId ?? "primary",
-    title: input.title,
-    status: "confirmed",
-    start: input.start,
-    end: input.end,
-    timeZone: input.timeZone ?? TEST_TIME_ZONE,
-    description: input.description,
-    location: input.location,
-    htmlLink: "https://calendar.google.com/calendar/event?eid=travel_1",
-  }));
-}
-
-function installTravelAndCalendarFetchStub() {
+function installTravelFetchStub() {
   let orderReadCount = 0;
   const fetchMock = vi
     .fn()
@@ -309,41 +281,6 @@ function installTravelAndCalendarFetchStub() {
           } as Response;
         }
 
-        if (
-          url.includes(
-            "www.googleapis.com/calendar/v3/calendars/primary/events",
-          )
-        ) {
-          const body = JSON.parse(String(init?.body ?? "{}")) as {
-            summary?: string;
-            description?: string;
-            location?: string;
-            start?: { dateTime?: string; timeZone?: string };
-            end?: { dateTime?: string; timeZone?: string };
-          };
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({
-              id: "google_evt_travel_1",
-              status: "confirmed",
-              summary: body.summary,
-              description: body.description,
-              location: body.location,
-              htmlLink:
-                "https://calendar.google.com/calendar/event?eid=travel_1",
-              start: {
-                dateTime: body.start?.dateTime,
-                timeZone: body.start?.timeZone ?? TEST_TIME_ZONE,
-              },
-              end: {
-                dateTime: body.end?.dateTime,
-                timeZone: body.end?.timeZone ?? TEST_TIME_ZONE,
-              },
-            }),
-          } as Response;
-        }
-
         throw new Error(`Unexpected fetch: ${url}`);
       },
     );
@@ -400,7 +337,7 @@ beforeAll(async () => {
     String(runtime.agentId),
     { test: "book-travel approval integration" },
   );
-  await seedGoogleWriteGrant();
+  await seedGoogleReadGrant();
 }, 180_000);
 
 afterAll(async () => {
@@ -414,9 +351,8 @@ afterAll(async () => {
 });
 
 describe("BOOK_TRAVEL approval execution", () => {
-  it("queues approval, books after approval, and syncs the itinerary to calendar", async () => {
-    stubGoogleCalendarCreate();
-    const fetchMock = installTravelAndCalendarFetchStub();
+  it("fails approved calendar sync before order, payment, or calendar side effects", async () => {
+    const fetchMock = installTravelFetchStub();
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
 
     const queued = await runBookTravelHandler(
@@ -500,11 +436,104 @@ describe("BOOK_TRAVEL approval execution", () => {
 
     expect(approved).toEqual(
       expect.objectContaining({
-        success: true,
+        success: false,
+        data: expect.objectContaining({
+          error: "TRAVEL_CALENDAR_PREFLIGHT_FAILED",
+          executed: false,
+        }),
       }),
     );
-    expect(String(approved?.text ?? "")).toContain("Booked");
+    expect(String(approved?.data?.detail ?? "")).toContain(
+      "Personal Google Calendar is view-only",
+    );
 
+    const repository = new LifeOpsRepository(runtime);
+    const events = await repository.listCalendarEvents(
+      String(runtime.agentId),
+      "google",
+      "2026-06-15T00:00:00.000Z",
+      "2026-06-16T23:59:59.999Z",
+      "owner",
+    );
+    expect(events.some((event) => event.title === "London flight")).toBe(false);
+
+    const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
+    expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(false);
+    expect(calledUrls.some((url) => url.endsWith("/air/payments"))).toBe(false);
+    expect(calledUrls.some((url) => url.includes("googleapis.com"))).toBe(
+      false,
+    );
+  });
+
+  it("books after approval when calendar sync is explicitly disabled", async () => {
+    const fetchMock = installTravelFetchStub();
+    const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+
+    const queued = await runBookTravelHandler(
+      runtime,
+      ownerMessage(
+        "Book the JFK to LHR flight without adding it to my calendar.",
+      ),
+      {} as never,
+      {
+        parameters: {
+          origin: "JFK",
+          destination: "LHR",
+          departureDate: "2026-06-15",
+          passengers: [
+            {
+              givenName: "Tony",
+              familyName: "Stark",
+              bornOn: "1980-07-24",
+              email: "tony@example.com",
+              phoneNumber: "+15551234567",
+            },
+          ],
+          calendarSync: { enabled: false },
+        },
+      } as never,
+      undefined,
+    );
+
+    expect(queued?.success).toBe(true);
+    const pending = await queue.list({
+      subjectUserId: String(runtime.agentId),
+      state: "pending",
+      action: "book_travel",
+      limit: 10,
+    });
+    expect(pending).toHaveLength(1);
+    const pendingRequest = pending[0];
+    if (!pendingRequest) {
+      throw new Error("Expected one pending travel approval request");
+    }
+    const restoreModel = installApprovalResolutionModelStub(
+      pendingRequest.id,
+      "approve the calendar-disabled London flight",
+    );
+    let approved: ActionResult | undefined;
+    try {
+      approved = await approveRequestAction.handler?.(
+        runtime,
+        ownerMessage("yes, approve that booking without calendar sync"),
+        {} as never,
+        {
+          parameters: {
+            subaction: "approve",
+            requestId: pendingRequest.id,
+          },
+        } as never,
+        undefined,
+      );
+    } finally {
+      restoreModel();
+    }
+
+    expect(approved).toEqual(expect.objectContaining({ success: true }));
+    expect(String(approved?.text ?? "")).toContain("Booked");
+    expect(approved?.data).toEqual(
+      expect.objectContaining({ calendarEventId: null }),
+    );
     const done = await queue.byId(
       pendingRequest.id,
       pendingRequest.subjectUserId,
@@ -519,15 +548,18 @@ describe("BOOK_TRAVEL approval execution", () => {
       "2026-06-16T23:59:59.999Z",
       "owner",
     );
-    expect(events.some((event) => event.title === "London flight")).toBe(true);
+    expect(events.some((event) => event.title === "London flight")).toBe(false);
 
     const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
     expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(true);
     expect(calledUrls.some((url) => url.endsWith("/air/payments"))).toBe(true);
+    expect(calledUrls.some((url) => url.includes("googleapis.com"))).toBe(
+      false,
+    );
   });
 
   it("rejects approval without executing order, payment, or calendar sync", async () => {
-    const fetchMock = installTravelAndCalendarFetchStub();
+    const fetchMock = installTravelFetchStub();
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
 
     const queued = await runBookTravelHandler(
@@ -593,6 +625,12 @@ describe("BOOK_TRAVEL approval execution", () => {
       }),
     );
     expect(fetchMock.mock.calls).toHaveLength(callCountBeforeReject);
+    const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
+    expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(false);
+    expect(calledUrls.some((url) => url.endsWith("/air/payments"))).toBe(false);
+    expect(calledUrls.some((url) => url.includes("googleapis.com"))).toBe(
+      false,
+    );
 
     const latest = await queue.byId(
       pendingRequest.id,
