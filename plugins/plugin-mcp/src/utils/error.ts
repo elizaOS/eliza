@@ -10,6 +10,7 @@ import {
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
+  isElizaError,
   logger,
   type Memory,
   ModelType,
@@ -27,6 +28,12 @@ export async function handleMcpError(
   callback?: HandlerCallback
 ): Promise<ActionResult> {
   const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorCode = isElizaError(error)
+    ? error.code
+    : error instanceof McpError
+      ? error.code
+      : undefined;
+  const errorContext = isElizaError(error) ? error.context : undefined;
 
   logger.error({ error, mcpType: type }, `Error executing MCP ${type}: ${errorMessage}`);
 
@@ -66,12 +73,15 @@ export async function handleMcpError(
       success: false,
       error: errorMessage,
       errorType: type,
+      ...(errorCode ? { errorCode } : {}),
     },
     data: {
       actionName: "MCP",
       op: type === "tool" ? "call_tool" : "read_resource",
       error: errorMessage,
       mcpType: type,
+      ...(errorCode ? { errorCode } : {}),
+      ...(errorContext ? { errorContext } : {}),
     },
     success: false,
     error: error instanceof Error ? error : new Error(errorMessage),

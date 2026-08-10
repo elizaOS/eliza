@@ -11,6 +11,7 @@ import {
   type Action,
   type ActionResult,
   composePromptFromState,
+  ElizaError,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -131,6 +132,33 @@ export function getDirectToolSelection(options?: unknown): DirectToolSelection |
   };
 }
 
+function assertDirectToolAvailable(mcpService: McpService, selection: DirectToolSelection): void {
+  const server = mcpService
+    .getServers()
+    .find((candidate) => candidate.name === selection.serverName);
+  if (server?.status !== "connected") {
+    throw new ElizaError(`MCP server "${selection.serverName}" is not connected`, {
+      code: "MCP_SERVER_NOT_CONNECTED",
+      context: {
+        serverName: selection.serverName,
+        toolName: selection.toolName,
+      },
+    });
+  }
+  if (!server.tools?.some((tool) => tool.name === selection.toolName)) {
+    throw new ElizaError(
+      `Tool "${selection.toolName}" is not advertised by MCP server "${selection.serverName}"`,
+      {
+        code: "MCP_TOOL_NOT_ADVERTISED",
+        context: {
+          serverName: selection.serverName,
+          toolName: selection.toolName,
+        },
+      }
+    );
+  }
+}
+
 function createResourceSelectionPrompt(composedState: State, userMessage: string): string {
   const mcpData = (composedState.values.mcp ?? {}) as Record<string, McpServerInfo>;
   const serverNames = Object.keys(mcpData);
@@ -190,6 +218,7 @@ async function handleCallTool(
 
     const direct = getDirectToolSelection(options);
     if (direct) {
+      assertDirectToolAvailable(mcpService, direct);
       selection = direct;
       if (direct.toolArguments) {
         toolArguments = direct.toolArguments;

@@ -55,12 +55,55 @@ import { buildMcpProviderData } from "./utils/mcp";
 
 /** Route every MCP HTTP request through core's DNS-pinned SSRF transport. */
 export async function guardedMcpFetch(input: string | URL, init?: RequestInit): Promise<Response> {
-  const guarded = await fetchWithSsrfGuard({
-    url: input.toString(),
-    ...(init ? { init } : {}),
-  });
-  await guarded.release();
-  return guarded.response;
+  const method = (init?.method ?? "GET").toUpperCase();
+  const accept = new Headers(init?.headers).get("accept")?.toLowerCase() ?? "";
+  const isSseStreamRequest = method === "GET" && accept.includes("text/event-stream");
+
+  try {
+    const guarded = await fetchWithSsrfGuard({
+      url: input.toString(),
+      ...(init ? { init } : {}),
+    });
+    await guarded.release();
+    return guarded.response;
+  } catch (cause) {
+    // error-policy:J2 request metadata is required to distinguish an optional
+    // SSE-listener timeout from a failed POST, auth exchange, or other request.
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    throw new ElizaError(
+      `MCP ${isSseStreamRequest ? "SSE stream" : "HTTP"} ${method} request failed: ${detail}`,
+      {
+        code: isSseStreamRequest ? "MCP_SSE_STREAM_REQUEST_FAILED" : "MCP_HTTP_REQUEST_FAILED",
+        context: { method },
+        cause,
+      }
+    );
+  }
+}
+
+function errorChainContainsTimeout(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current !== undefined && current !== null && !seen.has(current)) {
+    seen.add(current);
+    const message = current instanceof Error ? current.message : String(current);
+    if (/\btimeout(?:error)?\b|\btime(?:d)?\s+out\b/i.test(message)) {
+      return true;
+    }
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return false;
+}
+
+function isBenignHttpStreamError(error: Error): boolean {
+  if (/^sse stream disconnected:/i.test(error.message.trim())) {
+    return true;
+  }
+  return (
+    error instanceof ElizaError &&
+    error.code === "MCP_SSE_STREAM_REQUEST_FAILED" &&
+    errorChainContainsTimeout(error)
+  );
 }
 
 export class McpService extends Service {
@@ -175,7 +218,7 @@ export class McpService extends Service {
     const servers: Record<string, McpServerConfig> = {};
     for (const [key, value] of Object.entries(process.env)) {
       const match = key.match(/^MCP_SERVER_(.+)_URL$/);
-      if (!match || !value || !value.trim()) continue;
+      if (!match || !value?.trim()) continue;
       const name = match[1].toLowerCase();
       const typeRaw = process.env[`MCP_SERVER_${match[1]}_TYPE`]?.trim().toLowerCase();
       const type = typeRaw === "http" || typeRaw === "sse" ? typeRaw : "streamable-http";
@@ -251,46 +294,71 @@ export class McpService extends Service {
     };
     this.connectionStates.set(name, state);
 
-    const client = new Client({ name: "elizaOS", version: "1.0.0" }, { capabilities: {} });
-    const transport: McpConnection["transport"] =
-      config.type === "stdio"
-        ? await this.buildStdioClientTransport(name, config)
-        : await this.buildHttpClientTransport(name, config);
+    let client: Client | undefined;
+    let transport: McpConnection["transport"] | undefined;
+    let connection: McpConnection | undefined;
 
-    const connection: McpConnection = {
-      server: {
+    try {
+      client = new Client({ name: "elizaOS", version: "1.0.0" }, { capabilities: {} });
+      transport =
+        config.type === "stdio"
+          ? await this.buildStdioClientTransport(name, config)
+          : await this.buildHttpClientTransport(name, config);
+
+      connection = {
+        server: {
+          name,
+          config: JSON.stringify(config),
+          status: "connecting",
+        },
+        client,
+        transport,
+      };
+      this.connections.set(name, connection);
+      this.setupTransportHandlers(name, connection, state);
+      await client.connect(transport);
+
+      const capabilities = client.getServerCapabilities();
+      const tools = await this.fetchToolsList(name);
+      const resources = capabilities?.resources ? await this.fetchResourcesList(name) : [];
+      const resourceTemplates = capabilities?.resources
+        ? await this.fetchResourceTemplatesList(name)
+        : [];
+
+      connection.server = {
+        status: "connected",
         name,
         config: JSON.stringify(config),
-        status: "connecting",
-      },
-      client,
-      transport,
-    };
-    this.connections.set(name, connection);
-    this.setupTransportHandlers(name, connection, state);
-    await client.connect(transport);
-
-    const capabilities = client.getServerCapabilities();
-    const tools = await this.fetchToolsList(name);
-    const resources = capabilities?.resources ? await this.fetchResourcesList(name) : [];
-    const resourceTemplates = capabilities?.resources
-      ? await this.fetchResourceTemplatesList(name)
-      : [];
-
-    connection.server = {
-      status: "connected",
-      name,
-      config: JSON.stringify(config),
-      error: "",
-      tools,
-      resources,
-      resourceTemplates,
-    };
-    state.status = "connected";
-    state.lastConnected = new Date();
-    state.reconnectAttempts = 0;
-    state.consecutivePingFailures = 0;
-    this.startPingMonitoring(name);
+        error: "",
+        tools,
+        resources,
+        resourceTemplates,
+      };
+      state.status = "connected";
+      state.lastConnected = new Date();
+      state.reconnectAttempts = 0;
+      state.consecutivePingFailures = 0;
+      this.startPingMonitoring(name);
+    } catch (error) {
+      // error-policy:J2 initialization owns every resource it creates; remove
+      // the attempt before closing it so close callbacks cannot schedule a
+      // reconnect for a connection that never became usable.
+      if (connection && this.connections.get(name) === connection) {
+        await this.deleteConnection(name);
+      } else {
+        if (this.connectionStates.get(name) === state) {
+          this.clearConnectionState(name, state);
+        }
+        if (client) {
+          await this.closeClientResources(name, client, transport);
+        }
+      }
+      throw new ElizaError(`Failed to initialize MCP server "${name}"`, {
+        code: "MCP_SERVER_INITIALIZATION_FAILED",
+        context: { serverName: name },
+        cause: error,
+      });
+    }
   }
 
   private setupTransportHandlers(
@@ -302,22 +370,10 @@ export class McpService extends Service {
     const isHttpTransport = config.type !== "stdio";
 
     connection.transport.onerror = async (error): Promise<void> => {
-      const errorMessage = error?.message ?? String(error);
-      const lower = errorMessage.toLowerCase();
-      // For HTTP transports the optional server→client stream (the long-lived
-      // GET/SSE channel) routinely times out or disconnects on request/response
-      // servers that never hold it open. That is benign and must not tear down
-      // the working POST channel, so match the SDK's message variants
-      // ("timeout" / "timed out" / "SSE error" / "SSE stream disconnected")
-      // case-insensitively.
-      const isExpectedTimeout =
-        isHttpTransport &&
-        (errorMessage === "undefined" ||
-          errorMessage === "" ||
-          lower.includes("sse error") ||
-          lower.includes("sse stream disconnected") ||
-          lower.includes("timeout") ||
-          lower.includes("timed out"));
+      // Streamable HTTP's standalone GET/SSE listener is optional. Its own
+      // timeout or SDK-prefixed stream-reader disconnect does not invalidate
+      // the POST request channel; unscoped, auth, and POST timeouts do.
+      const isExpectedTimeout = isHttpTransport && isBenignHttpStreamError(error);
 
       if (!isExpectedTimeout) {
         logger.error({ error, serverName: name }, `Transport error for "${name}"`);
@@ -407,7 +463,10 @@ export class McpService extends Service {
         } catch (err) {
           // error-policy:J5 background reconnect; failure is observed in
           // handleDisconnection, which records lastError and backs off (capped).
-          this.handleDisconnection(name, err);
+          if (!this.connections.has(name) && !this.connectionStates.has(name)) {
+            this.connectionStates.set(name, state);
+            this.handleDisconnection(name, err);
+          }
         }
       }
     }, delay);
@@ -415,26 +474,49 @@ export class McpService extends Service {
 
   async deleteConnection(name: string): Promise<void> {
     const connection = this.connections.get(name);
+    this.connections.delete(name);
+    this.clearConnectionState(name);
     if (connection) {
-      const closeResults = await Promise.allSettled([
-        connection.transport.close(),
-        connection.client.close(),
-      ]);
-      this.connections.delete(name);
-      for (const result of closeResults) {
-        if (result.status === "rejected") {
-          logger.warn(
-            { error: result.reason, serverName: name },
-            `Failed to close MCP connection resource for "${name}"`
-          );
-        }
-      }
+      await this.closeClientResources(name, connection.client, connection.transport);
     }
+  }
+
+  private clearConnectionState(name: string, expected?: ConnectionState): void {
     const state = this.connectionStates.get(name);
-    if (state) {
-      if (state.pingInterval) clearInterval(state.pingInterval);
-      if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
-      this.connectionStates.delete(name);
+    if (!state || (expected && state !== expected)) {
+      return;
+    }
+    if (state.pingInterval) clearInterval(state.pingInterval);
+    if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
+    this.connectionStates.delete(name);
+  }
+
+  private async closeClientResources(
+    name: string,
+    client: Client,
+    transport?: McpConnection["transport"]
+  ): Promise<void> {
+    const clientOwnsTransport = transport !== undefined && client.transport === transport;
+    const [clientClose] = await Promise.allSettled([Promise.resolve().then(() => client.close())]);
+    if (clientClose.status === "rejected") {
+      // error-policy:J6 teardown continues with the transport so a failed
+      // client close cannot retain a subprocess, stream, or retry timer.
+      logger.warn(
+        { error: clientClose.reason, serverName: name },
+        `Failed to close MCP client for "${name}"`
+      );
+    }
+    if (!transport || (clientClose.status === "fulfilled" && clientOwnsTransport)) {
+      return;
+    }
+    const [transportClose] = await Promise.allSettled([
+      Promise.resolve().then(() => transport.close()),
+    ]);
+    if (transportClose.status === "rejected") {
+      logger.warn(
+        { error: transportClose.reason, serverName: name },
+        `Failed to close MCP transport for "${name}"`
+      );
     }
   }
 

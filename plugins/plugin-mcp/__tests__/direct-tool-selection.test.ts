@@ -68,7 +68,14 @@ describe("getDirectToolSelection", () => {
 });
 
 describe("call_tool with an explicit selection", () => {
-  function makeHarness() {
+  const advertisedServer = {
+    name: "srv",
+    status: "connected",
+    config: JSON.stringify({ type: "stdio", command: "bun" }),
+    tools: [{ name: "echo", inputSchema: { type: "object" } }],
+  } as const;
+
+  function makeHarness(servers: readonly object[] = [advertisedServer]) {
     const callTool = vi.fn(async () => ({
       content: [{ type: "text" as const, text: "tool says hi" }],
     }));
@@ -78,6 +85,7 @@ describe("call_tool with an explicit selection", () => {
       composeState: vi.fn(async () => ({ values: {}, data: {}, text: "" })),
       getService: vi.fn(() => ({
         getProviderData: () => ({ values: { mcp: {} }, data: { mcp: {} }, text: "" }),
+        getServers: () => servers,
         callTool,
       })),
       useModel,
@@ -109,5 +117,39 @@ describe("call_tool with an explicit selection", () => {
     expect(result?.data?.toolArgumentsJson).toBe(JSON.stringify({ x: 1 }));
     // Only the response-synthesis model call may run — never a selection pass.
     expect(useModel).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    {
+      label: "unknown server",
+      servers: [],
+      expectedCode: "MCP_SERVER_NOT_CONNECTED",
+    },
+    {
+      label: "disconnected server",
+      servers: [{ ...advertisedServer, status: "disconnected" }],
+      expectedCode: "MCP_SERVER_NOT_CONNECTED",
+    },
+    {
+      label: "tool not advertised by the server",
+      servers: [{ ...advertisedServer, tools: [{ name: "different-tool" }] }],
+      expectedCode: "MCP_TOOL_NOT_ADVERTISED",
+    },
+  ])("returns a structured failure for an explicit $label", async ({ servers, expectedCode }) => {
+    const { runtime, message, callTool, useModel } = makeHarness(servers);
+
+    const result = await mcpAction.handler(runtime, message, undefined, {
+      action: "call_tool",
+      serverName: "srv",
+      toolName: "echo",
+      arguments: { x: 1 },
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.values?.errorCode).toBe(expectedCode);
+    expect(result?.data?.errorCode).toBe(expectedCode);
+    expect(result?.data?.errorContext).toEqual({ serverName: "srv", toolName: "echo" });
+    expect(callTool).not.toHaveBeenCalled();
+    expect(useModel).not.toHaveBeenCalled();
   });
 });
