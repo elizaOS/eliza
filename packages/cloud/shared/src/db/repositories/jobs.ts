@@ -1226,6 +1226,7 @@ export class JobsRepository {
           status: params.isFailed ? "failed" : "pending",
           ...payload,
           attempts: params.newAttempts,
+          completed_at: params.isFailed ? new Date() : null,
           execution_quiesced_at: new Date(),
           updated_at: new Date(),
         })
@@ -1383,8 +1384,14 @@ export class JobsRepository {
     if (status === "in_progress" && !additionalFields?.started_at) {
       updates.started_at = new Date();
     }
-    if (status === "completed" && !additionalFields?.completed_at) {
+    if (
+      (status === "completed" || status === "failed" || status === "cancelled") &&
+      !additionalFields?.completed_at
+    ) {
       updates.completed_at = new Date();
+    }
+    if (status === "pending" && !additionalFields?.completed_at) {
+      updates.completed_at = null;
     }
 
     if (hasPayloadUpdates(updates)) {
@@ -1415,7 +1422,8 @@ export class JobsRepository {
     }
     let updates: Partial<Job> = {
       status,
-      completed_at: status === "completed" ? new Date() : claimedJob.completed_at,
+      completed_at:
+        status === "completed" || status === "cancelled" ? new Date() : claimedJob.completed_at,
       execution_quiesced_at: new Date(),
       updated_at: new Date(),
       ...additionalFields,
@@ -1590,6 +1598,7 @@ export class JobsRepository {
           status: isFailed ? "failed" : "pending",
           ...payload,
           attempts: newAttempts,
+          completed_at: isFailed ? new Date() : null,
           execution_quiesced_at: expectedExecutionGeneration
             ? new Date()
             : job.execution_quiesced_at,
@@ -1731,6 +1740,7 @@ export class JobsRepository {
         .set({
           status: "pending",
           ...payload,
+          completed_at: null,
           execution_quiesced_at: new Date(),
           updated_at: new Date(),
           scheduled_for: scheduledFor,
