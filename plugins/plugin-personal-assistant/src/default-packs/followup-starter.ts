@@ -89,6 +89,13 @@ export function buildFollowupTaskForRelationship(args: {
     },
     trigger: { kind: "manual" },
     priority: "low",
+    output: {
+      destination: "in_app_card",
+      fallback: {
+        title: "Time to reconnect",
+        body: "Someone you care about may be due for a quick check-in.",
+      },
+    },
     completionCheck: {
       kind: "subject_updated",
       // The runner watches RelationshipStore for any new interaction on the

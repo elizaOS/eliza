@@ -137,15 +137,12 @@ async function runInteractive(): Promise<void> {
     process.exit(1);
   }
 
-  const [
-    { App },
-    { initializeAgent },
-    { loadSession, createDefaultSessionState },
-  ] = await Promise.all([
-    import("./App.js"),
-    import("./lib/agent.js"),
-    import("./lib/session.js"),
-  ]);
+  const [{ App }, { initializeAgent }, { resolveTuiOwnerUserId }] =
+    await Promise.all([
+      import("./App.js"),
+      import("./lib/agent.js"),
+      import("./lib/tui-owner.js"),
+    ]);
 
   let runtime: AgentRuntime | undefined;
   let app: InstanceType<typeof App> | undefined;
@@ -155,15 +152,18 @@ async function runInteractive(): Promise<void> {
   // OWNER/ADMIN-gated coding tool is withheld from the planner — the agent
   // chats but can never act (live 2026-08-10 TUI session: "ship something"
   // looped "I handled the available step.").
-  const session = (await loadSession()) ?? createDefaultSessionState();
-  process.env.ELIZA_ADMIN_ENTITY_ID ??= session.identity.userId;
+  // Load the exact store instance that App and the message client use before
+  // booting the runtime. Creating a separate fallback session here would give
+  // a fresh TUI two user IDs and grant OWNER to the one that sends no turns.
+  const ownerUserId = await resolveTuiOwnerUserId();
+  process.env.ELIZA_ADMIN_ENTITY_ID ??= ownerUserId;
   process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE ??= "1";
 
   // Initialize the agent
   runtime = await initializeAgent({ codingOnly: shouldRunCodingOnly() });
   (
     runtime as unknown as { setSetting?: (k: string, v: unknown) => void }
-  ).setSetting?.("ELIZA_ADMIN_ENTITY_ID", session.identity.userId);
+  ).setSetting?.("ELIZA_ADMIN_ENTITY_ID", ownerUserId);
 
   // Handle SIGINT (Ctrl+C) and SIGTERM
   const handleSignal = () => {

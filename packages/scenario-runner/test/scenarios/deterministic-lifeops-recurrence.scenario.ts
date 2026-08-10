@@ -376,7 +376,9 @@ function assertDeliveryLedger(): string | undefined {
     if (metadata?.taskId !== dailyTaskId) {
       return `delivery ${index} was not for the daily task: ${JSON.stringify(payload)}`;
     }
-    if (record?.message !== DAILY_PROMPT) {
+    // The deterministic dispatch-render stand-in prefixes the instruction so
+    // the renderer's instruction-echo guard accepts the copy.
+    if (record?.message !== `Heads up: ${DAILY_PROMPT}`) {
       return `delivery ${index} carried the wrong message: ${JSON.stringify(record?.message)}`;
     }
   }

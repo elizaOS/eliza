@@ -50,6 +50,7 @@ import {
   sendTwilioSms,
   sendTwilioVoiceCall,
 } from "@elizaos/plugin-phone/twilio";
+import { renderOwnerNotificationTitle } from "@elizaos/plugin-scheduling";
 import type { LifeOpsScheduleMealLabel } from "@elizaos/shared";
 import { readProfileFromMetadata } from "../../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../../activity-profile/types.js";
@@ -1133,14 +1134,14 @@ export class RemindersDomain {
   private telemetryRollupLastRunDate: string | null = null;
   private readonly loggedMorningCheckinSuppressionKeys = new Set<string>();
 
-  protected emitInAppReminderNudge(args: {
+  protected async emitInAppReminderNudge(args: {
     text: string;
     ownerType: "occurrence" | "calendar_event";
     ownerId: string;
     subjectType: LifeOpsSubjectType;
     scheduledFor: string;
     dueAt: string | null;
-  }): void {
+  }): Promise<void> {
     const metadata = {
       ownerType: args.ownerType,
       ownerId: args.ownerId,
@@ -1157,23 +1158,44 @@ export class RemindersDomain {
     const notifier = this.ctx.runtime.getService(ServiceType.NOTIFICATION) as {
       notify?: (input: Record<string, unknown>) => Promise<unknown>;
     } | null;
-    void notifier?.notify?.({
-      title: "Reminder",
-      body: args.text,
-      category: "reminder",
-      // Tier calendar reminders by lead time (#10697): "starting soon" → high,
-      // "tomorrow / further" → low, subsequent-today → normal (non-calendar stays
-      // normal). dueAt is the event start for a calendar_event.
-      priority: resolveReminderNotificationPriority({
-        ownerType: args.ownerType,
-        dueAt: args.dueAt,
-        nowMs: Date.now(),
-      }),
-      source: "lifeops",
-      deepLink: "/chat",
-      groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
-      data: metadata,
-    });
+    if (notifier?.notify) {
+      try {
+        const title = await renderOwnerNotificationTitle(this.ctx.runtime, {
+          body: args.text,
+          fallbackTitle: "Reminder",
+          firedAtIso: args.scheduledFor,
+          errorContext: {
+            ownerType: args.ownerType,
+            ownerId: args.ownerId,
+          },
+        });
+        await notifier.notify({
+          title,
+          body: args.text,
+          category: "reminder",
+          // Tier calendar reminders by lead time (#10697): "starting soon" → high,
+          // "tomorrow / further" → low, subsequent-today → normal (non-calendar stays
+          // normal). dueAt is the event start for a calendar_event.
+          priority: resolveReminderNotificationPriority({
+            ownerType: args.ownerType,
+            dueAt: args.dueAt,
+            nowMs: Date.now(),
+          }),
+          source: "lifeops",
+          deepLink: "/chat",
+          groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
+          data: metadata,
+        });
+      } catch (error) {
+        // error-policy:J4 the assistant stream already accepted the same body;
+        // report notification/title degradation without failing the reminder.
+        this.ctx.runtime.reportError(
+          "lifeops:reminder:notification-title",
+          error,
+          { ownerType: args.ownerType, ownerId: args.ownerId },
+        );
+      }
+    }
   }
 
   public async readRecentReminderConversation(args: {
@@ -4477,7 +4499,7 @@ export class RemindersDomain {
       );
     }
     if (outcome === "delivered" && args.channel === "in_app") {
-      this.emitInAppReminderNudge({
+      await this.emitInAppReminderNudge({
         text: reminderBody,
         ownerType: args.ownerType,
         ownerId: args.ownerId,

@@ -440,7 +440,9 @@ describe("adoptRotatedCodexTokens (CLI self-refresh sync-back)", () => {
       stopAccountPoolKeepAliveForTests();
       errorSpy.mockRestore();
     }
-  });
+    // Real keep-alive/refresh waits push this past the package's 120s budget
+    // on loaded CI hosts; the explicit budget keeps assertions the gate.
+  }, 240_000);
 
   it("bridge.select heals the canonical record BEFORE resolving, so a CLI-rotated account still spawns", async () => {
     // Canonical: expired access + consumed refresh token. Without adoption,

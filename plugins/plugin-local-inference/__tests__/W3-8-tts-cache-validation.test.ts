@@ -169,7 +169,9 @@ describe("1. Cross-restart validation", { timeout: 30_000 }, () => {
 			expect(hit?.hitCount).toBe(expectedHits);
 			c.close();
 		}
-	});
+		// 6 SQLite open/close cycles starve past the 5s default on loaded CI
+		// hosts; the explicit budget keeps the assertion, not the disk, the gate.
+	}, 30_000);
 
 	it("LRU metadata (last_accessed_at_ms) is updated across restart", async () => {
 		const key = makeKey();
