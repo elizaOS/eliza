@@ -209,6 +209,22 @@ describe("brand surfaces", () => {
     expect(html).toContain("Booting up&hellip;");
   });
 
+  it("preboot shell sits outside the React mount root and is removed only on meaningful paint", () => {
+    // React clears #root on its first commit, and the web build's lazy router
+    // shell makes those first commits EMPTY Suspense fallbacks — an in-root
+    // shell therefore died into a ~1.4s blank (#18256). The shell must be a
+    // fixed-position SIBLING of #root, torn down by the inline observer once
+    // #root actually paints content.
+    const html = read("index.html");
+    expect(html).toMatch(/<div id="root"><\/div>/);
+    expect(html).toMatch(/<div id="eliza-preboot-shell"/);
+    expect(html).toMatch(
+      /\.eliza-preboot-shell\s*\{[^}]*position:\s*fixed/s,
+    );
+    expect(html).toContain("new MutationObserver");
+    expect(html).toContain("hasMeaningfulContent");
+  });
+
   it("preboot logo uses a base-aware brand path so it resolves on deep web routes and native builds", () => {
     // BASE_URL resolves from the origin in web builds and beside the document
     // in packaged builds, preserving both deep SPA routes and bundled assets.
