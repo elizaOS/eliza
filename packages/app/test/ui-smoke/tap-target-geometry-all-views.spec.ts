@@ -72,6 +72,11 @@ const DOCUMENTED_EXCEPTIONS: Record<
   ReadonlyArray<{ match: RegExp; reason: string }>
 > = {};
 
+const DOCUMENTED_ZERO_CONTROL_VIEWS: Record<string, string> = {
+  "pendant-transcript":
+    "Designed disconnected pendant transcript state has no standalone controls when no pendant session is paired.",
+};
+
 /**
  * Collect, classify, and (in-page) exception-filter every interactive control
  * in the current view. Runs entirely in the page so geometry + computed style +
@@ -468,8 +473,16 @@ test.describe("tap-target rendered-geometry + role/DOM coherence gate", () => {
             timeout: 60_000,
           },
         )
-        .toBeGreaterThan(0);
+        .toBeGreaterThan(DOCUMENTED_ZERO_CONTROL_VIEWS[view.id] ? -1 : 0);
       allRecords.push(...records);
+
+      if (DOCUMENTED_ZERO_CONTROL_VIEWS[view.id] && records.length === 0) {
+        test.info().annotations.push({
+          type: "documented-zero-control-view",
+          description: DOCUMENTED_ZERO_CONTROL_VIEWS[view.id],
+        });
+        return;
+      }
 
       expect(
         records.length,

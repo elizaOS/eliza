@@ -171,7 +171,7 @@ test("chat and routed views keep heap, DOM, and listeners bounded", async ({
   );
 
   const composer = page.getByTestId("chat-composer-textarea");
-  const calendar = page.getByRole("heading", { name: "Calendar" }).first();
+  const calendar = page.getByTestId("simple-calendar-view").first();
   const documents = page.getByTestId("documents-view").first();
   const taskCoordinator = page.getByTestId("task-coordinator-panel").first();
 
