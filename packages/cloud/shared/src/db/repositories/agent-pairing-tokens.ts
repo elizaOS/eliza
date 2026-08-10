@@ -14,6 +14,21 @@ import { agentSandboxes } from "../schemas/agent-sandboxes";
 
 export type { AgentPairingToken, NewAgentPairingToken };
 
+export interface BrowserPairingTokenBinding {
+  agentId: string;
+  expectedOrigin: string;
+}
+
+export type BrowserPairingTokenClaim =
+  | {
+      status: "claimed";
+      token: AgentPairingToken;
+      apiKey: string;
+      agentName: string | null;
+    }
+  | { status: "invalid" }
+  | { status: "sandbox-credential-unavailable" };
+
 export interface AuthenticatedPairingTokenBinding {
   userId: string;
   organizationId: string;
@@ -66,6 +81,82 @@ export class AgentPairingTokensRepository {
       .returning();
 
     return row;
+  }
+
+  /**
+   * Claim a browser pairing token and its sandbox credential from one locked
+   * database snapshot. Both the URL-selected agent and the public origin are
+   * bound before the token can be consumed, and a broken sandbox credential
+   * leaves the one-time token available for a later valid retry.
+   */
+  async consumeValidBrowserToken(
+    tokenHash: string,
+    binding: BrowserPairingTokenBinding,
+  ): Promise<BrowserPairingTokenClaim> {
+    await ensureAgentSandboxSchema();
+
+    return writeTransaction(async (tx) => {
+      const observedAt = new Date();
+      const [token] = await tx
+        .select()
+        .from(agentPairingTokens)
+        .where(
+          and(
+            eq(agentPairingTokens.token_hash, tokenHash),
+            eq(agentPairingTokens.agent_id, binding.agentId),
+            eq(agentPairingTokens.expected_origin, binding.expectedOrigin),
+            isNull(agentPairingTokens.used_at),
+            gt(agentPairingTokens.expires_at, observedAt),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!token) return { status: "invalid" };
+
+      const [sandbox] = await tx
+        .select({
+          agentName: agentSandboxes.agent_name,
+          environmentVars: agentSandboxes.environment_vars,
+        })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, binding.agentId),
+            eq(agentSandboxes.organization_id, token.organization_id),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!sandbox) return { status: "invalid" };
+
+      const rawApiKey = sandbox.environmentVars?.ELIZA_API_TOKEN;
+      if (typeof rawApiKey !== "string" || rawApiKey.trim().length === 0) {
+        return { status: "sandbox-credential-unavailable" };
+      }
+
+      const claimedAt = new Date();
+      const [claimedToken] = await tx
+        .update(agentPairingTokens)
+        .set({ used_at: claimedAt })
+        .where(
+          and(
+            eq(agentPairingTokens.id, token.id),
+            eq(agentPairingTokens.agent_id, binding.agentId),
+            eq(agentPairingTokens.expected_origin, binding.expectedOrigin),
+            isNull(agentPairingTokens.used_at),
+            gt(agentPairingTokens.expires_at, claimedAt),
+          ),
+        )
+        .returning();
+      if (!claimedToken) return { status: "invalid" };
+
+      return {
+        status: "claimed",
+        token: claimedToken,
+        apiKey: rawApiKey,
+        agentName: sandbox.agentName,
+      };
+    });
   }
 
   /**
