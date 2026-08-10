@@ -225,6 +225,33 @@ function requestText(message: Memory): string {
 }
 
 /**
+ * Structured pre-spawn refusal. Machine detail rides in `data` (the planner
+ * reads it from the tool turn) while `text`/`userFacingText` carry ONLY a
+ * short human line that is safe to reach chat verbatim — a redirect
+ * instruction in the diagnostic text gets promoted to canonical user-facing
+ * copy by the settle wrapper and shipped word-for-word (live leak
+ * tj-f1e0716132eb14: the whole "Refused to spawn…" envelope replaced the
+ * evaluator's human reply). `awaitingUserInput` marks the refusal as a
+ * deliberate pause for direction, not an unresolved failure, so when the
+ * planner follows `plannerGuidance` (e.g. WEB_FETCH on a bare link) the
+ * successful read owns the turn's reply instead of being overridden by the
+ * failure authority.
+ */
+function spawnRefusalResult(
+  code: "EMPTY_TASK_PROMPT" | "LINK_SHARE_NOT_A_TASK",
+  humanText: string,
+  plannerGuidance: string,
+): ActionResult {
+  return {
+    success: false,
+    error: code,
+    text: humanText,
+    userFacingText: humanText,
+    data: { code, awaitingUserInput: true, plannerGuidance },
+  };
+}
+
+/**
  * Pre-spawn intent gate — fails fast BEFORE any ACP session exists. A coding
  * sub-agent must only be spawned on an explicit instruction. Refuses:
  *
@@ -234,12 +261,11 @@ function requestText(message: Memory): string {
  * 2. A task derived ONLY from a shared link (bare URL, optionally with the
  *    connector's embed preview text, and no explicit work imperative in the
  *    user's own words): a shared link is content to read and react to, not a
- *    work order. The refusal text points the planner at the web-read light
- *    path instead.
+ *    work order. The refusal's `data.plannerGuidance` points the planner at
+ *    the web-read light path instead.
  *
  * Sub-agent re-spawn turns (router-synthesized inbounds) skip the link check —
  * their root turn was already gated and their task comes from stored metadata.
- * Refusal text is planner-facing; the model phrases the user-visible reply.
  */
 function guardSpawnTaskIntent(args: {
   task: string;
@@ -247,16 +273,18 @@ function guardSpawnTaskIntent(args: {
   isSubAgentRespawn: boolean;
 }): ActionResult | undefined {
   if (!args.task.trim()) {
-    return errorResult(
+    return spawnRefusalResult(
       "EMPTY_TASK_PROMPT",
-      "Refused to spawn a coding sub-agent: the task prompt is empty, so there is nothing to delegate. No session was created. Ask the user what they actually want built, fixed, or investigated before delegating.",
+      "there's nothing concrete to delegate yet — what do you want built, fixed, or investigated?",
+      "Do not spawn a coding sub-agent: the task prompt is empty, so there is nothing to delegate. No session was created. Ask the user what they actually want built, fixed, or investigated before delegating.",
     );
   }
   if (args.isSubAgentRespawn) return undefined;
   if (looksLikeBareLinkShare(args.originatingText)) {
-    return errorResult(
+    return spawnRefusalResult(
       "LINK_SHARE_NOT_A_TASK",
-      "Refused to spawn a coding sub-agent: the user's message is a shared link with no explicit build/fix/code instruction — the candidate task text was derived from the link's embed preview, not from the user. No session was created. Instead, read the page (WEB_FETCH) and respond about its actual content; if it is not fetchable (private or auth-walled), react using the embed title/description already present in the message and ask whether the user wants anything specific done with it.",
+      "that's a link, not a task — want me to read it, or do something specific with it?",
+      "Do not spawn a coding sub-agent: the user's message is a shared link with no explicit build/fix/code instruction — the candidate task text was derived from the link's embed preview, not from the user. No session was created. Instead, read the page (WEB_FETCH) and respond about its actual content; if it is not fetchable (private or auth-walled), react using the embed title/description already present in the message and ask whether the user wants anything specific done with it.",
     );
   }
   return undefined;
@@ -3590,6 +3618,48 @@ function parseLabels(input: unknown): string[] {
   return [];
 }
 
+/**
+ * Create an issue with labels applied as a SEPARATE best-effort step. Labels
+ * on GitHub's create call require push/triage access, so a read-tier token
+ * fails the ENTIRE creation over a decoration (live incident 2026-08-10: a
+ * good issue died on "You do not have permission to create labels"). Title
+ * and body always land; a label failure degrades to a short note.
+ */
+export async function createIssueWithBestEffortLabels(
+  service: CodingWorkspaceService,
+  repo: string,
+  options: { title: string; body: string; labels: string[] },
+): Promise<{ issue: IssueInfo; labelNote: string }> {
+  const issue = await service.createIssue(repo, {
+    title: options.title,
+    body: options.body,
+  });
+  if (options.labels.length === 0) return { issue, labelNote: "" };
+  try {
+    await service.addLabels(repo, issue.number, options.labels);
+    return { issue, labelNote: "" };
+  } catch {
+    // error-policy:J4 labels are decoration; the created issue is the
+    // deliverable and a label-permission failure must not fail the turn.
+    return { issue, labelNote: " (labels skipped — no permission)" };
+  }
+}
+
+/**
+ * One in-voice line for a failed issue operation. The raw provider error
+ * stays in the returned `error` field for the planner and in logs — chat
+ * gets a human sentence, never API JSON and docs links.
+ */
+export function issueFailureReply(repo: string, errorMessage: string): string {
+  if (/permission|unauthorized|forbidden|403/i.test(errorMessage)) {
+    return `couldn't do that on ${repo} — the connected github account doesn't have permission for it.`;
+  }
+  if (/not found|404/i.test(errorMessage)) {
+    return `couldn't find that on ${repo} — the repo or issue doesn't exist (or isn't visible to the connected account).`;
+  }
+  return `couldn't finish that github operation on ${repo}. logged the details.`;
+}
+
 async function handleIssueAction(
   service: CodingWorkspaceService,
   repo: string,
@@ -3611,12 +3681,15 @@ async function handleIssueAction(
           if (items.length > 0) {
             const labels = parseLabels(params.labels);
             const created: IssueInfo[] = [];
+            let bulkLabelNote = "";
             for (const item of items.slice(0, ISSUE_RESULT_LIMIT)) {
-              const issue = await service.createIssue(repo, {
-                title: item.title,
-                body: item.body ?? "",
-                labels: labels.length > 0 ? labels : undefined,
-              });
+              const { issue, labelNote } =
+                await createIssueWithBestEffortLabels(service, repo, {
+                  title: item.title,
+                  body: item.body ?? "",
+                  labels,
+                });
+              if (labelNote) bulkLabelNote = labelNote;
               created.push(issue);
             }
             // Create/list/get answers are the complete answer to the turn:
@@ -3626,15 +3699,20 @@ async function handleIssueAction(
             const summary = created
               .map((i) => `#${i.number}: ${i.title}\n  ${i.url}`)
               .join("\n");
+            // The chat confirmation stays clean; a label degrade is recorded
+            // planner-side (`text` + data) so the model can answer honestly
+            // if asked, without machinery notes in the user's message.
             const bulkText = `Created ${created.length} issues:\n${summary}`;
             if (callback) await callback({ text: bulkText });
             return {
               success: true,
-              text: bulkText,
+              text: bulkLabelNote
+                ? `${bulkText}\n(requested labels not applied: no label permission on ${repo})`
+                : bulkText,
               userFacingText: bulkText,
               verifiedUserFacing: true,
               turnComplete: true,
-              data: { issues: created },
+              data: { issues: created, labelsApplied: !bulkLabelNote },
             };
           }
 
@@ -3646,20 +3724,24 @@ async function handleIssueAction(
         }
 
         const labels = parseLabels(params.labels);
-        const issue = await service.createIssue(repo, {
-          title,
-          body: body ?? "",
-          labels: labels.length > 0 ? labels : undefined,
-        });
+        const { issue, labelNote } = await createIssueWithBestEffortLabels(
+          service,
+          repo,
+          { title, body: body ?? "", labels },
+        );
+        // Clean human confirmation only; the label degrade stays
+        // planner-side (`text` + data) — no machinery notes in chat.
         const createdText = `Created issue #${issue.number}: ${issue.title}\n${issue.url}`;
         if (callback) await callback({ text: createdText });
         return {
           success: true,
-          text: createdText,
+          text: labelNote
+            ? `${createdText}\n(requested labels not applied: no label permission on ${repo})`
+            : createdText,
           userFacingText: createdText,
           verifiedUserFacing: true,
           turnComplete: true,
-          data: { issue },
+          data: { issue, labelsApplied: !labelNote },
         };
       }
 
@@ -3747,11 +3829,19 @@ async function handleIssueAction(
           };
         }
         const comment = await service.addComment(repo, issueNumber, body);
-        if (callback)
-          await callback({
-            text: `Added comment to issue #${issueNumber}: ${comment.url}`,
-          });
-        return { success: true, data: { comment } };
+        const commentedText = `Added comment to issue #${issueNumber}: ${comment.url}`;
+        if (callback) await callback({ text: commentedText });
+        // Settled like create/list/get: the callback is the sole delivery, so
+        // the planner does not append a second "done, commented" bubble
+        // (live double-message 2026-08-10, same class as the create paths).
+        return {
+          success: true,
+          text: commentedText,
+          userFacingText: commentedText,
+          verifiedUserFacing: true,
+          turnComplete: true,
+          data: { comment },
+        };
       }
 
       case "close": {
@@ -3814,10 +3904,13 @@ async function handleIssueAction(
         return { success: false, error: "UNKNOWN_OPERATION" };
     }
   } catch (error) {
-    // error-policy:J1 issue-operation boundary → user-facing error + structured failure.
+    // error-policy:J1 issue-operation boundary → in-voice user line +
+    // structured failure. The raw provider message stays planner/log-facing
+    // only: shipping API JSON and docs links to chat was the 2026-08-10
+    // incident's second half.
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (callback)
-      await callback({ text: `Issue operation failed: ${errorMessage}` });
+      await callback({ text: issueFailureReply(repo, errorMessage) });
     return { success: false, error: errorMessage };
   }
 }
@@ -4030,9 +4123,11 @@ const TASKS_READ_ONLY_OPERATIONS: ReadonlySet<TaskOp> = new Set([
 ]);
 
 const TASKS_REJECTED_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "EMPTY_TASK_PROMPT",
   "FORBIDDEN",
   "INVALID_CREDENTIALS",
   "INVALID_REPO_DOMAIN",
+  "LINK_SHARE_NOT_A_TASK",
   "MISSING_INPUT",
   "MISSING_ISSUE_NUMBER",
   "MISSING_PARAMS",
@@ -4449,15 +4544,24 @@ async function settleTasksOperation(args: {
     };
   }
 
+  // A failed op keeps its canonical text as a plain user-facing projection but
+  // never the `verifiedUserFacing` do-not-paraphrase license: that license
+  // outranks the evaluator's own reply at the terminal boundary, and granting
+  // it to an undelivered failure shipped the LINK_SHARE_NOT_A_TASK redirect
+  // envelope to chat word-for-word OVER the evaluator's correct human line
+  // (live tj-f1e0716132eb14). Receipt binding follows the license: a failed
+  // receipt proves nothing the exact text is entitled to claim.
   const effectResult: ActionResult = {
     ...result,
     effectReceipts: [receipt],
     ...(canonical?.response.text
-      ? {
-          userFacingText: canonical.response.text,
-          verifiedUserFacing: true,
-          userFacingEffectReceiptIds: [receipt.receiptId],
-        }
+      ? result.success !== false
+        ? {
+            userFacingText: canonical.response.text,
+            verifiedUserFacing: true,
+            userFacingEffectReceiptIds: [receipt.receiptId],
+          }
+        : { userFacingText: canonical.response.text }
       : {}),
   };
   if (canonical && args.callback && helperEmittedCallback) {
@@ -4640,7 +4744,10 @@ export const tasksAction: Action & {
     "CREATE_PR",
     "SUBMIT_CHANGES",
     "FINISH_WORKSPACE",
-    // manage_issues
+    // manage_issues — includes the GITHUB_-prefixed and ADD_-shaped names
+    // Stage-1 actually guesses (live 2026-08-10: "add a comment to that
+    // issue" nominated GITHUB_ADD_COMMENT/GITHUB_ADD_LABEL, matched nothing,
+    // and the planner declined a capability it has).
     "MANAGE_ISSUES",
     "CREATE_ISSUE",
     "LIST_ISSUES",
@@ -4648,6 +4755,14 @@ export const tasksAction: Action & {
     "COMMENT_ISSUE",
     "UPDATE_ISSUE",
     "GET_ISSUE",
+    "GITHUB_ISSUE",
+    "GITHUB_CREATE_ISSUE",
+    "GITHUB_ADD_COMMENT",
+    "GITHUB_COMMENT_ISSUE",
+    "ADD_COMMENT",
+    "GITHUB_ADD_LABEL",
+    "ADD_LABEL",
+    "LABEL_ISSUE",
     // archive / reopen
     "ARCHIVE_CODING_TASK",
     "CLOSE_CODING_TASK",

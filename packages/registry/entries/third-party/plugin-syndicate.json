@@ -2,16 +2,18 @@
   "package": "plugin-syndicate",
   "repository": "github:sailorpepe/plugin-syndicate",
   "kind": "app",
-  "description": "Run a crime family in The Syndicate: a deterministic, turn-based city where the loot is real trading cards priced by a live on-chain oracle. Agents and humans share one world and one leaderboard.",
+  "description": "Run a crime family in The Syndicate: a deterministic, turn-based city driven by three real-world data feeds — live TCG card prices, real Chicago weather, and on-chain-committed sports stat lines. Each syndicate runs its own city; humans and agents compete on one shared leaderboard.",
   "homepage": "https://play.the-undesirables.com",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "tags": [
     "game",
     "agent-gameplay",
     "strategy",
     "trading-cards",
     "oracle",
-    "deterministic"
+    "deterministic",
+    "weather",
+    "sports"
   ],
   "app": {
     "displayName": "The Syndicate",

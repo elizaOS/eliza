@@ -154,6 +154,36 @@ describe("SEARCH_KNOWLEDGE", () => {
     expect((res.data as { count: number }).count).toBeGreaterThan(0);
   });
 
+  it("a non-empty result settles the snippet list verbatim (verifiedUserFacing)", async () => {
+    const runtime = makeRuntime({ service: makeService() });
+    const res = await call(
+      searchKnowledgeAction,
+      runtime,
+      msg(OWNER_ENTITY, DM_ROOM),
+      { query: "body" },
+    );
+    expect(res.success).toBe(true);
+    expect(res.verifiedUserFacing).toBe(true);
+    expect(res.userFacingText).toBe(res.text);
+  });
+
+  it("an empty result stays diagnostic — never settled as verified user-facing text", async () => {
+    // Settling the miss verbatim shipped raw machinery ("No knowledge items
+    // match for …") into a live channel; the model must voice the miss.
+    const runtime = makeRuntime({ service: makeService([]) });
+    const res = await call(
+      searchKnowledgeAction,
+      runtime,
+      msg(OWNER_ENTITY, DM_ROOM),
+      { query: "zzz-matches-absolutely-nothing-zzz" },
+    );
+    expect(res.success).toBe(true);
+    expect((res.data as { count: number }).count).toBe(0);
+    expect(res.text).toContain("No knowledge items match");
+    expect(res.verifiedUserFacing).toBeUndefined();
+    expect(res.userFacingText).toBeUndefined();
+  });
+
   it("filter-only (no free text) surfacing works — the slice-3 tag search", async () => {
     const runtime = makeRuntime({ service: makeService() });
     const res = await call(

@@ -1,6 +1,7 @@
 // Coordinates cloud service managed eliza config behavior behind route handlers.
 import crypto from "node:crypto";
 import { EXTERNAL_URLS } from "@elizaos/shared/brand";
+import type { DbTransaction } from "../../db/client";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -28,12 +29,20 @@ export interface ManagedElizaEnvironmentResult {
   changed: boolean;
   environmentVars: Record<string, string>;
   agentApiKey: string;
+  /**
+   * Hashes of the sandbox keys this preparation revoked. A caller that
+   * prepared inside its own transaction MUST re-invalidate them after COMMIT
+   * (`apiKeysService.confirmRevocationAfterCommit`) — the pre-commit pass ran
+   * while the old rows were still visible to other connections.
+   */
+  revokedKeyHashes: string[];
 }
 
 export interface ManagedElizaBaseEnvironmentResult {
   apiToken: string;
   environmentVars: Record<string, string>;
   agentApiKey: string;
+  revokedKeyHashes: string[];
 }
 
 export interface PrepareManagedElizaSharedEnvironmentParams {
@@ -41,6 +50,13 @@ export interface PrepareManagedElizaSharedEnvironmentParams {
   organizationId: string;
   userId: string;
   agentSandboxId: string;
+  /**
+   * The caller's open primary transaction, when it has one. Preparation mints
+   * the agent's cloud key, so a caller inside a transaction must pass it or
+   * that mint checks out a second pooled connection while holding the first.
+   * Callers that prepare unlocked (cold provision, tier upgrade) leave it unset.
+   */
+  tx?: DbTransaction;
 }
 
 export function findReservedManagedElizaEnvKeys(keys: Iterable<string>): string[] {
@@ -249,10 +265,11 @@ export async function prepareManagedElizaBaseEnvironment(
   // DATABASE_URL re-injected by computeManagedAgentDbEnv.
   delete existingEnv.DATABASE_URL;
   delete existingEnv.ELIZA_MANAGED_DATABASE_URL;
-  const { plainKey: agentApiKey } = await apiKeysService.createForAgent({
+  const { plainKey: agentApiKey, revokedKeyHashes } = await apiKeysService.createForAgent({
     organizationId: params.organizationId,
     userId: params.userId,
     agentSandboxId: params.agentSandboxId,
+    tx: params.tx,
   });
   const apiToken =
     existingEnv.ELIZA_API_TOKEN?.trim() || `agent_${crypto.randomUUID().replace(/-/g, "")}`;
@@ -260,6 +277,7 @@ export async function prepareManagedElizaBaseEnvironment(
   return {
     apiToken,
     agentApiKey,
+    revokedKeyHashes,
     environmentVars: {
       ...existingEnv,
       // Hosting-mode marker: this process is a managed Eliza Cloud agent, not a
@@ -335,6 +353,7 @@ export async function prepareManagedElizaSharedEnvironment(
     organizationId: params.organizationId,
     userId: params.userId,
     agentSandboxId: params.agentSandboxId,
+    tx: params.tx,
   });
   const environmentVars: Record<string, string> = {
     ...baseEnvironment.environmentVars,
@@ -345,5 +364,6 @@ export async function prepareManagedElizaSharedEnvironment(
     changed: JSON.stringify(existingEnv) !== JSON.stringify(environmentVars),
     environmentVars,
     agentApiKey: baseEnvironment.agentApiKey,
+    revokedKeyHashes: baseEnvironment.revokedKeyHashes,
   };
 }

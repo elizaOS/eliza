@@ -8408,14 +8408,15 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       }),
     }));
     const update = mock(() => ({ set: updateSet }));
-    upgradeTransactionImpl = async (fn) =>
-      fn({
-        execute: async () => ({ rows: [] }),
-        update,
-      } as unknown as UpgradeTx);
+    const handle = {
+      execute: async () => ({ rows: [] }),
+      update,
+    } as unknown as UpgradeTx;
+    upgradeTransactionImpl = async (fn) => fn(handle);
     return {
       update,
       updateSet,
+      handle,
       getWhereClause: () => whereClause,
     };
   }
@@ -8571,13 +8572,46 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
     }
   });
 
-  test("managed launch revokes a newly minted credential when its environment CAS loses", async () => {
+  test("managed launch mints its replacement on the launch transaction, not a second connection", async () => {
+    const existing = customSandbox();
+    const tx = installLifecycleUpdateTransaction(existing);
+    const { svc, lock, read } = await makeMutableService(existing);
+    const mint = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      apiKey: { id: "replacement-key" },
+      plainKey: "eliza_replacement_key",
+      revokedKeyHashes: [],
+    } as never);
+    try {
+      await svc.prepareManagedLaunchEnvironment({
+        agentId: existing.id,
+        organizationId: existing.organization_id,
+        userId: existing.user_id,
+      });
+      // Minting on the global write pool asks for a SECOND connection while
+      // this transaction still holds one; concurrent launches then starve the
+      // pool and each stalls out at connectionTimeoutMillis.
+      expect(mint).toHaveBeenCalledTimes(1);
+      expect(mint.mock.calls[0][0]).toMatchObject({
+        agentSandboxId: existing.id,
+        organizationId: existing.organization_id,
+        tx: tx.handle,
+      });
+    } finally {
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
+      mint.mockRestore();
+    }
+  });
+
+  test("managed launch unwinds the credential rotation when its environment CAS loses", async () => {
     const existing = customSandbox();
     const tx = installLifecycleUpdateTransaction(existing, { persist: false });
     const { svc, lock, read } = await makeMutableService(existing);
     const mint = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
       apiKey: { id: "replacement-key" },
       plainKey: "eliza_replacement_key",
+      revokedKeyHashes: [],
     } as never);
     const revoke = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined);
     try {
@@ -8589,7 +8623,10 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
         }),
       ).resolves.toBeUndefined();
       expect(mint).toHaveBeenCalledTimes(1);
-      expect(revoke).toHaveBeenCalledWith(existing.id);
+      // The rotation shares this transaction, so losing the CAS rolls it back.
+      // A compensating out-of-band revoke would now delete the RESTORED key and
+      // leave the agent with none.
+      expect(revoke).not.toHaveBeenCalled();
       expect(tx.update).toHaveBeenCalledTimes(1);
       const whereClause = tx.getWhereClause();
       if (!whereClause) throw new Error("managed launch did not build its ownership CAS");
