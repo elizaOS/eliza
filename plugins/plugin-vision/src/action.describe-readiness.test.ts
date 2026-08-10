@@ -80,6 +80,7 @@ describe("VISION describe readiness", () => {
     const callback = vi.fn(async () => undefined);
     const visionService = {
       isActive: () => false,
+      getVisionMode: () => VisionMode.OFF,
       getCapabilities: () => ({
         objectDetection: false,
         ocr: false,
@@ -108,6 +109,46 @@ describe("VISION describe readiness", () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("No vision input is available"),
+      }),
+    );
+  });
+
+  it("surfaces the concrete backend reason while an active screen loop has no frame", async () => {
+    const callback = vi.fn(async () => undefined);
+    const visionService = {
+      isActive: () => true,
+      getVisionMode: () => VisionMode.SCREEN,
+      getCapabilities: () => ({
+        objectDetection: false,
+        ocr: false,
+        faceRecognition: false,
+        screenCapture: false,
+        camera: false,
+        audio: false,
+        unavailableReasons: {
+          screenCapture: "Screen capture permission denied",
+        },
+      }),
+    };
+    const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
+      agentId: UUID,
+      getService: vi.fn(() => visionService),
+      createMemory: vi.fn(async () => undefined),
+    });
+
+    const result = await visionAction.handler(
+      runtime,
+      makeMessage(),
+      undefined,
+      { action: "describe" },
+      callback,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.data?.error).toBe("Screen capture permission denied");
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Screen capture permission denied"),
       }),
     );
   });

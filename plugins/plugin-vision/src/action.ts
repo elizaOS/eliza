@@ -256,11 +256,16 @@ async function runDescribe(
 
   if (!serviceActive || !hasReadyInput) {
     const awaitingFirstInput = serviceActive && !hasReadyInput;
+    const visionMode = visionService?.getVisionMode();
+    const unavailableReason =
+      visionMode === VisionMode.CAMERA
+        ? caps?.unavailableReasons?.camera
+        : caps?.unavailableReasons?.screenCapture;
     const thought = awaitingFirstInput
-      ? "Vision service is not fully initialized yet."
+      ? `Vision input is unavailable${unavailableReason ? `: ${unavailableReason}` : "."}`
       : "Vision service is not available — no camera or screen capture is connected.";
     const text = awaitingFirstInput
-      ? "I'm still initializing my vision. Please try again in a moment."
+      ? `I cannot see anything right now${unavailableReason ? `: ${unavailableReason}` : "."}`
       : "I cannot see anything right now. No vision input is available.";
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
@@ -278,7 +283,7 @@ async function runDescribe(
         actionName: "VISION",
         op: "describe",
         error: awaitingFirstInput
-          ? "Vision input has not produced a frame yet"
+          ? (unavailableReason ?? "Vision input has not produced a frame yet")
           : "Vision service is inactive or has no available input",
       },
     };

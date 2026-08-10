@@ -13,7 +13,11 @@ import {
 
 function makeRuntime(
   sceneDescription: SceneDescription,
-  overrides?: { capabilities?: VisionCapabilities; isActive?: boolean },
+  overrides?: {
+    capabilities?: VisionCapabilities;
+    isActive?: boolean;
+    visionMode?: VisionMode;
+  },
 ): IAgentRuntime {
   const defaultCaps: VisionCapabilities = {
     objectDetection: false,
@@ -40,7 +44,7 @@ function makeRuntime(
       connected: true,
     })),
     isActive: vi.fn(() => overrides?.isActive ?? true),
-    getVisionMode: vi.fn(() => VisionMode.CAMERA),
+    getVisionMode: vi.fn(() => overrides?.visionMode ?? VisionMode.CAMERA),
     getScreenCapture: vi.fn(async () => null),
     getEntityTracker: vi.fn(() => null),
     getCapabilities: vi.fn(() => overrides?.capabilities ?? defaultCaps),
@@ -258,5 +262,42 @@ describe("visionProvider", () => {
     expect(caps).toBeDefined();
     expect(caps.camera).toBe(false);
     expect(caps.unavailableReasons?.camera).toBe("No camera connected");
+  });
+
+  it("does not report a scheduled screen loop as available before a frame succeeds", async () => {
+    const runtime = makeRuntime(
+      {
+        timestamp: 0,
+        description: "",
+        objects: [],
+        people: [],
+        sceneChanged: false,
+        changePercentage: 0,
+      },
+      {
+        isActive: true,
+        visionMode: VisionMode.SCREEN,
+        capabilities: {
+          objectDetection: false,
+          ocr: false,
+          faceRecognition: false,
+          screenCapture: false,
+          camera: false,
+          audio: false,
+          unavailableReasons: {
+            screenCapture: "Screen capture permission denied",
+          },
+        },
+      },
+    );
+
+    const result = await visionProvider.get(
+      runtime,
+      { worldId: "world-1" } as Memory,
+      {} as State,
+    );
+
+    expect(result.values?.visionAvailable).toBe(false);
+    expect(result.text).toContain("Screen capture permission denied");
   });
 });

@@ -17,6 +17,7 @@ import type {
   EnhancedSceneDescription,
   EntityAttributes,
 } from "./types";
+import { VisionMode } from "./types";
 
 const MAX_VISION_OBJECTS_IN_STATE = 50;
 const MAX_VISION_PEOPLE_IN_STATE = 25;
@@ -67,6 +68,7 @@ export const visionProvider: Provider = {
       const visionMode = visionService.getVisionMode();
       const screenCapture = await visionService.getScreenCapture();
       const capabilities = visionService.getCapabilities();
+      const hasReadyInput = capabilities.camera || capabilities.screenCapture;
       const _worldId = message.worldId || "default-world";
       const entityTracker = visionService.getEntityTracker();
 
@@ -135,18 +137,24 @@ export const visionProvider: Provider = {
       let values = {};
       let data = {};
 
-      if (!isActive) {
+      if (!isActive || !hasReadyInput) {
         perceptionText = `Vision mode: ${visionMode}\n`;
         if (visionMode === "OFF") {
           perceptionText += "Vision is disabled.";
+        } else if (isActive) {
+          const unavailableReason =
+            visionMode === VisionMode.CAMERA
+              ? capabilities.unavailableReasons?.camera
+              : capabilities.unavailableReasons?.screenCapture;
+          perceptionText += `Vision input unavailable${unavailableReason ? `: ${unavailableReason}` : "."}`;
         } else {
-          perceptionText += "Vision service is initializing...";
+          perceptionText += "Vision service is not active.";
         }
 
         values = {
           visionAvailable: false,
           visionMode,
-          sceneDescription: "Vision not active",
+          sceneDescription: "Vision input unavailable",
           cameraStatus: cameraInfo
             ? `Camera "${cameraInfo.name}" detected but not active`
             : "No camera",
