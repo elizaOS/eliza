@@ -296,5 +296,24 @@ export interface VisionCapabilities {
   >;
 }
 
+/** Whether the currently selected mode has at least one completed input. */
+export function hasReadyInputForMode(
+  capabilities: VisionCapabilities | undefined,
+  mode: VisionMode | undefined,
+): boolean {
+  if (!capabilities || !mode) return false;
+  switch (mode) {
+    case VisionMode.CAMERA:
+      return capabilities.camera;
+    case VisionMode.SCREEN:
+      return capabilities.screenCapture;
+    case VisionMode.BOTH:
+      return capabilities.camera || capabilities.screenCapture;
+    case VisionMode.OFF:
+      return false;
+  }
+  return false;
+}
+
 /** Provenance of a detection result, so callers can tell YOLO apart from heuristics. */
 export type DetectionSource = "yolo" | "motion";

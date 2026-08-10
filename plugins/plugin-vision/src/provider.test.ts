@@ -300,4 +300,42 @@ describe("visionProvider", () => {
     expect(result.values?.visionAvailable).toBe(false);
     expect(result.text).toContain("Screen capture permission denied");
   });
+
+  it("does not let an idle connected camera satisfy SCREEN-mode readiness", async () => {
+    const runtime = makeRuntime(
+      {
+        timestamp: 0,
+        description: "stale camera scene",
+        objects: [],
+        people: [],
+        sceneChanged: false,
+        changePercentage: 0,
+      },
+      {
+        isActive: true,
+        visionMode: VisionMode.SCREEN,
+        capabilities: {
+          objectDetection: false,
+          ocr: false,
+          faceRecognition: false,
+          screenCapture: false,
+          camera: true,
+          audio: false,
+          unavailableReasons: {
+            screenCapture: "Screen capture permission denied",
+          },
+        },
+      },
+    );
+
+    const result = await visionProvider.get(
+      runtime,
+      { worldId: "world-1" } as Memory,
+      {} as State,
+    );
+
+    expect(result.values?.visionAvailable).toBe(false);
+    expect(result.text).toContain("Screen capture permission denied");
+    expect(result.text).not.toContain("stale camera scene");
+  });
 });

@@ -107,6 +107,7 @@ export class VisionWorkerManager {
           lastUpdate: Date.now(),
         });
       } else if (msg.type === "error") {
+        this.clearScreenCaptureReadiness();
         logger.error("[ScreenCaptureWorker] Error:", msg.error);
       } else if (msg.type === "log") {
         this.handleWorkerLog("ScreenCaptureWorker", msg);
@@ -114,6 +115,7 @@ export class VisionWorkerManager {
     });
 
     this.screenCaptureWorker.on("error", (error) => {
+      this.clearScreenCaptureReadiness();
       logger.error(
         "[ScreenCaptureWorker] Worker error:",
         error instanceof Error ? error.message : String(error),
@@ -122,6 +124,7 @@ export class VisionWorkerManager {
     });
 
     this.screenCaptureWorker.on("exit", (code) => {
+      this.clearScreenCaptureReadiness();
       if (code !== 0) {
         logger.error(
           `[ScreenCaptureWorker] Worker stopped with exit code ${code}`,
@@ -156,6 +159,7 @@ export class VisionWorkerManager {
       } else if (msg.type === "ocr_complete") {
         this.updateOCRCache(msg);
       } else if (msg.type === "error") {
+        this.clearOCRReadiness();
         logger.error("[OCRWorker] Error:", msg.error);
       } else if (msg.type === "log") {
         this.handleWorkerLog("OCRWorker", msg);
@@ -163,6 +167,7 @@ export class VisionWorkerManager {
     });
 
     this.ocrWorker.on("error", (error) => {
+      this.clearOCRReadiness();
       logger.error(
         "[OCRWorker] Worker error:",
         error instanceof Error ? error.message : String(error),
@@ -171,6 +176,7 @@ export class VisionWorkerManager {
     });
 
     this.ocrWorker.on("exit", (code) => {
+      this.clearOCRReadiness();
       if (code !== 0) {
         logger.error(`[OCRWorker] Worker stopped with exit code ${code}`);
         setTimeout(() => this.restartOCRWorker(), 1000);
@@ -181,9 +187,7 @@ export class VisionWorkerManager {
   private updateOCRCache(_msg: unknown): void {
     try {
       const result = this.readOCRResult();
-      if (result) {
-        this.latestOCRResult = result;
-      }
+      this.latestOCRResult = result;
     } catch (error) {
       logger.error(
         { error },
@@ -272,6 +276,18 @@ export class VisionWorkerManager {
       screenCapture: this.getLatestScreenCapture() !== null,
       ocr: this.latestOCRResult !== null,
     };
+  }
+
+  private clearScreenCaptureReadiness(): void {
+    this.latestScreenCapture = null;
+    this.lastProcessedFrameId = Atomics.load(
+      this.screenAtomicState,
+      this.FRAME_ID_INDEX,
+    );
+  }
+
+  private clearOCRReadiness(): void {
+    this.latestOCRResult = null;
   }
 
   getLatestEnhancedScene(): EnhancedSceneDescription {
@@ -387,6 +403,10 @@ export class VisionWorkerManager {
     }
 
     await Promise.all(stopPromises);
+    this.screenCaptureWorker = null;
+    this.ocrWorker = null;
+    this.clearScreenCaptureReadiness();
+    this.clearOCRReadiness();
     logger.info("[VisionWorkerManager] All workers stopped");
   }
 
@@ -431,6 +451,7 @@ export class VisionWorkerManager {
 
     try {
       if (this.screenCaptureWorker) {
+        this.clearScreenCaptureReadiness();
         this.screenCaptureWorker.removeAllListeners();
         this.screenCaptureWorker = null;
       }
@@ -463,6 +484,7 @@ export class VisionWorkerManager {
 
     try {
       if (this.ocrWorker) {
+        this.clearOCRReadiness();
         this.ocrWorker.removeAllListeners();
         this.ocrWorker = null;
       }

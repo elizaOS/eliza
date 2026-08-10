@@ -11,6 +11,7 @@ import {
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import { visionAction } from "./action";
+import { VisionMode } from "./types";
 
 async function makePng(): Promise<Buffer> {
   return sharp({
@@ -41,6 +42,7 @@ function makeRuntime(captureImage: () => Promise<Buffer | null>) {
     isActive: () => true,
     captureImage,
     getCameraInfo: () => ({ id: "cam-1", name: "Camera", connected: true }),
+    getVisionMode: () => VisionMode.CAMERA,
     getCapabilities: () => ({
       objectDetection: false,
       ocr: false,
@@ -118,5 +120,22 @@ describe("VISION capture hardening", () => {
         ],
       }),
     );
+  });
+
+  it("refuses capture in SCREEN mode even when a camera remains connected", async () => {
+    const captureImage = vi.fn(async () => makePng());
+    const { runtime, visionService } = makeRuntime(captureImage);
+    visionService.getVisionMode = () => VisionMode.SCREEN;
+
+    const result = await visionAction.handler(
+      runtime,
+      makeMessage(),
+      undefined,
+      { action: "capture" },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.data?.error).toContain("disabled in SCREEN vision mode");
+    expect(captureImage).not.toHaveBeenCalled();
   });
 });

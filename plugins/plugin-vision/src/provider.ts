@@ -17,7 +17,7 @@ import type {
   EnhancedSceneDescription,
   EntityAttributes,
 } from "./types";
-import { VisionMode } from "./types";
+import { hasReadyInputForMode, VisionMode } from "./types";
 
 const MAX_VISION_OBJECTS_IN_STATE = 50;
 const MAX_VISION_PEOPLE_IN_STATE = 25;
@@ -68,7 +68,7 @@ export const visionProvider: Provider = {
       const visionMode = visionService.getVisionMode();
       const screenCapture = await visionService.getScreenCapture();
       const capabilities = visionService.getCapabilities();
-      const hasReadyInput = capabilities.camera || capabilities.screenCapture;
+      const hasReadyInput = hasReadyInputForMode(capabilities, visionMode);
       const _worldId = message.worldId || "default-world";
       const entityTracker = visionService.getEntityTracker();
 

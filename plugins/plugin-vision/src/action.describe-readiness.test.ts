@@ -152,4 +152,40 @@ describe("VISION describe readiness", () => {
       }),
     );
   });
+
+  it("does not let a connected camera satisfy SCREEN-mode readiness", async () => {
+    const getEnhancedSceneDescription = vi.fn();
+    const visionService = {
+      isActive: () => true,
+      getVisionMode: () => VisionMode.SCREEN,
+      getEnhancedSceneDescription,
+      getCapabilities: () => ({
+        objectDetection: false,
+        ocr: false,
+        faceRecognition: false,
+        screenCapture: false,
+        camera: true,
+        audio: false,
+        unavailableReasons: {
+          screenCapture: "Screen capture permission denied",
+        },
+      }),
+    };
+    const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
+      agentId: UUID,
+      getService: vi.fn(() => visionService),
+      createMemory: vi.fn(async () => undefined),
+    });
+
+    const result = await visionAction.handler(
+      runtime,
+      makeMessage(),
+      undefined,
+      { action: "describe" },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.data?.error).toBe("Screen capture permission denied");
+    expect(getEnhancedSceneDescription).not.toHaveBeenCalled();
+  });
 });

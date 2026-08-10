@@ -25,7 +25,7 @@ import {
   type ScreenCaptureBridgeService,
 } from "./screen-capture-bridge";
 import type { VisionService } from "./service";
-import { VisionMode } from "./types";
+import { hasReadyInputForMode, VisionMode } from "./types";
 
 const VISION_ACTION_TIMEOUT_MS = 10_000;
 const MAX_VISION_TEXT_LENGTH = 4000;
@@ -251,12 +251,12 @@ async function runDescribe(
 ): Promise<ActionResult> {
   const visionService = runtime.getService<VisionService>("VISION");
   const caps = visionService?.getCapabilities();
-  const hasReadyInput = Boolean(caps?.camera || caps?.screenCapture);
+  const visionMode = visionService?.getVisionMode();
+  const hasReadyInput = hasReadyInputForMode(caps, visionMode);
   const serviceActive = visionService?.isActive() === true;
 
   if (!serviceActive || !hasReadyInput) {
     const awaitingFirstInput = serviceActive && !hasReadyInput;
-    const visionMode = visionService?.getVisionMode();
     const unavailableReason =
       visionMode === VisionMode.CAMERA
         ? caps?.unavailableReasons?.camera
@@ -478,29 +478,35 @@ async function runCapture(
   // Capture requires a camera. Check capability honestly — SCREEN mode with
   // no camera should fail closed here, not pass isActive() and fail later.
   const caps = visionService?.getCapabilities();
-  if (!visionService?.isActive() || !caps?.camera) {
-    const thought = caps?.camera
-      ? "Vision service is not fully initialized yet."
-      : "No camera is connected.";
-    const text = caps?.camera
-      ? "I'm still initializing my vision. Please try again in a moment."
-      : "I cannot capture an image right now. No camera is available.";
+  const visionMode = visionService?.getVisionMode();
+  const cameraModeActive =
+    visionMode === VisionMode.CAMERA || visionMode === VisionMode.BOTH;
+  if (!visionService?.isActive() || !cameraModeActive || !caps?.camera) {
+    const unavailableReason = !visionService
+      ? "Vision service is not available"
+      : !cameraModeActive
+        ? `Camera capture is disabled in ${visionMode ?? "the current"} vision mode`
+        : !caps?.camera
+          ? (caps?.unavailableReasons?.camera ?? "No camera is connected")
+          : "Camera processing is not active";
+    const thought = unavailableReason;
+    const text = `I cannot capture an image right now: ${unavailableReason}.`;
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
       await callback({ thought, text, actions: ["VISION"] });
     }
     return {
       success: false,
-      text: "Vision service unavailable - cannot capture image",
+      text,
       values: {
         success: false,
         visionAvailable: false,
-        error: "Vision service not available",
+        error: unavailableReason,
       },
       data: {
         actionName: "VISION",
         op: "capture",
-        error: "Vision service not available or no camera connected",
+        error: unavailableReason,
       },
     };
   }
