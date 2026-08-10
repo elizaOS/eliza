@@ -15,6 +15,30 @@ export const requiredMacStaplerFailureBlock = [
   "fi",
 ] as const;
 
+/** Ordered shell block that derives the permission-host id from the bundle. */
+export const requiredMacAppIdentifierReadBlock = [
+  'APP_INFO_PLIST_PATH="$STAGED_APP_PATH/Contents/Info.plist"',
+  'if ! APP_IDENTIFIER="$(/usr/bin/plutil -extract CFBundleIdentifier raw -expect string -o - "$APP_INFO_PLIST_PATH" 2>/dev/null)"; then',
+  'echo "stage-macos-release-artifacts: failed to read CFBundleIdentifier from $APP_INFO_PLIST_PATH" >&2',
+  "exit 1",
+  "fi",
+  'if [[ ! "$APP_IDENTIFIER" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]; then',
+  'echo "stage-macos-release-artifacts: invalid CFBundleIdentifier: $APP_IDENTIFIER" >&2',
+  "exit 1",
+  "fi",
+] as const;
+
+/** Ordered shell block that assigns and verifies the permission-host identity. */
+export const requiredMacPermissionHostIdentityBlock = [
+  'bun_permission_host_path="$macos_code_dir/bun"',
+  'if [[ ! -e "$bun_permission_host_path" ]]; then',
+  'echo "stage-macos-release-artifacts: Bun permission host is missing: $bun_permission_host_path" >&2',
+  "exit 1",
+  "fi",
+  'sign_macos_runtime_target_with_identifier "$bun_permission_host_path" "$APP_IDENTIFIER"',
+  'codesign --verify --strict --verbose=2 -R "=identifier \\"$APP_IDENTIFIER\\"" "$bun_permission_host_path"',
+] as const;
+
 /** Whether trimmed lines occur consecutively and in order within content. */
 export function containsContiguousBlock(
   content: string,
