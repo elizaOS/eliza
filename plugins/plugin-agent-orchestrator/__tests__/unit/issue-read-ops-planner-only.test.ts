@@ -194,3 +194,41 @@ describe("manage_issues planner-only read settlement (#18244)", () => {
     });
   });
 });
+
+describe("orchestrator read ops keep internal text planner-only", () => {
+  const fakeAcpService = {
+    listSessions: vi.fn(() => [] as unknown[]),
+    resolveAgentType: vi.fn(async () => "codex"),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (runtime.getService as ReturnType<typeof vi.fn>).mockImplementation(
+      (type: string) =>
+        type === "ACP_SERVICE" || type === "ACP_SUBPROCESS_SERVICE"
+          ? fakeAcpService
+          : undefined,
+    );
+  });
+
+  it("does not ship list_agents guidance text as a chat reply", async () => {
+    // The exact live 2026-08-10 leak: a status-y ask routed to list_agents and
+    // the planner-only guidance text shipped verbatim to Discord.
+    const callback = vi.fn(async () => []);
+    const result = await callHandler({ action: "list_agents" }, callback);
+
+    // Planner sees the observation; the user does not get it raw.
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("No active task agents");
+    expect(result.userFacingText).toBeUndefined();
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(result.turnComplete).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
+    expect(result.effectReceipts).toEqual([
+      expect.objectContaining({
+        outcome: "noop",
+        reason: "The operation only read orchestrator state.",
+      }),
+    ]);
+  });
+});
