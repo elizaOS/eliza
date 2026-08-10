@@ -35,7 +35,32 @@ export async function handleImageGeneration(
       model: modelName,
     };
 
-    const typedData = await createElizaCloudClient(runtime).generateImage(requestBody);
+    const client = createElizaCloudClient(runtime);
+    let typedData: Awaited<ReturnType<typeof client.generateImage>> | undefined;
+    let warmingRetries = 0;
+    for (;;) {
+      try {
+        typedData = await client.generateImage(requestBody);
+        break;
+      } catch (err) {
+        // Cold-cache warming: this box runs text on Cerebras, so the cloud's
+        // generative admission cache goes cold between rare image-gen calls
+        // and the first hit throws "Generative admission cache is warming;
+        // retry shortly", clearing within ~1s (verified live: success on the
+        // first retry). Ride through it — the same transient the description
+        // path handles in-place. A non-warming error still fails fast.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/warming|admission cache/i.test(msg) && warmingRetries < 2) {
+          warmingRetries++;
+          logger.warn(
+            `[ELIZAOS_CLOUD] Image generation cold-cache warming, retry ${warmingRetries}/2...`
+          );
+          await new Promise((r) => setTimeout(r, 1500));
+          continue;
+        }
+        throw err;
+      }
+    }
 
     const result = typedData.images.map((img: { url?: string; image?: string }) => ({
       url: img.url ?? img.image ?? "",
