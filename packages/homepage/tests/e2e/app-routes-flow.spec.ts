@@ -3,6 +3,7 @@
  */
 
 import { expect, type Page, test } from "playwright/test";
+import { ELIZA_PHONE_FORMATTED } from "../../src/lib/contact";
 import { waitForLandingIntro } from "./landing-readiness";
 
 const TEST_TOKEN = "homepage-e2e-token";
@@ -267,7 +268,11 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await page.getByRole("button", { name: "Link Phone" }).click();
   await expect(page.getByLabel("Phone number", { exact: true })).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: /iMessage \+1 \(415\) 961-1510/ }),
+    page.getByRole("button", {
+      name: new RegExp(
+        `iMessage ${ELIZA_PHONE_FORMATTED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+      ),
+    }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Connect Discord" }).click();
