@@ -13,29 +13,39 @@ import { Textarea } from "./textarea";
 afterEach(cleanup);
 
 describe("Input coarse-pointer font-size (iOS focus-zoom prevention)", () => {
-  it("includes pointer-coarse:text-[16px] in the base class", () => {
-    render(<Input aria-label="username" />);
-    expect(screen.getByLabelText("username").className).toContain(
-      "pointer-coarse:text-[16px]",
-    );
-  });
+  it.each(["default", "compact", "relaxed"] as const)(
+    "keeps the 16px coarse-pointer override at %s density",
+    (density) => {
+      render(<Input aria-label="username" density={density} />);
+      expect(screen.getByLabelText("username").className).toContain(
+        "pointer-coarse:text-[16px]",
+      );
+    },
+  );
 
-  it("retains text-sm for fine pointers (desktop unchanged)", () => {
-    render(<Input aria-label="username" />);
-    expect(screen.getByLabelText("username").className).toContain("text-sm");
+  it("preserves the override when a caller selects denser desktop text", () => {
+    render(<Input aria-label="username" className="text-xs" />);
+    const className = screen.getByLabelText("username").className;
+    expect(className).toContain("text-xs");
+    expect(className).toContain("pointer-coarse:text-[16px]");
   });
 });
 
 describe("Textarea coarse-pointer font-size (iOS focus-zoom prevention)", () => {
-  it("includes pointer-coarse:text-[16px] in the base class", () => {
-    render(<Textarea aria-label="message" />);
-    expect(screen.getByLabelText("message").className).toContain(
-      "pointer-coarse:text-[16px]",
-    );
-  });
+  it.each(["default", "compact", "relaxed"] as const)(
+    "keeps the 16px coarse-pointer override at %s density",
+    (density) => {
+      render(<Textarea aria-label="message" density={density} />);
+      expect(screen.getByLabelText("message").className).toContain(
+        "pointer-coarse:text-[16px]",
+      );
+    },
+  );
 
-  it("retains text-sm for fine pointers (desktop unchanged)", () => {
-    render(<Textarea aria-label="message" />);
-    expect(screen.getByLabelText("message").className).toContain("text-sm");
+  it("preserves the override when a caller selects denser desktop text", () => {
+    render(<Textarea aria-label="message" className="text-xs" />);
+    const className = screen.getByLabelText("message").className;
+    expect(className).toContain("text-xs");
+    expect(className).toContain("pointer-coarse:text-[16px]");
   });
 });
