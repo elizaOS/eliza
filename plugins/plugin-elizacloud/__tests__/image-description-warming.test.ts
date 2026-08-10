@@ -1,26 +1,40 @@
 /**
- * Regression coverage for handleImageDescription's transient-503 handling:
- * a cold-cache `billing_cache_warming` 503 must be retried in place (it clears
- * within ~1s on retry — the client companion to the server escape in #18249),
- * and a genuine failure must throw (fail closed) instead of fabricating a
- * `{ description: "Error: ..." }` object that would leak into LLM context.
+ * Regression coverage for the image model handlers' transient cold-cache
+ * warming handling. On this class of box, text runs on Cerebras so the cloud's
+ * per-model billing/auth admission cache goes cold between rare image calls;
+ * the first image then hits a warming 503/error that clears within ~1s on
+ * retry (the client companion to the server escape in #18249).
+ *   - handleImageDescription: retry the `billing_cache_warming` 503 in place,
+ *     and throw (fail closed) instead of fabricating a `{ description:"Error" }`.
+ *   - handleImageGeneration: retry the "admission cache is warming" throw.
  * The cloud SDK client is mocked; no network.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const postRaw = vi.fn();
+const generateImage = vi.fn();
 vi.mock("../src/utils/sdk-client", () => ({
-  createElizaCloudClient: () => ({ routes: { postApiV1ChatCompletionsRaw: postRaw } }),
+  createElizaCloudClient: () => ({
+    routes: { postApiV1ChatCompletionsRaw: postRaw },
+    generateImage,
+  }),
 }));
+vi.mock("../src/utils/config", async (orig) => {
+  const actual = (await orig()) as Record<string, unknown>;
+  return {
+    ...actual,
+    getImageGenerationModel: () => "google/nano-banana-2/text-to-image",
+    getImageDescriptionModel: () => "openai/gpt-4o-mini",
+  };
+});
 
-const { handleImageDescription } = await import("../src/models/image");
+const { handleImageDescription, handleImageGeneration } = await import(
+  "../src/models/image"
+);
 
 function runtime(): IAgentRuntime {
-  return {
-    getSetting: () => "",
-    emitEvent: () => {},
-  } as unknown as IAgentRuntime;
+  return { getSetting: () => "", emitEvent: () => {} } as unknown as IAgentRuntime;
 }
 
 function warming503(): Response {
@@ -39,62 +53,74 @@ function warming503(): Response {
 
 function ok(description: string): Response {
   return new Response(
-    JSON.stringify({
-      choices: [{ message: { content: description } }],
-    }),
+    JSON.stringify({ choices: [{ message: { content: description } }] }),
     { status: 200, headers: { "Content-Type": "application/json" } }
   );
 }
 
 describe("handleImageDescription warming-503 retry", () => {
-  afterEach(() => {
-    postRaw.mockReset();
-  });
+  afterEach(() => postRaw.mockReset());
 
   it("rides through a cold-cache warming 503 and returns the description", async () => {
     postRaw
       .mockResolvedValueOnce(warming503())
       .mockResolvedValueOnce(ok("A red square."));
-
     const result = await handleImageDescription(runtime(), {
       imageUrl: "https://example.com/red.png",
       prompt: "describe",
     });
-
     expect(postRaw).toHaveBeenCalledTimes(2);
-    // parseImageDescriptionResponse yields a title/description; the content survived.
     expect(JSON.stringify(result)).toContain("red square");
   });
 
-  it("throws (fails closed) instead of fabricating an error description on a hard 500", async () => {
-    postRaw.mockResolvedValue(
-      new Response("upstream boom", { status: 500 })
-    );
-
+  it("throws (fails closed) on a hard 500 instead of fabricating a description", async () => {
+    postRaw.mockResolvedValue(new Response("upstream boom", { status: 500 }));
     await expect(
       handleImageDescription(runtime(), {
         imageUrl: "https://example.com/x.png",
         prompt: "describe",
       })
     ).rejects.toThrow();
-    // Must NOT resolve to a { description: "Error: ..." } object.
   });
 
-  it("does not retry a non-warming 503 forever — bounded and then throws", async () => {
+  it("fails fast on a non-warming 503 (one attempt)", async () => {
     postRaw.mockResolvedValue(
       new Response(JSON.stringify({ error: { message: "gone" } }), {
         status: 503,
         headers: { "Content-Type": "application/json" },
       })
     );
-
     await expect(
       handleImageDescription(runtime(), {
         imageUrl: "https://example.com/x.png",
         prompt: "describe",
       })
     ).rejects.toThrow();
-    // A bare 503 with no warming code is not the warming case: fail fast, one attempt.
     expect(postRaw).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("handleImageGeneration warming retry", () => {
+  afterEach(() => generateImage.mockReset());
+
+  it("rides through a generative cold-cache warming throw and returns the image", async () => {
+    generateImage
+      .mockRejectedValueOnce(
+        new Error("Generative admission cache is warming; retry shortly")
+      )
+      .mockResolvedValueOnce({ images: [{ url: "https://cdn/x.png" }] });
+    const result = await handleImageGeneration(runtime(), {
+      prompt: "a red circle",
+    });
+    expect(generateImage).toHaveBeenCalledTimes(2);
+    expect(result).toEqual([{ url: "https://cdn/x.png" }]);
+  });
+
+  it("fails fast on a non-warming generation error", async () => {
+    generateImage.mockRejectedValue(new Error("Unsupported image model"));
+    await expect(
+      handleImageGeneration(runtime(), { prompt: "a red circle" })
+    ).rejects.toThrow("Unsupported image model");
+    expect(generateImage).toHaveBeenCalledTimes(1);
   });
 });
