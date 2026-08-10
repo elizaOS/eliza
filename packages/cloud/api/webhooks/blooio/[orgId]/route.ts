@@ -46,11 +46,22 @@ function isBlueBubblesBridgeRequest(
     return { payload: parsed };
   }
 
+  // Blooio v4 and BlueBubbles both use a top-level { type, data } envelope.
+  // Auto-detect only BlueBubbles-specific message fields; treating the shared
+  // envelope shape itself as proof would divert signed Blooio v4 deliveries
+  // into the legacy bridge handler before Blooio signature verification.
   if (
     parsed &&
     typeof parsed === "object" &&
     "type" in parsed &&
-    "data" in parsed
+    "data" in parsed &&
+    parsed.data &&
+    typeof parsed.data === "object" &&
+    ("guid" in parsed.data ||
+      "isFromMe" in parsed.data ||
+      "handle" in parsed.data ||
+      "chats" in parsed.data ||
+      "dateCreated" in parsed.data)
   ) {
     return { payload: parsed };
   }
@@ -130,6 +141,13 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
         );
       }
       throw parseError;
+    }
+
+    if (payload.event === "message.received" && !payload.message_id) {
+      logger.warn("[BlooioWebhook] Inbound message missing stable ID", {
+        orgId,
+      });
+      return c.json({ error: "Inbound message ID is required" }, 400);
     }
 
     if (payload.message_id) {
