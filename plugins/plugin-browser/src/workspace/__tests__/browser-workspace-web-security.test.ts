@@ -1,5 +1,6 @@
 /**
- * Web workspace security tests for script, connector, and network restrictions.
+ * Document-emulation security tests prove its Node realm never evaluates
+ * browser scripts; production web hosts use isolated Chromium instead.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -14,7 +15,9 @@ import {
 } from "../browser-workspace-helpers.js";
 
 describe("browser workspace JSDOM script execution (GHSA-mhhr-9ph9-64j7)", () => {
-  const webEnv: NodeJS.ProcessEnv = {};
+  const webEnv: NodeJS.ProcessEnv = {
+    ELIZA_BROWSER_WORKSPACE_BACKEND: "document-emulation",
+  };
 
   beforeEach(async () => {
     await __resetBrowserWorkspaceStateForTests();

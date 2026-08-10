@@ -882,10 +882,14 @@ function normalizeBrowserWorkspaceKind(
 
 function browserWorkspaceSnapshot(): {
   mode: "web";
+  engine: "native-webview";
+  presentation: "native-surface";
   tabs: LocalBrowserWorkspaceTab[];
 } {
   return {
     mode: "web",
+    engine: "native-webview",
+    presentation: "native-surface",
     tabs: readBrowserWorkspaceStore().tabs,
   };
 }

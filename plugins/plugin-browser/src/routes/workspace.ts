@@ -6,7 +6,11 @@
  * lives in `@elizaos/plugin-browser/workspace`; this is the HTTP edge.
  */
 
-import type { IAgentRuntime, RouteRequestContext } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  type RouteRequestContext,
+} from "@elizaos/core";
 import { requestBrowserWorkspace } from "../workspace/browser-workspace-desktop.js";
 import {
   type BrowserWorkspaceErrorCode,
@@ -14,10 +18,15 @@ import {
   isBrowserWorkspaceError,
 } from "../workspace/browser-workspace-errors.js";
 import { assertBrowserWorkspaceUserScriptAllowed } from "../workspace/browser-workspace-helpers.js";
-import type { BrowserWorkspaceEventLogSnapshot } from "../workspace/browser-workspace-types.js";
+import type {
+  BrowserWorkspaceEventLogSnapshot,
+  BrowserWorkspaceInput,
+  BrowserWorkspaceViewport,
+} from "../workspace/browser-workspace-types.js";
 import {
   type BrowserWorkspaceCommand,
   closeBrowserWorkspaceTab,
+  dispatchChromiumBrowserWorkspaceInput,
   evaluateBrowserWorkspaceTab,
   executeBrowserWorkspaceCommand,
   getBrowserWorkspaceSnapshot,
@@ -27,8 +36,10 @@ import {
   listBrowserWorkspaceTabs,
   navigateBrowserWorkspaceTab,
   openBrowserWorkspaceTab,
+  resizeChromiumBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
   snapshotBrowserWorkspaceTab,
+  subscribeChromiumBrowserWorkspaceFrames,
 } from "../workspace/index.js";
 import {
   assertBrowserWorkspaceCommandConnectorAccountGate,
@@ -59,6 +70,14 @@ type EvaluateBrowserWorkspaceBody = {
   partition?: string;
   connectorProvider?: string;
   connectorAccountId?: string;
+};
+
+type BrowserWorkspaceInputBody = {
+  input?: BrowserWorkspaceInput;
+};
+
+type BrowserWorkspaceViewportBody = {
+  viewport?: BrowserWorkspaceViewport;
 };
 
 type BrowserWorkspaceCommandBody = BrowserWorkspaceCommand;
@@ -181,6 +200,181 @@ function decodeBrowserWorkspaceTabId(raw: string | undefined): string | null {
   }
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function parseBrowserWorkspaceInput(
+  value: unknown,
+): BrowserWorkspaceInput | null {
+  if (!isBrowserWorkspaceRouteBodyObject(value)) return null;
+  if (value.type === "pointer") {
+    if (
+      !["down", "move", "up"].includes(String(value.phase)) ||
+      !isFiniteNumber(value.x) ||
+      !isFiniteNumber(value.y) ||
+      (value.button !== undefined &&
+        !["left", "middle", "right"].includes(String(value.button)))
+    ) {
+      return null;
+    }
+    return {
+      type: "pointer",
+      phase: value.phase as "down" | "move" | "up",
+      x: value.x,
+      y: value.y,
+      ...(value.button
+        ? { button: value.button as "left" | "middle" | "right" }
+        : {}),
+    };
+  }
+  if (value.type === "wheel") {
+    if (
+      !isFiniteNumber(value.x) ||
+      !isFiniteNumber(value.y) ||
+      !isFiniteNumber(value.deltaX) ||
+      !isFiniteNumber(value.deltaY)
+    ) {
+      return null;
+    }
+    return {
+      type: "wheel",
+      x: value.x,
+      y: value.y,
+      deltaX: value.deltaX,
+      deltaY: value.deltaY,
+    };
+  }
+  if (value.type === "key") {
+    if (
+      !["down", "up"].includes(String(value.phase)) ||
+      typeof value.key !== "string" ||
+      value.key.length === 0 ||
+      value.key.length > 64 ||
+      (value.text !== undefined && typeof value.text !== "string")
+    ) {
+      return null;
+    }
+    return {
+      type: "key",
+      phase: value.phase as "down" | "up",
+      key: value.key,
+      ...(typeof value.text === "string" ? { text: value.text } : {}),
+    };
+  }
+  if (
+    value.type === "text" &&
+    typeof value.text === "string" &&
+    value.text.length > 0 &&
+    value.text.length <= 100_000
+  ) {
+    return { type: "text", text: value.text };
+  }
+  return null;
+}
+
+function parseBrowserWorkspaceViewport(
+  value: unknown,
+): BrowserWorkspaceViewport | null {
+  if (
+    !isBrowserWorkspaceRouteBodyObject(value) ||
+    !isFiniteNumber(value.width) ||
+    !isFiniteNumber(value.height) ||
+    (value.deviceScaleFactor !== undefined &&
+      !isFiniteNumber(value.deviceScaleFactor))
+  ) {
+    return null;
+  }
+  return {
+    width: value.width,
+    height: value.height,
+    ...(isFiniteNumber(value.deviceScaleFactor)
+      ? { deviceScaleFactor: value.deviceScaleFactor }
+      : {}),
+  };
+}
+
+async function streamBrowserWorkspaceFrames(
+  ctx: BrowserWorkspaceRouteContext,
+  tabId: string,
+): Promise<void> {
+  const { req, res } = ctx;
+  let closed = false;
+  let headersWritten = false;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let unsubscribe: (() => Promise<void>) | null = null;
+  let pendingFrame:
+    | Parameters<
+        Parameters<typeof subscribeChromiumBrowserWorkspaceFrames>[1]
+      >[0]
+    | null = null;
+
+  const close = async (): Promise<void> => {
+    if (closed) return;
+    closed = true;
+    if (heartbeat) clearInterval(heartbeat);
+    const release = unsubscribe;
+    unsubscribe = null;
+    if (release) await release();
+  };
+  const closeAtBoundary = (): void => {
+    void close().catch((error) => {
+      // error-policy:J6 the HTTP peer already owns stream termination; report
+      // Chromium session cleanup races without turning teardown into a crash.
+      logger.debug(
+        `[BrowserWorkspace] frame stream cleanup skipped: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+  };
+  const writeFrame = (frame: NonNullable<typeof pendingFrame>): void => {
+    if (closed || res.destroyed) return;
+    if (!headersWritten) {
+      pendingFrame = frame;
+      return;
+    }
+    // A slow client needs the newest rendered state, not an ever-growing
+    // backlog of obsolete JPEGs. CDP continues receiving acknowledgements,
+    // while the HTTP edge drops frames until the socket drains.
+    if (!res.writableNeedDrain) {
+      res.write(`${JSON.stringify({ type: "frame", ...frame })}\n`);
+    }
+  };
+
+  // IncomingMessage "close" also fires after an ordinary completed GET on
+  // current Node releases. Only an aborted request or the response socket
+  // closing means the long-lived frame subscription has lost its consumer.
+  req.once("aborted", closeAtBoundary);
+  res.once("close", closeAtBoundary);
+  unsubscribe = await subscribeChromiumBrowserWorkspaceFrames(
+    tabId,
+    writeFrame,
+  );
+  if (closed || res.destroyed) {
+    const release = unsubscribe;
+    unsubscribe = null;
+    await release();
+    return;
+  }
+  res.writeHead(200, {
+    "cache-control": "no-cache, no-store, must-revalidate",
+    connection: "keep-alive",
+    "content-type": "application/x-ndjson; charset=utf-8",
+    "x-accel-buffering": "no",
+  });
+  headersWritten = true;
+  res.write(`${JSON.stringify({ type: "ready" })}\n`);
+  if (pendingFrame) {
+    const initialFrame = pendingFrame;
+    pendingFrame = null;
+    writeFrame(initialFrame);
+  }
+  heartbeat = setInterval(() => {
+    if (!closed && !res.destroyed && !res.writableNeedDrain) {
+      res.write(`${JSON.stringify({ type: "heartbeat" })}\n`);
+    }
+  }, 15_000);
+}
+
 async function assertBrowserWorkspaceTabConnectorAccountGate(
   ctx: BrowserWorkspaceRouteContext,
   tabId: string,
@@ -283,7 +477,7 @@ export async function handleBrowserWorkspaceRoutes(
     }
 
     const match = pathname.match(
-      /^\/api\/browser-workspace\/tabs\/([^/]+)(?:\/(navigate|eval|show|hide|snapshot))?$/,
+      /^\/api\/browser-workspace\/tabs\/([^/]+)(?:\/(navigate|eval|show|hide|snapshot|frames|input|viewport))?$/,
     );
     if (!match) {
       return false;
@@ -295,6 +489,59 @@ export async function handleBrowserWorkspaceRoutes(
       return true;
     }
     const action = match[2] ?? null;
+
+    if (action === "frames" && method === "GET") {
+      await assertBrowserWorkspaceTabConnectorAccountGate(
+        ctx,
+        tabId,
+        connectorReferenceFromSearchParams(ctx.url),
+        "stream browser workspace tab",
+      );
+      await streamBrowserWorkspaceFrames(ctx, tabId);
+      return true;
+    }
+
+    if (action === "input" && method === "POST") {
+      const body = await readJsonBody<BrowserWorkspaceInputBody>(req, res);
+      if (!isBrowserWorkspaceRouteBodyObject(body)) {
+        return rejectMalformedBrowserWorkspacePayload(ctx);
+      }
+      const input = parseBrowserWorkspaceInput(body.input);
+      if (!input) {
+        json(res, { error: "valid browser input is required" }, 400);
+        return true;
+      }
+      await assertBrowserWorkspaceTabConnectorAccountGate(
+        ctx,
+        tabId,
+        connectorReferenceFromSearchParams(ctx.url),
+        "send browser workspace input",
+      );
+      await dispatchChromiumBrowserWorkspaceInput(tabId, input);
+      json(res, { ok: true });
+      return true;
+    }
+
+    if (action === "viewport" && method === "POST") {
+      const body = await readJsonBody<BrowserWorkspaceViewportBody>(req, res);
+      if (!isBrowserWorkspaceRouteBodyObject(body)) {
+        return rejectMalformedBrowserWorkspacePayload(ctx);
+      }
+      const viewport = parseBrowserWorkspaceViewport(body.viewport);
+      if (!viewport) {
+        json(res, { error: "valid browser viewport is required" }, 400);
+        return true;
+      }
+      await assertBrowserWorkspaceTabConnectorAccountGate(
+        ctx,
+        tabId,
+        connectorReferenceFromSearchParams(ctx.url),
+        "resize browser workspace tab",
+      );
+      await resizeChromiumBrowserWorkspaceTab(tabId, viewport);
+      json(res, { ok: true });
+      return true;
+    }
 
     if (!action && method === "DELETE") {
       await assertBrowserWorkspaceTabConnectorAccountGate(
@@ -424,4 +671,7 @@ export const BROWSER_WORKSPACE_ROUTE_PATHS: Array<{
   { type: "GET", path: "/api/browser-workspace/tabs/:tabId/snapshot" },
   { type: "POST", path: "/api/browser-workspace/tabs/:tabId/navigate" },
   { type: "POST", path: "/api/browser-workspace/tabs/:tabId/eval" },
+  { type: "GET", path: "/api/browser-workspace/tabs/:tabId/frames" },
+  { type: "POST", path: "/api/browser-workspace/tabs/:tabId/input" },
+  { type: "POST", path: "/api/browser-workspace/tabs/:tabId/viewport" },
 ];

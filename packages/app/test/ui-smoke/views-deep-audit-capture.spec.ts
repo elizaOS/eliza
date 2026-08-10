@@ -38,6 +38,8 @@ const VIEWPORTS = [
   { name: "desktop", size: { width: 1440, height: 1000 } },
   { name: "mobile", size: { width: 390, height: 844 } },
 ] as const;
+const AUDIT_BROWSER_SNAPSHOT =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 async function screenshot(page: Page, name: string): Promise<void> {
   await mkdir(OUT_DIR, { recursive: true });
@@ -77,7 +79,12 @@ async function installBrowserWorkspaceAuditRoutes(page: Page): Promise<void> {
   const tabs: BrowserTab[] = [];
   let nextId = 1;
   const now = () => "2026-01-01T00:00:00.000Z";
-  const snapshot = () => ({ mode: "web", tabs });
+  const snapshot = () => ({
+    mode: "cloud",
+    engine: "hosted-chromium",
+    presentation: "snapshot",
+    tabs,
+  });
 
   function showOnly(id: string): BrowserTab | null {
     let selected: BrowserTab | null = null;
@@ -181,6 +188,17 @@ async function installBrowserWorkspaceAuditRoutes(page: Page): Promise<void> {
       body: JSON.stringify(tab ? { tab } : { error: "not found" }),
     });
   });
+
+  await page.route(
+    "**/api/browser-workspace/tabs/*/snapshot",
+    async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        status: 200,
+        body: JSON.stringify({ data: AUDIT_BROWSER_SNAPSHOT }),
+      });
+    },
+  );
 
   await page.route("**/api/browser-workspace/tabs/*", async (route) => {
     if (route.request().method() !== "DELETE") {

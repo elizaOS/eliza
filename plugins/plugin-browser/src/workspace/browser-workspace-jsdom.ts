@@ -1,5 +1,7 @@
 /**
- * JSDOM browser workspace backend for web and mobile fallback command execution.
+ * Deterministic document-emulation backend used only by explicit tests.
+ * Production web hosts run isolated Chromium, while installed apps use their
+ * platform-native browser surfaces.
  */
 
 import { existsSync, readFileSync } from "node:fs";

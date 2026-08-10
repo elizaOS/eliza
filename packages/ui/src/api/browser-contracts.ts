@@ -203,6 +203,20 @@ export interface BrowserBridgeCompanionPackageStatus {
 
 export type BrowserWorkspaceMode = "cloud" | "desktop" | "web";
 
+export type BrowserWorkspaceEngine =
+  | "electrobun-chromium"
+  | "local-chromium"
+  | "native-webview"
+  | "hosted-chromium"
+  | "browser-companion"
+  | "document-emulation";
+
+export type BrowserWorkspacePresentation =
+  | "native-surface"
+  | "remote-stream"
+  | "snapshot"
+  | "unavailable";
+
 export type BrowserWorkspaceTabKind = "internal" | "standard";
 
 export interface BrowserWorkspaceTab {
@@ -223,7 +237,48 @@ export interface BrowserWorkspaceTab {
 
 export interface BrowserWorkspaceSnapshot {
   mode: BrowserWorkspaceMode;
+  engine?: BrowserWorkspaceEngine;
+  presentation?: BrowserWorkspacePresentation;
   tabs: BrowserWorkspaceTab[];
+}
+
+export type BrowserWorkspaceInput =
+  | {
+      type: "pointer";
+      phase: "down" | "move" | "up";
+      x: number;
+      y: number;
+      button?: "left" | "middle" | "right";
+    }
+  | {
+      type: "wheel";
+      deltaX: number;
+      deltaY: number;
+      x: number;
+      y: number;
+    }
+  | {
+      type: "key";
+      phase: "down" | "up";
+      key: string;
+      text?: string;
+    }
+  | {
+      type: "text";
+      text: string;
+    };
+
+export interface BrowserWorkspaceViewport {
+  width: number;
+  height: number;
+  deviceScaleFactor?: number;
+}
+
+export interface BrowserWorkspaceFrame {
+  data: string;
+  height: number;
+  width: number;
+  timestamp: number;
 }
 
 export interface OpenBrowserWorkspaceTabRequest {

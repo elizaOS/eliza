@@ -80,8 +80,11 @@ import {
   WALLET_RPC_PROVIDER_OPTIONS,
 } from "@elizaos/shared";
 import type {
+  BrowserWorkspaceFrame,
+  BrowserWorkspaceInput,
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
+  BrowserWorkspaceViewport,
 } from "./browser-contracts";
 import type {
   StewardApprovalActionResponse,
@@ -143,8 +146,11 @@ export type {
   AllPermissionsState,
   AudioGenConfig,
   AudioGenProvider,
+  BrowserWorkspaceFrame,
+  BrowserWorkspaceInput,
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
+  BrowserWorkspaceViewport,
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,

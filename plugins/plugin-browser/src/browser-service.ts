@@ -8,9 +8,10 @@
  * resolved by availability.
  *
  * Built-in targets:
- *   - `workspace` — Eliza's electrobun-embedded BrowserView (with a JSDOM
- *     web-mode fallback when the desktop bridge isn't configured). Always
- *     registered by this plugin's `start`. Always available.
+ *   - `workspace` — Eliza's native child webview on installed apps or isolated
+ *     streamed Chromium on a web host. Always registered by this plugin's
+ *     `start`; execution surfaces an explicit unavailable error when the host
+ *     has no platform browser engine.
  *
  * Optional targets registered by other plugins:
  *   - `bridge` — registered by this plugin when a `BrowserBridgeRouteService`
@@ -36,6 +37,7 @@ import { maybeCreateStagehandTarget } from "./targets/stagehand-target.js";
 import {
   ensureBrowserWorkspaceDefaultTabWithRetry,
   getBrowserWorkspaceSnapshot,
+  stopChromiumBrowserWorkspace,
 } from "./workspace/browser-workspace.js";
 import type {
   BrowserWorkspaceCommand,
@@ -101,6 +103,7 @@ export class BrowserService extends Service {
   private readonly targetOrder: string[] = [];
 
   async stop(): Promise<void> {
+    await stopChromiumBrowserWorkspace();
     this.targets.clear();
     this.targetOrder.length = 0;
   }
@@ -309,7 +312,7 @@ function createWorkspaceTarget(): BrowserTarget {
     id: "workspace",
     name: "Browser Workspace",
     description:
-      "Eliza's electrobun-embedded BrowserView (desktop) or JSDOM fallback (web). Always available.",
+      "Eliza's isolated native browser surface (installed apps) or streamed Chromium session (web host).",
     kind: "app",
     priority: 100,
     score: ({ mobile }) => (mobile ? 120 : 100),

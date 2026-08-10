@@ -630,7 +630,12 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ mode: "web", tabs: [] }),
+      body: JSON.stringify({
+        mode: "web",
+        engine: "local-chromium",
+        presentation: "remote-stream",
+        tabs: [],
+      }),
     });
   });
 

@@ -20,7 +20,10 @@ import {
   resolveBrowserWorkspaceDefaultSearchUrl,
 } from "../browser-workspace.js";
 
-const webEnv: NodeJS.ProcessEnv = {};
+const webEnv: NodeJS.ProcessEnv = {
+  ELIZA_BROWSER_WORKSPACE_BACKEND: "document-emulation",
+  NODE_ENV: "test",
+};
 
 describe("browser workspace default search tab (web mode)", () => {
   beforeEach(async () => {
@@ -41,12 +44,9 @@ describe("browser workspace default search tab (web mode)", () => {
     expect(tabs[0]?.url).toBe(BROWSER_WORKSPACE_DEFAULT_SEARCH_URL);
     // Default search endpoint is a real https HTML page.
     expect(new URL(tabs[0]?.url ?? "").protocol).toBe("https:");
-    // The plain-web host has no native child surface, so its canonical start
-    // page must opt into an iframe-compatible response rather than render the
-    // browser's opaque "refused to connect" document.
-    expect(
-      new URL(BROWSER_WORKSPACE_DEFAULT_SEARCH_URL).searchParams.get("igu"),
-    ).toBe("1");
+    // The start page is a normal browser URL; rendering compatibility belongs
+    // to the selected browser engine rather than URL-specific embed flags.
+    expect(new URL(BROWSER_WORKSPACE_DEFAULT_SEARCH_URL).search).toBe("");
   });
 
   it("is idempotent — a second call never spawns a duplicate tab", async () => {
@@ -97,6 +97,7 @@ describe("browser workspace default search tab (web mode)", () => {
 
   it("honors the ELIZA_BROWSER_DEFAULT_SEARCH_URL override", async () => {
     const overrideEnv: NodeJS.ProcessEnv = {
+      ...webEnv,
       ELIZA_BROWSER_DEFAULT_SEARCH_URL: "https://lite.duckduckgo.com/lite/",
     };
     expect(resolveBrowserWorkspaceDefaultSearchUrl(overrideEnv)).toBe(

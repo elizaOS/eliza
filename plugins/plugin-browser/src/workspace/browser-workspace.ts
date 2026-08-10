@@ -35,6 +35,7 @@ export type {
   BrowserWorkspaceDialogAction,
   BrowserWorkspaceDiffAction,
   BrowserWorkspaceDomElementSummary,
+  BrowserWorkspaceEngine,
   BrowserWorkspaceFindAction,
   BrowserWorkspaceFindBy,
   BrowserWorkspaceFrameAction,
@@ -44,6 +45,7 @@ export type {
   BrowserWorkspaceMouseButton,
   BrowserWorkspaceNetworkAction,
   BrowserWorkspaceOperation,
+  BrowserWorkspacePresentation,
   BrowserWorkspaceProfilerAction,
   BrowserWorkspaceScrollDirection,
   BrowserWorkspaceSetAction,
@@ -121,6 +123,19 @@ export {
   resolveBrowserWorkspaceBridgeConfig,
 };
 
+import {
+  closeChromiumBrowserWorkspaceTab,
+  evaluateChromiumBrowserWorkspaceTab,
+  executeChromiumBrowserWorkspaceCommand,
+  getChromiumBrowserWorkspaceSnapshot,
+  hideChromiumBrowserWorkspaceTab,
+  listChromiumBrowserWorkspaceTabs,
+  navigateChromiumBrowserWorkspaceTab,
+  openChromiumBrowserWorkspaceTab,
+  showChromiumBrowserWorkspaceTab,
+  snapshotChromiumBrowserWorkspaceTab,
+  usesChromiumBrowserWorkspace,
+} from "./browser-workspace-chromium.js";
 // ── Re-export forms ─────────────────────────────────────────────────
 import {
   clearWebBrowserWorkspaceTabElementRefs,
@@ -159,6 +174,14 @@ import {
   getWebBrowserWorkspaceTabIndex,
   getWebBrowserWorkspaceTabState,
 } from "./browser-workspace-web.js";
+
+export {
+  dispatchChromiumBrowserWorkspaceInput,
+  resizeChromiumBrowserWorkspaceTab,
+  stopChromiumBrowserWorkspace,
+  subscribeChromiumBrowserWorkspaceFrames,
+  usesChromiumBrowserWorkspace,
+} from "./browser-workspace-chromium.js";
 
 const AGENT_BROWSER_WORKSPACE_PARTITION = "persist:eliza-browser-agent";
 const CONNECTOR_MANUAL_STATES = new Set<BrowserWorkspaceConnectorAuthState>([
@@ -405,8 +428,21 @@ export async function acquireBrowserWorkspaceConnectorSession(
 export async function getBrowserWorkspaceSnapshot(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceSnapshot> {
+  if (!isBrowserWorkspaceBridgeConfigured(env)) {
+    if (usesChromiumBrowserWorkspace(env)) {
+      return getChromiumBrowserWorkspaceSnapshot();
+    }
+    return {
+      mode: "web",
+      engine: "document-emulation",
+      presentation: "unavailable",
+      tabs: await listBrowserWorkspaceTabs(env),
+    };
+  }
   return {
-    mode: getBrowserWorkspaceMode(env),
+    mode: "desktop",
+    engine: "electrobun-chromium",
+    presentation: "native-surface",
     tabs: await listBrowserWorkspaceTabs(env),
   };
 }
@@ -415,6 +451,9 @@ export async function listBrowserWorkspaceTabs(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceTab[]> {
   if (!isBrowserWorkspaceBridgeConfigured(env)) {
+    if (usesChromiumBrowserWorkspace(env)) {
+      return listChromiumBrowserWorkspaceTabs();
+    }
     return webWorkspaceState.tabs.map((tab) => ({
       id: tab.id,
       title: tab.title,
@@ -439,6 +478,9 @@ export async function openBrowserWorkspaceTab(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceTab> {
   if (!isBrowserWorkspaceBridgeConfigured(env)) {
+    if (usesChromiumBrowserWorkspace(env)) {
+      return openChromiumBrowserWorkspaceTab(request);
+    }
     return withWebStateLock(() => {
       const kind: BrowserWorkspaceTabKind =
         request.kind === "internal" ? "internal" : "standard";
@@ -493,12 +535,11 @@ export async function openBrowserWorkspaceTab(
 }
 
 /**
- * Canonical startup search page. The `igu=1` mode is Google's explicit
- * iframe-compatible surface, so the plain-web fallback can render it while
- * native shells continue to load it in their isolated WebViews (#13596).
+ * Canonical startup search page. Every production host now loads it in a real
+ * browser engine, so the URL does not carry iframe-specific compatibility
+ * flags.
  */
-export const BROWSER_WORKSPACE_DEFAULT_SEARCH_URL =
-  "https://www.google.com/webhp?igu=1";
+export const BROWSER_WORKSPACE_DEFAULT_SEARCH_URL = "https://www.google.com/";
 
 /**
  * Resolve the startup search URL, honoring the `ELIZA_BROWSER_DEFAULT_SEARCH_URL`
@@ -528,12 +569,10 @@ export function resolveBrowserWorkspaceDefaultSearchUrl(
  *
  * Idempotent by tab presence: if any tab already exists the workspace is left
  * untouched, so a restart or a repeated call never spawns duplicate tabs. The
- * seeded tab points at a real search site and is loaded lazily/non-blocking —
- * the agent can open or navigate tabs immediately while the default tab is
- * still loading, and an offline start degrades to the designed in-tab error
- * render (the search URL is not `about:blank`, so the web backend loads real
- * HTML on demand). Returns the default tab, whether pre-existing or newly
- * seeded. Callers must not assume the tab finished loading.
+ * seeded tab points at a real search site and the active engine owns its load.
+ * Real Chromium waits through DOMContentLoaded so the first success response
+ * corresponds to an actually navigable page; document emulation retains its
+ * deterministic test behavior. Returns the pre-existing or newly seeded tab.
  */
 export async function ensureBrowserWorkspaceDefaultTab(
   env: NodeJS.ProcessEnv = process.env,
@@ -596,6 +635,9 @@ export async function navigateBrowserWorkspaceTab(
   const nextUrl = assertBrowserWorkspaceUrl(request.url);
 
   if (!isBrowserWorkspaceBridgeConfigured(env)) {
+    if (usesChromiumBrowserWorkspace(env)) {
+      return navigateChromiumBrowserWorkspaceTab(request);
+    }
     return withWebStateLock(() => {
       const index = getWebBrowserWorkspaceTabIndex(request.id);
       if (index < 0) {
@@ -649,6 +691,9 @@ export async function showBrowserWorkspaceTab(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceTab> {
   if (!isBrowserWorkspaceBridgeConfigured(env)) {
+    if (usesChromiumBrowserWorkspace(env)) {
+      return showChromiumBrowserWorkspaceTab(id);
+    }
     return withWebStateLock(() => {
       getWebBrowserWorkspaceTabState(id);
       const lastFocusedAt = getBrowserWorkspaceTimestamp();
@@ -677,6 +722,9 @@ export async function hideBrowserWorkspaceTab(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceTab> {
   if (!isBrowserWorkspaceBridgeConfigured(env)) {
+    if (usesChromiumBrowserWorkspace(env)) {
+      return hideChromiumBrowserWorkspaceTab(id);
+    }
     return withWebStateLock(() => {
       const index = getWebBrowserWorkspaceTabIndex(id);
       if (index < 0) {
@@ -707,6 +755,9 @@ export async function closeBrowserWorkspaceTab(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<boolean> {
   if (!isBrowserWorkspaceBridgeConfigured(env)) {
+    if (usesChromiumBrowserWorkspace(env)) {
+      return closeChromiumBrowserWorkspaceTab(id);
+    }
     return withWebStateLock(() => {
       const initialLength = webWorkspaceState.tabs.length;
       clearWebBrowserWorkspaceTabElementRefs(id);
@@ -730,6 +781,12 @@ export async function evaluateBrowserWorkspaceTab(
   request: EvaluateBrowserWorkspaceTabRequest,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<unknown> {
+  if (!isBrowserWorkspaceBridgeConfigured(env)) {
+    if (!usesChromiumBrowserWorkspace(env)) {
+      throw new Error("Browser evaluation requires a real browser engine.");
+    }
+    return evaluateChromiumBrowserWorkspaceTab(request.id, request.script);
+  }
   return evaluateBrowserWorkspaceTabDesktop(request, env);
 }
 
@@ -737,6 +794,12 @@ export async function snapshotBrowserWorkspaceTab(
   id: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ data: string }> {
+  if (!isBrowserWorkspaceBridgeConfigured(env)) {
+    if (!usesChromiumBrowserWorkspace(env)) {
+      throw new Error("Browser screenshots require a real browser engine.");
+    }
+    return snapshotChromiumBrowserWorkspaceTab(id);
+  }
   return snapshotBrowserWorkspaceTabDesktop(id, env);
 }
 
@@ -749,6 +812,20 @@ export async function executeBrowserWorkspaceCommand(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceCommandResult> {
   command = normalizeBrowserWorkspaceCommand(command);
+  if (
+    !isBrowserWorkspaceBridgeConfigured(env) &&
+    usesChromiumBrowserWorkspace(env)
+  ) {
+    if (command.subaction === "eval") {
+      assertBrowserWorkspaceUserScriptAllowed(
+        command.script,
+        "eval",
+        "desktop",
+        env,
+      );
+    }
+    return executeChromiumBrowserWorkspaceCommand(command);
+  }
   switch (command.subaction) {
     case "batch": {
       const steps = Array.isArray(command.steps) ? command.steps : [];

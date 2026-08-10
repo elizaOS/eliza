@@ -1,6 +1,6 @@
 /**
  * Runs the real BROWSER_TAB_PRELOAD_SCRIPT inside a JSDOM window to verify the
- * wallet-injection contract seen by embedded browser tabs: EIP-1193 + EIP-6963
+ * wallet-injection contract seen by native browser tabs: EIP-1193 + EIP-6963
  * announce without disclosing accounts, and EIP-1193 connect / message signing
  * and the Wallet Standard Solana path all route through host consent rather than
  * exposing keys or broadcasting. Real preload script, synthetic DOM.

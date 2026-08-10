@@ -1,6 +1,14 @@
 # @elizaos/plugin-browser
 
-Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` action and `MANAGE_BROWSER_BRIDGE` action to any Eliza agent, owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, JSDOM fallback on web/mobile), and manages the Chrome/Safari Agent Browser Bridge companion extension.
+Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` action and `MANAGE_BROWSER_BRIDGE` action to any Eliza agent, owns the cross-platform Browser workspace, and manages the optional Chrome/Safari Agent Browser Bridge companion extension.
+
+## Browser session architecture
+
+Every host exposes the same workspace tab, command, frame, input, and viewport contracts. Installed desktop builds present tabs through Electrobun child Chromium views; native iOS and Android builds use platform webviews; self-hosted web builds run an isolated local Chromium process and stream its pixels through the same-origin workspace API. Cloud deployments connect to any standards-compatible hosted Chromium CDP endpoint and reuse the same stream and input path. The Browser Bridge remains an explicit target for controlling an existing personal browser profile.
+
+Arbitrary third-party pages are never loaded in an app iframe, and no domain blocklist decides which sites work. JSDOM document emulation exists only for deterministic tests that explicitly select it.
+
+Treat `ELIZA_BROWSER_CDP_URL` as a credential: use `wss`/`https`, inject it through the deployment secret store, and let the browser pool terminate authentication and TLS. Eliza logs only the endpoint host, creates isolated browser contexts for workspace partitions, and disconnects from an externally managed browser during shutdown instead of terminating the pool.
 
 ## What this plugin provides
 
@@ -41,7 +49,7 @@ The plugin uses a pluggable target registry in `BrowserService`. Targets are sel
 
 | Target ID | Backend | When available |
 |---|---|---|
-| `workspace` | Electrobun `BrowserView` (desktop) or JSDOM (web) | Always |
+| `workspace` | Native child webview or isolated Chromium frame/input stream | Always when a platform browser engine is present |
 | `bridge` | Paired Chrome/Safari via companion extension | At least one companion paired |
 | `stagehand` | Playwright/Stagehand via HTTP endpoint | `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` or `STAGEHAND_SERVER_URL` set |
 
@@ -73,6 +81,10 @@ The plugin is opt-in. It activates when `config.features.browser` is truthy in t
 
 | Variable | Purpose |
 |---|---|
+| `ELIZA_BROWSER_CHROMIUM_PATH` | Explicit Chrome/Brave/Edge/Chromium executable for self-hosted web |
+| `ELIZA_BROWSER_CDP_URL` | Secret hosted Chromium CDP endpoint (`ws`, `wss`, `http`, or `https`) for cloud/browser-pool deployments |
+| `ELIZA_BROWSER_WORKSPACE_BACKEND` | `local-chromium` or `hosted-chromium` in production; `document-emulation` is reserved for deterministic tests |
+| `ELIZA_BROWSER_DEFAULT_SEARCH_URL` | Valid http/https startup page for the isolated workspace profile |
 | `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` | Full URL for the Stagehand command endpoint |
 | `STAGEHAND_SERVER_URL` | Stagehand base URL (commands go to `<url>/api/browser-command`) |
 | `ELIZA_BROWSER_STAGEHAND_URL` | Alias for `STAGEHAND_SERVER_URL` |

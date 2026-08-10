@@ -1,10 +1,10 @@
 /**
- * Verifies Browser fullscreen chrome, focus handoff, refresh precedence, and
- * wallet-origin authority. The real component renders in jsdom with
- * deterministic workspace API responses.
+ * Verifies Browser fullscreen chrome, explicit stream focus, and refresh
+ * precedence. The real component renders with deterministic workspace APIs.
  */
 // @vitest-environment jsdom
 
+import { Capacitor } from "@capacitor/core";
 import {
   act,
   cleanup,
@@ -14,6 +14,16 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../surface/use-mobile-native-tab-surfaces", () => ({
+  useMobileNativeTabSurfaces: () => ({
+    error: null,
+    navigateSurface: vi.fn(),
+    registerSurfaceElement: vi.fn(),
+    reloadSurface: vi.fn(),
+    retry: vi.fn(),
+  }),
+}));
 
 vi.mock("../../state", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../state")>();
@@ -65,24 +75,24 @@ vi.mock("../../api", async (importOriginal) => {
       snapshotBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
+      streamBrowserWorkspaceTabFrames: vi.fn(),
+      sendBrowserWorkspaceInput: vi.fn().mockResolvedValue({ ok: true }),
+      resizeBrowserWorkspaceTab: vi.fn().mockResolvedValue({ ok: true }),
     },
   };
 });
 
 import { client } from "../../api";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
-import {
-  BROWSER_WALLET_READY_TYPE,
-  BROWSER_WALLET_REQUEST_TYPE,
-} from "./browser-workspace-wallet";
 
 const GOOGLE_WORKSPACE = {
   mode: "web" as const,
+  presentation: "remote-stream" as const,
   tabs: [
     {
       id: "tab-1",
       title: "Google",
-      url: "https://www.google.com/webhp?igu=1",
+      url: "https://www.google.com/",
       partition: "persist:test",
       visible: true,
       createdAt: "2026-08-08T00:00:00.000Z",
@@ -94,6 +104,7 @@ const GOOGLE_WORKSPACE = {
 
 const APPLE_WORKSPACE = {
   mode: "web" as const,
+  presentation: "remote-stream" as const,
   tabs: [
     {
       ...GOOGLE_WORKSPACE.tabs[0],
@@ -106,6 +117,7 @@ const APPLE_WORKSPACE = {
 
 const EXAMPLE_WORKSPACE = {
   mode: "web" as const,
+  presentation: "remote-stream" as const,
   tabs: [
     {
       ...APPLE_WORKSPACE.tabs[0],
@@ -132,8 +144,17 @@ function deferred<T>(): {
 beforeEach(() => {
   vi.mocked(client.getBrowserWorkspace).mockResolvedValue({
     mode: "web",
+    presentation: "remote-stream",
     tabs: [],
   });
+  vi.mocked(client.streamBrowserWorkspaceTabFrames).mockImplementation(
+    async (_id, onFrame) => {
+      onFrame({ data: "", width: 100, height: 100, timestamp: 1 });
+      return { close: async () => undefined, done: new Promise(() => {}) };
+    },
+  );
+  vi.mocked(client.sendBrowserWorkspaceInput).mockResolvedValue({ ok: true });
+  vi.mocked(client.resizeBrowserWorkspaceTab).mockResolvedValue({ ok: true });
   vi.mocked(client.openBrowserWorkspaceTab).mockRejectedValue(
     new Error("no api in test"),
   );
@@ -213,7 +234,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     }
   });
 
-  it("returns autofocus that arrives after iframe load to the control that opened Browser", async () => {
+  it("keeps chat focus until the user explicitly clicks the browser stream", async () => {
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
     const composer = document.createElement("textarea");
     document.body.append(composer);
@@ -221,103 +242,51 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
 
     try {
       render(<BrowserWorkspaceView />);
-      const iframe = await screen.findByTitle("Google");
-      fireEvent.load(iframe);
-      iframe.focus();
-      await waitFor(() => expect(document.activeElement).toBe(composer));
+      const stream = await screen.findByTestId(
+        "browser-workspace-stream-surface",
+      );
+      expect(document.activeElement).toBe(composer);
 
-      // Hover is common while the user types in chat; it must not turn later
-      // page autofocus into an apparent intentional frame interaction.
-      fireEvent.pointerEnter(iframe);
-      iframe.focus();
-      await waitFor(() => expect(document.activeElement).toBe(composer));
+      const image = stream.querySelector("img");
+      expect(image).not.toBeNull();
+      await waitFor(() =>
+        expect((image as HTMLImageElement).src).toContain(
+          "data:image/jpeg;base64,",
+        ),
+      );
+      vi.spyOn(
+        image as HTMLImageElement,
+        "getBoundingClientRect",
+      ).mockReturnValue(
+        DOMRect.fromRect({ x: 0, y: 0, width: 100, height: 100 }),
+      );
+      Object.defineProperty(stream, "setPointerCapture", {
+        configurable: true,
+        value: vi.fn(),
+      });
+      fireEvent.pointerDown(stream, {
+        button: 0,
+        clientX: 50,
+        clientY: 50,
+        pointerId: 1,
+      });
 
-      // A real pointer-down does transfer intent to the embedded page.
-      fireEvent.pointerDown(iframe);
-      iframe.focus();
-      expect(document.activeElement).toBe(iframe);
-
-      // A click inside an already-loaded cross-origin child does not bubble to
-      // React. The parent observes the synchronous :active state at blur.
-      composer.focus();
-      fireEvent.load(iframe);
-      const matches = iframe.matches.bind(iframe);
-      const matchesSpy = vi
-        .spyOn(iframe, "matches")
-        .mockImplementation((selector) =>
-          selector === ":active" ? true : matches(selector),
-        );
-      window.dispatchEvent(new FocusEvent("blur"));
-      matchesSpy.mockRestore();
-      iframe.focus();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      expect(document.activeElement).toBe(iframe);
+      expect(document.activeElement).toBe(stream);
+      await waitFor(() =>
+        expect(client.sendBrowserWorkspaceInput).toHaveBeenCalledWith(
+          "tab-1",
+          expect.objectContaining({ phase: "down", type: "pointer" }),
+        ),
+      );
     } finally {
       composer.remove();
     }
   });
 
-  it("uses the Browser surface as a neutral focus target when no prior control exists", async () => {
-    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
-    (document.activeElement as HTMLElement | null)?.blur();
-
-    render(<BrowserWorkspaceView />);
-    const iframe = await screen.findByTitle("Google");
-    fireEvent.load(iframe);
-    iframe.focus();
-
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        screen.getByTestId("browser-workspace-view"),
-      ),
-    );
-  });
-
-  it("captures a focused address control before busy state disables it", async () => {
-    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
-    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
-      tab: {
-        ...APPLE_WORKSPACE.tabs[0],
-        url: "https://example.com/",
-      },
-    });
-
-    render(<BrowserWorkspaceView />);
-    const iframe = await screen.findByTitle("Apple");
-    fireEvent.pointerDown(iframe);
-    const address = screen.getByTestId("browser-workspace-address-input");
-    address.focus();
-    fireEvent.change(address, { target: { value: "https://example.com/" } });
-    await waitFor(() =>
-      expect((address as HTMLInputElement).value).toBe("https://example.com/"),
-    );
-    fireEvent.keyDown(address, { key: "Enter" });
-
-    await waitFor(() =>
-      expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
-        "tab-apple",
-        "https://example.com/",
-      ),
-    );
-    // Loaded CI runners stretch the busy→enabled transition and the
-    // focus-restore effect past waitFor's 1s default; the contract is the
-    // transition itself, so give it a bounded but generous budget.
-    await waitFor(() => expect(address.hasAttribute("disabled")).toBe(false), {
-      timeout: 10_000,
-    });
-    fireEvent.load(iframe);
-    iframe.focus();
-
-    await waitFor(() => expect(document.activeElement).toBe(address), {
-      timeout: 10_000,
-    });
-  });
-
   it("opens a fresh Google home tab instead of cloning the active address", async () => {
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
-    vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({
-      tab: GOOGLE_WORKSPACE.tabs[0],
-    });
+    const opening = deferred<{ tab: (typeof GOOGLE_WORKSPACE.tabs)[number] }>();
+    vi.mocked(client.openBrowserWorkspaceTab).mockReturnValue(opening.promise);
 
     render(<BrowserWorkspaceView />);
     expect(await screen.findByTitle("Apple")).not.toBeNull();
@@ -326,11 +295,67 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     await waitFor(() =>
       expect(client.openBrowserWorkspaceTab).toHaveBeenCalledWith(
         expect.objectContaining({
-          url: "https://www.google.com/webhp?igu=1",
+          url: "https://www.google.com/",
           show: true,
         }),
       ),
     );
+    expect(
+      screen
+        .getByTestId("browser-workspace-view")
+        .getAttribute("data-eliza-layout-shift-intent"),
+    ).toBe("transient");
+    opening.resolve({ tab: GOOGLE_WORKSPACE.tabs[0] });
+    await waitFor(() =>
+      expect(
+        screen
+          .getByTestId("browser-workspace-view")
+          .hasAttribute("data-eliza-layout-shift-intent"),
+      ).toBe(false),
+    );
+  });
+
+  it("uses the same tab API contract while rendering a native mobile webview", async () => {
+    const nativePlatform = vi
+      .spyOn(Capacitor, "isNativePlatform")
+      .mockReturnValue(true);
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
+    vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({
+      tab: GOOGLE_WORKSPACE.tabs[0],
+    });
+    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
+      tab: EXAMPLE_WORKSPACE.tabs[0],
+    });
+    try {
+      render(<BrowserWorkspaceView />);
+      expect(await screen.findByText("Apple")).not.toBeNull();
+      expect(
+        screen.queryByTestId("browser-workspace-stream-surface"),
+      ).toBeNull();
+
+      const address = screen.getByTestId("browser-workspace-address-input");
+      fireEvent.change(address, { target: { value: "https://example.com/" } });
+      fireEvent.keyDown(address, { key: "Enter" });
+      await waitFor(() =>
+        expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
+          "tab-apple",
+          "https://example.com/",
+        ),
+      );
+
+      const newTab = screen.getByTestId("browser-workspace-nav-new-tab");
+      await waitFor(() =>
+        expect((newTab as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(newTab);
+      await waitFor(() =>
+        expect(client.openBrowserWorkspaceTab).toHaveBeenCalledWith(
+          expect.objectContaining({ url: "https://www.google.com/" }),
+        ),
+      );
+    } finally {
+      nativePlatform.mockRestore();
+    }
   });
 
   it("keeps transient background refresh timeouts off a healthy page and retries single-flight", async () => {
@@ -492,103 +517,15 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     }
   });
 
-  it("updates wallet authority before iframe navigation and revokes it before closed-frame removal", async () => {
-    const navigationSnapshot = deferred<typeof EXAMPLE_WORKSPACE>();
-    const closedSnapshot = deferred<{ mode: "web"; tabs: [] }>();
-    let workspaceRead = 0;
-    vi.mocked(client.getBrowserWorkspace).mockImplementation(() => {
-      workspaceRead += 1;
-      if (workspaceRead === 1) return Promise.resolve(APPLE_WORKSPACE);
-      if (workspaceRead === 2) return navigationSnapshot.promise;
-      return closedSnapshot.promise;
-    });
-    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
-      tab: EXAMPLE_WORKSPACE.tabs[0],
-    });
-    vi.mocked(client.closeBrowserWorkspaceTab).mockResolvedValue({
-      closed: true,
-    });
+  it("renders Apple through the remote browser surface with no site iframe", async () => {
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
 
     render(<BrowserWorkspaceView />);
-    const iframe = (await screen.findByTitle("Apple")) as HTMLIFrameElement;
-    const postMessageCalls: Array<[unknown, string]> = [];
-    const spiedWindows = new Set<Window>();
-    const spyFrameWindow = () => {
-      const frameWindow = iframe.contentWindow as Window;
-      if (!spiedWindows.has(frameWindow)) {
-        spiedWindows.add(frameWindow);
-        vi.spyOn(frameWindow, "postMessage").mockImplementation(
-          (message, targetOrigin) => {
-            postMessageCalls.push([message, String(targetOrigin)]);
-          },
-        );
-      }
-    };
-    spyFrameWindow();
-    const readyCalls = () =>
-      postMessageCalls.filter(
-        ([message]) =>
-          (message as { type?: unknown }).type === BROWSER_WALLET_READY_TYPE,
-      );
-    const requestState = async (origin: string, requestId: string) => {
-      await act(async () => {
-        window.dispatchEvent(
-          new MessageEvent("message", {
-            data: {
-              type: BROWSER_WALLET_REQUEST_TYPE,
-              requestId,
-              method: "getState",
-            },
-            origin,
-            source: iframe.contentWindow,
-          }),
-        );
-        await Promise.resolve();
-      });
-    };
 
-    await requestState("https://www.apple.com", "ready-a");
-    expect(readyCalls()).toHaveLength(1);
-
-    const address = screen.getByTestId("browser-workspace-address-input");
-    fireEvent.change(address, {
-      target: { value: EXAMPLE_WORKSPACE.tabs[0].url },
-    });
-    fireEvent.keyDown(address, { key: "Enter" });
-    await waitFor(() =>
-      expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
-        "tab-apple",
-        EXAMPLE_WORKSPACE.tabs[0].url,
-      ),
-    );
-    await waitFor(() => expect(iframe.src).toBe(EXAMPLE_WORKSPACE.tabs[0].url));
-    expect(screen.getByTitle("Apple")).toBe(iframe);
-    spyFrameWindow();
-
-    await requestState("https://example.com", "ready-b");
-    expect(readyCalls()).toHaveLength(2);
-    expect(readyCalls().at(-1)?.[1]).toBe("https://example.com");
-    await requestState("https://www.apple.com", "stale-a");
-    expect(readyCalls()).toHaveLength(2);
-    await requestState("https://example.com", "duplicate-b");
-    expect(readyCalls()).toHaveLength(2);
-
-    navigationSnapshot.resolve(EXAMPLE_WORKSPACE);
-    expect(await screen.findByTitle("Example")).toBe(iframe);
-    expect(readyCalls()).toHaveLength(2);
-
-    fireEvent.click(screen.getByTestId("browser-workspace-close-all-tabs"));
-    await waitFor(() =>
-      expect(client.closeBrowserWorkspaceTab).toHaveBeenCalledWith("tab-apple"),
-    );
-    await waitFor(() =>
-      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(3),
-    );
-    const callsBeforeClosedRequest = postMessageCalls.length;
-    await requestState("https://example.com", "closed-b");
-    expect(postMessageCalls).toHaveLength(callsBeforeClosedRequest);
-
-    closedSnapshot.resolve({ mode: "web", tabs: [] });
-    expect(await screen.findByText("No page open")).not.toBeNull();
+    expect(
+      await screen.findByTestId("browser-workspace-stream-surface"),
+    ).not.toBeNull();
+    expect(document.querySelector("iframe")).toBeNull();
+    expect(screen.queryByText("Open this site outside the iframe")).toBeNull();
   });
 });

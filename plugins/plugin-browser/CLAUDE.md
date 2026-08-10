@@ -4,7 +4,7 @@ Adds browser automation and companion bridge management to an Eliza agent.
 
 ## Purpose / role
 
-Owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, JSDOM fallback on web/mobile) and the Chrome/Safari Agent Browser Bridge companion extension surface. Loaded by the elizaOS runtime via the `browserPlugin` export. Auto-enabled when `config.features.browser` is truthy (checked by `auto-enable.ts`); disabled by default unless that config key is set.
+Owns the platform-neutral Eliza browser workspace and the Chrome/Safari Agent Browser Bridge companion extension surface. Installed desktop and mobile apps present native child webviews; self-hosted web uses an isolated local Chromium frame/input stream; cloud connects to a hosted Chromium CDP endpoint through the same contracts. JSDOM document emulation is test-only. Loaded by the elizaOS runtime via the `browserPlugin` export. Auto-enabled when `config.features.browser` is truthy (checked by `auto-enable.ts`); disabled by default unless that config key is set.
 
 ## Plugin surface
 
@@ -86,12 +86,13 @@ src/
     browser-workspace-errors.ts    Structured workspace error codes
     browser-workspace-helpers.ts   Utilities and command normalization
     browser-workspace-desktop.ts   Desktop bridge HTTP client
+    browser-workspace-chromium.ts  Local/hosted Chromium lifecycle, frames, input, and commands
     browser-workspace-jsdom.ts     JSDOM document loading and DOM setup
     browser-workspace-elements.ts  Element finding and selector parsing
     browser-workspace-forms.ts     Form interaction helpers
     browser-workspace-network.ts   Network interception and HAR
     browser-workspace-snapshots.ts Snapshots, diffs, screenshots
-    browser-workspace-web.ts       Web-mode command execution
+    browser-workspace-web.ts       Test-only document-emulation command execution
     browser-capture.ts             Frame capture loop (startBrowserCapture/stopBrowserCapture)
     index.ts                       Workspace barrel
 auto-enable.ts                     Standalone shouldEnable check (no transitive plugin imports)
@@ -118,6 +119,9 @@ bun run --cwd plugins/plugin-browser test                            # run packa
 
 | Variable | Required | Purpose |
 |---|---|---|
+| `ELIZA_BROWSER_CHROMIUM_PATH` | no | Explicit Chrome/Brave/Edge/Chromium executable for the self-hosted web workspace |
+| `ELIZA_BROWSER_CDP_URL` | no | Secret hosted Chromium CDP endpoint (`ws`, `wss`, `http`, or `https`) used instead of launching a local process; production deployments inject it through their secret store |
+| `ELIZA_BROWSER_WORKSPACE_BACKEND` | no | Selects `local-chromium`, `hosted-chromium`, or test-only `document-emulation` |
 | `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` | no | Full URL to the Stagehand command endpoint; activates the `stagehand` target |
 | `STAGEHAND_BROWSER_COMMAND_URL` | no | Alias for the stagehand command URL |
 | `ELIZA_STAGEHAND_COMMAND_URL` | no | Alias for the stagehand command URL |

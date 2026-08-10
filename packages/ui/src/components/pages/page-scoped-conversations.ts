@@ -183,16 +183,16 @@ export function getBrowserPageScopeCopy(state: {
   if (state.browserBridgeInstallAvailable === false) {
     return {
       title: "Browser chat",
-      body: "Use me with the embedded browser in this view. User Tabs are writable; Agent Tabs and App Tabs are read-only context. Real Chrome control is unavailable in the current runtime, so I can help with embedded User Tabs, navigation, forms, and page questions only.",
+      body: "Use me with the isolated browser session in this view. User Tabs are writable; Agent Tabs and App Tabs are read-only context. Personal-profile control is unavailable in this runtime, but navigation, forms, and page questions work in the real Browser engine.",
       systemAddendum:
-        "You are answering inside the Browser view. Agent Browser Bridge is not available in this runtime, so real Chrome control cannot be enabled from this session. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate embedded User Tabs only. Agent Tabs and App Tabs remain read-only context. Help the user with the embedded browser only: opening User Tabs, navigating URLs, refreshing pages, and answering questions about the current embedded page or tab list. Do not recommend installing Agent Browser Bridge or promise real-browser tab control.",
+        "You are answering inside the Browser view. Agent Browser Bridge is not available in this runtime, so an existing personal browser profile cannot be controlled from this session. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate isolated User Tabs only. Agent Tabs and App Tabs remain read-only context. Help with opening User Tabs, navigating URLs, forms, refreshing pages, and answering questions about the current page or tab list. Do not recommend installing Agent Browser Bridge in this runtime or claim access to personal-profile tabs.",
     };
   }
   return {
     title: "Install Agent Browser Bridge",
-    body: "Install Agent Browser Bridge so I can drive real Chrome tabs. User Tabs are writable; Agent Tabs and App Tabs are read-only context. Until it connects, I can still help with the embedded browser.",
+    body: "Install Agent Browser Bridge if you want me to drive your existing personal Chrome profile. User Tabs in this isolated browser are already writable; Agent Tabs and App Tabs are read-only context.",
     systemAddendum:
-      "You are answering inside the Browser view. The user has NOT installed the Agent Browser Bridge companion extension yet. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate embedded User Tabs only. Agent Tabs and App Tabs are read-only context. Guide them to click the Install Agent Browser Bridge button visible in this chat panel — it builds the extension and opens Chrome's extension manager so they can load the unpacked folder. Recommend connecting the extension before requests that need real Chrome control. Until the extension is connected, only the embedded iframe browser is available; do not invent real-browser tabs or promise real-tab control. Offer to answer setup questions or help with embedded browsing.",
+      "You are answering inside the Browser view. The user has NOT installed the Agent Browser Bridge companion extension yet. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. The Browser view already runs writable User Tabs in an isolated real browser engine; Agent Tabs and App Tabs are read-only context. Guide them to click Install Agent Browser Bridge only when they want Eliza to control an existing personal browser profile with its signed-in sessions. Do not claim access to personal-profile tabs until the companion is connected. Offer to answer setup questions or help with the isolated browser session.",
   };
 }
 

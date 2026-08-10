@@ -174,7 +174,7 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   await expect(
     browserWorkspaceView.getByTestId("browser-workspace-tab-count"),
   ).toHaveText("2");
-  await expect(addressInput).toHaveValue("https://www.google.com/webhp?igu=1");
+  await expect(addressInput).toHaveValue("https://www.google.com/");
 
   // Switch back to the example tab via the switcher — selecting closes it and
   // the address bar follows the picked tab.
@@ -202,11 +202,8 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   await page.goBack({ waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(/\/browser$/, { timeout: 20_000 });
 
-  // Close-all removes the user's tabs. The server re-seeds a default tab on last
-  // close (#13810), so the view never gets stuck in a broken zero-tab state —
-  // the fold control keeps naming an active tab. Assert the closable set is
-  // gone (close-all disabled) rather than a fixed count, since the re-seed is
-  // server-owned.
+  // Close-all leaves the explicit empty state; opening a site or pressing New
+  // tab creates the next real browser session without a hidden iframe fallback.
   await closeAllButton.click();
   await expect(closeAllButton).toBeDisabled({ timeout: 60_000 });
   expect(walletOriginMismatchWarnings).toEqual([]);
@@ -231,14 +228,16 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
   const pageSurface = browserWorkspaceView.getByTestId(
     "browser-workspace-surface-panel",
   );
-  const iframe = browserWorkspaceView.locator("iframe").first();
-  await expect(iframe).toBeVisible({ timeout: 20_000 });
+  const streamSurface = browserWorkspaceView.getByTestId(
+    "browser-workspace-stream-surface",
+  );
+  await expect(streamSurface).toBeVisible({ timeout: 20_000 });
   const collapsedGeometry = await page.evaluate(() => {
     const surface = document.querySelector<HTMLElement>(
       '[data-testid="browser-workspace-surface-panel"]',
     );
-    const frame = document.querySelector<HTMLIFrameElement>(
-      '[data-testid="browser-workspace-view"] iframe',
+    const stream = document.querySelector<HTMLElement>(
+      '[data-testid="browser-workspace-stream-surface"]',
     );
     const chat = document.querySelector<HTMLElement>(
       '[data-testid="chat-sheet-surface"]',
@@ -246,10 +245,10 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
     const toolbar = document.querySelector<HTMLElement>(
       '[data-testid="browser-workspace-toolbar"]',
     );
-    if (!surface || !frame || !chat || !toolbar) return null;
+    if (!surface || !stream || !chat || !toolbar) return null;
     return {
       surfaceBottom: surface.getBoundingClientRect().bottom,
-      frameBottom: frame.getBoundingClientRect().bottom,
+      streamBottom: stream.getBoundingClientRect().bottom,
       chatTop: chat.getBoundingClientRect().top,
       toolbarHeight: toolbar.getBoundingClientRect().height,
       viewportWidth: window.innerWidth,
@@ -269,7 +268,7 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
   expect(collapsedGeometry?.surfaceBottom).toBeLessThanOrEqual(
     (collapsedGeometry?.chatTop ?? 0) - 7,
   );
-  expect(collapsedGeometry?.frameBottom).toBeLessThanOrEqual(
+  expect(collapsedGeometry?.streamBottom).toBeLessThanOrEqual(
     collapsedGeometry?.surfaceBottom ?? 0,
   );
   for (const control of collapsedGeometry?.controls ?? []) {
@@ -488,7 +487,7 @@ test("browser tab switcher keeps fixed chrome reachable while the tab list scrol
   await expect(dialogClose).toBeVisible();
 });
 
-test("browser iframe focus handoff survives delayed autofocus without stealing deliberate clicks", async ({
+test("browser stream preserves chat focus until the user deliberately clicks the page", async ({
   page,
   request,
 }) => {
@@ -498,69 +497,16 @@ test("browser iframe focus handoff survives delayed autofocus without stealing d
   const browserWorkspaceView = page.getByTestId("browser-workspace-view");
   await expect(browserWorkspaceView).toBeVisible({ timeout: 60_000 });
 
-  const appUrl = new URL(page.url());
-  const fixtureOrigin = `http://localhost:${appUrl.port}`;
-  await page.route(
-    `${fixtureOrigin}/__browser-focus-slow.png`,
-    async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 900));
-      await route.fulfill({
-        status: 200,
-        contentType: "image/png",
-        body: Buffer.from(
-          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-          "base64",
-        ),
-      });
-    },
-  );
-  await page.route(
-    `${fixtureOrigin}/__browser-focus-fixture**`,
-    async (route) => {
-      const url = new URL(route.request().url());
-      const autoFocus = url.searchParams.get("auto") === "1";
-      const slowLoad = url.searchParams.get("slow") === "1";
-      await route.fulfill({
-        status: 200,
-        contentType: "text/html",
-        body: `<!doctype html>
-        <html>
-          <body>
-            <label for="focus-target">Fixture input</label>
-            <input id="focus-target" data-testid="focus-target" />
-            ${slowLoad ? '<img alt="slow" src="/__browser-focus-slow.png" />' : ""}
-            <script>
-              window.addEventListener("load", () => {
-                document.body.dataset.loaded = "true";
-                if (${JSON.stringify(autoFocus)}) {
-                  setTimeout(() => document.querySelector("#focus-target").focus(), 120);
-                }
-              });
-            </script>
-          </body>
-        </html>`,
-      });
-    },
-  );
-
   const addressInput = browserWorkspaceView.getByTestId(
     "browser-workspace-address-input",
   );
-  const delayedAddressUrl = `${fixtureOrigin}/__browser-focus-fixture?auto=1&case=address`;
-  await addressInput.fill(delayedAddressUrl);
+  await addressInput.fill("https://example.com/focus-start");
   await addressInput.press("Enter");
-  const iframe = browserWorkspaceView.locator("iframe").first();
-  await expect(iframe).toHaveAttribute("src", delayedAddressUrl, {
-    timeout: 20_000,
-  });
-  await page.waitForTimeout(350);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => document.activeElement?.getAttribute("data-testid") ?? null,
-      ),
-    )
-    .toBe("browser-workspace-address-input");
+  const streamSurface = browserWorkspaceView.getByTestId(
+    "browser-workspace-stream-surface",
+  );
+  await expect(streamSurface).toBeVisible({ timeout: 20_000 });
+  await expect(browserWorkspaceView.locator("iframe")).toHaveCount(0);
 
   const snapshotResponse = await request.get("/api/browser-workspace");
   expect(snapshotResponse.ok()).toBe(true);
@@ -570,70 +516,20 @@ test("browser iframe focus handoff survives delayed autofocus without stealing d
   const tabId = snapshot.tabs[0].id;
 
   const composer = page.getByRole("combobox", { name: "message" });
-  // The page may remain under a stationary pointer while the user types in
-  // chat. Hover alone must not authorize a later page autofocus.
-  await iframe.hover();
   await composer.focus();
-  const polledAgentUrl = `${fixtureOrigin}/__browser-focus-fixture?auto=1&case=agent-poll`;
+  await expect(composer).toBeFocused();
+  await streamSurface.hover();
+  await expect(composer).toBeFocused();
+
+  const polledAgentUrl = "https://example.com/agent-navigation";
   const navigateResponse = await request.post(
     `/api/browser-workspace/tabs/${encodeURIComponent(tabId)}/navigate`,
     { data: { url: polledAgentUrl } },
   );
   expect(navigateResponse.ok()).toBe(true);
-  await expect(iframe).toHaveAttribute("src", polledAgentUrl, {
-    timeout: 10_000,
-  });
-  await page.waitForTimeout(350);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => document.activeElement?.getAttribute("data-testid") ?? null,
-      ),
-    )
-    .toBe("chat-composer-textarea");
+  await expect(addressInput).toHaveValue(polledAgentUrl);
+  await expect(composer).toBeFocused();
 
-  await composer.focus();
-  const intentionalClickUrl = `${fixtureOrigin}/__browser-focus-fixture?slow=1&case=user-click`;
-  const clickNavigateResponse = await request.post(
-    `/api/browser-workspace/tabs/${encodeURIComponent(tabId)}/navigate`,
-    { data: { url: intentionalClickUrl } },
-  );
-  expect(clickNavigateResponse.ok()).toBe(true);
-  await expect(iframe).toHaveAttribute("src", intentionalClickUrl, {
-    timeout: 10_000,
-  });
-  const fixtureInput = page.frameLocator("iframe").getByTestId("focus-target");
-  await fixtureInput.click();
-  await page.waitForTimeout(1_800);
-  await expect(fixtureInput).toBeFocused();
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.tagName ?? null))
-    .toBe("IFRAME");
-
-  // After load, cross-origin pointer events do not bubble to the parent. A
-  // genuine press must still cancel the autofocus guard without making hover
-  // alone an authorization signal.
-  await composer.focus();
-  const postLoadClickUrl = `${fixtureOrigin}/__browser-focus-fixture?case=user-click-after-load`;
-  const postLoadClickNavigateResponse = await request.post(
-    `/api/browser-workspace/tabs/${encodeURIComponent(tabId)}/navigate`,
-    { data: { url: postLoadClickUrl } },
-  );
-  expect(postLoadClickNavigateResponse.ok()).toBe(true);
-  await expect(iframe).toHaveAttribute("src", postLoadClickUrl, {
-    timeout: 10_000,
-  });
-  const loadedBody = page
-    .frameLocator("iframe")
-    .locator("body[data-loaded='true']");
-  await expect(loadedBody).toBeVisible();
-  const postLoadFixtureInput = page
-    .frameLocator("iframe")
-    .getByTestId("focus-target");
-  await postLoadFixtureInput.click();
-  await page.waitForTimeout(1_800);
-  await expect(postLoadFixtureInput).toBeFocused();
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.tagName ?? null))
-    .toBe("IFRAME");
+  await streamSurface.click({ position: { x: 24, y: 24 } });
+  await expect(streamSurface).toBeFocused();
 });

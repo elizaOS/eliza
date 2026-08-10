@@ -362,21 +362,52 @@ describe("handleIosLocalAgentRequest", () => {
   });
 
   it("serves local web browser workspace contracts instead of 404s", async () => {
+    const localStorage = stubLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+
     await expect(getJson("/api/browser-workspace")).resolves.toEqual({
       mode: "web",
+      engine: "native-webview",
+      presentation: "native-surface",
       tabs: [],
     });
 
-    const opened = await postJson("/api/browser-workspace/tabs", {
+    const opened = (await postJson("/api/browser-workspace/tabs", {
       url: "https://docs.elizaos.ai/",
       title: "Docs",
-    });
+    })) as { tab: { id: string } };
     expect(opened).toMatchObject({
       tab: {
         title: "Docs",
         url: "https://docs.elizaos.ai/",
         visible: true,
       },
+    });
+
+    await expect(
+      postJson(
+        `/api/browser-workspace/tabs/${encodeURIComponent(opened.tab.id)}/navigate`,
+        { url: "https://www.apple.com/" },
+      ),
+    ).resolves.toMatchObject({
+      tab: { id: opened.tab.id, url: "https://www.apple.com/", visible: true },
+    });
+    await expect(getJson("/api/browser-workspace")).resolves.toMatchObject({
+      engine: "native-webview",
+      presentation: "native-surface",
+      tabs: [{ id: opened.tab.id, url: "https://www.apple.com/" }],
+    });
+
+    const closed = await handleIosLocalAgentRequest(
+      new Request(
+        `http://127.0.0.1:31337/api/browser-workspace/tabs/${encodeURIComponent(opened.tab.id)}`,
+        { method: "DELETE" },
+      ),
+    );
+    expect(closed.status).toBe(200);
+    await expect(closed.json()).resolves.toEqual({ closed: true });
+    await expect(getJson("/api/browser-workspace")).resolves.toMatchObject({
+      tabs: [],
     });
   });
 

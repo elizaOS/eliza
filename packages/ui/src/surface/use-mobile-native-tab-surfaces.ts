@@ -8,14 +8,12 @@
  * overlays with a real `WKWebView` / Android `WebView` through the
  * {@link NativeSurfaceShell}.
  *
- * Why a hook driving native layers instead of iframes: on the web the Browser
- * view falls back to a sandboxed iframe, but a mobile in-realm iframe still
- * shares the host WebView's renderer process and storage partition — the exact
- * cross-surface leak the isolation epic closes. The native surface uses the
- * platform's strongest renderer boundary plus an isolated data store (the
- * explicit {@link NativeSurfacePolicy} derived from the manifest, passed
- * through verbatim), so nothing a page writes is reachable from the host or a
- * sibling tab.
+ * Why a hook driving native layers instead of the web stream renderer: mobile
+ * can host the page directly in a platform webview with a stronger process and
+ * storage boundary, avoiding both encoded-frame latency and any in-realm site
+ * execution. The explicit {@link NativeSurfacePolicy} is derived from the
+ * manifest and passed through verbatim, so nothing a page writes is reachable
+ * from the host or a sibling tab.
  *
  * Two constraints shape the effects. (1) Native layers z-order ABOVE the host
  * WebView, so React chrome is mirrored into rounded native occlusion regions;
@@ -48,8 +46,8 @@ export interface MobileNativeSurfaceTab {
 export interface UseMobileNativeTabSurfacesArgs {
   /**
    * Whether the `native-mobile-webview` render path is active. When false the
-   * hook is inert (no surfaces created) — the Browser view is rendering iframes
-   * or the desktop OOPIF instead.
+   * hook is inert (no surfaces created) — the Browser view is rendering the
+   * remote Chromium stream or the desktop native child surface instead.
    */
   readonly active: boolean;
   /** The open Browser tabs, in order. The live surface set mirrors this exactly. */

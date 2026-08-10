@@ -51,6 +51,8 @@ const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
   "base64",
 );
+const TWO_PIXEL_JPEG_BASE64 =
+  "/9j/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAACAAIDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AKjAB//Z";
 
 // A minimal valid 16-bit PCM mono WAV of silence. The local-inference voice
 // path POSTs /api/tts/local-inference and plays the returned bytes as
@@ -1172,6 +1174,8 @@ function inferStubBrowserTitle(url) {
 function browserWorkspaceSnapshot() {
   return {
     mode: "web",
+    engine: "local-chromium",
+    presentation: "remote-stream",
     tabs: browserWorkspaceTabs,
   };
 }
@@ -3307,7 +3311,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   const browserTabMatch =
-    /^\/api\/browser-workspace\/tabs\/([^/]+)(?:\/(navigate|show|hide))?$/.exec(
+    /^\/api\/browser-workspace\/tabs\/([^/]+)(?:\/(navigate|show|hide|frames|input|viewport))?$/.exec(
       url.pathname,
     );
   if (browserTabMatch) {
@@ -3324,6 +3328,33 @@ const server = http.createServer(async (req, res) => {
         (tab) => tab.id !== tabId,
       );
       sendJson(req, res, 200, { closed: true });
+      return;
+    }
+
+    if (req.method === "GET" && action === "frames") {
+      res.writeHead(200, {
+        "cache-control": "no-cache, no-store, must-revalidate",
+        "content-type": "application/x-ndjson; charset=utf-8",
+      });
+      res.write(`${JSON.stringify({ type: "ready" })}\n`);
+      res.write(
+        `${JSON.stringify({
+          type: "frame",
+          data: TWO_PIXEL_JPEG_BASE64,
+          width: 2,
+          height: 2,
+          timestamp: Date.now() / 1_000,
+        })}\n`,
+      );
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
+      (action === "input" || action === "viewport")
+    ) {
+      await readJsonBody(req);
+      sendJson(req, res, 200, { ok: true });
       return;
     }
 
