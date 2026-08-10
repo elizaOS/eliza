@@ -82,6 +82,17 @@ function makeNotification(
   };
 }
 
+function notificationServiceStartingError(retryAfter: number): ApiError {
+  return new ApiError({
+    kind: "http",
+    path: "/api/notifications",
+    status: 503,
+    code: "NOTIFICATION_SERVICE_NOT_READY",
+    retryAfter,
+    message: "Notification service is still starting",
+  });
+}
+
 /**
  * Delivery is fire-and-forget async (desktop → native → browser); settle its
  * promise chain before asserting which sink fired.
@@ -270,16 +281,7 @@ describe("notification-store", () => {
       createdAt: live.createdAt - 1,
     });
     listNotifications
-      .mockRejectedValueOnce(
-        new ApiError({
-          kind: "http",
-          path: "/api/notifications",
-          status: 503,
-          code: "NOTIFICATION_SERVICE_NOT_READY",
-          retryAfter: 2,
-          message: "Notification service is still starting",
-        }),
-      )
+      .mockRejectedValueOnce(notificationServiceStartingError(2))
       .mockResolvedValueOnce({
         notifications: [live, persisted],
         unreadCount: 2,
@@ -316,6 +318,90 @@ describe("notification-store", () => {
     expect(recovered.unreadCount).toBe(2);
     expect(listNotifications).toHaveBeenCalledTimes(2);
     expect(onWsEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps explicit service startup transient beyond the general attempt cap", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    listNotifications.mockRejectedValue(notificationServiceStartingError(1));
+
+    initNotifications();
+    await flushDelivery();
+    for (let attempt = 1; attempt < 5; attempt += 1) {
+      await vi.runOnlyPendingTimersAsync();
+      await flushDelivery();
+    }
+
+    expect(listNotifications).toHaveBeenCalledTimes(5);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: false,
+      hydrationStatus: "retrying",
+      hydrationAttempts: 5,
+    });
+    expect(vi.getTimerCount()).toBe(1);
+
+    listNotifications.mockResolvedValueOnce({
+      notifications: [makeNotification({ id: "after-cold-start" })],
+      unreadCount: 1,
+      serviceStatus: "ready",
+    });
+    await vi.runOnlyPendingTimersAsync();
+    await flushDelivery();
+
+    expect(listNotifications).toHaveBeenCalledTimes(6);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: true,
+      hydrationStatus: "ready",
+      hydrationAttempts: 6,
+      hydrationError: null,
+    });
+  });
+
+  it("fails visibly when the service startup readiness window expires", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    listNotifications.mockRejectedValue(notificationServiceStartingError(30));
+
+    initNotifications();
+    await flushDelivery();
+    for (let interval = 0; interval < 3; interval += 1) {
+      await vi.advanceTimersByTimeAsync(30_000);
+      await flushDelivery();
+    }
+
+    expect(listNotifications).toHaveBeenCalledTimes(4);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: false,
+      hydrationStatus: "failed",
+      hydrationAttempts: 4,
+      hydrationError: "Notification service is still starting",
+    });
+  });
+
+  it("fails non-retryable authorization errors immediately", async () => {
+    vi.useFakeTimers();
+    listNotifications.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/notifications",
+        status: 401,
+        code: "UNAUTHORIZED",
+        message: "Authentication required",
+      }),
+    );
+
+    initNotifications();
+    await flushDelivery();
+
+    expect(listNotifications).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: false,
+      hydrationStatus: "failed",
+      hydrationAttempts: 1,
+      hydrationError: "Authentication required",
+    });
   });
 
   it("stops after the bounded hydrate retry budget and exposes terminal failure", async () => {
