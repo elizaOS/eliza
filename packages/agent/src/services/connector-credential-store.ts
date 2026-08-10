@@ -15,9 +15,9 @@
  * would swallow writes and lose credentials immediately, which is strictly
  * worse than the SECRETS fallback it replaces.
  *
- * The read/write surface mirrors the `ConnectorCredentialStore` contract in
- * `@elizaos/plugin-sql` (`putSecret`/`get`/`has`/`remove`) plus `reveal`,
- * which credential resolvers probe first when reading refs.
+ * The write surface mirrors the `ConnectorCredentialStore` contract in
+ * `@elizaos/plugin-sql` (`putSecret`/`has`/`remove`); reads go through
+ * `reveal`, the audit-logged path every credential resolver probes first.
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
@@ -68,17 +68,6 @@ export class ConnectorCredentialStoreService extends Service {
       caller: params.caller ?? CALLER_FALLBACK,
     });
     return vaultRef;
-  }
-
-  /** Read a credential value by vaultRef; throws on a vault miss. */
-  async get(
-    vaultRef: string,
-    options?: { reveal?: boolean; caller?: string },
-  ): Promise<string> {
-    if (options?.reveal && this.vault.reveal) {
-      return this.vault.reveal(vaultRef, options.caller ?? CALLER_FALLBACK);
-    }
-    return this.vault.get(vaultRef);
   }
 
   /** Reveal a sensitive credential value by vaultRef (audit-logged). */

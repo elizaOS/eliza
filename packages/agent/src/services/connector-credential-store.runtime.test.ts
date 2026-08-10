@@ -159,7 +159,7 @@ describe("ConnectorCredentialStoreService start semantics (real runtime)", () =>
     const reader = second.getService(
       SERVICE_TYPE,
     ) as ConnectorCredentialStoreService;
-    expect(await reader.get(vaultRef, { reveal: true })).toBe(
+    expect(await reader.reveal(vaultRef, "runtime-test")).toBe(
       "restart-surviving-material",
     );
   }, 240_000);

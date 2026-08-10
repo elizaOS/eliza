@@ -64,7 +64,7 @@ function createFakeVault(): Vault & {
 }
 
 describe("ConnectorCredentialStoreService", () => {
-  it("round-trips putSecret → get/reveal/has → remove through the vault", async () => {
+  it("round-trips putSecret → reveal/has → remove through the vault", async () => {
     const vault = createFakeVault();
     const service = new ConnectorCredentialStoreService(undefined, vault);
 
@@ -77,7 +77,6 @@ describe("ConnectorCredentialStoreService", () => {
       caller: "test",
     });
     expect(vaultRef).toBe("connector.agent-1.google.acct-1.oauth_tokens");
-    expect(await service.get(vaultRef)).toBe("token-material");
     expect(await service.reveal(vaultRef, "test-reader")).toBe(
       "token-material",
     );
@@ -86,7 +85,7 @@ describe("ConnectorCredentialStoreService", () => {
 
     await service.remove(vaultRef);
     expect(await service.has(vaultRef)).toBe(false);
-    await expect(service.get(vaultRef)).rejects.toThrow(/vault miss/);
+    await expect(service.reveal(vaultRef)).rejects.toThrow(/vault miss/);
   });
 
   it("honors an explicit vaultRef instead of deriving one", async () => {

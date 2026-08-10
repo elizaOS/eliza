@@ -22,13 +22,11 @@ class TestRuntime {
 		public readonly adapter?: InMemoryDatabaseAdapter,
 		public readonly agentId: UUID = DEFAULT_UUID,
 		private readonly credentialStore?: FakeCredentialStore,
-		private readonly vault?: FakeCredentialStore,
 	) {}
 
 	getService(serviceType: string): FakeCredentialStore | undefined {
 		if (serviceType === "connector_credential_store")
 			return this.credentialStore;
-		if (serviceType === "vault") return this.vault;
 		return undefined;
 	}
 
@@ -85,14 +83,8 @@ function makeRuntime(
 	adapter?: InMemoryDatabaseAdapter,
 	agentId?: UUID,
 	credentialStore?: FakeCredentialStore,
-	vault?: FakeCredentialStore,
 ): IAgentRuntime {
-	return new TestRuntime(
-		adapter,
-		agentId,
-		credentialStore,
-		vault,
-	) as IAgentRuntime;
+	return new TestRuntime(adapter, agentId, credentialStore) as IAgentRuntime;
 }
 
 function makeTarget(source: string): TargetInfo {
@@ -253,16 +245,12 @@ describe("ConnectorAccountManager", () => {
 		).resolves.toEqual([]);
 	});
 
-	it("removes tokens written through the generic vault fallback", async () => {
+	it("refuses to delete an account whose credential refs have no removable store", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.initialize();
-		const vault = new FakeCredentialStore();
-		const manager = getConnectorAccountManager(
-			makeRuntime(adapter, DEFAULT_UUID, undefined, vault),
-		);
+		const manager = getConnectorAccountManager(makeRuntime(adapter));
 		const accountId = "4a899cd0-170f-4b3e-932e-46ec68119b36" as UUID;
 		const vaultRef = `connector.${DEFAULT_UUID}.google.${accountId}.oauth_tokens`;
-		vault.values.set(vaultRef, "token material");
 		await manager.upsertAccount("google", {
 			id: accountId,
 			provider: "google",
@@ -279,14 +267,12 @@ describe("ConnectorAccountManager", () => {
 			vaultRef,
 		});
 
-		await expect(manager.deleteAccount("google", accountId)).resolves.toBe(
-			true,
+		await expect(manager.deleteAccount("google", accountId)).rejects.toThrow(
+			/no removable connector credential vault/,
 		);
-
-		expect(vault.removed).toEqual([vaultRef]);
 		await expect(
 			adapter.listConnectorAccountCredentialRefs({ accountId }),
-		).resolves.toEqual([]);
+		).resolves.toHaveLength(1);
 	});
 
 	it("requires every capability declared by connector action policy", async () => {

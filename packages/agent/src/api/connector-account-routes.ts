@@ -144,6 +144,10 @@ const oauthStartSchema = z.object({
   metadata: metadataSchema,
 });
 
+function trimmed(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 function normalizeConnectorAccountRoleValue(
   value: unknown,
 ): ConnectorAccountRole | undefined {
@@ -410,18 +414,9 @@ function accountPatchFromBody(
 
 function serializeAccount(account: ConnectorAccount): Record<string, unknown> {
   const metadata = account.metadata ?? {};
-  const identityName =
-    typeof metadata.name === "string" && metadata.name.trim()
-      ? metadata.name.trim()
-      : undefined;
-  const identityEmail =
-    typeof metadata.email === "string" && metadata.email.trim()
-      ? metadata.email.trim()
-      : undefined;
-  const identityPicture =
-    typeof metadata.picture === "string" && metadata.picture.trim()
-      ? metadata.picture.trim()
-      : undefined;
+  const identityName = trimmed(metadata.name);
+  const identityEmail = trimmed(metadata.email);
+  const identityPicture = trimmed(metadata.picture);
   const storedLabel = account.label?.trim();
   const handle =
     account.displayHandle ??

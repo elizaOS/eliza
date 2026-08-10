@@ -405,10 +405,6 @@ interface ConnectorOAuthCredentialStore {
 		caller?: string;
 	}): Promise<string>;
 	reveal?(vaultRef: string, caller?: string): Promise<string>;
-	get?(
-		vaultRef: string,
-		options?: { reveal?: boolean; caller?: string },
-	): Promise<string>;
 	remove?(vaultRef: string): Promise<void>;
 }
 
@@ -469,6 +465,17 @@ function cloneMetadata(metadata: Metadata | undefined): Metadata | undefined {
 	return metadata ? ({ ...metadata } as Metadata) : undefined;
 }
 
+function cloneArr<T>(values: readonly T[] | undefined): T[] | undefined {
+	return values ? [...values] : undefined;
+}
+
+function firstArr<T>(
+	primary: readonly T[] | undefined,
+	fallback: readonly T[] | undefined,
+): T[] | undefined {
+	return cloneArr(primary) ?? cloneArr(fallback);
+}
+
 const CONNECTOR_BINDING_METADATA_KEY = "connectorBinding";
 
 function readConnectorBindingMetadata(metadata: Metadata | undefined): {
@@ -513,11 +520,9 @@ function cloneAccount(account: ConnectorAccount): ConnectorAccount {
 	return {
 		...account,
 		purpose: [...account.purpose],
-		scopes: account.scopes ? [...account.scopes] : undefined,
-		capabilities: account.capabilities ? [...account.capabilities] : undefined,
-		selectedProducts: account.selectedProducts
-			? [...account.selectedProducts]
-			: undefined,
+		scopes: cloneArr(account.scopes),
+		capabilities: cloneArr(account.capabilities),
+		selectedProducts: cloneArr(account.selectedProducts),
 		isDefault: account.isDefault,
 		metadata: cloneMetadata(account.metadata),
 	};
@@ -540,21 +545,12 @@ function mergeStoredAndProviderAccount(
 		displayHandle: stored.displayHandle ?? providerAccount.displayHandle,
 		ownerBindingId: stored.ownerBindingId ?? providerAccount.ownerBindingId,
 		ownerIdentityId: stored.ownerIdentityId ?? providerAccount.ownerIdentityId,
-		scopes: stored.scopes
-			? [...stored.scopes]
-			: providerAccount.scopes
-				? [...providerAccount.scopes]
-				: undefined,
-		capabilities: stored.capabilities
-			? [...stored.capabilities]
-			: providerAccount.capabilities
-				? [...providerAccount.capabilities]
-				: undefined,
-		selectedProducts: stored.selectedProducts
-			? [...stored.selectedProducts]
-			: providerAccount.selectedProducts
-				? [...providerAccount.selectedProducts]
-				: undefined,
+		scopes: firstArr(stored.scopes, providerAccount.scopes),
+		capabilities: firstArr(stored.capabilities, providerAccount.capabilities),
+		selectedProducts: firstArr(
+			stored.selectedProducts,
+			providerAccount.selectedProducts,
+		),
 		isDefault: stored.isDefault ?? providerAccount.isDefault,
 		createdAt: stored.createdAt,
 		updatedAt: Math.max(stored.updatedAt, providerAccount.updatedAt),
@@ -1233,8 +1229,8 @@ function databaseRecordToAccount(
 		displayHandle: record.username ?? record.email ?? undefined,
 		ownerBindingId: record.ownerBindingId ?? undefined,
 		ownerIdentityId: record.ownerIdentityId ?? undefined,
-		scopes: record.scopes ? [...record.scopes] : undefined,
-		capabilities: record.capabilities ? [...record.capabilities] : undefined,
+		scopes: cloneArr(record.scopes),
+		capabilities: cloneArr(record.capabilities),
 		selectedProducts: bindingMetadata.selectedProducts,
 		isDefault: bindingMetadata.isDefault,
 		createdAt: record.createdAt ?? now,
@@ -1336,27 +1332,6 @@ export class ConnectorAccountManager extends Service {
 		return isConnectorOAuthCredentialStore(service) ? service : null;
 	}
 
-	private credentialSecretRemover(): Pick<
-		ConnectorOAuthCredentialStore,
-		"remove"
-	> | null {
-		const runtime = this.runtime as IAgentRuntime | undefined;
-		for (const serviceType of [
-			CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPE,
-			"vault",
-			"VAULT",
-		]) {
-			const service = runtime?.getService?.(serviceType) as
-				| { remove?: (vaultRef: string) => Promise<void> }
-				| null
-				| undefined;
-			if (typeof service?.remove === "function") {
-				return service;
-			}
-		}
-		return null;
-	}
-
 	private credentialRefStorage(): Pick<
 		ConnectorAccountDatabaseAdapter,
 		| "listConnectorAccountCredentialRefs"
@@ -1418,12 +1393,7 @@ export class ConnectorAccountManager extends Service {
 		const store = this.oauthCredentialStore();
 		if (!store) return undefined;
 		try {
-			const value = store.reveal
-				? await store.reveal(ref, "connector-oauth-callback")
-				: await store.get?.(ref, {
-						reveal: true,
-						caller: "connector-oauth-callback",
-					});
+			const value = await store.reveal?.(ref, "connector-oauth-callback");
 			return typeof value === "string" && value.trim() ? value : undefined;
 		} catch (error) {
 			// error-policy:J4 A missing/expired one-time verifier becomes an
@@ -1810,7 +1780,7 @@ export class ConnectorAccountManager extends Service {
 			await registered.deleteAccount(durableAccountId, this);
 		}
 		if (credentialRefs && credentialRefs.length > 0) {
-			const credentialStore = this.credentialSecretRemover();
+			const credentialStore = this.oauthCredentialStore();
 			if (!credentialStore?.remove) {
 				throw new Error(
 					`Cannot delete ${providerId} account ${accountId}: its credential refs exist but no removable connector credential vault is available.`,
