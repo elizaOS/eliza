@@ -5,7 +5,10 @@
  */
 
 import { logger } from "@elizaos/logger";
-import { isCloudPairLoopbackOrigin } from "@elizaos/shared/contracts";
+import {
+  isCloudPairAgentId,
+  isCloudPairLoopbackOrigin,
+} from "@elizaos/shared/contracts";
 import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,
@@ -69,7 +72,10 @@ import {
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "./persistence";
-import { isTrustedRestoreApiBaseUrl } from "./runtime-url-trust";
+import {
+  isTrustedCloudApiBaseUrl,
+  isTrustedRestoreApiBaseUrl,
+} from "./runtime-url-trust";
 import type { StartupEvent } from "./startup-coordinator";
 import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 import { runStartupProbeWithTimeout } from "./startup-probe";
@@ -106,8 +112,9 @@ function recoverCloudAgentId(active: PersistedActiveServer): string | null {
   const rawId = active.id?.startsWith("cloud:")
     ? active.id.slice("cloud:".length).trim()
     : "";
-  if (rawId && !rawId.includes("/")) return rawId;
-  return dedicatedCloudAgentIdFromBase(active.apiBase);
+  if (isCloudPairAgentId(rawId)) return rawId;
+  const baseAgentId = dedicatedCloudAgentIdFromBase(active.apiBase);
+  return isCloudPairAgentId(baseAgentId) ? baseAgentId : null;
 }
 
 /**
@@ -182,7 +189,8 @@ function backfillCloudApiBase(
     isElizaCloudControlPlaneAgentlessBase(active.apiBase) ||
     isDirectCloudSharedAgentBase(active.apiBase) ||
     isDedicatedCloudAgentBase(active.apiBase);
-  // Custom per-agent hosts are server-owned and must remain untouched.
+  // Unknown hosts remain structurally unchanged here so the restore trust gate
+  // can reject them without fabricating a canonical server-owned address.
   if (!managedBase) return active;
 
   const repairedApiBase = isDirectCloudSharedAgentBase(active.apiBase)
@@ -479,14 +487,37 @@ export async function applyRestoredConnection(args: {
   }
 
   if (restoredActiveServer.kind === "cloud") {
-    // Environment reconciliation is synchronous so the client is routed
-    // immediately. The slower legacy tier check and Steward refresh then run
-    // concurrently; neither blocks the initial base mutation.
+    // Environment reconciliation is synchronous. The selected target's known
+    // credential is cleared before the base changes, then the selected record's
+    // known credential is installed. A slower Steward refresh may replace it.
     // Never send an agent-local paired token to the Cloud control plane. The
     // Steward session store is the only valid credential for this owner lookup.
-    const restoreProbeToken = readStoredStewardToken()?.trim() || null;
     const resolved = backfillCloudApiBase(restoredActiveServer);
+    const agentId = recoverCloudAgentId(resolved);
+    if (!isTrustedCloudApiBaseUrl(resolved.apiBase, agentId)) {
+      logger.warn(
+        `[startup-phase-restore] dropping persisted cloud active-server with untrusted apiBase host: ${resolved.apiBase ?? "(none)"}`,
+      );
+      clearPersistedActiveServer();
+      clientRef.setToken(null);
+      clientRef.setBaseUrl(null);
+      return;
+    }
+    const restoreProbeToken = readStoredStewardToken()?.trim() || null;
+    const usesLocalDockerCredential = isCloudPairLoopbackOrigin(
+      resolved.apiBase,
+    );
+    const isAgentlessControlPlane = isElizaCloudControlPlaneAgentlessBase(
+      resolved.apiBase,
+    );
+    const initialToken = usesLocalDockerCredential
+      ? resolved.accessToken || null
+      : isAgentlessControlPlane
+        ? restoreProbeToken
+        : resolved.accessToken || restoreProbeToken || null;
+    clientRef.setToken(null);
     clientRef.setBaseUrl(resolved.apiBase ?? null);
+    clientRef.setToken(initialToken);
     const tierRepairPromise = isDedicatedCloudAgentBase(
       restoredActiveServer.apiBase,
     )
@@ -503,18 +534,18 @@ export async function applyRestoredConnection(args: {
     // agent-local bearer for `/api/*`. The edge-owned dedicated path can keep
     // its Steward recovery fallback; a loopback process must never receive a
     // Cloud control-plane credential when its paired bearer is absent.
-    const usesLocalDockerCredential = isCloudPairLoopbackOrigin(
-      resolved.apiBase,
-    );
     clientRef.setToken(
       usesLocalDockerCredential
         ? resolved.accessToken || null
         : isDedicatedCloudAgentBase(resolved.apiBase)
           ? resolved.accessToken || stewardToken || null
-          : stewardToken || resolved.accessToken || null,
+          : isAgentlessControlPlane
+            ? stewardToken || null
+            : stewardToken || resolved.accessToken || null,
     );
     void tierRepairPromise.then((repaired) => {
       if (!repaired || repaired.apiBase === resolved.apiBase) return;
+      if (!isTrustedCloudApiBaseUrl(repaired.apiBase, agentId)) return;
       const current = loadPersistedActiveServer();
       // A user can switch agents while the compatibility probe is in flight.
       // Never overwrite a newer selection; null is allowed for direct unit
@@ -526,6 +557,7 @@ export async function applyRestoredConnection(args: {
         return;
       }
       savePersistedActiveServer(repaired);
+      clientRef.setToken(null);
       clientRef.setBaseUrl(repaired.apiBase ?? null);
       clientRef.setToken(stewardToken || repaired.accessToken || null);
     });
@@ -562,6 +594,7 @@ export async function applyRestoredConnection(args: {
       apiBase: reconciled,
     });
   }
+  clientRef.setToken(null);
   clientRef.setBaseUrl(reconciled ?? null);
   clientRef.setToken(restoredActiveServer.accessToken ?? null);
 }
@@ -599,12 +632,18 @@ export function canRestoreActiveServer(args: {
     if (isMobileLocalActiveServer(args.server)) {
       return true;
     }
-    // A "remote" record with an untrusted apiBase host must not be restored —
+    // A remote or Cloud record with an untrusted apiBase host must not be restored —
     // restoring it would dial an attacker-chosen server with the persisted
     // bearer token. Untrusted → not restorable → the caller clears it and falls
     // back to first-run. local/cloud branches validate their own hosts.
     if (args.server.kind === "remote") {
       return isTrustedRestoreApiBaseUrl(args.server.apiBase);
+    }
+    if (args.server.kind === "cloud") {
+      return isTrustedCloudApiBaseUrl(
+        args.server.apiBase,
+        recoverCloudAgentId(args.server),
+      );
     }
     return true;
   }
@@ -623,7 +662,7 @@ export function canRestoreActiveServer(args: {
     const rawId = args.server.id?.startsWith("cloud:")
       ? args.server.id.slice("cloud:".length).trim()
       : "";
-    return Boolean(rawId && !rawId.includes("/"));
+    return isCloudPairAgentId(rawId);
   }
 
   return false;
@@ -633,11 +672,15 @@ function preserveCloudAuthTokenForFirstRun(
   server: PersistedActiveServer,
 ): void {
   if (server.kind !== "cloud") return;
-  // Cloud = Steward everywhere (DECISIONS.md D3): the Steward session token
-  // persists in localStorage independently of the dropped active server, so
-  // prefer it; fall back to the token captured on the persisted server.
-  const token = readStoredStewardToken()?.trim() || server.accessToken?.trim();
-  if (!token) return;
+  // Only the independent Steward store is safe to carry to the control plane.
+  // A rejected Cloud record's access token may be an agent-local pair bearer.
+  const token = readStoredStewardToken()?.trim() || null;
+  client.setToken(null);
+  client.setBaseUrl(
+    resolveDirectCloudAuthApiBase(
+      getBootConfig().cloudApiBase || RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL,
+    ),
+  );
   client.setToken(token);
 }
 

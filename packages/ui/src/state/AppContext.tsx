@@ -49,11 +49,12 @@ import {
 } from "../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../utils";
 import { dispatchConversationResync } from "./AppContext.hooks";
+import { applyAgentProfileConnection } from "./agent-profile-connection";
 import {
   activeServerIdForAgentProfile,
   getActiveProfile,
   loadAgentProfileRegistry,
-  setActiveProfileId,
+  persistAgentProfileSelection,
 } from "./agent-profiles";
 import { publishAppValue, seedAppValue } from "./app-store";
 import {
@@ -66,11 +67,11 @@ import { ChatTurnStatusCtx } from "./ChatTurnStatusContext.hooks";
 import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext.hooks";
+import { createPersistedActiveServer } from "./persistence";
 import {
-  createPersistedActiveServer,
-  savePersistedActiveServer,
-} from "./persistence";
-import { isTrustedRestoreApiBaseUrl } from "./runtime-url-trust";
+  isTrustedCloudApiBaseUrl,
+  isTrustedRestoreApiBaseUrl,
+} from "./runtime-url-trust";
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
 import { useTranslation } from "./TranslationContext.hooks";
@@ -1524,13 +1525,12 @@ function AppProviderInner({
       ) {
         return;
       }
-
-      setActiveProfileId(profileId);
-
-      // Conversation ids are per-account, so saved drafts from the old
-      // profile would re-attach to whatever conversation happens to land
-      // on the same id after the switch. Wipe them.
-      clearAllChatDrafts();
+      if (
+        profile.kind === "cloud" &&
+        !isTrustedCloudApiBaseUrl(profile.apiBase, profile.cloudAgentId)
+      ) {
+        return;
+      }
 
       const server = createPersistedActiveServer({
         kind: profile.kind,
@@ -1539,7 +1539,19 @@ function AppProviderInner({
         accessToken: profile.accessToken,
         label: profile.label,
       });
-      savePersistedActiveServer(server);
+      if (!persistAgentProfileSelection(profileId, server)) {
+        setActionNotice(
+          "Couldn't switch agents because browser storage is unavailable.",
+          "error",
+        );
+        return;
+      }
+
+      // Conversation ids are per-account, so saved drafts from the old
+      // profile would re-attach to whatever conversation happens to land
+      // on the same id after the switch. Wipe them only after the durable
+      // selection succeeds.
+      clearAllChatDrafts();
 
       // On mobile the boot-time reconcile (reconcileMobileRestoredActiveServer)
       // CLEARS the active server whenever the persisted runtime mode disagrees
@@ -1557,12 +1569,7 @@ function AppProviderInner({
         persistMobileRuntimeModeForServerTarget(runtimeTarget);
       }
 
-      if (profile.apiBase) {
-        client.setBaseUrl(profile.apiBase);
-      }
-      if (profile.accessToken) {
-        client.setToken(profile.accessToken);
-      }
+      applyAgentProfileConnection(profile, client);
 
       const target =
         profile.kind === "cloud"
@@ -1575,7 +1582,7 @@ function AppProviderInner({
         target: target as RuntimeTarget,
       });
     },
-    [startupCoordinatorDispatch],
+    [setActionNotice, startupCoordinatorDispatch],
   );
 
   useAgentGreetingEffects({

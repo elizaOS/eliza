@@ -3,15 +3,127 @@
  * query resolution against real jsdom storage without a live agent or network.
  */
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { shellLocalStorage } from "../surface-realm-channel";
 import {
   activeServerIdForAgentProfile,
   addAgentProfile,
   loadAgentProfileRegistry,
+  persistAgentProfileSelection,
   resolveAgentProfileByQuery,
   scrubPersistedAgentProfileTokens,
   upsertAndActivateAgentProfile,
 } from "./agent-profiles";
+import {
+  createPersistedActiveServer,
+  loadPersistedActiveServer,
+  savePersistedActiveServer,
+} from "./persistence";
+
+const CLOUD_AGENT_A_ID = "23766030-c096-4a14-932a-a4e43c562432";
+const CLOUD_AGENT_B_ID = "8dba1b08-03be-4f9a-8f63-bd5de03f91e8";
+const CLOUD_AGENT_A_SHARED_BASE = `https://api.elizacloud.ai/api/v1/eliza/agents/${CLOUD_AGENT_A_ID}`;
+
+describe("durable agent-profile selection", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  function seedSelection() {
+    const local = addAgentProfile({
+      label: "This device",
+      kind: "local",
+    });
+    const cloud = addAgentProfile({
+      label: "Cloud agent",
+      kind: "cloud",
+      cloudAgentId: CLOUD_AGENT_A_ID,
+      apiBase: `https://${CLOUD_AGENT_A_ID}.elizacloud.ai`,
+      accessToken: "cloud-token",
+    });
+    const cloudServer = createPersistedActiveServer({
+      kind: "cloud",
+      id: `cloud:${CLOUD_AGENT_A_ID}`,
+      apiBase: cloud.apiBase,
+      accessToken: cloud.accessToken,
+      label: cloud.label,
+    });
+    expect(savePersistedActiveServer(cloudServer)).toBe(true);
+    return { cloud, cloudServer, local };
+  }
+
+  it("updates the registry and boot-authoritative server together", () => {
+    const { local } = seedSelection();
+    const localServer = createPersistedActiveServer({
+      kind: "local",
+      id: local.id,
+      label: local.label,
+    });
+
+    expect(persistAgentProfileSelection(local.id, localServer)).toBe(true);
+    expect(loadAgentProfileRegistry().activeProfileId).toBe(local.id);
+    expect(loadPersistedActiveServer()?.id).toBe(localServer.id);
+  });
+
+  it("does not change the boot target when the registry write fails", () => {
+    const { cloudServer, local } = seedSelection();
+    const setItem = shellLocalStorage.setItem.bind(shellLocalStorage);
+    const writeSpy = vi
+      .spyOn(shellLocalStorage, "setItem")
+      .mockImplementation((key, value) => {
+        if (key === "elizaos:agent-profiles") {
+          throw new DOMException("blocked", "SecurityError");
+        }
+        setItem(key, value);
+      });
+
+    try {
+      expect(
+        persistAgentProfileSelection(
+          local.id,
+          createPersistedActiveServer({
+            kind: "local",
+            id: local.id,
+            label: local.label,
+          }),
+        ),
+      ).toBe(false);
+      expect(loadPersistedActiveServer()?.id).toBe(cloudServer.id);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("rolls back the active profile when the boot-target write fails", () => {
+    const { cloud, cloudServer, local } = seedSelection();
+    const setItem = shellLocalStorage.setItem.bind(shellLocalStorage);
+    const writeSpy = vi
+      .spyOn(shellLocalStorage, "setItem")
+      .mockImplementation((key, value) => {
+        if (key === "elizaos:active-server") {
+          throw new DOMException("quota exceeded", "QuotaExceededError");
+        }
+        setItem(key, value);
+      });
+
+    try {
+      expect(
+        persistAgentProfileSelection(
+          local.id,
+          createPersistedActiveServer({
+            kind: "local",
+            id: local.id,
+            label: local.label,
+          }),
+        ),
+      ).toBe(false);
+      expect(loadAgentProfileRegistry().activeProfileId).toBe(cloud.id);
+      expect(loadPersistedActiveServer()?.id).toBe(cloudServer.id);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+});
 
 describe("Agent profile token scrub", () => {
   beforeEach(() => {
@@ -129,6 +241,125 @@ describe("upsertAndActivateAgentProfile — cross-surface registry sync", () => 
     });
     const registry = loadAgentProfileRegistry();
     expect(registry.profiles.filter((p) => p.kind === "cloud")).toHaveLength(2);
+  });
+
+  it("never merges two explicitly-bound Cloud owners that report the same adapter base", () => {
+    const agentA = upsertAndActivateAgentProfile({
+      kind: "cloud",
+      label: "Agent A",
+      cloudAgentId: CLOUD_AGENT_A_ID,
+      apiBase: CLOUD_AGENT_A_SHARED_BASE,
+      accessToken: "token-a",
+    });
+    const agentB = upsertAndActivateAgentProfile({
+      kind: "cloud",
+      label: "Agent B",
+      cloudAgentId: CLOUD_AGENT_B_ID,
+      apiBase: CLOUD_AGENT_A_SHARED_BASE,
+      accessToken: "token-b",
+    });
+
+    const registry = loadAgentProfileRegistry();
+    expect(agentB.id).not.toBe(agentA.id);
+    expect(registry.profiles).toHaveLength(2);
+    expect(
+      registry.profiles.find((profile) => profile.id === agentA.id),
+    ).toEqual(
+      expect.objectContaining({
+        cloudAgentId: CLOUD_AGENT_A_ID,
+        accessToken: "token-a",
+      }),
+    );
+    expect(
+      registry.profiles.find((profile) => profile.id === agentB.id),
+    ).toEqual(
+      expect.objectContaining({
+        cloudAgentId: CLOUD_AGENT_B_ID,
+        accessToken: "token-b",
+      }),
+    );
+  });
+
+  it("uses an authoritative owner id to enrich a matching legacy row without deriving ownership from its host or profile id", () => {
+    const legacy = addAgentProfile({
+      kind: "cloud",
+      label: "Older install",
+      apiBase: CLOUD_AGENT_A_SHARED_BASE,
+      accessToken: "token-old",
+    });
+    expect(legacy.cloudAgentId).toBeUndefined();
+
+    const rebound = upsertAndActivateAgentProfile({
+      kind: "cloud",
+      label: "Agent A",
+      cloudAgentId: CLOUD_AGENT_A_ID,
+      apiBase: CLOUD_AGENT_A_SHARED_BASE,
+      accessToken: "token-fresh",
+    });
+
+    expect(rebound.id).toBe(legacy.id);
+    expect(rebound).toEqual(
+      expect.objectContaining({
+        cloudAgentId: CLOUD_AGENT_A_ID,
+        accessToken: "token-fresh",
+      }),
+    );
+  });
+
+  it("never lets an unbound Cloud upsert overwrite a bound owner's token on the same base", () => {
+    const bound = upsertAndActivateAgentProfile({
+      kind: "cloud",
+      label: "Agent A",
+      cloudAgentId: CLOUD_AGENT_A_ID,
+      apiBase: CLOUD_AGENT_A_SHARED_BASE,
+      accessToken: "token-a",
+    });
+    const unbound = upsertAndActivateAgentProfile({
+      kind: "cloud",
+      label: "Unbound connection",
+      apiBase: CLOUD_AGENT_A_SHARED_BASE,
+      accessToken: "unowned-token",
+    });
+
+    const registry = loadAgentProfileRegistry();
+    expect(unbound.id).not.toBe(bound.id);
+    expect(registry.profiles).toHaveLength(2);
+    expect(
+      registry.profiles.find((profile) => profile.id === bound.id),
+    ).toEqual(
+      expect.objectContaining({
+        cloudAgentId: CLOUD_AGENT_A_ID,
+        accessToken: "token-a",
+      }),
+    );
+  });
+
+  it("reuses one explicitly-bound Cloud owner across a canonical base change", () => {
+    const shared = upsertAndActivateAgentProfile({
+      kind: "cloud",
+      label: "Agent A",
+      cloudAgentId: CLOUD_AGENT_A_ID,
+      apiBase: CLOUD_AGENT_A_SHARED_BASE,
+      accessToken: "shared-token",
+    });
+    const dedicatedBase = `https://${CLOUD_AGENT_A_ID}.elizacloud.ai`;
+    const dedicated = upsertAndActivateAgentProfile({
+      kind: "cloud",
+      label: "Agent A",
+      cloudAgentId: CLOUD_AGENT_A_ID,
+      apiBase: dedicatedBase,
+      accessToken: "dedicated-token",
+    });
+
+    expect(dedicated.id).toBe(shared.id);
+    expect(loadAgentProfileRegistry().profiles).toHaveLength(1);
+    expect(dedicated).toEqual(
+      expect.objectContaining({
+        cloudAgentId: CLOUD_AGENT_A_ID,
+        apiBase: dedicatedBase,
+        accessToken: "dedicated-token",
+      }),
+    );
   });
 
   it("re-activating without a new token leaves the prior token in place (never blanks it)", () => {

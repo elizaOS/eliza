@@ -49,6 +49,7 @@ const browserClaimCalls: Array<{
   token: string;
   binding: { agentId: string; expectedOrigin: string };
 }> = [];
+const authRequests: Request[] = [];
 
 mock.module("@/lib/runtime/cloud-bindings", () => ({
   ...cloudBindingsActual,
@@ -56,7 +57,8 @@ mock.module("@/lib/runtime/cloud-bindings", () => ({
 }));
 mock.module("@/lib/auth", () => ({
   ...authActual,
-  requireAuthOrApiKeyWithOrg: async () => {
+  requireAuthOrApiKeyWithOrg: async (request: Request) => {
+    authRequests.push(request);
     if (authResult === "throw") throw new AuthenticationError("unauthorized");
     if (authResult === "forbidden") throw new ForbiddenError("forbidden");
     if (authResult === "unexpected") throw new Error("auth dependency failed");
@@ -116,6 +118,10 @@ mock.module("@/lib/utils/logger", () => ({
 }));
 
 let captured: Request | null = null;
+function requireCapturedRequest(): Request {
+  if (!captured) throw new Error("origin request was not captured");
+  return captured;
+}
 // Per-test override for the origin fetch; null = the default instant-200 stub.
 let fetchImpl: ((request: Request) => Promise<Response>) | null = null;
 const originalFetch = globalThis.fetch;
@@ -198,6 +204,7 @@ beforeEach(() => {
   browserClaimResult = { status: "invalid" };
   browserClaimError = null;
   browserClaimCalls.length = 0;
+  authRequests.length = 0;
   rateLimitResult = { success: true };
   rateLimitError = null;
   rateLimitKeys.length = 0;
@@ -459,6 +466,8 @@ describe("dedicated-agent-proxy — unified auth", () => {
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
 
     expect(res.status).toBe(200);
+    expect(authRequests).toHaveLength(1);
+    expect(authRequests[0]?.headers.get("cookie")).toBeNull();
     expect(captured).not.toBeNull();
     // The container gets the agent's own token, NOT the cloud token.
     expect(captured?.headers.get("authorization")).toBe(
@@ -491,6 +500,8 @@ describe("dedicated-agent-proxy — unified auth", () => {
         "steward-token=expired-session; steward-refresh-token=live-refresh",
     });
     await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(authRequests).toHaveLength(1);
+    expect(authRequests[0]?.headers.get("cookie")).toBeNull();
     expect(captured?.headers.get("authorization")).toBeNull();
     expect(captured?.headers.get("cookie")).toBeNull();
   });
@@ -681,9 +692,27 @@ describe("dedicated-agent-proxy — unified auth", () => {
   test("WS upgrade with ?token= (owner, running) → rewrites ?token= to the agent token + sets header", async () => {
     authResult = { user: { id: "u1", organization_id: "org1" } };
     sandboxResult = runningDedicated;
+    const sent: string[] = [];
+    const socket = {
+      send(value: string) {
+        sent.push(value);
+      },
+    } satisfies Pick<WebSocket, "send">;
+    fetchImpl = async () => {
+      const response = new Response(null, {
+        status: 101,
+        headers: {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-origin": "https://attacker.example",
+          "set-cookie": "steward-token=attacker; Domain=elizacloud.ai",
+        },
+      });
+      Object.defineProperty(response, "webSocket", { value: socket });
+      return response;
+    };
 
     const r = makeWsRequest("cloud-token-abc");
-    await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    const response = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
 
     expect(captured).not.toBeNull();
     expect(new URL(captured?.url ?? "").searchParams.get("token")).toBe(
@@ -692,6 +721,34 @@ describe("dedicated-agent-proxy — unified auth", () => {
     expect(captured?.headers.get("authorization")).toBe(
       "Bearer agent-secret-token",
     );
+    expect(response.status).toBe(101);
+    const returnedSocket: unknown = Reflect.get(response, "webSocket");
+    expect(returnedSocket).toBe(socket);
+    if (
+      !returnedSocket ||
+      typeof returnedSocket !== "object" ||
+      !("send" in returnedSocket) ||
+      typeof returnedSocket.send !== "function"
+    ) {
+      throw new Error(
+        "proxied WebSocket response did not expose a usable endpoint",
+      );
+    }
+    returnedSocket.send("ping");
+    expect(sent).toEqual(["ping"]);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(response.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+
+  test("invalid upstream WebSocket upgrade without an endpoint fails closed", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = runningDedicated;
+    fetchImpl = async () => new Response(null, { status: 101 });
+
+    const r = makeWsRequest("cloud-token-abc");
+    const response = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(response.status).toBe(502);
   });
 
   test("rejected Cloud-shaped WS query token fails at the edge", async () => {
@@ -699,6 +756,82 @@ describe("dedicated-agent-proxy — unified auth", () => {
     const r = makeWsRequest("eliza_cloud_api_key");
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
     expect(res.status).toBe(401);
+    expect(captured).toBeNull();
+  });
+
+  test("validated header auth strips every query credential alias before proxying", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = runningDedicated;
+    const u = new URL(`https://${AGENT}.elizacloud.ai/ws`);
+    u.searchParams.append("token", "eliza_query_secret");
+    u.searchParams.append("apiKey", "header.payload.signature");
+    u.searchParams.append("api_key", "another-query-secret");
+    const r = new Request(u, {
+      headers: { authorization: "Bearer valid-cloud-header" },
+    });
+
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(res.status).toBe(200);
+    const proxiedUrl = new URL(captured?.url ?? "");
+    expect(proxiedUrl.searchParams.getAll("token")).toEqual([]);
+    expect(proxiedUrl.searchParams.getAll("apiKey")).toEqual([]);
+    expect(proxiedUrl.searchParams.getAll("api_key")).toEqual([]);
+    expect(captured?.headers.get("authorization")).toBe(
+      "Bearer agent-secret-token",
+    );
+  });
+
+  test("Cloud-shaped query credentials cannot hide behind rejected agent-local headers", async () => {
+    authResult = "throw";
+    const u = new URL(`https://${AGENT}.elizacloud.ai/ws`);
+    u.searchParams.set("apiKey", "eliza_cloud_query_secret");
+    const r = new Request(u, {
+      headers: { authorization: "Bearer agent_local_header" },
+    });
+
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "cloud_auth_rejected" });
+    expect(captured).toBeNull();
+  });
+
+  test("query-only apiKey aliases are validated and rewritten in the same slot", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = runningDedicated;
+
+    for (const alias of ["apiKey", "api_key"] as const) {
+      captured = null;
+      const u = new URL(`https://${AGENT}.elizacloud.ai/ws`);
+      u.searchParams.set(alias, "cloud-query-token");
+      const res = await handleDedicatedAgentProxy(
+        new Request(u),
+        ENV,
+        u,
+        AGENT,
+      );
+
+      expect(res.status).toBe(200);
+      const proxiedUrl = new URL(requireCapturedRequest().url);
+      expect(proxiedUrl.searchParams.get(alias)).toBe("agent-secret-token");
+      for (const other of ["token", "apiKey", "api_key"]) {
+        if (other !== alias)
+          expect(proxiedUrl.searchParams.get(other)).toBeNull();
+      }
+    }
+  });
+
+  test("duplicate query credentials are all inspected before agent-local fallback", async () => {
+    authResult = "throw";
+    const u = new URL(`https://${AGENT}.elizacloud.ai/ws`);
+    u.searchParams.append("token", "agent_local_token");
+    u.searchParams.append("token", "eliza_cloud_query_secret");
+
+    const res = await handleDedicatedAgentProxy(new Request(u), ENV, u, AGENT);
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "cloud_auth_rejected" });
     expect(captured).toBeNull();
   });
 
@@ -732,8 +865,84 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
     expect(res.status).toBe(204);
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
     expect(captured).toBeNull(); // preflight is answered at the edge
+  });
+
+  test("no-Origin responses still vary on Origin for shared caches", async () => {
+    authResult = "throw";
+    const r = new Request(`https://${AGENT}.elizacloud.ai/assets/app.js`);
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("vary")?.toLowerCase()).toContain("origin");
+  });
+
+  test("tenant agent origins cannot preflight or call another agent", async () => {
+    const attackerOrigin =
+      "https://22222222-2222-2222-2222-222222222222.elizacloud.ai";
+    const preflight = new Request(`https://${AGENT}.elizacloud.ai/api/status`, {
+      method: "OPTIONS",
+      headers: { origin: attackerOrigin },
+    });
+    const deniedPreflight = await handleDedicatedAgentProxy(
+      preflight,
+      ENV,
+      urlOf(preflight),
+      AGENT,
+    );
+    expect(deniedPreflight.status).toBe(403);
+    expect(
+      deniedPreflight.headers.get("access-control-allow-origin"),
+    ).toBeNull();
+
+    const request = makeRequest("victim-cloud-token", attackerOrigin, {
+      cookie: "steward-token=victim-session",
+    });
+    const denied = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+    expect(denied.status).toBe(403);
+    expect(authRequests).toHaveLength(0);
+    expect(captured).toBeNull();
+  });
+
+  test("the Worker replaces tenant response policy and strips parent-domain state mutation", async () => {
+    authResult = "throw";
+    fetchImpl = async () =>
+      new Response("ok", {
+        headers: {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-origin": "https://attacker.example",
+          "clear-site-data": '"cookies"',
+          "set-cookie":
+            "steward-token=attacker; Domain=elizacloud.ai; Secure; HttpOnly",
+          "set-cookie2": "legacy=attacker; Domain=elizacloud.ai",
+          vary: "Accept-Encoding",
+        },
+      });
+
+    const request = makeRequest(undefined, ORIGIN);
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    expect(response.headers.get("access-control-allow-credentials")).toBeNull();
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(response.headers.get("set-cookie2")).toBeNull();
+    expect(response.headers.get("clear-site-data")).toBeNull();
+    expect(response.headers.get("vary")).toContain("Accept-Encoding");
+    expect(response.headers.get("vary")).toContain("Origin");
   });
 
   test("owner + running + EMPTY headscale_ip + fallback off → 503 agent_unroutable + CORS, no CP round-trip", async () => {

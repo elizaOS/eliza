@@ -21,6 +21,7 @@ import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { isFirstPartyOrigin } from "@/lib/cors/cloud-api-hono-cors";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
@@ -46,6 +47,7 @@ const CLOUD_ONLY_CREDENTIAL_HEADERS = [
   "proxy-authorization",
   "x-bootstrap-secret",
   "x-cron-secret",
+  "x-eliza-csrf",
   "x-eliza-service-token",
   "x-internal-token",
   "x-service-key",
@@ -321,7 +323,7 @@ async function proxyToOrigin(
   env: Bindings,
   url: URL,
   injectBearer?: string,
-  injectQueryToken = false,
+  injectQueryCredential?: RealtimeQueryCredentialName | null,
 ): Promise<Response> {
   const targetUrl = new URL(request.url);
   targetUrl.hostname = resolveOriginHost(env);
@@ -337,8 +339,11 @@ async function proxyToOrigin(
     // headers on `new WebSocket()`); the container reads it via
     // ELIZA_ALLOW_WS_QUERY_TOKEN. Rewrite that query param to the agent token
     // too so the upgrade authenticates the same way the header does.
-    if (injectQueryToken) {
-      targetUrl.searchParams.set("token", injectBearer);
+    for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
+      targetUrl.searchParams.delete(name);
+    }
+    if (injectQueryCredential) {
+      targetUrl.searchParams.set(injectQueryCredential, injectBearer);
     }
   }
   // The timeout guards the HEADERS phase only. A blanket
@@ -513,15 +518,27 @@ async function resumeAndRespond(
  * ELIZA_ALLOW_WS_QUERY_TOKEN). Detect a query-only token so we validate it the
  * same way and inject the swapped agent token back on the same channel.
  */
-function extractQueryToken(request: Request, url: URL): string | null {
-  // A header already carries auth → let the normal request validation handle it.
-  if (
-    request.headers.get("authorization") ||
-    request.headers.get("x-api-key")
-  ) {
-    return null;
+const REALTIME_QUERY_CREDENTIAL_NAMES = ["token", "apiKey", "api_key"] as const;
+type RealtimeQueryCredentialName =
+  (typeof REALTIME_QUERY_CREDENTIAL_NAMES)[number];
+
+interface RealtimeQueryCredentials {
+  effective: { name: RealtimeQueryCredentialName; value: string } | null;
+  values: string[];
+}
+
+function readRealtimeQueryCredentials(url: URL): RealtimeQueryCredentials {
+  const values: string[] = [];
+  let effective: RealtimeQueryCredentials["effective"] = null;
+  for (const name of REALTIME_QUERY_CREDENTIAL_NAMES) {
+    for (const raw of url.searchParams.getAll(name)) {
+      const value = raw.trim();
+      if (!value) continue;
+      values.push(value);
+      if (!effective) effective = { name, value };
+    }
   }
-  return url.searchParams.get("token")?.trim() || null;
+  return { effective, values };
 }
 
 function isCloudCredentialShape(value: string | null): boolean {
@@ -533,7 +550,7 @@ function isCloudCredentialShape(value: string | null): boolean {
 
 function hasCloudCredentialShape(
   request: Request,
-  queryToken: string | null,
+  queryCredentials: readonly string[],
 ): boolean {
   const apiKey = request.headers.get("x-api-key")?.trim() ?? null;
   const authorization = request.headers.get("authorization")?.trim() ?? "";
@@ -541,40 +558,112 @@ function hasCloudCredentialShape(
   return (
     isCloudCredentialShape(apiKey) ||
     isCloudCredentialShape(bearerMatch?.[1]?.trim() ?? null) ||
-    isCloudCredentialShape(queryToken)
+    queryCredentials.some((value) => isCloudCredentialShape(value))
   );
 }
 
 /**
- * CORS headers for a browser-visible proxy response. The CP (nginx → agent-router)
- * forwards verbatim and injects nothing, so its CORS-less 404/503 — and our own
- * JSON error envelopes — reach the browser as an opaque
- * "No 'Access-Control-Allow-Origin'" failure (#15347). Reflect the caller's
- * Origin (mirrors the agent's own `resolveCorsOrigin`, which reflects any origin
- * when provisioned); `*` only for a header-less non-browser caller.
+ * Browser origins allowed to call a dedicated agent through the Worker.
+ * Tenant-owned agent subdomains are deliberately excluded from the shared
+ * first-party set: they must never borrow a visitor's Cloud session to call a
+ * different tenant's agent.
  */
-function corsHeadersFor(request: Request): Record<string, string> {
-  const origin = request.headers.get("origin");
-  return {
-    "access-control-allow-origin": origin ?? "*",
-    vary: "origin",
-    "access-control-allow-credentials": "true",
-    "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-    "access-control-allow-headers": "authorization,content-type,x-api-key",
-  };
+function isDedicatedProxyBrowserOriginAllowed(
+  request: Request,
+  url: URL,
+): boolean {
+  const origin = request.headers.get("origin")?.trim();
+  if (!origin) return true;
+  return origin === url.origin || isFirstPartyOrigin(origin);
 }
 
 /**
- * Guarantee CORS on a browser-visible response. Applied only when the response
- * lacks it, so the agent's own CORS-bearing responses (the happy path) pass
- * through untouched and only the CP's/our error responses are augmented.
+ * The Worker, rather than a tenant-controlled agent or the router, owns the
+ * browser policy for every dedicated-host response. Agent-local auth is bearer
+ * based, so parent-domain cookies never need credentialed CORS here.
  */
-function withCors(request: Request, response: Response): Response {
-  if (response.headers.has("access-control-allow-origin")) return response;
-  const headers = new Headers(response.headers);
-  for (const [key, value] of Object.entries(corsHeadersFor(request))) {
-    headers.set(key, value);
+function applyDedicatedProxyCors(
+  request: Request,
+  url: URL,
+  headers: Headers,
+): boolean {
+  for (const name of Array.from(headers.keys())) {
+    if (name.startsWith("access-control-")) headers.delete(name);
   }
+
+  const origin = request.headers.get("origin")?.trim();
+  if (origin && !isDedicatedProxyBrowserOriginAllowed(request, url)) {
+    return false;
+  }
+
+  headers.set("access-control-allow-origin", origin ?? "*");
+  const vary = new Map<string, string>();
+  for (const value of (headers.get("vary") ?? "").split(",")) {
+    const trimmed = value.trim();
+    if (trimmed) vary.set(trimmed.toLowerCase(), trimmed);
+  }
+  vary.set("origin", "Origin");
+  headers.set("vary", [...vary.values()].join(", "));
+  headers.set(
+    "access-control-allow-methods",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+  );
+  headers.set(
+    "access-control-allow-headers",
+    "authorization,content-type,x-api-key",
+  );
+  return true;
+}
+
+function dedicatedProxyPreflight(request: Request, url: URL): Response {
+  const headers = new Headers({ "cache-control": "no-store" });
+  if (!applyDedicatedProxyCors(request, url, headers)) {
+    return new Response(null, { status: 403, headers });
+  }
+  return new Response(null, { status: 204, headers });
+}
+
+function withDedicatedProxyBrowserPolicy(
+  request: Request,
+  url: URL,
+  response: Response,
+): Response {
+  const headers = new Headers(response.headers);
+  headers.delete("set-cookie");
+  headers.delete("set-cookie2");
+  headers.delete("clear-site-data");
+  applyDedicatedProxyCors(request, url, headers);
+
+  const webSocket = (response as Response & { webSocket?: WebSocket | null })
+    .webSocket;
+  if (response.status === 101) {
+    if (!webSocket) {
+      return new Response(null, {
+        status: 502,
+        headers,
+      });
+    }
+    const upgradeResponseInit: ResponseInit & { webSocket: WebSocket } = {
+      status: 101,
+      statusText: response.statusText,
+      headers,
+      webSocket,
+    };
+    const upgradeResponse = new Response(null, upgradeResponseInit);
+    // Bun's Fetch implementation accepts status 101 but ignores the Workers
+    // `webSocket` ResponseInit extension. Preserve the endpoint in local tests
+    // and non-workerd development without changing workerd's native response.
+    if (!("webSocket" in upgradeResponse)) {
+      Object.defineProperty(upgradeResponse, "webSocket", {
+        configurable: false,
+        enumerable: false,
+        value: webSocket,
+        writable: false,
+      });
+    }
+    return upgradeResponse;
+  }
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -591,9 +680,8 @@ function isBridgeHostFallbackEnabled(env: Bindings): boolean {
 
 /**
  * Auth-unify + proxy a request bound for `https://<agentId>.elizacloud.ai/*`.
- * Every browser-visible return path carries CORS (`withCors`), and a CORS
- * preflight is answered at the edge so a cross-origin agent call is never blocked
- * by the CP's CORS-less responses (#15347).
+ * The Worker owns the browser policy and preflight so neither the tenant agent
+ * nor the router can widen credentialed access or make failures CORS-opaque.
  */
 export function handleDedicatedAgentProxy(
   request: Request,
@@ -606,14 +694,20 @@ export function handleDedicatedAgentProxy(
       handleManagedPairAtEdge(request, env, url, agentId),
     );
   }
-  if (request.method === "OPTIONS") {
+  if (!isDedicatedProxyBrowserOriginAllowed(request, url)) {
     return Promise.resolve(
-      new Response(null, { status: 204, headers: corsHeadersFor(request) }),
+      new Response(null, {
+        status: 403,
+        headers: { "cache-control": "no-store" },
+      }),
     );
+  }
+  if (request.method === "OPTIONS") {
+    return Promise.resolve(dedicatedProxyPreflight(request, url));
   }
   return runWithCloudBindingsAsync(env, async () => {
     const response = await proxyDedicatedAgent(request, env, url, agentId);
-    return withCors(request, response);
+    return withDedicatedProxyBrowserPolicy(request, url, response);
   });
 }
 
@@ -623,12 +717,25 @@ async function proxyDedicatedAgent(
   url: URL,
   agentId: string,
 ): Promise<Response> {
-  const queryToken = extractQueryToken(request, url);
-  const authRequest = queryToken
-    ? new Request(request.url, {
-        headers: { authorization: `Bearer ${queryToken}` },
-      })
-    : request;
+  const queryCredentials = readRealtimeQueryCredentials(url);
+  const headerCarriesCredential = Boolean(
+    request.headers.get("authorization") || request.headers.get("x-api-key"),
+  );
+  const effectiveQueryCredential = headerCarriesCredential
+    ? null
+    : queryCredentials.effective;
+  const authHeaders = new Headers(request.headers);
+  authHeaders.delete("cookie");
+  if (effectiveQueryCredential) {
+    authHeaders.set(
+      "authorization",
+      `Bearer ${effectiveQueryCredential.value}`,
+    );
+  }
+  const authRequest = new Request(request.url, {
+    method: request.method,
+    headers: authHeaders,
+  });
 
   let orgId: string;
   let userId: string;
@@ -644,7 +751,7 @@ async function proxyDedicatedAgent(
     // distinct `agent_` namespace; Cloud-shaped custom tokens are deliberately
     // reserved so this boundary remains unambiguous.
     if (error instanceof AuthenticationError) {
-      if (hasCloudCredentialShape(request, queryToken)) {
+      if (hasCloudCredentialShape(request, queryCredentials.values)) {
         return Response.json(
           {
             success: false,
@@ -774,5 +881,11 @@ async function proxyDedicatedAgent(
 
   // Keep the origin fetch outside the resolution boundary so transport errors
   // preserve proxy semantics instead of being mistaken for auth failures.
-  return proxyToOrigin(request, env, url, agentToken, queryToken !== null);
+  return proxyToOrigin(
+    request,
+    env,
+    url,
+    agentToken,
+    effectiveQueryCredential?.name ?? null,
+  );
 }

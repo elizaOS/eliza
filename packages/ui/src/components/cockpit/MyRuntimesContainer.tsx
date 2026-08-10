@@ -19,6 +19,19 @@ export interface MyRuntimesContainerProps {
   className?: string;
 }
 
+function switchFailureMessage(reason: string | undefined): string {
+  if (reason === "untrusted-remote") {
+    return "That remote isn't trusted — use a tailscale (100.x / *.ts.net) or local address.";
+  }
+  if (reason === "untrusted-cloud") {
+    return "That Cloud agent address isn't valid. Open the agent again from Eliza Cloud.";
+  }
+  if (reason === "persistence-failed") {
+    return "The runtime couldn't be saved. Check browser storage and try again.";
+  }
+  return "That runtime is no longer available.";
+}
+
 /**
  * Live container for {@link MyRuntimesSection}: reads the agent-profile registry,
  * switches the active runtime in place via {@link switchRuntimeNonDestructive}
@@ -66,11 +79,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
         }
         const res = switchRuntimeNonDestructive(id);
         if (!res.ok) {
-          setError(
-            res.reason === "untrusted-remote"
-              ? "That remote isn't trusted — use a tailscale (100.x / *.ts.net) or local address."
-              : "That runtime is no longer available.",
-          );
+          setError(switchFailureMessage(res.reason));
         }
       } finally {
         refresh();
@@ -94,16 +103,17 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
           );
           return;
         }
-        const profile = addAgentProfile({
-          kind: "remote",
-          label: entry.label,
-          apiBase: entry.apiBase,
-          accessToken: entry.accessToken,
-        });
-        // addAgentProfile activates it in the registry but does NOT repoint the
-        // live client; switch to it so the base/token swap + persisted-active all
-        // run and the Active badge matches the runtime actually serving.
-        switchRuntimeNonDestructive(profile.id);
+        const profile = addAgentProfile(
+          {
+            kind: "remote",
+            label: entry.label,
+            apiBase: entry.apiBase,
+            accessToken: entry.accessToken,
+          },
+          { activate: false },
+        );
+        const result = switchRuntimeNonDestructive(profile.id);
+        if (!result.ok) setError(switchFailureMessage(result.reason));
       } finally {
         refresh();
         setBusy(false);
