@@ -166,7 +166,7 @@ jobs:
           submodules: false
 
       - uses: ./.github/actions/setup-bun-workspace
-        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.zero_key == 'true' || needs.changes.outputs.cloud == 'true'
+        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.zero_key == 'true'
         with:
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
@@ -205,13 +205,45 @@ jobs:
           TEST_PACKAGE_FILTER: '^(?!.*\(packages/homepage\)#).*'
         run: bun run test:e2e
 
+      - name: No affected smoke lane
+        if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.zero_key != 'true'
+        run: echo "No desktop or deterministic E2E smoke lane is affected."
+
+  cloud_smoke:
+    name: Cloud smoke
+    needs: changes
+    runs-on: ubuntu-24.04
+    # WHY: cloud tests are still part of the required CI gate, but sharing the
+    # same job timeout with deterministic browser smoke lets a healthy E2E lane
+    # consume most of the budget and cancel cloud batches before they finish.
+    # Running cloud in its own job preserves coverage while parallelizing the
+    # long smoke surfaces.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: needs.changes.outputs.cloud == 'true'
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        if: needs.changes.outputs.cloud == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
       - name: Cloud tests
         if: needs.changes.outputs.cloud == 'true'
         run: bun run test:cloud
 
-      - name: No affected smoke lane
-        if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.zero_key != 'true' && needs.changes.outputs.cloud != 'true'
-        run: echo "No desktop, deterministic E2E, or cloud smoke lane is affected."
+      - name: No affected cloud smoke lane
+        if: needs.changes.outputs.cloud != 'true'
+        run: echo "No cloud smoke lane is affected."
 
   android_aab:
     name: Android release AAB
@@ -405,7 +437,7 @@ jobs:
   required:
     name: Required
     if: always()
-    needs: [changes, quality, tests, smoke, android_aab, secrets]
+    needs: [changes, quality, tests, smoke, cloud_smoke, android_aab, secrets]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every CI job to succeed
@@ -415,6 +447,7 @@ jobs:
             quality=${{ needs.quality.result }}
             tests=${{ needs.tests.result }}
             smoke=${{ needs.smoke.result }}
+            cloud-smoke=${{ needs.cloud_smoke.result }}
             android-aab=${{ needs.android_aab.result }}
             secrets=${{ needs.secrets.result }}
         run: |
