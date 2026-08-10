@@ -6122,29 +6122,37 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 	// (27 posts in 20 minutes). The gate extends #9874's addressing signal from
 	// tool promotion to the full reply / planner / early-ack routing.
 
-	it("ignores a simple-path turn addressed to another participant — no reply ships", async () => {
-		const runtime = withRoomEntities(
-			makeRuntime([
-				stage1Response({
-					thought: "Overheard.",
-					contexts: ["simple"],
-					replyText: "I can help with that!",
-					addressedTo: ["Alice"],
+	it("ignores a simple-path turn in every supported text-group channel", async () => {
+		for (const channelType of [
+			ChannelType.GROUP,
+			ChannelType.THREAD,
+			ChannelType.WORLD,
+			ChannelType.FORUM,
+			ChannelType.FEED,
+		]) {
+			const runtime = withRoomEntities(
+				makeRuntime([
+					stage1Response({
+						thought: "Overheard.",
+						contexts: ["simple"],
+						replyText: "I can help with that!",
+						addressedTo: ["Alice"],
+					}),
+				]),
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Alice, can you take a look?",
+					channelType,
 				}),
-			]),
-		);
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: "Alice, can you take a look?",
-				channelType: ChannelType.GROUP,
-			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-0000000000b1" as UUID,
-		});
-		expect(result.kind).toBe("terminal");
-		if (result.kind === "terminal") {
-			expect(result.action).toBe("IGNORE");
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-0000000000b1" as UUID,
+			});
+			expect(result.kind, channelType).toBe("terminal");
+			if (result.kind === "terminal") {
+				expect(result.action, channelType).toBe("IGNORE");
+			}
 		}
 	});
 
