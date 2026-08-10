@@ -41,7 +41,21 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
             organization_id: "org-1",
             user_id: "user-1",
           }
-        : undefined,
+        : id === "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+          ? {
+              id,
+              character_id: null,
+              organization_id: "org-1",
+              user_id: "user-1",
+            }
+          : id === "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+            ? {
+                id,
+                character_id: null,
+                organization_id: "org-2",
+                user_id: "user-2",
+              }
+            : undefined,
     findLatestByCharacterId: async (characterId: string) =>
       characterId === "11111111-1111-4111-8111-111111111111"
         ? {
@@ -225,6 +239,47 @@ describe("voice-session mint route", () => {
     expect(verified.claims.agentId).toBe(
       "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     );
+  });
+
+  test("accepts an owned dedicated sandbox with no linked character", async () => {
+    const app = appWithFlag("true");
+    const consentRes = await app.request("/api/v1/voice/session/consent", {
+      method: "POST",
+    });
+    const { consentNonce } = (await consentRes.json()) as {
+      consentNonce: string;
+    };
+    const res = await app.request("/api/v1/voice/session", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        conversationId: "22222222-2222-4222-8222-222222222222",
+        consentNonce,
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { token: string };
+    const verified = await verifyVoiceSessionToken(body.token);
+    expect(verified.claims.agentId).toBe(
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    );
+  });
+
+  test("hides a directly addressed sandbox owned by another tenant", async () => {
+    const app = appWithFlag("true");
+    const res = await app.request("/api/v1/voice/session", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        conversationId: "22222222-2222-4222-8222-222222222222",
+        consentNonce: "unused",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("agent_not_found");
   });
 
   test("mint response never contains a provider key", async () => {
