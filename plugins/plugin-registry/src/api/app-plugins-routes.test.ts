@@ -455,5 +455,40 @@ describe("app plugin compatibility routes", () => {
         "@elizaos/plugin-browser",
       ]);
     });
+
+    it("removes app- prefixed short aliases from @elizaos/app-* packages", () => {
+      currentConfig = {
+        env: {},
+        plugins: {
+          entries: {
+            "database-viewer": { enabled: true },
+          },
+          allow: [
+            "@elizaos/app-database-viewer",
+            "app-database-viewer",
+            "@elizaos/plugin-discord",
+          ],
+        },
+      };
+
+      const result = persistCompatPluginMutation(
+        "database-viewer",
+        { enabled: false },
+        makePlugin({
+          id: "database-viewer",
+          npmName: "@elizaos/app-database-viewer",
+          category: "app",
+        }) as never,
+      );
+
+      expect(result.status).toBe(200);
+      // The app- prefixed short alias must also be removed.
+      expect(
+        (savedConfig as Record<string, unknown>)?.plugins as Record<
+          string,
+          unknown
+        >,
+      ).toHaveProperty("allow", ["@elizaos/plugin-discord"]);
+    });
   });
 });

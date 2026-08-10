@@ -46,6 +46,13 @@ describe("pluginPackageNameCandidates", () => {
       "plugin-browser",
     ]);
   });
+
+  it("does not strip plugin- when it appears in the middle of a name", () => {
+    expect(pluginPackageNameCandidates("my-plugin-health")).toEqual([
+      "@elizaos/plugin-my-plugin-health",
+      "my-plugin-health",
+    ]);
+  });
 });
 
 describe("registerPluginViews package-dir resolution", () => {

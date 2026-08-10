@@ -444,6 +444,12 @@ function writeCompatSectionEnabled(
  * On disable, every alias — npm name, short id, and normalised id — is
  * removed so drift does not persist under a secondary name. Unrelated
  * allowlist entries are always preserved.
+ *
+ * The alias set mirrors every form the drift detector checks: it tests
+ * `allowList.has(npmName) || allowList.has(shortId)` where `shortId` comes
+ * from {@link shortPluginIdFromNpmName}. For `@elizaos/app-*` packages that
+ * short id is `app-<name>`, so both that and the normalised id must be in
+ * the removal set or the entry survives and drift persists.
  */
 function syncPluginsAllowlist(
   config: Record<string, unknown>,
@@ -456,12 +462,16 @@ function syncPluginsAllowlist(
     ? [...(plugins.allow as string[])]
     : [];
 
-  // Every name form this plugin can appear under in the allowlist.
+  // Every name form this plugin can appear under in the allowlist. Uses the
+  // same derivation as shortPluginIdFromNpmName + normalizePluginId so the
+  // removal set is a superset of everything the drift detector checks.
   const aliases = new Set<string>();
   aliases.add(pluginId);
   aliases.add(normalizePluginId(pluginId));
   if (typeof npmName === "string" && npmName.length > 0) {
     aliases.add(npmName);
+    const shortId = shortPluginIdFromNpmName(npmName);
+    if (shortId) aliases.add(shortId);
     aliases.add(normalizePluginId(npmName));
   }
 
