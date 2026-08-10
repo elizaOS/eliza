@@ -1,8 +1,8 @@
 /**
  * Persistent scheduler/workflow regression over one shared PGlite database.
- * It reproduces the tenant re-key orphan, its one real "disabled" notification
- * plus same-fire task deletion, and a full database restart before proving
- * startup reconciliation is isolated and nothing re-fires or re-notifies.
+ * It reproduces tenant re-key orphans, proves first-fire auto-disable with a
+ * persisted notification, and restarts the database to prove startup
+ * reconciliation removes an unfired orphan without crossing tenant scopes.
  */
 
 import { expect, setDefaultTimeout, test } from 'bun:test';
@@ -22,7 +22,7 @@ import {
 // a relative src import creates a second class identity and the
 // `instanceof TaskService` readiness check always fails against it.
 import { NotificationService, TaskService } from '@elizaos/core/node';
-import { eq } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import { registerTriggerTaskWorker } from '../../../../packages/agent/src/triggers/runtime.ts';
 import { plugin as sqlPlugin } from '../../../plugin-sql/src/index.ts';
 import { DatabaseMigrationService } from '../../../plugin-sql/src/migration-service.ts';
@@ -42,7 +42,8 @@ setDefaultTimeout(120_000);
 
 const AGENT_A_ID = stringToUuid('workflow-orphan-reconciliation-agent-a');
 const AGENT_B_ID = stringToUuid('workflow-orphan-reconciliation-agent-b');
-const ORPHAN_WORKFLOW_ID = 'orphaned-tenant-a-workflow';
+const FIRED_ORPHAN_WORKFLOW_ID = 'fired-orphaned-tenant-a-workflow';
+const RESTART_ORPHAN_WORKFLOW_ID = 'restart-orphaned-tenant-a-workflow';
 const VALID_A_WORKFLOW_ID = 'valid-tenant-a-workflow';
 const VALID_B_WORKFLOW_ID = 'valid-tenant-b-workflow';
 const SCHEDULE_INTERVAL_MS = 60 * 60 * 1000;
@@ -206,7 +207,7 @@ async function stopPair(pair: RuntimePair): Promise<void> {
   await Promise.all([pair.runtimeA.stop(), pair.runtimeB.stop()]);
 }
 
-test('quarantined tenant task is disabled at first fire and restart cannot fire or re-notify it', async () => {
+test('first fire disables one orphan and restart quarantines another without crossing tenants', async () => {
   const tempDir = await mkdtemp(join(tmpdir(), 'workflow-orphan-reconciliation-'));
   const dataDir = join(tempDir, 'pglite');
   let manager: PGliteClientManager | null = new PGliteClientManager({ dataDir });
@@ -228,7 +229,8 @@ test('quarantined tenant task is disabled at first fire and restart cannot fire 
     registerTriggerTaskWorker(firstPair.runtimeA);
 
     for (const definition of [
-      scheduledWorkflow(ORPHAN_WORKFLOW_ID, 'Tenant A orphan'),
+      scheduledWorkflow(FIRED_ORPHAN_WORKFLOW_ID, 'Tenant A fired orphan'),
+      scheduledWorkflow(RESTART_ORPHAN_WORKFLOW_ID, 'Tenant A restart orphan'),
       scheduledWorkflow(VALID_A_WORKFLOW_ID, 'Tenant A valid'),
     ]) {
       const created = await workflowA.createWorkflow(definition);
@@ -240,27 +242,34 @@ test('quarantined tenant task is disabled at first fire and restart cannot fire 
 
     const initialTasksA = await workflowTasks(firstPair.runtimeA);
     const initialTasksB = await workflowTasks(firstPair.runtimeB);
-    expect(initialTasksA).toHaveLength(2);
+    expect(initialTasksA).toHaveLength(3);
     expect(initialTasksB).toHaveLength(1);
-    const orphanTask = taskForWorkflow(initialTasksA, ORPHAN_WORKFLOW_ID);
+    const firedOrphanTask = taskForWorkflow(initialTasksA, FIRED_ORPHAN_WORKFLOW_ID);
+    const restartOrphanTask = taskForWorkflow(initialTasksA, RESTART_ORPHAN_WORKFLOW_ID);
     const validBTask = taskForWorkflow(initialTasksB, VALID_B_WORKFLOW_ID);
 
     const workflowDb = firstPair.runtimeA.db as DrizzleDatabase;
     await workflowDb
       .update(dbSchema.embeddedWorkflows)
       .set({ agentId: dbSchema.LEGACY_UNSCOPED_WORKFLOW_AGENT_ID })
-      .where(eq(dbSchema.embeddedWorkflows.id, ORPHAN_WORKFLOW_ID));
+      .where(
+        inArray(dbSchema.embeddedWorkflows.id, [
+          FIRED_ORPHAN_WORKFLOW_ID,
+          RESTART_ORPHAN_WORKFLOW_ID,
+        ])
+      );
 
-    await makeTaskDue(firstPair.runtimeA, orphanTask);
+    await makeTaskDue(firstPair.runtimeA, firedOrphanTask);
     await taskServiceA.runDueTasks();
-    // A workflow_not_found dispatch is permanent: the trigger runtime sends a
-    // single "disabled" notification and deletes the schedule task in the same
-    // fire, so nothing is left for restart reconciliation to re-fire.
+    // A workflow_not_found dispatch is permanent: the fired orphan sends one
+    // disabled notification and is deleted immediately. The second orphan is
+    // intentionally left unfired so restart reconciliation still has work.
     await waitForPersistedDisabledNotification(firstPair.runtimeA);
     const disabledNotifications = notificationsA.list({ category: 'workflow' });
     expect(disabledNotifications).toHaveLength(1);
     expect(disabledNotifications[0]?.title).toContain('disabled');
-    expect(await firstPair.runtimeA.getTask(orphanTask.id)).toBeNull();
+    expect(await firstPair.runtimeA.getTask(firedOrphanTask.id)).toBeNull();
+    expect(await firstPair.runtimeA.getTask(restartOrphanTask.id)).not.toBeNull();
 
     await stopPair(firstPair);
     activePair = null;
@@ -285,7 +294,8 @@ test('quarantined tenant task is disabled at first fire and restart cannot fire 
     expect(restartedTasksB).toHaveLength(1);
     expect(restartedTasksB[0]?.id).toBe(validBTask.id);
     expect(restartedTasksB[0]?.metadata?.workflowId).toBe(VALID_B_WORKFLOW_ID);
-    expect(await restartedPair.runtimeA.getTask(orphanTask.id)).toBeNull();
+    expect(await restartedPair.runtimeA.getTask(firedOrphanTask.id)).toBeNull();
+    expect(await restartedPair.runtimeA.getTask(restartOrphanTask.id)).toBeNull();
 
     const workflowRows = await (restartedPair.runtimeA.db as DrizzleDatabase)
       .select({
@@ -298,7 +308,12 @@ test('quarantined tenant task is disabled at first fire and restart cannot fire 
       expect.arrayContaining([
         {
           agentId: dbSchema.LEGACY_UNSCOPED_WORKFLOW_AGENT_ID,
-          id: ORPHAN_WORKFLOW_ID,
+          id: FIRED_ORPHAN_WORKFLOW_ID,
+          active: true,
+        },
+        {
+          agentId: dbSchema.LEGACY_UNSCOPED_WORKFLOW_AGENT_ID,
+          id: RESTART_ORPHAN_WORKFLOW_ID,
           active: true,
         },
         { agentId: AGENT_A_ID, id: VALID_A_WORKFLOW_ID, active: true },
@@ -311,7 +326,8 @@ test('quarantined tenant task is disabled at first fire and restart cannot fire 
     await restartedTaskServiceA.runDueTasks();
     expect(restartedNotificationsA.list({ category: 'workflow' })).toEqual(notificationsBeforeTick);
     expect(await restartedWorkflowA.listExecutions()).toEqual(executionsBeforeTick);
-    expect(await restartedPair.runtimeA.getTask(orphanTask.id)).toBeNull();
+    expect(await restartedPair.runtimeA.getTask(firedOrphanTask.id)).toBeNull();
+    expect(await restartedPair.runtimeA.getTask(restartOrphanTask.id)).toBeNull();
     expect((await workflowTasks(restartedPair.runtimeB))[0]?.id).toBe(validBTask.id);
   } finally {
     try {
