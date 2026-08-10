@@ -277,6 +277,44 @@ export function extractApiKeyCredential(req: Request): string | null {
   return extractApiKeyCredentialWithSource(req)?.rawKey ?? null;
 }
 
+/**
+ * Wall-clock bound on one background hydration attempt. A hung authoritative
+ * resolve (stalled Postgres, dead moderation dependency) must not pin the
+ * single-flight slot for the Worker isolate's lifetime — that turned a cold
+ * cache into a permanent 503 loop (live incident 2026-08-10: "warming"
+ * returned unchanged for minutes because the coalesced hydration never
+ * settled). On deadline the slot clears so the next request starts a fresh
+ * attempt, and the miss counts toward the authoritative-escape threshold.
+ */
+const HYDRATION_DEADLINE_MS = Number(
+  process.env.INFERENCE_AUTH_HYDRATION_DEADLINE_MS ?? "10000",
+);
+
+/**
+ * After this many consecutive failed or timed-out hydrations for one key,
+ * the cacheOnly warming shortcut is bypassed and the request resolves
+ * authoritatively inline: slower, but definitive — and the successful inline
+ * resolve writes the cache, self-healing the loop. "Retry shortly" must never
+ * be a lie the caller can't escape.
+ */
+const HYDRATION_FAILURE_ESCAPE_THRESHOLD = 3;
+
+const apiKeyHydrationFailures = new Map<string, number>();
+
+function noteHydrationFailure(keyHash: string): void {
+  apiKeyHydrationFailures.set(
+    keyHash,
+    (apiKeyHydrationFailures.get(keyHash) ?? 0) + 1,
+  );
+}
+
+function hydrationEscapeActive(keyHash: string): boolean {
+  return (
+    (apiKeyHydrationFailures.get(keyHash) ?? 0) >=
+    HYDRATION_FAILURE_ESCAPE_THRESHOLD
+  );
+}
+
 function getOrCreateApiKeyHydration(
   req: Request,
   keyHash: string,
@@ -288,7 +326,7 @@ function getOrCreateApiKeyHydration(
   // The outer Worker waitUntil retains this whole operation, so the
   // authoritative resolver intentionally runs without an execution context:
   // it must finish the cache write before releasing the single-flight slot.
-  const hydration = resolveInferenceAuthContext(req, {
+  const attempt = resolveInferenceAuthContext(req, {
     traceId,
     cacheOnly: false,
     forceAuthoritative: true,
@@ -300,6 +338,7 @@ function getOrCreateApiKeyHydration(
           throw new Error(`Suspended inference-auth decision cache write failed: ${write.kind}`);
         }
       }
+      apiKeyHydrationFailures.delete(keyHash);
     })
     .catch(async (error) => {
       const status = getErrorStatusCode(error);
@@ -312,22 +351,53 @@ function getOrCreateApiKeyHydration(
             cacheWrite: write.kind,
           });
         }
+        // A definitive rejection is a successful decision, not a failed
+        // hydration — the cache now answers; no escape pressure needed.
+        apiKeyHydrationFailures.delete(keyHash);
+      } else {
+        noteHydrationFailure(keyHash);
       }
       // error-policy:J7 the current request already returned an explicit
       // warming state; preserve the failure in logs and allow a later retry.
       logger.warn("[InferenceAuth] background hydration failed", {
         traceId: boundedTraceId(traceId),
+        failureCount: apiKeyHydrationFailures.get(keyHash) ?? 0,
         error: error instanceof Error ? error.message : String(error),
       });
     });
+  // Deadline: a never-settling attempt must not hold the single-flight slot.
+  // The timed-out promise resolves (never rejects), counts as a failure, and
+  // frees the slot for a fresh attempt on the next request.
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const hydration = Promise.race([
+    attempt,
+    new Promise<void>((resolve) => {
+      deadline = setTimeout(() => {
+        noteHydrationFailure(keyHash);
+        logger.warn("[InferenceAuth] background hydration exceeded deadline", {
+          traceId: boundedTraceId(traceId),
+          deadlineMs: HYDRATION_DEADLINE_MS,
+          failureCount: apiKeyHydrationFailures.get(keyHash) ?? 0,
+        });
+        resolve();
+      }, HYDRATION_DEADLINE_MS);
+      if (typeof deadline.unref === "function") deadline.unref();
+    }),
+  ]);
   apiKeyHydrations.set(keyHash, hydration);
   const clear = () => {
+    if (deadline !== undefined) clearTimeout(deadline);
     if (apiKeyHydrations.get(keyHash) === hydration) {
       apiKeyHydrations.delete(keyHash);
     }
   };
   hydration.then(clear, clear);
   return hydration;
+}
+
+/** Test hook: reset the hydration-failure escape counters. */
+export function __clearInferenceApiKeyHydrationFailures(): void {
+  apiKeyHydrationFailures.clear();
 }
 
 /** Test hook for isolating coalesced API-key hydration state. */
@@ -453,7 +523,7 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead = "unavailable";
     }
 
-    if (authCacheEnabled && options.cacheOnly) {
+    if (authCacheEnabled && options.cacheOnly && !hydrationEscapeActive(keyHash)) {
       trace.authoritative = "not_run";
       trace.result = "warming";
       if (cacheAvailable && options.executionCtx) {
@@ -461,6 +531,16 @@ export async function resolveInferenceAuthContext(
         options.executionCtx.waitUntil(hydration);
       }
       return { kind: "warming" };
+    }
+    if (authCacheEnabled && options.cacheOnly) {
+      // Escape hatch: repeated hydration failures/timeouts mean "retry
+      // shortly" has become a lie — resolve authoritatively inline instead.
+      // The successful resolve below writes the cache, healing the loop.
+      logger.warn("[InferenceAuth] hydration escape — resolving inline", {
+        traceId: boundedTraceId(options.traceId),
+        failureCount: apiKeyHydrationFailures.get(keyHash) ?? 0,
+      });
+      apiKeyHydrationFailures.delete(keyHash);
     }
 
     trace.authoritative = "error";

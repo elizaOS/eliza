@@ -9,6 +9,7 @@
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
 process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
+process.env.INFERENCE_AUTH_HYDRATION_DEADLINE_MS = "60";
 
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { redactLogArgs } from "@elizaos/core";
@@ -596,4 +597,118 @@ describe("isInferenceAuthContext shape guard", () => {
       }),
     ).toBe(true);
   });
+});
+
+const { __clearInferenceApiKeyHydrationFailures } = await import(
+	"./inference-auth-context"
+);
+
+describe("hydration escape (#18246 — warming must not loop forever)", () => {
+
+	function workerCtx(captured: Promise<unknown>[]) {
+		return {
+			waitUntil: (p: Promise<unknown>) => {
+				captured.push(p);
+			},
+		} as never;
+	}
+
+	beforeEach(() => {
+		__clearInferenceApiKeyHydrationFailures();
+	});
+
+	test("three failed hydrations flip the next cacheOnly request to inline authoritative", async () => {
+		authImpl = async () => {
+			throw new Error("postgres unreachable");
+		};
+		const hydrations: Promise<unknown>[] = [];
+		for (let i = 0; i < 3; i++) {
+			const res = await resolveInferenceAuthContext(reqWithApiKey(), {
+				cacheOnly: true,
+				executionCtx: workerCtx(hydrations),
+			});
+			expect(res.kind).toBe("warming");
+			// Settle this round's hydration so the failure registers and the
+			// single-flight slot frees before the next request.
+			await Promise.all(hydrations.splice(0));
+		}
+		// Dependency recovered; a still-warming shortcut would 503 forever.
+		authImpl = async () => ({
+			user: { id: "user-1", organization_id: "org-1" },
+			apiKey: { id: "key-1" },
+		});
+		const escaped = await resolveInferenceAuthContext(reqWithApiKey(), {
+			cacheOnly: true,
+			executionCtx: workerCtx(hydrations),
+		});
+		expect(escaped.kind).toBe("authorized");
+		// The inline resolve wrote the cache — the loop self-healed.
+		const cached = await readInferenceAuthContext(hashApiKey(KEY));
+		expect(cached && isInferenceAuthContext(cached)).toBe(true);
+	});
+
+	test("a successful hydration resets the failure count", async () => {
+		authImpl = async () => {
+			throw new Error("blip");
+		};
+		const hydrations: Promise<unknown>[] = [];
+		for (let i = 0; i < 2; i++) {
+			await resolveInferenceAuthContext(reqWithApiKey(), {
+				cacheOnly: true,
+				executionCtx: workerCtx(hydrations),
+			});
+			await Promise.all(hydrations.splice(0));
+		}
+		authImpl = async () => ({
+			user: { id: "user-1", organization_id: "org-1" },
+			apiKey: { id: "key-1" },
+		});
+		// Successful hydration on round 3 clears the counter and the cache
+		// now answers directly.
+		await resolveInferenceAuthContext(reqWithApiKey(), {
+			cacheOnly: true,
+			executionCtx: workerCtx(hydrations),
+		});
+		await Promise.all(hydrations.splice(0));
+		const res = await resolveInferenceAuthContext(reqWithApiKey(), {
+			cacheOnly: true,
+			executionCtx: workerCtx(hydrations),
+		});
+		expect(res.kind).toBe("authorized");
+	});
+
+	test("a hung hydration hits the deadline, frees the slot, and counts toward escape", async () => {
+		let release: (() => void) | undefined;
+		authImpl = () =>
+			new Promise((resolve) => {
+				release = () =>
+					resolve({
+						user: { id: "user-1", organization_id: "org-1" },
+						apiKey: { id: "key-1" },
+					});
+			});
+		const hydrations: Promise<unknown>[] = [];
+		for (let i = 0; i < 3; i++) {
+			const res = await resolveInferenceAuthContext(reqWithApiKey(), {
+				cacheOnly: true,
+				executionCtx: workerCtx(hydrations),
+			});
+			expect(res.kind).toBe("warming");
+			// The deadline (env-shortened for tests) settles the raced
+			// hydration even though the underlying resolve never returns.
+			await Promise.all(hydrations.splice(0));
+		}
+		// After three deadline strikes the escape opens; a now-healthy
+		// dependency resolves inline instead of warming.
+		authImpl = async () => ({
+			user: { id: "user-1", organization_id: "org-1" },
+			apiKey: { id: "key-1" },
+		});
+		const escaped = await resolveInferenceAuthContext(reqWithApiKey(), {
+			cacheOnly: true,
+			executionCtx: workerCtx(hydrations),
+		});
+		expect(escaped.kind).toBe("authorized");
+		release?.();
+	});
 });
