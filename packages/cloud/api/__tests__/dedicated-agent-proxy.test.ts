@@ -213,7 +213,11 @@ function executePairHandoff(html: string): {
   const windowObject: Record<PropertyKey, unknown> = {
     localStorage: storage(localValues),
     sessionStorage: storage(sessionValues),
-    location: { replace: (value: string) => replaceCalls.push(value) },
+    location: {
+      hostname: `${AGENT}.elizacloud.ai`,
+      protocol: "https:",
+      replace: (value: string) => replaceCalls.push(value),
+    },
   };
   runInNewContext(script, {
     window: windowObject,
@@ -273,6 +277,12 @@ describe("dedicated-agent-proxy — edge-owned managed pairing", () => {
     expect(handoff.localValues.get(scopedKey)).toBe(apiKey);
     expect(handoff.sessionValues.get(scopedKey)).toBe(apiKey);
     expect(handoff.localValues.has("eliza:cloud-pair:api-token")).toBe(false);
+    expect(
+      handoff.localValues.has("eliza:cloud-pair:local-owner-agent-id"),
+    ).toBe(false);
+    expect(
+      handoff.sessionValues.has("eliza:cloud-pair:local-owner-agent-id"),
+    ).toBe(false);
     expect(handoff.replaceCalls).toEqual(["/"]);
     expect(
       (

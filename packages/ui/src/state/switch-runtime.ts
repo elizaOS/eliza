@@ -12,7 +12,11 @@ import {
 import { activeServerKindToFirstRunRuntimeTarget } from "../first-run/runtime-target";
 import { getFrontendPlatform } from "../platform/platform-guards";
 import type { AgentProfile } from "./agent-profile-types";
-import { loadAgentProfileRegistry, setActiveProfileId } from "./agent-profiles";
+import {
+  activeServerIdForAgentProfile,
+  loadAgentProfileRegistry,
+  setActiveProfileId,
+} from "./agent-profiles";
 import { clearAllChatDrafts } from "./ChatComposerContext.hooks";
 import {
   createPersistedActiveServer,
@@ -56,7 +60,7 @@ export function switchRuntimeNonDestructive(
 
   const server = createPersistedActiveServer({
     kind: profile.kind,
-    id: profile.id,
+    id: activeServerIdForAgentProfile(profile),
     apiBase: profile.apiBase,
     accessToken: profile.accessToken,
     label: profile.label,

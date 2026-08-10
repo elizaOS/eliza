@@ -3,8 +3,10 @@
 import { describe, expect, it } from "vitest";
 import {
   CLOUD_PAIR_LEGACY_STORAGE_KEY,
+  CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
   isCloudPairAgentId,
+  isCloudPairLoopbackOrigin,
   parseCloudPairRelaySession,
   renderCloudPairHandoffHtml,
   resolveCloudPairAgentIdFromEnv,
@@ -23,6 +25,21 @@ describe("Cloud pairing contract", () => {
     expect(isCloudPairAgentId(AGENT_ID)).toBe(true);
     expect(isCloudPairAgentId("not-an-agent")).toBe(false);
     expect(isCloudPairAgentId(123)).toBe(false);
+  });
+
+  it("accepts only strict HTTP loopback origins", () => {
+    expect(isCloudPairLoopbackOrigin("http://localhost:43123")).toBe(true);
+    expect(isCloudPairLoopbackOrigin("https://127.0.0.1:43123")).toBe(true);
+    expect(isCloudPairLoopbackOrigin("http://[::1]:43123")).toBe(true);
+    expect(isCloudPairLoopbackOrigin("https://localhost.evil.example")).toBe(
+      false,
+    );
+    expect(isCloudPairLoopbackOrigin("https://127.0.0.1.evil.example")).toBe(
+      false,
+    );
+    expect(isCloudPairLoopbackOrigin("http://192.168.1.20:43123")).toBe(false);
+    expect(isCloudPairLoopbackOrigin("file:///tmp/eliza")).toBe(false);
+    expect(isCloudPairLoopbackOrigin("not a URL")).toBe(false);
   });
 
   it("resolves the canonical and compatibility platform identities", () => {
@@ -78,6 +95,7 @@ describe("Cloud pairing contract", () => {
     expect(html.match(/<\/script>/g)).toHaveLength(1);
     expect(html.replace(/<\/script>/, "")).not.toContain("</script>");
     expect(html).toContain(`eliza:cloud-pair:api-token:${AGENT_ID}`);
+    expect(html).toContain(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
     expect(html).toContain("\\u003c/script>");
   });
 
