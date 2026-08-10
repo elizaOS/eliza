@@ -22,6 +22,13 @@ describe("reserved-env-keys", () => {
     expect(RESERVED_PLATFORM_ENV_KEYS).toContain("ELIZA_CLOUD_PROVISIONED");
   });
 
+  test("managed direct-pairing mode is platform-reserved", () => {
+    expect(
+      findReservedEnvKeys(["ELIZA_CLOUD_PAIR_DIRECT_RELAY", "eliza_cloud_pair_direct_relay"]),
+    ).toEqual(["ELIZA_CLOUD_PAIR_DIRECT_RELAY", "eliza_cloud_pair_direct_relay"]);
+    expect(RESERVED_PLATFORM_ENV_KEYS).toContain("ELIZA_CLOUD_PAIR_DIRECT_RELAY");
+  });
+
   test("findReservedEnvKeys returns [] when no reserved keys present", () => {
     expect(findReservedEnvKeys(["FOO", "BAR"])).toEqual([]);
   });
