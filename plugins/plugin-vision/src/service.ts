@@ -51,12 +51,14 @@ import {
   type BoundingBox,
   type CameraInfo,
   type DetectedObject,
+  type DetectionSource,
   type EnhancedSceneDescription,
   type PersonInfo,
   type SceneDescription,
   type ScreenCapture,
   type ScreenTile,
   type TileAnalysis,
+  type VisionCapabilities,
   type VisionConfig,
   type VisionFrame,
   VisionMode,
@@ -235,10 +237,14 @@ export class VisionService extends Service {
   private isProcessingScreen = false;
   private objectDetector: YOLODetector | null = null;
   private hasObjectDetection = false;
+  // Reason why object detection is unavailable (null when available or not requested).
+  private objectDetectionUnavailableReason: string | null = null;
   // Lazily constructed: the face backend is dynamically imported on first use
   // so plugin-vision's module graph never pulls native code at module-eval
   // (required for the Android bun-musl agent).
   private faceRecognition: FaceRecognition | null = null;
+  private hasFaceRecognition = false;
+  private faceRecognitionUnavailableReason: string | null = null;
   private entityTracker: EntityTracker;
   private audioCapture: AudioCaptureService | null = null;
   private streamingAudioCapture: StreamingAudioCaptureService | null = null;
@@ -472,17 +478,23 @@ export class VisionService extends Service {
           this.objectDetector = new YOLODetector();
           await this.objectDetector.initialize();
           this.hasObjectDetection = true;
+          this.objectDetectionUnavailableReason = null;
           logger.info(
             "[VisionService] ggml YOLOv8 object detector initialized",
           );
         } catch (yoloError) {
           // Native lib / GGUF not built yet — leave object detection off so
           // the motion/heuristic + VLM fallback still runs. Never fake it.
+          // Record the reason so capability checks can surface it.
           this.objectDetector = null;
           this.hasObjectDetection = false;
+          this.objectDetectionUnavailableReason =
+            yoloError instanceof Error
+              ? yoloError.message
+              : String(yoloError);
           logger.warn(
             "[VisionService] ggml YOLOv8 detector unavailable, object detection disabled (using motion/heuristic + VLM fallback):",
-            yoloError instanceof Error ? yoloError.message : String(yoloError),
+            this.objectDetectionUnavailableReason,
           );
         }
       }
@@ -969,6 +981,7 @@ export class VisionService extends Service {
 
       let detectedObjects: DetectedObject[] = [];
       let people: PersonInfo[] = [];
+      let objectDetectionSource: DetectionSource | undefined;
 
       if (
         shouldUpdateTf &&
@@ -986,6 +999,7 @@ export class VisionService extends Service {
         if (this.visionConfig.enableObjectDetection && this.objectDetector) {
           try {
             detectedObjects = await this.objectDetector.detect(jpegBuffer);
+            objectDetectionSource = "yolo";
             logger.debug(
               `[VisionService] YOLOv8 detected ${detectedObjects.length} objects`,
             );
@@ -997,6 +1011,7 @@ export class VisionService extends Service {
                 : String(detectError),
             );
             detectedObjects = await this.detectMotionObjects(frame);
+            objectDetectionSource = "motion";
           }
         }
 
@@ -1224,6 +1239,7 @@ export class VisionService extends Service {
         descriptionStale,
         describePaused,
         ...(describePauseReason ? { describePauseReason } : {}),
+        ...(objectDetectionSource ? { objectDetectionSource } : {}),
       };
 
       // Enhanced logging
@@ -2014,7 +2030,73 @@ export class VisionService extends Service {
   }
 
   public isActive(): boolean {
-    return this.camera !== null && this.frameProcessingInterval !== null;
+    // Camera-mode active: camera connected and processing frames.
+    if (this.camera !== null && this.frameProcessingInterval !== null) {
+      return true;
+    }
+    // Screen-mode active: screen processing loop running.
+    if (this.screenProcessingInterval !== null) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Honest capability readiness snapshot. Each field is true only when the
+   * corresponding backend initialized successfully. Unavailable reasons are
+   * collected for surfaced diagnostics.
+   */
+  public getCapabilities(): VisionCapabilities {
+    const caps: VisionCapabilities = {
+      objectDetection: this.hasObjectDetection,
+      ocr: this.visionConfig.ocrEnabled ?? false,
+      faceRecognition: this.hasFaceRecognition,
+      screenCapture: this.screenProcessingInterval !== null,
+      camera: this.camera !== null,
+      audio:
+        this.audioCapture !== null || this.streamingAudioCapture !== null,
+    };
+
+    const reasons: NonNullable<VisionCapabilities["unavailableReasons"]> = {};
+
+    if (!caps.objectDetection) {
+      reasons.objectDetection = this.objectDetectionUnavailableReason
+        ?? (this.visionConfig.enableObjectDetection
+          ? "YOLO backend not initialized"
+          : "Object detection not enabled");
+    }
+
+    if (!caps.ocr) {
+      reasons.ocr = "OCR not enabled";
+    }
+
+    if (!caps.faceRecognition) {
+      reasons.faceRecognition = this.faceRecognitionUnavailableReason
+        ?? "Face recognition backend not initialized or not enabled";
+    }
+
+    if (!caps.screenCapture) {
+      const mode = this.visionConfig.visionMode;
+      reasons.screenCapture =
+        mode === VisionMode.SCREEN || mode === VisionMode.BOTH
+          ? "Screen capture pipeline not started"
+          : "Screen mode not active";
+    }
+
+    if (!caps.camera) {
+      reasons.camera =
+        this.camera === null ? "No camera connected" : "Camera not active";
+    }
+
+    if (!caps.audio) {
+      reasons.audio = "Audio capture not configured";
+    }
+
+    if (Object.keys(reasons).length > 0) {
+      caps.unavailableReasons = reasons;
+    }
+
+    return caps;
   }
 
   // Helper methods for face recognition
@@ -2043,8 +2125,16 @@ export class VisionService extends Service {
 
   public async getFaceRecognition(): Promise<FaceRecognition> {
     if (!this.faceRecognition) {
-      const { FaceRecognition } = await import("./face-recognition-ggml");
-      this.faceRecognition = new FaceRecognition();
+      try {
+        const { FaceRecognition } = await import("./face-recognition-ggml");
+        this.faceRecognition = new FaceRecognition();
+        this.hasFaceRecognition = true;
+        this.faceRecognitionUnavailableReason = null;
+      } catch (error) {
+        this.faceRecognitionUnavailableReason =
+          error instanceof Error ? error.message : String(error);
+        throw error;
+      }
     }
     return this.faceRecognition;
   }
@@ -2068,6 +2158,13 @@ export class VisionService extends Service {
       await this.objectDetector.dispose();
       this.objectDetector = null;
       this.hasObjectDetection = false;
+      this.objectDetectionUnavailableReason = "Service stopped";
+    }
+
+    if (this.faceRecognition) {
+      this.faceRecognition = null;
+      this.hasFaceRecognition = false;
+      this.faceRecognitionUnavailableReason = "Service stopped";
     }
 
     if (this.workerManager) {

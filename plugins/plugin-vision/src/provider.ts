@@ -13,8 +13,10 @@ import {
 import type { VisionService } from "./service";
 import type {
   BoundingBox,
+  DetectionSource,
   EnhancedSceneDescription,
   EntityAttributes,
+  VisionCapabilities,
 } from "./types";
 
 const MAX_VISION_OBJECTS_IN_STATE = 50;
@@ -65,6 +67,7 @@ export const visionProvider: Provider = {
       const isActive = visionService.isActive();
       const visionMode = visionService.getVisionMode();
       const screenCapture = await visionService.getScreenCapture();
+      const capabilities = visionService.getCapabilities();
       const _worldId = message.worldId || "default-world";
       const entityTracker = visionService.getEntityTracker();
 
@@ -148,6 +151,7 @@ export const visionProvider: Provider = {
           cameraStatus: cameraInfo
             ? `Camera "${cameraInfo.name}" detected but not active`
             : "No camera",
+          capabilities,
         };
       } else {
         perceptionText = `Vision mode: ${visionMode}\n\n`;
@@ -214,7 +218,15 @@ export const visionProvider: Provider = {
               .slice(0, MAX_VISION_OBJECTS_IN_STATE)
               .map((o) => o.type);
             const uniqueObjects = [...new Set(objectTypes)];
-            perceptionText += `\n\nObjects detected: ${uniqueObjects.join(", ")}`;
+            const sourceLabel: Record<DetectionSource, string> = {
+              yolo: "YOLO",
+              motion: "motion heuristics",
+              vlm: "VLM",
+            };
+            const src = sceneDescription.objectDetectionSource
+              ? ` (via ${sourceLabel[sceneDescription.objectDetectionSource]})`
+              : "";
+            perceptionText += `\n\nObjects detected${src}: ${uniqueObjects.join(", ")}`;
           }
 
           if (sceneDescription.sceneChanged) {
@@ -299,6 +311,8 @@ export const visionProvider: Provider = {
           cameraId: cameraInfo?.id,
           peopleCount: sceneDescription?.people.length || 0,
           objectCount: sceneDescription?.objects.length || 0,
+          objectDetectionSource:
+            sceneDescription?.objectDetectionSource || null,
           sceneAge: sceneDescription
             ? Math.round(
                 (Date.now() -
@@ -320,6 +334,7 @@ export const visionProvider: Provider = {
           activeEntities: entityData?.activeEntities || [],
           recentlyLeft: entityData?.recentlyLeft || [],
           entityStatistics: entityData?.statistics || null,
+          capabilities,
         };
 
         data = {

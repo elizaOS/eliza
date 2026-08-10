@@ -37,6 +37,8 @@ export interface SceneDescription {
   describePaused?: boolean;
   describePauseReason?: Exclude<DescribePauseReason, null>;
   audioTranscription?: string;
+  /** Backend that produced the objects array — "yolo", "motion", or "vlm". */
+  objectDetectionSource?: DetectionSource;
 }
 
 export interface DetectedObject {
@@ -266,4 +268,35 @@ export interface WorldState {
     leftAt: number;
     lastPosition: BoundingBox;
   }>;
+}
+
+/**
+ * Honest capability readiness snapshot. Each field reports whether the real
+ * backend is initialized — never true when the backend failed to load or is
+ * absent. The provider and routes surface this so callers can distinguish
+ * "unavailable" from "ready but empty".
+ */
+export interface VisionCapabilities {
+  /** True when a ggml YOLOv8 detector loaded and has valid weights. */
+  objectDetection: boolean;
+  /** True when a native OCR backend initialized. */
+  ocr: boolean;
+  /** True when face recognition backend loaded. */
+  faceRecognition: boolean;
+  /** True when screen capture pipeline initialized. */
+  screenCapture: boolean;
+  /** True when camera capture initialized. */
+  camera: boolean;
+  /** True when audio capture initialized. */
+  audio: boolean;
+  /** Human-readable reasons for unavailable capabilities, keyed by field. */
+  unavailableReasons?: Partial<Record<keyof Omit<VisionCapabilities, "unavailableReasons">, string>>;
+}
+
+/** Provenance of a detection result, so callers can tell YOLO apart from heuristics. */
+export type DetectionSource = "yolo" | "motion" | "vlm";
+
+export interface DetectedObjectWithSource extends DetectedObject {
+  /** Which backend produced this detection. */
+  source: DetectionSource;
 }
