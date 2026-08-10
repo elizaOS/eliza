@@ -204,6 +204,7 @@ function makeRuntime(
 		},
 		actions: [],
 		providers: [],
+		getService: vi.fn(() => null),
 		getRoom: vi.fn(async () => null),
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
@@ -6121,26 +6122,37 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 	// (27 posts in 20 minutes). The gate extends #9874's addressing signal from
 	// tool promotion to the full reply / planner / early-ack routing.
 
-	it("ignores a simple-path turn addressed to another participant — no reply ships", async () => {
-		const runtime = withRoomEntities(
-			makeRuntime([
-				stage1Response({
-					thought: "Overheard.",
-					contexts: ["simple"],
-					replyText: "I can help with that!",
-					addressedTo: ["Alice"],
+	it("ignores a simple-path turn in every supported text-group channel", async () => {
+		for (const channelType of [
+			ChannelType.GROUP,
+			ChannelType.THREAD,
+			ChannelType.WORLD,
+			ChannelType.FORUM,
+			ChannelType.FEED,
+		]) {
+			const runtime = withRoomEntities(
+				makeRuntime([
+					stage1Response({
+						thought: "Overheard.",
+						contexts: ["simple"],
+						replyText: "I can help with that!",
+						addressedTo: ["Alice"],
+					}),
+				]),
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Alice, can you take a look?",
+					channelType,
 				}),
-			]),
-		);
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({ text: "Alice, can you take a look?" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-0000000000b1" as UUID,
-		});
-		expect(result.kind).toBe("terminal");
-		if (result.kind === "terminal") {
-			expect(result.action).toBe("IGNORE");
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-0000000000b1" as UUID,
+			});
+			expect(result.kind, channelType).toBe("terminal");
+			if (result.kind === "terminal") {
+				expect(result.action, channelType).toBe("IGNORE");
+			}
 		}
 	});
 
@@ -6159,7 +6171,10 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		const onResponseHandlerEarlyReply = vi.fn(async () => true);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
-			message: makeMessage({ text: "Alice, can you check the calendar?" }),
+			message: makeMessage({
+				text: "Alice, can you check the calendar?",
+				channelType: ChannelType.GROUP,
+			}),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000b2" as UUID,
 			onResponseHandlerEarlyReply,
@@ -6187,7 +6202,10 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 			);
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				message: makeMessage({ text: `${addressee}, your turn` }),
+				message: makeMessage({
+					text: `${addressee}, your turn`,
+					channelType: ChannelType.GROUP,
+				}),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-0000000000b3" as UUID,
 			});
@@ -6196,6 +6214,90 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 				expect(result.action).toBe("IGNORE");
 			}
 		}
+	});
+
+	it("keeps direct replies for every non-ambient turn class", async () => {
+		const cases = [
+			{ label: "DM", content: { channelType: ChannelType.DM } },
+			{ label: "API", content: { channelType: ChannelType.API } },
+			{ label: "SELF", content: { channelType: ChannelType.SELF } },
+			{
+				label: "client chat",
+				content: { channelType: ChannelType.GROUP, source: "client_chat" },
+			},
+			{
+				label: "autonomous",
+				content: {
+					channelType: ChannelType.GROUP,
+					metadata: { isAutonomous: true },
+				},
+			},
+			{
+				label: "sub-agent relay",
+				content: { channelType: ChannelType.GROUP, source: "sub_agent" },
+			},
+			{ label: "unknown channel", content: {} },
+		] satisfies Array<{
+			label: string;
+			content: Partial<Memory["content"]>;
+		}>;
+
+		for (const testCase of cases) {
+			const runtime = withRoomEntities(
+				makeRuntime([
+					stage1Response({
+						thought: `Direct ${testCase.label} turn.`,
+						contexts: ["simple"],
+						replyText: "I can help.",
+						addressedTo: ["Alice"],
+					}),
+				]),
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Alice, can you take a look?",
+					...testCase.content,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-0000000000ba" as UUID,
+			});
+
+			expect(result.kind, testCase.label).toBe("direct_reply");
+		}
+	});
+
+	it("preserves planner entry and its early ack for an unknown channel", async () => {
+		const runtime = withRoomEntities(
+			makeRuntime([
+				stage1Response({
+					thought: "Unknown channel needs planning.",
+					contexts: ["general"],
+					replyText: "I'll check that now.",
+					addressedTo: ["Alice"],
+					extra: { requiresTool: true },
+				}),
+				JSON.stringify({
+					thought: "Finished the check.",
+					toolCalls: [],
+					messageToUser: "The check is complete.",
+				}),
+			]),
+		);
+		const earlyReply = vi.fn(async () => true);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Alice, can you check this?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000bb" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(useModelCalls(runtime)).toHaveLength(2);
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({ text: "I'll check that now." }),
+		);
 	});
 
 	it("does not gate undirected banter (addressedTo: []) — the simple reply ships unchanged", async () => {
@@ -6211,7 +6313,10 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
-			message: makeMessage({ text: "morning all" }),
+			message: makeMessage({
+				text: "morning all",
+				channelType: ChannelType.GROUP,
+			}),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000b4" as UUID,
 		});
@@ -6228,26 +6333,6 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 					thought: "We are among the addressees.",
 					contexts: ["simple"],
 					replyText: "Happy to help.",
-					addressedTo: ["Test Agent", "Alice"],
-				}),
-			]),
-		);
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({ text: "Test Agent and Alice, thoughts?" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-0000000000b5" as UUID,
-		});
-		expect(result.kind).toBe("direct_reply");
-	});
-
-	it("bypasses the gate on a platform mention/reply even when addressedTo names another participant", async () => {
-		const runtime = withRoomEntities(
-			makeRuntime([
-				stage1Response({
-					thought: "Mentioned turn.",
-					contexts: ["simple"],
-					replyText: "Here's my take.",
 					addressedTo: ["Alice"],
 				}),
 			]),
@@ -6255,13 +6340,39 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({
-				text: "what do you think Alice should do here?",
-				mentionContext: { isMention: true },
+				text: "Test Agent and Alice, thoughts?",
+				channelType: ChannelType.GROUP,
 			}),
 			state: makeState(),
-			responseId: "00000000-0000-0000-0000-0000000000b6" as UUID,
+			responseId: "00000000-0000-0000-0000-0000000000b5" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
+	});
+
+	it("bypasses the gate on a platform mention or reply even when addressedTo names another participant", async () => {
+		for (const mentionContext of [{ isMention: true }, { isReply: true }]) {
+			const runtime = withRoomEntities(
+				makeRuntime([
+					stage1Response({
+						thought: "Explicitly addressed turn.",
+						contexts: ["simple"],
+						replyText: "Here's my take.",
+						addressedTo: ["Alice"],
+					}),
+				]),
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "what do you think Alice should do here?",
+					channelType: ChannelType.GROUP,
+					mentionContext,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-0000000000b6" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+		}
 	});
 
 	it("bypasses the gate when the effective personality reply_gate is an explicit 'always'", async () => {
@@ -6280,7 +6391,10 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
-			message: makeMessage({ text: "Alice, can you take a look?" }),
+			message: makeMessage({
+				text: "Alice, can you take a look?",
+				channelType: ChannelType.GROUP,
+			}),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000b7" as UUID,
 		});
@@ -6306,7 +6420,10 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
-			message: makeMessage({ text: "Alice, can you take a look?" }),
+			message: makeMessage({
+				text: "Alice, can you take a look?",
+				channelType: ChannelType.GROUP,
+			}),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000b8" as UUID,
 		});
@@ -6332,7 +6449,10 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
-			message: makeMessage({ text: "Alice, can you take a look?" }),
+			message: makeMessage({
+				text: "Alice, can you take a look?",
+				channelType: ChannelType.GROUP,
+			}),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000b9" as UUID,
 		});
