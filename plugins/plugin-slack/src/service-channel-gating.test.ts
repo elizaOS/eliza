@@ -98,7 +98,8 @@ vi.mock("@slack/bolt", () => ({
       this.record.messageHandler = (args) =>
         handler({
           ...args,
-          body: args.body ?? { team_id: "T0TEAM000", event: args.message },
+          body:
+            args.body ?? slackEnvelope(args.message as Record<string, unknown>),
         });
     }
 
@@ -113,7 +114,8 @@ vi.mock("@slack/bolt", () => ({
       this.record.eventHandlers.set(name, (args) =>
         handler({
           ...args,
-          body: args.body ?? { team_id: "T0TEAM000", event: args.event },
+          body:
+            args.body ?? slackEnvelope(args.event as Record<string, unknown>),
         }),
       );
     }
@@ -133,6 +135,23 @@ const MPIM = "G0MPIM123";
 const ALICE = "U0123ABCD";
 const BOB = "U0999ZZZZ";
 
+function slackEnvelope(event: Record<string, unknown>) {
+  const identity = [
+    event.type,
+    event.channel,
+    event.user,
+    event.ts,
+    event.event_ts,
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(":");
+  return {
+    team_id: "T0TEAM000",
+    event_id: `Ev-${identity}`,
+    event,
+  };
+}
+
 type SlackConnectorInput = Record<string, unknown>;
 
 function createPersistedConfig(slack: SlackConnectorInput) {
@@ -150,6 +169,7 @@ function createRuntime(slack: SlackConnectorInput): IAgentRuntime {
     settings: projection.settings,
     secrets: projection.secrets,
   };
+  const memories = new Map<string, Memory>();
   const runtime = {
     agentId: "agent-slack-policy-integration",
     character,
@@ -160,11 +180,19 @@ function createRuntime(slack: SlackConnectorInput): IAgentRuntime {
     }),
     getWorld: vi.fn().mockResolvedValue({ id: "world-existing" }),
     emitEvent: vi.fn().mockResolvedValue(undefined),
-    createMemory: vi.fn().mockResolvedValue(undefined),
-    getMemoryById: vi.fn().mockResolvedValue(null),
+    createMemory: vi.fn().mockImplementation(async (memory: Memory) => {
+      if (memory.id && !memories.has(memory.id)) {
+        memories.set(memory.id, structuredClone(memory));
+      }
+      return memory.id;
+    }),
+    getMemoryById: vi
+      .fn()
+      .mockImplementation(async (id: string) => memories.get(id) ?? null),
     createEntity: vi.fn().mockResolvedValue(undefined),
     getEntityById: vi.fn().mockResolvedValue({ id: "entity-existing" }),
     reportError: vi.fn(),
+    __testMemories: memories,
   };
   return runtime as unknown as IAgentRuntime;
 }
@@ -203,11 +231,19 @@ async function startHarness(overrides: SlackConnectorInput = {}) {
     processAgentMessage,
     buildMemoryFromMessage: vi.fn().mockResolvedValue({
       id: "memory-1",
+      agentId: runtime.agentId,
+      roomId: "room-1",
       entityId: "entity-existing",
+      content: { text: "message" },
+      metadata: {},
     }),
     buildMemoryFromMention: vi.fn().mockResolvedValue({
       id: "memory-2",
+      agentId: runtime.agentId,
+      roomId: "room-1",
       entityId: "entity-existing",
+      content: { text: "mention" },
+      metadata: {},
     }),
     ensureRoomExists: vi.fn().mockResolvedValue({ id: "room-1" }),
   });
@@ -280,6 +316,38 @@ beforeEach(() => {
 });
 
 describe("persisted Slack policy through Bolt handlers", () => {
+  it("claims a retried event once before persistence, emission, processing, and response", async () => {
+    const harness = await startHarness();
+    const appMention = harness.app.eventHandlers.get("app_mention");
+    if (!appMention) throw new Error("app_mention handler was not registered");
+    harness.processAgentMessage.mockImplementation(async () => {
+      await harness.app.client.chat.postMessage({
+        channel: OPS,
+        text: "acknowledged",
+      });
+    });
+    const event = mention();
+    const body = {
+      team_id: "T0TEAM000",
+      event_id: "Ev-retried-delivery",
+      event,
+    };
+
+    await Promise.all([
+      appMention({ event, client: harness.app.client, body }),
+      appMention({ event, client: harness.app.client, body }),
+    ]);
+
+    const memories = (
+      harness.runtime as IAgentRuntime & { __testMemories: Map<string, Memory> }
+    ).__testMemories;
+    expect(memories.size).toBe(1);
+    expect(harness.runtime.createMemory).toHaveBeenCalledTimes(2);
+    expect(harness.runtime.emitEvent).toHaveBeenCalledTimes(1);
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
+    expect(harness.app.client.chat.postMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("projects canonical connector config and enforces name-resolved policy", async () => {
     const harness = await startHarness();
     expect(harness.runtime.character.settings?.slack).toMatchObject({
