@@ -123,11 +123,52 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
     ).resolves.toBeUndefined();
   });
 
-  test("revokeForAgent: unconfirmed invalidation does NOT abort (row already deleted, best-effort)", async () => {
-    // rows deleted FIRST -> credential already DB-revoked; a cache brownout must
-    // not abort agent reprovisioning (codex round-2 P2).
-    track(spyOn(apiKeysRepository, "deleteByName").mockResolvedValue([fakeKey()]));
+  test("confirmRevocationAfterCommit attempts EVERY hash even when the first fails", async () => {
+    const HASH_A = "a".repeat(64);
+    const HASH_B = "b".repeat(64);
+    const attempted: string[] = [];
+    track(
+      spyOn(cache, "delConfirmed").mockImplementation(async (key: string) => {
+        attempted.push(key);
+        // Fail only the FIRST hash's validation entry.
+        return !key.includes(HASH_A.substring(0, 16));
+      }),
+    );
+
+    await expect(apiKeysService.confirmRevocationAfterCommit([HASH_A, HASH_B])).rejects.toThrow(
+      /not confirmed for 1\/2/i,
+    );
+
+    // The load-bearing assertion: a fail-fast loop never reaches HASH_B, which
+    // would strand a second superseded credential while reporting only one.
+    expect(attempted.some((k) => k.includes(HASH_B.substring(0, 16)))).toBe(true);
+  });
+
+  test("confirmRevocationAfterCommit resolves quietly when every hash is confirmed", async () => {
+    track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
+    await expect(
+      apiKeysService.confirmRevocationAfterCommit(["c".repeat(64), "d".repeat(64)]),
+    ).resolves.toBeUndefined();
+  });
+
+  test("revokeForAgent: unconfirmed invalidation does NOT abort, and PARKS the row instead of deleting it", async () => {
+    // The row is deactivated FIRST -> credential already DB-revoked; a cache
+    // brownout must not abort agent reprovisioning (codex round-2 P2). The row
+    // survives inactive as the durable carry so a later pass re-offers its
+    // hash (codex round-3 P1) — hard-deleting here would lose it forever.
+    track(spyOn(apiKeysRepository, "deactivateByNameReturningAll").mockResolvedValue([fakeKey()]));
+    const reap = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
     track(spyOn(cache, "delConfirmed").mockResolvedValue(false));
-    await expect(apiKeysService.revokeForAgent("sandbox-1")).resolves.toBeUndefined();
+    await expect(apiKeysService.revokeForAgent("sandbox-1")).resolves.toEqual([fakeKey().key_hash]);
+    expect(reap).not.toHaveBeenCalled();
+  });
+
+  test("revokeForAgent without a tx reaps the row once its invalidation is CONFIRMED", async () => {
+    track(spyOn(apiKeysRepository, "deactivateByNameReturningAll").mockResolvedValue([fakeKey()]));
+    const reap = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
+    track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
+    await expect(apiKeysService.revokeForAgent("sandbox-1")).resolves.toEqual([fakeKey().key_hash]);
+    // Authoritative pass succeeded -> nothing left to carry, row reaped.
+    expect(reap).toHaveBeenCalledWith(fakeKey().id);
   });
 });
