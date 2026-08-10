@@ -553,6 +553,10 @@ export function createElectrobunConfig(): ElectrobunConfig {
       // Sign native code inside the runtime dist node_modules on the inner app bundle
       // before Electrobun runs the platform signing/notarization flow.
       postBuild: "scripts/postwrap-sign-runtime-macos.ts",
+      // Electrobun deliberately skips its release signing path in dev. Apply a
+      // local ad-hoc identity after packaging so macOS permission services see
+      // the bundle id from Info.plist instead of the launcher helper identity.
+      postPackage: "scripts/sign-dev-macos-app.ts",
       // Capture wrapper-bundle binary metadata after the self-extractor is created.
       postWrap: "scripts/postwrap-diagnostics.ts",
     },
@@ -647,7 +651,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
                 "com.apple.security.network.server": true,
                 "com.apple.security.files.user-selected.read-write": true,
                 "com.apple.security.device.camera": true,
-                "com.apple.security.device.microphone": true,
+                "com.apple.security.device.audio-input": true,
                 "com.apple.security.device.screen-recording": true,
                 "com.apple.security.personal-information.addressbook": true,
                 "com.apple.security.personal-information.calendars": true,

@@ -1,4 +1,9 @@
-/** Implements Electrobun desktop mac window effects ts behavior for app-core shell integration. */
+/**
+ * Loads the native macOS bridge used by the Electrobun host for window effects,
+ * security-scoped files, onboarding notifications, and permission APIs. Calls
+ * execute in the signed app process so macOS binds protected resources to the
+ * same bundle identity shown to the user.
+ */
 import { CString, dlopen, FFIType, type Pointer, ptr } from "bun:ffi";
 import { join } from "node:path";
 import { assertDlopenPathAllowed } from "@elizaos/core";
@@ -26,6 +31,8 @@ type MacEffectsSymbols = {
   elizaOnboardingNotificationPost(title: Pointer, body: Pointer): boolean;
   elizaOnboardingGetChoice(): number;
   elizaOnboardingNotificationDismiss(): void;
+  checkNotificationPermission(): number;
+  requestNotificationPermission(): number;
 };
 
 type LoadedMacEffectsLib = { symbols: MacEffectsSymbols; close(): void };
@@ -105,6 +112,8 @@ function loadLib(): MacEffectsLib {
         args: [],
         returns: FFIType.void,
       },
+      checkNotificationPermission: { args: [], returns: FFIType.i32 },
+      requestNotificationPermission: { args: [], returns: FFIType.i32 },
     }) as MacEffectsLib;
   } catch (err) {
     console.warn("[MacEffects] Failed to load dylib:", err);
@@ -258,4 +267,16 @@ export function getOnboardingChoice(): OnboardingChoice {
 /** Dismiss the onboarding notification if still showing. */
 export function dismissOnboardingNotification(): void {
   getLib()?.symbols.elizaOnboardingNotificationDismiss();
+}
+
+/** Read the authorization bound to the signed Electrobun app process. */
+export function checkNotificationPermission(): number | null {
+  const lib = getLib();
+  return lib ? lib.symbols.checkNotificationPermission() : null;
+}
+
+/** Begin authorization on the signed Electrobun app process. */
+export function requestNotificationPermission(): number | null {
+  const lib = getLib();
+  return lib ? lib.symbols.requestNotificationPermission() : null;
 }
