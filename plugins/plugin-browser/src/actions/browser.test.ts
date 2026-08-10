@@ -114,113 +114,6 @@ describe("BROWSER action", () => {
     expect(browserAction.suppressEarlyReply).toBe(true);
   });
 
-  it("opens free-text queries as embeddable Google searches", async () => {
-    const service = browserService({
-      tab: {
-        title: "eliza - Google Search",
-        url: "https://www.google.com/search?igu=1&q=eliza",
-      },
-    });
-
-    await runBrowserAction({
-      service,
-      parameters: { query: "eliza" },
-    });
-
-    expect(service.execute).toHaveBeenCalledWith(
-      expect.objectContaining({
-        show: true,
-        subaction: "open",
-        url: "https://www.google.com/search?igu=1&q=eliza",
-      }),
-      undefined,
-    );
-  });
-
-  it("keeps domain-shaped query text as a search instead of navigation", async () => {
-    const service = browserService({
-      tab: {
-        title: "eliza.com - Google Search",
-        url: "https://www.google.com/search?igu=1&q=eliza.com",
-      },
-    });
-
-    await runBrowserAction({
-      service,
-      parameters: { query: "eliza.com" },
-    });
-
-    expect(service.execute).toHaveBeenCalledWith(
-      expect.objectContaining({
-        subaction: "open",
-        url: "https://www.google.com/search?igu=1&q=eliza.com",
-      }),
-      undefined,
-    );
-  });
-
-  it("navigates the selected tab when a query includes a tab id", async () => {
-    const service = browserService({
-      tab: {
-        id: "tab-1",
-        title: "eliza - Google Search",
-        url: "https://www.google.com/search?igu=1&q=eliza",
-      },
-    });
-
-    await runBrowserAction({
-      service,
-      parameters: { id: "tab-1", query: "eliza" },
-    });
-
-    expect(service.execute).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "tab-1",
-        subaction: "navigate",
-        url: "https://www.google.com/search?igu=1&q=eliza",
-      }),
-      undefined,
-    );
-  });
-
-  it("rejects ambiguous query and url destinations", async () => {
-    const service = browserService();
-    const { result } = await runBrowserAction({
-      service,
-      parameters: {
-        query: "eliza",
-        url: "https://example.com",
-      },
-    });
-
-    expect(service.execute).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      success: false,
-      values: { error: "BROWSER_DESTINATION_CONFLICT", success: false },
-    });
-  });
-
-  it("normalizes Google homepage URLs to the supported embedded surface", async () => {
-    const service = browserService({
-      tab: {
-        title: "Google",
-        url: "https://www.google.com/webhp?igu=1",
-      },
-    });
-
-    await runBrowserAction({
-      service,
-      parameters: { action: "open", url: "www.google.com" },
-    });
-
-    expect(service.execute).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: "https://www.google.com/webhp?igu=1",
-      }),
-      undefined,
-    );
-  });
-
   it("emits compact progress for non-terminal inspection work", async () => {
     const service = browserService({ value: { ready: true } });
     const callback = vi.fn(async () => []);
@@ -331,7 +224,7 @@ describe("BROWSER action", () => {
       expect.objectContaining({
         id: "tab-1",
         subaction: "navigate",
-        url: "https://example.com/",
+        url: "https://example.com",
       }),
       undefined,
     );

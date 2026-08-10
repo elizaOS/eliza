@@ -313,52 +313,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     });
   });
 
-  it("searches ordinary address-bar text instead of inventing a hostname", async () => {
-    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
-    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
-      tab: {
-        ...APPLE_WORKSPACE.tabs[0],
-        url: "https://www.google.com/search?igu=1&q=eliza",
-      },
-    });
-
-    render(<BrowserWorkspaceView />);
-    await screen.findByTitle("Apple");
-    const address = screen.getByTestId("browser-workspace-address-input");
-    fireEvent.change(address, { target: { value: "eliza" } });
-    fireEvent.keyDown(address, { key: "Enter" });
-
-    await waitFor(() =>
-      expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
-        "tab-apple",
-        "https://www.google.com/search?igu=1&q=eliza",
-      ),
-    );
-  });
-
-  it("uses Google's supported embedded homepage for a typed Google address", async () => {
-    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
-    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
-      tab: {
-        ...APPLE_WORKSPACE.tabs[0],
-        url: "https://www.google.com/webhp?igu=1",
-      },
-    });
-
-    render(<BrowserWorkspaceView />);
-    await screen.findByTitle("Apple");
-    const address = screen.getByTestId("browser-workspace-address-input");
-    fireEvent.change(address, { target: { value: "www.google.com" } });
-    fireEvent.keyDown(address, { key: "Enter" });
-
-    await waitFor(() =>
-      expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
-        "tab-apple",
-        "https://www.google.com/webhp?igu=1",
-      ),
-    );
-  });
-
   it("opens a fresh Google home tab instead of cloning the active address", async () => {
     vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
     vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({

@@ -307,7 +307,7 @@
   "avatarselector.SelectVrmFile": ".vrmファイルを選択してください。",
   "avatarselector.UploadCustomVrm": "カスタム.vrmをアップロード（クリックまたはドラッグ）",
   "browserworkspace.ActionFailed": "ブラウザ操作を実行できませんでした。",
-  "browserworkspace.AddressPlaceholder": "Google で検索または URL を入力",
+  "browserworkspace.AddressPlaceholder": "URLを入力",
   "browserworkspace.AgentActive": "エージェントはこのタブにいます",
   "browserworkspace.AgentTabs": "エージェントタブ",
   "browserworkspace.AppTabs": "アプリタブ",

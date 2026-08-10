@@ -307,7 +307,7 @@
   "avatarselector.SelectVrmFile": "Escolha um arquivo .vrm.",
   "avatarselector.UploadCustomVrm": "Carregar .vrm personalizado (clique ou arraste)",
   "browserworkspace.ActionFailed": "Falha na ação do navegador.",
-  "browserworkspace.AddressPlaceholder": "Pesquise no Google ou digite uma URL",
+  "browserworkspace.AddressPlaceholder": "Digite uma URL",
   "browserworkspace.AgentActive": "O agente está nesta aba",
   "browserworkspace.AgentTabs": "Abas do agente",
   "browserworkspace.AppTabs": "Abas dos apps",

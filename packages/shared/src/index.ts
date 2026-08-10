@@ -308,7 +308,6 @@ export * from "./type-guards.js";
 export * from "./types/index.js";
 export * from "./utils/asset-url.js";
 export * from "./utils/assistant-text.js";
-export * from "./utils/browser-destination.js";
 export * from "./utils/browser-tab-kit-types.js";
 export * from "./utils/browser-tabs-renderer-registry.js";
 export * from "./utils/character-message-examples.js";

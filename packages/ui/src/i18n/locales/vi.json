@@ -307,7 +307,7 @@
   "avatarselector.SelectVrmFile": "Vui lòng chọn tệp .vrm.",
   "avatarselector.UploadCustomVrm": "Tải .vrm tuỳ chỉnh (click hoặc kéo thả)",
   "browserworkspace.ActionFailed": "Hành động trình duyệt thất bại.",
-  "browserworkspace.AddressPlaceholder": "Tìm kiếm trên Google hoặc nhập URL",
+  "browserworkspace.AddressPlaceholder": "Nhập một URL",
   "browserworkspace.AgentActive": "Agent đang ở tab này",
   "browserworkspace.AgentTabs": "Tab agent",
   "browserworkspace.AppTabs": "Tab app",
