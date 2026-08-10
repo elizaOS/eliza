@@ -55,6 +55,16 @@ const stubSections = vi.hoisted(() => [
     defaultTitle: "Runtime",
   },
   {
+    id: "connectors",
+    label: "settings.sections.connectors.label",
+    defaultLabel: "Connectors",
+    tone: "neutral",
+    hue: "slate",
+    group: "system",
+    titleKey: "settings.sections.connectors.label",
+    defaultTitle: "Connectors",
+  },
+  {
     id: "crash",
     label: "settings.sections.crash.label",
     defaultLabel: "Crash",
@@ -285,6 +295,19 @@ describe("SettingsView", () => {
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
     expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
+  });
+
+  it("opens the legacy /connectors index path without rewriting the public URL hash", async () => {
+    window.history.replaceState(null, "", "/connectors");
+
+    render(<SettingsView />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("view-header").textContent).toContain(
+        "Connectors",
+      );
+    });
+    expect(window.location.hash).toBe("");
   });
 
   it("synchronizes same-page settings navigation dispatched through popstate", () => {

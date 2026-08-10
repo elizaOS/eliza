@@ -265,7 +265,8 @@ export function SettingsView({
   }, [loadPlugins]);
 
   // Legacy path deep links: /connectors, /connectors/<id>, /settings/connectors/<id>
-  // → structured hash the connectors body already understands.
+  // select the Connectors section. Index paths preserve the public URL; detail
+  // paths write the structured hash the connectors body already understands.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const path = getWindowNavigationPath();

@@ -160,14 +160,15 @@ test.describe("launcher catalog interactions", () => {
         if (viewport.name === "mobile") {
           // The launcher occupies the adjacent shell page rather than Home's
           // offscreen app region. Exercising its own scroll viewport catches a
-          // false proof where the hidden Home scroller moves while the visible
-          // final tile remains trapped beneath the fixed composer.
+          // false proof where the hidden Home scroller moves while launcher
+          // overflow exists. When the curated grid exactly fits the viewport,
+          // keep the same visible-final-tile proof without requiring impossible
+          // scroll movement.
           const scrollHost = grid;
-          const scrollMetrics = await scrollHost.evaluate((element) => ({
-            clientHeight: element.clientHeight,
-            scrollHeight: element.scrollHeight,
-          }));
-          if (scrollMetrics.scrollHeight > scrollMetrics.clientHeight) {
+          const launcherOverflows = await scrollHost.evaluate(
+            (element) => element.scrollHeight > element.clientHeight,
+          );
+          if (launcherOverflows) {
             await touchScrollLauncher(page, "launcher-page-window", "down");
             await expect
               .poll(() => scrollHost.evaluate((element) => element.scrollTop), {
@@ -204,7 +205,7 @@ test.describe("launcher catalog interactions", () => {
             testInfo,
             `${viewport.name}-launcher-after-touch-scroll`,
           );
-          if (scrollMetrics.scrollHeight > scrollMetrics.clientHeight) {
+          if (launcherOverflows) {
             await touchScrollLauncher(page, "launcher-page-window", "up");
             await expect
               .poll(() => scrollHost.evaluate((element) => element.scrollTop))
