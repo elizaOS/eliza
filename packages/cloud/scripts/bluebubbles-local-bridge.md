@@ -8,9 +8,11 @@ stay on the Mac.
 
 ## Register the phone
 
-From an authenticated Eliza Cloud client, create a sender-owned gateway. The
-registering account owns the revocable bridge credential; it is not the agent
-destination for everyone who texts the number:
+From an authenticated Eliza Cloud client with trusted service-administrator
+status, create a sender-owned gateway. This elevated check prevents an ordinary
+account from globally attesting that it owns arbitrary inbound sender
+identities. The registering account owns the revocable bridge credential; it is
+not the agent destination for everyone who texts the number:
 
 ```http
 POST /api/v1/phone-gateways/bluebubbles

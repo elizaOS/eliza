@@ -1,8 +1,8 @@
 /**
  * Authenticated BlueBubbles gateway registration and status API.
- * Registration binds one user-owned Mac/iPhone bridge to sender-owned Cloud
- * routing and returns a non-recoverable relay credential exactly once. Legacy
- * fixed-agent registrations remain available for compatibility.
+ * Registration binds one Mac/iPhone bridge to trusted-administrator
+ * sender-owned Cloud identity routing or an owner-scoped legacy fixed-agent
+ * target and returns the relay credential exactly once.
  */
 
 import { Hono } from "hono";
@@ -10,6 +10,7 @@ import { z } from "zod";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { adminService } from "@/lib/services/admin";
 import {
   createBlueBubblesGatewayRegistration,
   listBlueBubblesGateways,
@@ -87,6 +88,20 @@ app.post("/", async (c) => {
     const phone = validatePhoneForAPI(parsed.data.phoneNumber);
     if (!phone.valid) {
       return c.json({ success: false, error: phone.error }, 400);
+    }
+
+    if (parsed.data.routingMode === "sender-owned") {
+      const admin = await adminService.getAdminStatusForUser(user);
+      if (!admin.isAdmin) {
+        return c.json(
+          {
+            success: false,
+            error:
+              "Sender-owned BlueBubbles gateways require a trusted service administrator",
+          },
+          403,
+        );
+      }
     }
 
     let agentId: string | null = null;

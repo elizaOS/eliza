@@ -152,6 +152,7 @@ export async function handleBlueBubblesWebhookPayload(
   if (!authorization) {
     return c.json({ error: "Unauthorized" }, 401);
   }
+  const registeredGateway = authorization.gateway;
 
   const parsed = BlueBubblesWebhookSchema.safeParse(payload);
   if (!parsed.success) {
@@ -189,6 +190,29 @@ export async function handleBlueBubblesWebhookPayload(
     return c.json({ success: true, skipped: "empty_message" });
   }
 
+  if (registeredGateway) {
+    try {
+      await touchBlueBubblesGateway(registeredGateway.id);
+    } catch (error) {
+      // error-policy:J1 a failed presence write is translated before the dedupe
+      // claim, so the relay can retry without losing this message GUID.
+      logger.error("[BlueBubblesWebhook] Gateway presence update failed", {
+        bridgeId,
+        messageId: data.guid,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return c.json(
+        {
+          success: false,
+          handled: false,
+          reason: "bridge_failed",
+          routingError: "BlueBubbles gateway presence update failed",
+        },
+        503,
+      );
+    }
+  }
+
   // Replay dedupe on the message guid (matches the crypto/stripe webhooks).
   // The local relay retries deliveries, so without this a re-delivered message
   // is routed to the agent twice (duplicate reply + double credit spend).
@@ -212,7 +236,6 @@ export async function handleBlueBubblesWebhookPayload(
     }
   }
 
-  const registeredGateway = authorization.gateway;
   const organizationId =
     registeredGateway?.organizationId ??
     readEnvString(c, "BLUEBUBBLES_GATEWAY_ORG_ID") ??
@@ -240,9 +263,7 @@ export async function handleBlueBubblesWebhookPayload(
     registered: Boolean(registeredGateway),
   };
 
-  if (registeredGateway) {
-    await touchBlueBubblesGateway(registeredGateway.id);
-  } else {
+  if (!registeredGateway) {
     try {
       gatewayDevice = await registerPhoneGatewayDevice({
         organizationId,
@@ -312,6 +333,10 @@ export async function handleBlueBubblesWebhookPayload(
         ...routingInput,
         provider: "blooio",
       });
+    }
+
+    if (!routed.handled && routed.reason === "bridge_failed") {
+      throw new Error("BlueBubbles agent bridge returned a retryable failure");
     }
 
     return c.json({

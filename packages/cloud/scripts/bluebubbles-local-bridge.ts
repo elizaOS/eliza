@@ -269,13 +269,6 @@ const pendingReplyRetryLimit = Number.parseInt(
 const pendingRepliesPath =
   process.env.BLUEBUBBLES_PENDING_REPLIES_PATH ??
   join(process.cwd(), ".eliza-local/bluebubbles-pending-replies.json");
-const messagesDbPath =
-  process.env.BLUEBUBBLES_MESSAGES_DB_PATH ??
-  join(process.env.HOME ?? "", "Library/Messages/chat.db");
-const loopbackNormalizationEnabled =
-  process.env.BLUEBUBBLES_LOOPBACK_NORMALIZATION_ENABLED === "true";
-const configuredLoopbackSourceIdentity =
-  process.env.BLUEBUBBLES_LOOPBACK_SOURCE_IDENTITY?.trim() || null;
 const expectedBlueBubblesWebhookUrl = `http://127.0.0.1:${port}/webhooks/bluebubbles`;
 const processedMessageIds = new Set<string>();
 const recentInboundDeliveries: InboundDeliveryRecord[] = [];
@@ -477,95 +470,6 @@ async function gatewayTargetDecision(
     };
   }
   return { accepted: true };
-}
-
-function readMessageSourceIdentity(messageGuid: string): string | null {
-  try {
-    const db = new Database(messagesDbPath, { readonly: true });
-    try {
-      const row = db
-        .query<{ destination_caller_id: string | null }, [string]>(
-          "select destination_caller_id from message where guid = ? limit 1",
-        )
-        .get(messageGuid);
-      return row?.destination_caller_id?.trim() || null;
-    } finally {
-      db.close();
-    }
-  } catch (error) {
-    // error-policy:J4 Cross-number normalization is optional; ordinary inbound
-    // messages and the outbound loop guard remain safe when Messages DB access
-    // is unavailable under macOS privacy controls.
-    console.warn(
-      "[bluebubbles-local-bridge] unable to inspect Messages source identity",
-      {
-        messageGuid,
-        error: commandErrorMessage(error),
-      },
-    );
-    return null;
-  }
-}
-
-function normalizeGatewayLoopbackPayload(
-  payload: BlueBubblesPayload,
-): BlueBubblesPayload {
-  if (
-    !loopbackNormalizationEnabled ||
-    !payload.data.isFromMe ||
-    !payload.data.guid
-  ) {
-    return payload;
-  }
-
-  const recipient =
-    payload.data.handle?.address?.trim() ??
-    payload.data.chats?.[0]?.chatIdentifier?.trim();
-  if (
-    !recipient ||
-    normalizeMessagingAddress(recipient) !==
-      normalizeMessagingAddress(gatewayPhoneNumber)
-  ) {
-    return payload;
-  }
-
-  const sourceIdentity =
-    readMessageSourceIdentity(payload.data.guid) ??
-    configuredLoopbackSourceIdentity;
-  if (
-    !sourceIdentity ||
-    normalizeMessagingAddress(sourceIdentity) ===
-      normalizeMessagingAddress(gatewayPhoneNumber)
-  ) {
-    return payload;
-  }
-
-  const service = messageServiceFor(payload);
-  const firstChat = payload.data.chats?.[0];
-  return {
-    ...payload,
-    data: {
-      ...payload.data,
-      isFromMe: false,
-      handle: {
-        ...(payload.data.handle ?? {}),
-        address: sourceIdentity,
-      },
-      chats: [
-        {
-          ...(firstChat ?? {}),
-          guid: `${service};-;${sourceIdentity}`,
-          chatIdentifier: sourceIdentity,
-        },
-      ],
-      metadata: {
-        ...(payload.data.metadata ?? {}),
-        loopbackNormalized: true,
-        originalIsFromMe: true,
-        originalRecipient: recipient,
-      },
-    },
-  };
 }
 
 async function readSipStatus(): Promise<string> {
@@ -1142,10 +1046,6 @@ async function gatewayDiagnostics(): Promise<Record<string, unknown>> {
       outboundValidationPath,
       gatewayPhoneNumber,
       gatewayPhoneLabel,
-      loopbackNormalizationEnabled,
-      loopbackSourceIdentityConfigured: Boolean(
-        configuredLoopbackSourceIdentity,
-      ),
       pendingRepliesPath,
       pendingReplyCount: pendingReplies.length,
       pendingReplyRetry: {
@@ -1685,13 +1585,7 @@ async function handleWebhook(
   }
   if (messageId) processedMessageIds.add(messageId);
 
-  // Loopback normalization must precede the target decision: a same-Apple-
-  // Account message that the Messages DB proves came from a distinct source
-  // identity is rewritten to inbound here, and only unproven isFromMe
-  // payloads reach the outbound_message loop guard below.
-  const payload = normalizeGatewayLoopbackPayload(rawPayload);
-
-  const targetDecision = await gatewayTargetDecision(payload);
+  const targetDecision = await gatewayTargetDecision(rawPayload);
   if (!targetDecision.accepted) {
     const result = {
       success: true,
@@ -1699,7 +1593,7 @@ async function handleWebhook(
       replied: false,
       replyQueued: false,
     };
-    recordInboundDelivery(payload, result);
+    recordInboundDelivery(rawPayload, result);
     if (targetDecision.skipped === "gateway_target_mismatch") {
       console.warn(
         "[bluebubbles-local-bridge] ignored message for a different local identity",
@@ -1713,6 +1607,8 @@ async function handleWebhook(
     json(res, 200, result);
     return;
   }
+
+  const payload = rawPayload;
 
   let reply: CloudReply;
   try {

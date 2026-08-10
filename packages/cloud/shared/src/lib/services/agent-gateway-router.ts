@@ -1,4 +1,5 @@
 /** Routes connector messages to their owning Cloud agent and returns transport-ready replies. */
+import { ElizaError } from "@elizaos/core";
 import { createHash, randomUUID } from "crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/client";
@@ -1109,19 +1110,23 @@ export class AgentGatewayRouterService {
         organizationId: routed.organizationId ?? args.organizationId,
       };
     } catch (error) {
+      // error-policy:J2 preserve the transport failure so the webhook boundary
+      // can release its dedupe claim and return a retryable response.
       logger.error("[AgentGatewayRouter] Registered BlueBubbles route failed", {
         gatewayAgentId: args.agentId,
         organizationId: args.organizationId,
         error: error instanceof Error ? error.message : String(error),
       });
-      return {
-        handled: false,
-        reason: "bridge_failed",
-        agentId: args.agentId,
-        userId: args.userId,
-        organizationId: args.organizationId,
-        roomId: extractRoomId(rpcRequest),
-      };
+      throw new ElizaError("Registered BlueBubbles agent bridge failed", {
+        code: "BLUEBUBBLES_REGISTERED_BRIDGE_FAILED",
+        context: {
+          agentId: args.agentId,
+          userId: args.userId,
+          organizationId: args.organizationId,
+          roomId: extractRoomId(rpcRequest),
+        },
+        cause: error instanceof Error ? error : new Error(String(error)),
+      });
     }
   }
 

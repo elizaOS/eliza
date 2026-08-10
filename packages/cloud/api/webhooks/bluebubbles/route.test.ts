@@ -8,13 +8,23 @@ const routePhoneMessage = mock(async () => ({
   userId: "user-1",
   organizationId: "org-1",
 }));
-const routeRegisteredBlueBubblesMessage = mock(async () => ({
-  handled: true,
-  replyText: "registered agent reply",
-  agentId: "registered-agent",
-  userId: "registered-user",
-  organizationId: "registered-org",
-}));
+type RegisteredRouteResult = {
+  handled: boolean;
+  reason?: string;
+  replyText?: string;
+  agentId: string;
+  userId: string;
+  organizationId: string;
+};
+const routeRegisteredBlueBubblesMessage = mock(
+  async (): Promise<RegisteredRouteResult> => ({
+    handled: true,
+    replyText: "registered agent reply",
+    agentId: "registered-agent",
+    userId: "registered-user",
+    organizationId: "registered-org",
+  }),
+);
 type RegisterPhoneGatewayDeviceResult = {
   id: string | null;
   registered: boolean;
@@ -131,6 +141,7 @@ describe("BlueBubbles webhook", () => {
     authenticateBlueBubblesGateway.mockClear();
     authenticateBlueBubblesGateway.mockResolvedValue(null);
     touchBlueBubblesGateway.mockClear();
+    touchBlueBubblesGateway.mockImplementation(async () => undefined);
     tryCreate.mockClear();
     deleteByEventId.mockClear();
     registerPhoneGatewayDevice.mockClear();
@@ -204,6 +215,42 @@ describe("BlueBubbles webhook", () => {
     );
   });
 
+  test("returns 503 before claiming dedupe when registered gateway presence fails", async () => {
+    authenticateBlueBubblesGateway.mockResolvedValueOnce({
+      id: "registered-device",
+      bridgeId: "bb-registered",
+      phoneNumber: "+14155550123",
+      organizationId: "registered-org",
+      userId: "registered-user",
+      routingMode: "sender-owned",
+      agentId: null,
+      friendlyName: "Registered iPhone",
+      lastSeenAt: null,
+    });
+    touchBlueBubblesGateway.mockRejectedValueOnce(
+      new Error("presence database unavailable"),
+    );
+
+    const response = await app.fetch(
+      request(
+        inboundPayload,
+        { authorization: "Bearer bbg_registered-token" },
+        "https://api.example.test/?bridge=bb-registered",
+      ),
+      env,
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      handled: false,
+      reason: "bridge_failed",
+      routingError: "BlueBubbles gateway presence update failed",
+    });
+    expect(tryCreate).not.toHaveBeenCalled();
+    expect(routePhoneMessage).not.toHaveBeenCalled();
+  });
+
   test("keeps legacy fixed-agent registrations pinned to their selected agent", async () => {
     authenticateBlueBubblesGateway.mockResolvedValueOnce({
       id: "registered-device",
@@ -238,6 +285,42 @@ describe("BlueBubbles webhook", () => {
         userId: "registered-user",
         agentId: "registered-agent",
       }),
+    );
+  });
+
+  test("releases dedupe and returns 503 when a registered agent bridge reports failure", async () => {
+    authenticateBlueBubblesGateway.mockResolvedValueOnce({
+      id: "registered-device",
+      bridgeId: "bb-legacy",
+      phoneNumber: "+14155550123",
+      organizationId: "registered-org",
+      userId: "registered-user",
+      routingMode: "fixed-agent",
+      agentId: "registered-agent",
+      friendlyName: "Legacy iPhone",
+      lastSeenAt: null,
+    });
+    routeRegisteredBlueBubblesMessage.mockResolvedValueOnce({
+      handled: false,
+      reason: "bridge_failed",
+      agentId: "registered-agent",
+      userId: "registered-user",
+      organizationId: "registered-org",
+    });
+
+    const response = await app.fetch(
+      request(
+        inboundPayload,
+        { authorization: "Bearer bbg_legacy-token" },
+        "https://api.example.test/?bridge=bb-legacy",
+      ),
+      env,
+    );
+
+    expect(response.status).toBe(503);
+    expect(deleteByEventId).toHaveBeenCalledWith(
+      "bluebubbles:bb-legacy:message-1",
+      "bluebubbles",
     );
   });
 
