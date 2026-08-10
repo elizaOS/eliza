@@ -574,9 +574,9 @@ installPackagedShellStorageTestBridge();
 // Branded AOSP/ElizaOS device images ARE the agent: pre-seed the on-device
 // agent as the startup target on first frame. Stock-phone sideload builds
 // self-exclude inside preSeedAndroidLocalRuntimeIfFresh (#14390): a fresh
-// install lands in onboarding, whose runtime chooser (enabled by default on
-// those builds) starts the local agent on demand only after the user picks
-// it. No-op on iOS/desktop/web and cloud builds.
+// install lands in onboarding; when that build explicitly enables the runtime
+// chooser, the local agent starts on demand only after the user picks it.
+// No-op on iOS/desktop/web and cloud builds.
 if (!hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }

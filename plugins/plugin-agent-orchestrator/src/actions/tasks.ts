@@ -2475,6 +2475,32 @@ function textValue(value: unknown): string | undefined {
     : undefined;
 }
 
+/**
+ * Sentinel words a weak planner emits for an *absent* structural id filter
+ * ("no project", "no session"). Left as-is they become a literal filter — a
+ * task query for a project/session named "none" matches nothing — and leak
+ * into the reply as "project none" / "that session" (live 2026-08-10: a
+ * rhetorical "any burning fires?" routed to TASKS with `projectId:"none"`,
+ * answered shaw with the reconstructed junk filter). Only structural id
+ * filters normalize these; a free-text `search` term is never coerced.
+ */
+const ABSENT_FILTER_SENTINELS = new Set([
+  "none",
+  "null",
+  "nil",
+  "undefined",
+  "n/a",
+  "na",
+  "any",
+  "all",
+]);
+
+function filterIdValue(value: unknown): string | undefined {
+  const text = textValue(value);
+  if (text === undefined) return undefined;
+  return ABSENT_FILTER_SENTINELS.has(text.toLowerCase()) ? undefined : text;
+}
+
 function inferMetric(text: string, value?: string): HistoryMetric {
   const normalized = value?.trim().toLowerCase();
   if (
@@ -2802,10 +2828,12 @@ async function runHistory(
   // Session-scoped history resolves through the durable session index. A task
   // may have several sessions, so comparing only its latest session would make
   // older sessions disappear or allow an unrelated thread into the answer.
-  const sessionId = textValue(params.sessionId) ?? textValue(content.sessionId);
+  const sessionId =
+    filterIdValue(params.sessionId) ?? filterIdValue(content.sessionId);
   // Registered-project filter: restrict the thread listing to tasks bound to
   // one project (the store filters on the indexed/structural `projectId`).
-  const projectId = textValue(params.projectId) ?? textValue(content.projectId);
+  const projectId =
+    filterIdValue(params.projectId) ?? filterIdValue(content.projectId);
   const includeArchived =
     pickBoolean(params, content, "includeArchived") ?? false;
   const windowFilters = buildWindowFilters(window);
@@ -3763,13 +3791,12 @@ async function handleIssueAction(
                     `#${i.number} [${i.state}] ${i.title}${i.labels.length > 0 ? ` (${i.labels.join(", ")})` : ""}`,
                 )
                 .join("\n")}`;
-        if (callback) await callback({ text: listText });
+        // Reads remain planner-visible because this lookup may feed a later
+        // issue mutation. The final boundary synthesizes a standalone read
+        // answer when the trajectory has no follow-up work.
         return {
           success: true,
           text: listText,
-          userFacingText: listText,
-          verifiedUserFacing: true,
-          turnComplete: true,
           data: { issues },
         };
       }
@@ -3785,13 +3812,9 @@ async function handleIssueAction(
         }
         const issue = await service.getIssue(repo, issueNumber);
         const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issue.body.slice(0, ISSUE_BODY_MAX_CHARS)}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
-        if (callback) await callback({ text: issueText });
         return {
           success: true,
           text: issueText,
-          userFacingText: issueText,
-          verifiedUserFacing: true,
-          turnComplete: true,
           data: { issue },
         };
       }
@@ -4199,6 +4222,16 @@ function issueOperation(
   ).toLowerCase();
 }
 
+function isIssueReadOperation(
+  operation: TaskOp,
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+): boolean {
+  if (operation !== "manage_issues") return false;
+  const issueAction = issueOperation(params, content);
+  return issueAction === "list" || issueAction === "get";
+}
+
 function tasksNoopReason(
   operation: TaskOp,
   params: Record<string, unknown>,
@@ -4209,12 +4242,7 @@ function tasksNoopReason(
     return "The operation only read orchestrator state.";
   }
   const data = objectValue(result.data) ?? {};
-  if (
-    operation === "manage_issues" &&
-    result.success &&
-    (issueOperation(params, content) === "list" ||
-      issueOperation(params, content) === "get")
-  ) {
+  if (result.success && isIssueReadOperation(operation, params, content)) {
     return "The operation only read provider issue state.";
   }
   if (
@@ -4503,14 +4531,34 @@ async function settleTasksOperation(args: {
   capturedCallbacks: CapturedCallback[];
   callback?: HandlerCallback;
 }): Promise<ActionResult> {
+  // A read-only op's text is planner observation, never a user reply: keep it
+  // out of the canonical callback so the planner composes the answer instead of
+  // shipping the raw tool text. Covers the GitHub-issue reads (#18248) AND the
+  // orchestrator reads that share the same "no visible callback" contract —
+  // list_agents/history/share — whose internal text otherwise leaks verbatim
+  // (live 2026-08-10: a status-y ask routed to list_agents shipped
+  // "No active task agents. Use TASKS { action: \"create\" }..." to chat).
+  const plannerOnlyRead =
+    TASKS_READ_ONLY_OPERATIONS.has(args.operation) ||
+    isIssueReadOperation(args.operation, args.params, args.content);
   const { receipt, outcomeUnknown } = tasksEffectReceipt(args);
-  let result = args.result;
-  const helperEmittedCallback = args.capturedCallbacks.length > 0;
-  let canonical = args.capturedCallbacks.at(-1);
-  if (!canonical && effectString(result.text)) {
+  const {
+    userFacingText: _readUserFacingText,
+    verifiedUserFacing: _readVerifiedUserFacing,
+    turnComplete: _readTurnComplete,
+    ...plannerOnlyResult
+  } = args.result;
+  let result = plannerOnlyRead ? plannerOnlyResult : args.result;
+  const helperEmittedCallback =
+    !plannerOnlyRead && args.capturedCallbacks.length > 0;
+  let canonical = helperEmittedCallback
+    ? args.capturedCallbacks.at(-1)
+    : undefined;
+  if (!plannerOnlyRead && !canonical && effectString(result.text)) {
     canonical = { response: { text: effectString(result.text) } };
   }
   if (
+    !plannerOnlyRead &&
     args.capturedCallbacks.length > 1 &&
     effectString(result.text) !== undefined
   ) {

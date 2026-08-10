@@ -296,13 +296,6 @@ export class OCRService {
       const backend = await factory();
       if (!backend) continue;
       try {
-        if (backend.name === "doctr") {
-          // Defer GGUF load until first use so OCRService.initialize stays
-          // cheap. DoctrBackend.initialize() is what triggers the FFI load.
-          this.backends.push(backend);
-          if (!this.chosen) this.chosen = backend;
-          continue;
-        }
         await backend.initialize();
         this.backends.push(backend);
         if (!this.chosen) this.chosen = backend;
@@ -310,7 +303,12 @@ export class OCRService {
         logger.warn(
           `[OCR] backend ${backend.name} unavailable: ${error instanceof Error ? error.message : String(error)}`,
         );
-        await backend.dispose().catch(() => {});
+        await backend.dispose().catch((disposeError) => {
+          // error-policy:J6 best-effort teardown preserves the init failure.
+          logger.warn(
+            `[OCR] cleanup for unavailable ${backend.name} backend failed: ${disposeError instanceof Error ? disposeError.message : String(disposeError)}`,
+          );
+        });
       }
     }
 
@@ -335,9 +333,6 @@ export class OCRService {
     let lastError: unknown = null;
     for (const backend of ordered) {
       try {
-        if (backend.name === "doctr" && backend instanceof DoctrBackend) {
-          await backend.initialize();
-        }
         return await backend.extractText(imageBuffer);
       } catch (error) {
         lastError = error;

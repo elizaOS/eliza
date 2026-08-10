@@ -1340,6 +1340,15 @@ describe("ChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
   });
 
+  it("keeps the persistent composer at 16px on coarse pointers", async () => {
+    await act(async () => {
+      render(<ChatOverlay controller={makeController()} />);
+    });
+    const className = screen.getByTestId("chat-composer-textarea").className;
+    expect(className).toContain("text-sm");
+    expect(className).toContain("pointer-coarse:text-[16px]");
+  });
+
   it("renders composer controls icon-only — no capsule/border/fill, neutral when active (#10711)", () => {
     // Resting: the + and one primary Talk control carry only the icon — no
     // round capsule, no border, no translucent white fill. The visible box is
