@@ -6,7 +6,13 @@
  * a test-file mismatch cannot exit green without exercising the runner path.
  */
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
@@ -108,6 +114,31 @@ describe("root test lane require-work wiring (#13620)", () => {
       expect(rootScript(scriptName)).toContain("--require-work");
     });
   }
+
+  test("workflow invocations only pass flags the runner still accepts (#18185)", () => {
+    // The runner fails closed (exit 2) on unknown arguments, so a workflow
+    // still passing a retired flag kills its job before a single test runs —
+    // exactly what --min-tasks did to the plugin-tests gate after the flag
+    // became --require-work.
+    const workflowDir = join(repoRoot, ".github", "workflows");
+    for (const file of readdirSync(workflowDir)) {
+      if (!file.endsWith(".yml") && !file.endsWith(".yaml")) continue;
+      const source = readFileSync(join(workflowDir, file), "utf8");
+      if (!source.includes("run-all-tests.mjs")) continue;
+      expect(
+        source,
+        `${file} passes the retired --min-tasks flag`,
+      ).not.toContain("--min-tasks");
+      expect(
+        source,
+        `${file} sets the retired MIN_TEST_TASKS env`,
+      ).not.toContain("MIN_TEST_TASKS");
+    }
+    const developPr = readFileSync(join(workflowDir, "develop-pr.yml"), "utf8");
+    expect(developPr).toContain(
+      "node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --require-work",
+    );
+  });
 
   test("the standalone guard installs the Bun contract dependency first", () => {
     const workflow = readFileSync(
@@ -218,6 +249,88 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
       } finally {
         rmSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true, force: true });
       }
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  test(
+    "--min-tasks restores the numeric floor the develop-pr plugin gate passes",
+    () => {
+      // The consolidation (02d89802f2c) dropped --min-tasks while
+      // develop-pr.yml still passes --min-tasks=<selected count>, so every
+      // plugin-touching PR failed at argv parse (exit 2) before a single test
+      // ran. The flag is a supported surface again: n > 0 implies the
+      // --require-work guards plus a lane-wide >= n collection floor.
+      rmSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true, force: true });
+      mkdirSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true });
+      try {
+        writeFileSync(
+          join(PLAN_FLOOR_PACKAGE_DIR, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@elizaos/run-all-tests-plan-floor-fixture",
+              private: true,
+              type: "module",
+              scripts: {
+                test: 'node -e "process.exit(0)"',
+              },
+            },
+            null,
+            2,
+          )}\n`,
+        );
+
+        // The develop-pr shape: floor satisfied by the one selected task.
+        const satisfied = run([
+          "--plan=json",
+          "--only=test",
+          "--no-cloud",
+          "--filter=@elizaos/run-all-tests-plan-floor-fixture",
+          "--min-tasks=1",
+        ]);
+        expect(satisfied.status).toBe(0);
+        expect(JSON.parse(satisfied.stdout).summary.taskCount).toBe(1);
+
+        // Below the declared floor: loud exit 3, before plan mode exits.
+        const belowFloor = run([
+          "--plan=json",
+          "--only=test",
+          "--no-cloud",
+          "--filter=@elizaos/run-all-tests-plan-floor-fixture",
+          "--min-tasks=2",
+        ]);
+        expect(belowFloor.status).toBe(3);
+        expect(belowFloor.stderr).toContain("VACUOUS-GREEN GUARD");
+        expect(belowFloor.stderr).toContain("< required 2");
+      } finally {
+        rmSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true, force: true });
+      }
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  test(
+    "--min-tasks > 0 arms the zero-task require-work guard",
+    () => {
+      const result = run([
+        "--no-cloud",
+        `--filter=${NOWHERE_FILTER}`,
+        "--min-tasks=1",
+      ]);
+      expect(result.status).toBe(3);
+      expect(`${result.stdout}${result.stderr}`).toContain(
+        ZERO_TASK_DIAGNOSTIC,
+      );
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  test(
+    "a malformed --min-tasks value fails usage, not the guard",
+    () => {
+      const result = run(["--no-cloud", "--min-tasks=abc", "--plan"]);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("--min-tasks/MIN_TEST_TASKS");
     },
     SPAWN_TIMEOUT_MS,
   );

@@ -480,7 +480,15 @@ function shouldTreatAsConnectedWithoutWebSocket(
     isIosInProcessLocalAgentBase(value) ||
     isLocalAgentIpcBase(value) ||
     isSharedRuntimeRestAdapterBase(value) ||
-    isDedicatedCloudAgentBase(value)
+    isDedicatedCloudAgentBase(value) ||
+    // Control-plane hosts structurally cannot serve `/ws`: the alias Worker
+    // routes only `/api*`/`/steward*` to the API and strips
+    // `Connection`/`Upgrade` before proxying, so the SPA answers the upgrade
+    // with 200 + index.html. Since #17801 removed the synthetic-host WS skip,
+    // browsers on these hosts dialed it anyway, burned all reconnect attempts,
+    // and raised the fatal "Lost backend connection." overlay over a fully
+    // working REST/SSE backend (#18172). Connected-over-REST, no WS attempt.
+    isElizaCloudControlPlaneBase(value)
   );
 }
 
@@ -1710,7 +1718,12 @@ export class ElizaClient {
         // full-screen "Lost backend connection" overlay. Degrade to a non-fatal
         // connected-over-REST state and keep probing in the background (see
         // scheduleReconnect's 30s loop) so live updates resume on WS recovery.
-        if (isDedicatedCloudAgentBase(this.baseUrl)) {
+        if (
+          isDedicatedCloudAgentBase(this.baseUrl) ||
+          // Control-plane hosts serve chat over REST/SSE and can never
+          // complete a WS upgrade (#18172) — same non-fatal degrade.
+          isElizaCloudControlPlaneBase(this.baseUrl)
+        ) {
           this.connectionState = "connected";
           this.disconnectedAt = null;
         } else {
