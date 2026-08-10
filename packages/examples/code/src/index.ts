@@ -137,12 +137,15 @@ async function runInteractive(): Promise<void> {
     process.exit(1);
   }
 
-  const [{ App }, { initializeAgent }, { loadSession, createDefaultSessionState }] =
-    await Promise.all([
-      import("./App.js"),
-      import("./lib/agent.js"),
-      import("./lib/session.js"),
-    ]);
+  const [
+    { App },
+    { initializeAgent },
+    { loadSession, createDefaultSessionState },
+  ] = await Promise.all([
+    import("./App.js"),
+    import("./lib/agent.js"),
+    import("./lib/session.js"),
+  ]);
 
   let runtime: AgentRuntime | undefined;
   let app: InstanceType<typeof App> | undefined;
