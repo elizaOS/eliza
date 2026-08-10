@@ -27,6 +27,13 @@ describe("pluginPackageNameCandidates", () => {
     ]);
   });
 
+  it("does not duplicate the plugin- prefix from runtime-facing names", () => {
+    expect(pluginPackageNameCandidates("plugin-health")).toEqual([
+      "@elizaos/plugin-health",
+      "plugin-health",
+    ]);
+  });
+
   it("uses a scoped plugin name as-is", () => {
     expect(pluginPackageNameCandidates("@elizaos/plugin-inbox")).toEqual([
       "@elizaos/plugin-inbox",
@@ -66,6 +73,37 @@ describe("registerPluginViews package-dir resolution", () => {
     // Normalized so the assertion holds on Windows path separators too.
     const pluginDir = (entry?.pluginDir ?? "").split("\\").join("/");
     expect(pluginDir).toContain("plugins/plugin-blocker");
+  });
+});
+
+describe("registerPluginViews prefixed runtime name resolution", () => {
+  const PLUGIN_NAME = "plugin-health";
+
+  afterEach(() => {
+    unregisterPluginViews(PLUGIN_NAME);
+  });
+
+  it("resolves a plugin-prefixed runtime name to the real workspace package", async () => {
+    const plugin: Plugin = {
+      name: PLUGIN_NAME,
+      description: "prefixed runtime-name resolution fixture",
+      views: [
+        {
+          id: "health-resolution-fixture",
+          label: "Health fixture",
+          bundlePath: "dist/views/bundle.js",
+        },
+      ],
+    } as Plugin;
+
+    await registerPluginViews(plugin);
+
+    const entry = listViews({ includeAllKinds: true }).find(
+      (view) => view.id === "health-resolution-fixture",
+    );
+    expect(entry).toBeDefined();
+    const pluginDir = (entry?.pluginDir ?? "").split("\\").join("/");
+    expect(pluginDir).toContain("plugins/plugin-health");
   });
 });
 
