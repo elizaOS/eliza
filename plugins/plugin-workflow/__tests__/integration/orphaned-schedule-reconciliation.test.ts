@@ -268,6 +268,7 @@ test('first fire disables one orphan and restart quarantines another without cro
     const disabledNotifications = notificationsA.list({ category: 'workflow' });
     expect(disabledNotifications).toHaveLength(1);
     expect(disabledNotifications[0]?.title).toContain('disabled');
+    expect(disabledNotifications[0]?.body).toContain('workflow no longer exists');
     expect(await firstPair.runtimeA.getTask(firedOrphanTask.id)).toBeNull();
     expect(await firstPair.runtimeA.getTask(restartOrphanTask.id)).not.toBeNull();
 
