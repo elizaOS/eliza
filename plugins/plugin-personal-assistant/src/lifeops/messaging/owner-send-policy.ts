@@ -213,6 +213,12 @@ export function registerOwnerSendApprovalWorker(runtime: IAgentRuntime): void {
             `[OwnerSendPolicy] send approval ${taskId} has a missing or invalid persisted draft payload; nothing was sent — please re-send the draft`,
           );
         }
+        if (draft.source === "gmail") {
+          await rt.deleteTask(task.id);
+          throw new Error(
+            `[OwnerSendPolicy] Gmail approval ${taskId} cannot send: official Gmail MCP supports saved drafts only`,
+          );
+        }
         const service = getDefaultTriageService();
         const adapter = service.getAdapter(draft.source);
         if (!adapter) {
@@ -306,6 +312,11 @@ export function createOwnerSendPolicy(): SendPolicy {
     // intentionally unused: the worker reconstructs the send from the draft
     // payload persisted in the task row instead (issue #10721).
     async enqueueApproval(runtime, draft, _executor) {
+      if (draft.source === "gmail") {
+        throw new Error(
+          "[OwnerSendPolicy] Gmail cannot enter the send-approval queue: official Gmail MCP supports saved drafts only",
+        );
+      }
       if (typeof runtime.createTask !== "function") {
         throw new Error(
           "[OwnerSendPolicy] runtime.createTask is required for outbound approvals",

@@ -2,7 +2,7 @@
  * Plugin definition for `@elizaos/plugin-calendar`: registers `CalendarService`,
  * the deterministic conflict action, the non-destructive migration service,
  * the `app_calendar` schema, the Microsoft connector-account OAuth provider,
- * and the provider-authenticated calendar webhook.
+ * and the owner-gated calendar HTTP adapter.
  */
 import {
   getConnectorAccountManager,
@@ -24,8 +24,8 @@ import { calendarSchema } from "./service/schema.js";
  * First-class calendar plugin. Owns the calendar domain that previously lived
  * inside `@elizaos/plugin-personal-assistant`: the calendar event/sync store, the
  * Google, Microsoft, Apple, and ICS calendar feeds; event CRUD for writable
- * providers; the CALENDAR action; the host route adapter and Google webhook;
- * the client API, and the owner-facing calendar views.
+ * providers; the CALENDAR action; the owner-gated host route adapter; the
+ * client API; and the owner-facing calendar views.
  *
  */
 export const calendarPlugin: Plugin = {

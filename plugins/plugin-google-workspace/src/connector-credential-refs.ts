@@ -1,13 +1,11 @@
 /**
  * Persists OAuth credential material for a connector account and reads the
  * resulting refs back out. `persistConnectorCredentialRefs` writes each secret
- * to the first available durable vault (connector credential store, vault, or
- * SECRETS) and records a `vaultRef` pointer on the account via storage; it
+ * to the first available durable connector credential store or vault and
+ * records a `vaultRef` pointer through connector-account storage; it
  * refuses to proceed unless both a vault writer and a ref writer exist, so an
  * account is never marked connected without durable credentials.
- * `credentialRefRecordsFromMetadata` is the read side, extracting ref records
- * from account metadata for the credential resolver. Consumed by the connector
- * account provider on OAuth completion and by `DefaultGoogleCredentialResolver`.
+ * Consumed by the connector account provider on OAuth completion.
  */
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
@@ -49,15 +47,6 @@ export interface ConnectorCredentialRefMetadata extends JsonRecord {
   vaultRef: string;
   expiresAt?: number;
   metadata?: JsonRecord;
-}
-
-export interface ConnectorCredentialRefRecordLike {
-  credentialType: string;
-  vaultRef?: string | null;
-  metadata?: JsonRecord | null;
-  expiresAt?: number | string | Date | null;
-  updatedAt?: number | string | Date | null;
-  version?: string | number | null;
 }
 
 export interface ConnectorCredentialPersistResult {
@@ -150,62 +139,6 @@ export async function persistConnectorCredentialRefs(
   };
 }
 
-export function credentialRefRecordsFromMetadata(
-  metadata: unknown
-): ConnectorCredentialRefRecordLike[] {
-  const record = asRecord(metadata);
-  if (!record) return [];
-
-  const oauth = asRecord(record.oauth);
-  return [
-    ...credentialRefsFromUnknown(record.credentialRefs),
-    ...credentialRefsFromUnknown(record.oauthCredentialRefs),
-    ...credentialRefsFromUnknown(oauth?.credentialRefs),
-  ];
-}
-
-function credentialRefsFromUnknown(value: unknown): ConnectorCredentialRefRecordLike[] {
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => {
-      const ref = credentialRefFromRecord(asRecord(entry));
-      return ref ? [ref] : [];
-    });
-  }
-
-  const record = asRecord(value);
-  if (!record) return [];
-  return Object.entries(record).flatMap(([credentialType, entry]) => {
-    const entryRecord = asRecord(entry);
-    if (entryRecord) {
-      const ref = credentialRefFromRecord({
-        credentialType,
-        ...entryRecord,
-      });
-      return ref ? [ref] : [];
-    }
-    const vaultRef = nonEmptyString(entry);
-    return vaultRef ? [{ credentialType, vaultRef }] : [];
-  });
-}
-
-function credentialRefFromRecord(
-  record: JsonRecord | undefined
-): ConnectorCredentialRefRecordLike | null {
-  if (!record) return null;
-  const credentialType = nonEmptyString(record.credentialType ?? record.type ?? record.name);
-  const vaultRef = nonEmptyString(record.vaultRef ?? record.ref);
-  if (!credentialType || !vaultRef) return null;
-  return {
-    credentialType,
-    vaultRef,
-    metadata: asRecord(record.metadata) ?? null,
-    expiresAt: record.expiresAt as ConnectorCredentialRefRecordLike["expiresAt"],
-    updatedAt: record.updatedAt as ConnectorCredentialRefRecordLike["updatedAt"],
-    version: (record.version ??
-      record.credentialVersion) as ConnectorCredentialRefRecordLike["version"],
-  };
-}
-
 function resolveVaultWriters(
   runtime: IAgentRuntime,
   context: { provider: string; accountId: string; caller: string }
@@ -253,38 +186,6 @@ function resolveVaultWriters(
           sensitive: true,
           caller: context.caller,
         });
-        return vaultRef;
-      },
-    });
-  }
-
-  const secrets = getService(runtime, CORE_SECRETS_SERVICE_TYPE) as {
-    setGlobal?: (
-      key: string,
-      value: string,
-      config?: { sensitive?: boolean }
-    ) => Promise<boolean> | boolean;
-    set?: (
-      key: string,
-      value: string,
-      context: JsonRecord,
-      config?: { sensitive?: boolean }
-    ) => Promise<boolean> | boolean;
-  } | null;
-  if (typeof secrets?.setGlobal === "function" || typeof secrets?.set === "function") {
-    writers.push({
-      name: "SECRETS",
-      write: async (vaultRef, credential) => {
-        if (typeof secrets.setGlobal === "function") {
-          await secrets.setGlobal(vaultRef, credential.value, { sensitive: true });
-          return vaultRef;
-        }
-        await secrets.set?.(
-          vaultRef,
-          credential.value,
-          { level: "global", agentId: runtime.agentId, requesterId: runtime.agentId },
-          { sensitive: true }
-        );
         return vaultRef;
       },
     });
@@ -424,12 +325,6 @@ function getService(runtime: IAgentRuntime, serviceType: string): unknown {
   } catch {
     return null;
   }
-}
-
-function asRecord(value: unknown): JsonRecord | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonRecord)
-    : undefined;
 }
 
 function nonEmptyString(value: unknown): string | undefined {

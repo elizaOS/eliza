@@ -1,14 +1,13 @@
 /**
- * Curated Google Workspace MCP capability materialization for connected
- * accounts. The host owns per-account product attachments and stable elizaOS
- * action names; vendor discovery only enables allowlisted tools whose preview
- * schemas still match the fields the action forwards.
+ * Materializes curated, account-bound actions from official Google Workspace
+ * MCP discovery. Read tools and Gmail draft creation may appear dynamically;
+ * effectful tools remain available only to typed policy-owning consumers.
  */
-
 import type { ConnectorAccount } from "@elizaos/core";
 import {
   type Action,
   type ActionParameter,
+  type ActionParameterSchema,
   ElizaError,
   type IAgentRuntime,
   logger,
@@ -20,112 +19,22 @@ import type {
   McpDiscovery,
   McpResourceEngine,
 } from "@elizaos/plugin-mcp/resource-engine";
-import { GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES } from "@elizaos/shared/contracts";
+import {
+  GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES,
+  GOOGLE_WORKSPACE_MCP_RESOURCES,
+  type GoogleWorkspaceMcpResourceProduct,
+} from "@elizaos/shared/contracts";
 
-export const GOOGLE_MCP_PRODUCT_ENDPOINTS = {
-  gmail: GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES.gmail.endpoint,
-  calendar: GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES.calendar.endpoint,
-} as const;
+type Tool = McpDiscovery["tools"][number];
 
-export type GoogleMcpProduct = keyof typeof GOOGLE_MCP_PRODUCT_ENDPOINTS;
+export const GOOGLE_MCP_PRODUCT_ENDPOINTS = Object.fromEntries(
+  Object.entries(GOOGLE_WORKSPACE_MCP_RESOURCES).map(([product, resource]) => [
+    product,
+    resource.endpoint,
+  ])
+) as Record<GoogleWorkspaceMcpResourceProduct, string>;
 
-interface GoogleMcpCapabilityManifest {
-  actionName: string;
-  description: string;
-  product: GoogleMcpProduct;
-  toolName: string;
-  requiredCapability: string;
-  parameters: readonly ActionParameter[];
-  schemaProperties: Readonly<Record<string, string>>;
-}
-
-const ACCOUNT_PARAMETER: ActionParameter = {
-  name: "accountId",
-  description: "Connected Google account identifier. Omit to use the default connected account.",
-  required: false,
-  schema: { type: "string", minLength: 1 },
-};
-
-const GOOGLE_MCP_CAPABILITIES: readonly GoogleMcpCapabilityManifest[] = [
-  {
-    actionName: "GOOGLE_GMAIL_SEARCH_THREADS",
-    description:
-      "Search Gmail threads in a connected Google account using Gmail query syntax. This is read-only and returns thread summaries, not full message bodies.",
-    product: "gmail",
-    toolName: GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES.gmail.curatedTools[0],
-    requiredCapability: GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES.gmail.capability,
-    schemaProperties: { query: "string" },
-    parameters: [
-      ACCOUNT_PARAMETER,
-      {
-        name: "query",
-        description: "Gmail search query, for example from:alice@example.com newer_than:7d.",
-        required: false,
-        schema: { type: "string" },
-      },
-      {
-        name: "pageSize",
-        description: "Maximum number of matching threads to return (1-50).",
-        required: false,
-        schema: { type: "integer", minimum: 1, maximum: 50 },
-      },
-      {
-        name: "includeTrash",
-        description: "Whether Gmail trash should be included.",
-        required: false,
-        schema: { type: "boolean", default: false },
-      },
-    ],
-  },
-  {
-    actionName: "GOOGLE_CALENDAR_LIST_EVENTS",
-    description:
-      "List events from a connected Google Calendar. This is read-only; use time bounds only when the user requested a specific range.",
-    product: "calendar",
-    toolName: GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES.calendar.curatedTools[0],
-    requiredCapability: GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES.calendar.capability,
-    schemaProperties: { calendarId: "string", startTime: "string", endTime: "string" },
-    parameters: [
-      ACCOUNT_PARAMETER,
-      {
-        name: "calendarId",
-        description: "Calendar identifier. Omit for the primary calendar.",
-        required: false,
-        schema: { type: "string" },
-      },
-      {
-        name: "startTime",
-        description: "Optional inclusive ISO 8601 lower time bound.",
-        required: false,
-        schema: { type: "string" },
-      },
-      {
-        name: "endTime",
-        description: "Optional exclusive ISO 8601 upper time bound.",
-        required: false,
-        schema: { type: "string" },
-      },
-      {
-        name: "pageSize",
-        description: "Maximum number of events to return (1-250).",
-        required: false,
-        schema: { type: "integer", minimum: 1, maximum: 250 },
-      },
-      {
-        name: "timeZone",
-        description: "IANA time zone used for timezone-less dates.",
-        required: false,
-        schema: { type: "string" },
-      },
-      {
-        name: "fullText",
-        description: "Optional case-insensitive event text filter.",
-        required: false,
-        schema: { type: "string" },
-      },
-    ],
-  },
-] as const;
+export type GoogleMcpProduct = GoogleWorkspaceMcpResourceProduct;
 
 export interface GoogleMcpProductConnectionReport {
   status: "connected" | "skipped" | "error";
@@ -158,31 +67,40 @@ interface ActiveGoogleMcpProduct {
   account: ConnectorAccount;
   product: GoogleMcpProduct;
   ref: McpAttachmentRef;
-  compatibleActionNames: Set<string>;
+  tools: Map<string, Tool>;
+  capabilities: Map<string, string>;
 }
+
+interface MaterializedTool {
+  product: GoogleMcpProduct;
+  toolName: string;
+  actionName: string;
+  requiredCapability: string;
+  tool: Tool;
+}
+
+const ACCOUNT_PARAMETER: ActionParameter = {
+  name: "accountId",
+  description: "Connected Google account identifier. Omit to use the default account.",
+  required: false,
+  schema: { type: "string", minLength: 1 },
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function toolMatchesManifest(
-  discovery: McpDiscovery,
-  manifest: GoogleMcpCapabilityManifest
-): boolean {
-  const tool = discovery.tools.find((candidate) => candidate.name === manifest.toolName);
-  if (!tool || !isRecord(tool.inputSchema)) return false;
-  const properties = tool.inputSchema.properties;
-  if (!isRecord(properties)) return false;
-  return Object.entries(manifest.schemaProperties).every(([name, expectedType]) => {
-    const property = properties[name];
-    return isRecord(property) && property.type === expectedType;
-  });
-}
-
 function selectedProducts(account: ConnectorAccount): GoogleMcpProduct[] {
-  const selected = new Set(account.selectedProducts ?? []);
+  const selected = new Set(
+    (account.selectedProducts ?? []).map((value) => {
+      const normalized = value.trim().toLowerCase().replaceAll("-", "");
+      return normalized === "workspace" || normalized === "universalsearch"
+        ? "universalsearch"
+        : normalized;
+    })
+  );
   return (Object.keys(GOOGLE_MCP_PRODUCT_ENDPOINTS) as GoogleMcpProduct[]).filter((product) =>
-    selected.has(product)
+    selected.has(product.toLowerCase())
   );
 }
 
@@ -190,22 +108,65 @@ function accountSupports(account: ConnectorAccount, capability: string): boolean
   return account.status === "connected" && (account.capabilities ?? []).includes(capability);
 }
 
-function parametersFromOptions(options: unknown): Record<string, unknown> {
-  if (!isRecord(options) || !isRecord(options.parameters)) return {};
-  return options.parameters;
+function accountCanUseTool(
+  account: ConnectorAccount,
+  product: GoogleMcpProduct,
+  toolName: string,
+  capability: string
+): boolean {
+  const resource = GOOGLE_WORKSPACE_MCP_RESOURCES[product];
+  const toolScopes =
+    "toolScopes" in resource
+      ? (resource.toolScopes as Partial<Record<string, readonly string[]>>)[toolName]
+      : undefined;
+  const capabilityScopes = GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES[
+    capability as keyof typeof GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES
+  ] as readonly string[] | undefined;
+  const accepted = toolScopes ?? capabilityScopes ?? [];
+  const granted = new Set(account.scopes ?? []);
+  return accepted.some((scope) => granted.has(scope));
 }
 
-function toolArguments(
-  manifest: GoogleMcpCapabilityManifest,
-  parameters: Record<string, unknown>
-): Record<string, unknown> {
-  const forwarded: Record<string, unknown> = {};
-  for (const parameter of manifest.parameters) {
-    if (parameter.name === "accountId") continue;
-    const value = parameters[parameter.name];
-    if (value !== undefined) forwarded[parameter.name] = value;
-  }
-  return forwarded;
+function dynamicallyExposed(product: GoogleMcpProduct, toolName: string): boolean {
+  const promoted = GOOGLE_WORKSPACE_MCP_RESOURCES[product].promotedTools as readonly string[];
+  return promoted.includes(toolName);
+}
+
+function actionName(product: GoogleMcpProduct, toolName: string): string {
+  const productName = product.replace(/([a-z])([A-Z])/g, "$1_$2");
+  return normalizeActionName(`GOOGLE_${productName}_${toolName}`);
+}
+
+function actionParameters(tool: Tool): ActionParameter[] {
+  const schema: Record<string, unknown> = isRecord(tool.inputSchema) ? tool.inputSchema : {};
+  const properties = isRecord(schema.properties) ? schema.properties : {};
+  const required = new Set(
+    Array.isArray(schema.required)
+      ? schema.required.filter((name): name is string => typeof name === "string")
+      : []
+  );
+  return [
+    ACCOUNT_PARAMETER,
+    ...Object.entries(properties).flatMap(([name, property]) => {
+      if (!isRecord(property)) return [];
+      const description =
+        typeof property.description === "string"
+          ? property.description
+          : `Input for Google MCP tool ${tool.name}.`;
+      return [
+        {
+          name,
+          description,
+          required: required.has(name),
+          schema: { ...property } as ActionParameterSchema,
+        },
+      ];
+    }),
+  ];
+}
+
+function parametersFromOptions(options: unknown): Record<string, unknown> {
+  return isRecord(options) && isRecord(options.parameters) ? options.parameters : {};
 }
 
 function resultText(result: Awaited<ReturnType<McpResourceEngine["callTool"]>>): string {
@@ -220,7 +181,7 @@ function resultText(result: Awaited<ReturnType<McpResourceEngine["callTool"]>>):
   if (text) return text;
   return result.structuredContent
     ? JSON.stringify(result.structuredContent)
-    : "Google MCP returned no text.";
+    : "Google MCP returned no content.";
 }
 
 export class GoogleMcpCapabilityHost {
@@ -236,57 +197,52 @@ export class GoogleMcpCapabilityHost {
     await this.disconnectAccount(account.id);
     const report: GoogleMcpAccountConnectionReport = { accountId: account.id, products: {} };
     for (const product of selectedProducts(account)) {
-      const manifests = GOOGLE_MCP_CAPABILITIES.filter(
-        (manifest) =>
-          manifest.product === product && accountSupports(account, manifest.requiredCapability)
-      );
-      if (manifests.length === 0) {
-        report.products[product] = {
-          status: "skipped",
-          discoveredTools: [],
-          promotedActions: [],
-        };
+      const resource = GOOGLE_WORKSPACE_MCP_RESOURCES[product];
+      const allowedCapabilities = new Set(account.capabilities ?? []);
+      const expectedTools = Object.entries(resource.tools)
+        .filter(([, capability]) => allowedCapabilities.has(capability))
+        .filter(([toolName, capability]) =>
+          accountCanUseTool(account, product, toolName, capability)
+        );
+      if (expectedTools.length === 0) {
+        report.products[product] = { status: "skipped", discoveredTools: [], promotedActions: [] };
         continue;
       }
       let ref: McpAttachmentRef | undefined;
       try {
         ref = await this.options.engine.attach({
           key: `google:${String(this.runtime.agentId)}:${account.id}:${product}`,
-          endpoint: GOOGLE_MCP_PRODUCT_ENDPOINTS[product],
+          endpoint: resource.endpoint,
           auth: this.options.accessTokenProviderFor(account, product),
         });
         const discovery = await this.options.engine.discover(ref);
-        const compatible = manifests.filter((manifest) => toolMatchesManifest(discovery, manifest));
+        const tools = new Map(discovery.tools.map((tool) => [tool.name, tool]));
+        const capabilities = new Map<string, string>();
+        for (const [toolName, capability] of expectedTools) {
+          if (tools.has(toolName)) capabilities.set(toolName, capability);
+        }
         this.active.set(this.activeKey(account.id, product), {
-          account: {
-            ...account,
-            purpose: [...account.purpose],
-            capabilities: account.capabilities ? [...account.capabilities] : undefined,
-          },
+          account,
           product,
           ref,
-          compatibleActionNames: new Set(compatible.map((manifest) => manifest.actionName)),
+          tools,
+          capabilities,
         });
         report.products[product] = {
           status: "connected",
-          discoveredTools: discovery.tools.map((tool) => tool.name),
-          promotedActions: compatible.map((manifest) => manifest.actionName),
+          discoveredTools: [...tools.keys()],
+          promotedActions: [...capabilities]
+            .filter(([toolName]) => dynamicallyExposed(product, toolName))
+            .map(([toolName]) => actionName(product, toolName)),
         };
       } catch (error) {
-        // error-policy:J4 Product resources degrade independently; the report
-        // exposes the failed product while successful siblings remain usable.
         if (ref) await this.detachBestEffort(ref, account.id, product);
-        const message = error instanceof Error ? error.message : String(error);
         report.products[product] = {
           status: "error",
           discoveredTools: [],
           promotedActions: [],
-          error: message,
+          error: error instanceof Error ? error.message : String(error),
         };
-        this.runtime.reportError?.("google-mcp-connect", error, {
-          accountId: account.id,
-          product,
-        });
       }
     }
     this.reconcileActions();
@@ -311,169 +267,190 @@ export class GoogleMcpCapabilityHost {
     for (const accountId of accountIds) await this.disconnectAccount(accountId);
   }
 
-  async callCapability(
-    actionName: string,
-    accountId: string,
-    arguments_: Readonly<Record<string, unknown>>
-  ): Promise<GoogleMcpCapabilityCall | null> {
-    const normalizedName = normalizeActionName(actionName);
-    const manifest = GOOGLE_MCP_CAPABILITIES.find(
-      (candidate) => normalizeActionName(candidate.actionName) === normalizedName
-    );
-    if (!manifest) return null;
-    const active = this.selectResource(manifest, accountId);
-    if (!active) return null;
-    if (!(await this.options.authorizeAccount(active.account.id, manifest.requiredCapability))) {
-      throw new ElizaError(`Google account ${active.account.id} is no longer authorized`, {
+  async callTool(args: {
+    accountId: string;
+    product: GoogleMcpProduct;
+    toolName: string;
+    arguments?: Readonly<Record<string, unknown>>;
+  }): Promise<GoogleMcpCapabilityCall> {
+    const active = this.active.get(this.activeKey(args.accountId, args.product));
+    const capability = active?.capabilities.get(args.toolName);
+    if (!active || !capability || !active.tools.has(args.toolName)) {
+      throw new ElizaError(`Google MCP tool ${args.product}/${args.toolName} is unavailable`, {
+        code: "GOOGLE_MCP_CAPABILITY_UNAVAILABLE",
+        context: { accountId: args.accountId, product: args.product, toolName: args.toolName },
+      });
+    }
+    if (!(await this.options.authorizeAccount(args.accountId, capability))) {
+      throw new ElizaError(`Google account ${args.accountId} is no longer authorized`, {
         code: "GOOGLE_MCP_ACCOUNT_NOT_AUTHORIZED",
-        context: {
-          accountId: active.account.id,
-          capability: manifest.requiredCapability,
-        },
+        context: { accountId: args.accountId, capability },
       });
     }
     return {
-      accountId: active.account.id,
-      product: active.product,
+      accountId: args.accountId,
+      product: args.product,
       result: await this.options.engine.callTool(active.ref, {
-        name: manifest.toolName,
-        arguments: { ...arguments_ },
+        name: args.toolName,
+        arguments: { ...(args.arguments ?? {}) },
       }),
     };
+  }
+
+  async callCapability(
+    requestedActionName: string,
+    accountId: string,
+    arguments_: Readonly<Record<string, unknown>>
+  ): Promise<GoogleMcpCapabilityCall | null> {
+    const materialized = this.materializedTools().find(
+      (candidate) =>
+        normalizeActionName(candidate.actionName) === normalizeActionName(requestedActionName)
+    );
+    return materialized
+      ? this.callTool({
+          accountId,
+          product: materialized.product,
+          toolName: materialized.toolName,
+          arguments: arguments_,
+        })
+      : null;
   }
 
   private activeKey(accountId: string, product: GoogleMcpProduct): string {
     return `${accountId}:${product}`;
   }
 
-  private compatibleResources(manifest: GoogleMcpCapabilityManifest): ActiveGoogleMcpProduct[] {
-    return [...this.active.values()]
-      .filter(
-        (active) =>
-          active.product === manifest.product &&
-          active.compatibleActionNames.has(manifest.actionName) &&
-          accountSupports(active.account, manifest.requiredCapability)
-      )
-      .sort(
-        (left, right) =>
-          Number(Boolean(right.account.isDefault)) - Number(Boolean(left.account.isDefault)) ||
-          left.account.id.localeCompare(right.account.id)
-      );
+  private materializedTools(): MaterializedTool[] {
+    const materialized: MaterializedTool[] = [];
+    const seen = new Set<string>();
+    const resources = [...this.active.values()].sort(
+      (left, right) =>
+        Number(Boolean(right.account.isDefault)) - Number(Boolean(left.account.isDefault)) ||
+        left.account.id.localeCompare(right.account.id)
+    );
+    for (const active of resources) {
+      for (const [toolName, requiredCapability] of active.capabilities) {
+        if (!dynamicallyExposed(active.product, toolName)) continue;
+        const stableName = actionName(active.product, toolName);
+        if (seen.has(stableName)) continue;
+        const tool = active.tools.get(toolName);
+        if (!tool) continue;
+        seen.add(stableName);
+        materialized.push({
+          product: active.product,
+          toolName,
+          actionName: stableName,
+          requiredCapability,
+          tool,
+        });
+      }
+    }
+    return materialized;
   }
 
   private reconcileActions(): void {
     const desired = new Map(
-      GOOGLE_MCP_CAPABILITIES.filter(
-        (manifest) => this.compatibleResources(manifest).length > 0
-      ).map((manifest) => [normalizeActionName(manifest.actionName), manifest] as const)
+      this.materializedTools().map((tool) => [normalizeActionName(tool.actionName), tool] as const)
     );
-    for (const [normalizedName, action] of this.ownedActions) {
-      if (desired.has(normalizedName)) continue;
-      if (this.runtime.actions.find((candidate) => candidate === action)) {
+    for (const [name, action] of this.ownedActions) {
+      if (desired.has(name)) continue;
+      if (this.runtime.actions.some((candidate) => candidate === action)) {
         this.runtime.unregisterAction(action.name);
       }
-      this.ownedActions.delete(normalizedName);
+      this.ownedActions.delete(name);
     }
-    for (const [normalizedName, manifest] of desired) {
-      if (this.ownedActions.has(normalizedName)) continue;
-      const incumbent = this.runtime.actions.find(
-        (action) => normalizeActionName(action.name) === normalizedName
-      );
-      if (incumbent) {
+    for (const [name, materialized] of desired) {
+      if (this.ownedActions.has(name)) continue;
+      if (this.runtime.actions.some((action) => normalizeActionName(action.name) === name)) {
         logger.warn(
-          { src: "plugin:google:mcp", actionName: manifest.actionName },
-          `[GoogleMcpCapabilityHost] action name collision for ${manifest.actionName}; keeping incumbent`
+          { actionName: materialized.actionName },
+          "[GoogleMcpCapabilityHost] action collision; keeping incumbent"
         );
         continue;
       }
-      const action = this.buildAction(manifest);
+      const action = this.buildAction(materialized);
       this.runtime.registerAction(action);
-      if (
-        this.runtime.actions.find(
-          (candidate) => normalizeActionName(candidate.name) === normalizedName
-        ) === action
-      ) {
-        this.ownedActions.set(normalizedName, action);
+      if (this.runtime.actions.some((candidate) => candidate === action)) {
+        this.ownedActions.set(name, action);
       }
     }
   }
 
-  private buildAction(manifest: GoogleMcpCapabilityManifest): Action {
+  private buildAction(materialized: MaterializedTool): Action {
     return {
-      name: manifest.actionName,
-      description: manifest.description,
-      contexts: ["connectors", "automation"],
-      parameters: manifest.parameters.map((parameter) => ({
-        ...parameter,
-        schema: { ...parameter.schema },
-      })),
+      name: materialized.actionName,
+      description:
+        materialized.tool.description ??
+        `Use the ${materialized.toolName} tool on a connected Google ${materialized.product} account.`,
+      contexts: ["connectors", "automation", "documents"],
+      parameters: actionParameters(materialized.tool),
       connectorAccountPolicy: {
         provider: "google",
         statuses: ["connected"],
         roles: ["OWNER", "AGENT", "TEAM"],
-        accessGates: ["open", "owner_binding"],
-        requiredCapabilities: [manifest.requiredCapability],
+        accessGates: ["open", "owner_binding", "manual_approval"],
+        requiredCapabilities: [materialized.requiredCapability],
       },
       validate: async (_runtime, _message, _state, options) => {
-        const parameters = parametersFromOptions(options);
-        return Boolean(this.selectResource(manifest, parameters.accountId));
+        const requested = parametersFromOptions(options).accountId;
+        return this.selectResource(materialized, requested) !== undefined;
       },
       handler: async (_runtime, _message, _state, options) => {
         const parameters = parametersFromOptions(options);
-        const active = this.selectResource(manifest, parameters.accountId);
+        const active = this.selectResource(materialized, parameters.accountId);
         if (!active) {
-          return {
-            success: false,
-            error: new ElizaError(
-              `No live Google MCP resource can execute ${manifest.actionName}`,
-              {
-                code: "GOOGLE_MCP_CAPABILITY_UNAVAILABLE",
-                context: { actionName: manifest.actionName },
-              }
-            ),
-          };
+          return { success: false, error: "No connected Google account can run this MCP tool." };
         }
+        const toolArguments = Object.fromEntries(
+          Object.entries(parameters).filter(
+            ([key, value]) => key !== "accountId" && value !== undefined
+          )
+        );
         try {
-          const execution = await this.callCapability(
-            manifest.actionName,
-            active.account.id,
-            toolArguments(manifest, parameters)
-          );
-          if (!execution) {
-            throw new ElizaError(`Google MCP capability ${manifest.actionName} disconnected`, {
-              code: "GOOGLE_MCP_CAPABILITY_UNAVAILABLE",
-              context: { actionName: manifest.actionName, accountId: active.account.id },
-            });
-          }
-          const { result } = execution;
+          const execution = await this.callTool({
+            accountId: active.account.id,
+            product: materialized.product,
+            toolName: materialized.toolName,
+            arguments: toolArguments,
+          });
           return {
-            success: result.isError !== true,
-            text: resultText(result),
+            success: execution.result.isError !== true,
+            text: resultText(execution.result),
             transcriptVisibility: "internal",
-            data: { accountId: execution.accountId, product: execution.product, result },
-            ...(result.isError ? { error: resultText(result) } : {}),
+            data: {
+              accountId: execution.accountId,
+              product: execution.product,
+            },
+            ...(execution.result.isError ? { error: resultText(execution.result) } : {}),
           };
         } catch (error) {
-          // error-policy:J1 The action is the planner boundary for an exact
-          // external tool failure; preserve the error without claiming success.
-          return {
-            success: false,
-            error: error instanceof Error ? error : String(error),
-          };
+          // error-policy:J1 The action is the planner boundary for the exact
+          // vendor tool failure and must never fabricate success.
+          return { success: false, error: error instanceof Error ? error : String(error) };
         }
       },
     };
   }
 
   private selectResource(
-    manifest: GoogleMcpCapabilityManifest,
+    materialized: Pick<MaterializedTool, "product" | "toolName" | "requiredCapability">,
     requestedAccountId: unknown
   ): ActiveGoogleMcpProduct | undefined {
-    const candidates = this.compatibleResources(manifest);
-    if (typeof requestedAccountId !== "string" || !requestedAccountId.trim()) {
-      return candidates[0];
-    }
-    return candidates.find((candidate) => candidate.account.id === requestedAccountId.trim());
+    return [...this.active.values()]
+      .filter(
+        (active) =>
+          active.product === materialized.product &&
+          active.capabilities.get(materialized.toolName) === materialized.requiredCapability &&
+          accountSupports(active.account, materialized.requiredCapability) &&
+          (typeof requestedAccountId !== "string" ||
+            !requestedAccountId.trim() ||
+            active.account.id === requestedAccountId.trim())
+      )
+      .sort(
+        (left, right) =>
+          Number(Boolean(right.account.isDefault)) - Number(Boolean(left.account.isDefault)) ||
+          left.account.id.localeCompare(right.account.id)
+      )[0];
   }
 
   private async detachBestEffort(
@@ -484,11 +461,11 @@ export class GoogleMcpCapabilityHost {
     try {
       await this.options.engine.detach(ref);
     } catch (error) {
-      // error-policy:J6 Disconnect teardown is best effort after local action
-      // exposure has already been revoked.
+      // error-policy:J6 Local exposure is already revoked; remote teardown is
+      // best effort and cannot re-authorize a detached binding.
       logger.warn(
         { error, accountId, product },
-        `[GoogleMcpCapabilityHost] failed to detach ${product} resource`
+        "[GoogleMcpCapabilityHost] failed to detach MCP resource"
       );
     }
   }

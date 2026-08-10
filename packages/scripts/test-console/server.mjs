@@ -19,7 +19,6 @@
  *   POST /api/run/cancel        cancel the active run
  *   GET  /api/runs/:id/log?task=<label>  persisted log text
  *   POST /api/cloud/login/start + GET /api/cloud/login/poll   device-code login
- *   GET  /oauth/google/start + /oauth/google/callback         loopback OAuth
  */
 
 import fs from "node:fs";
@@ -29,12 +28,9 @@ import { fileURLToPath } from "node:url";
 
 import { connectionById, connectionStatus } from "./lib/connections.mjs";
 import {
-  completeGoogleFlow,
   DEFAULT_CLOUD_BASE_URL,
   pollCloudLogin,
-  refreshGoogleAccessToken,
   startCloudLogin,
-  startGoogleFlow,
 } from "./lib/oauth.mjs";
 import { buildRegistry, discoverPlan } from "./lib/registry.mjs";
 import { RunManager } from "./lib/runner.mjs";
@@ -161,35 +157,6 @@ const routes = {
     for (const [gate, on] of Object.entries(settings.optInToggles ?? {})) {
       if (on) extraEnv[gate] = "1";
     }
-    // Google access tokens expire hourly; a saved refresh token lets live
-    // runs re-mint GOOGLE_CALENDAR_ACCESS_TOKEN so the calendar suite stays
-    // armed without the operator re-pasting a token every hour.
-    const google = loadCredentials()["google-oauth"] ?? {};
-    if (
-      lane === "live" &&
-      google.GOOGLE_CLIENT_ID &&
-      google.GOOGLE_CLIENT_SECRET &&
-      google.GOOGLE_OAUTH_REFRESH_TOKEN
-    ) {
-      try {
-        const { accessToken } = await refreshGoogleAccessToken({
-          clientId: google.GOOGLE_CLIENT_ID,
-          clientSecret: google.GOOGLE_CLIENT_SECRET,
-          refreshToken: google.GOOGLE_OAUTH_REFRESH_TOKEN,
-        });
-        setConnection("google-calendar", {
-          GOOGLE_CALENDAR_ACCESS_TOKEN: accessToken,
-        });
-        extraEnv.GOOGLE_CALENDAR_ACCESS_TOKEN = accessToken;
-      } catch (error) {
-        // error-policy:J4 explicit user-facing degrade — the run proceeds and
-        // the calendar suite self-skips loudly; the operator sees why here.
-        runManager.emit("event", {
-          type: "warning",
-          message: `Google token refresh failed: ${error?.message ?? error}`,
-        });
-      }
-    }
     const runId = runManager.startRun({
       tasks,
       lane,
@@ -223,46 +190,6 @@ const routes = {
       });
     }
     json(res, 200, { status: result.status });
-  },
-
-  "GET /oauth/google/start": (req, res, url) => {
-    const saved = loadCredentials()["google-oauth"] ?? {};
-    const clientId = saved.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID;
-    const clientSecret =
-      saved.GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
-    if (!clientId || !clientSecret) {
-      return json(res, 400, {
-        error:
-          "save GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the Google OAuth connection first",
-      });
-    }
-    const { authorizeUrl } = startGoogleFlow({
-      clientId,
-      clientSecret,
-      redirectUri: `http://${HOST}:${PORT}/oauth/google/callback`,
-    });
-    res.writeHead(302, { Location: authorizeUrl });
-    res.end();
-  },
-
-  "GET /oauth/google/callback": async (req, res, url) => {
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-    const tokens = await completeGoogleFlow({ state, code });
-    const saved = loadCredentials()["google-oauth"] ?? {};
-    setConnection("google-oauth", {
-      ...saved,
-      ...(tokens.refreshToken
-        ? { GOOGLE_OAUTH_REFRESH_TOKEN: tokens.refreshToken }
-        : {}),
-    });
-    setConnection("google-calendar", {
-      GOOGLE_CALENDAR_ACCESS_TOKEN: tokens.accessToken,
-    });
-    res.writeHead(200, { "Content-Type": "text/html" });
-    res.end(
-      "<body style='font-family:system-ui;background:#111;color:#eee;display:grid;place-items:center;height:100vh'><div>Google connected — you can close this tab and return to the test console.</div></body>",
-    );
   },
 };
 

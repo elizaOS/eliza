@@ -21,9 +21,14 @@ class TestRuntime {
 	constructor(
 		public readonly adapter?: InMemoryDatabaseAdapter,
 		public readonly agentId: UUID = DEFAULT_UUID,
+		private readonly credentialStore?: FakeCredentialStore,
+		private readonly vault?: FakeCredentialStore,
 	) {}
 
-	getService(): undefined {
+	getService(serviceType: string): FakeCredentialStore | undefined {
+		if (serviceType === "connector_credential_store")
+			return this.credentialStore;
+		if (serviceType === "vault") return this.vault;
 		return undefined;
 	}
 
@@ -51,11 +56,43 @@ class TestRuntime {
 	}
 }
 
+class FakeCredentialStore {
+	readonly values = new Map<string, string>();
+	readonly removed: string[] = [];
+
+	async putSecret(input: {
+		vaultRef?: string;
+		value: string;
+	}): Promise<string> {
+		const vaultRef = input.vaultRef ?? `test.${this.values.size + 1}`;
+		this.values.set(vaultRef, input.value);
+		return vaultRef;
+	}
+
+	async reveal(vaultRef: string): Promise<string> {
+		const value = this.values.get(vaultRef);
+		if (!value) throw new Error("secret not found");
+		return value;
+	}
+
+	async remove(vaultRef: string): Promise<void> {
+		this.removed.push(vaultRef);
+		this.values.delete(vaultRef);
+	}
+}
+
 function makeRuntime(
 	adapter?: InMemoryDatabaseAdapter,
 	agentId?: UUID,
+	credentialStore?: FakeCredentialStore,
+	vault?: FakeCredentialStore,
 ): IAgentRuntime {
-	return new TestRuntime(adapter, agentId) as IAgentRuntime;
+	return new TestRuntime(
+		adapter,
+		agentId,
+		credentialStore,
+		vault,
+	) as IAgentRuntime;
 }
 
 function makeTarget(source: string): TargetInfo {
@@ -171,6 +208,87 @@ describe("ConnectorAccountManager", () => {
 		});
 	});
 
+	it("removes vault tokens and credential refs when deleting an account", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const credentialStore = new FakeCredentialStore();
+		const manager = getConnectorAccountManager(
+			makeRuntime(adapter, DEFAULT_UUID, credentialStore),
+		);
+		const accountId = "3a899cd0-170f-4b3e-932e-46ec68119b35" as UUID;
+		const vaultRef = `connector.${DEFAULT_UUID}.google.${accountId}.oauth_tokens`;
+		credentialStore.values.set(vaultRef, "token material");
+		await manager.upsertAccount("google", {
+			id: accountId,
+			provider: "google",
+			role: "OWNER",
+			purpose: ["automation"],
+			accessGate: "open",
+			status: "connected",
+			createdAt: 1,
+			updatedAt: 1,
+		});
+		await adapter.setConnectorAccountCredentialRef({
+			accountId,
+			credentialType: "oauth.tokens",
+			vaultRef,
+		});
+		const remoteDisconnect = vi.fn(async () => {
+			expect(credentialStore.values.has(vaultRef)).toBe(true);
+		});
+		manager.registerProvider({
+			provider: "google",
+			deleteAccount: remoteDisconnect,
+		});
+
+		await expect(manager.deleteAccount("google", accountId)).resolves.toBe(
+			true,
+		);
+
+		expect(remoteDisconnect).toHaveBeenCalledWith(accountId, manager);
+		expect(credentialStore.values.has(vaultRef)).toBe(false);
+		expect(credentialStore.removed).toEqual([vaultRef]);
+		await expect(
+			adapter.listConnectorAccountCredentialRefs({ accountId }),
+		).resolves.toEqual([]);
+	});
+
+	it("removes tokens written through the generic vault fallback", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const vault = new FakeCredentialStore();
+		const manager = getConnectorAccountManager(
+			makeRuntime(adapter, DEFAULT_UUID, undefined, vault),
+		);
+		const accountId = "4a899cd0-170f-4b3e-932e-46ec68119b36" as UUID;
+		const vaultRef = `connector.${DEFAULT_UUID}.google.${accountId}.oauth_tokens`;
+		vault.values.set(vaultRef, "token material");
+		await manager.upsertAccount("google", {
+			id: accountId,
+			provider: "google",
+			role: "OWNER",
+			purpose: ["automation"],
+			accessGate: "open",
+			status: "connected",
+			createdAt: 1,
+			updatedAt: 1,
+		});
+		await adapter.setConnectorAccountCredentialRef({
+			accountId,
+			credentialType: "oauth.tokens",
+			vaultRef,
+		});
+
+		await expect(manager.deleteAccount("google", accountId)).resolves.toBe(
+			true,
+		);
+
+		expect(vault.removed).toEqual([vaultRef]);
+		await expect(
+			adapter.listConnectorAccountCredentialRefs({ accountId }),
+		).resolves.toEqual([]);
+	});
+
 	it("requires every capability declared by connector action policy", async () => {
 		const manager = getConnectorAccountManager(makeRuntime());
 		await manager.upsertAccount("google", {
@@ -277,7 +395,8 @@ describe("ConnectorAccountManager", () => {
 	it("preserves PKCE code verifier through database-backed OAuth flow storage", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.initialize();
-		const runtime = makeRuntime(adapter);
+		const credentialStore = new FakeCredentialStore();
+		const runtime = makeRuntime(adapter, undefined, credentialStore);
 		const manager = getConnectorAccountManager(runtime);
 		manager.registerProvider({
 			provider: "oauth-db",
@@ -287,7 +406,7 @@ describe("ConnectorAccountManager", () => {
 			}),
 		});
 		const flow = await manager.startOAuth("oauth-db");
-		expect(flow.codeVerifier).toBe("pkce-verifier-1");
+		expect(flow.codeVerifier).toBeUndefined();
 		const storedFlow = await adapter.getOAuthFlowState({
 			provider: "oauth-db",
 			state: flow.state,
@@ -299,8 +418,11 @@ describe("ConnectorAccountManager", () => {
 			"pkce-verifier-1",
 		);
 		expect(storedFlow?.metadata).not.toHaveProperty("codeVerifier");
+		expect(credentialStore.values.get(storedFlow?.codeVerifierRef ?? "")).toBe(
+			"pkce-verifier-1",
+		);
 
-		const callbackRuntime = makeRuntime(adapter);
+		const callbackRuntime = makeRuntime(adapter, undefined, credentialStore);
 		const callbackManager = getConnectorAccountManager(callbackRuntime);
 		let callbackVerifier: string | undefined;
 		callbackManager.registerProvider({
@@ -333,6 +455,7 @@ describe("ConnectorAccountManager", () => {
 			account: { id: "00000000-0000-4000-8000-000000000321" },
 		});
 		expect(callbackVerifier).toBe("pkce-verifier-1");
+		expect(credentialStore.removed).toContain(storedFlow?.codeVerifierRef);
 		await expect(
 			callbackManager.completeOAuth("oauth-db", {
 				state: flow.state,
@@ -373,7 +496,7 @@ describe("ConnectorAccountManager", () => {
 		});
 	});
 
-	it("fails a flow whose PKCE verifier died with a restart instead of forwarding a doomed exchange", async () => {
+	it("fails a flow whose PKCE vault secret is unavailable instead of forwarding a doomed exchange", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.initialize();
 		const runtime = makeRuntime(adapter);
@@ -385,9 +508,7 @@ describe("ConnectorAccountManager", () => {
 			completeOAuth: exchange,
 		});
 
-		// Exactly what a restart leaves behind: a durable flow row whose
-		// codeVerifierRef points at a process-local PKCE secret that no longer
-		// exists in this process.
+		// A durable flow row whose referenced PKCE secret was deleted or expired.
 		await adapter.createOAuthFlowState?.({
 			state: "state-restart-1",
 			provider: "oauth-restart",
@@ -400,7 +521,7 @@ describe("ConnectorAccountManager", () => {
 			code: "auth-code-1",
 		});
 		expect(result.flow.status).toBe("failed");
-		expect(result.flow.error).toMatch(/before the agent restarted/i);
+		expect(result.flow.error).toMatch(/pkce secret is unavailable/i);
 		expect(result.flow.error).toMatch(/start the oauth flow again/i);
 		expect(exchange).not.toHaveBeenCalled();
 	});
@@ -463,8 +584,6 @@ describe("durable storage binding", () => {
 			...GOOGLE_ACCOUNT,
 			scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
 			capabilities: ["google.gmail.read"],
-			oauthMode: "eliza_managed",
-			executionTarget: "cloud_broker",
 			selectedProducts: ["gmail", "calendar"],
 			isDefault: true,
 		});
@@ -476,8 +595,6 @@ describe("durable storage binding", () => {
 			{
 				scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
 				capabilities: ["google.gmail.read"],
-				oauthMode: "eliza_managed",
-				executionTarget: "cloud_broker",
 				selectedProducts: ["gmail", "calendar"],
 				isDefault: true,
 			},

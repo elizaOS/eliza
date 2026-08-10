@@ -12,6 +12,8 @@
  */
 
 import type { Context } from "hono";
+import { z } from "zod";
+import { userCharactersRepository } from "@/db/repositories/characters";
 import {
   failureResponse,
   ApiError as WorkerApiError,
@@ -24,6 +26,7 @@ import {
   isSafeRelativeRedirectPath,
   LOOPBACK_REDIRECT_ORIGINS,
 } from "@/lib/security/redirect-validation";
+import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { OAuthError } from "@/lib/services/oauth";
 import {
   getProvider,
@@ -33,10 +36,42 @@ import { initiateOAuth2 } from "@/lib/services/oauth/providers";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-interface InitiateRequestBody {
-  redirectUrl?: string;
-  scopes?: string[];
-  connectionRole?: "owner" | "agent";
+const stringList = z.array(z.string().trim().min(1).max(300)).max(100);
+const initiateRequestSchema = z.object({
+  redirectUrl: z.string().optional(),
+  scopes: stringList.optional(),
+  connectionRole: z
+    .enum(["owner", "agent", "team", "OWNER", "AGENT", "TEAM"])
+    .optional(),
+  agentBinding: z
+    .object({
+      agentId: z.string().uuid(),
+      role: z.enum(["OWNER", "AGENT", "TEAM"]),
+      selectedProducts: stringList,
+      isDefault: z.boolean().optional(),
+    })
+    .optional(),
+});
+
+async function canonicalAgentId(
+  routeAgentId: string,
+  organizationId: string,
+): Promise<string | null> {
+  const direct = await userCharactersRepository.findByIdInOrganization(
+    routeAgentId,
+    organizationId,
+  );
+  if (direct) return direct.id;
+  const sandbox = await elizaSandboxService.getAgent(
+    routeAgentId,
+    organizationId,
+  );
+  if (!sandbox?.character_id) return null;
+  const character = await userCharactersRepository.findByIdInOrganization(
+    sandbox.character_id,
+    organizationId,
+  );
+  return character?.id ?? null;
 }
 
 export async function handleGenericOAuthInitiate(
@@ -96,12 +131,24 @@ export async function handleGenericOAuthInitiate(
     const user = await requireUserOrApiKeyWithOrg(c);
     organizationId = user.organization_id;
 
-    let body: InitiateRequestBody = {};
+    let rawBody: unknown = {};
     try {
-      body = (await c.req.json()) as InitiateRequestBody;
+      rawBody = await c.req.json();
     } catch {
       // Empty body is fine — defaults apply.
     }
+    const parsedBody = initiateRequestSchema.safeParse(rawBody);
+    if (!parsedBody.success) {
+      return c.json(
+        {
+          error: "INVALID_OAUTH_INITIATE_REQUEST",
+          message: "OAuth initiation request is invalid",
+          details: parsedBody.error.issues,
+        },
+        400,
+      );
+    }
+    const body = parsedBody.data;
 
     const redirectUrl =
       body.redirectUrl || "/dashboard/settings?tab=connections";
@@ -131,19 +178,36 @@ export async function handleGenericOAuthInitiate(
     }
 
     const scopes = body.scopes || provider.defaultScopes || [];
+    const requestedConnectionRole =
+      body.agentBinding?.role ?? body.connectionRole;
     const connectionRole =
-      body.connectionRole === "owner" || body.connectionRole === "agent"
-        ? body.connectionRole
-        : undefined;
-
-    if (body.connectionRole && !connectionRole) {
+      provider.id === "google" ? "OWNER" : requestedConnectionRole;
+    if (
+      provider.id !== "google" &&
+      body.agentBinding &&
+      body.connectionRole &&
+      body.agentBinding.role !== body.connectionRole.toUpperCase()
+    ) {
       return c.json(
         {
           error: "INVALID_CONNECTION_ROLE",
-          message: "connectionRole must be 'owner' or 'agent'",
+          message: "connectionRole must match agentBinding.role",
         },
         400,
       );
+    }
+    if (body.agentBinding) {
+      const agentId = await canonicalAgentId(
+        body.agentBinding.agentId,
+        user.organization_id,
+      );
+      if (!agentId) {
+        return c.json(
+          { error: "AGENT_NOT_FOUND", message: "Agent not found" },
+          404,
+        );
+      }
+      body.agentBinding.agentId = agentId;
     }
 
     logger.info(`[OAuth ${platform}] Initiating auth`, {
@@ -151,6 +215,7 @@ export async function handleGenericOAuthInitiate(
       userId: user.id,
       scopeCount: scopes.length,
       connectionRole,
+      agentBindingRole: body.agentBinding?.role,
     });
 
     const result = await initiateOAuth2(provider, {
@@ -159,6 +224,7 @@ export async function handleGenericOAuthInitiate(
       redirectUrl,
       scopes,
       connectionRole,
+      agentBinding: body.agentBinding,
     });
 
     return c.json({

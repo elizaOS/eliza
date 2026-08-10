@@ -12,7 +12,7 @@ This package owns the triage domain carved out of `plugin-personal-assistant`: t
 
 ### Action
 
-- `INBOX` (`src/actions/inbox.ts`) — single umbrella action with op-based dispatch. Accepted ops: `list`, `search`, `summarize`, `triage`, `reply`, `snooze`, `archive`, `approve`. `list`/`search`/`summarize` fan out through per-platform fetchers; `triage` reads the persisted unresolved queue; `reply` drafts/sends via MESSAGE triage adapters; `snooze` hides entries until an ISO timestamp; `archive` runs connector archive and resolves on success; `approve` sends the stored draft or suggested response.
+- `INBOX` (`src/actions/inbox.ts`) — single umbrella action with op-based dispatch. Accepted ops: `list`, `search`, `summarize`, `triage`, `reply`, `snooze`, `archive`, `approve`. `list`/`search`/`summarize` fan out through per-platform fetchers; `triage` reads the persisted unresolved queue; `reply` drafts or dispatches via connector seams; Gmail uses the official MCP draft tool and never sends; `snooze` hides entries until an ISO timestamp; `archive` runs connector archive and resolves on success; `approve` dispatches a stored response or saves a Gmail draft.
 
 ### Providers
 
@@ -23,10 +23,10 @@ This package owns the triage domain carved out of `plugin-personal-assistant`: t
 
 - `GET /api/lifeops/inbox/triage` — list unresolved triage entries, optionally filtered by `classification`, `limit`, and `includeSnoozed`.
 - `POST /api/lifeops/inbox/triage` — classify/persist inbound messages through `InboxService.triage`.
-- `POST /api/lifeops/inbox/:id/reply` — draft or send a connector-backed reply.
+- `POST /api/lifeops/inbox/:id/reply` — draft or dispatch a connector-backed reply; Gmail saves a draft only.
 - `POST /api/lifeops/inbox/:id/snooze` — set `snoozed_until`.
 - `POST /api/lifeops/inbox/:id/archive` — archive through the connector adapter and resolve on success.
-- `POST /api/lifeops/inbox/:id/approve` — send the stored draft/suggested response.
+- `POST /api/lifeops/inbox/:id/approve` — dispatch the stored response, or save it as a Gmail draft.
 
 ### Schema
 

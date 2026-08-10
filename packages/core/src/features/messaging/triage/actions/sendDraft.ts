@@ -122,7 +122,7 @@ ${text}
 
 Return ONLY this XML, leaving a field empty when the request does not specify it:
 <response>
-<source>the platform/app to send on — one of telegram, discord, signal, whatsapp, imessage, gmail, twitter — or empty</source>
+<source>the platform/app to send on — one of telegram, discord, signal, whatsapp, imessage, twitter — or empty. Gmail is draft-only and must not be selected here.</source>
 <recipient>who to send to (a name, @handle, or contact), or empty</recipient>
 <body>the exact message text to send, or empty</body>
 </response>`;
@@ -246,9 +246,9 @@ export const sendDraftAction: Action = {
 	contexts: ["messaging", "email", "contacts"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"Create or send an owner-scoped outbound message draft. Use this for first-turn requests like 'send a Telegram message to Jane saying I am late', 'DM Bob on Discord', 'email Alice the notes', and 'text Sam that I am outside'. Without confirmed=true it only creates or previews the draft and asks for confirmation; it never sends directly.",
+		"Create or send an owner-scoped outbound message draft for supported messaging connectors. Use this for requests like 'send a Telegram message to Jane saying I am late', 'DM Bob on Discord', and 'text Sam that I am outside'. Gmail is excluded because official Gmail MCP can save drafts but cannot send. Without confirmed=true this action only creates or previews the draft and asks for confirmation.",
 	descriptionCompressed:
-		"outbound draft/send Telegram|Signal|Discord|email|SMS|iMessage|DM; requires confirmed=true",
+		"outbound draft/send Telegram|Signal|Discord|SMS|iMessage|DM; Gmail excluded; requires confirmed=true",
 	similes: [
 		"DISPATCH_DRAFT",
 		"CONFIRM_AND_SEND",
@@ -312,6 +312,19 @@ export const sendDraftAction: Action = {
 						actionName: "MESSAGE",
 						error: "MISSING_DRAFT_DETAILS",
 						requiresInput: true,
+					},
+				};
+			}
+			if (draftParsed.source === "gmail") {
+				return {
+					success: false,
+					text: "Gmail cannot send mail through MESSAGE. Use the connected Gmail draft capability to save a draft for review.",
+					error: "Official Gmail MCP supports saved drafts only.",
+					continueChain: false,
+					data: {
+						actionName: "MESSAGE",
+						error: "GMAIL_MCP_DRAFT_ONLY",
+						draftOnly: true,
 					},
 				};
 			}

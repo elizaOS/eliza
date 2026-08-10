@@ -20,7 +20,7 @@ import {
   Server,
   Terminal,
 } from "lucide-react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
@@ -79,6 +79,7 @@ export default function AgentDetailPage() {
   const t = useT();
   const session = useSessionAuth();
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const enabled = session.ready && session.authenticated;
   const query = useAgent(enabled ? id : undefined);
 
@@ -274,7 +275,12 @@ export default function AgentDetailPage() {
         </div>
       </div>
 
-      <ElizaAgentTabs agentId={agent.id}>
+      <ElizaAgentTabs
+        agentId={agent.id}
+        initialTab={
+          searchParams.get("tab") === "connectors" ? "Connectors" : "Overview"
+        }
+      >
         {agent.errorMessage && (
           <div className="flex items-start gap-3 p-4 bg-destructive-subtle border border-destructive/20">
             <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />

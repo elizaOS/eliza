@@ -151,9 +151,6 @@ export interface OAuthAgentBindingRequest {
   agentId: string;
   role: OAuthStandardConnectionRole;
   selectedProducts: string[];
-  allowedCapabilities: string[];
-  oauthMode: "eliza_managed" | "bring_your_own";
-  executionTarget: "cloud_broker" | "agent_host";
   isDefault?: boolean;
 }
 

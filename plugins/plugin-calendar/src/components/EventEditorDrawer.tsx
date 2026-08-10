@@ -401,6 +401,7 @@ function createEditorOperationKey(): string {
 }
 
 export type EventEditorReadOnlyReason =
+  | "google_mcp_atomic_version_unavailable"
   | "provider_version_missing"
   | "microsoft_read_only"
   | "ics_subscription"
@@ -424,6 +425,10 @@ export function eventEditorMutability(
 ): EventEditorMutability {
   switch (event.provider) {
     case "google":
+      return {
+        kind: "read_only",
+        reason: "google_mcp_atomic_version_unavailable",
+      };
     case "eliza": {
       const etag = event.metadata.etag;
       return typeof etag === "string" && etag.trim().length > 0
@@ -511,6 +516,13 @@ export function EventEditorDrawer({
             defaultValue:
               "Editing is paused until this event's current provider version is available. Refresh the calendar to edit it.",
           }),
+          google_mcp_atomic_version_unavailable: t(
+            "eventEditor.readOnlyGoogleMcpAtomicVersion",
+            {
+              defaultValue:
+                "Google Calendar events are view-only until its MCP server exposes atomic version checks.",
+            },
+          ),
           microsoft_read_only: t("eventEditor.readOnlyMicrosoft", {
             defaultValue:
               "Microsoft Outlook events are view-only here. Edit this event in Outlook.",
@@ -606,7 +618,9 @@ export function EventEditorDrawer({
     };
   }, [open, calendarRequestSide]);
 
-  const calendarOptions = calendars;
+  const calendarOptions = isCreate
+    ? calendars.filter((calendar) => calendar.provider !== "google")
+    : calendars;
   const calendarReady = calendarOptions.some((calendar) =>
     sameCalendarIdentity(calendar, form),
   );

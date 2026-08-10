@@ -630,6 +630,9 @@ describe("connector account routes", () => {
       defaultAccountId: "acct_google",
       account: expect.objectContaining({ isDefault: true }),
     });
+    const [defaultAccount] = await storage.listAccounts("google");
+    expect(defaultAccount).toMatchObject({ isDefault: true });
+    expect(defaultAccount?.metadata).not.toHaveProperty("isDefault");
 
     const testHarness = createConnectorAccountHarness({
       method: "POST",

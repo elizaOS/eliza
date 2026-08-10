@@ -18,10 +18,10 @@ Aggregates threads across email, Discord, Telegram, WhatsApp, Slack, X, Farcaste
 - `search` — search across selected platforms by `query`.
 - `summarize` — return a per-platform count plus a single rolled-up summary.
 - `triage` — list persisted unresolved triage queue entries, optionally filtered by classification.
-- `reply` — draft a connector-backed response, then send after explicit confirmation.
+- `reply` — draft a connector-backed response, then dispatch after explicit confirmation. Gmail confirmation saves an official MCP draft and never sends.
 - `snooze` — hide a triage entry until an ISO timestamp.
 - `archive` — archive through the connector adapter and resolve on success.
-- `approve` — send the stored draft or suggested response.
+- `approve` — dispatch the stored draft or suggested response; Gmail saves a draft because official Gmail MCP has no send tool.
 
 Fetchers are injectable via `setInboxFetchers` for tests. Owner-only.
 

@@ -184,17 +184,7 @@ export function hasGoogleCalendarReadCapability(
   grant: LifeOpsConnectorGrant,
 ): boolean {
   const capabilities = new Set(normalizeGoogleCapabilities(grant.capabilities));
-  return (
-    capabilities.has("google.calendar.read") ||
-    capabilities.has("google.calendar.write")
-  );
-}
-
-export function hasGoogleCalendarWriteCapability(
-  grant: LifeOpsConnectorGrant,
-): boolean {
-  const capabilities = new Set(normalizeGoogleCapabilities(grant.capabilities));
-  return capabilities.has("google.calendar.write");
+  return capabilities.has("google.calendar.read");
 }
 
 export function hasGoogleGmailBodyReadScope(

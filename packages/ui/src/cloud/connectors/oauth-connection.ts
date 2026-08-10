@@ -21,10 +21,26 @@ import { ApiError, api } from "../lib/api-client";
 export interface OAuthConnection {
   id: string;
   platform: string;
+  platformUserId: string;
   email?: string;
+  username?: string;
   displayName?: string;
+  avatarUrl?: string;
   scopes?: string[];
   status: string;
+}
+
+export interface OAuthAgentBindingInput {
+  agentId: string;
+  role: "OWNER" | "AGENT" | "TEAM";
+  selectedProducts: string[];
+  isDefault?: boolean;
+}
+
+export interface OAuthConnectInput {
+  redirectUrl?: string;
+  scopes?: string[];
+  agentBinding?: OAuthAgentBindingInput;
 }
 
 /**
@@ -46,7 +62,7 @@ interface UseOAuthConnectionsResult {
   isLoading: boolean;
   isConnecting: boolean;
   disconnectingId: string | null;
-  connect: () => Promise<void>;
+  connect: (input?: OAuthConnectInput) => Promise<void>;
   disconnect: (connectionId: string) => Promise<void>;
   refetch: () => Promise<void>;
 }
@@ -102,32 +118,42 @@ export function useOAuthConnections(
     return () => controller.abort();
   }, [fetchConnections]);
 
-  const connect = useCallback(async () => {
-    if (isConnecting) return;
-    setIsConnecting(true);
-    try {
-      const data = await api<{ authUrl?: string; error?: string }>(
-        `/api/v1/oauth/${platform}/initiate`,
-        {
-          method: "POST",
-          json: { redirectUrl: "/dashboard/settings?tab=connections" },
-        },
-      );
-      if (data.authUrl) {
-        window.location.href = data.authUrl;
-        return;
+  const connect = useCallback(
+    async (input: OAuthConnectInput = {}) => {
+      if (isConnecting) return;
+      setIsConnecting(true);
+      try {
+        const data = await api<{ authUrl?: string; error?: string }>(
+          `/api/v1/oauth/${platform}/initiate`,
+          {
+            method: "POST",
+            json: {
+              redirectUrl:
+                input.redirectUrl ?? "/dashboard/settings?tab=connections",
+              ...(input.scopes ? { scopes: input.scopes } : {}),
+              ...(input.agentBinding
+                ? { agentBinding: input.agentBinding }
+                : {}),
+            },
+          },
+        );
+        if (data.authUrl) {
+          window.location.href = data.authUrl;
+          return;
+        }
+        toast.error(data.error || `Failed to initiate ${label} OAuth`);
+        setIsConnecting(false);
+      } catch (error) {
+        toast.error(
+          error instanceof ApiError
+            ? errorBodyMessage(error, `Failed to initiate ${label} OAuth`)
+            : "Network error. Please check your connection.",
+        );
+        setIsConnecting(false);
       }
-      toast.error(data.error || `Failed to initiate ${label} OAuth`);
-      setIsConnecting(false);
-    } catch (error) {
-      toast.error(
-        error instanceof ApiError
-          ? errorBodyMessage(error, `Failed to initiate ${label} OAuth`)
-          : "Network error. Please check your connection.",
-      );
-      setIsConnecting(false);
-    }
-  }, [isConnecting, platform, label]);
+    },
+    [isConnecting, platform, label],
+  );
 
   const disconnect = useCallback(
     async (connectionId: string) => {

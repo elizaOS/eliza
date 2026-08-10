@@ -7,31 +7,22 @@ import {
 export const GOOGLE_OPENID_SCOPES = ["openid", "email", "profile"] as const;
 export const GOOGLE_CALENDAR_READ_SCOPE =
   "https://www.googleapis.com/auth/calendar.readonly";
-export const GOOGLE_CALENDAR_WRITE_SCOPE =
-  "https://www.googleapis.com/auth/calendar.events";
 export const GOOGLE_GMAIL_METADATA_SCOPE =
   "https://www.googleapis.com/auth/gmail.metadata";
 export const GOOGLE_GMAIL_READ_SCOPE =
   "https://www.googleapis.com/auth/gmail.readonly";
-export const GOOGLE_GMAIL_SEND_SCOPE =
-  "https://www.googleapis.com/auth/gmail.send";
+export const GOOGLE_GMAIL_COMPOSE_SCOPE =
+  "https://www.googleapis.com/auth/gmail.compose";
 export const GOOGLE_GMAIL_MODIFY_SCOPE =
   "https://www.googleapis.com/auth/gmail.modify";
-export const GOOGLE_GMAIL_SETTINGS_BASIC_SCOPE =
-  "https://www.googleapis.com/auth/gmail.settings.basic";
-
 const GOOGLE_CAPABILITY_SCOPE_MAP: Record<LifeOpsGoogleCapability, string[]> = {
   "google.basic_identity": [...GOOGLE_OPENID_SCOPES],
   "google.calendar.read": [GOOGLE_CALENDAR_READ_SCOPE],
-  "google.calendar.write": [GOOGLE_CALENDAR_WRITE_SCOPE],
   // Reading message bodies requires gmail.readonly rather than gmail.metadata.
   "google.gmail.triage": [GOOGLE_GMAIL_READ_SCOPE],
-  "google.gmail.send": [GOOGLE_GMAIL_SEND_SCOPE],
-  // Managing labels, filters, and archive/trash flows (auto-unsubscribe).
-  "google.gmail.manage": [
-    GOOGLE_GMAIL_MODIFY_SCOPE,
-    GOOGLE_GMAIL_SETTINGS_BASIC_SCOPE,
-  ],
+  "google.gmail.draft.create": [GOOGLE_GMAIL_COMPOSE_SCOPE],
+  // Managing labels and archive/read-state flows.
+  "google.gmail.manage": [GOOGLE_GMAIL_MODIFY_SCOPE],
 };
 
 export const DEFAULT_GOOGLE_CONNECTOR_CAPABILITIES: LifeOpsGoogleCapability[] =
@@ -114,31 +105,23 @@ export function googleScopesToCapabilities(
     capabilities.push("google.basic_identity");
   }
 
-  const hasCalendarRead =
-    granted.has(GOOGLE_CALENDAR_READ_SCOPE) ||
-    granted.has(GOOGLE_CALENDAR_WRITE_SCOPE);
+  const hasCalendarRead = granted.has(GOOGLE_CALENDAR_READ_SCOPE);
   if (hasCalendarRead) {
     capabilities.push("google.calendar.read");
   }
 
-  if (granted.has(GOOGLE_CALENDAR_WRITE_SCOPE)) {
-    capabilities.push("google.calendar.write");
-  }
-
   const hasGmailTriage =
     granted.has(GOOGLE_GMAIL_METADATA_SCOPE) ||
-    granted.has(GOOGLE_GMAIL_READ_SCOPE);
+    granted.has(GOOGLE_GMAIL_READ_SCOPE) ||
+    granted.has(GOOGLE_GMAIL_COMPOSE_SCOPE);
   if (hasGmailTriage) {
     capabilities.push("google.gmail.triage");
   }
 
-  if (granted.has(GOOGLE_GMAIL_SEND_SCOPE)) {
-    capabilities.push("google.gmail.send");
+  if (granted.has(GOOGLE_GMAIL_COMPOSE_SCOPE)) {
+    capabilities.push("google.gmail.draft.create");
   }
-  if (
-    granted.has(GOOGLE_GMAIL_MODIFY_SCOPE) &&
-    granted.has(GOOGLE_GMAIL_SETTINGS_BASIC_SCOPE)
-  ) {
+  if (granted.has(GOOGLE_GMAIL_MODIFY_SCOPE)) {
     capabilities.push("google.gmail.manage");
   }
   return capabilities;

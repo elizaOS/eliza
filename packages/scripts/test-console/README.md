@@ -23,9 +23,9 @@ keep the artifacts.
   the same `computeRealLiveAccounting` the post-merge lane prints.
 - **Connections panel**: save API keys and tokens for every service the
   guarded suites need (LLM providers, Discord/Telegram/Slack/X/WhatsApp,
-  GitHub/Linear/Calendly/Twilio, health connectors, web3, Postgres, …), log
-  in to Eliza Cloud via the device-code flow, or mint Google OAuth refresh
-  tokens through the console's loopback callback. Each connection has a
+  GitHub/Linear/Calendly/Twilio, health connectors, web3, Postgres, …), or log
+  in to Eliza Cloud via the device-code flow. Personal Google credentials are
+  created only through the product connector and its vault. Each connection has a
   read-only **Verify** probe that proves the credential against the real API
   before any suite depends on it.
 - **Runs with live status** (queued → running → passed/failed/skipped) over

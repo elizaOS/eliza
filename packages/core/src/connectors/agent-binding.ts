@@ -14,9 +14,6 @@ import type {
 import type { UUID } from "../types/primitives";
 import type { ConnectorAccount } from "./account-manager";
 
-export type ConnectorOAuthMode = "eliza_managed" | "bring_your_own";
-export type ConnectorExecutionTarget = "agent_host" | "cloud_broker";
-
 export interface AgentConnectorBinding {
 	id: string;
 	agentId: UUID;
@@ -26,8 +23,6 @@ export interface AgentConnectorBinding {
 	purposes: ConnectorAccountPurpose[];
 	accessGate: ConnectorAccountAccessGate;
 	status: ConnectorAccountStatus;
-	oauthMode: ConnectorOAuthMode;
-	executionTarget: ConnectorExecutionTarget;
 	selectedProducts: string[];
 	allowedCapabilities: string[];
 	grantedScopes: string[];
@@ -87,8 +82,6 @@ export function projectAgentConnectorBinding(
 		purposes: [...account.purpose],
 		accessGate: account.accessGate,
 		status: account.status,
-		oauthMode: account.oauthMode ?? "bring_your_own",
-		executionTarget: account.executionTarget ?? "agent_host",
 		selectedProducts: [...(account.selectedProducts ?? [])],
 		allowedCapabilities: [...(account.capabilities ?? [])],
 		grantedScopes: [...(account.scopes ?? [])],

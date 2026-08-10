@@ -8,7 +8,7 @@ overview and `../../CLAUDE.md` (repo root) for monorepo-wide rules.
 Owns the calendar domain extracted from `@elizaos/plugin-personal-assistant`: the calendar
 event/sync store + schema, the Google + Apple calendar feed, event CRUD, the
 `CALENDAR` action and its LLM handler, the shared calendar route dispatcher,
-the provider-authenticated Google webhook, the client API methods augmented
+the client API methods augmented
 onto `@elizaos/ui`, and the owner-facing calendar views. Private
 `/api/lifeops/calendar/*` routes are mounted by the personal-assistant host
 behind its OWNER/ADMIN role gate.
@@ -22,8 +22,8 @@ behind its OWNER/ADMIN role gate.
   is `plugin-personal-assistant -> plugin-calendar`.
 - **Schema namespace is `app_calendar`.** Calendar events and sync states were
   carved out of PA's `app_lifeops` schema; ICS sources, the durable secret
-  cleanup outbox, feed preferences, and Google watch channels are
-  calendar-native tables. `calendarPgSchema = pgSchema("app_calendar")` is
+  cleanup outbox, and feed preferences are calendar-native tables.
+  `calendarPgSchema = pgSchema("app_calendar")` is
   registered via the plugin `schema` field, and `CalendarMigrationService`
   performs a non-destructive one-time copy of any existing `app_lifeops` rows
   (the plugin-finances carve pattern: skip if source missing / target non-empty,
@@ -38,12 +38,12 @@ behind its OWNER/ADMIN role gate.
 
 ```
 src/
-  plugin.ts          Plugin definition (action, service, provider webhook)
+  plugin.ts          Plugin definition (actions, services, host adapter)
   index.ts           Public exports
   service/           CalendarService + connector gate + repository + schema
   apple-calendar.ts  Native Apple Calendar bridge
   actions/           CALENDAR action + handler
-  routes/            Shared host adapter + Google push webhook
+  routes/            Shared owner-gated host adapter
   api/               client-calendar.ts (side-effect client augmentation)
   components/        Calendar views + event editor (React)
   hooks/             useCalendarWeek
@@ -60,12 +60,11 @@ bun run --cwd plugins/plugin-calendar test
 bun run --cwd plugins/plugin-calendar typecheck
 ```
 
-## Google push configuration
+## Google change delivery
 
-- `GOOGLE_CALENDAR_WEBHOOK_ENABLED` must be exactly `true` before the public
-  callback or watch creation is active; omission is fail-closed.
-- `GOOGLE_CALENDAR_WEBHOOK_URL` must be a public HTTPS URL with the exact
-  `/api/lifeops/calendar/google/webhook` path.
+Personal Google Calendar uses complete, paginated polling windows through the
+official Calendar MCP server. This plugin does not register a Google webhook,
+create provider watch channels, or persist push-delivery state.
 
 ## Verification
 

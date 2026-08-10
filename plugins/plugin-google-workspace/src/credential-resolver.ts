@@ -1,9 +1,9 @@
 /**
  * `DefaultGoogleCredentialResolver` — turns a stored Google connector account
  * into an authenticated OAuth2 client for a given account + capability set. It
- * reads OAuth token material from the account metadata, the connector account
- * storage credential refs, and (via the runtime) the credential store / vault /
- * SECRETS readers, merging whatever shape the tokens were persisted in into a
+ * reads OAuth token material only from connector-account credential refs and
+ * resolves those opaque refs through the runtime credential store or vault,
+ * merging the stored token shapes into a
  * single `Auth.Credentials`. Resolved clients are cached by a version derived
  * from the account and credential records so token rotation invalidates the
  * cache. The many accepted credential-type spellings exist to interoperate with
@@ -17,19 +17,12 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
-// Use googleapis' re-exported auth module so the OAuth2Client identity always
-// matches the copy googleapis' Options type expects (bun's isolated linker can
-// install two google-auth-library copies, splitting the nominal type).
-import { Auth } from "googleapis";
-
-type Credentials = Auth.Credentials;
-const { OAuth2Client } = Auth;
+import { type Credentials, OAuth2Client } from "google-auth-library";
 
 import {
   CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
   CONNECTOR_VAULT_SERVICE_TYPES,
   CORE_SECRETS_SERVICE_TYPE,
-  credentialRefRecordsFromMetadata,
 } from "./connector-credential-refs.js";
 import type {
   GoogleAuthClient,
@@ -91,10 +84,7 @@ export interface GoogleCredentialSecretReader {
 
 interface ConnectorCredentialRefRecord {
   credentialType: string;
-  vaultRef?: string | null;
-  value?: string | null;
-  token?: string | null;
-  secret?: string | null;
+  vaultRef: string;
   metadata?: JsonRecord | null;
   expiresAt?: number | string | Date | null;
   updatedAt?: number | string | Date | null;
@@ -111,17 +101,7 @@ interface ConnectorCredentialRefStorage {
   }): Promise<ConnectorCredentialRefRecord[]>;
 }
 
-interface ConnectorCredentialValueStorage {
-  getConnectorAccountCredential?(params: {
-    provider: string;
-    accountId: string;
-    credentialType: string;
-  }): Promise<ConnectorCredentialRefRecord | string | null>;
-}
-
-type GoogleConnectorStorage = ConnectorAccountStorage &
-  Partial<ConnectorCredentialRefStorage> &
-  ConnectorCredentialValueStorage;
+type GoogleConnectorStorage = ConnectorAccountStorage & Partial<ConnectorCredentialRefStorage>;
 
 export interface DefaultGoogleCredentialResolverOptions {
   runtime?: IAgentRuntime | null;
@@ -130,7 +110,6 @@ export interface DefaultGoogleCredentialResolverOptions {
   credentialStore?: GoogleCredentialSecretReader;
   vault?: GoogleCredentialSecretReader;
   clientId?: string;
-  clientSecret?: string;
   redirectUri?: string;
 }
 
@@ -146,7 +125,6 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
   private readonly credentialStore?: GoogleCredentialSecretReader;
   private readonly vault?: GoogleCredentialSecretReader;
   private readonly clientId?: string;
-  private readonly clientSecret?: string;
   private readonly redirectUri?: string;
   private readonly clientCache = new Map<string, GoogleAuthClient>();
 
@@ -157,7 +135,6 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
     this.credentialStore = options.credentialStore;
     this.vault = options.vault;
     this.clientId = nonEmptyString(options.clientId);
-    this.clientSecret = nonEmptyString(options.clientSecret);
     this.redirectUri = nonEmptyString(options.redirectUri);
   }
 
@@ -178,13 +155,9 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
       throw new Error(`Google account ${request.accountId} is ${account.status}, not connected.`);
     }
 
-    const clientConfig = this.resolveOAuthClientConfig(account);
+    const clientConfig = await this.resolveOAuthClientConfig();
     const storage = this.resolveStorage();
-    const metadataRecords = credentialRefRecordsFromMetadata(
-      account.metadata
-    ) as ConnectorCredentialRefRecord[];
     const records: ConnectorCredentialRefRecord[] = [
-      ...metadataRecords,
       ...(storage ? await this.loadCredentialRecords(storage, account.id) : []),
       ...(await this.loadRuntimeAdapterCredentialRecords(account.id)),
     ];
@@ -368,25 +341,6 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
       }
     }
 
-    if (typeof storage.getConnectorAccountCredential === "function") {
-      for (const credentialType of [
-        ...TOKEN_SET_CREDENTIAL_TYPES,
-        ...ACCESS_TOKEN_CREDENTIAL_TYPES,
-        ...REFRESH_TOKEN_CREDENTIAL_TYPES,
-      ]) {
-        const resolved = await storage.getConnectorAccountCredential({
-          provider: GOOGLE_SERVICE_NAME,
-          accountId,
-          credentialType,
-        });
-        if (typeof resolved === "string") {
-          records.push({ credentialType, value: resolved });
-        } else if (resolved) {
-          records.push(resolved);
-        }
-      }
-    }
-
     return records;
   }
 
@@ -424,13 +378,7 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
     credentials: Credentials,
     record: ConnectorCredentialRefRecord
   ): Promise<void> {
-    const value =
-      nonEmptyString(record.value) ??
-      nonEmptyString(record.token) ??
-      nonEmptyString(record.secret) ??
-      (record.vaultRef
-        ? await this.readVaultRef(record.vaultRef, record.credentialType)
-        : undefined);
+    const value = await this.readVaultRef(record.vaultRef, record.credentialType);
 
     if (!value) {
       return;
@@ -479,49 +427,38 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
         const service = safelyGetService(this.runtime, serviceType);
         if (service) readers.push(service);
       }
-      const secretsService = safelyGetService(this.runtime, CORE_SECRETS_SERVICE_TYPE) as {
-        get?: (key: string, context: JsonRecord) => Promise<string | null> | string | null;
-      } | null;
-      if (typeof secretsService?.get === "function") {
-        readers.push({
-          get: (key: string) =>
-            secretsService.get?.(key, {
-              level: "global",
-              agentId: this.runtime?.agentId,
-              requesterId: this.runtime?.agentId,
-            }) ?? null,
-        });
-      }
     }
 
     return readers;
   }
 
-  private resolveOAuthClientConfig(account: ConnectorAccount): {
+  private async resolveOAuthClientConfig(): Promise<{
     clientId?: string;
     clientSecret?: string;
     redirectUri?: string;
-  } {
-    const metadata = asRecord(account.metadata);
-    const oauth = asRecord(metadata?.oauth);
-    const client = asRecord(metadata?.oauthClient) ?? asRecord(metadata?.client);
-
+  }> {
+    const secrets = (
+      this.runtime ? safelyGetService(this.runtime, CORE_SECRETS_SERVICE_TYPE) : null
+    ) as {
+      getGlobal?: (key: string) => Promise<string | null>;
+      setGlobal?: (key: string, value: string) => Promise<boolean>;
+    } | null;
+    let clientSecret = nonEmptyString(await secrets?.getGlobal?.(GOOGLE_CLIENT_SECRET_SETTING));
+    if (!clientSecret) {
+      const configured = readSetting(this.runtime, GOOGLE_CLIENT_SECRET_SETTING);
+      const allowMigration =
+        readSetting(this.runtime, "GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV") === "1";
+      if (configured && allowMigration && secrets?.setGlobal) {
+        const stored = await secrets.setGlobal(GOOGLE_CLIENT_SECRET_SETTING, configured);
+        if (stored) {
+          clientSecret = nonEmptyString(await secrets.getGlobal?.(GOOGLE_CLIENT_SECRET_SETTING));
+        }
+      }
+    }
     return {
-      clientId:
-        this.clientId ??
-        readStringFromRecord(client, "clientId", "client_id") ??
-        readStringFromRecord(oauth, "clientId", "client_id") ??
-        readSetting(this.runtime, GOOGLE_CLIENT_ID_SETTING),
-      clientSecret:
-        this.clientSecret ??
-        readStringFromRecord(client, "clientSecret", "client_secret") ??
-        readStringFromRecord(oauth, "clientSecret", "client_secret") ??
-        readSetting(this.runtime, GOOGLE_CLIENT_SECRET_SETTING),
-      redirectUri:
-        this.redirectUri ??
-        readStringFromRecord(client, "redirectUri", "redirect_uri") ??
-        readStringFromRecord(oauth, "redirectUri", "redirect_uri") ??
-        readSetting(this.runtime, GOOGLE_REDIRECT_URI_SETTING),
+      clientId: this.clientId ?? readSetting(this.runtime, GOOGLE_CLIENT_ID_SETTING),
+      clientSecret,
+      redirectUri: this.redirectUri ?? readSetting(this.runtime, GOOGLE_REDIRECT_URI_SETTING),
     };
   }
 

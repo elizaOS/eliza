@@ -330,60 +330,6 @@ export async function ensureCalendarFeedPreferenceTable(
     $calendar_feed_preference_version$`);
 }
 
-/**
- * Push channels are calendar-owned state rather than connector credentials.
- * The explicit migration path creates their table before a public callback can
- * arrive, including direct PGlite and older plugin-sql boot orders.
- */
-export async function ensureGoogleCalendarWatchChannelTable(
-  exec: SqlExecutor,
-): Promise<void> {
-  await exec(`
-    CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.google_calendar_watch_channels (
-      channel_id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      grant_id TEXT NOT NULL,
-      connector_account_id TEXT NOT NULL,
-      side TEXT NOT NULL,
-      calendar_id TEXT NOT NULL,
-      calendar_summary TEXT NOT NULL,
-      calendar_access_role TEXT NOT NULL,
-      time_zone TEXT NOT NULL,
-      window_start_at TEXT NOT NULL,
-      window_end_at TEXT NOT NULL,
-      webhook_url TEXT NOT NULL,
-      token_sha256 TEXT NOT NULL,
-      resource_id TEXT,
-      resource_uri TEXT,
-      expiration_at TEXT,
-      state TEXT NOT NULL,
-      last_message_number TEXT NOT NULL DEFAULT '0',
-      pending_message_number TEXT,
-      last_notification_at TEXT,
-      last_sync_at TEXT,
-      sync_lease_token TEXT,
-      sync_lease_expires_at TEXT,
-      renewal_channel_id TEXT,
-      failure_count INTEGER NOT NULL DEFAULT 0,
-      next_retry_at TEXT,
-      last_error_code TEXT,
-      last_error_message TEXT,
-      last_error_retryable BOOLEAN,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`);
-  await exec(`
-    CREATE INDEX IF NOT EXISTS calendar_watch_binding_idx
-      ON ${TARGET_SCHEMA}.google_calendar_watch_channels (
-        agent_id, connector_account_id, grant_id, calendar_id
-      )`);
-  await exec(`
-    CREATE INDEX IF NOT EXISTS calendar_watch_maintenance_idx
-      ON ${TARGET_SCHEMA}.google_calendar_watch_channels (
-        agent_id, state, expiration_at
-      )`);
-}
-
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
@@ -443,7 +389,6 @@ export async function migrateCalendarTables(
   await ensureIcsCalendarSourceTable(exec);
   await ensureIcsSecretCleanupTable(exec);
   await ensureCalendarFeedPreferenceTable(exec);
-  await ensureGoogleCalendarWatchChannelTable(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_CALENDAR_TABLES) {
     results.push(await migrateCalendarTable(exec, table));

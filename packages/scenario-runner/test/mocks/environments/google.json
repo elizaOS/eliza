@@ -16,7 +16,7 @@
       "responses": [
         {
           "uuid": "00000002-0000-4000-8000-00000google00",
-          "body": "{\"access_token\":\"fake-{{faker 'string.uuid'}}\",\"expires_in\":3600,\"refresh_token\":\"mock-google-refresh-token\",\"token_type\":\"Bearer\",\"scope\":\"openid email profile https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send\"}",
+          "body": "{\"access_token\":\"fake-{{faker 'string.uuid'}}\",\"expires_in\":3600,\"refresh_token\":\"mock-google-refresh-token\",\"token_type\":\"Bearer\",\"scope\":\"openid email profile https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose\"}",
           "latency": 0,
           "statusCode": 200,
           "label": "OK",

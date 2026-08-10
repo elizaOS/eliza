@@ -1,31 +1,25 @@
 /**
  * CloudCredentialProvider — bridges plugin-workflow's `CredentialProvider`
- * service slot to Eliza Cloud's per-connector OAuth surface.
+ * service slot to Eliza Cloud's connector control plane.
  *
  * Resolution path on `resolve(userId, credType)`:
  *   1. Look up `credType` in `credTypeToConnector` — return `null` for unmapped.
- *   2. GET `/eliza/<connector>/status` via the authenticated cloud client to
- *      check whether the user already has an active connection.
- *   3. When connected → see `RAW_TOKEN_GAP` below; we currently return
- *      `needs_auth` because the cloud does not expose raw OAuth tokens.
- *   4. When not connected → POST `/eliza/<connector>/connect/initiate` with
- *      the mapped `capabilities`; return `needs_auth` with the authUrl the
- *      cloud issued. The workflow plugin surfaces this to the user.
+ *   2. For Google, list this runtime agent's connector bindings. Credential
+ *      identity remains private to Cloud.
+ *   3. When connected, return `null` because a binding authorizes curated MCP
+ *      execution but does not authorize raw-token export to a workflow node.
+ *   4. When not connected, initiate generic OAuth with an agent-binding
+ *      request. The callback stores the credential and binding atomically.
  *
  * RAW_TOKEN_GAP
  * -------------
  * Plugin-workflow's `credential_data` shape requires the actual access token
  * (so the workflow engine can inject it into a node's HTTP calls). The cloud
- * connector endpoints (Google / GitHub / Discord) intentionally do **not**
- * vend raw tokens to the local plugin — they hold the token server-side and
- * proxy connector calls under `/eliza/<connector>/<action>` (e.g.
- * `/eliza/google/gmail/send`). Bridging that proxy model into the workflow
- * engine is a separate piece of work (either: extend the workflow engine to
- * dispatch through cloud proxies, or add a token-vending endpoint cloud-side
- * for clients with a verified pairing). Until then this provider is honest:
- * it confirms the connection exists and either reports it cannot inject
- * (`null` / `needs_auth`) or — once the cloud exposes a vending endpoint —
- * fetches and returns the credential payload.
+ * connector control plane intentionally does **not** vend raw tokens to the
+ * local plugin. Google execution is binding-scoped and calls official MCP
+ * resources inside the hosted runtime. Workflow support therefore requires a
+ * future binding-aware tool executor, not resurrection of a token-vending or
+ * provider-specific REST proxy. Until then this provider fails closed.
  *
  * No fallbacks. No fake tokens. The provider fails closed.
  */
@@ -111,31 +105,33 @@ export class CloudCredentialProvider extends Service {
       return null;
     }
 
-    const status = await this.fetchConnectorStatus(client, mapping.connector);
+    const status =
+      mapping.connector === "google"
+        ? await this.fetchAgentConnectorStatus(
+            client,
+            mapping.connector,
+            mapping.products ?? [],
+          )
+        : await this.fetchConnectorStatus(client, mapping.connector);
 
     if (!status.connected) {
       const authUrl =
         status.authUrl ??
-        (await this.initiateConnectorAuth(client, mapping.connector, mapping.capabilities));
+        (await this.initiateConnectorAuth(
+          client,
+          mapping.connector,
+          mapping.products,
+          mapping.scopes,
+        ));
       if (!authUrl) {
         return null;
       }
       return { status: "needs_auth", authUrl };
     }
 
-    // Connected, but the cloud does not expose raw tokens — see RAW_TOKEN_GAP
-    // in the file header. We re-prompt for explicit user-side auth so the
-    // workflow plugin reports "missing connection" instead of silently
-    // injecting a stale or empty credential. When the cloud adds a token
-    // vending endpoint, fetch + return `credential_data` here.
-    const reauthUrl = await this.initiateConnectorAuth(
-      client,
-      mapping.connector,
-      mapping.capabilities,
-    );
-    if (reauthUrl) {
-      return { status: "needs_auth", authUrl: reauthUrl };
-    }
+    // Connected does not imply a raw credential can be exported into an
+    // arbitrary workflow node. The Cloud runtime may execute curated MCP
+    // tools through this binding, but this provider still fails closed.
     return null;
   }
 
@@ -177,22 +173,55 @@ export class CloudCredentialProvider extends Service {
     return shapeConnectorStatus(raw);
   }
 
+  private async fetchAgentConnectorStatus(
+    client: CloudClientLike,
+    connector: string,
+    products: readonly string[],
+  ): Promise<CloudConnectorStatus> {
+    if (typeof client.get !== "function") {
+      return { connected: false };
+    }
+    const raw = await client.get(
+      `/eliza/agents/${String(this.runtime.agentId)}/connectors`,
+    );
+    if (!Array.isArray(raw)) return { connected: false };
+    const connected = raw.some((candidate) => {
+      if (!candidate || typeof candidate !== "object") return false;
+      const binding = candidate as Record<string, unknown>;
+      if (binding.provider !== connector || binding.status !== "connected") return false;
+      if (!Array.isArray(binding.selectedProducts)) return false;
+      const selected = new Set(
+        binding.selectedProducts.filter((value): value is string => typeof value === "string"),
+      );
+      return products.every((product) => selected.has(product));
+    });
+    return { connected };
+  }
+
   private async initiateConnectorAuth(
     client: CloudClientLike,
     connector: string,
-    capabilities: readonly string[] | undefined,
+    products: readonly string[] | undefined,
+    scopes: readonly string[] | undefined,
   ): Promise<string | null> {
     if (typeof client.post !== "function") {
       return null;
     }
     const body: Record<string, unknown> = {};
-    if (capabilities && capabilities.length > 0) {
-      body.capabilities = [...capabilities];
+    let path = `/eliza/${connector}/connect/initiate`;
+    if (connector === "google") {
+      if (!products || products.length === 0) return null;
+      path = "/oauth/google/initiate";
+      body.connectionRole = "owner";
+      body.scopes = [...(scopes ?? [])];
+      body.agentBinding = {
+        agentId: String(this.runtime.agentId),
+        role: "OWNER",
+        selectedProducts: [...products],
+        isDefault: true,
+      };
     }
-    const raw = (await client.post(
-      `/eliza/${connector}/connect/initiate`,
-      body,
-    )) as CloudConnectInitiateResponse | null;
+    const raw = (await client.post(path, body)) as CloudConnectInitiateResponse | null;
     const authUrl = raw?.authUrl;
     return typeof authUrl === "string" && authUrl.length > 0 ? authUrl : null;
   }

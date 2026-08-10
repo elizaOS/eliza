@@ -432,7 +432,10 @@ function serializeAccount(account: ConnectorAccount): Record<string, unknown> {
     displayHandle: account.displayHandle,
     ownerBindingId: account.ownerBindingId,
     ownerIdentityId: account.ownerIdentityId,
-    isDefault: metadata.isDefault === true && isUsableDefaultAccount(account),
+    scopes: account.scopes ?? [],
+    capabilities: account.capabilities ?? [],
+    selectedProducts: account.selectedProducts ?? [],
+    isDefault: account.isDefault === true && isUsableDefaultAccount(account),
     enabled: account.status !== "disabled" && account.status !== "revoked",
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
@@ -452,7 +455,7 @@ function getDefaultAccountId(accounts: ConnectorAccount[]): string | null {
   return (
     accounts.find(
       (account) =>
-        account.metadata?.isDefault === true && isUsableDefaultAccount(account),
+        account.isDefault === true && isUsableDefaultAccount(account),
     )?.id ??
     accounts.find((account) => isUsableDefaultAccount(account))?.id ??
     null
@@ -844,12 +847,12 @@ export async function handleConnectorAccountRoutes(
         const accounts = await manager.listAccounts(provider);
         for (const item of accounts) {
           const isTarget = item.id === accountId;
-          if (item.metadata?.isDefault === isTarget) continue;
+          if (item.isDefault === isTarget) continue;
+          const metadata = { ...(item.metadata ?? {}) };
+          delete metadata.isDefault;
           await manager.patchAccount(provider, item.id, {
-            metadata: {
-              ...(item.metadata ?? {}),
-              isDefault: isTarget,
-            },
+            isDefault: isTarget,
+            metadata,
           });
         }
         const updatedAccounts = await manager.listAccounts(provider);

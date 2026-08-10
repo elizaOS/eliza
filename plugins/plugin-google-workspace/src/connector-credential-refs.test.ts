@@ -3,10 +3,10 @@
  * that a credential persisted through `persistConnectorCredentialRefs` is
  * readable by `DefaultGoogleCredentialResolver` after a simulated process
  * restart, for every service name the writer can target. Deterministic
- * harness — the runtime, credential store, vault, and SECRETS services are
+ * harness — the runtime, credential store, vault, and app-secret service are
  * in-memory fakes shaped like their production counterparts; "restart" means
  * new runtime/service instances sharing only the durable backing maps
- * (connector account storage rows and the vault store), exactly what survives
+ * (connector account storage rows and vault stores), exactly what survives
  * a real process restart.
  */
 import {
@@ -15,6 +15,7 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
   InMemoryDatabaseAdapter,
+  type UUID,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -137,12 +138,9 @@ function createDurableVaultService(vaultEntries: Map<string, string>) {
   };
 }
 
-/**
- * Volatile SECRETS fake shaped like core SecretsService global storage: writes
- * land in an instance-private map that a restart (new instance) wipes.
- */
-function createVolatileSecretsService() {
-  const entries = new Map<string, string>();
+/** Vault-backed app-secret service used only for the OAuth client secret. */
+function createAppSecretsVault() {
+  const entries = new Map<string, string>([["GOOGLE_CLIENT_SECRET", "client-secret"]]);
   return {
     entries,
     async setGlobal(key: string, value: string): Promise<boolean> {
@@ -150,6 +148,9 @@ function createVolatileSecretsService() {
       return true;
     },
     async get(key: string): Promise<string | null> {
+      return entries.get(key) ?? null;
+    },
+    async getGlobal(key: string): Promise<string | null> {
       return entries.get(key) ?? null;
     },
   };
@@ -162,12 +163,7 @@ function createRuntime(
   return {
     agentId: AGENT_ID,
     getService: (name: string) => services[name] ?? null,
-    getSetting: (key: string) =>
-      key === "GOOGLE_CLIENT_ID"
-        ? "client-id"
-        : key === "GOOGLE_CLIENT_SECRET"
-          ? "client-secret"
-          : undefined,
+    getSetting: (key: string) => (key === "GOOGLE_CLIENT_ID" ? "client-id" : undefined),
     adapter: storage,
   } as unknown as IAgentRuntime;
 }
@@ -190,7 +186,10 @@ async function resolveAfterRestart(
   services: Record<string, unknown>
 ): Promise<{ accessToken?: string | null; refreshToken?: string | null }> {
   const restartedStorage = createStorage(state);
-  const restartedRuntime = createRuntime(restartedStorage, services);
+  const restartedRuntime = createRuntime(restartedStorage, {
+    SECRETS: createAppSecretsVault(),
+    ...services,
+  });
   const resolver = new DefaultGoogleCredentialResolver({
     runtime: restartedRuntime,
     storage: restartedStorage,
@@ -213,7 +212,7 @@ describe("connector credential persist → restart → resolve round-trip", () =
     const state = newDurableState();
     state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
     const storage = createStorage(state);
-    const secrets = createVolatileSecretsService();
+    const secrets = createAppSecretsVault();
     const services: Record<string, unknown> = {
       connector_credential_store: createDurableStoreService(state.vaultEntries),
       SECRETS: secrets,
@@ -221,14 +220,14 @@ describe("connector credential persist → restart → resolve round-trip", () =
 
     const vaultRef = await persistTokens(createRuntime(storage, services));
     expect(vaultRef).toBe(`connector.${AGENT_ID}.google.${ACCOUNT_ID}.oauth_tokens`);
-    // Precedence: the durable store wins; nothing lands in volatile SECRETS.
+    // Precedence: account tokens land only in the durable credential store.
     expect(state.vaultEntries.get(vaultRef)).toBe(TOKENS_JSON);
-    expect(secrets.entries.size).toBe(0);
+    expect(secrets.entries).toEqual(new Map([["GOOGLE_CLIENT_SECRET", "client-secret"]]));
 
-    // Restart: fresh SECRETS instance (memory wiped), same durable state.
+    // Restart: fresh service instances, same durable token state.
     const restarted = await resolveAfterRestart(state, {
       connector_credential_store: createDurableStoreService(state.vaultEntries),
-      SECRETS: createVolatileSecretsService(),
+      SECRETS: createAppSecretsVault(),
     });
     expect(restarted.accessToken).toBe("test-access-token");
     expect(restarted.refreshToken).toBe("test-refresh-token");
@@ -259,18 +258,13 @@ describe("connector credential persist → restart → resolve round-trip", () =
     }
   });
 
-  it("documents the SECRETS-only fallback as volatile: the persisted ref dangles after a restart", async () => {
+  it("rejects SECRETS-only token persistence instead of creating a volatile ref", async () => {
     const state = newDurableState();
     state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
     const storage = createStorage(state);
-    const secrets = createVolatileSecretsService();
-
-    const vaultRef = await persistTokens(createRuntime(storage, { SECRETS: secrets }));
-    expect(secrets.entries.get(vaultRef)).toBe(TOKENS_JSON);
-
     await expect(
-      resolveAfterRestart(state, { SECRETS: createVolatileSecretsService() })
-    ).rejects.toThrow(/could not be read/);
+      persistTokens(createRuntime(storage, { SECRETS: createAppSecretsVault() }))
+    ).rejects.toThrow(/No durable connector credential store or vault writer/);
   });
 });
 
@@ -286,7 +280,7 @@ describe("accountId 'default' resolution", () => {
   async function resolveDefault(state: DurableState, services: Record<string, unknown>) {
     const storage = createStorage(state);
     const resolver = new DefaultGoogleCredentialResolver({
-      runtime: createRuntime(storage, services),
+      runtime: createRuntime(storage, { SECRETS: createAppSecretsVault(), ...services }),
       storage,
     });
     return resolver.getAuthClient({
@@ -333,12 +327,7 @@ describe("manager-path durability across restart (real core manager + adapter)",
       agentId: AGENT_ID,
       adapter,
       getService: (name: string) => services[name] ?? null,
-      getSetting: (key: string) =>
-        key === "GOOGLE_CLIENT_ID"
-          ? "client-id"
-          : key === "GOOGLE_CLIENT_SECRET"
-            ? "client-secret"
-            : undefined,
+      getSetting: (key: string) => (key === "GOOGLE_CLIENT_ID" ? "client-id" : undefined),
       getMessageConnectors: () => [],
       getPostConnectors: () => [],
       registerMessageConnector: () => undefined,
@@ -363,15 +352,22 @@ describe("manager-path durability across restart (real core manager + adapter)",
     await adapter.initialize();
     (bootRuntime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter = adapter;
 
-    // OAuth completion writes the connected account with its credential refs.
+    // OAuth completion writes the connected account and a separate credential-ref row.
     await bootManager.upsertAccount("google", {
       ...connectedAccount(ACCOUNT_ID),
-      metadata: { credentialRefs: [{ credentialType: "oauth.tokens", vaultRef }] },
+    });
+    await adapter.setConnectorAccountCredentialRef({
+      accountId: ACCOUNT_ID as UUID,
+      credentialType: "oauth.tokens",
+      vaultRef,
     });
 
     // Restart: fresh runtime + manager over the same durable adapter/vault.
     const restartedRuntime = createManagerRuntime(
-      { connector_credential_store: createDurableStoreService(vaultEntries) },
+      {
+        connector_credential_store: createDurableStoreService(vaultEntries),
+        SECRETS: createAppSecretsVault(),
+      },
       adapter
     );
     const resolver = new DefaultGoogleCredentialResolver({ runtime: restartedRuntime });

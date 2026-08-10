@@ -16,10 +16,12 @@ function choiceLabelText(value: string): string {
 export function appendInboxDraftChoiceMarker(
   text: string,
   entryId: string,
+  confirmLabel = "Send",
 ): string {
+  const safeConfirmLabel = choiceLabelText(confirmLabel);
   return `${text}
 [CHOICE:inbox-draft-${entryId} id=${entryId}]
-inbox approve ${entryId}=Send
+inbox approve ${entryId}=${safeConfirmLabel}
 inbox archive ${entryId}=Discard
 [/CHOICE]`;
 }

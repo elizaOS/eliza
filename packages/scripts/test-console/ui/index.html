@@ -252,7 +252,6 @@ function renderConnections() {
         <div class="row">
           <button type="submit" class="primary">Save</button>
           <button type="button" data-verify="${conn.id}">Verify</button>
-          ${conn.oauth === "google" || conn.oauth === "google-calendar" ? `<button type="button" data-google="${conn.id}">Connect Google</button>` : ""}
           ${conn.oauth === "eliza-cloud" ? `<button type="button" data-cloud="${conn.id}">Log in</button>` : ""}
           <button type="button" data-remove="${conn.id}">Remove</button>
         </div>
@@ -333,7 +332,6 @@ document.addEventListener("click", async (event) => {
     await refresh();
     return;
   }
-  if (el.dataset.google) { window.open("/oauth/google/start", "_blank"); return; }
   if (el.dataset.cloud) {
     try {
       const { sessionId, browserUrl } = await api("POST", "/api/cloud/login/start");

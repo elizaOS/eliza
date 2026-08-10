@@ -112,8 +112,8 @@ describe("normalizeGoogleCapabilities", () => {
     expect(
       normalizeGoogleCapabilities([
         "google.basic_identity",
-        "google.gmail.send",
+        "google.gmail.draft.create",
       ]),
-    ).toEqual(["google.basic_identity", "google.gmail.send"]);
+    ).toEqual(["google.basic_identity", "google.gmail.draft.create"]);
   });
 });

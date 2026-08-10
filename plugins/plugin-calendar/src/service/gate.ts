@@ -187,17 +187,12 @@ export function createDefaultCalendarHostGate(
       return requireGoogleCalendarGrant(runtime, agentId, mode, side, grantId);
     },
     async requireGoogleCalendarWriteGrant(_requestUrl, mode, side, grantId) {
-      const grant = await requireGoogleCalendarGrant(
-        runtime,
-        agentId,
-        mode,
-        side,
-        grantId,
+      await requireGoogleCalendarGrant(runtime, agentId, mode, side, grantId);
+      fail(
+        409,
+        "Personal Google Calendar is view-only because its MCP server does not expose atomic provider versions.",
+        "GOOGLE_MCP_SAFE_CALENDAR_WRITE_UNSUPPORTED",
       );
-      if (!grant.capabilities.includes("google.calendar.write")) {
-        fail(403, "Google Calendar write access has not been granted.");
-      }
-      return grant;
     },
     async createReminderPlan(): Promise<void> {
       logger.debug(

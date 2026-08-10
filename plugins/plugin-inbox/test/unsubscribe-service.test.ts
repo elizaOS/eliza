@@ -6,7 +6,7 @@
  * runtime service or connector-account manager is needed) and a fake in-memory
  * repository, then assert: List-Unsubscribe header parsing → sender scan, the
  * two-phase authorization gate, the HTTP one-click / mailto branches, the Gmail
- * manage capability gate for block/trash, and that the outcome is persisted.
+ * explicit rejection of unsupported filter/trash requests, and persistence.
  */
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
@@ -141,13 +141,9 @@ function makeGateway(
           replyNeededCount: 0,
         },
       })),
-    sendMailtoUnsubscribeEmail:
-      overrides.sendMailtoUnsubscribeEmail ?? vi.fn(async () => undefined),
-    createGmailFilterForSender:
-      overrides.createGmailFilterForSender ??
-      vi.fn(async () => ({ filterId: "filter-1" })),
-    trashGmailThread:
-      overrides.trashGmailThread ?? vi.fn(async () => undefined),
+    createMailtoUnsubscribeDraft:
+      overrides.createMailtoUnsubscribeDraft ??
+      vi.fn(async () => ({ draftId: "draft-1", threadId: null })),
   };
 }
 
@@ -280,10 +276,13 @@ describe("InboxUnsubscribeService", () => {
       expect(records[0]?.metadata.connectorAccountId).toBe("acct-1");
     });
 
-    it("sends a mailto unsubscribe through the Gmail gateway", async () => {
-      const sendMailto = vi.fn(async () => undefined);
+    it("creates a mailto unsubscribe draft through the Gmail gateway", async () => {
+      const createDraft = vi.fn(async () => ({
+        draftId: "draft-unsubscribe-1",
+        threadId: "thread-unsubscribe-1",
+      }));
       const gateway = makeGateway({
-        sendMailtoUnsubscribeEmail: sendMailto,
+        createMailtoUnsubscribeDraft: createDraft,
         messages: [
           gmailMessage({
             id: "m1",
@@ -299,17 +298,21 @@ describe("InboxUnsubscribeService", () => {
         userAuthorization: true,
       });
 
-      expect(sendMailto).toHaveBeenCalledWith("acct-1", {
+      expect(createDraft).toHaveBeenCalledWith("acct-1", {
         recipient: "unsub@shop.com",
         subject: "stop",
         body: null,
       });
       expect(record.method).toBe("mailto");
-      expect(record.status).toBe("succeeded");
+      expect(record.status).toBe("draft_created");
+      expect(record.metadata.providerDraft).toEqual({
+        draftId: "draft-unsubscribe-1",
+        threadId: "thread-unsubscribe-1",
+      });
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    it("requires gmail.manage capability before blocking/trashing", async () => {
+    it("rejects filter and trash requests because Gmail MCP does not expose them", async () => {
       const gateway = makeGateway({
         capabilities: ["google.gmail.triage"],
         messages: [
@@ -328,56 +331,15 @@ describe("InboxUnsubscribeService", () => {
         url: "https://brand.com/unsub",
       } as Response);
 
-      const { record } = await service.unsubscribeEmailSender({
-        senderEmail: "news@brand.com",
-        userAuthorization: true,
-        blockAfter: true,
-      });
-
-      // The manage gate fails inside the try → status becomes "failed" and the
-      // error is recorded rather than thrown out of the service.
-      expect(record.status).toBe("failed");
-      expect(record.errorMessage).toMatch(/Gmail manage access/);
-      expect(record.filterCreated).toBe(false);
-      expect(records).toHaveLength(1);
-    });
-
-    it("creates a block filter and trashes threads when manage is granted", async () => {
-      const createFilter = vi.fn(async () => ({ filterId: "filter-9" }));
-      const trash = vi.fn(async () => undefined);
-      const gateway = makeGateway({
-        capabilities: ["google.gmail.triage", "google.gmail.manage"],
-        createGmailFilterForSender: createFilter,
-        trashGmailThread: trash,
-        messages: [
-          gmailMessage({
-            id: "m1",
-            fromEmail: "news@brand.com",
-            listUnsubscribe: "<https://brand.com/unsub>",
-          }),
-        ],
-      });
-      const { service } = makeService(gateway);
-
-      fetchSpy.mockResolvedValue({
-        ok: true,
-        status: 202,
-        url: "https://brand.com/unsub",
-      } as Response);
-
-      const { record } = await service.unsubscribeEmailSender({
-        senderEmail: "news@brand.com",
-        userAuthorization: true,
-        blockAfter: true,
-        trashExisting: true,
-      });
-
-      expect(createFilter).toHaveBeenCalledWith("acct-1", "news@brand.com");
-      expect(trash).toHaveBeenCalledWith("acct-1", "thread-m1");
-      expect(record.filterCreated).toBe(true);
-      expect(record.filterId).toBe("filter-9");
-      expect(record.threadsTrashed).toBe(1);
-      expect(record.status).toBe("succeeded");
+      await expect(
+        service.unsubscribeEmailSender({
+          senderEmail: "news@brand.com",
+          userAuthorization: true,
+          blockAfter: true,
+          trashExisting: true,
+        }),
+      ).rejects.toThrow(/cannot create sender filters or trash/);
+      expect(records).toHaveLength(0);
     });
 
     it("records blocked_no_mechanism when no unsubscribe surface exists", async () => {

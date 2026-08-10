@@ -1,18 +1,19 @@
 /**
- * Mapping from workflow-plugin credential type names → Eliza Cloud connector slugs.
+ * Mapping from workflow-plugin credential type names to Eliza Cloud connector
+ * OAuth and agent-binding requests.
  *
  * The workflow plugin's LLM emits credential type strings (e.g. `gmailOAuth2`,
  * `slackOAuth2Api`) on each node that needs an external account. The cloud
- * exposes per-connector OAuth flows under `/api/v1/eliza/<connector>/...`.
+ * exposes generic OAuth initiation and agent-scoped connector bindings.
  *
  * This map is the single source of truth for which workflow credential type
  * resolves through which cloud connector + with which OAuth scopes. Add new
  * entries when the cloud gains support for additional connectors; do not
  * scatter cred-type → connector logic elsewhere.
  *
- * Cloud-side endpoint convention (see packages/cloud/api/v1/eliza/<connector>/):
- *   POST /api/v1/eliza/<connector>/connect/initiate     → { authUrl }
- *   GET  /api/v1/eliza/<connector>/status               → { connected, ... }
+ * Cloud-side endpoint convention:
+ *   POST /api/v1/oauth/<connector>/initiate
+ *   GET  /api/v1/eliza/agents/<agentId>/connectors
  *
  * Not every connector below has a fully-implemented cloud endpoint yet — the
  * provider returns `null` for unmapped types and `needs_auth` (with the
@@ -20,18 +21,36 @@
  * `cloud-credential-provider.ts` for the resolution logic.
  */
 
+import {
+  GOOGLE_WORKSPACE_MCP_RESOURCES,
+  type GoogleWorkspaceMcpResourceProduct,
+} from "@elizaos/shared/contracts";
+
+const GOOGLE_IDENTITY_SCOPES = [
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+] as const;
+
+function googleScopes(products: readonly GoogleWorkspaceMcpResourceProduct[]): string[] {
+  return [
+    ...new Set([
+      ...GOOGLE_IDENTITY_SCOPES,
+      ...products.flatMap((product) => [...GOOGLE_WORKSPACE_MCP_RESOURCES[product].acceptedScopes]),
+    ]),
+  ];
+}
+
 export interface CredentialTypeMapping {
   /**
-   * Cloud connector slug used in the URL path
-   * (`/api/v1/eliza/<connector>/connect/initiate`).
+   * Cloud provider slug used by generic OAuth and binding status lookup.
    */
   connector: string;
   /**
-   * Optional capability tokens passed to the cloud's `connect/initiate`
-   * endpoint. The cloud translates these to provider-specific OAuth scopes
-   * (e.g. Google's `google.gmail.send` → `https://www.googleapis.com/auth/gmail.send`).
+   * MCP products atomically bound to the agent after OAuth callback.
    */
-  capabilities?: string[];
+  products?: GoogleWorkspaceMcpResourceProduct[];
+  /** Minimal OAuth scopes requested for the selected products. */
+  scopes?: string[];
   /**
    * Friendly description used in `needs_auth` UI prompts. The runtime may
    * surface this verbatim to the end-user.
@@ -51,14 +70,14 @@ export interface CredentialTypeMapping {
  */
 export const credTypeToConnector: ReadonlyMap<string, CredentialTypeMapping> = new Map([
   // ─── Google ──────────────────────────────────────────────────────────
-  // Cloud endpoint: /api/v1/eliza/google/{connect/initiate,status,disconnect}
-  // The cloud's capability tokens are documented in
-  // packages/cloud/api/v1/eliza/google/connect/initiate/route.ts.
+  // Google uses the generic OAuth flow and binds its official MCP products to
+  // this runtime's canonical agent ID in the callback transaction.
   [
     "gmailOAuth2",
     {
       connector: "google",
-      capabilities: ["google.gmail.triage", "google.gmail.send", "google.gmail.manage"],
+      products: ["gmail"],
+      scopes: googleScopes(["gmail"]),
       friendlyName: "Gmail",
     },
   ],
@@ -66,7 +85,8 @@ export const credTypeToConnector: ReadonlyMap<string, CredentialTypeMapping> = n
     "gmailOAuth2Api",
     {
       connector: "google",
-      capabilities: ["google.gmail.triage", "google.gmail.send", "google.gmail.manage"],
+      products: ["gmail"],
+      scopes: googleScopes(["gmail"]),
       friendlyName: "Gmail",
     },
   ],
@@ -74,7 +94,8 @@ export const credTypeToConnector: ReadonlyMap<string, CredentialTypeMapping> = n
     "googleCalendarOAuth2Api",
     {
       connector: "google",
-      capabilities: ["google.calendar.read", "google.calendar.write"],
+      products: ["calendar"],
+      scopes: googleScopes(["calendar"]),
       friendlyName: "Google Calendar",
     },
   ],
@@ -82,7 +103,8 @@ export const credTypeToConnector: ReadonlyMap<string, CredentialTypeMapping> = n
     "googleSheetsOAuth2Api",
     {
       connector: "google",
-      capabilities: ["google.basic_identity"],
+      products: ["sheets"],
+      scopes: googleScopes(["sheets"]),
       friendlyName: "Google Sheets",
     },
   ],

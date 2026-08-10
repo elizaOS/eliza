@@ -78,9 +78,9 @@ import type {
   RelockLifeOpsWebsiteAccessRequest,
   ResolveLifeOpsWebsiteAccessCallbackRequest,
   RunLifeOpsWorkflowRequest,
-  SendLifeOpsGmailBatchReplyRequest,
-  SendLifeOpsGmailMessageRequest,
-  SendLifeOpsGmailReplyRequest,
+  SaveLifeOpsGmailDraftRequest,
+  SaveLifeOpsGmailReplyDraftRequest,
+  SaveLifeOpsGmailReplyDraftsRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
@@ -224,7 +224,7 @@ const LIFEOPS_RATE_LIMITS = {
   // Tightened from 5/min: composing and sending email is the most sensitive
   // outbound action LifeOps takes; cap the burst at 2/min so a bug or a
   // confused operator cannot machine-gun the user's contacts.
-  gmail_send: { maxRequests: 2, windowMs: 60_000 },
+  gmail_draft_save: { maxRequests: 2, windowMs: 60_000 },
   calendar_create: { maxRequests: 20, windowMs: 60_000 },
   calendar_update: { maxRequests: 20, windowMs: 60_000 },
   calendar_delete: { maxRequests: 10, windowMs: 60_000 },
@@ -1614,33 +1614,39 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "POST" && pathname === "/api/lifeops/gmail/reply-send") {
-    if (rateLimitRequest(ctx, "gmail_send")) return true;
-    const body = await readJsonBody<SendLifeOpsGmailReplyRequest>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.sendGmailReply(url, body));
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/gmail/message-send") {
-    if (rateLimitRequest(ctx, "gmail_send")) return true;
-    const body = await readJsonBody<SendLifeOpsGmailMessageRequest>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.sendGmailMessage(url, body));
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/gmail/batch-reply-send") {
-    if (rateLimitRequest(ctx, "gmail_send")) return true;
-    const body = await readJsonBody<SendLifeOpsGmailBatchReplyRequest>(
+  if (method === "POST" && pathname === "/api/lifeops/gmail/reply-draft/save") {
+    if (rateLimitRequest(ctx, "gmail_draft_save")) return true;
+    const body = await readJsonBody<SaveLifeOpsGmailReplyDraftRequest>(
       req,
       res,
     );
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.sendGmailReplies(url, body));
+      json(res, await service.saveGmailReplyDraft(url, body));
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/gmail/draft/save") {
+    if (rateLimitRequest(ctx, "gmail_draft_save")) return true;
+    const body = await readJsonBody<SaveLifeOpsGmailDraftRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.saveGmailDraft(url, body));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/gmail/reply-drafts/save"
+  ) {
+    if (rateLimitRequest(ctx, "gmail_draft_save")) return true;
+    const body = await readJsonBody<SaveLifeOpsGmailReplyDraftsRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.saveGmailReplyDrafts(url, body));
     });
   }
 

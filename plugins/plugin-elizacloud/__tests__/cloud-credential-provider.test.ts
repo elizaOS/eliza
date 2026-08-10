@@ -2,17 +2,13 @@
  * Unit tests for CloudCredentialProvider.
  *
  * The provider reads cloud connection state via `runtime.getService("CLOUD_AUTH")`
- * and dispatches to `/eliza/<connector>/...` endpoints through the resulting
- * client. We mock both layers so the tests cover the resolution branches
- * without booting a real cloud.
+ * and uses generic OAuth plus agent-scoped connector bindings through the
+ * resulting client. We mock both layers without booting a real cloud.
  */
 
 import { describe, expect, it } from "vitest";
 import { credTypeToConnector, supportedCredTypes } from "../src/lib/credential-type-map";
-import {
-  CloudCredentialProvider,
-  type CredentialProviderResult,
-} from "../src/services/cloud-credential-provider";
+import { CloudCredentialProvider } from "../src/services/cloud-credential-provider";
 
 interface MockClientCalls {
   gets: string[];
@@ -22,7 +18,7 @@ interface MockClientCalls {
 function makeRuntime(
   opts: { client?: { get?: unknown; post?: unknown } | null; cloudAuth?: object | null } = {}
 ): {
-  runtime: { getService: (name: string) => unknown };
+  runtime: { agentId: string; getService: (name: string) => unknown };
   calls: MockClientCalls;
 } {
   const calls: MockClientCalls = { gets: [], posts: [] };
@@ -30,12 +26,16 @@ function makeRuntime(
     getClient: () => opts.client ?? null,
   };
   const runtime = {
+    agentId: "00000000-0000-4000-8000-000000000123",
     getService: (name: string) => (name === "CLOUD_AUTH" ? cloudAuth : null),
   };
   return { runtime, calls };
 }
 
-function instantiate(runtime: { getService: (name: string) => unknown }): CloudCredentialProvider {
+function instantiate(runtime: {
+  agentId?: string;
+  getService: (name: string) => unknown;
+}): CloudCredentialProvider {
   // Bypass the elizaOS Service constructor signature gymnastics — the
   // provider only ever touches `this.runtime.getService`, which we mock.
   return new CloudCredentialProvider(runtime as never);
@@ -126,7 +126,7 @@ describe("CloudCredentialProvider.resolve", () => {
     const client = {
       get: (path: string) => {
         calls.gets.push(path);
-        return Promise.resolve({ connected: false, reason: "disconnected" });
+        return Promise.resolve([]);
       },
       post: (path: string, body: unknown) => {
         calls.posts.push({ path, body });
@@ -140,29 +140,33 @@ describe("CloudCredentialProvider.resolve", () => {
       status: "needs_auth",
       authUrl: "https://elizacloud.ai/oauth/google?state=abc",
     });
-    expect(calls.gets).toEqual(["/eliza/google/status"]);
-    expect(calls.posts).toEqual([
-      {
-        path: "/eliza/google/connect/initiate",
-        body: {
-          capabilities: ["google.gmail.triage", "google.gmail.send", "google.gmail.manage"],
+    expect(calls.gets).toEqual(["/eliza/agents/00000000-0000-4000-8000-000000000123/connectors"]);
+    expect(calls.posts).toHaveLength(1);
+    expect(calls.posts[0]).toEqual({
+      path: "/oauth/google/initiate",
+      body: expect.objectContaining({
+        connectionRole: "owner",
+        scopes: expect.arrayContaining(["https://www.googleapis.com/auth/gmail.readonly"]),
+        agentBinding: {
+          agentId: "00000000-0000-4000-8000-000000000123",
+          role: "OWNER",
+          selectedProducts: ["gmail"],
+          isDefault: true,
         },
-      },
-    ]);
+      }),
+    });
   });
 
-  it("forwards an authUrl already present on the status response without a second POST", async () => {
+  it("initiates OAuth when the agent has Google bound without the required product", async () => {
     const posts: Array<{ path: string; body: unknown }> = [];
     const client = {
       get: () =>
-        Promise.resolve({
-          connected: false,
-          reason: "needs_reauth",
-          authUrl: "https://elizacloud.ai/oauth/google?reauth=1",
-        }),
+        Promise.resolve([
+          { provider: "google", status: "connected", selectedProducts: ["calendar"] },
+        ]),
       post: (path: string, body: unknown) => {
         posts.push({ path, body });
-        return Promise.resolve({});
+        return Promise.resolve({ authUrl: "https://elizacloud.ai/oauth/google?state=next" });
       },
     };
     const { runtime } = makeRuntime({ client });
@@ -170,23 +174,25 @@ describe("CloudCredentialProvider.resolve", () => {
     const result = await provider.resolve("user-1", "gmailOAuth2");
     expect(result).toEqual({
       status: "needs_auth",
-      authUrl: "https://elizacloud.ai/oauth/google?reauth=1",
+      authUrl: "https://elizacloud.ai/oauth/google?state=next",
     });
-    expect(posts).toEqual([]);
+    expect(posts[0]?.path).toBe("/oauth/google/initiate");
   });
 
-  it("returns needs_auth even when connected (RAW_TOKEN_GAP) — never silently injects an empty credential", async () => {
+  it("returns null for an active product binding rather than exporting or reauthorizing a token", async () => {
+    let posted = false;
     const client = {
-      get: () => Promise.resolve({ connected: true, reason: "connected" }),
-      post: () => Promise.resolve({ authUrl: "https://elizacloud.ai/oauth/google?reauth=stale" }),
+      get: () =>
+        Promise.resolve([{ provider: "google", status: "connected", selectedProducts: ["gmail"] }]),
+      post: () => {
+        posted = true;
+        return Promise.resolve({ authUrl: "https://elizacloud.ai/oauth/google?reauth=stale" });
+      },
     };
     const { runtime } = makeRuntime({ client });
     const provider = instantiate(runtime);
-    const result = (await provider.resolve("user-1", "gmailOAuth2")) as Exclude<
-      CredentialProviderResult,
-      null
-    >;
-    expect(result.status).toBe("needs_auth");
+    await expect(provider.resolve("user-1", "gmailOAuth2")).resolves.toBeNull();
+    expect(posted).toBe(false);
   });
 
   it("issues a connect/initiate without capabilities when the mapping has none (e.g. github)", async () => {

@@ -12,13 +12,6 @@ import { toActionName } from "./utils/action-naming";
  * Names here must match the raw tool names from MCP servers (before normalization).
  */
 const CRUCIAL_TOOLS: Record<string, string[]> = {
-  google: [
-    "google_status",
-    "gmail_list",
-    "gmail_send",
-    "calendar_list_events",
-    "calendar_create_event",
-  ],
   linear: [
     "linear_status",
     "linear_list_issues",

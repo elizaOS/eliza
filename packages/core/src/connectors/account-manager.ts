@@ -14,9 +14,9 @@
  * triad (`types/connector-account-policy`); privacy levels live alongside in
  * `privacy.ts`.
  *
- * OAuth PKCE code verifiers are never persisted — they are held in a
- * process-local map and referenced by an opaque `codeVerifierRef` written to
- * flow metadata, so stored rows never carry the raw secret.
+ * OAuth PKCE code verifiers are stored only through the host's durable
+ * connector credential vault and referenced by an opaque `codeVerifierRef`,
+ * so flow rows never carry the raw secret and callbacks survive restarts.
  */
 import { logger } from "../logger";
 import type { Action, ActionParameters } from "../types/components";
@@ -71,10 +71,6 @@ export interface ConnectorAccount {
 	scopes?: string[];
 	/** Stable connector capabilities derived from the granted scopes. */
 	capabilities?: string[];
-	/** Whether elizaOS or the operator supplied the OAuth application. */
-	oauthMode?: "eliza_managed" | "bring_your_own";
-	/** Where credential-bearing connector execution is allowed to run. */
-	executionTarget?: "agent_host" | "cloud_broker";
 	/** Provider product surfaces enabled for this account. */
 	selectedProducts?: string[];
 	/** Product preference when more than one account can satisfy a capability. */
@@ -96,8 +92,6 @@ export interface ConnectorAccountPatch {
 	ownerIdentityId?: string | null;
 	scopes?: string[];
 	capabilities?: string[];
-	oauthMode?: "eliza_managed" | "bring_your_own";
-	executionTarget?: "agent_host" | "cloud_broker";
 	selectedProducts?: string[];
 	isDefault?: boolean;
 	metadata?: Metadata;
@@ -282,6 +276,12 @@ interface ConnectorAccountDatabaseAdapter {
 		provider?: string;
 		accountKey?: string;
 	}): Promise<boolean>;
+	listConnectorAccountCredentialRefs?(params: {
+		accountId: string;
+	}): Promise<Array<{ vaultRef: string }>>;
+	deleteConnectorAccountCredentialRefs?(params: {
+		accountId: string;
+	}): Promise<number>;
 	findConnectorOwnerBinding?(
 		lookup: ConnectorOwnerBindingLookup,
 	): Promise<ConnectorOwnerBindingRecord | null>;
@@ -392,7 +392,25 @@ type ActionWithConnectorAccountPolicy = Action & {
 
 const runtimeManagers = new WeakMap<IAgentRuntime, ConnectorAccountManager>();
 let standaloneManager: ConnectorAccountManager | null = null;
-const oauthCodeVerifierSecrets = new Map<string, string>();
+const CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPE = "connector_credential_store";
+
+interface ConnectorOAuthCredentialStore {
+	putSecret(params: {
+		vaultRef?: string;
+		agentId: string;
+		provider: string;
+		accountId: string;
+		credentialType: string;
+		value: string;
+		caller?: string;
+	}): Promise<string>;
+	reveal?(vaultRef: string, caller?: string): Promise<string>;
+	get?(
+		vaultRef: string,
+		options?: { reveal?: boolean; caller?: string },
+	): Promise<string>;
+	remove?(vaultRef: string): Promise<void>;
+}
 
 function nowMs(): number {
 	return Date.now();
@@ -454,8 +472,6 @@ function cloneMetadata(metadata: Metadata | undefined): Metadata | undefined {
 const CONNECTOR_BINDING_METADATA_KEY = "connectorBinding";
 
 function readConnectorBindingMetadata(metadata: Metadata | undefined): {
-	oauthMode?: "eliza_managed" | "bring_your_own";
-	executionTarget?: "agent_host" | "cloud_broker";
 	selectedProducts?: string[];
 	isDefault?: boolean;
 } {
@@ -463,14 +479,6 @@ function readConnectorBindingMetadata(metadata: Metadata | undefined): {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
 	const binding = value as Record<string, unknown>;
 	return {
-		...(binding.oauthMode === "eliza_managed" ||
-		binding.oauthMode === "bring_your_own"
-			? { oauthMode: binding.oauthMode }
-			: {}),
-		...(binding.executionTarget === "agent_host" ||
-		binding.executionTarget === "cloud_broker"
-			? { executionTarget: binding.executionTarget }
-			: {}),
 		...(Array.isArray(binding.selectedProducts)
 			? { selectedProducts: normalizeStringArray(binding.selectedProducts) }
 			: {}),
@@ -489,9 +497,6 @@ function connectorAccountMetadata(
 		existing && typeof existing === "object" && !Array.isArray(existing)
 			? ({ ...(existing as Metadata) } as Metadata)
 			: ({} as Metadata);
-	if (account.oauthMode) binding.oauthMode = account.oauthMode;
-	if (account.executionTarget)
-		binding.executionTarget = account.executionTarget;
 	if (account.selectedProducts) {
 		binding.selectedProducts = [...account.selectedProducts];
 	}
@@ -510,8 +515,6 @@ function cloneAccount(account: ConnectorAccount): ConnectorAccount {
 		purpose: [...account.purpose],
 		scopes: account.scopes ? [...account.scopes] : undefined,
 		capabilities: account.capabilities ? [...account.capabilities] : undefined,
-		oauthMode: account.oauthMode,
-		executionTarget: account.executionTarget,
 		selectedProducts: account.selectedProducts
 			? [...account.selectedProducts]
 			: undefined,
@@ -547,8 +550,6 @@ function mergeStoredAndProviderAccount(
 			: providerAccount.capabilities
 				? [...providerAccount.capabilities]
 				: undefined,
-		oauthMode: stored.oauthMode ?? providerAccount.oauthMode,
-		executionTarget: stored.executionTarget ?? providerAccount.executionTarget,
 		selectedProducts: stored.selectedProducts
 			? [...stored.selectedProducts]
 			: providerAccount.selectedProducts
@@ -615,8 +616,6 @@ function normalizeAccount(
 		capabilities: full.capabilities
 			? normalizeStringArray(full.capabilities)
 			: undefined,
-		oauthMode: full.oauthMode ?? bindingMetadata.oauthMode,
-		executionTarget: full.executionTarget ?? bindingMetadata.executionTarget,
 		selectedProducts: full.selectedProducts
 			? normalizeStringArray(full.selectedProducts)
 			: bindingMetadata.selectedProducts,
@@ -662,8 +661,6 @@ function mergeAccountPatch(
 					: (patch.ownerIdentityId ?? account.ownerIdentityId),
 			scopes: patch.scopes ?? account.scopes,
 			capabilities: patch.capabilities ?? account.capabilities,
-			oauthMode: patch.oauthMode ?? account.oauthMode,
-			executionTarget: patch.executionTarget ?? account.executionTarget,
 			selectedProducts: patch.selectedProducts ?? account.selectedProducts,
 			isDefault: patch.isDefault ?? account.isDefault,
 			createdAt: account.createdAt,
@@ -1035,12 +1032,7 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 			patch.metadata,
 			"codeVerifierRef",
 		);
-		const storedCodeVerifierRef = storeOAuthCodeVerifier(
-			normalizedProvider,
-			fallback?.id ?? flowIdOrState,
-			patch.codeVerifier,
-		);
-		const codeVerifierRef = storedCodeVerifierRef ?? metadataCodeVerifierRef;
+		const codeVerifierRef = metadataCodeVerifierRef;
 		if (codeVerifierRef) {
 			metadata.codeVerifierRef = codeVerifierRef;
 		}
@@ -1153,30 +1145,14 @@ function oauthCodeVerifierRef(provider: string, flowId: string): string {
 	return `connector-oauth-pkce:${normalizeProvider(provider)}:${flowId}`;
 }
 
-function storeOAuthCodeVerifier(
-	provider: string,
-	flowId: string,
-	codeVerifier: string | undefined,
-): string | undefined {
-	if (typeof codeVerifier !== "string" || !codeVerifier.trim()) {
-		return undefined;
-	}
-	const ref = oauthCodeVerifierRef(provider, flowId);
-	oauthCodeVerifierSecrets.set(ref, codeVerifier);
-	return ref;
-}
-
-function readOAuthCodeVerifier(
-	ref: string | null | undefined,
-): string | undefined {
-	if (!ref) return undefined;
-	const value = oauthCodeVerifierSecrets.get(ref);
-	return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-function deleteOAuthCodeVerifier(ref: string | null | undefined): void {
-	if (!ref) return;
-	oauthCodeVerifierSecrets.delete(ref);
+function isConnectorOAuthCredentialStore(
+	value: unknown,
+): value is ConnectorOAuthCredentialStore {
+	if (!value || typeof value !== "object") return false;
+	return (
+		typeof (value as Partial<ConnectorOAuthCredentialStore>).putSecret ===
+		"function"
+	);
 }
 
 function safeOAuthMetadata(
@@ -1259,8 +1235,6 @@ function databaseRecordToAccount(
 		ownerIdentityId: record.ownerIdentityId ?? undefined,
 		scopes: record.scopes ? [...record.scopes] : undefined,
 		capabilities: record.capabilities ? [...record.capabilities] : undefined,
-		oauthMode: bindingMetadata.oauthMode,
-		executionTarget: bindingMetadata.executionTarget,
 		selectedProducts: bindingMetadata.selectedProducts,
 		isDefault: bindingMetadata.isDefault,
 		createdAt: record.createdAt ?? now,
@@ -1308,8 +1282,6 @@ function databaseRecordToOAuthFlow(
 		authUrl: stringMetadataValue(metadata, "authUrl") ?? fallback?.authUrl,
 		error: stringMetadataValue(metadata, "error") ?? fallback?.error,
 		redirectUri: record.redirectUri ?? fallback?.redirectUri,
-		codeVerifier:
-			fallback?.codeVerifier ?? readOAuthCodeVerifier(codeVerifierRef),
 		createdAt: record.createdAt ?? fallback?.createdAt ?? now,
 		updatedAt:
 			typeof metadata.updatedAt === "number"
@@ -1353,6 +1325,131 @@ export class ConnectorAccountManager extends Service {
 	constructor(runtime?: IAgentRuntime, storage?: ConnectorAccountStorage) {
 		super(runtime);
 		this.explicitStorage = storage;
+	}
+
+	private oauthCredentialStore(): ConnectorOAuthCredentialStore | null {
+		const runtime = this.runtime as IAgentRuntime | undefined;
+		if (!runtime || typeof runtime.getService !== "function") return null;
+		const service = runtime.getService(
+			CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPE,
+		) as unknown;
+		return isConnectorOAuthCredentialStore(service) ? service : null;
+	}
+
+	private credentialSecretRemover(): Pick<
+		ConnectorOAuthCredentialStore,
+		"remove"
+	> | null {
+		const runtime = this.runtime as IAgentRuntime | undefined;
+		for (const serviceType of [
+			CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPE,
+			"vault",
+			"VAULT",
+		]) {
+			const service = runtime?.getService?.(serviceType) as
+				| { remove?: (vaultRef: string) => Promise<void> }
+				| null
+				| undefined;
+			if (typeof service?.remove === "function") {
+				return service;
+			}
+		}
+		return null;
+	}
+
+	private credentialRefStorage(): Pick<
+		ConnectorAccountDatabaseAdapter,
+		| "listConnectorAccountCredentialRefs"
+		| "deleteConnectorAccountCredentialRefs"
+	> | null {
+		const runtime = this.runtime as IAgentRuntime | undefined;
+		const candidates = [
+			this.explicitStorage,
+			runtime?.getService?.(CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE),
+			(runtime as { adapter?: unknown } | undefined)?.adapter,
+		];
+		for (const candidate of candidates) {
+			const storage =
+				candidate as Partial<ConnectorAccountDatabaseAdapter> | null;
+			if (
+				typeof storage?.listConnectorAccountCredentialRefs === "function" &&
+				typeof storage.deleteConnectorAccountCredentialRefs === "function"
+			) {
+				return storage as Pick<
+					ConnectorAccountDatabaseAdapter,
+					| "listConnectorAccountCredentialRefs"
+					| "deleteConnectorAccountCredentialRefs"
+				>;
+			}
+		}
+		return null;
+	}
+
+	private async storeOAuthCodeVerifier(
+		provider: string,
+		flowId: string,
+		codeVerifier: string | undefined,
+	): Promise<string | undefined> {
+		if (typeof codeVerifier !== "string" || !codeVerifier.trim()) {
+			return undefined;
+		}
+		const store = this.oauthCredentialStore();
+		if (!store) {
+			throw new Error(
+				"OAuth PKCE requires the durable connector_credential_store service",
+			);
+		}
+		const runtime = this.runtime as IAgentRuntime;
+		const vaultRef = oauthCodeVerifierRef(provider, flowId);
+		return store.putSecret({
+			vaultRef,
+			agentId: String(runtime.agentId),
+			provider,
+			accountId: flowId,
+			credentialType: "oauth.pkce",
+			value: codeVerifier,
+			caller: "connector-oauth-initiate",
+		});
+	}
+
+	private async readOAuthCodeVerifier(
+		ref: string,
+	): Promise<string | undefined> {
+		const store = this.oauthCredentialStore();
+		if (!store) return undefined;
+		try {
+			const value = store.reveal
+				? await store.reveal(ref, "connector-oauth-callback")
+				: await store.get?.(ref, {
+						reveal: true,
+						caller: "connector-oauth-callback",
+					});
+			return typeof value === "string" && value.trim() ? value : undefined;
+		} catch (error) {
+			// error-policy:J4 A missing/expired one-time verifier becomes an
+			// explicit failed OAuth flow at the callback boundary below.
+			logger.warn(
+				`[ConnectorAccountManager] could not reveal OAuth PKCE verifier ${ref}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return undefined;
+		}
+	}
+
+	private async deleteOAuthCodeVerifier(
+		ref: string | undefined,
+	): Promise<void> {
+		if (!ref) return;
+		const store = this.oauthCredentialStore();
+		if (!store?.remove) return;
+		try {
+			await store.remove(ref);
+		} catch (error) {
+			// error-policy:J6 callback processing has finished; deleting its
+			// consumed one-time verifier is best-effort teardown.
+			logger.warn(
+				`[ConnectorAccountManager] could not delete consumed OAuth PKCE verifier ${ref}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
 	}
 
 	static override async start(
@@ -1701,8 +1798,38 @@ export class ConnectorAccountManager extends Service {
 	async deleteAccount(provider: string, accountId: string): Promise<boolean> {
 		const providerId = normalizeProvider(provider);
 		const registered = this.providers.get(providerId);
+		const account = await this.storage.getAccount(providerId, accountId);
+		const durableAccountId = account?.id ?? accountId;
+		const credentialRefStorage = this.credentialRefStorage();
+		const credentialRefs = credentialRefStorage
+			? await credentialRefStorage.listConnectorAccountCredentialRefs?.({
+					accountId: durableAccountId,
+				})
+			: [];
 		if (registered?.deleteAccount) {
-			await registered.deleteAccount(accountId, this);
+			await registered.deleteAccount(durableAccountId, this);
+		}
+		if (credentialRefs && credentialRefs.length > 0) {
+			const credentialStore = this.credentialSecretRemover();
+			if (!credentialStore?.remove) {
+				throw new Error(
+					`Cannot delete ${providerId} account ${accountId}: its credential refs exist but no removable connector credential vault is available.`,
+				);
+			}
+			for (const vaultRef of new Set(
+				credentialRefs.map((credential) => credential.vaultRef),
+			)) {
+				await credentialStore.remove(vaultRef);
+			}
+			const deletedRefs =
+				(await credentialRefStorage?.deleteConnectorAccountCredentialRefs?.({
+					accountId: durableAccountId,
+				})) ?? 0;
+			if (deletedRefs !== credentialRefs.length) {
+				throw new Error(
+					`Cannot delete ${providerId} account ${accountId}: deleted ${deletedRefs} of ${credentialRefs.length} credential refs.`,
+				);
+			}
 		}
 		return this.storage.deleteAccount(providerId, accountId);
 	}
@@ -1770,12 +1897,37 @@ export class ConnectorAccountManager extends Service {
 			}
 			throw err;
 		}
-		const updated = await this.storage.updateOAuthFlow(providerId, flow.id, {
-			authUrl: result.authUrl,
-			expiresAt: result.expiresAt,
-			codeVerifier: result.codeVerifier,
-			metadata: result.metadata ?? flow.metadata,
-		});
+		let codeVerifierRef: string | undefined;
+		try {
+			codeVerifierRef = await this.storeOAuthCodeVerifier(
+				providerId,
+				flow.id,
+				result.codeVerifier,
+			);
+		} catch (error) {
+			// error-policy:J2 Persist an explicit failed flow, then preserve the
+			// durable-vault write failure for the caller.
+			await this.storage.updateOAuthFlow(providerId, flow.id, {
+				status: "failed",
+				error: error instanceof Error ? error.message : String(error),
+			});
+			throw error;
+		}
+		const metadata = safeOAuthMetadata(result.metadata ?? flow.metadata);
+		if (codeVerifierRef) metadata.codeVerifierRef = codeVerifierRef;
+		let updated: ConnectorOAuthFlow | null;
+		try {
+			updated = await this.storage.updateOAuthFlow(providerId, flow.id, {
+				authUrl: result.authUrl,
+				expiresAt: result.expiresAt,
+				metadata,
+			});
+		} catch (error) {
+			// error-policy:J2 Remove the orphaned verifier reference, then
+			// preserve the flow-state persistence failure.
+			await this.deleteOAuthCodeVerifier(codeVerifierRef);
+			throw error;
+		}
 		return updated ?? { ...flow, authUrl: result.authUrl };
 	}
 
@@ -1822,28 +1974,29 @@ export class ConnectorAccountManager extends Service {
 				status: "failed",
 				error: input.errorDescription ?? input.error,
 			});
+			await this.deleteOAuthCodeVerifier(
+				stringMetadataValue(flow.metadata, "codeVerifierRef"),
+			);
 			return { flow: failed ?? flow };
 		}
 
-		// PKCE verifiers live only in a process-local map (never persisted, so
-		// stored flow rows carry no raw secret) while flow state itself is
-		// durable. A flow minted before a restart therefore arrives here with a
-		// codeVerifierRef whose verifier no longer exists; exchanging the code
-		// without it can only produce an opaque provider 400 ("invalid code
-		// verifier"). Fail the flow with an explicit re-mint message instead of
-		// forwarding a doomed exchange.
 		const codeVerifierRef = stringMetadataValue(
 			flow.metadata,
 			"codeVerifierRef",
 		);
-		if (codeVerifierRef && !flow.codeVerifier) {
+		const codeVerifier = codeVerifierRef
+			? await this.readOAuthCodeVerifier(codeVerifierRef)
+			: undefined;
+		if (codeVerifierRef && !codeVerifier) {
 			const failed = await this.storage.updateOAuthFlow(providerId, flow.id, {
 				status: "failed",
 				error:
-					"This authorization link was created before the agent restarted, so its one-time PKCE secret no longer exists. Start the OAuth flow again and use the fresh link.",
+					"This authorization link's one-time PKCE secret is unavailable. Start the OAuth flow again and use the fresh link.",
 			});
+			await this.deleteOAuthCodeVerifier(codeVerifierRef);
 			return { flow: failed ?? flow };
 		}
+		const callbackFlow = codeVerifier ? { ...flow, codeVerifier } : flow;
 
 		const registered = this.providers.get(providerId);
 		if (!registered?.completeOAuth) {
@@ -1856,7 +2009,7 @@ export class ConnectorAccountManager extends Service {
 			const result = await registered.completeOAuth(
 				{
 					provider: providerId,
-					flow,
+					flow: callbackFlow,
 					code: input.code,
 					error: input.error,
 					errorDescription: input.errorDescription,
@@ -1888,9 +2041,7 @@ export class ConnectorAccountManager extends Service {
 				redirectUrl: result.redirectUrl,
 			};
 		} finally {
-			deleteOAuthCodeVerifier(
-				stringMetadataValue(flow.metadata, "codeVerifierRef"),
-			);
+			await this.deleteOAuthCodeVerifier(codeVerifierRef);
 		}
 	}
 

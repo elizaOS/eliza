@@ -449,14 +449,12 @@ describe("updateCalendarEvent — instance vs series", () => {
     expect(google.updateEvent.mock.calls[0]?.[0]).toMatchObject({
       eventId: "standup-master",
       recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=2"],
-      expectedEtag: '"master-etag"',
     });
     expect(google.createEvent).toHaveBeenCalledTimes(1);
     expect(google.createEvent.mock.calls[0]?.[0]).toMatchObject({
       title: "Family Sync",
       start: "2026-07-15T13:00:00.000Z",
       recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=4"],
-      idempotencyKey: "calendar-series-split:v1:approved-split-operation",
     });
     expect(updated.metadata.recurrenceMutation).toEqual({
       scope: "this_and_following",
@@ -715,7 +713,6 @@ describe("deleteCalendarEvent — instance vs series", () => {
     expect(google.updateEvent.mock.calls[0]?.[0]).toMatchObject({
       eventId: "standup-master",
       recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=2"],
-      expectedEtag: '"master-etag"',
     });
     expect(google.deleteEvent).not.toHaveBeenCalled();
     const remainingIds = (await repo.listCalendarEvents(AGENT_ID, "google"))

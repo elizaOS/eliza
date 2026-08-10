@@ -2,12 +2,10 @@
 import { describe, expect, it } from "vitest";
 import {
   GOOGLE_CALENDAR_READ_SCOPE,
-  GOOGLE_CALENDAR_WRITE_SCOPE,
+  GOOGLE_GMAIL_COMPOSE_SCOPE,
   GOOGLE_GMAIL_METADATA_SCOPE,
   GOOGLE_GMAIL_MODIFY_SCOPE,
   GOOGLE_GMAIL_READ_SCOPE,
-  GOOGLE_GMAIL_SEND_SCOPE,
-  GOOGLE_GMAIL_SETTINGS_BASIC_SCOPE,
   googleCapabilitiesToScopes,
   googleScopesToCapabilities,
   normalizeGoogleCapabilities,
@@ -53,10 +51,10 @@ describe("unionGoogleCapabilities", () => {
   it("merges and dedupes across lists", () => {
     const out = unionGoogleCapabilities(
       ["google.calendar.read"],
-      ["google.calendar.read", "google.gmail.send"],
+      ["google.calendar.read", "google.gmail.draft.create"],
     );
     expect(out.filter((c) => c === "google.calendar.read")).toHaveLength(1);
-    expect(out).toContain("google.gmail.send");
+    expect(out).toContain("google.gmail.draft.create");
   });
 
   it("returns the default set when no list contributes", () => {
@@ -74,16 +72,16 @@ describe("unionGoogleCapabilities", () => {
 
 describe("googleCapabilitiesToScopes", () => {
   it("maps capabilities to their OAuth scopes and dedupes", () => {
-    const scopes = googleCapabilitiesToScopes(["google.calendar.write"]);
-    expect(scopes).toContain(GOOGLE_CALENDAR_WRITE_SCOPE);
+    const scopes = googleCapabilitiesToScopes(["google.calendar.read"]);
+    expect(scopes).toContain(GOOGLE_CALENDAR_READ_SCOPE);
     // basic_identity is always normalized in → openid scopes present.
     expect(scopes).toContain("openid");
   });
 
-  it("expands gmail.manage to both modify and settings.basic", () => {
+  it("maps gmail.manage to the modify scope required by label tools", () => {
     const scopes = googleCapabilitiesToScopes(["google.gmail.manage"]);
     expect(scopes).toContain(GOOGLE_GMAIL_MODIFY_SCOPE);
-    expect(scopes).toContain(GOOGLE_GMAIL_SETTINGS_BASIC_SCOPE);
+    expect(scopes).toHaveLength(4);
   });
 });
 
@@ -92,12 +90,6 @@ describe("googleScopesToCapabilities", () => {
     expect(googleScopesToCapabilities(["email"])).toContain(
       "google.basic_identity",
     );
-  });
-
-  it("treats calendar write scope as also granting read", () => {
-    const caps = googleScopesToCapabilities([GOOGLE_CALENDAR_WRITE_SCOPE]);
-    expect(caps).toContain("google.calendar.read");
-    expect(caps).toContain("google.calendar.write");
   });
 
   it("grants calendar read without write for the readonly scope", () => {
@@ -115,19 +107,10 @@ describe("googleScopesToCapabilities", () => {
     );
   });
 
-  it("requires BOTH modify and settings.basic for gmail.manage", () => {
-    expect(
-      googleScopesToCapabilities([GOOGLE_GMAIL_MODIFY_SCOPE]),
-    ).not.toContain("google.gmail.manage");
-    expect(
-      googleScopesToCapabilities([GOOGLE_GMAIL_SETTINGS_BASIC_SCOPE]),
-    ).not.toContain("google.gmail.manage");
-    expect(
-      googleScopesToCapabilities([
-        GOOGLE_GMAIL_MODIFY_SCOPE,
-        GOOGLE_GMAIL_SETTINGS_BASIC_SCOPE,
-      ]),
-    ).toContain("google.gmail.manage");
+  it("derives gmail.manage from the modify scope", () => {
+    expect(googleScopesToCapabilities([GOOGLE_GMAIL_MODIFY_SCOPE])).toContain(
+      "google.gmail.manage",
+    );
   });
 
   it("returns no capabilities for an empty grant", () => {
@@ -135,9 +118,11 @@ describe("googleScopesToCapabilities", () => {
     expect(googleScopesToCapabilities(["  ", ""])).toEqual([]);
   });
 
-  it("round-trips send through scopes back to capabilities", () => {
-    const scopes = googleCapabilitiesToScopes(["google.gmail.send"]);
-    expect(scopes).toContain(GOOGLE_GMAIL_SEND_SCOPE);
-    expect(googleScopesToCapabilities(scopes)).toContain("google.gmail.send");
+  it("round-trips draft creation through scopes back to capabilities", () => {
+    const scopes = googleCapabilitiesToScopes(["google.gmail.draft.create"]);
+    expect(scopes).toContain(GOOGLE_GMAIL_COMPOSE_SCOPE);
+    expect(googleScopesToCapabilities(scopes)).toContain(
+      "google.gmail.draft.create",
+    );
   });
 });

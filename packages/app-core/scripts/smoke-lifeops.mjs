@@ -236,12 +236,12 @@ export async function runSmokeLifeOps(options = {}) {
           (value) => typeof value === "string",
         )
       : [];
-    const hasCalendarCapability =
-      grantedCapabilities.includes("google.calendar.read") ||
-      grantedCapabilities.includes("google.calendar.write");
+    const hasCalendarCapability = grantedCapabilities.includes(
+      "google.calendar.read",
+    );
     const hasGmailCapability =
       grantedCapabilities.includes("google.gmail.triage") ||
-      grantedCapabilities.includes("google.gmail.send");
+      grantedCapabilities.includes("google.gmail.draft.create");
 
     if (googleStatus.body.connected && hasCalendarCapability) {
       const nextContextUrl = new URL(

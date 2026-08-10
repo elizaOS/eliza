@@ -8,7 +8,7 @@ import type { ConnectorAccount } from "./account-manager";
 import { projectAgentConnectorBinding } from "./agent-binding";
 
 describe("projectAgentConnectorBinding", () => {
-	it("keeps OAuth and execution modes explicit without leaking credential metadata", () => {
+	it("projects a direct credential-free binding without leaking credential metadata", () => {
 		const agentId = "10000000-0000-0000-0000-000000000001" as UUID;
 		const account = {
 			id: "3a899cd0-170f-4b3e-932e-46ec68119b35",
@@ -24,8 +24,6 @@ describe("projectAgentConnectorBinding", () => {
 			ownerIdentityId: "owner-identity-1",
 			scopes: ["gmail.readonly", "calendar.readonly"],
 			capabilities: ["google.gmail.search", "google.calendar.list"],
-			oauthMode: "eliza_managed",
-			executionTarget: "cloud_broker",
 			selectedProducts: ["gmail", "calendar"],
 			isDefault: true,
 			createdAt: 10,
@@ -44,8 +42,6 @@ describe("projectAgentConnectorBinding", () => {
 			purposes: ["reading", "automation"],
 			accessGate: "manual_approval",
 			status: "connected",
-			oauthMode: "eliza_managed",
-			executionTarget: "cloud_broker",
 			selectedProducts: ["gmail", "calendar"],
 			allowedCapabilities: ["google.gmail.search", "google.calendar.list"],
 			grantedScopes: ["gmail.readonly", "calendar.readonly"],
@@ -78,12 +74,16 @@ describe("projectAgentConnectorBinding", () => {
 		} satisfies ConnectorAccount;
 
 		expect(projectAgentConnectorBinding(agentId, account)).toMatchObject({
-			oauthMode: "bring_your_own",
-			executionTarget: "agent_host",
 			selectedProducts: [],
 			allowedCapabilities: [],
 			grantedScopes: [],
 			isDefault: false,
 		});
+		expect(projectAgentConnectorBinding(agentId, account)).not.toHaveProperty(
+			"oauthMode",
+		);
+		expect(projectAgentConnectorBinding(agentId, account)).not.toHaveProperty(
+			"executionTarget",
+		);
 	});
 });

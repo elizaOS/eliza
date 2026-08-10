@@ -5,8 +5,14 @@
  * account-management panel for plugin-managed connectors.
  */
 
+import type { GoogleWorkspaceMcpProduct } from "@elizaos/shared/contracts";
+import { Loader2 } from "lucide-react";
+import { useState } from "react";
 import { getBootConfig } from "../../config/boot-config";
+import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
+import { Button } from "../ui/button";
 import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
+import { ConnectorAccountList } from "./ConnectorAccountList";
 import { ConnectorAccountSetupScope } from "./ConnectorAccountSetupScope";
 import {
   connectorSetupRegistry,
@@ -20,6 +26,11 @@ import {
 import { useConnectorChannelMode } from "./connector-channel-mode";
 import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registry";
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
+import { GoogleMcpProductSelector } from "./GoogleMcpProductSelector";
+import {
+  capabilitiesForPersonalGoogleProducts,
+  DEFAULT_PERSONAL_GOOGLE_MCP_PRODUCTS,
+} from "./google-mcp-products";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
 import { OwnerAgentConnectorSetupPanel } from "./OwnerAgentConnectorSetupPanel";
 import { SignalQrOverlay } from "./SignalQrOverlay";
@@ -42,6 +53,16 @@ function ConnectorAccountManagementPanel({
     ? undefined
     : getConnectorPluginManagedAccountCreateInput(connectorId);
 
+  if (provider === "google") {
+    return (
+      <PersonalGoogleConnectorSetupPanel
+        provider={provider}
+        connectorId={connectorId}
+        description={option?.description}
+      />
+    );
+  }
+
   return (
     <OwnerAgentConnectorSetupPanel
       provider={provider}
@@ -54,6 +75,75 @@ function ConnectorAccountManagementPanel({
         createInput ? (role) => ({ ...createInput, role }) : undefined
       }
     />
+  );
+}
+
+function PersonalGoogleConnectorSetupPanel({
+  provider,
+  connectorId,
+  description,
+}: {
+  provider: string;
+  connectorId: string;
+  description?: string;
+}) {
+  const accounts = useConnectorAccounts(provider, connectorId);
+  const [selectedProducts, setSelectedProducts] = useState<
+    GoogleWorkspaceMcpProduct[]
+  >([...DEFAULT_PERSONAL_GOOGLE_MCP_PRODUCTS]);
+  const isConnecting = accounts.saving.has(
+    `oauth:${provider}:${connectorId}:new`,
+  );
+
+  const connect = async () => {
+    if (selectedProducts.length === 0 || isConnecting) return;
+    const result = await accounts.startOAuth({
+      scopes: capabilitiesForPersonalGoogleProducts(selectedProducts),
+    });
+    if (result.authUrl && typeof window !== "undefined") {
+      window.open(result.authUrl, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {description ? <p className="text-xs text-muted">{description}</p> : null}
+      <p className="text-xs text-muted">
+        Connect a personal Google account once. This agent calls the selected
+        official Google Workspace MCP products with vault-backed OAuth. Gmail
+        can create drafts, but cannot send email.
+      </p>
+      <GoogleMcpProductSelector
+        selectedProducts={selectedProducts}
+        onChange={setSelectedProducts}
+        disabled={isConnecting}
+        idPrefix="local-google-mcp-product"
+      />
+      <Button
+        type="button"
+        onClick={() => void connect()}
+        disabled={isConnecting || selectedProducts.length === 0}
+        className="w-full"
+      >
+        {isConnecting ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Connecting...
+          </>
+        ) : (
+          "Connect Google account"
+        )}
+      </Button>
+      <ConnectorAccountList
+        provider={provider}
+        connectorId={connectorId}
+        accountRole="OWNER"
+        title="Personal Google accounts"
+        externalAccounts={accounts}
+        showAddAccount={false}
+        showPolicyControls={false}
+      />
+    </div>
   );
 }
 

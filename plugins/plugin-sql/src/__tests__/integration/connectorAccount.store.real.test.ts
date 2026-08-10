@@ -150,6 +150,21 @@ describe("ConnectorAccountStore (via BaseDrizzleAdapter delegation)", () => {
     );
     expect(all.every((c) => c.id === set1.id || c.id === set2.id)).toBe(true);
 
+    await expect(
+      adapter.deleteConnectorAccountCredentialRefs({ accountId: account.id })
+    ).resolves.toBe(2);
+    await expect(
+      adapter.listConnectorAccountCredentialRefs({ accountId: account.id })
+    ).resolves.toEqual([]);
+    await expect(adapter.getConnectorAccount({ id: account.id })).resolves.toMatchObject({
+      id: account.id,
+    });
+    await adapter.setConnectorAccountCredentialRef({
+      accountId: account.id,
+      credentialType: "api_key",
+      vaultRef: update.vaultRef,
+    });
+
     await adapter.deleteConnectorAccount({
       provider: "stripe",
       accountKey: "acct_123",

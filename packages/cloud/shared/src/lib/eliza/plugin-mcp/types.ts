@@ -40,6 +40,14 @@ export interface HttpMcpServerConfig {
   url: string;
   timeout?: number;
   headers?: Record<string, string>;
+  /** Private control-plane binding used to mint the outbound access token. */
+  connectorBindingId?: string;
+  /** Canonical agent identity the binding authorizes. */
+  connectorAgentId?: string;
+  /** Tenant boundary for the private binding lookup. */
+  connectorOrganizationId?: string;
+  /** Curated discovery/call allowlist for this resource. */
+  allowedTools?: string[];
 }
 
 export type McpServerConfig = StdioMcpServerConfig | HttpMcpServerConfig;

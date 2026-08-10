@@ -269,16 +269,17 @@ export class GoogleDomain {
     requestedSide?: LifeOpsConnectorSide,
     grantId?: string,
   ): Promise<LifeOpsConnectorGrant> {
-    const grant = await this.requireGoogleCalendarGrant(
+    await this.requireGoogleCalendarGrant(
       requestUrl,
       requestedMode,
       requestedSide,
       grantId,
     );
-    if (!grant.capabilities.includes("google.calendar.write")) {
-      fail(403, "Google Calendar write access has not been granted.");
-    }
-    return grant;
+    fail(
+      409,
+      "Personal Google Calendar is view-only because its MCP server does not expose atomic provider versions.",
+      "GOOGLE_MCP_SAFE_CALENDAR_WRITE_UNSUPPORTED",
+    );
   }
 
   public async requireGoogleGmailGrant(
@@ -304,7 +305,7 @@ export class GoogleDomain {
     return grant;
   }
 
-  public async requireGoogleGmailSendGrant(
+  public async requireGoogleGmailDraftGrant(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
     requestedSide?: LifeOpsConnectorSide,
@@ -316,8 +317,8 @@ export class GoogleDomain {
       requestedSide,
       grantId,
     );
-    if (!grant.capabilities.includes("google.gmail.send")) {
-      fail(403, "Google Gmail send access has not been granted.");
+    if (!grant.capabilities.includes("google.gmail.draft.create")) {
+      fail(403, "Google Gmail draft access has not been granted.");
     }
     return grant;
   }

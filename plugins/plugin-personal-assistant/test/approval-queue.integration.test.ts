@@ -580,7 +580,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       lastContactedAt: null,
       metadata: {},
     });
-    const sendEmail = vi.spyOn(LifeOpsService.prototype, "sendGmailMessage");
+    const sendEmail = vi.spyOn(LifeOpsService.prototype, "saveGmailDraft");
     const subjectUserId = String(runtime.agentId);
     const message = {
       id: runtime.agentId,

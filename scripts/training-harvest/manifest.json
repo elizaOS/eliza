@@ -455,7 +455,6 @@
         "plugins/plugin-personal-assistant/test/knowledge-graph-service.real.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/lifeops-activity-signals.remote.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/lifeops-chat.live.e2e.test.ts",
-        "plugins/plugin-personal-assistant/test/lifeops-gmail-chat.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/lifeops-memory.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/lifeops-screen-context.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/lifeops-signal.real.e2e.test.ts",

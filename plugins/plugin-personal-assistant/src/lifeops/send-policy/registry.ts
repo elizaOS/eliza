@@ -4,8 +4,8 @@
  * evaluates them in ascending-priority order and returns the first non-`allow`
  * decision (`require_approval` / `deny`), defaulting to `allow` when every
  * policy passes. The canonical contributor is the owner-send policy in
- * `messaging/owner-send-policy.ts`, which forces Gmail drafts through owner
- * approval.
+ * `messaging/owner-send-policy.ts`. Gmail is excluded from delivery policy
+ * because official Gmail MCP supports saved drafts only.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import type {

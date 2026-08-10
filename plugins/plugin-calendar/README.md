@@ -7,14 +7,16 @@ previously lived inside `@elizaos/plugin-personal-assistant`:
   delegated Microsoft 365/Outlook accounts (via Microsoft Graph), guarded
   ICS/webcal subscriptions, and Apple Calendar (native macOS/iOS bridge via
   `@elizaos/capacitor-calendar`).
-- **Event CRUD** — create / update / delete events through the writable Google
-  and Apple providers. Microsoft and ICS sources are intentionally read-only.
+- **Event CRUD** — create / update / delete events through writable built-in and
+  Apple providers. Personal Google MCP calendars are read-only because Google
+  does not expose the atomic provider version required by this mutation
+  contract; Microsoft and ICS sources are also read-only.
 - **Guest free/busy** — privacy-minimized Google free/busy and Microsoft Graph
   `getSchedule` queries return anonymous intervals or explicit unknown states.
 - **CALENDAR action** — natural-language calendar read/write and scheduling.
 - **HTTP boundary** — a shared `/api/lifeops/calendar/*` dispatcher mounted by
-  the personal-assistant host behind its OWNER/ADMIN role gate, plus the
-  provider-authenticated Google change-notification webhook registered here.
+  the personal-assistant host behind its OWNER/ADMIN role gate. Personal Google
+  Calendar refreshes by paginated MCP polling and exposes no public webhook.
 - **Client API** — `client.getLifeOpsCalendarFeed` / `createLifeOpsCalendarEvent` / …
   augmented onto the `@elizaos/ui` client.
 - **Owner-facing views** — week / day / month / agenda calendar UI and the event
@@ -32,6 +34,13 @@ native and guarded-source boundaries.
 Calendar **contract types** (`LifeOpsCalendarEvent`, `LifeOpsCalendarFeed`, …)
 live in `@elizaos/shared/contracts/calendar` because the contract layer is the
 only package both `@elizaos/ui` and the plugins can depend on without a cycle.
+
+## Google polling contract
+
+Personal Google Calendar reads complete time windows from the official Google
+Calendar MCP server. Each refresh reconciles that window against the local
+cache; there are no REST sync tokens, push channels, webhook settings, or
+provider watch-maintenance tasks.
 
 ## Microsoft account contract
 

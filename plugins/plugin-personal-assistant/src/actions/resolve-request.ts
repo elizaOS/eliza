@@ -58,13 +58,11 @@ import {
   executeCalendarMutationApproval,
 } from "../lifeops/calendar-mutations/index.js";
 import { getChannelRegistry } from "../lifeops/channels/index.js";
-import { extractCommitmentLedgerRecords } from "../lifeops/commitments/index.js";
 import {
   FOOD_APPROVAL_WORKFLOW_ID,
   getFoodDomainService,
 } from "../lifeops/food/index.js";
 import { HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID } from "../lifeops/household/types.js";
-import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   getResourceCapacityService,
   RESOURCE_CAPACITY_REVIEW_WORKFLOW_ID,
@@ -744,57 +742,6 @@ function approvalChannelToCrossChannelSend(
   }
 }
 
-async function persistSentMailCommitments(args: {
-  runtime: IAgentRuntime;
-  request: ApprovalRequest;
-  sentAt: Date;
-}): Promise<void> {
-  if (args.request.action !== "send_email") return;
-  const payload = args.request.payload;
-  if (payload.action !== "send_email") return;
-  const adapter = (args.runtime as { adapter?: { db?: unknown } }).adapter;
-  if (!adapter?.db) {
-    logger.debug(
-      `[approval] commitment ledger unavailable for sent email approval ${args.request.id}; runtime has no SQL adapter`,
-    );
-    return;
-  }
-
-  const records = extractCommitmentLedgerRecords({
-    agentId: args.runtime.agentId,
-    source: "sent_mail",
-    sourceKey: `approval:${args.request.id}`,
-    text: payload.body,
-    observedAt: args.sentAt.toISOString(),
-    counterparty: payload.to.join(", ") || null,
-    metadata: {
-      approvalRequestId: args.request.id,
-      subject: payload.subject,
-      to: payload.to,
-      cc: payload.cc,
-      bcc: payload.bcc,
-      replyToMessageId: payload.replyToMessageId,
-    },
-  });
-  if (records.length === 0) return;
-
-  const repository = new LifeOpsRepository(args.runtime);
-  try {
-    for (const record of records) {
-      await repository.upsertCommitmentLedgerRecord(record);
-    }
-  } catch (error) {
-    // error-policy:J7 the sent email is already committed externally; report the
-    // projection failure without making the approval retriable and duplicating mail.
-    logger.warn(
-      `[approval] failed to project sent email approval ${args.request.id} into commitment ledger: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    args.runtime.reportError?.("lifeops:commitment-ledger:sent-mail", error, {
-      requestId: args.request.id,
-    });
-  }
-}
-
 type SchedulingRevalidation =
   | { readonly ok: true }
   | {
@@ -1452,7 +1399,11 @@ export async function executeApprovedRequest(args: {
           "A new email requires at least one recipient",
         );
       }
-      await service.requireGoogleGmailSendGrant(INTERNAL_URL, "local", "owner");
+      await service.requireGoogleGmailDraftGrant(
+        INTERNAL_URL,
+        "local",
+        "owner",
+      );
       if (payload.replyToMessageId) {
         await service.readGmailMessage(INTERNAL_URL, {
           mode: "local",
@@ -1470,30 +1421,34 @@ export async function executeApprovedRequest(args: {
       prepared: {
         provider: "gmail",
         dispatch: async () => {
+          let draft: { draftId: string; threadId: string | null };
           if (payload.replyToMessageId) {
-            await service.sendGmailReply(INTERNAL_URL, {
+            draft = await service.saveGmailReplyDraft(INTERNAL_URL, {
               messageId: payload.replyToMessageId,
               bodyText: payload.body,
               subject: payload.subject || undefined,
               to: payload.to.length > 0 ? [...payload.to] : undefined,
               cc: payload.cc.length > 0 ? [...payload.cc] : undefined,
-              confirmSend: true,
+              confirmSave: true,
             });
           } else {
-            await service.sendGmailMessage(INTERNAL_URL, {
+            draft = await service.saveGmailDraft(INTERNAL_URL, {
               to: [...payload.to],
               cc: [...payload.cc],
               bcc: [...payload.bcc],
               subject: payload.subject,
               bodyText: payload.body,
-              confirmSend: true,
+              confirmSave: true,
             });
           }
           return {
-            value: undefined,
+            value: draft,
             receipt: {
               provider: "gmail",
               accepted: true,
+              status: "draft_created",
+              draftId: draft.draftId,
+              threadId: draft.threadId,
               replyToMessageId: payload.replyToMessageId ?? null,
             },
           };
@@ -1508,15 +1463,10 @@ export async function executeApprovedRequest(args: {
       });
     }
     const done = outcome.request;
-    await persistSentMailCommitments({
-      runtime: args.runtime,
-      request: args.request,
-      sentAt: done.updatedAt,
-    });
     const text =
       payload.to.length > 0
-        ? `Approved and sent email to ${payload.to.join(", ")}.`
-        : "Approved and sent the Gmail reply.";
+        ? `Approved and created a Gmail draft to ${payload.to.join(", ")}.`
+        : "Approved and created the Gmail reply draft.";
     await args.callback?.({ text });
     return {
       text,
@@ -1525,6 +1475,9 @@ export async function executeApprovedRequest(args: {
         requestId: done.id,
         state: done.state,
         action: done.action,
+        status: "draft_created",
+        draftId: outcome.value.draftId,
+        threadId: outcome.value.threadId,
       },
     };
   }

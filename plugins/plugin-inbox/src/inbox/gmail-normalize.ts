@@ -534,7 +534,7 @@ export function summarizeGmailBatchReplyDrafts(
 ): LifeOpsGmailBatchReplyDraftsFeed["summary"] {
   return {
     totalCount: drafts.length,
-    sendAllowedCount: drafts.filter((draft) => draft.sendAllowed).length,
+    saveAllowedCount: drafts.filter((draft) => draft.saveAllowed).length,
     requiresConfirmationCount: drafts.filter(
       (draft) => draft.requiresConfirmation,
     ).length,
@@ -1254,7 +1254,7 @@ export function buildGmailReplyPreviewLines(bodyText: string): string[] {
 export function buildGmailReplyDraft(args: {
   message: LifeOpsGmailMessageSummary;
   senderName: string;
-  sendAllowed: boolean;
+  saveAllowed: boolean;
   bodyText: string;
 }): LifeOpsGmailReplyDraft {
   const recipient = args.message.replyTo ?? args.message.fromEmail ?? null;
@@ -1270,7 +1270,7 @@ export function buildGmailReplyDraft(args: {
     cc: [],
     bodyText: args.bodyText,
     previewLines: buildGmailReplyPreviewLines(args.bodyText),
-    sendAllowed: args.sendAllowed,
+    saveAllowed: args.saveAllowed,
     requiresConfirmation: true,
   };
 }

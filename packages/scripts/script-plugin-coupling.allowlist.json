@@ -91,7 +91,6 @@
     "tokens": [
       "plugins/plugin-agent-orchestrator",
       "plugins/plugin-anthropic",
-      "plugins/plugin-calendar",
       "plugins/plugin-coding-tools",
       "plugins/plugin-computeruse",
       "plugins/plugin-elizacloud",

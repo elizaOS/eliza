@@ -1,8 +1,10 @@
 /**
  * Gmail domain for LifeOps: the assistant's inbox-triage surface over the
  * owner's Gmail — search, unresponded/needs-response feeds, spam review, reply
- * drafting and batch sends. Projects `@elizaos/plugin-google-workspace` results into
- * assistant DTOs; the actual Gmail API access lives in the google plugin.
+ * drafting and provider-saved drafts. Projects `@elizaos/plugin-google-workspace`
+ * results into assistant DTOs; the actual Gmail MCP access lives in the Google
+ * plugin. Official Gmail MCP does not send mail, so this domain never reports
+ * draft creation as delivery.
  */
 import crypto from "node:crypto";
 import type {
@@ -18,27 +20,27 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGmailBatchReplyDraftsFeed,
-  LifeOpsGmailBatchReplySendResult,
   LifeOpsGmailEventIngestResult,
   LifeOpsGmailManageResult,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
+  LifeOpsGmailReplyDraftSaveResult,
   LifeOpsGmailSearchFeed,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
   ManageLifeOpsGmailMessagesRequest,
-  SendLifeOpsGmailBatchReplyRequest,
-  SendLifeOpsGmailMessageRequest,
-  SendLifeOpsGmailReplyRequest,
+  SaveLifeOpsGmailDraftRequest,
+  SaveLifeOpsGmailReplyDraftRequest,
+  SaveLifeOpsGmailReplyDraftsRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
 } from "../../contracts/index.js";
 import {
   accountIdForGrant,
-  googleSendEmailInput,
+  googleCreateGmailDraftInput,
   lifeOpsGmailMessageFromGoogle,
   requireGoogleServiceMethod,
 } from "../google-plugin-delegates.js";
@@ -90,7 +92,7 @@ type GmailDomainDeps = {
     requestedSide?: LifeOpsConnectorSide,
     grantId?: string,
   ): Promise<LifeOpsConnectorGrant>;
-  requireGoogleGmailSendGrant(
+  requireGoogleGmailDraftGrant(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
     requestedSide?: LifeOpsConnectorSide,
@@ -192,15 +194,15 @@ function draftForMessage(
   return buildGmailReplyDraft({
     message,
     senderName: args.senderName ?? "",
-    sendAllowed: true,
+    saveAllowed: true,
     bodyText,
   });
 }
 
 /**
- * Gmail triage, search, drafting, and send/manage flows backed by
+ * Gmail triage, search, draft-save, and manage flows backed by
  * `@elizaos/plugin-google-workspace`. Depends on the `google` domain's grant resolution
- * (`requireGoogleGmailGrant` / `requireGoogleGmailSendGrant`) injected via
+ * (`requireGoogleGmailGrant` / `requireGoogleGmailDraftGrant`) injected via
  * {@link GmailDomainDeps}.
  */
 export class GmailDomain {
@@ -877,14 +879,19 @@ export class GmailDomain {
     };
   }
 
-  async sendGmailReply(
+  async saveGmailReplyDraft(
     requestUrl: URL,
-    request: SendLifeOpsGmailReplyRequest,
-  ): Promise<{ ok: true }> {
+    request: SaveLifeOpsGmailReplyDraftRequest,
+  ): Promise<{
+    ok: true;
+    status: "draft_created";
+    draftId: string;
+    threadId: string | null;
+  }> {
     const confirmed =
-      normalizeOptionalBoolean(request.confirmSend, "confirmSend") ?? false;
+      normalizeOptionalBoolean(request.confirmSave, "confirmSave") ?? false;
     if (!confirmed) {
-      fail(409, "Gmail reply send requires confirmSend=true.");
+      fail(409, "Saving a Gmail reply draft requires confirmSave=true.");
     }
     const read = await this.readGmailMessage(requestUrl, {
       mode: request.mode,
@@ -892,50 +899,64 @@ export class GmailDomain {
       grantId: request.grantId,
       messageId: request.messageId,
     });
-    const grant = await this.deps.requireGoogleGmailSendGrant(
+    const grant = await this.deps.requireGoogleGmailDraftGrant(
       requestUrl,
       request.mode,
       request.side,
       request.grantId,
     );
-    const sendEmail = requireGoogleServiceMethod(this.ctx.runtime, "sendEmail");
-    await sendEmail(
-      googleSendEmailInput({
-        accountId: accountIdForGrant(grant),
-        to: request.to?.length
-          ? request.to
-          : read.message.fromEmail
-            ? [read.message.fromEmail]
-            : [],
-        cc: request.cc,
-        subject:
-          request.subject ??
-          `Re: ${read.message.subject.replace(/^Re:\\s*/i, "")}`,
-        bodyText: normalizeGmailReplyBody(request.bodyText),
-        threadId: read.message.threadId,
-      }),
+    const createReplyDraft = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "createGmailReplyDraft",
     );
-    return { ok: true };
+    const draft = await createReplyDraft({
+      accountId: accountIdForGrant(grant),
+      to: request.to?.length
+        ? request.to
+        : read.message.fromEmail
+          ? [read.message.fromEmail]
+          : [],
+      cc: request.cc,
+      subject:
+        request.subject ??
+        `Re: ${read.message.subject.replace(/^Re:\\s*/i, "")}`,
+      bodyText: normalizeGmailReplyBody(request.bodyText),
+      replyToMessageId: read.message.externalId,
+    });
+    return {
+      ok: true,
+      status: "draft_created",
+      draftId: draft.draftId,
+      threadId: draft.threadId,
+    };
   }
 
-  async sendGmailMessage(
+  async saveGmailDraft(
     requestUrl: URL,
-    request: SendLifeOpsGmailMessageRequest,
-  ): Promise<{ ok: true; messageId: string; threadId: string | null }> {
+    request: SaveLifeOpsGmailDraftRequest,
+  ): Promise<{
+    ok: true;
+    status: "draft_created";
+    draftId: string;
+    threadId: string | null;
+  }> {
     const confirmed =
-      normalizeOptionalBoolean(request.confirmSend, "confirmSend") ?? false;
+      normalizeOptionalBoolean(request.confirmSave, "confirmSave") ?? false;
     if (!confirmed) {
-      fail(409, "Gmail message send requires confirmSend=true.");
+      fail(409, "Saving a Gmail draft requires confirmSave=true.");
     }
-    const grant = await this.deps.requireGoogleGmailSendGrant(
+    const grant = await this.deps.requireGoogleGmailDraftGrant(
       requestUrl,
       request.mode,
       request.side,
       request.grantId,
     );
-    const sendEmail = requireGoogleServiceMethod(this.ctx.runtime, "sendEmail");
-    const sent = await sendEmail(
-      googleSendEmailInput({
+    const createDraft = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "createGmailDraft",
+    );
+    const draft = await createDraft(
+      googleCreateGmailDraftInput({
         accountId: accountIdForGrant(grant),
         to: request.to,
         cc: request.cc,
@@ -946,33 +967,42 @@ export class GmailDomain {
     );
     return {
       ok: true,
-      messageId: sent.id,
-      threadId: sent.threadId ?? null,
+      status: "draft_created",
+      draftId: draft.draftId,
+      threadId: draft.threadId,
     };
   }
 
-  async sendGmailReplies(
+  async saveGmailReplyDrafts(
     requestUrl: URL,
-    request: SendLifeOpsGmailBatchReplyRequest,
-  ): Promise<LifeOpsGmailBatchReplySendResult> {
+    request: SaveLifeOpsGmailReplyDraftsRequest,
+  ): Promise<LifeOpsGmailReplyDraftSaveResult> {
     const confirmed =
-      normalizeOptionalBoolean(request.confirmSend, "confirmSend") ?? false;
+      normalizeOptionalBoolean(request.confirmSave, "confirmSave") ?? false;
     if (!confirmed) {
-      fail(409, "Batch Gmail reply send requires confirmSend=true.");
+      fail(409, "Batch Saving a Gmail reply draft requires confirmSave=true.");
     }
+    const drafts = [];
     for (const item of request.items) {
-      await this.sendGmailReply(requestUrl, {
-        mode: request.mode,
-        side: request.side,
-        grantId: request.grantId,
-        messageId: item.messageId,
-        bodyText: item.bodyText,
-        subject: item.subject,
-        to: item.to,
-        cc: item.cc,
-        confirmSend: true,
-      });
+      drafts.push(
+        await this.saveGmailReplyDraft(requestUrl, {
+          mode: request.mode,
+          side: request.side,
+          grantId: request.grantId,
+          messageId: item.messageId,
+          bodyText: item.bodyText,
+          subject: item.subject,
+          to: item.to,
+          cc: item.cc,
+          confirmSave: true,
+        }),
+      );
     }
-    return { ok: true, sentCount: request.items.length };
+    return {
+      ok: true,
+      status: "drafts_created",
+      draftCount: drafts.length,
+      drafts: drafts.map(({ draftId, threadId }) => ({ draftId, threadId })),
+    };
   }
 }

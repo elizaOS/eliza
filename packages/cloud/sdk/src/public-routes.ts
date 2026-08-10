@@ -231,6 +231,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/route.ts",
   },
+  "DELETE /api/v1/eliza/agents/{agentId}/api/{path}": {
+    method: "DELETE",
+    path: "/api/v1/eliza/agents/{agentId}/api/{path}",
+    methodName: "deleteApiV1ElizaAgentsByAgentIdApiByPath",
+    responseMode: "json",
+    pathParams: ["agentId", "path"],
+    catchAllPathParams: ["path"],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/[...path]/route.ts",
+  },
   "DELETE /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}": {
     method: "DELETE",
     path: "/api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}",
@@ -240,6 +249,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["agentId", "conversationId"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/route.ts",
+  },
+  "DELETE /api/v1/eliza/agents/{agentId}/connectors/{bindingId}": {
+    method: "DELETE",
+    path: "/api/v1/eliza/agents/{agentId}/connectors/{bindingId}",
+    methodName: "deleteApiV1ElizaAgentsByAgentIdConnectorsByBindingId",
+    responseMode: "json",
+    pathParams: ["agentId", "bindingId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/connectors/[bindingId]/route.ts",
   },
   "DELETE /api/v1/eliza/agents/{agentId}/discord": {
     method: "DELETE",
@@ -267,15 +285,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["sessionId"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/gateway-relay/sessions/[sessionId]/route.ts",
-  },
-  "DELETE /api/v1/eliza/google/calendar/events/{eventId}": {
-    method: "DELETE",
-    path: "/api/v1/eliza/google/calendar/events/{eventId}",
-    methodName: "deleteApiV1ElizaGoogleCalendarEventsByEventId",
-    responseMode: "json",
-    pathParams: ["eventId"],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/calendar/events/[eventId]/route.ts",
   },
   "DELETE /api/v1/files/{id}": {
     method: "DELETE",
@@ -330,6 +339,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/oauth/connections/[id]/route.ts",
+  },
+  "DELETE /api/v1/phone-gateways/bluebubbles/{id}": {
+    method: "DELETE",
+    path: "/api/v1/phone-gateways/bluebubbles/{id}",
+    methodName: "deleteApiV1PhoneGatewaysBluebubblesById",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/[id]/route.ts",
   },
   "DELETE /api/v1/proxy/birdeye/{path}": {
     method: "DELETE",
@@ -1404,6 +1422,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/backups/route.ts",
   },
+  "GET /api/v1/eliza/agents/{agentId}/connectors": {
+    method: "GET",
+    path: "/api/v1/eliza/agents/{agentId}/connectors",
+    methodName: "getApiV1ElizaAgentsByAgentIdConnectors",
+    responseMode: "json",
+    pathParams: ["agentId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/connectors/route.ts",
+  },
   "GET /api/v1/eliza/agents/{agentId}/discord": {
     method: "GET",
     path: "/api/v1/eliza/agents/{agentId}/discord",
@@ -1466,78 +1493,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/github-oauth-complete/route.ts",
-  },
-  "GET /api/v1/eliza/google/accounts": {
-    method: "GET",
-    path: "/api/v1/eliza/google/accounts",
-    methodName: "getApiV1ElizaGoogleAccounts",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/accounts/route.ts",
-  },
-  "GET /api/v1/eliza/google/calendar/calendars": {
-    method: "GET",
-    path: "/api/v1/eliza/google/calendar/calendars",
-    methodName: "getApiV1ElizaGoogleCalendarCalendars",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/calendar/calendars/route.ts",
-  },
-  "GET /api/v1/eliza/google/calendar/feed": {
-    method: "GET",
-    path: "/api/v1/eliza/google/calendar/feed",
-    methodName: "getApiV1ElizaGoogleCalendarFeed",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/calendar/feed/route.ts",
-  },
-  "GET /api/v1/eliza/google/gmail/read": {
-    method: "GET",
-    path: "/api/v1/eliza/google/gmail/read",
-    methodName: "getApiV1ElizaGoogleGmailRead",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/gmail/read/route.ts",
-  },
-  "GET /api/v1/eliza/google/gmail/search": {
-    method: "GET",
-    path: "/api/v1/eliza/google/gmail/search",
-    methodName: "getApiV1ElizaGoogleGmailSearch",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/gmail/search/route.ts",
-  },
-  "GET /api/v1/eliza/google/gmail/subscription-headers": {
-    method: "GET",
-    path: "/api/v1/eliza/google/gmail/subscription-headers",
-    methodName: "getApiV1ElizaGoogleGmailSubscriptionHeaders",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/gmail/subscription-headers/route.ts",
-  },
-  "GET /api/v1/eliza/google/gmail/triage": {
-    method: "GET",
-    path: "/api/v1/eliza/google/gmail/triage",
-    methodName: "getApiV1ElizaGoogleGmailTriage",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/gmail/triage/route.ts",
-  },
-  "GET /api/v1/eliza/google/status": {
-    method: "GET",
-    path: "/api/v1/eliza/google/status",
-    methodName: "getApiV1ElizaGoogleStatus",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/status/route.ts",
   },
   "GET /api/v1/eliza/launch-sessions/{sessionId}": {
     method: "GET",
@@ -1980,6 +1935,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/oauth/status/route.ts",
   },
+  "GET /api/v1/oauth/success-proof/verify": {
+    method: "GET",
+    path: "/api/v1/oauth/success-proof/verify",
+    methodName: "getApiV1OauthSuccessProofVerify",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/oauth/success-proof/verify/route.ts",
+  },
   "GET /api/v1/oauth/token/{platform}": {
     method: "GET",
     path: "/api/v1/oauth/token/{platform}",
@@ -2006,6 +1970,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/payment-requests/[id]/route.ts",
+  },
+  "GET /api/v1/phone-gateways/bluebubbles": {
+    method: "GET",
+    path: "/api/v1/phone-gateways/bluebubbles",
+    methodName: "getApiV1PhoneGatewaysBluebubbles",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/route.ts",
   },
   "GET /api/v1/pii-scrub/jobs/{id}": {
     method: "GET",
@@ -2494,15 +2467,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/environment/route.ts",
   },
-  "PATCH /api/v1/eliza/google/calendar/events/{eventId}": {
-    method: "PATCH",
-    path: "/api/v1/eliza/google/calendar/events/{eventId}",
-    methodName: "patchApiV1ElizaGoogleCalendarEventsByEventId",
-    responseMode: "json",
-    pathParams: ["eventId"],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/calendar/events/[eventId]/route.ts",
-  },
   "PATCH /api/v1/marketing/inventory/{slotId}": {
     method: "PATCH",
     path: "/api/v1/marketing/inventory/{slotId}",
@@ -2930,7 +2894,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     method: "POST",
     path: "/api/v1/apps/{id}/chat",
     methodName: "postApiV1AppsByIdChat",
-    responseMode: "mixed",
+    responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apps/[id]/chat/route.ts",
@@ -3524,6 +3488,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/bridge/route.ts",
   },
+  "POST /api/v1/eliza/agents/{agentId}/connectors": {
+    method: "POST",
+    path: "/api/v1/eliza/agents/{agentId}/connectors",
+    methodName: "postApiV1ElizaAgentsByAgentIdConnectors",
+    responseMode: "json",
+    pathParams: ["agentId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/connectors/route.ts",
+  },
   "POST /api/v1/eliza/agents/{agentId}/discord/oauth": {
     method: "POST",
     path: "/api/v1/eliza/agents/{agentId}/discord/oauth",
@@ -3703,51 +3676,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["sessionId"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/gateway-relay/sessions/[sessionId]/responses/route.ts",
-  },
-  "POST /api/v1/eliza/google/calendar/events": {
-    method: "POST",
-    path: "/api/v1/eliza/google/calendar/events",
-    methodName: "postApiV1ElizaGoogleCalendarEvents",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/calendar/events/route.ts",
-  },
-  "POST /api/v1/eliza/google/connect/initiate": {
-    method: "POST",
-    path: "/api/v1/eliza/google/connect/initiate",
-    methodName: "postApiV1ElizaGoogleConnectInitiate",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/connect/initiate/route.ts",
-  },
-  "POST /api/v1/eliza/google/disconnect": {
-    method: "POST",
-    path: "/api/v1/eliza/google/disconnect",
-    methodName: "postApiV1ElizaGoogleDisconnect",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/disconnect/route.ts",
-  },
-  "POST /api/v1/eliza/google/gmail/message-send": {
-    method: "POST",
-    path: "/api/v1/eliza/google/gmail/message-send",
-    methodName: "postApiV1ElizaGoogleGmailMessageSend",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/gmail/message-send/route.ts",
-  },
-  "POST /api/v1/eliza/google/gmail/reply-send": {
-    method: "POST",
-    path: "/api/v1/eliza/google/gmail/reply-send",
-    methodName: "postApiV1ElizaGoogleGmailReplySend",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/google/gmail/reply-send/route.ts",
   },
   "POST /api/v1/eliza/paypal/authorize": {
     method: "POST",
@@ -4108,6 +4036,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/payment-requests/[id]/expire/route.ts",
+  },
+  "POST /api/v1/phone-gateways/bluebubbles": {
+    method: "POST",
+    path: "/api/v1/phone-gateways/bluebubbles",
+    methodName: "postApiV1PhoneGatewaysBluebubbles",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/route.ts",
   },
   "POST /api/v1/pii-scrub/jobs": {
     method: "POST",
@@ -4667,6 +4604,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/connections/[platform]/route.ts",
   },
+  "PUT /api/v1/eliza/agents/{agentId}/api/{path}": {
+    method: "PUT",
+    path: "/api/v1/eliza/agents/{agentId}/api/{path}",
+    methodName: "putApiV1ElizaAgentsByAgentIdApiByPath",
+    responseMode: "json",
+    pathParams: ["agentId", "path"],
+    catchAllPathParams: ["path"],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/[...path]/route.ts",
+  },
   "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri": {
     method: "PUT",
     path: "/api/v1/eliza/agents/{agentId}/api/identity/uri",
@@ -4767,17 +4713,22 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/documents/{id}": { id: string | number };
   "DELETE /api/v1/documents/pre-upload": Record<never, never>;
   "DELETE /api/v1/eliza/agents/{agentId}": { agentId: string | number };
+  "DELETE /api/v1/eliza/agents/{agentId}/api/{path}": {
+    agentId: string | number;
+    path: string | number | readonly (string | number)[];
+  };
   "DELETE /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}": {
     agentId: string | number;
     conversationId: string | number;
+  };
+  "DELETE /api/v1/eliza/agents/{agentId}/connectors/{bindingId}": {
+    agentId: string | number;
+    bindingId: string | number;
   };
   "DELETE /api/v1/eliza/agents/{agentId}/discord": { agentId: string | number };
   "DELETE /api/v1/eliza/agents/{agentId}/github": { agentId: string | number };
   "DELETE /api/v1/eliza/gateway-relay/sessions/{sessionId}": {
     sessionId: string | number;
-  };
-  "DELETE /api/v1/eliza/google/calendar/events/{eventId}": {
-    eventId: string | number;
   };
   "DELETE /api/v1/files/{id}": { id: string | number };
   "DELETE /api/v1/gallery/{id}": { id: string | number };
@@ -4785,6 +4736,7 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/mcps/{mcpId}": { mcpId: string | number };
   "DELETE /api/v1/mcps/{mcpId}/publish": { mcpId: string | number };
   "DELETE /api/v1/oauth/connections/{id}": { id: string | number };
+  "DELETE /api/v1/phone-gateways/bluebubbles/{id}": { id: string | number };
   "DELETE /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
   };
@@ -4960,6 +4912,7 @@ export interface PublicRoutePathParams {
     path: string | number | readonly (string | number)[];
   };
   "GET /api/v1/eliza/agents/{agentId}/backups": { agentId: string | number };
+  "GET /api/v1/eliza/agents/{agentId}/connectors": { agentId: string | number };
   "GET /api/v1/eliza/agents/{agentId}/discord": { agentId: string | number };
   "GET /api/v1/eliza/agents/{agentId}/github": { agentId: string | number };
   "GET /api/v1/eliza/agents/{agentId}/github/token": {
@@ -4973,14 +4926,6 @@ export interface PublicRoutePathParams {
     sessionId: string | number;
   };
   "GET /api/v1/eliza/github-oauth-complete": Record<never, never>;
-  "GET /api/v1/eliza/google/accounts": Record<never, never>;
-  "GET /api/v1/eliza/google/calendar/calendars": Record<never, never>;
-  "GET /api/v1/eliza/google/calendar/feed": Record<never, never>;
-  "GET /api/v1/eliza/google/gmail/read": Record<never, never>;
-  "GET /api/v1/eliza/google/gmail/search": Record<never, never>;
-  "GET /api/v1/eliza/google/gmail/subscription-headers": Record<never, never>;
-  "GET /api/v1/eliza/google/gmail/triage": Record<never, never>;
-  "GET /api/v1/eliza/google/status": Record<never, never>;
   "GET /api/v1/eliza/launch-sessions/{sessionId}": {
     sessionId: string | number;
   };
@@ -5066,9 +5011,11 @@ export interface PublicRoutePathParams {
   "GET /api/v1/oauth/initiate": Record<never, never>;
   "GET /api/v1/oauth/providers": Record<never, never>;
   "GET /api/v1/oauth/status": Record<never, never>;
+  "GET /api/v1/oauth/success-proof/verify": Record<never, never>;
   "GET /api/v1/oauth/token/{platform}": { platform: string | number };
   "GET /api/v1/payment-requests": Record<never, never>;
   "GET /api/v1/payment-requests/{id}": { id: string | number };
+  "GET /api/v1/phone-gateways/bluebubbles": Record<never, never>;
   "GET /api/v1/pii-scrub/jobs/{id}": { id: string | number };
   "GET /api/v1/pricing/summary": Record<never, never>;
   "GET /api/v1/proxy/birdeye/{path}": {
@@ -5133,9 +5080,6 @@ export interface PublicRoutePathParams {
   };
   "PATCH /api/v1/eliza/agents/{agentId}/environment": {
     agentId: string | number;
-  };
-  "PATCH /api/v1/eliza/google/calendar/events/{eventId}": {
-    eventId: string | number;
   };
   "PATCH /api/v1/marketing/inventory/{slotId}": { slotId: string | number };
   "PATCH /api/v1/marketing/pr/{releaseId}": { releaseId: string | number };
@@ -5288,6 +5232,9 @@ export interface PublicRoutePathParams {
     path: string | number | readonly (string | number)[];
   };
   "POST /api/v1/eliza/agents/{agentId}/bridge": { agentId: string | number };
+  "POST /api/v1/eliza/agents/{agentId}/connectors": {
+    agentId: string | number;
+  };
   "POST /api/v1/eliza/agents/{agentId}/discord/oauth": {
     agentId: string | number;
   };
@@ -5324,11 +5271,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/eliza/gateway-relay/sessions/{sessionId}/responses": {
     sessionId: string | number;
   };
-  "POST /api/v1/eliza/google/calendar/events": Record<never, never>;
-  "POST /api/v1/eliza/google/connect/initiate": Record<never, never>;
-  "POST /api/v1/eliza/google/disconnect": Record<never, never>;
-  "POST /api/v1/eliza/google/gmail/message-send": Record<never, never>;
-  "POST /api/v1/eliza/google/gmail/reply-send": Record<never, never>;
   "POST /api/v1/eliza/paypal/authorize": Record<never, never>;
   "POST /api/v1/eliza/paypal/callback": Record<never, never>;
   "POST /api/v1/eliza/paypal/refresh": Record<never, never>;
@@ -5383,6 +5325,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/payment-requests": Record<never, never>;
   "POST /api/v1/payment-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/payment-requests/{id}/expire": { id: string | number };
+  "POST /api/v1/phone-gateways/bluebubbles": Record<never, never>;
   "POST /api/v1/pii-scrub/jobs": Record<never, never>;
   "POST /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
@@ -5452,6 +5395,10 @@ export interface PublicRoutePathParams {
   "PUT /api/v1/apps/{id}/monetization": { id: string | number };
   "PUT /api/v1/billing/settings": Record<never, never>;
   "PUT /api/v1/connections/{platform}": { platform: string | number };
+  "PUT /api/v1/eliza/agents/{agentId}/api/{path}": {
+    agentId: string | number;
+    path: string | number | readonly (string | number)[];
+  };
   "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri": {
     agentId: string | number;
   };
@@ -5829,6 +5776,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  deleteApiV1ElizaAgentsByAgentIdApiByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "DELETE /api/v1/eliza/agents/{agentId}/api/{path}",
+      TResponse
+    >("DELETE /api/v1/eliza/agents/{agentId}/api/{path}", options);
+  }
+
   deleteApiV1ElizaAgentsByAgentIdApiConversationsByConversationId<
     TResponse = unknown,
   >(
@@ -5841,6 +5797,15 @@ export class ElizaCloudPublicRoutesClient {
       "DELETE /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}",
       options,
     );
+  }
+
+  deleteApiV1ElizaAgentsByAgentIdConnectorsByBindingId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/eliza/agents/{agentId}/connectors/{bindingId}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "DELETE /api/v1/eliza/agents/{agentId}/connectors/{bindingId}",
+      TResponse
+    >("DELETE /api/v1/eliza/agents/{agentId}/connectors/{bindingId}", options);
   }
 
   deleteApiV1ElizaAgentsByAgentIdDiscord<TResponse = unknown>(
@@ -5868,15 +5833,6 @@ export class ElizaCloudPublicRoutesClient {
       "DELETE /api/v1/eliza/gateway-relay/sessions/{sessionId}",
       TResponse
     >("DELETE /api/v1/eliza/gateway-relay/sessions/{sessionId}", options);
-  }
-
-  deleteApiV1ElizaGoogleCalendarEventsByEventId<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/eliza/google/calendar/events/{eventId}">,
-  ): Promise<TResponse> {
-    return this.call<
-      "DELETE /api/v1/eliza/google/calendar/events/{eventId}",
-      TResponse
-    >("DELETE /api/v1/eliza/google/calendar/events/{eventId}", options);
   }
 
   deleteApiV1FilesById<TResponse = unknown>(
@@ -5931,6 +5887,15 @@ export class ElizaCloudPublicRoutesClient {
       "DELETE /api/v1/oauth/connections/{id}",
       options,
     );
+  }
+
+  deleteApiV1PhoneGatewaysBluebubblesById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/phone-gateways/bluebubbles/{id}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "DELETE /api/v1/phone-gateways/bluebubbles/{id}",
+      TResponse
+    >("DELETE /api/v1/phone-gateways/bluebubbles/{id}", options);
   }
 
   deleteApiV1ProxyBirdeyeByPath<TResponse = unknown>(
@@ -7012,6 +6977,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1ElizaAgentsByAgentIdConnectors<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/connectors">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/eliza/agents/{agentId}/connectors",
+      TResponse
+    >("GET /api/v1/eliza/agents/{agentId}/connectors", options);
+  }
+
   getApiV1ElizaAgentsByAgentIdDiscord<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/discord">,
   ): Promise<TResponse> {
@@ -7074,78 +7048,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/eliza/github-oauth-complete", TResponse>(
       "GET /api/v1/eliza/github-oauth-complete",
-      options,
-    );
-  }
-
-  getApiV1ElizaGoogleAccounts<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/accounts"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/eliza/google/accounts", TResponse>(
-      "GET /api/v1/eliza/google/accounts",
-      options,
-    );
-  }
-
-  getApiV1ElizaGoogleCalendarCalendars<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/calendar/calendars"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/eliza/google/calendar/calendars", TResponse>(
-      "GET /api/v1/eliza/google/calendar/calendars",
-      options,
-    );
-  }
-
-  getApiV1ElizaGoogleCalendarFeed<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/calendar/feed"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/eliza/google/calendar/feed", TResponse>(
-      "GET /api/v1/eliza/google/calendar/feed",
-      options,
-    );
-  }
-
-  getApiV1ElizaGoogleGmailRead<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/read"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/eliza/google/gmail/read", TResponse>(
-      "GET /api/v1/eliza/google/gmail/read",
-      options,
-    );
-  }
-
-  getApiV1ElizaGoogleGmailSearch<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/search"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/eliza/google/gmail/search", TResponse>(
-      "GET /api/v1/eliza/google/gmail/search",
-      options,
-    );
-  }
-
-  getApiV1ElizaGoogleGmailSubscriptionHeaders<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/subscription-headers"> = {},
-  ): Promise<TResponse> {
-    return this.call<
-      "GET /api/v1/eliza/google/gmail/subscription-headers",
-      TResponse
-    >("GET /api/v1/eliza/google/gmail/subscription-headers", options);
-  }
-
-  getApiV1ElizaGoogleGmailTriage<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/triage"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/eliza/google/gmail/triage", TResponse>(
-      "GET /api/v1/eliza/google/gmail/triage",
-      options,
-    );
-  }
-
-  getApiV1ElizaGoogleStatus<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/status"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/eliza/google/status", TResponse>(
-      "GET /api/v1/eliza/google/status",
       options,
     );
   }
@@ -7588,6 +7490,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1OauthSuccessProofVerify<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/oauth/success-proof/verify"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/oauth/success-proof/verify", TResponse>(
+      "GET /api/v1/oauth/success-proof/verify",
+      options,
+    );
+  }
+
   getApiV1OauthTokenByPlatform<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/oauth/token/{platform}">,
   ): Promise<TResponse> {
@@ -7611,6 +7522,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/payment-requests/{id}", TResponse>(
       "GET /api/v1/payment-requests/{id}",
+      options,
+    );
+  }
+
+  getApiV1PhoneGatewaysBluebubbles<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/phone-gateways/bluebubbles"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/phone-gateways/bluebubbles", TResponse>(
+      "GET /api/v1/phone-gateways/bluebubbles",
       options,
     );
   }
@@ -8104,15 +8024,6 @@ export class ElizaCloudPublicRoutesClient {
       "PATCH /api/v1/eliza/agents/{agentId}/environment",
       TResponse
     >("PATCH /api/v1/eliza/agents/{agentId}/environment", options);
-  }
-
-  patchApiV1ElizaGoogleCalendarEventsByEventId<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PATCH /api/v1/eliza/google/calendar/events/{eventId}">,
-  ): Promise<TResponse> {
-    return this.call<
-      "PATCH /api/v1/eliza/google/calendar/events/{eventId}",
-      TResponse
-    >("PATCH /api/v1/eliza/google/calendar/events/{eventId}", options);
   }
 
   patchApiV1MarketingInventoryBySlotId<TResponse = unknown>(
@@ -9134,6 +9045,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1ElizaAgentsByAgentIdConnectors<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/connectors">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/eliza/agents/{agentId}/connectors",
+      TResponse
+    >("POST /api/v1/eliza/agents/{agentId}/connectors", options);
+  }
+
   postApiV1ElizaAgentsByAgentIdDiscordOauth<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/discord/oauth">,
   ): Promise<TResponse> {
@@ -9313,51 +9233,6 @@ export class ElizaCloudPublicRoutesClient {
       TResponse
     >(
       "POST /api/v1/eliza/gateway-relay/sessions/{sessionId}/responses",
-      options,
-    );
-  }
-
-  postApiV1ElizaGoogleCalendarEvents<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/google/calendar/events"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/eliza/google/calendar/events", TResponse>(
-      "POST /api/v1/eliza/google/calendar/events",
-      options,
-    );
-  }
-
-  postApiV1ElizaGoogleConnectInitiate<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/google/connect/initiate"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/eliza/google/connect/initiate", TResponse>(
-      "POST /api/v1/eliza/google/connect/initiate",
-      options,
-    );
-  }
-
-  postApiV1ElizaGoogleDisconnect<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/google/disconnect"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/eliza/google/disconnect", TResponse>(
-      "POST /api/v1/eliza/google/disconnect",
-      options,
-    );
-  }
-
-  postApiV1ElizaGoogleGmailMessageSend<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/google/gmail/message-send"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/eliza/google/gmail/message-send", TResponse>(
-      "POST /api/v1/eliza/google/gmail/message-send",
-      options,
-    );
-  }
-
-  postApiV1ElizaGoogleGmailReplySend<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/google/gmail/reply-send"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/eliza/google/gmail/reply-send", TResponse>(
-      "POST /api/v1/eliza/google/gmail/reply-send",
       options,
     );
   }
@@ -9733,6 +9608,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/payment-requests/{id}/expire", TResponse>(
       "POST /api/v1/payment-requests/{id}/expire",
+      options,
+    );
+  }
+
+  postApiV1PhoneGatewaysBluebubbles<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/phone-gateways/bluebubbles"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/phone-gateways/bluebubbles", TResponse>(
+      "POST /api/v1/phone-gateways/bluebubbles",
       options,
     );
   }
@@ -10292,6 +10176,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  putApiV1ElizaAgentsByAgentIdApiByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PUT /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "PUT /api/v1/eliza/agents/{agentId}/api/{path}",
+      TResponse
+    >("PUT /api/v1/eliza/agents/{agentId}/api/{path}", options);
+  }
+
   putApiV1ElizaAgentsByAgentIdApiIdentityUri<TResponse = unknown>(
     options: PublicRouteCallOptions<"PUT /api/v1/eliza/agents/{agentId}/api/identity/uri">,
   ): Promise<TResponse> {
@@ -10496,11 +10389,29 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("DELETE /api/v1/eliza/agents/{agentId}", options);
   }
 
+  deleteApiV1ElizaAgentsByAgentIdApiByPathRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "DELETE /api/v1/eliza/agents/{agentId}/api/{path}",
+      options,
+    );
+  }
+
   deleteApiV1ElizaAgentsByAgentIdApiConversationsByConversationIdRaw(
     options: PublicRouteCallOptions<"DELETE /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}">,
   ): Promise<Response> {
     return this.callRaw(
       "DELETE /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}",
+      options,
+    );
+  }
+
+  deleteApiV1ElizaAgentsByAgentIdConnectorsByBindingIdRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/eliza/agents/{agentId}/connectors/{bindingId}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "DELETE /api/v1/eliza/agents/{agentId}/connectors/{bindingId}",
       options,
     );
   }
@@ -10528,15 +10439,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<Response> {
     return this.callRaw(
       "DELETE /api/v1/eliza/gateway-relay/sessions/{sessionId}",
-      options,
-    );
-  }
-
-  deleteApiV1ElizaGoogleCalendarEventsByEventIdRaw(
-    options: PublicRouteCallOptions<"DELETE /api/v1/eliza/google/calendar/events/{eventId}">,
-  ): Promise<Response> {
-    return this.callRaw(
-      "DELETE /api/v1/eliza/google/calendar/events/{eventId}",
       options,
     );
   }
@@ -10575,6 +10477,15 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"DELETE /api/v1/oauth/connections/{id}">,
   ): Promise<Response> {
     return this.callRaw("DELETE /api/v1/oauth/connections/{id}", options);
+  }
+
+  deleteApiV1PhoneGatewaysBluebubblesByIdRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/phone-gateways/bluebubbles/{id}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "DELETE /api/v1/phone-gateways/bluebubbles/{id}",
+      options,
+    );
   }
 
   deleteApiV1ProxyBirdeyeByPathRaw(
@@ -11351,6 +11262,15 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/eliza/agents/{agentId}/backups", options);
   }
 
+  getApiV1ElizaAgentsByAgentIdConnectorsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/connectors">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/eliza/agents/{agentId}/connectors",
+      options,
+    );
+  }
+
   getApiV1ElizaAgentsByAgentIdDiscordRaw(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/discord">,
   ): Promise<Response> {
@@ -11400,57 +11320,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/eliza/github-oauth-complete"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/eliza/github-oauth-complete", options);
-  }
-
-  getApiV1ElizaGoogleAccountsRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/accounts"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/eliza/google/accounts", options);
-  }
-
-  getApiV1ElizaGoogleCalendarCalendarsRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/calendar/calendars"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/eliza/google/calendar/calendars", options);
-  }
-
-  getApiV1ElizaGoogleCalendarFeedRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/calendar/feed"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/eliza/google/calendar/feed", options);
-  }
-
-  getApiV1ElizaGoogleGmailReadRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/read"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/eliza/google/gmail/read", options);
-  }
-
-  getApiV1ElizaGoogleGmailSearchRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/search"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/eliza/google/gmail/search", options);
-  }
-
-  getApiV1ElizaGoogleGmailSubscriptionHeadersRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/subscription-headers"> = {},
-  ): Promise<Response> {
-    return this.callRaw(
-      "GET /api/v1/eliza/google/gmail/subscription-headers",
-      options,
-    );
-  }
-
-  getApiV1ElizaGoogleGmailTriageRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/triage"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/eliza/google/gmail/triage", options);
-  }
-
-  getApiV1ElizaGoogleStatusRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/status"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/eliza/google/status", options);
   }
 
   getApiV1ElizaLaunchSessionsBySessionIdRaw(
@@ -11774,6 +11643,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/oauth/status", options);
   }
 
+  getApiV1OauthSuccessProofVerifyRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/oauth/success-proof/verify"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/oauth/success-proof/verify", options);
+  }
+
   getApiV1OauthTokenByPlatformRaw(
     options: PublicRouteCallOptions<"GET /api/v1/oauth/token/{platform}">,
   ): Promise<Response> {
@@ -11790,6 +11665,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/payment-requests/{id}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/payment-requests/{id}", options);
+  }
+
+  getApiV1PhoneGatewaysBluebubblesRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/phone-gateways/bluebubbles"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/phone-gateways/bluebubbles", options);
   }
 
   getApiV1PiiScrubJobsByIdRaw(
@@ -12124,15 +12005,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<Response> {
     return this.callRaw(
       "PATCH /api/v1/eliza/agents/{agentId}/environment",
-      options,
-    );
-  }
-
-  patchApiV1ElizaGoogleCalendarEventsByEventIdRaw(
-    options: PublicRouteCallOptions<"PATCH /api/v1/eliza/google/calendar/events/{eventId}">,
-  ): Promise<Response> {
-    return this.callRaw(
-      "PATCH /api/v1/eliza/google/calendar/events/{eventId}",
       options,
     );
   }
@@ -12887,6 +12759,15 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/eliza/agents/{agentId}/bridge", options);
   }
 
+  postApiV1ElizaAgentsByAgentIdConnectorsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/connectors">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/eliza/agents/{agentId}/connectors",
+      options,
+    );
+  }
+
   postApiV1ElizaAgentsByAgentIdDiscordOauthRaw(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/discord/oauth">,
   ): Promise<Response> {
@@ -13038,39 +12919,6 @@ export class ElizaCloudPublicRoutesClient {
       "POST /api/v1/eliza/gateway-relay/sessions/{sessionId}/responses",
       options,
     );
-  }
-
-  postApiV1ElizaGoogleCalendarEventsRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/google/calendar/events"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/eliza/google/calendar/events", options);
-  }
-
-  postApiV1ElizaGoogleConnectInitiateRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/google/connect/initiate"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/eliza/google/connect/initiate", options);
-  }
-
-  postApiV1ElizaGoogleDisconnectRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/google/disconnect"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/eliza/google/disconnect", options);
-  }
-
-  postApiV1ElizaGoogleGmailMessageSendRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/google/gmail/message-send"> = {},
-  ): Promise<Response> {
-    return this.callRaw(
-      "POST /api/v1/eliza/google/gmail/message-send",
-      options,
-    );
-  }
-
-  postApiV1ElizaGoogleGmailReplySendRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/google/gmail/reply-send"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/eliza/google/gmail/reply-send", options);
   }
 
   postApiV1ElizaPaypalAuthorizeRaw(
@@ -13332,6 +13180,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/payment-requests/{id}/expire">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/payment-requests/{id}/expire", options);
+  }
+
+  postApiV1PhoneGatewaysBluebubblesRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/phone-gateways/bluebubbles"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/phone-gateways/bluebubbles", options);
   }
 
   postApiV1PiiScrubJobsRaw(
@@ -13710,6 +13564,15 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"PUT /api/v1/connections/{platform}">,
   ): Promise<Response> {
     return this.callRaw("PUT /api/v1/connections/{platform}", options);
+  }
+
+  putApiV1ElizaAgentsByAgentIdApiByPathRaw(
+    options: PublicRouteCallOptions<"PUT /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "PUT /api/v1/eliza/agents/{agentId}/api/{path}",
+      options,
+    );
   }
 
   putApiV1ElizaAgentsByAgentIdApiIdentityUriRaw(

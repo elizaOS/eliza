@@ -127,13 +127,13 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsDefinitionRecord,
   LifeOpsGmailBatchReplyDraftsFeed,
-  LifeOpsGmailBatchReplySendResult,
   LifeOpsGmailEventIngestResult,
   LifeOpsGmailManageResult,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
+  LifeOpsGmailReplyDraftSaveResult,
   LifeOpsGmailSearchFeed,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
@@ -156,9 +156,9 @@ import type {
   LifeOpsXDm,
   LifeOpsXPostResponse,
   ManageLifeOpsGmailMessagesRequest,
-  SendLifeOpsGmailBatchReplyRequest,
-  SendLifeOpsGmailMessageRequest,
-  SendLifeOpsGmailReplyRequest,
+  SaveLifeOpsGmailDraftRequest,
+  SaveLifeOpsGmailReplyDraftRequest,
+  SaveLifeOpsGmailReplyDraftsRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
@@ -447,13 +447,13 @@ export class LifeOpsService extends LifeOpsServiceBase {
     );
   }
 
-  public requireGoogleGmailSendGrant(
+  public requireGoogleGmailDraftGrant(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
     requestedSide?: LifeOpsConnectorSide,
     grantId?: string,
   ): Promise<LifeOpsConnectorGrant> {
-    return this.googleDomain.requireGoogleGmailSendGrant(
+    return this.googleDomain.requireGoogleGmailDraftGrant(
       requestUrl,
       requestedMode,
       requestedSide,
@@ -682,13 +682,13 @@ export class LifeOpsService extends LifeOpsServiceBase {
         requestedSide,
         grantId,
       ),
-    requireGoogleGmailSendGrant: (
+    requireGoogleGmailDraftGrant: (
       requestUrl,
       requestedMode,
       requestedSide,
       grantId,
     ) =>
-      this.requireGoogleGmailSendGrant(
+      this.requireGoogleGmailDraftGrant(
         requestUrl,
         requestedMode,
         requestedSide,
@@ -814,25 +814,35 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.gmailDomain.createGmailReplyDraft(requestUrl, request);
   }
 
-  sendGmailReply(
+  saveGmailReplyDraft(
     requestUrl: URL,
-    request: SendLifeOpsGmailReplyRequest,
-  ): Promise<{ ok: true }> {
-    return this.gmailDomain.sendGmailReply(requestUrl, request);
+    request: SaveLifeOpsGmailReplyDraftRequest,
+  ): Promise<{
+    ok: true;
+    status: "draft_created";
+    draftId: string;
+    threadId: string | null;
+  }> {
+    return this.gmailDomain.saveGmailReplyDraft(requestUrl, request);
   }
 
-  sendGmailMessage(
+  saveGmailDraft(
     requestUrl: URL,
-    request: SendLifeOpsGmailMessageRequest,
-  ): Promise<{ ok: true; messageId: string; threadId: string | null }> {
-    return this.gmailDomain.sendGmailMessage(requestUrl, request);
+    request: SaveLifeOpsGmailDraftRequest,
+  ): Promise<{
+    ok: true;
+    status: "draft_created";
+    draftId: string;
+    threadId: string | null;
+  }> {
+    return this.gmailDomain.saveGmailDraft(requestUrl, request);
   }
 
-  sendGmailReplies(
+  saveGmailReplyDrafts(
     requestUrl: URL,
-    request: SendLifeOpsGmailBatchReplyRequest,
-  ): Promise<LifeOpsGmailBatchReplySendResult> {
-    return this.gmailDomain.sendGmailReplies(requestUrl, request);
+    request: SaveLifeOpsGmailReplyDraftsRequest,
+  ): Promise<LifeOpsGmailReplyDraftSaveResult> {
+    return this.gmailDomain.saveGmailReplyDrafts(requestUrl, request);
   }
 
   // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.

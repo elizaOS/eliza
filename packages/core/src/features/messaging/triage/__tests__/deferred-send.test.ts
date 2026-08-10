@@ -123,6 +123,16 @@ afterEach(() => {
 });
 
 describe("durable deferred MESSAGE core contract", () => {
+	it("refuses to deliver a Gmail draft through a generic message adapter", async () => {
+		const rt = runtime();
+		const service = new TriageService(new MessageRefStore());
+		service.getStore().saveDraft({ ...draft(), source: "gmail" });
+
+		await expect(service.sendDraft(rt, "draft-1")).rejects.toMatchObject({
+			code: "GMAIL_MCP_DRAFT_ONLY",
+		});
+	});
+
 	it("fails closed when no durable scheduler is registered", async () => {
 		const rt = runtime();
 		const service = new TriageService(new MessageRefStore());

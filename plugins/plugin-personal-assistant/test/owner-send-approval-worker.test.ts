@@ -85,12 +85,12 @@ function makeRuntime(rows?: Map<string, Task>): FakeRuntimeHarness {
 }
 
 /**
- * Recording message adapter registered over the default gmail adapter. Sends
+ * Recording message adapter registered over the Discord adapter. Sends
  * are only observable through this — if the worker "succeeds" without going
  * through createDraft + sendDraft, the assertions fail.
  */
 class RecordingAdapter implements MessageAdapter {
-  readonly source = "gmail" as const;
+  readonly source = "discord" as const;
   readonly createDraftCalls: DraftRequest[] = [];
   readonly sentDraftIds: string[] = [];
   /** Optional gate awaited inside sendDraft for concurrency tests. */
@@ -139,7 +139,7 @@ class RecordingAdapter implements MessageAdapter {
 
 function makeDraft(): DraftRequest {
   return {
-    source: "gmail",
+    source: "discord",
     to: [{ identifier: "ada@example.com", displayName: "Ada" }],
     subject: "Quarterly numbers",
     body: "Sending the quarterly numbers as discussed.",
@@ -189,6 +189,20 @@ afterEach(() => {
 });
 
 describe("owner send-approval worker", () => {
+  it("refuses Gmail before an approval task can authorize delivery", async () => {
+    const harness = makeRuntime();
+    const policy = createOwnerSendPolicy();
+
+    await expect(
+      policy.enqueueApproval(
+        harness.runtime,
+        { ...makeDraft(), source: "gmail" },
+        vi.fn(),
+      ),
+    ).rejects.toThrow(/saved drafts only/u);
+    expect(harness.rows.size).toBe(0);
+  });
+
   it("approve (confirm) executes the send from the persisted payload, not the closure", async () => {
     const harness = makeRuntime();
     const { executor, enq, task } = await enqueue(harness);
@@ -203,7 +217,7 @@ describe("owner send-approval worker", () => {
     // The send went through the adapter with the enqueued draft content.
     expect(adapter.createDraftCalls).toHaveLength(1);
     expect(adapter.createDraftCalls[0]).toMatchObject({
-      source: "gmail",
+      source: "discord",
       subject: "Quarterly numbers",
       body: "Sending the quarterly numbers as discussed.",
       to: [{ identifier: "ada@example.com", displayName: "Ada" }],
@@ -238,7 +252,7 @@ describe("owner send-approval worker", () => {
     expect(result.executed).toBe(true);
     expect(freshAdapter.createDraftCalls).toHaveLength(1);
     expect(freshAdapter.createDraftCalls[0]).toMatchObject({
-      source: "gmail",
+      source: "discord",
       subject: "Quarterly numbers",
       body: "Sending the quarterly numbers as discussed.",
       to: [{ identifier: "ada@example.com", displayName: "Ada" }],

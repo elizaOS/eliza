@@ -29,6 +29,7 @@ export { oauthService } from "./oauth-service";
 
 // Provider registry
 export {
+  GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME,
   getAllProviderIds,
   getConfiguredProviders,
   getProvider,
@@ -36,6 +37,8 @@ export {
   isValidProvider,
   OAUTH_PROVIDERS,
   type OAuthProviderConfig,
+  type ResolveOAuthClientCredentialsParams,
+  resolveOAuthClientCredentials,
 } from "./provider-registry";
 
 // Advanced use cases

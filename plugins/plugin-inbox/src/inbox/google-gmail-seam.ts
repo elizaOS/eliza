@@ -4,8 +4,8 @@
  * The inbox plugin legitimately consumes Gmail. This module resolves the
  * `@elizaos/plugin-google-workspace` runtime service (`runtime.getService("google")`),
  * derives the account-scoped connector grant the unsubscribe path needs, and
- * exposes the narrow Gmail surface that surface uses: search, mailto/HTTP
- * unsubscribe send, sender-filter creation, and thread trashing.
+ * exposes the narrow MCP-backed Gmail surface that path uses: search and
+ * draft creation. Gmail MCP has no send, filter, or trash tools.
  *
  * It is the focused successor to the resolver helpers the unsubscribe path used
  * out of PA's `google-plugin-delegates.ts` (`requireGoogleWorkspaceService`,
@@ -22,6 +22,7 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import type {
+  GoogleGmailDraftResult,
   GoogleMessageSummary,
   GoogleParsedMailto,
   IGoogleWorkspaceService,
@@ -68,28 +69,32 @@ function googleSideForAccount(
 /**
  * Derive the Google capabilities granted to a connector account from its
  * metadata + granted OAuth scopes. Mirrors PA's grant derivation for the
- * Gmail-relevant subset (triage / send / manage); identity is always implied.
+ * Gmail-relevant subset (triage / draft / manage); identity is always implied.
  */
 function googleCapabilitiesForAccount(
   account: ConnectorAccount,
 ): LifeOpsGoogleCapability[] {
   const meta = accountMetadata(account);
-  const scopes = stringArray(meta.grantedScopes);
+  const scopes = account.scopes ?? stringArray(meta.grantedScopes);
+  const selectedCapabilities = new Set(account.capabilities ?? []);
   const capabilities = new Set<LifeOpsGoogleCapability>([
     "google.basic_identity",
   ]);
-  if (scopes.some((scope) => scope.includes("gmail.readonly"))) {
-    capabilities.add("google.gmail.triage");
-  }
-  if (scopes.some((scope) => scope.includes("gmail.send"))) {
-    capabilities.add("google.gmail.send");
+  if (
+    selectedCapabilities.has("gmail.read") ||
+    scopes.some((scope) => scope.includes("gmail.readonly"))
+  ) {
     capabilities.add("google.gmail.triage");
   }
   if (
-    scopes.some(
-      (scope) =>
-        scope.includes("gmail.modify") || scope.includes("gmail.settings"),
-    )
+    selectedCapabilities.has("gmail.draft") ||
+    scopes.some((scope) => scope.includes("gmail.compose"))
+  ) {
+    capabilities.add("google.gmail.draft.create");
+  }
+  if (
+    selectedCapabilities.has("gmail.manage") ||
+    scopes.some((scope) => scope.includes("gmail.modify"))
   ) {
     capabilities.add("google.gmail.manage");
     capabilities.add("google.gmail.triage");
@@ -137,13 +142,13 @@ function grantFromAccount(args: {
     provider: "google",
     side: googleSideForAccount(account),
     identity: {},
-    grantedScopes: stringArray(meta.grantedScopes),
+    grantedScopes: account.scopes ?? stringArray(meta.grantedScopes),
     capabilities,
     tokenRef: null,
     mode: "local",
     executionTarget: "local",
     sourceOfTruth: "connector_account",
-    preferredByAgent: meta.isDefault === true,
+    preferredByAgent: account.isDefault === true,
     cloudConnectionId: null,
     connectorAccountId: account.id,
     identityEmail: googleAccountEmail(account),
@@ -196,9 +201,7 @@ async function resolveGoogleConnectorAccount(args: {
   }
   return (
     accounts.find(
-      (account) =>
-        account.status === "connected" &&
-        accountMetadata(account).isDefault === true,
+      (account) => account.status === "connected" && account.isDefault === true,
     ) ??
     accounts.find((account) => account.status === "connected") ??
     accounts[0] ??
@@ -316,18 +319,19 @@ export interface InboxGmailGateway {
     includeSpamTrash?: boolean;
     now?: Date;
   }): Promise<LifeOpsGmailSearchFeed>;
-  /** Send a List-Unsubscribe mailto request for the account behind the grant. */
-  sendMailtoUnsubscribeEmail(
+  /** Save a List-Unsubscribe mailto request as a Gmail draft. */
+  createMailtoUnsubscribeDraft(
     accountId: string,
     mailto: GoogleParsedMailto,
-  ): Promise<void>;
-  /** Create a Gmail filter that trashes future mail from a sender. */
-  createGmailFilterForSender(
-    accountId: string,
-    fromAddress: string,
-  ): Promise<{ filterId: string | null }>;
-  /** Trash an existing Gmail thread. */
-  trashGmailThread(accountId: string, threadId: string): Promise<void>;
+  ): Promise<GoogleGmailDraftResult>;
+  /** Save a reply as a Gmail draft. Official Gmail MCP cannot send it. */
+  createReplyDraft(args: {
+    grant: LifeOpsConnectorGrant;
+    to: string;
+    subject: string;
+    bodyText: string;
+    replyToMessageId: string;
+  }): Promise<GoogleGmailDraftResult>;
 }
 
 function summarizeSearch(
@@ -398,33 +402,29 @@ export function createInboxGmailGateway(
       };
     },
 
-    async sendMailtoUnsubscribeEmail(accountId, mailto): Promise<void> {
-      const send = requireGoogleServiceMethod(
+    async createMailtoUnsubscribeDraft(accountId, mailto) {
+      const createDraft = requireGoogleServiceMethod(
         runtime,
-        "sendMailtoUnsubscribeEmail",
+        "createMailtoUnsubscribeDraft",
       );
-      await send({ accountId, mailto });
+      return createDraft({ accountId, mailto });
     },
 
-    async createGmailFilterForSender(
-      accountId,
-      fromAddress,
-    ): Promise<{ filterId: string | null }> {
-      const createFilter = requireGoogleServiceMethod(
+    async createReplyDraft(args) {
+      if (!args.grant.capabilities.includes("google.gmail.draft.create")) {
+        fail(403, "Google Gmail draft access has not been granted.");
+      }
+      const createDraft = requireGoogleServiceMethod(
         runtime,
-        "createGmailFilterForSender",
+        "createGmailReplyDraft",
       );
-      const filter = await createFilter({
-        accountId,
-        fromAddress,
-        trash: true,
+      return createDraft({
+        accountId: accountIdForGrant(args.grant),
+        to: [args.to],
+        subject: args.subject,
+        bodyText: args.bodyText,
+        replyToMessageId: args.replyToMessageId,
       });
-      return { filterId: filter.filterId };
-    },
-
-    async trashGmailThread(accountId, threadId): Promise<void> {
-      const trash = requireGoogleServiceMethod(runtime, "trashGmailThread");
-      await trash({ accountId, threadId });
     },
   };
 }

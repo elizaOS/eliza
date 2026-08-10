@@ -47,6 +47,10 @@ export interface ConnectorAccountListProps {
     | Promise<ConnectorAccountCreateInput | undefined>
     | ConnectorAccountCreateInput
     | undefined;
+  /** Hide the generic add button when the parent owns a scoped OAuth action. */
+  showAddAccount?: boolean;
+  /** Hide role/privacy controls for identity-neutral account surfaces. */
+  showPolicyControls?: boolean;
   /**
    * When set, this list represents accounts for a single connector role:
    * `OWNER` shows only the user's own account(s); `AGENT` shows only the
@@ -124,6 +128,8 @@ export function ConnectorAccountList({
   selectedAccountId,
   onSelectedAccountIdChange,
   onAddAccount,
+  showAddAccount = true,
+  showPolicyControls = true,
   accountRole,
   externalAccounts,
 }: ConnectorAccountListProps) {
@@ -163,7 +169,8 @@ export function ConnectorAccountList({
 
   // The unknown/unrecognized bucket is read-only: it exists to surface
   // mis-roled accounts, not to create new ones under an unknown role.
-  const canAddAccount = accountRole !== CONNECTOR_UNKNOWN_ROLE_BUCKET;
+  const canAddAccount =
+    showAddAccount && accountRole !== CONNECTOR_UNKNOWN_ROLE_BUCKET;
 
   const handleSelect = (accountId: string) => {
     setConnectorSelectedAccountId(accountId);
@@ -264,6 +271,7 @@ export function ConnectorAccountList({
                 refreshBusy={connectorAccounts.saving.has(
                   `refresh:${account.id}`,
                 )}
+                showPolicyControls={showPolicyControls}
                 onSelect={() => handleSelect(account.id)}
                 onUpdate={async (body) => {
                   await connectorAccounts.update(account.id, body);

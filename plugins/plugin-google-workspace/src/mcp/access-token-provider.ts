@@ -6,6 +6,7 @@
  */
 import { ElizaError } from "@elizaos/core";
 import type { McpAccessTokenProvider } from "@elizaos/plugin-mcp/resource-engine";
+import type { GoogleCapability } from "../scopes.js";
 import type { GoogleAuthClient } from "../types.js";
 import type { GoogleMcpProduct } from "./capability-host";
 
@@ -16,7 +17,7 @@ export type GoogleMcpAuthClient = Pick<
 
 export interface GoogleMcpAuthResolutionRequest {
   accountId: string;
-  capability: "gmail.read" | "calendar.read";
+  capability: GoogleCapability;
   reason: string;
 }
 
@@ -32,6 +33,34 @@ const PRODUCT_AUTH = {
   calendar: {
     capability: "calendar.read",
     reason: "Execute Calendar through the official Google Workspace MCP resource",
+  },
+  drive: {
+    capability: "drive.read",
+    reason: "Execute Drive through the official Google Workspace MCP resource",
+  },
+  docs: {
+    capability: "docs.read",
+    reason: "Execute Docs through the official Google Workspace MCP resource",
+  },
+  sheets: {
+    capability: "sheets.read",
+    reason: "Execute Sheets through the official Google Workspace MCP resource",
+  },
+  slides: {
+    capability: "slides.read",
+    reason: "Execute Slides through the official Google Workspace MCP resource",
+  },
+  chat: {
+    capability: "chat.read",
+    reason: "Execute personal Chat through the official Google Workspace MCP resource",
+  },
+  people: {
+    capability: "people.read",
+    reason: "Execute People through the official Google Workspace MCP resource",
+  },
+  universalSearch: {
+    capability: "workspace.search",
+    reason: "Search Workspace through the official Google Workspace MCP resource",
   },
 } as const satisfies Record<
   GoogleMcpProduct,

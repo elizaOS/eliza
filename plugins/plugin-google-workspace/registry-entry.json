@@ -1,7 +1,7 @@
 {
   "id": "google",
   "name": "Google",
-  "description": "Google connector for Gmail, Calendar, Drive, Meet, and Google Chat. Gmail/Calendar/Drive/Meet share one OAuth grant; Chat uses service-account credentials. Uses Eliza Cloud OAuth by default; falls back to local OAuth2 with developer credentials when GOOGLE_CLIENT_ID/SECRET are set on the agent.",
+  "description": "Personal Google Workspace through Google's official product MCP resources. OAuth tokens stay in the vault and only short-lived access tokens reach Google. Service-account Google Chat remains a separate messaging surface.",
   "npmName": "@elizaos/plugin-google-workspace",
   "version": "2.0.0-beta.0",
   "source": "bundled",
@@ -12,7 +12,11 @@
     "gmail",
     "calendar",
     "drive",
-    "meet",
+    "docs",
+    "sheets",
+    "slides",
+    "people",
+    "mcp",
     "chat",
     "messaging"
   ],
@@ -22,7 +26,7 @@
       "required": false,
       "sensitive": false,
       "label": "OAuth Client ID",
-      "help": "Google OAuth2 client ID for local-OAuth fallback. Not needed when using Eliza Cloud OAuth.",
+      "help": "OAuth client ID for the direct Google authorization-code flow.",
       "advanced": true
     },
     "GOOGLE_CLIENT_SECRET": {
@@ -30,7 +34,7 @@
       "required": false,
       "sensitive": true,
       "label": "OAuth Client Secret",
-      "help": "Google OAuth2 client secret for local-OAuth fallback. Not needed when using Eliza Cloud OAuth.",
+      "help": "Bootstrap value imported into the secrets vault before OAuth use. It is never stored on a connector account.",
       "advanced": true
     },
     "GOOGLE_REDIRECT_URI": {
@@ -38,7 +42,7 @@
       "required": false,
       "sensitive": false,
       "label": "Redirect URI",
-      "help": "OAuth2 redirect URI for local-OAuth fallback. A loopback URL is recommended for local auth.",
+      "help": "OAuth2 callback URI registered with Google. A loopback URL is recommended for a local agent host.",
       "advanced": true
     }
   },
@@ -70,15 +74,19 @@
   "accounts": {
     "owner": {
       "supported": true,
-      "authKind": "oauth-cloud",
-      "credentialKeys": [],
-      "notes": "The user's own Google account, connected via Eliza Cloud OAuth so the agent can read and act on the user's Gmail, Calendar, Drive, and Meet on the user's behalf."
+      "authKind": "oauth",
+      "credentialKeys": [
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_REDIRECT_URI"
+      ],
+      "notes": "One direct OAuth connection to the user's personal Google account. Agent access is controlled by bindings and selected MCP products."
     },
     "agent": {
-      "supported": true,
-      "authKind": "oauth-cloud",
+      "supported": false,
+      "authKind": "oauth",
       "credentialKeys": [],
-      "notes": "A separate Google account that represents the agent's own identity. Same OAuth flow, different Google account at the OAuth screen."
+      "notes": "Personal Google does not create a second agent-identity OAuth account; bind an agent to an authorized user account instead."
     }
   },
   "channels": ["googlechat"]

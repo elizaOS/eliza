@@ -1325,13 +1325,8 @@ async function seedBenchmarkCaseFixtures(
     );
   }
 
-  // 3) Seed a Google OAuth connector grant + token file so calendar/inbox
-  //    cases can reach the mock Google server. The mock's
-  //    `refreshGoogleTokensFromSeededGrants` reads plain-JSON files under
-  //    `${ELIZA_STATE_DIR}/credentials/lifeops/google/...` and indexes them
-  //    by `accessToken`. The lifeops handler reads the same file via
-  //    `readStoredGoogleTokenFile`, which transparently supports legacy
-  //    plaintext tokens, so a single plain-JSON write satisfies both sides.
+  // 3) Seed a Google connector grant plus its in-memory vault credential so
+  //    calendar/inbox cases can authenticate against the deterministic mock.
   try {
     const seedModule = (await import(seedGrantsModuleUrl)) as {
       seedGoogleConnectorGrant: (
@@ -1348,9 +1343,8 @@ async function seedBenchmarkCaseFixtures(
       grantId: `bench-google-${runtime.agentId}`,
       capabilities: [
         "google.calendar.read",
-        "google.calendar.write",
         "google.gmail.triage",
-        "google.gmail.send",
+        "google.gmail.draft.create",
         "google.gmail.manage",
       ],
       email: "owner@example.test",

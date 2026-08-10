@@ -15,7 +15,11 @@ import type {
   MessageAdapter,
   UUID,
 } from "@elizaos/core";
-import { getDefaultTriageService, parseInteractionBlocks } from "@elizaos/core";
+import {
+  getConnectorAccountManager,
+  getDefaultTriageService,
+  parseInteractionBlocks,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const TEST_AGENT_ID = "11111111-1111-1111-1111-111111111111" as UUID;
@@ -809,6 +813,33 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       return { drafts, sent, archived };
     }
 
+    async function registerFakeGoogleMcpDraft(runtime: IAgentRuntime) {
+      const createGmailReplyDraft = vi.fn(async () => ({
+        draftId: "google-draft-1",
+        threadId: "google-thread-1",
+      }));
+      (runtime as { getService?: unknown }).getService = (name: string) =>
+        name === "google" ? { createGmailReplyDraft } : null;
+      await getConnectorAccountManager(runtime).upsertAccount("google", {
+        id: "google-personal-1",
+        provider: "google",
+        role: "OWNER",
+        purpose: ["reading", "writing"],
+        accessGate: "open",
+        status: "connected",
+        scopes: [
+          "https://www.googleapis.com/auth/gmail.readonly",
+          "https://www.googleapis.com/auth/gmail.compose",
+        ],
+        capabilities: ["gmail.read", "gmail.draft"],
+        selectedProducts: ["gmail"],
+        isDefault: true,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      return createGmailReplyDraft;
+    }
+
     function collectCallback(): {
       texts: string[];
       callback: (content: Content) => Promise<[]>;
@@ -823,11 +854,11 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       };
     }
 
-    it("appends send/discard chips to a drafted-reply confirmation and keeps the values the approve turn accepts", async () => {
-      registerFakeGmailAdapter();
+    it("offers to save a Gmail draft and never presents a send affordance", async () => {
       const { runtime } = makeDbRuntime((sql) =>
         sql.includes("WHERE id =") ? [makeTriageRow({ id: "entry-42" })] : [],
       );
+      const createGmailReplyDraft = await registerFakeGoogleMcpDraft(runtime);
       const { texts, callback } = collectCallback();
 
       const result = await inboxAction.handler(
@@ -854,7 +885,9 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       // and both carry the structured block appended after the prose.
       expect(texts).toHaveLength(1);
       expect(result.text).toBe(texts[0]);
-      expect(texts[0]).toContain("Confirm before sending");
+      expect(texts[0]).toContain("Confirm to save it in Gmail");
+      expect(texts[0]).toContain("cannot send mail");
+      expect(createGmailReplyDraft).not.toHaveBeenCalled();
       const { blocks } = parseInteractionBlocks(texts[0] ?? "");
       expect(blocks).toHaveLength(1);
       const block = blocks[0];
@@ -871,16 +904,19 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
         "inbox approve entry-42",
         "inbox archive entry-42",
       ]);
-      expect(block.options.map((o) => o.label)).toEqual(["Send", "Discard"]);
+      expect(block.options.map((o) => o.label)).toEqual([
+        "Save draft",
+        "Discard",
+      ]);
     });
 
-    it("a confirmed approve dispatches the stored draft and emits NO chips", async () => {
-      const { sent } = registerFakeGmailAdapter();
+    it("a confirmed Gmail approve saves through official MCP and emits no chips", async () => {
       const { runtime } = makeDbRuntime((sql) =>
         sql.includes("WHERE id =")
           ? [makeTriageRow({ id: "entry-42", draft_response: "Yes, Friday." })]
           : [],
       );
+      const createGmailReplyDraft = await registerFakeGoogleMcpDraft(runtime);
       const { texts, callback } = collectCallback();
 
       const result = await inboxAction.handler(
@@ -894,8 +930,16 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(sent).toHaveLength(1);
-      expect(texts[0]).toContain("Sent reply");
+      expect(createGmailReplyDraft).toHaveBeenCalledWith({
+        accountId: "google-personal-1",
+        to: ["alice@example.com"],
+        subject: "Email from Alice",
+        bodyText: "Yes, Friday.",
+        replyToMessageId: "gmail-msg-1",
+      });
+      expect(result.data).toMatchObject({ draftOnly: true });
+      expect(texts[0]).toContain("Saved the reply as a Gmail draft");
+      expect(texts[0]).toContain("cannot send mail");
       expect(parseInteractionBlocks(texts[0] ?? "").blocks).toHaveLength(0);
     });
 

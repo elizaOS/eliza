@@ -303,6 +303,13 @@ export class InboxUnsubscribeService {
       );
     }
 
+    if (request.blockAfter || request.trashExisting) {
+      fail(
+        422,
+        "Official Gmail MCP cannot create sender filters or trash existing threads. Use Gmail directly for those actions.",
+      );
+    }
+
     const grant = await this.gmail.requireGmailGrant();
     const accountId =
       grant.connectorAccountId ??
@@ -341,10 +348,12 @@ export class InboxUnsubscribeService {
     let status: EmailUnsubscribeStatus = "manual_required";
     let httpStatusCode: number | null = null;
     let httpFinalUrl: string | null = null;
-    let filterCreated = false;
-    let filterId: string | null = null;
-    let threadsTrashed = 0;
+    const filterCreated = false;
+    const filterId: string | null = null;
+    const threadsTrashed = 0;
     let errorMessage: string | null = null;
+    let providerDraft: { draftId: string; threadId: string | null } | null =
+      null;
 
     try {
       if (sender.unsubscribeHttpUrl) {
@@ -364,39 +373,12 @@ export class InboxUnsubscribeService {
         if (!mailto) {
           fail(400, "List-Unsubscribe mailto target is invalid.");
         }
-        await this.gmail.sendMailtoUnsubscribeEmail(accountId, mailto);
-        method = "mailto";
-        status = "succeeded";
-      }
-
-      if (request.blockAfter || request.trashExisting) {
-        if (!grant.capabilities.includes("google.gmail.manage")) {
-          fail(
-            403,
-            "Blocking or trashing subscription email requires Gmail manage access.",
-          );
-        }
-      }
-
-      if (request.blockAfter) {
-        const filter = await this.gmail.createGmailFilterForSender(
+        providerDraft = await this.gmail.createMailtoUnsubscribeDraft(
           accountId,
-          senderEmail,
+          mailto,
         );
-        filterCreated = true;
-        filterId = filter.filterId;
-        status = "succeeded";
-      }
-
-      if (request.trashExisting) {
-        const threadIds = [...new Set(sender.allThreadIds.filter(Boolean))];
-        for (const threadId of threadIds) {
-          await this.gmail.trashGmailThread(accountId, threadId);
-          threadsTrashed += 1;
-        }
-        if (threadIds.length > 0) {
-          status = "succeeded";
-        }
+        method = "mailto";
+        status = "draft_created";
       }
 
       if (
@@ -438,8 +420,9 @@ export class InboxUnsubscribeService {
         messageCount: sender.messageCount,
         latestMessageId: sender.latestMessageId,
         latestThreadId: sender.latestThreadId,
-        blockAfter: request.blockAfter === true,
-        trashExisting: request.trashExisting === true,
+        blockAfter: false,
+        trashExisting: false,
+        providerDraft,
       },
       createdAt: now,
       updatedAt: now,

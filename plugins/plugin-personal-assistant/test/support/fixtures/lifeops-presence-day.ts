@@ -232,7 +232,7 @@ export const LIFEOPS_PRESENCE_DAY_SAMPLES: readonly LifeOpsPresenceHourSample[] 
       idleTimeSeconds: 18,
       onBattery: false,
       transition: "active",
-      note: "Outbound Gmail send from owner-authored draft.",
+      note: "Owner-authored reply saved to Gmail drafts.",
     },
     {
       hour: 16,

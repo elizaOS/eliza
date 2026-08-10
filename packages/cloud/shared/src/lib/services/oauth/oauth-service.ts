@@ -302,13 +302,16 @@ class OAuthService {
     const adapter = await this.findAdapterForConnection(connectionId, organizationId);
     if (!adapter) throw Errors.connectionNotFound(connectionId);
 
-    // Revoke FIRST, then bump version — prevents race where concurrent
-    // getValidToken caches a still-active token under the new version key.
-    await adapter.revoke(organizationId, connectionId);
     await agentConnectorBindingsRepository.disableByCredential(organizationId, connectionId);
-
-    const version = await incrementOAuthVersion(organizationId, adapter.platform);
-    await tokenCache.invalidate(organizationId, connectionId, version);
+    try {
+      await adapter.revoke(organizationId, connectionId);
+    } finally {
+      // error-policy:J6 revocation may fail upstream, but bindings and cached
+      // bearers must still be fenced so a failed disconnect never leaves an
+      // agent authorized with a previously cached token.
+      const version = await incrementOAuthVersion(organizationId, adapter.platform);
+      await tokenCache.invalidate(organizationId, connectionId, version);
+    }
 
     logger.info("[OAuthService] Connection revoked", {
       organizationId,

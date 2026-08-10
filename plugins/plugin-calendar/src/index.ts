@@ -65,7 +65,6 @@ export {
   type EventEditorDrawerProps,
   type EventEditorMode,
 } from "./components/EventEditorDrawer.js";
-export * from "./google-watch/index.js";
 export {
   type CalendarSourceWriteOutcome,
   type UseCalendarSourcesResult,

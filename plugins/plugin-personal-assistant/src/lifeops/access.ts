@@ -66,7 +66,7 @@ export type GoogleCapabilityStatus = {
   hasCalendarRead: boolean;
   hasCalendarWrite: boolean;
   hasGmailTriage: boolean;
-  hasGmailSend: boolean;
+  hasGmailDraft: boolean;
   hasGmailManage: boolean;
 };
 
@@ -83,7 +83,7 @@ export async function getGoogleCapabilityStatus(
       hasCalendarRead: false,
       hasCalendarWrite: false,
       hasGmailTriage: false,
-      hasGmailSend: false,
+      hasGmailDraft: false,
       hasGmailManage: false,
     };
   }
@@ -91,12 +91,10 @@ export async function getGoogleCapabilityStatus(
   return {
     status,
     connected: status.connected,
-    hasCalendarRead:
-      capabilities.has("google.calendar.read") ||
-      capabilities.has("google.calendar.write"),
-    hasCalendarWrite: capabilities.has("google.calendar.write"),
+    hasCalendarRead: capabilities.has("google.calendar.read"),
+    hasCalendarWrite: false,
     hasGmailTriage: capabilities.has("google.gmail.triage"),
-    hasGmailSend: capabilities.has("google.gmail.send"),
+    hasGmailDraft: capabilities.has("google.gmail.draft.create"),
     hasGmailManage: capabilities.has("google.gmail.manage"),
   };
 }
@@ -116,7 +114,7 @@ export function calendarWriteUnavailableMessage(
   google: GoogleCapabilityStatus,
 ): string {
   return google.connected
-    ? "Google Calendar write access is not granted. Reconnect Google in LifeOps settings to allow calendar event creation."
+    ? "Personal Google Calendar is view-only because its MCP server does not expose the atomic version required for safe event writes."
     : "Google Calendar is not connected. Connect Google in LifeOps settings before creating calendar events.";
 }
 
@@ -132,6 +130,6 @@ export function gmailSendUnavailableMessage(
   google: GoogleCapabilityStatus,
 ): string {
   return google.connected
-    ? "Gmail send access is not granted. Reconnect Google in LifeOps settings to allow email sending."
-    : "Gmail is not connected. Connect Google in LifeOps settings before sending email.";
+    ? "Gmail draft access is not granted. Reconnect Google in LifeOps settings to allow draft creation."
+    : "Gmail is not connected. Connect Google in LifeOps settings before creating drafts.";
 }

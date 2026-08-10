@@ -1,7 +1,7 @@
 {
   "uuid": "00000000-0000-4000-8000-000cloudmgd0",
   "lastMigration": 33,
-  "name": "Eliza Cloud Managed Google",
+  "name": "Eliza Cloud Google OAuth and bindings",
   "endpointPrefix": "",
   "latency": 0,
   "port": 3006,
@@ -10,13 +10,13 @@
     {
       "uuid": "00000001-0000-4000-8000-000cloudmgd0",
       "type": "http",
-      "documentation": "Status (stub: not connected so runtime falls back to direct OAuth)",
+      "documentation": "List direct OAuth connections (empty)",
       "method": "get",
-      "endpoint": "eliza/google/status",
+      "endpoint": "oauth/connections",
       "responses": [
         {
           "uuid": "00000002-0000-4000-8000-000cloudmgd0",
-          "body": "{\"connected\":false,\"scopes\":[],\"email\":null}",
+          "body": "{\"connections\":[]}",
           "latency": 0,
           "statusCode": 200,
           "label": "OK",
@@ -41,9 +41,9 @@
     {
       "uuid": "00000003-0000-4000-8000-000cloudmgd0",
       "type": "http",
-      "documentation": "List accounts (empty)",
+      "documentation": "List agent connector bindings (empty)",
       "method": "get",
-      "endpoint": "eliza/google/accounts",
+      "endpoint": "eliza/agents/:agentId/connectors",
       "responses": [
         {
           "uuid": "00000004-0000-4000-8000-000cloudmgd0",

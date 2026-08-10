@@ -245,6 +245,24 @@ import {
 const calendarsResponse: ListLifeOpsCalendarsResponse = {
   calendars: [
     {
+      provider: "eliza",
+      side: "owner",
+      grantId: "eliza-calendar",
+      connectorAccountId: "eliza-calendar",
+      accountEmail: null,
+      calendarId: "primary",
+      summary: "Eliza Calendar",
+      description: null,
+      primary: true,
+      accessRole: "owner",
+      backgroundColor: null,
+      foregroundColor: null,
+      timeZone: "America/New_York",
+      selected: true,
+      includeInFeed: true,
+      selectionVersion: 0,
+    },
+    {
       provider: "google",
       side: "owner",
       grantId: "connector-account:acct-1",
@@ -253,7 +271,7 @@ const calendarsResponse: ListLifeOpsCalendarsResponse = {
       calendarId: "owner@example.com",
       summary: "Owner Calendar",
       description: null,
-      primary: true,
+      primary: false,
       accessRole: "owner",
       backgroundColor: null,
       foregroundColor: null,
@@ -284,12 +302,12 @@ const calendarsResponse: ListLifeOpsCalendarsResponse = {
 };
 
 const editEvent: LifeOpsCalendarEvent = {
-  id: "agent-1:google:owner:calendar:owner@example.com:evt_1",
+  id: "agent-1:eliza:owner:calendar:primary:evt_1",
   externalId: "evt_1",
   agentId: "agent-1",
-  provider: "google",
+  provider: "eliza",
   side: "owner",
-  calendarId: "owner@example.com",
+  calendarId: "primary",
   title: "Quarterly review",
   description: "Numbers walkthrough",
   location: "HQ Boardroom",
@@ -314,7 +332,7 @@ const editEvent: LifeOpsCalendarEvent = {
   metadata: { etag: '"event-editor-v1"' },
   syncedAt: new Date(2026, 5, 16).toISOString(),
   updatedAt: new Date(2026, 5, 16).toISOString(),
-  grantId: "connector-account:acct-1",
+  grantId: "eliza-calendar",
 };
 
 function saveButton(): HTMLButtonElement {
@@ -374,7 +392,7 @@ describe("EventEditorDrawer", () => {
     expect(saveButton().disabled).toBe(true);
   });
 
-  it("populates the calendar select from getLifeOpsCalendars", async () => {
+  it("offers writable calendars for creation and excludes Google MCP calendars", async () => {
     render(
       <EventEditorDrawer
         open
@@ -391,9 +409,10 @@ describe("EventEditorDrawer", () => {
       }),
     );
     await waitFor(() =>
-      expect(screen.getByText("Owner Calendar")).toBeTruthy(),
+      expect(screen.getByText("Eliza Calendar")).toBeTruthy(),
     );
-    expect(screen.getByText("Team Calendar")).toBeTruthy();
+    expect(screen.queryByText("Owner Calendar")).toBeNull();
+    expect(screen.queryByText("Team Calendar")).toBeNull();
   });
 
   it("blocks saving instead of fabricating a Primary calendar when source discovery fails", async () => {
@@ -525,7 +544,7 @@ describe("EventEditorDrawer", () => {
       />,
     );
     await waitFor(() =>
-      expect(screen.getByText("Owner Calendar")).toBeTruthy(),
+      expect(screen.getByText("Eliza Calendar")).toBeTruthy(),
     );
     fireEvent.change(screen.getByLabelText("Event title"), {
       target: { value: "Coffee" },
@@ -684,8 +703,8 @@ describe("EventEditorDrawer", () => {
         "evt_1",
         {
           side: "owner",
-          grantId: "connector-account:acct-1",
-          calendarId: "owner@example.com",
+          grantId: "eliza-calendar",
+          calendarId: "primary",
           expectedProviderVersion: '"event-editor-v1"',
           idempotencyKey: expect.stringMatching(/^event-editor:/),
           notifyAttendees: false,
@@ -827,6 +846,34 @@ describe("EventEditorDrawer", () => {
     expect(screen.queryByTestId("event-editor-read-only-reason")).toBeNull();
   });
 
+  it("renders Google MCP events read-only even when stale REST-era etags exist", () => {
+    const googleEvent: LifeOpsCalendarEvent = {
+      ...editEvent,
+      provider: "google",
+      metadata: { etag: '"legacy-rest-etag"' },
+    };
+
+    expect(eventEditorMutability(googleEvent)).toEqual({
+      kind: "read_only",
+      reason: "google_mcp_atomic_version_unavailable",
+    });
+
+    render(
+      <EventEditorDrawer
+        open
+        mode="edit"
+        event={googleEvent}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expectNoSaveAffordances();
+    expect(
+      screen.getByTestId("event-editor-read-only-reason").textContent,
+    ).toContain("atomic version checks");
+    expect(deleteButton().disabled).toBe(true);
+  });
+
   it("renders Apple events read-only instead of offering saves that dead-end", async () => {
     const appleEvent: LifeOpsCalendarEvent = {
       ...editEvent,
@@ -901,29 +948,6 @@ describe("EventEditorDrawer", () => {
     expect(deleteButton().disabled).toBe(true);
   });
 
-  it("renders a Google event without a provider version read-only with a refresh reason", async () => {
-    const staleEvent: LifeOpsCalendarEvent = {
-      ...editEvent,
-      metadata: {},
-    };
-
-    render(
-      <EventEditorDrawer
-        open
-        mode="edit"
-        event={staleEvent}
-        onClose={vi.fn()}
-      />,
-    );
-
-    expectNoSaveAffordances();
-    expect(
-      screen.getByTestId("event-editor-read-only-reason").textContent,
-    ).toContain("Refresh the calendar");
-    expect(deleteButton().disabled).toBe(true);
-    expect(uiClient.updateLifeOpsCalendarEvent).not.toHaveBeenCalled();
-  });
-
   it("enables organizer delete when organizer identity is only a matching account email", async () => {
     const emailOrganizerEvent: LifeOpsCalendarEvent = {
       ...editEvent,
@@ -976,7 +1000,7 @@ describe("EventEditorDrawer", () => {
       />,
     );
 
-    // The event itself is still saveable (Google + etag) — only delete lacks
+    // The built-in event is still saveable with its local version — only delete lacks
     // an executor-honorable cancellation mode.
     expect(screen.getByText("Save", { selector: "span.sr-only" })).toBeTruthy();
     expect(deleteButton().disabled).toBe(true);

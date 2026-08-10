@@ -19,19 +19,6 @@ import {
   SsrfBlockedError,
 } from "@elizaos/core";
 import type { GoogleCalendarEvent } from "@elizaos/plugin-google-workspace";
-// Runtime error classes come from the dependency-light calendar subpath so
-// importing CalendarService never evaluates the Google Workspace root barrel
-// (whose client factory eagerly imports the optional `googleapis` SDK — absent
-// from lean production images, which aborted plugin import before the local
-// calendar view could register). Types stay on the root barrel (erased).
-import {
-  GoogleCalendarMutationError,
-  GoogleCalendarSyncTokenExpiredError,
-} from "@elizaos/plugin-google-workspace/calendar";
-import type {
-  DispatchResult,
-  ScheduledTaskDispatchRecord,
-} from "@elizaos/plugin-scheduling";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -70,12 +57,6 @@ import {
   listNativeAppleCalendars,
   updateNativeAppleCalendarEvent,
 } from "../apple-calendar.js";
-import {
-  type GoogleCalendarNotificationHeaders,
-  type GoogleCalendarWatchChannel,
-  GoogleCalendarWatchLifecycle,
-  type GoogleCalendarWebhookResult,
-} from "../google-watch/index.js";
 import {
   fetchIcsFeed,
   fingerprintIcsSourceUrl,
@@ -125,6 +106,7 @@ import {
   lifeOpsCalendarSummaryFromGoogle,
   requireGoogleServiceMethod,
 } from "../internal/google-delegates.js";
+import { googleCalendarPollingHealth } from "../internal/google-polling.js";
 import {
   normalizeOptionalBoolean,
   normalizeOptionalConnectorMode,
@@ -207,7 +189,6 @@ type AppleCalendarFailure = Extract<FeatureResult<unknown>, { ok: false }>;
 
 type GoogleCalendarSyncBatch = {
   events: GoogleCalendarEvent[];
-  nextSyncToken: string | null;
 };
 
 const CALENDAR_FEED_FRESHNESS_MS = 60_000;
@@ -277,26 +258,6 @@ function shouldIncludeElizaCalendar(request: {
 }): boolean {
   if (request.side && request.side !== "owner") return false;
   return !request.grantId || isElizaCalendarGrant(request.grantId);
-}
-
-function googleEventIntersectsWindow(
-  event: GoogleCalendarEvent,
-  timeMin: string,
-  timeMax: string,
-): boolean {
-  if (event.status === "cancelled" || !event.start || !event.end) {
-    return false;
-  }
-  const start = Date.parse(event.start);
-  const end = Date.parse(event.end);
-  const windowStart = Date.parse(timeMin);
-  const windowEnd = Date.parse(timeMax);
-  return (
-    Number.isFinite(start) &&
-    Number.isFinite(end) &&
-    end > windowStart &&
-    start < windowEnd
-  );
 }
 
 function isGoogleCalendarDisconnected(error: unknown): boolean {
@@ -791,19 +752,18 @@ function requireGoogleProviderVersion(event: LifeOpsCalendarEvent): string {
 }
 
 function translateGoogleMutationError(error: unknown): never {
-  if (error instanceof GoogleCalendarMutationError) {
-    if (error.outcome === "precondition_failed") {
+  if (error instanceof ElizaError) {
+    if (
+      error.code === "GOOGLE_MCP_CONDITIONAL_WRITE_UNSUPPORTED" ||
+      error.code === "GOOGLE_MCP_IDEMPOTENCY_UNSUPPORTED" ||
+      error.code === "GOOGLE_MCP_SAFE_CALENDAR_WRITE_UNSUPPORTED"
+    ) {
       fail(
         409,
-        "The calendar event changed after approval; create a fresh approval.",
-        "PROVIDER_PRECONDITION_FAILED",
+        "Google Calendar MCP cannot perform the requested conditional mutation.",
+        "CALENDAR_CONDITIONAL_MUTATION_UNSUPPORTED",
       );
     }
-    fail(
-      422,
-      "Google Calendar rejected the mutation before acceptance.",
-      "PROVIDER_REJECTED_PERMANENT",
-    );
   }
   throw error;
 }
@@ -1156,7 +1116,6 @@ export class CalendarService extends Service {
   private readonly repo: CalendarRepository;
   private gate: CalendarHostGate;
   private microsoftPort: MicrosoftGraphCalendarPort;
-  private readonly googleWatch: GoogleCalendarWatchLifecycle;
   private readonly googleSyncLocks = new Map<string, Promise<void>>();
   private readonly microsoftSyncLocks = new Map<string, Promise<void>>();
   private icsSecretCleanupDrain: Promise<void> | null = null;
@@ -1166,9 +1125,6 @@ export class CalendarService extends Service {
     this.repo = new CalendarRepository(this.runtime);
     this.gate = createDefaultCalendarHostGate(this.runtime);
     this.microsoftPort = new DefaultMicrosoftGraphCalendarPort(this.runtime);
-    this.googleWatch = new GoogleCalendarWatchLifecycle(this.runtime, {
-      syncChannel: (channel) => this.syncGoogleCalendarWatchChannel(channel),
-    });
   }
 
   static override async start(
@@ -1179,27 +1135,11 @@ export class CalendarService extends Service {
     // for upcoming events so persisted join tasks resolve after a restart.
     // Best-effort: the schema may not be migrated yet on first boot.
     void service.restoreMeetingAutoJoinAnchorsOnBoot();
-    void service.installGoogleWatchMaintenanceOnBoot();
     void service.drainIcsSecretCleanupOnBoot();
     return service;
   }
 
   override async stop(): Promise<void> {}
-
-  private async installGoogleWatchMaintenanceOnBoot(): Promise<void> {
-    try {
-      await this.runtime.initPromise;
-      await this.googleWatch.installMaintenanceTask();
-    } catch (error) {
-      // error-policy:J5 Service.start launches maintenance installation in the
-      // background; this handler is where its rejection is observed.
-      this.runtime.reportError("calendar:google-watch-install", error);
-      logger.warn(
-        { src: "calendar:google-watch", error },
-        "[CalendarService] Google Calendar watch maintenance was not installed.",
-      );
-    }
-  }
 
   private async drainIcsSecretCleanupOnBoot(): Promise<void> {
     try {
@@ -2968,7 +2908,6 @@ export class CalendarService extends Service {
     timeMin: string;
     timeMax: string;
     timeZone: string;
-    syncToken?: string;
   }): Promise<GoogleCalendarSyncBatch> {
     const listEventPage = requireGoogleServiceMethod(
       this.runtime,
@@ -2977,7 +2916,6 @@ export class CalendarService extends Service {
     const events: GoogleCalendarEvent[] = [];
     const seenPageTokens = new Set<string>();
     let pageToken: string | undefined;
-    let nextSyncToken: string | null = null;
 
     do {
       const page = await listEventPage({
@@ -2986,14 +2924,10 @@ export class CalendarService extends Service {
         maxResults: 2500,
         pageToken,
         timeZone: args.timeZone,
-        ...(args.syncToken
-          ? { syncToken: args.syncToken }
-          : { timeMin: args.timeMin, timeMax: args.timeMax }),
+        timeMin: args.timeMin,
+        timeMax: args.timeMax,
       });
       events.push(...page.events);
-      if (page.nextSyncToken) {
-        nextSyncToken = page.nextSyncToken;
-      }
       if (page.nextPageToken && seenPageTokens.has(page.nextPageToken)) {
         throw new ElizaError("Google Calendar repeated an event page token.", {
           code: "GOOGLE_CALENDAR_REPEATED_PAGE_TOKEN",
@@ -3011,21 +2945,7 @@ export class CalendarService extends Service {
       }
     } while (pageToken);
 
-    if (args.syncToken && !nextSyncToken) {
-      throw new ElizaError(
-        "Google Calendar incremental sync completed without a replacement sync token.",
-        {
-          code: "GOOGLE_CALENDAR_MISSING_SYNC_TOKEN",
-          context: {
-            accountId: args.accountId,
-            calendarId: args.calendarId,
-          },
-          severity: "fatal",
-        },
-      );
-    }
-
-    return { events, nextSyncToken };
+    return { events };
   }
 
   private async withGoogleSyncLock<T>(
@@ -3073,26 +2993,7 @@ export class CalendarService extends Service {
     );
     const source = feed.sources[0];
     if (!source) return feed;
-    try {
-      await this.googleWatch.ensureForSource({
-        grantId: source.key.grantId,
-        connectorAccountId: source.key.connectorAccountId,
-        side: source.key.side,
-        calendarId: source.key.calendarId,
-        calendarSummary: source.summary,
-        calendarAccessRole: source.accessRole,
-        timeZone: args.timeZone,
-        windowStartAt: args.timeMin,
-        windowEndAt: args.timeMax,
-      });
-    } catch (error) {
-      // error-policy:J4 The data snapshot remains explicitly fresh while the
-      // independent push-delivery health reports its degraded state.
-      this.runtime.reportError("calendar:google-watch-create", error, {
-        source: source.key,
-      });
-    }
-    source.changeDelivery = await this.googleWatch.sourceHealth(source.key);
+    source.changeDelivery = googleCalendarPollingHealth(source.syncedAt);
     return feed;
   }
 
@@ -3116,160 +3017,64 @@ export class CalendarService extends Service {
     );
     const syncedAt = new Date().toISOString();
     const accountId = accountIdForGrant(grant);
-    const syncState = await this.repo.getCalendarSyncState(
+    // Official Calendar MCP exposes paginated window reads, not REST sync
+    // tokens. Every refresh therefore reconciles a complete polling window.
+    const batch = await this.loadGoogleCalendarSyncBatch({
+      accountId,
+      calendarId: args.calendarId,
+      timeMin: args.timeMin,
+      timeMax: args.timeMax,
+      timeZone: args.timeZone,
+    });
+
+    const removedEventIds = new Set<string>();
+    const existingEvents = await this.repo.listCalendarEvents(
       this.agentId(),
       "google",
-      args.calendarId,
+      args.timeMin,
+      args.timeMax,
       grant.side,
       grant.id,
     );
-    let incremental = Boolean(
-      syncState?.nextSyncToken &&
-        syncState.windowStartAt <= args.timeMin &&
-        syncState.windowEndAt >= args.timeMax,
+    const existingEventsForCalendar = existingEvents.filter(
+      (event) => event.calendarId === args.calendarId,
     );
-    let batch: GoogleCalendarSyncBatch;
-    try {
-      batch = await this.loadGoogleCalendarSyncBatch({
-        accountId,
-        calendarId: args.calendarId,
-        timeMin: args.timeMin,
-        timeMax: args.timeMax,
-        timeZone: args.timeZone,
-        ...(incremental && syncState?.nextSyncToken
-          ? { syncToken: syncState.nextSyncToken }
-          : {}),
-      });
-    } catch (error) {
-      // error-policy:J1 The calendar sync boundary translates Google's
-      // expected 410 cursor expiry into the provider-prescribed full snapshot.
-      if (!(error instanceof GoogleCalendarSyncTokenExpiredError)) {
-        throw error;
+    const localAvailabilityEvents = existingEventsForCalendar.filter(
+      isLocallyManagedAvailabilityEvent,
+    );
+    const fullEvents = batch.events.filter(
+      (event) => event.status !== "cancelled",
+    );
+    const providerEvents = fullEvents.map((event) =>
+      lifeOpsCalendarEventFromGoogle({
+        event,
+        grant,
+        agentId: this.agentId(),
+        syncedAt,
+      }),
+    );
+    let nextEvents = [...providerEvents, ...localAvailabilityEvents];
+    const nextEventIds = new Set(nextEvents.map((event) => event.id));
+    for (const event of existingEventsForCalendar) {
+      if (!nextEventIds.has(event.id)) {
+        removedEventIds.add(event.id);
       }
-      incremental = false;
-      batch = await this.loadGoogleCalendarSyncBatch({
-        accountId,
-        calendarId: args.calendarId,
-        timeMin: args.timeMin,
-        timeMax: args.timeMax,
-        timeZone: args.timeZone,
-      });
     }
-
-    let nextEvents: LifeOpsCalendarEvent[];
-    const removedEventIds = new Set<string>();
-    const changedEvents: LifeOpsCalendarEvent[] = [];
-    let stateWindowStartAt = args.timeMin;
-    let stateWindowEndAt = args.timeMax;
-
-    if (incremental && syncState) {
-      stateWindowStartAt = syncState.windowStartAt;
-      stateWindowEndAt = syncState.windowEndAt;
-      const cached = await this.repo.listCalendarEvents(
-        this.agentId(),
-        "google",
-        undefined,
-        undefined,
-        grant.side,
-        grant.id,
-      );
-      const cachedByExternalId = new Map(
-        cached
-          .filter((event) => event.calendarId === args.calendarId)
-          .map((event) => [event.externalId, event] as const),
-      );
-
-      for (const googleEvent of batch.events) {
-        const cachedEvent = cachedByExternalId.get(googleEvent.id);
-        if (
-          !googleEventIntersectsWindow(
-            googleEvent,
-            stateWindowStartAt,
-            stateWindowEndAt,
-          )
-        ) {
-          await this.repo.deleteCalendarEventByExternalId(
-            this.agentId(),
-            "google",
-            args.calendarId,
-            googleEvent.id,
-            grant.side,
-            grant.id,
-          );
-          if (cachedEvent) {
-            removedEventIds.add(cachedEvent.id);
-          }
-          continue;
-        }
-        const event = lifeOpsCalendarEventFromGoogle({
-          event: googleEvent,
-          grant,
-          agentId: this.agentId(),
-          syncedAt,
-        });
-        await this.repo.upsertCalendarEvent(event, grant.side);
-        changedEvents.push(event);
-      }
-      nextEvents = (
-        await this.repo.listCalendarEvents(
-          this.agentId(),
-          "google",
-          args.timeMin,
-          args.timeMax,
-          grant.side,
-          grant.id,
-        )
-      ).filter((event) => event.calendarId === args.calendarId);
-    } else {
-      const existingEvents = await this.repo.listCalendarEvents(
-        this.agentId(),
-        "google",
-        args.timeMin,
-        args.timeMax,
-        grant.side,
-        grant.id,
-      );
-      const existingEventsForCalendar = existingEvents.filter(
-        (event) => event.calendarId === args.calendarId,
-      );
-      const localAvailabilityEvents = existingEventsForCalendar.filter(
-        isLocallyManagedAvailabilityEvent,
-      );
-      const fullEvents = batch.events.filter(
-        (event) => event.status !== "cancelled",
-      );
-      const providerEvents = fullEvents.map((event) =>
-        lifeOpsCalendarEventFromGoogle({
-          event,
-          grant,
-          agentId: this.agentId(),
-          syncedAt,
-        }),
-      );
-      nextEvents = [...providerEvents, ...localAvailabilityEvents];
-      const nextEventIds = new Set(nextEvents.map((event) => event.id));
-      for (const event of existingEventsForCalendar) {
-        if (!nextEventIds.has(event.id)) {
-          removedEventIds.add(event.id);
-        }
-      }
-      await this.repo.pruneCalendarEventsInWindow(
-        this.agentId(),
-        "google",
-        args.calendarId,
-        args.timeMin,
-        args.timeMax,
-        [
-          ...fullEvents.map((event) => event.id),
-          ...localAvailabilityEvents.map((event) => event.externalId),
-        ],
-        grant.side,
-        grant.id,
-      );
-      for (const event of nextEvents) {
-        await this.repo.upsertCalendarEvent(event, grant.side);
-      }
-      changedEvents.push(...providerEvents);
+    await this.repo.pruneCalendarEventsInWindow(
+      this.agentId(),
+      "google",
+      args.calendarId,
+      args.timeMin,
+      args.timeMax,
+      [
+        ...fullEvents.map((event) => event.id),
+        ...localAvailabilityEvents.map((event) => event.externalId),
+      ],
+      grant.side,
+      grant.id,
+    );
+    for (const event of nextEvents) {
+      await this.repo.upsertCalendarEvent(event, grant.side);
     }
 
     const removedIds = [...removedEventIds];
@@ -3282,11 +3087,11 @@ export class CalendarService extends Service {
       });
     }
     await this.deleteCalendarReminderPlansForEvents(removedIds);
-    await this.syncCalendarReminderPlans(changedEvents);
+    await this.syncCalendarReminderPlans(providerEvents);
     await reconcileMeetingAutoJoin({
       runtime: this.runtime,
       agentId: this.agentId(),
-      events: changedEvents,
+      events: providerEvents,
       removedEventIds: removedIds,
     });
     await this.repo.upsertCalendarSyncState(
@@ -3297,9 +3102,9 @@ export class CalendarService extends Service {
         grantId: grant.id,
         connectorAccountId: accountId,
         calendarId: args.calendarId,
-        windowStartAt: stateWindowStartAt,
-        windowEndAt: stateWindowEndAt,
-        nextSyncToken: batch.nextSyncToken,
+        windowStartAt: args.timeMin,
+        windowEndAt: args.timeMax,
+        nextSyncToken: null,
         syncedAt,
       }),
     );
@@ -3328,77 +3133,6 @@ export class CalendarService extends Service {
       timeMax: args.timeMax,
       syncedAt,
     };
-  }
-
-  private async syncGoogleCalendarWatchChannel(
-    channel: GoogleCalendarWatchChannel,
-  ): Promise<void> {
-    const requestUrl = new URL(channel.webhookUrl);
-    const grant = await this.gate.requireGoogleCalendarGrant(
-      requestUrl,
-      "local",
-      channel.side,
-      channel.grantId,
-    );
-    if (
-      grant.id !== channel.grantId ||
-      grant.side !== channel.side ||
-      accountIdForGrant(grant) !== channel.connectorAccountId
-    ) {
-      throw new ElizaError(
-        "Google Calendar watch account binding no longer matches its connector grant.",
-        {
-          code: "GOOGLE_CALENDAR_WATCH_BINDING_MISMATCH",
-          context: {
-            channelId: channel.channelId,
-            grantId: channel.grantId,
-            connectorAccountId: channel.connectorAccountId,
-          },
-          severity: "fatal",
-        },
-      );
-    }
-    const key = [
-      this.agentId(),
-      channel.side,
-      channel.grantId,
-      channel.calendarId,
-    ].join(":");
-    await this.withGoogleSyncLock(key, () =>
-      this.syncGoogleCalendarFeedUnlocked({
-        requestUrl,
-        requestedMode: "local",
-        requestedSide: channel.side,
-        grantId: channel.grantId,
-        calendarId: channel.calendarId,
-        calendarSummary: channel.calendarSummary,
-        calendarAccessRole: channel.calendarAccessRole,
-        timeMin: channel.windowStartAt,
-        timeMax: channel.windowEndAt,
-        timeZone: channel.timeZone,
-      }),
-    );
-  }
-
-  async handleGoogleCalendarNotification(
-    headers: GoogleCalendarNotificationHeaders,
-  ): Promise<GoogleCalendarWebhookResult> {
-    return this.googleWatch.handleNotification(headers);
-  }
-
-  async runGoogleCalendarWatchScheduledTask(
-    record: ScheduledTaskDispatchRecord,
-  ): Promise<DispatchResult | undefined> {
-    if (record.metadata?.calendarGoogleWatchOperation === "maintenance") {
-      await this.drainIcsSecretCleanupAtBoundary("maintenance");
-    }
-    return this.googleWatch.runScheduledTask(record);
-  }
-
-  async revokeGoogleCalendarWatchesByAccount(
-    connectorAccountId: string,
-  ): Promise<void> {
-    await this.googleWatch.revokeAccount(connectorAccountId);
   }
 
   private async withMicrosoftSyncLock<T>(
@@ -3944,7 +3678,7 @@ export class CalendarService extends Service {
       error: args.error,
     });
     if (args.calendar.provider === "google") {
-      health.changeDelivery = await this.googleWatch.sourceHealth(health.key);
+      health.changeDelivery = googleCalendarPollingHealth(syncState.syncedAt);
     }
     return {
       calendarId: args.calendar.calendarId,
@@ -5611,7 +5345,6 @@ export class CalendarService extends Service {
           calendarId: context.calendarId,
           eventId: context.masterEventId,
           sendUpdates: args.request.notifyAttendees === true ? "all" : "none",
-          expectedEtag: args.request.expectedProviderVersion,
         });
       } catch (error) {
         // error-policy:J1 CalendarService translates definitive Google
@@ -5795,7 +5528,6 @@ export class CalendarService extends Service {
           calendarId: context.calendarId,
           eventId: context.masterEventId,
           sendUpdates: args.request.notifyAttendees === true ? "all" : "none",
-          expectedEtag: args.request.expectedProviderVersion,
         });
       } catch (error) {
         // error-policy:J1 CalendarService translates definitive Google
@@ -5978,7 +5710,6 @@ export class CalendarService extends Service {
         calendarId: request.calendarId ?? undefined,
         eventId: targetEventId,
         sendUpdates: request.notifyAttendees === true ? "all" : "none",
-        expectedEtag: request.expectedProviderVersion,
       });
     } catch (error) {
       translateGoogleMutationError(error);
@@ -6179,7 +5910,6 @@ export class CalendarService extends Service {
         eventId: target.externalId,
         responseStatus: request.responseStatus,
         sendUpdates: request.notifyAttendees === true ? "all" : "none",
-        expectedEtag: request.expectedProviderVersion,
       });
     } catch (error) {
       translateGoogleMutationError(error);

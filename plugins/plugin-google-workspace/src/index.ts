@@ -1,16 +1,16 @@
 /**
  * Plugin entry for @elizaos/plugin-google-workspace: the barrel that re-exports every
- * public symbol and defines `googlePlugin`. The plugin registers
- * `GoogleWorkspaceService` (Gmail/Calendar/Drive/Meet over one account-scoped
- * OAuth grant) plus the Google Chat connector services (`GoogleChatService`,
+ * public symbol and defines `googlePlugin`. The plugin registers the personal
+ * `GoogleWorkspaceService` (official Google Workspace MCP servers over one
+ * account-scoped OAuth grant) plus the Google Chat connector services (`GoogleChatService`,
  * `GoogleChatWorkflowCredentialProvider` — service-account auth, MessageConnector
  * messaging). At init it attaches both connector-account providers to the
  * runtime's `ConnectorAccountManager` so the generic connector HTTP routes can
- * manage accounts and drive OAuth; registering the Google provider also mounts
- * the Gmail send MessageConnector (`source: "gmail"`, aliases email/mail) so
- * MESSAGE op=send can compose and send email. Its static action array remains
- * empty, while the Workspace service materializes curated Gmail and Calendar
- * actions only for connected accounts whose discovered MCP schemas match.
+ * manage accounts and drive OAuth. Its static action array remains empty, while
+ * the Workspace service materializes curated read and draft actions only for
+ * connected accounts whose discovered MCP schemas match. Gmail delivery is
+ * deliberately absent because the official Gmail MCP server creates drafts but
+ * does not send them.
  * Chat messaging remains on the MessageConnector registered by
  * `GoogleChatService`.
  */
@@ -24,7 +24,6 @@ import { GoogleWorkspaceService } from "./service.js";
 import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 export * from "./auth.js";
-export * from "./calendar.js";
 export * from "./chat/accounts.js";
 export type {
   GoogleChatAccountConfig,
@@ -35,17 +34,11 @@ export type {
 } from "./chat/config.js";
 export * from "./chat/connector-account-provider.js";
 export * from "./chat/types.js";
-export * from "./client-factory.js";
 export * from "./connector-account-provider.js";
 export * from "./credential-resolver.js";
-export * from "./drive.js";
-export * from "./gmail.js";
-export * from "./gmail-message-connector.js";
-export { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 export * from "./mcp/access-token-provider.js";
 export * from "./mcp/calendar-read-adapter.js";
 export * from "./mcp/capability-host.js";
-export * from "./meet.js";
 export * from "./scopes.js";
 export * from "./types.js";
 export { GoogleChatService, GoogleChatWorkflowCredentialProvider, GoogleWorkspaceService };
@@ -53,7 +46,7 @@ export { GoogleChatService, GoogleChatWorkflowCredentialProvider, GoogleWorkspac
 export const googlePlugin: Plugin = {
   name: GOOGLE_SERVICE_NAME,
   description:
-    "Google Workspace integration for Gmail, Calendar, Drive, Meet, and Chat with account-scoped OAuth (Chat uses service-account auth)",
+    "Personal Google Workspace through official MCP servers and separate service-account Google Chat messaging",
   services: [GoogleWorkspaceService, GoogleChatService, GoogleChatWorkflowCredentialProvider],
   actions: [],
   providers: [],
@@ -78,12 +71,11 @@ export const googlePlugin: Plugin = {
   },
 
   init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
-    const hasClient = Boolean(config.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID);
-    const hasSecret = Boolean(config.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET);
-
     logger.info("Initializing Google Workspace plugin");
-    logger.info(`  - OAuth client configured: ${hasClient && hasSecret ? "Yes" : "No"}`);
-    logger.info("  - Available capabilities: Gmail, Calendar, Drive, Meet, Chat");
+    logger.info("  - Personal Google execution: official product-specific MCP servers");
+    logger.info(
+      "  - Available capabilities: Gmail, Calendar, Drive, Docs, Sheets, Slides, Chat, People"
+    );
     logger.info("  - Requested OAuth scopes are derived from selected capabilities");
 
     // Register with the ConnectorAccountManager so the generic HTTP CRUD/OAuth

@@ -23,7 +23,6 @@ export const specializedLiveE2EPaths = [
   "plugins/plugin-personal-assistant/test/assistant-user-journeys.live.e2e.test.ts",
   "plugins/plugin-personal-assistant/test/lifeops-calendar-chat.live.e2e.test.ts",
   "plugins/plugin-personal-assistant/test/lifeops-chat.live.e2e.test.ts",
-  "plugins/plugin-personal-assistant/test/lifeops-gmail-chat.live.e2e.test.ts",
   "plugins/plugin-personal-assistant/test/lifeops-memory.live.e2e.test.ts",
   "plugins/plugin-personal-assistant/test/selfcontrol-chat.live.e2e.test.ts",
   "plugins/plugin-personal-assistant/test/selfcontrol-desktop.live.e2e.test.ts",
