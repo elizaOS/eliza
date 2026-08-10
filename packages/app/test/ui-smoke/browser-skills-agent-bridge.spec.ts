@@ -151,8 +151,11 @@ test("browser route is chat/voice-drivable through the agent bridge", async ({
     )
     .toBe("example.com");
 
+  // "new-tab" intentionally opens a fresh browsing context at the default home
+  // URL and never consumes the address-field draft; navigating the typed
+  // address is the "go" control's job.
   const click = (await interact(page, "browser", "agent-click", {
-    id: "new-tab",
+    id: "go",
   })) as { ok?: boolean };
   expect(click?.ok).toBe(true);
 

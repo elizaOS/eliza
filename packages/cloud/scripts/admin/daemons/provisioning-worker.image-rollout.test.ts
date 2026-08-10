@@ -19,6 +19,7 @@ const targetDigest = `sha256:${"a".repeat(64)}`;
 function installDeps(
   inFlight: number,
   candidates: Array<Record<string, string>> = [],
+  maxInflightUpgrades = 3,
 ) {
   const countInFlightByTypes = mock(async () => inFlight);
   const listRunningWithDigestOtherThan = mock(async () => candidates);
@@ -27,7 +28,10 @@ function installDeps(
     job: { id: "upgrade-job" },
   }));
   __setDepsForTests({
-    containersEnv: { defaultAgentImage: () => configuredImage },
+    containersEnv: {
+      defaultAgentImage: () => configuredImage,
+      maxInflightUpgrades: () => maxInflightUpgrades,
+    },
     resolveImageDigest: async () => targetDigest,
     jobsRepository: { countInFlightByTypes },
     agentSandboxesRepository: { listRunningWithDigestOtherThan },
@@ -56,6 +60,16 @@ describe("processFleetUpgradeCycle shared image-change capacity", () => {
       "agent_upgrade",
       "agent_admin_canary_image",
     ]);
+    expect(deps.listRunningWithDigestOtherThan).not.toHaveBeenCalled();
+    expect(deps.enqueueAgentUpgradeOnce).not.toHaveBeenCalled();
+  });
+
+  test("an env-configured zero limit pauses rollouts without a source hot patch", async () => {
+    const deps = installDeps(0, [], 0);
+
+    const result = await processFleetUpgradeCycle();
+
+    expect(result).toMatchObject({ action: "skip_capacity", inFlight: 0 });
     expect(deps.listRunningWithDigestOtherThan).not.toHaveBeenCalled();
     expect(deps.enqueueAgentUpgradeOnce).not.toHaveBeenCalled();
   });
@@ -293,6 +307,7 @@ describe("real one-shot daemon entrypoint", () => {
       "@elizaos/cloud-shared/lib/config/containers-env": {
         containersEnv: {
           defaultAgentImage: () => configuredImage,
+          maxInflightUpgrades: () => 3,
         },
         assertSSHKeyAvailable: () => {},
       },

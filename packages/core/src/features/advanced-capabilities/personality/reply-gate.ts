@@ -2,9 +2,10 @@
  * Pure reply-gate decision logic for the personality capability. Given a user's
  * and the global slot's `reply_gate` setting, decides whether the agent may
  * respond at all before the model call — supporting the `on_mention` and
- * `never_until_lift` mute modes and an explicit, testable list of lift phrases
- * that unmute the agent. Consumed by the message runtime to short-circuit muted
- * conversations without spending a model call.
+ * `never_until_lift` mute modes, the `addressed_or_ambient` mode (decided
+ * post-Stage-1 by the engagement addressing gate), and an explicit, testable
+ * list of lift phrases that unmute the agent. Consumed by the message runtime
+ * to short-circuit muted conversations without spending a model call.
  */
 import type { PersonalitySlot, ReplyGateMode } from "./types.ts";
 
@@ -20,7 +21,14 @@ import type { PersonalitySlot, ReplyGateMode } from "./types.ts";
  *   3. "always" (no gate)
  */
 export type ReplyGateDecision =
-	| { allow: true; reason: "no_gate" | "lift_signal" | "on_mention_satisfied" }
+	| {
+			allow: true;
+			reason:
+				| "no_gate"
+				| "lift_signal"
+				| "on_mention_satisfied"
+				| "addressed_or_ambient";
+	  }
 	| {
 			allow: false;
 			reason: "never_until_lift" | "on_mention_not_addressed";
@@ -85,6 +93,17 @@ export function decideReplyGate(input: ReplyGateInput): ReplyGateDecision {
 
 	if (!mode || mode === "always") {
 		return { allow: true, reason: "no_gate" };
+	}
+
+	if (mode === "addressed_or_ambient") {
+		// Engage when addressed or when chat is undirected, never when the turn
+		// is addressed to another participant. The "never" half cannot be
+		// decided here — addressedTo is a Stage-1 model output and this gate
+		// runs BEFORE the model call — so ingress always allows and the
+		// post-Stage-1 engagement addressing gate (services/message.ts) drops
+		// addressed-to-other turns. This mode names the default routing
+		// behavior explicitly; only an explicit "always" bypasses that gate.
+		return { allow: true, reason: "addressed_or_ambient" };
 	}
 
 	if (mode === "on_mention") {

@@ -449,11 +449,17 @@ export const searchKnowledgeAction: Action = {
     logger.info(
       `[SEARCH_KNOWLEDGE] query="${query}" role=${actor.role} activeRoomPublic=${activeRoomIsPublic} matched=${items.length}`,
     );
+    // Only the snippet list is canonical user-facing content: the excerpts
+    // must reach the user byte-exact, so that branch settles verifiedUserFacing.
+    // The empty outcome is diagnostic — settling it verbatim shipped raw
+    // machinery ("No knowledge items match for …") into chat; leaving it
+    // unsettled lets the model voice the miss in character.
     return {
       success: true,
       text,
-      userFacingText: text,
-      verifiedUserFacing: true,
+      ...(items.length
+        ? { userFacingText: text, verifiedUserFacing: true }
+        : {}),
       data: { query, count: items.length, items },
     };
   },

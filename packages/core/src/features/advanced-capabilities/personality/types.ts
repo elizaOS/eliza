@@ -42,7 +42,11 @@ export type PersonalityScope = "user" | "global";
 export type VerbosityLevel = "terse" | "normal" | "verbose";
 export type ToneLevel = "warm" | "neutral" | "direct" | "cold";
 export type FormalityLevel = "casual" | "professional" | "formal";
-export type ReplyGateMode = "always" | "on_mention" | "never_until_lift";
+export type ReplyGateMode =
+	| "always"
+	| "addressed_or_ambient"
+	| "on_mention"
+	| "never_until_lift";
 
 export type PersonalityTrait = "verbosity" | "tone" | "formality";
 
@@ -64,6 +68,7 @@ export const FORMALITY_VALUES: readonly FormalityLevel[] = [
 ] as const;
 export const REPLY_GATE_VALUES: readonly ReplyGateMode[] = [
 	"always",
+	"addressed_or_ambient",
 	"on_mention",
 	"never_until_lift",
 ] as const;

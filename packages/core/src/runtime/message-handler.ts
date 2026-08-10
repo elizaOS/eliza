@@ -243,7 +243,7 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
 
 export function routeMessageHandlerOutput(
 	output: V5MessageHandlerOutput,
-	options?: { suppressToolPromotion?: boolean },
+	options?: { addressedToOtherParticipant?: boolean },
 ): MessageHandlerRoute {
 	const processMessage = output.processMessage;
 	if (processMessage === "IGNORE") {
@@ -251,6 +251,21 @@ export function routeMessageHandlerOutput(
 	}
 	if (processMessage === "STOP") {
 		return { type: "stopped", output };
+	}
+
+	// Full engagement addressing gate (extends #9874 item 1): the caller has
+	// positively resolved this turn as explicitly addressed to ANOTHER room
+	// participant — the agent is overhearing, not being spoken to. An overheard
+	// turn must not ship a reply, enter the planner, or execute tools, so every
+	// RESPOND branch below terminal-routes to ignored. This supersedes the old
+	// suppressToolPromotion option, which only blocked the simple→tool
+	// promotion while still shipping the Stage-1 reply. Uniform, NOT
+	// bot-specific: it fires identically for human and bot addressees. The
+	// caller owns the bypasses (turn addresses the agent, personality
+	// reply_gate "always", addressee-resolution failure fails open) — by the
+	// time the flag reaches this router it is authoritative.
+	if (options?.addressedToOtherParticipant) {
+		return { type: "ignored", output };
 	}
 
 	const allContexts = [...output.plan.contexts];
@@ -284,17 +299,14 @@ export function routeMessageHandlerOutput(
 	// routing layer.
 	const candidateActionsRequestPlanning =
 		hasCandidateActions && output.plan.requiresTool !== false;
-	// #9874 item 1: when the caller has identified this turn as explicitly
-	// addressed to another participant (not us), do NOT promote a simple-path turn
-	// into forced tool planning. The agent is overhearing talk it was not asked to
-	// act on; forcing a tool fabricates a phantom task (the false-ack seed). The
-	// flag is a uniform addressing signal — it does not depend on whether the other
-	// participant is a bot. The Stage-1 simple reply still ships via the
-	// final_reply branch below.
+	// #9874's separate promotion suppression collapsed into the addressing gate
+	// above: a turn addressed to another participant never reaches this branch,
+	// so promotion can no longer fabricate a phantom tool task from overheard
+	// talk (the false-ack seed).
 	const promotionRequested =
 		(requiresTool || candidateActionsRequestPlanning) &&
 		nonSimpleContexts.length === 0;
-	if (promotionRequested && !options?.suppressToolPromotion) {
+	if (promotionRequested) {
 		return {
 			type: "planning_needed",
 			output,
