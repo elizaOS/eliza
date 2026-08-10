@@ -1,6 +1,6 @@
 /**
  * Boots the canonical device bridge through a real AgentRuntime and HTTP/WebSocket
- * transport, proving attach-gated handlers and runtime-owned teardown.
+ * transport, proving attach-gated handlers and server-owned teardown.
  */
 
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -71,7 +71,7 @@ function closeServer(server: http.Server): Promise<void> {
 }
 
 describe("canonical mobile device bridge headless boot", () => {
-	it("waits for attach, serves through one handler, and tears transport down", async () => {
+	it("waits for attach, serves through one handler, and lets the server tear transport down", async () => {
 		const bridge = await import("./mobile-device-bridge-bootstrap");
 		const runtime = new AgentRuntime({
 			logLevel: "fatal",
@@ -205,6 +205,13 @@ describe("canonical mobile device bridge headless boot", () => {
 				socket?.once("close", () => resolve()),
 			);
 			await runtime.stop();
+			expect(server.listenerCount("upgrade")).toBe(1);
+			expect(bridge.mobileDeviceBridge.status().pendingRequests).toBe(1);
+
+			// The HTTP server owns the process-global transport. Runtime replacement
+			// must not tear it away from the incoming runtime, while the server close
+			// boundary still releases every transport resource.
+			server.emit("close");
 			await pendingStopped;
 			await clientClosed;
 			expect(bridge.mobileDeviceBridge.status().connected).toBe(false);
