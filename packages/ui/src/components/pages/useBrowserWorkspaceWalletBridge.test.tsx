@@ -42,6 +42,71 @@ afterEach(() => {
 });
 
 describe("useBrowserWorkspaceWalletBridge committed-origin ordering", () => {
+  it("deduplicates ready broadcasts by redacted payload value across fresh poll objects", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const postMessage = vi
+      .spyOn(iframe.contentWindow as Window, "postMessage")
+      .mockImplementation(() => undefined);
+    const readyCalls = () =>
+      postMessage.mock.calls.filter(
+        ([message]) =>
+          (message as { type?: unknown }).type === BROWSER_WALLET_READY_TYPE,
+      );
+    const iframeRefs: RefObject<Map<string, HTMLIFrameElement | null>> = {
+      current: new Map([[TAB_ID, iframe]]),
+    };
+    const activeTab = tab("https://wallet.example/app");
+    let activeWalletState = walletState(4);
+    const { rerender } = renderHook(() =>
+      useBrowserWorkspaceWalletBridge({
+        iframeRefs,
+        workspaceTabs: [activeTab],
+        walletState: activeWalletState,
+        loadWalletState: async () => activeWalletState,
+      }),
+    );
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            type: BROWSER_WALLET_REQUEST_TYPE,
+            requestId: "prove-origin",
+            method: "getState",
+          },
+          origin: "https://wallet.example",
+          source: iframe.contentWindow,
+        }),
+      );
+      await Promise.resolve();
+    });
+    expect(readyCalls()).toHaveLength(1);
+
+    const previousState = activeWalletState;
+    activeWalletState = walletState(4);
+    expect(activeWalletState).not.toBe(previousState);
+    rerender();
+    expect(readyCalls()).toHaveLength(1);
+
+    activeWalletState = walletState(5);
+    rerender();
+    expect(readyCalls()).toHaveLength(2);
+    expect(readyCalls().at(-1)).toEqual([
+      {
+        type: BROWSER_WALLET_READY_TYPE,
+        state: expect.objectContaining({ pendingApprovals: 5 }),
+      },
+      "https://wallet.example",
+    ]);
+
+    const changedState = activeWalletState;
+    activeWalletState = walletState(5);
+    expect(activeWalletState).not.toBe(changedState);
+    rerender();
+    expect(readyCalls()).toHaveLength(2);
+  });
+
   it("suppresses unproven and cross-origin transition broadcasts, then sends the latest state to the exact proven origin", async () => {
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
