@@ -280,13 +280,13 @@ describe("CALENDAR_SOURCES action", () => {
     });
   });
 
-  it("maps incomplete Google OAuth env to a verified google-workspace config card", async () => {
+  it("maps a missing vaulted Google OAuth registration to a verified config card", async () => {
     const { runtime, manager } = runtimeFixture();
     manager.registerProvider({
       provider: "google",
       startOAuth: vi.fn(async () => {
         throw new Error(
-          "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured.",
+          "Google OAuth requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the vault.",
         );
       }),
     });

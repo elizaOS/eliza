@@ -311,7 +311,7 @@ describeLive("CALENDAR_SOURCES live-model trajectories", () => {
       provider: "google",
       startOAuth: async () => {
         throw new Error(
-          "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured.",
+          "Google OAuth requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the vault.",
         );
       },
     });

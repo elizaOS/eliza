@@ -138,9 +138,12 @@ function createDurableVaultService(vaultEntries: Map<string, string>) {
   };
 }
 
-/** Vault-backed app-secret service used only for the OAuth client secret. */
+/** Vault-backed OAuth application registration used for token refresh. */
 function createAppSecretsVault() {
-  const entries = new Map<string, string>([["GOOGLE_CLIENT_SECRET", "client-secret"]]);
+  const entries = new Map<string, string>([
+    ["GOOGLE_CLIENT_ID", "client-id"],
+    ["GOOGLE_CLIENT_SECRET", "client-secret"],
+  ]);
   return {
     entries,
     async setGlobal(key: string, value: string): Promise<boolean> {
@@ -163,7 +166,7 @@ function createRuntime(
   return {
     agentId: AGENT_ID,
     getService: (name: string) => services[name] ?? null,
-    getSetting: (key: string) => (key === "GOOGLE_CLIENT_ID" ? "client-id" : undefined),
+    getSetting: () => undefined,
     adapter: storage,
   } as unknown as IAgentRuntime;
 }
@@ -222,7 +225,12 @@ describe("connector credential persist → restart → resolve round-trip", () =
     expect(vaultRef).toBe(`connector.${AGENT_ID}.google.${ACCOUNT_ID}.oauth_tokens`);
     // Precedence: account tokens land only in the durable credential store.
     expect(state.vaultEntries.get(vaultRef)).toBe(TOKENS_JSON);
-    expect(secrets.entries).toEqual(new Map([["GOOGLE_CLIENT_SECRET", "client-secret"]]));
+    expect(secrets.entries).toEqual(
+      new Map([
+        ["GOOGLE_CLIENT_ID", "client-id"],
+        ["GOOGLE_CLIENT_SECRET", "client-secret"],
+      ])
+    );
 
     // Restart: fresh service instances, same durable token state.
     const restarted = await resolveAfterRestart(state, {
@@ -327,7 +335,7 @@ describe("manager-path durability across restart (real core manager + adapter)",
       agentId: AGENT_ID,
       adapter,
       getService: (name: string) => services[name] ?? null,
-      getSetting: (key: string) => (key === "GOOGLE_CLIENT_ID" ? "client-id" : undefined),
+      getSetting: () => undefined,
       getMessageConnectors: () => [],
       getPostConnectors: () => [],
       registerMessageConnector: () => undefined,

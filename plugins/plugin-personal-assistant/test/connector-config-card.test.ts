@@ -224,10 +224,10 @@ describe("CONNECTOR Google connect handoff cards", () => {
     });
   });
 
-  it("maps incomplete GOOGLE_CLIENT_* Error to google-workspace setup card", async () => {
+  it("maps a missing vaulted Google OAuth registration to its setup card", async () => {
     mocks.startGoogleConnector.mockRejectedValue(
       new Error(
-        "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured.",
+        "Google OAuth requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the vault.",
       ),
     );
     const result = await connect("google");

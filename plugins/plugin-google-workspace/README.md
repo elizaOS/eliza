@@ -47,13 +47,20 @@ The official endpoint and capability manifest is shared with Cloud in `packages/
 
 ## Configuration
 
-A Google Cloud OAuth client and redirect URI are required. The client secret must be stored in the runtime secrets service; connector accounts store only secret references.
+A Google Cloud OAuth client registration is required because Google's MCP
+resources do not support dynamic client registration. Both registration values
+are stored in the runtime vault; no Google OAuth environment variables are
+required during normal operation. Connector accounts store only secret
+references.
 
 ```text
-GOOGLE_CLIENT_ID
-GOOGLE_REDIRECT_URI
+GOOGLE_CLIENT_ID       # vault/secret-manager value
 GOOGLE_CLIENT_SECRET   # vault/secret-manager value
 ```
+
+The local control plane derives the callback from the OAuth start request. For
+the standard development server, register
+`http://localhost:31337/api/connectors/google/oauth/callback` with Google.
 
 For a one-time migration from an existing environment value, set
 `GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV=1`. Without that explicit flag, a missing

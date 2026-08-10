@@ -369,33 +369,6 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
 export type PluginLoadReasons = Map<string, string>;
 
 /**
- * Explicit Google signals only — never inferred from the universal Calendar
- * home tile (Apple/Microsoft/ICS also use Calendar).
- */
-function shouldLoadGoogleWorkspace(
-  config: ElizaConfig,
-  env: NodeJS.ProcessEnv,
-  pluginEntries: Record<string, { enabled?: boolean } | undefined> | undefined,
-): boolean {
-  if (pluginEntries?.["google-workspace"]?.enabled === true) {
-    return true;
-  }
-
-  const connectors = config.connectors as Record<string, unknown> | undefined;
-  if (isGoogleChatConfigured(connectors?.googlechat)) {
-    return true;
-  }
-
-  // The secret normally lives only in the runtime vault, which this
-  // synchronous collector cannot inspect. The connector provider validates it
-  // before authorization, so the non-secret app identifiers are the narrow
-  // truthful load signal here.
-  const clientId = env.GOOGLE_CLIENT_ID?.trim();
-  const redirectUri = env.GOOGLE_REDIRECT_URI?.trim();
-  return Boolean(clientId && redirectUri);
-}
-
-/**
  * Collect plugin package names to load from config, env, feature flags, and
  * connector-derived allow-list mutations.
  *
@@ -848,11 +821,10 @@ export function collectPluginNames(
   // hard-depends on plugin-scheduling (watch/reminder spine); always companion
   // that primitive when calendar is present.
   //
-  // Do NOT infer Google Workspace from Calendar alone — Calendar also covers
-  // Apple/Microsoft/ICS. Load google-workspace only on an explicit Google
-  // signal (entries enable, googlechat connector, or the non-secret Google
-  // OAuth client ID + redirect URI), and never when
-  // entries["google-workspace"].enabled === false.
+  // Personal Google setup must exist before its OAuth application registration
+  // is stored, so desktop runtimes load the connector by default. This does not
+  // expose actions: the connector materializes them only for connected,
+  // product-bound accounts. An explicit plugin disable remains authoritative.
   //
   // Run BEFORE the mobile allow-list so Node-only Workspace cannot be re-added
   // after mobile filtering (APK has no google-workspace bundle).
@@ -864,14 +836,10 @@ export function collectPluginNames(
   }
   if (
     !pluginsToLoad.has("@elizaos/plugin-google-workspace") &&
-    !isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace") &&
-    shouldLoadGoogleWorkspace(config, process.env, pluginEntries)
+    !isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace")
   ) {
     pluginsToLoad.add("@elizaos/plugin-google-workspace");
-    track(
-      "@elizaos/plugin-google-workspace",
-      "explicit Google signal (entries / googlechat / GOOGLE_CLIENT_*)",
-    );
+    track("@elizaos/plugin-google-workspace", "personal Google setup surface");
   }
   // Final deny: explicit disable wins even if an earlier path added Workspace.
   if (isPluginExplicitlyDisabled("@elizaos/plugin-google-workspace")) {

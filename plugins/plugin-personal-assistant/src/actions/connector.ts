@@ -524,16 +524,16 @@ async function dispatchGoogle(
             },
           };
         }
-        // Incomplete GOOGLE_CLIENT_* / redirect config throws a plain Error from
-        // readClientConfig — map to the same actionable setup card.
+        // A missing vaulted Google OAuth app registration throws a plain Error
+        // from the connector provider — map it to the actionable setup card.
         if (
           error instanceof Error &&
-          /GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_REDIRECT_URI/i.test(
+          /GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|Google OAuth/i.test(
             error.message,
           )
         ) {
           const text = withConfigCard(
-            "Google OAuth is incomplete. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI, then try connect again.",
+            "Google OAuth is incomplete. Store the Google OAuth client ID and client secret in the vault, then try connect again.",
             "google-workspace",
           );
           return {

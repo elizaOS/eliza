@@ -70,7 +70,7 @@ describe("plugin-google-workspace shouldEnable", () => {
     ).toBe(true);
   });
 
-  it("skips accounts rows with enabled=false when detecting credentials", () => {
+  it("keeps personal Google setup visible when a Chat account is disabled", () => {
     expect(
       shouldEnable(
         ctx({
@@ -85,30 +85,30 @@ describe("plugin-google-workspace shouldEnable", () => {
           },
         })
       )
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("does not enable when googlechat is explicitly disabled", () => {
+  it("keeps personal Google setup visible when Google Chat is disabled", () => {
     expect(
       shouldEnable(
         ctx({
           config: { connectors: { googlechat: { enabled: false } } },
         })
       )
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("does not enable for an empty googlechat object", () => {
+  it("keeps personal Google setup visible for an empty Chat configuration", () => {
     expect(
       shouldEnable(
         ctx({
           config: { connectors: { googlechat: {} } },
         })
       )
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("does not enable merely because calendar is enabled (Apple/Microsoft/ICS)", () => {
+  it("exposes personal Google independently of the Calendar plugin", () => {
     expect(
       shouldEnable(
         ctx({
@@ -117,7 +117,7 @@ describe("plugin-google-workspace shouldEnable", () => {
           },
         })
       )
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("enables when plugins.entries.google-workspace is explicitly enabled", () => {
@@ -132,36 +132,27 @@ describe("plugin-google-workspace shouldEnable", () => {
     ).toBe(true);
   });
 
-  it("enables from non-secret OAuth config when the client secret is vault-only", () => {
+  it("does not inspect legacy OAuth environment configuration", () => {
     expect(
       shouldEnable(
         ctx({
           env: {
             GOOGLE_CLIENT_ID: "client",
-            GOOGLE_REDIRECT_URI: "https://example.com/oauth/callback",
           } as NodeJS.ProcessEnv,
         })
       )
     ).toBe(true);
   });
 
-  it("does not enable when redirect URI is missing from OAuth config", () => {
-    expect(
-      shouldEnable(
-        ctx({
-          env: {
-            GOOGLE_CLIENT_ID: "client",
-          } as NodeJS.ProcessEnv,
-        })
-      )
-    ).toBe(false);
+  it("exposes setup without legacy OAuth environment configuration", () => {
+    expect(shouldEnable(ctx({}))).toBe(true);
   });
 
-  it("stays off with empty config and no OAuth env", () => {
-    expect(shouldEnable(ctx({}))).toBe(false);
+  it("exposes personal Google setup with empty config and no OAuth env", () => {
+    expect(shouldEnable(ctx({}))).toBe(true);
   });
 
-  it("honors entries google-workspace enabled=false over OAuth env and googlechat", () => {
+  it("honors entries google-workspace enabled=false over googlechat", () => {
     expect(
       shouldEnable(
         ctx({
@@ -171,11 +162,6 @@ describe("plugin-google-workspace shouldEnable", () => {
               entries: { "google-workspace": { enabled: false } },
             },
           },
-          env: {
-            GOOGLE_CLIENT_ID: "client",
-            GOOGLE_CLIENT_SECRET: "secret",
-            GOOGLE_REDIRECT_URI: "https://example.com/oauth/callback",
-          } as NodeJS.ProcessEnv,
         })
       )
     ).toBe(false);
