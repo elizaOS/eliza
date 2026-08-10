@@ -70,6 +70,10 @@ const deviceExtensionSurfaceUITestsSwift = readFileSync(
   path.join(iosAppRoot, "AppUITests/DeviceExtensionSurfaceUITests.swift"),
   "utf8",
 );
+const widgetGalleryCaptureUITestsSwift = readFileSync(
+  path.join(iosAppRoot, "AppUITests/WidgetGalleryCaptureUITests.swift"),
+  "utf8",
+);
 const iosDeviceLib = readFileSync(
   path.join(repoRoot, "packages/app/scripts/ios-device-lib.mjs"),
   "utf8",
@@ -355,6 +359,24 @@ describe("native assistant entry contracts", () => {
     expect(deviceExtensionSurfaceUITestsSwift).toContain("Eliza Voice");
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "elizaos://assistant?source=ios-widget&action=ask",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "let appDisplayName = app.label",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "search.typeText(appDisplayName)",
+    );
+    expect(widgetGalleryCaptureUITestsSwift).toContain(
+      "let appDisplayName = XCUIApplication().label",
+    );
+    expect(widgetGalleryCaptureUITestsSwift).toContain(
+      "springboard.staticTexts[appDisplayName]",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).not.toContain(
+      'springboard.staticTexts["elizaOS"]',
+    );
+    expect(widgetGalleryCaptureUITestsSwift).not.toContain(
+      'springboard.staticTexts["elizaOS"]',
     );
     // The custom keyboard and hardware Action Button pieces are documented as
     // device-lane only instead of being faked in simulator evidence.

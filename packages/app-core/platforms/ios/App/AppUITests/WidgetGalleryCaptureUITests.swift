@@ -30,6 +30,7 @@ final class WidgetGalleryCaptureUITests: XCTestCase {
     }
 
     func testCaptureHomeScreenWidgetGallery() throws {
+        let appDisplayName = XCUIApplication().label
         goHome()
         attachScreenshot(named: "widget-00-home-screen")
 
@@ -59,11 +60,11 @@ final class WidgetGalleryCaptureUITests: XCTestCase {
         let search = springboard.searchFields.firstMatch
         if search.waitForExistence(timeout: 5) {
             search.tap()
-            search.typeText("Eliza")
+            search.typeText(appDisplayName)
             Thread.sleep(forTimeInterval: 2)
-            attachScreenshot(named: "widget-03-gallery-search-eliza")
+            attachScreenshot(named: "widget-03-gallery-search-app")
 
-            let appRow = springboard.staticTexts["elizaOS"].firstMatch
+            let appRow = springboard.staticTexts[appDisplayName].firstMatch
             if appRow.waitForExistence(timeout: 5) {
                 // The result row is often "visible but not hittable" to XCUI's
                 // hit-tester inside the gallery sheet; a coordinate tap works.
