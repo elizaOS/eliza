@@ -4,18 +4,19 @@ Capacitor WebSocket bridge enabling stock iOS and Android Eliza builds to run lo
 
 ## Purpose / role
 
-This package is the agent-side half of the native Capacitor inference path. It is NOT a standard elizaOS plugin that exports a `Plugin` object; instead it exports lower-level bootstrap utilities consumed by the agent bundle at startup. On stock (non-AOSP) mobile builds, llama.cpp is exposed to the WebView through a Capacitor native plugin; this package bridges that native layer back to the elizaOS runtime's model-handler system.
+This package is the agent-side half of the native Capacitor inference path. Its `mobileDeviceBridgePlugin` owns the canonical runtime service, while lower-level bootstrap utilities consumed by the agent bundle attach the transport and defer model-handler registration until a serving device exists. On stock (non-AOSP) mobile builds, llama.cpp is exposed to the WebView through a Capacitor native plugin; this package bridges that native layer back to the elizaOS runtime's model-handler system.
 
 It is loaded explicitly by the agent bundle CLI — not auto-enabled. Android and iOS entry points differ (see Layout below).
 
 ## Plugin surface
 
-This package has no `Plugin` object. It registers model handlers directly on `AgentRuntime`:
+The plugin owns service lifecycle; its bootstrap registers model handlers directly on `AgentRuntime`:
 
 | Export | Description |
 |---|---|
-| `ensureMobileDeviceBridgeInferenceHandlers(runtime)` | Registers `TEXT_SMALL`, `TEXT_LARGE`, and `TEXT_EMBEDDING` model handlers on the runtime. Android path only (iOS uses native IPC). Gated by `ELIZA_DEVICE_BRIDGE_ENABLED=1`. |
-| `attachMobileDeviceBridgeToServer(httpServer)` | Attaches the WebSocket upgrade handler at `/api/local-inference/device-bridge` to an existing Node `http.Server`. |
+| `mobileDeviceBridgePlugin` | Registers the canonical `MobileDeviceBridgeService`; the pre-initialize bootstrap installs this same plugin so later plugin registration remains idempotent. |
+| `ensureMobileDeviceBridgeInferenceHandlers(runtime)` | Registers the canonical `MobileDeviceBridgeService` before initialization, then registers `TEXT_SMALL`, `TEXT_LARGE`, and `TEXT_EMBEDDING` handlers only after a bionic host or real device can serve them. Android path only (iOS uses native IPC). Gated by `ELIZA_DEVICE_BRIDGE_ENABLED=1`. |
+| `attachMobileDeviceBridgeToServer(httpServer)` | Attaches the canonical singleton's WebSocket upgrade handler at `/api/local-inference/device-bridge` to an existing Node `http.Server`. Runtime service stop removes the hook, closes clients, cancels pending calls, and clears heartbeat timers. |
 | `getMobileDeviceBridgeStatus()` | Returns `MobileDeviceBridgeStatus`: enabled, connected devices, loaded model path, pending request counts. |
 | `loadMobileDeviceBridgeModel(modelPath, modelId?)` | Imperatively load a GGUF into the connected Android device. |
 | `unloadMobileDeviceBridgeModel()` | Unload the current model from the connected Android device. |
