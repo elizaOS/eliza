@@ -545,9 +545,7 @@ function normalizeTrajectoryStep(value: unknown): TrajectoryStep | null {
 	const hasAction = Object.hasOwn(value, "action");
 	const action = hasAction ? normalizeActionAttempt(value.action) : null;
 	const reward = Object.hasOwn(value, "reward") ? numberValue(value.reward) : 0;
-	const done = Object.hasOwn(value, "done")
-		? booleanValue(value.done)
-		: false;
+	const done = Object.hasOwn(value, "done") ? booleanValue(value.done) : false;
 	if (
 		!stepId ||
 		stepNumber === null ||
