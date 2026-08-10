@@ -1256,14 +1256,28 @@ describe("ChatOverlay", () => {
   });
 
   it("opens on a fast flick even below the distance threshold (velocity)", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    // 15px travel (< 56px distance threshold) but synchronous → high velocity.
-    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
-    fireEvent.pointerMove(grabber, { clientY: 405, pointerId: 1 });
-    fireEvent.pointerUp(grabber, { clientY: 405, pointerId: 1 });
-    expect(sheet.getAttribute("data-detent")).toBe("half");
+    // Velocity = distance / event-timestamp delta. Pin the clock so a loaded
+    // runner's slow event dispatch cannot dilute the flick below threshold.
+    const now = vi.spyOn(performance, "now");
+    const eventTimeStamp = vi
+      .spyOn(Event.prototype, "timeStamp", "get")
+      .mockImplementation(() => performance.now() || Number.MIN_VALUE);
+    try {
+      render(<ChatOverlay controller={makeController()} />);
+      const sheet = screen.getByTestId("chat-sheet");
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      // 15px travel (< 56px distance threshold) in 10ms → 1.5 px/ms flick.
+      now.mockReturnValue(0);
+      fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+      now.mockReturnValue(5);
+      fireEvent.pointerMove(grabber, { clientY: 405, pointerId: 1 });
+      now.mockReturnValue(10);
+      fireEvent.pointerUp(grabber, { clientY: 405, pointerId: 1 });
+      expect(sheet.getAttribute("data-detent")).toBe("half");
+    } finally {
+      eventTimeStamp.mockRestore();
+      now.mockRestore();
+    }
   });
 
   it("springs back to the input when a slow downward drift stays above the pill threshold", () => {
