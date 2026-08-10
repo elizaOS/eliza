@@ -51,7 +51,7 @@ export interface UserContext {
   // OAuth connections for MCP injection
   oauthConnections?: OAuthConnection[];
 
-  // Agent-scoped, credential-free connector bindings for brokered MCP.
+  // Agent-scoped, credential-free connector bindings for direct MCP execution.
   connectorBindings?: AgentConnectorBinding[];
 }
 

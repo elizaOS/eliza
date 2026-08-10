@@ -31,6 +31,10 @@ function account(): ConnectorAccount {
     accessGate: "open",
     status: "connected",
     capabilities: ["gmail.read", "calendar.read"],
+    scopes: [
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/calendar.readonly",
+    ],
     selectedProducts: ["gmail", "calendar"],
     isDefault: true,
     createdAt: 1,
@@ -192,6 +196,35 @@ describe("GoogleMcpCapabilityHost", () => {
     });
     expect(runtime.actions.map((action) => action.name)).toEqual(["GOOGLE_GMAIL_SEARCH_THREADS"]);
     expect(engine.detach).toHaveBeenCalledTimes(1);
+  });
+
+  it("detaches products removed by a narrower reconnect", async () => {
+    const runtime = runtimeHarness();
+    const engine = engineHarness();
+    const host = new GoogleMcpCapabilityHost(runtime, {
+      engine,
+      accessTokenProviderFor: () => ({
+        getAccessToken: async () => ({ accessToken: "access-token" }),
+      }),
+      authorizeAccount: async () => true,
+    });
+
+    await host.connectAccount(account());
+    await host.connectAccount({
+      ...account(),
+      selectedProducts: ["gmail"],
+      capabilities: ["gmail.read"],
+    });
+
+    expect(runtime.actions.map((action) => action.name)).toEqual(["GOOGLE_GMAIL_SEARCH_THREADS"]);
+    expect(engine.detach).toHaveBeenCalledTimes(2);
+    await expect(
+      host.callTool({
+        accountId: "acct-google-1",
+        product: "calendar",
+        toolName: "list_events",
+      })
+    ).rejects.toMatchObject({ code: "GOOGLE_MCP_CAPABILITY_UNAVAILABLE" });
   });
 
   it("never unregisters an incumbent action after a normalized name collision", async () => {

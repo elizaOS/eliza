@@ -146,11 +146,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
     notes: "also runs nightly in external-api-live-drift.yml",
   },
   {
-    file: "plugins/plugin-calendar/test/google-calendar-connector.real.test.ts",
-    requires: ["GOOGLE_CALENDAR_ACCESS_TOKEN"],
-    notes: "also runs nightly in external-api-live-drift.yml",
-  },
-  {
     file: "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",
     blocked:
       "plugin-computeruse excludes real desktop actuation from every workspace sweep; run this exact file through packages/scripts/vitest/real.config.ts on an isolated interactive desktop",

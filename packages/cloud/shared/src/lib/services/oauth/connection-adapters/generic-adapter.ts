@@ -24,6 +24,21 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 // Buffer before token expiry to trigger refresh (5 minutes)
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
+export async function revokeGoogleOAuthGrant(token: string): Promise<void> {
+  const endpoint = getProvider("google")?.endpoints?.revoke;
+  if (!endpoint) {
+    throw new Error("Google OAuth revocation endpoint is not configured");
+  }
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token }).toString(),
+  });
+  if (!response.ok) {
+    throw new Error(`Google OAuth revocation failed with status ${response.status}`);
+  }
+}
+
 /**
  * Create a generic adapter for a specific platform.
  * This allows the adapter to be used for any platform that stores in platform_credentials.
@@ -168,7 +183,7 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
           );
 
           // Refresh the token using the generic flow
-          const refreshResult = await refreshOAuth2Token(provider, refreshToken);
+          const refreshResult = await refreshOAuth2Token(provider, refreshToken, organizationId);
 
           // Store the new access token
           const audit = {
@@ -292,6 +307,16 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
       const cred = await findCredential(organizationId, connectionId);
       if (!cred) throw Errors.connectionNotFound(connectionId);
 
+      const providerToken =
+        platform === "google"
+          ? await decryptTokenSecret(
+              cred.refresh_token_secret_id ?? cred.access_token_secret_id ?? "",
+              organizationId,
+              connectionId,
+              cred.refresh_token_secret_id ? "refresh_token" : "access_token",
+            )
+          : null;
+
       const audit = {
         actorType: "system" as const,
         actorId: "oauth-service",
@@ -300,9 +325,9 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
 
       const deleteSecret = async (id: string | null, tokenType: string) => {
         if (!id) return;
-        // error-policy:J6 best-effort teardown — revocation's authoritative effect
-        // is flipping status to "revoked" below; a failed secret delete is logged
-        // but must not block the revoke (the token is already being invalidated).
+        // error-policy:J6 best-effort teardown — local authorization is fenced
+        // and Google's grant is revoked before vault cleanup. A dead encrypted
+        // token may remain for operator cleanup, but it cannot authorize work.
         try {
           await secretsService.delete(id, organizationId, audit);
         } catch (error) {
@@ -315,11 +340,6 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
         }
       };
 
-      await Promise.all([
-        deleteSecret(cred.access_token_secret_id, "access_token"),
-        deleteSecret(cred.refresh_token_secret_id, "refresh_token"),
-      ]);
-
       await dbWrite
         .update(platformCredentials)
         .set({
@@ -328,6 +348,17 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
           updated_at: new Date(),
         })
         .where(eq(platformCredentials.id, connectionId));
+
+      if (providerToken) {
+        // A failed provider call leaves the credential fenced and its encrypted
+        // token available for a retry; no secret is deleted prematurely.
+        await revokeGoogleOAuthGrant(providerToken);
+      }
+
+      await Promise.all([
+        deleteSecret(cred.access_token_secret_id, "access_token"),
+        deleteSecret(cred.refresh_token_secret_id, "refresh_token"),
+      ]);
 
       logger.info(`[GenericAdapter] Connection revoked for ${platform}`, {
         connectionId,

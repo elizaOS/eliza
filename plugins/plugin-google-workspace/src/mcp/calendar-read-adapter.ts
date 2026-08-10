@@ -1,8 +1,8 @@
 /**
  * Typed Calendar read adapter over the curated official Google MCP capability.
  * It validates preview output before projecting it into the stable
- * `GoogleCalendarEvent` facade; unavailable or invalid MCP results are left for
- * `GoogleWorkspaceService` to route through its direct API fallback.
+ * `GoogleCalendarEvent` facade. Invalid or unavailable MCP results fail closed;
+ * there is no personal-Google REST fallback.
  */
 import { ElizaError } from "@elizaos/core";
 import type { GoogleCalendarAttendee, GoogleCalendarEvent } from "../types.js";
@@ -73,7 +73,7 @@ function mapAttendees(value: unknown): GoogleCalendarAttendee[] | undefined {
   return attendees.length > 0 ? attendees : undefined;
 }
 
-function mapEvent(
+export function googleCalendarEventFromMcp(
   value: unknown,
   calendarId: string,
   fallbackTimeZone?: string
@@ -97,6 +97,8 @@ function mapEvent(
   const recurrence = Array.isArray(value.recurrence)
     ? value.recurrence.filter((entry): entry is string => typeof entry === "string")
     : undefined;
+  const availability = optionalString(value.availability);
+  const visibility = optionalString(value.visibility);
   return {
     id,
     calendarId,
@@ -122,6 +124,15 @@ function mapEvent(
       : {}),
     recurrence: recurrence ?? null,
     recurringEventId: optionalString(value.recurringEventId) ?? null,
+    transparency:
+      availability === "AVAILABILITY_FREE" ? "transparent" : availability ? "opaque" : undefined,
+    visibility:
+      visibility === "default" ||
+      visibility === "public" ||
+      visibility === "private" ||
+      visibility === "confidential"
+        ? visibility
+        : undefined,
     metadata: {
       source: "google-workspace-mcp",
       createdAt: optionalString(value.created) ?? null,
@@ -170,7 +181,11 @@ export async function listCalendarEventsViaMcp(
       });
     }
     const calendarId = input.calendarId ?? "primary";
-    events.push(...payload.events.map((event) => mapEvent(event, calendarId, input.timeZone)));
+    events.push(
+      ...payload.events.map((event) =>
+        googleCalendarEventFromMcp(event, calendarId, input.timeZone)
+      )
+    );
     const nextPageToken = optionalString(payload.nextPageToken);
     if (!nextPageToken) break;
     if (seenPageTokens.has(nextPageToken)) {

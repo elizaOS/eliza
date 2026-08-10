@@ -1,136 +1,104 @@
 # @elizaos/plugin-google-workspace
 
-Google Workspace integration for [elizaOS](https://github.com/elizaOS/eliza) agents — Gmail, Google Calendar, Google Drive, and Google Meet under a single per-account OAuth grant, plus a Google Chat messaging connector (service-account auth).
+Personal Google Workspace for elizaOS through Google's official MCP servers.
 
-## What it does
+The plugin keeps the elizaOS product seam—OAuth, vault-backed credentials, agent/account policy, approvals, audit-friendly typed methods, and dynamic actions—but it no longer owns personal Google REST clients. Each selected product attaches its official Google MCP resource directly with a short-lived OAuth bearer.
 
-This plugin adds `GoogleWorkspaceService` to an Eliza agent runtime. The service exposes typed methods for Gmail, Calendar, Drive (including Docs and Sheets), and Meet. Authentication is account-scoped: every method call includes an `accountId` that maps to a stored OAuth credential, so one agent can operate across multiple Google accounts simultaneously.
+## What is supported
 
-For connected local accounts, the service also attaches Google's official Gmail and Calendar MCP endpoints. Discovery promotes only two schema-pinned, read-only actions (`GOOGLE_GMAIL_SEARCH_THREADS` and `GOOGLE_CALENDAR_LIST_EVENTS`); disconnect removes them. Typed Calendar reads prefer MCP and fall back to the direct API when the preview server is unavailable or incompatible. Sends and mutations remain on the established policy-bearing REST path.
+| Product | Behavior |
+| --- | --- |
+| Gmail | Search/read, labels, trash/spam, and create drafts |
+| Calendar | Read/list/search only; polling replaces watches |
+| Drive | Search/read metadata/content and create/copy files |
+| Docs | Read and update documents |
+| Sheets | Read and update spreadsheet data |
+| Slides | Read and update presentations |
+| Personal Chat | Search/list/send through the user-scoped Chat MCP resource |
+| People | Search contacts/directory and read the user profile |
+| Workspace search | Read-only cross-product search |
 
-The plugin also registers with the elizaOS `ConnectorAccountManager` so the built-in connector HTTP routes can manage Google accounts (list, create, delete) and run the OAuth flow (PKCE, offline access, incremental consent) without extra integration work.
+Important limitations:
 
-The plugin also ships the Google Chat connector (`src/chat/`): `GoogleChatService` registers a runtime `MessageConnector` for sending/receiving messages in Chat spaces, DMs, and threads, and `GoogleChatWorkflowCredentialProvider` supplies `googleChatOAuth2Api` credentials to the workflow plugin. Chat authenticates with a **service account** (`GOOGLE_CHAT_SERVICE_ACCOUNT[_FILE]` or `GOOGLE_APPLICATION_CREDENTIALS`, scope `https://www.googleapis.com/auth/chat.bot`) — a deliberately separate auth model from the Workspace OAuth grant. The plugin auto-enables when a `connectors.googlechat` block is configured (see `auto-enable.ts`); the Workspace side remains opt-in.
+- Gmail MCP does not send mail. Email workflows create a draft and return a draft receipt.
+- Google provides no Meet MCP server. Meet links, artifacts, conference APIs, transcripts, recordings, and reports are not part of this connector.
+- Calendar MCP has no push watch, sync-token, idempotency, or atomic provider-version API. Calendar consumers poll bounded windows and reconcile locally; mutations fail closed.
+- Gmail filters and raw subscription-header extraction are not available.
+- Google Workspace MCP is Developer Preview, so the runtime exposes only reviewed tools that are present in live discovery.
 
-## Capabilities
+The service-account Google Chat bot connector remains in `src/chat/` as a separate messaging surface. It does not share personal OAuth credentials.
 
-### Gmail
+## Architecture
 
-- Search messages by query string
-- Fetch message metadata and full body
-- Triage inbox (unread, importance score, reply-needed detection)
-- List unresponded threads
-- Send new messages and replies
-- Bulk modify labels/state (archive, trash, mark read/unread, apply/remove labels)
-- Create sender filters
-- Send mailto unsubscribe emails
+```text
+Connect Google
+  -> direct OAuth authorization-code + PKCE
+  -> refresh token and client secret in vault/secret manager
+  -> account bound to selected agent/products
+  -> one attachment per official Google MCP product resource
+  -> tools/list checked against the reviewed manifest
+  -> curated namespaced actions appear
+  -> exact tool calls recheck the live binding and use a short-lived bearer
+```
 
-### Google Calendar
+There is one OAuth model. There is no Mode A/Mode B or cloud-broker/agent-host execution mode.
 
-- List calendars
-- List, get, create, update, and delete events
-- Create events with Google Meet links attached
-
-### Google Drive, Docs, and Sheets
-
-- Search and list files and folders
-- Get file metadata
-- Read Google Docs as plain text
-- Read Google Sheets as a 2D array of rows
-- Create Drive files (with optional content and parent folder)
-- Append text to a Google Doc
-- Write cell values to a Sheet range
-
-### Google Meet
-
-- Create meeting spaces
-- Get space details and active conference records
-- List participants, participant sessions, transcripts, and recordings
-- Fetch full transcript entries
-- End an active conference
-- Generate a structured meeting report (summary, key points, action items, full transcript)
-- Build a canonical `elizaos.meeting_artifact.v1` artifact from Google Meet API
-  responses, Google Docs transcript text, recordings, and bot-free capture
-  artifacts. The canonical artifact preserves streams, participants, participant
-  sessions, transcript spans, generated notes, mismatch warnings, missing
-  artifact classifications, and import metrics.
-
-## Requirements
-
-- Node.js (this plugin uses Node-only APIs; not supported in browser or edge environments)
-- A Google Cloud project with the OAuth 2.0 credentials and relevant APIs enabled
-
-### Google Cloud APIs to enable
-
-- Gmail API
-- Google Calendar API
-- Google Drive API
-- Google Meet API (REST)
-- Google Docs API
-- Google Sheets API
+The official endpoint and capability manifest is shared with Cloud in `packages/shared/src/contracts/google-workspace-mcp.ts`. The low-level guarded transport lives in `@elizaos/plugin-mcp/resource-engine`.
 
 ## Configuration
 
-Set these environment variables (or provide them via agent `pluginParameters`):
+A Google Cloud OAuth client and redirect URI are required. The client secret must be stored in the runtime secrets service; connector accounts store only secret references.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GOOGLE_CLIENT_ID` | No (required for OAuth) | OAuth 2.0 client ID from Google Cloud Console |
-| `GOOGLE_CLIENT_SECRET` | No (required for OAuth) | OAuth 2.0 client secret (keep private) |
-| `GOOGLE_REDIRECT_URI` | No (required for OAuth) | Redirect URI registered in Google Cloud Console |
+```text
+GOOGLE_CLIENT_ID
+GOOGLE_REDIRECT_URI
+GOOGLE_CLIENT_SECRET   # vault/secret-manager value
+```
 
-Without all three the OAuth flow throws an error; the service itself still starts (read-only agents that inject pre-issued tokens can skip OAuth).
+For a one-time migration from an existing environment value, set
+`GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV=1`. Without that explicit flag, a missing
+vault entry fails closed.
 
-## Enabling the plugin
+Enable the Workspace APIs and MCP service APIs for the products you expose, configure the OAuth consent screen, and register the redirect URI.
 
-Add the plugin to your elizaOS agent configuration:
+## Usage
 
 ```ts
 import { googlePlugin } from "@elizaos/plugin-google-workspace";
 
-const agent = {
+const character = {
   plugins: [googlePlugin],
-  // ...
 };
 ```
 
-## OAuth scopes
-
-Scopes are derived from the set of capabilities requested at OAuth time, not from a hardcoded list. Requesting only `gmail.read` will ask for `gmail.readonly` only, not all Google Workspace scopes. All grants request `openid`, `userinfo.email`, and `userinfo.profile` as identity scopes.
-
-Available capabilities: `gmail.read`, `gmail.send`, `gmail.manage`, `calendar.read`, `calendar.write`, `drive.read`, `drive.write`, `meet.create`, `meet.read`.
-
-## Using the service
+Every typed method is account-scoped:
 
 ```ts
-import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
+const google = runtime.getService("google");
 
-const google = runtime.getService("google") as IGoogleWorkspaceService;
-
-// List upcoming calendar events
 const events = await google.listEvents({
-  accountId: "my-google-account-id",
+  accountId: "google-account-id",
   timeMin: new Date().toISOString(),
   limit: 10,
 });
 
-// Send an email
-const result = await google.sendGmailMessage({
-  accountId: "my-google-account-id",
-  to: ["recipient@example.com"],
+const draft = await google.createGmailDraft({
+  accountId: "google-account-id",
+  to: [{ email: "recipient@example.com" }],
   subject: "Hello",
-  bodyText: "Message body.",
+  text: "Review this draft before sending.",
 });
 ```
 
-## Custom credential resolver
+The second call creates a Gmail draft; it does not send an email.
 
-For testing or non-standard hosting, inject a `GoogleCredentialResolver`:
+## Development
 
-```ts
-import { GoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
-
-const service = new GoogleWorkspaceService(runtime, {
-  credentialResolver: myCustomResolver,
-});
+```bash
+bun run --cwd plugins/plugin-google-workspace build
+bun run --cwd plugins/plugin-google-workspace typecheck
+bun run --cwd plugins/plugin-google-workspace test
+bun run --cwd plugins/plugin-google-workspace lint:check
 ```
+
+See [CLAUDE.md](./CLAUDE.md) for package invariants and the root [AGENTS.md](../../AGENTS.md) for repository verification requirements.

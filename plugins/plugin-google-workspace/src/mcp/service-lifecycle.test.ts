@@ -32,17 +32,17 @@ function runtimeHarness(): IAgentRuntime & { actions: Action[] } {
   } as IAgentRuntime & { actions: Action[] };
 }
 
-function googleAccount(executionTarget: "agent_host" | "cloud_broker"): ConnectorAccount {
+function googleAccount(): ConnectorAccount {
   return {
-    id: `google-${executionTarget}`,
+    id: "google-personal",
     provider: "google",
     role: "OWNER",
     purpose: ["reading"],
     accessGate: "open",
     status: "connected",
     capabilities: ["gmail.read"],
+    scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
     selectedProducts: ["gmail"],
-    executionTarget,
     createdAt: 1,
     updatedAt: 1,
   };
@@ -84,7 +84,7 @@ describe("GoogleWorkspaceService MCP lifecycle", () => {
     };
     const service = new GoogleWorkspaceService(runtime, { credentialResolver, mcpEngine: engine });
 
-    await expect(service.connectMcpAccount(googleAccount("agent_host"))).resolves.toMatchObject({
+    await expect(service.connectMcpAccount(googleAccount())).resolves.toMatchObject({
       products: { gmail: { status: "connected" } },
     });
     expect(runtime.actions.map((action) => action.name)).toEqual(["GOOGLE_GMAIL_SEARCH_THREADS"]);
@@ -102,32 +102,13 @@ describe("GoogleWorkspaceService MCP lifecycle", () => {
     expect(engine.detach).toHaveBeenCalledOnce();
   });
 
-  it("does not export an Eliza-managed cloud binding into the local agent host", async () => {
-    const runtime = runtimeHarness();
-    const engine: McpResourceEngine = {
-      attach: vi.fn(async () => {
-        throw new Error("unexpected attach");
-      }),
-      detach: vi.fn(async () => false),
-      discover: vi.fn(async () => {
-        throw new Error("unexpected discover");
-      }),
-      callTool: vi.fn(async () => {
-        throw new Error("unexpected call");
-      }),
-    };
-    const service = new GoogleWorkspaceService(runtime, { mcpEngine: engine });
-
-    await expect(service.connectMcpAccount(googleAccount("cloud_broker"))).resolves.toBeNull();
-    expect(engine.attach).not.toHaveBeenCalled();
-  });
-
   it("uses the curated Calendar MCP read behind the typed service seam", async () => {
     const runtime = runtimeHarness();
     const connectedAccount = {
-      ...googleAccount("agent_host"),
+      ...googleAccount(),
       id: "google-calendar-local",
       capabilities: ["calendar.read"],
+      scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
       selectedProducts: ["calendar"],
     };
     await getConnectorAccountManager(runtime).upsertAccount("google", connectedAccount);

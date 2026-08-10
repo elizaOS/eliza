@@ -191,61 +191,10 @@ export const calendarFeedPreferences = calendarPgSchema.table(
   ],
 );
 
-export const googleCalendarWatchChannels = calendarPgSchema.table(
-  "google_calendar_watch_channels",
-  {
-    channelId: text("channel_id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    grantId: text("grant_id").notNull(),
-    connectorAccountId: text("connector_account_id").notNull(),
-    side: text("side").notNull(),
-    calendarId: text("calendar_id").notNull(),
-    calendarSummary: text("calendar_summary").notNull(),
-    calendarAccessRole: text("calendar_access_role").notNull(),
-    timeZone: text("time_zone").notNull(),
-    windowStartAt: text("window_start_at").notNull(),
-    windowEndAt: text("window_end_at").notNull(),
-    webhookUrl: text("webhook_url").notNull(),
-    tokenSha256: text("token_sha256").notNull(),
-    resourceId: text("resource_id"),
-    resourceUri: text("resource_uri"),
-    expirationAt: text("expiration_at"),
-    state: text("state").notNull(),
-    lastMessageNumber: text("last_message_number").notNull().default("0"),
-    pendingMessageNumber: text("pending_message_number"),
-    lastNotificationAt: text("last_notification_at"),
-    lastSyncAt: text("last_sync_at"),
-    syncLeaseToken: text("sync_lease_token"),
-    syncLeaseExpiresAt: text("sync_lease_expires_at"),
-    renewalChannelId: text("renewal_channel_id"),
-    failureCount: integer("failure_count").notNull().default(0),
-    nextRetryAt: text("next_retry_at"),
-    lastErrorCode: text("last_error_code"),
-    lastErrorMessage: text("last_error_message"),
-    lastErrorRetryable: boolean("last_error_retryable"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (t) => [
-    index("calendar_watch_binding_idx").on(
-      t.agentId,
-      t.connectorAccountId,
-      t.grantId,
-      t.calendarId,
-    ),
-    index("calendar_watch_maintenance_idx").on(
-      t.agentId,
-      t.state,
-      t.expirationAt,
-    ),
-  ],
-);
-
 export const calendarSchema = {
   calendarEvents,
   calendarSyncStates,
   calendarSources,
   calendarSecretCleanup,
   calendarFeedPreferences,
-  googleCalendarWatchChannels,
 };

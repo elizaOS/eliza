@@ -13,6 +13,7 @@ export type EmailUnsubscribeMethod =
 
 export type EmailUnsubscribeStatus =
   | "succeeded"
+  | "draft_created"
   | "failed"
   | "blocked_no_mechanism"
   | "manual_required";

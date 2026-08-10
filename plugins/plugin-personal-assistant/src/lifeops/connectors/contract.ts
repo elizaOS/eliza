@@ -95,7 +95,7 @@ export interface ConnectorContribution {
 
   /**
    * When `true`, the runtime gates this connector's outbound `send` calls
-   * through the owner-send-policy (e.g. Gmail draft → owner approval).
+   * through the owner-send-policy. Gmail is draft-only and has no send verb.
    */
   requiresApproval?: boolean;
 }

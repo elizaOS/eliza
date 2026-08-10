@@ -267,14 +267,8 @@ describe("Action Invocation E2E", () => {
     xReadConnected = Boolean(
       (await service.getXConnectorStatus().catch(() => null))?.connected,
     );
-    const googleStatus = await service
-      .getGoogleConnectorStatus(new URL("http://127.0.0.1/"))
-      .catch(() => null);
-    const googleCapabilities = new Set(googleStatus?.grantedCapabilities ?? []);
-    googleCalendarWritable = Boolean(
-      googleStatus?.connected &&
-        googleCapabilities.has("google.calendar.write"),
-    );
+    // Personal Google Calendar is deliberately read-only over Workspace MCP.
+    googleCalendarWritable = false;
 
     logger.info(
       `[action-e2e] Setup complete — ${runtime.plugins.length} plugins, ` +

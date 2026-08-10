@@ -555,9 +555,9 @@ export function formatGmailReplyDraft(draft: LifeOpsGmailReplyDraft): string {
     lines.push(`- ${line}`);
   }
   lines.push(
-    draft.sendAllowed
-      ? "Send is allowed, but still requires explicit confirmation."
-      : "Send is not allowed with the current Google grant.",
+    draft.saveAllowed
+      ? "Saving this Gmail draft is allowed with the current Google grant."
+      : "Saving this Gmail draft is not allowed with the current Google grant.",
   );
   return lines.join("\n");
 }
@@ -578,7 +578,7 @@ export function formatGmailBatchReplyDrafts(
   }
   if (batch.summary.requiresConfirmationCount > 0) {
     lines.push(
-      `${batch.summary.requiresConfirmationCount} draft${batch.summary.requiresConfirmationCount === 1 ? "" : "s"} still require send confirmation.`,
+      `${batch.summary.requiresConfirmationCount} draft${batch.summary.requiresConfirmationCount === 1 ? "" : "s"} still require save confirmation.`,
     );
   }
   return lines.join("\n");

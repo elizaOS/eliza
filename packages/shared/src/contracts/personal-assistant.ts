@@ -309,9 +309,8 @@ export type LifeOpsConnectorSourceOfTruth =
 export const LIFEOPS_GOOGLE_CAPABILITIES = [
   "google.basic_identity",
   "google.calendar.read",
-  "google.calendar.write",
   "google.gmail.triage",
-  "google.gmail.send",
+  "google.gmail.draft.create",
   "google.gmail.manage",
 ] as const;
 export type LifeOpsGoogleCapability =
@@ -2419,7 +2418,7 @@ export interface LifeOpsGmailReplyDraft {
   cc: string[];
   bodyText: string;
   previewLines: string[];
-  sendAllowed: boolean;
+  saveAllowed: boolean;
   requiresConfirmation: boolean;
 }
 
@@ -2442,7 +2441,7 @@ export interface CreateLifeOpsGmailBatchReplyDraftsRequest {
 
 export interface LifeOpsGmailBatchReplyDraftsSummary {
   totalCount: number;
-  sendAllowedCount: number;
+  saveAllowedCount: number;
   requiresConfirmationCount: number;
 }
 
@@ -2455,7 +2454,7 @@ export interface LifeOpsGmailBatchReplyDraftsFeed {
   summary: LifeOpsGmailBatchReplyDraftsSummary;
 }
 
-export interface SendLifeOpsGmailReplyRequest {
+export interface SaveLifeOpsGmailReplyDraftRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   grantId?: string;
@@ -2464,10 +2463,10 @@ export interface SendLifeOpsGmailReplyRequest {
   subject?: string;
   to?: string[];
   cc?: string[];
-  confirmSend?: boolean;
+  confirmSave?: boolean;
 }
 
-export interface SendLifeOpsGmailMessageRequest {
+export interface SaveLifeOpsGmailDraftRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   grantId?: string;
@@ -2476,10 +2475,10 @@ export interface SendLifeOpsGmailMessageRequest {
   bcc?: string[];
   subject: string;
   bodyText: string;
-  confirmSend?: boolean;
+  confirmSave?: boolean;
 }
 
-export interface LifeOpsGmailBatchReplySendItem {
+export interface LifeOpsGmailBatchReplyDraftSaveItem {
   messageId: string;
   bodyText: string;
   subject?: string;
@@ -2487,17 +2486,19 @@ export interface LifeOpsGmailBatchReplySendItem {
   cc?: string[];
 }
 
-export interface SendLifeOpsGmailBatchReplyRequest {
+export interface SaveLifeOpsGmailReplyDraftsRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   grantId?: string;
-  confirmSend?: boolean;
-  items: LifeOpsGmailBatchReplySendItem[];
+  confirmSave?: boolean;
+  items: LifeOpsGmailBatchReplyDraftSaveItem[];
 }
 
-export interface LifeOpsGmailBatchReplySendResult {
+export interface LifeOpsGmailReplyDraftSaveResult {
   ok: true;
-  sentCount: number;
+  status: "drafts_created";
+  draftCount: number;
+  drafts: Array<{ draftId: string; threadId: string | null }>;
 }
 
 export const LIFEOPS_INBOX_CHANNELS = [

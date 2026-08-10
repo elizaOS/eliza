@@ -34,12 +34,6 @@ export const CLOUD_CONNECTOR_BINDING_STATUSES = [
 ] as const;
 export type CloudConnectorBindingStatus = (typeof CLOUD_CONNECTOR_BINDING_STATUSES)[number];
 
-export const CLOUD_CONNECTOR_OAUTH_MODES = ["eliza_managed", "bring_your_own"] as const;
-export type CloudConnectorOAuthMode = (typeof CLOUD_CONNECTOR_OAUTH_MODES)[number];
-
-export const CLOUD_CONNECTOR_EXECUTION_TARGETS = ["cloud_broker", "agent_host"] as const;
-export type CloudConnectorExecutionTarget = (typeof CLOUD_CONNECTOR_EXECUTION_TARGETS)[number];
-
 export const agentConnectorBindings = pgTable(
   "agent_connector_bindings",
   {
@@ -58,14 +52,6 @@ export const agentConnectorBindings = pgTable(
     purposes: jsonb("purposes").$type<string[]>().notNull().default([]),
     access_gate: text("access_gate").notNull().default("open"),
     status: text("status").$type<CloudConnectorBindingStatus>().notNull().default("connected"),
-    oauth_mode: text("oauth_mode")
-      .$type<CloudConnectorOAuthMode>()
-      .notNull()
-      .default("eliza_managed"),
-    execution_target: text("execution_target")
-      .$type<CloudConnectorExecutionTarget>()
-      .notNull()
-      .default("cloud_broker"),
     selected_products: jsonb("selected_products").$type<string[]>().notNull().default([]),
     allowed_capabilities: jsonb("allowed_capabilities").$type<string[]>().notNull().default([]),
     is_default: boolean("is_default").notNull().default(false),
@@ -104,14 +90,6 @@ export const agentConnectorBindings = pgTable(
     status_check: check(
       "agent_connector_bindings_status_check",
       sql`${table.status} IN ('connected','pending','disabled','revoked','error')`,
-    ),
-    oauth_mode_check: check(
-      "agent_connector_bindings_oauth_mode_check",
-      sql`${table.oauth_mode} IN ('eliza_managed','bring_your_own')`,
-    ),
-    execution_target_check: check(
-      "agent_connector_bindings_execution_target_check",
-      sql`${table.execution_target} IN ('cloud_broker','agent_host')`,
     ),
   }),
 );

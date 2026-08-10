@@ -5,7 +5,6 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { GoogleCalendarSyncTokenExpiredError } from "@elizaos/plugin-google-workspace";
 import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
 import type {
   LifeOpsConnectorGrant,
@@ -21,6 +20,7 @@ import {
   type CalendarHostGate,
   CalendarService,
   calendarSchema,
+  ensureCalendarFeedIncludes,
 } from "../src/service/index.js";
 
 const AGENT_ID = "calendar-source-health-agent";
@@ -142,8 +142,7 @@ let calendar: CalendarService;
 let runtime: IAgentRuntime;
 let failAccountA = false;
 let failAccountB = false;
-let incrementalSyncEnabled = false;
-let expireSyncTokenForAccount: string | null = null;
+let useUpdatedPollingSnapshot = false;
 let accountAAccessRole = "owner";
 const freeBusyErrors = new Map<string, Set<string>>();
 const freeBusyRequests: Array<{
@@ -152,7 +151,6 @@ const freeBusyRequests: Array<{
 }> = [];
 const eventPageRequests: Array<{
   accountId: string;
-  syncToken?: string;
   timeMin?: string;
   timeMax?: string;
 }> = [];
@@ -223,7 +221,6 @@ beforeAll(async () => {
               ],
               listEventPage: async (request: {
                 accountId: string;
-                syncToken?: string;
                 timeMin?: string;
                 timeMax?: string;
               }) => {
@@ -235,45 +232,20 @@ beforeAll(async () => {
                 ) {
                   throw new Error(`calendar transport failed for ${accountId}`);
                 }
-                if (
-                  request.syncToken &&
-                  expireSyncTokenForAccount === accountId
-                ) {
-                  expireSyncTokenForAccount = null;
-                  throw new GoogleCalendarSyncTokenExpiredError({
-                    resource: "events",
-                    accountId,
-                    calendarId: "primary",
-                    cause: new Error("HTTP 410 Gone"),
-                  });
-                }
-                if (request.syncToken) {
-                  return {
-                    events:
-                      accountId === "account-a"
-                        ? [
-                            {
-                              id: "same-provider-event-id",
-                              calendarId: "primary",
-                              status: "cancelled",
-                            },
-                          ]
-                        : [
-                            {
-                              ...googleEvent(accountId),
-                              title: "Updated family logistics",
-                            },
-                          ],
-                    nextPageToken: null,
-                    nextSyncToken: `sync-${accountId}-2`,
-                  };
-                }
                 return {
-                  events: [googleEvent(accountId)],
+                  events:
+                    useUpdatedPollingSnapshot && accountId === "account-a"
+                      ? []
+                      : [
+                          {
+                            ...googleEvent(accountId),
+                            ...(useUpdatedPollingSnapshot
+                              ? { title: "Updated family logistics" }
+                              : {}),
+                          },
+                        ],
                   nextPageToken: null,
-                  nextSyncToken: incrementalSyncEnabled
-                    ? `sync-${accountId}-1`
-                    : null,
+                  nextSyncToken: null,
                 };
               },
               queryFreeBusy: async (request: {
@@ -353,14 +325,25 @@ beforeAll(async () => {
 beforeEach(async () => {
   failAccountA = false;
   failAccountB = false;
-  incrementalSyncEnabled = false;
-  expireSyncTokenForAccount = null;
+  useUpdatedPollingSnapshot = false;
   accountAAccessRole = "owner";
   freeBusyErrors.clear();
   freeBusyRequests.length = 0;
   eventPageRequests.length = 0;
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_sync_states");
+  await pg.query("DELETE FROM app_calendar.life_calendar_feed_preferences");
+  await ensureCalendarFeedIncludes(
+    runtime,
+    [GRANT_A, GRANT_B].map((connectorGrant) => ({
+      provider: "google" as const,
+      side: connectorGrant.side,
+      grantId: connectorGrant.id,
+      connectorAccountId: connectorGrant.connectorAccountId,
+      calendarId: "primary",
+      initialIncluded: true,
+    })),
+  );
 });
 
 afterAll(async () => {
@@ -375,6 +358,7 @@ describe("CalendarService source truth", () => {
         timeMin: TIME_MIN,
         timeMax: TIME_MAX,
         forceSync: true,
+        includeHiddenCalendars: true,
       },
       new Date("2026-07-26T12:00:00.000Z"),
     );
@@ -382,11 +366,14 @@ describe("CalendarService source truth", () => {
     expect(feed.state).toBe("complete");
     expect(feed.events).toHaveLength(2);
     expect(new Set(feed.events.map((event) => event.id)).size).toBe(2);
-    expect(new Set(feed.sources.map((source) => source.key.grantId))).toEqual(
-      new Set([GRANT_A.id, GRANT_B.id]),
-    );
+    expect(
+      new Set(
+        feed.sources
+          .filter((source) => source.key.provider === "google")
+          .map((source) => source.key.grantId),
+      ),
+    ).toEqual(new Set([GRANT_A.id, GRANT_B.id]));
   });
-
   it("returns a partial feed when one live account fails", async () => {
     failAccountB = true;
     const feed = await calendar.getCalendarFeed(
@@ -395,6 +382,7 @@ describe("CalendarService source truth", () => {
         timeMin: TIME_MIN,
         timeMax: TIME_MAX,
         forceSync: true,
+        includeHiddenCalendars: true,
       },
       new Date("2026-07-26T12:00:00.000Z"),
     );
@@ -409,14 +397,24 @@ describe("CalendarService source truth", () => {
   it("retains a failed account as explicitly stale when cache exists", async () => {
     await calendar.getCalendarFeed(
       INTERNAL_URL,
-      { timeMin: TIME_MIN, timeMax: TIME_MAX, forceSync: true },
+      {
+        timeMin: TIME_MIN,
+        timeMax: TIME_MAX,
+        forceSync: true,
+        includeHiddenCalendars: true,
+      },
       new Date("2026-07-26T12:00:00.000Z"),
     );
     failAccountB = true;
 
     const feed = await calendar.getCalendarFeed(
       INTERNAL_URL,
-      { timeMin: TIME_MIN, timeMax: TIME_MAX, forceSync: true },
+      {
+        timeMin: TIME_MIN,
+        timeMax: TIME_MAX,
+        forceSync: true,
+        includeHiddenCalendars: true,
+      },
       new Date("2026-07-26T12:01:00.000Z"),
     );
 
@@ -439,29 +437,42 @@ describe("CalendarService source truth", () => {
         timeMin: TIME_MIN,
         timeMax: TIME_MAX,
         forceSync: true,
+        includeHiddenCalendars: true,
       },
       new Date("2026-07-26T12:00:00.000Z"),
     );
 
     expect(feed.events).toEqual([]);
-    expect(feed.state).toBe("unavailable");
-    expect(feed.sources.every((source) => source.status === "error")).toBe(
-      true,
-    );
+    expect(feed.state).toBe("partial");
+    expect(
+      feed.sources
+        .filter((source) => source.key.provider === "google")
+        .every((source) => source.status === "error"),
+    ).toBe(true);
   });
 
-  it("applies account-scoped incremental tombstones and updates without rereading full windows", async () => {
-    incrementalSyncEnabled = true;
+  it("reconciles account-scoped removals and updates from complete polling windows", async () => {
     await calendar.getCalendarFeed(
       INTERNAL_URL,
-      { timeMin: TIME_MIN, timeMax: TIME_MAX, forceSync: true },
+      {
+        timeMin: TIME_MIN,
+        timeMax: TIME_MAX,
+        forceSync: true,
+        includeHiddenCalendars: true,
+      },
       new Date("2026-07-26T12:00:00.000Z"),
     );
 
+    useUpdatedPollingSnapshot = true;
     eventPageRequests.length = 0;
     const feed = await calendar.getCalendarFeed(
       INTERNAL_URL,
-      { timeMin: TIME_MIN, timeMax: TIME_MAX, forceSync: true },
+      {
+        timeMin: TIME_MIN,
+        timeMax: TIME_MAX,
+        forceSync: true,
+        includeHiddenCalendars: true,
+      },
       new Date("2026-07-26T12:01:00.000Z"),
     );
 
@@ -473,37 +484,59 @@ describe("CalendarService source truth", () => {
     expect(
       eventPageRequests.every(
         (request) =>
-          Boolean(request.syncToken) &&
-          request.timeMin === undefined &&
-          request.timeMax === undefined,
+          request.timeMin === TIME_MIN && request.timeMax === TIME_MAX,
       ),
     ).toBe(true);
+    const googleSources = feed.sources.filter(
+      (source) => source.key.provider === "google",
+    );
+    expect(googleSources).toHaveLength(2);
+    for (const source of googleSources) {
+      expect(source.changeDelivery).toEqual({
+        mode: "polling",
+        status: "active",
+        expiresAt: null,
+        lastNotificationAt: null,
+        lastSuccessfulSyncAt: source.syncedAt,
+        error: null,
+      });
+    }
   });
 
-  it("recovers an expired account cursor with a full snapshot while other accounts stay incremental", async () => {
-    incrementalSyncEnabled = true;
+  it("uses one complete polling request per account on every forced refresh", async () => {
     await calendar.getCalendarFeed(
       INTERNAL_URL,
-      { timeMin: TIME_MIN, timeMax: TIME_MAX, forceSync: true },
+      {
+        timeMin: TIME_MIN,
+        timeMax: TIME_MAX,
+        forceSync: true,
+        includeHiddenCalendars: true,
+      },
       new Date("2026-07-26T12:00:00.000Z"),
     );
 
-    expireSyncTokenForAccount = "account-a";
     eventPageRequests.length = 0;
     const feed = await calendar.getCalendarFeed(
       INTERNAL_URL,
-      { timeMin: TIME_MIN, timeMax: TIME_MAX, forceSync: true },
+      {
+        timeMin: TIME_MIN,
+        timeMax: TIME_MAX,
+        forceSync: true,
+        includeHiddenCalendars: true,
+      },
       new Date("2026-07-26T12:01:00.000Z"),
     );
 
     expect(feed.state).toBe("complete");
     expect(feed.events).toHaveLength(2);
+    expect(eventPageRequests).toHaveLength(2);
     expect(
-      eventPageRequests.filter((request) => request.accountId === "account-a"),
-    ).toHaveLength(2);
+      eventPageRequests.map((request) => request.accountId).sort(),
+    ).toEqual(["account-a", "account-b"]);
     expect(
-      eventPageRequests.some(
-        (request) => request.accountId === "account-a" && !request.syncToken,
+      eventPageRequests.every(
+        (request) =>
+          request.timeMin === TIME_MIN && request.timeMax === TIME_MAX,
       ),
     ).toBe(true);
   });
@@ -607,7 +640,12 @@ describe("CalendarService source truth", () => {
     accountAAccessRole = "freeBusyReader";
     const feed = await calendar.getCalendarFeed(
       INTERNAL_URL,
-      { timeMin: TIME_MIN, timeMax: TIME_MAX, forceSync: true },
+      {
+        timeMin: TIME_MIN,
+        timeMax: TIME_MAX,
+        forceSync: true,
+        includeHiddenCalendars: true,
+      },
       new Date("2026-07-26T12:00:00.000Z"),
     );
     const privateSource = feed.sources.find(
@@ -639,7 +677,12 @@ describe("CalendarService source truth", () => {
   it("persists idempotent travel and hold reservations that block through the real feed", async () => {
     const initial = await calendar.getCalendarFeed(
       INTERNAL_URL,
-      { timeMin: TIME_MIN, timeMax: TIME_MAX, forceSync: true },
+      {
+        timeMin: TIME_MIN,
+        timeMax: TIME_MAX,
+        forceSync: true,
+        includeHiddenCalendars: true,
+      },
       new Date("2026-07-26T12:00:00.000Z"),
     );
     const parent = initial.events.find((event) => event.grantId === GRANT_A.id);
@@ -682,7 +725,12 @@ describe("CalendarService source truth", () => {
 
     await calendar.getCalendarFeed(
       INTERNAL_URL,
-      { timeMin: TIME_MIN, timeMax: TIME_MAX, forceSync: true },
+      {
+        timeMin: TIME_MIN,
+        timeMax: TIME_MAX,
+        forceSync: true,
+        includeHiddenCalendars: true,
+      },
       new Date("2026-07-26T12:01:00.000Z"),
     );
 

@@ -4,13 +4,13 @@
  * Bridges plugin-google-workspace to the @elizaos/core ConnectorAccountManager so the
  * generic HTTP CRUD + OAuth surface (packages/agent/src/api/connector-account-routes.ts)
  * can list, create, patch, delete, and run the OAuth flow for Google accounts
- * using a single consolidated grant covering Gmail, Calendar, Drive, and Meet.
+ * using one direct OAuth grant covering the selected personal Workspace MCP
+ * products.
  *
  * Single OAuth grant per account: callers may pass `scopes` to the manager's
  * startOAuth to limit which capabilities are requested. By default all
- * capabilities (gmail.read+send+manage, calendar.read+write, drive.read+write,
- * meet.create+read) are requested; granted capabilities are recorded on the
- * returned account so downstream consumers know which surfaces are usable.
+ * capabilities are requested; granted capabilities are recorded on the
+ * returned account so downstream consumers know which MCP resources are usable.
  */
 
 import { createHash, randomBytes } from "node:crypto";
@@ -20,7 +20,6 @@ import {
   type ConnectorAccountPatch,
   type ConnectorAccountProvider,
   type ConnectorAccountPurpose,
-  type ConnectorAccountRole,
   type ConnectorOAuthCallbackRequest,
   type ConnectorOAuthCallbackResult,
   type ConnectorOAuthStartRequest,
@@ -31,9 +30,10 @@ import {
 } from "@elizaos/core";
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
 import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
-import { createGmailMessageConnector } from "./gmail-message-connector.js";
+import { DefaultGoogleCredentialResolver } from "./credential-resolver.js";
 import {
   GOOGLE_CAPABILITIES,
+  GOOGLE_CAPABILITY_AUTHORIZATION_SCOPES,
   GOOGLE_IDENTITY_SCOPES,
   type GoogleCapability,
   type GoogleCapabilityGroup,
@@ -48,7 +48,12 @@ const GROUP_PURPOSE: Record<GoogleCapabilityGroup, ConnectorAccountPurpose> = {
   gmail: "messaging" as ConnectorAccountPurpose,
   calendar: "calendar" as ConnectorAccountPurpose,
   drive: "drive" as ConnectorAccountPurpose,
-  meet: "meet" as ConnectorAccountPurpose,
+  docs: "documents" as ConnectorAccountPurpose,
+  sheets: "documents" as ConnectorAccountPurpose,
+  slides: "documents" as ConnectorAccountPurpose,
+  chat: "messaging" as ConnectorAccountPurpose,
+  people: "reading" as ConnectorAccountPurpose,
+  workspace: "reading" as ConnectorAccountPurpose,
 };
 
 interface GoogleTokenResponse {
@@ -71,10 +76,6 @@ interface GoogleIdentity {
   locale?: string;
 }
 
-interface GoogleCalendarWatchRevocationService {
-  revokeGoogleCalendarWatchesByAccount(accountId: string): Promise<void>;
-}
-
 interface GoogleMcpAccountLifecycleService {
   connectMcpAccount(account: ConnectorAccount): Promise<unknown>;
   disconnectMcpAccount(accountId: string): Promise<void>;
@@ -88,17 +89,6 @@ function isGoogleMcpAccountLifecycleService(
     typeof value === "object" &&
     typeof (value as Partial<GoogleMcpAccountLifecycleService>).connectMcpAccount === "function" &&
     typeof (value as Partial<GoogleMcpAccountLifecycleService>).disconnectMcpAccount === "function"
-  );
-}
-
-function isGoogleCalendarWatchRevocationService(
-  value: unknown
-): value is GoogleCalendarWatchRevocationService {
-  return (
-    Boolean(value) &&
-    typeof value === "object" &&
-    typeof (value as Partial<GoogleCalendarWatchRevocationService>)
-      .revokeGoogleCalendarWatchesByAccount === "function"
   );
 }
 
@@ -124,17 +114,40 @@ function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
   return nonEmptyString(runtime.getSetting?.(key));
 }
 
-function readClientConfig(runtime: IAgentRuntime): {
+interface GoogleSecretsService {
+  getGlobal(key: string): Promise<string | null>;
+  setGlobal?(key: string, value: string): Promise<boolean>;
+}
+
+function googleSecretsService(runtime: IAgentRuntime): GoogleSecretsService | null {
+  const service = runtime.getService("SECRETS") as Partial<GoogleSecretsService> | null;
+  return service && typeof service.getGlobal === "function"
+    ? (service as GoogleSecretsService)
+    : null;
+}
+
+async function readClientConfig(runtime: IAgentRuntime): Promise<{
   clientId: string;
   clientSecret: string;
   redirectUri: string;
-} {
+}> {
   const clientId = readSetting(runtime, "GOOGLE_CLIENT_ID");
-  const clientSecret = readSetting(runtime, "GOOGLE_CLIENT_SECRET");
   const redirectUri = readSetting(runtime, "GOOGLE_REDIRECT_URI");
+  const secrets = googleSecretsService(runtime);
+  let clientSecret = nonEmptyString(await secrets?.getGlobal("GOOGLE_CLIENT_SECRET"));
+  if (!clientSecret) {
+    const configuredSecret = readSetting(runtime, "GOOGLE_CLIENT_SECRET");
+    const allowMigration = readSetting(runtime, "GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV") === "1";
+    if (configuredSecret && allowMigration && secrets?.setGlobal) {
+      const stored = await secrets.setGlobal("GOOGLE_CLIENT_SECRET", configuredSecret);
+      if (stored) {
+        clientSecret = nonEmptyString(await secrets.getGlobal("GOOGLE_CLIENT_SECRET"));
+      }
+    }
+  }
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error(
-      "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured."
+      "Google OAuth requires GOOGLE_CLIENT_ID and GOOGLE_REDIRECT_URI settings plus GOOGLE_CLIENT_SECRET in the vault."
     );
   }
   return { clientId, clientSecret, redirectUri };
@@ -156,9 +169,9 @@ function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): 
       requested.add(value);
       continue;
     }
-    const matched = matchCapabilityFromScope(value);
-    if (matched) {
-      requested.add(matched);
+    const matched = capabilitiesFromScope(value);
+    if (matched.length > 0) {
+      for (const capability of matched) requested.add(capability);
       continue;
     }
     if (identityScopes.has(value.trim().toLowerCase())) {
@@ -171,14 +184,11 @@ function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): 
     });
   }
   if (requested.size === 0) {
-    throw new ElizaError(
-      "Google OAuth requires at least one Gmail, Calendar, Drive, or Meet capability.",
-      {
-        code: "GOOGLE_OAUTH_CAPABILITY_REQUIRED",
-        context: { scopes: [...scopes] },
-        severity: "fatal",
-      }
-    );
+    throw new ElizaError("Google OAuth requires at least one supported Workspace MCP capability.", {
+      code: "GOOGLE_OAUTH_CAPABILITY_REQUIRED",
+      context: { scopes: [...scopes] },
+      severity: "fatal",
+    });
   }
   return [...requested];
 }
@@ -201,9 +211,9 @@ function normalizeGrantedCapabilities(scopes: readonly string[]): {
       capabilities.add(normalized);
       continue;
     }
-    const matched = matchCapabilityFromScope(normalized);
-    if (matched) {
-      capabilities.add(matched);
+    const matched = capabilitiesFromScope(normalized);
+    if (matched.length > 0) {
+      for (const capability of matched) capabilities.add(capability);
       continue;
     }
     if (!identityScopes.has(normalized.toLowerCase())) {
@@ -214,19 +224,15 @@ function normalizeGrantedCapabilities(scopes: readonly string[]): {
   return { capabilities: [...capabilities], ignoredScopes };
 }
 
-function matchCapabilityFromScope(scope: string): GoogleCapability | undefined {
-  // Scope URL → capability ID mapping. Pulls from the canonical capability
-  // metadata so additions to scopes.ts propagate automatically.
+function capabilitiesFromScope(scope: string): GoogleCapability[] {
+  // Provider-returned legacy grants may authorize a read capability even when
+  // the least-privilege request catalog would never ask for that broad scope.
   const trimmed = scope.trim().toLowerCase();
-  for (const capability of GOOGLE_CAPABILITIES) {
-    const capabilityScopes = scopesForGoogleCapabilities([capability], {
-      includeIdentityScopes: false,
-    });
-    if (capabilityScopes.some((value) => value.toLowerCase() === trimmed)) {
-      return capability;
-    }
-  }
-  return undefined;
+  return GOOGLE_CAPABILITIES.filter((capability) =>
+    GOOGLE_CAPABILITY_AUTHORIZATION_SCOPES[capability].some(
+      (value) => value.toLowerCase() === trimmed
+    )
+  );
 }
 
 function purposesForCapabilities(
@@ -254,72 +260,53 @@ function parseScopeString(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function requestedScopesFromMetadata(metadata: unknown): string[] {
-  if (!isRecord(metadata) || metadata.requestedScopes === undefined) {
+function requestedCapabilitiesFromMetadata(metadata: unknown): GoogleCapability[] {
+  if (!isRecord(metadata) || metadata.requestedCapabilities === undefined) {
     throw new ElizaError(
-      "Google OAuth callback is missing the scopes bound to the authorization request.",
+      "Google OAuth callback is missing the capabilities bound to the authorization request.",
       {
-        code: "GOOGLE_OAUTH_REQUESTED_SCOPES_MISSING",
+        code: "GOOGLE_OAUTH_REQUESTED_CAPABILITIES_MISSING",
         severity: "fatal",
       }
     );
   }
-  const scopes = metadata.requestedScopes;
-  if (!Array.isArray(scopes) || scopes.some((scope) => typeof scope !== "string")) {
-    throw new ElizaError("Google OAuth callback contains invalid requested-scope metadata.", {
-      code: "GOOGLE_OAUTH_REQUESTED_SCOPES_INVALID",
+  const capabilities = metadata.requestedCapabilities;
+  if (
+    !Array.isArray(capabilities) ||
+    capabilities.some((capability) => typeof capability !== "string")
+  ) {
+    throw new ElizaError("Google OAuth callback contains invalid capability metadata.", {
+      code: "GOOGLE_OAUTH_REQUESTED_CAPABILITIES_INVALID",
       context: {
-        valueType: Array.isArray(scopes) ? "array-with-non-string" : typeof scopes,
+        valueType: Array.isArray(capabilities) ? "array-with-non-string" : typeof capabilities,
       },
       severity: "fatal",
     });
   }
-  return scopes;
+  return normalizeRequestedCapabilities(capabilities);
 }
 
-function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
-  const record =
-    metadata && typeof metadata === "object" && !Array.isArray(metadata)
-      ? (metadata as Record<string, unknown>)
-      : {};
-  // Cloud OAuth writes `connectionRole` (uppercase canonical) and a legacy
-  // lowercase `agentGoogleSide`. Local UI flows pass `role`/`accountRole`/
-  // `requestedRole`. Accept all five shapes so the role survives whichever
-  // path the OAuth start metadata came through.
-  //
-  // Precedence: most-explicit cloud field first, then the original local
-  // fields in their original order (`role` first, `requestedRole` last so a
-  // stale earlier-step value can't override a later correction), then the
-  // legacy `agentGoogleSide` as the final fallback.
-  const raw = nonEmptyString(
-    record.connectionRole ??
-      record.role ??
-      record.accountRole ??
-      record.requestedRole ??
-      record.agentGoogleSide
-  );
-  if (!raw) return "OWNER";
-  const normalized = raw.toUpperCase();
-  if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {
-    return normalized;
+export function selectRequestedGrantedCapabilities(
+  requestedCapabilities: readonly GoogleCapability[],
+  grantedCapabilities: readonly GoogleCapability[]
+): GoogleCapability[] {
+  const granted = new Set(grantedCapabilities);
+  return requestedCapabilities.filter((capability) => granted.has(capability));
+}
+
+export async function revokeGoogleOAuthToken(token: string): Promise<void> {
+  const response = await fetch(GOOGLE_OAUTH_PROVIDER_METADATA.revokeEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token }).toString(),
+  });
+  if (!response.ok) {
+    throw new ElizaError("Google rejected the OAuth token revocation request.", {
+      code: "GOOGLE_OAUTH_REVOKE_FAILED",
+      context: { status: response.status },
+      severity: "fatal",
+    });
   }
-  return "OWNER";
-}
-
-function oauthModeFromMetadata(metadata: unknown): "eliza_managed" | "bring_your_own" {
-  return isRecord(metadata) && metadata.oauthMode === "eliza_managed"
-    ? "eliza_managed"
-    : "bring_your_own";
-}
-
-function executionTargetFromMetadata(
-  metadata: unknown,
-  oauthMode: "eliza_managed" | "bring_your_own"
-): "agent_host" | "cloud_broker" {
-  if (oauthMode === "eliza_managed") return "cloud_broker";
-  return isRecord(metadata) && metadata.executionTarget === "cloud_broker"
-    ? "cloud_broker"
-    : "agent_host";
 }
 
 function isDefaultFromMetadata(metadata: unknown): boolean {
@@ -404,11 +391,6 @@ export function createGoogleConnectorAccountProvider(
     provider: GOOGLE_SERVICE_NAME,
     label: GOOGLE_OAUTH_PROVIDER_METADATA.label,
 
-    // Registering the provider also registers Gmail as a MESSAGE send
-    // connector, so `op=send source=gmail` (aliases "email"/"mail") routes to
-    // Gmail compose+send instead of SOURCE_CONNECTOR_NOT_FOUND.
-    messageConnector: createGmailMessageConnector(runtime),
-
     listAccounts: async (manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
       return manager.getStorage().listAccounts(GOOGLE_SERVICE_NAME);
     },
@@ -420,45 +402,76 @@ export function createGoogleConnectorAccountProvider(
       return {
         ...input,
         provider: GOOGLE_SERVICE_NAME,
-        role: input.role ?? "OWNER",
-        purpose: input.purpose ?? ["messaging", "calendar", "drive", "meet"],
+        role: "OWNER",
+        purpose: input.purpose ?? ["messaging", "calendar", "drive", "documents", "reading"],
         accessGate: input.accessGate ?? "open",
         status: input.status ?? "pending",
       };
     },
 
     patchAccount: async (
-      accountId: string,
+      _accountId: string,
       patch: ConnectorAccountPatch,
       _manager: ConnectorAccountManager
     ) => {
-      if (patch.status === "revoked" || patch.status === "disabled") {
-        const calendarService = runtime.getService("calendar");
-        if (isGoogleCalendarWatchRevocationService(calendarService)) {
-          await calendarService.revokeGoogleCalendarWatchesByAccount(accountId);
-        }
-      }
       return { ...patch, provider: GOOGLE_SERVICE_NAME };
     },
 
-    deleteAccount: async (accountId: string, _manager: ConnectorAccountManager): Promise<void> => {
-      const calendarService = runtime.getService("calendar");
-      if (isGoogleCalendarWatchRevocationService(calendarService)) {
-        await calendarService.revokeGoogleCalendarWatchesByAccount(accountId);
+    deleteAccount: async (accountId: string, manager: ConnectorAccountManager): Promise<void> => {
+      const account = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+      if (!account) return;
+      const authClient = await new DefaultGoogleCredentialResolver({
+        runtime,
+        accountManager: manager,
+      }).getAuthClient({
+        provider: GOOGLE_SERVICE_NAME,
+        accountId,
+        scopes: account.scopes ?? [],
+        capabilities: (account.capabilities ?? []).filter(isGoogleCapability),
+        reason: "revoke personal Google OAuth grant",
+      });
+      const token = authClient.credentials.refresh_token ?? authClient.credentials.access_token;
+      if (!token) {
+        throw new ElizaError("Google OAuth account has no token available for revocation.", {
+          code: "GOOGLE_OAUTH_REVOKE_TOKEN_MISSING",
+          context: { accountId },
+          severity: "fatal",
+        });
       }
       const workspaceService = runtime.getService(GOOGLE_SERVICE_NAME);
       if (isGoogleMcpAccountLifecycleService(workspaceService)) {
         await workspaceService.disconnectMcpAccount(accountId);
       }
-      // Credential cleanup is the credential store's responsibility; the
-      // manager removes the account row after this resolves.
+      try {
+        await revokeGoogleOAuthToken(token);
+      } catch (cause) {
+        if (isGoogleMcpAccountLifecycleService(workspaceService)) {
+          try {
+            await workspaceService.connectMcpAccount(account);
+          } catch (restoreError) {
+            // error-policy:J7 revocation remains the surfaced failure; a failed
+            // exposure restore is separately reported to the runtime owner.
+            runtime.reportError("google.oauth.revoke.restore", restoreError, { accountId });
+          }
+        }
+        // error-policy:J2 the account and vault refs remain intact so the user
+        // can retry; preserve the provider failure without reporting success.
+        throw new ElizaError("Could not revoke the personal Google OAuth grant.", {
+          code: "GOOGLE_OAUTH_REVOKE_FAILED",
+          context: { accountId },
+          cause,
+          severity: "fatal",
+        });
+      }
+      // The manager removes vault values, credential refs, and the account row
+      // only after upstream revocation and MCP detachment both succeed.
     },
 
     startOAuth: async (
       request: ConnectorOAuthStartRequest,
       _manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthStartResult> => {
-      const config = readClientConfig(runtime);
+      const config = await readClientConfig(runtime);
       const redirectUri = request.redirectUri ?? config.redirectUri;
       const capabilities = normalizeRequestedCapabilities(request.scopes);
       const oauthScopes = scopesForGoogleCapabilities(capabilities);
@@ -486,11 +499,6 @@ export function createGoogleConnectorAccountProvider(
           requestedCapabilities: capabilities,
           requestedScopes: oauthScopes,
           redirectUri,
-          oauthMode: oauthModeFromMetadata(request.metadata),
-          executionTarget: executionTargetFromMetadata(
-            request.metadata,
-            oauthModeFromMetadata(request.metadata)
-          ),
         },
       };
     },
@@ -504,7 +512,7 @@ export function createGoogleConnectorAccountProvider(
         throw new Error("Google OAuth callback is missing an authorization code.");
       }
 
-      const config = readClientConfig(runtime);
+      const config = await readClientConfig(runtime);
       const redirectUri =
         nonEmptyString(request.flow.redirectUri) ??
         nonEmptyString(
@@ -521,13 +529,12 @@ export function createGoogleConnectorAccountProvider(
       });
 
       const grantedScopes = parseScopeString(tokens.scope);
+      const requestedCapabilities = requestedCapabilitiesFromMetadata(request.flow.metadata);
       const normalizedGrant =
         grantedScopes.length > 0
           ? normalizeGrantedCapabilities(grantedScopes)
           : {
-              capabilities: normalizeRequestedCapabilities(
-                requestedScopesFromMetadata(request.flow.metadata)
-              ),
+              capabilities: requestedCapabilities,
               ignoredScopes: [],
             };
       const grantedCapabilities = normalizedGrant.capabilities;
@@ -541,23 +548,32 @@ export function createGoogleConnectorAccountProvider(
         );
       }
       if (grantedCapabilities.length === 0) {
+        throw new ElizaError("Google OAuth completed without a usable Workspace MCP capability.", {
+          code: "GOOGLE_OAUTH_CAPABILITY_NOT_GRANTED",
+          context: {
+            grantedScopes,
+            ignoredScopes: normalizedGrant.ignoredScopes,
+          },
+          severity: "fatal",
+        });
+      }
+      const selectedCapabilities = selectRequestedGrantedCapabilities(
+        requestedCapabilities,
+        grantedCapabilities
+      );
+      if (selectedCapabilities.length === 0) {
         throw new ElizaError(
-          "Google OAuth completed without a usable Gmail, Calendar, Drive, or Meet capability.",
+          "Google OAuth did not grant any of the Workspace MCP capabilities selected for this connection.",
           {
-            code: "GOOGLE_OAUTH_CAPABILITY_NOT_GRANTED",
-            context: {
-              grantedScopes,
-              ignoredScopes: normalizedGrant.ignoredScopes,
-            },
+            code: "GOOGLE_OAUTH_SELECTED_CAPABILITY_NOT_GRANTED",
+            context: { requestedCapabilities, grantedCapabilities },
             severity: "fatal",
           }
         );
       }
-      const purposes = purposesForCapabilities(grantedCapabilities);
+      const purposes = purposesForCapabilities(selectedCapabilities);
       const effectiveGrantedScopes =
         grantedScopes.length > 0 ? grantedScopes : scopesForGoogleCapabilities(grantedCapabilities);
-      const oauthMode = oauthModeFromMetadata(request.flow.metadata);
-      const executionTarget = executionTargetFromMetadata(request.flow.metadata, oauthMode);
 
       let identity = parseIdTokenClaims(tokens.id_token);
       if (!identity.email) {
@@ -577,6 +593,7 @@ export function createGoogleConnectorAccountProvider(
         picture: identity.picture ?? null,
         locale: identity.locale ?? null,
         grantedCapabilities,
+        selectedCapabilities,
         grantedScopes: effectiveGrantedScopes,
         identityScopes: [...GOOGLE_IDENTITY_SCOPES],
         tokenType: tokens.token_type ?? "Bearer",
@@ -588,15 +605,13 @@ export function createGoogleConnectorAccountProvider(
         GOOGLE_SERVICE_NAME,
         {
           provider: GOOGLE_SERVICE_NAME,
-          role: roleFromMetadata(request.flow.metadata),
+          role: "OWNER",
           purpose: purposes,
           accessGate: "open",
           status: "pending",
           scopes: effectiveGrantedScopes,
-          capabilities: grantedCapabilities,
-          oauthMode,
-          executionTarget,
-          selectedProducts: productsForCapabilities(grantedCapabilities),
+          capabilities: selectedCapabilities,
+          selectedProducts: productsForCapabilities(selectedCapabilities),
           isDefault: isDefaultFromMetadata(request.flow.metadata),
           externalId,
           displayHandle: nonEmptyString(identity.email) ?? nonEmptyString(identity.name),
@@ -608,7 +623,7 @@ export function createGoogleConnectorAccountProvider(
         },
         request.flow.accountId
       );
-      const credentialPersist = await persistConnectorCredentialRefs({
+      await persistConnectorCredentialRefs({
         runtime,
         manager,
         provider: GOOGLE_SERVICE_NAME,
@@ -648,11 +663,6 @@ export function createGoogleConnectorAccountProvider(
         status: "connected",
         metadata: {
           ...accountMetadata,
-          credentialRefs: credentialPersist.refs,
-          credentialRefStorage: {
-            vaultAvailable: credentialPersist.vaultAvailable,
-            storageAvailable: credentialPersist.storageAvailable,
-          },
         },
       };
 
@@ -660,7 +670,8 @@ export function createGoogleConnectorAccountProvider(
         {
           src: "plugin:google:connector",
           externalId,
-          capabilities: grantedCapabilities,
+          grantedCapabilities,
+          selectedCapabilities,
         },
         "Google OAuth completed"
       );

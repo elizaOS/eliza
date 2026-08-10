@@ -20,6 +20,7 @@ import type {
 	ConnectorAccountRecord,
 	ConsumeOAuthFlowStateParams,
 	CreateOAuthFlowStateParams,
+	DeleteConnectorAccountCredentialRefsParams,
 	DeleteConnectorAccountParams,
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
@@ -688,6 +689,12 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	listConnectorAccountCredentialRefs(
 		_params: ListConnectorAccountCredentialRefsParams,
 	): Promise<ConnectorAccountCredentialRefRecord[]> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	deleteConnectorAccountCredentialRefs(
+		_params: DeleteConnectorAccountCredentialRefsParams,
+	): Promise<number> {
 		this.unsupportedConnectorAccountStorage();
 	}
 

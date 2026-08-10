@@ -49,8 +49,6 @@ function publicBinding() {
     purposes: ["automation"],
     accessGate: "owner_binding",
     status: "connected",
-    oauthMode: "eliza_managed",
-    executionTarget: "cloud_broker",
     selectedProducts: ["gmail", "calendar"],
     allowedCapabilities: ["gmail.read", "calendar.read"],
     grantedScopes: ["scope-a"],
@@ -84,10 +82,8 @@ describe("agent connector bindings route", () => {
           platformCredentialId: CREDENTIAL_ID,
           provider: "google",
           role: "OWNER",
-          oauthMode: "eliza_managed",
-          executionTarget: "cloud_broker",
           selectedProducts: ["gmail", "calendar"],
-          allowedCapabilities: ["gmail.read", "calendar.read"],
+          allowedCapabilities: ["google.drive.delete_everything"],
           isDefault: true,
         }),
       },
@@ -104,6 +100,9 @@ describe("agent connector bindings route", () => {
         authorizedByUserId: "00000000-0000-4000-8000-000000000001",
       }),
     );
+    expect(bind.mock.calls[0]?.[0]).not.toHaveProperty("allowedCapabilities");
+    expect(bind.mock.calls[0]?.[0]).not.toHaveProperty("oauthMode");
+    expect(bind.mock.calls[0]?.[0]).not.toHaveProperty("executionTarget");
   });
 
   test("rejects an agent outside the caller's organization before binding", async () => {
@@ -118,10 +117,7 @@ describe("agent connector bindings route", () => {
           platformCredentialId: CREDENTIAL_ID,
           provider: "google",
           role: "OWNER",
-          oauthMode: "eliza_managed",
-          executionTarget: "cloud_broker",
           selectedProducts: ["gmail"],
-          allowedCapabilities: ["gmail.read"],
         }),
       },
     );

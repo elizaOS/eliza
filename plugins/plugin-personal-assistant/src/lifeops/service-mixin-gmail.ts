@@ -15,22 +15,22 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGmailBatchReplyDraftsFeed,
-  LifeOpsGmailBatchReplySendResult,
   LifeOpsGmailEventIngestResult,
   LifeOpsGmailManageResult,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
+  LifeOpsGmailReplyDraftSaveResult,
   LifeOpsGmailSearchFeed,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
   ManageLifeOpsGmailMessagesRequest,
-  SendLifeOpsGmailBatchReplyRequest,
-  SendLifeOpsGmailMessageRequest,
-  SendLifeOpsGmailReplyRequest,
+  SaveLifeOpsGmailDraftRequest,
+  SaveLifeOpsGmailReplyDraftRequest,
+  SaveLifeOpsGmailReplyDraftsRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
 } from "../contracts/index.js";
 
@@ -108,16 +108,26 @@ export interface LifeOpsGmailService {
     requestUrl: URL,
     request: CreateLifeOpsGmailReplyDraftRequest,
   ): Promise<LifeOpsGmailReplyDraft>;
-  sendGmailReply(
+  saveGmailReplyDraft(
     requestUrl: URL,
-    request: SendLifeOpsGmailReplyRequest,
-  ): Promise<{ ok: true }>;
-  sendGmailMessage(
+    request: SaveLifeOpsGmailReplyDraftRequest,
+  ): Promise<{
+    ok: true;
+    status: "draft_created";
+    draftId: string;
+    threadId: string | null;
+  }>;
+  saveGmailDraft(
     requestUrl: URL,
-    request: SendLifeOpsGmailMessageRequest,
-  ): Promise<{ ok: true; messageId: string; threadId: string | null }>;
-  sendGmailReplies(
+    request: SaveLifeOpsGmailDraftRequest,
+  ): Promise<{
+    ok: true;
+    status: "draft_created";
+    draftId: string;
+    threadId: string | null;
+  }>;
+  saveGmailReplyDrafts(
     requestUrl: URL,
-    request: SendLifeOpsGmailBatchReplyRequest,
-  ): Promise<LifeOpsGmailBatchReplySendResult>;
+    request: SaveLifeOpsGmailReplyDraftsRequest,
+  ): Promise<LifeOpsGmailReplyDraftSaveResult>;
 }

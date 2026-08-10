@@ -324,13 +324,13 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
   },
   {
     id: "eliza-cloud-managed-google",
-    label: "Eliza Cloud managed Google",
+    label: "Eliza Cloud Google OAuth and bindings",
     mode: "static-http",
     environment: "cloud-managed",
     envVars: ["ELIZA_CLOUD_BASE_URL"],
-    surfaces: ["managed Google status", "managed Google account list"],
+    surfaces: ["OAuth connection list", "agent connector binding list"],
     knownGaps: [
-      "No managed mutation routes, cloud auth failure matrix, billing limits, or account relink flows",
+      "No live Google consent callback, vault token refresh, or authenticated MCP tool call",
     ],
     validation: [
       "test/mocks/__tests__/mock-runtime.smoke.test.ts",

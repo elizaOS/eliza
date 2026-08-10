@@ -43,6 +43,8 @@ export interface ConnectorAccountCardProps {
   saving?: boolean;
   testBusy?: boolean;
   refreshBusy?: boolean;
+  /** Whether to expose generic role/privacy controls for this connector. */
+  showPolicyControls?: boolean;
   onSelect?: () => void;
   onUpdate: (body: ConnectorAccountUpdateInput) => Promise<void>;
   onTest: () => Promise<void>;
@@ -150,6 +152,7 @@ export function ConnectorAccountCard({
   saving = false,
   testBusy = false,
   refreshBusy = false,
+  showPolicyControls = true,
   onSelect,
   onUpdate,
   onTest,
@@ -321,23 +324,39 @@ export function ConnectorAccountCard({
         </div>
       </div>
 
+      {account.selectedProducts && account.selectedProducts.length > 0 ? (
+        <ul className="flex flex-wrap gap-1.5" aria-label="Connected products">
+          {account.selectedProducts.map((product) => (
+            <li key={product}>
+              <Badge variant="outline" className="text-[10px] capitalize">
+                {product === "universalSearch" ? "Workspace search" : product}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-3">
-        <ConnectorAccountPurposeSelector
-          value={account.role}
-          disabled={saving}
-          accountLabel={account.label}
-          onChange={(role, confirmation) => {
-            void onUpdate({ role, confirmation });
-          }}
-        />
-        <ConnectorAccountPrivacySelector
-          value={account.privacy}
-          disabled={saving}
-          accountLabel={account.label}
-          onChange={(privacy, confirmation) =>
-            onUpdate({ privacy, confirmation })
-          }
-        />
+        {showPolicyControls ? (
+          <>
+            <ConnectorAccountPurposeSelector
+              value={account.role}
+              disabled={saving}
+              accountLabel={account.label}
+              onChange={(role, confirmation) => {
+                void onUpdate({ role, confirmation });
+              }}
+            />
+            <ConnectorAccountPrivacySelector
+              value={account.privacy}
+              disabled={saving}
+              accountLabel={account.label}
+              onChange={(privacy, confirmation) =>
+                onUpdate({ privacy, confirmation })
+              }
+            />
+          </>
+        ) : null}
         <div className="inline-flex items-center gap-1.5 text-xs text-muted">
           <Checkbox
             checked={enabled}

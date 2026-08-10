@@ -143,7 +143,6 @@ import type {
   ApprovalRequestState,
   ApprovalResolution,
 } from "../src/lifeops/approval-queue.types.js";
-import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { attachSchedulingApprovalCorrelation } from "../src/lifeops/scheduling-approval.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 
@@ -542,7 +541,7 @@ describe("executeApprovedRequest", () => {
     expect(queue.transitions).toEqual([]);
   });
 
-  it("send_email approval projects sent-mail commitments into the ledger after delivery", async () => {
+  it("send_email approval creates a provider draft without recording delivery commitments", async () => {
     const runtime = {
       ...makeRuntime(),
       adapter: { db: {} },
@@ -564,14 +563,16 @@ describe("executeApprovedRequest", () => {
     const queue = new RecordingQueue(request);
     vi.spyOn(
       LifeOpsService.prototype,
-      "requireGoogleGmailSendGrant",
+      "requireGoogleGmailDraftGrant",
     ).mockResolvedValue({} as never);
     const sendSpy = vi
-      .spyOn(LifeOpsService.prototype, "sendGmailMessage")
-      .mockResolvedValue({ ok: true });
-    const upsertSpy = vi
-      .spyOn(LifeOpsRepository.prototype, "upsertCommitmentLedgerRecord")
-      .mockResolvedValue();
+      .spyOn(LifeOpsService.prototype, "saveGmailDraft")
+      .mockResolvedValue({
+        ok: true,
+        status: "draft_created",
+        draftId: "draft-17",
+        threadId: null,
+      });
     const { texts, callback } = collectTexts();
 
     const result = await executeApprovedRequest({
@@ -583,25 +584,13 @@ describe("executeApprovedRequest", () => {
 
     expect(sendSpy).toHaveBeenCalledTimes(1);
     expect(queue.transitions).toEqual(["executing", "done"]);
-    expect(upsertSpy).toHaveBeenCalledTimes(1);
-    expect(upsertSpy.mock.calls[0]?.[0]).toMatchObject({
-      agentId: runtime.agentId,
-      source: "sent_mail",
-      sourceKey: `approval:${request.id}`,
-      kind: "commitment",
-      counterparty: "mira@example.com",
-      dueAt: "2026-07-10T17:00:00.000Z",
-      status: "open",
-      scheduledTaskId: null,
-      metadata: {
-        approvalRequestId: request.id,
-        subject: "Launch deck",
-        to: ["mira@example.com"],
-      },
-    });
-    expect(upsertSpy.mock.calls[0]?.[0].summary).toContain("send the deck");
     expect(runtime.reportError).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      status: "draft_created",
+      draftId: "draft-17",
+    });
+    expect(texts.join(" ")).toContain("created a Gmail draft");
     expect(texts.join(" ")).toContain("mira@example.com");
   });
 
@@ -1216,7 +1205,7 @@ describe("RESOLVE_REQUEST scheduling approval path", () => {
     };
     docMocks.list.mockResolvedValue([pending]);
     docMocks.approve.mockResolvedValue(approved);
-    const sendSpy = vi.spyOn(LifeOpsService.prototype, "sendGmailMessage");
+    const sendSpy = vi.spyOn(LifeOpsService.prototype, "saveGmailDraft");
     const { texts, callback } = collectTexts();
 
     const result = await resolveRequestAction.handler(

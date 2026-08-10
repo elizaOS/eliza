@@ -3,7 +3,8 @@
  *
  * Config-driven OAuth provider system. Adding a new OAuth provider requires:
  * 1. Add provider config to OAUTH_PROVIDERS
- * 2. Set environment variables (CLIENT_ID, CLIENT_SECRET)
+ * 2. Configure its client credentials (Google's secret is organization-vault
+ *    backed; legacy providers still use deployment secret bindings)
  * 3. Done - generic routes handle the rest
  *
  * Supports:
@@ -12,7 +13,9 @@
  * - API Key (Twilio, Blooio - user provides credentials)
  */
 
+import { GOOGLE_WORKSPACE_MCP_RESOURCES } from "@elizaos/shared/contracts";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
+import { secretsService } from "../secrets";
 import { Errors } from "./errors";
 import type { OAuthProviderType } from "./types";
 
@@ -221,6 +224,134 @@ export interface OAuthProviderConfig {
   useGenericRoutes?: boolean;
 }
 
+export const GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME = "GOOGLE_OAUTH_CLIENT_SECRET";
+
+interface OAuthClientCredentialSecretStore {
+  get(
+    organizationId: string,
+    name: string,
+    projectId?: string,
+    environment?: undefined,
+    audit?: {
+      actorType: "user" | "system";
+      actorId: string;
+      source: string;
+    },
+  ): Promise<string | null>;
+  create(
+    params: {
+      organizationId: string;
+      name: string;
+      value: string;
+      scope: "organization";
+      description: string;
+      createdBy: string;
+    },
+    audit: {
+      actorType: "user" | "system";
+      actorId: string;
+      source: string;
+    },
+  ): Promise<{ id: string }>;
+}
+
+export interface ResolveOAuthClientCredentialsParams {
+  organizationId: string;
+  actorId: string;
+  actorType?: "user" | "system";
+  source: string;
+  allowGoogleEnvMigration?: boolean;
+}
+
+/**
+ * Resolve provider application credentials. Google's client secret is an
+ * organization-vault value; the deployment environment is accepted only as
+ * an explicitly enabled one-time migration source and is never returned until
+ * the value can be read back from the vault.
+ */
+export async function resolveOAuthClientCredentials(
+  provider: OAuthProviderConfig,
+  params: ResolveOAuthClientCredentialsParams,
+  secretStore: OAuthClientCredentialSecretStore = secretsService,
+): Promise<{ clientId: string; clientSecret: string }> {
+  const clientId = getClientId(provider);
+  if (!clientId) {
+    throw new Error(`OAuth not configured: missing client ID for ${provider.id}`);
+  }
+  if (provider.id !== "google") {
+    const clientSecret = getClientSecret(provider);
+    if (!clientSecret) {
+      throw new Error(`OAuth not configured: missing client secret for ${provider.id}`);
+    }
+    return { clientId, clientSecret };
+  }
+
+  const audit = {
+    actorType: params.actorType ?? ("user" as const),
+    actorId: params.actorId,
+    source: params.source,
+  };
+  const readVaultSecret = () =>
+    secretStore.get(
+      params.organizationId,
+      GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME,
+      undefined,
+      undefined,
+      audit,
+    );
+  let clientSecret = await readVaultSecret();
+  if (clientSecret) return { clientId, clientSecret };
+
+  const envSecret = getClientSecret(provider);
+  if (!params.allowGoogleEnvMigration || !envSecret) {
+    throw new Error(
+      `Google OAuth client secret is missing from the organization vault (${GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME})`,
+    );
+  }
+  try {
+    await secretStore.create(
+      {
+        organizationId: params.organizationId,
+        name: GOOGLE_OAUTH_CLIENT_SECRET_VAULT_NAME,
+        value: envSecret,
+        scope: "organization",
+        description: "Google OAuth application client secret",
+        createdBy: params.actorId,
+      },
+      audit,
+    );
+  } catch (error) {
+    // error-policy:J4 Concurrent first-use migrations may race on the unique
+    // name; only a successfully readable vault value is accepted below.
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/already exists|duplicate|unique constraint/i.test(message)) throw error;
+  }
+  clientSecret = await readVaultSecret();
+  if (!clientSecret) {
+    throw new Error("Google OAuth client secret migration did not persist a readable vault value");
+  }
+  return { clientId, clientSecret };
+}
+
+const GOOGLE_IDENTITY_SCOPES = [
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+] as const;
+const GOOGLE_LEGACY_CALENDAR_READ_AUTHORIZATION_SCOPES = new Set([
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar",
+]);
+const GOOGLE_MCP_ALLOWED_SCOPES = [
+  ...new Set(
+    [
+      ...GOOGLE_IDENTITY_SCOPES,
+      ...Object.values(GOOGLE_WORKSPACE_MCP_RESOURCES).flatMap((resource) => [
+        ...resource.acceptedScopes,
+      ]),
+    ].filter((scope) => !GOOGLE_LEGACY_CALENDAR_READ_AUTHORIZATION_SCOPES.has(scope)),
+  ),
+];
+
 /**
  * Registry of all supported OAuth providers.
  */
@@ -238,14 +369,13 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       revoke: "https://oauth2.googleapis.com/revoke",
     },
     defaultScopes: [
-      "https://www.googleapis.com/auth/userinfo.email",
-      "https://www.googleapis.com/auth/userinfo.profile",
-      "https://www.googleapis.com/auth/gmail.send",
+      ...GOOGLE_IDENTITY_SCOPES,
       "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/calendar.events",
+      "https://www.googleapis.com/auth/gmail.compose",
       "https://www.googleapis.com/auth/calendar.readonly",
       "https://www.googleapis.com/auth/contacts.readonly",
     ],
+    allowedScopes: GOOGLE_MCP_ALLOWED_SCOPES,
     userInfoMapping: {
       id: "id",
       email: "email",
@@ -778,6 +908,11 @@ export function getProvider(platformId: string): OAuthProviderConfig | null {
 /** Check if provider has required env vars (API key providers always return true). */
 export function isProviderConfigured(provider: OAuthProviderConfig): boolean {
   const env = getCloudAwareEnv();
+  if (provider.id === "google") {
+    // The secret is organization-scoped and resolved asynchronously at flow
+    // start/refresh; this synchronous catalog check can only verify public ID.
+    return Boolean(getClientId(provider));
+  }
   if (provider.id === "twitter") {
     return Boolean((env.TWITTER_API_KEY && env.TWITTER_API_SECRET_KEY) || env.TWITTER_CLIENT_ID);
   }

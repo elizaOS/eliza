@@ -195,7 +195,7 @@
       "currentCoverage": "missing",
       "transcriptEvidence": ["2026-01-12T12:14:53.303-07:00"],
       "existingScenarioRefs": [
-        "gmail.send-with-confirmation",
+        "gmail.save-draft-with-confirmation",
         "followup.draft-cross-platform.gmail"
       ],
       "integrations": ["draft-store", "gmail", "x-dm"],

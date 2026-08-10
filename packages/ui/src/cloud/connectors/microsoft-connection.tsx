@@ -229,7 +229,7 @@ export function MicrosoftConnection() {
           />
 
           <Button
-            onClick={handleConnect}
+            onClick={() => void handleConnect()}
             disabled={isConnecting}
             className="w-full"
           >

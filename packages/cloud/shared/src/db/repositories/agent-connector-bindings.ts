@@ -4,14 +4,16 @@
  * it inside the Cloud service boundary.
  */
 import type { AgentConnectorBinding } from "@elizaos/core";
+import {
+  GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES,
+  GOOGLE_WORKSPACE_MCP_RESOURCES,
+} from "@elizaos/shared/contracts";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { type DbTransaction, dbRead } from "../client";
 import { writeTransaction } from "../helpers";
 import {
   agentConnectorBindings,
   type CloudConnectorBindingRole,
-  type CloudConnectorExecutionTarget,
-  type CloudConnectorOAuthMode,
 } from "../schemas/agent-connector-bindings";
 import { platformCredentials } from "../schemas/platform-credentials";
 import { userCharacters } from "../schemas/user-characters";
@@ -24,10 +26,7 @@ export interface BindAgentConnectorInput {
   role: CloudConnectorBindingRole;
   purposes: string[];
   accessGate: string;
-  oauthMode: CloudConnectorOAuthMode;
-  executionTarget: CloudConnectorExecutionTarget;
   selectedProducts: string[];
-  allowedCapabilities: string[];
   isDefault: boolean;
   authorizedByUserId: string;
   ownerBindingId?: string;
@@ -49,7 +48,8 @@ export class AgentConnectorBindingRepositoryError extends Error {
       | "AGENT_NOT_FOUND"
       | "CREDENTIAL_NOT_FOUND"
       | "PROVIDER_MISMATCH"
-      | "OWNER_NOT_VERIFIED",
+      | "OWNER_NOT_VERIFIED"
+      | "UNSUPPORTED_PRODUCT",
     message: string,
   ) {
     super(message);
@@ -64,6 +64,48 @@ function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+function canonicalSelectedProducts(provider: string, values: readonly string[]): string[] {
+  const unique = uniqueStrings(values);
+  if (provider !== "google") return unique;
+  const catalog = new Map(
+    Object.keys(GOOGLE_WORKSPACE_MCP_RESOURCES).map((product) => [product.toLowerCase(), product]),
+  );
+  return unique.map((product) => {
+    const normalized =
+      product.toLowerCase() === "workspace" ? "universalsearch" : product.toLowerCase();
+    const canonical = catalog.get(normalized);
+    if (!canonical) {
+      throw new AgentConnectorBindingRepositoryError(
+        "UNSUPPORTED_PRODUCT",
+        `Unsupported Google MCP product: ${product}.`,
+      );
+    }
+    return canonical;
+  });
+}
+
+function deriveAllowedCapabilities(
+  selectedProducts: readonly string[],
+  grantedScopes: readonly string[],
+): string[] {
+  const scopes = new Set(grantedScopes);
+  const capabilities = new Set<string>();
+  for (const selected of selectedProducts) {
+    const resource = Object.entries(GOOGLE_WORKSPACE_MCP_RESOURCES).find(
+      ([product]) => product.toLowerCase() === selected.toLowerCase(),
+    )?.[1];
+    if (!resource) continue;
+    for (const capability of Object.values(resource.tools)) {
+      const accepted =
+        GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES[
+          capability as keyof typeof GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES
+        ];
+      if (accepted?.some((scope) => scopes.has(scope))) capabilities.add(capability);
+    }
+  }
+  return [...capabilities];
+}
+
 function projectBinding(row: BindingRow, credential: CredentialRow): AgentConnectorBinding {
   const displayHandle =
     credential.platform_display_name ?? credential.platform_username ?? credential.platform_email;
@@ -75,8 +117,6 @@ function projectBinding(row: BindingRow, credential: CredentialRow): AgentConnec
     purposes: [...row.purposes],
     accessGate: row.access_gate,
     status: row.status,
-    oauthMode: row.oauth_mode,
-    executionTarget: row.execution_target,
     selectedProducts: [...row.selected_products],
     allowedCapabilities: [...row.allowed_capabilities],
     grantedScopes: [...(credential.scopes ?? [])],
@@ -186,15 +226,14 @@ export async function bindAgentConnectorWithTransaction(
     )
     .limit(1);
 
+  const selectedProducts = canonicalSelectedProducts(input.provider, input.selectedProducts);
   const values = {
     role: input.role,
     purposes: uniqueStrings(input.purposes),
     access_gate: input.accessGate,
     status: "connected" as const,
-    oauth_mode: input.oauthMode,
-    execution_target: input.executionTarget,
-    selected_products: uniqueStrings(input.selectedProducts),
-    allowed_capabilities: uniqueStrings(input.allowedCapabilities),
+    selected_products: selectedProducts,
+    allowed_capabilities: deriveAllowedCapabilities(selectedProducts, credential.scopes ?? []),
     is_default: input.isDefault,
     owner_binding_id: input.ownerBindingId ?? null,
     owner_identity_id: input.ownerIdentityId ?? null,
@@ -274,6 +313,34 @@ export class AgentConnectorBindingsRepository {
       platformCredentialId: row.binding.platform_credential_id,
       credentialStatus: row.credential.status,
     };
+  }
+
+  async revoke(args: {
+    organizationId: string;
+    agentId: string;
+    bindingId: string;
+  }): Promise<boolean> {
+    const now = new Date();
+    const rows = await writeTransaction((tx) =>
+      tx
+        .update(agentConnectorBindings)
+        .set({
+          status: "revoked",
+          is_default: false,
+          deleted_at: now,
+          updated_at: now,
+        })
+        .where(
+          and(
+            eq(agentConnectorBindings.id, args.bindingId),
+            eq(agentConnectorBindings.organization_id, args.organizationId),
+            eq(agentConnectorBindings.agent_id, args.agentId),
+            isNull(agentConnectorBindings.deleted_at),
+          ),
+        )
+        .returning({ id: agentConnectorBindings.id }),
+    );
+    return rows.length === 1;
   }
 
   async disableByCredential(

@@ -40,6 +40,7 @@ interface Harness {
   manager: ConnectorAccountManager;
   storage: InMemoryConnectorAccountStorage;
   vault: Map<string, string>;
+  credentials: Map<string, string>;
   refs: StoredCredentialRef[];
   fetchMock: ReturnType<typeof vi.fn>;
   setReturnedNonce(value: string): void;
@@ -100,6 +101,7 @@ function createHarness(
 ): Harness {
   const storage = new InMemoryConnectorAccountStorage();
   const vault = new Map<string, string>();
+  const oauthCredentials = new Map<string, string>();
   const refs: StoredCredentialRef[] = [];
   let returnedNonce = "";
   const fetchMock = vi.fn(
@@ -162,16 +164,43 @@ function createHarness(
       vault.delete(key);
     },
   };
+  const oauthCredentialStore = {
+    putSecret: async (input: {
+      vaultRef: string;
+      credentialType: string;
+      value: string;
+    }) => {
+      if (
+        options.secretBackend === false &&
+        input.credentialType !== "oauth.pkce"
+      ) {
+        throw new Error("Token credential writes are unavailable.");
+      }
+      oauthCredentials.set(input.vaultRef, input.value);
+      return input.vaultRef;
+    },
+    reveal: async (vaultRef: string) => {
+      const value = oauthCredentials.get(vaultRef);
+      if (!value) throw new Error("OAuth credential is unavailable.");
+      return value;
+    },
+    remove: async (vaultRef: string) => {
+      oauthCredentials.delete(vaultRef);
+    },
+  };
   const runtime = {
     agentId: AGENT_ID,
     fetch: fetchMock,
     getSetting: settings,
-    getService: (serviceType: string) =>
-      options.secretBackend === false
-        ? null
-        : serviceType === "vault"
-          ? vaultService
-          : null,
+    getService: (serviceType: string) => {
+      if (serviceType === "connector_credential_store") {
+        return oauthCredentialStore;
+      }
+      if (serviceType === "vault" && options.secretBackend !== false) {
+        return vaultService;
+      }
+      return null;
+    },
     setConnectorAccountCredentialRef: async (ref: StoredCredentialRef) => {
       const pending = await storage.getAccount("microsoft", ref.accountId);
       expect(pending?.status).toBe("pending");
@@ -191,6 +220,7 @@ function createHarness(
     manager,
     storage,
     vault,
+    credentials: oauthCredentials,
     refs,
     fetchMock,
     setReturnedNonce(value: string) {
@@ -476,7 +506,7 @@ describe("Microsoft connector account provider", () => {
         ),
       }),
     ]);
-    const storedSecret = [...harness.vault.values()][0];
+    const storedSecret = [...harness.credentials.values()][0];
     expect(storedSecret).toContain("microsoft-access-token");
     expect(storedSecret).toContain("microsoft-refresh-token");
     const publicArtifacts = JSON.stringify({
@@ -554,7 +584,7 @@ describe("Microsoft connector account provider", () => {
     ).toMatchObject({ status: "revoked" });
   });
 
-  it("leaves an account pending when no durable secret backend is registered", async () => {
+  it("leaves an account pending when durable token writes fail", async () => {
     const harness = createHarness({ secretBackend: false });
     const flow = await startReadFlow(harness);
 
@@ -565,7 +595,7 @@ describe("Microsoft connector account provider", () => {
         query: { state: flow.state },
       }),
     ).rejects.toMatchObject({
-      code: "MICROSOFT_SECRET_WRITER_UNAVAILABLE",
+      code: "MICROSOFT_SECRET_WRITE_FAILED",
     });
     const accounts = await harness.storage.listAccounts("microsoft");
     expect(accounts).toHaveLength(1);
@@ -597,6 +627,7 @@ describe("Microsoft connector account provider", () => {
         remoteRevocation: "not_attempted",
       },
     });
+    expect(harness.credentials.size).toBe(0);
     expect(harness.vault.size).toBe(0);
     expect(harness.fetchMock).toHaveBeenCalledTimes(fetchCallsBeforeDisconnect);
   });

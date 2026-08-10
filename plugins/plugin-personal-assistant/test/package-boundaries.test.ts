@@ -361,13 +361,11 @@ describe("LifeOps package boundaries", () => {
     ).toBe(false);
   });
 
-  it("imports Gmail message triage from plugin-google-workspace instead of owning a transport adapter", () => {
+  it("uses the MCP Gmail domain without registering a delivery transport adapter", () => {
     const pluginSource = readPackageFile("src/plugin.ts");
     const messagingIndex = readPackageFile("src/lifeops/messaging/index.ts");
 
-    expect(pluginSource).toContain(
-      'import { GoogleGmailAdapter } from "@elizaos/plugin-google-workspace"',
-    );
+    expect(pluginSource).not.toContain("GoogleGmailAdapter");
     expect(messagingIndex).not.toContain("GoogleGmailAdapter");
     expect(messagingIndex).not.toContain("@elizaos/plugin-google-workspace");
     expect(

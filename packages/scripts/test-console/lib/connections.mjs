@@ -542,64 +542,6 @@ export const CONNECTIONS = [
     },
   },
   {
-    id: "google-oauth",
-    label: "Google OAuth (Workspace APIs)",
-    category: "saas",
-    kind: "oauth",
-    obtain:
-      "https://console.cloud.google.com/apis/credentials — OAuth client (Desktop); the console's Connect button mints the refresh token via loopback",
-    oauth: "google",
-    fields: [
-      {
-        key: "GOOGLE_CLIENT_ID",
-        label: "OAuth client ID",
-        secret: false,
-        required: true,
-      },
-      {
-        key: "GOOGLE_CLIENT_SECRET",
-        label: "OAuth client secret",
-        secret: true,
-        required: true,
-      },
-      {
-        key: "GOOGLE_OAUTH_REFRESH_TOKEN",
-        label: "Refresh token (minted by Connect)",
-        secret: true,
-        required: true,
-      },
-    ],
-    verify: {
-      kind: "http",
-      url: "https://oauth2.googleapis.com/token",
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "client_id={{GOOGLE_CLIENT_ID}}&client_secret={{GOOGLE_CLIENT_SECRET}}&refresh_token={{GOOGLE_OAUTH_REFRESH_TOKEN}}&grant_type=refresh_token",
-    },
-  },
-  {
-    id: "google-calendar",
-    label: "Google Calendar (access token)",
-    category: "calendar",
-    kind: "oauth",
-    obtain:
-      "Minted from the Google OAuth connection (Connect button) or paste a short-lived access token",
-    oauth: "google-calendar",
-    fields: [
-      {
-        key: "GOOGLE_CALENDAR_ACCESS_TOKEN",
-        label: "Access token",
-        secret: true,
-        required: true,
-      },
-    ],
-    verify: {
-      kind: "http",
-      url: "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1",
-      headers: { Authorization: "Bearer {{GOOGLE_CALENDAR_ACCESS_TOKEN}}" },
-    },
-  },
-  {
     id: "shopify",
     label: "Shopify",
     category: "saas",

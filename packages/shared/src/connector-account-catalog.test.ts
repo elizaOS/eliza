@@ -4,8 +4,7 @@
  * Two guarantees:
  *   1. Each plugin-managed connector declares its exact `defaultRole` /
  *      `defaultPurpose` / `supportsOAuth` in ONE place (this catalog). The
- *      per-connector table below is the frozen expectation that proves the
- *      refactor preserved the historical UI-map defaults (no behavior change).
+ *      per-connector table below is the frozen product contract for defaults.
  *   2. Lookup resolves canonical ids, provider ids, and aliases
  *      (twitter → x, gmail → google) identically to the old UI normalization.
  */
@@ -20,8 +19,7 @@ import {
 } from "./connector-account-catalog.js";
 
 /**
- * Frozen expected defaults per connector — MUST match the historical UI-map
- * literals exactly. This is the "no behavior change" proof for the audit item.
+ * Frozen expected defaults per connector.
  */
 const EXPECTED: Record<
   string,
@@ -45,7 +43,13 @@ const EXPECTED: Record<
   google: {
     provider: "google",
     defaultRole: "OWNER",
-    defaultPurpose: ["messaging", "calendar", "drive", "meet"],
+    defaultPurpose: [
+      "messaging",
+      "calendar",
+      "drive",
+      "documents",
+      "automation",
+    ],
     supportsOAuth: true,
   },
   x: {

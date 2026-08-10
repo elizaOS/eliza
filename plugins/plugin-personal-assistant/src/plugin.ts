@@ -36,7 +36,6 @@ import {
 } from "@elizaos/plugin-calendar";
 import { financesPlugin } from "@elizaos/plugin-finances/plugin";
 import { goalsPlugin } from "@elizaos/plugin-goals/plugin";
-import { GoogleGmailAdapter } from "@elizaos/plugin-google-workspace";
 import {
   createDefaultCircadianInsightContract,
   healthPlugin,
@@ -1038,11 +1037,9 @@ const rawPersonalAssistantPlugin: Plugin = {
       createTrackedWorkRecapDirectRoutingRule(),
     );
 
-    // First-party adapters backed by LifeOps services. Gmail and X replace the
-    // core default adapters so MESSAGE triage operations operate on real
-    // connected data.
+    // First-party adapters backed by connector services. Gmail MCP access is
+    // exposed through the LifeOps Gmail domain rather than a transport adapter.
     const triage = getDefaultTriageService();
-    triage.register(new GoogleGmailAdapter());
     triage.register(new XDmAdapter());
     triage.register(new BrowserBridgeAdapter());
 

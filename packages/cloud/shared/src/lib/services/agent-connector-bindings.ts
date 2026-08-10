@@ -4,6 +4,7 @@
  * atomic repository operation.
  */
 import type { AgentConnectorBinding } from "@elizaos/core";
+import { GOOGLE_WORKSPACE_MCP_RESOURCES } from "@elizaos/shared/contracts";
 import {
   AgentConnectorBindingRepositoryError,
   AgentConnectorBindingsRepository,
@@ -13,9 +14,6 @@ import {
 } from "../../db/repositories/agent-connector-bindings";
 
 const VALID_ROLES = new Set(["OWNER", "AGENT", "TEAM"]);
-const VALID_OAUTH_MODES = new Set(["eliza_managed", "bring_your_own"]);
-const VALID_EXECUTION_TARGETS = new Set(["cloud_broker", "agent_host"]);
-
 export interface CreateAgentConnectorBindingInput {
   organizationId: string;
   agentId: string;
@@ -24,10 +22,7 @@ export interface CreateAgentConnectorBindingInput {
   role: "OWNER" | "AGENT" | "TEAM";
   purposes?: string[];
   accessGate?: string;
-  oauthMode: "eliza_managed" | "bring_your_own";
-  executionTarget: "cloud_broker" | "agent_host";
   selectedProducts: string[];
-  allowedCapabilities: string[];
   isDefault?: boolean;
   authorizedByUserId: string;
   ownerBindingId?: string;
@@ -55,10 +50,14 @@ export interface AgentConnectorBindingsService {
     bindingId: string;
     provider?: string;
   }): Promise<AgentConnectorExecutionBinding>;
+  revoke(args: { organizationId: string; agentId: string; bindingId: string }): Promise<void>;
 }
 
 interface AgentConnectorBindingsServiceDeps {
-  repository: Pick<AgentConnectorBindingsRepository, "bind" | "list" | "getExecutionBinding">;
+  repository: Pick<
+    AgentConnectorBindingsRepository,
+    "bind" | "list" | "getExecutionBinding" | "revoke"
+  >;
 }
 
 function nonempty(value: string, name: string): string {
@@ -90,6 +89,8 @@ function translateRepositoryError(error: unknown): never {
       throw new AgentConnectorBindingError(409, error.code, error.message);
     case "OWNER_NOT_VERIFIED":
       throw new AgentConnectorBindingError(403, error.code, error.message);
+    case "UNSUPPORTED_PRODUCT":
+      throw new AgentConnectorBindingError(400, error.code, error.message);
   }
 }
 
@@ -101,37 +102,42 @@ export function createAgentConnectorBindingsService(
       if (!VALID_ROLES.has(input.role)) {
         throw new AgentConnectorBindingError(400, "CONNECTOR_BINDING_INVALID", "Invalid role.");
       }
-      if (!VALID_OAUTH_MODES.has(input.oauthMode)) {
+      const provider = nonempty(input.provider, "provider").toLowerCase();
+      const selectedProducts = [
+        ...new Set(
+          stringList(input.selectedProducts, "selectedProducts").map((product) =>
+            product.toLowerCase() === "workspace" ? "universalSearch" : product,
+          ),
+        ),
+      ];
+      const knownProducts = new Set(
+        Object.keys(GOOGLE_WORKSPACE_MCP_RESOURCES).map((product) => product.toLowerCase()),
+      );
+      const unknownProducts =
+        provider === "google"
+          ? selectedProducts.filter((product) => !knownProducts.has(product.toLowerCase()))
+          : [];
+      if (unknownProducts.length > 0) {
         throw new AgentConnectorBindingError(
           400,
           "CONNECTOR_BINDING_INVALID",
-          "Invalid OAuth mode.",
-        );
-      }
-      if (!VALID_EXECUTION_TARGETS.has(input.executionTarget)) {
-        throw new AgentConnectorBindingError(
-          400,
-          "CONNECTOR_BINDING_INVALID",
-          "Invalid execution target.",
+          `Unsupported Google MCP products: ${unknownProducts.join(", ")}.`,
         );
       }
       const repositoryInput: BindAgentConnectorInput = {
         organizationId: nonempty(input.organizationId, "organizationId"),
         agentId: nonempty(input.agentId, "agentId"),
         platformCredentialId: nonempty(input.platformCredentialId, "platformCredentialId"),
-        provider: nonempty(input.provider, "provider").toLowerCase(),
+        provider,
         role: input.role,
         purposes: stringList(input.purposes ?? ["automation"], "purposes"),
         accessGate: nonempty(input.accessGate ?? "owner_binding", "accessGate"),
-        oauthMode: input.oauthMode,
-        executionTarget: input.executionTarget,
-        selectedProducts: stringList(input.selectedProducts, "selectedProducts"),
-        allowedCapabilities: stringList(input.allowedCapabilities, "allowedCapabilities"),
+        selectedProducts,
         isDefault: input.isDefault ?? false,
         authorizedByUserId: nonempty(input.authorizedByUserId, "authorizedByUserId"),
         ...(input.ownerBindingId ? { ownerBindingId: input.ownerBindingId } : {}),
         ...(input.ownerIdentityId ? { ownerIdentityId: input.ownerIdentityId } : {}),
-        requireVerifiedOwner: input.role === "OWNER",
+        requireVerifiedOwner: provider === "google" || input.role === "OWNER",
         metadata: input.metadata ?? {},
       };
       try {
@@ -165,6 +171,21 @@ export function createAgentConnectorBindingsService(
         );
       }
       return binding;
+    },
+
+    async revoke(args) {
+      const revoked = await deps.repository.revoke({
+        organizationId: nonempty(args.organizationId, "organizationId"),
+        agentId: nonempty(args.agentId, "agentId"),
+        bindingId: nonempty(args.bindingId, "bindingId"),
+      });
+      if (!revoked) {
+        throw new AgentConnectorBindingError(
+          404,
+          "CONNECTOR_BINDING_NOT_FOUND",
+          "Connector binding not found.",
+        );
+      }
     },
   };
 }

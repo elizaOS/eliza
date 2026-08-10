@@ -119,16 +119,10 @@ function makeRuntime(service: ReturnType<typeof makeCalendarService>) {
 }
 
 describe("calendar plugin HTTP routes", () => {
-  it("registers only the provider-authenticated webhook directly", () => {
+  it("registers no public provider route for MCP-only Google polling", () => {
     expect(calendarPlugin.dependencies).toEqual(["@elizaos/plugin-scheduling"]);
     expect(calendarPlugin.routes).toEqual(calendarHttpRoutes);
-    expect(calendarHttpRoutes).toHaveLength(1);
-    expect(calendarHttpRoutes[0]).toMatchObject({
-      type: "POST",
-      public: true,
-      rawPath: true,
-      handler: expect.any(Function),
-    });
+    expect(calendarHttpRoutes).toEqual([]);
   });
 
   it("keeps the host adapter available for the owner-gated LifeOps route", async () => {

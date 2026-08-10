@@ -1,8 +1,6 @@
 /** Runs the google gmail state mock-service support script for deterministic local test fixtures. */
 import crypto from "node:crypto";
-import fs from "node:fs";
 import type http from "node:http";
-import path from "node:path";
 import {
   getLifeOpsSimulatorPerson,
   LIFEOPS_SIMULATOR_EMAILS,
@@ -1582,69 +1580,14 @@ function bearerToken(headers: http.IncomingHttpHeaders): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
-function googleOAuthSearchDirs(): string[] {
-  const explicitOAuthDir = process.env.ELIZA_OAUTH_DIR?.trim();
-  if (explicitOAuthDir) {
-    return [path.join(explicitOAuthDir, "lifeops", "google")];
-  }
-  const stateDir = process.env.ELIZA_STATE_DIR?.trim();
-  return stateDir
-    ? [path.join(stateDir, "credentials", "lifeops", "google")]
-    : [];
-}
-
-function readJsonFilesRecursively(
-  dir: string,
-  out: string[],
-  remaining: number,
-): number {
-  if (remaining <= 0 || !fs.existsSync(dir)) return remaining;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (remaining <= 0) break;
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      remaining = readJsonFilesRecursively(fullPath, out, remaining);
-      continue;
-    }
-    if (entry.isFile() && entry.name.endsWith(".json")) {
-      out.push(fullPath);
-      remaining -= 1;
-    }
-  }
-  return remaining;
-}
-
-function refreshGoogleTokensFromSeededGrants(state: GoogleMockState): void {
-  const files: string[] = [];
-  for (const dir of googleOAuthSearchDirs()) {
-    readJsonFilesRecursively(dir, files, 100);
-  }
-  for (const file of files) {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as JsonValue;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      continue;
-    }
-    const record = parsed as Record<string, JsonValue>;
-    const accessToken = record.accessToken;
-    const grantedScopes = record.grantedScopes;
-    if (typeof accessToken !== "string" || !isStringArray(grantedScopes)) {
-      continue;
-    }
-    state.googleTokens.set(accessToken, {
-      scopes: new Set(grantedScopes),
-      ...(typeof record.gmailAccountId === "string"
-        ? { gmailAccountId: record.gmailAccountId }
-        : {}),
-      ...(typeof record.grantId === "string"
-        ? { gmailGrantId: record.grantId }
-        : {}),
-      ...(typeof record.accountEmail === "string"
-        ? { gmailAccountEmail: record.accountEmail }
-        : typeof record.email === "string"
-          ? { gmailAccountEmail: record.email }
-          : {}),
-    });
-  }
+function registerVaultSeededGoogleToken(
+  state: GoogleMockState,
+  token: string,
+): void {
+  if (!token.startsWith("mock-google-access-token-")) return;
+  state.googleTokens.set(token, {
+    scopes: new Set(GOOGLE_DEFAULT_TOKEN_SCOPES),
+  });
 }
 
 function requiredGoogleScopes(
@@ -1695,7 +1638,7 @@ function enforceGoogleAuthIfPresent(
   const token = bearerToken(headers);
   if (!token) return null;
   if (!state.googleTokens.has(token)) {
-    refreshGoogleTokensFromSeededGrants(state);
+    registerVaultSeededGoogleToken(state, token);
   }
   const scopes = state.googleTokens.get(token);
   if (!scopes) {
@@ -1713,7 +1656,7 @@ function googleTokenForRequest(
   const token = bearerToken(headers);
   if (!token) return null;
   if (!state.googleTokens.has(token)) {
-    refreshGoogleTokensFromSeededGrants(state);
+    registerVaultSeededGoogleToken(state, token);
   }
   return state.googleTokens.get(token) ?? null;
 }

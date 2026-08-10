@@ -21,9 +21,8 @@ import { secretsService } from "../../secrets";
 import type { OAuthProviderConfig, UserInfoMapping } from "../provider-registry";
 import {
   getCallbackUrl,
-  getClientId,
-  getClientSecret,
   getNestedValue,
+  resolveOAuthClientCredentials,
   resolveRequestedScopes,
 } from "../provider-registry";
 import type {
@@ -47,7 +46,7 @@ interface OAuth2State {
   scopes: string[];
   connectionRole?: OAuthConnectionRole;
   createdAt: number;
-  codeVerifier?: string;
+  codeVerifierSecretId?: string;
   agentBinding?: OAuthAgentBindingRequest;
 }
 
@@ -94,6 +93,27 @@ interface ExtractedUserInfo {
   raw: Record<string, unknown>;
 }
 
+function grantedScopesFromToken(
+  provider: OAuthProviderConfig,
+  tokens: TokenResponse,
+  requestedScopes: readonly string[],
+): string[] {
+  if (typeof tokens.scope === "string" && tokens.scope.trim()) {
+    return [
+      ...new Set(
+        tokens.scope
+          .split(/\s+/)
+          .map((scope) => scope.trim())
+          .filter(Boolean),
+      ),
+    ];
+  }
+  if (provider.id === "google") {
+    throw new Error("Google OAuth token response did not report the scopes actually granted");
+  }
+  return [...requestedScopes];
+}
+
 /**
  * Pick the right token for the userInfo / tokenInfo lookup.
  *
@@ -135,6 +155,15 @@ function getStoredConnectionRole(sourceContext: unknown): OAuthStandardConnectio
   }
   const context = sourceContext as Record<string, unknown>;
   return normalizeOAuthConnectionRole(context.connectionRole ?? context.agentGoogleSide);
+}
+
+function credentialConnectionRole(
+  provider: OAuthProviderConfig,
+  requestedRole: unknown,
+): OAuthStandardConnectionRole {
+  // A personal Google credential always identifies the authorizing user. An
+  // agent binding role controls who may use it and is intentionally separate.
+  return provider.id === "google" ? "OWNER" : normalizeOAuthConnectionRole(requestedRole);
 }
 
 function connectionSourceContext(
@@ -197,10 +226,12 @@ export async function initiateOAuth2(
     agentBinding?: OAuthAgentBindingRequest;
   },
 ): Promise<InitiateOAuth2Result> {
-  const clientId = getClientId(provider);
-  if (!clientId) {
-    throw new Error(`OAuth not configured: missing client ID for ${provider.id}`);
-  }
+  const { clientId } = await resolveOAuthClientCredentials(provider, {
+    organizationId: params.organizationId,
+    actorId: params.userId,
+    source: `oauth2-${provider.id}-initiate-client-credentials`,
+    allowGoogleEnvMigration: getCloudAwareEnv().GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV === "1",
+  });
 
   if (!provider.endpoints?.authorization) {
     throw new Error(`OAuth not configured: missing authorization endpoint for ${provider.id}`);
@@ -210,17 +241,34 @@ export async function initiateOAuth2(
   const callbackUrl = getCallbackUrl(provider, baseUrl);
   const scopes = resolveRequestedScopes(provider, params.scopes);
   const redirectUrl = params.redirectUrl || "/auth/success";
+  const connectionRole = credentialConnectionRole(provider, params.connectionRole);
 
   // Generate cryptographically secure state
   const state = crypto.randomUUID();
 
   // Generate PKCE if required by provider
-  let codeVerifier: string | undefined;
+  let codeVerifierSecretId: string | undefined;
   let codeChallenge: string | undefined;
   if (provider.pkce) {
     const pkce = await generatePKCE();
-    codeVerifier = pkce.codeVerifier;
     codeChallenge = pkce.codeChallenge;
+    const pkceSecret = await secretsService.create(
+      {
+        organizationId: params.organizationId,
+        name: `OAUTH_PKCE_${provider.id.toUpperCase()}_${state}`,
+        value: pkce.codeVerifier,
+        scope: "organization",
+        description: "One-time OAuth PKCE verifier",
+        expiresAt: new Date(Date.now() + STATE_TTL_SECONDS * 1000),
+        createdBy: params.userId,
+      },
+      {
+        actorType: "user",
+        actorId: params.userId,
+        source: `oauth2-${provider.id}-initiate`,
+      },
+    );
+    codeVerifierSecretId = pkceSecret.id;
   }
 
   // Store state for callback verification
@@ -230,13 +278,36 @@ export async function initiateOAuth2(
     providerId: provider.id,
     redirectUrl,
     scopes,
-    connectionRole: normalizeOAuthConnectionRole(params.connectionRole),
+    connectionRole,
     createdAt: Date.now(),
-    codeVerifier,
+    ...(codeVerifierSecretId ? { codeVerifierSecretId } : {}),
     ...(params.agentBinding ? { agentBinding: params.agentBinding } : {}),
   };
 
-  await cache.set(`oauth2:${provider.id}:${state}`, stateData, STATE_TTL_SECONDS);
+  try {
+    await cache.set(`oauth2:${provider.id}:${state}`, stateData, STATE_TTL_SECONDS);
+  } catch (error) {
+    // error-policy:J2 Add vault-cleanup context while preserving the primary
+    // cache persistence failure for the caller.
+    if (codeVerifierSecretId) {
+      try {
+        await secretsService.delete(codeVerifierSecretId, params.organizationId, {
+          actorType: "user",
+          actorId: params.userId,
+          source: `oauth2-${provider.id}-initiate-cleanup`,
+        });
+      } catch (cleanupError) {
+        // error-policy:J6 state persistence already failed; deletion is
+        // best-effort teardown and the primary cache error still propagates.
+        logger.error("[OAuth2] Failed to clean up PKCE secret after state write failure", {
+          providerId: provider.id,
+          organizationId: params.organizationId,
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        });
+      }
+    }
+    throw error;
+  }
 
   // Build authorization URL
   const authUrl = new URL(provider.endpoints.authorization);
@@ -261,8 +332,7 @@ export async function initiateOAuth2(
   // lookup to resolve to the same Slack user_id (the authorizer), which
   // the `storeConnection` dedup guard rejects with
   // `OAUTH_ACCOUNT_ALREADY_LINKED_TO_DIFFERENT_ROLE` on the second click.
-  const normalizedRole = normalizeOAuthConnectionRole(params.connectionRole);
-  if (provider.userScopes && provider.userScopes.length > 0 && normalizedRole !== "AGENT") {
+  if (provider.userScopes && provider.userScopes.length > 0 && connectionRole !== "AGENT") {
     authUrl.searchParams.set("user_scope", provider.userScopes.join(" "));
   }
 
@@ -318,63 +388,101 @@ export async function handleOAuth2Callback(
   // Delete state to prevent replay attacks
   await cache.del(stateKey);
 
-  const { organizationId, userId, redirectUrl, scopes, codeVerifier } = stateData;
-  const connectionRole = normalizeOAuthConnectionRole(stateData.connectionRole);
-
-  // Exchange code for tokens
-  const tokens = await exchangeCodeForTokens(provider, code, codeVerifier);
-
-  // For providers with a user/bot token split (Slack), the OWNER flow
-  // must resolve the *authorizing user's* identity via the user token
-  // — not the bot token. Otherwise `users.identity` (or equivalent)
-  // returns the same identity for both AGENT and OWNER flows (the
-  // workspace admin who clicked Authorize on both buttons), and the
-  // `storeConnection` dedup guard rejects the second connection with
-  // `OAUTH_ACCOUNT_ALREADY_LINKED_TO_DIFFERENT_ROLE`.
-  const userInfoToken = pickUserInfoToken(provider, tokens, connectionRole);
-
-  // Fetch user info: userInfo endpoint, token metadata endpoint, or from token response
-  let userInfo: ExtractedUserInfo;
-  if (provider.endpoints?.userInfo) {
-    userInfo = await fetchUserInfo(provider, userInfoToken);
-  } else if (provider.endpoints?.tokenInfo) {
-    userInfo = await fetchTokenInfo(provider, userInfoToken);
-  } else {
-    userInfo = extractUserInfoFromTokens(provider, tokens);
-  }
-
-  // Store connection
-  if (stateData.agentBinding && stateData.agentBinding.role !== connectionRole) {
-    throw new Error("OAuth agent binding role mismatch");
-  }
-  const stored = await storeConnection(
-    provider,
-    organizationId,
-    userId,
-    connectionRole,
-    tokens,
-    userInfo,
-    scopes,
-    stateData.agentBinding,
-  );
-  const { connectionId, connectorBinding } = stored;
-
-  logger.info(`[OAuth2] Callback completed for ${provider.id}`, {
-    organizationId,
-    connectionId,
-    platformUserId: userInfo.id,
-  });
-
-  return {
-    connectionId,
-    organizationId,
-    userId,
-    platformUserId: userInfo.id,
-    email: userInfo.email,
-    displayName: userInfo.displayName,
-    redirectUrl,
-    ...(connectorBinding ? { connectorBindingId: connectorBinding.id } : {}),
+  const { organizationId, userId, redirectUrl, scopes, codeVerifierSecretId } = stateData;
+  const pkceAudit = {
+    actorType: "user" as const,
+    actorId: userId,
+    source: `oauth2-${provider.id}-callback-pkce`,
   };
+  try {
+    if (provider.pkce && !codeVerifierSecretId) {
+      throw new Error("OAuth PKCE state is missing its verifier secret reference");
+    }
+    const codeVerifier = codeVerifierSecretId
+      ? await secretsService.getDecryptedValue(codeVerifierSecretId, organizationId, pkceAudit)
+      : undefined;
+    const connectionRole = credentialConnectionRole(provider, stateData.connectionRole);
+
+    // Exchange code for tokens
+    const tokens = await exchangeCodeForTokens(
+      provider,
+      code,
+      organizationId,
+      userId,
+      codeVerifier,
+    );
+
+    // For providers with a user/bot token split (Slack), the OWNER flow
+    // must resolve the *authorizing user's* identity via the user token
+    // — not the bot token. Otherwise `users.identity` (or equivalent)
+    // returns the same identity for both AGENT and OWNER flows (the
+    // workspace admin who clicked Authorize on both buttons), and the
+    // `storeConnection` dedup guard rejects the second connection with
+    // `OAUTH_ACCOUNT_ALREADY_LINKED_TO_DIFFERENT_ROLE`.
+    const userInfoToken = pickUserInfoToken(provider, tokens, connectionRole);
+
+    // Fetch user info: userInfo endpoint, token metadata endpoint, or from token response
+    let userInfo: ExtractedUserInfo;
+    if (provider.endpoints?.userInfo) {
+      userInfo = await fetchUserInfo(provider, userInfoToken);
+    } else if (provider.endpoints?.tokenInfo) {
+      userInfo = await fetchTokenInfo(provider, userInfoToken);
+    } else {
+      userInfo = extractUserInfoFromTokens(provider, tokens);
+    }
+
+    // Store connection
+    if (
+      provider.id !== "google" &&
+      stateData.agentBinding &&
+      stateData.agentBinding.role !== connectionRole
+    ) {
+      throw new Error("OAuth agent binding role mismatch");
+    }
+    const grantedScopes = grantedScopesFromToken(provider, tokens, scopes);
+    const stored = await storeConnection(
+      provider,
+      organizationId,
+      userId,
+      connectionRole,
+      tokens,
+      userInfo,
+      grantedScopes,
+      stateData.agentBinding,
+    );
+    const { connectionId, connectorBinding } = stored;
+
+    logger.info(`[OAuth2] Callback completed for ${provider.id}`, {
+      organizationId,
+      connectionId,
+      platformUserId: userInfo.id,
+    });
+
+    return {
+      connectionId,
+      organizationId,
+      userId,
+      platformUserId: userInfo.id,
+      email: userInfo.email,
+      displayName: userInfo.displayName,
+      redirectUrl,
+      ...(connectorBinding ? { connectorBindingId: connectorBinding.id } : {}),
+    };
+  } finally {
+    if (codeVerifierSecretId) {
+      try {
+        await secretsService.delete(codeVerifierSecretId, organizationId, pkceAudit);
+      } catch (cleanupError) {
+        // error-policy:J6 the callback result or primary failure takes
+        // precedence; expired one-time PKCE cleanup is best-effort teardown.
+        logger.error("[OAuth2] Failed to delete consumed PKCE secret", {
+          providerId: provider.id,
+          organizationId,
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        });
+      }
+    }
+  }
 }
 
 /**
@@ -383,14 +491,16 @@ export async function handleOAuth2Callback(
 async function exchangeCodeForTokens(
   provider: OAuthProviderConfig,
   code: string,
+  organizationId: string,
+  actorId: string,
   codeVerifier?: string,
 ): Promise<TokenResponse> {
-  const clientId = getClientId(provider);
-  const clientSecret = getClientSecret(provider);
-
-  if (!clientId || !clientSecret) {
-    throw new Error(`OAuth not configured: missing credentials for ${provider.id}`);
-  }
+  const { clientId, clientSecret } = await resolveOAuthClientCredentials(provider, {
+    organizationId,
+    actorId,
+    source: `oauth2-${provider.id}-callback-client-credentials`,
+    allowGoogleEnvMigration: getCloudAwareEnv().GOOGLE_OAUTH_VAULT_MIGRATE_FROM_ENV === "1",
+  });
 
   if (!provider.endpoints?.token) {
     throw new Error(`OAuth not configured: missing token endpoint for ${provider.id}`);
@@ -710,7 +820,7 @@ async function storeConnection(
   scopes: string[],
   agentBinding?: OAuthAgentBindingRequest,
 ): Promise<{ connectionId: string; connectorBinding?: AgentConnectorBinding }> {
-  const connectionUserId = connectionRole === "OWNER" ? userId : null;
+  const connectionUserId = connectionRole === "OWNER" || provider.id === "google" ? userId : null;
   const audit = {
     actorType: "user" as const,
     actorId: userId,
@@ -998,13 +1108,10 @@ async function storeConnection(
             role: agentBinding.role,
             purposes: ["automation"],
             accessGate: "owner_binding",
-            oauthMode: agentBinding.oauthMode,
-            executionTarget: agentBinding.executionTarget,
             selectedProducts: agentBinding.selectedProducts,
-            allowedCapabilities: agentBinding.allowedCapabilities,
             isDefault: agentBinding.isDefault ?? true,
             authorizedByUserId: userId,
-            requireVerifiedOwner: agentBinding.role === "OWNER",
+            requireVerifiedOwner: provider.id === "google" || agentBinding.role === "OWNER",
           })
         : undefined;
       return { connectionId, ...(connectorBinding ? { connectorBinding } : {}) };
@@ -1028,17 +1135,18 @@ async function storeConnection(
 export async function refreshOAuth2Token(
   provider: OAuthProviderConfig,
   refreshToken: string,
+  organizationId: string,
 ): Promise<{
   accessToken: string;
   expiresIn?: number;
   newRefreshToken?: string;
 }> {
-  const clientId = getClientId(provider);
-  const clientSecret = getClientSecret(provider);
-
-  if (!clientId || !clientSecret) {
-    throw new Error(`OAuth not configured: missing credentials for ${provider.id}`);
-  }
+  const { clientId, clientSecret } = await resolveOAuthClientCredentials(provider, {
+    organizationId,
+    actorId: "oauth-token-refresh",
+    actorType: "system",
+    source: `oauth2-${provider.id}-refresh-client-credentials`,
+  });
 
   if (!provider.endpoints?.token) {
     throw new Error(`OAuth not configured: missing token endpoint for ${provider.id}`);

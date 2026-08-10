@@ -360,6 +360,16 @@ export class TriageService {
 				severity: "ephemeral",
 			});
 		}
+		if (record.source === "gmail") {
+			throw new ElizaError(
+				"Gmail delivery is unavailable: official Gmail MCP can save drafts but cannot send them.",
+				{
+					code: "GMAIL_MCP_DRAFT_ONLY",
+					context: { draftId },
+					severity: "ephemeral",
+				},
+			);
+		}
 		if (record.sent) return record;
 		const sendKey = `${String(runtime.agentId)}:${record.source}:${draftId}`;
 		const pending = this.sendsInFlight.get(sendKey);

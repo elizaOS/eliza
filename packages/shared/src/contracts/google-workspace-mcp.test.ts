@@ -1,17 +1,16 @@
 /**
- * Drift guard for the cross-host Google Workspace MCP catalog and executable
- * canary. It prevents a host from accidentally collapsing Google into one URL
- * or promoting an unreviewed preview product/tool through the shared policy.
+ * Contract coverage for the reviewed official Google Workspace MCP endpoint,
+ * tool, and scope manifest shared by local and Cloud connector hosts.
  */
-
-import { describe, expect, test } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES,
+  GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES,
   GOOGLE_WORKSPACE_MCP_ENDPOINTS,
-} from "./google-workspace-mcp";
+  GOOGLE_WORKSPACE_MCP_RESOURCES,
+} from "./google-workspace-mcp.js";
 
-describe("Google Workspace MCP shared contract", () => {
-  test("keeps all official product resources distinct", () => {
+describe("Google Workspace MCP manifest", () => {
+  it("uses only official product-specific HTTPS resources", () => {
     expect(GOOGLE_WORKSPACE_MCP_ENDPOINTS).toEqual({
       gmail: "https://gmailmcp.googleapis.com/mcp/v1",
       calendar: "https://calendarmcp.googleapis.com/mcp/v1",
@@ -23,22 +22,82 @@ describe("Google Workspace MCP shared contract", () => {
       people: "https://people.googleapis.com/mcp/v1",
       universalSearch: "https://workspacemcp.googleapis.com/mcp/v1",
     });
-    expect(new Set(Object.values(GOOGLE_WORKSPACE_MCP_ENDPOINTS)).size).toBe(9);
+    for (const endpoint of Object.values(GOOGLE_WORKSPACE_MCP_ENDPOINTS)) {
+      const url = new URL(endpoint);
+      expect(url.protocol).toBe("https:");
+      expect(url.hostname).toMatch(/(?:^|\.)googleapis\.com$/);
+    }
   });
 
-  test("limits executable preview policy to one reviewed read tool per canary product", () => {
-    expect(Object.keys(GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES)).toEqual([
-      "gmail",
-      "calendar",
-    ]);
-    expect(GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES.gmail.curatedTools).toEqual([
-      "search_threads",
-    ]);
-    expect(GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES.calendar.curatedTools).toEqual(
-      ["list_events"],
+  it("models Gmail draft creation without inventing a send tool", () => {
+    expect(GOOGLE_WORKSPACE_MCP_RESOURCES.gmail.tools).toMatchObject({
+      create_draft: "gmail.draft",
+      search_threads: "gmail.read",
+      label_thread: "gmail.manage",
+    });
+    expect(
+      Object.keys(GOOGLE_WORKSPACE_MCP_RESOURCES.gmail.tools),
+    ).not.toContain("send_email");
+    expect(
+      Object.keys(GOOGLE_WORKSPACE_MCP_RESOURCES.gmail.tools),
+    ).not.toContain("apply_sensitive_thread_label");
+    expect(GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES["gmail.draft"]).toContain(
+      "https://www.googleapis.com/auth/gmail.compose",
+    );
+  });
+
+  it("keeps unsupported Calendar watches and Meet APIs out of the catalog", () => {
+    expect(
+      Object.keys(GOOGLE_WORKSPACE_MCP_RESOURCES.calendar.tools),
+    ).not.toContain("watch_events");
+    expect(GOOGLE_WORKSPACE_MCP_ENDPOINTS).not.toHaveProperty("meet");
+  });
+
+  it("promotes only the reviewed twelve-tool action catalog", () => {
+    const promoted = Object.values(GOOGLE_WORKSPACE_MCP_RESOURCES).flatMap(
+      (resource) => resource.promotedTools,
+    );
+    expect(promoted).toHaveLength(12);
+    expect(promoted).toContain("create_draft");
+    expect(promoted).not.toContain("send_message");
+    for (const resource of Object.values(GOOGLE_WORKSPACE_MCP_RESOURCES)) {
+      expect(
+        resource.promotedTools.every((tool) => tool in resource.tools),
+      ).toBe(true);
+    }
+  });
+
+  it("does not treat compose-only Gmail consent as message-read consent", () => {
+    expect(GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES["gmail.read"]).not.toContain(
+      "https://www.googleapis.com/auth/gmail.compose",
     );
     expect(
-      GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES.gmail.acceptedScopes,
-    ).not.toContain("https://www.googleapis.com/auth/gmail.metadata");
+      GOOGLE_WORKSPACE_MCP_RESOURCES.calendar.toolScopes.list_calendars,
+    ).toContain(
+      "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+    );
+  });
+
+  it("accepts legacy Calendar grants only as read authorization", () => {
+    expect(GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES["calendar.read"]).toEqual(
+      expect.arrayContaining([
+        "https://www.googleapis.com/auth/calendar.events",
+        "https://www.googleapis.com/auth/calendar",
+      ]),
+    );
+    expect(Object.keys(GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES)).not.toContain(
+      "calendar.write",
+    );
+    expect(GOOGLE_WORKSPACE_MCP_RESOURCES.calendar.tools).not.toHaveProperty(
+      "create_event",
+    );
+    expect(
+      GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES["workspace.search"],
+    ).not.toEqual(
+      expect.arrayContaining([
+        "https://www.googleapis.com/auth/calendar.events",
+        "https://www.googleapis.com/auth/calendar",
+      ]),
+    );
   });
 });

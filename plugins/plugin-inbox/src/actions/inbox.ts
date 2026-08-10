@@ -14,10 +14,10 @@
  *                    messages (`InboxService.triage` → `classifyMessages`, the
  *                    `inbox_triage` optimized-prompt consumer), persist one
  *                    entry per new message, then return the pending queue
- *   - `reply`      — draft or send a connector-backed reply
+ *   - `reply`      — draft or dispatch a connector-backed reply; Gmail saves only
  *   - `snooze`     — hide a triage entry until a future timestamp
  *   - `archive`    — archive through the connector adapter and resolve
- *   - `approve`    — send the stored draft/suggested response
+ *   - `approve`    — dispatch the stored response or save a Gmail draft
  *
  * Behavior: fan out to each platform's adapter via the injectable fetcher hook,
  * dedupe by `id` and thread topic, merge into a single result list ordered by
@@ -40,7 +40,13 @@ import type {
   MessageSource,
   ProviderDataRecord,
 } from "@elizaos/core";
-import { getDefaultTriageService, hasRoleAccess, logger } from "@elizaos/core";
+import {
+  ElizaError,
+  getDefaultTriageService,
+  hasRoleAccess,
+  logger,
+} from "@elizaos/core";
+import { createInboxGmailGateway } from "../inbox/google-gmail-seam.ts";
 import { InboxRepository } from "../inbox/repository.ts";
 import { InboxService } from "../inbox/service.ts";
 import type {
@@ -611,6 +617,59 @@ async function replyToEntry(args: {
   body: string;
   confirmed: boolean;
 }): Promise<InboxQueueOperationResult> {
+  if (args.entry.source === "gmail") {
+    await args.repo.updateDraftResponse(args.entry.id, args.body);
+    if (!args.confirmed) {
+      return {
+        success: true,
+        text: appendInboxDraftChoiceMarker(
+          `Drafted reply for ${args.entry.senderName ?? args.entry.channelName}. Confirm to save it in Gmail. Gmail MCP cannot send mail.`,
+          args.entry.id,
+          "Save draft",
+        ),
+        data: {
+          subaction: "reply",
+          requiresConfirmation: true,
+          entryId: args.entry.id,
+          source: "gmail",
+          draftOnly: true,
+        },
+      };
+    }
+
+    const recipient = args.entry.sourceEntityId?.trim();
+    if (!recipient) {
+      throw new ElizaError("The Gmail reply recipient is unavailable.", {
+        code: "GMAIL_REPLY_RECIPIENT_MISSING",
+        context: { entryId: args.entry.id },
+        severity: "ephemeral",
+      });
+    }
+    const gmail = createInboxGmailGateway(
+      args.runtime,
+      String(args.runtime.agentId),
+    );
+    const grant = await gmail.requireGmailGrant();
+    const draft = await gmail.createReplyDraft({
+      grant,
+      to: recipient,
+      subject: args.entry.channelName,
+      bodyText: args.body,
+      replyToMessageId: ensureSourceMessageId(args.entry),
+    });
+    return {
+      success: true,
+      text: "Saved the reply as a Gmail draft. Gmail MCP cannot send mail.",
+      data: {
+        subaction: "reply",
+        entryId: args.entry.id,
+        draftId: draft.draftId,
+        source: "gmail",
+        draftOnly: true,
+      },
+    };
+  }
+
   seedMessageRefForEntry(args.runtime, args.entry);
   const service = getDefaultTriageService();
   const draft = await service.draftReply(

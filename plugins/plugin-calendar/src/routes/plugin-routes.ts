@@ -2,7 +2,8 @@
  * Runtime adapter binding the calendar HTTP routes to the agent runtime:
  * resolves `CalendarService` at the request boundary, applies rate limiting, and
  * delegates to the path→service dispatcher (`handleCalendarRoutes`), translating
- * service-resolution and domain failures into structured error responses.
+ * service-resolution and domain failures into structured error responses. The
+ * provider plugin has no public routes; personal Google refreshes by polling.
  */
 import type http from "node:http";
 import {
@@ -19,12 +20,6 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
 } from "@elizaos/shared";
-import {
-  GOOGLE_CALENDAR_WEBHOOK_PATH,
-  type GoogleCalendarNotificationHeaders,
-  type GoogleCalendarWebhookResult,
-  isGoogleCalendarWebhookEnabled,
-} from "../google-watch/index.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   type CalendarRouteRateLimitKey,
@@ -36,7 +31,7 @@ import {
   type CalendarOwnerMutationGateway,
 } from "./mutation-gateway.js";
 
-type CalendarRateLimitKey = CalendarRouteRateLimitKey | "google_webhook";
+type CalendarRateLimitKey = CalendarRouteRateLimitKey;
 
 interface RateLimitConfig {
   maxRequests: number;
@@ -56,7 +51,6 @@ const CONNECTOR_SIDES = [
 ] as const satisfies readonly LifeOpsConnectorSide[];
 
 const CALENDAR_RATE_LIMITS: Record<CalendarRateLimitKey, RateLimitConfig> = {
-  google_webhook: { maxRequests: 60, windowMs: 60_000 },
   google_api_read: { maxRequests: 120, windowMs: 60_000 },
   google_api_write: { maxRequests: 30, windowMs: 60_000 },
   calendar_create: { maxRequests: 20, windowMs: 60_000 },
@@ -76,24 +70,6 @@ const MAX_RATE_LIMIT_BUCKETS_PER_RUNTIME = 256;
 const MAX_RATE_LIMIT_WINDOW_MS = Math.max(
   ...Object.values(CALENDAR_RATE_LIMITS).map((config) => config.windowMs),
 );
-const MAX_GOOGLE_WEBHOOK_BODY_BYTES = 1_024;
-
-interface GoogleCalendarWebhookService {
-  handleGoogleCalendarNotification(
-    headers: GoogleCalendarNotificationHeaders,
-  ): Promise<GoogleCalendarWebhookResult>;
-}
-
-function isGoogleCalendarWebhookService(
-  service: unknown,
-): service is GoogleCalendarWebhookService {
-  return (
-    Boolean(service) &&
-    typeof service === "object" &&
-    typeof (service as Partial<GoogleCalendarWebhookService>)
-      .handleGoogleCalendarNotification === "function"
-  );
-}
 
 function requestBaseUrl(req: http.IncomingMessage): string {
   const host = req.headers.host ?? "localhost";
@@ -166,146 +142,6 @@ async function resolveCalendarService(
       code: "CALENDAR_SERVICE_LOAD_FAILED",
       cause: error,
     });
-  }
-}
-
-async function resolveGoogleCalendarWebhookService(
-  runtime: IAgentRuntime | null,
-): Promise<GoogleCalendarWebhookService | null> {
-  if (!runtime) return null;
-  const existing = runtime.getService(CALENDAR_SERVICE_TYPE);
-  if (isGoogleCalendarWebhookService(existing)) return existing;
-  try {
-    const loaded = await runtime.getServiceLoadPromise(CALENDAR_SERVICE_TYPE);
-    return isGoogleCalendarWebhookService(loaded) ? loaded : null;
-  } catch (error) {
-    // error-policy:J1 This public transport boundary reports service loading
-    // and returns an explicit retryable 503 to Google's delivery worker.
-    runtime.reportError("CalendarRoutes.googleWebhookServiceLoad", error);
-    return null;
-  }
-}
-
-function singleHeader(req: http.IncomingMessage, name: string): string | null {
-  const value = req.headers[name];
-  if (Array.isArray(value)) {
-    return value.length === 1 && value[0]?.trim() ? value[0].trim() : null;
-  }
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-type GoogleWebhookBodyInspection = "empty" | "invalid" | "too_large";
-
-function inspectGoogleWebhookBody(
-  req: http.IncomingMessage,
-): GoogleWebhookBodyInspection {
-  const rawBody = (req as http.IncomingMessage & { rawBody?: unknown }).rawBody;
-  if (typeof rawBody === "string") {
-    const length = Buffer.byteLength(rawBody);
-    if (length > MAX_GOOGLE_WEBHOOK_BODY_BYTES) return "too_large";
-    if (length > 0) return "invalid";
-  } else if (Buffer.isBuffer(rawBody)) {
-    if (rawBody.length > MAX_GOOGLE_WEBHOOK_BODY_BYTES) return "too_large";
-    if (rawBody.length > 0) return "invalid";
-  } else if (rawBody !== undefined && rawBody !== null) {
-    return "invalid";
-  }
-
-  const parsedBody = (req as http.IncomingMessage & { body?: unknown }).body;
-  if (typeof parsedBody === "string") {
-    const length = Buffer.byteLength(parsedBody);
-    if (length > MAX_GOOGLE_WEBHOOK_BODY_BYTES) return "too_large";
-    if (length > 0) return "invalid";
-  } else if (Buffer.isBuffer(parsedBody)) {
-    if (parsedBody.length > MAX_GOOGLE_WEBHOOK_BODY_BYTES) return "too_large";
-    if (parsedBody.length > 0) return "invalid";
-  } else if (parsedBody !== undefined && parsedBody !== null) {
-    return "invalid";
-  }
-
-  const transferEncoding = req.headers["transfer-encoding"];
-  if (
-    (typeof transferEncoding === "string" && transferEncoding.trim()) ||
-    (Array.isArray(transferEncoding) && transferEncoding.length > 0)
-  ) {
-    return "invalid";
-  }
-
-  const contentLength = req.headers["content-length"];
-  if (Array.isArray(contentLength)) return "invalid";
-  if (typeof contentLength === "string") {
-    if (!/^(0|[1-9][0-9]*)$/.test(contentLength.trim())) return "invalid";
-    const length = Number(contentLength);
-    if (!Number.isSafeInteger(length)) return "too_large";
-    if (length > MAX_GOOGLE_WEBHOOK_BODY_BYTES) return "too_large";
-    if (length > 0) return "invalid";
-  }
-  return "empty";
-}
-
-async function handleGoogleCalendarWebhook(args: {
-  runtime: IAgentRuntime | null;
-  req: http.IncomingMessage;
-  res: http.ServerResponse;
-}): Promise<void> {
-  const { runtime, req, res } = args;
-  if (!isGoogleCalendarWebhookEnabled(runtime)) {
-    res.writeHead(404);
-    res.end();
-    return;
-  }
-  if (
-    rateLimitRequest({
-      runtime,
-      res,
-      key: "google_webhook",
-      requestIdentity: req.socket?.remoteAddress ?? "unknown",
-    })
-  ) {
-    return;
-  }
-  const body = inspectGoogleWebhookBody(req);
-  if (body === "too_large") {
-    res.writeHead(413);
-    res.end();
-    return;
-  }
-  if (body === "invalid") {
-    res.writeHead(400);
-    res.end();
-    return;
-  }
-  // error-policy:J3 Missing or duplicate provider headers become explicit
-  // invalid notification fields; lifecycle validation rejects them before I/O.
-  const headers: GoogleCalendarNotificationHeaders = {
-    channelId: singleHeader(req, "x-goog-channel-id") ?? "",
-    channelToken: singleHeader(req, "x-goog-channel-token") ?? "",
-    resourceId: singleHeader(req, "x-goog-resource-id") ?? "",
-    resourceUri: singleHeader(req, "x-goog-resource-uri") ?? "",
-    resourceState: singleHeader(req, "x-goog-resource-state") ?? "",
-    messageNumber: singleHeader(req, "x-goog-message-number") ?? "",
-  };
-  const service = await resolveGoogleCalendarWebhookService(runtime);
-  if (!service) {
-    res.writeHead(503, { "Retry-After": "60" });
-    res.end();
-    return;
-  }
-  try {
-    const result = await service.handleGoogleCalendarNotification(headers);
-    res.writeHead(
-      result.status,
-      result.retryAfterSeconds
-        ? { "Retry-After": String(result.retryAfterSeconds) }
-        : undefined,
-    );
-    res.end();
-  } catch (error) {
-    // error-policy:J1 Unexpected storage/runtime failures stay observable and
-    // ask Google to retry; the callback never fabricates a successful receipt.
-    runtime?.reportError("CalendarRoutes.googleWebhook", error);
-    res.writeHead(503, { "Retry-After": "60" });
-    res.end();
   }
 }
 
@@ -408,14 +244,6 @@ function rateLimitRequest(args: {
   buckets.delete(bucketKey);
   buckets.set(bucketKey, timestamps);
   return false;
-}
-
-export function __calendarRouteRateLimitBucketCountForTests(
-  runtime: IAgentRuntime | null,
-): number {
-  return runtime
-    ? (runtimeRateLimitBuckets.get(runtime)?.size ?? 0)
-    : unavailableRuntimeRateLimitBuckets.size;
 }
 
 function parseConnectorMode(
@@ -555,15 +383,6 @@ export function calendarRouteHandler(): LegacyRouteHandler {
     const url = parseRequestUrl(httpReq);
     const operation = `${method} ${url.pathname}`;
 
-    if (method === "POST" && url.pathname === GOOGLE_CALENDAR_WEBHOOK_PATH) {
-      await handleGoogleCalendarWebhook({
-        runtime: agentRuntime,
-        req: httpReq,
-        res: httpRes,
-      });
-      return;
-    }
-
     const handled = await handleCalendarRoutes({
       method,
       pathname: url.pathname,
@@ -620,22 +439,8 @@ export function calendarRouteHandler(): LegacyRouteHandler {
   };
 }
 
-const handler = calendarRouteHandler();
-
-export const calendarHttpRoutes: Route[] = [
-  // Owner calendar data, preferences, and mutations are mounted by the
-  // personal-assistant host after its OWNER/ADMIN role gate. The only route
-  // this provider plugin can authenticate independently is its webhook.
-  {
-    type: "POST",
-    path: "/api/lifeops/calendar/google/webhook",
-    rawPath: true,
-    public: true,
-    name: "google-calendar-push-notification",
-    publicReason:
-      "Google Calendar must deliver provider-originated change notifications without a user session.",
-    publicWrite:
-      "An explicit runtime setting enables the route; bounded body checks and rate limiting precede service access, then an unguessable per-channel capability token plus durable resource bindings authorize a refetch.",
-    handler,
-  },
-];
+/**
+ * Calendar's HTTP adapter is mounted by the personal-assistant host after its
+ * OWNER/ADMIN role gate. MCP-only Google polling needs no public ingress.
+ */
+export const calendarHttpRoutes: Route[] = [];

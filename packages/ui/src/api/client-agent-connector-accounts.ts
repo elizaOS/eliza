@@ -39,6 +39,9 @@ export interface ConnectorAccountRecord {
   purpose?: ConnectorAccountPurpose[];
   privacy?: ConnectorAccountPrivacy;
   isDefault?: boolean;
+  scopes?: string[];
+  capabilities?: string[];
+  selectedProducts?: string[];
   enabled?: boolean;
   createdAt?: number;
   updatedAt?: number;
@@ -197,6 +200,21 @@ export function normalizeConnectorAccountRecord(
     role,
     purpose: normalizePurposes(record.purpose),
     isDefault: record.isDefault === true,
+    scopes: Array.isArray(record.scopes)
+      ? record.scopes.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [],
+    capabilities: Array.isArray(record.capabilities)
+      ? record.capabilities.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [],
+    selectedProducts: Array.isArray(record.selectedProducts)
+      ? record.selectedProducts.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [],
     enabled: record.enabled !== false,
     metadata:
       record.metadata &&

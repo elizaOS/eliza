@@ -73,16 +73,10 @@ function googleCapabilitiesForAccount(
   if (scopes.some((scope) => scope.includes("gmail.readonly"))) {
     capabilities.add("google.gmail.triage");
   }
-  if (scopes.some((scope) => scope.includes("gmail.send"))) {
-    capabilities.add("google.gmail.send");
-    capabilities.add("google.gmail.triage");
+  if (scopes.some((scope) => scope.includes("gmail.compose"))) {
+    capabilities.add("google.gmail.draft.create");
   }
-  if (
-    scopes.some(
-      (scope) =>
-        scope.includes("gmail.modify") || scope.includes("gmail.settings"),
-    )
-  ) {
+  if (scopes.some((scope) => scope.includes("gmail.modify"))) {
     capabilities.add("google.gmail.manage");
     capabilities.add("google.gmail.triage");
   }

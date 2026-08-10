@@ -7,7 +7,9 @@
 
 "use client";
 
-import { Calendar, Loader2, Mail, Plus, Users } from "lucide-react";
+import type { GoogleWorkspaceMcpProduct } from "@elizaos/shared/contracts";
+import { Loader2, Mail, Plus } from "lucide-react";
+import { useState } from "react";
 import {
   ConnectionCallout,
   ConnectionCard,
@@ -15,6 +17,11 @@ import {
   ConnectionDisconnectAction,
   ConnectionIdentityPanel,
 } from "../../cloud-ui/components/connection-card";
+import { GoogleMcpProductSelector } from "../../components/connectors/GoogleMcpProductSelector";
+import {
+  DEFAULT_PERSONAL_GOOGLE_MCP_PRODUCTS,
+  oauthScopesForPersonalGoogleProducts,
+} from "../../components/connectors/google-mcp-products";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
@@ -22,6 +29,9 @@ import { useOAuthConnections } from "./oauth-connection";
 
 export function GoogleConnection() {
   const t = useCloudT();
+  const [selectedProducts, setSelectedProducts] = useState<
+    GoogleWorkspaceMcpProduct[]
+  >([...DEFAULT_PERSONAL_GOOGLE_MCP_PRODUCTS]);
   const {
     activeConnections,
     isLoading,
@@ -35,18 +45,10 @@ export function GoogleConnection() {
     if (scope.includes("gmail") || scope.includes("mail")) {
       return <Mail className="h-4 w-4" />;
     }
-    if (scope.includes("calendar")) {
-      return <Calendar className="h-4 w-4" />;
-    }
-    if (scope.includes("contacts") || scope.includes("people")) {
-      return <Users className="h-4 w-4" />;
-    }
     return null;
   };
 
   const getScopeName = (scope: string) => {
-    if (scope.includes("gmail.send"))
-      return t("cloud.google.scopeSendEmails", { defaultValue: "Send emails" });
     if (scope.includes("gmail.readonly"))
       return t("cloud.google.scopeReadEmails", { defaultValue: "Read emails" });
     if (scope.includes("gmail.modify"))
@@ -77,7 +79,7 @@ export function GoogleConnection() {
         icon={<GoogleIcon />}
         description={t("cloud.google.cardDescription", {
           defaultValue:
-            "Connect Gmail, Calendar, and Contacts for AI-powered automation",
+            "Connect personal Google Workspace products through Google's official MCP servers",
         })}
         status="loading"
       />
@@ -92,7 +94,7 @@ export function GoogleConnection() {
       icon={<GoogleIcon />}
       description={t("cloud.google.cardDescription", {
         defaultValue:
-          "Connect Gmail, Calendar, and Contacts for AI-powered automation",
+          "Connect personal Google Workspace products through Google's official MCP servers",
       })}
       status={hasConnections ? "connected" : "disconnected"}
       statusBadge={
@@ -147,10 +149,21 @@ export function GoogleConnection() {
             ))}
           </div>
 
+          <GoogleMcpProductSelector
+            selectedProducts={selectedProducts}
+            onChange={setSelectedProducts}
+            disabled={isConnecting}
+            idPrefix="cloud-google-additional-mcp-product"
+          />
+
           <Button
             variant="outline"
-            onClick={handleConnect}
-            disabled={isConnecting}
+            onClick={() =>
+              void handleConnect({
+                scopes: oauthScopesForPersonalGoogleProducts(selectedProducts),
+              })
+            }
+            disabled={isConnecting || selectedProducts.length === 0}
             className="w-full"
           >
             {isConnecting ? (
@@ -173,41 +186,12 @@ export function GoogleConnection() {
       }
       setupContent={
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Mail className="h-6 w-6 mx-auto mb-2 text-red-500" />
-              <p className="text-sm font-medium">
-                {t("cloud.google.gmail", { defaultValue: "Gmail" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.google.gmailDesc", {
-                  defaultValue: "Send & read emails",
-                })}
-              </p>
-            </div>
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Calendar className="h-6 w-6 mx-auto mb-2 text-txt" />
-              <p className="text-sm font-medium">
-                {t("cloud.google.calendar", { defaultValue: "Calendar" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.google.calendarDesc", {
-                  defaultValue: "Manage events",
-                })}
-              </p>
-            </div>
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Users className="h-6 w-6 mx-auto mb-2 text-green-500" />
-              <p className="text-sm font-medium">
-                {t("cloud.google.contacts", { defaultValue: "Contacts" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.google.contactsDesc", {
-                  defaultValue: "Access contacts",
-                })}
-              </p>
-            </div>
-          </div>
+          <GoogleMcpProductSelector
+            selectedProducts={selectedProducts}
+            onChange={setSelectedProducts}
+            disabled={isConnecting}
+            idPrefix="cloud-google-mcp-product"
+          />
 
           <ConnectionCallout
             title={t("cloud.google.calloutTitle", {
@@ -215,7 +199,7 @@ export function GoogleConnection() {
             })}
             items={[
               t("cloud.google.calloutItem1", {
-                defaultValue: "Send AI-generated emails on your behalf",
+                defaultValue: "Create Gmail drafts for you to review and send",
               }),
               t("cloud.google.calloutItem2", {
                 defaultValue: "Schedule and manage calendar events",
@@ -231,8 +215,12 @@ export function GoogleConnection() {
           />
 
           <Button
-            onClick={handleConnect}
-            disabled={isConnecting}
+            onClick={() =>
+              void handleConnect({
+                scopes: oauthScopesForPersonalGoogleProducts(selectedProducts),
+              })
+            }
+            disabled={isConnecting || selectedProducts.length === 0}
             className="w-full"
           >
             {isConnecting ? (

@@ -1,6 +1,9 @@
 // Wires hosted Eliza agent mcp config behavior for cloud runtime services.
 import { elizaLogger } from "@elizaos/core";
-import { GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES } from "@elizaos/shared/contracts";
+import {
+  GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES,
+  GOOGLE_WORKSPACE_MCP_RESOURCES,
+} from "@elizaos/shared/contracts";
 import { getRequestContext } from "../../services/entity-settings/request-context";
 import type { UserContext } from "../user-context";
 
@@ -41,16 +44,18 @@ export const MCP_SERVER_CONFIGS: Record<string, { url: string; type: string }> =
   },
 };
 
-const GOOGLE_MCP_PRODUCT_CAPABILITIES = Object.fromEntries(
-  Object.entries(GOOGLE_WORKSPACE_MCP_CANARY_RESOURCES).map(([product, config]) => [
-    product,
-    config.capability,
-  ]),
-) as Readonly<Record<string, string>>;
+interface RuntimeMcpServerConfig {
+  url: string;
+  type: "streamable-http";
+  connectorBindingId?: string;
+  connectorAgentId?: string;
+  connectorOrganizationId?: string;
+  allowedTools?: string[];
+}
 
-function googleBindingServers(context: UserContext): Record<string, { url: string; type: string }> {
+function googleBindingServers(context: UserContext): Record<string, RuntimeMcpServerConfig> {
   if (!context.characterId) return {};
-  const servers: Record<string, { url: string; type: string }> = {};
+  const servers: Record<string, RuntimeMcpServerConfig> = {};
   const rolePriority = { OWNER: 0, AGENT: 1, TEAM: 2 } as const;
   const priorityForRole = (role: string): number =>
     rolePriority[role as keyof typeof rolePriority] ?? Number.MAX_SAFE_INTEGER;
@@ -61,22 +66,43 @@ function googleBindingServers(context: UserContext): Record<string, { url: strin
       left.id.localeCompare(right.id),
   );
   for (const binding of bindings) {
-    if (
-      binding.provider !== "google" ||
-      binding.status !== "connected" ||
-      binding.executionTarget !== "cloud_broker"
-    ) {
+    if (binding.provider !== "google" || binding.status !== "connected") {
       continue;
     }
     for (const product of binding.selectedProducts) {
-      const normalizedProduct = product.trim().toLowerCase();
-      const capability = GOOGLE_MCP_PRODUCT_CAPABILITIES[normalizedProduct];
-      if (!capability || !binding.allowedCapabilities.includes(capability)) continue;
-      const serverName = `google-${normalizedProduct}`;
-      if (servers[serverName]) continue;
+      const productKey =
+        product.trim().toLowerCase() === "workspace" ? "universalSearch" : product.trim();
+      const resourceEntry = Object.entries(GOOGLE_WORKSPACE_MCP_RESOURCES).find(
+        ([candidate]) => candidate.toLowerCase() === productKey.toLowerCase(),
+      );
+      if (!resourceEntry) continue;
+      const [normalizedProduct, resource] = resourceEntry;
+      const promotedTools = new Set(resource.promotedTools as readonly string[]);
+      const grantedScopes = new Set(binding.grantedScopes);
+      const allowedTools = Object.entries(resource.tools)
+        .filter(
+          ([tool, capability]) =>
+            promotedTools.has(tool) &&
+            binding.allowedCapabilities.includes(capability) &&
+            (
+              ("toolScopes" in resource
+                ? (resource.toolScopes as Partial<Record<string, readonly string[]>>)[tool]
+                : undefined) ??
+              (GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES[
+                capability as keyof typeof GOOGLE_WORKSPACE_MCP_CAPABILITY_SCOPES
+              ] as readonly string[])
+            ).some((scope) => grantedScopes.has(scope)),
+        )
+        .map(([tool]) => tool);
+      if (allowedTools.length === 0) continue;
+      const serverName = `google-${normalizedProduct}-${binding.id}`;
       servers[serverName] = {
         type: "streamable-http",
-        url: `/api/v1/eliza/agents/${context.characterId}/connectors/${binding.id}/mcp/${normalizedProduct}`,
+        url: resource.endpoint,
+        connectorBindingId: binding.id,
+        connectorAgentId: context.characterId,
+        connectorOrganizationId: context.organizationId,
+        allowedTools,
       };
     }
   }
@@ -94,8 +120,9 @@ function enabledServers(context: UserContext): Record<string, { url: string; typ
 /**
  * Transform MCP settings by resolving relative URLs to absolute URLs.
  *
- * Auth is injected dynamically by McpService.createHttpTransport() via
- * getSetting("ELIZAOS_API_KEY"), which reads from request context.
+ * Legacy same-origin servers receive the request-context Cloud API key.
+ * Connector-bound official resources carry only binding context here; the MCP
+ * service resolves a fresh vendor token immediately before each request.
  */
 export function transformMcpSettings(
   mcpSettings: Record<string, unknown>,

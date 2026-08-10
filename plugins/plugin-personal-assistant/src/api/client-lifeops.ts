@@ -70,9 +70,9 @@ import type {
   LifeOpsSleepRegularityResponse,
   LifeOpsSocialHabitSummary,
   ManageLifeOpsGmailMessagesRequest,
+  SaveLifeOpsGmailReplyDraftRequest,
   SendLifeOpsDiscordMessageRequest,
   SendLifeOpsDiscordMessageResponse,
-  SendLifeOpsGmailReplyRequest,
   SendLifeOpsIMessageRequest,
   SendLifeOpsSignalMessageRequest,
   SendLifeOpsSignalMessageResponse,
@@ -345,9 +345,12 @@ export interface LifeOpsElizaClientMethods {
   createLifeOpsGmailReplyDraft(
     data: CreateLifeOpsGmailReplyDraftRequest,
   ): Promise<{ draft: LifeOpsGmailReplyDraft }>;
-  sendLifeOpsGmailReply(
-    data: SendLifeOpsGmailReplyRequest,
-  ): Promise<{ ok: true }>;
+  saveLifeOpsGmailReplyDraft(data: SaveLifeOpsGmailReplyDraftRequest): Promise<{
+    ok: true;
+    status: "draft_created";
+    draftId: string;
+    threadId: string | null;
+  }>;
   manageLifeOpsGmailMessages(
     data: ManageLifeOpsGmailMessagesRequest,
   ): Promise<LifeOpsGmailManageResult>;
@@ -1147,11 +1150,11 @@ lifeOpsClientPrototype.createLifeOpsGmailReplyDraft = async function (
   });
 };
 
-lifeOpsClientPrototype.sendLifeOpsGmailReply = async function (
+lifeOpsClientPrototype.saveLifeOpsGmailReplyDraft = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/lifeops/gmail/reply-send", {
+  return this.fetch("/api/lifeops/gmail/reply-draft/save", {
     method: "POST",
     body: JSON.stringify(data),
   });

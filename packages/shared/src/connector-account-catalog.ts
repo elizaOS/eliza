@@ -50,7 +50,8 @@ export type ConnectorAccountCatalogPurpose =
   | "reading"
   | "calendar"
   | "drive"
-  | "meet";
+  | "documents"
+  | "automation";
 
 /**
  * Per-connector account defaults. This is the authoritative declaration the
@@ -110,7 +111,13 @@ export const CONNECTOR_ACCOUNT_CATALOG: readonly ConnectorAccountCatalogEntry[] 
       connectorId: "google",
       provider: "google",
       defaultRole: "OWNER",
-      defaultPurpose: ["messaging", "calendar", "drive", "meet"],
+      defaultPurpose: [
+        "messaging",
+        "calendar",
+        "drive",
+        "documents",
+        "automation",
+      ],
       supportsOAuth: true,
       aliases: ["gmail", "google-workspace"],
     },

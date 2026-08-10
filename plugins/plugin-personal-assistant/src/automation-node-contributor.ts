@@ -215,7 +215,7 @@ async function buildLifeOpsAutomationNodes({
     buildLifeOpsNode(
       "lifeops:gmail",
       "Gmail",
-      "Owner-scoped Gmail triage, drafting, and send operations.",
+      "Owner-scoped Gmail triage and saved-draft operations.",
       Boolean(googleStatus?.connected && hasGoogleCapability("gmail")),
       "Connect the owner Google account with Gmail access.",
     ),

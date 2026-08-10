@@ -83,15 +83,12 @@ function mapCapability(value: string): LifeOpsGoogleCapability | null {
     case "google.calendar.read":
     case "calendar.read":
       return "google.calendar.read";
-    case "google.calendar.write":
-    case "calendar.write":
-      return "google.calendar.write";
     case "google.gmail.triage":
     case "gmail.read":
       return "google.gmail.triage";
-    case "google.gmail.send":
-    case "gmail.send":
-      return "google.gmail.send";
+    case "google.gmail.draft.create":
+    case "gmail.draft.create":
+      return "google.gmail.draft.create";
     case "google.gmail.manage":
     case "gmail.manage":
       return "google.gmail.manage";
@@ -124,25 +121,35 @@ function googleCapabilitiesForAccount(
   account: ConnectorAccount,
 ): LifeOpsGoogleCapability[] {
   const meta = metadata(account);
-  const values = [
-    ...stringArray(meta.grantedCapabilities),
-    ...stringArray(meta.capabilities),
-    ...stringArray(meta.googleCapabilities),
-  ];
+  const selectedCapabilities = stringArray(account.capabilities);
+  const values =
+    selectedCapabilities.length > 0
+      ? selectedCapabilities
+      : [
+          ...stringArray(meta.capabilities),
+          ...stringArray(meta.googleCapabilities),
+        ];
   const scopes = stringArray(meta.grantedScopes);
-  if (scopes.some((scope) => scope.includes("calendar"))) {
+  if (
+    selectedCapabilities.length === 0 &&
+    scopes.some((scope) => scope.includes("calendar"))
+  ) {
     values.push("google.calendar.read");
   }
-  if (scopes.some((scope) => scope.includes("calendar.events"))) {
-    values.push("google.calendar.write");
-  }
-  if (scopes.some((scope) => scope.includes("gmail.readonly"))) {
+  if (
+    selectedCapabilities.length === 0 &&
+    scopes.some((scope) => scope.includes("gmail.readonly"))
+  ) {
     values.push("google.gmail.triage");
   }
-  if (scopes.some((scope) => scope.includes("gmail.send"))) {
-    values.push("google.gmail.send");
+  if (
+    selectedCapabilities.length === 0 &&
+    scopes.some((scope) => scope.includes("gmail.compose"))
+  ) {
+    values.push("google.gmail.draft.create");
   }
   if (
+    selectedCapabilities.length === 0 &&
     scopes.some(
       (scope) =>
         scope.includes("gmail.modify") || scope.includes("gmail.settings"),
@@ -156,12 +163,6 @@ function googleCapabilitiesForAccount(
   for (const value of values) {
     const mapped = mapCapability(value);
     if (mapped) normalized.add(mapped);
-  }
-  if (normalized.has("google.calendar.write")) {
-    normalized.add("google.calendar.read");
-  }
-  if (normalized.has("google.gmail.send")) {
-    normalized.add("google.gmail.triage");
   }
   if (normalized.has("google.gmail.manage")) {
     normalized.add("google.gmail.triage");
@@ -184,18 +185,14 @@ function googleScopesForAccount(
   if (capabilities.includes("google.calendar.read")) {
     derived.add("https://www.googleapis.com/auth/calendar.readonly");
   }
-  if (capabilities.includes("google.calendar.write")) {
-    derived.add("https://www.googleapis.com/auth/calendar.events");
-  }
   if (capabilities.includes("google.gmail.triage")) {
     derived.add("https://www.googleapis.com/auth/gmail.readonly");
   }
-  if (capabilities.includes("google.gmail.send")) {
-    derived.add("https://www.googleapis.com/auth/gmail.send");
+  if (capabilities.includes("google.gmail.draft.create")) {
+    derived.add("https://www.googleapis.com/auth/gmail.compose");
   }
   if (capabilities.includes("google.gmail.manage")) {
     derived.add("https://www.googleapis.com/auth/gmail.modify");
-    derived.add("https://www.googleapis.com/auth/gmail.settings.basic");
   }
   return [...derived];
 }
@@ -642,7 +639,7 @@ export function googleCalendarEventPatchInput(args: {
       },
     ),
     recurrence: args.recurrence ? [...args.recurrence] : undefined,
-    sendUpdates: args.notifyAttendees ? "all" : "none",
     expectedEtag: args.expectedProviderVersion,
+    sendUpdates: args.notifyAttendees ? "all" : "none",
   };
 }

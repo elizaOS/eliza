@@ -2,9 +2,9 @@
  * Send-policy contract.
  *
  * A send-policy contribution gates outbound dispatch on a connector or
- * channel. The canonical example is the owner-send-policy: Gmail drafts
- * require explicit owner approval; everything else passes straight through
- * (see `src/lifeops/messaging/owner-send-policy.ts`).
+ * channel. The canonical contributor is the owner-send policy for connectors
+ * that require explicit approval. Gmail never reaches this contract because
+ * official Gmail MCP supports saved drafts only.
  */
 
 import type { DispatchResult } from "../connectors/contract.js";

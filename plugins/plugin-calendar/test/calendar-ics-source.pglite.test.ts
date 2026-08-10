@@ -452,7 +452,7 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     expect([...secrets.values()]).toEqual([replacementUrl]);
   });
 
-  it("retries retained cleanup from recurring maintenance after a failed restart drain", async () => {
+  it("retries retained cleanup at the next ICS operation after a failed restart drain", async () => {
     const source = await createSource();
     const secretRef = [...secrets.keys()][0];
     if (!secretRef) throw new Error("Expected the source secret.");
@@ -484,10 +484,7 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
       expect.objectContaining({ attempt_count: 2 }),
     ]);
     secretDeleteFailure = false;
-    await restarted.runGoogleCalendarWatchScheduledTask({
-      taskId: "calendar-maintenance",
-      metadata: { calendarGoogleWatchOperation: "maintenance" },
-    } as Parameters<CalendarService["runGoogleCalendarWatchScheduledTask"]>[0]);
+    await restarted.listIcsCalendarSources();
 
     expect(await cleanupRows()).toEqual([]);
     expect(secrets.has(secretRef)).toBe(false);

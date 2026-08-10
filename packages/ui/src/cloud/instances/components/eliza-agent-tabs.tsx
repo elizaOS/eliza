@@ -1,30 +1,45 @@
-"use client";
-
 /**
  * Tab strip for the cloud agent-instance detail view (logs, wallet, policies,
- * transactions, backups).
+ * transactions, connector bindings, backups).
  */
+"use client";
+
 import { type ReactNode, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { useT } from "../lib/i18n";
+import { ElizaAgentConnectorsSection } from "./eliza-agent-connectors-section";
 import { ElizaPoliciesSection } from "./eliza-policies-section";
 import { ElizaTransactionsSection } from "./eliza-transactions-section";
 import { ElizaWalletSection } from "./eliza-wallet-section";
 
-const TABS = ["Overview", "Wallet", "Transactions", "Policies"] as const;
+const TABS = [
+  "Overview",
+  "Connectors",
+  "Wallet",
+  "Transactions",
+  "Policies",
+] as const;
 type Tab = (typeof TABS)[number];
 
 interface ElizaAgentTabsProps {
   agentId: string;
   children: ReactNode; // Overview content
+  initialTab?: Tab;
 }
 
-export function ElizaAgentTabs({ agentId, children }: ElizaAgentTabsProps) {
+export function ElizaAgentTabs({
+  agentId,
+  children,
+  initialTab = "Overview",
+}: ElizaAgentTabsProps) {
   const t = useT();
-  const [activeTab, setActiveTab] = useState<Tab>("Overview");
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const labels: Record<Tab, string> = {
     Overview: t("cloud.containers.agentTabs.overview", {
       defaultValue: "Overview",
+    }),
+    Connectors: t("cloud.containers.agentTabs.connectors", {
+      defaultValue: "Connectors",
     }),
     Wallet: t("cloud.containers.agentTabs.wallet", { defaultValue: "Wallet" }),
     Transactions: t("cloud.containers.agentTabs.transactions", {
@@ -62,6 +77,9 @@ export function ElizaAgentTabs({ agentId, children }: ElizaAgentTabsProps) {
       {/* Tab content */}
       <div>
         {activeTab === "Overview" && <>{children}</>}
+        {activeTab === "Connectors" && (
+          <ElizaAgentConnectorsSection agentId={agentId} />
+        )}
         {activeTab === "Wallet" && <ElizaWalletSection agentId={agentId} />}
         {activeTab === "Transactions" && (
           <ElizaTransactionsSection agentId={agentId} />

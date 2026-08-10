@@ -65,15 +65,15 @@ function fallbackReplyBody(original: MessageRef | undefined): string {
 
 /**
  * One-shot reply: drafts a reply, then either sends immediately or hands off
- * to the registered SendPolicy for owner approval. Equivalent to MESSAGE
- * followed by MESSAGE, collapsed into a single agent step.
+ * to the registered SendPolicy for owner approval. Gmail delivery is rejected
+ * by the triage service because official Gmail MCP supports saved drafts only.
  */
 export const respondToMessageAction: Action = {
 	name: "MESSAGE",
 	contexts: ["messaging", "email", "contacts"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"Reply to a message in one step. Use this when the user asks to send/respond/reply now, including natural-language targets like last email from finance; pass messageId when known, otherwise pass sender/content hints. Drafts the reply, then sends or queues it for owner approval per the registered SendPolicy.",
+		"Reply to a supported messaging connector in one step. Pass messageId when known, otherwise pass sender/content hints. Drafts the reply, then sends or queues it for owner approval. Gmail is draft-only and must use the connected Gmail draft capability instead.",
 	descriptionCompressed:
 		"reply to message by messageId/latest/sender/content; send policy-gated",
 	similes: ["REPLY_TO_MESSAGE", "QUICK_REPLY", "ONE_SHOT_REPLY"],

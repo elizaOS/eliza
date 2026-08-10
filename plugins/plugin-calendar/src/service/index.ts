@@ -53,7 +53,6 @@ export {
   CALENDAR_MIGRATION_SERVICE_TYPE,
   CalendarMigrationService,
   ensureCalendarFeedPreferenceTable,
-  ensureGoogleCalendarWatchChannelTable,
   ensureIcsCalendarSourceTable,
   ensureIcsSecretCleanupTable,
   MIGRATED_CALENDAR_TABLES,
@@ -66,5 +65,4 @@ export {
   calendarSecretCleanup,
   calendarSources,
   calendarSyncStates,
-  googleCalendarWatchChannels,
 } from "./schema.js";

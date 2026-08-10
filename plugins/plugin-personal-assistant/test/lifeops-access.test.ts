@@ -112,16 +112,16 @@ describe("getGoogleCapabilityStatus — OAuth grant/scope matrix", () => {
     expect(g.hasCalendarRead).toBe(false);
     expect(g.hasCalendarWrite).toBe(false);
     expect(g.hasGmailTriage).toBe(false);
-    expect(g.hasGmailSend).toBe(false);
+    expect(g.hasGmailDraft).toBe(false);
     expect(g.hasGmailManage).toBe(false);
   });
 
   it("maps each gmail scope independently", async () => {
     const g = await getGoogleCapabilityStatus(
-      serviceWith(true, ["google.gmail.triage", "google.gmail.send"]),
+      serviceWith(true, ["google.gmail.triage", "google.gmail.draft.create"]),
     );
     expect(g.hasGmailTriage).toBe(true);
-    expect(g.hasGmailSend).toBe(true);
+    expect(g.hasGmailDraft).toBe(true);
     expect(g.hasGmailManage).toBe(false);
   });
 
@@ -130,7 +130,7 @@ describe("getGoogleCapabilityStatus — OAuth grant/scope matrix", () => {
     expect(g.status).toBeNull();
     expect(g.connected).toBe(false);
     expect(g.hasCalendarRead).toBe(false);
-    expect(g.hasGmailSend).toBe(false);
+    expect(g.hasGmailDraft).toBe(false);
   });
 
   it("reflects the connector's connected flag", async () => {

@@ -27,8 +27,6 @@ function publicBinding(overrides: Partial<AgentConnectorBinding> = {}): AgentCon
     purposes: ["automation"],
     accessGate: "owner_binding",
     status: "connected",
-    oauthMode: "eliza_managed",
-    executionTarget: "cloud_broker",
     selectedProducts: ["gmail", "calendar"],
     allowedCapabilities: ["gmail.read", "calendar.read"],
     grantedScopes: ["scope-a"],
@@ -75,7 +73,7 @@ function containsForbiddenKey(value: unknown): boolean {
 }
 
 describe("agent connector binding service", () => {
-  test("keeps OAuth ownership and execution topology independent without leaking a credential locator", async () => {
+  test("normalizes a direct binding without leaking a credential locator", async () => {
     const repository = new FakeRepository();
     const service = createAgentConnectorBindingsService({ repository });
 
@@ -85,16 +83,11 @@ describe("agent connector binding service", () => {
       platformCredentialId: "credential-private-1",
       provider: "GOOGLE",
       role: "OWNER",
-      oauthMode: "eliza_managed",
-      executionTarget: "cloud_broker",
       selectedProducts: ["gmail", "calendar", "gmail"],
-      allowedCapabilities: ["gmail.read", "calendar.read"],
       isDefault: true,
       authorizedByUserId: "user-1",
     });
 
-    expect(result.oauthMode).toBe("eliza_managed");
-    expect(result.executionTarget).toBe("cloud_broker");
     expect(containsForbiddenKey(result)).toBe(false);
     expect(repository.bindCalls).toEqual([
       expect.objectContaining({
@@ -120,12 +113,26 @@ describe("agent connector binding service", () => {
         platformCredentialId: "credential-other",
         provider: "google",
         role: "OWNER",
-        oauthMode: "eliza_managed",
-        executionTarget: "cloud_broker",
         selectedProducts: ["gmail"],
-        allowedCapabilities: ["gmail.read"],
         authorizedByUserId: "user-1",
       }),
     ).rejects.toMatchObject({ status: 403, code: "OWNER_NOT_VERIFIED" });
+  });
+
+  test("normalizes workspace capability bindings to the universal search product key", async () => {
+    const repository = new FakeRepository();
+    const service = createAgentConnectorBindingsService({ repository });
+
+    await service.bind({
+      organizationId: "org-1",
+      agentId: "agent-1",
+      platformCredentialId: "credential-private-1",
+      provider: "google",
+      role: "OWNER",
+      selectedProducts: ["workspace"],
+      authorizedByUserId: "user-1",
+    });
+
+    expect(repository.bindCalls[0]?.selectedProducts).toEqual(["universalSearch"]);
   });
 });

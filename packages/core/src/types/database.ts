@@ -492,6 +492,10 @@ export interface ListConnectorAccountCredentialRefsParams {
 	accountId: UUID;
 }
 
+export interface DeleteConnectorAccountCredentialRefsParams {
+	accountId: UUID;
+}
+
 export interface ConnectorAccountAuditEventRecord {
 	id: UUID;
 	accountId?: UUID | null;
@@ -1639,6 +1643,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	listConnectorAccountCredentialRefs(
 		params: ListConnectorAccountCredentialRefsParams,
 	): Promise<ConnectorAccountCredentialRefRecord[]>;
+	deleteConnectorAccountCredentialRefs(
+		params: DeleteConnectorAccountCredentialRefsParams,
+	): Promise<number>;
 	/**
 	 * Append a connector account audit event. Implementations must redact
 	 * credential-like metadata values before persistence.
