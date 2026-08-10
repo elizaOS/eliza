@@ -523,6 +523,14 @@ const DB_LIVENESS_RESTART_COOLDOWN_MS = 10 * 60_000;
 const DB_LIVENESS_RESTART_BUDGET_WINDOW_MS = 60 * 60_000;
 const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
 /**
+ * Maximum bytes to read from a snapshot-fetch error response body for
+ * diagnostic logging (#18228). The body distinguishes an agent-side 500
+ * (carries the thrown error message) from a bridge/proxy-hop 500 (proxy
+ * error page or empty). Bounded so a malicious or misconfigured upstream
+ * cannot exhaust Worker memory.
+ */
+const SNAPSHOT_ERROR_BODY_EXCERPT_BYTES = 512;
+/**
  * Hydration budgets (#16639): the worker heap died buffering unbounded
  * snapshot bodies (`res.json()` retained everything, then a re-stringify
  * doubled it). The raw budget is enforced WHILE streaming — bytes past it are
@@ -988,6 +996,38 @@ class ManagedLaunchOwnershipLost extends Error {
   constructor() {
     super("Managed launch lost its agent ownership CAS");
     this.name = "ManagedLaunchOwnershipLost";
+  }
+}
+
+/**
+ * Read a bounded excerpt of an error response body for diagnostic logging.
+ * Returns a trimmed string or null when the body is empty. Used by
+ * `fetchSnapshotState` (#18228) so an agent-side 500 (carrying the thrown
+ * error message) is distinguishable from a bridge/proxy-hop 500 (proxy error
+ * page or empty body) in Worker logs.
+ */
+async function readErrorBodyExcerpt(
+  res: Pick<Response, "text" | "headers">,
+): Promise<string | null> {
+  try {
+    const body = await res.text();
+    if (!body?.trim()) return null;
+    const contentType = res.headers.get("content-type") ?? "";
+    // JSON error bodies carry structured diagnostics — try to extract a message.
+    if (contentType.includes("application/json")) {
+      try {
+        const data = JSON.parse(body) as { error?: unknown; message?: unknown };
+        const msg = data.error ?? data.message;
+        if (typeof msg === "string" && msg.trim()) {
+          return msg.trim().slice(0, SNAPSHOT_ERROR_BODY_EXCERPT_BYTES);
+        }
+      } catch {
+        // Not valid JSON — fall through to raw excerpt.
+      }
+    }
+    return body.trim().slice(0, SNAPSHOT_ERROR_BODY_EXCERPT_BYTES);
+  } catch {
+    return null;
   }
 }
 
@@ -9862,7 +9902,17 @@ export class ElizaSandboxService {
       throw new Error(SNAPSHOT_ENDPOINT_UNSUPPORTED);
     }
     if (!res.ok) {
-      throw new Error(`Snapshot fetch failed: HTTP ${res.status}`);
+      // #18228: the snapshot transfer failed somewhere between the agent's HTTP
+      // handler and this fetch — an agent-side 500 carries a diagnostic body
+      // (the thrown message), while a bridge/proxy hop 500 carries a proxy
+      // error page or an empty body. The Worker log previously reported only
+      // the status code and discarded the body, making the two indistinguishable.
+      // Read a bounded excerpt of the body and include it after the canonical
+      // `Snapshot fetch failed: HTTP <status>` prefix so the existing
+      // SNAPSHOT_HTTP_ERROR_SHAPE regex (anchored at the status) still classifies
+      // it, while the operator sees where the hop failed.
+      const excerpt = await readErrorBodyExcerpt(res);
+      throw new Error(`Snapshot fetch failed: HTTP ${res.status}${excerpt ? ` ${excerpt}` : ""}`);
     }
 
     // Bounded hydration (#16639): stream and count — bytes past the raw
