@@ -12,6 +12,8 @@ import {
 
 let pg: PGlite;
 
+// PGlite cold boot regularly exceeds the default 10s hook budget on loaded CI
+// hosts, so the setup hook carries an explicit slow-host timeout.
 beforeAll(async () => {
   pg = new PGlite();
   await pg.exec(`
@@ -47,7 +49,7 @@ beforeAll(async () => {
       'legacy-sync', 'agent-1', 'google', 'owner', 'primary', 'account-a', NULL
     );
   `);
-});
+}, 120_000);
 
 afterAll(async () => {
   await pg.close();

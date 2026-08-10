@@ -1,7 +1,8 @@
 /**
  * Persistent scheduler/workflow regression over one shared PGlite database.
- * It reproduces the tenant re-key orphan, its real failure notification, and
- * a full database restart before proving startup reconciliation is isolated.
+ * It reproduces the tenant re-key orphan, its one real "disabled" notification
+ * plus same-fire task deletion, and a full database restart before proving
+ * startup reconciliation is isolated and nothing re-fires or re-notifies.
  */
 
 import { expect, setDefaultTimeout, test } from 'bun:test';
@@ -188,14 +189,14 @@ async function makeTaskDue(runtime: AgentRuntime, task: Task): Promise<void> {
   });
 }
 
-async function waitForPersistedFailureNotification(runtime: AgentRuntime): Promise<void> {
+async function waitForPersistedDisabledNotification(runtime: AgentRuntime): Promise<void> {
   const cacheKey = `notifications:${runtime.agentId}`;
   const deadline = Date.now() + 5_000;
   for (;;) {
     const notifications = await runtime.getCache<Array<{ title?: string }>>(cacheKey);
-    if (notifications?.some((notification) => notification.title?.includes('failed'))) return;
+    if (notifications?.some((notification) => notification.title?.includes('disabled'))) return;
     if (Date.now() >= deadline) {
-      throw new Error('Timed out waiting for the real failure notification to persist');
+      throw new Error('Timed out waiting for the real disabled notification to persist');
     }
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
@@ -205,7 +206,7 @@ async function stopPair(pair: RuntimePair): Promise<void> {
   await Promise.all([pair.runtimeA.stop(), pair.runtimeB.stop()]);
 }
 
-test('restart removes only the quarantined tenant task and cannot fire or re-notify it', async () => {
+test('quarantined tenant task is disabled at first fire and restart cannot fire or re-notify it', async () => {
   const tempDir = await mkdtemp(join(tmpdir(), 'workflow-orphan-reconciliation-'));
   const dataDir = join(tempDir, 'pglite');
   let manager: PGliteClientManager | null = new PGliteClientManager({ dataDir });
@@ -252,16 +253,14 @@ test('restart removes only the quarantined tenant task and cannot fire or re-not
 
     await makeTaskDue(firstPair.runtimeA, orphanTask);
     await taskServiceA.runDueTasks();
-    await waitForPersistedFailureNotification(firstPair.runtimeA);
-    const failureNotifications = notificationsA.list({ category: 'workflow' });
-    expect(failureNotifications).toHaveLength(1);
-    expect(failureNotifications[0]?.title).toContain('failed');
-
-    const firedOrphanTask = await firstPair.runtimeA.getTask(orphanTask.id);
-    if (!firedOrphanTask) {
-      throw new Error('Failed workflow schedule task disappeared before restart');
-    }
-    await makeTaskDue(firstPair.runtimeA, firedOrphanTask);
+    // A workflow_not_found dispatch is permanent: the trigger runtime sends a
+    // single "disabled" notification and deletes the schedule task in the same
+    // fire, so nothing is left for restart reconciliation to re-fire.
+    await waitForPersistedDisabledNotification(firstPair.runtimeA);
+    const disabledNotifications = notificationsA.list({ category: 'workflow' });
+    expect(disabledNotifications).toHaveLength(1);
+    expect(disabledNotifications[0]?.title).toContain('disabled');
+    expect(await firstPair.runtimeA.getTask(orphanTask.id)).toBeNull();
 
     await stopPair(firstPair);
     activePair = null;

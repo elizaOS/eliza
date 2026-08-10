@@ -499,8 +499,9 @@ function assertFullLedgerAccounting(): string | undefined {
 }
 
 function assertRealDeliveries(): string | undefined {
-  // Every FIRED task delivered exactly one real notification (body =
-  // promptInstructions); the gate-denied task never reached the surface.
+  // Every FIRED task delivered exactly one real notification (body = the
+  // deterministic render stand-in's "Heads up: " prefix + promptInstructions);
+  // the gate-denied task never reached the surface.
   const bodyCounts = new Map<string, number>();
   for (const notification of deliveredNotifications) {
     if (typeof notification.body === "string") {
@@ -512,7 +513,8 @@ function assertRealDeliveries(): string | undefined {
   }
   const problems: string[] = [];
   for (const [index, plan] of TASK_PLAN.entries()) {
-    const delivered = bodyCounts.get(plan.promptInstructions) ?? 0;
+    const delivered =
+      bodyCounts.get(`Heads up: ${plan.promptInstructions}`) ?? 0;
     const expected = index === GATE_DENIED_INDEX ? 0 : 1;
     if (delivered !== expected) {
       problems.push(
