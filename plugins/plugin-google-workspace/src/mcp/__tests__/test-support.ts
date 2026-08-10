@@ -12,10 +12,7 @@ import type {
   McpResourceEngine,
 } from "@elizaos/plugin-mcp/resource-engine";
 import { vi } from "vitest";
-import type {
-  GoogleAuthClient,
-  GoogleCredentialResolver,
-} from "../../types.js";
+import type { GoogleAuthClient, GoogleCredentialResolver } from "../../types.js";
 
 type McpToolResult = Awaited<ReturnType<McpResourceEngine["callTool"]>>;
 
@@ -42,10 +39,7 @@ export function runtimeHarness(): IAgentRuntime & { actions: Action[] } {
 export function stubCredentialResolver(token = "short-lived"): GoogleCredentialResolver {
   // The fake covers exactly the OAuth2Client members the host reads; the Pick
   // annotation keeps those members checked against the real client type.
-  const authClient: Pick<
-    GoogleAuthClient,
-    "credentials" | "getAccessToken" | "setCredentials"
-  > = {
+  const authClient: Pick<GoogleAuthClient, "credentials" | "getAccessToken" | "setCredentials"> = {
     credentials: { access_token: token },
     getAccessToken: async () => ({ token }),
     setCredentials: () => undefined,
