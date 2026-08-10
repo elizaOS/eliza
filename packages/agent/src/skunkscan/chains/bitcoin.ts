@@ -38,6 +38,14 @@ import {
 const BITCOIN_CHAIN_ID = "bitcoin";
 const SATOSHIS_PER_BTC = 100_000_000;
 
+// Ceiling for a caller-requested transaction limit. Blockchair's own real
+// cap is 10,000 (live-confirmed flat request_cost at 100/1,000/10,000
+// alike - see the pagination design investigation), but this connector
+// clamps well below that: 1,000 covers essentially every individual
+// retail wallet's full history in one call, without the response-size/
+// downstream-parsing cost of routinely asking for the raw maximum.
+const MAX_TRANSACTION_LIMIT = 1000;
+
 const BITCOIN_NATIVE_ASSET: UniversalAssetIdentifier = {
   chainId: BITCOIN_CHAIN_ID,
   assetType: "native",
@@ -273,11 +281,13 @@ export class BitcoinBlockchainConnector implements BlockchainConnector {
       const trimmedAddress = address.trim();
       const requestedLimit =
         typeof request.limit === "number" ? request.limit : 20;
-      const limit = Math.max(1, Math.min(100, requestedLimit));
+      const limit = Math.max(1, Math.min(MAX_TRANSACTION_LIMIT, requestedLimit));
 
       const rawTransactions = isBitcoinXpub(trimmedAddress)
-        ? (await getBitcoinXpubDashboard(trimmedAddress)).transactions
-        : (await getBitcoinAddressDashboard(trimmedAddress)).transactions;
+        ? (await getBitcoinXpubDashboard(trimmedAddress, { limit }))
+            .transactions
+        : (await getBitcoinAddressDashboard(trimmedAddress, { limit }))
+            .transactions;
 
       const transactions = rawTransactions
         .slice(0, limit)
@@ -368,9 +378,21 @@ export class BitcoinBlockchainConnector implements BlockchainConnector {
       // page is the closest available approximation, not the wallet's
       // true first-ever transaction if it has more history than one page
       // covers. Disclosed via the warning below, not silently assumed.
+      // Requests the full MAX_TRANSACTION_LIMIT-sized page (not the
+      // smaller default) specifically because a bigger page directly
+      // improves this approximation's accuracy, at the same flat request
+      // cost as a small one.
       const rawTransactions = isBitcoinXpub(trimmedAddress)
-        ? (await getBitcoinXpubDashboard(trimmedAddress)).transactions
-        : (await getBitcoinAddressDashboard(trimmedAddress)).transactions;
+        ? (
+            await getBitcoinXpubDashboard(trimmedAddress, {
+              limit: MAX_TRANSACTION_LIMIT,
+            })
+          ).transactions
+        : (
+            await getBitcoinAddressDashboard(trimmedAddress, {
+              limit: MAX_TRANSACTION_LIMIT,
+            })
+          ).transactions;
 
       if (rawTransactions.length === 0) {
         return createSuccessResult({
