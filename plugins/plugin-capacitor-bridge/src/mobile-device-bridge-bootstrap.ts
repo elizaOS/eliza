@@ -56,6 +56,7 @@ const DEFAULT_CALL_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const DEFAULT_LOAD_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
+let registeredRuntimeCount = 0;
 const deviceAttachUnsubscribers = new WeakMap<AgentRuntime, () => void>();
 /**
  * The trigger that actually bound the capacitor-llama handlers, or null while
@@ -354,6 +355,7 @@ class MobileDeviceBridge {
 	private lifecycleGeneration = 0;
 	private attachedServer: HttpServer | null = null;
 	private upgradeHandler: UpgradeHandler | null = null;
+	private serverCloseHandler: (() => void) | null = null;
 	private readonly sockets = new Set<MinimalWebSocket>();
 	private readonly heartbeatTimers = new Map<
 		MinimalWebSocket,
@@ -404,10 +406,33 @@ class MobileDeviceBridge {
 			);
 			return;
 		}
+		const serverCloseHandler = () => {
+			// error-policy:J6 the server close is already committed; transport
+			// teardown failures are logged after every release path has been attempted.
+			void this.close().catch((error) => {
+				logger.warn(
+					"[mobile-device-bridge] Server-owned transport teardown failed:",
+					error instanceof Error ? error.message : String(error),
+				);
+			});
+		};
+		server.once("close", serverCloseHandler);
 		const generation = this.lifecycleGeneration;
-		const wsModule = await import("ws");
-		if (generation !== this.lifecycleGeneration || this.wss) return;
+		let wsModule: unknown;
+		try {
+			wsModule = await import("ws");
+		} catch (error) {
+			// error-policy:J6 the provisional close listener is attach-attempt
+			// teardown; release it before preserving the import failure for the caller.
+			server.off("close", serverCloseHandler);
+			throw error;
+		}
+		if (generation !== this.lifecycleGeneration || this.wss) {
+			server.off("close", serverCloseHandler);
+			return;
+		}
 		if (!isWsModule(wsModule)) {
+			server.off("close", serverCloseHandler);
 			throw new Error("ws module did not expose WebSocketServer/WebSocket");
 		}
 		const ws = wsModule;
@@ -430,6 +455,7 @@ class MobileDeviceBridge {
 		};
 		this.attachedServer = server;
 		this.upgradeHandler = upgradeHandler;
+		this.serverCloseHandler = serverCloseHandler;
 		server.on("upgrade", upgradeHandler);
 
 		logger.info(
@@ -646,15 +672,18 @@ class MobileDeviceBridge {
 		pending.clear();
 	}
 
-	/** Release the HTTP upgrade hook, clients, timers, and outstanding RPCs. */
+	/** Release the server-owned upgrade hook, clients, timers, and outstanding RPCs. */
 	async close(): Promise<void> {
 		const closeErrors: Error[] = [];
 		this.lifecycleGeneration += 1;
 		const server = this.attachedServer;
 		const upgradeHandler = this.upgradeHandler;
+		const serverCloseHandler = this.serverCloseHandler;
 		this.attachedServer = null;
 		this.upgradeHandler = null;
+		this.serverCloseHandler = null;
 		if (server && upgradeHandler) server.off("upgrade", upgradeHandler);
+		if (server && serverCloseHandler) server.off("close", serverCloseHandler);
 
 		this.attachListeners.clear();
 		const stopped = new Error(
@@ -684,6 +713,7 @@ class MobileDeviceBridge {
 		}
 		this.sockets.clear();
 		this.devices.clear();
+		registeredModelTrigger = null;
 
 		const wss = this.wss;
 		this.wss = null;
@@ -2033,9 +2063,10 @@ export class CapacitorMobileDeviceBridgeService extends MobileDeviceBridgeServic
 		const runtime = this.runtime as AgentRuntime;
 		deviceAttachUnsubscribers.get(runtime)?.();
 		deviceAttachUnsubscribers.delete(runtime);
-		registeredRuntimes.delete(runtime);
-		registeredModelTrigger = null;
-		await mobileDeviceBridge.close();
+		if (registeredRuntimes.delete(runtime)) {
+			registeredRuntimeCount = Math.max(0, registeredRuntimeCount - 1);
+		}
+		if (registeredRuntimeCount === 0) registeredModelTrigger = null;
 	}
 }
 
@@ -2269,6 +2300,7 @@ function registerMobileDeviceBridgeModels(
 		`[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE${embeddingModelPath ? " / TEXT_EMBEDDING" : ""} at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger})`,
 	);
 	registeredRuntimes.add(runtime);
+	registeredRuntimeCount += 1;
 	registeredModelTrigger = trigger;
 	return true;
 }
