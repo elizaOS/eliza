@@ -773,9 +773,7 @@ export const containersEnv = {
     const env = getCloudAwareEnv();
     const raw = pick(env.MAX_INFLIGHT_UPGRADES, env.CONTAINERS_MAX_INFLIGHT_UPGRADES);
     const parsed = raw !== undefined ? Number(raw) : Number.NaN;
-    return Number.isFinite(parsed)
-      ? Math.min(64, Math.max(0, Math.floor(parsed)))
-      : 3;
+    return Number.isFinite(parsed) ? Math.min(64, Math.max(0, Math.floor(parsed))) : 3;
   },
 
   /**
