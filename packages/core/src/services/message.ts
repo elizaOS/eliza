@@ -7069,6 +7069,13 @@ export async function runV5MessageRuntimeStage1(args: {
 	onResponseHandlerEarlyReply?: (
 		event: ResponseHandlerEarlyReplyEvent,
 	) => Promise<boolean> | Promise<void> | boolean | undefined;
+	/**
+	 * Fires once Stage 1 routing commits this turn to a response (final reply
+	 * or planning). Lets the caller distinguish "runtime died after the model
+	 * chose to answer" from "died before any respond decision existed" in its
+	 * failure-reply gate.
+	 */
+	onStage1RespondDecision?: () => void;
 }): Promise<V5MessageRuntimeStage1Result> {
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
@@ -7839,6 +7846,13 @@ export async function runV5MessageRuntimeStage1(args: {
 				state: args.state,
 			};
 		}
+
+		// Past this point the Stage-1 model has committed this turn to a
+		// response (final reply or planning). Surface the per-message decision
+		// so a later runtime failure can qualify for a visible failure reply
+		// instead of the unaddressed-turn suppression — evaluator-demoted
+		// IGNOREs and the injection-gate return above never reach this.
+		args.onStage1RespondDecision?.();
 
 		if (route.type === "final_reply") {
 			// The simple-context reply IS the answer: Stage 1 emits `replyText` (→
@@ -11995,6 +12009,7 @@ export class DefaultMessageService implements IMessageService {
 		let routedDecision: ContextRoutingDecision | null = null;
 		let strategyResult: StrategyResult | null = null;
 		let _usedV5Runtime = false;
+		let stage1DecidedRespond = false;
 		let stage1RiskGateApplied = false;
 		const earlyReplyMessages: Memory[] = [];
 		const persistedEarlyReplyIds = new Set<string>();
@@ -12195,6 +12210,9 @@ export class DefaultMessageService implements IMessageService {
 									}
 								: {}),
 							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
+							onStage1RespondDecision: () => {
+								stage1DecidedRespond = true;
+							},
 						}),
 					),
 					timeInferenceSpan("message:ingress:parallel-respond-hooks", () =>
@@ -12302,7 +12320,11 @@ export class DefaultMessageService implements IMessageService {
 					isAutonomous,
 					hasDeliveredEarlyReply: earlyReplyMessages.length > 0,
 				});
-				if (failureGate.addressed) {
+				// Stage 1 already made the per-message RESPOND decision for this
+				// turn before the runtime died — that is the model evaluation the
+				// deterministic gate defers to, so the anti-spam suppression
+				// (which exists for pre-decision throws) does not apply.
+				if (failureGate.addressed || stage1DecidedRespond) {
 					shouldRespondToMessage = true;
 					terminalDecision = null;
 					strategyResult = await this.buildStructuredFailureReply(
