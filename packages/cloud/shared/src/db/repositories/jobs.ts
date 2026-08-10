@@ -1376,23 +1376,16 @@ export class JobsRepository {
    */
   async updateStatus(id: string, status: string, additionalFields?: Partial<Job>): Promise<void> {
     let updates: Partial<Job> = {
-      status,
-      updated_at: new Date(),
       ...additionalFields,
+      status,
+      updated_at: additionalFields?.updated_at ?? new Date(),
     };
 
     if (status === "in_progress" && !additionalFields?.started_at) {
       updates.started_at = new Date();
     }
-    if (
-      (status === "completed" || status === "failed" || status === "cancelled") &&
-      !additionalFields?.completed_at
-    ) {
-      updates.completed_at = new Date();
-    }
-    if (status === "pending" && !additionalFields?.completed_at) {
-      updates.completed_at = null;
-    }
+    const isTerminal = SETTLED_JOB_STATUSES.has(status);
+    const explicitCompletedAt = additionalFields?.completed_at;
 
     if (hasPayloadUpdates(updates)) {
       const [existing] = await dbWrite.select().from(jobs).where(eq(jobs.id, id)).limit(1);
@@ -1402,7 +1395,17 @@ export class JobsRepository {
       updates = await prepareJobPayload(updates, existing);
     }
 
-    await dbWrite.update(jobs).set(updates).where(eq(jobs.id, id));
+    await dbWrite
+      .update(jobs)
+      .set({
+        ...updates,
+        ...(status === "pending"
+          ? { completed_at: null }
+          : isTerminal && !(explicitCompletedAt instanceof Date)
+            ? { completed_at: sql`COALESCE(${jobs.completed_at}, NOW())` }
+            : {}),
+      })
+      .where(eq(jobs.id, id));
   }
 
   /**
@@ -1420,13 +1423,16 @@ export class JobsRepository {
     if (!executionOwnerId) {
       throw new Error(`Execution owner is required to settle claimed job ${claimedJob.id}`);
     }
+    const settledAt =
+      additionalFields?.completed_at instanceof Date
+        ? additionalFields.completed_at
+        : (claimedJob.completed_at ?? new Date());
     let updates: Partial<Job> = {
-      status,
-      completed_at:
-        status === "completed" || status === "cancelled" ? new Date() : claimedJob.completed_at,
-      execution_quiesced_at: new Date(),
-      updated_at: new Date(),
       ...additionalFields,
+      status,
+      completed_at: settledAt,
+      execution_quiesced_at: additionalFields?.execution_quiesced_at ?? new Date(),
+      updated_at: additionalFields?.updated_at ?? new Date(),
     };
     if (hasPayloadUpdates(updates)) {
       updates = await prepareJobPayload(updates, claimedJob);

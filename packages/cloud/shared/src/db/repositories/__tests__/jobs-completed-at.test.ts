@@ -20,7 +20,6 @@ const JOB_STARTED_AT = new Date("2020-01-01T00:00:00.000Z");
 let dbWrite: typeof import("../../client").dbWrite;
 let closeDb: typeof import("../../client").closeDatabaseConnectionsForTests | undefined;
 let repo: typeof import("../jobs").jobsRepository;
-let pgliteReady = true;
 
 async function seedJob(params: {
   id: string;
@@ -57,12 +56,11 @@ async function getJob(id: string): Promise<Job | undefined> {
 }
 
 beforeAll(async () => {
-  try {
-    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../client"));
-    ({ jobsRepository: repo } = await import("../jobs"));
+  ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../client"));
+  ({ jobsRepository: repo } = await import("../jobs"));
 
-    await dbWrite.execute(
-      `CREATE TABLE IF NOT EXISTS jobs (
+  await dbWrite.execute(
+    `CREATE TABLE IF NOT EXISTS jobs (
 				id uuid PRIMARY KEY,
 				type text NOT NULL,
 				status text NOT NULL DEFAULT 'pending',
@@ -94,9 +92,9 @@ beforeAll(async () => {
 				created_at timestamp NOT NULL DEFAULT now(),
 				updated_at timestamp NOT NULL DEFAULT now()
 			)`,
-    );
-    await dbWrite.execute(
-      `CREATE TABLE IF NOT EXISTS job_execution_leases (
+  );
+  await dbWrite.execute(
+    `CREATE TABLE IF NOT EXISTS job_execution_leases (
 				job_id uuid REFERENCES jobs(id) ON DELETE CASCADE,
 				execution_generation uuid NOT NULL,
 				owner_id text NOT NULL,
@@ -105,30 +103,20 @@ beforeAll(async () => {
 				created_at timestamp NOT NULL DEFAULT now(),
 				PRIMARY KEY (job_id, execution_generation, owner_id)
 			)`,
-    );
-  } catch (error) {
-    pgliteReady = false;
-    console.warn("[jobs-completed-at] PGlite unavailable, skipping:", error);
-  }
+  );
 }, PGLITE_TIMEOUT);
 
 afterAll(async () => {
   if (closeDb) await closeDb();
 });
 
-function canRun(): boolean {
-  return pgliteReady;
-}
-
 describe("completed_at terminal-timestamp contract", () => {
   beforeEach(async () => {
-    if (!canRun()) return;
     await dbWrite.execute("DELETE FROM jobs;");
   });
 
   describe("updateStatus", () => {
     test("sets completed_at when status is failed", async () => {
-      if (!canRun()) return;
       const id = "00000000-0000-4900-8000-000000000001";
       await seedJob({ id, maxAttempts: 1 });
       await repo.updateStatus(id, "failed");
@@ -138,7 +126,6 @@ describe("completed_at terminal-timestamp contract", () => {
     });
 
     test("sets completed_at when status is cancelled", async () => {
-      if (!canRun()) return;
       const id = "00000000-0000-4900-8000-000000000002";
       await seedJob({ id, maxAttempts: 1 });
       await repo.updateStatus(id, "cancelled");
@@ -148,7 +135,6 @@ describe("completed_at terminal-timestamp contract", () => {
     });
 
     test("sets completed_at when status is completed", async () => {
-      if (!canRun()) return;
       const id = "00000000-0000-4900-8000-000000000003";
       await seedJob({ id, maxAttempts: 1 });
       await repo.updateStatus(id, "completed");
@@ -158,7 +144,6 @@ describe("completed_at terminal-timestamp contract", () => {
     });
 
     test("clears completed_at when status transitions to pending", async () => {
-      if (!canRun()) return;
       const id = "00000000-0000-4900-8000-000000000004";
       await seedJob({ id, maxAttempts: 1 });
       await repo.updateStatus(id, "completed");
@@ -171,7 +156,6 @@ describe("completed_at terminal-timestamp contract", () => {
     });
 
     test("respects explicit completed_at in additionalFields", async () => {
-      if (!canRun()) return;
       const id = "00000000-0000-4900-8000-000000000005";
       const explicitDate = new Date("2021-06-15T12:00:00.000Z");
       await seedJob({ id, maxAttempts: 1 });
@@ -179,11 +163,23 @@ describe("completed_at terminal-timestamp contract", () => {
       const job = await getJob(id);
       expect(job?.completed_at).toEqual(explicitDate);
     });
+
+    test("does not move completed_at when a terminal row is updated again", async () => {
+      const id = "00000000-0000-4900-8000-000000000006";
+      await seedJob({ id, maxAttempts: 1 });
+      await repo.updateStatus(id, "failed");
+      const terminalAt = (await getJob(id))?.completed_at;
+      expect(terminalAt).not.toBeNull();
+
+      await repo.updateStatus(id, "failed", { webhook_status: "delivered" });
+      const job = await getJob(id);
+      expect(job?.completed_at).toEqual(terminalAt);
+      expect(job?.webhook_status).toBe("delivered");
+    });
   });
 
   describe("incrementAttempt", () => {
     test("sets completed_at when attempt exhaustion flips to failed", async () => {
-      if (!canRun()) return;
       const id = "00000000-0000-4900-8000-000000000010";
       await seedJob({ id, maxAttempts: 1, attempts: 0 });
       await repo.incrementAttempt(id, "boom", 1);
@@ -193,7 +189,6 @@ describe("completed_at terminal-timestamp contract", () => {
     });
 
     test("keeps completed_at null on retry (not yet exhausted)", async () => {
-      if (!canRun()) return;
       const id = "00000000-0000-4900-8000-000000000011";
       await seedJob({ id, maxAttempts: 3, attempts: 0 });
       await repo.incrementAttempt(id, "transient", 3);
@@ -205,7 +200,6 @@ describe("completed_at terminal-timestamp contract", () => {
 
   describe("settleExecution", () => {
     test("sets completed_at when status is completed", async () => {
-      if (!canRun()) return;
       const id = "00000000-0000-4900-8000-000000000020";
       const generation = "a0000000-0000-4000-8000-000000000020";
       const ownerId = "owner-1";
@@ -221,7 +215,6 @@ describe("completed_at terminal-timestamp contract", () => {
     });
 
     test("sets completed_at when status is cancelled", async () => {
-      if (!canRun()) return;
       const id = "00000000-0000-4900-8000-000000000021";
       const generation = "a0000000-0000-4000-8000-000000000021";
       const ownerId = "owner-2";
@@ -239,7 +232,6 @@ describe("completed_at terminal-timestamp contract", () => {
 
   describe("retryLaterWithoutIncrementingAttempts", () => {
     test("clears completed_at on retry", async () => {
-      if (!canRun()) return;
       const id = "00000000-0000-4900-8000-000000000030";
       const generation = "b0000000-0000-4000-8000-000000000030";
       const ownerId = "owner-3";
@@ -251,6 +243,60 @@ describe("completed_at terminal-timestamp contract", () => {
       await repo.retryLaterWithoutIncrementingAttempts(claimed, "ambiguity", 5000, ownerId);
       const job = await getJob(id);
       expect(job?.status).toBe("pending");
+      expect(job?.completed_at).toBeNull();
+    });
+  });
+
+  describe("recoverStaleJobs", () => {
+    test("sets completed_at when stale recovery exhausts attempts", async () => {
+      const id = "00000000-0000-4900-8000-000000000040";
+      await seedJob({ id, maxAttempts: 1 });
+
+      const result = await repo.recoverStaleJobs({
+        type: "agent_message",
+        staleThresholdMs: 1,
+      });
+
+      expect(result).toMatchObject({ permanentlyFailed: 1, retried: 0, failures: [] });
+      const job = await getJob(id);
+      expect(job?.status).toBe("failed");
+      expect(job?.completed_at).not.toBeNull();
+    });
+
+    test("keeps completed_at null when stale recovery requeues", async () => {
+      const id = "00000000-0000-4900-8000-000000000041";
+      await seedJob({ id, maxAttempts: 3 });
+
+      const result = await repo.recoverStaleJobs({
+        type: "agent_message",
+        staleThresholdMs: 1,
+      });
+
+      expect(result).toMatchObject({ permanentlyFailed: 0, retried: 1, failures: [] });
+      const job = await getJob(id);
+      expect(job?.status).toBe("pending");
+      expect(job?.completed_at).toBeNull();
+    });
+
+    test("rolls completed_at back with the terminal flip when a dependent write fails", async () => {
+      const id = "00000000-0000-4900-8000-000000000042";
+      await seedJob({ id, maxAttempts: 1 });
+
+      const result = await repo.recoverStaleJobs({
+        type: "agent_message",
+        staleThresholdMs: 1,
+        buildFailureWriteback: () => async () => {
+          throw new Error("dependent row is locked");
+        },
+      });
+
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0]?.cause).toEqual(
+        expect.objectContaining({ message: "dependent row is locked" }),
+      );
+      const job = await getJob(id);
+      expect(job?.status).toBe("in_progress");
+      expect(job?.attempts).toBe(0);
       expect(job?.completed_at).toBeNull();
     });
   });

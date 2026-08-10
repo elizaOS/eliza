@@ -178,6 +178,20 @@ describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", (
       (c) => (c[0] as { status?: string })?.status === "cancelled",
     );
     expect(cancelSet).toBeDefined();
+    if (!cancelSet) {
+      throw new Error("cancellation update was not captured");
+    }
+    const cancelValues = cancelSet[0] as {
+      completed_at?: Date;
+      updated_at?: Date;
+    };
+    expect(cancelValues).toEqual(
+      expect.objectContaining({
+        completed_at: expect.any(Date),
+        updated_at: expect.any(Date),
+      }),
+    );
+    expect(cancelValues.completed_at).toEqual(cancelValues.updated_at);
 
     // The cancel WHERE is scoped to this org AND this agent, excludes
     // agent_delete (delete never self-cancels), and only touches pending rows.
