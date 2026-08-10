@@ -3,13 +3,13 @@
  *
  * The dashboard `index.html` is served pre-auth, so embedding the
  * full-capability API token into it is a capability grant. These tests pin the
- * gate: the token is injected only for cloud-provisioned containers or when an
- * operator explicitly opts in with `ELIZA_FORCE_INJECT_TOKEN`, and the opt-in
- * uses the canonical truthy parser (not a strict `=== "1"`).
+ * gate: managed containers never expose the bearer, while self-hosted
+ * operators retain the explicit force-injection contract.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  buildServedDashboardHtml,
   injectApiBaseIntoHtml,
   resolveInjectedDashboardToken,
 } from "./static-file-server.ts";
@@ -17,18 +17,32 @@ import {
 const TOKEN_ENV = "ELIZA_API_TOKEN";
 const FORCE_ENV = "ELIZA_FORCE_INJECT_TOKEN";
 const CLOUD_ENV = "ELIZA_CLOUD_PROVISIONED";
+const EXTERNAL_BASE_ENV = "ELIZA_EXTERNAL_BASE_URL";
+const VAPID_ENV = "ELIZA_WEB_PUSH_VAPID_PUBLIC_KEY";
 const TOKEN = "secret-full-capability-token";
 
 describe("resolveInjectedDashboardToken", () => {
   const saved: Record<string, string | undefined> = {};
   beforeEach(() => {
-    for (const k of [TOKEN_ENV, FORCE_ENV, CLOUD_ENV]) {
+    for (const k of [
+      TOKEN_ENV,
+      FORCE_ENV,
+      CLOUD_ENV,
+      EXTERNAL_BASE_ENV,
+      VAPID_ENV,
+    ]) {
       saved[k] = process.env[k];
       delete process.env[k];
     }
   });
   afterEach(() => {
-    for (const k of [TOKEN_ENV, FORCE_ENV, CLOUD_ENV]) {
+    for (const k of [
+      TOKEN_ENV,
+      FORCE_ENV,
+      CLOUD_ENV,
+      EXTERNAL_BASE_ENV,
+      VAPID_ENV,
+    ]) {
       if (saved[k] === undefined) delete process.env[k];
       else process.env[k] = saved[k];
     }
@@ -60,6 +74,39 @@ describe("resolveInjectedDashboardToken", () => {
     process.env[TOKEN_ENV] = TOKEN;
     process.env[FORCE_ENV] = "0";
     expect(resolveInjectedDashboardToken()).toBeNull();
+  });
+
+  it("never returns a managed container bearer", () => {
+    process.env[TOKEN_ENV] = TOKEN;
+    process.env[CLOUD_ENV] = "1";
+    expect(resolveInjectedDashboardToken()).toBeNull();
+  });
+
+  it("does not let the self-hosted force flag reopen managed injection", () => {
+    process.env[TOKEN_ENV] = TOKEN;
+    process.env[CLOUD_ENV] = "1";
+    process.env[FORCE_ENV] = "1";
+    expect(resolveInjectedDashboardToken()).toBeNull();
+  });
+
+  it("serves managed HTML without the bearer while preserving public boot config", () => {
+    process.env[TOKEN_ENV] = TOKEN;
+    process.env[CLOUD_ENV] = "1";
+    process.env[FORCE_ENV] = "1";
+    process.env[EXTERNAL_BASE_ENV] = "https://agent.example.test/api";
+    process.env[VAPID_ENV] = "BExamplePublicKeyBase64Url";
+
+    const out = buildServedDashboardHtml(
+      Buffer.from("<!doctype html><html><head></head><body></body></html>"),
+    ).toString("utf-8");
+
+    expect(out).not.toContain(TOKEN);
+    expect(out).not.toContain("apiToken");
+    expect(out).not.toContain("__ELIZA_API_TOKEN__");
+    expect(out).not.toContain("accessToken");
+    expect(out).not.toContain("elizaos:active-server");
+    expect(out).toContain("https://agent.example.test/api");
+    expect(out).toContain("BExamplePublicKeyBase64Url");
   });
 });
 
