@@ -2475,6 +2475,32 @@ function textValue(value: unknown): string | undefined {
     : undefined;
 }
 
+/**
+ * Sentinel words a weak planner emits for an *absent* structural id filter
+ * ("no project", "no session"). Left as-is they become a literal filter — a
+ * task query for a project/session named "none" matches nothing — and leak
+ * into the reply as "project none" / "that session" (live 2026-08-10: a
+ * rhetorical "any burning fires?" routed to TASKS with `projectId:"none"`,
+ * answered shaw with the reconstructed junk filter). Only structural id
+ * filters normalize these; a free-text `search` term is never coerced.
+ */
+const ABSENT_FILTER_SENTINELS = new Set([
+  "none",
+  "null",
+  "nil",
+  "undefined",
+  "n/a",
+  "na",
+  "any",
+  "all",
+]);
+
+function filterIdValue(value: unknown): string | undefined {
+  const text = textValue(value);
+  if (text === undefined) return undefined;
+  return ABSENT_FILTER_SENTINELS.has(text.toLowerCase()) ? undefined : text;
+}
+
 function inferMetric(text: string, value?: string): HistoryMetric {
   const normalized = value?.trim().toLowerCase();
   if (
@@ -2802,10 +2828,12 @@ async function runHistory(
   // Session-scoped history resolves through the durable session index. A task
   // may have several sessions, so comparing only its latest session would make
   // older sessions disappear or allow an unrelated thread into the answer.
-  const sessionId = textValue(params.sessionId) ?? textValue(content.sessionId);
+  const sessionId =
+    filterIdValue(params.sessionId) ?? filterIdValue(content.sessionId);
   // Registered-project filter: restrict the thread listing to tasks bound to
   // one project (the store filters on the indexed/structural `projectId`).
-  const projectId = textValue(params.projectId) ?? textValue(content.projectId);
+  const projectId =
+    filterIdValue(params.projectId) ?? filterIdValue(content.projectId);
   const includeArchived =
     pickBoolean(params, content, "includeArchived") ?? false;
   const windowFilters = buildWindowFilters(window);
