@@ -176,6 +176,20 @@ describe("completed_at terminal-timestamp contract", () => {
       expect(job?.completed_at).toEqual(terminalAt);
       expect(job?.webhook_status).toBe("delivered");
     });
+
+    test("replaces a stale timestamp when a non-terminal row becomes terminal", async () => {
+      const id = "00000000-0000-4900-8000-000000000007";
+      const staleDate = new Date("2021-06-15T12:00:00.000Z");
+      await seedJob({ id, maxAttempts: 1 });
+      await dbWrite.update(jobs).set({ completed_at: staleDate }).where(eq(jobs.id, id));
+
+      await repo.updateStatus(id, "failed");
+
+      const job = await getJob(id);
+      expect(job?.status).toBe("failed");
+      expect(job?.completed_at).not.toEqual(staleDate);
+      expect(job?.completed_at?.getTime()).toBeGreaterThan(staleDate.getTime());
+    });
   });
 
   describe("incrementAttempt", () => {
@@ -227,6 +241,28 @@ describe("completed_at terminal-timestamp contract", () => {
       const job = await getJob(id);
       expect(job?.status).toBe("cancelled");
       expect(job?.completed_at).not.toBeNull();
+    });
+
+    test("replaces a stale timestamp when settling a claimed execution", async () => {
+      const id = "00000000-0000-4900-8000-000000000022";
+      const generation = "a0000000-0000-4000-8000-000000000022";
+      const ownerId = "owner-3";
+      const staleDate = new Date("2021-06-15T12:00:00.000Z");
+      await seedJob({ id, maxAttempts: 1 });
+      await dbWrite
+        .update(jobs)
+        .set({ execution_generation: generation, completed_at: staleDate })
+        .where(eq(jobs.id, id));
+      await seedLease(id, generation, ownerId);
+      const claimed = await repo.findById(id);
+      if (!claimed) throw new Error("seeded job not found");
+
+      await repo.settleExecution(claimed, "completed", undefined, ownerId);
+
+      const job = await getJob(id);
+      expect(job?.status).toBe("completed");
+      expect(job?.completed_at).not.toEqual(staleDate);
+      expect(job?.completed_at?.getTime()).toBeGreaterThan(staleDate.getTime());
     });
   });
 

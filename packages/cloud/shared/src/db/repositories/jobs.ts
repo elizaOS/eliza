@@ -1402,7 +1402,13 @@ export class JobsRepository {
         ...(status === "pending"
           ? { completed_at: null }
           : isTerminal && !(explicitCompletedAt instanceof Date)
-            ? { completed_at: sql`COALESCE(${jobs.completed_at}, NOW())` }
+            ? {
+                completed_at: sql`CASE
+                  WHEN ${jobs.status} IN ('completed', 'failed', 'cancelled')
+                    THEN COALESCE(${jobs.completed_at}, NOW())
+                  ELSE NOW()
+                END`,
+              }
             : {}),
       })
       .where(eq(jobs.id, id));
@@ -1424,9 +1430,7 @@ export class JobsRepository {
       throw new Error(`Execution owner is required to settle claimed job ${claimedJob.id}`);
     }
     const settledAt =
-      additionalFields?.completed_at instanceof Date
-        ? additionalFields.completed_at
-        : (claimedJob.completed_at ?? new Date());
+      additionalFields?.completed_at instanceof Date ? additionalFields.completed_at : new Date();
     let updates: Partial<Job> = {
       ...additionalFields,
       status,
