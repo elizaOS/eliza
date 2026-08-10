@@ -438,6 +438,52 @@ function writeCompatSectionEnabled(
   parent[sectionKey] = section;
 }
 
+/**
+ * Synchronise `plugins.allow` with the enable toggle. On enable, the npm
+ * package name is added (the canonical form the allowlist loader expects).
+ * On disable, every alias — npm name, short id, and normalised id — is
+ * removed so drift does not persist under a secondary name. Unrelated
+ * allowlist entries are always preserved.
+ */
+function syncPluginsAllowlist(
+  config: Record<string, unknown>,
+  pluginId: string,
+  npmName: string | undefined,
+  enabled: boolean,
+): void {
+  const plugins = asRecord(config.plugins) ?? {};
+  const allow = Array.isArray(plugins.allow)
+    ? [...(plugins.allow as string[])]
+    : [];
+
+  // Every name form this plugin can appear under in the allowlist.
+  const aliases = new Set<string>();
+  aliases.add(pluginId);
+  aliases.add(normalizePluginId(pluginId));
+  if (typeof npmName === "string" && npmName.length > 0) {
+    aliases.add(npmName);
+    aliases.add(normalizePluginId(npmName));
+  }
+
+  if (enabled) {
+    // Add the canonical npm name if available, else the short id.
+    const canonical = npmName ?? pluginId;
+    if (!allow.some((entry) => aliases.has(entry))) {
+      allow.push(canonical);
+    }
+  } else {
+    // Remove every alias without touching unrelated entries.
+    for (let i = allow.length - 1; i >= 0; i--) {
+      if (aliases.has(allow[i])) {
+        allow.splice(i, 1);
+      }
+    }
+  }
+
+  plugins.allow = allow;
+  config.plugins = plugins;
+}
+
 function syncCompatConnectorConfigValues(
   config: Record<string, unknown>,
   pluginId: string,
@@ -1364,6 +1410,12 @@ export function persistCompatPluginMutation(
         body.enabled,
       );
     }
+
+    // Keep plugins.allow aligned with entries[pluginId].enabled so the
+    // drift check in analyzePluginStateDrift stays clean. The allowlist
+    // stores npm names (or short ids) — remove every known alias when
+    // disabling so drift does not persist under a secondary name.
+    syncPluginsAllowlist(config, pluginId, plugin.npmName, body.enabled);
   }
 
   if (body.config !== undefined) {

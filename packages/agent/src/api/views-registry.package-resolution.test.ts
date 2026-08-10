@@ -35,6 +35,17 @@ describe("pluginPackageNameCandidates", () => {
       "@acme/plugin-custom",
     ]);
   });
+
+  it("strips a redundant plugin- prefix to avoid @elizaos/plugin-plugin-*", () => {
+    expect(pluginPackageNameCandidates("plugin-health")).toEqual([
+      "@elizaos/plugin-health",
+      "plugin-health",
+    ]);
+    expect(pluginPackageNameCandidates("plugin-browser")).toEqual([
+      "@elizaos/plugin-browser",
+      "plugin-browser",
+    ]);
+  });
 });
 
 describe("registerPluginViews package-dir resolution", () => {

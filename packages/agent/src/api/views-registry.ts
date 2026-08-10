@@ -82,11 +82,19 @@ const VIEW_BUNDLE_WARNING_BYTES = 1024 * 1024;
  * (e.g. plugin "birdclaw" vs the `birdclaw` CLI on npm), and under Bun a
  * bare-name resolve can hit that package's install cache — registering the
  * view against a directory that isn't this plugin at all.
+ *
+ * Runtime names that already include the `plugin-` prefix (e.g. plugin-health)
+ * must not be double-prefixed into `@elizaos/plugin-plugin-health`. The
+ * prefix is stripped before canonicalisation so the real package resolves.
  */
 export function pluginPackageNameCandidates(pluginName: string): string[] {
-  return pluginName.startsWith("@")
-    ? [pluginName]
-    : [`@elizaos/plugin-${pluginName}`, pluginName];
+  if (pluginName.startsWith("@")) {
+    return [pluginName];
+  }
+  // Strip a leading "plugin-" so "plugin-health" resolves to
+  // "@elizaos/plugin-health", not "@elizaos/plugin-plugin-health".
+  const baseName = pluginName.replace(/^plugin-/, "");
+  return [`@elizaos/plugin-${baseName}`, pluginName];
 }
 
 /**

@@ -224,6 +224,7 @@ describe("app plugin compatibility routes", () => {
           enabled: true,
         },
       },
+      allow: ["@elizaos/plugin-discord"],
     });
     expect(savedConfig?.connectors).toEqual({
       discord: {
@@ -320,5 +321,139 @@ describe("app plugin compatibility routes", () => {
       "Invalid plugin path",
     );
     expect(mocks.saveElizaConfig).toHaveBeenCalledTimes(saveCallCount);
+  });
+
+  describe("persistCompatPluginMutation plugins.allow synchronization", () => {
+    it("adds npm name to plugins.allow when enabling a plugin", () => {
+      const result = persistCompatPluginMutation(
+        "personal-assistant",
+        { enabled: true },
+        makePlugin({
+          id: "personal-assistant",
+          npmName: "@elizaos/plugin-personal-assistant",
+          category: "feature",
+        }) as never,
+      );
+
+      expect(result.status).toBe(200);
+      expect(
+        (savedConfig as Record<string, unknown>)?.plugins as Record<
+          string,
+          unknown
+        >,
+      ).toHaveProperty("allow", [
+        "@elizaos/plugin-personal-assistant",
+      ]);
+    });
+
+    it("removes all aliases from plugins.allow when disabling", () => {
+      currentConfig = {
+        env: {},
+        plugins: {
+          entries: {
+            "personal-assistant": { enabled: true },
+          },
+          allow: [
+            "@elizaos/plugin-personal-assistant",
+            "personal-assistant",
+            "@elizaos/plugin-discord",
+          ],
+        },
+      };
+
+      const result = persistCompatPluginMutation(
+        "personal-assistant",
+        { enabled: false },
+        makePlugin({
+          id: "personal-assistant",
+          npmName: "@elizaos/plugin-personal-assistant",
+          category: "feature",
+        }) as never,
+      );
+
+      expect(result.status).toBe(200);
+      // Only the unrelated discord entry remains.
+      expect(
+        (savedConfig as Record<string, unknown>)?.plugins as Record<
+          string,
+          unknown
+        >,
+      ).toHaveProperty("allow", ["@elizaos/plugin-discord"]);
+    });
+
+    it("initialises plugins.allow as an array when absent", () => {
+      const result = persistCompatPluginMutation(
+        "discord",
+        { enabled: true },
+        makePlugin() as never,
+      );
+
+      expect(result.status).toBe(200);
+      expect(
+        (savedConfig as Record<string, unknown>)?.plugins as Record<
+          string,
+          unknown
+        >,
+      ).toHaveProperty("allow", ["@elizaos/plugin-discord"]);
+    });
+
+    it("does not duplicate entries on repeated enable", () => {
+      currentConfig = {
+        env: {},
+        plugins: {
+          entries: {
+            discord: { enabled: true },
+          },
+          allow: ["@elizaos/plugin-discord"],
+        },
+      };
+
+      const result = persistCompatPluginMutation(
+        "discord",
+        { enabled: true },
+        makePlugin() as never,
+      );
+
+      expect(result.status).toBe(200);
+      expect(
+        (savedConfig as Record<string, unknown>)?.plugins as Record<
+          string,
+          unknown
+        >,
+      ).toHaveProperty("allow", ["@elizaos/plugin-discord"]);
+    });
+
+    it("preserves unrelated allowlist entries on disable", () => {
+      currentConfig = {
+        env: {},
+        plugins: {
+          entries: {
+            discord: { enabled: false },
+          },
+          allow: [
+            "@elizaos/plugin-discord",
+            "@elizaos/plugin-telegram",
+            "@elizaos/plugin-browser",
+          ],
+        },
+      };
+
+      const result = persistCompatPluginMutation(
+        "discord",
+        { enabled: false },
+        makePlugin() as never,
+      );
+
+      expect(result.status).toBe(200);
+      expect(
+        (savedConfig as Record<string, unknown>)?.plugins as Record<
+          string,
+          unknown
+        >,
+      ).toHaveProperty("allow", [
+        "@elizaos/plugin-telegram",
+        "@elizaos/plugin-browser",
+      ]);
+    });
   });
 });
