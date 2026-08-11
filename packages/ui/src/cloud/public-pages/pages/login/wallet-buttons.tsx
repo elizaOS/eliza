@@ -352,7 +352,7 @@ function EthereumButton({
       type="button"
       onClick={handleClick}
       disabled={disabled}
-      className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+      className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent focus-visible:bg-accent-subtle active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
     >
       {loading && <Spinner />}
       {t("cloud.login.wallet.evm", { defaultValue: "EVM wallet" })}
@@ -453,7 +453,7 @@ function SolanaButton({
       type="button"
       onClick={handleClick}
       disabled={disabled}
-      className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+      className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover focus-visible:border-accent focus-visible:bg-accent-subtle active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
     >
       {loading && <Spinner />}
       {t("cloud.login.wallet.solana", { defaultValue: "Solana wallet" })}
