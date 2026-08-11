@@ -21,26 +21,22 @@ import {
   EXPECTED_PHRASE,
   KNOWN_PHRASE_WAV_DATA_URL,
   runVoiceSelfTest,
-  type VoiceSelfTestReport,
 } from "@elizaos/ui/voice";
+import { evaluateVoiceSelfTestReport } from "../scripts/ios-voice-selftest-lib.mjs";
+import {
+  IOS_VOICE_SELFTEST_LOCAL_ACTIVE_SERVER,
+  IOS_VOICE_SELFTEST_REQUEST_KEY,
+  IOS_VOICE_SELFTEST_RESULT_KEY,
+  type IosVoiceSelfTestRequest,
+  parseIosVoiceSelfTestRequest,
+} from "./ios-voice-selftest-boot";
 
-const IOS_VOICE_SELFTEST_REQUEST_KEY = "eliza:ios-voice-selftest:request";
-const IOS_VOICE_SELFTEST_RESULT_KEY = "eliza:ios-voice-selftest:result";
 const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const IOS_VOICE_SELFTEST_ONBOARDING_WAIT_MS = 180_000;
 const IOS_VOICE_SELFTEST_RUN_TIMEOUT_MS = 240_000;
+const IOS_LOCAL_VOICE_READINESS_DELAY_MS = 1_000;
+const IOS_LOCAL_VOICE_RUN_RESERVE_MS = 15_000;
 const DEFAULT_IOS_VOICE_SELFTEST_API_BASE = "http://127.0.0.1:31338";
-
-/** The three stages every real voice round-trip must clear. */
-const REQUIRED_VOICE_STAGES: ReadonlyArray<"asr" | "send" | "tts"> = [
-  "asr",
-  "send",
-  "tts",
-];
-
-interface IosVoiceSelfTestRequest {
-  apiBase: string;
-}
 
 interface RunIosVoiceSelfTestOptions {
   isIOS: boolean;
@@ -49,33 +45,10 @@ interface RunIosVoiceSelfTestOptions {
   removePreference: (key: string) => Promise<void>;
   writeResult: (key: string, result: Record<string, unknown>) => Promise<void>;
   readStorageSnapshot: () => Record<string, string | null>;
+  localReadiness?: { maxAttempts?: number; delayMs?: number };
 }
 
 let iosVoiceSelfTestStarted = false;
-
-function parseIosVoiceSelfTestRequest(
-  raw: string | null,
-): IosVoiceSelfTestRequest {
-  const fallback = { apiBase: DEFAULT_IOS_VOICE_SELFTEST_API_BASE };
-  if (!raw || raw === "1") return fallback;
-  try {
-    const parsed = JSON.parse(raw) as { apiBase?: unknown };
-    return {
-      apiBase:
-        typeof parsed.apiBase === "string" && parsed.apiBase.trim()
-          ? parsed.apiBase.trim()
-          : fallback.apiBase,
-    };
-  } catch (error) {
-    // error-policy:J3 corrupt smoke-request blob — fail the harness instead of
-    // turning malformed input into a false-green default run
-    throw new Error(
-      `Invalid iOS voice self-test request: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-  }
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -166,32 +139,101 @@ async function waitForOnboardingSmokeResultIfPresent(
   );
 }
 
-/**
- * Apply the Android-parity verdict to a report: overall must be `pass` and every
- * required stage must be `pass` (a `skipped` stage fails). Returns the reasons a
- * report is not green so the harness result carries them for triage.
- */
-function verdictReasons(report: VoiceSelfTestReport): string[] {
-  const reasons: string[] = [];
-  if (report.overall !== "pass") {
-    reasons.push(`overall is "${report.overall}", expected "pass"`);
+function assertLocalVoiceTransportState(
+  request: IosVoiceSelfTestRequest,
+  client: ElizaClient,
+  readStorageSnapshot: RunIosVoiceSelfTestOptions["readStorageSnapshot"],
+): void {
+  const snapshot = readStorageSnapshot();
+  const expectedServer = JSON.stringify(IOS_VOICE_SELFTEST_LOCAL_ACTIVE_SERVER);
+  if (request.apiBase !== "eliza-local-agent://ipc") {
+    throw new Error(
+      `local voice request has unexpected base ${request.apiBase}`,
+    );
   }
-  const byStage = new Map(report.stages.map((s) => [s.stage, s.status]));
-  for (const name of REQUIRED_VOICE_STAGES) {
-    const status = byStage.get(name);
-    if (status === undefined) {
-      reasons.push(`stage "${name}" is missing`);
-    } else if (status !== "pass") {
-      reasons.push(`stage "${name}" is "${status}", expected "pass"`);
+  if (client.getBaseUrl() !== request.apiBase) {
+    throw new Error(
+      `local voice client base ${client.getBaseUrl() || "<empty>"} != ${request.apiBase}`,
+    );
+  }
+  if (snapshot["eliza:mobile-runtime-mode"] !== "local") {
+    throw new Error(
+      "local voice runtime mode was not authoritative before run",
+    );
+  }
+  if (snapshot["eliza:first-run-complete"] !== "1") {
+    throw new Error(
+      "local voice first-run completion was not authoritative before run",
+    );
+  }
+  if (snapshot["elizaos:active-server"] !== expectedServer) {
+    throw new Error(
+      "local voice active-server record was not canonical before run",
+    );
+  }
+}
+
+export async function waitForIosLocalVoiceReadiness(
+  client: ElizaClient,
+  {
+    deadlineMs,
+    maxAttempts = Number.POSITIVE_INFINITY,
+    delayMs = IOS_LOCAL_VOICE_READINESS_DELAY_MS,
+  }: { deadlineMs: number; maxAttempts?: number; delayMs?: number },
+): Promise<void> {
+  let lastDiagnostic: Record<string, unknown> = {};
+  let attempt = 0;
+  while (Date.now() < deadlineMs && attempt < maxAttempts) {
+    attempt += 1;
+    const [statusResult, asrResult] = await Promise.allSettled([
+      client.getStatus(),
+      client.fetch<{ ready?: unknown; provider?: unknown }>(
+        "/api/asr/local-inference/status",
+      ),
+    ]);
+    const status =
+      statusResult.status === "fulfilled" ? statusResult.value : null;
+    const asr = asrResult.status === "fulfilled" ? asrResult.value : null;
+    const statusError =
+      statusResult.status === "rejected"
+        ? statusResult.reason instanceof Error
+          ? statusResult.reason.message
+          : String(statusResult.reason)
+        : null;
+    const asrError =
+      asrResult.status === "rejected"
+        ? asrResult.reason instanceof Error
+          ? asrResult.reason.message
+          : String(asrResult.reason)
+        : null;
+    const model = status?.model?.trim() ?? "";
+    const agentReady =
+      status?.canRespond === true ||
+      (status?.canRespond === undefined &&
+        status?.state === "running" &&
+        model.length > 0);
+    const asrReady = asr?.ready === true && asr.provider === "local-inference";
+    lastDiagnostic = {
+      attempt,
+      agent: status
+        ? {
+            state: status.state,
+            canRespond: status.canRespond,
+            model: model || null,
+          }
+        : null,
+      asr,
+      statusError,
+      asrError,
+    };
+    if (agentReady && asrReady) return;
+    if (Date.now() < deadlineMs && attempt < maxAttempts) {
+      await sleep(delayMs);
     }
   }
-  if (!report.transcript.toLowerCase().includes("time")) {
-    reasons.push(`transcript does not contain "time"`);
-  }
-  if (report.reply.trim().length === 0) {
-    reasons.push("agent reply is empty");
-  }
-  return reasons;
+  throw new Error(
+    `local voice runtime did not become ready: ${JSON.stringify(lastDiagnostic)}`,
+  );
 }
 
 async function withRunTimeout<T>(
@@ -220,24 +262,22 @@ export async function runIosVoiceSelfTestSmokeIfRequested({
   removePreference,
   writeResult,
   readStorageSnapshot,
+  localReadiness,
 }: RunIosVoiceSelfTestOptions): Promise<boolean> {
   if (!isIOS || iosVoiceSelfTestStarted) return iosVoiceSelfTestStarted;
-  let rawRequest: string | null = null;
-  try {
-    rawRequest = window.localStorage.getItem(IOS_VOICE_SELFTEST_REQUEST_KEY);
-  } catch {
-    // error-policy:J3 unavailable storage reads as "no request"; the
-    // Preferences read below still serves the simulator harness
-    rawRequest = null;
-  }
-  if (!rawRequest) {
-    rawRequest = await getPreference(IOS_VOICE_SELFTEST_REQUEST_KEY);
-  }
+  const rawRequest = await readSmokePreference(
+    IOS_VOICE_SELFTEST_REQUEST_KEY,
+    getPreference,
+  );
   if (!rawRequest) return false;
 
   iosVoiceSelfTestStarted = true;
   let request: IosVoiceSelfTestRequest = {
+    mode: "remote",
     apiBase: DEFAULT_IOS_VOICE_SELFTEST_API_BASE,
+    runId: "unparsed",
+    requestedAt: null,
+    deadlineAt: null,
   };
   let audioCtx: AudioContext | null = null;
   try {
@@ -246,10 +286,26 @@ export async function runIosVoiceSelfTestSmokeIfRequested({
       ok: false,
       phase: "running",
       startedAt: new Date().toISOString(),
+      mode: request.mode,
       apiBase: request.apiBase,
+      runId: request.runId,
+      requestedAt: request.requestedAt,
+      deadlineAt: request.deadlineAt,
     });
 
-    await waitForOnboardingSmokeResultIfPresent(getPreference);
+    if (request.mode === "remote") {
+      await waitForOnboardingSmokeResultIfPresent(getPreference);
+    } else {
+      assertLocalVoiceTransportState(request, client, readStorageSnapshot);
+      const deadlineAtMs = Date.parse(request.deadlineAt ?? "");
+      await waitForIosLocalVoiceReadiness(client, {
+        ...localReadiness,
+        deadlineMs:
+          deadlineAtMs -
+          IOS_VOICE_SELFTEST_RUN_TIMEOUT_MS -
+          IOS_LOCAL_VOICE_RUN_RESERVE_MS,
+      });
+    }
 
     audioCtx = getAudioCtx();
     if (audioCtx.state === "suspended") {
@@ -264,6 +320,16 @@ export async function runIosVoiceSelfTestSmokeIfRequested({
       });
     }
 
+    const requestDeadlineMs = request.deadlineAt
+      ? Date.parse(request.deadlineAt)
+      : Number.POSITIVE_INFINITY;
+    const remainingRunMs = Math.min(
+      IOS_VOICE_SELFTEST_RUN_TIMEOUT_MS,
+      requestDeadlineMs - Date.now(),
+    );
+    if (!(remainingRunMs > 0)) {
+      throw new Error("voice self-test request deadline expired before run");
+    }
     const report = await withRunTimeout(
       "voice self-test",
       runVoiceSelfTest({
@@ -277,21 +343,27 @@ export async function runIosVoiceSelfTestSmokeIfRequested({
         client,
         audioCtx,
       }),
-      IOS_VOICE_SELFTEST_RUN_TIMEOUT_MS,
+      remainingRunMs,
     );
 
-    const reasons = verdictReasons(report);
+    const verdict = evaluateVoiceSelfTestReport(report, {
+      requireLocalInference: request.mode === "local",
+    });
     await writeResult(IOS_VOICE_SELFTEST_RESULT_KEY, {
-      ok: reasons.length === 0,
-      phase: reasons.length === 0 ? "complete" : "failed",
+      ok: verdict.pass,
+      phase: verdict.pass ? "complete" : "failed",
       finishedAt: new Date().toISOString(),
+      mode: request.mode,
       apiBase: request.apiBase,
+      runId: request.runId,
+      requestedAt: request.requestedAt,
+      deadlineAt: request.deadlineAt,
       overall: report.overall,
       transcript: report.transcript,
       reply: report.reply,
       sendBackend: report.sendBackend,
       stages: report.stages,
-      reasons,
+      reasons: verdict.reasons,
       report,
     });
   } catch (error) {
@@ -301,7 +373,11 @@ export async function runIosVoiceSelfTestSmokeIfRequested({
       ok: false,
       phase: "failed",
       finishedAt: new Date().toISOString(),
+      mode: request.mode,
       apiBase: request.apiBase,
+      runId: request.runId,
+      requestedAt: request.requestedAt,
+      deadlineAt: request.deadlineAt,
       error: error instanceof Error ? error.message : String(error),
       storage: readStorageSnapshot(),
     });

@@ -23,6 +23,7 @@ const SMOKE_KEY_PATTERNS = [
   /^eliza:.*smoke(?::|$)/,
   /^elizaos:.*smoke(?::|$)/,
   /^eliza:auth-callback-smoke(?::|$)/,
+  /^eliza:ios-voice-selftest(?::|$)/,
   /^eliza:ios-.*(?:smoke|harness)(?::|$)/,
   /^eliza:ios-full-bun-(?:smoke|prewarm)(?::|$)/,
   /^eliza:ios-background(?::|$)/,

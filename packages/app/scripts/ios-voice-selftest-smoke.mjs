@@ -1,38 +1,54 @@
 #!/usr/bin/env node
 /**
- * iOS Simulator voice round-trip lane (#13688). WKWebView is not CDP-drivable,
- * so this mirrors ios-attachment-smoke: seed Capacitor Preferences, launch the
- * installed app, let the in-app onboarding verifier connect it to a real host
- * agent, then let the in-app voice verifier drive the SAME production
- * `runVoiceSelfTest` harness — bundled speech clip ("what time is it") -> real
- * on-device/local ASR -> real agent over SSE -> real TTS decode+playback — and
- * report the machine-readable per-stage verdict back through Preferences.
+ * iOS Simulator voice round-trip lane for the production self-test path. Local
+ * mode is authoritative and default: it validates a fresh full-Bun app, stages
+ * every required inference asset, seeds canonical on-device state before React
+ * mounts, and rejects results not owned by the current run. Remote mode remains
+ * an explicit compatibility path for the deterministic host agent.
  *
- * The host-side gate is `evaluateVoiceSelfTestReport`: overall must be `pass`
- * AND asr/send/tts must each be `pass` (a `skipped` stage — e.g. local ASR not
- * provisioned on the sim — fails loudly, exactly like
- * voice-selftest.android.spec.ts). The full report (transcript + reply + stage
- * grid) lands in test-results/ios-voice-selftest/ for human review.
- *
- * Audio round-trip note: the fixture path needs no microphone (wav-direct), so
- * the ASR->agent->TTS-decode legs run headless on the simulator. Verifying the
- * reply is AUDIBLE through a real speaker (acoustic output, echo cancellation)
- * requires audio hardware and is covered on the physical-device lane.
+ * The bundled fixture does not require a microphone, so ASR, agent SSE, TTS
+ * decode, and playback can run headlessly. Audible speaker/acoustic-loop proof
+ * remains a distinct physical-hardware claim.
  */
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { evaluateVoiceSelfTestReport } from "./ios-voice-selftest-lib.mjs";
+import {
+  buildIosVoiceSelfTestPreferenceSeed,
+  evaluateVoiceSelfTestReport,
+  IOS_VOICE_SELFTEST_REQUEST_BUDGET_MS,
+  iosLocalVoiceArtifactProblems,
+  isIosVoiceSelfTestResultFresh,
+  parseIosVoiceSelfTestMode,
+  planIosVoiceSelfTestHost,
+  REQUIRED_IOS_LOCAL_VOICE_ASSETS,
+  selectIosVoiceSelfTestBootTrace,
+} from "./ios-voice-selftest-lib.mjs";
 import {
   DEFAULT_HOST_AGENT_PORT,
   startDeviceE2eHostAgent,
 } from "./lib/host-agent.mjs";
 import {
+  assertIosAppRendererFresh,
+  rendererManifestPathFromAppPath,
+} from "./lib/ios-renderer-stamp.mjs";
+import {
+  clearIosSmokeDefaults,
+  flushIosPreferencesCache,
+  readIosPreferenceString,
+  writeIosDefaultsString,
+} from "./lib/ios-sim-defaults-hygiene.mjs";
+import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
 } from "./lib/ios-simulator-capture.mjs";
+import {
+  copyFileIfChanged,
+  stageIosFullBunSmokeModel,
+} from "./mobile-local-chat-smoke.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
@@ -49,6 +65,21 @@ const ONBOARDING_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const VOICE_REQUEST_KEY = "eliza:ios-voice-selftest:request";
 const VOICE_RESULT_KEY = "eliza:ios-voice-selftest:result";
 const DEFAULT_HOST_AGENT_PORT_STRING = String(DEFAULT_HOST_AGENT_PORT);
+const DEFAULT_VOICE_BUNDLE = path.join(
+  os.homedir(),
+  ".local",
+  "state",
+  "eliza",
+  "local-inference",
+  "models",
+  "eliza-1-2b.bundle",
+);
+const LOCAL_STATE_KEYS = [
+  ONBOARDING_REQUEST_KEY,
+  ONBOARDING_RESULT_KEY,
+  VOICE_REQUEST_KEY,
+  VOICE_RESULT_KEY,
+];
 
 const has = (flag) => process.argv.includes(flag);
 const val = (flag, fallback = null) => {
@@ -56,6 +87,26 @@ const val = (flag, fallback = null) => {
   return index >= 0 ? process.argv[index + 1] : fallback;
 };
 const log = (message) => console.log(`[ios-voice-selftest] ${message}`);
+
+function printHelp() {
+  console.log(`Usage: node packages/app/scripts/ios-voice-selftest-smoke.mjs [options]
+
+Options:
+  --mode local|remote       Runtime exercised by the production self-test (default: local)
+  --app-path PATH           Exact iOS Simulator .app to validate and install
+  --skip-install            Reuse the installed app, still validating it before launch
+  --voice-bundle PATH       Source eliza-1 voice bundle (default: ${DEFAULT_VOICE_BUNDLE})
+  --api-base URL            Remote mode only; omit to own a deterministic host agent
+  --host-agent-port PORT    Preferred deterministic host port in remote mode
+  --device NAME             Simulator to boot when none is running (default: iPhone 16 Pro)
+  --no-video                Disable best-effort Simulator video capture
+  --help                    Print this help`);
+}
+
+if (has("--help")) {
+  printHelp();
+  process.exit(0);
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -118,15 +169,11 @@ function sleep(ms) {
 
 function readAppIdentity() {
   const src = fs.readFileSync(path.join(appDir, "app.config.ts"), "utf8");
-  const appId =
+  return (
     val("--app-id") ??
     src.match(/appId:\s*["']([^"']+)["']/)?.[1] ??
-    "ai.elizaos.app";
-  const urlScheme =
-    val("--url-scheme") ??
-    src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ??
-    "elizaos";
-  return { appId, urlScheme };
+    "ai.elizaos.app"
+  );
 }
 
 function simctl(args) {
@@ -195,147 +242,302 @@ function latestBuiltApp() {
   return apps[0]?.path ?? null;
 }
 
-function installLatestApp(udid, appId) {
-  if (has("--skip-install")) return;
-  const appPath = val("--app-path") ?? latestBuiltApp();
-  if (!appPath) {
+function installedAppPath(udid, appId) {
+  return tryRun("xcrun", ["simctl", "get_app_container", udid, appId, "app"]);
+}
+
+function installLatestApp(udid, appId, candidatePath) {
+  if (!has("--skip-install")) {
+    if (!candidatePath) {
+      throw new Error(
+        "Could not find a Debug-iphonesimulator App.app. Build the iOS simulator app first or pass --app-path.",
+      );
+    }
+    tryRun("xcrun", ["simctl", "terminate", udid, appId]);
+    tryRun("xcrun", ["simctl", "uninstall", udid, appId]);
+    log(`installing ${candidatePath}`);
+    simctl(["install", udid, candidatePath]);
+  }
+  const installed = installedAppPath(udid, appId);
+  if (!installed) {
     throw new Error(
-      "Could not find a Debug-iphonesimulator App.app. Build the iOS simulator app first or pass --app-path.",
+      `${appId} is not installed in simulator ${udid}${has("--skip-install") ? " for --skip-install" : " after simctl install"}.`,
     );
   }
-  tryRun("xcrun", ["simctl", "terminate", udid, appId]);
-  tryRun("xcrun", ["simctl", "uninstall", udid, appId]);
-  log(`installing ${appPath}`);
-  simctl(["install", udid, appPath]);
-  const installed = tryRun("xcrun", [
-    "simctl",
-    "get_app_container",
-    udid,
-    appId,
-    "app",
+  return installed;
+}
+
+function sha256File(filePath) {
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function fileBytes(filePath) {
+  try {
+    const stats = fs.statSync(filePath);
+    return stats.isFile() ? stats.size : 0;
+  } catch {
+    // error-policy:J3 a missing artifact is an explicit zero-byte invalid
+    // signal consumed by the aggregate artifact validator below
+    return 0;
+  }
+}
+
+function readPlistValue(plistPath, key) {
+  if (!fs.existsSync(plistPath)) return null;
+  const value = tryRun("plutil", [
+    "-extract",
+    key,
+    "raw",
+    "-o",
+    "-",
+    plistPath,
   ]);
-  if (!installed) {
-    throw new Error(`${appId} was not installed after simctl install.`);
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return value;
+}
+
+function appExecutablePaths(appPath) {
+  const executable = readPlistValue(
+    path.join(appPath, "Info.plist"),
+    "CFBundleExecutable",
+  );
+  if (typeof executable !== "string" || !executable) return [];
+  return [
+    path.join(appPath, executable),
+    path.join(appPath, `${executable}.debug.dylib`),
+  ].filter((candidate) => fs.existsSync(candidate));
+}
+
+function validateLocalVoiceApp(appPath, expectedCommit) {
+  assertIosAppRendererFresh({
+    appPath,
+    repoRoot,
+    label: `local voice ${appPath}`,
+    log,
+  });
+  const manifestPath = rendererManifestPathFromAppPath(appPath);
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(
+      `local voice app has no renderer manifest: ${manifestPath}`,
+    );
   }
-}
-
-function prefsDomainPath(udid, appId) {
-  const container = tryRun("xcrun", [
-    "simctl",
-    "get_app_container",
-    udid,
-    appId,
-    "data",
-  ]);
-  if (!container) return null;
-  return path.join(container, "Library", "Preferences", appId);
-}
-
-function preferenceNativeKeys(key) {
-  return [`CapacitorStorage.${key}`, key];
-}
-
-function defaultsDelete(udid, appId, key) {
-  for (const nativeKey of preferenceNativeKeys(key)) {
-    tryRun("xcrun", [
-      "simctl",
-      "spawn",
-      udid,
-      "defaults",
-      "delete",
-      appId,
-      nativeKey,
-    ]);
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const agentBundle = path.join(appPath, "public", "agent", "agent-bundle.js");
+  const engineFramework = path.join(
+    appPath,
+    "Frameworks",
+    "ElizaBunEngine.framework",
+  );
+  const engineBinary = path.join(engineFramework, "ElizaBunEngine");
+  const engineInfo = path.join(engineFramework, "Info.plist");
+  const executablePaths = appExecutablePaths(appPath);
+  const architectures = executablePaths
+    .map((binary) => tryRun("lipo", ["-archs", binary]) ?? "")
+    .join(" ");
+  const exportedSymbols = executablePaths
+    .map((binary) => tryRun("nm", ["-gU", binary]) ?? "")
+    .join("\n");
+  const problems = iosLocalVoiceArtifactProblems({
+    manifest,
+    expectedCommit,
+    agentBundleBytes: fileBytes(agentBundle),
+    engineBytes: fileBytes(engineBinary),
+    engineAbiVersion: readPlistValue(engineInfo, "ElizaBunEngineABIVersion"),
+    engineNoJit: readPlistValue(engineInfo, "ElizaBunEngineNoJIT"),
+    engineExecutionProfile: readPlistValue(
+      engineInfo,
+      "ElizaBunEngineExecutionProfile",
+    ),
+    architectures,
+    exportedSymbols,
+  });
+  if (executablePaths.length === 0) {
+    problems.push("app executable is missing");
   }
-  const domainPath = prefsDomainPath(udid, appId);
-  if (domainPath) {
-    for (const nativeKey of preferenceNativeKeys(key)) {
-      tryRun("defaults", ["delete", domainPath, nativeKey]);
+  if (problems.length > 0) {
+    throw new Error(
+      `local voice app failed preflight (${appPath}):\n- ${problems.join("\n- ")}\nBuild with bun run --cwd packages/app build:ios:local:sim:full-bun and the fused local-inference bridge enabled.`,
+    );
+  }
+  const receipt = {
+    appPath,
+    manifest,
+    agentBundle: { path: agentBundle, bytes: fileBytes(agentBundle) },
+    engine: {
+      path: engineBinary,
+      bytes: fileBytes(engineBinary),
+      sha256: sha256File(engineBinary),
+      abiVersion: readPlistValue(engineInfo, "ElizaBunEngineABIVersion"),
+      noJit: readPlistValue(engineInfo, "ElizaBunEngineNoJIT"),
+      executionProfile: readPlistValue(
+        engineInfo,
+        "ElizaBunEngineExecutionProfile",
+      ),
+    },
+    appExecutables: executablePaths.map((binary) => ({
+      path: binary,
+      bytes: fileBytes(binary),
+      sha256: sha256File(binary),
+    })),
+    architectures,
+  };
+  log(
+    `local artifact PASS commit=${manifest.commit} runtime=${manifest.runtimeMode} target=${manifest.capacitorTarget} arch=${architectures}`,
+  );
+  return receipt;
+}
+
+function resolveTextModelSource(voiceBundleRoot) {
+  if (process.env.ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH?.trim()) {
+    return process.env.ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH.trim();
+  }
+  const candidates = [
+    path.join(voiceBundleRoot, "text", "eliza-1-2b-128k.gguf"),
+    path.join(voiceBundleRoot, "text", "eliza-1-e2b-128k.gguf"),
+  ];
+  const source = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!source) {
+    throw new Error(
+      `local voice text model is missing; expected one of:\n- ${candidates.join("\n- ")}\nSet ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH explicitly.`,
+    );
+  }
+  return source;
+}
+
+function assetCandidates(asset) {
+  if (Array.isArray(asset.candidates)) return asset.candidates;
+  return asset.relativePaths.map((relativePath) => ({
+    relativePath,
+    destination: asset.destination,
+    magic: asset.magic,
+  }));
+}
+
+function inspectModelAsset(filePath, { id, minBytes, magic }) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`${id} asset is missing: ${filePath}`);
+  }
+  const stats = fs.statSync(filePath);
+  if (!stats.isFile() || stats.size < minBytes) {
+    throw new Error(
+      `${id} asset is not a valid file (${stats.size} bytes, minimum ${minBytes}): ${filePath}`,
+    );
+  }
+  const prefix = Buffer.alloc(Buffer.byteLength(magic));
+  const descriptor = fs.openSync(filePath, "r");
+  try {
+    fs.readSync(descriptor, prefix, 0, prefix.length, 0);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+  if (prefix.toString("ascii") !== magic) {
+    throw new Error(
+      `${id} asset has magic ${JSON.stringify(prefix.toString("ascii"))}, expected ${JSON.stringify(magic)}: ${filePath}`,
+    );
+  }
+  return { path: filePath, bytes: stats.size, sha256: sha256File(filePath) };
+}
+
+function stageLocalVoiceModels(udid, appId, voiceBundleRoot) {
+  const textSource = resolveTextModelSource(voiceBundleRoot);
+  process.env.ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH = textSource;
+  let { bundleRoot, modelPath } = stageIosFullBunSmokeModel(udid, appId);
+  const textSourceReceipt = inspectModelAsset(textSource, {
+    id: "text-model source",
+    minBytes: 1_000_000,
+    magic: "GGUF",
+  });
+  let textDestinationReceipt = inspectModelAsset(modelPath, {
+    id: "text-model destination",
+    minBytes: 1_000_000,
+    magic: "GGUF",
+  });
+  if (textDestinationReceipt.sha256 !== textSourceReceipt.sha256) {
+    fs.rmSync(modelPath, { force: true });
+    ({ bundleRoot, modelPath } = stageIosFullBunSmokeModel(udid, appId));
+    textDestinationReceipt = inspectModelAsset(modelPath, {
+      id: "text-model destination",
+      minBytes: 1_000_000,
+      magic: "GGUF",
+    });
+  }
+  if (textDestinationReceipt.sha256 !== textSourceReceipt.sha256) {
+    throw new Error(
+      `text-model staged hash ${textDestinationReceipt.sha256} != source ${textSourceReceipt.sha256}`,
+    );
+  }
+  const staged = [
+    {
+      id: "text-model",
+      source: textSourceReceipt,
+      destination: textDestinationReceipt,
+    },
+  ];
+
+  for (const asset of REQUIRED_IOS_LOCAL_VOICE_ASSETS) {
+    const candidates = assetCandidates(asset);
+    const selected = candidates.find((candidate) =>
+      fs.existsSync(path.join(voiceBundleRoot, candidate.relativePath)),
+    );
+    if (!selected) {
+      throw new Error(
+        `${asset.id} source is missing; expected one of:\n- ${candidates
+          .map((candidate) =>
+            path.join(voiceBundleRoot, candidate.relativePath),
+          )
+          .join("\n- ")}`,
+      );
     }
-  }
-}
-
-function defaultsWriteString(udid, appId, key, value) {
-  for (const [index, nativeKey] of preferenceNativeKeys(key).entries()) {
-    const args = [
-      "simctl",
-      "spawn",
-      udid,
-      "defaults",
-      "write",
-      appId,
-      nativeKey,
-      "-string",
-      value,
-    ];
-    if (index === 0) run("xcrun", args, { stdio: "ignore" });
-    else tryRun("xcrun", args);
-  }
-}
-
-function defaultsReadString(udid, appId, key) {
-  const domainPath = prefsDomainPath(udid, appId);
-  if (domainPath) {
-    const plist = `${domainPath}.plist`;
-    if (fs.existsSync(plist)) {
-      const json = tryRun("plutil", ["-convert", "json", "-o", "-", plist]);
-      if (json) {
-        try {
-          const parsed = JSON.parse(json);
-          for (const nativeKey of preferenceNativeKeys(key)) {
-            if (typeof parsed[nativeKey] === "string") return parsed[nativeKey];
-          }
-        } catch (error) {
-          // error-policy:J3 corrupt plist JSON — fall through to the native
-          // defaults readers and keep the malformed source visible in logs
-          log(
-            `failed to parse ${plist}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-      }
+    const source = path.join(voiceBundleRoot, selected.relativePath);
+    const destination = path.join(bundleRoot, selected.destination);
+    const sourceReceipt = inspectModelAsset(source, {
+      id: asset.id,
+      minBytes: asset.minBytes,
+      magic: selected.magic,
+    });
+    for (const candidate of candidates) {
+      const stalePath = path.join(bundleRoot, candidate.destination);
+      if (stalePath !== destination) fs.rmSync(stalePath, { force: true });
     }
-    for (const nativeKey of preferenceNativeKeys(key)) {
-      const value = tryRun("defaults", ["read", domainPath, nativeKey]);
-      if (value !== null) return value;
+    copyFileIfChanged(source, destination);
+    let destinationReceipt = inspectModelAsset(destination, {
+      id: asset.id,
+      minBytes: asset.minBytes,
+      magic: selected.magic,
+    });
+    if (destinationReceipt.sha256 !== sourceReceipt.sha256) {
+      fs.rmSync(destination, { force: true });
+      copyFileIfChanged(source, destination);
+      destinationReceipt = inspectModelAsset(destination, {
+        id: asset.id,
+        minBytes: asset.minBytes,
+        magic: selected.magic,
+      });
     }
+    if (destinationReceipt.sha256 !== sourceReceipt.sha256) {
+      throw new Error(
+        `${asset.id} staged hash ${destinationReceipt.sha256} != source ${sourceReceipt.sha256}`,
+      );
+    }
+    staged.push({
+      id: asset.id,
+      source: sourceReceipt,
+      destination: destinationReceipt,
+    });
   }
-  for (const nativeKey of preferenceNativeKeys(key)) {
-    const value = tryRun("xcrun", [
-      "simctl",
-      "spawn",
-      udid,
-      "defaults",
-      "read",
-      appId,
-      nativeKey,
-    ]);
-    if (value !== null) return value;
-  }
-  return null;
-}
 
-function flushPreferences(udid) {
-  tryRun("xcrun", ["simctl", "spawn", udid, "killall", "cfprefsd"]);
-}
-
-const STATE_KEYS = [
-  ONBOARDING_REQUEST_KEY,
-  ONBOARDING_RESULT_KEY,
-  VOICE_REQUEST_KEY,
-  VOICE_RESULT_KEY,
-  "elizaos:active-server",
-  "eliza:first-run-complete",
-  "eliza:setup:step",
-  "eliza:onboarding-complete",
-  "eliza:mobile-runtime-mode",
-  "eliza.background.config",
-  "elizaos:first-run:force-fresh",
-];
-
-function clearState(udid, appId) {
-  for (const key of STATE_KEYS) defaultsDelete(udid, appId, key);
+  const receipt = {
+    sourceBundleRoot: voiceBundleRoot,
+    stagedBundleRoot: bundleRoot,
+    assets: staged,
+  };
+  fs.writeFileSync(
+    path.join(resultDir, "local-voice-assets.json"),
+    `${JSON.stringify(receipt, null, 2)}\n`,
+  );
+  log(`staged and verified ${staged.length} local inference assets`);
+  return receipt;
 }
 
 function takeScreenshot(udid, label) {
@@ -368,23 +570,103 @@ function startVideo(udid) {
   });
 }
 
-async function stopVideo(recording) {
-  if (!recording) return null;
-  return recording.stop();
+function captureRunOwnedBootTrace(udid, appId, requestedAtMs) {
+  const dataContainer = tryRun("xcrun", [
+    "simctl",
+    "get_app_container",
+    udid,
+    appId,
+    "data",
+  ]);
+  if (!dataContainer) {
+    throw new Error(
+      "could not resolve the iOS app data container for boot evidence",
+    );
+  }
+  const traceFiles = [
+    "eliza-boot-trace.prev.jsonl",
+    "eliza-boot-trace.jsonl",
+  ].map((name) => path.join(dataContainer, "Documents", name));
+  const entries = [];
+  let invalidLines = 0;
+  for (const traceFile of traceFiles) {
+    if (!fs.existsSync(traceFile)) continue;
+    for (const line of fs.readFileSync(traceFile, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        entries.push(JSON.parse(line));
+      } catch {
+        // error-policy:J3 a concurrently appended partial JSONL line is an
+        // explicit invalid sample; required current-run stages still gate pass
+        invalidLines += 1;
+      }
+    }
+  }
+  const selection = selectIosVoiceSelfTestBootTrace(entries, {
+    requestedAtMs,
+  });
+  const { entries: currentEntries, traceId, required } = selection;
+
+  const privateArtifact = path.join(resultDir, "native-boot.private.jsonl");
+  fs.writeFileSync(
+    privateArtifact,
+    `${currentEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+  );
+  const summary = {
+    classification: "scrubbed-public-summary",
+    rawClassification: "private-raw-do-not-publish-without-review",
+    traceIdSha256: createHash("sha256").update(traceId).digest("hex"),
+    requestedAt: new Date(requestedAtMs).toISOString(),
+    required,
+    invalidLines,
+    stages: currentEntries.map((entry) => ({
+      ts: entry.ts,
+      elapsedMs: entry.elapsedMs,
+      source: entry.source,
+      stage: entry.stage,
+      ...(typeof entry.phase === "string" ? { phase: entry.phase } : {}),
+      ...(typeof entry.ready === "boolean" ? { ready: entry.ready } : {}),
+      ...(typeof entry.engine === "string" ? { engine: entry.engine } : {}),
+      ...(typeof entry.engineMode === "string"
+        ? { engineMode: entry.engineMode }
+        : {}),
+      ...(typeof entry.durationMs === "number"
+        ? { durationMs: entry.durationMs }
+        : {}),
+    })),
+  };
+  const summaryArtifact = path.join(resultDir, "native-boot-summary.json");
+  fs.writeFileSync(summaryArtifact, `${JSON.stringify(summary, null, 2)}\n`);
+  return {
+    privateArtifact: {
+      path: privateArtifact,
+      bytes: fs.statSync(privateArtifact).size,
+      classification: summary.rawClassification,
+    },
+    summaryArtifact: {
+      path: summaryArtifact,
+      bytes: fs.statSync(summaryArtifact).size,
+      classification: summary.classification,
+    },
+    required,
+  };
 }
 
-async function pollResult(udid, appId) {
-  const attempts = Number.parseInt(
-    process.env.IOS_VOICE_SELFTEST_ATTEMPTS ?? "300",
-    10,
-  );
+async function pollResult(udid, appId, ownership) {
   const delayMs = Number.parseInt(
     process.env.IOS_VOICE_SELFTEST_DELAY_MS ?? "1000",
     10,
   );
   let lastRaw = "";
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    lastRaw = defaultsReadString(udid, appId, VOICE_RESULT_KEY) ?? "";
+  let attempt = 0;
+  while (Date.now() <= ownership.deadlineAtMs) {
+    attempt += 1;
+    lastRaw =
+      readIosPreferenceString({
+        udid,
+        bundleId: appId,
+        key: VOICE_RESULT_KEY,
+      }) ?? "";
     if (lastRaw) {
       let parsed = null;
       try {
@@ -394,37 +676,41 @@ async function pollResult(udid, appId) {
         // valid terminal result arrives or the lane times out
         if (attempt % 15 === 0) {
           log(
-            `result JSON parse failed (${attempt}/${attempts}): ${
+            `result JSON parse failed (attempt ${attempt}, deadline ${new Date(ownership.deadlineAtMs).toISOString()}): ${
               error instanceof Error ? error.message : String(error)
             }`,
           );
         }
         parsed = null;
       }
-      if (parsed?.phase === "complete" || parsed?.phase === "failed") {
+      const terminal =
+        parsed?.phase === "complete" || parsed?.phase === "failed";
+      if (terminal && isIosVoiceSelfTestResultFresh(parsed, ownership)) {
         return parsed;
       }
-      if (parsed?.error) return parsed;
       if (attempt % 15 === 0) {
-        log(`still running (${attempt}/${attempts}): ${lastRaw.slice(0, 200)}`);
+        log(
+          `${terminal ? "ignoring non-owned terminal result" : "still running"} (attempt ${attempt}): ${lastRaw.slice(0, 200)}`,
+        );
       }
     }
     await sleep(delayMs);
   }
   throw new Error(
-    `iOS voice self-test timed out after ${attempts} attempts. Last result: ${lastRaw || "<none>"}`,
+    `iOS voice self-test reached request deadline ${new Date(ownership.deadlineAtMs).toISOString()}. Last result: ${lastRaw || "<none>"}`,
   );
 }
 
 async function main() {
-  const { appId } = readAppIdentity();
-  let apiBase = val("--api-base");
+  const appId = readAppIdentity();
+  const parsedMode = parseIosVoiceSelfTestMode(process.argv.slice(2));
+  const hostPlan = planIosVoiceSelfTestHost(parsedMode);
+  let apiBase = hostPlan.apiBase;
   const udid = ensureSimulatorBooted();
   removePathRecursive(resultDir);
   fs.mkdirSync(resultDir, { recursive: true });
-  const hostAgent = apiBase
-    ? null
-    : await startDeviceE2eHostAgent({
+  const hostAgent = hostPlan.ownsHostAgent
+    ? await startDeviceE2eHostAgent({
         repoRoot,
         artifactDir: resultDir,
         requestedPort: val("--host-agent-port"),
@@ -432,71 +718,143 @@ async function main() {
           process.env.ELIZA_IOS_HOST_AGENT_PORT ??
           DEFAULT_HOST_AGENT_PORT_STRING,
         log,
-      });
-  apiBase = apiBase ?? hostAgent.apiBase;
+      })
+    : null;
+  apiBase = apiBase ?? hostAgent?.apiBase;
+  if (!apiBase)
+    throw new Error("voice self-test could not resolve an API base");
   let recording = null;
+  let installedPath = null;
 
   try {
-    clearState(udid, appId);
-    flushPreferences(udid);
-    installLatestApp(udid, appId);
+    const expectedCommit = run("git", ["rev-parse", "HEAD"], {
+      stdio: "pipe",
+    });
+    const candidatePath = has("--skip-install")
+      ? null
+      : (val("--app-path") ?? latestBuiltApp());
+    const artifactReceipt = {
+      expectedCommit,
+      candidate: null,
+      installed: null,
+    };
+    if (parsedMode.mode === "local" && candidatePath) {
+      artifactReceipt.candidate = validateLocalVoiceApp(
+        candidatePath,
+        expectedCommit,
+      );
+    }
+    installedPath = installLatestApp(udid, appId, candidatePath);
+    if (parsedMode.mode === "local") {
+      artifactReceipt.installed = validateLocalVoiceApp(
+        installedPath,
+        expectedCommit,
+      );
+      stageLocalVoiceModels(
+        udid,
+        appId,
+        path.resolve(val("--voice-bundle", DEFAULT_VOICE_BUNDLE)),
+      );
+      fs.writeFileSync(
+        path.join(resultDir, "local-app-artifact.json"),
+        `${JSON.stringify(artifactReceipt, null, 2)}\n`,
+      );
+    }
     tryRun("xcrun", ["simctl", "terminate", udid, appId]);
-    clearState(udid, appId);
-    defaultsWriteString(
+    clearIosSmokeDefaults({
       udid,
-      appId,
-      ONBOARDING_REQUEST_KEY,
-      JSON.stringify({ apiBase }),
-    );
-    defaultsWriteString(
-      udid,
-      appId,
-      ONBOARDING_RESULT_KEY,
-      JSON.stringify({
-        ok: false,
-        phase: "requested",
-        apiBase,
-        updatedAt: new Date().toISOString(),
-      }),
-    );
-    defaultsWriteString(
-      udid,
-      appId,
-      VOICE_REQUEST_KEY,
-      JSON.stringify({ apiBase }),
-    );
-    defaultsWriteString(
-      udid,
-      appId,
-      VOICE_RESULT_KEY,
-      JSON.stringify({
-        ok: false,
-        phase: "requested",
-        apiBase,
-        updatedAt: new Date().toISOString(),
-      }),
-    );
-    flushPreferences(udid);
+      bundleId: appId,
+      extraKeys: LOCAL_STATE_KEYS,
+      log,
+    });
+    const requestedAt = new Date().toISOString();
+    const requestedAtMs = Date.parse(requestedAt);
+    const deadlineAtMs = requestedAtMs + IOS_VOICE_SELFTEST_REQUEST_BUDGET_MS;
+    const deadlineAt = new Date(deadlineAtMs).toISOString();
+    const runId = `ios-voice-${requestedAtMs}-${process.pid}`;
+    const preferenceSeed = buildIosVoiceSelfTestPreferenceSeed({
+      mode: parsedMode.mode,
+      apiBase,
+      runId,
+      requestedAt,
+      deadlineAt,
+    });
+    for (const [key, value] of Object.entries(preferenceSeed)) {
+      writeIosDefaultsString({
+        udid,
+        bundleId: appId,
+        key,
+        value,
+      });
+    }
+    flushIosPreferencesCache(udid);
 
     recording = startVideo(udid);
     log(`launching ${appId} on ${udid}`);
     simctl(["launch", udid, appId]);
     await sleep(1500);
     takeScreenshot(udid, "fresh-launch");
-    log(
-      `armed in-app first-run remote connect + voice self-test for ${apiBase}`,
-    );
+    log(`armed ${parsedMode.mode} voice self-test run ${runId} for ${apiBase}`);
 
-    const result = await pollResult(udid, appId);
+    const result = await pollResult(udid, appId, {
+      runId,
+      requestedAtMs,
+      deadlineAtMs,
+    });
     const screenshot = takeScreenshot(udid, "voice-selftest-result");
-    const video = await stopVideo(recording);
-
+    const video = recording ? await recording.stop() : null;
+    recording = null;
+    const resultPath = path.join(resultDir, "result.json");
+    const resultArtifacts = {
+      ...result,
+      screenshot,
+      video,
+      nativeBootTrace: { status: "pending" },
+    };
     fs.writeFileSync(
-      path.join(resultDir, "result.json"),
-      `${JSON.stringify({ ...result, screenshot, video }, null, 2)}\n`,
+      resultPath,
+      `${JSON.stringify(resultArtifacts, null, 2)}\n`,
+    );
+    let nativeBootTrace;
+    try {
+      nativeBootTrace = captureRunOwnedBootTrace(udid, appId, requestedAtMs);
+    } catch (error) {
+      // error-policy:J2 preserve the behavior result before rethrowing the
+      // evidence-gate failure to the outer smoke boundary
+      fs.writeFileSync(
+        resultPath,
+        `${JSON.stringify(
+          {
+            ...resultArtifacts,
+            nativeBootTrace: {
+              status: "failed",
+              error: error instanceof Error ? error.message : String(error),
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      throw new Error(
+        `native boot evidence gate failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+    fs.writeFileSync(
+      resultPath,
+      `${JSON.stringify(
+        {
+          ...resultArtifacts,
+          nativeBootTrace: { status: "pass", ...nativeBootTrace },
+        },
+        null,
+        2,
+      )}\n`,
     );
 
-    const verdict = evaluateVoiceSelfTestReport(result.report ?? result);
+    const verdict = evaluateVoiceSelfTestReport(result.report ?? result, {
+      requireLocalInference: parsedMode.mode === "local",
+    });
     if (!verdict.pass) {
       throw new Error(
         `iOS voice round-trip did not pass: ${verdict.reasons.join("; ")}\nstages=${JSON.stringify(verdict.stageStatuses)} transcript=${JSON.stringify(verdict.transcript)} reply=${JSON.stringify(verdict.reply.slice(0, 120))}`,
@@ -510,12 +868,39 @@ async function main() {
     // error-policy:J1 simulator smoke boundary — capture best-effort evidence
     // and rethrow so the CLI exits nonzero
     const screenshot = takeScreenshot(udid, "failure");
-    await stopVideo(recording);
+    if (recording) {
+      await recording.stop();
+      recording = null;
+    }
     throw new Error(
       `${error instanceof Error ? error.message : String(error)}${screenshot ? ` (screenshot: ${screenshot})` : ""}`,
     );
   } finally {
     await hostAgent?.stop();
+    if (installedPath) {
+      clearIosSmokeDefaults({
+        udid,
+        bundleId: appId,
+        extraKeys: LOCAL_STATE_KEYS,
+        log,
+      });
+      const cleanupPolicy = {
+        nativeSmokePreferences: "cleared",
+        installedApp: "retained",
+        wkWebViewRuntimeState:
+          parsedMode.mode === "local"
+            ? "intentionally retained as canonical local state; this lane has no in-app cleanup acknowledgement and does not claim WKWebView cleanup"
+            : "not modified by local-mode override",
+        skipInstall: has("--skip-install"),
+      };
+      fs.writeFileSync(
+        path.join(resultDir, "cleanup-policy.json"),
+        `${JSON.stringify(cleanupPolicy, null, 2)}\n`,
+      );
+      if (parsedMode.mode === "local") {
+        log(cleanupPolicy.wkWebViewRuntimeState);
+      }
+    }
   }
 }
 

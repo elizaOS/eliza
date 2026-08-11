@@ -206,6 +206,7 @@ import {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
+import { applyIosVoiceSelfTestBootOverride } from "./ios-voice-selftest-boot";
 import { startKeyboardDictationSession } from "./keyboard-dictation";
 import {
   type AndroidDeepLinkBuffer,
@@ -3287,6 +3288,11 @@ async function main(): Promise<void> {
   // with this wait.
   await initializeStorageBridge();
   if (isIOS) {
+    await applyIosVoiceSelfTestBootOverride({
+      isIOS,
+      client,
+      getPreference: boundedPreferenceGet,
+    });
     initializeCapacitorBridge();
     installIosLocalAgentNativeRequestBridge();
     installIosLocalAgentFetchBridge();

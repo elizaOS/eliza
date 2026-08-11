@@ -545,6 +545,7 @@ function stageIosFullBunSmokeModel(udid, id) {
   console.log(
     `[local-chat-smoke] ${copied ? "Staged" : "Reused"} iOS full-Bun smoke model ${IOS_FULL_BUN_SMOKE_MODEL_ID}: ${modelPath}`,
   );
+  return { bundleRoot: path.dirname(path.dirname(modelPath)), modelPath };
 }
 
 function preseedIosLocalRuntime(udid, id) {
