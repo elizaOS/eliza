@@ -4,14 +4,21 @@
  * Iframes embedded by the browser workspace use window.postMessage to ask the
  * host for wallet state and to request signing / transactions. This hook owns
  * the origin verification, per-tab chain state, request dispatch, and the
- * "ready" broadcast when state changes or an iframe loads.
+ * "ready" broadcast after a frame proves its origin and when state changes.
  *
  * The caller passes in iframe refs, current tabs, and the wallet state it
- * maintains; the hook returns a single `postBrowserWalletReady` function used
- * for per-iframe onLoad and any other point-in-time broadcasts.
+ * maintains and records intended navigation/retirement before the DOM changes.
+ * A frame origin becomes eligible for broadcasts only after a wallet-protocol
+ * message proves that the loaded document matches that authoritative URL.
  */
 
-import { type RefObject, useCallback, useEffect, useRef } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import type { BrowserWorkspaceTab } from "../../api";
 import {
   BROWSER_WALLET_READY_TYPE,
@@ -76,11 +83,13 @@ export function redactBrowserWorkspaceIframeWalletState(
   state: BrowserWorkspaceWalletState,
 ): BrowserWorkspaceWalletState {
   return {
-    ...state,
     address: null,
     connected: false,
     evmAddress: null,
     evmConnected: false,
+    mode: state.mode,
+    pendingApprovals: state.pendingApprovals,
+    reason: IFRAME_WALLET_CONNECTION_DISABLED_ERROR,
     messageSigningAvailable: false,
     transactionSigningAvailable: false,
     chainSwitchingAvailable: false,
@@ -89,7 +98,6 @@ export function redactBrowserWorkspaceIframeWalletState(
     solanaConnected: false,
     solanaMessageSigningAvailable: false,
     solanaTransactionSigningAvailable: false,
-    reason: IFRAME_WALLET_CONNECTION_DISABLED_ERROR,
   };
 }
 
@@ -255,41 +263,127 @@ interface UseBrowserWorkspaceWalletBridgeOptions {
   loadWalletState: () => Promise<BrowserWorkspaceWalletState>;
 }
 
+interface BrowserWorkspaceWalletBridgeController {
+  beginBrowserWalletFrameNavigation: (tabId: string, url: string) => void;
+  revokeBrowserWalletFrame: (tabId: string) => void;
+  syncBrowserWalletFrameTarget: (tabId: string, url: string) => void;
+}
+
 export function useBrowserWorkspaceWalletBridge({
   iframeRefs,
   workspaceTabs,
   walletState,
   loadWalletState,
-}: UseBrowserWorkspaceWalletBridgeOptions): {
-  postBrowserWalletReady: (
-    tab: BrowserWorkspaceTab,
-    state: BrowserWorkspaceWalletState,
-  ) => void;
-} {
+}: UseBrowserWorkspaceWalletBridgeOptions): BrowserWorkspaceWalletBridgeController {
   const walletStateRef = useRef(walletState);
   const workspaceTabsRef = useRef(workspaceTabs);
   const chainIdByTabRef = useRef(new Map<string, number>());
+  const targetUrlByTabRef = useRef(new Map<string, string>());
+  const pendingTargetUrlByTabRef = useRef(new Map<string, string>());
+  const revokedTabIdsRef = useRef(new Set<string>());
+  const committedOriginByTabRef = useRef(new Map<string, string>());
+  const lastReadyStateFingerprintByTabRef = useRef(new Map<string, string>());
   walletStateRef.current = walletState;
   workspaceTabsRef.current = workspaceTabs;
 
   const postBrowserWalletReady = useCallback(
     (tab: BrowserWorkspaceTab, state: BrowserWorkspaceWalletState) => {
       const iframeWindow = iframeRefs.current?.get(tab.id)?.contentWindow;
-      const targetOrigin = resolveTargetOrigin(tab.url);
-      if (!iframeWindow || !targetOrigin) return;
+      const targetUrl = targetUrlByTabRef.current.get(tab.id);
+      const targetOrigin = targetUrl ? resolveTargetOrigin(targetUrl) : null;
+      if (
+        !iframeWindow ||
+        !targetOrigin ||
+        committedOriginByTabRef.current.get(tab.id) !== targetOrigin
+      ) {
+        return;
+      }
+      const redactedState = redactBrowserWorkspaceIframeWalletState(state);
+      // The redactor emits a fixed-key primitive payload, so its serialized
+      // form is stable across the fresh object references produced by polling.
+      const stateFingerprint = JSON.stringify(redactedState);
+      if (
+        lastReadyStateFingerprintByTabRef.current.get(tab.id) ===
+        stateFingerprint
+      ) {
+        return;
+      }
       iframeWindow.postMessage(
         {
           type: BROWSER_WALLET_READY_TYPE,
-          state: redactBrowserWorkspaceIframeWalletState(state),
+          state: redactedState,
         },
         targetOrigin,
       );
+      lastReadyStateFingerprintByTabRef.current.set(tab.id, stateFingerprint);
     },
     [iframeRefs],
   );
 
-  // Broadcast fresh state to every loaded iframe whenever the wallet state
-  // changes — so dApps see connection and chain updates without polling.
+  const beginBrowserWalletFrameNavigation = useCallback(
+    (tabId: string, url: string) => {
+      revokedTabIdsRef.current.delete(tabId);
+      pendingTargetUrlByTabRef.current.set(tabId, url);
+      targetUrlByTabRef.current.set(tabId, url);
+      committedOriginByTabRef.current.delete(tabId);
+      lastReadyStateFingerprintByTabRef.current.delete(tabId);
+    },
+    [],
+  );
+
+  const revokeBrowserWalletFrame = useCallback((tabId: string) => {
+    revokedTabIdsRef.current.add(tabId);
+    pendingTargetUrlByTabRef.current.delete(tabId);
+    targetUrlByTabRef.current.delete(tabId);
+    committedOriginByTabRef.current.delete(tabId);
+    lastReadyStateFingerprintByTabRef.current.delete(tabId);
+    chainIdByTabRef.current.delete(tabId);
+  }, []);
+
+  const syncBrowserWalletFrameTarget = useCallback(
+    (tabId: string, url: string) => {
+      if (revokedTabIdsRef.current.has(tabId)) return;
+      if (pendingTargetUrlByTabRef.current.has(tabId)) {
+        if (pendingTargetUrlByTabRef.current.get(tabId) !== url) return;
+        pendingTargetUrlByTabRef.current.delete(tabId);
+      }
+      if (targetUrlByTabRef.current.get(tabId) === url) return;
+      targetUrlByTabRef.current.set(tabId, url);
+      committedOriginByTabRef.current.delete(tabId);
+      lastReadyStateFingerprintByTabRef.current.delete(tabId);
+    },
+    [],
+  );
+
+  // A WindowProxy exists while its initial about:blank document still has the
+  // parent's origin, and onLoad can also represent an opaque browser error
+  // document. URL changes therefore revoke the previous proof; a matching
+  // wallet-protocol message below commits the loaded origin again. An
+  // imperative navigation remains authoritative until the server snapshot
+  // catches up, so a stale render cannot reopen the previous origin.
+  useLayoutEffect(() => {
+    const knownTabIds = new Set<string>();
+    for (const tab of workspaceTabs) {
+      knownTabIds.add(tab.id);
+      syncBrowserWalletFrameTarget(tab.id, tab.url);
+    }
+    for (const tabId of targetUrlByTabRef.current.keys()) {
+      if (
+        !knownTabIds.has(tabId) &&
+        !pendingTargetUrlByTabRef.current.has(tabId)
+      ) {
+        targetUrlByTabRef.current.delete(tabId);
+        committedOriginByTabRef.current.delete(tabId);
+        lastReadyStateFingerprintByTabRef.current.delete(tabId);
+      }
+    }
+    for (const tabId of revokedTabIdsRef.current) {
+      if (!knownTabIds.has(tabId)) {
+        revokedTabIdsRef.current.delete(tabId);
+      }
+    }
+  }, [syncBrowserWalletFrameTarget, workspaceTabs]);
+
   useEffect(() => {
     for (const tab of workspaceTabs) {
       postBrowserWalletReady(tab, walletState);
@@ -320,11 +414,22 @@ export function useBrowserWorkspaceWalletBridge({
         : null;
       if (!sourceTab || !sourceWindow) return;
 
+      const targetUrl = targetUrlByTabRef.current.get(sourceTab.id);
+      if (!targetUrl) return;
       const targetOrigin = resolveBrowserWorkspaceMessageOrigin(
         event.origin,
-        sourceTab.url,
+        targetUrl,
       );
       if (targetOrigin === null) return;
+
+      if (
+        request.method === "getState" &&
+        committedOriginByTabRef.current.get(sourceTab.id) !== targetOrigin
+      ) {
+        committedOriginByTabRef.current.set(sourceTab.id, targetOrigin);
+        lastReadyStateFingerprintByTabRef.current.delete(sourceTab.id);
+        postBrowserWalletReady(sourceTab, walletStateRef.current);
+      }
 
       const respond = (response: BrowserWorkspaceWalletResponse) => {
         sourceWindow.postMessage(response, targetOrigin);
@@ -359,5 +464,9 @@ export function useBrowserWorkspaceWalletBridge({
     return () => window.removeEventListener("message", onMessage);
   }, [iframeRefs, loadWalletState, postBrowserWalletReady]);
 
-  return { postBrowserWalletReady };
+  return {
+    beginBrowserWalletFrameNavigation,
+    revokeBrowserWalletFrame,
+    syncBrowserWalletFrameTarget,
+  };
 }
