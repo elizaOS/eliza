@@ -268,6 +268,14 @@ jobs:
         if: needs.changes.outputs.cloud == 'true'
         run: bun run test:cloud
 
+      # @elizaos/ui#test:e2e launches a real Chromium. It used to inherit the
+      # browsers the shard job installs for packages/app; now that it runs here
+      # it needs its own, or it dies at browserType.launch (run 31516767405).
+      # packages/ui is the install cwd its own gates use (ui-e2e-gate.yml).
+      - name: Install Playwright browsers
+        if: needs.changes.outputs.zero_key == 'true'
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
+
       # The complement of the shard job's work: the 16 e2e tasks that cannot be
       # sharded, run once instead of once per shard. These are vitest-backed, so
       # --require-work has real reports to reconcile here.
