@@ -32,6 +32,7 @@ import {
   peekReturnTo,
   rememberReturnTo,
 } from "@/lib/auth-return";
+import { resolveOnboardingEntryStep } from "@/lib/onboarding-continuation";
 import { useT } from "@/providers/I18nProvider";
 
 // Defer the WebGL shader background so the form UI is interactive immediately.
@@ -96,6 +97,14 @@ declare global {
 
 const DISCORD_OAUTH_STATE_KEY = "eliza_discord_oauth_state";
 const DISCORD_LINK_MODE_KEY = "eliza_discord_link_mode";
+/**
+ * Preserves a platform onboarding continuation across the Discord OAuth
+ * round-trip. Discord requires an exact-match redirect_uri, so the
+ * onboardingSession query parameter cannot survive the redirect on the URL
+ * itself; without this the DM session is orphaned after login and the user's
+ * platform chat never continues into their provisioned agent.
+ */
+const ONBOARDING_SESSION_STORAGE_KEY = "eliza_onboarding_session_continuation";
 
 function generateOAuthState(): string {
   const array = new Uint8Array(32);
@@ -112,6 +121,7 @@ type OnboardingMethod =
 
 type OnboardingStep =
   | "SELECT_METHOD"
+  | "ONBOARDING_SIGN_IN"
   | "TELEGRAM_DIRECT"
   | "TELEGRAM_OAUTH"
   | "PHONE_INPUT"
@@ -374,9 +384,19 @@ export default function GetStartedPage() {
   } = useAuth();
 
   const methodParam = searchParams.get("method") as OnboardingMethod | null;
-  const onboardingSessionId = searchParams.get("onboardingSession");
+  const urlOnboardingSessionId = searchParams.get("onboardingSession");
   const discordCode = searchParams.get("code");
   const discordState = searchParams.get("state");
+  // Restore a continuation stashed before the Discord OAuth redirect. Read
+  // once into state so clearing the storage key later cannot drop the session
+  // id out from under an in-progress PROVISIONING_CHAT render.
+  const [restoredOnboardingSession] = useState<string | null>(() =>
+    typeof window !== "undefined" && discordCode
+      ? sessionStorage.getItem(ONBOARDING_SESSION_STORAGE_KEY)
+      : null,
+  );
+  const onboardingSessionId =
+    urlOnboardingSessionId ?? restoredOnboardingSession;
   const guideParam = searchParams.get("guide");
   const returnTo = searchParams.get("returnTo");
   const postAuthDestination = peekReturnTo(returnTo);
@@ -465,6 +485,18 @@ export default function GetStartedPage() {
     sessionStorage.setItem(DISCORD_OAUTH_STATE_KEY, state);
     rememberReturnTo(returnTo);
 
+    // Discord's exact-match redirect_uri drops query parameters, so an
+    // in-flight platform onboarding continuation must survive the OAuth
+    // round-trip via storage or the DM session is orphaned after login.
+    if (onboardingSessionId && !isLinkMode) {
+      sessionStorage.setItem(
+        ONBOARDING_SESSION_STORAGE_KEY,
+        onboardingSessionId,
+      );
+    } else {
+      sessionStorage.removeItem(ONBOARDING_SESSION_STORAGE_KEY);
+    }
+
     if (isLinkMode) {
       sessionStorage.setItem(DISCORD_LINK_MODE_KEY, "true");
     } else {
@@ -482,7 +514,7 @@ export default function GetStartedPage() {
 
     window.location.href = `https://discord.com/oauth2/authorize?${params.toString()}`;
     return true;
-  }, [isLinkMode, returnTo, t]);
+  }, [isLinkMode, onboardingSessionId, returnTo, t]);
 
   useEffect(() => {
     if (
@@ -522,10 +554,23 @@ export default function GetStartedPage() {
       return;
     }
 
-    if (onboardingSessionId && isAuthenticated && !isLinkMode) {
+    // Platform continuations (Discord DM "Connect" button, SMS link) never
+    // see the connector picker — the visitor already came FROM a platform.
+    // Signed-in visitors resume the chat; signed-out visitors go straight to
+    // sign-in. Telegram continuations carry method=telegram (handled below).
+    const continuationStep = resolveOnboardingEntryStep({
+      onboardingSessionId,
+      isAuthenticated,
+      isLinkMode,
+      discordCode,
+      methodParam,
+    });
+    if (continuationStep) {
       setInitialMethodHandled(true);
-      setSuppressRedirect(true);
-      setStep("PROVISIONING_CHAT");
+      if (continuationStep === "PROVISIONING_CHAT") {
+        setSuppressRedirect(true);
+      }
+      setStep(continuationStep);
       return;
     }
 
@@ -621,6 +666,13 @@ export default function GetStartedPage() {
     try {
       const result = await loginWithSolana();
       if (result.success) {
+        if (onboardingSessionId && !isLinkMode) {
+          // Platform continuation: resume the onboarding chat with the new
+          // credentials instead of bouncing to the generic dashboard.
+          setSuppressRedirect(true);
+          setStep("PROVISIONING_CHAT");
+          return;
+        }
         clearRememberedReturnTo();
         navigate(postAuthDestination, { replace: true });
       } else {
@@ -636,7 +688,14 @@ export default function GetStartedPage() {
     } finally {
       setIsSolanaLoading(false);
     }
-  }, [loginWithSolana, navigate, postAuthDestination, t]);
+  }, [
+    isLinkMode,
+    loginWithSolana,
+    navigate,
+    onboardingSessionId,
+    postAuthDestination,
+    t,
+  ]);
 
   const handleMethodSelect = (method: OnboardingMethod) => {
     setSelectedMethod(method);
@@ -693,6 +752,8 @@ export default function GetStartedPage() {
       }
     } else if (step === "DISCORD_SETUP_GUIDE") {
       navigate("/connected");
+    } else if (step === "ONBOARDING_SIGN_IN") {
+      navigate("/");
     }
   };
 
@@ -855,6 +916,9 @@ export default function GetStartedPage() {
       sessionStorage.removeItem(DISCORD_LINK_MODE_KEY);
 
       if (result.success) {
+        // The continuation id (if any) already lives in component state; the
+        // storage copy has served its purpose across the OAuth round-trip.
+        sessionStorage.removeItem(ONBOARDING_SESSION_STORAGE_KEY);
         if (isLinkMode) {
           navigate("/connected", { replace: true });
         } else {
@@ -1055,6 +1119,95 @@ export default function GetStartedPage() {
 
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pb-20">
         <div className="w-full max-w-[400px] flex flex-col items-center">
+          {step === "ONBOARDING_SIGN_IN" && (
+            <>
+              <div style={titleStyle}>
+                <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-2">
+                  {t("homepage_eliza.getStarted.onboardingSignInTitle", {
+                    defaultValue: "Sign in to continue",
+                  })}
+                </h1>
+                <p className="text-sm text-neutral-500 text-center mb-8">
+                  {t("homepage_eliza.getStarted.onboardingSignInSubtitle", {
+                    defaultValue:
+                      "Your chat is waiting — sign in and it picks up right where you left off.",
+                  })}
+                </p>
+              </div>
+
+              {(discordError || solanaError) && (
+                <div className="w-full mb-4 p-3 rounded-xs bg-red-50 border border-red-200">
+                  <p className="text-sm text-red-600 text-center">
+                    {discordError || solanaError}
+                  </p>
+                </div>
+              )}
+
+              <div className="w-full flex flex-col gap-3">
+                <button
+                  type="button"
+                  data-testid="onboarding-signin-discord"
+                  onClick={() => handleMethodSelect("discord")}
+                  className="w-full h-[72px] bg-[#5865F2] hover:bg-black text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  style={cardStyle(0)}
+                >
+                  <div className="w-12 h-12 rounded-xs bg-white/15 flex items-center justify-center shrink-0">
+                    <DiscordIcon className="size-6 text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-medium">
+                      {t("homepage_eliza.getStarted.onboardingSignInDiscord", {
+                        defaultValue: "Continue with Discord",
+                      })}
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  aria-label={t("homepage_eliza.getStarted.solanaAria", {
+                    defaultValue: "Sign in with Solana",
+                  })}
+                  data-testid="onboarding-signin-solana"
+                  disabled={isSolanaLoading}
+                  onClick={() => handleMethodSelect("solana")}
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer disabled:opacity-60"
+                  style={cardStyle(1)}
+                >
+                  <div
+                    className="w-12 h-12 rounded-xs flex items-center justify-center shrink-0"
+                    style={{ background: SOLANA_GRADIENT }}
+                  >
+                    <SolanaIcon className="size-6 text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-medium">
+                      {isSolanaLoading
+                        ? t("homepage_eliza.getStarted.btnSolanaLoading", {
+                            defaultValue: "Connecting…",
+                          })
+                        : t("homepage_eliza.getStarted.btnSolana", {
+                            defaultValue: "Solana Wallet",
+                          })}
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                data-testid="onboarding-signin-more"
+                onClick={() => setStep("SELECT_METHOD")}
+                className="w-full mt-6 text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer"
+                style={cardStyle(2)}
+              >
+                {t("homepage_eliza.getStarted.onboardingSignInMore", {
+                  defaultValue: "More ways to connect",
+                })}
+              </button>
+            </>
+          )}
+
           {step === "SELECT_METHOD" && (
             <>
               <div style={titleStyle}>
