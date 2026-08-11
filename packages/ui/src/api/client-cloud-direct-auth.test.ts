@@ -374,6 +374,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       status: 200,
       data: {
         success: true,
+        created: true,
         data: { id: "dedicated-1", agentName: "My Agent", status: "pending" },
       },
     });
