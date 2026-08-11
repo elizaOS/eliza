@@ -5,6 +5,7 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
+  clearStoredStewardToken,
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
   writeStoredStewardToken,
@@ -518,6 +519,14 @@ export function getCloudAuthToken(client?: ElizaClient): string | null {
   return clientToken || null;
 }
 
+function clearStoredStewardTokenIfCurrent(token: string): void {
+  if (readStoredStewardToken()?.trim() !== token) return;
+  clearStoredStewardToken();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("steward-token-sync"));
+  }
+}
+
 function readDirectCloudToken(client: ElizaClient): string | null {
   // A managed app may be connected to a dedicated agent while rendering
   // account settings from hosted web, Capacitor, Electrobun, or localhost.
@@ -810,6 +819,7 @@ async function directCloudRequest<T>(
   const apiBase = resolveDirectCloudClientApiBase(client);
   if (!apiBase) return null;
 
+  const isDedicatedRequest = isDedicatedCloudAgentClient(client);
   const token = readDirectCloudToken(client);
   if (!token) return null;
 
@@ -838,6 +848,9 @@ async function directCloudRequest<T>(
       }),
       { method, url },
     );
+    if (res.status === 401 && isDedicatedRequest) {
+      clearStoredStewardTokenIfCurrent(token);
+    }
     const parsed = parseDirectCloudJson(res.data) as T;
     if (!isAcceptableDirectCloudResponse(res.status, parsed)) {
       throw Object.assign(
@@ -858,6 +871,9 @@ async function directCloudRequest<T>(
     { ...init, method, headers },
     { method, url },
   );
+  if (res.status === 401 && isDedicatedRequest) {
+    clearStoredStewardTokenIfCurrent(token);
+  }
   const data = await res.json().catch(async () => ({
     error: await res.text().catch(() => res.statusText),
   }));
