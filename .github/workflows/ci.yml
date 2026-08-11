@@ -157,9 +157,18 @@ jobs:
     name: Smoke
     needs: changes
     runs-on: ubuntu-24.04
-    # The zero-key deterministic e2e suite alone runs 450+ Playwright tests
-    # (~55 min after setup + core build); 60 minutes cancels it mid-run.
-    timeout-minutes: 120
+    # The zero-key deterministic e2e suite is 725 Playwright tests that the
+    # suite's one-live-stack-per-process invariant pins to a single worker, so
+    # wall clock only comes down by giving each slice its own runner. Six
+    # shards put the slowest slice near 20 minutes; the whole lane took ~96 on
+    # one machine.
+    timeout-minutes: 60
+    strategy:
+      # One shard's product failure must not hide the other five: a shard that
+      # cancels its siblings reports a partial suite as the lane's verdict.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -185,8 +194,10 @@ jobs:
         if: needs.changes.outputs.desktop == 'true'
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
 
+      # Only the Playwright suite is sharded, so the whole-lane steps below run
+      # on the first shard alone rather than once per runner.
       - name: Desktop startup smoke
-        if: needs.changes.outputs.desktop == 'true'
+        if: needs.changes.outputs.desktop == 'true' && matrix.shard == 1
         run: bun run test:dev-startup
 
       # The zero-key e2e suite drives chromium (desktop + mobile projects) and
@@ -195,12 +206,18 @@ jobs:
         if: needs.changes.outputs.zero_key == 'true'
         run: PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit
 
+      # Every shard runs the identical command and differs only by
+      # ELIZA_UI_SMOKE_SHARD, so no shard can silently own a different lane.
+      # The orchestrator's two non-Playwright e2e tasks (~48s combined) repeat
+      # on each runner; duplicating them costs less than branching the command.
       - name: Deterministic end-to-end smoke
         if: needs.changes.outputs.zero_key == 'true'
+        env:
+          ELIZA_UI_SMOKE_SHARD: ${{ matrix.shard }}/6
         run: bun run test:e2e
 
       - name: Cloud tests
-        if: needs.changes.outputs.cloud == 'true'
+        if: needs.changes.outputs.cloud == 'true' && matrix.shard == 1
         run: bun run test:cloud
 
       - name: No affected smoke lane
