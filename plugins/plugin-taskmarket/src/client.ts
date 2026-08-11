@@ -31,7 +31,6 @@ export interface TaskmarketTask {
 }
 
 export interface ListTasksOptions {
-  status?: string;
   mode?: TaskmarketMode;
   sort?: TaskmarketSort;
   limit?: number;
@@ -48,6 +47,20 @@ export interface TaskmarketTaskPage {
 type FetchLike = typeof fetch;
 
 const TASKMARKET_REQUEST_TIMEOUT_MS = 10_000;
+const TASKMARKET_MAX_RESPONSE_BYTES = 512 * 1024;
+const TASKMARKET_MODES = new Set<TaskmarketMode>([
+  "bounty",
+  "claim",
+  "pitch",
+  "benchmark",
+  "auction",
+]);
+const TASKMARKET_SORTS = new Set<TaskmarketSort>([
+  "newest",
+  "reward_desc",
+  "reward_asc",
+  "deadline_asc",
+]);
 const TASK_TEXT_LIMITS = {
   id: 128,
   description: 180,
@@ -117,6 +130,40 @@ export function formatUsdc(baseUnits: string): string {
   return fractional ? `${whole}.${fractional}` : whole;
 }
 
+async function readBoundedJson(response: Response): Promise<unknown> {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > TASKMARKET_MAX_RESPONSE_BYTES
+  ) {
+    throw new RangeError("Taskmarket response exceeds the 512 KiB limit");
+  }
+
+  if (!response.body) return await response.json();
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > TASKMARKET_MAX_RESPONSE_BYTES) {
+      await reader.cancel();
+      throw new RangeError("Taskmarket response exceeds the 512 KiB limit");
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+}
+
 function parseTask(value: unknown): TaskmarketTask {
   const task = requireRecord(value, "task");
   const rewardBaseUnits = requireString(task, "reward");
@@ -154,7 +201,21 @@ export class TaskmarketClient {
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
       throw new RangeError("Taskmarket result limit must be between 1 and 50");
     }
-    const requestedStatus = options.status ?? "open";
+    if (options.mode !== undefined && !TASKMARKET_MODES.has(options.mode)) {
+      throw new RangeError("Taskmarket mode is not supported");
+    }
+    if (options.sort !== undefined && !TASKMARKET_SORTS.has(options.sort)) {
+      throw new RangeError("Taskmarket sort order is not supported");
+    }
+    if (
+      options.minRewardBaseUnits !== undefined &&
+      !/^\d+$/.test(options.minRewardBaseUnits)
+    ) {
+      throw new RangeError(
+        "Taskmarket minimum reward must use integer USDC base units",
+      );
+    }
+    const requestedStatus = "open";
     const baseUrl = new URL(this.baseUrl);
     if (!baseUrl.pathname.endsWith("/")) baseUrl.pathname += "/";
     const url = new URL("api/tasks", baseUrl);
@@ -186,7 +247,10 @@ export class TaskmarketClient {
           `Taskmarket request failed with HTTP ${guarded.response.status}`,
         );
       }
-      const payload = requireRecord(await guarded.response.json(), "task page");
+      const payload = requireRecord(
+        await readBoundedJson(guarded.response),
+        "task page",
+      );
       if (
         !Array.isArray(payload.tasks) ||
         typeof payload.hasMore !== "boolean"

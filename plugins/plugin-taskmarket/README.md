@@ -17,3 +17,10 @@ Add `@elizaos/plugin-taskmarket` to an agent's plugins, then ask it to find or b
 - `deadlineHours`: tasks expiring within a positive number of hours
 
 The default endpoint is `https://api.taskmarket.dev`. Results include gross and net rewards, mode, status, expiry, tags, and submission count. Unexpected response shapes fail visibly instead of being presented as valid work.
+
+## Privacy
+
+The plugin sends only the selected list filters to Taskmarket. It does not send
+conversation text, agent memories, wallet material, or credentials. Remote
+responses are capped at 512 KiB and planner-visible strings are normalized and
+length-bounded before the action renders them.
