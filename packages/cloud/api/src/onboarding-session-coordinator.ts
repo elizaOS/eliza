@@ -51,6 +51,36 @@ interface StoredSession extends Omit<OnboardingSession, "history"> {
 
 const SESSION_KEY_PREFIX = "session:";
 const HISTORY_KEY_PREFIX = "history:";
+const GREETING_KEY_PREFIX = "greeting:";
+// Mirrors GREETING_TTL_MS in onboarding-proactive-greeting.ts: stale greetings
+// are dropped at drain time, never delivered.
+const GREETING_TTL_MS = 15 * 60 * 1000;
+const GREETING_DRAIN_LIMIT_MAX = 50;
+
+interface StoredGreeting {
+  sessionId: string;
+  platformUserId: string;
+  message: string;
+  createdAt: string;
+}
+
+function isValidGreeting(value: unknown): value is StoredGreeting {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.sessionId === "string" &&
+    record.sessionId.length >= 8 &&
+    record.sessionId.length <= 180 &&
+    typeof record.platformUserId === "string" &&
+    record.platformUserId.length >= 1 &&
+    record.platformUserId.length <= 64 &&
+    typeof record.message === "string" &&
+    record.message.length >= 1 &&
+    record.message.length <= 2000 &&
+    typeof record.createdAt === "string" &&
+    Number.isFinite(Date.parse(record.createdAt))
+  );
+}
 const REPLAY_KEY_PREFIX = "replay:";
 const REPLAY_CLEANUP_STATE_KEY = "replay-cleanup-state";
 const LEGACY_LEDGER_KEY = "ledger";
@@ -445,6 +475,67 @@ export class OnboardingSessionCoordinator {
     return Response.json({ status: "completed" });
   }
 
+  /**
+   * Records a pending proactive greeting, keyed by session id (set semantics:
+   * a replayed authenticated turn overwrites rather than duplicates). Lives on
+   * the well-known `proactive-greetings:<platform>` instance, not per-session
+   * coordinators, so one drain call claims the whole platform queue.
+   */
+  private async enqueueGreeting(request: Request): Promise<Response> {
+    const body: unknown = await request.json();
+    if (!isValidGreeting(body)) {
+      return Response.json({ error: "Invalid greeting" }, { status: 400 });
+    }
+    await this.state.storage.put(
+      `${GREETING_KEY_PREFIX}${storageComponent(body.sessionId)}`,
+      body,
+    );
+    return Response.json({ success: true });
+  }
+
+  /**
+   * Atomically claims pending greetings: entries are deleted in the same
+   * serialized Durable Object operation that returns them, so exactly one
+   * drain caller ever sees each greeting (at-most-once delivery). Expired
+   * entries are deleted and dropped, never returned.
+   */
+  private async drainGreetings(request: Request): Promise<Response> {
+    const body: unknown = await request.json();
+    const requested =
+      body && typeof body === "object" && "limit" in body
+        ? Number((body as { limit?: unknown }).limit)
+        : Number.NaN;
+    const limit =
+      Number.isInteger(requested) && requested > 0
+        ? Math.min(requested, GREETING_DRAIN_LIMIT_MAX)
+        : GREETING_DRAIN_LIMIT_MAX;
+    const entries = await this.state.storage.list<StoredGreeting>({
+      prefix: GREETING_KEY_PREFIX,
+      limit,
+    });
+    const now = Date.now();
+    const claimed: StoredGreeting[] = [];
+    const deletions: string[] = [];
+    for (const [key, entry] of entries) {
+      deletions.push(key);
+      if (
+        !isValidGreeting(entry) ||
+        now - Date.parse(entry.createdAt) > GREETING_TTL_MS
+      ) {
+        logger.warn(
+          "[OnboardingSessionCoordinator] dropped stale proactive greeting",
+          { key },
+        );
+        continue;
+      }
+      claimed.push(entry);
+    }
+    if (deletions.length > 0) {
+      await this.state.storage.delete(deletions);
+    }
+    return Response.json({ greetings: claimed });
+  }
+
   private async mirrorSessionBestEffort(
     session: OnboardingSession,
   ): Promise<void> {
@@ -610,6 +701,12 @@ export class OnboardingSessionCoordinator {
         }
         if (pathname === "/claim") {
           return this.claimContinuation(request);
+        }
+        if (pathname === "/enqueue-greeting") {
+          return this.enqueueGreeting(request);
+        }
+        if (pathname === "/drain-greetings") {
+          return this.drainGreetings(request);
         }
         if (pathname === "/complete-claim") {
           return this.completeContinuationClaim(request);

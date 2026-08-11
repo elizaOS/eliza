@@ -858,4 +858,154 @@ describe("OnboardingSessionCoordinator", () => {
       ),
     ).toBe(false);
   });
+
+  describe("proactive greeting queue", () => {
+    const QUEUE = "proactive-greetings:discord";
+
+    function greeting(sessionId: string, overrides?: Record<string, unknown>) {
+      return {
+        sessionId,
+        platformUserId: sessionId.slice("platform:discord:".length) || "u",
+        message: "you're all set",
+        createdAt: new Date().toISOString(),
+        ...overrides,
+      };
+    }
+
+    function enqueue(
+      coordinator: OnboardingSessionCoordinator,
+      body: unknown,
+    ): Promise<Response> {
+      return coordinator.fetch(
+        new Request("https://onboarding.test/enqueue-greeting", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+    }
+
+    function drain(
+      coordinator: OnboardingSessionCoordinator,
+      limit?: number,
+    ): Promise<Response> {
+      return coordinator.fetch(
+        new Request("https://onboarding.test/drain-greetings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(limit === undefined ? {} : { limit }),
+        }),
+      );
+    }
+
+    async function greetingsOf(
+      response: Response,
+    ): Promise<Array<{ sessionId: string }>> {
+      const body = (await response.json()) as {
+        greetings: Array<{ sessionId: string }>;
+      };
+      return body.greetings;
+    }
+
+    test("drain claims each greeting exactly once", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+
+      expect(
+        (await enqueue(queue, greeting("platform:discord:greet-1"))).status,
+      ).toBe(200);
+      expect(
+        (await enqueue(queue, greeting("platform:discord:greet-2"))).status,
+      ).toBe(200);
+
+      const first = await greetingsOf(await drain(queue));
+      expect(first.map((entry) => entry.sessionId).sort()).toEqual([
+        "platform:discord:greet-1",
+        "platform:discord:greet-2",
+      ]);
+
+      // Already claimed: a second drain returns nothing (at-most-once).
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+    });
+
+    test("re-enqueueing the same session id overwrites instead of duplicating", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+
+      await enqueue(queue, greeting("platform:discord:dup"));
+      await enqueue(
+        queue,
+        greeting("platform:discord:dup", { message: "second write" }),
+      );
+
+      const claimed = (await greetingsOf(await drain(queue))) as Array<{
+        sessionId: string;
+        message?: string;
+      }>;
+      expect(claimed).toHaveLength(1);
+      expect(claimed[0]?.message).toBe("second write");
+    });
+
+    test("expired greetings are dropped at drain time, never delivered", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+
+      await enqueue(
+        queue,
+        greeting("platform:discord:stale", {
+          createdAt: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
+        }),
+      );
+      await enqueue(queue, greeting("platform:discord:fresh"));
+
+      const claimed = await greetingsOf(await drain(queue));
+      expect(claimed.map((entry) => entry.sessionId)).toEqual([
+        "platform:discord:fresh",
+      ]);
+      // The stale entry was deleted, not left behind.
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+    });
+
+    test("malformed enqueue payloads are rejected with 400", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+
+      const cases: unknown[] = [
+        {},
+        greeting("platform:discord:x", { platformUserId: "" }),
+        greeting("platform:discord:x", { message: "" }),
+        greeting("platform:discord:x", { message: "y".repeat(2001) }),
+        greeting("platform:discord:x", { createdAt: "not-a-date" }),
+        greeting("short", {}),
+      ];
+      for (const body of cases) {
+        expect((await enqueue(queue, body)).status).toBe(400);
+      }
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+    });
+
+    test("greeting keys never collide with session or replay storage", async () => {
+      const harness = createCoordinatorHarness();
+      const { coordinator, sessionId } = harness;
+
+      // A real onboarding turn and a greeting in the SAME durable object
+      // instance must not interfere.
+      await turn(coordinator, sessionId, "My name is Sam", "discord:msg-1");
+      await enqueue(coordinator, greeting(sessionId));
+
+      const claimed = await greetingsOf(await drain(coordinator));
+      expect(claimed.map((entry) => entry.sessionId)).toEqual([sessionId]);
+
+      // The session survives the drain untouched.
+      const followUp = await readResult(
+        await turn(coordinator, sessionId, "still here?", "discord:msg-2"),
+      );
+      expect(
+        followUp.session.history.some(
+          (message: { content: string }) =>
+            message.content === "My name is Sam",
+        ),
+      ).toBe(true);
+    });
+  });
 });

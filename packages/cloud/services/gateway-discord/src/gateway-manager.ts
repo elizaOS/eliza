@@ -25,6 +25,7 @@ import {
   deliverManagedReply,
   postManagedAgentMessageWithRetry,
 } from "./managed-message-egress";
+import { drainAndDeliverGreetings as drainAndDeliverPendingGreetings } from "./proactive-greeting-delivery";
 import { createMockRedis, createNativeRedis } from "./redis-adapter";
 import {
   buildManagedFailureReplyOptions,
@@ -194,6 +195,16 @@ const ELIZA_APP_LEADER_KEY =
 /** Leader election lock TTL in seconds (10 seconds) */
 const ELIZA_APP_LEADER_TTL_SECONDS = 10;
 
+/**
+ * Interval between drains of pending proactive onboarding greetings
+ * (15 seconds). Only the Eliza App bot leader polls, and the API claims
+ * entries atomically, so each greeting is delivered at most once.
+ */
+const GREETING_POLL_INTERVAL_MS = parseIntEnv(
+  "GREETING_POLL_INTERVAL_MS",
+  15_000,
+);
+
 /** How often to check/renew leadership (3 seconds) */
 const ELIZA_APP_LEADER_CHECK_INTERVAL_MS = 3000;
 
@@ -332,6 +343,8 @@ export class GatewayManager {
   private elizaAppClient: Client | null = null;
   /** Whether this pod is the Eliza App bot leader */
   private isElizaAppLeader: boolean = false;
+  /** Interval for draining pending proactive onboarding greetings (leader only) */
+  private greetingPollInterval: NodeJS.Timeout | null = null;
   /** Interval for leader election checks */
   private elizaAppLeaderInterval: NodeJS.Timeout | null = null;
 
@@ -560,6 +573,7 @@ export class GatewayManager {
     if (this.failoverInterval) clearInterval(this.failoverInterval);
     if (this.tokenRefreshTimeout) clearTimeout(this.tokenRefreshTimeout);
     if (this.elizaAppLeaderInterval) clearInterval(this.elizaAppLeaderInterval);
+    if (this.greetingPollInterval) clearInterval(this.greetingPollInterval);
     this.voiceHandler.stopCleanupJob();
 
     // Release Eliza App bot leadership for faster failover
@@ -1870,6 +1884,7 @@ export class GatewayManager {
         username: this.elizaAppClient?.user?.username,
         userId: this.elizaAppClient?.user?.id,
       });
+      this.startGreetingPolling();
     });
 
     this.elizaAppClient.on(Events.MessageCreate, async (message: Message) => {
@@ -1908,6 +1923,10 @@ export class GatewayManager {
    * Disconnect the Eliza App bot.
    */
   private async disconnectElizaAppBot(): Promise<void> {
+    if (this.greetingPollInterval) {
+      clearInterval(this.greetingPollInterval);
+      this.greetingPollInterval = null;
+    }
     if (this.elizaAppClient) {
       logger.info("Disconnecting Eliza App bot", {
         podName: this.config.podName,
@@ -1915,6 +1934,78 @@ export class GatewayManager {
       this.elizaAppClient.destroy();
       this.elizaAppClient = null;
     }
+  }
+
+  /**
+   * Start the proactive-greeting drain loop. Leader-only (called from
+   * connectElizaAppBot): the API's claim is atomic, but a single poller
+   * avoids pointless contention and keeps DM sends on the pod that owns the
+   * bot connection.
+   */
+  private startGreetingPolling(): void {
+    if (this.greetingPollInterval) return;
+    this.greetingPollInterval = setInterval(() => {
+      this.drainAndDeliverGreetings().catch((error) => {
+        logger.error("Error draining proactive onboarding greetings", {
+          error: sanitizeError(error),
+        });
+      });
+    }, GREETING_POLL_INTERVAL_MS);
+    logger.info("Proactive onboarding greeting polling started", {
+      podName: this.config.podName,
+      intervalMs: GREETING_POLL_INTERVAL_MS,
+    });
+  }
+
+  /**
+   * Claims pending post-sign-in greetings from the API and delivers each as a
+   * proactive DM. At-most-once semantics live in
+   * {@link drainAndDeliverPendingGreetings}; this wrapper binds the production
+   * fetch/auth/send closures.
+   */
+  private async drainAndDeliverGreetings(): Promise<void> {
+    const client = this.elizaAppClient;
+    if (!this.isElizaAppLeader || !client?.isReady()) return;
+
+    await drainAndDeliverPendingGreetings({
+      drain: () =>
+        fetchWithTimeout(
+          `${this.config.elizaCloudUrl}/api/internal/discord/eliza-app/pending-greetings`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...this.getAuthHeader(),
+            },
+            body: JSON.stringify({}),
+            timeout: HTTP_TIMEOUT_MS,
+          },
+        ),
+      sendDirectMessage: async (userId, content) => {
+        await client.users.send(userId, content);
+      },
+      refreshAuth: () => this.refreshToken(),
+      onEvent: (event) => {
+        if (event.kind === "delivered") {
+          logger.info("Delivered proactive onboarding greeting", {
+            sessionId: event.sessionId ?? null,
+          });
+        } else if (event.kind === "send-failed") {
+          logger.warn("Failed to deliver proactive onboarding greeting", {
+            sessionId: event.sessionId ?? null,
+            error: sanitizeError(event.error),
+          });
+        } else if (event.kind === "malformed") {
+          logger.warn("Skipping malformed proactive greeting", {
+            sessionId: event.sessionId ?? null,
+          });
+        } else {
+          logger.warn("Proactive greeting drain returned non-OK status", {
+            status: event.status,
+          });
+        }
+      },
+    });
   }
 
   /**

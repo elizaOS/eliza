@@ -17,6 +17,7 @@ import {
 } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { launchManagedElizaAgent } from "../eliza-managed-launch";
+import { enqueueDiscordProactiveGreeting } from "./onboarding-proactive-greeting";
 import {
   type ElizaAppProvisioningStatus,
   ensureElizaAppProvisioning,
@@ -1117,6 +1118,7 @@ export async function runOnboardingChatWithStore(
     session = { ...session, platformIdentityTrusted: true };
   }
 
+  const wasUnboundBeforeThisTurn = !session.userId;
   if (input.authenticatedUser) {
     assertAuthenticatedTelegramIdentity(session, input);
     session = {
@@ -1127,6 +1129,30 @@ export async function runOnboardingChatWithStore(
   }
 
   session = await maybeLinkAuthenticatedPlatformIdentity(session, input);
+
+  // The exact moment a trusted Discord DM session becomes account-bound from
+  // a BROWSER turn (not the DM transport itself) is the user completing the
+  // sign-in handoff. Their Discord chat is silent right now; queue the
+  // one-shot proactive greeting the gateway delivers there. Bot-transport
+  // turns (trustedPlatformIdentity) are excluded: on those the user just
+  // messaged and gets a synchronous reply. Enqueue is best-effort and keyed
+  // by session id (set semantics) so retried or replayed authenticated turns
+  // cannot duplicate the greeting.
+  if (
+    wasUnboundBeforeThisTurn &&
+    session.userId &&
+    input.authenticatedUser &&
+    input.trustedPlatformIdentity !== true &&
+    session.platform === "discord" &&
+    session.platformIdentityTrusted === true &&
+    session.platformUserId
+  ) {
+    await enqueueDiscordProactiveGreeting({
+      sessionId: session.id,
+      platformUserId: session.platformUserId,
+      name: hasPreferredName(session) ? session.name : undefined,
+    });
+  }
 
   // statusOnly is a read-only poll: skip all user-message processing so it
   // can never mutate session history, name, or preferred-name state, even if
