@@ -1091,7 +1091,9 @@ ElizaClient.prototype.getBlueBubblesStatus = async function (
         (res as Record<string, unknown>).state as string,
       )
     ) {
-      throw new Error("Invalid BlueBubbles status response: bad connector/state");
+      throw new Error(
+        "Invalid BlueBubbles status response: bad connector/state",
+      );
     }
     const detail = (res as { detail?: unknown })?.detail;
     if (
