@@ -2919,7 +2919,10 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
         return "OK";
       }),
       get: jest.fn(async (key: string) => redisStore.get(key) ?? null),
-      pipeline: jest.fn(() => ({ setex: jest.fn().mockReturnThis(), exec: jest.fn(async () => []) })),
+      pipeline: jest.fn(() => ({
+        setex: jest.fn().mockReturnThis(),
+        exec: jest.fn(async () => []),
+      })),
     };
     const redisFactory = await import("../cache/redis-factory");
     const buildSpy = spyOn(redisFactory, "buildRedisClient").mockReturnValue(mockRedis as never);
@@ -2980,7 +2983,10 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
         return "OK";
       }),
       get: jest.fn(async (key: string) => redisStore.get(key) ?? null),
-      pipeline: jest.fn(() => ({ setex: jest.fn().mockReturnThis(), exec: jest.fn(async () => []) })),
+      pipeline: jest.fn(() => ({
+        setex: jest.fn().mockReturnThis(),
+        exec: jest.fn(async () => []),
+      })),
     };
     const redisFactory = await import("../cache/redis-factory");
     const buildSpy = spyOn(redisFactory, "buildRedisClient").mockReturnValue(mockRedis as never);
@@ -3038,7 +3044,10 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
         return "OK";
       }),
       get: jest.fn(async (key: string) => redisStore.get(key) ?? null),
-      pipeline: jest.fn(() => ({ setex: jest.fn().mockReturnThis(), exec: jest.fn(async () => []) })),
+      pipeline: jest.fn(() => ({
+        setex: jest.fn().mockReturnThis(),
+        exec: jest.fn(async () => []),
+      })),
     };
     const redisFactory = await import("../cache/redis-factory");
     const buildSpy = spyOn(redisFactory, "buildRedisClient").mockReturnValue(mockRedis as never);
@@ -3087,7 +3096,10 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       get: jest.fn(async () => {
         throw new Error("ECONNREFUSED");
       }),
-      pipeline: jest.fn(() => ({ setex: jest.fn().mockReturnThis(), exec: jest.fn(async () => []) })),
+      pipeline: jest.fn(() => ({
+        setex: jest.fn().mockReturnThis(),
+        exec: jest.fn(async () => []),
+      })),
     };
     const redisFactory = await import("../cache/redis-factory");
     const buildSpy = spyOn(redisFactory, "buildRedisClient").mockReturnValue(mockRedis as never);

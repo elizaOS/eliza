@@ -6514,11 +6514,7 @@ export class ElizaSandboxService {
       if (claimed) {
         // First heartbeat: we claimed the agent key. Write the URL key with a
         // short TTL so a dead pod's URL expires before the agent mapping does.
-        await redis.setex(
-          serverUrlKey,
-          ROUTING_SERVER_URL_KEY_TTL_SECONDS,
-          rec.bridge_url,
-        );
+        await redis.setex(serverUrlKey, ROUTING_SERVER_URL_KEY_TTL_SECONDS, rec.bridge_url);
         logger.info(
           `[agent-sandbox] Wrote routing registry fallback for agent ${rec.id} -> ${rec.bridge_url}`,
         );
@@ -6533,11 +6529,7 @@ export class ElizaSandboxService {
 
       // We own the pair from a prior heartbeat — refresh the URL key's TTL so
       // it survives until the next heartbeat cycle.
-      await redis.setex(
-        serverUrlKey,
-        ROUTING_SERVER_URL_KEY_TTL_SECONDS,
-        rec.bridge_url,
-      );
+      await redis.setex(serverUrlKey, ROUTING_SERVER_URL_KEY_TTL_SECONDS, rec.bridge_url);
     } catch (err) {
       // error-policy:J7 — diagnostics must not kill the loop: the routing
       // fallback is a non-critical optimization layered on the heartbeat cycle.
