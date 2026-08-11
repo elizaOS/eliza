@@ -834,6 +834,7 @@ describe("shared agent messages/stream", () => {
     const res = await postStream({ text: "must not dispatch" });
 
     expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("1");
     await expect(res.json()).resolves.toEqual({
       success: false,
       error: "Agent authorization cache is warming. Retry shortly.",

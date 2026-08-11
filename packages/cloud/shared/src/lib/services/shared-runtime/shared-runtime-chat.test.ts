@@ -22,6 +22,7 @@ const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 let characterReads = 0;
+const loggerInfo = mock(() => undefined);
 
 class ApiInsufficientCreditsError extends Error {}
 
@@ -46,6 +47,7 @@ mock.module("../../pricing", () => ({
 
 mock.module("../../utils/logger", () => ({
   logger: {
+    info: loggerInfo,
     warn: mock(() => undefined),
     error: mock(() => undefined),
   },
@@ -319,6 +321,7 @@ beforeEach(() => {
   turnError = null;
   streamTurnError = null;
   characterReads = 0;
+  loggerInfo.mockClear();
   enforceOrgRateLimit.mockClear();
   getInferenceAdmissionSnapshotCacheOnly.mockClear();
   admitOrganizationInference.mockClear();
@@ -407,6 +410,49 @@ describe("SharedRuntimeChatService", () => {
     expect(billCalls).toHaveLength(1);
     expect((billCalls[0] as unknown[])[2]).toBe(payoutAwareReservation);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("replays a completed client turn without a second admission or dispatch", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    const first = await service.bridge(agent, rpc, h);
+    const admissionCalls = admitOrganizationInference.mock.calls.length;
+    const second = await new SharedRuntimeChatService().bridge(agent, rpc, h);
+
+    expect(second.result).toMatchObject({
+      text: first.result?.text,
+      messageId: first.result?.messageId,
+      userMessageId: first.result?.userMessageId,
+    });
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(admissionCalls);
+    expect(h.history()).toHaveLength(3);
+    expect(loggerInfo).toHaveBeenCalledWith(
+      "[SharedRuntimeChatService] replaying completed idempotent turn",
+      expect.objectContaining({ agentId: agent.id, turnId: rpc.id }),
+    );
+  });
+
+  test("rejects reused ids with changed or incomplete persisted state", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const first = await service.bridge(agent, rpc, h);
+
+    await expect(
+      service.bridge(agent, { ...rpc, params: { ...rpc.params, text: "different" } }, h),
+    ).rejects.toMatchObject({ code: "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT" });
+
+    const incomplete = {
+      ...h,
+      historyStore: {
+        ...h.historyStore,
+        load: async () =>
+          h.history().filter((message) => message.id === first.result?.userMessageId),
+      },
+    };
+    await expect(service.bridge(agent, rpc, incomplete)).rejects.toMatchObject({
+      code: "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT",
+    });
   });
 
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {

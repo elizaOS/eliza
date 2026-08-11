@@ -168,6 +168,7 @@ describe("shared agent messages route", () => {
       "Eliza",
       expect.objectContaining({ waitUntil: expect.any(Function) }),
       DEFAULT_NAMESPACE,
+      undefined,
     );
   });
 
@@ -209,6 +210,7 @@ describe("shared agent messages route", () => {
       "Eliza",
       expect.objectContaining({ waitUntil: expect.any(Function) }),
       namespace,
+      undefined,
     );
   });
 
@@ -232,6 +234,7 @@ describe("shared agent messages route", () => {
     );
 
     expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("1");
     await expect(res.json()).resolves.toMatchObject({
       code: "shared_runtime_context_unavailable",
       retryable: true,
@@ -321,6 +324,40 @@ describe("shared agent messages route", () => {
     const res = await postMessage({ text: "  " });
     expect(res.status).toBe(400);
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("forwards a validated clientMessageId to shared admission", async () => {
+    sharedRestMessageSend.mockResolvedValue({
+      text: "hello",
+      agentName: "Eliza",
+    });
+    const res = await postMessage({
+      text: "hello",
+      clientMessageId: " turn-1 ",
+    });
+    expect(res.status).toBe(200);
+    expect(sharedRestMessageSend.mock.calls[0]?.[6]).toBe("turn-1");
+  });
+
+  test("rejects invalid clientMessageId before shared admission", async () => {
+    const res = await postMessage({ text: "hello", clientMessageId: " " });
+    expect(res.status).toBe(400);
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("returns terminal 409 for a shared idempotency conflict", async () => {
+    const { ElizaError } = await import("@elizaos/core");
+    sharedRestMessageSend.mockRejectedValue(
+      new ElizaError("clientMessageId conflict", {
+        code: "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT",
+      }),
+    );
+    const res = await postMessage({ text: "hello", clientMessageId: "turn-1" });
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({
+      code: "shared_runtime_idempotency_conflict",
+      retryable: false,
+    });
   });
 
   // The bug this pins: insufficient credits is a PERMANENT add-credits

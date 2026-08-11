@@ -338,6 +338,21 @@ export class SharedRuntimeConversation {
           { status: 503, headers: { "Retry-After": "1" } },
         );
       }
+      if (
+        error instanceof Error &&
+        (error as { code?: unknown }).code ===
+          "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT"
+      ) {
+        return Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "shared_runtime_idempotency_conflict",
+            retryable: false,
+          },
+          { status: 409 },
+        );
+      }
       const { InsufficientCreditsError, RateLimitError } = await import(
         "@/lib/api/errors"
       );

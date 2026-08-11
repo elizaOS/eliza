@@ -1222,6 +1222,36 @@ describe("useChatSend non-404 send failures", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.client.getBaseUrl.mockReturnValue("");
+    window.localStorage.clear();
+  });
+
+  it("retains the failed assistant turn for an insufficient-credits response", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      Object.assign(httpStatusError(402, "Insufficient credits"), {
+        code: "insufficient_credits",
+      }),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.find(
+      (message) => message.role === "assistant",
+    );
+    expect(assistant).toMatchObject({
+      failureKind: "insufficient_credits",
+    });
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+    expect(listPendingChatTurns("conv-1")).toHaveLength(0);
   });
 
   it("surfaces a notice + keeps the user message on a transient (non-404) send failure", async () => {

@@ -27,6 +27,7 @@ mock.module("@/lib/api/errors", () => ({
 
 let repositoryReads = 0;
 let repositoryWrites = 0;
+let providerDispatches = 0;
 let repositoryRow: unknown[] = [];
 const repositoryHistoryLengths: number[] = [];
 const repositoryHistories: unknown[][] = [];
@@ -111,6 +112,18 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       }
       const channelId = rpc.params?.roomId ?? agent.id;
       const history = await options.historyStore.load(agent.id, channelId);
+      if (
+        history.some(
+          (message) => (message as { id?: unknown }).id === `message-${rpc.id}`,
+        )
+      ) {
+        return {
+          jsonrpc: "2.0",
+          id: rpc.id,
+          result: { historyLength: history.length, replayed: true },
+        };
+      }
+      providerDispatches++;
       await options.historyStore.merge(agent.id, channelId, [
         {
           id: `message-${rpc.id}`,
@@ -324,6 +337,42 @@ test("concurrent turns serialize through one room and retain both writes", async
     "turn-concurrent-two",
   ]);
   await Promise.all(background.splice(0));
+});
+
+test("concurrent duplicate ids serialize to one dispatch and one replay", async () => {
+  providerDispatches = 0;
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+  const invoke = makeInvoke(object);
+
+  const [first, duplicate] = await Promise.all([
+    invoke("duplicate"),
+    invoke("duplicate"),
+  ]);
+
+  expect(first).toMatchObject({ result: { historyLength: 1 } });
+  expect(duplicate).toMatchObject({
+    result: { historyLength: 1, replayed: true },
+  });
+  expect(providerDispatches).toBe(1);
+  expect(
+    (data.get("conversation") as { history: unknown[] }).history,
+  ).toHaveLength(1);
 });
 
 test("stream body cancellation persists before the room queue releases", async () => {

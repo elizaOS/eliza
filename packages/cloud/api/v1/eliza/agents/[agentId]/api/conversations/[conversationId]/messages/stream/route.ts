@@ -202,7 +202,10 @@ app.post("/", async (c) => {
           code: worker.code,
           retryable: worker.retryable,
         },
-        { status: worker.status },
+        {
+          status: worker.status,
+          headers: worker.status === 503 ? { "Retry-After": "1" } : undefined,
+        },
       ),
       CORS_METHODS,
       origin,
@@ -242,7 +245,10 @@ app.post("/", async (c) => {
           ...("code" in r ? { code: r.code } : {}),
           ...(r.status === 503 ? { retryable: true } : {}),
         },
-        { status: r.status },
+        {
+          status: r.status,
+          headers: r.status === 503 ? { "Retry-After": "1" } : undefined,
+        },
       ),
       CORS_METHODS,
       origin,

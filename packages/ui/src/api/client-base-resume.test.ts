@@ -112,3 +112,97 @@ describe("ElizaClient 202 dedicated-agent resume handling", () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("ElizaClient shared-agent warming retry", () => {
+  beforeEach(() => {
+    setBootConfig({ branding: {} });
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("retries only the two structured warming codes with the same body", async () => {
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          503,
+          { code: "agent_cache_warming" },
+          { "retry-after": "1" },
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          503,
+          { code: "shared_runtime_cache_warming" },
+          { "retry-after": "1" },
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    const body = JSON.stringify({ text: "hello", clientMessageId: "turn-1" });
+    const pending = makeClient(request).fetch("/api/chat/stream", {
+      method: "POST",
+      body,
+    });
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toMatchObject({ ok: true });
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(request.mock.calls.map((call) => call[1]?.body)).toEqual([
+      body,
+      body,
+      body,
+    ]);
+  });
+
+  it("stops after three warming retries", async () => {
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockResolvedValue(
+        jsonResponse(
+          503,
+          { code: "shared_runtime_cache_warming" },
+          { "retry-after": "0" },
+        ),
+      );
+    const pending = makeClient(request)
+      .fetch("/api/chat/stream")
+      .catch((error) => error);
+    await vi.runAllTimersAsync();
+    expect(((await pending) as { code?: string }).code).toBe(
+      "shared_runtime_cache_warming",
+    );
+    expect(request).toHaveBeenCalledTimes(4);
+  });
+
+  it("uses the one-second default when Retry-After is absent", async () => {
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockResolvedValueOnce(
+        jsonResponse(503, { code: "shared_runtime_cache_warming" }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    const pending = makeClient(request).fetch<{ ok: boolean }>(
+      "/api/chat/stream",
+    );
+    await vi.advanceTimersByTimeAsync(999);
+    expect(request).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toMatchObject({ ok: true });
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([402, 409, 503])("does not retry an unrelated %s", async (status) => {
+    const body =
+      status === 402
+        ? { code: "insufficient_credits" }
+        : status === 409
+          ? { code: "shared_runtime_idempotency_conflict", retryable: false }
+          : { code: "inference_unavailable", retryable: true };
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockResolvedValue(jsonResponse(status, body));
+    await makeClient(request)
+      .fetch("/api/chat/stream")
+      .catch(() => undefined);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+});

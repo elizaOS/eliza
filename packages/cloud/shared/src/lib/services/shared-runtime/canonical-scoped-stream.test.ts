@@ -6,6 +6,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import { RateLimitError } from "../../api/errors";
 import * as coordinatorActual from "./conversation-coordinator";
 
@@ -77,6 +78,23 @@ describe("handleCanonicalScopedAgentStream", () => {
     });
   });
 
+  test("uses clientMessageId as the stable shared turn identity", async () => {
+    await handleCanonicalScopedAgentStream({
+      ...BASE,
+      body: { text: "hello", clientMessageId: " turn-1 " },
+    });
+    expect(coordinateSharedStream.mock.calls[0]?.[1].id).toBe("turn-1");
+  });
+
+  test("rejects an invalid clientMessageId before shared dispatch", async () => {
+    const res = await handleCanonicalScopedAgentStream({
+      ...BASE,
+      body: { text: "hello", clientMessageId: " " },
+    });
+    expect(res.status).toBe(400);
+    expect(coordinateSharedStream).not.toHaveBeenCalled();
+  });
+
   test("maps exact rate denial to a retryable 429 before SSE starts", async () => {
     coordinateSharedStream.mockRejectedValueOnce(
       new RateLimitError("Organization rate limit exceeded.", 41),
@@ -102,6 +120,7 @@ describe("handleCanonicalScopedAgentStream", () => {
     const res = await handleCanonicalScopedAgentStream(BASE);
 
     expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("1");
     await expect(res.json()).resolves.toMatchObject({
       code: "shared_runtime_cache_warming",
       retryable: true,
@@ -123,6 +142,20 @@ describe("handleCanonicalScopedAgentStream", () => {
     expect(data).toEqual({
       message: "Agent produced no streamed response",
       type: "error",
+    });
+  });
+
+  test("maps an idempotency conflict to a terminal 409", async () => {
+    coordinateSharedStream.mockRejectedValueOnce(
+      new ElizaError("clientMessageId conflict", {
+        code: "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT",
+      }),
+    );
+    const res = await handleCanonicalScopedAgentStream(BASE);
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({
+      code: "shared_runtime_idempotency_conflict",
+      retryable: false,
     });
   });
 });

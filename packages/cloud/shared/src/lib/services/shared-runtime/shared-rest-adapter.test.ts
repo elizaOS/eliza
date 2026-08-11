@@ -275,11 +275,13 @@ describe("shared-rest-adapter — messages", () => {
       "Eliza",
       EXECUTION_CTX,
       NAMESPACE,
+      "client-turn-1",
     );
     expect(out).toEqual({ text: "four", agentName: "Eliza" });
     const call = coordinateSharedBridge.mock.calls[0];
     expect(call[0]).toBe(SHARED_AGENT);
     expect(call[1].method).toBe("message.send");
+    expect(call[1].id).toBe("client-turn-1");
     expect(call[1].params).toMatchObject({ text: "2+2?", roomId: AGENT });
     expect(call[2]).toEqual({
       executionCtx: EXECUTION_CTX,

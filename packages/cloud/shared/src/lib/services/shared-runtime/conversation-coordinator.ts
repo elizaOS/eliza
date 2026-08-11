@@ -6,6 +6,7 @@
  * deployment fault cannot fall through to repository-backed execution.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
@@ -105,6 +106,11 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
       (await readErrorMessage()) ?? "Organization rate limit exceeded.",
       Number.isFinite(retryAfter) ? retryAfter : undefined,
     );
+  }
+  if (response.status === 409) {
+    throw new ElizaError((await readErrorMessage()) ?? "Shared runtime idempotency conflict", {
+      code: "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT",
+    });
   }
   throw new Error(`[shared-runtime] ${surface} coordinator failed (${response.status})`);
 }

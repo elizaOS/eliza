@@ -7,6 +7,7 @@
  */
 
 import crypto from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import {
@@ -126,6 +127,37 @@ function turnMessageIds(
     user: stableUuid(`shared-runtime:${agentId}:${roomId}:${turn}:user`),
     assistant: stableUuid(`shared-runtime:${agentId}:${roomId}:${turn}:assistant`),
   };
+}
+
+function completedTurn(
+  history: SharedTurnMessage[],
+  ids: { user: string; assistant: string },
+  text: string,
+): SharedTurnMessage | null {
+  const user = history.find((message) => message.id === ids.user);
+  const assistant = history.find((message) => message.id === ids.assistant);
+  if (!user && !assistant) return null;
+  if (user?.role !== "user" || user.content !== text || assistant?.role !== "assistant") {
+    throw new ElizaError("clientMessageId was already used for a different or incomplete turn", {
+      code: "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT",
+      context: { userMessageId: ids.user, assistantMessageId: ids.assistant },
+    });
+  }
+  return assistant;
+}
+
+function replayStream(
+  assistant: SharedTurnMessage,
+  ids: { user: string; assistant: string },
+): Response {
+  return new Response(
+    `event: done\ndata: ${JSON.stringify({
+      messageId: ids.assistant,
+      userMessageId: ids.user,
+      text: assistant.content,
+    })}\n\n`,
+    { headers: { "Content-Type": "text/event-stream; charset=utf-8" } },
+  );
 }
 
 function channelId(agentId: string, params: Record<string, unknown>): string {
@@ -587,13 +619,33 @@ export class SharedRuntimeChatService {
       };
     }
     const roomId = channelId(agent.id, params);
-    const [character, history] = await Promise.all([
-      characterFor(agent, {
-        cacheOnly: Boolean(options.historyStore),
-        executionCtx: options.executionCtx,
-      }),
-      loadHistory(agent.id, roomId, options.historyStore),
-    ]);
+    const history = await loadHistory(agent.id, roomId, options.historyStore);
+    const messageIds = turnMessageIds(agent.id, roomId, rpc);
+    const replay = completedTurn(history, messageIds, text);
+    if (replay) {
+      logger.info("[SharedRuntimeChatService] replaying completed idempotent turn", {
+        agentId: agent.id,
+        roomId,
+        turnId: rpcTurnIdentity(rpc),
+      });
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        result: {
+          text: replay.content,
+          messageId: messageIds.assistant,
+          userMessageId: messageIds.user,
+          agentName: agent.agent_name ?? "Eliza agent",
+          channelId: roomId,
+          runtime: "shared",
+          transport: "shared-runtime",
+        },
+      };
+    }
+    const character = await characterFor(agent, {
+      cacheOnly: Boolean(options.historyStore),
+      executionCtx: options.executionCtx,
+    });
     let billing: BillingTurn | null;
     try {
       billing = await admitTurn(agent, character, history, text, roomId, options.executionCtx);
@@ -612,7 +664,6 @@ export class SharedRuntimeChatService {
       throw error;
     }
 
-    const messageIds = turnMessageIds(agent.id, roomId, rpc);
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
@@ -699,13 +750,21 @@ export class SharedRuntimeChatService {
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
     const roomId = channelId(agent.id, params);
-    const [character, history] = await Promise.all([
-      characterFor(agent, {
-        cacheOnly: Boolean(options.historyStore),
-        executionCtx: options.executionCtx,
-      }),
-      loadHistory(agent.id, roomId, options.historyStore),
-    ]);
+    const history = await loadHistory(agent.id, roomId, options.historyStore);
+    const messageIds = turnMessageIds(agent.id, roomId, rpc);
+    const replay = completedTurn(history, messageIds, text);
+    if (replay) {
+      logger.info("[SharedRuntimeChatService] replaying completed idempotent stream", {
+        agentId: agent.id,
+        roomId,
+        turnId: rpcTurnIdentity(rpc),
+      });
+      return replayStream(replay, messageIds);
+    }
+    const character = await characterFor(agent, {
+      cacheOnly: Boolean(options.historyStore),
+      executionCtx: options.executionCtx,
+    });
     let billing: BillingTurn | null;
     try {
       billing = await admitTurn(agent, character, history, text, roomId, options.executionCtx);
@@ -718,7 +777,6 @@ export class SharedRuntimeChatService {
       }
       throw error;
     }
-    const messageIds = turnMessageIds(agent.id, roomId, rpc);
     const generationAbort = new AbortController();
     const abortFromRequest = () => {
       generationAbort.abort(options.abortSignal?.reason);

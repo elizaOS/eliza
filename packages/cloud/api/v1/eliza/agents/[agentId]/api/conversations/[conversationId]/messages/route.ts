@@ -4,6 +4,7 @@
  * Scope authorization and conversation execution are cache-only through the
  * shared Durable Object; cold hydration returns retryable unavailability.
  */
+
 import { Hono } from "hono";
 import { InsufficientCreditsError, RateLimitError } from "@/lib/api/errors";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
@@ -46,7 +47,10 @@ app.get("/", async (c) => {
           code: worker.code,
           retryable: worker.retryable,
         },
-        { status: worker.status },
+        {
+          status: worker.status,
+          headers: worker.status === 503 ? { "Retry-After": "1" } : undefined,
+        },
       ),
       CORS_METHODS,
       origin,
@@ -62,9 +66,14 @@ app.get("/", async (c) => {
         {
           success: false,
           error: r.error,
-          ...(r.status === 503 ? { retryable: true } : {}),
+          ...(r.status === 503
+            ? { code: "agent_cache_warming", retryable: true }
+            : {}),
         },
-        { status: r.status },
+        {
+          status: r.status,
+          headers: r.status === 503 ? { "Retry-After": "1" } : undefined,
+        },
       ),
       CORS_METHODS,
       origin,
@@ -115,7 +124,10 @@ app.post("/", async (c) => {
           code: worker.code,
           retryable: worker.retryable,
         },
-        { status: worker.status },
+        {
+          status: worker.status,
+          headers: worker.status === 503 ? { "Retry-After": "1" } : undefined,
+        },
       ),
       CORS_METHODS,
       origin,
@@ -131,26 +143,62 @@ app.post("/", async (c) => {
         {
           success: false,
           error: r.error,
-          ...(r.status === 503 ? { retryable: true } : {}),
+          ...(r.status === 503
+            ? { code: "agent_cache_warming", retryable: true }
+            : {}),
         },
-        { status: r.status },
+        {
+          status: r.status,
+          headers: r.status === 503 ? { "Retry-After": "1" } : undefined,
+        },
       ),
       CORS_METHODS,
       origin,
     );
   }
   const conversationId = c.req.param("conversationId") ?? r.agentId;
-  const raw: unknown = await c.req.json().catch(() => ({}));
+  let raw: unknown = {};
+  try {
+    raw = await c.req.json();
+  } catch {
+    // error-policy:J3 malformed request JSON is handled by the normal required
+    // field validation below and never reaches the shared runtime.
+  }
   const text =
     raw &&
     typeof raw === "object" &&
     typeof (raw as { text?: unknown }).text === "string"
       ? (raw as { text: string }).text
       : "";
+  const rawClientMessageId =
+    raw && typeof raw === "object"
+      ? (raw as { clientMessageId?: unknown }).clientMessageId
+      : undefined;
+  const clientMessageId =
+    typeof rawClientMessageId === "string"
+      ? rawClientMessageId.trim()
+      : undefined;
   if (!text.trim()) {
     return applyCorsHeaders(
       Response.json(
         { success: false, error: "text is required" },
+        { status: 400 },
+      ),
+      CORS_METHODS,
+      origin,
+    );
+  }
+  if (
+    rawClientMessageId !== undefined &&
+    (!clientMessageId || clientMessageId.length > 128)
+  ) {
+    return applyCorsHeaders(
+      Response.json(
+        {
+          success: false,
+          error:
+            "clientMessageId must be a non-empty string of at most 128 characters",
+        },
         { status: 400 },
       ),
       CORS_METHODS,
@@ -166,6 +214,7 @@ app.post("/", async (c) => {
       r.agentName,
       worker.executionCtx,
       worker.namespace,
+      clientMessageId,
     );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.
@@ -181,7 +230,7 @@ app.post("/", async (c) => {
             code: "shared_runtime_cache_warming",
             retryable: true,
           },
-          { status: 503 },
+          { status: 503, headers: { "Retry-After": "1" } },
         ),
         CORS_METHODS,
         origin,
@@ -229,6 +278,25 @@ app.post("/", async (c) => {
             retryable: false,
           },
           { status: 402 },
+        ),
+        CORS_METHODS,
+        origin,
+      );
+    }
+    if (
+      error instanceof Error &&
+      (error as Error & { code?: unknown }).code ===
+        "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT"
+    ) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "shared_runtime_idempotency_conflict",
+            retryable: false,
+          },
+          { status: 409 },
         ),
         CORS_METHODS,
         origin,

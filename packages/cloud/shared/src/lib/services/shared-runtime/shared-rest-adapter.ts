@@ -513,10 +513,11 @@ export async function sharedRestMessageSend(
   agentName: string,
   executionCtx: BridgeExecutionContext,
   namespace: RuntimeDurableObjectNamespace,
+  clientMessageId?: string,
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
-    id: crypto.randomUUID(),
+    id: clientMessageId ?? crypto.randomUUID(),
     method: "message.send",
     params: { text, roomId: conversationId },
   };

@@ -709,6 +709,31 @@ const RESUME_MAX_RETRIES = 6;
 const RESUME_DEFAULT_DELAY_MS = 5_000;
 const RESUME_MIN_DELAY_MS = 500;
 const RESUME_MAX_DELAY_MS = 10_000;
+const WARMING_MAX_RETRIES = 3;
+const WARMING_DEFAULT_DELAY_MS = 1_000;
+const WARMING_CODES = new Set([
+  "agent_cache_warming",
+  "shared_runtime_cache_warming",
+]);
+
+async function warmingRetryDelayMs(res: Response): Promise<number | null> {
+  if (res.status !== 503) return null;
+  let body: { code?: unknown } | null;
+  try {
+    body = (await res.clone().json()) as { code?: unknown };
+  } catch {
+    // error-policy:J3 malformed or non-JSON 503 bodies are never classified as
+    // warming and therefore remain visible instead of being auto-retried.
+    return null;
+  }
+  if (typeof body?.code !== "string" || !WARMING_CODES.has(body.code))
+    return null;
+  const header = res.headers.get("Retry-After");
+  const seconds = header === null ? Number.NaN : Number(header);
+  return Number.isFinite(seconds) && seconds >= 0
+    ? Math.min(2_000, seconds * 1_000)
+    : WARMING_DEFAULT_DELAY_MS;
+}
 
 /** Clamp the agent's advertised `Retry-After` (seconds) into a sane wait (ms). */
 function resumeRetryDelayMs(res: Response): number {
@@ -1126,6 +1151,19 @@ export class ElizaClient {
       if (init?.signal?.aborted) break;
       resumeRetries += 1;
       res = await this.rawRequestOnce(path, requestUrl, init, options, token);
+    }
+    let warmingRetries = 0;
+    let warmingDelay = await warmingRetryDelayMs(res);
+    while (
+      warmingDelay !== null &&
+      warmingRetries < WARMING_MAX_RETRIES &&
+      !init?.signal?.aborted
+    ) {
+      await sleepUnlessAborted(warmingDelay, init?.signal);
+      if (init?.signal?.aborted) break;
+      warmingRetries += 1;
+      res = await this.rawRequestOnce(path, requestUrl, init, options, token);
+      warmingDelay = await warmingRetryDelayMs(res);
     }
     // Resume budget exhausted while the agent is still 202 (resuming): surface a
     // distinguishable error instead of returning the empty 202 placeholder as a

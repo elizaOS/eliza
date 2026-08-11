@@ -80,6 +80,12 @@ export async function handleCanonicalScopedAgentStream(
     typeof (request.body as { text?: unknown }).text === "string"
       ? (request.body as { text: string }).text
       : "";
+  const rawClientMessageId =
+    request.body && typeof request.body === "object"
+      ? (request.body as { clientMessageId?: unknown }).clientMessageId
+      : undefined;
+  const clientMessageId =
+    typeof rawClientMessageId === "string" ? rawClientMessageId.trim() : undefined;
   timings.parse = elapsedMs(parseStartedAt);
   if (!text.trim()) {
     return applyCorsHeaders(
@@ -88,10 +94,23 @@ export async function handleCanonicalScopedAgentStream(
       request.origin,
     );
   }
+  if (rawClientMessageId !== undefined && (!clientMessageId || clientMessageId.length > 128)) {
+    return applyCorsHeaders(
+      Response.json(
+        {
+          success: false,
+          error: "clientMessageId must be a non-empty string of at most 128 characters",
+        },
+        { status: 400 },
+      ),
+      CORS_METHODS,
+      request.origin,
+    );
+  }
 
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
-    id: crypto.randomUUID(),
+    id: clientMessageId ?? crypto.randomUUID(),
     method: "message.send",
     params: {
       text,
@@ -167,7 +186,28 @@ export async function handleCanonicalScopedAgentStream(
               code: "shared_runtime_cache_warming",
               retryable: true,
             },
-            { status: 503 },
+            { status: 503, headers: { "Retry-After": "1" } },
+          ),
+          CORS_METHODS,
+          request.origin,
+        ),
+        timings,
+      );
+    }
+    if (
+      error instanceof Error &&
+      (error as Error & { code?: unknown }).code === "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT"
+    ) {
+      return addStreamTimingHeaders(
+        applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: error.message,
+              code: "shared_runtime_idempotency_conflict",
+              retryable: false,
+            },
+            { status: 409 },
           ),
           CORS_METHODS,
           request.origin,

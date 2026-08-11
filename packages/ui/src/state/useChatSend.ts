@@ -1774,6 +1774,19 @@ export function useChatSend(deps: UseChatSendDeps) {
           return;
         }
 
+        if (
+          (err as { status?: number }).status === 402 &&
+          (err as { code?: string }).code === "insufficient_credits"
+        ) {
+          applyStreamingModificationForConversation(convId, {
+            messageId: assistantMsgId,
+            mode: "fail",
+            failureKind: "insufficient_credits",
+          });
+          clearPendingChatTurn(convId, clientMessageId);
+          return;
+        }
+
         const status = (err as { status?: number }).status;
         if (status === 404) {
           // A 404 on send usually means the conversation row was deleted —
