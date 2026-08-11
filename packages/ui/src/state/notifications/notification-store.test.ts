@@ -62,6 +62,7 @@ import {
   markNotificationRead,
   removeNotification,
   removeNotifications,
+  retryNotificationHydration,
   seedDevNotificationsIfEmpty,
 } from "./notification-store";
 
@@ -379,6 +380,39 @@ describe("notification-store", () => {
     });
   });
 
+  it("manual Retry resets expired service-startup recovery and hydrates", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    listNotifications.mockRejectedValue(notificationServiceStartingError(30));
+
+    initNotifications();
+    await flushDelivery();
+    for (let interval = 0; interval < 3; interval += 1) {
+      await vi.advanceTimersByTimeAsync(30_000);
+      await flushDelivery();
+    }
+    expect(__getStateForTests().hydrationStatus).toBe("failed");
+
+    listNotifications.mockResolvedValueOnce({
+      notifications: [makeNotification({ id: "after-manual-retry" })],
+      unreadCount: 1,
+      serviceStatus: "ready",
+    });
+    await retryNotificationHydration();
+    await flushDelivery();
+
+    expect(listNotifications).toHaveBeenCalledTimes(5);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: true,
+      hydrationStatus: "ready",
+      hydrationAttempts: 1,
+      hydrationError: null,
+    });
+    expect(
+      __getStateForTests().notifications.map((notification) => notification.id),
+    ).toEqual(["after-manual-retry"]);
+  });
+
   it("fails non-retryable authorization errors immediately", async () => {
     vi.useFakeTimers();
     listNotifications.mockRejectedValue(
@@ -401,6 +435,37 @@ describe("notification-store", () => {
       hydrationStatus: "failed",
       hydrationAttempts: 1,
       hydrationError: "Authentication required",
+    });
+  });
+
+  it("keeps non-readiness 503 failures on the general attempt cap", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    listNotifications.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/notifications",
+        status: 503,
+        code: "NOTIFICATION_SERVICE_FAILED",
+        retryAfter: 1,
+        message: "Notification inbox is temporarily unavailable",
+      }),
+    );
+
+    initNotifications();
+    await flushDelivery();
+    for (let attempt = 1; attempt < 5; attempt += 1) {
+      await vi.runOnlyPendingTimersAsync();
+      await flushDelivery();
+    }
+
+    expect(listNotifications).toHaveBeenCalledTimes(5);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: false,
+      hydrationStatus: "failed",
+      hydrationAttempts: 5,
+      hydrationError: "Notification inbox is temporarily unavailable",
     });
   });
 
