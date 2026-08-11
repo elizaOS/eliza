@@ -89,9 +89,7 @@ describe("standalone scheduling tick", () => {
       now: new Date("2026-08-11T09:46:00.000Z"),
     });
     expect(late.errors).toEqual([]);
-    expect(late.fires).toEqual([
-      { taskId: task.taskId, outcome: "fired" },
-    ]);
+    expect(late.fires).toEqual([{ taskId: task.taskId, outcome: "fired" }]);
 
     const after = await runner.list();
     const fired = after.find((t) => t.taskId === task.taskId);
@@ -103,9 +101,7 @@ describe("standalone scheduling tick", () => {
     const again = await runStandaloneSchedulingTick(runtime, {
       now: new Date("2026-08-11T09:47:00.000Z"),
     });
-    expect(
-      again.fires.filter((f) => f.outcome === "fired"),
-    ).toEqual([]);
+    expect(again.fires.filter((f) => f.outcome === "fired")).toEqual([]);
   });
 
   it("defers to a registered consumer host without touching tasks", async () => {
@@ -113,9 +109,7 @@ describe("standalone scheduling tick", () => {
     await startServiceOn(runtime);
     // Simulate PA registering its production deps provider.
     registerScheduledTaskRunnerDeps(runtime, () => {
-      throw new Error(
-        "consumer deps must not be built by the standalone tick",
-      );
+      throw new Error("consumer deps must not be built by the standalone tick");
     });
 
     const result = await runStandaloneSchedulingTick(runtime, {
@@ -170,20 +164,17 @@ describe("standalone scheduling tick", () => {
 
     // Sabotage only the bad row's fire by monkey-patching fireWithResult.
     const realFire = runner.fireWithResult.bind(runner);
-    (runner as { fireWithResult: typeof runner.fireWithResult }).fireWithResult =
-      async (taskId, args) => {
-        if (taskId === bad.taskId) throw new Error("boom");
-        return realFire(taskId, args);
-      };
+    (
+      runner as { fireWithResult: typeof runner.fireWithResult }
+    ).fireWithResult = async (taskId, args) => {
+      if (taskId === bad.taskId) throw new Error("boom");
+      return realFire(taskId, args);
+    };
 
     const result = await runStandaloneSchedulingTick(runtime, {
       now: new Date("2026-08-11T09:46:00.000Z"),
     });
-    expect(result.errors).toEqual([
-      { taskId: bad.taskId, message: "boom" },
-    ]);
-    expect(result.fires).toEqual([
-      { taskId: good.taskId, outcome: "fired" },
-    ]);
+    expect(result.errors).toEqual([{ taskId: bad.taskId, message: "boom" }]);
+    expect(result.fires).toEqual([{ taskId: good.taskId, outcome: "fired" }]);
   });
 });
