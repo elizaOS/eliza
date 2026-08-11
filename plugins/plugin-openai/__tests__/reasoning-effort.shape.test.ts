@@ -278,7 +278,7 @@ describe("eliza.thinking='off' reasoning suppression (DeepSeek V4 Flash)", () =>
     ).toBe("none");
   });
 
-  it("does not infer endpoint capabilities through an opaque browser proxy", () => {
+  it("maps thinking-off through an opaque browser proxy", () => {
     vi.stubGlobal("document", {});
     try {
       const runtime = buildRuntime({
@@ -287,25 +287,29 @@ describe("eliza.thinking='off' reasoning suppression (DeepSeek V4 Flash)", () =>
         OPENAI_BROWSER_BASE_URL: "https://app.example.test/api/openai",
       });
       const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
-      const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
-      expect(openai?.reasoningEffort).toBeUndefined();
+      expect(
+        (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+      ).toBe("none");
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("does not send 'none' to an unverified compatible endpoint", () => {
+  it("maps thinking-off on a standard OpenAI-compatible endpoint", () => {
     const runtime = buildRuntime({
       OPENAI_API_KEY: "sk-test",
       OPENAI_BASE_URL: "https://compatible.example.test/v1",
     });
     const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
-    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
-    expect(openai?.reasoningEffort).toBeUndefined();
+    expect(
+      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+    ).toBe("none");
   });
 
   it.each([
     "glm-5.1",
+    "deepseek-v3",
+    "deepseek-r1",
     "openai/deepseek-v4-flash",
     "cerebras/deepseek-v4-flash",
     "deepseek-v4-flash:preview",
@@ -316,6 +320,20 @@ describe("eliza.thinking='off' reasoning suppression (DeepSeek V4 Flash)", () =>
       OPENAI_BASE_URL: "https://opencode.ai/zen/go/v1",
     });
     const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, modelName);
+    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+    expect(openai?.reasoningEffort).toBeUndefined();
+  });
+
+  it("does not send 'none' without the thinking-off signal", () => {
+    const runtime = buildRuntime({
+      OPENAI_API_KEY: "sk-test",
+      OPENAI_BASE_URL: "https://compatible.example.test/v1",
+    });
+    const opts = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi" } as never,
+      runtime,
+      "deepseek-v4-flash"
+    );
     const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
     expect(openai?.reasoningEffort).toBeUndefined();
   });

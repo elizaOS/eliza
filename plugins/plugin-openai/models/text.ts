@@ -42,7 +42,6 @@ import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
 import {
   getActionPlannerModel,
-  getBaseURL,
   getExperimentalTelemetry,
   getLargeModel,
   getMediumModel,
@@ -328,22 +327,12 @@ function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   return id === "gpt-oss-120b" || id === "zai-glm-4.7";
 }
 
-/** Detects OpenCode Go only when it is the effective request endpoint. */
-function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
-  try {
-    const url = new URL(getBaseURL(runtime));
-    return (
-      url.protocol === "https:" &&
-      url.hostname.toLowerCase() === "opencode.ai" &&
-      (url.pathname === "/zen/go/v1" || url.pathname.startsWith("/zen/go/v1/"))
-    );
-  } catch {
-    // error-policy:J3 Malformed configuration is not a matching provider URL.
-    return false;
-  }
+/** Detects the exact DeepSeek model whose thinking mode accepts `none`. */
+function isDeepSeekV4FlashModel(modelName: string | undefined): boolean {
+  return modelName?.trim().toLowerCase() === "deepseek-v4-flash";
 }
 
-/** Maps thinking suppression only for exact model ids on proven endpoints. */
+/** Maps thinking suppression only for exact model ids with known controls. */
 function resolveThinkingOffReasoningEffort(
   runtime: IAgentRuntime,
   modelName: string | undefined
@@ -355,8 +344,7 @@ function resolveThinkingOffReasoningEffort(
     if (cerebrasId === "zai-glm-4.7") return "none";
   }
 
-  const exactModelId = modelName.trim().toLowerCase();
-  if (exactModelId === "deepseek-v4-flash" && isOpenCodeGoMode(runtime)) return "none";
+  if (isDeepSeekV4FlashModel(modelName)) return "none";
   return undefined;
 }
 
@@ -395,8 +383,8 @@ function resolveProviderOptions(
   const reasoningEffort = resolveReasoningEffort(runtime, modelName);
   // Thinking-off suppression outranks the env pin and provider default so
   // forced-tool planner calls do not enter an incompatible reasoning mode.
-  // Keep this endpoint/model allowlist exact: OpenAI-direct and many compatible
-  // endpoints reject `"none"`. An explicit caller value still wins below.
+  // Keep the model allowlist exact: many compatible models reject `"none"`.
+  // An explicit caller value still wins below.
   const elizaThinking = (rawProviderOptions?.eliza as { thinking?: unknown } | undefined)?.thinking;
   const thinkingOffEffort =
     elizaThinking === "off" ? resolveThinkingOffReasoningEffort(runtime, modelName) : undefined;
