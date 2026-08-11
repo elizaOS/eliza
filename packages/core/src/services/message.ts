@@ -13461,8 +13461,16 @@ export class DefaultMessageService implements IMessageService {
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
-							// explicit transcription-unavailable state.
-							processedAttachment.notProcessed = `Audio transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+							// explicit failure state. Fetch-layer failures (MediaFetchError:
+							// size cap, remote HTTP error) happen before any TRANSCRIPTION
+							// provider runs, so they get a transient could-not-fetch marker —
+							// the "transcription unavailable" marker is reserved for genuine
+							// provider failures because the read action treats it as
+							// STT-is-disabled evidence.
+							processedAttachment.notProcessed =
+								err instanceof Error && err.name === "MediaFetchError"
+									? `Audio attachment could not be fetched: ${err.message}`
+									: `Audio transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
 							runtime.logger.warn(
 								{ src: "service:message", err },
 								"Audio transcription failed, continuing without transcript",
@@ -13518,8 +13526,16 @@ export class DefaultMessageService implements IMessageService {
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
-							// explicit transcription-unavailable state.
-							processedAttachment.notProcessed = `Video transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+							// explicit failure state. Fetch-layer failures (MediaFetchError:
+							// size cap, remote HTTP error) happen before any TRANSCRIPTION
+							// provider runs, so they get a transient could-not-fetch marker —
+							// the "transcription unavailable" marker is reserved for genuine
+							// provider failures because the read action treats it as
+							// STT-is-disabled evidence.
+							processedAttachment.notProcessed =
+								err instanceof Error && err.name === "MediaFetchError"
+									? `Video attachment could not be fetched: ${err.message}`
+									: `Video transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
 							runtime.logger.warn(
 								{ src: "service:message", err },
 								"Video transcription failed, continuing without transcript",

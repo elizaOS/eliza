@@ -67,6 +67,12 @@ export const listCloudAgentsAction: Action = {
           success: true,
           text: "User has no hosted Eliza Cloud agents.",
           userFacingText: EMPTY_MESSAGE,
+          verifiedUserFacing: true,
+          // The callback already delivered the complete empty-state answer and
+          // both supported next steps. Mark it terminal just like a non-empty
+          // inventory so the evaluator cannot paraphrase it into a second
+          // user-visible bubble.
+          turnComplete: true,
           data: { count: 0, agents: [] },
         };
       }
@@ -86,7 +92,7 @@ export const listCloudAgentsAction: Action = {
         // A single-operation read whose delivered reply IS the complete
         // answer: the gated-evaluator skip stops the model from re-rendering
         // the already-delivered list as a second message (same opt-in as
-        // LIST_CLOUD_APPS). Empty/error exits stay un-gated.
+        // LIST_CLOUD_APPS). Failure exits stay un-gated.
         turnComplete: true,
         data: {
           count: agents.length,
