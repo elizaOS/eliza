@@ -31,6 +31,13 @@ const IOS_VOICE_SELFTEST_ONBOARDING_WAIT_MS = 180_000;
 const IOS_VOICE_SELFTEST_RUN_TIMEOUT_MS = 240_000;
 const DEFAULT_IOS_VOICE_SELFTEST_API_BASE = "http://127.0.0.1:31338";
 
+/**
+ * The on-device IPC transport base for local-mode voice self-test. When the
+ * request envelope carries `mode: "local"`, the renderer must resolve the
+ * client to this base instead of the remote loopback fallback (finding #1).
+ */
+const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
+
 /** The three stages every real voice round-trip must clear. */
 const REQUIRED_VOICE_STAGES: ReadonlyArray<"asr" | "send" | "tts"> = [
   "asr",
@@ -40,6 +47,9 @@ const REQUIRED_VOICE_STAGES: ReadonlyArray<"asr" | "send" | "tts"> = [
 
 interface IosVoiceSelfTestRequest {
   apiBase: string;
+  mode: "local" | "remote" | null;
+  traceId: string | null;
+  requestTimestamp: number | null;
 }
 
 interface RunIosVoiceSelfTestOptions {
@@ -56,15 +66,51 @@ let iosVoiceSelfTestStarted = false;
 function parseIosVoiceSelfTestRequest(
   raw: string | null,
 ): IosVoiceSelfTestRequest {
-  const fallback = { apiBase: DEFAULT_IOS_VOICE_SELFTEST_API_BASE };
+  const fallback = {
+    apiBase: DEFAULT_IOS_VOICE_SELFTEST_API_BASE,
+    mode: null as "local" | "remote" | null,
+    traceId: null as string | null,
+    requestTimestamp: null as number | null,
+  };
   if (!raw || raw === "1") return fallback;
   try {
-    const parsed = JSON.parse(raw) as { apiBase?: unknown };
+    const parsed = JSON.parse(raw) as {
+      apiBase?: unknown;
+      mode?: unknown;
+      traceId?: unknown;
+      requestTimestamp?: unknown;
+    };
+    const mode =
+      typeof parsed.mode === "string" &&
+      (parsed.mode === "local" || parsed.mode === "remote")
+        ? parsed.mode
+        : null;
+    // Finding #1: when mode is explicitly "local", force the apiBase to the
+    // on-device IPC agent regardless of what retained storage or a stale
+    // fallback says. This prevents a local-mode request from silently falling
+    // through to the remote loopback default.
+    if (mode === "local") {
+      return {
+        apiBase: IOS_LOCAL_AGENT_IPC_BASE,
+        mode,
+        traceId: typeof parsed.traceId === "string" ? parsed.traceId : null,
+        requestTimestamp:
+          typeof parsed.requestTimestamp === "number"
+            ? parsed.requestTimestamp
+            : null,
+      };
+    }
     return {
       apiBase:
         typeof parsed.apiBase === "string" && parsed.apiBase.trim()
           ? parsed.apiBase.trim()
           : fallback.apiBase,
+      mode,
+      traceId: typeof parsed.traceId === "string" ? parsed.traceId : null,
+      requestTimestamp:
+        typeof parsed.requestTimestamp === "number"
+          ? parsed.requestTimestamp
+          : null,
     };
   } catch (error) {
     // error-policy:J3 corrupt smoke-request blob — fail the harness instead of
@@ -238,6 +284,9 @@ export async function runIosVoiceSelfTestSmokeIfRequested({
   iosVoiceSelfTestStarted = true;
   let request: IosVoiceSelfTestRequest = {
     apiBase: DEFAULT_IOS_VOICE_SELFTEST_API_BASE,
+    mode: null,
+    traceId: null,
+    requestTimestamp: null,
   };
   let audioCtx: AudioContext | null = null;
   try {
@@ -247,6 +296,9 @@ export async function runIosVoiceSelfTestSmokeIfRequested({
       phase: "running",
       startedAt: new Date().toISOString(),
       apiBase: request.apiBase,
+      mode: request.mode,
+      traceId: request.traceId,
+      requestTimestamp: request.requestTimestamp,
     });
 
     await waitForOnboardingSmokeResultIfPresent(getPreference);
@@ -286,6 +338,9 @@ export async function runIosVoiceSelfTestSmokeIfRequested({
       phase: reasons.length === 0 ? "complete" : "failed",
       finishedAt: new Date().toISOString(),
       apiBase: request.apiBase,
+      mode: request.mode,
+      traceId: request.traceId,
+      requestTimestamp: request.requestTimestamp,
       overall: report.overall,
       transcript: report.transcript,
       reply: report.reply,
@@ -302,6 +357,9 @@ export async function runIosVoiceSelfTestSmokeIfRequested({
       phase: "failed",
       finishedAt: new Date().toISOString(),
       apiBase: request.apiBase,
+      mode: request.mode,
+      traceId: request.traceId,
+      requestTimestamp: request.requestTimestamp,
       error: error instanceof Error ? error.message : String(error),
       storage: readStorageSnapshot(),
     });

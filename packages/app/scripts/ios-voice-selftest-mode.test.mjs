@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_VOICE_SELFTEST_MODE,
+  generateVoiceTraceId,
   IOS_LOCAL_AGENT_IPC_BASE,
   localActiveServerJson,
   localRuntimePreferenceWrites,
@@ -128,21 +129,63 @@ describe("onboardingRequestJson", () => {
   });
 });
 
+describe("generateVoiceTraceId", () => {
+  it("produces a unique ID each call", () => {
+    const a = generateVoiceTraceId();
+    const b = generateVoiceTraceId();
+    expect(a).not.toBe(b);
+    expect(a).toMatch(/^voice-/);
+  });
+});
+
 describe("voiceRequestJson", () => {
-  it("stages an empty object in local mode (app resolves on-device IPC agent)", () => {
-    expect(
-      JSON.parse(voiceRequestJson({ mode: "local", apiBase: null })),
-    ).toEqual({});
+  it("stages mode:'local' with the on-device IPC base in local mode", () => {
+    const parsed = JSON.parse(
+      voiceRequestJson({ mode: "local", apiBase: null }),
+    );
+    expect(parsed.mode).toBe("local");
+    expect(parsed.apiBase).toBe(IOS_LOCAL_AGENT_IPC_BASE);
+    expect(parsed.traceId).toMatch(/^voice-/);
+    expect(typeof parsed.requestTimestamp).toBe("number");
   });
 
-  it("stages the host apiBase in remote mode", () => {
+  it("stages mode:'remote' with the host apiBase in remote mode", () => {
     const parsed = JSON.parse(
       voiceRequestJson({
         mode: "remote",
         apiBase: "http://127.0.0.1:31338",
       }),
     );
-    expect(parsed).toEqual({ apiBase: "http://127.0.0.1:31338" });
+    expect(parsed.mode).toBe("remote");
+    expect(parsed.apiBase).toBe("http://127.0.0.1:31338");
+    expect(parsed.traceId).toMatch(/^voice-/);
+    expect(typeof parsed.requestTimestamp).toBe("number");
+  });
+
+  it("accepts an explicit traceId and echoes it", () => {
+    const parsed = JSON.parse(
+      voiceRequestJson({
+        mode: "local",
+        apiBase: null,
+        traceId: "voice-test123-9999",
+      }),
+    );
+    expect(parsed.traceId).toBe("voice-test123-9999");
+  });
+
+  it("generates unique traceIds for two calls without explicit traceId", () => {
+    const a = JSON.parse(voiceRequestJson({ mode: "local", apiBase: null }));
+    const b = JSON.parse(voiceRequestJson({ mode: "local", apiBase: null }));
+    expect(a.traceId).not.toBe(b.traceId);
+  });
+
+  it("local mode never carries an empty object (finding #1 regression guard)", () => {
+    const parsed = JSON.parse(
+      voiceRequestJson({ mode: "local", apiBase: null }),
+    );
+    // The old code returned {} — that must never happen again
+    expect(Object.keys(parsed).length).toBeGreaterThan(0);
+    expect(parsed.mode).toBe("local");
   });
 });
 

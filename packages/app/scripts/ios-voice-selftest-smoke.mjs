@@ -38,8 +38,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  evaluateStagedIosSideloadBundle,
+  isLocalAgentRuntimeMode,
+  LOCAL_AGENT_RUNTIME_MODES,
+} from "../../app-core/scripts/lib/mobile-lane-stamp.mjs";
 import { evaluateVoiceSelfTestReport } from "./ios-voice-selftest-lib.mjs";
 import {
+  generateVoiceTraceId,
   localRuntimePreferenceWrites,
   onboardingRequestJson,
   parseVoiceSelfTestMode,
@@ -50,7 +56,10 @@ import {
   DEFAULT_HOST_AGENT_PORT,
   startDeviceE2eHostAgent,
 } from "./lib/host-agent.mjs";
-import { assertInstalledIosAppRendererFresh } from "./lib/ios-renderer-stamp.mjs";
+import {
+  readRendererManifest,
+  rendererManifestPathFromAppPath,
+} from "./lib/ios-renderer-stamp.mjs";
 import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
@@ -395,7 +404,129 @@ async function stopVideo(recording) {
   return recording.stop();
 }
 
-async function pollResult(udid, appId) {
+/**
+ * Assert that the installed app's renderer manifest carries a local runtime
+ * mode — not just a matching buildId (finding #2). The base
+ * `assertInstalledIosAppRendererFresh` compares only `buildId` and reads
+ * `runtimeMode` from the manifest but never asserts it, so a cloud/thin-client
+ * app with the same buildId passes without local renderer mode, native local
+ * configuration, or the full Bun engine. This also evaluates the staged
+ * sideload bundle via `evaluateStagedIosSideloadBundle` to check both the
+ * renderer manifest and the native Capacitor config.
+ */
+function assertInstalledAppLocalRuntime({ udid, appId }) {
+  // Finding #2: assert runtimeMode === local in the renderer manifest
+  const appPath = tryRun("xcrun", [
+    "simctl",
+    "get_app_container",
+    udid,
+    appId,
+    "app",
+  ]);
+  if (!appPath) {
+    throw new Error(
+      `Cannot verify renderer stamp: ${appId} is not installed in simulator ${udid}.`,
+    );
+  }
+  const manifestPath = rendererManifestPathFromAppPath(appPath.trim());
+  const installed = readRendererManifest(manifestPath, `installed ${appId}`);
+  if (!isLocalAgentRuntimeMode(installed.runtimeMode)) {
+    throw new Error(
+      `Installed app renderer runtimeMode is '${installed.runtimeMode}', not a local mode (${LOCAL_AGENT_RUNTIME_MODES.join(", ")}). ` +
+        `A cloud/thin-client bundle with the same buildId cannot drive the on-device ASR/TTS pipeline. ` +
+        `Rebuild with \`bun run --cwd packages/app build:ios:local\`.`,
+    );
+  }
+  log(`renderer runtimeMode OK: '${installed.runtimeMode}' for ${appId}`);
+
+  // Finding #2: also evaluate the staged native Capacitor config via
+  // evaluateStagedIosSideloadBundle so the native Agent plugin config is
+  // checked too — not just the renderer manifest.
+  const iosAppDir = path.join(appDir, "ios", "App", "App");
+  const capacitorConfigPath = path.join(iosAppDir, "capacitor.config.json");
+  let agentConfig = null;
+  let rendererManifest = null;
+  if (fs.existsSync(capacitorConfigPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
+      agentConfig = config?.plugins?.Agent ?? null;
+    } catch {
+      // error-policy:J4 unavailable config — the renderer check above already
+      // validates the critical path; this is a best-effort native-side check
+    }
+  }
+  if (fs.existsSync(manifestPath)) {
+    try {
+      rendererManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    } catch {
+      // error-policy:J4 manifest already validated by readRendererManifest above
+    }
+  }
+  const verdict = evaluateStagedIosSideloadBundle({
+    agentConfig,
+    rendererManifest,
+  });
+  if (verdict.staged && !verdict.ok) {
+    throw new Error(
+      `Staged iOS bundle is not safe for local voice self-test: ${verdict.reason}`,
+    );
+  }
+  log(`staged sideload bundle OK: ${verdict.reason}`);
+}
+
+/**
+ * Preflight the voice-bundle artifacts required by the on-device voice
+ * pipeline before arming the production voice request (finding #3). A
+ * correctly local app with missing assets still ends at ASR-not-ready; this
+ * surfaces an actionable error listing which artifacts are missing so the
+ * operator can stage them instead of chasing a confusing ASR skip.
+ */
+function preflightVoiceBundle() {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? ".";
+  const asrDir =
+    process.env.ELIZA_IOS_ASR_MODEL_DIR ??
+    path.join(home, ".cache/eliza/asr-model");
+  const ttsDir =
+    process.env.ELIZA_IOS_TTS_MODEL_DIR ??
+    path.join(home, ".local/state/eliza/local-inference/models/omnivoice");
+  const textDir =
+    process.env.ELIZA_IOS_TEXT_MODEL_DIR ??
+    path.join(home, ".local/state/eliza/local-inference/models/text");
+  const requiredArtifacts = [
+    { label: "ASR model", file: path.join(asrDir, "eliza-1-asr.gguf") },
+    {
+      label: "ASR mmproj",
+      file: path.join(asrDir, "eliza-1-asr-mmproj.gguf"),
+    },
+    {
+      label: "TTS model",
+      file: path.join(ttsDir, "omnivoice-base-q4_k_m.gguf"),
+    },
+    {
+      label: "TTS tokenizer",
+      file: path.join(ttsDir, "omnivoice-tokenizer-q4_k_m.gguf"),
+    },
+    { label: "Text model", file: path.join(textDir, "eliza-1-2b.gguf") },
+  ];
+  const missing = requiredArtifacts.filter((a) => !fs.existsSync(a.file));
+  if (missing.length > 0) {
+    const missingList = missing
+      .map((a) => `  - ${a.label}: ${a.file}`)
+      .join("\n");
+    throw new Error(
+      `Voice bundle preflight failed — ${missing.length} required artifact(s) missing on host:\n${missingList}\n` +
+        `Stage these before arming the local voice self-test, or set ELIZA_IOS_ASR_MODEL_DIR / ELIZA_IOS_TTS_MODEL_DIR / ELIZA_IOS_TEXT_MODEL_DIR to the correct directories.`,
+    );
+  }
+  const present = requiredArtifacts
+    .filter((a) => fs.existsSync(a.file))
+    .map((a) => `${a.label}: ${a.file}`);
+  log(
+    `voice bundle preflight OK (${present.length}/${requiredArtifacts.length} artifacts present)`,
+  );
+}
+
+async function pollResult(udid, appId, traceId) {
   const attempts = Number.parseInt(
     process.env.IOS_VOICE_SELFTEST_ATTEMPTS ?? "300",
     10,
@@ -424,9 +555,28 @@ async function pollResult(udid, appId) {
         parsed = null;
       }
       if (parsed?.phase === "complete" || parsed?.phase === "failed") {
-        return parsed;
+        // Finding #4: reject stale results that don't carry the current
+        // traceId — under --skip-install, retained WebView storage can
+        // republish an older terminal report after native Preferences are
+        // reset, producing a false-green.
+        if (traceId && parsed.traceId && parsed.traceId !== traceId) {
+          if (attempt % 15 === 0) {
+            log(
+              `stale result (traceId ${parsed.traceId} != current ${traceId}), continuing to poll`,
+            );
+          }
+        } else {
+          return parsed;
+        }
+        continue;
       }
-      if (parsed?.error) return parsed;
+      if (parsed?.error) {
+        if (traceId && parsed.traceId && parsed.traceId !== traceId) {
+          // error-policy:J4 stale error from a previous run — keep polling
+        } else {
+          return parsed;
+        }
+      }
       if (attempt % 15 === 0) {
         log(`still running (${attempt}/${attempts}): ${lastRaw.slice(0, 200)}`);
       }
@@ -463,6 +613,8 @@ async function main() {
       })
     : null;
   apiBase = apiBase ?? hostAgent?.apiBase ?? null;
+  const traceId = generateVoiceTraceId();
+  log(`traceId: ${traceId}`);
   let recording = null;
 
   try {
@@ -508,7 +660,7 @@ async function main() {
       udid,
       appId,
       VOICE_REQUEST_KEY,
-      voiceRequestJson({ mode, apiBase }),
+      voiceRequestJson({ mode, apiBase, traceId }),
     );
     defaultsWriteString(
       udid,
@@ -518,21 +670,22 @@ async function main() {
         ok: false,
         phase: "requested",
         apiBase,
+        traceId,
         updatedAt: new Date().toISOString(),
       }),
     );
     flushPreferences(udid);
 
-    // Validate that the installed app is a fresh full-Bun local build before
-    // collecting voice evidence, so a stale or cloud-only (thin-client) install
-    // fails with an actionable error instead of a confusing ASR-not-ready skip.
+    // Validate that the installed app is a fresh full-Bun local build with
+    // local runtime mode before collecting voice evidence (finding #2). A
+    // stale or cloud-only (thin-client) install with the same buildId passes
+    // the freshness check but cannot drive the on-device ASR/TTS pipeline.
     if (mode === "local") {
-      assertInstalledIosAppRendererFresh({
-        udid,
-        bundleId: appId,
-        repoRoot,
-        log: (message) => log(message),
-      });
+      assertInstalledAppLocalRuntime({ udid, appId });
+      // Preflight voice bundle artifacts so a correctly local app with missing
+      // assets fails with an actionable error instead of a confusing
+      // ASR-not-ready skip (finding #3).
+      preflightVoiceBundle();
     }
 
     recording = startVideo(udid);
@@ -548,13 +701,13 @@ async function main() {
       );
     }
 
-    const result = await pollResult(udid, appId);
+    const result = await pollResult(udid, appId, traceId);
     const screenshot = takeScreenshot(udid, "voice-selftest-result");
     const video = await stopVideo(recording);
 
     fs.writeFileSync(
       path.join(resultDir, "result.json"),
-      `${JSON.stringify({ ...result, mode, screenshot, video }, null, 2)}\n`,
+      `${JSON.stringify({ ...result, mode, traceId, screenshot, video }, null, 2)}\n`,
     );
 
     const verdict = evaluateVoiceSelfTestReport(result.report ?? result);

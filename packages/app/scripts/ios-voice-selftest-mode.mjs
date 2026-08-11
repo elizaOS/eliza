@@ -129,15 +129,51 @@ export function onboardingRequestJson({ mode, apiBase }) {
 }
 
 /**
- * Build the JSON value to stage in the voice self-test request preference. In
- * local mode the request carries no apiBase (the app resolves the on-device
- * IPC agent); in remote mode it carries the host apiBase so the in-app
- * verifier points at the remote backend.
+ * Generate a unique trace ID for a voice self-test run so the renderer and
+ * orchestrator can correlate a result with a specific request, rejecting stale
+ * results left in retained WebView storage by a previous run.
  *
- * @param {{ mode: (typeof VOICE_SELFTEST_MODES)[number], apiBase: string | null }} ctx
+ * @returns {string} e.g. `voice-3f9a1b2c-1700000000000`
+ */
+export function generateVoiceTraceId() {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `voice-${rand}-${Date.now()}`;
+}
+
+/**
+ * Build the JSON value to stage in the voice self-test request preference.
+ *
+ * The envelope ALWAYS carries a `mode` field so the renderer's request parser
+ * knows which transport the orchestrator intended — a `local` request signals
+ * the on-device IPC agent, a `remote` request carries the host apiBase. Without
+ * this, a `{}` local request fell through to the remote loopback fallback
+ * (finding #1), so retained renderer state could republish remote/loopback
+ * defaults after launch.
+ *
+ * The envelope also carries a unique `traceId` and `requestTimestamp` (finding
+ * #4). The renderer echoes these in every result so `pollResult` can reject
+ * stale results that don't match the current run.
+ *
+ * @param {{ mode: (typeof VOICE_SELFTEST_MODES)[number],
+ *           apiBase: string | null,
+ *           traceId?: string }} ctx
  * @returns {string}
  */
-export function voiceRequestJson({ mode, apiBase }) {
-  if (mode === "local") return JSON.stringify({});
-  return JSON.stringify({ apiBase });
+export function voiceRequestJson({ mode, apiBase, traceId }) {
+  const id = traceId ?? generateVoiceTraceId();
+  const timestamp = Date.now();
+  if (mode === "local") {
+    return JSON.stringify({
+      mode: "local",
+      apiBase: IOS_LOCAL_AGENT_IPC_BASE,
+      traceId: id,
+      requestTimestamp: timestamp,
+    });
+  }
+  return JSON.stringify({
+    mode: "remote",
+    apiBase,
+    traceId: id,
+    requestTimestamp: timestamp,
+  });
 }
