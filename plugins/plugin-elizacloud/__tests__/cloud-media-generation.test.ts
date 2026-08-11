@@ -133,9 +133,7 @@ describe("media generation cold-cache warming retry", () => {
   it("rides through a warming throw on video generation and returns the video", async () => {
     const postApiV1GenerateVideo = vi
       .fn()
-      .mockRejectedValueOnce(
-        new Error("Generative admission cache is warming; retry shortly")
-      )
+      .mockRejectedValueOnce(new Error("Generative admission cache is warming; retry shortly"))
       .mockResolvedValueOnce({
         video: { url: "https://cdn/v.mp4", content_type: "video/mp4" },
         id: "v1",
@@ -153,9 +151,7 @@ describe("media generation cold-cache warming retry", () => {
   it("rides through a warming throw on music generation and returns the audio", async () => {
     const postApiV1GenerateMusic = vi
       .fn()
-      .mockRejectedValueOnce(
-        new Error("Generative admission cache is warming; retry shortly")
-      )
+      .mockRejectedValueOnce(new Error("Generative admission cache is warming; retry shortly"))
       .mockResolvedValueOnce({
         music: { url: "https://cdn/m.mp3", content_type: "audio/mpeg" },
         id: "m1",
@@ -171,16 +167,14 @@ describe("media generation cold-cache warming retry", () => {
   });
 
   it("fails fast on a non-warming video error", async () => {
-    const postApiV1GenerateVideo = vi
-      .fn()
-      .mockRejectedValue(new Error("Unsupported video model"));
+    const postApiV1GenerateVideo = vi.fn().mockRejectedValue(new Error("Unsupported video model"));
     setCloudMediaClientFactoryForTesting(() => ({
       routes: { postApiV1GenerateVideo, postApiV1GenerateMusic: vi.fn() },
     }));
 
-    await expect(
-      handleVideoGeneration(runtime(), { prompt: "x" })
-    ).rejects.toThrow("Unsupported video model");
+    await expect(handleVideoGeneration(runtime(), { prompt: "x" })).rejects.toThrow(
+      "Unsupported video model"
+    );
     expect(postApiV1GenerateVideo).toHaveBeenCalledTimes(1);
   });
 });
