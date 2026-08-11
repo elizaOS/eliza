@@ -9,6 +9,7 @@ import {
   cloudPairTokenKeyForAgent,
 } from "@elizaos/shared/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "@elizaos/core";
 import {
   __resetCloudPairRateLimitForTests,
   handleStandaloneCloudPairRoute,
@@ -35,6 +36,7 @@ const MANAGED_ENV_KEYS = [
   "ELIZA_CLOUD_PAIR_DIRECT_RELAY",
   "ELIZA_CLOUD_AGENT_ID",
   "WAIFU_ELIZA_CLOUD_AGENT_ID",
+  "ELIZAOS_CLOUD_BASE_URL",
 ] as const;
 const originalManagedEnv = Object.fromEntries(
   MANAGED_ENV_KEYS.map((key) => [key, process.env[key]]),
@@ -383,7 +385,89 @@ describe("handleStandaloneCloudPairRoute", () => {
     expect(harness.body()).toContain("Missing pairing token");
   });
 
-  it("does not redirect on expired or rejected pairing links", async () => {
+  it("does not redirect on rejected pairing links and renders honest copy", async () => {
+    for (const rejectStatus of [401, 403, 410]) {
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValue(new Response(JSON.stringify({}), { status: rejectStatus })),
+      );
+
+      const harness = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+        harness.res,
+      );
+
+      expect(harness.status()).toBe(403);
+      expect(harness.body()).toContain("Sign-in link could not be verified");
+      expect(harness.body()).not.toContain("Sign-in link expired");
+      expect(harness.body()).not.toContain('window.location.replace("/")');
+    }
+  });
+
+  it("never logs or renders the pairing token on rejection", async () => {
+    const secretToken = "super-secret-pair-token-abc123";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 410 })),
+    );
+
+    vi.mocked(logger.warn).mockClear();
+    vi.mocked(logger.error).mockClear();
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({ pathname: "/pair", search: `?token=${secretToken}` }),
+      harness.res,
+    );
+
+    // Token must not appear in the rendered HTML.
+    expect(harness.body()).not.toContain(secretToken);
+    // Token must not appear in any logger call.
+    for (const call of vi.mocked(logger.warn).mock.calls) {
+      expect(call.join(" ")).not.toContain(secretToken);
+    }
+    for (const call of vi.mocked(logger.error).mock.calls) {
+      expect(call.join(" ")).not.toContain(secretToken);
+    }
+  });
+
+  it("emits a structured warning with status, exchangeUrl, and requestOrigin on rejection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 410 })),
+    );
+
+    vi.mocked(logger.warn).mockClear();
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({
+        pathname: "/pair",
+        search: "?token=pair-token",
+        host: "127.0.0.1:43123",
+        proto: "http",
+      }),
+      harness.res,
+    );
+
+    const rejectionWarn = vi
+      .mocked(logger.warn)
+      .mock.calls.find((c) => String(c[0]).includes("pairing link rejected"));
+    expect(rejectionWarn).toBeDefined();
+    const logLine = String(rejectionWarn![0]);
+    expect(logLine).toContain("status=410");
+    expect(logLine).toContain("exchangeUrl=");
+    expect(logLine).toContain("requestOrigin=http://127.0.0.1:43123");
+  });
+
+  it("resolves the recovery link to the production console by default", async () => {
     vi.stubGlobal(
       "fetch",
       vi
@@ -393,12 +477,35 @@ describe("handleStandaloneCloudPairRoute", () => {
 
     const harness = fakeRes();
     await handleStandaloneCloudPairRoute(
-      fakeReq({ pathname: "/pair", search: "?token=expired" }),
+      fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
       harness.res,
     );
 
-    expect(harness.status()).toBe(403);
-    expect(harness.body()).toContain("Sign-in link expired");
-    expect(harness.body()).not.toContain('window.location.replace("/")');
+    expect(harness.body()).toContain(
+      "https://www.elizacloud.ai/dashboard/agents",
+    );
+    expect(harness.body()).not.toContain("staging.elizacloud.ai");
+  });
+
+  it("resolves the recovery link to the staging console for a staging-provisioned agent", async () => {
+    process.env.ELIZAOS_CLOUD_BASE_URL =
+      "https://api-staging.elizacloud.ai/api/v1";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 410 })),
+    );
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+      harness.res,
+    );
+
+    expect(harness.body()).toContain(
+      "https://staging.elizacloud.ai/dashboard/agents",
+    );
+    expect(harness.body()).not.toContain("www.elizacloud.ai");
   });
 });

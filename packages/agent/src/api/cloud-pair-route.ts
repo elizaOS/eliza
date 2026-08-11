@@ -96,9 +96,36 @@ function escapeHtml(value: string): string {
   );
 }
 
-function renderErrorHtml(title: string, message: string): string {
+/**
+ * Resolve the Eliza Cloud console dashboard URL for the environment the agent
+ * is provisioned against. A staging agent (`api-staging.elizacloud.ai`) gets
+ * the staging console; everything else gets the production console. This
+ * prevents staging users from being bounced to a production dashboard where
+ * their account/org/agent does not exist.
+ */
+function resolveCloudConsoleUrl(): string {
+  try {
+    const hostname = new URL(resolveCloudAuthRoot()).hostname.toLowerCase();
+    if (
+      hostname === "api-staging.elizacloud.ai" ||
+      hostname.endsWith(".staging.elizacloud.ai")
+    ) {
+      return "https://staging.elizacloud.ai/dashboard/agents";
+    }
+  } catch {
+    // error-policy:J3 malformed auth root yields the production default.
+  }
+  return "https://www.elizacloud.ai/dashboard/agents";
+}
+
+function renderErrorHtml(
+  title: string,
+  message: string,
+  recoveryUrl?: string,
+): string {
   const safeTitle = escapeHtml(title);
   const safeMessage = escapeHtml(message);
+  const safeHref = escapeHtml(recoveryUrl ?? resolveCloudConsoleUrl());
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -118,7 +145,7 @@ function renderErrorHtml(title: string, message: string): string {
   <div class="card">
     <h1>${safeTitle}</h1>
     <p>${safeMessage}</p>
-    <a href="https://www.elizacloud.ai/dashboard/agents" target="_top" rel="noopener">Back to Eliza Cloud</a>
+    <a href="${safeHref}" target="_top" rel="noopener">Back to Eliza Cloud</a>
   </div>
 </body>
 </html>`;
@@ -240,7 +267,7 @@ export async function handleStandaloneCloudPairRoute(
       exchanged = parseCloudPairRelaySession(body);
     } else {
       logger.warn(
-        `[cloud-pair] exchange returned non-2xx status=${status} url=${exchangeUrl}`,
+        `[cloud-pair] exchange returned non-2xx status=${status} exchangeUrl=${exchangeUrl} requestOrigin=${origin}`,
       );
     }
   } catch (err) {
@@ -261,12 +288,20 @@ export async function handleStandaloneCloudPairRoute(
   }
 
   if (status === 401 || status === 403 || status === 410) {
+    // Cloud returns one opaque body for ALL rejection causes: expired,
+    // already-redeemed, unknown-to-this-environment, origin-not-bound, and
+    // malformed. The relay cannot determine which cause applies, so the
+    // rendered copy must NOT assert a specific cause — only that the link
+    // could not be verified. See issue #18184.
+    logger.warn(
+      `[cloud-pair] pairing link rejected status=${status} exchangeUrl=${exchangeUrl} requestOrigin=${origin}`,
+    );
     sendHtml(
       res,
       403,
       renderErrorHtml(
-        "Sign-in link expired",
-        "Pairing links are single-use and only valid for a minute. Open your agent again from Eliza Cloud.",
+        "Sign-in link could not be verified",
+        "Your pairing link was rejected by Eliza Cloud. This can happen if the link was already used, has expired, or does not match this agent. Open your agent again from Eliza Cloud to get a fresh link.",
       ),
     );
     return true;
