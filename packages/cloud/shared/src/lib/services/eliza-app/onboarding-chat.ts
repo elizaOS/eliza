@@ -90,11 +90,12 @@ export interface OnboardingChatInput {
   confirmPlatformLink?: boolean;
 }
 
-export interface DiscordOnboardingContinuationPreview {
-  platform: "discord";
+export interface OnboardingContinuationPreview {
+  platform: "discord" | "telegram";
   platformUserId: string;
   platformDisplayName: string;
 }
+
 
 export interface OnboardingChatCta {
   label: string;
@@ -297,23 +298,42 @@ async function loadOnboardingSessionForValidation(
   return loadCachedOnboardingSession(sessionId);
 }
 
-function trustedDiscordContinuationError(session: OnboardingSession | null): ElizaError {
-  return new ElizaError("Invalid Discord onboarding continuation", {
+/**
+ * Platforms whose gateway-attested sessions may be linked from an
+ * authenticated browser continuation: possession of the opaque continuation
+ * token (delivered only inside the platform DM) plus an explicit in-browser
+ * confirmation is the ownership proof — the model #18161 shipped for Discord,
+ * now shared by Telegram. Phone-shaped platforms are excluded: their identity
+ * IS the phone number and links through the dedicated phone path.
+ */
+type BrowserLinkablePlatform = "discord" | "telegram";
+
+function isBrowserLinkablePlatform(
+  platform: OnboardingPlatform | undefined,
+): platform is BrowserLinkablePlatform {
+  return platform === "discord" || platform === "telegram";
+}
+
+function trustedBrowserContinuationError(session: OnboardingSession | null): ElizaError {
+  return new ElizaError("Invalid onboarding continuation", {
     code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
-    context: { platform: "discord", sessionFound: Boolean(session) },
+    context: { platform: session?.platform ?? "unknown", sessionFound: Boolean(session) },
     severity: "ephemeral",
   });
 }
 
-function isDiscordContinuationForAccount(
+function isBrowserLinkableContinuationForAccount(
   session: OnboardingSession | null,
   authenticatedAccount: { userId: string; organizationId: string },
-): session is OnboardingSession & { platform: "discord"; platformUserId: string } {
+): session is OnboardingSession & {
+  platform: "discord" | "telegram";
+  platformUserId: string;
+} {
   const hasUserBinding = session?.userId !== undefined;
   const hasOrganizationBinding = session?.organizationId !== undefined;
   return Boolean(
     session &&
-      session.platform === "discord" &&
+      isBrowserLinkablePlatform(session.platform) &&
       session.platformIdentityTrusted === true &&
       session.platformUserId &&
       isFreshOnboardingSession(session) &&
@@ -324,29 +344,30 @@ function isDiscordContinuationForAccount(
   );
 }
 
-/** Resolve an opaque Discord continuation without mutating or binding it. */
-export async function inspectDiscordOnboardingContinuation(
+/** Resolve an opaque messaging continuation without mutating or binding it. */
+export async function inspectOnboardingContinuation(
   continuationToken: string,
   authenticatedAccount: { userId: string; organizationId: string },
-): Promise<DiscordOnboardingContinuationPreview> {
+): Promise<OnboardingContinuationPreview> {
   const sessionId = await resolveContinuationToken(continuationToken);
   const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
-  if (!isDiscordContinuationForAccount(session, authenticatedAccount)) {
-    throw trustedDiscordContinuationError(session);
+  if (!isBrowserLinkableContinuationForAccount(session, authenticatedAccount)) {
+    throw trustedBrowserContinuationError(session);
   }
   return {
-    platform: "discord",
+    platform: session.platform,
     platformUserId: session.platformUserId,
     platformDisplayName: session.platformDisplayName?.trim() || session.platformUserId,
   };
 }
 
+
 /**
- * A mutating Discord confirmation must still resolve the exact trusted session
+ * A mutating confirmation must still resolve the exact trusted session
  * previewed by this account. This closes expiry/binding TOCTOU windows between
  * GET preview and POST confirmation and refuses direct forged confirmations.
  */
-function assertConfirmedDiscordContinuation(
+function assertConfirmedContinuation(
   session: OnboardingSession | null,
   input: OnboardingChatInput,
 ): void {
@@ -354,9 +375,9 @@ function assertConfirmedDiscordContinuation(
   if (
     !input.authenticatedUser ||
     input.trustedPlatformIdentity === true ||
-    !isDiscordContinuationForAccount(session, input.authenticatedUser)
+    !isBrowserLinkableContinuationForAccount(session, input.authenticatedUser)
   ) {
-    throw trustedDiscordContinuationError(session);
+    throw trustedBrowserContinuationError(session);
   }
 }
 
@@ -669,6 +690,10 @@ function isPhoneLikePlatformIdentity(args: {
   );
 }
 
+function platformLinkLabel(platform: "discord" | "telegram"): string {
+  return platform === "discord" ? "Discord" : "Telegram";
+}
+
 async function maybeLinkAuthenticatedPlatformIdentity(
   session: OnboardingSession,
   input: OnboardingChatInput,
@@ -683,43 +708,61 @@ async function maybeLinkAuthenticatedPlatformIdentity(
     return session;
   }
 
-  // Discord: a PRIOR gateway turn attested "this session belongs to discord
-  // user X"; the user then authenticated (e.g. Steward email login) via the
-  // opaque continuation credential. Bind the Discord identity so
-  // routeDiscordMessage resolves their DMs to the provisioned agent instead of
-  // onboarding forever. Skipped on gateway turns themselves
+  // Discord / Telegram: a PRIOR gateway turn attested "this session belongs
+  // to platform user X"; the user then authenticated (e.g. Steward email
+  // login) via the opaque continuation credential. Bind the platform identity
+  // so the gateway router resolves their DMs to the provisioned agent instead
+  // of onboarding forever. Skipped on gateway turns themselves
   // (input.trustedPlatformIdentity): there the authenticated account was
-  // RESOLVED FROM user_identities.discord_id, so the link already exists and
-  // re-linking would just add a DB round trip to every DM turn.
+  // RESOLVED FROM the user_identities projection, so the link already exists
+  // and re-linking would just add a DB round trip to every DM turn. Also
+  // skipped in strict trusted-telegram redemption: the legacy Telegram auth
+  // route durably links telegram_id + phone itself before redeeming.
   if (
-    session.platform === "discord" &&
+    isBrowserLinkablePlatform(session.platform) &&
     session.platformUserId &&
-    input.trustedPlatformIdentity !== true
+    input.trustedPlatformIdentity !== true &&
+    input.continuationMode !== "trusted-telegram"
   ) {
+    const platform = session.platform;
+    if (platform === "telegram" && input.authenticatedUser.telegramId === session.platformUserId) {
+      // Already linked (eliza-app JWT carries the signed Telegram id).
+      return session;
+    }
     if (input.confirmPlatformLink !== true) {
-      throw new ElizaError("Discord identity linking requires explicit confirmation", {
-        code: "ONBOARDING_PLATFORM_LINK_CONFIRMATION_REQUIRED",
-        context: { platform: "discord" },
-        severity: "ephemeral",
-      });
+      throw new ElizaError(
+        `${platformLinkLabel(platform)} identity linking requires explicit confirmation`,
+        {
+          code: "ONBOARDING_PLATFORM_LINK_CONFIRMATION_REQUIRED",
+          context: { platform },
+          severity: "ephemeral",
+        },
+      );
     }
     // Same error policy as the phone link below: success:false is the designed
     // tenant-safety decline (identity owned by another account) and onboarding
     // continues; a genuine infra failure throws and propagates — it reruns on
     // every eligible turn, so a transient throw self-heals on the next attempt.
-    const discordLink = await elizaAppUserService.linkDiscordToUser(
-      input.authenticatedUser.userId,
-      {
-        discordId: session.platformUserId,
-        username: session.platformDisplayName?.trim() || session.platformUserId,
-      },
-    );
-    if (!discordLink.success) {
-      throw new ElizaError(discordLink.error || "Discord identity could not be linked", {
-        code: "ONBOARDING_PLATFORM_IDENTITY_CONFLICT",
-        context: { platform: "discord" },
-        severity: "ephemeral",
-      });
+    const displayName = session.platformDisplayName?.trim() || session.platformUserId;
+    const link =
+      platform === "discord"
+        ? await elizaAppUserService.linkDiscordToUser(input.authenticatedUser.userId, {
+            discordId: session.platformUserId,
+            username: displayName,
+          })
+        : await elizaAppUserService.linkTelegramToUser(input.authenticatedUser.userId, {
+            id: session.platformUserId,
+            username: displayName,
+          });
+    if (!link.success) {
+      throw new ElizaError(
+        link.error || `${platformLinkLabel(platform)} identity could not be linked`,
+        {
+          code: "ONBOARDING_PLATFORM_IDENTITY_CONFLICT",
+          context: { platform },
+          severity: "ephemeral",
+        },
+      );
     }
     return session;
   }
@@ -779,6 +822,17 @@ function assertAuthenticatedTelegramIdentity(
   }
   const signedPlatformId = input.authenticatedUser.telegramId;
   if (signedPlatformId === session.platformUserId) {
+    return;
+  }
+
+  // A Steward browser continuation carries no signed Telegram identity — the
+  // opaque continuation token (delivered only inside the Telegram DM) plus the
+  // explicit confirmPlatformLink turn is the ownership proof, exactly like the
+  // Discord continuation path (#18161). Strict trusted-telegram redemption
+  // (the legacy widget auth route) always carries the signed id and never
+  // takes this branch. A caller whose token DOES carry a Telegram id that
+  // differs from the session's stays a hard mismatch.
+  if (signedPlatformId === undefined && input.continuationMode !== "trusted-telegram") {
     return;
   }
 
@@ -1061,7 +1115,7 @@ export async function runOnboardingChatWithStore(
   // an existing trusted session and match its signed Telegram identity before
   // any new session, account binding, or provisioning work can occur.
   assertTrustedTelegramContinuation(session, input);
-  assertConfirmedDiscordContinuation(session, input);
+  assertConfirmedContinuation(session, input);
 
   // An untrusted caller must never create a platform-scoped session. Opaque
   // browser credentials resolve to an existing platform session above.
@@ -1182,13 +1236,15 @@ export async function runOnboardingChatWithStore(
     handoffComplete = copied.copied;
   }
 
+  // One continuation URL shape for every messaging platform: the opaque
+  // token alone. Telegram used to append `method=telegram&link=true`, which
+  // forced the LEGACY homepage widget + phone-number flow; it now rides the
+  // same ElizaCloud/Steward login + identity-preview/confirm continuation as
+  // Discord (#18161), and the login surface decides the UX from the resolved
+  // session's platform, never from URL hints.
   const loginParams = new URLSearchParams({
     onboardingSession: session.continuationToken ?? session.id,
   });
-  if (session.platform === "telegram") {
-    loginParams.set("method", "telegram");
-    loginParams.set("link", "true");
-  }
   const loginUrl = onboardingLoginAppPath(`/get-started/?${loginParams.toString()}`);
   const panelUrl = controlPanelUrl(session.agentId);
   // The CTA is derived FIRST and the copy chosen from whether it exists, so

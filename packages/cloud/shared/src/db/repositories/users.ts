@@ -71,6 +71,13 @@ export interface DiscordIdentityLink {
   discord_avatar_url?: string | null;
 }
 
+export interface TelegramIdentityLink {
+  telegram_id: string;
+  telegram_username?: string | null;
+  telegram_first_name?: string | null;
+  telegram_photo_url?: string | null;
+}
+
 /**
  * Repository for user database operations.
  *
@@ -411,6 +418,45 @@ export class UsersRepository {
       .where(eq(users.id, id))
       .returning();
     return updated;
+  }
+
+  /**
+   * Links Telegram on the canonical user and routing projection atomically.
+   * The Telegram gateway resolves senders through the userIdentities
+   * projection (`findByTelegramIdWithOrganization`), so a canonical-only
+   * write would fabricate a successful link that inbound DM routing cannot
+   * observe. Mirrors {@link linkDiscordIdentity}.
+   */
+  async linkTelegramIdentity(
+    userId: string,
+    identity: TelegramIdentityLink,
+  ): Promise<User | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      const updatedAt = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({ ...identity, updated_at: updatedAt })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!updated) return undefined;
+
+      await tx
+        .insert(userIdentities)
+        .values({
+          user_id: userId,
+          steward_user_id: updated.steward_user_id,
+          is_anonymous: updated.is_anonymous,
+          anonymous_session_id: updated.anonymous_session_id,
+          expires_at: updated.expires_at,
+          ...identity,
+          updated_at: updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: userIdentities.user_id,
+          set: { ...identity, updated_at: updatedAt },
+        });
+      return updated;
+    });
   }
 
   /** Links Discord on the canonical user and routing projection atomically. */
