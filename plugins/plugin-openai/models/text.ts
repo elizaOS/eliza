@@ -48,8 +48,10 @@ import {
   getMegaModel,
   getNanoModel,
   getResponseHandlerModel,
+  getSetting,
   getSmallModel,
   getUsageProvider,
+  isBrowser,
   isCerebrasMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
@@ -327,14 +329,41 @@ function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   return id === "gpt-oss-120b" || id === "zai-glm-4.7";
 }
 
-/** Maps thinking suppression only for the Cerebras models that document it. */
-function resolveCerebrasThinkingOffReasoningEffort(
+/** Detects OpenCode Go from the configured upstream, even behind a browser proxy. */
+function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
+  const isGoURL = (value: string | undefined): boolean => {
+    if (!value) return false;
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === "https:" &&
+        url.hostname.toLowerCase() === "opencode.ai" &&
+        (url.pathname === "/zen/go/v1" || url.pathname.startsWith("/zen/go/v1/"))
+      );
+    } catch {
+      // error-policy:J3 Malformed configuration is not a matching provider URL.
+      return false;
+    }
+  };
+  return (
+    isGoURL(getSetting(runtime, "OPENAI_BASE_URL")) ||
+    (isBrowser() && isGoURL(getSetting(runtime, "OPENAI_BROWSER_BASE_URL")))
+  );
+}
+
+/** Maps thinking suppression only for endpoint/model pairs proven to support it. */
+function resolveThinkingOffReasoningEffort(
+  runtime: IAgentRuntime,
   modelName: string | undefined
 ): "low" | "none" | undefined {
   if (!modelName) return undefined;
   const id = normalizeCerebrasModelId(modelName);
-  if (id === "gpt-oss-120b") return "low";
-  if (id === "zai-glm-4.7") return "none";
+  if (isCerebrasMode(runtime)) {
+    if (id === "gpt-oss-120b") return "low";
+    if (id === "zai-glm-4.7") return "none";
+  }
+
+  if (isOpenCodeGoMode(runtime) && id === "deepseek-v4-flash") return "none";
   return undefined;
 }
 
@@ -371,16 +400,13 @@ function resolveProviderOptions(
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
   const reasoningEffort = resolveReasoningEffort(runtime, modelName);
-  // Thinking-off suppression outranks the env pin and the Cerebras "low"
-  // default (matching plugin-elizacloud: Stage-1/planner calls stay cheap
-  // regardless of a user-pinned effort). An explicit caller
-  // `providerOptions.openai.reasoningEffort` still wins via the spread guard
-  // below. Scoped to Cerebras mode: OpenAI-direct rejects `"none"`.
+  // Thinking-off suppression outranks the env pin and provider default so
+  // forced-tool planner calls do not enter an incompatible reasoning mode.
+  // Keep this endpoint/model allowlist exact: OpenAI-direct and many compatible
+  // endpoints reject `"none"`. An explicit caller value still wins below.
   const elizaThinking = (rawProviderOptions?.eliza as { thinking?: unknown } | undefined)?.thinking;
   const thinkingOffEffort =
-    elizaThinking === "off" && isCerebrasMode(runtime)
-      ? resolveCerebrasThinkingOffReasoningEffort(modelName)
-      : undefined;
+    elizaThinking === "off" ? resolveThinkingOffReasoningEffort(runtime, modelName) : undefined;
   const effectiveReasoningEffort = thinkingOffEffort ?? reasoningEffort;
 
   if (

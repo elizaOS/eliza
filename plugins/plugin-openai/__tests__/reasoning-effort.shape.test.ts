@@ -264,6 +264,77 @@ describe("eliza.thinking='off' reasoning suppression (Cerebras mode)", () => {
   });
 });
 
+describe("eliza.thinking='off' reasoning suppression (OpenCode Go)", () => {
+  const thinkingOff = { prompt: "hi", providerOptions: { eliza: { thinking: "off" } } } as never;
+
+  it("maps thinking-off to 'none' for DeepSeek V4 Flash", () => {
+    const runtime = buildRuntime({
+      OPENAI_API_KEY: "sk-test",
+      OPENAI_BASE_URL: "https://opencode.ai/zen/go/v1",
+    });
+    const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
+    expect(
+      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+    ).toBe("none");
+  });
+
+  it("uses the configured upstream when a browser proxy hides OpenCode Go", () => {
+    vi.stubGlobal("document", {});
+    try {
+      const runtime = buildRuntime({
+        OPENAI_API_KEY: "sk-test",
+        OPENAI_BASE_URL: "https://opencode.ai/zen/go/v1",
+        OPENAI_BROWSER_BASE_URL: "https://app.example.test/api/openai",
+      });
+      const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
+      expect(
+        (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+      ).toBe("none");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("detects a direct OpenCode Go browser endpoint without a server base URL", () => {
+    vi.stubGlobal("document", {});
+    try {
+      const runtime = buildRuntime({
+        OPENAI_API_KEY: "sk-test",
+        OPENAI_BROWSER_BASE_URL: "https://opencode.ai/zen/go/v1",
+      });
+      const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
+      expect(
+        (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+      ).toBe("none");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not send 'none' to other OpenCode Go models", () => {
+    const runtime = buildRuntime({
+      OPENAI_API_KEY: "sk-test",
+      OPENAI_BASE_URL: "https://opencode.ai/zen/go/v1",
+    });
+    const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "glm-5.1");
+    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+    expect(openai?.reasoningEffort).toBeUndefined();
+  });
+
+  it.each(["https://api.openai.com/v1", "https://opencode.ai/zen/go/v10", "not-a-url"])(
+    "does not apply the DeepSeek exception to another endpoint: %s",
+    (baseURL) => {
+      const runtime = buildRuntime({
+        OPENAI_API_KEY: "sk-test",
+        OPENAI_BASE_URL: baseURL,
+      });
+      const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
+      const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+      expect(openai?.reasoningEffort).toBeUndefined();
+    }
+  );
+});
+
 describe("strip reasoning-content from outbound assistant messages", () => {
   it("drops `type: reasoning` parts from a content array (tool-call branch)", () => {
     const normalized = __INTERNAL_normalizeNativeMessages([
