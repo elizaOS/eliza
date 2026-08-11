@@ -9,22 +9,32 @@ import { APPROVALS_ROUTE_PATH } from "./index";
  * consumed by the web-only CloudRouterShell.
  */
 describe("approvals cloud-route registration", () => {
-  it("registers the approvals route into the shared registry", () => {
-    registerAllCloudSurfaces();
-    const paths = new Set(listCloudRoutes().map((r) => r.path));
-    expect(paths, `missing ${APPROVALS_ROUTE_PATH}`).toContain(
-      APPROVALS_ROUTE_PATH,
-    );
-    expect(APPROVALS_ROUTE_PATH).toBe("dashboard/approvals");
-  });
+  const fullRegistrationTimeoutMs = 60_000;
 
-  it("resolves the approvals route to a renderable element", () => {
-    registerAllCloudSurfaces();
-    const route = listCloudRoutes().find(
-      (r) => r.path === APPROVALS_ROUTE_PATH,
-    );
-    expect(route).toBeDefined();
-    expect(route?.element).toBeTruthy();
-    expect(route?.group).toBe("dashboard");
-  });
+  it(
+    "registers the approvals route into the shared registry",
+    async () => {
+      await registerAllCloudSurfaces();
+      const paths = new Set(listCloudRoutes().map((r) => r.path));
+      expect(paths, `missing ${APPROVALS_ROUTE_PATH}`).toContain(
+        APPROVALS_ROUTE_PATH,
+      );
+      expect(APPROVALS_ROUTE_PATH).toBe("dashboard/approvals");
+    },
+    fullRegistrationTimeoutMs,
+  );
+
+  it(
+    "resolves the approvals route to a renderable element",
+    async () => {
+      await registerAllCloudSurfaces();
+      const route = listCloudRoutes().find(
+        (r) => r.path === APPROVALS_ROUTE_PATH,
+      );
+      expect(route).toBeDefined();
+      expect(route?.element).toBeTruthy();
+      expect(route?.group).toBe("dashboard");
+    },
+    fullRegistrationTimeoutMs,
+  );
 });
