@@ -2130,6 +2130,21 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     }
   });
 
+  it("routes programmatic converse capture to one realtime session", async () => {
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.startRecording("converse");
+      result.current.startRecording("converse");
+      await Promise.resolve();
+    });
+
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+    expect(realtimeVoiceMock.startedConversationIds).toEqual([conversationId]);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(true);
+  });
+
   it("parks Talk visibly OFF when a LIVE session dies past the client's recovery budget", async () => {
     const { result, rerender } = renderHook(() => useShellController());
 

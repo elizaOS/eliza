@@ -1,4 +1,4 @@
-/** Exercises the public browser and authenticated native Cloud pairing contracts. */
+/** Exercises loopback browser and authenticated native Cloud pairing exchanges. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import { AuthenticationError } from "@/lib/api/errors";
@@ -11,6 +11,7 @@ const OTHER_ORG_ID = "44444444-4444-4444-8444-444444444444";
 const AGENT_ID = "55555555-5555-4555-8555-555555555555";
 const TOKEN = "A".repeat(43);
 const EXPECTED_ORIGIN = `https://${AGENT_ID}.elizacloud.ai`;
+const LOCAL_ORIGIN = "http://127.0.0.1:43123";
 
 let authenticatedUser = {
   id: USER_ID,
@@ -26,8 +27,7 @@ const requireAuthOrApiKeyWithOrg = mock(async () => {
     authMethod,
   };
 });
-const findByIdAndOrg = mock();
-const validateToken = mock();
+const claimBrowserToken = mock();
 const claimAuthenticatedNativeToken = mock();
 const loggerError = mock(() => undefined);
 
@@ -35,15 +35,9 @@ mock.module("@/lib/auth", () => ({
   requireAuthOrApiKeyWithOrg,
 }));
 
-mock.module("@/db/repositories/agent-sandboxes", () => ({
-  agentSandboxesRepository: {
-    findByIdAndOrg,
-  },
-}));
-
 mock.module("@/lib/services/pairing-token", () => ({
   getPairingTokenService: () => ({
-    validateToken,
+    claimBrowserToken,
     claimAuthenticatedNativeToken,
   }),
 }));
@@ -70,14 +64,6 @@ app.use("*", async (c, next) => {
   observedAuthMethod = c.get("authMethod");
 });
 app.route("/api/auth/pair", pairRoute);
-
-const sandbox = {
-  id: AGENT_ID,
-  organization_id: ORG_ID,
-  user_id: USER_ID,
-  agent_name: "Native agent",
-  environment_vars: { ELIZA_API_TOKEN: "agent-api-token" },
-};
 
 const pairingToken = {
   userId: USER_ID,
@@ -132,10 +118,13 @@ describe("Cloud pairing route", () => {
     observedAuthMethod = undefined;
     requireAuthOrApiKeyWithOrg.mockClear();
     loggerError.mockClear();
-    findByIdAndOrg.mockReset();
-    findByIdAndOrg.mockResolvedValue(sandbox);
-    validateToken.mockReset();
-    validateToken.mockResolvedValue(pairingToken);
+    claimBrowserToken.mockReset();
+    claimBrowserToken.mockResolvedValue({
+      status: "claimed",
+      pairingToken,
+      apiKey: "agent-api-token",
+      agentName: "Native agent",
+    });
     claimAuthenticatedNativeToken.mockReset();
     claimAuthenticatedNativeToken.mockResolvedValue({
       status: "claimed",
@@ -145,42 +134,95 @@ describe("Cloud pairing route", () => {
     });
   });
 
-  test("keeps the public browser exchange Origin-bound and compatible", async () => {
-    const missingOrigin = await post("/api/auth/pair", { token: TOKEN });
+  test("keeps the public browser exchange loopback-bound for local Docker", async () => {
+    const missingOrigin = await post("/api/auth/pair", {
+      token: TOKEN,
+      agentId: AGENT_ID,
+    });
     expect(missingOrigin.status).toBe(400);
-    expect(validateToken).not.toHaveBeenCalled();
+    expect(claimBrowserToken).not.toHaveBeenCalled();
 
     const response = await post(
       "/api/auth/pair",
-      { token: TOKEN },
-      { Origin: EXPECTED_ORIGIN },
+      { token: TOKEN, agentId: AGENT_ID },
+      { Origin: LOCAL_ORIGIN },
     );
 
     expect(response.status).toBe(200);
-    expect(validateToken).toHaveBeenCalledWith(TOKEN, EXPECTED_ORIGIN);
+    expect(claimBrowserToken).toHaveBeenCalledWith(TOKEN, {
+      agentId: AGENT_ID,
+      expectedOrigin: LOCAL_ORIGIN,
+    });
     expect(claimAuthenticatedNativeToken).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
       message: "Paired successfully",
       apiKey: "agent-api-token",
       agentName: "Native agent",
+      agentId: AGENT_ID,
     });
   });
 
-  test("keeps a wrong browser Origin on the public validation path", async () => {
-    validateToken.mockResolvedValueOnce(null);
+  test("keeps a wrong loopback Origin on the public validation path", async () => {
+    claimBrowserToken.mockResolvedValueOnce({ status: "invalid" });
 
     const response = await post(
       "/api/auth/pair",
-      { token: TOKEN },
-      { Origin: "https://wrong-agent.elizacloud.ai" },
+      { token: TOKEN, agentId: AGENT_ID },
+      { Origin: "http://localhost:43124" },
     );
 
     expect(response.status).toBe(401);
-    expect(validateToken).toHaveBeenCalledWith(
-      TOKEN,
-      "https://wrong-agent.elizacloud.ai",
-    );
+    expect(claimBrowserToken).toHaveBeenCalledWith(TOKEN, {
+      agentId: AGENT_ID,
+      expectedOrigin: "http://localhost:43124",
+    });
     expect(claimAuthenticatedNativeToken).not.toHaveBeenCalled();
+  });
+
+  test("does not consume a local token while its sandbox credential is unavailable", async () => {
+    claimBrowserToken.mockResolvedValueOnce({
+      status: "sandbox-credential-unavailable",
+    });
+
+    const response = await post(
+      "/api/auth/pair",
+      { token: TOKEN, agentId: AGENT_ID },
+      { Origin: LOCAL_ORIGIN },
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "Pairing credential unavailable",
+    });
+  });
+
+  test("accepts IPv6 loopback and rejects malformed platform identity", async () => {
+    const ipv6 = await post(
+      "/api/auth/pair",
+      { token: TOKEN, agentId: AGENT_ID },
+      { Origin: "http://[::1]:43123" },
+    );
+    expect(ipv6.status).toBe(200);
+
+    claimBrowserToken.mockClear();
+    const malformed = await post(
+      "/api/auth/pair",
+      { token: TOKEN, agentId: "agent-1" },
+      { Origin: LOCAL_ORIGIN },
+    );
+    expect(malformed.status).toBe(400);
+    expect(claimBrowserToken).not.toHaveBeenCalled();
+  });
+
+  test("rejects forged remote managed origins before token validation", async () => {
+    const response = await post(
+      "/api/auth/pair",
+      { token: TOKEN, agentId: AGENT_ID },
+      { Origin: EXPECTED_ORIGIN },
+    );
+
+    expect(response.status).toBe(403);
+    expect(claimBrowserToken).not.toHaveBeenCalled();
   });
 
   test("requires an explicit Cloud bearer for the native exchange", async () => {

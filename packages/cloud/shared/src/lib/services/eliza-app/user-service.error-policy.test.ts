@@ -6,14 +6,18 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const findByDiscordIdWithOrganization = mock();
+const findByCanonicalDiscordIdWithOrganization = mock();
 const findByPhoneNumberWithOrganization = mock();
 const update = mock();
 const linkVerifiedPhone = mock();
 const linkTelegramAndPhoneIdentity = mock();
+const refreshDiscordProjectionForWrite = mock();
+const linkDiscordIdentity = mock();
 
 mock.module("../../../db/repositories/users", () => ({
   usersRepository: {
     findByDiscordIdWithOrganization,
+    findByCanonicalDiscordIdWithOrganization,
     findByPhoneNumberWithOrganization,
     findByTelegramIdWithOrganization: mock(),
     findByEmailWithOrganization: mock(),
@@ -22,6 +26,8 @@ mock.module("../../../db/repositories/users", () => ({
     update,
     linkVerifiedPhone,
     linkTelegramAndPhoneIdentity,
+    refreshDiscordProjectionForWrite,
+    linkDiscordIdentity,
     create: mock(),
   },
 }));
@@ -66,11 +72,33 @@ function uniqueConstraintError(): Error {
 describe("ElizaAppUserService.findOrCreateByDiscordId error policy", () => {
   beforeEach(() => {
     findByDiscordIdWithOrganization.mockReset();
+    findByCanonicalDiscordIdWithOrganization.mockReset();
     findByPhoneNumberWithOrganization.mockReset();
     update.mockReset();
     linkVerifiedPhone.mockReset();
+    refreshDiscordProjectionForWrite.mockReset();
+    refreshDiscordProjectionForWrite.mockResolvedValue(undefined);
+    // No canonical-only legacy link by default.
+    findByCanonicalDiscordIdWithOrganization.mockResolvedValue(undefined);
     // Phone is unowned by default so the phone-link branch is reachable.
     findByPhoneNumberWithOrganization.mockResolvedValue(undefined);
+  });
+
+  test("converges a canonical-only legacy Discord link into the projection instead of forking a second account", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue(undefined);
+    findByCanonicalDiscordIdWithOrganization.mockResolvedValue({
+      id: "legacy-user",
+      discord_id: "d-legacy",
+      organization: { id: "org-legacy" },
+    });
+
+    const result = await elizaAppUserService.findOrCreateByDiscordId("d-legacy", {
+      username: "legacy",
+    });
+
+    expect(result.isNew).toBe(false);
+    expect(result.user.id).toBe("legacy-user");
+    expect(refreshDiscordProjectionForWrite).toHaveBeenCalledWith("legacy-user");
   });
 
   test("propagates a real DB failure while linking a phone (fail closed)", async () => {
@@ -239,5 +267,50 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
     );
 
     expect(result).toEqual({ success: false, error: "The account no longer exists" });
+  });
+});
+
+describe("ElizaAppUserService.linkDiscordToUser", () => {
+  beforeEach(() => {
+    linkDiscordIdentity.mockReset();
+  });
+
+  test("uses the atomic canonical-plus-projection repository boundary", async () => {
+    linkDiscordIdentity.mockResolvedValue({ id: "user-1" });
+    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
+      discordId: "d-100",
+      username: "sam",
+    });
+    expect(result).toEqual({ success: true });
+    expect(linkDiscordIdentity).toHaveBeenCalledWith("user-1", {
+      discord_id: "d-100",
+      discord_username: "sam",
+      discord_global_name: null,
+      discord_avatar_url: null,
+    });
+  });
+
+  test("reports a concurrent uniqueness conflict as a real decline", async () => {
+    linkDiscordIdentity.mockRejectedValue(
+      Object.assign(new Error("duplicate key"), { code: "23505" }),
+    );
+    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
+      discordId: "d-100",
+      username: "sam",
+    });
+    expect(result).toEqual({
+      success: false,
+      error: "This Discord account is already linked to another account",
+    });
+  });
+
+  test("propagates atomic transaction infrastructure failures", async () => {
+    linkDiscordIdentity.mockRejectedValue(new Error("connection terminated unexpectedly"));
+    await expect(
+      elizaAppUserService.linkDiscordToUser("user-1", {
+        discordId: "d-100",
+        username: "sam",
+      }),
+    ).rejects.toThrow("connection terminated unexpectedly");
   });
 });

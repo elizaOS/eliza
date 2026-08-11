@@ -12,17 +12,28 @@ import {
 import { activeServerKindToFirstRunRuntimeTarget } from "../first-run/runtime-target";
 import { getFrontendPlatform } from "../platform/platform-guards";
 import type { AgentProfile } from "./agent-profile-types";
-import { loadAgentProfileRegistry, setActiveProfileId } from "./agent-profiles";
-import { clearAllChatDrafts } from "./ChatComposerContext.hooks";
 import {
-  createPersistedActiveServer,
-  savePersistedActiveServer,
-} from "./persistence";
-import { isTrustedRestoreApiBaseUrl } from "./runtime-url-trust";
+  activeServerIdForAgentProfile,
+  loadAgentProfileRegistry,
+  persistAgentProfileSelection,
+} from "./agent-profiles";
+import { clearAllChatDrafts } from "./ChatComposerContext.hooks";
+import { createPersistedActiveServer } from "./persistence";
+import {
+  isTrustedCloudApiBaseUrl,
+  isTrustedRestoreApiBaseUrl,
+} from "./runtime-url-trust";
 
 export type SwitchRuntimeResult =
   | { ok: true; profile: AgentProfile }
-  | { ok: false; reason: "not-found" | "untrusted-remote" };
+  | {
+      ok: false;
+      reason:
+        | "not-found"
+        | "persistence-failed"
+        | "untrusted-cloud"
+        | "untrusted-remote";
+    };
 
 /**
  * Switch the active runtime IN PLACE — the "My Runtimes" non-destructive switch.
@@ -53,16 +64,23 @@ export function switchRuntimeNonDestructive(
   ) {
     return { ok: false, reason: "untrusted-remote" };
   }
+  if (
+    profile.kind === "cloud" &&
+    !isTrustedCloudApiBaseUrl(profile.apiBase, profile.cloudAgentId)
+  ) {
+    return { ok: false, reason: "untrusted-cloud" };
+  }
 
   const server = createPersistedActiveServer({
     kind: profile.kind,
-    id: profile.id,
+    id: activeServerIdForAgentProfile(profile),
     apiBase: profile.apiBase,
     accessToken: profile.accessToken,
     label: profile.label,
   });
-  savePersistedActiveServer(server);
-  setActiveProfileId(profile.id);
+  if (!persistAgentProfileSelection(profile.id, server)) {
+    return { ok: false, reason: "persistence-failed" };
+  }
 
   // Cloud / remote runtimes get the seamless in-place base + token swap.
   // Local runtimes are same-origin: re-point back to the app's own host and
@@ -70,12 +88,7 @@ export function switchRuntimeNonDestructive(
   // the live client stuck on the stale remote base + token for the rest of the
   // session (it only self-heals on reboot).
   if (profile.apiBase) {
-    // Set THIS profile's own token, clearing when it has none — never inherit
-    // the prior runtime's bearer. A tokenless remote (e.g. a VPS added in My
-    // Runtimes) would otherwise keep the cloud token and send it to that backend
-    // (silent cross-backend credential leak / auth failure).
-    client.setToken(profile.accessToken ?? null);
-    client.repointBaseUrl(profile.apiBase);
+    client.repointBaseUrl(profile.apiBase, profile.accessToken ?? null);
   } else if (typeof window !== "undefined") {
     client.setToken(null);
     client.repointBaseUrl(window.location.origin);

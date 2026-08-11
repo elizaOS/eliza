@@ -16,6 +16,7 @@ import type { Hono } from "hono";
 import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { serveBlobHostRequest } from "./blob-host";
+import { serveRegistryHostRequest } from "./registry-host";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
@@ -450,6 +451,8 @@ export default {
     if (frontendAliasResponse) return frontendAliasResponse;
     const blobResponse = await serveBlobHostRequest(request, url, env);
     if (blobResponse) return blobResponse;
+    const registryResponse = await serveRegistryHostRequest(request, url, env);
+    if (registryResponse) return registryResponse;
     const agentProxyResponse = proxyGeneratedAgentRequest(request, env, url);
     if (agentProxyResponse) return agentProxyResponse;
     const frontendRedirect = redirectFrontendHost(url, env);

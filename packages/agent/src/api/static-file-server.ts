@@ -221,27 +221,48 @@ export function injectApiBaseIntoHtml(
  * return the token to inject (or `null`).
  *
  * The token is the full-capability API token, and the dashboard HTML is served
- * pre-auth, so embedding it is a capability grant. It is injected when:
- * - the agent runs inside a cloud-provisioned container (already behind cloud
- *   auth, with a controlled host/origin set), or
- * - the operator explicitly opts in with `ELIZA_FORCE_INJECT_TOKEN` — for
- *   self-hosters who front the dashboard with their own auth gate. This MUST NOT
- *   be enabled on a directly exposed agent port; we warn once when it is set
- *   outside a cloud container so the risk is observable.
+ * pre-auth, so embedding it is a capability grant. Managed containers never
+ * embed it: their browser session must arrive through the scoped pairing
+ * handoff. A self-hosted operator can explicitly opt in with
+ * `ELIZA_FORCE_INJECT_TOKEN` when an independent auth gate protects the HTML.
+ * This MUST NOT be enabled on a directly exposed agent port; we warn once so
+ * the risk is observable.
  */
 export function resolveInjectedDashboardToken(): string | null {
   const cloudProvisioned = isCloudProvisionedContainer();
   const forceInjectToken = isTruthyEnvValue(
     process.env.ELIZA_FORCE_INJECT_TOKEN,
   );
-  if (forceInjectToken && !cloudProvisioned && !warnedForceInjectToken) {
+  if (cloudProvisioned || !forceInjectToken) return null;
+  if (!warnedForceInjectToken) {
     warnedForceInjectToken = true;
     logger.warn(
       "[static-file-server] ELIZA_FORCE_INJECT_TOKEN is set — embedding the API token in served dashboard HTML. Ensure the dashboard is fronted by your own auth gate; do not enable this on a directly exposed agent port.",
     );
   }
-  if (!cloudProvisioned && !forceInjectToken) return null;
   return resolveApiToken(process.env);
+}
+
+/** Compose the exact SPA document returned by the static dashboard boundary. */
+export function buildServedDashboardHtml(html: Buffer): Buffer {
+  const injectedToken = resolveInjectedDashboardToken();
+  // The VAPID PUBLIC key is safe for the browser. The matching PRIVATE key
+  // remains a cloud secret and is never injected here.
+  const webPushVapidPublicKey =
+    process.env.ELIZA_WEB_PUSH_VAPID_PUBLIC_KEY?.trim() || null;
+  const injectOpts =
+    injectedToken || webPushVapidPublicKey
+      ? {
+          ...(injectedToken ? { apiToken: injectedToken } : {}),
+          ...(webPushVapidPublicKey ? { webPushVapidPublicKey } : {}),
+        }
+      : undefined;
+
+  return injectApiBaseIntoHtml(
+    html,
+    process.env.ELIZA_EXTERNAL_BASE_URL,
+    injectOpts,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -334,31 +355,9 @@ export function serveStaticUi(
 
   if (!uiIndexHtml) return false;
 
-  // When served behind a reverse proxy that rewrites the app under a path prefix,
-  // inject the API base so the UI client sends requests to the correct path prefix.
-  // For cloud-provisioned containers, also inject the API token so the browser
-  // client can authenticate without requiring a pairing flow. Self-hosted
-  // operators who front the UI with their own auth gate (e.g. a reverse-proxy
-  // cookie wall) can opt into the same token injection with
-  // ELIZA_FORCE_INJECT_TOKEN (see resolveInjectedDashboardToken).
-  const cloudToken = resolveInjectedDashboardToken();
-  // Expose the VAPID PUBLIC key (safe for the browser) so the installed PWA can
-  // subscribe to Web Push. The PRIVATE key stays a cloud secret. Absent env ⇒
-  // the client renders the "push not configured" state.
-  const webPushVapidPublicKey =
-    process.env.ELIZA_WEB_PUSH_VAPID_PUBLIC_KEY?.trim() || null;
-  const injectOpts =
-    cloudToken || webPushVapidPublicKey
-      ? {
-          ...(cloudToken ? { apiToken: cloudToken } : {}),
-          ...(webPushVapidPublicKey ? { webPushVapidPublicKey } : {}),
-        }
-      : undefined;
-  const html = injectApiBaseIntoHtml(
-    uiIndexHtml,
-    process.env.ELIZA_EXTERNAL_BASE_URL,
-    injectOpts,
-  );
+  // Reverse-proxy config and explicit self-hosted grants are resolved at this
+  // boundary so tests can exercise the exact document that crosses pre-auth.
+  const html = buildServedDashboardHtml(uiIndexHtml);
 
   sendStaticResponse(
     req,

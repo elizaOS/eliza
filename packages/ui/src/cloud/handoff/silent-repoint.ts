@@ -62,6 +62,7 @@ export function silentlyRepointToDedicated(opts: {
   addAgentProfile({
     kind: "cloud",
     label: server.label,
+    cloudAgentId: dedicatedAgentId,
     apiBase: containerBase,
     accessToken: authToken,
   });

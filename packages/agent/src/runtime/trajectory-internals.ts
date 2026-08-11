@@ -1584,6 +1584,23 @@ function snapshotCaptureParams(
   return snapshot;
 }
 
+/**
+ * A tool-call-only completion (`finishReason=tool-calls` — a planner turn that
+ * emits only a tool call, or a Stage-1 truncated at its completion-token cap)
+ * produces no assistant text, so producers hand this recorder
+ * `response: undefined` despite the declared string type. `validateLlmCapture`
+ * accepts an EMPTY response (allowEmpty) but rejects a missing one, which
+ * silently dropped the llm sub-capture for exactly the tool-heavy turns
+ * trajectories exist to explain. Coerce only absence — a present-but-non-string
+ * response is still a producer bug and must keep failing validation.
+ */
+function coerceAbsentLlmResponse(
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  if (params.response != null) return params;
+  return { ...params, response: "" };
+}
+
 export function normalizeLlmCallPayload(
   args: unknown[],
 ): { stepId: string; params: Record<string, unknown> } | null {
@@ -1602,10 +1619,12 @@ export function normalizeLlmCallPayload(
         context: { field: !stepId ? "stepId" : "payload" },
       });
     }
-    const params = redactTrajectoryParams({
-      ...details,
-      stepId,
-    });
+    const params = redactTrajectoryParams(
+      coerceAbsentLlmResponse({
+        ...details,
+        stepId,
+      }),
+    );
     validateLlmCapture(params, stepId);
     const snapshot = snapshotCaptureParams(params, stepId);
     validateLlmCapture(snapshot, stepId);
@@ -1631,7 +1650,9 @@ export function normalizeLlmCallPayload(
   }
   const normalizedParams =
     params.stepId === stepId ? params : { ...params, stepId };
-  const redactedParams = redactTrajectoryParams(normalizedParams);
+  const redactedParams = redactTrajectoryParams(
+    coerceAbsentLlmResponse(normalizedParams),
+  );
   validateLlmCapture(redactedParams, stepId);
   const snapshot = snapshotCaptureParams(redactedParams, stepId);
   validateLlmCapture(snapshot, stepId);
