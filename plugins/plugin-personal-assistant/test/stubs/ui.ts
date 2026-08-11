@@ -25,6 +25,14 @@ export const client = new ElizaClient();
 export const APP_PAUSE_EVENT = "eliza:app-pause";
 export const APP_RESUME_EVENT = "eliza:app-resume";
 
+export function isAuthenticatedNow(): boolean {
+  return true;
+}
+
+export function subscribeAuthStatus(): () => void {
+  return () => {};
+}
+
 export function isElectrobunRuntime(): boolean {
   return false;
 }
