@@ -6,7 +6,13 @@
 // firing, and Skip-for-now. Drives the modal through an injected
 // `controllerOverride` stub (the live hook is covered by use-permission-priming.test).
 import type { PermissionId } from "@elizaos/shared/contracts/permissions";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { installJsdomUiPolyfills } from "../../../test/portable-stories";
@@ -36,7 +42,15 @@ function item(
   status: PrimingItemStatus,
   canRequest = false,
 ): PrimingItem {
-  return { id, status, canRequest, requesting: false, resolved: false };
+  return {
+    id,
+    status,
+    canRequest,
+    requesting: false,
+    requestError: false,
+    recheckError: false,
+    resolved: false,
+  };
 }
 
 function makeController(
@@ -105,7 +119,7 @@ describe("PermissionPrimingModal", () => {
     expect(controller.skip).toHaveBeenCalledWith("microphone");
   });
 
-  it("shows the recovery callout for a denied card; retry re-checks when it can't re-prompt", () => {
+  it("shows the recovery callout for a denied card and routes recovery through the controller", async () => {
     const controller = makeController({
       items: [item("microphone", "denied", false)],
       active: item("microphone", "denied", false),
@@ -121,12 +135,51 @@ describe("PermissionPrimingModal", () => {
 
     expect(screen.getByTestId("priming-recovery-microphone")).toBeTruthy();
     // canRequest === false → the retry action re-checks status (post-Settings).
-    fireEvent.click(screen.getByTestId("priming-recovery-microphone-retry"));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("priming-recovery-microphone-retry"));
+    });
     expect(controller.recheck).toHaveBeenCalledWith("microphone");
     expect(controller.request).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByTestId("priming-recovery-microphone-settings"),
+      );
+    });
+    expect(controller.openSettings).toHaveBeenCalledWith("microphone");
   });
 
-  it("a denied card that can still re-prompt retries via request()", () => {
+  it("surfaces a native Settings launch failure in the recovery card", async () => {
+    const controller = makeController({
+      items: [item("notifications", "denied", false)],
+      active: item("notifications", "denied", false),
+      totalSteps: 1,
+      openSettings: vi.fn(async () => {
+        throw new Error("open exited 1");
+      }),
+    });
+    render(
+      <PermissionPrimingModal
+        open
+        onComplete={vi.fn()}
+        ids={["notifications"]}
+        controllerOverride={controller}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByTestId("priming-recovery-notifications-settings"),
+      );
+    });
+
+    expect(
+      screen.getByTestId("priming-recovery-notifications-settings-error")
+        .textContent,
+    ).toContain("Couldn't open Settings");
+  });
+
+  it("a denied card that can still re-prompt retries via request()", async () => {
     const controller = makeController({
       items: [item("location", "denied", true)],
       active: item("location", "denied", true),
@@ -139,8 +192,60 @@ describe("PermissionPrimingModal", () => {
         controllerOverride={controller}
       />,
     );
-    fireEvent.click(screen.getByTestId("priming-recovery-location-retry"));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("priming-recovery-location-retry"));
+    });
     expect(controller.request).toHaveBeenCalledWith("location");
+  });
+
+  it("labels a platform request failure as an error rather than a user denial", async () => {
+    const failed = {
+      ...item("notifications", "unknown", true),
+      requestError: true,
+    };
+    const controller = makeController({ items: [failed], active: failed });
+    renderModal(
+      <PermissionPrimingModal
+        ids={["notifications"]}
+        open
+        onComplete={vi.fn()}
+        controllerOverride={controller}
+      />,
+    );
+
+    expect(screen.getByText("Couldn’t request permission")).toBeTruthy();
+    expect(screen.queryByText("Permission was declined")).toBeNull();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByTestId("priming-recovery-notifications-retry"),
+      );
+    });
+    expect(controller.request).toHaveBeenCalledWith("notifications");
+  });
+
+  it("surfaces a failed post-Settings re-check and retries the re-check", async () => {
+    const failed = {
+      ...item("notifications", "denied", false),
+      recheckError: true,
+    };
+    const controller = makeController({ items: [failed], active: failed });
+    renderModal(
+      <PermissionPrimingModal
+        ids={["notifications"]}
+        open
+        onComplete={vi.fn()}
+        controllerOverride={controller}
+      />,
+    );
+
+    expect(screen.getByText("Couldn’t verify permission")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByTestId("priming-recovery-notifications-retry"),
+      );
+    });
+    expect(controller.recheck).toHaveBeenCalledWith("notifications");
+    expect(controller.request).not.toHaveBeenCalled();
   });
 
   it("renders a loading state until the initial check completes", () => {

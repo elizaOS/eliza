@@ -120,7 +120,7 @@ export default {
         "com.apple.security.files.user-selected.read-write": true,
         // Hardware device access
         "com.apple.security.device.camera": true,
-        "com.apple.security.device.microphone": true,
+        "com.apple.security.device.audio-input": true,
         // Screen recording (screencapture)
         "com.apple.security.device.screen-recording": true,
       },

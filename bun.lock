@@ -411,6 +411,7 @@
       "dependencies": {
         "@elizaos/agent": "workspace:*",
         "@elizaos/app-core": "workspace:*",
+        "@elizaos/core": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
