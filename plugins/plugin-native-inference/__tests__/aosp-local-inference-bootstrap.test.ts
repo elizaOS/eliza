@@ -16,6 +16,7 @@ import {
 import {
   type AospLoader,
   AospLoaderRuntimeService,
+  activateAospLocalInferenceModel,
   aospAsrAssetsPresent,
   buildAospLoadModelArgs,
   buildGenerateArgsFromParams,
@@ -32,6 +33,14 @@ import {
   shouldEvictChatForAvailMb,
   VOICE_COLOAD_KEEP_AVAIL_MB,
 } from "../src/aosp-local-inference-bootstrap";
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 describe("AOSP loader runtime service", () => {
   it("registers, starts, discovers, and stops through a real AgentRuntime", async () => {
@@ -54,7 +63,10 @@ describe("AOSP loader runtime service", () => {
     try {
       // Public mobile bootstrap can register before initialize. Startup stays
       // lazy so registration never waits on the runtime initialization barrier.
-      await registerAospLoaderService(runtime, loader);
+      await registerAospLoaderService(
+        { registerService: runtime.registerService.bind(runtime) },
+        loader,
+      );
       await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
       expect(runtime.getService("localInferenceLoader")).toBeNull();
 
@@ -128,6 +140,256 @@ async function withEnvAsync<T>(
 }
 
 describe("AOSP headless boot ownership", () => {
+  it("releases the raw loader once when stop precedes runtime initialization", async () => {
+    const stateDir = mkdtempSync(path.join(os.tmpdir(), "aosp-owner-preinit-"));
+
+    await withEnvAsync(
+      {
+        ELIZA_LOCAL_LLAMA: "1",
+        ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD: "1",
+        ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD: "1",
+        ELIZA_AOSP_TTS_PREWARM: "0",
+        ELIZA_STATE_DIR: stateDir,
+      },
+      async () => {
+        const runtime = new AgentRuntime({ logLevel: "fatal" });
+        let unloads = 0;
+        let closes = 0;
+        const rawLoader: AospLoader = {
+          async loadModel() {},
+          async unloadModel() {
+            unloads += 1;
+          },
+          currentModelPath: () => null,
+          generate: async ({ prompt }) => prompt,
+          embed: async () => ({ embedding: [0.5], tokens: 1 }),
+          async close() {
+            closes += 1;
+          },
+        };
+
+        await expect(
+          ensureAospLocalInferenceHandlers(runtime, {
+            buildLoader: async () => rawLoader,
+            prewarm: false,
+          }),
+        ).resolves.toBe(true);
+        expect(runtime.getService("localInferenceLoader")).toBeNull();
+
+        await runtime.stop({ fast: true });
+        await runtime.stop({ fast: true });
+
+        expect(unloads).toBe(1);
+        expect(closes).toBe(1);
+      },
+    );
+  });
+
+  it("publishes one handler set when concurrent boots share a loader owner", async () => {
+    const stateDir = mkdtempSync(
+      path.join(os.tmpdir(), "aosp-owner-concurrent-handlers-"),
+    );
+
+    await withEnvAsync(
+      {
+        ELIZA_LOCAL_LLAMA: "1",
+        ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD: "1",
+        ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD: "1",
+        ELIZA_AOSP_TTS_PREWARM: "0",
+        ELIZA_STATE_DIR: stateDir,
+      },
+      async () => {
+        const runtime = new AgentRuntime({ logLevel: "fatal" });
+        const loaderReady = createDeferred<AospLoader | null>();
+        let builderCalls = 0;
+        let unloads = 0;
+        let closes = 0;
+        const rawLoader: AospLoader = {
+          async loadModel() {},
+          async unloadModel() {
+            unloads += 1;
+          },
+          currentModelPath: () => null,
+          generate: async ({ prompt }) => prompt,
+          embed: async () => ({ embedding: [0.5], tokens: 1 }),
+          async close() {
+            closes += 1;
+          },
+        };
+        const options = {
+          buildLoader: () => {
+            builderCalls += 1;
+            return loaderReady.promise;
+          },
+          prewarm: false,
+        };
+
+        const firstBoot = ensureAospLocalInferenceHandlers(runtime, options);
+        const concurrentBoot = ensureAospLocalInferenceHandlers(
+          runtime,
+          options,
+        );
+        expect(builderCalls).toBe(1);
+        loaderReady.resolve(rawLoader);
+
+        await expect(Promise.all([firstBoot, concurrentBoot])).resolves.toEqual(
+          [true, true],
+        );
+        await expect(
+          ensureAospLocalInferenceHandlers(runtime, options),
+        ).resolves.toBe(true);
+
+        const registrations = runtime.getModelRegistrations();
+        for (const modelType of [
+          ModelType.TEXT_SMALL,
+          ModelType.TEXT_LARGE,
+          ModelType.TEXT_EMBEDDING,
+          ModelType.TEXT_TO_SPEECH,
+        ]) {
+          expect(
+            registrations.filter(
+              (entry) =>
+                entry.modelType === modelType &&
+                entry.provider === "eliza-aosp-llama",
+            ),
+          ).toHaveLength(1);
+        }
+        for (const modelType of [ModelType.TEXT_SMALL, ModelType.TEXT_LARGE]) {
+          expect(
+            registrations.filter(
+              (entry) =>
+                entry.modelType === modelType &&
+                entry.provider === "eliza-aosp-llama-cloud-fallback",
+            ),
+          ).toHaveLength(1);
+        }
+
+        await runtime.stop({ fast: true });
+        await runtime.stop({ fast: true });
+        expect(unloads).toBe(1);
+        expect(closes).toBe(1);
+      },
+    );
+  });
+
+  it("rolls back a loader built after the runtime has stopped", async () => {
+    const stateDir = mkdtempSync(
+      path.join(os.tmpdir(), "aosp-owner-late-build-"),
+    );
+
+    await withEnvAsync(
+      {
+        ELIZA_LOCAL_LLAMA: "1",
+        ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD: "1",
+        ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD: "1",
+        ELIZA_AOSP_TTS_PREWARM: "0",
+        ELIZA_STATE_DIR: stateDir,
+      },
+      async () => {
+        const runtime = new AgentRuntime({ logLevel: "fatal" });
+        const loaderReady = createDeferred<AospLoader | null>();
+        let unloads = 0;
+        let closes = 0;
+        const rawLoader: AospLoader = {
+          async loadModel() {},
+          async unloadModel() {
+            unloads += 1;
+          },
+          currentModelPath: () => null,
+          generate: async ({ prompt }) => prompt,
+          embed: async () => ({ embedding: [0.5], tokens: 1 }),
+          async close() {
+            closes += 1;
+          },
+        };
+
+        const registration = ensureAospLocalInferenceHandlers(runtime, {
+          buildLoader: () => loaderReady.promise,
+          prewarm: false,
+        });
+        await runtime.stop({ fast: true });
+        loaderReady.resolve(rawLoader);
+
+        await expect(registration).rejects.toMatchObject({
+          code: "RUNTIME_STOPPED_DURING_SERVICE_REGISTRATION",
+        });
+        await runtime.stop({ fast: true });
+        expect(runtime.getRegisteredServiceTypes()).not.toContain(
+          "localInferenceLoader",
+        );
+        expect(unloads).toBe(1);
+        expect(closes).toBe(1);
+      },
+    );
+  });
+
+  it("does not publish a loader when stop wins after service registration", async () => {
+    const stateDir = mkdtempSync(
+      path.join(os.tmpdir(), "aosp-owner-late-publication-"),
+    );
+
+    await withEnvAsync(
+      {
+        ELIZA_LOCAL_LLAMA: "1",
+        ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD: "1",
+        ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD: "1",
+        ELIZA_AOSP_TTS_PREWARM: "0",
+        ELIZA_STATE_DIR: stateDir,
+      },
+      async () => {
+        const runtime = new AgentRuntime({ logLevel: "fatal" });
+        const serviceRegistered = createDeferred<void>();
+        const finishRegistration = createDeferred<void>();
+        const registerService = runtime.registerService.bind(runtime);
+        let loads = 0;
+        let unloads = 0;
+        let closes = 0;
+        const rawLoader: AospLoader = {
+          async loadModel() {
+            loads += 1;
+          },
+          async unloadModel() {
+            unloads += 1;
+          },
+          currentModelPath: () => null,
+          generate: async ({ prompt }) => prompt,
+          embed: async () => ({ embedding: [0.5], tokens: 1 }),
+          async close() {
+            closes += 1;
+          },
+        };
+        runtime.registerService = async (serviceDefinition) => {
+          await registerService(serviceDefinition);
+          serviceRegistered.resolve();
+          await finishRegistration.promise;
+        };
+
+        const registration = ensureAospLocalInferenceHandlers(runtime, {
+          buildLoader: async () => rawLoader,
+          prewarm: false,
+        });
+        await serviceRegistered.promise;
+        await runtime.stop({ fast: true });
+        finishRegistration.resolve();
+
+        await expect(registration).rejects.toMatchObject({
+          code: "RUNTIME_STOPPED_DURING_AOSP_LOADER_PUBLICATION",
+        });
+        await runtime.stop({ fast: true });
+        await expect(
+          activateAospLocalInferenceModel({
+            modelId: "closed-loader",
+            modelPath: "/models/closed.gguf",
+            loadArgs: { modelPath: "/models/closed.gguf" },
+          }),
+        ).rejects.toThrow("Native localInferenceLoader is not ready yet");
+        expect(loads).toBe(0);
+        expect(unloads).toBe(1);
+        expect(closes).toBe(1);
+      },
+    );
+  });
+
   it("builds one serving loader before initialize and tears that owner down once", async () => {
     const stateDir = mkdtempSync(path.join(os.tmpdir(), "aosp-owner-boot-"));
     const modelsDir = path.join(stateDir, "local-inference", "models");

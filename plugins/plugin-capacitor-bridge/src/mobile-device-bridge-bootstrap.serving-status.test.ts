@@ -24,15 +24,23 @@ const saved: Record<string, string | undefined> = {};
 const linuxAbstractSocketIt = process.platform === "linux" ? it : it.skip;
 
 function fakeRuntime() {
+	const registeredServiceClasses: unknown[] = [];
 	const runtime = {
 		hasService: vi.fn(() => false),
 		registerModel: vi.fn(),
-		registerService: vi.fn(async () => undefined),
+		registerService: vi.fn(async (serviceClass: unknown) => {
+			registeredServiceClasses.push(serviceClass);
+		}),
 		registerPlugin: vi.fn(async (plugin: { services?: unknown[] }) => {
 			for (const service of plugin.services ?? []) {
 				await runtime.registerService(service);
 			}
 		}),
+		getPluginOwnership: vi.fn(() => ({
+			services: registeredServiceClasses.map((serviceClass) => ({
+				serviceClass,
+			})),
+		})),
 		getModel: vi.fn(() => undefined),
 	};
 	return runtime;

@@ -44,7 +44,11 @@ export interface ServiceClass {
 	allowsMultiple?: boolean;
 	/** Factory method to create and start the service */
 	start(runtime: IAgentRuntime): Promise<Service>;
-	/** Stop service for a runtime - optional as not all services implement this */
+	/**
+	 * Release runtime-scoped ownership when shutdown wins before an instance starts.
+	 * If this hook and `Service.stop()` can reach the same acquired resource, both
+	 * paths must share one idempotent or single-flight cleanup owner.
+	 */
 	stopRuntime?(runtime: IAgentRuntime): Promise<void>;
 	/** Optional static method to register send handlers */
 	registerSendHandlers?(runtime: IAgentRuntime, service: Service): void;

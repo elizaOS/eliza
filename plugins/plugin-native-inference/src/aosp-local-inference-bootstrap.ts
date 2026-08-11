@@ -49,7 +49,7 @@ import { pipeline } from "node:stream/promises";
 import {
   type AgentRuntime,
   applyBackgroundInferenceBudget,
-  createService,
+  ElizaError,
   type GenerateTextParams,
   getInferencePriorityGate,
   type IAgentRuntime,
@@ -969,7 +969,7 @@ export class AospLoaderRuntimeService extends Service implements AospLoader {
     "Owns the fused AOSP local-inference loader for this agent runtime.";
 
   constructor(
-    runtime: IAgentRuntime,
+    runtime: IAgentRuntime | undefined = undefined,
     private readonly loader: AospLoader,
     private readonly stopLoader: () => Promise<void>,
   ) {
@@ -1013,16 +1013,25 @@ export async function registerAospLoaderService(
   } = {},
 ): Promise<void> {
   const stopLoader = options.stop ?? (() => loader.unloadModel());
-  const serviceClass = createService<AospLoaderRuntimeService>(SERVICE_NAME)
-    .withDescription(
-      "Owns the fused AOSP local-inference loader for this agent runtime.",
-    )
-    .withStart(async (serviceRuntime) => {
+  class RegisteredAospLoaderRuntimeService extends AospLoaderRuntimeService {
+    static override serviceType = SERVICE_NAME;
+
+    constructor(serviceRuntime?: IAgentRuntime) {
+      super(serviceRuntime, loader, stopLoader);
+    }
+
+    static override async start(
+      serviceRuntime: IAgentRuntime,
+    ): Promise<RegisteredAospLoaderRuntimeService> {
       options.start?.();
-      return new AospLoaderRuntimeService(serviceRuntime, loader, stopLoader);
-    })
-    .build();
-  await runtime.registerService(serviceClass);
+      return new RegisteredAospLoaderRuntimeService(serviceRuntime);
+    }
+
+    static override async stopRuntime(): Promise<void> {
+      await stopLoader();
+    }
+  }
+  await runtime.registerService(RegisteredAospLoaderRuntimeService);
 }
 
 /**
@@ -1053,6 +1062,7 @@ export async function registerAospLlamaLoader(
     );
     return false;
   }
+  owner.assertActive();
   logger.info(
     "[aosp-local-inference] Registered fused libelizainference localInferenceLoader (ELIZA_LOCAL_LLAMA=1)",
   );
@@ -1734,6 +1744,7 @@ export interface AospLocalInferenceBootstrapOptions {
 interface AospLoaderOwner {
   readonly loader: AospLoader;
   readonly lifecycle: ReturnType<typeof makeLoaderLifecycle>;
+  assertActive(): void;
   registerTtsPrewarm(start: () => () => Promise<void>): void;
   start(): void;
   stop(): Promise<void>;
@@ -1785,6 +1796,17 @@ async function buildAospLoaderOwner(
   const owner: AospLoaderOwner = {
     loader,
     lifecycle,
+    assertActive() {
+      if (!stopped) return;
+      throw new ElizaError(
+        "AOSP loader ownership was released before bootstrap publication",
+        {
+          code: "RUNTIME_STOPPED_DURING_AOSP_LOADER_PUBLICATION",
+          context: { agentId: runtime.agentId },
+          severity: "ephemeral",
+        },
+      );
+    },
     registerTtsPrewarm(start) {
       startTtsPrewarm = start;
       if (started && !stopped && shouldPrewarm && !stopTtsPrewarm) {
@@ -1820,9 +1842,9 @@ async function buildAospLoaderOwner(
 
         let unloadError: unknown;
         try {
-          if (loader.currentModelPath() !== null) {
-            await loader.unloadModel();
-          }
+          // The raw loader owns a dlopen handle before a model path exists, so
+          // teardown crosses both release boundaries even on pre-init stop.
+          await loader.unloadModel();
         } catch (error) {
           // error-policy:J6 teardown still closes the dlopen handle before the
           // original unload failure is rethrown to the runtime boundary.
@@ -1856,23 +1878,27 @@ async function buildAospLoaderOwner(
       start: owner.start,
       stop: owner.stop,
     });
-  } catch (registrationError) {
-    // error-policy:J6 service registration owns the native handle transfer;
-    // construction rollback releases it before preserving the primary failure.
+    // Service registration and loader publication are one ownership transfer.
+    // A concurrent stop marks the shared owner before this continuation can
+    // expose a closed loader to route activation or model handlers.
+    owner.assertActive();
+    routeActivationLoader = loader;
+  } catch (publicationError) {
+    // error-policy:J6 ownership publication rollback releases the native handle
+    // before preserving the registration or stopped-runtime failure.
     try {
       await owner.stop();
     } catch (cleanupError) {
       // error-policy:J6 rollback attempted every owner release operation; keep
-      // both the primary registration and teardown failures observable.
+      // both the primary publication and teardown failures observable.
       throw new AggregateError(
-        [registrationError, cleanupError],
-        "AOSP local-inference service registration and rollback both failed",
-        { cause: registrationError },
+        [publicationError, cleanupError],
+        "AOSP local-inference ownership publication and rollback both failed",
+        { cause: publicationError },
       );
     }
-    throw registrationError;
+    throw publicationError;
   }
-  routeActivationLoader = loader;
   return owner;
 }
 
@@ -3519,6 +3545,14 @@ export async function ensureAospLocalInferenceHandlers(
       "[aosp-local-inference] fused libelizainference text loader unavailable (lib absent or pre-ABI-v9); TEXT_* handlers NOT wired. Local text inference is unavailable.",
     );
     return false;
+  }
+  owner.assertActive();
+  // Every concurrent bootstrap awaits the same owner promise. Handler
+  // publication below is synchronous, so this post-await recheck gives the
+  // first continuation the sole claim and every later waiter observes it.
+  if (registeredRuntimes.has(runtime)) {
+    logger.debug("[aosp-local-inference] handlers already registered");
+    return true;
   }
   const textLoader = owner.loader;
   const lifecycle = owner.lifecycle;

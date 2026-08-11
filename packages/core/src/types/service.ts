@@ -198,7 +198,11 @@ export abstract class Service {
 		throw new Error("Service.start() must be implemented by subclass");
 	}
 
-	/** Stop service connection - optional, subclasses may override this */
+	/**
+	 * Release runtime-scoped ownership when shutdown wins before an instance starts.
+	 * Resources reachable from both this hook and `stop()` require one shared,
+	 * idempotent or single-flight cleanup owner.
+	 */
 	static stopRuntime?(_runtime: IAgentRuntime): Promise<void>;
 
 	/** Optional static method to register send handlers */

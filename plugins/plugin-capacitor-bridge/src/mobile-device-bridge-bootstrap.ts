@@ -43,7 +43,6 @@ import {
 	type Plugin,
 	resolveBackgroundInferenceBudget,
 	resolveStateDir,
-	ServiceType,
 	type TextEmbeddingParams,
 } from "@elizaos/core";
 import { resolveStoredModelPath } from "./shared/local-inference-stored-path.ts";
@@ -57,7 +56,21 @@ const DEFAULT_LOAD_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
 let registeredRuntimeCount = 0;
-const deviceAttachUnsubscribers = new WeakMap<AgentRuntime, () => void>();
+interface RuntimeBridgeOwnership {
+	readonly pluginRegistration: Promise<void>;
+	detachListener: (() => void) | null;
+}
+const runtimeBridgeOwners = new WeakMap<AgentRuntime, RuntimeBridgeOwnership>();
+
+function releaseRuntimeBridgeOwnership(
+	runtime: AgentRuntime,
+	owner: RuntimeBridgeOwnership,
+): void {
+	if (runtimeBridgeOwners.get(runtime) !== owner) return;
+	owner.detachListener?.();
+	runtimeBridgeOwners.delete(runtime);
+}
+
 /**
  * The trigger that actually bound the capacitor-llama handlers, or null while
  * nothing registered them. "bionic-host" is the true in-process serving signal
@@ -2044,6 +2057,19 @@ export class CapacitorMobileDeviceBridgeService extends MobileDeviceBridgeServic
 		return new CapacitorMobileDeviceBridgeService(runtime);
 	}
 
+	static override async stopRuntime(runtime: IAgentRuntime): Promise<void> {
+		// The HTTP server owns the process-global transport. A runtime releases only
+		// its attach subscription and model-registration bookkeeping so a successor
+		// can keep serving through the same bridge.
+		const agentRuntime = runtime as AgentRuntime;
+		const owner = runtimeBridgeOwners.get(agentRuntime);
+		if (owner) releaseRuntimeBridgeOwnership(agentRuntime, owner);
+		if (registeredRuntimes.delete(agentRuntime)) {
+			registeredRuntimeCount = Math.max(0, registeredRuntimeCount - 1);
+		}
+		if (registeredRuntimeCount === 0) registeredModelTrigger = null;
+	}
+
 	getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus {
 		return mobileDeviceBridge.status();
 	}
@@ -2060,13 +2086,7 @@ export class CapacitorMobileDeviceBridgeService extends MobileDeviceBridgeServic
 	}
 
 	async stop(): Promise<void> {
-		const runtime = this.runtime as AgentRuntime;
-		deviceAttachUnsubscribers.get(runtime)?.();
-		deviceAttachUnsubscribers.delete(runtime);
-		if (registeredRuntimes.delete(runtime)) {
-			registeredRuntimeCount = Math.max(0, registeredRuntimeCount - 1);
-		}
-		if (registeredRuntimeCount === 0) registeredModelTrigger = null;
+		await CapacitorMobileDeviceBridgeService.stopRuntime(this.runtime);
 	}
 }
 
@@ -2313,12 +2333,47 @@ export async function ensureMobileDeviceBridgeInferenceHandlers(
 		logger.debug("[mobile-device-bridge] Disabled or AOSP local llama active");
 		return false;
 	}
-	if (!runtime.hasService(ServiceType.MOBILE_DEVICE_BRIDGE)) {
-		await runtime.registerPlugin(mobileDeviceBridgePlugin);
-	}
 	if (registeredRuntimes.has(runtime)) {
 		logger.debug("[mobile-device-bridge] Handlers already registered");
 		return true;
+	}
+	let owner = runtimeBridgeOwners.get(runtime);
+	if (!owner) {
+		owner = {
+			// Starting registration before publishing runtime-owned listeners makes
+			// the service class visible to stop() in the same synchronous turn. The
+			// shared owner then tells this continuation whether shutdown won the race.
+			pluginRegistration: runtime.registerPlugin(mobileDeviceBridgePlugin),
+			detachListener: null,
+		};
+		runtimeBridgeOwners.set(runtime, owner);
+	}
+	try {
+		await owner.pluginRegistration;
+	} catch (error) {
+		// error-policy:J6 plugin registration is the ownership-transfer boundary;
+		// rollback removes only this runtime's provisional listener state.
+		releaseRuntimeBridgeOwnership(runtime, owner);
+		throw error;
+	}
+	if (runtimeBridgeOwners.get(runtime) !== owner) {
+		logger.debug(
+			"[mobile-device-bridge] Runtime stopped during bridge plugin registration",
+		);
+		return false;
+	}
+	const ownsCanonicalService = runtime
+		.getPluginOwnership(mobileDeviceBridgePlugin.name)
+		?.services.some(
+			(registration) =>
+				registration.serviceClass === CapacitorMobileDeviceBridgeService,
+		);
+	if (!ownsCanonicalService) {
+		releaseRuntimeBridgeOwnership(runtime, owner);
+		logger.error(
+			"[mobile-device-bridge] Plugin name is owned without the canonical bridge service; handlers stay unregistered",
+		);
+		return false;
 	}
 
 	// Bionic-host delegation: the in-process GPU host serves TEXT/embed over
@@ -2346,14 +2401,12 @@ export async function ensureMobileDeviceBridgeInferenceHandlers(
 		"[mobile-device-bridge] No bionic host delegation and no device bridge attached — " +
 			`${PROVIDER} TEXT handlers stay unregistered until a device bridge connects`,
 	);
-	if (!deviceAttachUnsubscribers.has(runtime)) {
+	if (!owner.detachListener) {
 		const registerOnAttach = () => {
 			registerMobileDeviceBridgeModels(runtime, "device-bridge");
 		};
-		deviceAttachUnsubscribers.set(
-			runtime,
-			mobileDeviceBridge.onDeviceAttached(registerOnAttach),
-		);
+		owner.detachListener =
+			mobileDeviceBridge.onDeviceAttached(registerOnAttach);
 		// Close the status-check/subscription race: if registration landed after
 		// the earlier check, bind the handlers now through the same callback.
 		if (mobileDeviceBridge.status().connected) registerOnAttach();

@@ -6,7 +6,7 @@
 
 import http from "node:http";
 import { AgentRuntime, ServiceType } from "@elizaos/core";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 const savedEnv = {
 	ELIZA_DEVICE_BRIDGE_ENABLED: process.env.ELIZA_DEVICE_BRIDGE_ENABLED,
@@ -29,6 +29,115 @@ afterAll(() => {
 });
 
 describe("mobile device bridge runtime replacement ownership", () => {
+	it("does not install an attach listener after plugin registration loses to stop", async () => {
+		const bridge = await import("./mobile-device-bridge-bootstrap");
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		const registerPlugin = runtime.registerPlugin.bind(runtime);
+		const registrationSpy = vi
+			.spyOn(runtime, "registerPlugin")
+			.mockImplementation(async (plugin) => {
+				await registerPlugin(plugin);
+				await runtime.stop({ fast: true });
+			});
+		const attachableBridge = bridge.mobileDeviceBridge as unknown as {
+			notifyDeviceAttached(): void;
+		};
+
+		try {
+			await expect(
+				bridge.ensureMobileDeviceBridgeInferenceHandlers(runtime),
+			).resolves.toBe(false);
+			attachableBridge.notifyDeviceAttached();
+
+			expect(
+				runtime
+					.getModelRegistrations()
+					.filter((entry) => entry.provider === "capacitor-llama"),
+			).toHaveLength(0);
+		} finally {
+			registrationSpy.mockRestore();
+			await runtime.stop({ fast: true });
+			await bridge.mobileDeviceBridge.close();
+		}
+	});
+
+	it("fails closed when the plugin name is owned without the bridge service", async () => {
+		const bridge = await import("./mobile-device-bridge-bootstrap");
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		const foreignPlugin = {
+			name: "capacitor-bridge",
+			description: "Unrelated plugin holding the bridge package name",
+		};
+		const attachableBridge = bridge.mobileDeviceBridge as unknown as {
+			notifyDeviceAttached(): void;
+		};
+
+		try {
+			await runtime.registerPlugin(foreignPlugin);
+			const foreignOwnership = runtime.getPluginOwnership(foreignPlugin.name);
+			expect(foreignOwnership?.services).toHaveLength(0);
+
+			await expect(
+				bridge.ensureMobileDeviceBridgeInferenceHandlers(runtime),
+			).resolves.toBe(false);
+			expect(runtime.getPluginOwnership(foreignPlugin.name)).toBe(
+				foreignOwnership,
+			);
+			expect(runtime.plugins).toContain(foreignPlugin);
+			expect(runtime.getRegisteredServiceTypes()).not.toContain(
+				ServiceType.MOBILE_DEVICE_BRIDGE,
+			);
+
+			await runtime.stop({ fast: true });
+			attachableBridge.notifyDeviceAttached();
+			expect(
+				runtime
+					.getModelRegistrations()
+					.filter((entry) => entry.provider === "capacitor-llama"),
+			).toHaveLength(0);
+		} finally {
+			await runtime.stop({ fast: true });
+			await bridge.mobileDeviceBridge.close();
+		}
+	});
+
+	it("removes a stopped pre-init runtime listener without touching its successor", async () => {
+		const bridge = await import("./mobile-device-bridge-bootstrap");
+		const stoppedRuntime = new AgentRuntime({ logLevel: "fatal" });
+		const successorRuntime = new AgentRuntime({ logLevel: "fatal" });
+		const attachableBridge = bridge.mobileDeviceBridge as unknown as {
+			notifyDeviceAttached(): void;
+		};
+
+		try {
+			await expect(
+				bridge.ensureMobileDeviceBridgeInferenceHandlers(stoppedRuntime),
+			).resolves.toBe(false);
+			await expect(
+				bridge.ensureMobileDeviceBridgeInferenceHandlers(successorRuntime),
+			).resolves.toBe(false);
+
+			await stoppedRuntime.stop({ fast: true });
+			await stoppedRuntime.stop({ fast: true });
+			attachableBridge.notifyDeviceAttached();
+
+			expect(
+				stoppedRuntime
+					.getModelRegistrations()
+					.filter((entry) => entry.provider === "capacitor-llama"),
+			).toHaveLength(0);
+			expect(
+				successorRuntime
+					.getModelRegistrations()
+					.filter((entry) => entry.provider === "capacitor-llama"),
+			).toHaveLength(3);
+		} finally {
+			await stoppedRuntime.stop({ fast: true });
+			await successorRuntime.stop({ fast: true });
+			await bridge.mobileDeviceBridge.close();
+		}
+	});
+
 	it("keeps the shared server transport alive when the old runtime stops", async () => {
 		const bridge = await import("./mobile-device-bridge-bootstrap");
 		const server = http.createServer();

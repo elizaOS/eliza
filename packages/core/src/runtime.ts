@@ -1414,6 +1414,8 @@ export class AgentRuntime implements IAgentRuntime {
 	public companionUrl?: string;
 	/** Set when stop() has been called; prevents new service starts and use-after-stop. */
 	private stopped = false;
+	/** Shared by every caller participating in the same runtime shutdown. */
+	private stopTask: Promise<void> | null = null;
 
 	constructor(opts: {
 		conversationLength?: number;
@@ -2331,9 +2333,9 @@ export class AgentRuntime implements IAgentRuntime {
 			throw new Error(`registerPlugin: ${errorMsg}`);
 		}
 		const assertRuntimeActive = (): void => {
-			if (!this.stopped) return;
+			if (!this.stopTask && !this.stopped) return;
 			throw new ElizaError(
-				`Cannot register plugin "${plugin.name}" on a stopped runtime`,
+				`Cannot register plugin "${plugin.name}" on a stopping or stopped runtime`,
 				{
 					code: "RUNTIME_STOPPED_DURING_PLUGIN_REGISTRATION",
 					severity: "ephemeral",
@@ -2598,14 +2600,36 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Stops all started services and clears runtime caches/handlers.
 	 * For full teardown (including DB/adapter connection), call close() after stop().
 	 */
-	async stop(options?: RuntimeStopOptions): Promise<void> {
+	stop(options?: RuntimeStopOptions): Promise<void> {
+		if (this.stopTask) {
+			return this.stopTask;
+		}
 		if (this.stopped) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId },
 				"Runtime already stopped",
 			);
-			return;
+			return Promise.resolve();
 		}
+		let resolveStop!: () => void;
+		let rejectStop!: (reason?: unknown) => void;
+		const stopTask = new Promise<void>((resolve, reject) => {
+			resolveStop = resolve;
+			rejectStop = reject;
+		});
+		this.stopTask = stopTask;
+		void stopTask.then(undefined, () => {
+			if (!this.stopped && this.stopTask === stopTask) {
+				this.stopTask = null;
+			}
+		});
+		// Abort listeners run synchronously and may reenter stop(). Publish the
+		// shared latch before any shutdown effect can invoke user-owned code.
+		void this._performStop(options).then(resolveStop, rejectStop);
+		return stopTask;
+	}
+
+	private async _performStop(options?: RuntimeStopOptions): Promise<void> {
 		this.roomHandlerQueue.closeAdmissions("runtime-stop");
 		this.turnControllers.abortAllTurns("runtime-stop");
 		const fast = options?.fast === true;
@@ -2741,6 +2765,39 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 			}
 		}
+		// Registration may acquire runtime-scoped resources before lazy start creates
+		// an instance. The class hook owns only that gap; an existing instance remains
+		// the sole normal teardown path. A start resolving after this snapshot still
+		// stops its instance, so both paths share one cleanup owner when they can reach
+		// the same resource.
+		const lazyServiceClasses = new Set<ServiceClass>();
+		for (const [serviceType, serviceClasses] of this.serviceTypes) {
+			for (const serviceClass of serviceClasses) {
+				if (
+					lazyServiceClasses.has(serviceClass) ||
+					this.serviceInstancesByClass.has(serviceClass) ||
+					typeof serviceClass.stopRuntime !== "function"
+				) {
+					continue;
+				}
+				lazyServiceClasses.add(serviceClass);
+				if (fast) {
+					fastStopTasks.push(
+						this._stopUnstartedServiceClass(
+							serviceType,
+							serviceClass,
+							"fast shutdown before service start",
+						),
+					);
+				} else {
+					await this._stopUnstartedServiceClass(
+						serviceType,
+						serviceClass,
+						"shutdown before service start",
+					);
+				}
+			}
+		}
 		if (fast && fastStopTasks.length > 0) {
 			const timeoutMs = resolveShutdownTimeoutMs(
 				"ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS",
@@ -2790,6 +2847,30 @@ export class AgentRuntime implements IAgentRuntime {
 		this.startingServiceClasses.clear();
 		this.serviceInstancesByClass.clear();
 		this.failedServiceClasses.clear();
+	}
+
+	private async _stopUnstartedServiceClass(
+		serviceType: string,
+		serviceClass: ServiceClass,
+		reason: string,
+	): Promise<void> {
+		try {
+			await serviceClass.stopRuntime?.(this);
+		} catch (err) {
+			// error-policy:J6 Lazy service shutdown is best-effort so every
+			// registered owner receives its teardown opportunity.
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					serviceType,
+					serviceClass: serviceClass.name || "<anonymous>",
+					reason,
+					error: err instanceof Error ? err.message : String(err),
+				},
+				"Service stopRuntime() threw; continuing",
+			);
+		}
 	}
 
 	private async _stopServiceInstance(
@@ -5853,6 +5934,16 @@ export class AgentRuntime implements IAgentRuntime {
 		const serviceType = serviceDef.serviceType as ServiceTypeName;
 		const serviceName = (serviceDef as { name?: string }).name || "Unknown";
 
+		if (this.stopTask || this.stopped) {
+			throw new ElizaError(
+				"Cannot register a service on a stopping or stopped runtime",
+				{
+					code: "RUNTIME_STOPPED_DURING_SERVICE_REGISTRATION",
+					context: { agentId: this.agentId, serviceName, serviceType },
+					severity: "ephemeral",
+				},
+			);
+		}
 		if (!serviceType) {
 			throw new ElizaError("Service is missing its serviceType property", {
 				code: "SERVICE_TYPE_MISSING",

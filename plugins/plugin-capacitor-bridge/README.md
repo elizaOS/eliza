@@ -21,7 +21,7 @@ Both paths install a sandboxed virtual filesystem (`installMobileFsShim`) that c
 
 ## Installation
 
-This package is used by the elizaOS agent bundle. It is not a standard elizaOS plugin and cannot be added to `character.plugins`. The agent bundle entry point imports and calls its bootstrap functions directly.
+This package exports `mobileDeviceBridgePlugin` as both its named and default standard elizaOS `Plugin` object. That plugin owns the canonical bridge service and can be registered through the normal plugin lifecycle. The agent bundle still calls `ensureMobileDeviceBridgeInferenceHandlers()` directly because model handlers must remain gated on a live bionic host or attached device.
 
 ```
 @elizaos/plugin-capacitor-bridge
