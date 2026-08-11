@@ -158,11 +158,10 @@ jobs:
     needs: changes
     runs-on: ubuntu-24.04
     # 725 Playwright tests that the suite's one-live-stack-per-process
-    # invariant pins to a single worker. Measured on run 31489483093: six
-    # shards land between 22.8 and 34.4 minutes of test time against ~96 on one
-    # machine. The spread is Playwright balancing by test count rather than
-    # duration, and roughly 13 minutes per shard is fixed setup that does not
-    # divide -- which is why more shards stop paying past this point.
+    # invariant pins to a single worker, so wall clock only falls when each
+    # slice gets its own runner. Measured on run 31504110080, the whole lane
+    # was ~96 min on one machine and the slowest shard 35.9. The spread across
+    # shards is Playwright balancing by test count rather than duration.
     timeout-minutes: 60
     strategy:
       # One shard's product failure must not hide the other five: a shard that
@@ -193,15 +192,21 @@ jobs:
         if: needs.changes.outputs.zero_key == 'true'
         run: PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit
 
-      # Every shard runs the identical command and differs only by
-      # ELIZA_UI_SMOKE_SHARD, so no shard can silently own a different lane.
-      # The orchestrator's two non-Playwright e2e tasks (~48s combined) repeat
-      # on each runner; duplicating them costs less than branching the command.
+      # Only the Playwright lane is shardable, so this filter selects exactly
+      # that one task and every shard differs only by ELIZA_UI_SMOKE_SHARD. The
+      # e2e lane's other 16 tasks run once in `smoke_lanes`; the two filters
+      # partition the lane exactly (1 + 16 = 17, verified with --plan), so
+      # nothing is dropped and nothing is counted twice.
+      #
+      # Measured on run 31504110080, before this split: those 16 tasks cost
+      # 8.6 min on EVERY shard -- plugin-personal-assistant alone is 5.8 min --
+      # which added 8.6 min to each shard's wall clock and burned ~52 min of
+      # duplicate runner time per lane.
       - name: Deterministic end-to-end smoke
         if: needs.changes.outputs.zero_key == 'true'
         env:
           ELIZA_UI_SMOKE_SHARD: ${{ matrix.shard }}/6
-        run: bun run test:e2e
+        run: bun run test:e2e --filter='packages/app\)#test:e2e'
 
       - name: No affected e2e shard
         if: needs.changes.outputs.zero_key != 'true'
@@ -222,7 +227,7 @@ jobs:
           submodules: false
 
       - uses: ./.github/actions/setup-bun-workspace
-        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.cloud == 'true'
+        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.cloud == 'true' || needs.changes.outputs.zero_key == 'true'
         with:
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
@@ -260,9 +265,15 @@ jobs:
         if: needs.changes.outputs.cloud == 'true'
         run: bun run test:cloud
 
+      # The complement of the shard job's filter: every e2e task except the
+      # Playwright lane, run once instead of once per shard.
+      - name: Deterministic end-to-end smoke (unshardable tasks)
+        if: needs.changes.outputs.zero_key == 'true'
+        run: bun run test:e2e --filter='^(?!.*packages/app\)#test:e2e)'
+
       - name: No affected smoke lane
-        if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.cloud != 'true'
-        run: echo "No desktop or cloud smoke lane is affected."
+        if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.cloud != 'true' && needs.changes.outputs.zero_key != 'true'
+        run: echo "No desktop, cloud, or deterministic E2E lane is affected."
 
   android_aab:
     name: Android release AAB
